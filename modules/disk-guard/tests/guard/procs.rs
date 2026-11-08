@@ -200,7 +200,7 @@ fn a_lock_no_one_waits_on_has_no_waiters() {
     let root = tempfile::tempdir().unwrap();
     text(root.path(), "locks", LOCKS);
     let locks = root.path().join("locks");
-    assert!(lock_waiters(&locks, 42, &[10]).unwrap().is_empty());
+    assert_eq!(lock_waiters(&locks, 42, &[10]).unwrap(), [] as [i32; 0]);
 }
 
 /// The kernel lists locks a page at a time, and other locks coming and

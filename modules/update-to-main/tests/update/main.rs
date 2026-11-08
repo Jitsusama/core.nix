@@ -772,7 +772,7 @@ fn a_low_battery_starts_nothing() {
     let head = world.signed("one");
     world.system(&head);
     let (told, ending) = world.update();
-    assert!(told.is_empty());
+    assert_eq!(told, [] as [update_to_main::line::Line; 0]);
     let Line::Refused { why, .. } = ending else {
         panic!("not refused: {ending:?}")
     };
@@ -1631,7 +1631,7 @@ fn a_call_starts_nothing() {
     let head = world.signed("one");
     world.system(&head);
     let (told, ending) = world.update();
-    assert!(told.is_empty());
+    assert_eq!(told, [] as [update_to_main::line::Line; 0]);
     let Line::Refused { why, .. } = ending else {
         panic!("not refused: {ending:?}")
     };

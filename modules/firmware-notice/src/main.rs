@@ -238,7 +238,7 @@ mod tests {
     #[test]
     fn nothing_offered_is_said_in_words_and_means_no_notice() {
         let none = offered(Some(NOTHING_OFFERED), b"No updatable devices").expect("nothing to do");
-        assert!(notices(&none).is_empty());
+        assert_eq!(notices(&none), [] as [Notice; 0]);
     }
 
     #[test]

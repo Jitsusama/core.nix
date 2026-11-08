@@ -1197,7 +1197,7 @@ mod tests {
             (&report.up, &report.down),
             (&Score::default(), &Score::default())
         );
-        assert!(report.stays[0].unfounded_cuts.is_empty());
+        assert_eq!(report.stays[0].unfounded_cuts, [] as [replay::Cut; 0]);
     }
 
     #[test]

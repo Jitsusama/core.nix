@@ -1307,7 +1307,7 @@ mod tests {
             "Synopsys DesignWare I2C adapter",
             "pci0000:00/i2c-1",
         );
-        assert!(tree.buses().is_empty());
+        assert_eq!(tree.buses(), [] as [(std::string::String, monitor::Reach); 0]);
     }
 
     #[test]

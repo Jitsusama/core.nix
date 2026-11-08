@@ -138,7 +138,7 @@ mod tests {
         let start = Instant::now();
         let schedule = all_done(start);
 
-        assert!(schedule.due(start + secs(29), true).is_empty());
+        assert_eq!(schedule.due(start + secs(29), true), [] as [schedule::Read; 0]);
         assert_eq!(schedule.due(start + secs(30), true), [Read::Network]);
         assert_eq!(schedule.wait(start + secs(10), true), secs(20));
     }
@@ -148,7 +148,7 @@ mod tests {
         let start = Instant::now();
         let schedule = all_done(start);
 
-        assert!(schedule.due(start + secs(299), false).is_empty());
+        assert_eq!(schedule.due(start + secs(299), false), [] as [schedule::Read; 0]);
         assert_eq!(
             schedule.due(start + secs(300), false),
             [Read::Network, Read::Connections]
@@ -176,7 +176,7 @@ mod tests {
         let start = Instant::now();
         let schedule = all_done(start);
 
-        assert!(schedule.due(start + secs(60), false).is_empty());
+        assert_eq!(schedule.due(start + secs(60), false), [] as [schedule::Read; 0]);
         assert_eq!(schedule.due(start + secs(60), true), [Read::Network]);
     }
 
@@ -187,7 +187,7 @@ mod tests {
 
         schedule.ask();
 
-        assert!(schedule.due(start + secs(2), true).is_empty());
+        assert_eq!(schedule.due(start + secs(2), true), [] as [schedule::Read; 0]);
         assert_eq!(schedule.wait(start + secs(2), true), secs(3));
         assert_eq!(schedule.due(start + secs(5), true), [Read::Network]);
         schedule.done(Read::Network, start + secs(5));

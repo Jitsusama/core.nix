@@ -1135,7 +1135,7 @@ mod tests {
             proc.start = 10;
         }
         let moves = looks(&mut sorter, &[old.clone()]);
-        assert!(moves[0].is_empty());
+        assert_eq!(moves[0], [] as [Move; 0]);
         assert_eq!(sorter.busy.len(), 0);
     }
 
@@ -1193,7 +1193,7 @@ mod tests {
             [40, 43]
         );
         let lookalike = |_| Some("/jobs.slice/jobs.service-x".to_owned());
-        assert!(still_in(&[40], "jobs.slice/jobs.service", lookalike).is_empty());
+        assert_eq!(still_in(&[40], "jobs.slice/jobs.service", lookalike), [] as [u32; 0]);
     }
 
     #[test]

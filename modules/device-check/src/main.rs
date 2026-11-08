@@ -658,19 +658,19 @@ mod tests {
             ]
         );
         // Four-fifths is deep enough, and a short sleep isn't judged.
-        assert!(sleep_lines(root, &before, &slept(48 * MINUTE, 60 * MINUTE)).is_empty());
-        assert!(sleep_lines(root, &before, &slept(0, 9 * MINUTE)).is_empty());
+        assert_eq!(sleep_lines(root, &before, &slept(48 * MINUTE, 60 * MINUTE)), [] as [std::string::String; 0]);
+        assert_eq!(sleep_lines(root, &before, &slept(0, 9 * MINUTE)), [] as [std::string::String; 0]);
         // Nor is time asleep with no sleep the kernel counts.
         let unslept = Sleep {
             success: 0,
             ..slept(0, 60 * MINUTE)
         };
-        assert!(sleep_lines(root, &before, &unslept).is_empty());
+        assert_eq!(sleep_lines(root, &before, &unslept), [] as [std::string::String; 0]);
         fs::remove_dir_all(&dir).unwrap();
 
         // A platform that doesn't report its deepest state isn't judged.
         let dir = sleep_root("unreported", 0, "", "");
-        assert!(sleep_lines(dir.as_os_str(), &before, &slept(0, 60 * MINUTE)).is_empty());
+        assert_eq!(sleep_lines(dir.as_os_str(), &before, &slept(0, 60 * MINUTE)), [] as [std::string::String; 0]);
         fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -727,7 +727,7 @@ mod tests {
         fs::create_dir_all(&kernel).unwrap();
         fs::write(kernel.join("tainted"), format!("{}\n", 512 + 4096 + 1024)).unwrap();
         fs::write(kernel.join("hung_task_detect_count"), "0\n").unwrap();
-        assert!(kernel_trouble(dir.as_os_str()).is_empty());
+        assert_eq!(kernel_trouble(dir.as_os_str()), [] as [std::string::String; 0]);
         fs::write(
             kernel.join("tainted"),
             format!("{}\n", 128 + 16384 + 16 + 32),

@@ -537,7 +537,7 @@ mod tests {
 
     #[test]
     fn no_checks_need_no_evaluation() {
-        assert!(chunks(&[]).is_empty());
+        assert_eq!(chunks(&[]), [] as [&[std::string::String]; 0]);
     }
 
     #[test]

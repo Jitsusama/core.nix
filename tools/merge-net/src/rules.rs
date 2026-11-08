@@ -253,7 +253,7 @@ mod tests {
             &words("modules/nix-offload/offload/src/main.rs"),
             Some(&[]),
         );
-        assert!(needs.tests.is_empty());
+        assert_eq!(needs.tests, [] as [std::string::String; 0]);
         assert_eq!(needs.there, words("nix-offload"));
         assert!(parse("a: a/* => there").is_ok());
     }

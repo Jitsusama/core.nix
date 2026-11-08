@@ -1192,7 +1192,7 @@ mod tests {
             {"session": "4", "user": "cron", "seat": ""}
         ]);
         assert_eq!(seated(&sessions), vec!["joel".to_owned()]);
-        assert!(seated(&Value::Null).is_empty());
+        assert_eq!(seated(&Value::Null), [] as [std::string::String; 0]);
     }
 
     #[test]

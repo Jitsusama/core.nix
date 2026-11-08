@@ -434,7 +434,7 @@ mod tests {
         let answer = json!({"messages": [{"id": "b", "threadId": "t"}, {"id": "a", "threadId": "t"}],
             "resultSizeEstimate": 2});
         assert_eq!(listed(&answer), ["b", "a"]);
-        assert!(listed(&json!({"resultSizeEstimate": 0})).is_empty());
+        assert_eq!(listed(&json!({"resultSizeEstimate": 0})), [] as [std::string::String; 0]);
     }
 
     #[test]
@@ -605,7 +605,7 @@ mod tests {
     fn mail_with_no_files_carries_none() {
         let answer = json!({"id": "m", "threadId": "t", "payload": {
             "mimeType": "text/plain", "body": {"data": encoded("Hi")}}});
-        assert!(read(&answer).unwrap().attachments.is_empty());
+        assert_eq!(read(&answer).unwrap().attachments, [] as [mail::File; 0]);
     }
 
     #[test]

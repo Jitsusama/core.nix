@@ -331,7 +331,7 @@ mod tests {
         assert!(!codes.contains(&0x0B), "a value of 14's, not a code");
         assert!(!codes.contains(&0x11), "a value of 60's, not a code");
         assert!(!codes.contains(&0x0C), "a command, not a code");
-        assert!(listed("(prot(monitor))").is_empty());
+        assert_eq!(listed("(prot(monitor))"), [] as [u8; 0]);
     }
 
     #[test]

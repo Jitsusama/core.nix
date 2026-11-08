@@ -210,12 +210,12 @@ mod tests {
         let drm = Drm::new("laptop");
         drm.connector("card0-eDP-1", Some("connected"))
             .connector("card0-DP-1", Some("disconnected"));
-        assert!(plugged_in(&drm.0).is_empty());
+        assert_eq!(plugged_in(&drm.0), [] as [std::string::String; 0]);
     }
 
     #[test]
     fn finds_nothing_without_a_card() {
-        assert!(plugged_in(Path::new("/nonexistent")).is_empty());
+        assert_eq!(plugged_in(Path::new("/nonexistent")), [] as [std::string::String; 0]);
     }
 
     #[test]
