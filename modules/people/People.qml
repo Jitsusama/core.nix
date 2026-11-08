@@ -31,6 +31,7 @@ import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Person.js" as Person
+import "Recent.js" as Recent
 import "Zones.js" as Zones
 
 Provider {
@@ -293,7 +294,8 @@ Provider {
     }
 
     // What the right arrow lists: every way to reach them, their next
-    // meeting, the things lately with them, whether they're a favourite,
+    // meeting, what of theirs is unread, what Joel had with them lately
+    // (Recent), whether they're a favourite,
     // then each address to copy, last as every Copy is.
     function inside(person) {
         const addresses = person.emails.map((email, at) => copyRow({
@@ -302,8 +304,8 @@ Provider {
             side: person.emails.length === 1 ? "their email" : "one of their emails",
             glyph: Theme.glyph.email
         }));
-        return acts(person).concat(pages(person), next(person), recent(person),
-            favourite(person), addresses);
+        return acts(person).concat(pages(person), next(person), unread(person),
+            recent(person), favourite(person), addresses);
     }
 
     // Their page in each source that keeps one and knows them, in the
@@ -371,39 +373,56 @@ Provider {
         return coming ? [coming.row] : [];
     }
 
-    // Their Recent: what each source has had with them, newest first, each
-    // its own thing's row, the same word as a program's Recent, or nothing
-    // when no source has any. It's gathered once as they're stepped into,
-    // and stepping into it lists what was gathered then.
+    // Their Recent: what Joel had with them across every source, laid out
+    // as every Recent is (Recent.js): the last nine, newest first, each
+    // thing once by its row's key, each its own thing's row. It stands
+    // whether or not there's any, saying how many, so it's always where
+    // it was. It's gathered once as they're stepped into, and stepping
+    // into it lists what was gathered then.
     function recent(person) {
-        const gathered = [];
-        for (const source of sources) {
-            for (const one of source.recent(person, provider))
-                gathered.push(one);
-        }
-        const rows = gathered.sort((a, b) => b.at - a.at).map(one => one.row);
+        const rows = Recent.listed(sources.map((source, which) => source
+            .recent(person, provider)
+            .map((one, at) => ({ key: one.row?.key || `${which}:${at}`, at: one.at,
+                row: one.row }))), []).map(one => one.row);
+        const stands = Recent.said(rows.length, rows[0]?.name ?? "", false,
+            Words.of("person:recent").said);
+        return [holding("person:recent", rows, stands.side, stands.note)];
+    }
+
+    // Their Unread: what of theirs waits on Joel, unread mail, newest
+    // first, standing only while there's any, how many at its side and the
+    // newest one's name as its note, as Slack's Unread says. It comes
+    // before Recent, which holds only what he's had with them.
+    function unread(person) {
+        const rows = [].concat(...sources.map(source => source.unread(person, provider)))
+            .sort((a, b) => b.at - a.at).map(one => one.row);
+        return rows.length === 0 ? []
+            : [holding("person:unread", rows, String(rows.length), rows[0]?.name ?? "")];
+    }
+
+    // A row holding some of their things, by the words `key` names. Its
+    // rows are both what it holds and what it steps into, as a meeting's
+    // See It's are, so it steps in at any level: inside People, where a
+    // row's insides are its verbs, and inside a person found from the top,
+    // where they're its targets.
+    function holding(key, rows, side, note) {
         const had = () => rows;
-        const count = rows.length;
-        if (count === 0)
-            return [];
-        // Its rows are both what it holds and what it steps into, as a
-        // meeting's See It's are, so it steps in at any level: inside
-        // People, where a row's insides are its verbs, and inside a
-        // person found from the top, where they're its targets.
         const row = thing({
-            key: "person:recent",
-            name: Words.name("person:recent"),
-            verb: Words.verb("person:recent"),
-            glyph: Words.glyph("person:recent"),
+            key: key,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
             hue: "person",
-            count: String(count),
+            side: side,
+            note: note,
+            empty: Words.of(key).empty,
             nested: true,
             stays: true,
             verbs: had,
             targets: had,
             run: () => provider.launcher?.enter(row)
         });
-        return [row];
+        return row;
     }
 
     // Inside the place, what's typed finds anyone, as at the top.

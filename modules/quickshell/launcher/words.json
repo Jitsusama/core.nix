@@ -5416,7 +5416,18 @@
       "in": "people",
       "name": "Recent",
       "verb": "more",
-      "glyph": "recent"
+      "glyph": "recent",
+      "empty": "Nothing yet.",
+      "said": {
+        "none": "none"
+      }
+    },
+    {
+      "id": "person:unread",
+      "in": "people",
+      "name": "Unread",
+      "verb": "more",
+      "glyph": "unread"
     },
     {
       "id": "transcripts",

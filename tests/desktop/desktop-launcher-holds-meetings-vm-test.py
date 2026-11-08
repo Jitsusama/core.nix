@@ -666,7 +666,9 @@ def test_a_meetings_guests_and_a_mails_sender_step_through_to_the_person(
     desktop.down_to("Ada Lovelace")
     machine.send_key("ret")
     desktop.launcher_until(
-        lambda shown: shown["rows"][:4] == ["Write a Mail", "Standup", "Recent", "ada@example.com"]
+        lambda shown: (
+            shown["rows"][:5] == ["Write a Mail", "Standup", "Unread", "Recent", "ada@example.com"]
+        )
     )
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))

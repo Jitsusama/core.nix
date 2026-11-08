@@ -806,23 +806,23 @@ def test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_re
         )
     )
     # Return steps in, never reaching her by itself: Write a Mail first,
-    # then her next meeting drawn as a meeting, her Recent, and her
-    # address to copy last.
+    # then her next meeting drawn as a meeting, her mail waiting on Joel,
+    # her Recent, and her address to copy last.
     desktop.step_in("ret")
     desktop.launcher_until(
         lambda shown: (
-            shown["rows"][:4] == ["Write a Mail", "Standup", "Recent", "ada@example.com"]
+            shown["rows"][:5] == ["Write a Mail", "Standup", "Unread", "Recent", "ada@example.com"]
             and shown["things"][1]["is"] == "calendar:meeting:standup"
         )
     )
     machine.fail(f"test -s {opened}")
-    desktop.down_to("Recent")
+    desktop.down_to("Unread")
     desktop.follow()
-    # The mail with her, its own component's row; a meeting to come isn't
-    # Recent.
+    # The mail from her, its own component's row; unread, it's never
+    # Recent, and a meeting to come isn't either.
     desktop.launcher_until(lambda shown: shown["rows"] == ["Lunch on Friday"])
     desktop.step_out()
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Recent")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Unread")
     desktop.previous_row()
     desktop.previous_row()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Write a Mail")

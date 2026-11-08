@@ -21,9 +21,12 @@
 // name, facts, recent, spans, from }, `acts` gives what Joel can do with them through
 // it, rows made with the People place's provider, `main` on the one way
 // it reaches them; `next` the next thing it has with them, a meeting not
-// yet over, as { at, row }, or null; and `recent` the things it's had
-// with them, each { at, row }, `at` when it was in milliseconds since the
-// epoch, so People lists every source's newest first. Each row is drawn
+// yet over, as { at, row }, or null; `unread` what of theirs waits on
+// Joel, unread mail, each { at, row }; and `recent` the things he's had
+// with them, a meeting held, a call, a conversation read, never what's
+// unread or to come, each { at, row }, `at` when it was in milliseconds
+// since the epoch, so People lists every source's newest first, each
+// thing once by its row's key (Recent.js). Each row is drawn
 // by that thing's own component (Mail.row, Calendar.row), never one of
 // its own. `page` is the link to their page in the source, for one that
 // keeps a page for each person, or "": People lists it as one row, Open
@@ -78,6 +81,10 @@ QtObject {
 
     function next(person, provider) {
         return null;
+    }
+
+    function unread(person, provider) {
+        return [];
     }
 
     function recent(person, provider) {
