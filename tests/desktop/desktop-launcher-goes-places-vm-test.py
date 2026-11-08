@@ -882,14 +882,21 @@ def test_every_row_has_a_return_act(desktop: Desktop) -> None:
 def shoot_home_at_joels_scales(desktop: Desktop, home: list[str]) -> None:
     """Shoot home at 1.5 and 2, where each place's own mark is judged, for the gallery.
 
-    The launcher opens afresh at each, as an open one keeps the size it opened at.
+    The launcher opens afresh at each, as an open one keeps the size it opened at, and
+    steps down to its last row, so the places stand in view where only a few rows fit.
     """
     if not desktop.values["shots"]:
         return
     for scale in ("1.5", "2"):
         desktop.as_account(f"niri msg output winit scale {scale}")
         desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
         desktop.launcher_until(lambda shown: shown["rows"] == home)
+        for _row in home[1:]:
+            desktop.next_row()
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("is") == "collection:keyboard"
+        )
         desktop.shoot(f"launcher-home-categories-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
     desktop.as_account("niri msg output winit scale 1")
