@@ -56,10 +56,12 @@ in
   # service, and the Mac's daemon names no store path, so its definition is
   # the same in every system and activate never reloads it. Both start it
   # from the running system's path, the Mac's once that path holds it, and
-  # its askers are its group's members.
+  # its askers are its group's members. The commands it refuses while are
+  # read too, each word a string: on 8 November one given as a derivation
+  # broke every NixOS machine following main, and nothing here read them.
   update-to-main-outlives-its-switch =
     holds "update-to-main-outlives-its-switch"
-      "A switch could restart update-to-main while it switches, the Mac's daemon doesn't wait for its program, or its askers aren't its group's."
+      "A switch could restart update-to-main while it switches, the Mac's daemon doesn't wait for its program, its askers aren't its group's, or a command it refuses while isn't strings."
       (
         !service.restartIfChanged
         && !service.stopIfChanged
@@ -75,5 +77,8 @@ in
         )
         && nixos.users.groups.update-ask.members == [ "someone" ]
         && darwin.users.groups.update-ask.members == [ "someone" ]
+        && lib.all (refusal: lib.all builtins.isString refusal.command) (
+          nixos.jitsusama.update-to-main.refuseWhile ++ darwin.jitsusama.update-to-main.refuseWhile
+        )
       );
 }
