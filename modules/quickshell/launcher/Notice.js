@@ -10,7 +10,8 @@
 // notice comes before what ends it; then, on the card, what's done to
 // the whole stack; and copying what it said last of all, never first (Joel, 2026-10-28: "having the separate copy
 // option at the top is very confusing"). Then how its drawer tells it:
-// its kind, its eyebrow and its facts. Apart from the shell, so
+// its kind, its eyebrow and its facts; and how its row is named. Apart
+// from the shell, so
 // tests/notice.qml can hold it in Qt's own engine.
 .pragma library
 
@@ -120,6 +121,40 @@ function eyebrow(who, kindSaid, from) {
     return [who === "" ? "" : from.replace("{who}", who), kindSaid]
         .filter((part) => part !== "")
         .join(" \u00b7 ");
+}
+
+// How a notice's row is named, the same in every list (VKCF3Z,
+// 2026-11-08): by its title, its note the line of its body holding what
+// was typed, or its body's first line while nothing typed is only there.
+// One with no title is named by its body's first line, with nothing in
+// its note. `typed` holds the words typed, and `holds(text, word)` says
+// whether a text holds one as the search finds it (Fuzzy.js), so the line
+// shown is the one that was found.
+function named(summary, body, typed, holds) {
+    const lines = String(body ?? "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line !== "");
+    const first = lines.length > 0 ? lines[0] : "";
+    const title = String(summary ?? "").trim();
+    if (title === "") {
+        return { name: first, note: "" };
+    }
+    const bodyOnly = typed.filter((word) => !holds(title, word));
+    if (bodyOnly.length === 0) {
+        return { name: title, note: first };
+    }
+    // The line holding the most of them, the first among equals.
+    let best = first;
+    let most = 0;
+    for (const line of lines) {
+        const held = bodyOnly.filter((word) => holds(line, word)).length;
+        if (held > most) {
+            best = line;
+            most = held;
+        }
+    }
+    return { name: title, note: best };
 }
 
 // Its drawer's facts, each a label and a value: when it arrived, how it
