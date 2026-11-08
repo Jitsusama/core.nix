@@ -1953,6 +1953,10 @@
     session orchestrating it, a step in and at most two, an orchestration standing where its most
     urgent row would
   '';
+  pi-tells-of-its-sessions-as-an-agent-source = ''
+    pi, as an agent source, sorts the node's sessions into those running, parked and closed this
+    boot, and says each as the agent source contract's record, leaving out what pi didn't say
+  '';
   the-launcher-keeps-its-trials = ''
     each opening of the launcher is kept as its keys by kind, its pick and how long it took, and a
     miss only where letters were typed and nothing picked

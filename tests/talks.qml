@@ -137,6 +137,11 @@ ShellRoot {
                             root.talk("A003", "t-2", [root.delivered("10", "check the lights")]),
                             root.talk("A117", "t-3", [root.delivered("20", "look at the disk")])
                         ] };
+                    } else if (ask.ask === "watch"
+                        && (ask.kind === "session" || ask.kind === "run")) {
+                        // pi's source watches its sessions and runs too,
+                        // which this node holds none of.
+                        answer = { id: ask.id, records: [] };
                     } else {
                         root.fail(`an ask the talks have no need of: ${line}`);
                         answer = { id: ask.id, error: { code: "unknown-ask", message: line } };

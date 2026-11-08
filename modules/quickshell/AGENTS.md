@@ -46,6 +46,12 @@ machine, one path through each connection.
   shell reopening them by itself after a reboot was undone on 2026-11-07
   ("no, i never wanted them automatic"). A session that dies while the
   machine is up is cadence's to start again, not the shell's.
+- **Agents come from sources.** Each kind of agent the machine runs is a
+  source behind one shape (`AgentSources`), so Agents is one place whatever
+  runs its sessions. pi, read from the realm's mycelium node, is the first,
+  in `PiSource`; another agent is a source beside it, named in
+  `AgentSources.sources`. `Sessions` keeps what the shell does with pi's
+  sessions here: their windows, reopening and notices.
 
 ## Layout
 

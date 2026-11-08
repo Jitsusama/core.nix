@@ -153,7 +153,10 @@ ShellRoot {
                         machine: Sessions.machine, at: new Date().toISOString(),
                         window: null, held: null, presence: { session: "s-sender",
                             addresses: ["SENDER"], terminal: terminal } };
-                    const answer = ask.ask === "watch" ? { id: ask.id, records: [sender] }
+                    // pi's source watches its runs and talks too, which
+                    // this node holds none of.
+                    const held = ask.kind === "session" ? [sender] : [];
+                    const answer = ask.ask === "watch" ? { id: ask.id, records: held }
                         : { id: ask.id, version: 1, domain: "node", state: "running" };
                     asked.write(`${JSON.stringify(answer)}\n`);
                     asked.flush();
