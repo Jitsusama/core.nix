@@ -535,6 +535,7 @@ def refresh_and_hold_are_traced(desktop: Desktop, heard: str) -> None:
     assert all(span["parentSpanId"] == hold["spanId"] for span in acts), sent
     said = {each["key"]: each["value"] for each in acts[0]["attributes"]}
     assert said["act"] == {"stringValue": "down"}, said
+    assert "doubleValue" in said["tookMs"] or "intValue" in said["tookMs"], said
 
 
 @pytest.mark.usefixtures("google")
