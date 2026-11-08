@@ -1218,6 +1218,25 @@ onLinux {
       touch $out
     '';
 
+  # For You weighs what needs Joel, heaviest first and ties as they came,
+  # says each row's strongest reason, and reads the looks folder's files
+  # into what waits and what's history, as tests/for-you.qml holds
+  # ForYou.js to it in Qt's own engine.
+  for-you-weighs-what-needs-joel =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "for-you-weighs-what-needs-joel" { } ''
+      cp ${../../tests/for-you.qml} for-you.qml
+      cp ${./launcher/ForYou.js} ForYou.js
+      cp ${./launcher/Order.js} Order.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml for-you.qml
+      touch $out
+    '';
+
   # The launcher finds emoji by what they're called and what they mean, best
   # first, as tests/emoji.qml lists them, over the list it's built with, and
   # in about three times the least a search could take.
@@ -1788,13 +1807,21 @@ onLinux {
         function windowOf(each) { return null; }
         function settle(each, how) {}
         function go(each) {}
+        property var asked: []
+        property var settled: ({})
+        function session(each) { return null; }
       '';
-      # Where an item is done names its session, and Needs You lists
+      # Where an item is done names its session, and For You lists
       # the sessions wanting Joel, none of which it needs here.
       sessions = singleton "Sessions.qml" ''
         property var running: []
         property var wanting: []
         function wanted(wants) { return "needs you"; }
+        function goTo(session) {}
+      '';
+      # A look For You opens is opened through niri, which nothing here does.
+      niri = singleton "Niri.qml" ''
+        function spawn(command) {}
       '';
       timedatectl = pkgs.writeShellScriptBin "timedatectl" "echo America/Halifax";
     in
@@ -1811,12 +1838,15 @@ onLinux {
       cp ${./launcher/Moment.js} launcher/Moment.js
       cp ${./launcher/NowGroups.js} launcher/NowGroups.js
       cp ${./launcher/Order.js} launcher/Order.js
+      cp ${./launcher/ForYou.js} launcher/ForYou.js
+      cp ${./launcher/Ago.js} launcher/Ago.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/now-moment.qml} shell.qml
       cp ${facts} Facts.qml
       cp ${waiting} WaitingOnYou.qml
       cp ${sessions} Sessions.qml
+      cp ${niri} Niri.qml
       cp ${./Location.qml} Location.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export PATH=${timedatectl}/bin:$PATH

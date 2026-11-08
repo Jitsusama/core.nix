@@ -264,6 +264,7 @@ or a copy, can be opened, copied or forgotten.
 | forget | the action taking an item out of its list, such as a notice, a copy or what's waiting | let it go | |
 | foot | the status line at the bottom of the launcher and held notices: the mode, the position and what the keys do | | `foot` |
 | Now | the launcher's view of what's on and waiting, on Super+O | What's on | `Now.qml` |
+| For You | Now's first row: what wants Joel, weighed, the most pressing first | | `ForYou.js` |
 | Needs You | what only Joel can do, each raised by the session that needs him | waiting on you, to do | `WaitingOnYou.qml` |
 | clipboard | what was copied last, and what was copied before it | | |
 | timer | a span Joel sets counting down, which rings as a notice when it ends, kept by its daemon so it rings with the launcher closed; Timers is the place holding them | countdown, alarm | `HeldTimers.qml`, the `timers` program |

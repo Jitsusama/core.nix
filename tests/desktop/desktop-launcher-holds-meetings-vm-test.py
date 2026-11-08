@@ -145,7 +145,7 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     # It's the meeting coming too, which wants Joel, and it's that one
     # row, never a second beside it. Now opens on its first row, as every
     # place does, and the meeting is reached by moving down to it.
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Needs You")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "For You")
     desktop.down_to("Design Review")
     today = desktop.showing()
     assert today["rows"].count("Design Review") == 1, today["rows"]
@@ -177,7 +177,7 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:on")
     desktop.step_in("ret")
     # Now opens on its first row, and the meeting is below the time.
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Needs You")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "For You")
     desktop.down_to("Design Review")
     rows = cast("list[str]", desktop.showing()["rows"])
     for name in reversed(rows[rows.index("Time") : rows.index("Design Review")]):

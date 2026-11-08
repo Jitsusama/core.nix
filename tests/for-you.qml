@@ -1,0 +1,207 @@
+// How For You weighs what needs Joel, run in Qt's own JavaScript engine, the
+// one the shell runs it in. The `for-you-weighs-what-needs-joel` check copies
+// modules/quickshell/launcher/ForYou.js and Order.js beside this file and
+// runs `qml -platform offscreen for-you.qml`. Each case is one of the design's
+// rules (VKCF3Z, 2026-11-08): what blocks a session counts most, then what's
+// due, what he can do now, its kind and how long it has waited; the heaviest
+// leads and ties keep the order they came in; a row's side says its strongest
+// reason; and the looks folder's files are read into what waits and what's
+// history, a file that can't be read left out.
+import QtQuick
+import "ForYou.js" as ForYou
+
+QtObject {
+    // A test that throws ends as a failure, rather than leaving qml running.
+    Component.onCompleted: {
+        try {
+            run();
+        } catch (error) {
+            console.warn(`the test threw: ${error}`);
+            Qt.exit(1);
+        }
+    }
+
+    function run() {
+        const failures = [];
+        const expect = (what, got, wanted) => {
+            if (JSON.stringify(got) !== JSON.stringify(wanted))
+                failures.push(`${what}: ${JSON.stringify(got)}, not ${JSON.stringify(wanted)}`);
+        };
+        const hour = 3600 * 1000;
+        const now = Date.parse("2026-11-08T14:00:00Z");
+        // Each part's points, by its id, as the weight's parts say them.
+        const points = weighed => {
+            const by = {};
+            for (const part of weighed.parts)
+                by[part.id] = part.points;
+            return by;
+        };
+        const part = (thing, id) => points(ForYou.weigh(thing, now))[id];
+
+        // Blocking: a session wanting Joel blocks one, itself, and each
+        // more it blocks adds less than the first.
+        expect("blocking one session", part({ kind: "todo", blocks: 1 }, "blocks"), 40);
+        expect("blocking three sessions", part({ kind: "todo", blocks: 3 }, "blocks"), 70);
+        expect("blocking none", part({ kind: "todo", blocks: 0 }, "blocks"), 0);
+
+        // Due: past its deadline, within the hour, within the day, or later.
+        const due = at => part({ kind: "todo", due: at }, "due");
+        expect("past its deadline", due(now - 60 * 1000), 40);
+        expect("due within the hour", due(now + 30 * 60 * 1000), 30);
+        expect("due within the day", due(now + 5 * hour), 10);
+        expect("due in three days", due(now + 72 * hour), 0);
+        expect("due as an ISO time", due("2026-11-08T14:30:00Z"), 30);
+        expect("no deadline", due(null), 0);
+
+        // Waited: rising slowly with the hours, never past 20.
+        const waited = hours => part({ kind: "look", since: now - hours * hour }, "waited");
+        expect("waited no time", waited(0), 0);
+        expect("waited an hour", waited(1), 5);
+        expect("waited seven hours", waited(7), 15);
+        expect("waited a thousand hours, capped", waited(1000), 20);
+        expect("no time it began", part({ kind: "look" }, "waited"), 0);
+
+        // Ready, and its kind.
+        expect("ready now", part({ kind: "todo", ready: true }, "ready"), 20);
+        expect("not ready", part({ kind: "todo", ready: false }, "ready"), 0);
+        expect("a thing to do", part({ kind: "todo" }, "kind"), 10);
+        expect("a thing to look at", part({ kind: "look" }, "kind"), 5);
+
+        // The parts in their order, and the weight their whole sum.
+        const item = { kind: "todo", blocks: 2, ready: true, due: now + 30 * 60 * 1000,
+            since: now - hour };
+        expect("each part in its order", ForYou.weigh(item, now).parts.map(one => one.id),
+            ["blocks", "due", "ready", "kind", "waited"]);
+        expect("an item's weight", ForYou.weigh(item, now).weight, 55 + 30 + 20 + 10 + 5);
+        expect("a session's weight", ForYou.weigh({ kind: "todo", blocks: 1, since: now },
+            now).weight, 50);
+        expect("a look's weight", ForYou.weigh({ kind: "look", since: now - 7 * hour },
+            now).weight, 20);
+
+        // The heaviest first, those alike in the order they came.
+        expect("heaviest first, ties as they came", ForYou.ordered([
+            { name: "a", weight: 15 }, { name: "b", weight: 50 },
+            { name: "c", weight: 15 }, { name: "d", weight: 50 }, { name: "e", weight: 70 }
+        ]).map(one => one.name), ["e", "b", "d", "a", "c"]);
+
+        // What blocks a session: one whose want is an action its quest or
+        // its file's address holds.
+        const sessions = [
+            { presence: { wants: { kind: "action" }, owns: ["QEST-1"], addresses: ["AAA"] } },
+            { presence: { wants: { kind: "action" }, owns: [], addresses: ["BBB"] } },
+            { presence: { wants: { kind: "question" }, owns: ["QEST-1"], addresses: ["CCC"] } },
+            { presence: { wants: { kind: "action" }, owns: ["QEST-2"], addresses: ["DDD"] } }
+        ];
+        expect("the sessions an item blocks",
+            ForYou.blocked({ quest: "QEST-1", from: "BBB" }, sessions), 2);
+        expect("an item blocking none", ForYou.blocked({ quest: "QEST-9", from: "ZZZ" },
+            sessions), 0);
+
+        // The words the side and the weight are said in, as words.json
+        // keeps them, and the clock read in UTC so the case holds anywhere.
+        const say = {
+            blocks: "blocks {count} session",
+            blocksMany: "blocks {count} sessions",
+            due: "due {time}",
+            overdue: "overdue since {time}",
+            ready: "ready now",
+            waitedFor: "waiting {span}",
+            spanMinutes: "{count} min",
+            spanHours: "{count} h",
+            spanDays: "{count} d",
+            todo: "to do",
+            look: "to look at",
+            history: "{how} {time}",
+            opened: "opened",
+            cleared: "cleared",
+            resolved: "resolved",
+            clock: at => new Date(at).toISOString().slice(11, 16),
+            ago: at => `${Math.round((now - at) / 60000)} min ago`
+        };
+        const reason = thing => ForYou.reason(thing, now, say);
+        expect("blocking beats due", reason({ blocks: 2, due: now + hour, since: now - hour }),
+            "blocks 2 sessions");
+        expect("blocking one", reason({ blocks: 1 }), "blocks 1 session");
+        expect("due beats when", reason({ due: now + hour, since: now - hour }), "due 15:00");
+        expect("overdue", reason({ due: now - hour, since: now - 2 * hour }),
+            "overdue since 13:00");
+        expect("when, with nothing stronger", reason({ since: now - 12 * 60 * 1000 }),
+            "12 min ago");
+        expect("nothing to say", reason({}), "");
+
+        // The weight in words: the total, then each part that counts.
+        expect("the weight said", ForYou.weightSaid(item, now, say),
+            "120 \u00b7 blocks 2 sessions \u00b7 due 14:30 \u00b7 ready now \u00b7 to do"
+            + " \u00b7 waiting 1 h");
+        expect("a look's weight said", ForYou.weightSaid({ kind: "look",
+            since: now - 12 * 60 * 1000 }, now, say), "6 \u00b7 to look at \u00b7 waiting 12 min");
+
+        // The looks folder's files, each read whole or left out.
+        const lookOf = fields => JSON.stringify(Object.assign({
+            v: 1, id: "L1", at: "2026-11-08T10:00:00Z", session: "S1", kind: "pr",
+            target: "https://github.com/o/r/pull/1", title: "Review the change",
+            why: "it touches the launcher", state: "waiting"
+        }, fields));
+        const files = [
+            { file: "a.json", text: lookOf({ id: "A", at: "2026-11-08T10:00:00Z" }) },
+            { file: "bad.json", text: "{ not json" },
+            { file: "b.json", text: lookOf({ id: "B", at: "2026-11-08T09:00:00Z" }) },
+            { file: "v2.json", text: lookOf({ id: "V2", v: 2 }) },
+            { file: "untitled.json", text: lookOf({ id: "U", title: "" }) },
+            { file: "aimless.json", text: lookOf({ id: "T", target: undefined }) },
+            { file: "odd.json", text: lookOf({ id: "K", kind: "song" }) },
+            { file: "c.json", text: lookOf({ id: "C", state: "opened", how: "opened",
+                resolvedAt: "2026-11-08T13:10:00Z" }) },
+            { file: "d.json", text: lookOf({ id: "D", state: "cleared", how: "cleared by you",
+                resolvedAt: "2026-11-08T13:30:00Z" }) },
+            { file: "e.json", text: lookOf({ id: "E", state: "resolved", how: "merged",
+                resolvedAt: "2026-11-08T14:02:00Z" }) },
+            { file: "f.json", text: lookOf({ id: "F", state: "resolved",
+                resolvedAt: "2026-11-08T12:00:00Z" }) },
+            { file: "g.json.writing", text: lookOf({ id: "G" }) },
+            { file: "null.json", text: "null" }
+        ];
+        const read = ForYou.looks(files);
+        expect("those waiting, in the order they came", read.waiting.map(one => one.id),
+            ["B", "A"]);
+        expect("the rest, newest first", read.history.map(one => one.id), ["E", "D", "C", "F"]);
+        expect("a look read whole", read.waiting[0].title, "Review the change");
+        expect("a look's time as a number", read.waiting[0].since,
+            Date.parse("2026-11-08T09:00:00Z"));
+
+        // History's side: how it went and when.
+        const side = id => ForYou.historySide(read.history.find(one => one.id === id), say);
+        expect("one merged", side("E"), "merged 14:02");
+        expect("one opened", side("C"), "opened 13:10");
+        expect("one cleared by Joel", side("D"), "cleared by you 13:30");
+        expect("one saying no how, by its state", side("F"), "resolved 12:00");
+
+        // A look written again as it's done with, whole, with what it was.
+        const opened = JSON.parse(ForYou.rewritten(read.waiting[0], "opened", "opened", now));
+        expect("a look opened, written whole", [opened.v, opened.id, opened.state, opened.how,
+            opened.resolvedAt, opened.title, opened.target, opened.since, opened.file],
+            [1, "B", "opened", "opened", "2026-11-08T14:00:00.000Z", "Review the change",
+                "https://github.com/o/r/pull/1", undefined, undefined]);
+
+        // Needs You's items Joel said were done, newest first, and none
+        // he put off or that still waits.
+        const identity = each => `${each.quest}:${each.id}`;
+        const asked = [{ quest: "Q", id: "1" }, { quest: "Q", id: "2" }, { quest: "Q", id: "3" },
+            { quest: "Q", id: "4" }];
+        expect("the items done, newest first", ForYou.settledItems(asked,
+            { done: { "Q:1": now - hour, "Q:2": now - 30 * 60 * 1000 },
+                notNow: { "Q:3": { said: "", at: now } } }, identity)
+            .map(one => [one.item.id, one.resolved]),
+        [["2", now - 30 * 60 * 1000], ["1", now - hour]]);
+
+        if (failures.length > 0) {
+            for (const failure of failures)
+                console.warn(failure);
+            // Qt.exit only asks the engine to stop once this returns.
+            Qt.exit(1);
+            return;
+        }
+        console.info("For You weighs what needs Joel");
+        Qt.exit(0);
+    }
+}
