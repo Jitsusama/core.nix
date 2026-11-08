@@ -315,7 +315,7 @@ ShellRoot {
                 fact.identifies === true)), JSON.stringify([false, false, false, false, false, false,
                 false, true]));
             same("one mpv kept nothing more of", facts(long),
-                "Still to Play 37:57, Size 5.0\u00a0MB, Path ~/Videos/long.mkv");
+                "Still to Play 37:57, Size 5.00\u00a0MB, Path ~/Videos/long.mkv");
             talk.run();
             same("Return resumes", JSON.stringify(Niri.spawned),
                 JSON.stringify(Mpv.play(`${root.videos}/talk.mkv`, false)));
