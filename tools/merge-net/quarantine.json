@@ -7,13 +7,6 @@
     "test": "vm-desktop-launcher-finds-sessions"
   },
   {
-    "at": 1794086279,
-    "commit": "bcd3e358ed99be482c65ed4d2c67f074c23e7c8c",
-    "owner_pr": null,
-    "reason": "failed, then passed, at bcd3e358ed99",
-    "test": "vm-desktop-takes-calls"
-  },
-  {
     "at": 1794094075,
     "commit": "85a12fcab559eee7d8d103bbc6dc23fe743c2198",
     "owner_pr": null,
