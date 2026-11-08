@@ -17,9 +17,13 @@ in
 
   # The panel's settings as the installer writes them for this model (its
   # Gate5 profile), the ones the driver was qualified with: standard HID
-  # reports rather than raw heat maps, and its feature reads left out.
+  # reports rather than raw heat maps, and its feature reads left out. Its
+  # stream watchdog is off too: in raw mode it re-inits a stalled stream,
+  # but in standard mode it only logs, and each heat map re-arms it, so once
+  # the panel streamed them it wrote a line every 2 s, 1822 in three hours
+  # with the lid shut and nothing touching.
   boot.extraModprobeConfig = ''
-    options sl4a_spi_hid raw_mode=N raw_input_beta=Y wire_double_opcode=1 gate3_observe_only=1 skip_std_getfeat=1 std_raw_transition=1 get_noread=0 getfeat_delay_ms=0 std_liveness_ms=0 std_liveness_recover=0 wait_reset_kick_ms=0
+    options sl4a_spi_hid raw_mode=N raw_input_beta=Y wire_double_opcode=1 gate3_observe_only=1 skip_std_getfeat=1 std_raw_transition=1 get_noread=0 getfeat_delay_ms=0 std_liveness_ms=0 std_liveness_recover=0 wait_reset_kick_ms=0 stream_watchdog_ms=0
   '';
 
   # The touchscreen's axes run 0 to 32767, but its report descriptor gives
