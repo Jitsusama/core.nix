@@ -7,7 +7,7 @@
 //! own pressure is mostly work waiting on work, which is what the slices
 //! are for, and a watch built on it would cry wolf all day.
 
-use crate::kernel::{Group, Sched, Stall};
+use crate::kernel::{CALLERS, Group, Sched, Stall, Thread};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -44,8 +44,8 @@ pub struct Snapshot {
     /// Each of app.slice's own units and scopes, by its name: what an app
     /// is to Joel isn't always what runs there, so a stall names its unit.
     pub apps: BTreeMap<String, Group>,
-    /// Each watched thread's schedstat, by its label and path.
-    pub threads: BTreeMap<(String, String), Sched>,
+    /// Each watched thread's schedstat.
+    pub threads: BTreeMap<Thread, Sched>,
 }
 
 /// A share of the window, in percent, each kind of stall.
@@ -72,6 +72,14 @@ pub struct Memory {
 pub struct Wait {
     pub mean_us: f64,
     pub worst_us: f64,
+}
+
+/// The thread of a call's program that waited longest for a CPU each time
+/// it was ready, by its name, and how long, in microseconds.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Worst {
+    pub thread: String,
+    pub wait_us: f64,
 }
 
 /// How long niri took to answer, in milliseconds.
@@ -136,6 +144,11 @@ pub struct Window {
     pub stalls: BTreeMap<String, Stalls>,
     pub memory: BTreeMap<String, Memory>,
     pub waits: BTreeMap<String, Wait>,
+    /// A call's worst-waiting thread, for each program carrying one
+    /// (`kernel::CALLERS`): Tuple's daemon and Chrome, apart. Left out of
+    /// a window without a call, and of those written before it was added.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub call: BTreeMap<String, Worst>,
     pub niri: Answers,
     /// What counted as Joel waiting, in words.
     pub trouble: Vec<String>,
@@ -284,7 +297,45 @@ pub fn between(then: &Snapshot, now: &Snapshot, niri: Answers, ended: u64, syste
             },
         );
     }
+    let (waits, call) = turns_waited(then, now);
+    let work: f64 = WORK
+        .iter()
+        .filter_map(|w| stalls.get(*w))
+        .map(|s| s.cpu_some)
+        .fold(0.0, f64::max);
+    let mut window = Window {
+        ended,
+        seconds,
+        system: system.to_string(),
+        band: Band::of(work),
+        stalls,
+        memory,
+        waits,
+        call,
+        niri,
+        trouble: Vec::new(),
+        worst: String::new(),
+        who: String::new(),
+        since: None,
+    };
+    let found = trouble(&window, then, now);
+    window.trouble = found.lines;
+    if let Some((_, who, cause)) = found.worst {
+        window.worst = cause.word().to_string();
+        window.who = who.word().to_string();
+    }
+    window
+}
+
+/// How long the watched threads waited for a CPU each time they were
+/// ready in the window: each kind's, and a call's worst thread in each
+/// program carrying one. A thread that didn't run has no wait a run.
+fn turns_waited(
+    then: &Snapshot,
+    now: &Snapshot,
+) -> (BTreeMap<String, Wait>, BTreeMap<String, Worst>) {
     let mut waits: BTreeMap<String, (u64, u64, f64)> = BTreeMap::new();
+    let mut call: BTreeMap<String, Worst> = BTreeMap::new();
     for (key, s) in &now.threads {
         let Some(old) = then.threads.get(key) else {
             continue;
@@ -293,7 +344,21 @@ pub fn between(then: &Snapshot, now: &Snapshot, niri: Answers, ended: u64, syste
             s.wait_ns.saturating_sub(old.wait_ns),
             s.slices.saturating_sub(old.slices),
         );
-        let entry = waits.entry(key.0.clone()).or_default();
+        if CALLERS.contains(&key.label) {
+            let per_run = float(wait) / float(slices.max(1)) / 1000.0;
+            let worst = call.get(key.label).map_or(-1.0, |w| w.wait_us);
+            if slices > 0 && per_run > worst {
+                call.insert(
+                    key.label.to_string(),
+                    Worst {
+                        thread: key.name.clone(),
+                        wait_us: per_run,
+                    },
+                );
+            }
+            continue;
+        }
+        let entry = waits.entry(key.label.to_string()).or_default();
         entry.0 += wait;
         entry.1 += slices;
         if slices > 0 {
@@ -317,32 +382,7 @@ pub fn between(then: &Snapshot, now: &Snapshot, niri: Answers, ended: u64, syste
             )
         })
         .collect();
-    let work: f64 = WORK
-        .iter()
-        .filter_map(|w| stalls.get(*w))
-        .map(|s| s.cpu_some)
-        .fold(0.0, f64::max);
-    let mut window = Window {
-        ended,
-        seconds,
-        system: system.to_string(),
-        band: Band::of(work),
-        stalls,
-        memory,
-        waits,
-        niri,
-        trouble: Vec::new(),
-        worst: String::new(),
-        who: String::new(),
-        since: None,
-    };
-    let found = trouble(&window, then, now);
-    window.trouble = found.lines;
-    if let Some((_, who, cause)) = found.worst {
-        window.worst = cause.word().to_string();
-        window.who = who.word().to_string();
-    }
-    window
+    (waits, call)
 }
 
 /// The app whose tasks all stalled longest on one kind, from `full` of
@@ -564,6 +604,7 @@ fn turns(w: &Window, found: &mut Found) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kernel::Thread;
 
     fn group(cpu_some: u64, memory_full: u64, swap: u64) -> Group {
         Group {
@@ -589,7 +630,12 @@ mod tests {
             s.groups.insert(name.to_string(), *g);
         }
         s.threads.insert(
-            ("niri".into(), "/proc/10/schedstat".into()),
+            Thread {
+                label: "niri",
+                name: "niri".into(),
+                schedstat: "/proc/10/schedstat".into(),
+                call: false,
+            },
             Sched {
                 run_ns: 0,
                 wait_ns: niri_wait,
@@ -865,6 +911,77 @@ mod tests {
             ]
         );
         assert_eq!(w.worst, "niri");
+    }
+
+    fn ran(s: &mut Snapshot, label: &'static str, name: &str, wait_ns: u64, slices: u64) {
+        s.threads.insert(
+            Thread {
+                label,
+                name: name.into(),
+                schedstat: format!("/proc/{label}/{name}").into(),
+                call: true,
+            },
+            Sched {
+                run_ns: 0,
+                wait_ns,
+                slices,
+            },
+        );
+    }
+
+    #[test]
+    fn a_call_s_worst_thread_is_named_with_its_wait_a_run_each_program_apart() {
+        let mut then = snapshot(0.0, &[], 0, 0);
+        let mut now = snapshot(10.0, &[], 0, 0);
+        for s in [&mut then, &mut now] {
+            ran(s, "tuple", "Metrics", 0, 0);
+        }
+        ran(&mut then, "tuple", "AudioEncoder", 0, 0);
+        ran(&mut then, "tuple", "Signaling", 0, 0);
+        ran(&mut then, "chrome", "AudioOutputDevi", 1_000, 1);
+        // 1 ms over ten runs, 100 us a run; 400 us over two, 200 a run.
+        ran(&mut now, "tuple", "AudioEncoder", 1_000_000, 10);
+        ran(&mut now, "tuple", "Signaling", 400_000, 2);
+        ran(&mut now, "chrome", "AudioOutputDevi", 51_000, 101);
+        let w = between(&then, &now, quiet_niri(), 0, "gen");
+        assert_eq!(
+            w.call,
+            BTreeMap::from([
+                (
+                    "chrome".to_string(),
+                    Worst {
+                        thread: "AudioOutputDevi".into(),
+                        wait_us: 0.5
+                    }
+                ),
+                (
+                    "tuple".to_string(),
+                    Worst {
+                        thread: "Signaling".into(),
+                        wait_us: 200.0
+                    }
+                ),
+            ])
+        );
+        // A call's threads are their own record, not the desktop's waits.
+        assert_eq!(w.waits.keys().collect::<Vec<_>>(), ["niri"]);
+    }
+
+    #[test]
+    fn a_window_without_a_call_carries_nothing_new() {
+        let mut then = snapshot(0.0, &[], 0, 0);
+        let mut now = snapshot(10.0, &[], 0, 0);
+        // A thread that didn't run in the window has no wait a run.
+        ran(&mut then, "chrome", "AudioThread", 5, 1);
+        ran(&mut now, "chrome", "AudioThread", 5, 1);
+        let w = between(&then, &now, quiet_niri(), 0, "gen");
+        assert!(w.call.is_empty());
+        let line = serde_json::to_string(&w).unwrap();
+        assert!(!line.contains("call"), "{line}");
+        // And a window written before calls were watched reads as one
+        // without a call.
+        let back: Window = serde_json::from_str(&line).unwrap();
+        assert!(back.call.is_empty());
     }
 
     #[test]

@@ -15,6 +15,9 @@ struct Tally {
     session_cpu: Vec<f64>,
     app_memory: Vec<f64>,
     kinds: BTreeMap<String, usize>,
+    /// For each program carrying a call, its worst thread's wait a run in
+    /// each window, and that thread's name.
+    calls: BTreeMap<String, Vec<(f64, String)>>,
     /// For each kind, how often each unit was named as the one that
     /// stalled most.
     units: BTreeMap<String, BTreeMap<String, usize>>,
@@ -70,6 +73,12 @@ pub fn render(windows: &[Window]) -> String {
         if let Some(a) = w.stalls.get("app") {
             t.app_memory.push(a.memory_full);
         }
+        for (program, worst) in &w.call {
+            t.calls
+                .entry(program.clone())
+                .or_default()
+                .push((worst.wait_us, worst.thread.clone()));
+        }
         for line in &w.trouble {
             *t.kinds.entry(kind(line)).or_default() += 1;
             if let Some(u) = unit(line) {
@@ -108,6 +117,20 @@ pub fn render(windows: &[Window]) -> String {
                 median(&mut t.session_cpu),
                 median(&mut t.app_memory),
             );
+            for (program, waits) in &t.calls {
+                let mut us: Vec<f64> = waits.iter().map(|(us, _)| *us).collect();
+                let (worst, thread) = waits
+                    .iter()
+                    .max_by(|a, b| a.0.total_cmp(&b.0))
+                    .map_or((0.0, ""), |(us, name)| (*us, name.as_str()));
+                let _ = writeln!(
+                    out,
+                    "            in a call, {program}'s worst thread waited {:.0} us a run \
+                     at the median, {worst:.0} at worst ({thread}), in {} windows",
+                    median(&mut us),
+                    waits.len(),
+                );
+            }
             let mut kinds: Vec<(&String, &usize)> = t.kinds.iter().collect();
             kinds.sort_by(|a, b| b.1.cmp(a.1));
             for (k, n) in kinds.into_iter().take(4) {
@@ -126,7 +149,7 @@ pub fn render(windows: &[Window]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::window::{Answers, Stalls};
+    use crate::window::{Answers, Stalls, Worst};
 
     fn window(system: &str, band: Band, p99: f64, trouble: &[&str]) -> Window {
         let mut stalls = BTreeMap::new();
@@ -139,6 +162,7 @@ mod tests {
             stalls,
             memory: BTreeMap::new(),
             waits: BTreeMap::new(),
+            call: BTreeMap::new(),
             niri: Answers {
                 p99_ms: p99,
                 ..Answers::default()
@@ -208,6 +232,44 @@ mod tests {
             "{}",
             render(&all)
         );
+    }
+
+    fn in_a_call(band: Band, program: &str, thread: &str, wait_us: f64) -> Window {
+        let mut w = window("gen", band, 1.0, &[]);
+        w.call.insert(
+            program.to_string(),
+            Worst {
+                thread: thread.to_string(),
+                wait_us,
+            },
+        );
+        w
+    }
+
+    #[test]
+    fn a_call_s_waits_are_summed_for_each_program_apart_by_band() {
+        let all = [
+            in_a_call(Band::Busy, "tuple", "AudioEncoder", 20.0),
+            in_a_call(Band::Busy, "tuple", "Signaling", 30.0),
+            in_a_call(Band::Busy, "tuple", "DecodingQueue", 900.0),
+            in_a_call(Band::Busy, "chrome", "WebRTC_Worker", 5.0),
+            window("gen", Band::Loaded, 1.0, &[]),
+        ];
+        let text = render(&all);
+        assert!(
+            text.contains(
+                "in a call, tuple's worst thread waited 30 us a run at the median, \
+                 900 at worst (DecodingQueue), in 3 windows"
+            ),
+            "{text}"
+        );
+        assert!(
+            text.contains("chrome's worst thread waited 5 us a run at the median"),
+            "{text}"
+        );
+        // A band with no call says nothing of one.
+        let loaded = &text[text.find("loaded").unwrap()..];
+        assert!(!loaded.contains("in a call"), "{text}");
     }
 
     #[test]

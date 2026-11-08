@@ -10,8 +10,9 @@
 onLinux {
   # lag-watch's tests run as it builds: the desktop or apps waiting is
   # trouble and work waiting on work isn't, niri slow to answer is, the
-  # watched threads are found by name, and the report sums each
-  # generation by its load.
+  # watched threads are found by name, a call's worst thread is named for
+  # Tuple and Chrome apart, and the report sums each generation by its
+  # load.
   lag-watch-tells-who-waited = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in lag-watch, its tests included.
   lag-watch-passes-clippy = passesClippy "lag-watch-passes-clippy" (

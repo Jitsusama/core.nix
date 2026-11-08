@@ -120,13 +120,104 @@ pub const WATCHED: [Watched; 2] = [
     },
 ];
 
+/// A thread found to watch: what it's watched as, its own name, where its
+/// schedstat is, and whether it carries a call.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Thread {
+    pub label: &'static str,
+    pub name: String,
+    pub schedstat: PathBuf,
+    pub call: bool,
+}
+
+/// The threads WebRTC starts for a call, as the kernel keeps their names,
+/// cut to 15 bytes: a call's audio encoder (`ChannelSend`), its pacer
+/// (`TaskQueuePacedSender`), its event log, the video it sends and
+/// receives (`VideoStreamEncoder`, `VideoReceiveStream2`), the sound
+/// device's timer (`AudioDeviceBuffer`), and PipeWire's loop for the
+/// stream it shares. Tuple's daemon holds none of them between calls; it
+/// keeps its own and WebRTC's factory threads, which idle.
+pub const CALL_THREADS: [&str; 8] = [
+    "AudioEncoder",
+    "TaskQueuePacedS",
+    "rtc_event_log",
+    "EncoderQueue",
+    "DecodingQueue",
+    "IncomingVideoSt",
+    "AudioDeviceBuff",
+    "data-loop",
+];
+
+/// What Chromium names the threads that carry WebRTC or sound, cut as
+/// the kernel cuts them: WebRTC's own (`WebRTC_Signaling`,
+/// `WebRTC_Network`, `WebRTC_Worker`), the sound devices a page plays and
+/// records through (`AudioOutputDevice`, `AudioInputDevice`), the audio
+/// service's `AudioThread`, and a page's audio worklet. Chromium's
+/// `ThreadPoolAudio` is left out: every process keeps one, idle.
+pub const CHROME_CALL_THREADS: [&str; 6] = [
+    "WebRTC_",
+    "AudioOutputDevi",
+    "AudioInputDevic",
+    "AudioThread",
+    "AudioWorkletThr",
+    "RealtimeAudioWo",
+];
+
+/// A process's threads, by name and schedstat path.
+fn tasks(process: &Path) -> Vec<(String, PathBuf)> {
+    fs::read_dir(process.join("task"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|task| {
+            let name = text(&task.path().join("comm"));
+            let name = name.strip_suffix('\n').unwrap_or(&name);
+            (!name.is_empty()).then(|| (name.to_string(), task.path().join("schedstat")))
+        })
+        .collect()
+}
+
+/// Every thread of Tuple's daemon, the processes of its unit's cgroup,
+/// but only while one of them carries a call: so between calls nothing
+/// of Tuple's is read. The cgroup names them without asking systemd.
+fn tuple(proc: &Path, unit: &Path) -> Vec<Thread> {
+    let found: Vec<Thread> = text(&unit.join("cgroup.procs"))
+        .split_whitespace()
+        .flat_map(|pid| tasks(&proc.join(pid)))
+        .map(|(name, schedstat)| Thread {
+            label: "tuple",
+            call: CALL_THREADS.iter().any(|c| name.starts_with(c)),
+            name,
+            schedstat,
+        })
+        .collect();
+    if found.iter().any(|t| t.call) {
+        found
+    } else {
+        Vec::new()
+    }
+}
+
+/// A call's threads whose program no longer carries it are let go: once
+/// its last call thread can't be read, the call is over, and Tuple's idle
+/// threads would only say how an idle daemon waits.
+pub fn while_in_a_call<V>(read: &mut std::collections::BTreeMap<Thread, V>) {
+    let calling: Vec<&'static str> = read.keys().filter(|t| t.call).map(|t| t.label).collect();
+    read.retain(|t, _| !CALLERS.contains(&t.label) || calling.contains(&t.label));
+}
+
+/// The programs a call's threads are watched in, each recorded apart.
+pub const CALLERS: [&str; 2] = ["tuple", "chrome"];
+
 /// Every thread of the watched kinds now running under `proc`, by label,
-/// with their schedstat paths. Once the niri drawing the desktop is known
-/// by its pid, no other niri counts: a nested one previewing a shell runs
-/// with the jobs and waits as they do, and a `niri msg` client draws
-/// nothing, so either would be read as the desktop waiting.
-pub fn threads(proc: &Path, compositor: Option<u32>) -> Vec<(&'static str, PathBuf)> {
-    let mut found = Vec::new();
+/// with their schedstat paths, and a call's threads: Tuple's daemon's,
+/// from its unit's cgroup at `tuple_unit`, and Chrome's that carry WebRTC
+/// or sound. Once the niri drawing the desktop is known by its pid, no
+/// other niri counts: a nested one previewing a shell runs with the jobs
+/// and waits as they do, and a `niri msg` client draws nothing, so either
+/// would be read as the desktop waiting.
+pub fn threads(proc: &Path, compositor: Option<u32>, tuple_unit: &Path) -> Vec<Thread> {
+    let mut found = tuple(proc, tuple_unit);
     let Ok(entries) = fs::read_dir(proc) else {
         return found;
     };
@@ -136,6 +227,20 @@ pub fn threads(proc: &Path, compositor: Option<u32>) -> Vec<(&'static str, PathB
             continue;
         }
         let comm = text(&entry.path().join("comm"));
+        if comm.trim() == "chrome" {
+            found.extend(
+                tasks(&entry.path())
+                    .into_iter()
+                    .filter(|(name, _)| CHROME_CALL_THREADS.iter().any(|c| name.starts_with(c)))
+                    .map(|(name, schedstat)| Thread {
+                        label: "chrome",
+                        name,
+                        schedstat,
+                        call: true,
+                    }),
+            );
+            continue;
+        }
         let Some(w) = WATCHED.iter().find(|w| w.process == comm.trim()) else {
             continue;
         };
@@ -143,15 +248,22 @@ pub fn threads(proc: &Path, compositor: Option<u32>) -> Vec<(&'static str, PathB
             continue;
         }
         if w.thread.is_empty() {
-            found.push((w.label, entry.path().join("schedstat")));
+            found.push(Thread {
+                label: w.label,
+                name: comm.trim().to_string(),
+                schedstat: entry.path().join("schedstat"),
+                call: false,
+            });
             continue;
         }
-        let Ok(tasks) = fs::read_dir(entry.path().join("task")) else {
-            continue;
-        };
-        for task in tasks.flatten() {
-            if text(&task.path().join("comm")).trim().starts_with(w.thread) {
-                found.push((w.label, task.path().join("schedstat")));
+        for (name, schedstat) in tasks(&entry.path()) {
+            if name.starts_with(w.thread) {
+                found.push(Thread {
+                    label: w.label,
+                    name,
+                    schedstat,
+                    call: false,
+                });
             }
         }
     }
@@ -162,6 +274,7 @@ pub fn threads(proc: &Path, compositor: Option<u32>) -> Vec<(&'static str, PathB
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
 
     #[test]
     fn a_pressure_file_gives_its_totals() {
@@ -217,12 +330,17 @@ mod tests {
         write(&root.join("20/task/21/comm"), "data-loop.0\n");
         write(&root.join("30/comm"), "chrome\n");
         write(&root.join("self/comm"), "niri\n");
-        let found = threads(&root, None);
+        let found = threads(&root, None, &root.join("tuple.service"));
         assert_eq!(
             found,
             [
-                ("niri", root.join("10/schedstat")),
-                ("pipewire", root.join("20/task/21/schedstat"))
+                self::found("niri", "niri", root.join("10/schedstat"), false),
+                self::found(
+                    "pipewire",
+                    "data-loop.0",
+                    root.join("20/task/21/schedstat"),
+                    false
+                )
             ]
         );
     }
@@ -234,11 +352,108 @@ mod tests {
         write(&root.join("10/comm"), "niri\n");
         write(&root.join("40/comm"), "niri\n");
         write(&root.join("50/comm"), "niri\n");
+        let tuple = root.join("tuple.service");
         assert_eq!(
-            threads(&root, Some(40)),
-            [("niri", root.join("40/schedstat"))]
+            threads(&root, Some(40), &tuple),
+            [found("niri", "niri", root.join("40/schedstat"), false)]
         );
-        assert_eq!(threads(&root, None).len(), 3);
+        assert_eq!(threads(&root, None, &tuple).len(), 3);
+    }
+
+    fn found(label: &'static str, name: &str, schedstat: PathBuf, call: bool) -> Thread {
+        Thread {
+            label,
+            name: name.to_string(),
+            schedstat,
+            call,
+        }
+    }
+
+    #[test]
+    fn a_call_s_threads_are_found_while_it_carries_one() {
+        let root = std::env::temp_dir().join(format!("lag-watch-call-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let proc = root.join("proc");
+        write(&root.join("tuple.service/cgroup.procs"), "60\n");
+        write(&proc.join("60/comm"), ".tuple-wrapped\n");
+        write(&proc.join("60/task/60/comm"), ".tuple-wrapped\n");
+        write(&proc.join("60/task/61/comm"), "Signaling\n");
+        write(&proc.join("60/task/62/comm"), "AudioEncoder\n");
+        write(&proc.join("30/comm"), "chrome\n");
+        write(&proc.join("30/task/31/comm"), "WebRTC_Network\n");
+        write(&proc.join("30/task/32/comm"), "ThreadPoolAudio\n");
+        write(&proc.join("30/task/33/comm"), "AudioOutputDevi\n");
+        write(&proc.join("30/task/34/comm"), "Compositor\n");
+        let task = |pid: &str, tid: &str| proc.join(format!("{pid}/task/{tid}/schedstat"));
+        assert_eq!(
+            threads(&proc, None, &root.join("tuple.service")),
+            [
+                found("chrome", "AudioOutputDevi", task("30", "33"), true),
+                found("chrome", "WebRTC_Network", task("30", "31"), true),
+                found("tuple", ".tuple-wrapped", task("60", "60"), false),
+                found("tuple", "AudioEncoder", task("60", "62"), true),
+                found("tuple", "Signaling", task("60", "61"), false),
+            ]
+        );
+        // Out of a call, neither has a thread worth reading.
+        fs::remove_file(proc.join("60/task/62/comm")).unwrap();
+        fs::remove_file(proc.join("30/task/31/comm")).unwrap();
+        fs::remove_file(proc.join("30/task/33/comm")).unwrap();
+        assert_eq!(threads(&proc, None, &root.join("tuple.service")), []);
+        // Nor without Tuple at all.
+        assert_eq!(threads(&proc, None, &root.join("gone.service")), []);
+    }
+
+    #[test]
+    fn a_call_s_threads_count_only_while_one_carrying_it_is_read() {
+        let at = |n: &str| PathBuf::from(format!("/proc/{n}/schedstat"));
+        let mut read = BTreeMap::new();
+        read.insert(
+            found("tuple", "Signaling", at("61"), false),
+            Sched::default(),
+        );
+        read.insert(found("niri", "niri", at("10"), false), Sched::default());
+        read.insert(
+            found("chrome", "AudioThread", at("31"), true),
+            Sched::default(),
+        );
+        while_in_a_call(&mut read);
+        let labels: Vec<&str> = read.keys().map(|t| t.label).collect();
+        assert_eq!(labels, ["chrome", "niri"]);
+    }
+
+    // A stand-in for Tuple's daemon: this test's own process, whose thread
+    // names itself as WebRTC's encoder does (prctl's PR_SET_NAME, which
+    // std's thread names are set by), read from the kernel's own /proc.
+    #[test]
+    fn a_stand_in_s_named_threads_are_read_from_the_kernel() {
+        let root = std::env::temp_dir().join(format!("lag-watch-stand-in-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        write(
+            &root.join("tuple.service/cgroup.procs"),
+            &format!("{}\n", std::process::id()),
+        );
+        let (named, go) = std::sync::mpsc::channel();
+        let (stop, stopped) = std::sync::mpsc::channel::<()>();
+        let encoder = std::thread::Builder::new()
+            .name("AudioEncoder".into())
+            .spawn(move || {
+                named.send(()).unwrap();
+                let _ = stopped.recv();
+            })
+            .unwrap();
+        go.recv().unwrap();
+        let found = threads(Path::new("/proc"), None, &root.join("tuple.service"));
+        let carrying = found
+            .iter()
+            .find(|t| t.label == "tuple" && t.name == "AudioEncoder")
+            .expect("the encoder is found by its name");
+        let read = sched(&text(&carrying.schedstat));
+        stop.send(()).unwrap();
+        encoder.join().unwrap();
+        assert!(carrying.call);
+        assert!(read.is_some_and(|s| s.slices > 0), "{read:?}");
+        assert!(found.iter().filter(|t| t.label == "tuple").count() > 1);
     }
 
     #[test]
