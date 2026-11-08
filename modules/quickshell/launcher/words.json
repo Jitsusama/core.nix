@@ -1603,6 +1603,7 @@
       "id": "machine:disk:firmware",
       "in": "machine:disk:model",
       "name": "Firmware",
+      "term": "Machine/firmware",
       "said": {
         "nvme": "speaks NVMe {revision}"
       }
@@ -3202,7 +3203,8 @@
     {
       "id": "keyboards:firmware",
       "in": "keyboards",
-      "name": "Firmware"
+      "name": "Firmware",
+      "term": "Machine/firmware"
     },
     {
       "id": "keyboards:usb-id",
@@ -3460,7 +3462,8 @@
     {
       "id": "networks:lease-time-servers",
       "in": "networks:lease",
-      "name": "Time Servers"
+      "name": "Time Servers",
+      "term": "Desktop/time server"
     },
     {
       "id": "networks:lease-domain",
@@ -4163,7 +4166,8 @@
     {
       "id": "time:server",
       "in": "time:servers",
-      "name": "Time Server"
+      "name": "Time Server",
+      "term": "Desktop/time server"
     },
     {
       "id": "time:server:address",
@@ -4433,7 +4437,8 @@
     {
       "id": "sound:microphones",
       "in": "sound",
-      "name": "Microphones"
+      "name": "Microphones",
+      "term": "Machine/microphone"
     },
     {
       "id": "sound:called:speakers",
@@ -8038,12 +8043,14 @@
     {
       "id": "mpv:stopped:speed",
       "in": "verb:mpv:on",
-      "name": "Speed"
+      "name": "Speed",
+      "term": "Programs/speed"
     },
     {
       "id": "mpv:stopped:volume",
       "in": "verb:mpv:on",
-      "name": "Volume"
+      "name": "Volume",
+      "term": "Machine/volume"
     },
     {
       "id": "mpv:stopped:audio",
@@ -8332,6 +8339,7 @@
       "id": "program:media",
       "in": "applications",
       "name": "Media",
+      "term": "Programs/Media",
       "verb": "more",
       "glyph": "playing",
       "said": {
@@ -8352,7 +8360,8 @@
     {
       "id": "program:media:volume",
       "in": "program:media",
-      "name": "Volume"
+      "name": "Volume",
+      "term": "Machine/volume"
     },
     {
       "id": "program:media:shuffle",
@@ -8367,7 +8376,8 @@
     {
       "id": "program:media:speed",
       "in": "program:media",
-      "name": "Speed"
+      "name": "Speed",
+      "term": "Programs/speed"
     },
     {
       "id": "program:media:fullscreen",
@@ -8392,7 +8402,8 @@
     {
       "id": "program:media:track",
       "in": "program:media",
-      "name": "Track"
+      "name": "Track",
+      "term": "Programs/track"
     },
     {
       "id": "program:media:genre",
@@ -8512,6 +8523,7 @@
       "id": "program:notices",
       "in": "applications",
       "name": "Notices",
+      "term": "Desktop/notice",
       "verb": "more",
       "glyph": "notifications"
     },
