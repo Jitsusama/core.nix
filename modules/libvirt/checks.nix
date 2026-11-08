@@ -57,7 +57,8 @@
         && home.xdg.configFile ? "quickshell/launcher/Machines.js"
         && lib.hasInfix "\nNoDisplay=true\n" entry
         && !(bare.xdg.dataFile ? "applications/vms.desktop")
-        && !(bare ? jitsusama.quickshell.launcher.providers)
+        && !(bare ? jitsusama.quickshell.launcher.providers.vms)
+        && !(bare.xdg.configFile ? "quickshell/launcher/Machines.js")
       );
 
   # How Programs › VMs reads what virsh says, its lists, the one batch

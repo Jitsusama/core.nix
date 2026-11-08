@@ -24,9 +24,11 @@ let
   libvirt = osConfig.virtualisation.libvirtd.package or pkgs.libvirt;
 in
 {
-  # The launcher's providers, not its recents, which programs give it on
-  # an account without the shell too (../quickshell/recents.nix).
-  config = lib.optionalAttrs (options ? jitsusama.quickshell.launcher.providers) {
+  # Only where the shell is: the launcher's providers are declared on an
+  # account without it too, for the programs that give it acts
+  # (../quickshell/providers.nix), but its vocabulary only by the shell's
+  # own module (../quickshell/home.nix).
+  config = lib.optionalAttrs (options ? jitsusama.quickshell.launcher.words) {
     # After Meet's and Slack's own acts, since VMs are a program's too.
     jitsusama.quickshell.launcher.providers = {
       vms = {
