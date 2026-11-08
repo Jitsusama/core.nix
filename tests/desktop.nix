@@ -1011,51 +1011,54 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # Every Nix value the script needs, which it reads once, at its top;
       # its Values says what each is.
       values = pkgs.writeText "desktop-values.json" (
-        builtins.toJSON {
-          inherit
-            account
-            secret
-            asking
-            touchscreen
-            keyboard
-            ergodox
-            picture
-            page
-            text
-            track
-            wide
-            clip
-            ;
-          ask_portal = askPortal;
-          choose_a_file = chooseAFile;
-          copilot_key = copilotKey;
-          ergodox_layout = ergodoxLayout;
-          # A stand-in Litra, plugged in for as long as it runs
-          # (desk-light-stand-in.py).
-          desk_light = "${pkgs.python3}/bin/python3 ${./desk-light-stand-in.py}";
-          tuple_window = tupleWindow;
-          inherit (pkgs)
-            coreutils
-            dbus
-            wev
-            zenity
-            ;
-          ffmpeg_headless = pkgs.ffmpeg-headless;
-          fontconfig_bin = pkgs.fontconfig.bin;
-          stress_ng = pkgs.stress-ng;
-          inherit (colours) accent action sunken;
-          mono_family = font.mono.family;
-          # What a floating frame leaves of the screen across: the screen
-          # rung and its border on either side.
-          floating_room = 2 * (space.rung.screen + shape.border);
-          shots = gallery;
-        }
-        # BlueZ's emulator, for the looks area to hear a device in Nearby
-        # by: two controllers of the machine's own, one looking and one
-        # heard. Only there, so no other area's test moves with it.
-        // pkgs.lib.optionalAttrs (area == "looks") {
-          btvirt = "${import ./btvirt.nix { inherit pkgs; }}/bin/btvirt";
-        }
+        builtins.toJSON (
+          {
+            inherit
+              account
+              secret
+              asking
+              touchscreen
+              keyboard
+              ergodox
+              picture
+              page
+              text
+              track
+              wide
+              clip
+              ;
+            ask_portal = askPortal;
+            choose_a_file = chooseAFile;
+            copilot_key = copilotKey;
+            ergodox_layout = ergodoxLayout;
+            # A stand-in Litra, plugged in for as long as it runs
+            # (desk-light-stand-in.py).
+            desk_light = "${pkgs.python3}/bin/python3 ${./desk-light-stand-in.py}";
+            tuple_window = tupleWindow;
+            inherit (pkgs)
+              coreutils
+              dbus
+              wev
+              zenity
+              ;
+            ffmpeg_headless = pkgs.ffmpeg-headless;
+            fontconfig_bin = pkgs.fontconfig.bin;
+            stress_ng = pkgs.stress-ng;
+            inherit (colours) accent action sunken;
+            mono_family = font.mono.family;
+            # What a floating frame leaves of the screen across: the screen
+            # rung and its border on either side.
+            floating_room = 2 * (space.rung.screen + shape.border);
+            shots = gallery;
+          }
+          # BlueZ's emulator, for the looks area to hear a device in Nearby
+          # by: two controllers of the machine's own, each seen as Buds, so
+          # whichever the launcher looks from hears the other. Only there, so
+          # no other area's test moves with it.
+          // pkgs.lib.optionalAttrs (area == "looks") {
+            btvirt = "${import ./btvirt.nix { inherit pkgs; }}/bin/btvirt";
+          }
+        )
       );
     in
     values;
