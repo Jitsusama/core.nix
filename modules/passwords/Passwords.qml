@@ -262,8 +262,7 @@ Provider {
             return [];
         const manager = managerNamed(record.manager);
         const link = Passwords.shows(record, manager?.shows ?? "");
-        return Passwords.acts(record, link, browserOf(manager) !== null)
-            .map(id => act(key, id, link));
+        return Passwords.acts(record, link).map(id => act(key, id, link));
     }
 
     // One act inside an entry, by its id in Passwords.js's acts. A
@@ -275,10 +274,12 @@ Provider {
     // refusal among it. The username and the entry's link are no secret,
     // and copy as any row's value does, while the launcher holds the keys;
     // the website and the entry in its manager's program open through
-    // niri as the launcher goes. Open in the browser opens the website in
-    // the one its manager's extension fills in, which offers to fill it
-    // on the page, as the foot says: the launcher never fills it, so no
-    // secret passes through here or the daemon.
+    // niri as the launcher goes. A web page opens in the browser its
+    // manager's extension fills in, where there's one, wearing its mark,
+    // and the extension offers to fill it on the page, as the foot says:
+    // the launcher never fills it, so no secret passes through here or the
+    // daemon. Anything else opens as any address does (VKCF3Z, 2026-11-08:
+    // one act, never a second doing the same).
     function act(key, id, shown) {
         const record = recordOf(key);
         if (record === null)
@@ -286,11 +287,11 @@ Provider {
         const words = `verb:passwords:${id}`;
         const manager = managerNamed(record.manager);
         const address = Passwords.website(record);
-        const browser = id === "fill" ? browserOf(manager) : null;
+        const browser = id === "website" && Passwords.fillsAt(record) !== ""
+            ? browserOf(manager) : null;
         const base = {
             key: words,
-            name: Words.name(words, "", { called: manager?.called ?? "",
-                browser: browser?.name ?? "" }),
+            name: Words.name(words, "", { called: manager?.called ?? "" }),
             verb: Words.verb(words),
             glyph: Words.glyph(words),
             hue: "action"
@@ -314,18 +315,16 @@ Provider {
                 said.password ?? ""), { use: true }),
             code: () => copying(Passwords.code(record)?.id ?? null, said.code ?? ""),
             username: () => plain(Passwords.username(record)),
-            // It wears the browser's own mark, and names it on the : line,
-            // as :open google-chrome.
-            fill: () => ({
+            // Where its manager fills in a browser, it opens there wearing
+            // the browser's own mark.
+            website: () => browser === null ? opening(address) : {
                 later: true,
                 run: () => Niri.spawn(provider.command(browser)
                     .concat([Passwords.fillsAt(record)])),
                 state: () => Passwords.fill(Words.of(words).said?.fills ?? "",
                     { manager: manager?.called ?? "" }),
-                fill: { browser: manager?.fills ?? "" },
                 glyph: provider.programGlyph(manager?.fills ?? "")
-            }),
-            website: () => opening(address),
+            },
             // It wears its manager's own mark, as its program's row does,
             // and names it on the : line, as :open 1password.
             show: () => Object.assign(opening(shown ?? ""), {

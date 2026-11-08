@@ -1056,7 +1056,6 @@ def walk_passwords(desktop: Desktop) -> None:
         "Copy the Password",
         "Copy the One-Time Code",
         "Copy the Username",
-        "Open in Google Chrome",
         "Open the Website",
         "Show in 1Password",
         "Copy the Link",

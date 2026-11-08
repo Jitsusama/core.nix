@@ -93,8 +93,8 @@ in
             default = null;
             description = ''
               The desktop entry of the browser whose extension of the
-              manager's own fills a sign-in, which an entry's Open in it opens
-              the entry's website in, or none for a manager with no such
+              manager's own fills a sign-in, which an entry's Open the Website
+              opens its web page in, or none for a manager with no such
               extension. The extension offers to fill it there itself, so no
               secret passes through the launcher or the daemon.
             '';

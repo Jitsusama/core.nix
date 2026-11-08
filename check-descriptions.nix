@@ -2226,7 +2226,7 @@
     margin wearing the clipboard's mark and the foot, opened again, counting to its clearing,
     nothing on screen saying it, reads an entry in full as the selection rests on it, never as
     Joel's own ask, its drawer never saying its password, and holds its acts in the design's order
-    once it's stepped into, Open in Google Chrome handing a stand-in Chrome its website as the
+    once it's stepped into, Open the Website handing a stand-in Chrome its website as the
     launcher goes, its foot saying 1Password offers to fill it, with a stand-in for 1Password's
     manager
   '';
