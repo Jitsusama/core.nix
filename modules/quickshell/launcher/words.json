@@ -6488,7 +6488,11 @@
         "clearedHow": "cleared by you",
         "doneByYou": "done by you",
         "clearsLook": "you open or clear it",
-        "clearsPr": "it merges or closes"
+        "clearsPr": "it merges or closes",
+        "today": "today",
+        "yesterday": "yesterday",
+        "moment": "{day} {time}",
+        "inSession": "{quest}'s session"
       }
     },
     {
@@ -6510,6 +6514,36 @@
       "id": "on:waiting:takes",
       "in": "on:waiting",
       "name": "Takes"
+    },
+    {
+      "id": "on:waiting:due",
+      "in": "on:waiting",
+      "name": "Due"
+    },
+    {
+      "id": "on:waiting:set-for",
+      "in": "on:waiting",
+      "name": "Set For"
+    },
+    {
+      "id": "on:waiting:machine",
+      "in": "on:waiting",
+      "name": "Machine"
+    },
+    {
+      "id": "on:waiting:where",
+      "in": "on:waiting",
+      "name": "Where"
+    },
+    {
+      "id": "on:waiting:address",
+      "in": "on:waiting",
+      "name": "Address"
+    },
+    {
+      "id": "on:waiting:check",
+      "in": "on:waiting",
+      "name": "Check"
     },
     {
       "id": "on:waiting:checked",

@@ -194,6 +194,38 @@ QtObject {
             .map(one => [one.item.id, one.resolved]),
         [["2", now - 30 * 60 * 1000], ["1", now - hour]]);
 
+        // What an item's owner said of it, as its drawer's facts say it:
+        // a fact for each, "" where nothing says it (VKCF3Z, 2026-11-08).
+        const ownSay = {
+            moment: "{day} {time}",
+            today: "today",
+            inSession: "{quest}'s session",
+            // When.js's day, its date where it isn't today's, in UTC here.
+            day: (at, today) => new Date(at).toISOString().slice(0, 10)
+                === new Date(today).toISOString().slice(0, 10) ? "" : "9 Nov",
+            time: at => new Date(at).toISOString().slice(11, 16)
+        };
+        const owned = { quest: "QEST-1", deadline: "2026-11-08T15:00:00Z",
+            at: "2026-11-09T09:30:00Z", where: { machine: "harbour" },
+            owner: { address: "8IDU4E" },
+            doneWhen: { check: "test -e /run/booted-system/sw/bin/ok" } };
+        const figures = (item, told) => ForYou.figures(item,
+            Object.assign({ now, window: "", quest: "Small Figures" }, told ?? {}), ownSay);
+        expect("due today, by its time", figures(owned).due, "today 15:00");
+        expect("set for another day, by its day", figures(owned).setFor, "9 Nov 09:30");
+        expect("no deadline, no due", figures({}).due, "");
+        expect("the machine as its owner names it", figures(owned).machine, "harbour");
+        expect("where, the window it's done in", figures(owned, { window: "pi \u00b7 core" })
+            .where, "pi \u00b7 core");
+        expect("where, else its quest's session", figures(owned).where,
+            "Small Figures's session");
+        expect("where, nowhere with no quest", figures({}, { quest: "" }).where, "");
+        expect("its owner's address, as written", figures(owned).address, "8IDU4E");
+        expect("its check's command, as written", figures(owned).check,
+            "test -e /run/booted-system/sw/bin/ok");
+        expect("one a person says is done has no check",
+            figures({ doneWhen: { by: "person" } }).check, "");
+
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(failure);

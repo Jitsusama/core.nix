@@ -23,6 +23,7 @@ import QtQuick
 import Qt.labs.folderlistmodel
 import "../Fuzzy.js" as Fuzzy
 import "../Marks.js" as Marks
+import "../When.js" as When
 import "Ago.js" as Ago
 import "ForYou.js" as ForYou
 import "NowGroups.js" as Groups
@@ -443,8 +444,19 @@ Provider {
         const quest = WaitingOnYou.questOf(each) ?? "";
         const since = ForYou.when(each.raisedAt);
         const checked = ForYou.when(each.checkedAt);
+        const owner = ForYou.figures(each, {
+            now,
+            window: WaitingOnYou.windowOf(each)?.title ?? "",
+            quest
+        }, say);
+        // An identifier is set in the Name face, under its name, and a
+        // check's command wraps at its own punctuation (Drawer.qml).
+        const identifier = (id, value) => Object.assign(fact(id, value),
+            { words: true, identifies: true });
         const facts = [
             fact("weight", ForYou.weightSaid(itemThing(each), now, say)),
+            fact("due", owner.due),
+            fact("set-for", owner.setFor),
             fact("takes", typeof each.minutes === "number"
                 ? waitingSaid("takes", { minutes: each.minutes }) : ""),
             fact("since", since === null ? "" : clocked(since)),
@@ -453,8 +465,12 @@ Provider {
             // don't know if it is still relevant").
             fact("checked", checked === null ? "" : clocked(checked)),
             fact("clears", knownSaid(each)),
+            fact("machine", owner.machine),
+            fact("where", owner.where),
             fact("quest", quest),
             fact("session", session?.title ?? ""),
+            identifier("address", owner.address),
+            identifier("check", owner.check),
             Object.assign(fact("item", WaitingOnYou.identity(each)), { identifies: true })
         ].filter(one => one.value !== "");
         return {
@@ -497,9 +513,15 @@ Provider {
     // The words For You's rows and drawers are said in, with the clock and
     // how long ago as the launcher says them (Ago.js), at `now`.
     function forYouSaid(now) {
-        return Object.assign({}, Words.of("on:waiting").said ?? {}, {
+        const said = Words.of("on:waiting").said ?? {};
+        return Object.assign({}, said, {
             clock: at => provider.clocked(at),
-            ago: at => Ago.ago(at, now)
+            ago: at => Ago.ago(at, now),
+            day: (at, today) => When.day(at, today, {
+                yesterday: said.yesterday,
+                date: (date, format) => Qt.formatDate(date, format)
+            }),
+            time: at => Qt.formatTime(new Date(at), "HH:mm")
         });
     }
 

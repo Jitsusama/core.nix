@@ -717,7 +717,11 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
                     "when": "now",
                     "why": "It goes out in your name.",
                     "steps": ["Print it", "Sign it"],
-                    "doneWhen": {"by": "person"},
+                    "at": "2026-11-09T09:30:00Z",
+                    "deadline": "2026-11-09T15:00:00Z",
+                    "where": {"machine": "harbour"},
+                    "owner": {"address": "8IDU4E"},
+                    "doneWhen": {"check": "test -e /run/user/1000/form/signed"},
                 }
             ],
         },
@@ -725,6 +729,9 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
     # Its steps, then why only Joel can; how it'll be known done is its
     # Clears When fact, so the words don't say it again.
     steps = "1. Print it\n2. Sign it\n\nIt goes out in your name."
+    # What its owner said of it, each a fact in For You's order (VKCF3Z,
+    # 2026-11-08); Where is its quest's session, since none is open.
+    owned = ["Due", "Set For", "Machine", "Where", "Address", "Check"]
     try:
         retry(
             lambda _: waiting_inside(desktop) == ("1", ["Sign the Form"]),
@@ -738,9 +745,12 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
         # Its drawer gives its steps, numbered, then why only Joel can.
         desktop.launcher_until(
             lambda shown: (
-                (shown.get("drawer") or {}).get("out") is True and shown["drawer"]["body"] == steps
+                (shown.get("drawer") or {}).get("out") is True
+                and shown["drawer"]["body"] == steps
+                and [fact for fact in shown["drawer"]["facts"] if fact in owned] == owned
             )
         )
+        desktop.shoot("launcher-for-you-drawer")
         # Return on it steps in, with nowhere to go: Mark It Done, then Put It Off.
         desktop.step_in("ret")
         desktop.launcher_until(lambda shown: shown["rows"] == ["Mark It Done", "Put It Off"])

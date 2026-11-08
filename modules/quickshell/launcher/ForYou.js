@@ -180,6 +180,34 @@ function weightSaid(thing, now, say) {
     return [String(weighed.weight)].concat(said.filter(one => one !== "")).join(" \u00b7 ");
 }
 
+// What an item's owner said of it that its drawer shows beyond its weight
+// and how long it's waited (VKCF3Z, 2026-11-08): when it's due and when
+// it's set for, each a day and a time ("today 15:00"); the machine it's
+// done on, as its owner names it; where, the window it's done in, else
+// its quest's session; and, as written, its owner's address and the
+// command that checks it's done. Each is "" where nothing says it.
+// `told` holds `now`, the open `window`'s title and its `quest` by name;
+// `say` the words, with `day(ms, now)` as When.js says a day, "" today,
+// and `time(ms)` as the clock does.
+function figures(item, told, say) {
+    const named = value => typeof value === "string" ? value : "";
+    const moment = at => {
+        const read = when(at);
+        return read === null ? "" : filled(say.moment,
+            { day: say.day(read, told.now) || say.today, time: say.time(read) });
+    };
+    const window = named(told.window);
+    const quest = named(told.quest);
+    return {
+        due: moment(item.deadline),
+        setFor: moment(item.at),
+        machine: named(item.where?.machine),
+        where: window !== "" ? window : quest === "" ? "" : filled(say.inSession, { quest }),
+        address: named(item.owner?.address),
+        check: named(item.doneWhen?.check)
+    };
+}
+
 // Whether a file's JSON is a look this reads whole: version 1, with what
 // it's about and how it stands.
 function whole(read) {
