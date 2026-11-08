@@ -1663,14 +1663,12 @@ def warp_stands_in_network(desktop: Desktop, scale: str) -> None:
             )
         )
         desktop.shoot(f"launcher-warp-round-trip-at-{at}")
-        # Held by the organisation, its switch says who holds it.
+        # Held by the organisation, its switch says who holds it, selected.
         desktop.as_account(
             'sed -i \'s/"switch_locked": false/"switch_locked": true/\' ~/warp-cli/settings.json'
         )
-        desktop.launcher_until(
-            lambda shown: "holds the switch" in reading(shown, "Disconnect WARP")
-        )
         desktop.down_to("Disconnect WARP")
+        desktop.launcher_until(lambda shown: "holds the switch" in shown["footer"])
         desktop.shoot(f"launcher-warp-switch-held-at-{at}")
         # Taken down, as the stand-in says it after a disconnect, its switch brings
         # it up, and the tunnel it no longer has says nothing.

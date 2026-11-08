@@ -1638,7 +1638,7 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
                 ("launcher show desktop screens --drawers", "terminal-drawers"),
                 ("launcher do machine power reboot", "terminal-asks"),
                 ("launcher show network warp", "terminal-warp"),
-                ("launcher show network warp round trip", "terminal-warp-round-trip"),
+                ("launcher show network warp round-trip", "terminal-warp-round-trip"),
             ]:
                 window = desktop.opened(
                     picture, f"sh -c {shlex.quote(f'echo {asked}; {asked}; exec sleep infinity')}"
@@ -1671,13 +1671,14 @@ def a_terminal_is_shown_warp(desktop: Desktop) -> None:
     said = desktop.as_account("launcher show network warp")
     assert "connected" in said, said
     assert re.search(r"Health\s+healthy", said), said
+    # Each word the program is given is a step, so a name of two is one with a hyphen.
     machine.wait_until_succeeds(
-        desktop.in_session("launcher show network warp round trip --json | grep -q eyebrow"),
+        desktop.in_session("launcher show network warp round-trip --json | grep -q eyebrow"),
         timeout=asking,
     )
-    trip = json.loads(desktop.as_account("launcher show network warp round trip --json"))
+    trip = json.loads(desktop.as_account("launcher show network warp round-trip --json"))
     assert trip["row"]["drawer"]["eyebrow"] == "via WARP \u00b7 tunnel", trip["row"]
-    said = desktop.as_account("launcher show network warp round trip")
+    said = desktop.as_account("launcher show network warp round-trip")
     assert "via WARP \u00b7 tunnel" in said, said
 
 
