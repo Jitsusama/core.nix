@@ -28,6 +28,7 @@ import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "KeyGroups.js" as KeyGroups
+import "KeyLayers.js" as KeyLayers
 
 Provider {
     id: provider
@@ -40,14 +41,30 @@ Provider {
         desktop: "on the desktop",
         terminal: "in the terminal",
         neovim: "in Neovim",
-        pi: "in pi"
+        pi: "in pi",
+        // Google's programs, each a page in Chrome, whose own keys are
+        // found beside Chrome's, so a chord found says whose it is.
+        "google-mail": "in Mail",
+        "google-calendar": "in Calendar",
+        "google-meet": "in Meet",
+        "google-docs": "in Docs",
+        "google-sheets": "in Sheets",
+        "google-slides": "in Slides",
+        "google-drive": "in Drive"
     })
 
     // The words that find a layer's shortcuts besides their names.
     readonly property var also: ({
         terminal: "terminal kitty",
         neovim: "neovim vim nvim editor",
-        pi: "pi agent"
+        pi: "pi agent",
+        "google-mail": "gmail email",
+        "google-calendar": "google calendar",
+        "google-meet": "google meet call",
+        "google-docs": "google docs document",
+        "google-sheets": "google sheets spreadsheet",
+        "google-slides": "google slides presentation",
+        "google-drive": "google drive files"
     })
 
     // How many letters of a level's first groups its row names, whole
@@ -192,7 +209,7 @@ Provider {
     // kind of window again rebuilds none of them.
     function opened() {
         const under = provider.launcher?.cameFrom() ?? null;
-        const now = KeyGroups.over(under?.app_id ?? "", under?.title ?? "");
+        const now = KeyLayers.over(under?.app_id ?? "", under?.title ?? "");
         if (now.length !== leads.length || now.some((name, at) => name !== leads[at]))
             leads = now;
     }
@@ -222,7 +239,7 @@ Provider {
     // run inside the terminal by its entry, any other by its windows, and
     // "desktop" for one with none of its own.
     function ofProgram(app) {
-        return terminalPrograms[app] ?? KeyGroups.over(app, "")[0];
+        return terminalPrograms[app] ?? KeyLayers.over(app, "")[0];
     }
 
     // A program's own keys, by its desktop entry's id, as the layer it has

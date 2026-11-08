@@ -66,7 +66,7 @@ ShellRoot {
         try {
             const top = map.everything();
             expect("the layers", names(top).join(", ")
-                === "Desktop, Terminal, Neovim, Agents, Processes, Picture Viewer, Markdown Reader, Document Viewer, Player, Browser, Slack, Passwords, Picture Editor, Drawing Editor, Music",
+                === "Desktop, Terminal, Neovim, Agents, Processes, Picture Viewer, Markdown Reader, Document Viewer, Player, Browser, Mail, Calendar, Meet, Docs, Sheets, Slides, Drive, Slack, Passwords, Picture Editor, Drawing Editor, Music",
                 names(top).join(", "));
             const desktop = top[0];
             // Counted as rows: two chords for one act are one.
@@ -190,7 +190,7 @@ ShellRoot {
             // Shortcuts opens (KeyMap.qml's opened).
             over("kitty", "\u{1F4DD} notes.md");
             expect("over Neovim, its layers first", names(map.everything()).join(", ")
-                === "Neovim, Terminal, Desktop, Agents, Processes, Picture Viewer, Markdown Reader, Document Viewer, Player, Browser, Slack, Passwords, Picture Editor, Drawing Editor, Music",
+                === "Neovim, Terminal, Desktop, Agents, Processes, Picture Viewer, Markdown Reader, Document Viewer, Player, Browser, Mail, Calendar, Meet, Docs, Sheets, Slides, Drive, Slack, Passwords, Picture Editor, Drawing Editor, Music",
                 names(map.everything()).join(", "));
             const lead = map.leading();
             expect("the chord opens on Neovim's", lead !== null && lead.name === "Neovim"
@@ -246,9 +246,19 @@ ShellRoot {
             expect("over the browser, its own", map.leading()?.name === "Browser"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
             over("kitty", "~");
+            // One of Google's programs leads with its own keys, then the
+            // browser's, in a window of its own or in a tab.
             over("chrome-calendar.google.com__calendar_r-Default", "Calendar");
-            expect("over a site's window, the browser's", map.leading()?.name === "Browser"
-                && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
+            expect("over Calendar's window, its own, then the browser's",
+                names(map.everything()).slice(0, 3).join(", ") === "Calendar, Browser, Desktop",
+                names(map.everything()).join(", "));
+            over("google-chrome", "Notes - Google Docs - Google Chrome");
+            expect("over a Docs tab, its own, then the browser's",
+                names(map.everything()).slice(0, 3).join(", ") === "Docs, Browser, Desktop",
+                names(map.everything()).join(", "));
+            const mailKeys = map.layerOf("google-mail");
+            expect("Mail holds its keys", mailKeys !== null && mailKeys.layer === "google-mail",
+                mailKeys ? mailKeys.layer : "nothing");
             over("slack", "general (Channel) - Slack");
             expect("over Slack, its own", map.leading()?.name === "Slack"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));

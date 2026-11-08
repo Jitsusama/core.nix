@@ -1,6 +1,6 @@
 // Shortcuts' groups, run in Qt's own JavaScript engine, the one the shell
 // runs them in: the-launcher-groups-every-shortcut copies
-// launcher/KeyGroups.js beside this file with an account's own binds, every
+// launcher/KeyGroups.js and KeyLayers.js beside this file with an account's own binds, every
 // layer's, as layers.json, and its vocabulary, as words.json, and runs
 // `qml -platform offscreen key-groups.qml`. One chord doing one thing in
 // several of a group's places is one row, and only then; every desktop
@@ -17,6 +17,7 @@
 // level longer than the card.
 import QtQuick
 import "KeyGroups.js" as KeyGroups
+import "KeyLayers.js" as KeyLayers
 
 QtObject {
     function read(file) {
@@ -390,7 +391,44 @@ QtObject {
             ["kitty", "~/src/btop", ["terminal", "desktop"]],
             ["virt-manager", "\u{1F4DD} notes.md", ["desktop"]],
             ["google-chrome", "\u{1F4DD} notes.md", ["chrome", "desktop"]],
-            ["chrome-mail.google.com__-Default", "Inbox", ["chrome", "desktop"]],
+            // Google's programs, each its site's own keys over Chrome's: by
+            // a site window's app id, or by a Chrome page's title, whether
+            // a tab or a site window gone on to another of Google's pages.
+            ["chrome-mail.google.com__-Default", "Inbox", ["google-mail", "chrome", "desktop"]],
+            ["google-chrome", "Inbox (3) - joel@example.com - Gmail - Google Chrome",
+                ["google-mail", "chrome", "desktop"]],
+            ["google-chrome", "Inbox - joel@example.com - Example Mail - Google Chrome",
+                ["google-mail", "chrome", "desktop"]],
+            ["chrome-calendar.google.com__calendar_r-Default", "Calendar",
+                ["google-calendar", "chrome", "desktop"]],
+            ["google-chrome", "Google Calendar - Week of 2 November 2026 - Google Chrome",
+                ["google-calendar", "chrome", "desktop"]],
+            ["chrome-meet.google.com__-Default", "Meet", ["google-meet", "chrome", "desktop"]],
+            ["google-chrome", "Meet - abc-defg-hij - Google Chrome",
+                ["google-meet", "chrome", "desktop"]],
+            ["chrome-docs.google.com__document_-Default", "Notes - Google Docs",
+                ["google-docs", "chrome", "desktop"]],
+            ["google-chrome", "Notes - Google Docs - Google Chrome",
+                ["google-docs", "chrome", "desktop"]],
+            ["chrome-docs.google.com__document_-Default", "Budget - Google Sheets",
+                ["google-sheets", "chrome", "desktop"]],
+            ["chrome-docs.google.com__spreadsheets_-Default", "Budget",
+                ["google-sheets", "chrome", "desktop"]],
+            ["google-chrome", "Budget - Google Sheets - Google Chrome",
+                ["google-sheets", "chrome", "desktop"]],
+            ["google-chrome", "Talk - Google Slides - Google Chrome",
+                ["google-slides", "chrome", "desktop"]],
+            ["chrome-drive.google.com__-Default", "My Drive",
+                ["google-drive", "chrome", "desktop"]],
+            ["google-chrome", "My Drive - Google Drive - Google Chrome",
+                ["google-drive", "chrome", "desktop"]],
+            ["google-mail", "", ["google-mail", "chrome", "desktop"]],
+            // A page only mentioning one, and another program's document
+            // named for one, are neither.
+            ["google-chrome", "Calendar apps compared - Google Chrome", ["chrome", "desktop"]],
+            ["google-chrome", "Google Docs - Wikipedia - Google Chrome", ["chrome", "desktop"]],
+            ["org.pwmt.zathura", "Notes - Google Docs", ["zathura", "desktop"]],
+            ["virt-manager", "Notes - Google Docs", ["desktop"]],
             ["chrome", "", ["desktop"]],
             ["slack", "general (Channel) - Slack", ["slack", "desktop"]],
             ["com.onepassword.OnePassword", "1Password", ["onepassword", "desktop"]],
@@ -401,7 +439,7 @@ QtObject {
             ["", "", ["desktop"]]
         ];
         for (const program of programs)
-            expect(`over ${program[0]} titled ${program[1]}`, KeyGroups.over(program[0],
+            expect(`over ${program[0]} titled ${program[1]}`, KeyLayers.over(program[0],
                 program[1]), program[2]);
 
         // Every group the table lists is named in the vocabulary, inside

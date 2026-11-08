@@ -867,9 +867,10 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     # groups as fit whole; the machine has no Neovim or pi, so no layer of
     # theirs, nor Chrome, so none of its either. After the terminal's come
     # btop's, which every machine has, the picture viewer's, the markdown
-    # reader's, the document viewer's, the player's, Slack's (which this
-    # area's machine brings, for Now's Slack piece), 1Password's, GIMP's,
-    # Inkscape's and Spotify's.
+    # reader's, the document viewer's, the player's, Google's seven
+    # programs', whose keys are their pages' in any browser, Slack's (which
+    # this area's machine brings, for Now's Slack piece), 1Password's,
+    # GIMP's, Inkscape's and Spotify's.
     layers = [
         "Desktop",
         "Terminal",
@@ -878,6 +879,13 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
         "Markdown Reader",
         "Document Viewer",
         "Player",
+        "Mail",
+        "Calendar",
+        "Meet",
+        "Docs",
+        "Sheets",
+        "Slides",
+        "Drive",
         "Slack",
         "Passwords",
         "Picture Editor",
