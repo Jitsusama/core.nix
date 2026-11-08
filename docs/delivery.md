@@ -46,7 +46,9 @@ It keeps the sessions up too. Given `jitsusama.cadence.revive.restart`,
 the words that start a session, each tick first starts again every
 orchestrator and every session of the steward's whose pi died, on its own
 log, puts its window back and tells the steward. A session that quit
-cleanly, or whose quest is done, stays down. On 2026-11-07 a harness
+cleanly, or whose quest is done, stays down, and so does one a boot
+ended, its pi last running in an earlier boot: Joel reopens those when he
+asks. On 2026-11-07 a harness
 install killed 22 sessions as they reloaded between 01:09 and 01:52, and
 each was started again by the next tick or sooner. One started three times in an hour is
 left down and reported, since something kills it as it starts. A session a
@@ -55,8 +57,8 @@ one started beside it would write the same log. Before a session is
 started again, every kitty window left showing it dead is closed, its gone
 holder's or one the harness marked as the session's with no pi under it,
 so a restart replaces a window rather than adding one. Nothing is started until
-the desktop has been up 15 minutes: before sign-in there is nowhere to open
-a window, and just after it the sessions Joel had are reopened together.
+the desktop has been up 15 minutes, since before sign-in there is nowhere to
+open a window.
 
 On 2026-11-05 the last commit to merge took a median 41 minutes from 17:00
 to 21:00 against 6 from 06:00 to 12:00, and a subtests run that takes 3

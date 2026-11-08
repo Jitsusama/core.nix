@@ -40,6 +40,9 @@ pub struct Presence {
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Owner {
     pub pid: Option<u32>,
+    /// The boot the pi ran in, as the kernel's boot id names it.
+    #[serde(default, rename = "bootId")]
+    pub boot_id: Option<String>,
 }
 
 /// A message, as far as cadence writes and reads one.
@@ -267,7 +270,10 @@ mod tests {
         assert!(alive(Some(&parked), |_| false));
         let gone = Presence {
             state: "listening".into(),
-            owner: Some(Owner { pid: Some(7) }),
+            owner: Some(Owner {
+                pid: Some(7),
+                boot_id: None,
+            }),
             ..parked
         };
         assert!(!alive(Some(&gone), |_| false));

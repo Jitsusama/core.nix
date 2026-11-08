@@ -201,11 +201,18 @@ fn start(reviving: &Reviving, mesh: &Mesh, s: &Seen, cwd: &str, home: Option<u32
 
 /// Every session's presence, with whether its process runs.
 fn seen(mesh: &Mesh) -> Vec<Seen> {
+    // A boot that can't be read leaves every session ended with one, so
+    // nothing is reopened that Joel didn't ask for.
+    let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id")
+        .ok()
+        .map(|id| id.trim().to_owned());
     mesh.all()
         .into_iter()
         .filter_map(|p: Presence| {
             let address = p.addresses.first()?.clone();
             Some(Seen {
+                this_boot: boot.is_some()
+                    && p.owner.as_ref().and_then(|o| o.boot_id.as_ref()) == boot.as_ref(),
                 running: p.owner.as_ref().and_then(|o| o.pid).is_some_and(is_pi),
                 parked: p.state == "parked" || mesh.is_parked(&p.session),
                 address,

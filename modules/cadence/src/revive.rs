@@ -38,6 +38,9 @@ pub struct Seen {
     pub at: String,
     pub running: bool,
     pub parked: bool,
+    /// Whether its pi ran during this boot, by the boot its presence was
+    /// written in. One that didn't ended with the machine, not by a crash.
+    pub this_boot: bool,
 }
 
 /// What a quest's README says of itself and of its sessions.
@@ -159,6 +162,11 @@ pub fn judge(
     }
     if named || entry.pid.is_some_and(runs) {
         return Verdict::Alive;
+    }
+    // Joel reopens what a boot ended when he asks, not cadence: on 7
+    // November he said he never wanted sessions back by themselves.
+    if !seen.this_boot {
+        return Verdict::Left("it ended with an earlier boot".into());
     }
     Verdict::Died {
         cwd: entry.cwd.clone(),
@@ -384,6 +392,7 @@ mod tests {
             at: at.into(),
             running,
             parked: false,
+            this_boot: true,
         }
     }
 
@@ -485,6 +494,19 @@ mod tests {
         assert_eq!(
             judge(&gone, Some(&done), |_| false, false),
             Verdict::Left("its quest is concluded".into())
+        );
+    }
+
+    #[test]
+    fn a_session_the_last_boot_ended_is_left_for_joel_to_reopen() {
+        let ended = Seen {
+            this_boot: false,
+            ..seen("A", None, false, "1")
+        };
+        let q = quest_with("active", "active", Some(9));
+        assert_eq!(
+            judge(&ended, Some(&q), |_| false, false),
+            Verdict::Left("it ended with an earlier boot".into())
         );
     }
 
