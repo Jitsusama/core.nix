@@ -383,14 +383,21 @@ Provider {
     }
 
     Timer {
+        id: reading
+
         interval: 1000
         repeat: true
         running: provider.drawing !== "" && (provider.launcher?.open ?? false)
+        // Forgotten once running has settled, since running reads drawing and
+        // clearing it while running changes is a binding loop.
         onRunningChanged: {
-            if (!running) {
-                provider.readings = ({});
-                provider.drawing = "";
-            }
+            if (!running)
+                Qt.callLater(() => {
+                    if (reading.running)
+                        return;
+                    provider.readings = ({});
+                    provider.drawing = "";
+                });
         }
         onTriggered: provider.readFor(provider.drawing)
     }
