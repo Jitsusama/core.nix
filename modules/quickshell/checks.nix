@@ -28,6 +28,8 @@ let
     '';
   # Quickshell's runner, the one the account's shell runs on.
   qs = lib.getExe' graphical.pkgs.quickshell "qs";
+  # The daemon Machine's answers come from, run over a check's own /proc.
+  machine = pkgs.callPackage ../machine/package.nix { };
   # Every QML file the shell and the modules beside it draw, by its path
   # under modules/, its tests left out: a module's surface is drawn in the
   # theme as the shell's own are.
@@ -242,6 +244,8 @@ let
           "LOGS=logs"
           "TAKE_NOTICES=${lib.escapeShellArgs (spawnedBy "Super+N")}"
           "PYTHONPATH=${checked}"
+          # Machine's answers come from its daemon, as the account's do.
+          "MACHINE=${lib.getExe machine}"
         ]
         # What a file of tests is given besides, as a program it runs.
         ++ given
@@ -1878,9 +1882,6 @@ onLinux {
   # part saying them is looked at (tests/machine.qml), the queue, niri and
   # the telemetry stood in for.
   the-machine-answers-from-its-daemon =
-    let
-      machine = pkgs.callPackage ../machine/package.nix { };
-    in
     pkgs.runCommandLocal "the-machine-answers-from-its-daemon" { } ''
       mkdir -p launcher runtime/daemons && chmod -R 700 runtime
       cp ${./Daemon.qml} Daemon.qml

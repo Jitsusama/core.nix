@@ -27,7 +27,10 @@ function digits(value) {
         return "0";
     }
     const whole = Math.floor(Math.log10(size)) + 1;
-    return value.toFixed(Math.max(0, SIGNIFICANT - whole));
+    const fixed = value.toFixed(Math.max(0, SIGNIFICANT - whole));
+    // Rounding can carry into another digit, as 0.9997 does to 1.000.
+    const carried = Math.floor(Math.log10(Math.abs(Number(fixed)))) + 1;
+    return carried > whole ? value.toFixed(Math.max(0, SIGNIFICANT - carried)) : fixed;
 }
 
 // A figure in the units it's counted in, stepping a thousand at a time

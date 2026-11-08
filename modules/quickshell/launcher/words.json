@@ -701,9 +701,9 @@
     {
       "id": "machine:memory:held-kernel",
       "in": "machine:memory:held",
-      "name": "Kernel",
+      "name": "System",
       "said": {
-        "note": "the kernel's own: its caches, stacks and page tables"
+        "note": "the system's own: its caches, stacks and page tables"
       }
     },
     {
@@ -760,7 +760,7 @@
       "in": "machine:memory",
       "name": "Every Count",
       "said": {
-        "note": "each the kernel keeps, by its own name"
+        "note": "each Linux keeps, by its own name"
       }
     },
     {
@@ -784,7 +784,7 @@
       "in": "machine:memory",
       "name": "Out of Memory",
       "said": {
-        "note": "programs the kernel ended for memory since the machine started"
+        "note": "programs ended for memory since the machine started"
       }
     },
     {
@@ -844,7 +844,7 @@
     {
       "id": "machine:cpu:spent-user",
       "in": "machine:cpu:spent",
-      "name": "User",
+      "name": "Programs",
       "said": {
         "note": "programs' own work"
       }
@@ -854,7 +854,7 @@
       "in": "machine:cpu:spent",
       "name": "System",
       "said": {
-        "note": "the kernel's work for them"
+        "note": "the system's work for them"
       }
     },
     {
@@ -1116,14 +1116,26 @@
       "in": "machine:cpu:caches",
       "name": "L{level} {type}",
       "said": {
-        "data": "Data",
-        "instruction": "Instruction",
-        "unified": "Unified",
         "own": "one a core",
         "shared": "each shared by {n} cores",
         "ways": "{ways}-way",
         "line": "{line} B lines"
       }
+    },
+    {
+      "id": "machine:cpu:cache-data",
+      "in": "machine:cpu:caches",
+      "name": "L{level} Data"
+    },
+    {
+      "id": "machine:cpu:cache-instruction",
+      "in": "machine:cpu:caches",
+      "name": "L{level} Instruction"
+    },
+    {
+      "id": "machine:cpu:cache-unified",
+      "in": "machine:cpu:caches",
+      "name": "L{level} Unified"
     },
     {
       "id": "machine:cpu:kept-from-resting",
@@ -1227,7 +1239,7 @@
     {
       "id": "machine:uptime:kernel",
       "in": "machine:uptime",
-      "name": "Kernel"
+      "name": "Linux"
     },
     {
       "id": "machine:uptime:release",

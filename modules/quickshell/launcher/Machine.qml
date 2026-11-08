@@ -98,6 +98,10 @@ Provider {
         return told(Object.keys(kinds).find(kind => Words.answers(kinds[kind]).includes(question)));
     }
 
+    // The kinds of cache Linux names, each a name of its own in the
+    // vocabulary (machine:cpu:cache-data), since a name is Title Case.
+    readonly property var cacheTypes: ["data", "instruction", "unified"]
+
     // A part's name, as the vocabulary says it: "Cores" for
     // machine:cpu:cores.
     function named(id, fill) {
@@ -695,10 +699,10 @@ Provider {
                 glyph: Words.glyph(kinds.cpu),
                 note: says("cpu:caches", "note")
             }, () => caches.map(cache => figure({
-                name: named("cpu:cache", {
-                    level: cache.level,
-                    type: says("cpu:cache", cache.type) || cache.type
-                }),
+                // A type Linux names has its own words; another, its own name.
+                name: cacheTypes.includes(cache.type)
+                    ? named(`cpu:cache-${cache.type}`, { level: cache.level })
+                    : named("cpu:cache", { level: cache.level, type: cache.type }),
                 side: cache.count > 1 ? `${bytes(cache.size_b)} \u00d7 ${cache.count}`
                     : bytes(cache.size_b),
                 note: Machine.items([cache.shared_by > 1
