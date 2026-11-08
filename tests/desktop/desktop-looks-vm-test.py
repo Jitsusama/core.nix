@@ -1119,7 +1119,11 @@ def moved_to(below: int, shown: Json) -> bool:
 def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """A notice's plate has its eyebrow on the field's baseline and its words on the beat."""
+    """A notice's plate has its eyebrow on the field's baseline and its words on the beat.
+
+    Its facts, how it came and left and its urgency, stand first under the title, as every
+    plate's do (Drawer.qml), and its words an empty line under them.
+    """
     desktop.as_account(
         "notify-send 'Nightly build finished'"
         " 'All 412 checks passed on the laptop, in 38 minutes. The slowest was the desktop.'"
@@ -1143,9 +1147,19 @@ def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
         drawer = plate_shown(desktop, scale)
         lines, card = drawer["lines"], drawer["cardLines"]
         assert lines["eyebrow"] is not None, f"at {scale} the notice's plate has no eyebrow"
-        # On the card's beat, two Title pitches or more under the title.
-        assert after_the_title(lines["words"], lines, card), drawer
-        assert drawer["eyebrow"].startswith("Desktop \u00b7 "), drawer
+        # Its facts start on the card's beat, two Title pitches or more under the title, on
+        # the pitch, and its words follow an empty line under the last, on the beat too.
+        facts, wrapped = lines["facts"], drawer["factsWrapped"] > 0
+        assert facts, f"at {scale} the notice's plate tells no facts: {drawer}"
+        assert after_the_title(facts[0], lines, card), drawer
+        assert things_apart(facts, wrapped), f"at {scale} a fact is off the pitch: {drawer}"
+        assert on_the_beat(lines["words"], float(card["rows"][0])), drawer
+        under = lines["words"] - facts[-1]
+        apart = under >= 2 * PITCH - NEAR if wrapped else abs(under - 2 * PITCH) <= NEAR
+        assert apart, f"at {scale} the notice's words aren't a line under its facts: {drawer}"
+        # Signed as its card signs it, from its sender, and never a time, which a fact says
+        # (VKCF3Z, 2026-11-08); notify-send files no kind to follow it.
+        assert drawer["eyebrow"] == "from Desktop", drawer
         desktop.shoot(f"launcher-plate-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
 
