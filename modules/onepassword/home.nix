@@ -7,7 +7,9 @@
 # the app itself, is nixos.nix beside this. Where the system has the app, it
 # starts with the session, without its window, as its own Start at Login
 # would, so its command-line tool and Chrome's extension find it after a
-# boot.
+# boot. There, 1Password is also a password manager of Passwords
+# (../passwords), read through its command-line tool by manager/.
+{ passwords }:
 {
   lib,
   pkgs,
@@ -16,6 +18,10 @@
 }:
 let
   app = osConfig.programs._1password-gui or { };
+  # 1Password's command-line tool as the system wraps it, in the group
+  # 1Password's app trusts to ask it (nixos.nix).
+  op = "${osConfig.security.wrapperDir or "/run/wrappers/bin"}/op";
+  manager = pkgs.callPackage ./manager/package.nix { };
 
   grouped = group: map (key: key // { inherit group; });
 
@@ -104,9 +110,29 @@ let
     ];
 in
 {
-  imports = [ ../keys/home.nix ];
+  imports = [
+    ../keys/home.nix
+    passwords
+  ];
 
   jitsusama.keys.onepassword = keys;
+
+  # The first password manager, wherever the system has 1Password's app
+  # and the command-line tool that asks it.
+  jitsusama.passwords.managers =
+    lib.mkIf ((app.enable or false) && (osConfig.programs._1password.enable or false))
+      {
+        "1password" = {
+          order = 10;
+          command = [
+            (lib.getExe manager)
+            "--op"
+            op
+          ];
+          program = "com.onepassword.OnePassword";
+          called = "1Password";
+        };
+      };
 
   systemd.user.services.onepassword = lib.mkIf (app.enable or false) {
     Unit = {
