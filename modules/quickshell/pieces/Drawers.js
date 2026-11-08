@@ -98,7 +98,8 @@ function notices(missed, said) {
 // What lag-watch said of its last window: what has kept them waiting, over
 // how long a window, which every share is of; how long each slice stalled
 // on each kind, as a share of it; the swap held; and its own sentences of
-// what counted as waiting.
+// what counted as waiting, past the first, which Lag's row already says
+// beside it (VKCF3Z, 2026-11-08: never repeat the row's side).
 function lag(window, what, told) {
     const { named, said } = told;
     const waiting = what === "" ? ""
@@ -114,7 +115,7 @@ function lag(window, what, told) {
         eyebrow: said.eyebrow,
         facts: drawn([fact(named, "on:lag:waiting", waiting)].concat(stalled,
             [fact(named, "on:lag:swap", swapped > 0 ? Program.memory(swapped * MEBIBYTE) : "")])),
-        body: (window.trouble ?? []).join(" ")
+        body: (window.trouble ?? []).slice(1).join(" ")
     };
 }
 

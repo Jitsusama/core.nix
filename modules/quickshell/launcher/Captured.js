@@ -93,6 +93,8 @@ function drawer(file, shown, told) {
     const kind = KINDS.includes(file.kind) ? said[file.kind] ?? "" : "";
     return {
         eyebrow: filled(kind === "" ? said.within : said.eyebrow, { where: file.where, kind }),
+        // A folder is said as it's written, not in the eyebrow's capitals.
+        eyebrowNames: true,
         title: file.name,
         preview: preview(file, shown),
         facts: facts(file, shown, now, said)

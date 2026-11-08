@@ -121,14 +121,14 @@ QtObject {
         };
         const drawer = Drawers.lag(window, "memory", told);
         expect("lag says what waits over what window, each slice's stalls to three figures,"
-            + " too little to say giving way, then the swap and its words",
+            + " too little to say giving way, then the swap and the words its row doesn't say",
             [drawer.eyebrow].concat(said(drawer), drawer.body), [
                 "on this machine \u00b7 lag",
                 "[on:lag:waiting] memory \u00b7 over the last 10 s",
                 "[on:lag:session] memory 12.3% \u00b7 disk 3.00%",
                 "[on:lag:app] processor 41.1% \u00b7 memory 0.500% \u00b7 disk 100%",
                 "[on:lag:swap] 1.20 GB",
-                "Memory kept programs waiting. Swap is in use."
+                "Swap is in use."
             ]);
         expect("nothing waiting long and no swap says only the slices lag-watch watched",
             said(Drawers.lag({ stalls: { build: { cpu_some: 1, memory_some: 2, io_some: 0 } } },

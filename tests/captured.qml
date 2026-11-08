@@ -73,6 +73,7 @@ QtObject {
         expect("before file-preview says, it's where, what, the picture and what Taken read",
             before, {
                 eyebrow: "in ~/Pictures/Screenshots \u00b7 screenshot",
+                eyebrowNames: true,
                 title: "Screenshot from 2026-11-08 04-39-15.png",
                 preview: { picture: shot, across: 0, down: 0 },
                 facts: [

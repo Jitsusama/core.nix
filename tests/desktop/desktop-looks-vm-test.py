@@ -3170,9 +3170,13 @@ def lag_lasting(desktop: Desktop) -> None:
 
 
 def lasting_window(now: int) -> Json:
-    """Give lag-watch's window of a wait on memory begun longer ago than Lag waits."""
+    """Give lag-watch's window of a wait on memory begun longer ago than Lag waits.
+
+    It ends five minutes on, since Lag hears a window 30 seconds past its end as lag-watch
+    gone, and with lag-watch resting nothing writes the next: a walk to Lag at 2 outlasted it.
+    """
     return {
-        "ended": now,
+        "ended": now + 300,
         "seconds": 10,
         "stalls": {
             "app": {"cpu_some": 2.4, "memory_some": 12.5, "io_some": 0.04},
