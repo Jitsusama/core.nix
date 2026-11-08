@@ -194,6 +194,9 @@ be read, marked unread and archived.
 | join | going into a meeting's call, or a call another sends | | |
 | cancel | taking a meeting Joel holds off everyone's calendar, Google telling each guest | delete | |
 | Slack message | a message in Slack, found by searching Slack and opened in its conversation | | the Slack daemon's `slack-message` |
+| Media | the place in Programs holding every player | | `program:media` |
+| player | a program playing sound or video that the desktop can pause, skip and go to, such as Spotify or a browser's tab | | MPRIS, `Playing.qml` |
+| track | what a player is playing: one song, episode or video, with its artist and album | | MPRIS's `xesam` metadata |
 
 ## People
 
@@ -240,6 +243,7 @@ or a copy, can be opened, copied or forgotten.
 | row | one thing in a place | | |
 | home | the launcher's first place: Now, Agents, Programs, People, Desktop, Machine, Network and Keyboards | | |
 | crumbs | where Joel is in the launcher, from home | | |
+| Recent | the group of the last things done with what holds it, as in a program, a person or Capture: newest first, each once, never one open or shown already | | `*:recent` |
 | field | the line at the top of every place: the find line, or the command line in its place | | |
 | back | going up one place, to the row he was on, with h, - or Backspace | | the `out` act |
 | action | what a row can do: the same set for every row of its kind | verb | |
@@ -271,7 +275,7 @@ off.
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
 | machine | one computer | host, computer | `nixosConfigurations.laptop`; `hostName`, which NixOS requires |
-| firmware | the program in the machine's chip that starts it, and its settings | BIOS, UEFI | |
+| firmware | the program in a chip that runs it: the machine's, which starts it and keeps its settings, or a device's, such as a keyboard's or a sound card's | BIOS, UEFI | |
 | processor | what runs every program | CPU | |
 | graphics | the processor's part that draws what the screens show | | the GPU, Xe |
 | NPU | the processor's part that runs models on the machine | | the `intel_vpu` driver |
@@ -316,6 +320,8 @@ off.
 | docked | the laptop at a desk with a monitor plugged in, kept awake with its lid shut | on a dock, at a desk | |
 | Bluetooth | the radio that reaches headphones, keyboards and mice, and the place listing every device it reaches, to pair and connect | | BlueZ |
 | Nearby | the Bluetooth devices heard but not paired | | |
+| Sound | the place holding what the machine plays through and hears with, built in or plugged in, and what each program plays and records | | `Sound.qml`, PipeWire |
+| volume | how loud a device or a program plays, as a share of its full level | | |
 | camera board | the part in the lid holding the built-in camera, which Dell fits in more than one kind | camera module | `jitsusama.dellXps14.cameraBoard` |
 | image processor | the part turning the built-in camera's raw picture into an image | ISP, IPU | |
 | IR camera | the infrared camera beside the built-in camera, for signing in by face | | `ir-camera`, Howdy |
