@@ -261,8 +261,8 @@ Provider {
             return { headline: said.unfit ?? "", copy: "", rows: [], missed: true };
         const span = Timing.said(asking.span, units);
         return {
-            headline: (asking.name !== "" ? said.start ?? "" : said.startUnnamed ?? "")
-                .replace("{name}", capitalised(asking.name)).replace("{span}", span),
+            headline: Words.name("timer", asking.name !== "" ? "starting" : "startingUnnamed",
+                { name: capitalised(asking.name), span: span }),
             verb: Words.command("command:timer").verb,
             stays: true,
             copy: "",

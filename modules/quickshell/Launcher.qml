@@ -2566,7 +2566,7 @@ Scope {
     // says it won't reopen what was), a verb with how many it takes whole
     // (the file picker's "open 2", which said "open" while it would answer
     // two gathered files), anything else by its first word.
-    readonly property var phrasal: ["in", "out", "back", "to", "afresh"]
+    readonly property var phrasal: ["in", "out", "back", "to", "afresh", "again"]
 
     function oneWord(verb) {
         const said = verb.split(" ");

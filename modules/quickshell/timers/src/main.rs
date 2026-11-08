@@ -146,15 +146,20 @@ fn main() {
         notices: Mutex::new(tell),
     });
     {
-        // What ended while the daemon was down rings now, late; it's said,
-        // with every ring not up, once the notifications server is reached.
+        // What ended while the daemon was down rings now, late, and every
+        // ring is said where it isn't up, once the notifications server
+        // is reached, which the first of them sets going.
         let mut daemon = lock(&shared);
-        let rung = daemon.held.due(now());
-        let changed: Vec<Value> = rung
+        let due = daemon.held.due(now());
+        let changed: Vec<Value> = due
             .iter()
             .filter_map(|key| daemon.held.get(key).map(Timer::json))
             .collect();
         changes(&shared, &mut daemon, &changed, &[]);
+        drop(daemon);
+        for key in rung(&shared) {
+            say(&shared, Tell::Ring(key));
+        }
     }
     {
         let shared = Arc::clone(&shared);
