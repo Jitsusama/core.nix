@@ -354,25 +354,22 @@ const TRAILING = /\s+$/u;
 // A value given as items, each `{ said, path }`, as lines no wider than
 // `wide` by `width(text)`: as many items to a line as fit, `between` them
 // (a command's arguments a space apart, a list's a dot), the dot ending
-// the line it leaves, and never one broken across two. An item too wide
-// for a line of its own that names its `path` gives way from the path's
-// middle, "/nix/\u2026/firefox", its last part whole, as a folder does
-// (Reading.pathTries); any other runs on by its words. Nothing draws past
-// its frame (VKCF3Z, 2026-11-08).
+// the line it leaves, and never one broken across two. Every item but the
+// last is measured with that dot, since any of them may end a line. An
+// item too wide for a line of its own that names its `path` gives way
+// from the path's middle, "/nix/\u2026/firefox", its last part whole, as a
+// folder does (Reading.pathTries); one still too wide, or naming none,
+// gives way from its own middle. Nothing draws past its frame (VKCF3Z,
+// 2026-11-08).
 function valueLines(items, between, wide, width) {
     const ends = between.replace(TRAILING, "");
-    const fitted = items.filter(item => item.said !== "").map(item => {
-        if (!item.path || width(item.said) <= wide) {
-            return item.said;
-        }
-        const ways = Reading.pathTries(item.path, true)
-            .map(way => item.said.replace(item.path, way));
-        return ways.find(way => width(way) <= wide) ?? ways[ways.length - 1];
-    });
+    const kept = items.filter(item => item.said !== "");
     const lines = [];
-    for (const said of fitted) {
+    kept.forEach((item, at) => {
+        const closing = at === kept.length - 1 ? "" : ends;
+        const said = fitted(item, wide - width(closing), width);
         const last = lines.length - 1;
-        if (last >= 0 && width(`${lines[last]}${between}${said}`) <= wide) {
+        if (last >= 0 && width(`${lines[last]}${between}${said}${closing}`) <= wide) {
             lines[last] = `${lines[last]}${between}${said}`;
         } else {
             if (last >= 0) {
@@ -380,8 +377,34 @@ function valueLines(items, between, wide, width) {
             }
             lines.push(said);
         }
-    }
+    });
     return lines;
+}
+
+// An item's words no wider than `room`: whole where they fit, else its
+// path from the path's middle, else its narrowest form from its middle.
+function fitted(item, room, width) {
+    if (width(item.said) <= room) {
+        return item.said;
+    }
+    const ways = item.path ? Reading.pathTries(item.path, true)
+        .map(way => item.said.replace(item.path, way)) : [];
+    const narrowest = ways.reduce((least, way) => (width(way) < width(least) ? way : least),
+        item.said);
+    return ways.find(way => width(way) <= room) ?? middled(narrowest, room, width);
+}
+
+// Words given way from their middle, "--a-ver\u2026ument", keeping as much of
+// each end as fits in `room`.
+function middled(words, room, width) {
+    for (let keep = words.length - 1; keep > 0; keep--) {
+        const head = Math.ceil(keep / 2);
+        const tried = `${words.slice(0, head)}\u2026${words.slice(words.length - (keep - head))}`;
+        if (width(tried) <= room) {
+            return tried;
+        }
+    }
+    return "\u2026";
 }
 
 // How tall a preview stands: a picture its own height, so what follows it

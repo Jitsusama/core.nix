@@ -1001,9 +1001,10 @@ QtObject {
 
     // A value given as items laid on lines no wider than the drawer's
     // measure, each letter ten wide here: wrapped between items, never
-    // inside one, the dot ending the line it leaves; a path too wide for a
-    // line of its own giving way from its middle; any other item running on
-    // (VKCF3Z, 2026-11-08: nothing draws past its frame).
+    // inside one, the dot ending the line it leaves and measured with it; a
+    // path too wide for a line of its own giving way from its middle; any
+    // other item from its own (VKCF3Z, 2026-11-08: nothing draws past its
+    // frame).
     function drawerValueLines(holds) {
         const width = text => text.length * 10;
         const disk = [
@@ -1018,13 +1019,19 @@ QtObject {
                 ["/nix +9.66 GB \u00b7 /var +537 MB"]],
             ["items too wide together wrap between them, the dot ending the first", disk,
                 " \u00b7 ", 150, ["/nix +9.66 GB \u00b7", "/var +537 MB"]],
+            ["an item that fits only without the dot ending its line gives way to hold it",
+                disk, " \u00b7 ", 140, ["/nix +\u202666 GB \u00b7", "/var +537 MB"]],
+            ["the last item needs no room for a dot", [{ said: "on" }, { said: "/var +537 MB" }],
+                " \u00b7 ", 120, ["on \u00b7", "/var +537 MB"]],
             ["a command's arguments wrap at the space between them, a path from its middle",
                 command, " ", 200, ["/\u2026/firefox", "--private-window"]],
             ["a path inside an item gives way and leaves the rest whole",
                 [{ said: `${store} +9.66 GB`, path: store }], " \u00b7 ", 150,
                 ["/\u2026/def +9.66 GB"]],
-            ["an item naming no path runs on by its words",
-                [{ said: "--a-very-long-argument" }], " ", 100, ["--a-very-long-argument"]],
+            ["an item naming no path gives way from its own middle",
+                [{ said: "--a-very-long-argument" }], " ", 100, ["--a-v\u2026ment"]],
+            ["a path still too wide in its shortest form gives way from its middle too",
+                [{ said: firefox, path: firefox }], " ", 80, ["\u2026/fi\u2026fox"]],
             ["an empty item is left out", [{ said: "" }, { said: "on" }], " ", 100, ["on"]]
         ];
         for (const [what, items, between, wide, want] of cases)
