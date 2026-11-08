@@ -129,8 +129,8 @@ impl World {
                  *' --cores '*) echo \"$*\" >> {here}; exit 0;;\n\
                  *' --builders @/etc/kept-builders '*) if [ -e {no_kept_builder} ]; then \
                  echo 'no kept builder answers' >&2; exit 1; fi; echo \"$*\" >> {away}; exit 0;;\n\
-                 *' --max-jobs 0 '*) if [ -e {no_builder} ] || { [ -e {no_small_builder} ] \
-                 && [ \"${{*#*e-big}}\" = \"$*\" ]; }; then \
+                 *' --max-jobs 0 '*) if [ -e {no_builder} ] || {{ [ -e {no_small_builder} ] \
+                 && [ \"${{*#*e-big}}\" = \"$*\" ]; }}; then \
                  echo 'local builds are disabled' >&2; exit 1; fi; echo \"$*\" >> {away}; exit 0;;\n\
                  *' eval '*) if [ -e {fetch_fails} ]; then \
                  echo 'could not read Username' >&2; exit 1; fi; \
