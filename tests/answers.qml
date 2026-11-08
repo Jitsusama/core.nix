@@ -1773,13 +1773,17 @@ QtObject {
         [79, 1024, 48000, 21.3, 0.0312, 2, 3.12, true]);
         const busyIn = (state, busy) => Sounds.timing(
             `${state} 80 1024 48000 20.1us ${busy} 0.00 0.07 0 F32LE 2 48000 a`, null);
-        machine("busy in each unit pw-top says, none past its scale, a transport running", [
+        machine("busy in each unit pw-top says, unfinished past its cycle, a transport running", [
             four(busyIn("R", "1.5ms")?.busy ?? null),
             four(busyIn("R", "0.1s")?.busy ?? null),
-            busyIn("R", "+++")?.busy,
+            busyIn("R", "+++")?.busy, busyIn("R", "+++")?.unfinished,
+            busyIn("R", "---")?.unfinished, busyIn("R", "1.5ms")?.unfinished,
             four(busyIn("T", "1.5ms")?.busy ?? null),
             four(busyIn("t", "1.5ms")?.busy ?? null)],
-        [0.0703, 4.6875, null, 0.0703, 0.0703]);
+        [0.0703, 4.6875, null, true, false, false, 0.0703, 0.0703]);
+        machine("a measured figure's places, to three significant digits",
+            [3.12, 0.0938, 21.3, 1024, 0, 100].map(value => Sounds.places(value)),
+            [2, 4, 1, 0, 0, 0]);
         const follower = "R   81   0   0   1.0us   2.1ms  0.00  0.10   0  F32LE 2 48000 + pw-cat";
         const followed = Sounds.timing(follower, running);
         machine("a follower in its driver's cycle, and none without one", [followed?.quantum,
@@ -1787,6 +1791,13 @@ QtObject {
             followed ? Sounds.load(followed.busy) : null,
             followed?.drives, Sounds.timing(follower, null)],
         [1024, 21.3, 9.84, false, null]);
+        // An async follower is marked "=" rather than "+" (pw-top.c).
+        const async = "R   82  256  48000   1.0us   2.1ms  0.00  0.10   0  F32LE 2 48000 = a";
+        machine("an async follower in its driver's cycle, and what's a follower", [
+            Sounds.timing(async, running)?.quantum, Sounds.timing(async, running)?.drives,
+            Sounds.follower(async), Sounds.follower(follower),
+            Sounds.follower("S   47      0      0    ---     ---   ---   ---     0   speaker")],
+        [1024, false, true, true, false]);
         machine("one not running, one pw-top can't measure, and the header", [
             Sounds.timing("S   47      0      0    ---     ---   ---   ---     0   speaker", null),
             Sounds.timing("I   48     0      0   0.0us   0.0us  ???   ???   0  F32P 2 0 out", null),

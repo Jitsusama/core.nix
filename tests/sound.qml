@@ -204,6 +204,14 @@ ShellRoot {
         sound.timings = { 52: Object.assign({}, sound.timings[52], { errors: 2 }) };
         expect("a dropout warns", keeping(card)[0].value === "2" && keeping(card)[0].warns,
             JSON.stringify(keeping(card)[0]));
+        sound.timings = { 52: Object.assign({}, sound.timings[52], { busy: 0.000938 }) };
+        expect("a light load keeps its three significant digits",
+            keeping(card)[1].value === "0.0938% of each cycle", JSON.stringify(keeping(card)[1]));
+        sound.timings = { 52: Object.assign({}, sound.timings[52],
+            { busy: null, unfinished: true }) };
+        expect("one that ran past its cycle says so, warned",
+            keeping(card)[1].value === "didn't finish in its cycle" && keeping(card)[1].warns
+            && keeping(card)[1].figure === undefined, JSON.stringify(keeping(card)[1]));
         // A frame of pw-top as it comes: a driver, then its follower in
         // the driver's cycle, whole once the next header opens.
         const header = "S   ID  QUANT   RATE    WAIT    BUSY   W/Q   B/Q  ERR FORMAT  NAME ";
@@ -213,6 +221,15 @@ ShellRoot {
         expect("a frame read whole, its follower in its driver's cycle",
             sound.timings[52]?.quantum === 1024 && sound.timings[90]?.quantum === 1024
             && keeping(card)[1]?.value === "3.12% of each cycle",
+            JSON.stringify(sound.timings));
+        // A driver that isn't running ends the one before, so the
+        // follower after it has no cycle rather than the last driver's.
+        ["R  52  1024  48000  20.1us 665.6us  0.00  0.03  0  F32LE 2 48000 speakers",
+            "S  53  0  0  ---  ---  ---  ---  0  headphones",
+            "R  91  0  0  1.0us  2.1ms  0.00  0.10  0  F32LE 2 48000 = player", header]
+            .forEach(line => sound.heardTiming(line));
+        expect("a follower of a driver not running has no cycle",
+            sound.timings[52]?.quantum === 1024 && sound.timings[91] === undefined,
             JSON.stringify(sound.timings));
         sound.timings = {};
         expect("none while pw-top doesn't say it runs", keeping(card).length === 1,

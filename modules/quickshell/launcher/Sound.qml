@@ -508,22 +508,28 @@ Provider {
         // (VKCF3Z, 2026-11-08): its Dropouts, warned past none, as a glitch
         // it recovers from rather than a failure; its Load, the share of
         // each cycle it was busy; and its Cycle, the frames it moves each
-        // time and how long that takes. Only a running node has them.
+        // time and how long that takes. Only a running node has them, and
+        // one that ran past its cycle says so, warned, as a dropout is.
         const timed = timings[node.id] ?? null;
-        const figure = (value, places) => Numbers.format(value, places, settings.group,
+        const figure = value => Numbers.format(value, Sounds.places(value), settings.group,
             settings.point);
+        const load = timed === null ? [] : timed.unfinished ? [{
+            label: Words.name("sound:load"),
+            value: said("unfinished"),
+            warns: true
+        }] : timed.busy === null ? [] : [{
+            label: Words.name("sound:load"),
+            value: said("each-cycle", { share: `${figure(Sounds.load(timed.busy))}%` }),
+            figure: { shape: "stroke", values: [Math.min(timed.busy, 1)], warn: false }
+        }];
         const keeping = timed === null ? [] : [{
             label: Words.name("sound:dropouts"),
-            value: timed.errors === 0 ? said("none") : figure(timed.errors, 0),
+            value: timed.errors === 0 ? said("none") : figure(timed.errors),
             warns: timed.errors > 0
-        }].concat(timed.busy === null ? [] : [{
-            label: Words.name("sound:load"),
-            value: said("each-cycle", { share: `${figure(Sounds.load(timed.busy), 3)}%` }),
-            figure: { shape: "stroke", values: [Math.min(timed.busy, 1)], warn: false }
-        }], [{
+        }].concat(load, [{
             label: Words.name("sound:cycle"),
-            value: said("cycle", { frames: figure(timed.quantum, 0),
-                ms: figure(Sounds.cycleMs(timed), 3) })
+            value: said("cycle", { frames: figure(timed.quantum),
+                ms: figure(Sounds.cycleMs(timed)) })
         }]);
         const known = (ids, identifies) => ids.filter(([, value]) => value !== "")
             .map(([id, value]) => ({
@@ -1111,11 +1117,12 @@ Provider {
             return;
         }
         const timed = Sounds.timing(line, driving);
-        if (timed === null)
-            return;
-        timing[timed.id] = timed;
-        if (timed.drives)
+        // A line that isn't a follower's ends its driver's run, so one
+        // not running leaves its followers with no cycle, not the last.
+        if (!Sounds.follower(line))
             driving = timed;
+        if (timed !== null)
+            timing[timed.id] = timed;
     }
 
     Process {

@@ -21,14 +21,16 @@ const RUNNING = ["R", "T", "t"];
 // Where pw-top's batch line holds each figure: its state, id, quantum,
 // rate, wait and busy times, those as shares of the cycle (W/Q, B/Q),
 // then its error count; its format and name follow, a follower's name
-// after a lone "+".
+// after a lone "+", or "=" where it follows asynchronously (pw-top.c's
+// do_refresh).
 const COLUMN = { state: 0, id: 1, quantum: 2, rate: 3, busy: 5, errors: 8 };
 const WHOLE = /^\d+$/;
-const FOLLOWS = "+";
-// A time as pw-top prints it, to a tenth of its unit; "---", "+++" and
-// "???" say it has none.
+const FOLLOWS = ["+", "="];
+// A time as pw-top prints it, to a tenth of its unit; "---" and "???"
+// say it has none, and "+++" that the node didn't finish in its cycle.
 const TIME = /^(\d+(?:\.\d+)?)(us|ms|s)$/;
 const SECONDS = { us: 1e-6, ms: 1e-3, s: 1 };
+const UNFINISHED = "+++";
 const HEADER = /^\s*S\s+ID\s+QUANT\b/;
 const PERCENT = 100;
 // A USB card names itself by its ids.
@@ -192,9 +194,10 @@ function seconds(text) {
 // rate of the clock driving it, how long it waited and was busy in the
 // last cycle, those as shares of the cycle, and how many times it has
 // run short since it started (xruns). Only a running node has a cycle
-// to speak of: { id, quantum, rate, ms, busy, errors, drives }, busy
-// its busy time as a share of the cycle, or null where pw-top can't
-// say; null for the header, an idle or suspended node and a line it
+// to speak of: { id, quantum, rate, ms, busy, unfinished, errors,
+// drives }, busy its busy time as a share of the cycle, or null where
+// pw-top can't say, and unfinished where it says the node ran past its
+// cycle; null for the header, an idle or suspended node and a line it
 // can't read. A follower's quantum and rate are the latency it asks
 // for, not the cycle it runs in, so it takes its driver's, the line
 // before it in the frame, and is null without one. pw-top prints B/Q to
@@ -207,7 +210,7 @@ function timing(line, driver) {
     if (!RUNNING.includes(fields[COLUMN.state]) || !whole) {
         return null;
     }
-    const drives = !fields.slice(COLUMN.errors + 1).includes(FOLLOWS);
+    const drives = !follower(line);
     const cycle = drives ? {
         quantum: Number(fields[COLUMN.quantum]),
         rate: Number(fields[COLUMN.rate])
@@ -223,9 +226,24 @@ function timing(line, driver) {
         rate: cycle.rate,
         ms: length * MILLISECONDS,
         busy: busy === null ? null : busy / length,
+        unfinished: fields[COLUMN.busy] === UNFINISHED,
         errors: Number(fields[COLUMN.errors]),
         drives
     };
+}
+
+// Whether a line of `pw-top --batch-mode` is a follower's, so a line
+// that isn't, running or not, ends the driver its followers run in.
+function follower(line) {
+    return String(line ?? "").trim().split(SPACES).slice(COLUMN.errors + 1)
+        .some(field => FOLLOWS.includes(field));
+}
+
+// How many places a measured figure takes to show its three significant
+// digits: 3.12 two, 0.0938 four, 21.3 one, and 1,024 or none at all.
+function places(value) {
+    return value === 0 ? 0
+        : Math.max(0, SIGNIFICANT - 1 - Math.floor(Math.log10(Math.abs(value))));
 }
 
 // Whether a line of `pw-top --batch-mode` opens its next frame, the
