@@ -8,8 +8,8 @@
 .pragma library
 .import "Order.js" as Order
 
-// The sources, in the order their rows stand: mail and Slack first, since
-// a person wrote each, then what programs said.
+// The sources, in the order rows alike in weight stand: mail and Slack
+// first, since a person wrote each, then what programs said.
 const SOURCES = ["mail", "slack", "desktop"];
 // The sender the shell signs its own notice for a Needs You item with,
 // which For You lists above Lately itself, so it's never counted twice
@@ -90,11 +90,30 @@ function held(given) {
     };
 }
 
-// The rows Lately shows, { source, count }, in their order, a source
-// holding nothing left out, as Now's own pieces go once none want him.
-function bands(holding) {
-    return SOURCES.filter(source => holding[source].length > 0)
-        .map(source => ({ source, count: holding[source].length }));
+// The rows Lately shows, { source, count, weight }, a source holding
+// nothing left out, as Now's own pieces go once none want him. They stand
+// by the heaviest each holds, as `weigh(thing, source)` (ForYou.js's)
+// weighs it, so Lately orders as the rest of For You does, and those
+// alike in the sources' order (VKCF3Z, 2026-11-08).
+function bands(holding, weigh) {
+    const rows = SOURCES.filter(source => holding[source].length > 0)
+        .map(source => ({ source, count: holding[source].length,
+            weight: Math.max(...holding[source].map(thing => weigh(thing, source))) }));
+    return Order.sorted(rows, Order.larger(row => row.weight));
+}
+
+// Who a source's things are from, newest first, each once, as its row's
+// note names them (VKCF3Z, 2026-11-08): `nameOf(thing)` says who, and one
+// who says nothing is left out.
+function members(things, nameOf) {
+    const named = [];
+    for (const thing of things) {
+        const name = String(nameOf(thing) ?? "");
+        if (name !== "" && !named.includes(name)) {
+            named.push(name);
+        }
+    }
+    return named;
 }
 
 // What's been done with, for History, each { title, how, at, source, of },

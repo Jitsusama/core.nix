@@ -67,11 +67,23 @@ QtObject {
             ["Build finished"]);
 
         const mail = [{ id: "m1", subject: "Lunch", at: 3000 }];
-        check(failures, "a source with nothing is left out, the rest in their order",
-            Lately.bands(Lately.held({ notices: [build], mail: mail, messages: [read] })),
-            [{ source: "mail", count: 1 }, { source: "desktop", count: 1 }]);
+        const alike = () => 1;
+        check(failures, "a source with nothing is left out, those alike in the sources' order",
+            Lately.bands(Lately.held({ notices: [build], mail: mail, messages: [read] }), alike)
+                .map(row => [row.source, row.count]), [["mail", 1], ["desktop", 1]]);
         check(failures, "nothing unread is no rows",
-            Lately.bands(Lately.held({ notices: [seen, asked], mail: [], messages: null })), []);
+            Lately.bands(Lately.held({ notices: [seen, asked], mail: [], messages: null }),
+                alike), []);
+        const heavy = notice("Disk nearly full", { heavy: true });
+        const weigh = thing => thing.heavy === true ? 9 : 1;
+        check(failures, "rows stand by the heaviest each holds",
+            Lately.bands(Lately.held({ notices: [build, heavy], mail: mail,
+                messages: [unread] }), weigh).map(row => row.source),
+            ["desktop", "mail", "slack"]);
+
+        check(failures, "a row's members are named newest first, each once",
+            Lately.members([message("Ada"), message("Bo"), message("Ada"), message("")],
+                one => one.who), ["Ada", "Bo"]);
 
         const taken = notice("Call ended", { read: true, left: "withdrawn", leftAt: 4000 });
         const finished = [{ id: "m2", subject: "Invoice",
