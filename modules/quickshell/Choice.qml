@@ -317,19 +317,28 @@ Rectangle {
         x: nameBox.x + nameBox.width + Theme.space.rung.apart
         // As much as the name leaves, and never less than its share, so a
         // short name's detail (what a category holds) says all it can.
-        width: Math.min(implicitWidth, Math.max(row.width * 0.3,
-            row.ends - x - Theme.space.rung.groups))
+        readonly property real room: Math.max(row.width * 0.3,
+            row.ends - x - Theme.space.rung.groups)
+        // What it holds gives way by whole names from its end, ending on
+        // the last that fits, never an ellipsis (VKCF3Z, 2026-11-08), so
+        // the elision below is only a last guard.
+        readonly property string whole: {
+            void wordsFace.font;
+            return Reading.wholeNamesFromEnd(row.detail, room,
+                words => Math.ceil(wordsFace.advanceWidth(words)) + 1);
+        }
+        width: Math.min(implicitWidth, room)
         elide: Text.ElideRight
         anchors.baseline: monoLine.baseline
-        visible: row.detail !== ""
-        text: row.detail
+        visible: whole !== ""
+        text: whole
         color: row.flashed ? row.flashInk : row.selected ? Theme.text : Theme.muted
         font.family: Theme.level.words.family
         font.pointSize: Theme.level.words.pointSize
         font.variableAxes: Theme.level.words.variableAxes
     }
 
-    // The note's face, to fit a note of items to its room.
+    // The note's face, to fit a note of items, or of names, to its room.
     FontMetrics {
         id: wordsFace
         font: countText.font

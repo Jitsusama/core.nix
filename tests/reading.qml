@@ -91,6 +91,16 @@ QtObject {
         // A sentence is no list of items: it gives way at a whole word.
         expect("a sentence at a whole word", noted("Example ISP down", 100) === "Example\u2026",
             noted("Example ISP down", 100));
+        // A run of names gives way by whole names from its end, ending on
+        // the last that fits, never an ellipsis (VKCF3Z, 2026-11-08).
+        const run = "kitty, 1Password, btop++, Calendar";
+        const ran = (words, room) => Reading.wholeNamesFromEnd(words, room, width);
+        expect("a run whole where it fits", ran(run, 340) === run, ran(run, 340));
+        expect("a run's last name gives way whole", ran(run, 330) === "kitty, 1Password, btop++",
+            ran(run, 330));
+        expect("a run's first name alone", ran(run, 120) === "kitty", ran(run, 120));
+        // Words with no run in them give way as a note's items do.
+        expect("a note in a run's place", ran(note, 410) === noted(note, 410), ran(note, 410));
         // The path's steps: the program's ask, a folder's path, the place,
         // a step's mark between each, three characters wide. Each gives
         // way at whole names, never a piece of one (VKCF3Z, 2026-11-05:

@@ -48,6 +48,9 @@ function slide(over, pace) {
 // What's said between a side's items, as the status line joins its facts.
 const ITEMS_APART = " \u00b7 ";
 
+// What stands between names in a run of them.
+const NAMES_APART = ", ";
+
 // What a row says at its right, as items, given way whole: the least
 // needed first, by each one's `keep`, until what's left fits `room`, and
 // the rest said in their own order between dots. The one needed most is
@@ -308,6 +311,19 @@ function eyebrowOf(drawer, room, width) {
     const items = drawer?.eyebrowItems ?? [];
     return items.length > 0 ? wholeItems(items, room, width)
         : wholeItemsFromEnd(String(drawer?.eyebrow ?? ""), room, width);
+}
+
+// What a row holds, as a run of names, given way by whole names from its
+// end and ending on the last that fits, with no ellipsis after it, so home
+// reads "kitty, 1Password, btop++, Calendar", never ", \u2026" or
+// "Calenda\u2026" (VKCF3Z, 2026-11-08: "no ellipsis anywhere"). Words
+// with no run in them give way as a note's items do.
+function wholeNamesFromEnd(words, room, width) {
+    const names = words.split(NAMES_APART);
+    while (names.length > 1 && width(names.join(NAMES_APART)) > room) {
+        names.pop();
+    }
+    return names.length > 1 ? names.join(NAMES_APART) : wholeItemsFromEnd(names[0], room, width);
 }
 
 // Words cut at each whole word but the last, longest first, an ellipsis

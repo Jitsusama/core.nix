@@ -1389,7 +1389,11 @@ works the same way everywhere.
   place says what it holds
   after its name, muted, by its members' own names in the place's own
   order (Desktop: "This Window, Windows, Screens, Notices"), as many whole
-  as fit, so a glance reminds Joel what there is; a place that measures
+  as fit, so a glance reminds Joel what there is. The run ends on the
+  last name that fits, never an ellipsis, which no note wears (VKCF3Z,
+  2026-11-08). A note is a lowercase run, never a sentence: a place
+  holding none says "none running" or "nobody lately", and the sentence
+  stays inside it. A place that measures
   something says how it stands instead, as Processor says "99% busy".
   What a row holds, and a found row's note ("1 window · 14 tabs"), is set
   in the serif upright at the name's size, on its baseline and a step after it,

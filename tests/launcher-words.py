@@ -217,6 +217,11 @@ def miscased(vocabulary: Entry) -> list[str]:
         empty = entry.get("empty", "")
         if empty and not (capitalised(empty) and empty.endswith(".")):
             out.append(f"{entry['id']}'s empty {empty!r} isn't a sentence.")
+        # Home's note for a place holding none is a lowercase run, never a
+        # sentence (VKCF3Z, 2026-11-08: "none running", "nobody lately").
+        none = entry.get("none", "")
+        if none and (none != none.lower() or none.endswith(".")):
+            out.append(f"{entry['id']}'s none {none!r} isn't a lowercase run.")
     return out
 
 
@@ -275,7 +280,7 @@ def shown(entry: Entry) -> list[tuple[str, str]]:
     """Give every string of a thing Joel reads, in any state, with what it is."""
     said: list[tuple[str, str]] = []
     for state in [entry, *entry.get("states", {}).values()]:
-        said.extend((key, state[key]) for key in ("name", "empty", "sure", "asked", "ask")
+        said.extend((key, state[key]) for key in ("name", "empty", "none", "sure", "asked", "ask")
                     if isinstance(state.get(key), str))  # fmt: skip
         words = state.get("said", {})
         said.extend(("said", word) for word in
