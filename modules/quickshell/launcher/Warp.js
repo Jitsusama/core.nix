@@ -103,10 +103,12 @@ function present(parts) {
 }
 
 // The network's health as WARP judges it, from a reason that says so, or
-// null: healthy, or degraded with what WARP measured it by, said to be
-// its measure, since the tunnel's own Round Trip and Loss are its
-// estimates and read apart: "5.37% loss \u00b7 170 ms round trip \u00b7 WARP's
-// measure".
+// null: its state alone at the side, since a state never gives way, and
+// what WARP measured it by in its note, whose measure it is first, so
+// that gives way last: the tunnel's own Round Trip and Loss are its
+// estimates, and two round trips unnamed would read as a contradiction
+// (VKCF3Z, 2026-11-08): "WARP's measure \u00b7 5.37% loss \u00b7 170 ms round
+// trip".
 function health(status, settings, said) {
     const judged = NETWORK.exec(status.reason ?? "");
     if (!judged) {
@@ -114,7 +116,7 @@ function health(status, settings, said) {
     }
     const side = spoken(judged[1]);
     const figures = measured(status.reason_figures, settings, said);
-    const note = figures === "" ? "" : joined([figures, worded(said, "measure")]);
+    const note = figures === "" ? "" : joined([worded(said, "measure"), figures]);
     return Object.assign(part("health", side, note), { warns: side !== "healthy" });
 }
 

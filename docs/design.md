@@ -1595,7 +1595,9 @@ works the same way everywhere.
   measured it and how full it is, the Round Trip while it's quiet, each
   server a step in, what's Dropped, and each of the Connections, VPNs
   too), "warp" or "vpn" (WARP's State and why, the network's Health as
-  WARP judges it, its Settings a step in, the Mode, Always On and Split
+  WARP judges it, its state alone at the side and its note saying it's
+  "WARP's measure" before the figures, so whose gives way last, its
+  Settings a step in, the Mode, Always On and Split
   Tunnel first, each saying who set it, the tunnel's Round Trip and Loss
   as WARP estimates them, its Protocol, Data Centre, Endpoint and Last
   Handshake, its Traffic each way ("1.52 GB in · 312 MB out"), its TLS a

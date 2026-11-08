@@ -2291,10 +2291,13 @@ QtObject {
             reason: "NetworkDegraded", reason_figures: { loss_percent: 5.3708224, rtt_ms: 170 } } }));
         machine("WARP degraded, as its row says it", degraded && [degraded.headline, degraded.warns],
             ["degraded \u00b7 127 ms", true]);
-        machine("WARP's health degraded, with what it measured",
+        // Its state alone at the side, which never gives way; its figures in
+        // its note, whose they are first, since the note gives way from its
+        // end and Round Trip and Loss below are the tunnel's own (VKCF3Z).
+        machine("WARP's health degraded, saying whose measure first",
             degraded && degraded.parts.find(part => part.id === "health"),
             { id: "health", side: "degraded",
-                note: "5.37% loss \u00b7 170 ms round trip \u00b7 WARP's measure",
+                note: "WARP's measure \u00b7 5.37% loss \u00b7 170 ms round trip",
                 copy: "degraded", warns: true });
         const down = warpTold({ status: { state: "Disconnected", reason: "Manual",
             reason_figures: null }, tunnel: null, settings: null, dns: null });
