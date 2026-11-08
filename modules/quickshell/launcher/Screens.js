@@ -42,11 +42,12 @@ function scale(multiple) {
 // How fine its pixels are, in pixels an inch across its width, or "" where
 // niri knows no size for it, as a projector's EDID says none. It's worked
 // out from the screen's measured size, so it's a measure, to three
-// significant digits with its zeros kept: "244 ppi", "96.0 ppi" (VKCF3Z,
-// 2026-11-08).
-function density(pixels, millimetres) {
+// significant digits with its zeros kept, grouped and pointed as the
+// launcher's settings say: "244 ppi", "96.0 ppi" (VKCF3Z, 2026-11-08).
+function density(pixels, millimetres, group, point) {
     return pixels > 0 && millimetres > 0
-        ? `${Numbers.significant(pixels / (millimetres / MILLIMETRES_AN_INCH))} ppi` : "";
+        ? `${Numbers.significant(pixels / (millimetres / MILLIMETRES_AN_INCH), group, point)} ppi`
+        : "";
 }
 
 function modeOf(output) {
@@ -63,9 +64,10 @@ function preferredOf(output) {
 // 2026-11-07): what it runs first, then where it sits, then what it
 // offers and is. `words` names each (`named(id)`, displays:<id>), says the
 // vocabulary's words (`said(id, key)`) and how it's turned
-// (`turned(transform)`). A screen that's off runs nothing and sits
-// nowhere, so it says only what it offers and is.
-function facts(output, words) {
+// (`turned(transform)`); `settings` hold the launcher's `group` and
+// `point`, which its measures take. A screen that's off runs nothing and
+// sits nowhere, so it says only what it offers and is.
+function facts(output, words, settings) {
     const out = [];
     const add = (id, value) => {
         if (value !== "") {
@@ -96,7 +98,8 @@ function facts(output, words) {
         .filter(part => part !== "").join(APART));
     const [wide] = output.physical_size ?? [0, 0];
     const across = now ?? preferred;
-    add("density", across === null ? "" : density(across.width, wide));
+    add("density", across === null ? ""
+        : density(across.width, wide, settings?.group, settings?.point));
     add("serial", String(output.serial ?? ""));
     return out;
 }

@@ -191,9 +191,10 @@ QtObject {
             [2, 1.25, 1.5, 1.75].map(Screens.scale).join(" "));
         check("density takes three figures, its zeros kept",
             Screens.density(2880, 300) === "244 ppi" && Screens.density(1920, 527) === "92.5 ppi"
-            && Screens.density(1920, 508) === "96.0 ppi" && Screens.density(1920, 0) === "",
+            && Screens.density(1920, 508) === "96.0 ppi" && Screens.density(1920, 0) === ""
+            && Screens.density(1920, 527, ".", ",") === "92,5 ppi",
             `${Screens.density(2880, 300)}, ${Screens.density(1920, 527)}, `
-            + `${Screens.density(1920, 508)}`);
+            + `${Screens.density(1920, 508)}, ${Screens.density(1920, 527, ".", ",")}`);
 
         const on = panel();
         check("a screen on says what it runs past its row, where it sits and what it offers",
