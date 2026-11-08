@@ -91,7 +91,9 @@ for judging before it's been judged here first.
   rest are and laid out to this document, none a thinner cousin.
   **Check:** every figure the source gives is shown or named as
   left out with a reason, and it holds up against the deepest integration
-  of its kind, row for row.
+  of its kind, row for row. Printing is left out whole, with no printer
+  set up (Joel, 2026-11-07: "i don't really care about printing at this
+  point"), so a print dialog shows only what GTK and Qt give it.
 - **Whole.** A theme switch leaves nothing of the old theme behind, the
   legibility check passes, and its keys are in the map without a clash.
 - **Proven.** Every bug found gets a check before its fix, and the check is
@@ -171,7 +173,14 @@ of each kind of line it sets, and a row's pitch is its height.
 - **Set, not styled.** Figures, case, ligatures, punctuation and breaks are
   chosen: tabular figures where a number changes in place, a face's case
   forms beside capitals, real punctuation, a name cut only at a whole word,
-  no widow and no hyphen break. **Check:** each feature named in the table
+  no widow and no hyphen break. A figure keeps three significant digits,
+  taking the next unit past 999 ("370 Mb/s", "1.20 Gb/s"), and a negative
+  one the real minus ("−48 dBm"), never a hyphen; a figure that names
+  rather than measures keeps every digit (a mode's "120.001 Hz", a
+  channel's "5,745 MHz", a version). A count says what it
+  counts, never its source's name ("24 known · 15 on Wi-Fi"), and a part
+  of it that's zero gives way ("9, all on Wi-Fi"). A run of items joins
+  with dots, never a comma beside a dot. **Check:** each feature named in the table
   and seen in a crop at the device scale.
 - **At least what it replaces.** A redesign keeps whatever today's surface
   does better (2026-11-02: "the existing launcher design has better
@@ -466,7 +475,11 @@ Label is Note told apart by case, so a surface counting its levels counts
 them as one. Label's capitals are for our own words: a name from the world,
 an address, a repository, a folder or a file, is never re-cased, so an
 eyebrow carrying one is set in Note as written ("8IDU4E · core.nix ·
-since 21:52"). Each surface says which levels it shows, in the surfaces table.
+since 21:52"). The eyebrows of one place share one shape, where the thing
+is and then its kind ("via Example ISP", "eero Pro 6 · node", "on Study
+· Wi-Fi"), and say no state, which its first fact says; short of room,
+an eyebrow gives way by whole items from its end, as a note does. Each
+surface says which levels it shows, in the surfaces table.
 
 ## Space
 
@@ -1132,6 +1145,13 @@ works the same way everywhere.
   Going to anything already open, a window, a program, a session or a
   notice's program, is Go To, its name never changing shape, with where
   it goes at its side ("Go To · Slack"); Open only starts what's closed.
+  Show opens a place or a program on one thing it holds ("Show in
+  Bluetooth", "Show in 1Password"), and it's the one word for looking, so
+  no act says See. An act naming one part of its thing takes its article
+  ("Copy the Title", "Copy the Link", "Copy the Password"). A password's
+  Return copies it, since that's its use rather than a copy of what
+  describes it, so Copy last doesn't move it; the secret itself reads
+  "hidden", and nothing shows it.
   A quest's Go To Its Session is the one that names where, as it pairs
   with Start a Session.
   Ending the session asks once more, saying what it closes ("Reboot now,
