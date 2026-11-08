@@ -1,6 +1,7 @@
 //! The socket an ask comes in on. Only root and the config's group may
 //! write it, so the kernel decides who may ask. An ask is one line,
-//! `update`, and anything else is refused. An ask while an update runs
+//! `update`, or `stop`, which ends an update still fetching or building,
+//! and anything else is refused. An ask while an update runs
 //! joins it and hears it from its first line, so a flood of asks is one
 //! update. Once an update has switched, the program starts itself again
 //! from the running system's path, so the newest one serves the next. A
@@ -17,7 +18,7 @@
 
 use crate::config::Config;
 use crate::line::{Applied, Line};
-use crate::update;
+use crate::{run, update};
 use std::ffi::CString;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Write};
@@ -32,6 +33,11 @@ use std::time::Duration;
 
 /// The one ask.
 pub const ASK: &str = "update";
+
+/// What stops an update still fetching or building, as when main has moved
+/// past the head it builds: on 8 November one built a kernel two hours
+/// after a revert made it moot, and every ask joined it.
+pub const STOP: &str = "stop";
 
 /// How long an asker has to say its ask, and the most it may send.
 const ASK_WITHIN: Duration = Duration::from_secs(5);
@@ -57,6 +63,8 @@ struct Said {
     lines: Vec<String>,
     ended: Option<Line>,
     hearing: usize,
+    /// The thread running the update, whose commands a stop ends.
+    worker: Option<thread::ThreadId>,
 }
 
 /// Serves asks on the config's socket until the program starts again.
@@ -158,11 +166,19 @@ fn answer(
     let mut ask = String::new();
     BufReader::new(stream.take(ASK_AT_MOST)).read_line(&mut ask)?;
     let mut out = stream;
+    if ask.trim() == STOP {
+        eprintln!("uid {asker} asks to stop the update");
+        let stopped = Line::Refused {
+            commit: update::last(config),
+            why: stop(current),
+        };
+        return writeln!(out, "{}", stopped.json());
+    }
     if ask.trim() != ASK {
         eprintln!("refused an ask from uid {asker}: {:?}", ask.trim());
         let refused = Line::Refused {
             commit: update::last(config),
-            why: format!("the only ask is `{ASK}`"),
+            why: format!("the only asks are `{ASK}` and `{STOP}`"),
         };
         return writeln!(out, "{}", refused.json());
     }
@@ -203,6 +219,37 @@ fn hear(heard: &Answer, out: &mut impl Write) -> io::Result<()> {
 }
 
 /// The update running now, or a new one started for this ask.
+/// Stops the running update while it fetches or builds, saying what it
+/// did. One switching runs on, since a switch cut short leaves the machine
+/// between two systems.
+fn stop(current: &Mutex<Option<Arc<Answer>>>) -> String {
+    let current = current.lock().expect("the current update's lock");
+    let Some(running) = current.as_ref() else {
+        return "no update is running, so nothing was stopped".to_owned();
+    };
+    let said = running.state.lock().expect("the answer's lock");
+    let (None, Some(worker)) = (&said.ended, said.worker) else {
+        return "no update is running, so nothing was stopped".to_owned();
+    };
+    let latest = said
+        .lines
+        .last()
+        .and_then(|line| serde_json::from_str::<Line>(line).ok());
+    match latest {
+        Some(Line::Switching { commit }) => {
+            format!("the update is switching to {commit}, so it runs on")
+        }
+        Some(Line::Building { commit }) => {
+            run::stop(worker);
+            format!("stopped the update building {commit}")
+        }
+        _ => {
+            run::stop(worker);
+            "stopped the update".to_owned()
+        }
+    }
+}
+
 fn join(config: &Arc<Config>, current: &Arc<Mutex<Option<Arc<Answer>>>>) -> Arc<Answer> {
     let mut current = current.lock().expect("the current update's lock");
     if let Some(running) = current.as_ref()
@@ -224,6 +271,7 @@ fn join(config: &Arc<Config>, current: &Arc<Mutex<Option<Arc<Answer>>>>) -> Arc<
 }
 
 fn run(config: &Config, heard: &Answer) {
+    heard.state.lock().expect("the answer's lock").worker = Some(thread::current().id());
     let push = |line: &Line| {
         // Not keeping it costs only another program's sight of it.
         if let Err(why) = keep_in(config, &config.running, line) {
@@ -234,6 +282,7 @@ fn run(config: &Config, heard: &Answer) {
         heard.grew.notify_all();
     };
     let ending = update::update(config, &mut |line| push(line));
+    run::ended();
     eprintln!("{}", ending.json());
     let _ = fs::remove_file(&config.running);
     // Kept before the askers hear it, so one that reads the file after the

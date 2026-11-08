@@ -36,6 +36,22 @@ const BUSY_AGAIN: Duration = Duration::from_secs(60);
 /// again, in case what failed was the builders and not the commit.
 const FAILED_AGAIN: Duration = Duration::from_mins(30);
 
+/// How long an update may build heads main has since moved past before
+/// it's stopped, so the next ask builds the new ones. Shorter would throw
+/// away a build whose new heads need the same pieces each time a merge
+/// lands; on 8 November one built a kernel for two hours after a revert
+/// had made it moot, and every ask joined it.
+const STALE_AFTER: Duration = Duration::from_mins(30);
+
+/// Whether an update asked for at `asked`, still fetching or building
+/// since `since`, is building heads main has moved past for long enough
+/// to stop it.
+pub fn stale(asked: &Followed, now: &Followed, latest: Option<&Line>, since: Duration) -> bool {
+    asked != now
+        && since >= STALE_AFTER
+        && matches!(latest, Some(Line::Fetching | Line::Building { .. }))
+}
+
 /// The key main's own head is kept under among the inputs', which no
 /// flake input can be named.
 const MAIN: &str = "";
@@ -190,6 +206,35 @@ fn remote_head(config: &Config, repository: &str, branch: &str) -> Result<String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_update_is_stale_once_main_moves_past_a_long_build() {
+        let building = Line::Building {
+            commit: "c".to_owned(),
+        };
+        let long = STALE_AFTER;
+        assert!(stale(&at("a"), &at("b"), Some(&building), long));
+        assert!(
+            !stale(&at("a"), &at("a"), Some(&building), long),
+            "main hasn't moved"
+        );
+        assert!(
+            !stale(
+                &at("a"),
+                &at("b"),
+                Some(&building),
+                long - Duration::from_secs(1)
+            ),
+            "a short build finishes rather than start again at each merge"
+        );
+        let switching = Line::Switching {
+            commit: "c".to_owned(),
+        };
+        assert!(
+            !stale(&at("a"), &at("b"), Some(&switching), long),
+            "a switch runs on"
+        );
+    }
 
     const EVERY: Duration = Duration::from_secs(600);
 

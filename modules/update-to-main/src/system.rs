@@ -90,18 +90,9 @@ fn build_elsewhere(config: &Config, flake: &str, overrides: &[String]) -> Result
     let mut listing = nix(config);
     listing
         .args(["build", "--dry-run", "--no-link"])
-        .args(overrides)
-        .arg(flake);
-    let listed = listing
-        .output()
-        .map_err(|e| Failure::new(format!("listing what the system needs: {e}")))?;
-    let said = String::from_utf8_lossy(&listed.stderr);
-    if !listed.status.success() {
-        return Err(Failure {
-            why: format!("listing what the system needs failed ({})", listed.status),
-            lines: run::tail(&said),
-        });
-    }
+        .args(overrides);
+    // Nix says what it would build on its error stream.
+    let said = run::said(listing, "listing what the system needs", [flake])?;
     let needed = to_build(&said);
     if needed.is_empty() {
         return Ok(());

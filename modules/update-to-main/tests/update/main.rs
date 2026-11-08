@@ -842,6 +842,57 @@ fn asks_while_an_update_runs_join_it() {
 }
 
 #[test]
+fn a_stop_ends_an_update_still_building_and_the_next_builds_again() {
+    let world = World::new();
+    let main = world.signed("one");
+    world.system(&main);
+    // The build waits for a gate, so the stop comes while it runs.
+    let gate = world.root.join("gate");
+    let nix = world.config.tools.nix.clone();
+    let text = fs::read_to_string(&nix).unwrap();
+    let waiting = text.replacen(
+        "\nfor a;",
+        &format!(
+            "\nwhile [ ! -e {} ]; do sleep 0.05; done\nfor a;",
+            gate.display()
+        ),
+        1,
+    );
+    write_program(&nix, &waiting);
+    let config = world.config.clone();
+    thread::spawn(move || serve::serve(config));
+    let socket = world.config.socket.clone();
+    while !socket.exists() {
+        thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let nothing = ask::stop(&socket).unwrap();
+    assert!(
+        matches!(&nothing, Line::Refused { why, .. } if why.contains("nothing was stopped")),
+        "{nothing:?}"
+    );
+    let asking = {
+        let socket = socket.clone();
+        thread::spawn(move || ask::ask(&socket, &mut |_| {}).unwrap())
+    };
+    while !fs::read_to_string(&world.config.running).is_ok_and(|line| line.contains("building")) {
+        thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let stopped = ask::stop(&socket).unwrap();
+    assert!(
+        matches!(&stopped, Line::Refused { why, .. }
+            if why.starts_with("stopped the update building")),
+        "{stopped:?}"
+    );
+    let ending = asking.join().unwrap();
+    assert!(matches!(ending, Line::Failed { .. }), "{ending:?}");
+    assert_eq!(world.builds(), 0);
+
+    // What stopped that one doesn't stop the next.
+    fs::write(&gate, "").unwrap();
+    assert_eq!(ask::ask(&socket, &mut |_| {}).unwrap(), done(&main));
+}
+
+#[test]
 fn how_an_update_ended_is_kept_for_its_group_to_read() {
     use std::os::unix::fs::MetadataExt;
     let world = World::new();
