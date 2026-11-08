@@ -39,6 +39,11 @@ const ON_USB = /^usb-/;
 const ADDRESS = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i;
 const PORT = /^isa|serio|i8042/;
 
+// A rate as desk-facts says it, "1000 a second", and the place before
+// each three of its digits.
+const A_SECOND = /^(\d+) a second$/;
+const THOUSANDS = /\B(?=(\d{3})+(?!\d))/g;
+
 // A USB device's own folder in sysfs, as "1-2" or "3-1.4" names it, above
 // its interfaces ("1-2:1.0").
 const USB_DEVICE = /^\d+-[\d.]+$/;
@@ -234,6 +239,69 @@ function wakers(said) {
 // "after {delay} ms, {rate} Hz".
 function repeats(repeat, said) {
     return String(said).replace("{delay}", repeat.delay).replace("{rate}", repeat.rate);
+}
+
+// Where a keyboard is, for its drawer's eyebrow: by the bus it's on, or
+// built in, as the vocabulary's keyboards' words key them.
+function where(device) {
+    if (ON_USB.test(device.phys)) {
+        return "usb";
+    }
+    if (ADDRESS.test(device.phys)) {
+        return "bluetooth";
+    }
+    return PORT.test(device.phys) ? "builtIn" : "";
+}
+
+// A rate desk-facts says as "1000 a second", as every rate is said: in
+// Hz, its thousands apart.
+function hertz(said) {
+    const parts = A_SECOND.exec(String(said ?? "").trim());
+    return parts === null ? String(said ?? "") : `${parts[1].replace(THOUSANDS, ",")} Hz`;
+}
+
+// A keyboard's drawer, from what Keyboards.qml read of it (`known`):
+// where it is and what it is above its name; what moves first, the layer
+// and the locks, then what it has counted; then how it's set, its polling
+// rate, repeat and lights; then what describes it, how it's joined, its
+// maker, model, keys and firmware; its identifiers last, its USB id and
+// serial (VKCF3Z, 2026-11-07); and the keys it presses most closing it,
+// under their heading. Each fact is named by its id (`named`), and one it
+// doesn't say is left out, never said as unknown.
+function drawer(known, named, said) {
+    const desk = new Map((known.desk ?? []).map(one => [one.name, one.value]));
+    const told = new Set(["polling rate", "keys", "firmware"]);
+    const fact = (id, value) => ({ label: named(id), value: String(value ?? "") });
+    const layer = known.layer === null || known.layer === undefined ? []
+        : [fact("layer", known.layer.locked ? `${known.layer.name}, ${said.locked}`
+            : known.layer.name)];
+    const off = [known.timeout ?? "", known.wakers ?? ""].filter(one => one !== "")
+        .join(" \u00b7 ");
+    const facts = layer.concat(
+        (known.locks ?? []).map(lock => fact(lock.id, lock.on ? said.on : said.off)),
+        known.counted ?? [],
+        [
+            fact("polling-rate", hertz(desk.get("polling rate"))),
+            fact("repeat", known.repeat),
+            fact("lights", known.lights),
+            fact("timeout", off),
+            fact("connection", known.connection),
+            fact("maker", known.maker),
+            fact("model", known.model),
+            fact("keys", desk.get("keys")),
+            fact("firmware", desk.get("firmware"))
+        ],
+        // Anything else desk-facts comes to say of it, by its own name.
+        (known.desk ?? []).filter(one => !told.has(one.name))
+            .map(one => fact(one.name, one.value)),
+        [fact("usb-id", known.usbId), fact("serial", known.serial)]
+    ).filter(one => one.heading !== undefined || one.keys !== undefined
+        || String(one.value ?? "").trim() !== "");
+    return {
+        eyebrow: said[where(known.device)] ?? "",
+        title: known.name,
+        facts: facts.concat(known.most ?? [])
+    };
 }
 
 // The layers a board can be moved to, by their names in its order, as the

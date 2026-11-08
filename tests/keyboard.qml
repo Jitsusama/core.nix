@@ -304,6 +304,17 @@ ShellRoot {
             expect("flashing runs ergodox", Niri.spawned.join(" ").includes("ergodox flash"),
                 Niri.spawned.join(" "));
 
+            // Its drawer comes once its files are read, after the binding
+            // asking for it, and leads with its layer (Keyboards.js).
+            const boardRow = keyboards.told().rows.find(row => row.name.includes("ErgoDox"));
+            const unread = boardRow.drawer();
+            keyboards.readFor(board, null);
+            const drawn = boardRow.drawer();
+            expect("a board's drawer, once its files are read", unread === null
+                && drawn.eyebrow === "on USB \u00b7 keyboard"
+                && `${drawn.facts[0].label} ${drawn.facts[0].value}` === "Layer Numb, locked",
+                `${unread} ${drawn?.eyebrow} ${drawn?.facts.map(fact => fact.label)}`);
+
             slash.run();
             expect("a key shown on its layer", KeyboardLayout.shown && KeyboardLayout.layer === 1
                 && KeyboardLayout.marked === 41,

@@ -562,7 +562,12 @@ Provider {
         // mail that wants Joel, lists them on Return, each the row it is
         // everywhere else, and its own acts after them (Piece.qml's rows).
         const holding = piece.rows ? () => piece.rows(thing).concat(actions) : null;
-        return member({
+        // Everything its source says, under the row, where the piece gives
+        // it (Piece.qml's drawer), as the network allows.
+        const drawn = typeof piece.drawer === "function"
+            ? { thing: true, drawer: () => piece.drawer({ lookups: settings.lookups !== false }) }
+            : {};
+        return member(Object.assign({
             key: `on:${fact.entry.mark}`,
             is: provider.same[fact.entry.mark] ?? `on:${fact.entry.mark}`,
             // What Return does, said in the foot: the first action's own
@@ -584,7 +589,7 @@ Provider {
                 if (actions.length > 0)
                     actions[0].run();
             }
-        });
+        }, drawn));
     }
 
     // What's typed inside Now narrows its rows by name, as every place's

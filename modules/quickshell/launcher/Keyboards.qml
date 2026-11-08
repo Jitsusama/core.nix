@@ -27,6 +27,7 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import "Keyboards.js" as Keyboards
+import "KeyCounts.js" as KeyCounts
 
 Provider {
     id: provider
@@ -172,7 +173,9 @@ Provider {
             key: `keyboards:${device.phys || device.name}`,
             name: named(device),
             side: Keyboards.joined(device),
-            glyph: Theme.glyph.keyboard
+            glyph: Theme.glyph.keyboard,
+            // Everything it says, under the row (Keyboards.js's drawer).
+            drawer: () => provider.drawerOf(device, Keyboards.lightHolder(found))
         }, () => provider.parts(device, Keyboards.lightHolder(found))));
         const count = found.length === 1 ? "one keyboard" : `${found.length} keyboards`;
         return {
@@ -218,6 +221,111 @@ Provider {
         }
         return rows.concat(factParts("keyboards", device.name, facts[device.name],
             ["polling rate", "keys"]), flashing(device));
+    }
+
+    // What each keyboard's drawer read of its files, by its key: read once
+    // the drawer asks, just after, since reading moves the reader its
+    // binding would follow, and read again as its locks or lights change
+    // or a keyboard comes or goes, which empties it.
+    property var readings: ({})
+    property var reading: ({})
+
+    function readingKey(device) {
+        return `keyboards:${device.phys || device.name}`;
+    }
+
+    // A keyboard's drawer, or null until its files are read. Its layer, its
+    // counts and what desk-facts says are read as they change.
+    function drawerOf(device, holder) {
+        const key = readingKey(device);
+        const read = readings[key];
+        if (read === undefined) {
+            if (!reading[key]) {
+                reading[key] = true;
+                Qt.callLater(() => provider.readFor(device, holder));
+            }
+            return null;
+        }
+        const words = Words.of("keyboards").said;
+        const board = Keyboards.zsa(device) ? "ergodox" : Keyboards.builtIn(device) ? "laptop"
+            : "";
+        const tally = board === "" ? null : KeyCounts.board(counts, board);
+        const title = provider.named(device);
+        const named = id => provider.partNamed("keyboards", id);
+        return Keyboards.drawer(Object.assign({
+            device: device,
+            name: title,
+            layer: Keyboards.zsa(device) && KeyboardLayer.present
+                ? { name: KeyboardLayer.name, locked: KeyboardLayer.locked } : null,
+            desk: facts[device.name] ?? [],
+            counted: KeyCounts.facts(tally, named, KeyCounts.since(countsBegan, words)),
+            most: KeyCounts.most(tally, named)
+        }, read), named, words);
+    }
+
+    // What a keyboard's drawer reads of sysfs, as its parts do: its locks,
+    // the laptop's lights, how it's joined, and a USB board's description.
+    function readFor(device, holder) {
+        const key = readingKey(device);
+        const folder = Keyboards.usbFolder(device);
+        const light = holder && device.phys === holder.phys && device.name === holder.name
+            ? Lights.backlight : "";
+        const most = light === "" ? 0 : Number(said(`${light}/max_brightness`));
+        const usb = folder === "" ? null : {
+            version: said(`${folder}/version`),
+            speed: said(`${folder}/speed`)
+        };
+        const read = {
+            locks: Keyboards.locks(device).map(lock => ({ id: lock.id,
+                on: Number(said(`${Lights.leds}/${lock.light}/brightness`)) > 0 })),
+            repeat: settings.repeat
+                ? Keyboards.repeats(settings.repeat, Words.of("keyboards:repeat").said) : "",
+            lights: most > 0 ? Keyboards.lit(Number(said(`${light}/brightness`)), most) : "",
+            timeout: most > 0 ? Keyboards.timeout(said(`${light}/stop_timeout`)) : "",
+            wakers: most > 0 ? Keyboards.wakers(said(`${light}/start_triggers`)) : "",
+            connection: Keyboards.connection(device, usb),
+            maker: folder === "" ? "" : said(`${folder}/manufacturer`),
+            model: folder === "" ? "" : said(`${folder}/product`),
+            usbId: folder === "" ? "" : `${device.vendor}:${device.product}`,
+            serial: folder === "" ? device.uniq : said(`${folder}/serial`) || device.uniq
+        };
+        counted.reload();
+        began.reload();
+        const reading = Object.assign({}, provider.reading);
+        delete reading[key];
+        provider.reading = reading;
+        provider.readings = Object.assign({}, provider.readings, { [key]: read });
+    }
+
+    // Its files are read again once its locks or lights change, or a
+    // keyboard comes or goes.
+    function readAgain() {
+        if (Object.keys(readings).length > 0)
+            readings = ({});
+    }
+
+    // What key-counts has tallied (modules/key-counts), and when it began,
+    // the seconds it writes beside the counts on its first run, read as
+    // the drawer asks and as the counts are written again.
+    property string counts: ""
+    property string countsBegan: ""
+
+    FileView {
+        id: counted
+        path: "/var/lib/key-counts/counts.tsv"
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: provider.counts = text()
+        onLoadFailed: provider.counts = ""
+    }
+
+    FileView {
+        id: began
+        path: "/var/lib/key-counts/counts.since"
+        printErrors: false
+        onLoaded: provider.countsBegan = text()
+        onLoadFailed: provider.countsBegan = ""
     }
 
     // Flashing a board with this machine's build, the ZSA board's alone,
@@ -428,12 +536,14 @@ Provider {
         target: Lights
 
         function onCapsChanged() {
+            provider.readAgain();
             if (provider.shown)
                 provider.answered();
         }
 
         // The laptop's light key, heard as it's pressed, moves its lights.
         function onTurned() {
+            provider.readAgain();
             if (provider.shown)
                 provider.answered();
         }
@@ -457,6 +567,7 @@ Provider {
         target: ConnectedKeyboards
 
         function onListedChanged() {
+            provider.readAgain();
             if (provider.launcher !== null && provider.launcher.open)
                 provider.answered();
         }

@@ -47,6 +47,7 @@ import Quickshell
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "Media.js" as Media
 import "Recent.js" as Recent
 
 Provider {
@@ -362,6 +363,9 @@ Provider {
     function media(player) {
         const row = said("program:media", "", {
             hue: "program",
+            // Everything the player says, under the row (Media.js).
+            thing: true,
+            drawer: () => provider.mediaDrawer(player),
             targets: () => {
                 const rows = [];
                 const going = player.isPlaying;
@@ -398,6 +402,22 @@ Provider {
             get: () => player.isPlaying ? "playing" : "paused"
         });
         return row;
+    }
+
+    // A player's drawer, where it is in its track read again each second
+    // while one plays and the launcher shows, since MPRIS says a position
+    // only when asked. Its art may be the network's, so only with lookups.
+    function mediaDrawer(player) {
+        void playedClock.date;
+        return Media.drawer(player, id => Words.name(`program:media:${id}`),
+            Words.of("program:media").said, settings.lookups !== false);
+    }
+
+    SystemClock {
+        id: playedClock
+        enabled: !!provider.launcher && provider.launcher.open
+            && Playing.players.some(player => player.isPlaying)
+        precision: SystemClock.Seconds
     }
 
     // Its streams open to play sound through, by the name each gives, as
