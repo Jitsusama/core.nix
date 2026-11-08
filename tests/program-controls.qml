@@ -569,7 +569,7 @@ ShellRoot {
             applications.readDesktop("tester");
             const described = program("tester").drawer();
             same("a program's drawer says where and what it is",
-                `${described.eyebrow}: ${described.title}`, "on 1 and 2 \u00b7 logbook: Tester");
+                `${described.eyebrow}: ${described.title}`, "on 1 and 2 \u00b7 program: Tester");
             same("what it plays, then opens, then how it starts",
                 described.facts.map(fact => fact.label).join(", "),
                 "Playing, Opens, Handles, Categories, Command, Desktop ID");
