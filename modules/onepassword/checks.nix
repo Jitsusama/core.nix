@@ -34,6 +34,21 @@ onLinux {
       touch $out
     '';
 
+  # The account's zsh is given op's own completion, the very file the op
+  # the system wraps was built with, from the account's own profile, which
+  # home-manager puts on zsh's fpath.
+  onepassword-brings-ops-zsh-completion =
+    let
+      home = account graphical;
+      op = graphical.config.programs._1password.package;
+      given = "${home.home.path}/share/zsh/site-functions/_op";
+    in
+    pkgs.runCommandLocal "onepassword-brings-ops-zsh-completion" { } ''
+      cmp ${given} ${op}/share/zsh/site-functions/_op \
+        || { echo "The account's zsh isn't given op's own completion."; exit 1; }
+      touch $out
+    '';
+
   # The session starts the system's own 1Password without its window, so
   # its command-line tool and Chrome's extension find it after a boot,
   # through a switch the installed 1Password still takes.

@@ -22,6 +22,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Map, Value, json};
 
+pub mod cli;
+
 /// The interface's version this speaks.
 pub const VERSION: u64 = 1;
 
@@ -56,19 +58,23 @@ pub enum Ask {
     /// Every entry held, at most `limit`; read from the managers first
     /// when none is held yet, or `fresh` asks it. `asked` says Joel asked,
     /// by stepping into Passwords, so a manager may ask him to let it in.
+    /// `held` answers with what's held alone and asks no manager anything,
+    /// for what must never wake one, as zsh's completion mustn't.
     List {
         id: Value,
         limit: Option<usize>,
         fresh: bool,
         asked: bool,
+        held: bool,
         patience: u64,
     },
     /// Entries by key with every detail, read from their managers when
-    /// held only in summary.
+    /// held only in summary, unless `held` asks for what's held alone.
     Get {
         id: Value,
         keys: Vec<String>,
         asked: bool,
+        held: bool,
         patience: u64,
     },
     /// Entries as they change, and how each manager stands.
@@ -166,6 +172,7 @@ pub fn ask(line: &str) -> Ask {
             limit: count("limit"),
             fresh: flag("fresh"),
             asked: flag("asked"),
+            held: flag("held"),
             patience,
         },
         "get" => Ask::Get {
@@ -182,6 +189,7 @@ pub fn ask(line: &str) -> Ask {
                 })
                 .unwrap_or_default(),
             asked: flag("asked"),
+            held: flag("held"),
             patience,
         },
         "watch" => Ask::Watch { id },
@@ -813,9 +821,18 @@ mod tests {
                 limit: None,
                 fresh: false,
                 asked: true,
+                held: false,
                 patience: PATIENCE
             }
         );
+        assert!(matches!(
+            ask(r#"{"id":6,"ask":"list","held":true}"#),
+            Ask::List {
+                held: true,
+                asked: false,
+                ..
+            }
+        ));
         assert_eq!(
             ask(r#"{"id":2,"ask":"copy","key":"entry:1password:a"}"#),
             Ask::Copy {
@@ -839,6 +856,7 @@ mod tests {
                 id: json!(5),
                 keys: vec!["entry:1password:a".to_owned()],
                 asked: false,
+                held: false,
                 patience: PATIENCE
             }
         );
