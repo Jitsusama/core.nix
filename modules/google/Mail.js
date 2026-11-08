@@ -36,6 +36,20 @@ function came(at, now, said) {
     return day === "" ? Calendar.clock(new Date(at)) : day;
 }
 
+// When something was, as a drawer's fact says it beside a row that says
+// when in its own side: its time today, "06:06", and before today its day
+// as When.js says any, then its time, "yesterday 14:10", "Wednesday
+// 09:30", "28 Oct 09:30", as a call's note says when it was
+// (Transcripts.js). It's never "12 min ago", which the row's side says,
+// so a drawer's moment never reads as the side said twice. Nor is it the
+// long date `dated` gives, so a Drive file's drawer says when as the
+// launcher does everywhere else (VKCF3Z, 2026-11-08).
+function moment(at, now, said) {
+    const day = When.day(at, now, said);
+    const time = Calendar.clock(new Date(at));
+    return day === "" ? time : `${day} ${time}`;
+}
+
 // What its row says beside it: who it's from and when it came, "Ada
 // Lovelace · 14:02", or only when it came where the sender gives no name.
 function beside(mail, now, said) {

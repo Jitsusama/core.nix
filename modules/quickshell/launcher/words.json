@@ -6687,9 +6687,8 @@
         }
       },
       "said": {
-        "starred": "starred",
-        "sharedWithMe": "shared with me",
-        "shared": "shared"
+        "in": "in {place}",
+        "onDrive": "{drive} (shared drive)"
       }
     },
     {

@@ -871,9 +871,12 @@ def test_docs_and_drives_recent_list_what_joel_opened_lately_and_return_opens_it
     desktop.launcher_until(lambda shown: shown["rows"] == ["Quarterly Plan"])
     plan = desktop.showing()["selected"]
     assert plan["is"] == "gdoc:plan", plan
-    assert re.fullmatch(rf"Ada Lovelace \u00b7 {CAME}", plan["side"]), plan
-    facts = (plan.get("drawer") or {}).get("facts") or [{}]
-    assert facts[0] == {"label": "Owner", "value": "Ada Lovelace"}, plan
+    # Its side says only when he opened it, and its drawer whose it is,
+    # after when it changed.
+    assert re.fullmatch(CAME, plan["side"]), plan
+    facts = (plan.get("drawer") or {}).get("facts") or [{}, {}]
+    assert facts[0].get("label") == "Changed", plan
+    assert facts[1] == {"label": "Owner", "value": "Ada Lovelace"}, plan
     # Return opens it in a window of its own, leaving the launcher.
     machine.send_key("ret")
     machine.wait_until_succeeds(
@@ -881,8 +884,7 @@ def test_docs_and_drives_recent_list_what_joel_opened_lately_and_return_opens_it
         timeout=dt.timedelta(seconds=30),
     )
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    # Its title finds the same row from anywhere, one on a shared drive saying
-    # only when it was opened.
+    # Its title finds the same row from anywhere, saying when it was opened.
     desktop.answer("team budget")
     desktop.launcher_until(
         lambda shown: (
@@ -923,10 +925,14 @@ def drive_holds_its_places(desktop: Desktop, opened: str, closed: str) -> None:
     desktop.shoot("launcher-drive-recent")
     menu = desktop.showing()["selected"]
     assert menu["is"] == "gdoc:menu", menu
-    assert re.fullmatch(rf"Ada Lovelace \u00b7 {CAME}", menu["side"]), menu
-    labels = [fact["label"] for fact in (menu.get("drawer") or {}).get("facts") or []]
-    assert labels[:4] == ["Owner", "Opened", "Changed", "Changed By"], menu
-    assert labels[-2:] == ["Kind", "Size"], menu
+    # Its drawer says where it is and its kind, then what changes most
+    # first, its id last.
+    assert re.fullmatch(CAME, menu["side"]), menu
+    drawer = menu.get("drawer") or {}
+    assert drawer.get("eyebrow") == "in My Drive \u00b7 PDF", menu
+    labels = [fact["label"] for fact in drawer.get("facts") or []]
+    assert labels[:3] == ["Changed", "Changed By", "Owner"], menu
+    assert labels[-2:] == ["Size", "ID"], menu
     desktop.close_launcher()
     # Starred says how many it holds, and steps in to them, a folder
     # opening in Drive's window.

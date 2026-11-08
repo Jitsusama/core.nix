@@ -6,8 +6,8 @@ pragma ComponentBehavior: Bound
 // there are none, and no Recent shows.
 //
 // `row` is a Drive file's one row, the same in its program's Recent, in
-// search, in the picker and in Drive's own places: its title, who owns it
-// and when he last opened it, its details beside it, Return opening it
+// search, in the picker and in Drive's own places: its title, when he
+// last opened it, its details beside it, Return opening it
 // through google-opens (opens.sh) in a window of its own, its program's
 // for one of Google's own kinds and Drive's for any other, and the right
 // arrow listing Open and Copy the Link.
@@ -132,7 +132,9 @@ Singleton {
     readonly property string every: Said.EVERY
 
     // The words a Drive file's drawer says its kind and where it is in,
-    // from the vocabulary (DrivePlaces.js's drawn): { kinds, said }.
+    // from the vocabulary (DrivePlaces.js's drawn): { kinds, said }, said
+    // naming each place by its own place's name, so the eyebrow and the
+    // place Joel steps into read alike.
     readonly property var said: ({
             kinds: {
                 document: Words.name("docs:document"),
@@ -142,7 +144,11 @@ Singleton {
                 drive: Words.name("drive:file", "drive"),
                 file: Words.name("drive:file")
             },
-            said: Words.of("drive:file").said ?? {}
+            said: Object.assign({}, Words.of("drive:file").said ?? {}, {
+                mine: Words.name("drive:mine"),
+                sharedWithMe: Words.name("drive:place:shared"),
+                drives: Words.name("drive:place:drives")
+            })
         })
 
     // Drive's Recent, its files of every kind newest first, each its one

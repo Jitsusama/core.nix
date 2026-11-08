@@ -4,7 +4,8 @@
 // places, which it lists and what each counts, run in Qt's own
 // JavaScript engine, the one the shell runs it in. The
 // `the-shell-reads-the-documents` check copies Drive.js, DrivePlaces.js,
-// Mail.js, Calendar.js and Google.js beside this file and runs `qml
+// Mail.js, When.js, Calendar.js, Google.js and Saves.js beside this file
+// and runs `qml
 // -platform offscreen drive.qml`. Times are made on the local clock, so
 // the cases hold in whatever zone the check runs in.
 import QtQuick
@@ -72,27 +73,26 @@ QtObject {
         check("and copies its link by Drive's words", Drive.kind({ kind: "file" }).link,
             "verb:drive:link");
 
-        // What its row says beside the title.
-        check("its owner and when, today", Drive.beside(plan, now, said),
-            "Ada Lovelace \u00b7 14:02");
+        // What its row says beside the title: only when he opened it, as a
+        // stream's rows say only when, whose it is being the drawer's.
+        check("when, today", Drive.beside(plan, now, said), "14:02");
         check("minutes ago",
             Drive.beside(Object.assign({}, plan, { viewed: at(28, 15, 5) }), now, said),
-            "Ada Lovelace \u00b7 15 min ago");
+            "15 min ago");
         check("yesterday",
             Drive.beside(Object.assign({}, plan, { viewed: at(27, 9, 0) }), now, said),
-            "Ada Lovelace \u00b7 yesterday");
-        check("one on a shared drive says only when",
-            Drive.beside(Object.assign({}, plan, { owner: null }), now, said), "14:02");
-        check("one never opened says only whose",
-            Drive.beside(Object.assign({}, plan, { viewed: null }), now, said), "Ada Lovelace");
+            "yesterday");
+        check("one never opened says nothing",
+            Drive.beside(Object.assign({}, plan, { viewed: null }), now, said), "");
 
-        // What the drawer says.
+        // What the drawer says: when it changed, said as the launcher says
+        // when with its time, then whose it is, and never when he opened it,
+        // which its side says.
         check("its details in full", Drive.details(plan, "Untitled", now, said), {
             title: "Quarterly Plan",
             facts: [
-                { label: "Owner", value: "Ada Lovelace" },
-                { label: "Opened", value: "Wednesday 28 October \u00b7 14:02" },
-                { label: "Changed", value: "Monday 26 October \u00b7 09:30" }
+                { label: "Changed", value: "Monday 09:30" },
+                { label: "Owner", value: "Ada Lovelace" }
             ],
             body: ""
         });
@@ -150,7 +150,8 @@ QtObject {
         }, over).map(place => place.key), ["drive:place:shared"]);
         check("no places said, none listed", Places.listed(undefined, over), []);
 
-        // A Drive file's kind, as its drawer says it.
+        // A Drive file's kind, as its drawer's eyebrow says it, each part an
+        // item it gives way by.
         const named = {
             document: "Document", spreadsheet: "Spreadsheet", presentation: "Presentation",
             folder: "Folder", drive: "Shared Drive", file: "File"
@@ -164,65 +165,83 @@ QtObject {
             Places.kindOf({ title: "Survey", kind: "other",
                 mime: "application/vnd.google-apps.form" }, named),
             Places.kindOf({ title: "x", kind: "other" }, named)
-        ], ["PDF", "File", "Document", "Folder", "Shared Drive", "Form", "File"]);
+        ], [["PDF"], ["File"], ["Document"], ["Folder"], ["Shared Drive"], ["Form"], ["File"]]);
         check("a picture's size and a video's length", [
             Places.kindOf({ title: "view.png", kind: "file", across: 2400, down: 1600 }, named),
             Places.kindOf({ title: "talk.mp4", kind: "file", across: 1920, down: 1080,
                 lasts: 221400 }, named),
             Places.kindOf({ title: "day.mp4", kind: "file", lasts: 3723000 }, named)
-        ], ["PNG \u00b7 2400 \u00d7 1600", "MP4 \u00b7 1920 \u00d7 1080 \u00b7 3:41",
-            "MP4 \u00b7 1:02:03"]);
+        ], [["PNG", "2400 \u00d7 1600"], ["MP4", "1920 \u00d7 1080", "3:41"], ["MP4", "1:02:03"]]);
 
-        // Where it is, as its drawer's eyebrow says it.
-        const where = { starred: "starred", sharedWithMe: "shared with me", shared: "shared" };
+        // Where it is, as its drawer's eyebrow says it before its kind: the
+        // shared drive it's on, by name once the drives are read, else
+        // Shared with Me for another's, else My Drive, never a folder, whose
+        // name the program doesn't read.
+        const where = {
+            in: "in {place}", onDrive: "{drive} (shared drive)", mine: "My Drive",
+            sharedWithMe: "Shared with Me", drives: "Shared Drives"
+        };
         check("where each is", [
             Places.where(menuFile, [team], where),
             Places.where(menuFile, [], where),
-            Places.where({ shared: true }, [team], where),
-            Places.where({ shared: true, drive: "0Team" }, [team], where),
+            Places.where({ sharedWithMe: at(21, 8, 0) }, [team], where),
+            Places.where({ sharedWithMe: at(21, 8, 0), drive: "0Team" }, [team], where),
             Places.where(team, [team], where),
             Places.where(plan, [team], where)
         ], [
-            ["Team", "starred", "shared with me"], ["starred", "shared with me"], ["shared"],
-            ["Team"], [], []
+            "in Team (shared drive)", "in Shared Drives", "in Shared with Me",
+            "in Team (shared drive)", "", "in My Drive"
         ]);
 
-        // Its drawer, with every figure the program read.
+        // Its drawer, with every figure the program read: what changes most
+        // first, said as the launcher says when with its time, and its id
+        // last, as an identifier.
         const around = { drives: [team], kinds: named, said: where, now, dates: said };
         check("a file's drawer in full", Places.drawn(
             Drive.details(menuFile, "Untitled", now, said), menuFile, around), {
             title: "menu.pdf",
             facts: [
-                { label: "Owner", value: "Ada Lovelace" },
-                { label: "Opened", value: "Wednesday 28 October \u00b7 09:05" },
-                { label: "Changed", value: "Tuesday 27 October \u00b7 09:00" },
+                { label: "Changed", value: "yesterday 09:00" },
                 { label: "Changed By", value: "Grace Hopper" },
-                { label: "You Changed", value: "Monday 26 October \u00b7 10:00" },
-                { label: "Created", value: "Tuesday 20 October \u00b7 08:00" },
-                { label: "Shared", value: "Wednesday 21 October \u00b7 08:00" },
+                { label: "Owner", value: "Ada Lovelace" },
+                { label: "You Changed", value: "Monday 10:00" },
+                { label: "Created", value: "20 Oct 08:00" },
+                { label: "Shared", value: "21 Oct 08:00" },
                 { label: "Shared By", value: "Ada Lovelace" },
-                { label: "Kind", value: "PDF" },
-                { label: "Size", value: "2.4 MB" }
+                { label: "Size", value: "2.4 MB" },
+                { label: "ID", value: "pdf1", identifies: true }
             ],
             body: "What's on, and what it costs.",
-            eyebrow: "Team \u00b7 starred \u00b7 shared with me",
-            eyebrowItems: ["Team", "starred", "shared with me"]
+            eyebrow: "in Team (shared drive) \u00b7 PDF",
+            eyebrowItems: [{ said: "in Team (shared drive)", keep: 2 }, { said: "PDF", keep: 1 }],
+            eyebrowNames: true
         });
         check("a shared drive's, its kind and when it was made", Places.drawn(
             Drive.details(team, "Untitled", now, said), team, around), {
             title: "Team",
             facts: [
-                { label: "Created", value: "Monday 5 October \u00b7 12:00" },
-                { label: "Kind", value: "Shared Drive" }
+                { label: "Created", value: "5 Oct 12:00" },
+                { label: "ID", value: "0Team", identifies: true }
             ],
             body: "",
-            eyebrow: "",
-            eyebrowItems: []
+            eyebrow: "Shared Drive",
+            eyebrowItems: [{ said: "Shared Drive", keep: 1 }],
+            eyebrowNames: true
         });
-        check("a document from before the rest were read, as it was with its kind",
-            Places.drawn(Drive.details(plan, "Untitled", now, said), plan,
-                Object.assign({}, around, { drives: [] })).facts.map(fact => fact.label),
-            ["Owner", "Opened", "Changed", "Kind"]);
+        const bare = Places.drawn(Drive.details(plan, "Untitled", now, said), plan,
+            Object.assign({}, around, { drives: [] }));
+        check("a document from before the rest were read, in My Drive with its kind",
+            [bare.eyebrow, bare.facts.map(fact => fact.label)],
+            ["in My Drive \u00b7 Document", ["Changed", "Owner", "ID"]]);
+        // Its eyebrow gives way from its end, as every eyebrow's items do
+        // (Reading.wholeItems): what's measured goes before the kind, and
+        // where it is never.
+        check("a video's eyebrow keeps where it is longest", Places.drawn(
+            { title: "talk.mp4", facts: [], body: "" },
+            { id: "v1", title: "talk.mp4", kind: "file", across: 1920, down: 1080, lasts: 221400 },
+            around).eyebrowItems.map(item => [item.said, item.keep]), [
+            ["in My Drive", 4], ["MP4", 3], ["1920 \u00d7 1080", 2], ["3:41", 1]
+        ]);
 
         // Drive's folders and downloads, as the picker and Files read them.
         // Two folders asked together, both written before the shell read.
