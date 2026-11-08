@@ -1150,7 +1150,13 @@ def pictured_linked_and_quiet_at(desktop: Desktop, named: str) -> None:
     desktop.launcher_ready()
     desktop.type_in("standup ten", selecting="Standup in Ten Minutes")
     desktop.launcher_until(lambda shown: shown["drawer"]["out"])
+    # Gone into, as at these scales the drawer takes the card's place only then.
+    desktop.normal()
+    desktop.press_at_once("ctrl-w l")
+    desktop.launcher_until(lambda shown: shown["mode"] == "page")
     desktop.shoot(f"notice-drawer-at-{named}")
+    desktop.press_at_once("ctrl-w h")
+    desktop.launcher_until(lambda shown: shown["mode"] == "normal")
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: "Open the Link" in shown["rows"])
     desktop.shoot(f"notice-acts-at-{named}")
