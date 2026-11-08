@@ -187,10 +187,18 @@ const BATTERY_FLOOR: u8 = 50;
 /// them.
 const STALL_CEILING: f64 = 10.0;
 
+/// How much of the time, as a percentage, tasks may stall on the disk, on
+/// memory or on the processors before the machine counts as overloaded. On
+/// 8 November at 01:31 the disk stalled 98% of the time and the processors
+/// 79%, and the guard's listing of the store added to it; a heavy evening
+/// that stayed usable read 37% on the processors and 7% on the disk.
+const OVERLOAD: f64 = 75.0;
+
 /// Whether the machine can spare routine work: on the charger or a battery over
 /// half charged, not saving power, and awake for ten minutes. How busy it
 /// is doesn't count, since a workstation that's always busy would never be
-/// tidied; routine passes pace their deletes instead (`pace.rs`).
+/// tidied; routine passes pace their deletes instead (`pace.rs`). Only an
+/// overloaded machine holds them (`overloaded`).
 pub fn spare(power: Power, saver: bool, awake: &Awake, now: f64) -> bool {
     let settled = awake
         .spans()
@@ -204,6 +212,15 @@ pub fn spare(power: Power, saver: bool, awake: &Awake, now: f64) -> bool {
 pub fn powered(power: Power, saver: bool) -> bool {
     let charged = power.on_charger || power.battery.is_some_and(|charge| charge > BATTERY_FLOOR);
     charged && !saver
+}
+
+/// Whether tasks stall on anything most of the time, so routine work, a
+/// listing of the store or upkeep, waits for the machine to recover unless
+/// a disk is past healthy and needs it.
+pub fn overloaded(pressure: Pressure) -> bool {
+    [pressure.io.some, pressure.memory.some, pressure.cpu.some]
+        .iter()
+        .any(|&stall| stall >= OVERLOAD)
 }
 
 /// Whether tasks stall on the disk and on memory little enough for work
