@@ -98,9 +98,16 @@ QtObject {
                 { label: "[opens]", value: "5 kinds \u00b7 PDF, HTML, PNG" },
                 { label: "[handles]", value: "http, https" },
                 { label: "[categories]", value: "Network, Web Browser" },
-                { label: "[command]", value: "google-chrome-stable %U" },
-                { label: "[desktop-id]", value: "google-chrome" }
+                { label: "[command]", value: "google-chrome-stable %U",
+                    valueItems: [{ said: "google-chrome-stable" }, { said: "%U" }],
+                    between: " ", identifies: true },
+                { label: "[desktop-id]", value: "google-chrome", identifies: true }
             ]);
+        expect("a command's argument naming a path may give way from its middle",
+            Program.drawer({ name: "Firefox", command: ["/run/wrappers/bin/firefox", "-P"] },
+                named, said).facts[0].valueItems,
+            [{ said: "/run/wrappers/bin/firefox", path: "/run/wrappers/bin/firefox" },
+                { said: "-P" }]);
         const closed = Program.drawer({ name: "GIMP", places: [],
             usage: null, id: "gimp", command: ["gimp"] }, named, said);
         expect("a closed program says only what describes it",

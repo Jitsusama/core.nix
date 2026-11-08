@@ -2046,7 +2046,10 @@ Floating {
 
                             // Its figure, or a placeholder while it's
                             // asked, on the one edge every value starts
-                            // at, a long one breaking onto the pitch.
+                            // at, a long one breaking onto the pitch: one
+                            // given as items (`valueItems`, `between`) on
+                            // the lines DrawerPage.valueLines lays them on,
+                            // its `value` still what's copied.
                             PageText {
                                 id: value
                                 sought: drawer.washing
@@ -2055,8 +2058,14 @@ Floating {
                                 width: parent.width - x
                                 y: fact.base - baselineOffset
                                     + (fact.under ? label.lineCount * drawer.pitch : 0)
-                                plain: fact.known ? drawer.itemsKept(fact.modelData.value,
-                                    drawer.faceOf(fact.modelData), fact.valueWide) : "\u2026"
+                                plain: !fact.known ? "\u2026"
+                                    : fact.modelData.valueItems
+                                    ? Page.valueLines(fact.modelData.valueItems,
+                                        fact.modelData.between ?? " \u00b7 ", fact.valueWide,
+                                        text => drawer.faceOf(fact.modelData).advanceWidth(text))
+                                        .join("\n")
+                                    : drawer.itemsKept(fact.modelData.value,
+                                        drawer.faceOf(fact.modelData), fact.valueWide)
                                 leading: drawer.pitch
                                 // A fact that warns, as an entry's weak
                                 // password does, says so in the warning's

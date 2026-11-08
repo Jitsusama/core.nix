@@ -78,10 +78,15 @@ function disk(state, told) {
     }
     const left = typeof worst.full_at === "number" ? worst.full_at - told.now : 0;
     const filling = Number(worst.fill_per_hour) || 0;
+    // Each holder an item the drawer wraps between, never inside, its
+    // path giving way from its middle where alone it's too wide (VKCF3Z,
+    // 2026-11-08).
     const growing = (state.holders ?? []).filter(holder => (holder.grew?.bytes ?? 0) > 0)
         .sort((one, other) => other.grew.bytes - one.grew.bytes).slice(0, GROWING)
-        .map(holder => filled(said.grew, { path: told.within(holder.path),
-            amount: shown(holder.grew.bytes) }));
+        .map(holder => {
+            const path = told.within(holder.path);
+            return { said: filled(said.grew, { path, amount: shown(holder.grew.bytes) }), path };
+        });
     const [cleared] = state.cleared ?? [];
     return {
         // The disk's own name is the title, so the eyebrow says only where
@@ -92,7 +97,8 @@ function disk(state, told) {
             fact(named, "machine:disk:full-in", left > 0 ? told.duration(left) : ""),
             fact(named, "on:disk:filling", filling > 0
                 ? filled(said.hourly, { amount: shown(filling) }) : ""),
-            fact(named, "on:disk:growing", growing.join(" \u00b7 ")),
+            Object.assign(fact(named, "on:disk:growing",
+                growing.map(item => item.said).join(" \u00b7 ")), { valueItems: growing }),
             fact(named, "machine:disk:free", shown(worst.free)),
             fact(named, "machine:disk:size", shown(worst.size ?? worst.total)),
             fact(named, "on:disk:cleared", cleared ? filled(said.cleared, {
@@ -163,7 +169,7 @@ function sharing(casts, seen, told) {
                 fact(named, "on:sharing:notices", told.held ? said.held : said.shown),
                 fact(named, "on:sharing:kind", one.target?.Window ? said.window : said.screen),
                 Object.assign(fact(named, "on:sharing:stream", one.stream_id ?? ""),
-                    { identifier: true })
+                    { identifies: true })
             ])
     };
 }

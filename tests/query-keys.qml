@@ -2,8 +2,8 @@
 // table in Qt's own JavaScript engine, the one the shell runs it in, and
 // what its operators do to the rows. The `the-query-field-takes-vi-modes`
 // check copies modules/quickshell/QueryKeys.js, Editing.js, Typing.js,
-// ListedKeys.js, DrawerPage.js, Search.js, LineEditing.js, Operators.js,
-// Finding.js and Confirm.js beside this file and runs
+// ListedKeys.js, DrawerPage.js, Search.js, Reading.js, LineEditing.js,
+// Operators.js, Finding.js and Confirm.js beside this file and runs
 // `qml -platform offscreen query-keys.qml`.
 import QtQuick
 import "Editing.js" as Editing
@@ -999,6 +999,38 @@ QtObject {
             holds(`a drawer sets ${what} in its face`, Page.faceOf(fact, script), want);
     }
 
+    // A value given as items laid on lines no wider than the drawer's
+    // measure, each letter ten wide here: wrapped between items, never
+    // inside one, the dot ending the line it leaves; a path too wide for a
+    // line of its own giving way from its middle; any other item running on
+    // (VKCF3Z, 2026-11-08: nothing draws past its frame).
+    function drawerValueLines(holds) {
+        const width = text => text.length * 10;
+        const disk = [
+            { said: "/nix +9.66 GB", path: "/nix" },
+            { said: "/var +537 MB", path: "/var" }
+        ];
+        const firefox = "/run/current-system/sw/bin/firefox";
+        const command = [{ said: firefox, path: firefox }, { said: "--private-window" }];
+        const store = "/nix/store/abc/def";
+        const cases = [
+            ["items that fit share a line", disk, " \u00b7 ", 400,
+                ["/nix +9.66 GB \u00b7 /var +537 MB"]],
+            ["items too wide together wrap between them, the dot ending the first", disk,
+                " \u00b7 ", 150, ["/nix +9.66 GB \u00b7", "/var +537 MB"]],
+            ["a command's arguments wrap at the space between them, a path from its middle",
+                command, " ", 200, ["/\u2026/firefox", "--private-window"]],
+            ["a path inside an item gives way and leaves the rest whole",
+                [{ said: `${store} +9.66 GB`, path: store }], " \u00b7 ", 150,
+                ["/\u2026/def +9.66 GB"]],
+            ["an item naming no path runs on by its words",
+                [{ said: "--a-very-long-argument" }], " ", 100, ["--a-very-long-argument"]],
+            ["an empty item is left out", [{ said: "" }, { said: "on" }], " ", 100, ["on"]]
+        ];
+        for (const [what, items, between, wide, want] of cases)
+            holds(`a drawer's value: ${what}`, Page.valueLines(items, between, wide, width), want);
+    }
+
     function drawerRefusals(holds) {
         const into = ["Escape", "Ctrl+w", "l"];
         // [what, the keys typed from going in, the acts done]
@@ -1884,6 +1916,7 @@ QtObject {
         drawerVisual(holds);
         drawerRefusals(holds);
         drawerFaces(holds);
+        drawerValueLines(holds);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);

@@ -3721,6 +3721,7 @@ onLinux {
       cp ${./Confirm.js} Confirm.js
       cp ${./DrawerPage.js} DrawerPage.js
       cp ${./Search.js} Search.js
+      cp ${./Reading.js} Reading.js
       cp ${./LineEditing.js} LineEditing.js
       cp ${./launcher/words.json} words.json
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

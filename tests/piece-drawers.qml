@@ -80,6 +80,11 @@ QtObject {
                 "[on:disk:cleared] 70 B from ~/.cache/nix at @900",
                 "Nix's cache is filling it."
             ]);
+        expect("each holder growing is an item the drawer wraps between, its path apart",
+            drawer.facts[2].valueItems.slice(0, 2), [
+                { said: "~/.cache/nix +90 B", path: "~/.cache/nix" },
+                { said: "~/.local/share +30 B", path: "~/.local/share" }
+            ]);
         const steady = Drawers.disk({
             worst: { path: "/", free: 7, total: 9, full_at: 600, fill_per_hour: -3 },
             holders: [{ path: "/nix", grew: { bytes: 0 } }]
@@ -163,7 +168,7 @@ QtObject {
                 "[on:sharing:notices] held", "[on:sharing:kind] window",
                 "[on:sharing:stream] 61"
             ]);
-        expect("the stream is an identifier", window.facts[2].identifier, true);
+        expect("the stream is an identifier", window.facts[2].identifies, true);
         const screen = Drawers.sharing([{ target: { Output: { name: "eDP-1" } } }],
             ["the whole screen"], Object.assign({}, told, { held: false }));
         expect("the whole screen, its notices showing, with no stream yet, says no stream",

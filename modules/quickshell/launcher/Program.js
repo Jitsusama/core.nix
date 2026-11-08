@@ -126,6 +126,22 @@ function categories(each) {
         .map(one => one.replace(WORDS, "$1 $2")))).join(", ");
 }
 
+// Its command, in the Name face as an identifier, each argument an item
+// the drawer wraps between, never inside, one naming a path giving way
+// from its middle where alone it's too wide (VKCF3Z, 2026-11-08: nothing
+// draws past its frame).
+function commandFact(command, named) {
+    const words = Array.from(command);
+    return {
+        label: named("command"),
+        value: words.join(" "),
+        valueItems: words.map(word => (word.includes("/") ? { said: word, path: word }
+            : { said: word })),
+        between: " ",
+        identifies: true
+    };
+}
+
 // A program's facts, as { label, value }, in the drawer's order, what it
 // doesn't say left out. Its usage, { processor, memory, count }, is what
 // its windows' processes and all they started use, which the machine
@@ -144,8 +160,8 @@ function facts(known, named, said) {
         own("opens")(opened.kinds),
         own("handles")(opened.schemes),
         own("categories")(categories(known.categories)),
-        own("command")(Array.from(known.command ?? []).join(" ")),
-        own("desktop-id")(known.id ?? "")
+        commandFact(known.command ?? [], named),
+        Object.assign(own("desktop-id")(known.id ?? ""), { identifies: true })
     ]).filter(fact => fact.value !== "");
 }
 
