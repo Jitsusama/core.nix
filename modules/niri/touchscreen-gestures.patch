@@ -7,8 +7,46 @@ sees nothing more until every finger has lifted, so a swipe never reaches
 it as a tap or as touches left unfinished. Nor does niri take one for a
 tap: a lone finger focuses the window under it once it lifts or moves, not
 as it lands, a cancelled touch in the overview is no tap, and a gesture's
-end draws what it settles to.
+end draws what it settles to. A niri nested in a window ends a frame after
+each touch event, since smithay's winit backend passes none on, and a
+client such as kitty 0.50 reads a touch only once its frame ends.
 
+diff -ru a/src/backend/winit.rs b/src/backend/winit.rs
+--- a/src/backend/winit.rs	2026-11-08 10:18:37.989707100 -0500
++++ b/src/backend/winit.rs	2026-11-08 10:18:38.027352950 -0500
+@@ -8,6 +8,7 @@
+ use niri_config::{Config, OutputName};
+ use smithay::backend::allocator::dmabuf::Dmabuf;
+ use smithay::backend::egl::EGLDevice;
++use smithay::backend::input::InputEvent;
+ use smithay::backend::renderer::damage::OutputDamageTracker;
+ use smithay::backend::renderer::gles::GlesRenderer;
+ use smithay::backend::renderer::{DebugFlags, ImportDma, ImportEgl, Renderer};
+@@ -129,7 +130,23 @@
+ 
+                     state.niri.output_resized(&winit.output);
+                 }
+-                WinitEvent::Input(event) => state.process_input_event(event),
++                WinitEvent::Input(event) => {
++                    // smithay's winit backend hands on no touch frames, and a
++                    // client may read nothing of a touch until its frame, as
++                    // kitty 0.50 does, so a nested niri ends each one itself.
++                    let touched = matches!(
++                        event,
++                        InputEvent::TouchDown { .. }
++                            | InputEvent::TouchMotion { .. }
++                            | InputEvent::TouchUp { .. }
++                    );
++                    state.process_input_event(event);
++                    if touched {
++                        if let Some(touch) = state.niri.seat.get_touch() {
++                            touch.frame(state);
++                        }
++                    }
++                }
+                 WinitEvent::Focus(_) => (),
+                 WinitEvent::Redraw => state.niri.queue_redraw(&state.backend.winit().output),
+                 WinitEvent::CloseRequested => state.niri.stop_signal.stop(),
 diff -ru a/src/input/mod.rs b/src/input/mod.rs
 --- a/src/input/mod.rs	2026-10-13 21:09:30.449910452 -0400
 +++ b/src/input/mod.rs	2026-10-13 21:09:30.449910452 -0400
