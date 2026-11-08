@@ -1679,6 +1679,10 @@ def shoot_the_timers(desktop: Desktop) -> None:
     desktop.launcher_until(
         lambda shown: str((shown["selected"] or {}).get("side")).startswith("paused")
     )
+    # Afresh, since typing on from normal would add to "tea".
+    desktop.close_launcher()
+    desktop.as_account("qs ipc call launcher collection timers")
+    desktop.launcher_ready()
     desktop.type_in("stopwatch", selecting="Stopwatch")
     desktop.normal()
     machine.send_key("ret")
