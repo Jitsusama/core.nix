@@ -110,12 +110,7 @@ fn main() -> ExitCode {
     let mut last: Option<SystemTime> = None;
     let mut called: Option<SystemTime> = None;
     loop {
-        let due = last.is_none_or(|last| {
-            SystemTime::now()
-                .duration_since(last)
-                .map_or(true, |since| since >= wait)
-        });
-        if due {
+        if due(last, wait) {
             last = Some(SystemTime::now());
             let state = watch.look(&Zoned::now());
             // The first miss, as often as not the network still coming
@@ -130,12 +125,7 @@ fn main() -> ExitCode {
         }
         // Asked less often while Meet can't be, as the calendar is.
         let calls_wait = CALLS_EVERY * 2u32.saturating_pow(watch.calls_failed().min(4));
-        let calls_due = called.is_none_or(|called| {
-            SystemTime::now()
-                .duration_since(called)
-                .map_or(true, |since| since >= calls_wait)
-        });
-        if watch.following(&Zoned::now()) && calls_due {
+        if watch.following(&Zoned::now()) && due(called, calls_wait) {
             called = Some(SystemTime::now());
             tell(watch.calls(&Zoned::now()));
         }
@@ -185,4 +175,13 @@ fn main() -> ExitCode {
             Err(RecvTimeoutError::Disconnected) => thread::sleep(TICK),
         }
     }
+}
+
+/// Whether an ask last made then is due again, a wait on; never made, it is.
+fn due(then: Option<SystemTime>, wait: Duration) -> bool {
+    then.is_none_or(|then| {
+        SystemTime::now()
+            .duration_since(then)
+            .map_or(true, |since| since >= wait)
+    })
 }
