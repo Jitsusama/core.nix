@@ -52,10 +52,10 @@ const GIB = KIB * KIB * KIB;
 const WORKED = new Set(["active", "blocked"]);
 const DRIVEN = new Set(["driving", "active"]);
 
-const FRONT_MATTER = /^---\n([\s\S]*?)\n---/;
-const TITLE = /^# +(.+)$/m;
+const FRONT_MATTER = /^---\n([\s\S]*?)\n---/u;
+const TITLE = /^# +(.+)$/mu;
 /** A Journey's first entry, through its last line, however many it spans. */
-const NEWEST_ENTRY = /^- \*\*[^*]+\*\*: *([\s\S]+?)(?=\n- \*\*|\n\n|(?![\s\S]))/m;
+const NEWEST_ENTRY = /^- \*\*[^*]+\*\*: *([\s\S]+?)(?=\n- \*\*|\n\n|(?![\s\S]))/mu;
 
 interface Quest {
   line: string;
@@ -109,7 +109,7 @@ function names(folder: string): string[] {
 }
 
 function clip(line: string, most: number): string {
-  const flat = line.replace(/\s+/g, " ").trim();
+  const flat = line.replace(/\s+/gu, " ").trim();
   return flat.length <= most ? flat : `${flat.slice(0, most - 1)}…`;
 }
 
@@ -213,7 +213,7 @@ function waiting(places: Places): string[] {
 }
 
 function field(front: string, name: string): string | undefined {
-  return new RegExp(`^${name}: *(.+)$`, "m").exec(front)?.[1]?.trim();
+  return new RegExp(`^${name}: *(.+)$`, "mu").exec(front)?.[1]?.trim();
 }
 
 /** Whether a quest is being driven or worked, and was updated lately. */

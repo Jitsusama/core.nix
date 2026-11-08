@@ -92,21 +92,21 @@ register({
   },
 });
 assert.equal(tool.name, "launcher");
-assert.match(tool.description, /never that it happened/);
+assert.match(tool.description, /never that it happened/u);
 
 const said = async (params) => (await tool.execute("call", params, undefined)).content[0].text;
 
 const everything = await said({ action: "list" });
-assert.match(everything, /^app:kitty: Programs › Kitty$/m);
+assert.match(everything, /^app:kitty: Programs › Kitty$/mu);
 assert.match(
   everything,
-  /^category:computer›category:energy›session:Reboot: Machine › Power › Reboot \[disruptive: offered for Return, not done\]$/m,
+  /^category:computer›category:energy›session:Reboot: Machine › Power › Reboot \[disruptive: offered for Return, not done\]$/mu,
 );
-assert.match(everything, /Machine › Screen › Brightness \(now 60%\) \(takes a percentage\)$/m);
+assert.match(everything, /Machine › Screen › Brightness \(now 60%\) \(takes a percentage\)$/mu);
 
 const power = await said({ action: "list", match: "power" });
-assert.match(power, /Reboot/);
-assert.doesNotMatch(power, /Kitty/);
+assert.match(power, /Reboot/u);
+assert.doesNotMatch(power, /Kitty/u);
 assert.equal(
   await said({ action: "list", match: "toaster" }),
   'Nothing in the launcher matches "toaster".',
@@ -119,7 +119,7 @@ assert.equal(
 );
 assert.match(
   await said({ action: "run", id: "category:computer›category:energy›session:Reboot" }),
-  /^Not done yet: .*a row \(Reboot\?\) and Return does it/,
+  /^Not done yet: .*a row \(Reboot\?\) and Return does it/u,
 );
 assert.equal(await said({ action: "run", id: "nothing" }), "Not done: no entry by that id");
 assert.equal(await said({ action: "run" }), "Name the id to run, as list gives it.");
@@ -133,9 +133,9 @@ assert.ok(calls.includes("ipc call launcher run app:kitty"));
 writeFileSync(join(work, "dropped"), "");
 await assert.rejects(
   said({ action: "list" }),
-  /^Error: The launcher didn't answer: ERROR quickshell\.ipc: Socket Error QLocalSocket::PeerClosedError$/,
+  /^Error: The launcher didn't answer: ERROR quickshell\.ipc: Socket Error QLocalSocket::PeerClosedError$/u,
 );
-await assert.rejects(said({ action: "run", id: "app:kitty" }), /The launcher didn't answer/);
+await assert.rejects(said({ action: "run", id: "app:kitty" }), /The launcher didn't answer/u);
 
 writeFileSync(join(work, "down"), "");
-await assert.rejects(said({ action: "list" }), /The launcher didn't answer: no running instance/);
+await assert.rejects(said({ action: "list" }), /The launcher didn't answer: no running instance/u);

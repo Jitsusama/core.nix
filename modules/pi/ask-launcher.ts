@@ -73,8 +73,8 @@ function answerOf(printed: string): unknown {
   } catch (error) {
     const plain = printed
       // biome-ignore lint/suspicious/noControlCharactersInRegex: qs colours its error with ANSI escapes, which open with ESC.
-      .replace(/\x1b\[[0-9;]*m/g, "")
-      .replace(/\s+/g, " ")
+      .replace(/\x1b\[[0-9;]*m/gu, "")
+      .replace(/\s+/gu, " ")
       .trim();
     throw new Error(`The launcher didn't answer: ${plain || "it printed nothing"}`, {
       cause: error,
