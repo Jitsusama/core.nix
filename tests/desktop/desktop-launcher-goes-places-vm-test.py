@@ -493,23 +493,30 @@ def refresh_and_hold_are_traced(desktop: Desktop, heard: str) -> None:
     desktop.launcher_ready()
     desktop.as_account("systemctl --user start keep-awake.service")
 
-    def refreshed(_: object) -> bool:
+    # The opening under way is kept only as it closes, so its refreshes are those of a trace
+    # no opening kept yet holds.
+    def refreshes() -> list[Json]:
         spans: list[Json] = json.loads(desktop.as_account("qs ipc call launcher traced"))
-        return any(
-            span["name"] == "refresh" and span["about"]["source"] == "session" for span in spans
-        )
+        closed = {span["trace"] for span in spans if span["name"] == "open"}
+        return [
+            span
+            for span in spans
+            if span["name"] == "refresh"
+            and span["about"]["source"] == "session"
+            and span["trace"] not in closed
+        ]
 
-    retry(refreshed, timeout=dt.timedelta(seconds=10))
+    retry(lambda _: refreshes() != [], timeout=dt.timedelta(seconds=10))
+    refresh = refreshes()[0]
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     spans: list[Json] = json.loads(desktop.as_account("qs ipc call launcher traced"))
-    opening = [span for span in spans if span["name"] == "open"][-1]
-    refresh = next(
-        span for span in spans if span["name"] == "refresh" and span["about"]["source"] == "session"
+    opening = next(
+        span for span in spans if span["trace"] == refresh["trace"] and span["name"] == "open"
     )
     assert refresh["parent"] == opening["span"], refresh
     assert refresh["about"]["rows"] >= 0, refresh
     assert refresh["about"]["tookMs"] >= 0, refresh
-    desktop.as_account("qs ipc call launcher toggle")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     with desktop.told("shows card Traced"):
         desktop.as_account("notify-send --expire-time=60000 'Traced' 'held and let go'")
     with desktop.told("keys notices"):
