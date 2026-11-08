@@ -1790,11 +1790,14 @@ QtObject {
             + "ergodox\tcoal\t-\trightshift\t1200\t1200\n"
             + "ergodox\tnumb\tshift\tcode193\t1000\t0\n"
             + "laptop\tbase\t-\tj\t70\t0\n";
-        const tally = KeyCounts.board(counts, "ergodox");
+        // The theme's faces, by the key map's spelling, as Shortcuts.qml
+        // gives them (modules/theme/keys.nix).
+        const keyFaces = { shift: { text: "\u21e7" }, f23: { text: "Copilot", wide: false } };
+        const tally = KeyCounts.board(counts, "ergodox", keyFaces);
         machine("a board's presses and holds", [tally.presses, tally.holds], [20000, 3240]);
         machine("the keys pressed most, as a chord draws them", tally.most,
             [{ key: "E", presses: 9100 }, { key: "Space", presses: 5000 },
-                { key: "\u21e7", presses: 3200 }, { key: "F23", presses: 1000 },
+                { key: "\u21e7", presses: 3200 }, { key: "Copilot", presses: 1000 },
                 { key: "A", presses: 900 }]);
         const keyNamed = id => `[${id}]`;
         const keyWords = { since: "since {day}", began: "since counting began" };
@@ -1806,7 +1809,7 @@ QtObject {
         ]);
         machine("the keys under their heading", KeyCounts.most(tally, keyNamed).slice(0, 2),
             [{ heading: "[most]" }, { keys: [["E"]], value: "9.1k" }]);
-        machine("a board with nothing counted", [KeyCounts.board(counts, "other"),
+        machine("a board with nothing counted", [KeyCounts.board(counts, "other", keyFaces),
             KeyCounts.facts(null, keyNamed, ""), KeyCounts.most(null, keyNamed)], [null, [], []]);
         machine("counts short", [870, 9100, 12400].map(KeyCounts.short), ["870", "9.1k", "12k"]);
         machine("counting began", KeyCounts.since("1793898549\n", keyWords,

@@ -3134,6 +3134,11 @@ onLinux {
         property string backlight: ""
         signal turned
       '';
+      # No shortcuts, and no key faces: the boards here count nothing.
+      shortcuts = singleton "Shortcuts.qml" ''
+        property var actions: []
+        property var faces: ({})
+      '';
       # The laptop's own layout, as keyd's module describes it.
       laptop =
         pkgs.writeText "laptop.json"
@@ -3163,7 +3168,7 @@ onLinux {
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${niri} Niri.qml
-      cp ${singleton "Shortcuts.qml" "property var actions: []"} Shortcuts.qml
+      cp ${shortcuts} Shortcuts.qml
       cp ${lights} Lights.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime XDG_CONFIG_HOME=$TMPDIR/config
       export LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen

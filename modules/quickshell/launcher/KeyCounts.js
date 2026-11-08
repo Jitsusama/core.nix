@@ -12,35 +12,36 @@ const MOST = 5;
 // How many layers and modifiers it names beside their whole.
 const SHARES = 3;
 
-// A key as a chord draws it (modules/theme/keys.nix, home.nix's
-// stepFaces), from the kernel's name for it: its glyph where it has one,
-// one name for a key there are two of, a letter as a capital, and any other
-// word with one.
-const FACES = {
-    leftshift: "\u21e7", rightshift: "\u21e7", enter: "\u21b5", kpenter: "\u21b5",
-    up: "\u2191", down: "\u2193", left: "\u2190", right: "\u2192", escape: "Esc",
-    pageup: "PgUp", pagedown: "PgDn", leftctrl: "Ctrl", rightctrl: "Ctrl",
-    leftalt: "Alt", rightalt: "Alt", leftmeta: "Super", rightmeta: "Super",
-    capslock: "Caps Lock", numlock: "Num Lock", scrolllock: "Scroll Lock",
-    // The key the counter knows only by its number: F23, the Copilot key's.
-    code193: "F23", code70: "Scroll Lock"
+// The kernel's names for keys the key map spells otherwise: one name for
+// a key there are two of, and the keys the counter knows only by their
+// number, code193 the Copilot key's F23 and code70 Scroll Lock.
+const SPELLED = {
+    leftshift: "shift", rightshift: "shift", leftctrl: "ctrl", rightctrl: "ctrl",
+    leftalt: "alt", rightalt: "alt", leftmeta: "super", rightmeta: "super",
+    kpenter: "enter", capslock: "caps_lock", numlock: "num_lock",
+    scrolllock: "scroll_lock", code193: "f23", code70: "scroll_lock"
 };
 
 // A number pad's key, by the kernel's name for it, kp7.
 const PAD = /^kp(\d)$/;
 
-function face(key) {
-    const own = FACES[key];
-    if (own !== undefined) {
-        return own;
-    }
+// A key as a chord draws it, from the kernel's name for it: its face in
+// the theme's table (Shortcuts.qml's faces, by the key map's spelling),
+// else a letter as a capital and any other word with one.
+function face(key, faces) {
     // The number pad's keys read as what they type, as the board's
     // numbers layer sends them.
     const pad = PAD.exec(key);
     if (pad !== null) {
         return pad[1];
     }
-    return key.length === 1 ? key.toUpperCase() : key.charAt(0).toUpperCase() + key.slice(1);
+    const spelled = SPELLED[key] ?? key;
+    const own = faces[spelled];
+    if (own !== undefined) {
+        return own.text;
+    }
+    return spelled.length === 1 ? spelled.toUpperCase()
+        : spelled.charAt(0).toUpperCase() + spelled.slice(1);
 }
 
 // The counts file's rows, each { board, layer, modifiers, key, presses,
@@ -72,7 +73,7 @@ function tallied(each, by) {
 // What one board has tallied, or null for one it has nothing of:
 // { presses, holds, most: [{ key, presses }], layers: [{ name, share }],
 // modified: share, modifiers: [{ name, share }] }, a share of one.
-function board(text, name) {
+function board(text, name, faces) {
     const own = rows(text).filter(row => row.board === name);
     const presses = own.reduce((sum, row) => sum + row.presses, 0);
     if (presses === 0) {
@@ -83,7 +84,7 @@ function board(text, name) {
     return {
         presses,
         holds: own.reduce((sum, row) => sum + row.holds, 0),
-        most: tallied(own, row => face(row.key)).slice(0, MOST)
+        most: tallied(own, row => face(row.key, faces)).slice(0, MOST)
             .map(one => ({ key: one.name, presses: one.presses })),
         layers: tallied(own, row => row.layer).map(share),
         modified: modified.reduce((sum, row) => sum + row.presses, 0) / presses,
