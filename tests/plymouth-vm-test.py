@@ -455,8 +455,8 @@ def test_started_with_no_splash_the_watch_ends_at_once(opened: Boot) -> None:
     assert ended == ["success", "0"]
 
 
-def test_a_slow_job_is_named_while_it_runs_and_goes_when_it_ends(opened: Boot) -> None:
-    """A slow job is named while it runs, and goes when it ends."""
+def test_a_slow_job_is_said_while_it_runs_and_goes_when_it_ends(opened: Boot) -> None:
+    """A slow job is said in our words while it runs, and goes when it ends."""
     machine = opened.machine
     # The splash back up over the first console, as at boot, with
     # nothing graphical holding it and logind kept from handing the
@@ -469,11 +469,14 @@ def test_a_slow_job_is_named_while_it_runs_and_goes_when_it_ends(opened: Boot) -
         " -p Description='Slow Hello' sleep infinity",
     )
     # Slow Hello lasts until it's stopped, so however long a busy host takes
-    # to read its name off the screen, it's still running when that's done.
-    machine.wait_for_text("waiting on Slow Hello", timeout=READING)
+    # to read the words off the screen, it's still running when that's done.
+    # The screen says it plainly, and the journal names the unit.
+    machine.wait_for_text("waiting on something to start", timeout=READING)
     opened.photographed("waiting")
+    assert "Slow" not in machine.get_screen_text()
+    machine.succeed("journalctl -b -u plymouth-waits.service | grep -F 'slow.service (Slow Hello)'")
     machine.succeed("systemctl stop slow.service")
-    retry(lambda _: "Slow" not in machine.get_screen_text(), timeout=READING)
+    retry(lambda _: "something" not in machine.get_screen_text(), timeout=READING)
     # logind stays masked and the greeter stopped, as the emergency
     # shell wants them next.
     machine.succeed(
@@ -624,12 +627,11 @@ def test_a_restart_names_a_slow_stop_and_keeps_its_screen_to_the_end(opened: Boo
     last = opened.photographs_until(
         "Sending SIGKILL to remaining processes", mark, timedelta(seconds=60)
     )
-    opened.showing(stopping, "waiting on Slow Goodbye", "stopping-slowly")
+    opened.showing(stopping, "waiting on something to stop", "stopping-slowly")
     opened.showing(last, "waiting on the last programs", "last-stage")
-    # A shutdown's splash is a new one, told the generation again: the
-    # boot's last frame says it too, so it's read beside what only the
-    # shutdown says.
-    opened.showing(stopping, r"(?s)(?=.*Slow Goodbye).*generation 7", "stopping-generation")
+    # A shutdown's splash is a new one, told the generation that's running:
+    # the profile's generation 2, where the boot loader's entry said 7.
+    opened.showing(stopping, r"(?s)(?=.*something to stop).*generation 2", "stopping-generation")
     # The test's machine ends at a restart rather than starting again.
     machine.wait_for_shutdown(timeout=timedelta(minutes=3))
     machine.start()

@@ -2652,6 +2652,18 @@ as an exception with the reason.
 
 What each studio round settled, newest first, with the reason.
 
+- **A shutdown says what it waits on plainly, in the serif, and names the
+  generation running** (2026-11-07, from Joel's photographs of a restart).
+  The restart's screen read "waiting on User Manager for UID 1000" in a
+  sans, under a foot naming the generation booted days before rather than
+  the one running, which the restart boots. A slow job is now said by its
+  kind in our words: "waiting on your session to close" for a person's
+  session, "waiting on something to stop" for anything else, and to start
+  at a boot; the unit's name goes to the journal, for whoever looks. A
+  shutdown's splash starts from the system, whose fonts lacked the serif's
+  cut, so the cut joins them. The foot at a shutdown names the newest
+  generation that is the running system; a boot keeps the entry it chose.
+
 - **kitty draws every letter at its own size** (2026-11-04, from the m
   of "limit" drawn visibly smaller in the terminal at 1.5). Texture
   healing gives a wide letter beside narrow ones, such as that m between
@@ -2789,7 +2801,8 @@ What each studio round settled, newest first, with the reason.
   shutting down and nothing more, and a restart's screen froze when its last
   stage began. Once a job has run three seconds, the line under those words
   names it, in the body face and in the description systemd gives it:
-  waiting on Docker Application Container Engine. One is named at a time,
+  waiting on Docker Application Container Engine (since 7 November, in our
+  words rather than systemd's, above). One is named at a time,
   the longest running, until it ends, so the line never flits; a job that
   ends in time is never named, so a calm boot shows nothing new. A
   shutdown's last stage says what it's doing in the theme's words, sent as
