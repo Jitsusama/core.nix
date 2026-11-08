@@ -70,9 +70,9 @@ buildLinux (
     defconfig = "defconfig asahi.config";
 
     # integration/aurora at d4d267839caa (2026-11-08), as nixos-aurora's
-    # sources.json pins it. It carries the J614s's board file and its
-    # 16-core GPU, and the external display chain both 14- and 16-inch
-    # M4 Pros share (README.md).
+    # sources.json pins it. It carries the J614s's board file, and the
+    # external display chain both 14- and 16-inch M4 Pros share
+    # (README.md).
     src = fetchurl {
       name = "linux-aurora-d4d267839caa.tar.gz";
       url = "https://codeload.github.com/aurora-silicon/linux/tar.gz/d4d267839caa0aa9cbcd98a792351a52bd856b84";

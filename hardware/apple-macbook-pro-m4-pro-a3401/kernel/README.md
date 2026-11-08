@@ -16,8 +16,8 @@ aurora-silicon/linux's integration/aurora at d4d267839caa (2026-11-08),
 the commit Aurora's NixOS flake, nixos-aurora, pins; its tarball's hash
 is the one that flake checks. It holds the J614s's board file,
 t6040-j614s.dts, which takes the 16-inch J616s's description whole: the
-two boards differ in their panel and their GPU's core count, not in
-their ports. So the external display chain the J616s gained in Aurora's
+two boards differ in their panel, their wireless board and their
+speakers, not in their ports. So the external display chain the J616s gained in Aurora's
 PR 526 is the J614s's too: its two external display coprocessors (one
 behind HDMI, one routed to the USB-C ports), the crossbars that route
 them, and the HDMI converter's hot-plug and power pins. Each of the
