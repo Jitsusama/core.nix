@@ -27,6 +27,7 @@ import "../When.js" as When
 import "Ago.js" as Ago
 import "ForYou.js" as ForYou
 import "ForYouFilter.js" as Filter
+import "Lately.js" as Lately
 import "NowGroups.js" as Groups
 import "Showing.js" as Showing
 import "Order.js" as Order
@@ -917,10 +918,12 @@ Provider {
         const now = Date.now();
         const rows = looks.history.map(one => ({ at: one.resolved ?? one.since,
             row: () => provider.lookRow(one, now) }))
-            .concat(doneItems.map(one => ({ at: one.resolved, row: () => provider.doneRow(one) })));
+            .concat(doneItems.map(one => ({ at: one.resolved, row: () => provider.doneRow(one) })),
+                cameDone.map(one => ({ at: one.at, row: () => provider.cameDoneRow(one) })));
         return Order.sorted(rows, Order.stream(one => one.at)).map(one => one.row());
     }
     readonly property int resolvedCount: looks.history.length + doneItems.length
+        + cameDone.length
     readonly property var historyRow: resolvedCount === 0 ? null : member({
         key: "on:waiting:history",
         verb: "more",
@@ -1027,8 +1030,98 @@ Provider {
         const rows = wanting.concat(
             WaitingOnYou.now.map(each => weighed(provider.item(each, now), itemThing(each))),
             looks.waiting.map(one => weighed(provider.lookRow(one, now), lookThing(one))));
-        return ForYou.ordered(rows).map(one => one.row)
-            .concat(laterRow === null ? [] : [laterRow], historyRow === null ? [] : [historyRow]);
+        return ForYou.ordered(rows).map(one => one.row).concat(latelyRows(now),
+            laterRow === null ? [] : [laterRow], historyRow === null ? [] : [historyRow]);
+    }
+
+    // What came for Joel, For You's Lately band, after what he can do and
+    // before what's for later (Y2YBTS, 2026-11-08; Joel: "a notice stays
+    // until read or forgotten"): a row for each source holding something
+    // unread. Mail and Slack are their pieces' rows (NewMail.qml,
+    // NewSlack.qml), each piece saying what it holds (Piece.qml's lately
+    // and came), and Desktop is the notices unread, the shell's own for
+    // what For You lists left out. The rows stand by the heaviest each
+    // holds, a thing to look at weighed by how long it's waited, as For
+    // You weighs one, and each note names who it's from, the newest first
+    // (VKCF3Z, 2026-11-08). Each leaves once its source says all it held
+    // is done, and what's done goes to History.
+    readonly property var latelyPieces: Facts.all.filter(fact => fact.piece
+        && Lately.SOURCES.includes(fact.piece.lately) && fact.piece.present
+        && fact.piece.active)
+    readonly property var unreadNotices: Lately.held({ notices: Notices.history, mail: [],
+        messages: null }).desktop
+
+    function latelyRows(now) {
+        const holding = { mail: [], slack: [], desktop: unreadNotices.map(notice => ({
+            who: notice.app, at: notice.at })) };
+        for (const fact of latelyPieces)
+            holding[fact.piece.lately] = holding[fact.piece.lately].concat(fact.piece.came);
+        for (const source of Lately.SOURCES)
+            holding[source] = Order.sorted(holding[source].map(one => ({ who: one.who,
+                at: Lately.when(one.at) })), Order.stream(one => one.at));
+        const weigh = one => ForYou.weigh({ kind: "look", ready: true, since: one.at }, now)
+            .weight;
+        return Lately.bands(holding, weigh).map(band => {
+            const note = Lately.members(holding[band.source], one => one.who).join(", ");
+            const forYou = { kind: "notice", source: band.source };
+            if (band.source === "desktop")
+                return provider.desktopRow(note, forYou);
+            const fact = latelyPieces.find(one => one.piece.lately === band.source);
+            return made(fact, { forYou: forYou, note: note });
+        });
+    }
+
+    // The unread notices' row: how many to read, and from whom. Return
+    // steps in to each, the row it is in Notices, then Mark Them Read.
+    function desktopRow(note, forYou) {
+        const said = Words.of("on:waiting:desktop").said ?? {};
+        const ids = unreadNotices.map(notice => notice.id);
+        const inside = () => (source("notices")?.rowsOf(ids) ?? []).concat([thing({
+            key: "verb:on:waiting:desktop:read",
+            verb: Words.verb("verb:on:waiting:desktop:read"),
+            name: Words.name("verb:on:waiting:desktop:read"),
+            glyph: Words.glyph("verb:on:waiting:desktop:read"),
+            hue: "action",
+            stays: true,
+            run: () => Notices.markRead(ids)
+        })]);
+        const row = member({
+            key: "on:waiting:desktop",
+            forYou: forYou,
+            verb: "more",
+            stays: true,
+            name: Words.name("on:waiting:desktop"),
+            glyph: Words.glyph("on:waiting:desktop"),
+            hue: "muted",
+            side: ForYou.filled(said.count ?? "{count}", { count: ids.length }),
+            note: note,
+            nested: true,
+            verbs: inside,
+            targets: inside,
+            run: () => provider.launcher?.enter(row)
+        });
+        return row;
+    }
+
+    // What came and is done with, each { title, how, at, source, of }, for
+    // History (Lately.js's done): a notice read here, or withdrawn by its
+    // sender, as "read here 14:02" (VKCF3Z, 2026-11-08).
+    readonly property var cameDone: Lately.done({ notices: Notices.history, messages: null,
+        finished: [] }, { mail: {}, slack: {}, notice: Words.of("on:waiting:desktop").said ?? {} })
+
+    // A done one's row in History: a notice is its row in Notices, with how
+    // and when it was done with at its side.
+    function cameDoneRow(one) {
+        const side = ForYou.historySide({ how: one.how, resolved: one.at, since: null },
+            forYouSaid(Date.now()));
+        const row = source("notices")?.rowsOf([one.of.id])[0] ?? member({
+            key: `on:waiting:came:${one.source}:${one.at}`,
+            name: one.title,
+            glyph: Words.glyph("on:waiting:desktop"),
+            plain: true
+        });
+        return Object.assign({}, row, { side: side, hue: "muted",
+            forYou: { kind: "notice", source: one.source } });
     }
     readonly property var waiting: member({
         // Not `on:waiting`, which is the missed notices' row, by its mark
@@ -1149,7 +1242,9 @@ Provider {
         return Showing.besides(row?.drawer?.() ?? null, by ?? {});
     }
 
-    function made(fact) {
+    // `over` holds what a row made elsewhere says in place of the piece's
+    // own, as For You's Lately rows do.
+    function made(fact, over) {
         const piece = fact.piece;
         // Every act a piece has, where it keeps more than its notice can
         // offer (pieces/Pi.qml's every).
@@ -1219,7 +1314,7 @@ Provider {
                 if (actions.length > 0)
                     actions[0].run();
             }
-        }, drawn));
+        }, drawn, over ?? {}));
     }
 
     // A piece's parts as its row says them after its name: as many whole
@@ -1271,7 +1366,10 @@ Provider {
     // (Starting.qml) is the calendar's next one but for the few minutes one
     // runs on past its start, and is then the moment's meeting row.
     function above(fact) {
-        if (fact.entry.mark === "agent")
+        // What came for Joel is For You's Lately, and the notices missed
+        // are among its Desktop row's (latelyRows).
+        if (fact.entry.mark === "agent" || fact.entry.mark === "waiting"
+            || Lately.SOURCES.includes(fact.piece.lately))
             return waiting.key;
         if (fact.entry.mark === "meeting" && meeting !== null
             && meeting.key === `calendar:meeting:${fact.piece.meeting?.id ?? ""}`)

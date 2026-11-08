@@ -6914,6 +6914,25 @@
       }
     },
     {
+      "id": "on:waiting:desktop",
+      "in": "on:waiting",
+      "name": "Desktop",
+      "verb": "more",
+      "glyph": "notifications",
+      "said": {
+        "count": "{count} to read",
+        "read": "read here",
+        "withdrawn": "withdrawn"
+      }
+    },
+    {
+      "id": "verb:on:waiting:desktop:read",
+      "in": "on:waiting:desktop",
+      "name": "Mark Them Read",
+      "verb": "mark",
+      "glyph": "read"
+    },
+    {
       "id": "verb:on:look:open",
       "command": "open",
       "in": "on",

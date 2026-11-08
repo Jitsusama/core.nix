@@ -122,7 +122,8 @@ function members(things, nameOf) {
 // by the source's own id for it), or as the source said it where `say`
 // has no word. `given` is held's, with `finished` the mail done with
 // (Google's). A notice read is done; one withdrawn by its sender is read
-// too (Notices.qml's left), and says so. While Slack's daemon answers,
+// too (Notices.qml's left), and says so. Each is when it was read, else
+// when it left, else when it came. While Slack's daemon answers,
 // its read messages are Slack's history and its notices aren't, so none
 // is told twice.
 function done(given, say) {
@@ -141,7 +142,8 @@ function done(given, say) {
         .map(notice => {
             const how = notice.left === "withdrawn" ? "withdrawn" : "read";
             return { title: String(notice.summary ?? ""), how: worded(say.notice, how),
-                at: when(notice.leftAt) ?? when(notice.at), source: sourceOf(notice),
+                at: when(notice.readAt) ?? when(notice.leftAt) ?? when(notice.at),
+                source: sourceOf(notice),
                 of: notice };
         });
     return Order.sorted(mail.concat(slack, notices), Order.stream(one => one.at));

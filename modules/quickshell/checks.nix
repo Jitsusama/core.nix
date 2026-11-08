@@ -1915,6 +1915,12 @@ onLinux {
       niri = singleton "Niri.qml" ''
         function spawn(command) {}
       '';
+      # For You's Desktop row holds the notices unread, none of which the
+      # moment needs.
+      notices = singleton "Notices.qml" ''
+        property var history: []
+        function markRead(ids) {}
+      '';
       timedatectl = pkgs.writeShellScriptBin "timedatectl" "echo America/Halifax";
     in
     pkgs.runCommandLocal "the-launcher-shows-the-moment-in-now" { } ''
@@ -1934,6 +1940,7 @@ onLinux {
       cp ${./launcher/Order.js} launcher/Order.js
       cp ${./launcher/ForYou.js} launcher/ForYou.js
       cp ${./launcher/ForYouFilter.js} launcher/ForYouFilter.js
+      cp ${./launcher/Lately.js} launcher/Lately.js
       cp ${./launcher/Ago.js} launcher/Ago.js
       cp ${./launcher/Here.js} launcher/Here.js
       cp ${./When.js} When.js
@@ -1944,6 +1951,7 @@ onLinux {
       cp ${waiting} WaitingOnYou.qml
       cp ${sessions} Sessions.qml
       cp ${niri} Niri.qml
+      cp ${notices} Notices.qml
       cp ${./Location.qml} Location.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export PATH=${timedatectl}/bin:$PATH

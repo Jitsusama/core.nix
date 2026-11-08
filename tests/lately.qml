@@ -105,6 +105,10 @@ QtObject {
                     .map(one => [one.source, one.title])],
             [0, [["slack", "from Lin"]]]);
 
+        const readLate = notice("Backup done", { read: true, at: 1000, readAt: 8000 });
+        check(failures, "a notice read is done when it was read, not when it came",
+            Lately.done({ notices: [readLate], messages: null }, say).map(one => one.at), [8000]);
+
         check(failures, "an ISO time reads as one",
             Lately.done({ messages: [message("Kai", { done: { how: "gone",
                 at: "1970-01-01T00:00:01.000Z" } })] }, say).map(one => [one.how, one.at]),

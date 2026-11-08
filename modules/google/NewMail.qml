@@ -3,7 +3,8 @@
 // Gmail's own says each one as it comes. Return lists them in Now, each
 // Mail.row's, the row every surface shows, with its details beside it,
 // and after them Show the Mail, which goes to Programs › Mail. It goes
-// once none want him.
+// once none want him. In Now it's For You's Mail row, among what came for
+// him (Now.qml's Lately), and the margin shows it as it is.
 import qs
 import QtQuick
 
@@ -20,6 +21,8 @@ Piece {
         : `${Mail.mail.length} pieces of mail want you`
     context: newest === null || newest.from === "" ? "" : `newest from ${newest.from}`
     rows: thing => Mail.mail.map(mail => Mail.row(mail, thing))
+    lately: "mail"
+    came: Mail.mail.map(mail => ({ who: mail.from, at: mail.at }))
     actions: [{
         glyph: Theme.glyph.mail,
         name: "Show the Mail",

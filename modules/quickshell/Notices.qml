@@ -361,7 +361,17 @@ Singleton {
     // Marks one read, or unread again.
     function mark(id, read) {
         history = history.map(notice => notice.id !== id ? notice
-            : Object.assign({}, notice, { read: read }, read ? { missed: false } : {}));
+            : Object.assign({}, notice, { read: read },
+                read ? { missed: false, readAt: Date.now() } : { readAt: null }));
+    }
+
+    // Marks read every notice of `ids` at once, as For You's Desktop row's
+    // Mark Them Read does (launcher/Now.qml).
+    function markRead(ids) {
+        if (history.some(notice => ids.includes(notice.id) && !notice.read))
+            history = history.map(notice => !ids.includes(notice.id) ? notice
+                : Object.assign({}, notice, { read: true, missed: false,
+                    readAt: notice.read ? notice.readAt ?? null : Date.now() }));
     }
 
     // Marks read every notice of a to-do that no longer stands, so

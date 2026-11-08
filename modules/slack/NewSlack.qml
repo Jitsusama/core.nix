@@ -8,7 +8,9 @@
 // while something waits to be read: when Slack can't be asked, that's no
 // want of Joel's, so Slack's program row says it (SlackProgram.qml), and
 // a refused sign-in waits in For You (VKCF3Z, b8c8920e and 347abdb7);
-// with Slack's daemon not answering, there's no count to show at all.
+// with Slack's daemon not answering, there's no count to show at all. In
+// Now it's For You's Slack row, among what came for him (Now.qml's
+// Lately), and the margin shows it as it is.
 import qs
 import QtQuick
 
@@ -28,6 +30,12 @@ Piece {
         side: SlackUnreads.beside(one),
         note: SlackUnreads.note(one)
     }, thing))
+    lately: "slack"
+    // Slack's timestamps are seconds, as text.
+    came: SlackUnreads.conversations.map(one => ({
+        who: one.name,
+        at: one.latest ? Number(one.latest) * 1000 : null
+    }))
     actions: [{
         glyph: Theme.glyph.chat,
         name: "Show Slack",

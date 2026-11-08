@@ -111,6 +111,13 @@ Item {
     // row's name in the room left, giving way by whole parts, as Now's own
     // row says the piece's `parts`.
     property var rows: null
+    // What came for Joel that it stands for, where it's one of For You's
+    // Lately rows (Now.qml) rather than a row of Now's own: its source, one
+    // of launcher/Lately.js's SOURCES, and what it holds, each { who, at },
+    // the newest first, by which the row is weighed and its note names
+    // its members (VKCF3Z, 2026-11-08). Empty for every other piece.
+    property string lately: ""
+    property var came: []
     // Everything its source says, as Now's row's drawer (Drawer.qml's
     // `drawer`), where the row can't show it all: given what the launcher
     // allows (`{ lookups }`, whether it may ask the network), the drawer.
