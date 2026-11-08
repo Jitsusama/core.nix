@@ -32,6 +32,12 @@ pub struct HomeNetwork {
     /// newest first, at the read that saw it, at most 50.
     #[serde(default)]
     pub joins_and_leaves: Vec<JoinOrLeave>,
+    /// The changes the daemon told as notices in the last 30 days, newest
+    /// first, at most 50, each in the words it said. An event from eero's
+    /// activity list it told is left out, since `events` has it in eero's
+    /// own.
+    #[serde(default)]
+    pub told: Vec<ToldChange>,
 }
 
 /// Whether eero's cloud is answering, and since when it's been so.
@@ -531,6 +537,19 @@ pub struct Profile {
     pub paused: Option<bool>,
     /// Its devices, by hardware address, on now or not.
     pub devices: Vec<String>,
+}
+
+/// A change the daemon told, and what its notice said.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToldChange {
+    /// When it was told.
+    pub at: String,
+    /// What it told of, by the history's name for it: `internet-out`,
+    /// `internet-back`, `node-offline`, `node-online`, `joined`,
+    /// `update-waiting` or `updated`.
+    pub kind: String,
+    pub summary: String,
+    pub body: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

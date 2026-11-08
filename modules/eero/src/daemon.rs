@@ -175,10 +175,8 @@ impl Daemon {
             if let Err(reason) = self.notifier.tell(notice) {
                 eprintln!("eero: couldn't raise \"{}\": {reason}", notice.summary);
             }
-            for told in &notice.tells {
-                if let Err(reason) = self.history.record_told(told, at) {
-                    eprintln!("eero: {reason}");
-                }
+            if let Err(reason) = self.history.record_notice(notice, at) {
+                eprintln!("eero: {reason}");
             }
         }
     }
@@ -258,6 +256,11 @@ impl Daemon {
             .watch
             .next(&next, heard == Some(Heard::Answered), &self.history);
         self.tell(&told, now_unix());
+        if !told.notices.is_empty()
+            && let Err(reason) = self.history.draw_told(&mut next, now_unix())
+        {
+            eprintln!("eero: {reason}");
+        }
         if self.model.as_ref() == Some(&next) {
             return None;
         }

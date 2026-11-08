@@ -138,3 +138,9 @@ to the home network is told from its `first_seen`. A `Network` or `eero`
 event is told unless it names something going offline, online,
 connecting, joining, updating or rebooting, or the internet, which the
 notices tell from eero's own figures, so one change never raises two.
+
+The internet's timeline, and `eero events`, set these beside what the
+daemon told, the model's `told`: none of it is eero's, so this contract
+holds none, and the history (`src/history.rs`) keeps each notice's
+summary and body for 30 days. `home-network.json` holds five, told over
+the days its own outage and firmware cover.
