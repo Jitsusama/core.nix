@@ -1253,10 +1253,8 @@ def home_network_plate(desktop: Desktop, scale: str, title: str) -> None:
     assert drawer["laidOneWay"], f"at {scale} its facts mix beside and under: {drawer}"
 
 
-def test_the_home_network_lays_out_its_place_and_drawers_at_each_scale(
-    desktop: Desktop, at_each_scale: list[str]
-) -> None:
-    """The Home Network shows the eero daemon's record, and each thing's plate whole.
+def home_network_laid_out(desktop: Desktop, at_each_scale: list[str]) -> None:
+    """Hold the Home Network to the eero daemon's record, and each thing's plate whole.
 
     The record the stand-in writes (tests/desktop.nix) reaches the place: the internet first,
     then the gateway node with its devices under it, and each node after the one it hangs from.
@@ -3051,13 +3049,11 @@ def buds(shown: dict[str, Any]) -> list[bool]:
 # across the restart, Buds stays in Nearby, still open, gone, as Steady keeps a row, rather than
 # heard on with its last signal, while Nearby looks again; shown once more, Buds is heard afresh,
 # by whichever radio the shell now takes for its own, so as the same row or beside the one gone.
-# Last of the area's tests, since BlueZ starting moves what the launcher holds.
+# Run last of the area's, since BlueZ starting moves what the launcher holds.
 
 
-def test_nearby_lists_a_device_it_hears_at_each_scale(
-    desktop: Desktop, at_each_scale: list[str], values: dict[str, Any]
-) -> None:
-    """Nearby looks once open and lists Buds with its signal, kept no longer than BlueZ is."""
+def nearby_heard(desktop: Desktop, at_each_scale: list[str], values: dict[str, Any]) -> None:
+    """Hold Nearby to looking once open, listing Buds with its signal, no longer than BlueZ."""
     machine = desktop.machine
     machine.succeed("modprobe bluetooth && modprobe hci_vhci")
     machine.succeed(f"systemd-run --unit=btvirt {values['btvirt']} -l2")
@@ -3115,3 +3111,16 @@ def test_nearby_lists_a_device_it_hears_at_each_scale(
         desktop.close_launcher()
     finally:
         machine.succeed("systemctl stop bluetooth.service btvirt || true")
+
+
+# What's around the machine, on its network and in the air, as the places that list it lay it
+# out: one subtest, since the area holds the pyramid's twenty (docs/testing.md), and last, for
+# Nearby's sake.
+
+
+def test_the_home_network_and_nearby_list_whats_around_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str], values: dict[str, Any]
+) -> None:
+    """The Home Network lays out the eero daemon's record, and Nearby what the radio hears."""
+    home_network_laid_out(desktop, at_each_scale)
+    nearby_heard(desktop, at_each_scale, values)
