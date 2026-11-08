@@ -71,6 +71,8 @@ const SECOND = 1000;
 const WEAK = ["terrible", "weak", "fair"];
 // A website's address sent in the clear, which its health says.
 const UNSECURED = /^http:\/\//i;
+// A website a browser opens, so its manager's extension can fill it.
+const BROWSED = /^https?:\/\//i;
 
 // How many managers it takes before rows name theirs.
 const SEVERAL = 2;
@@ -95,6 +97,13 @@ function website(record) {
     const given = (record.websites ?? []).filter(one => (one.address ?? "") !== "");
     const primary = given.find(one => one.primary === true) ?? given[0];
     return primary ? String(primary.address) : "";
+}
+
+// The website its manager's extension fills in a browser: its primary
+// one, where that's a web page, or "".
+function fillsAt(record) {
+    const address = website(record);
+    return BROWSED.test(address) ? address : "";
 }
 
 // Every website it has, the primary first.
@@ -223,23 +232,28 @@ function shows(record, pattern) {
 
 // The acts inside it, by name, in the one order the design gives them
 // (VKCF3Z's ruling on the Passwords place): Copy the Password, Copy the
-// One-Time Code, Copy the Username, Open the Website, Show in its
-// manager, then Copy the Link, each only where it has what the act needs.
+// One-Time Code, Copy the Username, Open in the browser its manager fills
+// in, Open the Website, Show in its manager, then Copy the Link, each only
+// where it has what the act needs: Open in the browser only where `fills`
+// says its manager's extension is in one, and on a web page, since that's
+// all the extension fills.
 // Copying the password leads, though Copy is last everywhere else, since
 // it's what an entry is for rather than a copy of what the row says
 // (docs/design.md, One word each). The link is the entry's own in its
 // manager, the one Show opens, so it goes only where Show does; the
 // website's address is Open the Website's.
-function acts(record, link) {
+function acts(record, link, fills) {
     const has = {
         password: passworded(record),
         code: code(record) !== null,
         username: username(record) !== "",
+        fill: fills === true && fillsAt(record) !== "",
         website: website(record) !== "",
         show: (link ?? "") !== "",
         link: (link ?? "") !== ""
     };
-    return ["password", "code", "username", "website", "show", "link"].filter(act => has[act]);
+    return ["password", "code", "username", "fill", "website", "show", "link"]
+        .filter(act => has[act]);
 }
 
 // When something was, as the launcher says it wherever it does: how long

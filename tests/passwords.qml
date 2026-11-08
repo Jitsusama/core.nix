@@ -122,6 +122,20 @@ QtObject {
         check("no link where its manager has none", Passwords.shows(gitHub, ""), "");
         check("every act, in order", Passwords.acts(gitHub, link),
             ["password", "code", "username", "website", "show", "link"]);
+        // Open in the browser its manager fills in, only where the manager
+        // has one, and only on a web page, its primary website.
+        check("opened where its manager fills it, before the website",
+            Passwords.acts(gitHub, link, true),
+            ["password", "code", "username", "fill", "website", "show", "link"]);
+        check("its primary website opens", Passwords.fillsAt(gitHub), "https://github.com");
+        const elsewhere = address => Object.assign({}, listedGitHub,
+            { websites: [{ address: address, primary: true }] });
+        check("in the clear, still a page", Passwords.acts(elsewhere("http://router.example"),
+            "", true), ["password", "username", "fill", "website"]);
+        check("a server isn't a page", Passwords.acts(elsewhere("ssh://git.example"), "", true),
+            ["password", "username", "website"]);
+        check("nor an address with no scheme", Passwords.fillsAt(elsewhere("github.com")), "");
+        check("no website, nothing to open", Passwords.acts(bank, "", true), []);
         // The link copied is the one Show opens, so neither goes without it.
         check("before it's read, no one-time code yet", Passwords.acts(listedGitHub, ""),
             ["password", "username", "website"]);

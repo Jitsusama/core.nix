@@ -1178,7 +1178,13 @@ works the same way everywhere.
   ("Copy the Title", "Copy the Link", "Copy the Password"). A password's
   Return copies it, since that's its use rather than a copy of what
   describes it, so Copy last doesn't move it; the secret itself reads
-  "hidden", and nothing shows it.
+  "hidden", and nothing shows it. A login's web page opens in the
+  browser its password manager's extension fills in ("Open in Google
+  Chrome"), after Copy the Username, and the launcher never fills it:
+  where the manager can't be asked to fill it, as 1Password can't from
+  outside its app, the foot says the extension offers to ("1Password
+  offers to fill it on the page"), and no secret passes through the
+  launcher.
   A quest's Go To Its Session is the one that names where, as it pairs
   with Start a Session.
   Ending the session asks once more, saying what it closes ("Reboot now,

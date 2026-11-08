@@ -2226,13 +2226,16 @@
     margin wearing the clipboard's mark and the foot, opened again, counting to its clearing,
     nothing on screen saying it, reads an entry in full as the selection rests on it, never as
     Joel's own ask, its drawer never saying its password, and holds its acts in the design's order
-    once it's stepped into, with a stand-in for 1Password's manager
+    once it's stepped into, Open in Google Chrome handing a stand-in Chrome its website as the
+    launcher goes, its foot saying 1Password offers to fill it, with a stand-in for 1Password's
+    manager
   '';
   the-passwords-show-every-figure-but-the-secret = ''
     each kind of entry wears its own mark, the favourites are listed first, then what changed
     lately, newest first, twenty at most, a row says its username at its side and names its
     password manager only while two are on the machine, an entry's acts come in the design's
-    order, each only where it has what it needs, its manager's link is filled only where the entry
+    order, each only where it has what it needs, opening it in the browser its manager fills in
+    only on an http or https website, its manager's link is filled only where the entry
     says every part, its drawer's eyebrow says its vault and kind, and its facts every figure but
     its username and its password, the design's first in its order, a hidden detail as hidden and
     never its value, a website sent in the clear as its health and a weak password as its strength,

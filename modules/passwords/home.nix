@@ -88,6 +88,17 @@ in
               manager whose program can't be shown one.
             '';
           };
+          fills = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = ''
+              The desktop entry of the browser whose extension of the
+              manager's own fills a sign-in, which an entry's Open in it opens
+              the entry's website in, or none for a manager with no such
+              extension. The extension offers to fill it there itself, so no
+              secret passes through the launcher or the daemon.
+            '';
+          };
         };
       }
     );
@@ -133,6 +144,7 @@ in
           called
           ;
         shows = if manager.shows == null then "" else manager.shows;
+        fills = if manager.fills == null then "" else manager.fills;
       }) managers;
     };
 

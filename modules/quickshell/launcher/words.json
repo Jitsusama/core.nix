@@ -8133,6 +8133,18 @@
       "glyph": "web"
     },
     {
+      "id": "verb:passwords:fill",
+      "command": "open",
+      "argument": "{browser}",
+      "in": "passwords",
+      "name": "Open in {browser}",
+      "verb": "open",
+      "glyph": "web",
+      "said": {
+        "fills": "{manager} offers to fill it on the page"
+      }
+    },
+    {
       "id": "verb:passwords:show",
       "command": "open",
       "argument": "{manager}",

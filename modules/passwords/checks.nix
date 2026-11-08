@@ -117,8 +117,8 @@ onLinux {
         && map (manager: manager.program) (provider.managers or [ ]) == [ "com.onepassword.OnePassword" ]
       );
   # Each kind's mark, who's listed with nothing typed and in what order,
-  # what a row says, an entry's acts and their order, its link in its
-  # manager's program, its drawer's eyebrow, and its facts saying every
+  # what a row says, an entry's acts and their order, opening it where its
+  # manager fills only on a web page, its link in its manager's program, its drawer's eyebrow, and its facts saying every
   # figure and never a secret, its health and a weak strength warning,
   # its password reused and breached once every password is checked and
   # nothing before, those needing attention, and the foot counting a copy

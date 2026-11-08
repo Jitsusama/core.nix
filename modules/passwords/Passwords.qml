@@ -14,7 +14,8 @@
 // can paste at once; the margin wears the clipboard's mark until the copy
 // clears (Copied.qml), and the foot, opened again, counts down to it.
 // Inside: Copy the Password, Copy the One-Time Code, Copy the Username,
-// Open the Website, Show in its manager, Copy the Link (VKCF3Z, 22949064).
+// Open in the browser its manager fills in, Open the Website, Show in its
+// manager, Copy the Link (VKCF3Z, 22949064).
 // Its drawer says every figure its manager gives but the secret.
 //
 // 1Password asks Joel through its own window to let its command in, the
@@ -75,6 +76,13 @@ Provider {
 
     function managerNamed(name) {
         return managers.find(manager => manager.name === name) ?? null;
+    }
+
+    // The desktop entry of the browser a manager's own extension fills
+    // sign-ins in, as 1Password's does in Chrome, or null where it has
+    // none or the machine hasn't that browser.
+    function browserOf(manager) {
+        return (manager?.fills ?? "") === "" ? null : DesktopEntries.byId(manager.fills);
     }
 
     // Whether a manager can't read until Joel lets the launcher in.
@@ -254,7 +262,8 @@ Provider {
             return [];
         const manager = managerNamed(record.manager);
         const link = Passwords.shows(record, manager?.shows ?? "");
-        return Passwords.acts(record, link).map(id => act(key, id, link));
+        return Passwords.acts(record, link, browserOf(manager) !== null)
+            .map(id => act(key, id, link));
     }
 
     // One act inside an entry, by its id in Passwords.js's acts. A
@@ -266,7 +275,10 @@ Provider {
     // refusal among it. The username and the entry's link are no secret,
     // and copy as any row's value does, while the launcher holds the keys;
     // the website and the entry in its manager's program open through
-    // niri as the launcher goes.
+    // niri as the launcher goes. Open in the browser opens the website in
+    // the one its manager's extension fills in, which offers to fill it
+    // on the page, as the foot says: the launcher never fills it, so no
+    // secret passes through here or the daemon.
     function act(key, id, shown) {
         const record = recordOf(key);
         if (record === null)
@@ -274,9 +286,11 @@ Provider {
         const words = `verb:passwords:${id}`;
         const manager = managerNamed(record.manager);
         const address = Passwords.website(record);
+        const browser = id === "fill" ? browserOf(manager) : null;
         const base = {
             key: words,
-            name: Words.name(words, "", { called: manager?.called ?? "" }),
+            name: Words.name(words, "", { called: manager?.called ?? "",
+                browser: browser?.name ?? "" }),
             verb: Words.verb(words),
             glyph: Words.glyph(words),
             hue: "action"
@@ -300,6 +314,17 @@ Provider {
                 said.password ?? ""), { use: true }),
             code: () => copying(Passwords.code(record)?.id ?? null, said.code ?? ""),
             username: () => plain(Passwords.username(record)),
+            // It wears the browser's own mark, and names it on the : line,
+            // as :open google-chrome.
+            fill: () => ({
+                later: true,
+                run: () => Niri.spawn(provider.command(browser)
+                    .concat([Passwords.fillsAt(record)])),
+                state: () => Passwords.fill(Words.of(words).said?.fills ?? "",
+                    { manager: manager?.called ?? "" }),
+                fill: { browser: manager?.fills ?? "" },
+                glyph: provider.programGlyph(manager?.fills ?? "")
+            }),
             website: () => opening(address),
             // It wears its manager's own mark, as its program's row does,
             // and names it on the : line, as :open 1password.

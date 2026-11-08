@@ -10,12 +10,15 @@ in, GitHub leads as a favourite, its username at its side, its Return copies its
 through the daemon to the clipboard and the launcher goes, the margin wearing the clipboard's
 mark and the foot, opened again, saying when it clears; resting on it reads it in full, its
 drawer never saying its password, and stepped into, it holds its acts in the design's order.
+Open in Google Chrome, Chrome's a stand-in that writes down what it's given, hands it GitHub's
+website as the launcher goes, its foot saying 1Password offers to fill it there.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -37,6 +40,23 @@ ASKED = LOGS / "passwords-asked.log"
 STAND_IN = "stand-in-password"
 # The row leading the place while 1Password is locked: the manager, by its name.
 LOCKED = "1Password"
+# What the stand-in Chrome was given, a line an argument.
+CHROME_GIVEN = LOGS.resolve() / "chrome-given.log"
+# The act opening an entry's website where 1Password's extension fills it.
+IN_CHROME = "Open in Google Chrome"
+
+
+def stand_in_chrome() -> None:
+    """Give the shell a Chrome to find by its desktop entry, writing down what it's given."""
+    bash = shutil.which("bash")
+    assert bash is not None, "no bash to stand in for Chrome"
+    program = LOGS.resolve() / "google-chrome"
+    program.write_text(f'#!{bash}\nprintf "%s\\n" "$@" > {CHROME_GIVEN}\n')
+    program.chmod(0o755)
+    data = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+    entry = data / "applications" / "google-chrome.desktop"
+    entry.parent.mkdir(parents=True, exist_ok=True)
+    entry.write_text(f"[Desktop Entry]\nType=Application\nName=Google Chrome\nExec={program} %U\n")
 
 
 def asked() -> list[Json]:
@@ -50,6 +70,7 @@ def asked() -> list[Json]:
 def shell() -> Iterator[Shell]:
     """Give the shell, started once a run after the passwords daemon and its manager."""
     LOGS.mkdir(parents=True, exist_ok=True)
+    stand_in_chrome()
     managers = LOGS / "password-managers.json"
     stand_in = ["bash", os.environ["PASSWORDS_STAND_IN"], str(ASKED)]
     managers.write_text(json.dumps({"managers": [{"name": "1password", "command": stand_in}]}))
@@ -201,9 +222,31 @@ def test_resting_on_an_entry_reads_it_in_full_and_it_holds_its_acts_in_order(
         "Copy the Password",
         "Copy the One-Time Code",
         "Copy the Username",
+        IN_CHROME,
         "Open the Website",
         "Show in 1Password",
         "Copy the Link",
     ]
     shell.launcher_until(lambda shown: shown["rows"] == acts)
     shell.launcher_until(lambda shown: shown["held"] == ["passwords", "GitHub"])
+
+
+def test_open_in_chrome_hands_chrome_the_website_as_the_launcher_goes(shell: Shell) -> None:
+    """Open in Google Chrome hands Chrome the website as the launcher goes, saying who fills it."""
+    let_in(shell)
+    opened(shell)
+    shell.launcher_until(lambda shown: shown["rows"][:1] == ["GitHub"])
+    # Read in full first, so no act arrives above it once the selection is there.
+    shell.launcher_until(
+        lambda shown: "One-Time Code" in str((shown["selected"] or {}).get("drawer") or {})
+    )
+    shell.step_in("ctrl-bracketright")
+    shell.launcher_until(lambda shown: IN_CHROME in shown["rows"])
+    shell.down_to(IN_CHROME)
+    # The launcher never fills it, and its foot says so.
+    shell.launcher_until(lambda shown: shown["footer"] == "1Password offers to fill it on the page")
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: not shown["open"])
+    shell.launcher_until(
+        lambda _: CHROME_GIVEN.exists() and CHROME_GIVEN.read_text() == "https://github.com/login\n"
+    )
