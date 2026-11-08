@@ -245,14 +245,14 @@ function opensAt(where, beside) {
 const rebootListLasts = 60 * 60 * 1000;
 const safeId = /^[A-Za-z0-9._-]+$/;
 
-// The sessions a reboot's list names to reopen as the next boot begins,
-// each {id, cwd, title} with its place, from the list as the reboot's hold
-// writes it ({v, boot, taken, sessions: [{id, cwd, title, output,
-// workspace, column}]}). Only a list taken in another boot, at most an hour
-// before this one began, names any: one from this boot, or from long ago,
-// is no reboot's, so a shell restarted, as a switch restarts it, never
-// reopens anything (2026-11-07, when a switch's restart reopened 36
-// sessions a boot four days old had left). `bootedAt` is when this boot
+// The sessions a reboot's list names for Reopen Them All to offer once the
+// next boot has begun, each {id, cwd, title} with its place, from the list
+// as the reboot's hold writes it ({v, boot, taken, sessions: [{id, cwd,
+// title, output, workspace, column}]}), with the boot it was taken in.
+// Only a list taken in another boot, at most an hour before this one
+// began, names any: one from this boot, or from long ago, is no reboot's,
+// so it never offers sessions a boot days old had left (2026-11-07, when a
+// switch's restart reopened 36 of those). `bootedAt` is when this boot
 // began, in milliseconds since the epoch.
 function rebootList(text, boot, bootedAt) {
     let read = null;
@@ -265,7 +265,7 @@ function rebootList(text, boot, bootedAt) {
     const fresh = taken < bootedAt && bootedAt - taken <= rebootListLasts;
     if (read?.v !== 1 || typeof read.boot !== "string" || read.boot === ""
         || read.boot === boot || !fresh || !Array.isArray(read.sessions)) {
-        return { taken: "", sessions: [] };
+        return { boot: "", taken: "", sessions: [] };
     }
     const whole = one => one !== null && typeof one === "object"
         && safeId.test(String(one.id ?? "")) && typeof one.cwd === "string"
@@ -275,8 +275,30 @@ function rebootList(text, boot, bootedAt) {
         ? { output: one.output, workspace: one.workspace, column: one.column, tile: 1 }
         : null;
     return {
+        boot: read.boot,
         taken: read.taken,
         sessions: read.sessions.filter(whole).map(one => ({ id: String(one.id), cwd: one.cwd,
             title: String(one.title ?? ""), at: at(one) }))
+    };
+}
+
+// The last boot's sessions Sessions to Reopen offers, and that boot: the
+// reboot's list (rebootList) while it names any, each until it's `back`
+// here (running or parked, by id), since nothing takes one out of it as
+// the harness takes a session out of restore.json; else what restore.json
+// (`restored`, {boot, sessions}) kept but the carried, which are offered
+// apart. None from this boot, `now.boot`, or from the boot Joel put off,
+// `now.putOff`.
+function lastBoot(listed, restored, now) {
+    const { boot, putOff, back } = now;
+    const fromList = listed.sessions.length > 0;
+    const from = fromList ? listed.boot : restored.boot;
+    if (boot === "" || from === "" || from === boot || from === putOff) {
+        return { boot: from, sessions: [] };
+    }
+    return {
+        boot: from,
+        sessions: fromList ? listed.sessions.filter(one => !back.includes(one.id))
+            : restored.sessions.filter(one => one.carried === undefined)
     };
 }

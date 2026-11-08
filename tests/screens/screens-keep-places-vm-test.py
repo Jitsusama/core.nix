@@ -13,6 +13,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import shlex
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -227,17 +228,17 @@ def test_sessions_reopened_while_every_screen_drops_and_comes_back_go_where_they
             booted.outputs_say(screen, there=True)
 
 
-def test_a_shell_starting_after_a_reboot_reopens_only_what_its_list_names(
+def test_reopen_them_all_after_a_reboot_reopens_only_what_its_list_names(
     booted: Screens,
 ) -> None:
-    """A shell starting after a reboot reopens the reboot's list, each where it sat, and no more.
+    """Reopen Them All after a reboot reopens the reboot's list, each where it sat, and no more.
 
-    After a reboot Joel types only his disk's PIN and signs in (2026-11-07), so the shell
-    starting reopens the sessions the reboot's hold listed. Never what a boot's end left in
-    restore.json, and never on a restart alone: at 09:08 that day a switch restarting the
-    shell reopened 36 sessions a boot four days old had left. A window Joel opens as he
-    signs in takes no session's workspace from it: at 10:33 his browser's, alone on the
-    first, left every session one workspace along.
+    The shell starting reopens nothing, the reboot's list included: Joel reopens them when he
+    asks (2026-11-07, "no, i never wanted them automatic"). Then the list is all Reopen
+    Them All brings back, never what a boot's end left in restore.json: at 09:08 that day a
+    switch restarting the shell reopened 36 sessions a boot four days old had left. A window
+    Joel opens as he signs in takes no session's workspace from it: at 10:33 his browser's,
+    alone on the first, left every session one workspace along.
     """
     machine = booted.machine
     where = {
@@ -301,7 +302,16 @@ def test_a_shell_starting_after_a_reboot_reopens_only_what_its_list_names(
             booted.in_niri('niri msg --json windows | grep -qF \'"title":"Lantern"\''),
             timeout=dt.timedelta(seconds=120),
         )
+        # A shell starting after the reboot reopens nothing of it by itself.
         machine.succeed(booted.in_niri(restart), timeout=dt.timedelta(seconds=90))
+        assert counted() == {}, counted()
+        # Reopen Them All, as Joel's press runs it from Agents (Now holds
+        # the same row), reopens the list alone.
+        reopen_all = "collection:agents\u203aagents:to-reopen\u203averb:agents:to-reopen:all"
+        catalogue = json.loads(machine.succeed(booted.in_niri("qs ipc call launcher list")))
+        assert reopen_all in [e["id"] for e in catalogue], "no Reopen Them All in Agents"
+        ran = machine.succeed(booted.in_niri(f"qs ipc call launcher run {shlex.quote(reopen_all)}"))
+        assert '"error"' not in ran, ran
         deadline = time.monotonic() + 180
         while not home(now_sat := booted.sessions_sat("01c7-")):
             assert time.monotonic() < deadline, f"not reopened where they sat: {now_sat}"
