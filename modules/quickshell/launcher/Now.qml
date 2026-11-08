@@ -128,11 +128,16 @@ Provider {
 
         function onOpenChanged() {
             if (provider.launcher.open) {
+                provider.openedAt = Date.now();
                 provider.reweather();
                 provider.retime();
             }
         }
     }
+
+    // When the launcher last opened, so a notice read since stays where
+    // Joel read it until it closes (latelyNotices).
+    property real openedAt: 0
 
     // The time and the date as the launcher places them, read rather than
     // bound: the launcher's answers are made from every provider's rows,
@@ -1048,7 +1053,16 @@ Provider {
     readonly property var latelyPieces: Facts.all.filter(fact => fact.piece
         && Lately.SOURCES.includes(fact.piece.lately) && fact.piece.present
         && fact.piece.active)
-    readonly property var unreadNotices: Lately.held({ notices: Notices.history, mail: [],
+    // The notices as For You holds them: one read since the launcher
+    // opened is still unread here, so Desktop holds still while Joel looks
+    // at it (VKCF3Z, 2026-11-08) and u brings back what d did there; it
+    // goes to History once the launcher closes. One withdrawn goes at once.
+    readonly property var latelyNotices: {
+        const since = provider.launcher?.open ? openedAt : Number.POSITIVE_INFINITY;
+        return Notices.history.map(notice => notice.read && (notice.readAt ?? 0) >= since
+            ? Object.assign({}, notice, { read: false }) : notice);
+    }
+    readonly property var unreadNotices: Lately.held({ notices: latelyNotices, mail: [],
         messages: null }).desktop
 
     // Desktop and History are For You's, which is Now's, so a notice
@@ -1124,7 +1138,7 @@ Provider {
     // What came and is done with, each { title, how, at, source, of }, for
     // History (Lately.js's done): a notice read here, or withdrawn by its
     // sender, as "read here 14:02" (VKCF3Z, 2026-11-08).
-    readonly property var cameDone: Lately.done({ notices: Notices.history, messages: null,
+    readonly property var cameDone: Lately.done({ notices: latelyNotices, messages: null,
         finished: [] }, { mail: {}, slack: {}, notice: Words.of("on:waiting:desktop").said ?? {} })
 
     // A done one's row in History: a notice is its row in Notices, with how
