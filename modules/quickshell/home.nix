@@ -249,6 +249,7 @@ let
     "launcher/Networkd.js"
     "launcher/WifiLink.js"
     "launcher/Links.js"
+    "launcher/Nearby.js"
     "launcher/Sounds.js"
     "launcher/Plate.js"
     "launcher/Screens.js"
