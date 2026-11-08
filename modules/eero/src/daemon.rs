@@ -6,7 +6,8 @@
 //! figures move (schedule.rs), and sleeps between, woken early only by a
 //! listener. When eero can't be reached the last model stays, its cloud
 //! saying so, since the internet being down is what the shell most needs
-//! to show.
+//! to show. After each read it records what moves in the history
+//! (history.rs), in eero's folder in the account's state.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -19,10 +20,12 @@ use serde_json::Value;
 
 use crate::api;
 use crate::cloud::{self, Failure};
+use crate::history::History;
 use crate::listeners::{Call, Listeners};
 use crate::model::{Cloud, CloudState, HomeNetwork};
 use crate::read::{self, Answers};
 use crate::schedule::{Read, Schedule};
+use crate::session;
 use crate::time;
 
 /// Keeps the home network until it's stopped.
@@ -37,7 +40,7 @@ pub fn run() -> Result<(), String> {
             folder.join("socket").display()
         )
     })?;
-    let mut daemon = Daemon::new(earlier(&file));
+    let mut daemon = Daemon::new(earlier(&file), history());
     if let Some(model) = &daemon.model {
         listeners.send(&line(model));
     }
@@ -104,6 +107,21 @@ pub fn next_model(
     })
 }
 
+/// The history in eero's state folder, or one in memory when that can't
+/// be opened, so a full disk costs the history and not the live figures.
+fn history() -> History {
+    let opened = session::folder()
+        .map_err(|e| e.to_string())
+        .and_then(|folder| {
+            fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+            History::open(&folder.join("history.sqlite"))
+        });
+    opened.unwrap_or_else(|reason| {
+        eprintln!("eero: keeping the history in memory alone: {reason}");
+        History::in_memory()
+    })
+}
+
 /// What the daemon holds between cycles.
 struct Daemon {
     cloud: Option<cloud::Cloud>,
@@ -113,16 +131,18 @@ struct Daemon {
     answers: Answers,
     model: Option<HomeNetwork>,
     schedule: Schedule,
+    history: History,
 }
 
 impl Daemon {
-    fn new(model: Option<HomeNetwork>) -> Daemon {
+    fn new(model: Option<HomeNetwork>, history: History) -> Daemon {
         Daemon {
             cloud: None,
             network: None,
             answers: Answers::default(),
             model,
             schedule: Schedule::default(),
+            history,
         }
     }
 
@@ -151,7 +171,19 @@ impl Daemon {
             }
         }
         let heard = heard?;
-        let next = next_model(self.model.as_ref(), &self.answers, &heard, &stamp())?;
+        let at = now_unix();
+        let next = next_model(
+            self.model.as_ref(),
+            &self.answers,
+            &heard,
+            &time::from_unix(at),
+        )?;
+        if heard == Heard::Answered {
+            let network_read = due.contains(&Read::Network);
+            if let Err(reason) = self.history.record(&next, at, network_read) {
+                eprintln!("eero: {reason}");
+            }
+        }
         if self.model.as_ref() == Some(&next) {
             return None;
         }
@@ -290,10 +322,6 @@ fn now_unix() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |since| since.as_secs().try_into().unwrap_or(i64::MAX))
-}
-
-fn stamp() -> String {
-    time::from_unix(now_unix())
 }
 
 #[cfg(test)]

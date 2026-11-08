@@ -24,6 +24,14 @@ pub fn utc(stamp: &str) -> Option<String> {
     })
 }
 
+/// Seconds since 1970 of a time eero gives, its fraction of a second
+/// dropped, as the history keeps times.
+pub fn to_unix(stamp: &str) -> Option<i64> {
+    let (clock, offset_minutes) = split_offset(stamp)?;
+    let whole = clock.split_once('.').map_or(clock, |(whole, _)| whole);
+    Some(unix_seconds(whole)? - offset_minutes * 60)
+}
+
 /// A moment given as milliseconds since 1970, to the second, as eero's
 /// events give it.
 pub fn from_unix_ms(ms: i64) -> String {
@@ -173,5 +181,13 @@ mod tests {
     fn milliseconds_since_1970_read_to_the_second() {
         assert_eq!(from_unix_ms(1_794_091_355_077), "2026-11-07T22:42:35Z");
         assert_eq!(from_unix(0), "1970-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn a_time_reads_back_to_seconds_since_1970() {
+        assert_eq!(to_unix("2026-11-07T22:42:35Z"), Some(1_794_091_355));
+        assert_eq!(to_unix("2026-11-07T22:42:35.977Z"), Some(1_794_091_355));
+        assert_eq!(to_unix("2026-11-07T23:42:35+0100"), Some(1_794_091_355));
+        assert_eq!(to_unix("yesterday"), None);
     }
 }
