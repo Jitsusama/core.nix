@@ -1122,7 +1122,8 @@ command = "search"
 short = "sea"
 kinds = ["list"]
 
-# The same asked again: Try Again and Check It Again.
+# The same asked again: Try Again, Check It Again, and a timer's Start
+# Again.
 [acts.retry]
 command = "retry"
 short = "retr"
@@ -1140,6 +1141,13 @@ short = "spee"
 kinds = ["list"]
 changes = true
 guarded = true
+
+# More of what counts down: a timer's Add a Minute.
+[acts.extend]
+command = "extend"
+short = "ext"
+kinds = ["list"]
+changes = true
 
 # The next track, or with ! the one before: Next Track, Next, Previous
 # Track and Previous, since :next and :previous are Vim's.
