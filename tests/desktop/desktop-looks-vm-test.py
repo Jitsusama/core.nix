@@ -88,6 +88,8 @@ FLASH_SHOTS = 5
 FLASHED = 200
 CHANGED = 40
 NEVER_FLASHED = "no picture caught y's flash"
+# What warp asks warp-cli, each answered by the contract's file of the same name.
+WARP_QUESTIONS = ("status", "tunnel-stats", "settings", "dns-stats")
 
 
 @pytest.fixture(scope="module")
@@ -1579,6 +1581,87 @@ def clock_plate_shown(desktop: Desktop, scale: str) -> None:
     assert drawer["laidOneWay"], f"at {scale} its facts mix beside and under: {drawer}"
     desktop.shoot(f"launcher-plate-clock-at-{scale.replace('.', '-')}")
     desktop.close_launcher()
+
+
+def reading(shown: Json, start: str) -> str:
+    """Give how the first row starting so reads whole, or nothing."""
+    reads = [str(thing["reads"]) for thing in shown["things"]]
+    return next((read for read in reads if read.startswith(start)), "")
+
+
+def warp_answers(desktop: Desktop, *answers: tuple[str, str]) -> None:
+    """Have the stand-in warp-cli answer as the contract's files say, each (file, question).
+
+    It answers from what's written in ~/warp-cli (tests/warp-cli-stand-in.sh); a question
+    named with .error is said as warp-cli says an error. Each lands whole, by a rename, so
+    warp never reads half of one.
+    """
+    contract = desktop.values["warp_contract"]
+    desktop.as_account(
+        "mkdir -p ~/warp-cli && "
+        + " && ".join(
+            f"cp {contract}/{file} ~/warp-cli/.next && mv ~/warp-cli/.next ~/warp-cli/{asked}"
+            for file, asked in answers
+        )
+    )
+
+
+def test_warp_stands_in_network_and_says_when_degraded_or_not_answering_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Shoot WARP in Network and a step in, then degraded and not answering, at each scale.
+
+    The shell runs the real warp against the stand-in warp-cli, answering with the contract's
+    made-up files (modules/warp/contract), which warp's own tests read too. What each part says
+    is tests/answers.qml's to prove; these are for the design's look at Joel's scales (VKCF3Z,
+    2026-11-08).
+    """
+    connected = [(f"{asked}.json", f"{asked}.json") for asked in WARP_QUESTIONS]
+    try:
+        for scale in at_each_scale:
+            at = scale.replace(".", "-")
+            at_scale(desktop, scale)
+            warp_answers(desktop, *connected)
+            desktop.as_account("rm -f ~/warp-cli/status.error.json")
+            desktop.answer("network")
+            desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Network")
+            desktop.step_in()
+            desktop.launcher_until(
+                lambda shown: reading(shown, "WARP ").startswith("WARP \u00b7 connected")
+            )
+            desktop.down_to("WARP")
+            desktop.shoot(f"launcher-warp-in-network-at-{at}")
+            desktop.step_in()
+            desktop.launcher_until(lambda shown: "Round Trip" in shown["rows"])
+            desktop.shoot(f"launcher-warp-at-{at}")
+            # WARP finds the network degraded, which its Health says a step in, and its
+            # row in Network, in the warning colour.
+            warp_answers(desktop, ("status.degraded.json", "status.json"))
+            desktop.launcher_until(
+                lambda shown: reading(shown, "Health ").startswith("Health \u00b7 degraded")
+            )
+            desktop.shoot(f"launcher-warp-degraded-at-{at}")
+            desktop.step_out()
+            desktop.launcher_until(
+                lambda shown: reading(shown, "WARP ").startswith("WARP \u00b7 degraded")
+            )
+            desktop.shoot(f"launcher-warp-degraded-in-network-at-{at}")
+            # Its service gone, WARP says so in its place, and why in the foot.
+            desktop.as_account("rm ~/warp-cli/status.json")
+            warp_answers(desktop, ("daemon-down.json", "status.error.json"))
+            desktop.launcher_until(
+                lambda shown: reading(shown, "WARP ").startswith("WARP \u00b7 not answering")
+            )
+            desktop.shoot(f"launcher-warp-not-answering-in-network-at-{at}")
+            desktop.close_launcher()
+            desktop.answer("vpn")
+            desktop.launcher_until(
+                lambda shown: (shown["selected"] or {}).get("name") == "not answering"
+            )
+            desktop.shoot(f"launcher-warp-not-answering-at-{at}")
+            desktop.close_launcher()
+    finally:
+        desktop.as_account("rm -rf ~/warp-cli")
 
 
 def test_nows_plate_sets_its_head_and_groups_as_every_plate(

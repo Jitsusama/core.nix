@@ -56,6 +56,9 @@ class Values(TypedDict):
     clip: str
     # The ErgoDox's layout, as its module describes it for the shell.
     ergodox_layout: str
+    # warp-cli's answers as warp's own tests read them (modules/warp/contract), all made up, for
+    # the stand-in warp-cli to give.
+    warp_contract: str
     # The packages whose programs the test runs by their paths.
     coreutils: str
     dbus: str
