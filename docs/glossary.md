@@ -222,6 +222,8 @@ or a copy, can be opened, copied or forgotten.
 | desktop | the screen and everything on it around the windows: the launcher, notices, the margin and niri's workspaces | | niri, Quickshell |
 | screen | a monitor, built in or plugged in | display, monitor | niri's outputs |
 | brightness | how bright a screen is, which follows the room's light | | the `backlight` program |
+| warmth | how warm a light's white is, in kelvin: a screen's, which follows the room's light or the night light, or the desk light's | | the `backlight` program's colour temperature |
+| night light | a screen warmed to a set white from sunset to sunrise, wherever the machine is, whatever the room's light | | the `backlight` program's night |
 | workspace | one of niri's rows of windows on a screen | | |
 | overview | niri's view of every workspace and its windows, on Super+A | | |
 | window | a program's rectangle on the screen | | |

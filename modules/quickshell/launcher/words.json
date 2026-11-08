@@ -2092,7 +2092,8 @@
     {
       "id": "light:desk:warmth",
       "in": "light",
-      "name": "Warmth"
+      "name": "Warmth",
+      "term": "Desktop/warmth"
     },
     {
       "id": "light:desk:output",
@@ -6217,6 +6218,7 @@
       "argument": "nowarmth",
       "in": "displays",
       "name": "Warmth",
+      "term": "Desktop/warmth",
       "verb": "turn off",
       "answers": [
         "screen warmth"
