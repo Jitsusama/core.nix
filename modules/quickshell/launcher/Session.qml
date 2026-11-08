@@ -35,11 +35,11 @@ Provider {
         }, fields));
     }
 
-    readonly property var awake: awakeRow(Caffeinate.on, Caffeinate.lidShutToo)
+    readonly property var awake: awakeRow(KeepAwake.on, KeepAwake.lidShutToo)
 
     // Keep Awake as it stands, or as it will once systemd has started or
     // stopped what keeps it so: kept, a shut lid goes on too wherever the
-    // machine's on the charger (Caffeinate.qml).
+    // machine's on the charger (KeepAwake.qml).
     function awakeRow(kept, lidToo) {
         return said("session:awake", kept ? "on" : "", {
             side: !kept ? "" : lidToo ? "awake, lid shut too" : "awake while open",
@@ -52,12 +52,12 @@ Provider {
     // Its row says so at once, until the services' files say so too
     // (launcher/Becoming.js).
     function keepAwake(kept) {
-        becomes("session:awake", awakeRow(kept, Caffeinate.plugged), Words.name("session:awake"),
+        becomes("session:awake", awakeRow(kept, KeepAwake.plugged), Words.name("session:awake"),
             kept ? "on" : "off");
         if (kept)
-            Caffeinate.keep();
+            KeepAwake.keep();
         else
-            Caffeinate.release();
+            KeepAwake.release();
     }
 
     // The session's options, each named as VKCF3Z named it (2026-11-05).
@@ -92,11 +92,11 @@ Provider {
         },
         keepawake: {
             kind: "switch",
-            now: () => Caffeinate.on,
+            now: () => KeepAwake.on,
             set: to => {
                 if (!to)
                     provider.keepAwake(false);
-                else if (!Caffeinate.on)
+                else if (!KeepAwake.on)
                     provider.keepAwake(true);
                 return "";
             }
@@ -112,16 +112,16 @@ Provider {
                 return "";
             }
         }
-    }, !Caffeinate.lidHolds ? {} : {
+    }, !KeepAwake.lidHolds ? {} : {
         awake: {
             kind: "choice",
             values: ["open", "shut"],
-            now: () => Caffeinate.lidShutToo ? "shut" : "open",
+            now: () => KeepAwake.lidShutToo ? "shut" : "open",
             set: to => {
                 if (to === "open")
-                    Caffeinate.keepOpen();
+                    KeepAwake.keepOpen();
                 else
-                    Caffeinate.keep();
+                    KeepAwake.keep();
                 return "";
             }
         }

@@ -1049,10 +1049,10 @@ def sets_the_session(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: shown["command"] is None)
     says(":set dnd?\n", "nodnd")
     machine.send_chars(":set keepawake\n", delay=KEY_PACE)
-    machine.wait_until_succeeds("ls /run/user/*/caffeinated", timeout=timedelta(seconds=30))
+    machine.wait_until_succeeds("ls /run/user/*/kept-awake", timeout=timedelta(seconds=30))
     says(":set keepawake?\n", "keepawake")
     machine.send_chars(":set nokeepawake\n", delay=KEY_PACE)
-    machine.wait_until_fails("ls /run/user/*/caffeinated", timeout=timedelta(seconds=30))
+    machine.wait_until_fails("ls /run/user/*/kept-awake", timeout=timedelta(seconds=30))
 
 
 def sets_wi_fi(desktop: Desktop) -> None:

@@ -755,7 +755,7 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
     desktop.as_account(
         f"mkdir -p {MISSION}/waiting && find {MISSION}/waiting -name '*.json' -delete"
     )
-    desktop.as_account("systemctl --user start caffeinate.service")
+    desktop.as_account("systemctl --user start keep-awake.service")
     try:
         desktop.as_account("qs ipc call launcher collection on")
         desktop.launcher_ready()
@@ -810,7 +810,7 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
         assert "Needs You" not in now["reads"], now
         desktop.close_launcher()
     finally:
-        desktop.as_account("systemctl --user stop caffeinate.service")
+        desktop.as_account("systemctl --user stop keep-awake.service")
 
 
 def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) -> None:

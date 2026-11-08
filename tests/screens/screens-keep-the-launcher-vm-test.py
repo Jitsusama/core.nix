@@ -41,12 +41,12 @@ def test_a_held_chord_opens_the_launcher_once_and_a_held_return_does_its_row_onc
     """
     screens = unlocked
     machine = screens.machine
-    machine.succeed(screens.in_niri("systemctl --user stop caffeinate.service"))
+    machine.succeed(screens.in_niri("systemctl --user stop keep-awake.service"))
     since = machine.succeed("date +%s").strip()
     # Starts alone are counted, since the stop above may share the mark's second: one repeat
     # turns it off again, which the last look finds, and two start it twice.
     started = screens.in_niri(
-        f"journalctl --user -u caffeinate.service --since @{since} -o cat"
+        f"journalctl --user -u keep-awake.service --since @{since} -o cat"
         " | grep -c '^Starting ' || true"
     )
     # Each time niri runs the chord's launcher-say, systemd starts it a scope of its own. They're
@@ -98,7 +98,7 @@ def test_a_held_chord_opens_the_launcher_once_and_a_held_return_does_its_row_onc
         assert screens.awake(), "a held Return turned Keep Awake on and off again"
     finally:
         screens.close_launcher()
-        machine.succeed(screens.in_niri("systemctl --user stop caffeinate.service"))
+        machine.succeed(screens.in_niri("systemctl --user stop keep-awake.service"))
 
 
 def test_the_first_screen_goes_with_the_launcher_open_on_it(first_gone: Screens) -> None:

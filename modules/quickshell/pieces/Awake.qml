@@ -5,12 +5,12 @@ import qs
 import QtQuick
 
 Piece {
-    active: Caffeinate.on
-    value: !Caffeinate.on ? "no" : Caffeinate.lidShutToo ? "lid shut too" : "while open"
+    active: KeepAwake.on
+    value: !KeepAwake.on ? "no" : KeepAwake.lidShutToo ? "lid shut too" : "while open"
     title: "Keep Awake"
-    hint: Caffeinate.lidShutToo ? "Staying awake, the lid shut too"
+    hint: KeepAwake.lidShutToo ? "Staying awake, the lid shut too"
         : "Staying awake while the lid is open"
-    context: Caffeinate.lidShutToo ? "until the power goes" : "the lid still sleeps it"
+    context: KeepAwake.lidShutToo ? "until the power goes" : "the lid still sleeps it"
     // The lid's acts only where holding it changes something: where a shut
     // lid on the charger never suspends, neither would do anything.
     actions: [{
@@ -19,18 +19,18 @@ Piece {
         // One word for Return, as the launcher's Let It Sleep says it.
         verb: "stop",
         stays: true,
-        run: () => Caffeinate.release()
-    }].concat(!Caffeinate.lidHolds ? [] : Caffeinate.lid ? [{
+        run: () => KeepAwake.release()
+    }].concat(!KeepAwake.lidHolds ? [] : KeepAwake.lid ? [{
         glyph: Words.glyph("verb:on:awake:open"),
         name: Words.name("verb:on:awake:open"),
         verb: Words.verb("verb:on:awake:open"),
         stays: true,
-        run: () => Caffeinate.open()
-    }] : Caffeinate.plugged ? [{
+        run: () => KeepAwake.open()
+    }] : KeepAwake.plugged ? [{
         glyph: Words.glyph("verb:on:awake:shut"),
         name: Words.name("verb:on:awake:shut"),
         verb: Words.verb("verb:on:awake:shut"),
         stays: true,
-        run: () => Caffeinate.keep()
+        run: () => KeepAwake.keep()
     }] : [])
 }

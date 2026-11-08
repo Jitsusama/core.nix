@@ -1275,7 +1275,7 @@ onLinux {
         self.nixosModules.graphical
         self.nixosModules.lid
       ];
-      holder = machine: (account machine).systemd.user.services ? caffeinate-lid;
+      holder = machine: (account machine).systemd.user.services ? keep-awake-lid;
       says =
         machine:
         lib.hasInfix "lidSleepsOnPower: true"
