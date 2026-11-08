@@ -1579,7 +1579,7 @@ def test_a_cable_says_how_its_link_is_doing(desktop: Desktop) -> None:
     before = int(machine.succeed("cat /sys/class/net/cable0/carrier_down_count"))
     link = ["Speed \u00b7 1 Gb/s", "Duplex \u00b7 full", lost(before), "Errors \u00b7 none"]
     desktop.launcher_until(lambda shown: set(link) <= set(reads(shown)))
-    desktop.photograph("launcher-addresses-ethernet")
+    desktop.shoot("launcher-addresses-ethernet")
     # Unplugged and plugged in again, it says so while it's shown, as its
     # card counts it.
     machine.send_monitor_command("set_link cable off")

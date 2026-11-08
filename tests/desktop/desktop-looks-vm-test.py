@@ -1277,13 +1277,13 @@ def test_the_home_network_lays_out_its_place_and_drawers_at_each_scale(
             )
         )
         home_network_plate(desktop, scale, "Internet")
-        desktop.photograph(f"launcher-home-network-at-{at}")
+        desktop.shoot(f"launcher-home-network-at-{at}")
         desktop.down_to("Study")
         home_network_plate(desktop, scale, "Study")
-        desktop.photograph(f"launcher-home-network-node-at-{at}")
+        desktop.shoot(f"launcher-home-network-node-at-{at}")
         desktop.down_to("unknown computer 1")
         home_network_plate(desktop, scale, "unknown computer 1")
-        desktop.photograph(f"launcher-home-network-device-at-{at}")
+        desktop.shoot(f"launcher-home-network-device-at-{at}")
         desktop.close_launcher()
 
 
