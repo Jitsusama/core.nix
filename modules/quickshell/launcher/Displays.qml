@@ -635,7 +635,9 @@ Provider {
                     label: partName("warmth"),
                     value: Plate.runs([`${Numbers.format(warmth.kelvin, 0, settings.group,
                         settings.point)} K`,
-                        partSaid("", warmth.followsTheRoom ? "following" : "own-white")])
+                        // What holds it, as its row's note says it: the
+                        // night light by night, not the room.
+                        Warmth.note(warmth, Date.now(), warmthSaid, warmthTold)])
                 });
             if (inTheRoom(output) && curve.length > 0)
                 facts.push({ label: partName("curve"),

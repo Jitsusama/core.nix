@@ -6689,8 +6689,6 @@
       "said": {
         "built-in": "built in",
         "screen": "screen",
-        "following": "following the room",
-        "own-white": "the screen's own white",
         "steps": "{now} of {most} steps",
         "the-room": "the room",
         "on-its-way": "on its way to {share}",

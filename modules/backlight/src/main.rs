@@ -520,7 +520,11 @@ async fn run() -> Result<(), Box<dyn Error>> {
         note: runtime.join("backlight-warmth"),
         noted: None,
         sees: false,
-        night: Nightly::new(night_white, kept.join("night"), runtime.join("whereabouts.json")),
+        night: Nightly::new(
+            night_white,
+            kept.join("night"),
+            runtime.join("whereabouts.json"),
+        ),
         relay_down: None,
     };
     // Held for as long as the daemon runs, since it holds the switch's name.
@@ -763,7 +767,10 @@ impl Backlight<'_> {
         // than for each of its fifty steps.
         if (kelvin < WHITE) != (self.night.wants < WHITE) {
             if kelvin < WHITE {
-                eprintln!("<6>the night light warms the screen toward {} K", self.night.white);
+                eprintln!(
+                    "<6>the night light warms the screen toward {} K",
+                    self.night.white
+                );
             } else {
                 eprintln!("<6>the night light gives the screen back its own white");
             }
@@ -799,8 +806,9 @@ impl Backlight<'_> {
 
     /// Tells the shell how the warmth stands, when that changed: the
     /// warmth, whether it follows the room, whether a sensor sees colour
-    /// and the room's colour it last heard, and the night light, on or off, its white, and the sunset and sunrise
-    /// of the night under way or the next, or null for both while where
+    /// and the room's colour it last heard, and the night light, on or
+    /// off, its white, and the sunset and sunrise of the night under way
+    /// or the next, or null for both while where
     /// the laptop is isn't known.
     fn say_warmth(&mut self) {
         let Some((warmth, _)) = &self.warmth else {
@@ -945,6 +953,12 @@ impl Backlight<'_> {
             keys.lid(shut);
         }
         self.warm(|warmth, now| warmth.lid(shut, now));
+        // The night's next look is counted on a clock that stops while the
+        // laptop sleeps, and a lid opening is most often a wake, so the
+        // sun is looked at again now rather than up to an hour late.
+        if !shut {
+            self.night.due = Some(Instant::now());
+        }
         if !self.follow.lid(shut) {
             return;
         }
