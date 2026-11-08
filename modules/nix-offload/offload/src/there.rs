@@ -1868,9 +1868,15 @@ pub enum Second {
 /// the first's CPU pressure: only while the first is full, so the second
 /// takes what overflows and is given back idle once the first has room,
 /// and never to one standing that's as busy or can't be read. A first
-/// whose pressure can't be read keeps the build, since its own run says
-/// what's wrong with it.
+/// whose pressure can't be read goes to a second that stands and answers,
+/// since a tunnel that died answers nothing: on 7 November one stopped
+/// answering at 20:51 and every build waited on it while the second stood
+/// idle. With no second that answers, it keeps the build, whose own run
+/// says what's wrong with it.
 pub fn to_second(first: Option<f64>, second: &Second) -> bool {
+    if first.is_none() {
+        return matches!(second, Second::Stands(Some(_)));
+    }
     first.is_some_and(|first| {
         first >= FULL
             && match second {
@@ -3811,7 +3817,15 @@ mod tests {
         assert!(!to_second(Some(90.0), &Second::Stands(None)), "one unread");
         assert!(
             !to_second(None, &Second::Unlent),
-            "a first that can't be read keeps it"
+            "a first that can't be read keeps it with no second"
+        );
+        assert!(
+            !to_second(None, &Second::Stands(None)),
+            "nor to a second that can't be read either"
+        );
+        assert!(
+            to_second(None, &Second::Stands(Some(90.0))),
+            "a first that can't be read goes to a second that answers, however busy"
         );
     }
 
