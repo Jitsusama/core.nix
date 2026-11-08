@@ -3792,6 +3792,10 @@ onLinux {
     pkgs.runCommandLocal "the-shell-hears-tuples-call" { } ''
       cp ${../tuple/Tuple.qml} Tuple.qml
       cp ${./Daemon.qml} Daemon.qml
+      # The copied link Tuple offers to join is read from the shell's one
+      # watcher of the clipboard.
+      cp ${./Copied.qml} Copied.qml
+      cp ${./Copied.js} Copied.js
       # Tuple's rows are named as the launcher's vocabulary says.
       mkdir launcher
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml

@@ -7998,6 +7998,82 @@
       "glyph": "link"
     },
     {
+      "id": "verb:mpv:link",
+      "command": "open",
+      "argument": "link",
+      "in": "applications",
+      "name": "Play the Copied Link",
+      "verb": "play",
+      "glyph": "link"
+    },
+    {
+      "id": "verb:mpv:on",
+      "command": "resume",
+      "in": "path:file",
+      "name": "Resume",
+      "verb": "resume",
+      "glyph": "resume",
+      "said": {
+        "stopped": "{at} of {length} \u00b7 {when}",
+        "whole": "{length} \u00b7 {when}",
+        "from": "from {at}",
+        "eyebrow": "in {folder} \u00b7 {kind}",
+        "video": "video",
+        "audio": "audio",
+        "speed": "{figure}\u00d7",
+        "volume": "{figure}%",
+        "seconds": "{figure} s",
+        "off": "off",
+        "now": "just now",
+        "minutes": "{minutes} min ago",
+        "yesterday": "yesterday"
+      }
+    },
+    {
+      "id": "mpv:stopped:to-go",
+      "in": "verb:mpv:on",
+      "name": "Still to Play"
+    },
+    {
+      "id": "mpv:stopped:speed",
+      "in": "verb:mpv:on",
+      "name": "Speed"
+    },
+    {
+      "id": "mpv:stopped:volume",
+      "in": "verb:mpv:on",
+      "name": "Volume"
+    },
+    {
+      "id": "mpv:stopped:audio",
+      "in": "verb:mpv:on",
+      "name": "Audio"
+    },
+    {
+      "id": "mpv:stopped:subtitles",
+      "in": "verb:mpv:on",
+      "name": "Subtitles"
+    },
+    {
+      "id": "mpv:stopped:size",
+      "in": "verb:mpv:on",
+      "name": "Size"
+    },
+    {
+      "id": "mpv:stopped:path",
+      "in": "verb:mpv:on",
+      "name": "Path"
+    },
+    {
+      "id": "verb:mpv:start",
+      "command": "resume",
+      "bang": true,
+      "in": "path:file",
+      "name": "Play From the Start",
+      "verb": "play",
+      "glyph": "playing"
+    },
+    {
       "id": "docs:document",
       "of": "program:google-docs",
       "name": "Document",

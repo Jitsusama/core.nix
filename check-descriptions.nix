@@ -865,6 +865,14 @@
   mpv-says-the-files-it-plays = ''
     mpv says each file it plays to the desktop's list of files opened lately, a stream as it was given
   '';
+  mpv-says-where-it-stopped = ''
+    the launcher's lister reads where the account's mpv stopped each file it quit part way through
+    or held on its last frame, newest first with its length, when it was left, its size, whether
+    it's a video or audio, and every option mpv kept for it, its speed, volume and tracks among
+    them, nine at most, only the last read as watched whole, passing over a folder's redirect
+    entry, a stream and a deleted file, and mpv started as Resume starts it plays on from there,
+    and as Play From the Start does, from its start
+  '';
   mycelium-links-what-a-machine-names = ''
     a workstation in a realm runs mycelium's node there, dialling each machine it names, as a user
     service on Linux signing in with the agents' key, or the key its realm names, and an agent on a
@@ -1911,6 +1919,15 @@
   the-launcher-names-the-parts-it-builds = ''
     every part the calculator, the time, today, the waits, a hardware address, a network and a
     character show is named as the vocabulary names it
+  '';
+  the-launcher-plays-on-where-mpv-stopped = ''
+    mpv's Recent merges each file mpv left by when it left it, newest first, with the files the
+    shared list gives, each once and none open now, read once mpv is stepped into, each opening;
+    one stopped part way has "12:04 of 41:10 · 12 min ago" at its side, Return resuming and From
+    the Start inside, one watched whole says its length and when and play, and each drawer says
+    where it is and its kind, then what's still to play, what mpv kept, its size and its path;
+    and Play the Copied Link is offered only while the clipboard's one web address is one mpv
+    plays, a video site's page or a media file
   '';
   the-launcher-remakes-only-the-windows-that-changed = ''
     the launcher's windows list This Window, then the rest the one used last first, and when the
