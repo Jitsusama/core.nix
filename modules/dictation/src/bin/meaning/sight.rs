@@ -149,7 +149,7 @@ pub fn pixels(picture: &Picture) -> Vec<f32> {
     let shrunk = picture.resized(SIDE, SIDE);
     let mut planes = vec![0.0; shrunk.len()];
     let area = SIDE * SIDE;
-    for (at, pixel) in shrunk.chunks_exact(3).enumerate() {
+    for (at, pixel) in shrunk.as_chunks::<3>().0.iter().enumerate() {
         for (colour, value) in pixel.iter().enumerate() {
             planes[colour * area + at] = value / 127.5 - 1.0;
         }

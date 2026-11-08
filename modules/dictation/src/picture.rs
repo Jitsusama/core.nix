@@ -157,7 +157,7 @@ impl Picture {
     /// Pillow's bilinear resize makes it: each pixel a tent-weighted mix of
     /// those it covers, widened by how far the picture shrinks, so a
     /// screenshot many times wider is averaged rather than sampled. That
-    /// is how the models that look at pictures were trained (SigLIP's
+    /// is how the models that look at pictures were trained (`SigLIP`'s
     /// processor resizes with Pillow), so a picture means to them here
     /// what it meant there.
     pub fn resized(&self, width: usize, height: usize) -> Vec<f32> {
@@ -257,8 +257,10 @@ mod tests {
             let made = picture.resized(width, height);
             assert_eq!(made.len(), width * height * 3);
             assert!(
-                made.chunks_exact(3)
-                    .all(|pixel| near([pixel[0], pixel[1], pixel[2]], [10.0, 120.0, 250.0]))
+                made.as_chunks::<3>()
+                    .0
+                    .iter()
+                    .all(|&pixel| near(pixel, [10.0, 120.0, 250.0]))
             );
         }
     }
@@ -279,7 +281,12 @@ mod tests {
         for (row, pillow) in cases {
             let grey = row.iter().flat_map(|&v| [v; 3]).collect();
             let made = Picture::from_rgb(row.len(), 1, grey).resized(pillow.len(), 1);
-            let reds: Vec<f32> = made.chunks_exact(3).map(|pixel| pixel[0]).collect();
+            let reds: Vec<f32> = made
+                .as_chunks::<3>()
+                .0
+                .iter()
+                .map(|pixel| pixel[0])
+                .collect();
             assert!(
                 reds.iter()
                     .zip(pillow)
