@@ -105,6 +105,13 @@ Singleton {
             glyph: Theme.glyph.meeting.codePointAt(0), hue: "person", answers: true,
             name: "Calendar"
         },
+        // A timer ringing (timers/src/main.rs), in a timer's mark, the
+        // desktop's as niri's are, missed until seen, since it rang for
+        // Joel whether or not he was there.
+        "timers": {
+            glyph: Theme.glyph.timer.codePointAt(0), hue: "machine",
+            name: Words.name("timers")
+        },
         "battery": {
             glyph: Theme.glyph.low.codePointAt(0), hue: "machine", answers: true,
             name: Words.name("power")
