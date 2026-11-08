@@ -1207,6 +1207,7 @@ onLinux {
       cp ${../../tests/home-network.qml} home-network.qml
       cp ${./launcher/HomeNetwork.js} HomeNetwork.js
       cp ${./launcher/HomeNetworkDrawers.js} HomeNetworkDrawers.js
+      cp ${./launcher/HomeNetworkHistory.js} HomeNetworkHistory.js
       cp ${./launcher/Numbers.js} Numbers.js
       cp ${./launcher/Interfaces.js} Interfaces.js
       cp ${./launcher/Machine.js} Machine.js

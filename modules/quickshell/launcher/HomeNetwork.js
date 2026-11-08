@@ -336,10 +336,12 @@ function speedTestOf(test, settings) {
     return test ? eachWay(test.down_mbps, test.up_mbps, settings) : "";
 }
 
-// The outages eero recorded, in a few words.
-function outagesOf(outages) {
-    const count = (outages ?? []).length;
-    return count === 0 ? "no outages" : counted(count, "outage");
+// The internet's outages: the 30 days' the history keeps, else eero's.
+function outagesOf(internet) {
+    const kept = internet.history?.outages;
+    const count = (kept ?? internet.outages ?? []).length;
+    const said = count === 0 ? "no outages" : counted(count, "outage");
+    return kept ? `${said} in 30 days` : said;
 }
 
 // What the internet's row says, the place's head: its state at its side,
@@ -369,7 +371,7 @@ function internetRow(model, now, settings) {
             internet.isp ?? "",
             tested === "" ? "" : `${tested}${day}`,
             optimized,
-            outagesOf(internet.outages),
+            outagesOf(internet),
             nodesSaid(internet.nodes),
             devices,
         ]

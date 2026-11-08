@@ -237,6 +237,7 @@ let
     "launcher/Traffic.js"
     "launcher/HomeNetwork.js"
     "launcher/HomeNetworkDrawers.js"
+    "launcher/HomeNetworkHistory.js"
     "launcher/Cameras.js"
     "launcher/Firmware.js"
     "launcher/Interfaces.js"

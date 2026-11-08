@@ -106,9 +106,13 @@ QtObject {
             name: "Internet",
             side: "connected",
             note: "Example ISP \u00b7 370 Mb/s down \u00b7 11.9 Mb/s up \u00b7 on 5 Nov \u00b7 "
-                + "conferencing and gaming on \u00b7 no outages \u00b7 3 nodes online \u00b7 "
+                + "conferencing and gaming on \u00b7 1 outage in 30 days \u00b7 3 nodes online \u00b7 "
                 + "15 devices on now"
         });
+        const unkept = Object.assign({}, model, { internet: Object.assign({}, model.internet,
+            { history: undefined }) });
+        expect("eero's outages where no history is kept", Home.internetRow(unkept, now).note
+            .split(" \u00b7 ")[5], "no outages");
         expect("the home network's state where it isn't connected",
             Home.internetRow(Object.assign({}, model, { internet: Object.assign({},
                 model.internet, { mesh: "degraded" }) }), now).note.split(" \u00b7 ")[0],
@@ -204,7 +208,11 @@ QtObject {
             ["ddns", "off"],
             ["backup", "on"],
             ["power-saving", "off"],
-            ["outages", "none recorded"],
+            ["outages", "1 in 30 days"],
+            ["looked", "22:54 \u00b7 from home"],
+            ["to-gateway", "2.00 ms"],
+            ["to-internet", "11.9 ms"],
+            ["lookup", "14.1 ms"],
             ["nodes", "3 nodes online"],
             ["devices", "24 known \u00b7 15 on Wi-Fi"],
             ["firmware", "v7.17.4-5 \u00b7 up to date"],
@@ -221,7 +229,74 @@ QtObject {
             .map(fact => fact.id), ["speed-test", "nodes", "devices", "outages", "isp",
             "mesh"]);
         expect("the internet's groups", internetFacts.filter(fact => fact.heading !== undefined)
-            .map(fact => fact.heading), ["speed-tests", "addressing", "settings", "events"]);
+            .map(fact => fact.heading), ["probe", "outage-list", "speed-tests", "addressing",
+            "settings", "joins-and-leaves", "events"]);
+        expect("eero's outages counted where no history is kept", value(byId(Drawers
+            .internet(unkept, now)), "outages"), "none recorded");
+
+        // This machine's last look at the internet, each target's time
+        // sparked over the last hour's looks.
+        expect("the gateway node's time sparked, scaled to its most",
+            internet["to-gateway"].figure.values.map(share => Math.round(share * 24) / 10),
+            [2.1, 1.8, 2.4, 1.9, 2.2, 2]);
+        expect("each target sparked", [internet["to-internet"].figure.shape,
+            internet.lookup.figure.values.length], ["spark", 6]);
+        const looks = model.internet.history.probes;
+        const away = byId(Drawers.internet(Object.assign({}, model, {
+            internet: Object.assign({}, model.internet, {
+                probe: Object.assign({}, model.internet.probe, {
+                    home: false, gateway_ms: null, internet_ms: null, reachable: false
+                }),
+                history: Object.assign({}, model.internet.history, {
+                    probes: Object.assign({}, looks, {
+                        internet_ms: [11.8, null, 13.1, 11.6, 12.0, null]
+                    })
+                })
+            })
+        }), now));
+        expect("a look from away, the internet not reached", [value(away, "looked"),
+            away["to-gateway"], away["to-internet"]], ["22:54 \u00b7 away from home \u00b7 "
+            + "internet not reached", undefined, undefined]);
+        expect("a look unanswered is a gap in its spark", Drawers.internet(Object.assign({},
+            model, { internet: Object.assign({}, model.internet, {
+                history: { probes: Object.assign({}, looks, {
+                    internet_ms: [13.1, null, 13.1]
+                }), outages: [] }
+            }) }), now).facts.find(fact => fact.id === "to-internet").figure.values,
+            [1, null, 1]);
+
+        // Each outage of 30 days, newest first: when, how long, who saw it.
+        const listed = heading => {
+            const facts = Drawers.internet(model, now).facts;
+            const from = facts.findIndex(fact => fact.heading === heading) + 1;
+            const to = facts.findIndex((fact, at) => at >= from && fact.heading !== undefined);
+            return facts.slice(from, to);
+        };
+        expect("an outage this machine saw", listed("outage-list"), [
+            { label: "3 Nov 03:12", value: "1 min \u00b7 seen by this machine" }
+        ]);
+        const outageList = Drawers.internet(Object.assign({}, model, {
+            internet: Object.assign({}, model.internet, {
+                history: Object.assign({}, model.internet.history, { outages: [
+                    { seen_by: "probe", start: "2026-11-07T22:50:00Z", end: null, eero: null },
+                    { seen_by: "eero", start: null, end: null, eero: { kind: "lte" } }
+                ] })
+            })
+        }), now).facts;
+        expect("an outage going on, and one of eero's", outageList.slice(outageList.findIndex(
+            fact => fact.heading === "outage-list") + 1).slice(0, 2), [
+            { label: "22:50", value: "10 min so far \u00b7 seen by this machine" },
+            { label: "time not given", value: "seen by eero" }
+        ]);
+
+        // The devices that joined or left over the last day, newest first.
+        expect("who joined and left", listed("joins-and-leaves"), [
+            { label: "22:49", value: "phone 1 left Den \u00b7 5 GHz" },
+            { label: "22:39", value: "laptop computer 1 joined Study \u00b7 5 GHz" }
+        ]);
+        expect("none joined or left, no heading", Drawers.internet(Object.assign({}, model,
+            { joins_and_leaves: [] }), now).facts.some(fact =>
+            fact.heading === "joins-and-leaves"), false);
         expect("the speed tests sparked", internet.down.figure.shape, "spark");
         expect("a spark's newest last, scaled to the most", internet.up.figure.values.slice(-1)[0]
             <= 1 && internet.up.figure.values.length, 15);
@@ -258,19 +333,51 @@ QtObject {
             "model", "serial"]);
         expect("a node offline says so first", Drawers.node(model, Object.assign({}, node("2003"),
             { state: "OFFLINE" }), now).facts[0], { id: "state", value: "offline" });
-        const radios = Drawers.node(model, node("2003"), now).facts
-            .filter(fact => fact.label !== undefined && fact.figure);
-        expect("each radio by band", radios.map(fact => [fact.label, fact.value]), [
-            ["2.4 GHz", "channel 6 \u00b7 20 MHz \u00b7 30 dBm \u00b7 1 device \u00b7 8% busy"],
-            ["5 GHz high", "channel 149 \u00b7 80 MHz \u00b7 28 dBm \u00b7 1 device \u00b7 41% busy"],
-            ["5 GHz low", "channel 52 \u00b7 80 MHz \u00b7 22 dBm \u00b7 0 devices \u00b7 5% busy"]
+        const under = (facts, heading) => {
+            const from = facts.findIndex(fact => fact.heading === heading) + 1;
+            const to = facts.findIndex((fact, at) => at >= from && fact.heading !== undefined);
+            return facts.slice(from, to < 0 ? facts.length : to);
+        };
+        const hallFacts = Drawers.node(model, node("2003"), now).facts;
+        expect("each radio by band", under(hallFacts, "radios").map(fact => [fact.label,
+            fact.value]), [
+            ["2.4 GHz", "channel 6 \u00b7 20 MHz \u00b7 1 device"],
+            ["5 GHz high", "channel 149 \u00b7 80 MHz \u00b7 1 device"],
+            ["5 GHz low", "channel 52 \u00b7 80 MHz \u00b7 0 devices"]
         ]);
-        expect("how busy, as a stroke", radios[1].figure, {
-            shape: "stroke", values: [0.41], warn: false
+        const busy = under(hallFacts, "busy");
+        expect("how busy each radio is", busy.map(fact => [fact.label, fact.value]), [
+            ["2.4 GHz", "8%"], ["5 GHz high", "41%"], ["5 GHz low", "5%"]
+        ]);
+        expect("how busy, sparked as a share of all its time", busy[1].figure, {
+            shape: "spark", values: [0.45, 0.38, 0.5, 0.43, 0.39, 0.41], warn: false
         });
+        const power = under(hallFacts, "radio-power");
+        expect("how strongly each radio sends", power.map(fact => [fact.label, fact.value]), [
+            ["2.4 GHz", "30 dBm"], ["5 GHz high", "28 dBm"], ["5 GHz low", "22 dBm"]
+        ]);
+        expect("a steady power, sparked to its most", power[0].figure.values,
+            [1, 1, 1, 1, 1, 1]);
+        const unrecorded = Object.assign({}, node("2003"), {
+            history: {},
+            radios: node("2003").radios.map(radio => Object.assign({}, radio, { history: {} }))
+        });
+        const unrecordedFacts = Drawers.node(model, unrecorded, now).facts;
+        expect("how busy as a stroke, where no history is kept",
+            under(unrecordedFacts, "busy")[1].figure, {
+                shape: "stroke", values: [0.41], warn: false
+            });
+        expect("no power spark where no history is kept",
+            under(unrecordedFacts, "radio-power")[1].figure, null);
         const study = byId(Drawers.node(model, node("2002"), now));
         expect("a node's backhaul over Wi-Fi", value(study, "backhaul"),
             "Wi-Fi from Hall over 5 GHz high \u00b7 5 of 5 bars");
+        expect("its bars sparked over the last hour, of five", study.backhaul.figure.values,
+            [1, 0.8, 1, 1, 1, 1]);
+        expect("a backhaul's bars as a stroke, where no history is kept", byId(Drawers.node(
+            model, Object.assign({}, node("2002"), { history: {} }), now)).backhaul.figure,
+            { shape: "stroke", values: [1], warn: false });
+        expect("no bars over Ethernet", hall.backhaul.figure, null);
         expect("a port not linked", value(study, "port 1"), "not linked \u00b7 up to 1.00 Gb/s");
         const onHall = Drawers.node(model, node("2003"), now).facts;
         expect("the devices on a node, strongest first", onHall.slice(onHall.findIndex(fact =>
@@ -288,7 +395,8 @@ QtObject {
         for (const [id, wanted] of [
             ["kind", "generic"],
             ["node", "Den \u00b7 eero Pro 6"],
-            ["signal", "\u221237 dBm \u00b7 71 dB over the noise"],
+            ["signal", "\u221237 dBm"],
+            ["snr", "71 dB"],
             ["score", "100% \u00b7 5 of 5 bars"],
             ["band", "5 GHz \u00b7 channel 52 \u00b7 5,260 MHz"],
             ["bssid", "02:00:00:00:00:02"],
@@ -314,10 +422,45 @@ QtObject {
         expect("a device's eyebrow", [generic.eyebrow, generic.names], ["on Den \u00b7 Wi-Fi",
             true]);
         expect("no hostname that only says its name again", facts.hostname, undefined);
-        expect("a device's drawer leads with how well it's heard", generic.facts.slice(0, 6)
-            .map(fact => fact.id), ["signal", "score", "band", "rx", "tx", "speed"]);
+        expect("a device's drawer leads with how well it's heard", generic.facts.slice(0, 7)
+            .map(fact => fact.id), ["signal", "snr", "score", "band", "rx", "tx", "speed"]);
         expect("no profile it isn't in", facts.profile, undefined);
-        expect("its signal as a stroke", facts.signal.figure.shape, "stroke");
+
+        // What moves sparks the device's last hour, as the daemon keeps it.
+        expect("its signal sparked, from the faintest heard to the strongest",
+            facts.signal.figure.values.map(level => Math.round(level * 60 - 90)),
+            [-40, -38, -41, -39, -36, -37]);
+        expect("its SNR sparked", facts.snr.figure.values, [1, 1, 1, 1, 1, 1]);
+        expect("each way's rate sparked to its most", [facts.rx.figure.values.map(share =>
+            Math.round(share * 12009) / 10), facts.tx.figure.values],
+            [[1200.9, 1080.8, 900.7, 1200.9, 1200.9, 1200.9], [1, 1, 1, 1, 1, 1]]);
+        expect("an idle hour sparks as nothing moving", facts.speed.figure.values,
+            [0, 0, 0, 0, 0, 0]);
+        expect("its speed sparked both ways together", byId(Drawers.device(model,
+            device("unknown computer 1"), now)).speed.figure.values.indexOf(1), 1);
+        const tabletFacts = byId(Drawers.device(model, device("tablet 1"), now));
+        expect("no SNR nor rate up eero never gave", [tabletFacts.snr, tabletFacts.tx],
+            [undefined, undefined]);
+        const gapped = Object.assign({}, device("generic 2"), { history: {
+            signal_dbm: [-60, null, -60], rx_mbps: Array(60).fill(10).concat(Array(60).fill(20))
+        } });
+        const gappedFacts = byId(Drawers.device(model, gapped, now));
+        expect("a read eero gave nothing at is a gap", gappedFacts.signal.figure.values
+            .map(level => level === null ? null : Math.round(level * 60 - 90)), [-60, null, -60]);
+        expect("an hour read every 30 seconds fits twenty places", gappedFacts.rx.figure.values,
+            Array(10).fill(0.5).concat(Array(10).fill(1)));
+
+        // Where it moved over the last day, newest first, by when.
+        const moved = facts => facts.slice(facts.findIndex(fact => fact.heading === "roams") + 1,
+            facts.findIndex(fact => fact.heading === "events"));
+        expect("a move to another node and band", moved(Drawers.device(model, device("tablet 1"),
+            now).facts), [{ label: "22:44", value: "Study to Den \u00b7 2.4 GHz to 5 GHz" }]);
+        expect("a move to another band on one node", moved(Drawers.device(model, Object.assign({},
+            device("tablet 1"), { roams: [{ at: "2026-11-07T21:10:00Z", from_node: "2001",
+                node: "2001", from_band: "2.4 GHz", band: "5 GHz" }] }), now).facts),
+            [{ label: "21:10", value: "Den \u00b7 2.4 GHz to 5 GHz" }]);
+        expect("no moves, no heading", generic.facts.some(fact => fact.heading === "roams"),
+            false);
         const older = byId(Drawers.device(model, device("printer 1"), now));
         expect("a Wi-Fi 4 device's rate", value(older, "rx"),
             "72.2 Mb/s \u00b7 MCS 7 \u00b7 1 stream \u00b7 20 MHz \u00b7 400 ns guard \u00b7 Wi-Fi 4");
@@ -364,11 +507,17 @@ QtObject {
             signal: [-41, -41, -41], speed: [2.5, 2.5, 2.5]
         });
         expect("a device gone is let go", Object.keys(kept).length, 1);
-        const sparked = byId(Drawers.device(model, device("generic 2"), now, {
+        // Those readings spark its drawer only where the record keeps no
+        // history, as one from an older daemon wouldn't.
+        const unkeptDevice = Object.assign({}, device("generic 2"), { history: {} });
+        const sparked = byId(Drawers.device(model, unkeptDevice, now, {
             readings: Home.remembered(once, model, 20)["02:00:00:00:00:0a"]
         }));
-        expect("a signal read twice, sparked", sparked.signal.figure.shape, "spark");
+        expect("a signal read twice, sparked", sparked.signal.figure.values.map(level =>
+            Math.round(level * 60 - 90)), [-37, -37]);
         expect("a speed read twice, sparked", sparked.speed.figure.shape, "spark");
+        expect("a signal read once, as a stroke", byId(Drawers.device(model, unkeptDevice, now))
+            .signal.figure.shape, "stroke");
 
         // A profile: how it stands, and each device in it.
         expect("a profile's row", Home.profileRow(model, model.profiles[0]), {
