@@ -1000,14 +1000,36 @@ onLinux {
   # Each kind of list keeps its one order with nothing typed (docs/design.md,
   # Lists): tests/order.qml holds launcher/Order.js's orders to the rule in
   # Qt's own engine, and tests/every-list-keeps-its-kinds-order.py walks each
-  # place that lists things, its sort its kind's order and no A to Z by hand.
+  # place that lists things: its sort its kind's order, no A to Z by hand, and
+  # no order of Order.js's sorted by Qt's Array.sort, which shuffles rows alike,
+  # as a stand-in sorting three ways it refuses shows.
   each-list-keeps-its-kinds-order =
     let
       qt = pkgs.qt6.qtdeclarative;
+      unstable = pkgs.writeText "Unstable.js" ''
+        const byName = Order.byName(one => one.name);
+        const named = rows => rows.sort(byName);
+        const live = rows => rows.sort(
+            Order.live({ stands: one => one.state, name: one => one.name }));
+        const wrapped = rows => rows.sort((a, b) => Order.byName(one => one.name)(a, b));
+      '';
     in
     pkgs.runCommandLocal "each-list-keeps-its-kinds-order" { } ''
-      ${lib.getExe pkgs.python3} ${../../tests/every-list-keeps-its-kinds-order.py} \
-        ${./launcher} ${../people}
+      lint="${lib.getExe pkgs.python3} ${../../tests/every-list-keeps-its-kinds-order.py}"
+      $lint ${./launcher} ${../people}
+      mkdir unstable
+      cp ${unstable} unstable/Unstable.js
+      if $lint unstable 2> said; then
+        echo "a sort by Order.js through Array.sort passed" >&2
+        exit 1
+      fi
+      for line in 2 3 5; do
+        if ! grep -qF "Unstable.js:$line sorts by Order.js with Qt's Array.sort" said; then
+          echo "Unstable.js:$line's sort by Order.js through Array.sort wasn't refused:" >&2
+          cat said >&2
+          exit 1
+        fi
+      done
       cp ${../../tests/order.qml} order.qml
       cp ${./launcher/Order.js} Order.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

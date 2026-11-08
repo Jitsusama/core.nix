@@ -73,7 +73,8 @@ def failures(folders: list[Path]) -> list[str]:
         text = path.read_text()
         orders = set(re.findall(r"(?:const|let|var) (\w+) = Order\.", text))
         for line, by in sorts(text):
-            if by.startswith(".sort(Order.") or by[len(".sort(") : -1].strip() in orders:
+            inside = by[len(".sort(") : -1].strip()
+            if "Order." in inside or inside in orders:
                 said.append(
                     f"{name}:{line} sorts by Order.js with Qt's Array.sort, which shuffles rows "
                     "alike; sort with Order.sorted, which keeps them in the order they came"

@@ -282,15 +282,15 @@ Provider {
         // Numbered in the kernel's order, so a name stays as the busiest
         // changes; the kernel's own name only finds it.
         const names = connectionNames(listed);
+        const busiest = Order.amounts({ amount: each => each.one.in + each.one.out,
+            name: each => each.name });
         if (listed.length > 1)
             rows.push(holder({
                 name: named("connections"),
                 side: String(listed.length),
                 note: "each card, VPN and bridge, busiest first"
             }, () => Order.sorted(listed.map((one, at) => ({ one: one, name: names[at] })),
-                Order.amounts({ amount: each => each.one.in + each.one.out,
-                    name: each => each.name }))
-                .map(each => figure({
+                busiest).map(each => figure({
                     name: each.name,
                     keywords: each.one.name,
                     side: `${bits(each.one.in)} in \u00b7 ${bits(each.one.out)} out`,

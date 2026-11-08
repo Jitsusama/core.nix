@@ -58,10 +58,11 @@ function nearest(names, wanted) {
         return [];
     }
     const most = Math.max(1, Math.floor(wanted.length / LEEWAY));
-    return unique(names)
+    const near = unique(names)
         .map(name => ({ name, apart: apartAtStart(plain(name), wanted) }))
-        .filter(one => one.apart <= most)
-        .sort(Order.then(Order.smaller(one => one.apart), Order.byName(one => one.name)))
+        .filter(one => one.apart <= most);
+    return Order.sorted(near,
+        Order.then(Order.smaller(one => one.apart), Order.byName(one => one.name)))
         .slice(0, NEAREST)
         .map(one => one.name);
 }
