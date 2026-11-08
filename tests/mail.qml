@@ -1,7 +1,7 @@
 // What the shell reads of the google program's records, when mail came in
 // words, and the lines marking it read or archiving it, run in Qt's own
 // JavaScript engine, the one the shell runs them in. The
-// `the-shell-reads-the-mail` check copies Google.js, Mail.js and
+// `the-desktop-reads-the-mail` check copies Google.js, Mail.js and
 // Calendar.js beside this file and runs `qml -platform offscreen mail.qml`.
 // Times are made on the local clock, so the cases hold in whatever zone the
 // check runs in.

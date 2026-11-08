@@ -36,11 +36,11 @@ onLinux {
   # long, its drawer's words set from the markdown they're written in, and
   # which calls are with someone or of a meeting (tests/transcripts.qml,
   # over Transcripts.js).
-  the-shell-reads-the-transcripts =
+  the-desktop-reads-the-transcripts =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
-    pkgs.runCommandLocal "the-shell-reads-the-transcripts" { } ''
+    pkgs.runCommandLocal "the-desktop-reads-the-transcripts" { } ''
       cp ${./tests/transcripts.qml} transcripts.qml
       cp ${./Transcripts.js} Transcripts.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

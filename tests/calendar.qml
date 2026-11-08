@@ -4,7 +4,7 @@
 // which Meet call a window is and whose, from meetings like the google
 // program's, run in Qt's own JavaScript engine,
 // the one the shell runs it in. The
-// `the-shell-tells-the-next-meeting` check copies Calendar.js and Meet.js beside this
+// `the-desktop-tells-the-next-meeting` check copies Calendar.js and Meet.js beside this
 // file and runs `qml -platform offscreen calendar.qml`. Times are made on
 // the local clock, so the cases hold in whatever zone the check runs in.
 import QtQuick

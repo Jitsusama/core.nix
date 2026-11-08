@@ -10,7 +10,7 @@
 // is shared by Drive's Share, one Open away, as src/drive.rs leaves who
 // may see it to Drive. It's kept apart from Drive.js, which the
 // picker's rows share, so each changes on its own. The
-// the-shell-reads-the-documents check runs it in Qt's own engine
+// the-desktop-reads-the-documents check runs it in Qt's own engine
 // (tests/drive.qml).
 .pragma library
 .import "Mail.js" as Mail
