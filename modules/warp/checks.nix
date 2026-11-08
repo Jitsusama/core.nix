@@ -1,0 +1,24 @@
+# The checks of warp, which checks.nix gathers with every other folder's;
+# its opening comment says what each kind of check proves.
+{
+  onLinux,
+  passesClippy,
+  pkgs,
+  ...
+}:
+# Its checks build where every other Rust program's do; warp itself builds
+# on a Mac too, where WARP's app puts warp-cli.
+onLinux {
+  # warp's tests run as it builds: every answer in the contract reads into
+  # exactly the record warp.json holds, a reason given with figures keeps
+  # them, an endpoint given as no address is none and a figure left out is
+  # unknown rather than zero; no warp-cli, a service not answering or one
+  # that hangs, and a status refused or garbled are each told apart, said
+  # in a line and ended with a code of their own, and with --json as a
+  # record; a part besides the status that warp-cli won't give is unknown
+  # and the rest still reads; and each page matches its golden one
+  # (src/golden/), connected, degraded and disconnected.
+  warp-reads-what-warp-cli-says = pkgs.callPackage ./package.nix { };
+  # clippy finds nothing in warp, its tests included.
+  warp-passes-clippy = passesClippy "warp-passes-clippy" (pkgs.callPackage ./package.nix { });
+}

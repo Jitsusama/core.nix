@@ -1,0 +1,106 @@
+{
+  "settings": {
+    "always_on": true,
+    "switch_locked": false,
+    "auto_connect_after_min": 2,
+    "operation_mode": "warp+doh",
+    "disable_for_wifi": false,
+    "disable_for_ethernet": false,
+    "disable_for_ssids": [],
+    "doh_hostname": "0000.doh.example.com",
+    "doh_resolver_ips": ["192.0.2.53", "192.0.2.54", "2001:db8::53", "2001:db8::54"],
+    "onboarding": false,
+    "split_tunnel_mode": "include",
+    "split_tunnel_hosts": [
+      { "value": "intranet.example.com", "description": "example" },
+      { "value": "*.corp.example.com", "description": "example" }
+    ],
+    "split_tunnel_ips": [
+      { "value": "10.0.0.0/8", "description": "lan" },
+      { "value": "2001:db8:1::/48", "description": "lan" }
+    ],
+    "fallback_domains": [
+      { "domain": "home.arpa", "description": "", "dns_servers": [] },
+      { "domain": "local", "description": "", "dns_servers": [] },
+      { "domain": "example.com", "description": "", "dns_servers": ["192.0.2.1"] }
+    ],
+    "disable_auto_fallback": false,
+    "captive_portal_detection_enabled": true,
+    "captive_portal_firewall_off_secs": 300,
+    "support_url": "",
+    "organization": "example",
+    "allow_mode_switch": true,
+    "allow_updates": true,
+    "allowed_to_leave": false,
+    "profile_id": "00000000-0000-4000-8000-000000000000",
+    "lan_subnet_size": 24,
+    "config_type": "single",
+    "warp_tunnel_protocol": "masque",
+    "emergency_disconnect": {
+      "disconnect": false,
+      "timestamp": "1970-01-01T00:00:00Z",
+      "poll_interval": { "secs": 900, "nanos": 0 },
+      "source": "Api",
+      "active_sources": 0
+    },
+    "register_interface_ip_with_dns": true,
+    "anycast_split_ips": {
+      "always_exclude": ["198.51.100.10/32"],
+      "always_include": ["198.51.100.20/32"]
+    },
+    "sccm_vpn_boundary_support": false,
+    "post_quantum_config": "enabled_with_downgrades",
+    "speed_test_settings": {
+      "include_servers": {
+        "throughput_base_url": "https://speed.example.com/include",
+        "turn_server_host_with_port": "turn.example.com:3478",
+        "turn_cred_request_url": null
+      },
+      "include_ips": ["198.51.100.30"],
+      "exclude_servers": {
+        "throughput_base_url": "https://speed.example.com/exclude",
+        "turn_server_host_with_port": "turn.example.com:3478",
+        "turn_cred_request_url": null
+      },
+      "exclude_ips": ["198.51.100.31"]
+    },
+    "enable_pmtud": true,
+    "dns_policy": { "doh_ips": ["192.0.2.53", "192.0.2.54"] }
+  },
+  "sources": {
+    "always_on": "default",
+    "switch_locked": "override",
+    "auto_connect_after_min": "local_policy",
+    "operation_mode": "local_policy",
+    "disable_for_wifi": "local_policy",
+    "disable_for_ethernet": "local_policy",
+    "disable_for_ssids": "local_policy",
+    "doh_hostname": "network_policy",
+    "doh_resolver_ips": "network_policy",
+    "onboarding": "local_policy",
+    "split_tunnel_mode": "network_policy",
+    "split_tunnel_ips": "network_policy",
+    "split_tunnel_hosts": "network_policy",
+    "fallback_domains": "network_policy",
+    "disable_auto_fallback": "network_policy",
+    "captive_portal_detection_enabled": "network_policy",
+    "captive_portal_firewall_off_secs": "network_policy",
+    "support_url": "network_policy",
+    "organization": "local_policy",
+    "config_type": "local_policy",
+    "allow_mode_switch": "network_policy",
+    "allow_updates": "network_policy",
+    "allowed_to_leave": "local_policy",
+    "profile_id": "network_policy",
+    "lan_subnet_size": "network_policy",
+    "warp_tunnel_protocol": "network_policy",
+    "emergency_disconnect": "override",
+    "register_interface_ip_with_dns": "network_policy",
+    "anycast_split_ips": "network_policy",
+    "sccm_vpn_boundary_support": "network_policy",
+    "post_quantum_config": "network_policy",
+    "speed_test_settings": "network_policy",
+    "enable_pmtud": "default",
+    "dns_policy": "network_policy"
+  }
+}

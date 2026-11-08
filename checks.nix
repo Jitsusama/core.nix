@@ -1154,6 +1154,7 @@ gather (
     ./modules/unlisted/checks.nix
     ./modules/update-to-main/checks.nix
     ./modules/v4l2loopback/checks.nix
+    ./modules/warp/checks.nix
     ./modules/wifid/checks.nix
     ./modules/yubikey/checks.nix
     ./modules/zathura/checks.nix

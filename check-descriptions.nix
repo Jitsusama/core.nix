@@ -3079,6 +3079,16 @@
     launcher's own words rather than libvirt's, each state offers its own acts and tells virsh its
     own command, and the VMs are ordered and counted as Programs shows them
   '';
+  warp-passes-clippy = ''
+    clippy finds nothing in warp or its tests
+  '';
+  warp-reads-what-warp-cli-says = ''
+    warp draws WARP from every answer in its contract exactly as warp.json holds it, keeping a
+    reason's own figures, an endpoint given as no address as none and a figure left out as unknown;
+    tells no warp-cli, a service not answering or hanging, and a status refused or garbled apart,
+    each said in a line with a code of its own and with --json as a record; still reads the rest
+    when a part besides the status isn't given; and draws each page as its golden one
+  '';
   what-vm-tests-share-does-what-it-says = ''
     the helpers VM tests share run a command as the account asked, with its runtime folder and
     bus, read a journal's cursor or refuse output without one, and pace each wait to how busy the
