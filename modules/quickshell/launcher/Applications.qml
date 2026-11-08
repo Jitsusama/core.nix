@@ -762,6 +762,15 @@ Provider {
                 provider.treesWanted = [];
             }
         }
+
+        // Off a program's row, nothing shows its figures, so the daemon
+        // stops reading its trees rather than reading on until the
+        // launcher closes.
+        function onSelectedChanged() {
+            const is = String(provider.launcher.selected?.is ?? "");
+            if (!is.startsWith("program:") && provider.treesWanted.length > 0)
+                provider.treesWanted = [];
+        }
     }
 
     // What a program's processes use is the machine daemon's (modules/

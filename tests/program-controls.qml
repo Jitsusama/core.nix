@@ -77,6 +77,9 @@ ShellRoot {
         id: launcher
 
         property bool open: false
+        // The row chosen, whose drawer shows; Applications ends a program's
+        // watch once it's off the program's row.
+        property var selected: null
         property var held: []
         property var belowChord: []
         property var sources: [notices, keys, giver]
