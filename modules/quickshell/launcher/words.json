@@ -7365,7 +7365,7 @@
       "argument": "position=0",
       "in": "media:position",
       "name": "From the Start",
-      "verb": "restart"
+      "verb": "rewind"
     },
     {
       "id": "media:volume",
