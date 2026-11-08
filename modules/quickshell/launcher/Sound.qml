@@ -500,14 +500,16 @@ Provider {
 
     // How a device is joined to the machine, in the vocabulary's words:
     // through a display, over Bluetooth, by USB or built in, or "" where
-    // the sound server doesn't say.
+    // the sound server doesn't say. Bluetooth is a name, so it's said as
+    // the vocabulary names it.
     function joinedBy(node) {
         const properties = node.properties;
         const bus = String(properties["device.bus"] ?? "");
         const how = display(node) ? "display"
             : Sounds.address(node.name, properties) !== "" || bus === "bluetooth" ? "bluetooth"
             : bus === "usb" ? "usb" : bus === "pci" ? "built-in" : "";
-        return how === "" ? "" : said(`joined-${how}`);
+        return how === "" ? "" : how === "bluetooth" ? Words.name("bluetooth")
+            : said(`joined-${how}`);
     }
 
     // Each program playing through a device, or recording from it, and how

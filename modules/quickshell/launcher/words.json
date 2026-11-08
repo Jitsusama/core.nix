@@ -3392,7 +3392,6 @@
         "plate-in": "input",
         "joined-built-in": "built in",
         "joined-usb": "USB",
-        "joined-bluetooth": "Bluetooth",
         "joined-display": "display",
         "paused-at": "paused at {level}"
       }

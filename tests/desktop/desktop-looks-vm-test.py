@@ -1292,12 +1292,13 @@ def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
     """Hold the speakers', the microphone's and the screen's plates to the lines, as a server's.
 
     Each says which way it goes or what it is over its name, then its parts, what moves most
-    first, laid one way, every name whole (VKCF3Z, 2026-11-07).
+    first, laid one way, every name whole (VKCF3Z, 2026-11-07). The stand-in backlight lights
+    the one screen, so its Brightness leads.
     """
     for collection, typed, kind, first in [
         ("sound", "speakers", "output", "Volume"),
         ("sound", "microphone", "input", "Gain"),
-        ("displays", "", "monitor", "Resolution"),
+        ("displays", "", "monitor", "Brightness"),
     ]:
         desktop.launcher_until(lambda shown: not shown["open"])
         desktop.as_account(f"qs ipc call launcher collection {collection}")
