@@ -154,6 +154,7 @@ fn internet(answers: &Answers) -> Internet {
         },
         devices: number(n, "/clients/count"),
         usage: usage(&answers.usage),
+        probe: None,
         history: InternetHistory::default(),
     }
 }

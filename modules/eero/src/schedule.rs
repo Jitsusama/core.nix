@@ -1,6 +1,7 @@
 //! When the daemon asks eero for each part of the home network: each as
 //! often as its figures move, so as few requests as possible go over the
-//! internet, and the fast ones only while someone is listening.
+//! internet, and the fast ones only while someone is listening. And when
+//! it takes its own look at the internet (probe.rs).
 
 use std::time::{Duration, Instant};
 
@@ -108,12 +109,75 @@ impl Schedule {
     }
 }
 
+/// The soonest the daemon looks at the internet again after its last look.
+pub const LOOK_AT_MOST_EVERY: Duration = Duration::from_secs(10);
+
+/// When the daemon last looked at the internet itself.
+#[derive(Debug, Clone, Default)]
+pub struct Looks {
+    last: Option<Instant>,
+}
+
+impl Looks {
+    /// Whether to look at `now`: with each read of the network, and while
+    /// eero's cloud can't be reached, every `LOOK_AT_MOST_EVERY` between,
+    /// since then the look is all that says how the internet is. Never
+    /// twice within it, so a listener asking for reads can't make the
+    /// daemon look faster. Signed out, the internet is fine and looks ride
+    /// on the reads.
+    pub fn due(&self, now: Instant, network_read: bool, unreachable: bool) -> bool {
+        let rested = self
+            .last
+            .is_none_or(|last| now.duration_since(last) >= LOOK_AT_MOST_EVERY);
+        rested && (network_read || unreachable)
+    }
+
+    /// How long from `now` until a look is due of itself: never while eero
+    /// can be reached, since then the looks ride on the network's reads.
+    pub fn wait(&self, now: Instant, unreachable: bool) -> Option<Duration> {
+        unreachable.then(|| {
+            self.last.map_or(Duration::ZERO, |last| {
+                (last + LOOK_AT_MOST_EVERY).saturating_duration_since(now)
+            })
+        })
+    }
+
+    pub fn done(&mut self, at: Instant) {
+        self.last = Some(at);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn secs(s: u64) -> Duration {
         Duration::from_secs(s)
+    }
+
+    #[test]
+    fn the_internet_is_looked_at_with_each_network_read_but_not_twice_in_10_seconds() {
+        let start = Instant::now();
+        let mut looks = Looks::default();
+
+        assert!(looks.due(start, true, false));
+        looks.done(start);
+
+        assert!(!looks.due(start + secs(5), true, false), "an asked read");
+        assert!(!looks.due(start + secs(30), false, false));
+        assert!(looks.due(start + secs(30), true, false));
+        assert_eq!(looks.wait(start + secs(30), false), None);
+    }
+
+    #[test]
+    fn the_internet_is_looked_at_every_10_seconds_while_eero_cant_be_reached() {
+        let start = Instant::now();
+        let mut looks = Looks::default();
+        looks.done(start);
+
+        assert_eq!(looks.wait(start + secs(4), true), Some(secs(6)));
+        assert!(!looks.due(start + secs(9), false, true));
+        assert!(looks.due(start + secs(10), false, true));
     }
 
     /// A schedule with every read done at `at`.

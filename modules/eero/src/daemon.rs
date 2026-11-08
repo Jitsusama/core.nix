@@ -7,14 +7,17 @@
 //! listener. When eero can't be reached the last model stays, its cloud
 //! saying so, since the internet being down is what the shell most needs
 //! to show. After each read it records what moves in the history
-//! (history.rs), in eero's folder in the account's state.
+//! (history.rs), in eero's folder in the account's state. With each read
+//! of the network, and every 10 seconds while eero can't be reached, it
+//! takes its own look at the internet (probe.rs), so an outage is seen and
+//! timed even when eero can't say.
 
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
 
@@ -23,8 +26,9 @@ use crate::cloud::{self, Failure};
 use crate::history::History;
 use crate::listeners::{Call, Listeners};
 use crate::model::{Cloud, CloudState, HomeNetwork};
+use crate::probe::{self, Targets};
 use crate::read::{self, Answers};
-use crate::schedule::{Read, Schedule};
+use crate::schedule::{Looks, Read, Schedule};
 use crate::session;
 use crate::time;
 
@@ -50,7 +54,7 @@ pub fn run() -> Result<(), String> {
             write(&file, &line(&model)).map_err(|e| format!("{}: {e}", file.display()))?;
             listeners.send(&line(&model));
         }
-        match woken.recv_timeout(daemon.schedule.wait(Instant::now(), listeners.listening())) {
+        match woken.recv_timeout(daemon.wait(Instant::now(), listeners.listening())) {
             Ok(Call::Read) => daemon.schedule.ask(),
             Ok(Call::Joined | Call::Left) | Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => return Err("the socket stopped".into()),
@@ -132,6 +136,7 @@ struct Daemon {
     model: Option<HomeNetwork>,
     schedule: Schedule,
     history: History,
+    looks: Looks,
 }
 
 impl Daemon {
@@ -143,13 +148,32 @@ impl Daemon {
             model,
             schedule: Schedule::default(),
             history,
+            looks: Looks::default(),
         }
     }
 
-    /// Takes every read due, and gives the model when it changed.
+    /// How long to sleep from `now` until the next read or look is due.
+    fn wait(&self, now: Instant, listening: bool) -> Duration {
+        let read = self.schedule.wait(now, listening);
+        self.looks
+            .wait(now, self.unreachable())
+            .map_or(read, |look| look.min(read))
+    }
+
+    fn unreachable(&self) -> bool {
+        self.model
+            .as_ref()
+            .is_some_and(|model| model.cloud.state == CloudState::Unreachable)
+    }
+
+    /// Takes every read due, and a look if one is due, and gives the model
+    /// when it changed.
     fn cycle(&mut self, now: Instant, listening: bool) -> Option<HomeNetwork> {
         let due = self.schedule.due(now, listening);
-        if due.is_empty() {
+        let look = self
+            .looks
+            .due(now, due.contains(&Read::Network), self.unreachable());
+        if due.is_empty() && !look {
             return None;
         }
         let was_answering = self
@@ -170,21 +194,32 @@ impl Daemon {
                 self.schedule.catch_up();
             }
         }
-        let heard = heard?;
         let at = now_unix();
-        let mut next = next_model(
-            self.model.as_ref(),
-            &self.answers,
-            &heard,
-            &time::from_unix(at),
-        )?;
-        if heard == Heard::Answered {
+        let mut next = match &heard {
+            Some(heard) => next_model(
+                self.model.as_ref(),
+                &self.answers,
+                heard,
+                &time::from_unix(at),
+            )?,
+            None => self.model.clone()?,
+        };
+        if heard == Some(Heard::Answered) {
             let network_read = due.contains(&Read::Network);
             if let Err(reason) = self.history.record(&next, at, network_read) {
                 eprintln!("eero: {reason}");
             }
         }
-        if let Err(reason) = self.history.draw(&mut next, at) {
+        // A look takes up to its timeout, so what it found is timed as it
+        // ends, and the history drawn as of then.
+        if look {
+            self.looks.done(now);
+            let reading = look_from(&next);
+            if let Err(reason) = self.history.record_probe(&reading, now_unix()) {
+                eprintln!("eero: {reason}");
+            }
+        }
+        if let Err(reason) = self.history.draw(&mut next, now_unix()) {
             eprintln!("eero: {reason}");
         }
         if self.model.as_ref() == Some(&next) {
@@ -257,6 +292,14 @@ impl Daemon {
         }
         Ok(())
     }
+}
+
+/// A look at the internet from this machine, at the gateway node of the
+/// home network `model` is when this machine is on it.
+fn look_from(model: &HomeNetwork) -> probe::Reading {
+    let home = probe::gateway(model)
+        .filter(|gateway| probe::at_home(model, &probe::own_macs(), &probe::routes(), *gateway));
+    probe::look(&Targets::usual(home), probe::TIMEOUT)
 }
 
 /// Each node's answer at the path `path` names for it, keeping a node's

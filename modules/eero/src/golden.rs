@@ -8,6 +8,7 @@ use serde_json::Value;
 
 use crate::history::History;
 use crate::model::{Cloud, CloudState, HomeNetwork};
+use crate::probe::Reading;
 use crate::read::{self, Answers};
 use crate::time;
 
@@ -70,18 +71,51 @@ const RX_SHARE: [f64; 6] = [1.0, 0.9, 0.75, 1.0, 1.0, 1.0];
 const SPEED_SHARE: [f64; 6] = [0.6, 1.8, 0.3, 1.2, 0.9, 1.0];
 const BUSY_PCT: [i16; 6] = [4, -3, 9, 2, -2, 0];
 
+/// The times of each read's look at the internet from home: the gateway
+/// node, the quicker public resolver, the gateway node resolving.
+const GATEWAY_MS: [f64; 6] = [2.1, 1.8, 2.4, 1.9, 2.2, 2.0];
+const INTERNET_MS: [f64; 6] = [11.8, 12.4, 13.1, 11.6, 12.0, 11.9];
+const DNS_MS: [f64; 6] = [14.2, 13.7, 15.9, 13.9, 14.8, 14.1];
+
+/// The outage the probe saw, a minute and a half before dawn four days
+/// earlier: looks every 10 seconds, since eero couldn't be reached, the
+/// gateway node answering throughout and nothing beyond it.
+const OUTAGE_FROM: &str = "2026-11-03T03:12:30Z";
+const OUTAGE_LOOKS: usize = 11;
+
 /// The history behind the golden model: six reads five minutes apart, as
 /// the daemon reads with nobody listening, the last at the model's read,
-/// each the contract with its figures moved a little. The tablet roams to
-/// the Den's 5 GHz from the Study's 2.4 GHz, the laptop joins and a phone
-/// on the edge of the Den's reach leaves, and the Study's backhaul drops
-/// a bar for a read.
+/// each the contract with its figures moved a little, and a look at the
+/// internet with each. The tablet roams to the Den's 5 GHz from the
+/// Study's 2.4 GHz, the laptop joins and a phone on the edge of the Den's
+/// reach leaves, and the Study's backhaul drops a bar for a read. Before
+/// them, the probe saw an outage.
 pub fn history() -> History {
-    let last = time::to_unix(READ).unwrap();
     let mut history = History::in_memory();
+    let from = time::to_unix(OUTAGE_FROM).unwrap();
+    for (n, at) in (0..OUTAGE_LOOKS).zip((from..).step_by(10)) {
+        let out = n > 0 && n < OUTAGE_LOOKS - 1;
+        let look = Reading {
+            home: true,
+            gateway_ms: Some(1.9),
+            internet_ms: (!out).then_some(12.2),
+            dns_ms: (!out).then_some(14.5),
+            reachable: !out,
+        };
+        history.record_probe(&look, at).unwrap();
+    }
+    let last = time::to_unix(READ).unwrap();
     for step in 0..6 {
         let at = last - 300 * (5 - i64::try_from(step).unwrap());
         history.record(&moved(step, at), at, true).unwrap();
+        let look = Reading {
+            home: true,
+            gateway_ms: Some(GATEWAY_MS[step]),
+            internet_ms: Some(INTERNET_MS[step]),
+            dns_ms: Some(DNS_MS[step]),
+            reachable: true,
+        };
+        history.record_probe(&look, at).unwrap();
     }
     history
 }

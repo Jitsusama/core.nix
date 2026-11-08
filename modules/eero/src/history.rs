@@ -5,7 +5,9 @@
 //! device's signal, SNR, rates and speed, and each node's backhaul bars and
 //! each radio's channel, power and how busy it is; a device joining,
 //! leaving or roaming to another node or band; every speed test eero gives;
-//! and every outage eero records. It keeps at most one sample in any
+//! and every outage eero records. After each of the daemon's own looks at
+//! the internet (probe.rs) it records what the look found, and an outage
+//! the look sees from the home network. It keeps at most one sample in any
 //! `SAMPLE_EVERY_S`, so a listener asking for reads every few seconds
 //! can't make it grow faster than the 30-second pace, and keeping 30 days
 //! bounds it.
@@ -29,8 +31,9 @@ use serde_json::Value;
 
 use crate::model::{
     DeviceHistory, HomeNetwork, JoinOrLeave, JoinOrLeaveKind, NodeHistory, Outage, OutageSeenBy,
-    RadioHistory, Roam, SpeedTest,
+    Probe, ProbeHistory, RadioHistory, Roam, SpeedTest,
 };
+use crate::probe::Reading;
 use crate::time;
 
 /// The shape of the tables, as `PRAGMA user_version` holds it. Bumped
@@ -81,6 +84,10 @@ CREATE TABLE moves (at INTEGER NOT NULL, device INTEGER NOT NULL, kind TEXT NOT 
 CREATE TABLE devices_on (device INTEGER PRIMARY KEY, node TEXT, band TEXT);
 CREATE TABLE speed_tests (at INTEGER PRIMARY KEY, down_mbps REAL, up_mbps REAL);
 CREATE TABLE eero_outages (record TEXT PRIMARY KEY, seen INTEGER NOT NULL);
+CREATE TABLE probes (at INTEGER PRIMARY KEY, home INTEGER NOT NULL, gateway_ms REAL,
+    internet_ms REAL, dns_ms REAL, reachable INTEGER NOT NULL);
+CREATE TABLE probe_outages (start INTEGER PRIMARY KEY, ended INTEGER,
+    last_down INTEGER NOT NULL);
 CREATE TABLE meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
 ";
 
@@ -191,6 +198,8 @@ impl History {
         let internet = &mut model.internet;
         internet.speed_tests = self.speed_tests(&internet.speed_tests, now - KEPT_S)?;
         internet.history.outages = self.outages(now - KEPT_S)?;
+        internet.history.probes = self.probe_series(now - SERIES_S)?;
+        internet.probe = self.last_probe()?;
         Ok(())
     }
 
@@ -349,21 +358,142 @@ impl History {
         Ok(tests)
     }
 
-    /// The outages since `since`, newest first.
+    /// The outages since `since`, newest first: the probe's by when they
+    /// began, eero's by when they were first seen.
     fn outages(&self, since: i64) -> Result<Vec<Outage>, String> {
-        self.rows(
-            "SELECT record FROM eero_outages WHERE seen > ?1 ORDER BY seen DESC",
+        let mut outages = self.rows(
+            "SELECT start, ended FROM probe_outages WHERE coalesce(ended, last_down) > ?1",
+            [since],
+            |row| {
+                let start: i64 = row.get(0)?;
+                let ended: Option<i64> = row.get(1)?;
+                let outage = Outage {
+                    seen_by: OutageSeenBy::Probe,
+                    start: Some(time::from_unix(start)),
+                    end: ended.map(time::from_unix),
+                    eero: None,
+                };
+                Ok((start, outage))
+            },
+        )?;
+        outages.extend(self.rows(
+            "SELECT record, seen FROM eero_outages WHERE seen > ?1",
             [since],
             |row| {
                 let record: String = row.get(0)?;
-                Ok(Outage {
+                let outage = Outage {
                     seen_by: OutageSeenBy::Eero,
                     start: None,
                     end: None,
                     eero: serde_json::from_str::<Value>(&record).ok(),
+                };
+                Ok((row.get(1)?, outage))
+            },
+        )?);
+        outages.sort_by_key(|(at, _)| std::cmp::Reverse(*at));
+        Ok(outages.into_iter().map(|(_, outage)| outage).collect())
+    }
+
+    fn probe_series(&self, since: i64) -> Result<ProbeHistory, String> {
+        let mut series = ProbeHistory::default();
+        for probe in self.probes("WHERE at > ?1 ORDER BY at", since)? {
+            series.at.push(probe.at);
+            series.gateway_ms.push(probe.gateway_ms);
+            series.internet_ms.push(probe.internet_ms);
+            series.dns_ms.push(probe.dns_ms);
+            series.reachable.push(probe.reachable);
+        }
+        Ok(series)
+    }
+
+    /// The newest look, however old: its time says how current it is.
+    fn last_probe(&self) -> Result<Option<Probe>, String> {
+        Ok(self
+            .probes("WHERE at > ?1 ORDER BY at DESC LIMIT 1", i64::MIN)?
+            .pop())
+    }
+
+    /// The looks `rest` of a query picks, from `since`.
+    fn probes(&self, rest: &str, since: i64) -> Result<Vec<Probe>, String> {
+        self.rows(
+            &format!(
+                "SELECT at, home, gateway_ms, internet_ms, dns_ms, reachable FROM probes {rest}"
+            ),
+            [since],
+            |row| {
+                Ok(Probe {
+                    at: time::from_unix(row.get(0)?),
+                    home: row.get(1)?,
+                    gateway_ms: row.get(2)?,
+                    internet_ms: row.get(3)?,
+                    dns_ms: row.get(4)?,
+                    reachable: row.get(5)?,
                 })
             },
         )
+    }
+
+    /// Records what a look at `at` found, and the outage it shows, if it
+    /// was taken from the home network. An outage begins at the first look
+    /// that finds the internet out and ends at the first that finds it
+    /// back; when no look from home came for over `WATCHED_GAP_S` before
+    /// that, as when this machine slept or was away, it ends at the last
+    /// look that found it out, since when it came back isn't known.
+    pub fn record_probe(&mut self, reading: &Reading, at: i64) -> Result<(), String> {
+        let tx = self.db.transaction().map_err(sql)?;
+        tx.execute(
+            "INSERT OR REPLACE INTO probes VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                at,
+                reading.home,
+                reading.gateway_ms,
+                reading.internet_ms,
+                reading.dns_ms,
+                reading.reachable
+            ],
+        )
+        .map_err(sql)?;
+        if reading.home {
+            let watched = meta(&tx, "probed_home")?.is_some_and(|last| at - last <= WATCHED_GAP_S);
+            let open: Option<(i64, i64)> = tx
+                .query_row(
+                    "SELECT start, last_down FROM probe_outages WHERE ended IS NULL",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()
+                .map_err(sql)?;
+            let lasts = match open {
+                Some((start, last_down)) => {
+                    let (ended, down) = match (watched, reading.reachable) {
+                        (false, _) => (Some(last_down), last_down),
+                        (true, true) => (Some(at), last_down),
+                        (true, false) => (None, at),
+                    };
+                    tx.execute(
+                        "UPDATE probe_outages SET ended = ?2, last_down = ?3 WHERE start = ?1",
+                        params![start, ended, down],
+                    )
+                    .map_err(sql)?;
+                    ended.is_none()
+                }
+                None => false,
+            };
+            if !reading.reachable && !lasts {
+                tx.execute(
+                    "INSERT OR REPLACE INTO probe_outages VALUES (?1, NULL, ?1)",
+                    [at],
+                )
+                .map_err(sql)?;
+            }
+            tx.execute(
+                "INSERT OR REPLACE INTO meta VALUES ('probed_home', ?1)",
+                [at],
+            )
+            .map_err(sql)?;
+        }
+        tx.commit().map_err(sql)?;
+        self.prune(at)
     }
 
     fn rows<T>(
@@ -398,6 +528,8 @@ impl History {
                  DELETE FROM moves WHERE at < {before};
                  DELETE FROM speed_tests WHERE at < {before};
                  DELETE FROM eero_outages WHERE seen < {before};
+                 DELETE FROM probes WHERE at < {before};
+                 DELETE FROM probe_outages WHERE coalesce(ended, last_down) < {before};
                  COMMIT;"
             ))
             .map_err(sql)?;
@@ -857,6 +989,96 @@ mod tests {
         assert_eq!(outage.seen_by, OutageSeenBy::Eero);
         assert_eq!((&outage.start, &outage.end), (&None, &None));
         assert_eq!(outage.eero, Some(serde_json::json!({"kind": "isp"})));
+    }
+
+    /// A look from home, out or not, and with what times.
+    fn look(home: bool, reachable: bool) -> Reading {
+        Reading {
+            home,
+            gateway_ms: home.then_some(1.9),
+            internet_ms: reachable.then_some(12.4),
+            dns_ms: (home && reachable).then_some(14.8),
+            reachable,
+        }
+    }
+
+    /// The probe's outages drawn, as `start..end`, in seconds after `AT`.
+    fn probe_outages(history: &History, now: i64) -> Vec<String> {
+        let mut model = model();
+        history.draw(&mut model, now).unwrap();
+        let after = |at: &Option<String>| {
+            at.as_deref()
+                .map(|at| (time::to_unix(at).unwrap() - AT).to_string())
+                .unwrap_or_default()
+        };
+        model
+            .internet
+            .history
+            .outages
+            .iter()
+            .filter(|outage| outage.seen_by == OutageSeenBy::Probe)
+            .map(|outage| format!("{}..{}", after(&outage.start), after(&outage.end)))
+            .collect()
+    }
+
+    fn looks(history: &mut History, from: i64, every: i64, found: &[(bool, bool)]) {
+        for (n, (home, reachable)) in (0..).zip(found) {
+            history
+                .record_probe(&look(*home, *reachable), from + n * every)
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn an_outage_the_probe_sees_runs_from_the_first_look_out_to_the_first_back() {
+        let mut history = History::in_memory();
+        let (up, down) = ((true, true), (true, false));
+
+        looks(&mut history, AT, 10, &[up, down, down, down, up, up, down]);
+
+        assert_eq!(probe_outages(&history, AT + 60), ["60..", "10..40"]);
+    }
+
+    #[test]
+    fn looks_away_from_home_record_no_outage_and_leave_one_open() {
+        let mut history = History::in_memory();
+        let away_out = (false, false);
+
+        looks(&mut history, AT, 10, &[away_out, away_out, (true, false)]);
+        looks(&mut history, AT + 30, 10, &[away_out, (true, true)]);
+
+        assert_eq!(probe_outages(&history, AT + 40), ["20..40"]);
+    }
+
+    #[test]
+    fn after_nobody_looked_an_outage_ends_at_the_last_look_that_saw_it() {
+        let mut history = History::in_memory();
+        let down = (true, false);
+
+        looks(&mut history, AT, 10, &[down, down]);
+        looks(&mut history, AT + 3600, 10, &[down, (true, true)]);
+
+        assert_eq!(probe_outages(&history, AT + 3610), ["3600..3610", "0..10"]);
+    }
+
+    #[test]
+    fn the_model_carries_the_last_look_and_the_last_hours_looks() {
+        let mut history = History::in_memory();
+        let mut model = model();
+        looks(&mut history, AT - 4000, 1000, &[(true, true); 5]);
+
+        history.draw(&mut model, AT).unwrap();
+
+        let probe = model.internet.probe.unwrap();
+        assert_eq!(probe.at, time::from_unix(AT));
+        assert_eq!(
+            (probe.gateway_ms, probe.internet_ms, probe.dns_ms),
+            (Some(1.9), Some(12.4), Some(14.8))
+        );
+        assert!(probe.home && probe.reachable);
+        let looks = &model.internet.history.probes;
+        assert_eq!(looks.at.len(), 4, "the last hour's");
+        assert_eq!(looks.reachable, [true; 4]);
     }
 
     /// The model of a busy network after an hour read at the fast pace: 32

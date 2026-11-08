@@ -100,26 +100,70 @@ pub struct Internet {
     /// The devices eero counts.
     pub devices: Option<u32>,
     pub usage: Option<Usage>,
+    /// This machine's own last look at the internet, which goes on while
+    /// eero's cloud can't be reached.
+    #[serde(default)]
+    pub probe: Option<Probe>,
     /// What the history keeps of the internet.
     #[serde(default)]
     pub history: InternetHistory,
 }
 
+/// This machine's own look at the internet (probe.rs), taken with every
+/// read of the network and every 10 seconds while eero's cloud can't be
+/// reached: TCP connects timed, since a ping needs root, and a DNS query
+/// of its own.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Probe {
+    pub at: String,
+    /// Whether this machine was on the home network, so that what it saw
+    /// was the home network's internet: the gateway node is timed only
+    /// then, and an outage recorded.
+    pub home: bool,
+    /// A connect to the gateway node.
+    pub gateway_ms: Option<f64>,
+    /// The quicker connect of two public resolvers'.
+    pub internet_ms: Option<f64>,
+    /// The gateway node resolving a name.
+    pub dns_ms: Option<f64>,
+    /// Whether either public resolver took the connection.
+    pub reachable: bool,
+}
+
 /// What the history keeps of the internet.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct InternetHistory {
+    /// This machine's looks over the last hour, a sample a look, oldest
+    /// first.
+    pub probes: ProbeHistory,
     /// Every outage of the last 30 days, newest first.
     pub outages: Vec<Outage>,
 }
 
-/// The internet out.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ProbeHistory {
+    pub at: Vec<String>,
+    pub gateway_ms: Vec<Option<f64>>,
+    pub internet_ms: Vec<Option<f64>>,
+    pub dns_ms: Vec<Option<f64>>,
+    pub reachable: Vec<bool>,
+}
+
+/// The internet out, as eero recorded it or this machine's probe saw it
+/// from the home network.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Outage {
     pub seen_by: OutageSeenBy,
-    /// When it began and ended. eero's record says, in a shape no outage
-    /// has shown yet, so one eero records gives `null` for both, and its
-    /// record as eero wrote it.
+    /// Seen by the probe, the first look that found the internet out.
+    /// eero's record says when, in a shape no outage has shown yet, so
+    /// one eero records gives `null`, and its record as eero wrote it.
     pub start: Option<String>,
+    /// Seen by the probe, the first look that found it back, `null`
+    /// while it lasts; when nothing looked for over 10 minutes before
+    /// that, the last look that found it out, since when it came back
+    /// isn't known.
     pub end: Option<String>,
     pub eero: Option<Value>,
 }
@@ -128,6 +172,7 @@ pub struct Outage {
 #[serde(rename_all = "kebab-case")]
 pub enum OutageSeenBy {
     Eero,
+    Probe,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -241,6 +286,7 @@ pub struct Node {
 
 /// A node's backhaul over the last hour, a sample a read, oldest first.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct NodeHistory {
     pub at: Vec<String>,
     pub bars: Vec<Option<u8>>,
@@ -295,6 +341,7 @@ pub struct Radio {
 /// changing within one is the radio moving off a busy or radar-struck
 /// one.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct RadioHistory {
     pub at: Vec<String>,
     pub channel: Vec<Option<u16>>,
@@ -384,6 +431,7 @@ pub struct Device {
 /// A device's link over the last hour, a sample a read, oldest first:
 /// `null` where eero gave no figure at that read.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct DeviceHistory {
     pub at: Vec<String>,
     pub signal_dbm: Vec<Option<i16>>,
