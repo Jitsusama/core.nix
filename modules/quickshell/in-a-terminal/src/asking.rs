@@ -33,13 +33,15 @@ pub enum Answer {
     },
 }
 
-/// Asks the shell through `qs` what the steps show. An error is the shell
-/// not answering, with what qs said where it said anything.
-pub fn show(qs: &str, steps: &[String]) -> Result<Answer, String> {
+/// Asks the shell through `qs` what the steps show, with each row's drawer
+/// where `drawers` asks, since the shell builds them only then. An error is
+/// the shell not answering, with what qs said where it said anything.
+pub fn show(qs: &str, steps: &[String], drawers: bool) -> Result<Answer, String> {
+    let asked = if drawers { "drawers" } else { "show" };
     let mut child = Command::new(qs)
         // After `--`, since `show` is also qs ipc's own command, which
         // takes no argument, and qs reads the call as it otherwise.
-        .args(["ipc", "call", "--", "launcher", "show", &path(steps)])
+        .args(["ipc", "call", "--", "launcher", asked, &path(steps)])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

@@ -5,13 +5,14 @@
 //! shell (`qs ipc call launcher show`, launcher/Showing.js), which walks the
 //! same rows Return does, and only lays out what comes back.
 //!
-//!     launcher show [step ...] [--drawers] [--json]
+//!     launcher show [--drawers] [--json] [step ...] [-- step ...]
 //!
 //! Each step is a row's name, in any case, a hyphen for a space, or the
 //! start of only one: `launcher show machine disk`. With none it shows
 //! home. Text is set as the launcher sets a row, in the theme's roles;
-//! `--drawers` sets each row's drawer after the rows, and `--json` prints
-//! the shell's answer as it came, every drawer in it.
+//! `--drawers` asks the shell for each row's drawer too (`launcher
+//! drawers` over its IPC, since it builds them only then) and sets them
+//! after the rows, and `--json` prints the shell's answer as it came.
 //!
 //! For the shell: `launcher completion zsh` writes zsh's completion, and
 //! `launcher names [step ...]` the rows a place holds as it offers them.
@@ -124,7 +125,7 @@ fn main() -> ExitCode {
             print!("{}", include_str!("completion.zsh"));
             ExitCode::SUCCESS
         }
-        Asked::Names { steps } => match ask(&steps, &words) {
+        Asked::Names { steps } => match ask(&steps, false, &words) {
             Ok(shown) => {
                 print!("{}", names::for_zsh(&shown));
                 ExitCode::SUCCESS
@@ -135,7 +136,7 @@ fn main() -> ExitCode {
             steps,
             json,
             drawers,
-        } => match ask(&steps, &words) {
+        } => match ask(&steps, drawers, &words) {
             Ok(shown) => {
                 let out = if json {
                     format!(
@@ -163,9 +164,9 @@ fn errors() -> Look {
 
 /// What the shell shows at the steps, or how to exit, said on stderr,
 /// where a step names nothing or the shell doesn't answer.
-fn ask(steps: &[String], words: &Words) -> Result<Value, ExitCode> {
+fn ask(steps: &[String], drawers: bool, words: &Words) -> Result<Value, ExitCode> {
     let qs = env::var("LAUNCHER_QS").unwrap_or_else(|_| "qs".to_string());
-    match asking::show(&qs, steps) {
+    match asking::show(&qs, steps, drawers) {
         Ok(Answer::Shown(shown)) => Ok(shown),
         Ok(Answer::Missing { step, near, within }) => {
             fail(&errors(), &words.missing(&step, &within, &near));
