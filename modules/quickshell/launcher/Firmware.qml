@@ -110,8 +110,13 @@ Provider {
             thing: true,
             key: `firmware:${device.id}`,
             name: device.name,
-            side: device.version,
-            note: held === "" ? Fwupd.versionOf(device) : `${Fwupd.versionOf(device)} \u00b7 ${held}`,
+            // The version and what's offered are said once, on the side,
+            // and what holds an update back after a dot (VKCF3Z,
+            // 2026-11-08), going first where the row is too narrow.
+            side: held === "" ? Fwupd.versionOf(device) : `${Fwupd.versionOf(device)} \u00b7 ${held}`,
+            sideItems: held === "" ? [] : [{ said: Fwupd.versionOf(device), keep: 2 },
+                { said: held, keep: 1 }],
+            note: "",
             warns: device.offered !== null,
             glyph: Words.glyph("firmware"),
             drawer: () => provider.drawerOf(device)
