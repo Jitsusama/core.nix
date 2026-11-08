@@ -92,6 +92,15 @@ function who(people, said) {
     return filled(rest === 1 ? said.other : said.others, { first: known[0], count: rest });
 }
 
+// The act inside a past call's row that calls them again, first inside
+// it so Return twice calls, as a person's row does (VKCF3Z, 2026-11-08):
+// "Call Ana Again" for one, by the name Tuple gave them, and "Call Them
+// Again" for several or for one Tuple named only by address.
+function again(people, said) {
+    const name = people.length === 1 ? String(people[0].name ?? "") : "";
+    return name === "" ? said.againAll : filled(said.again, { name });
+}
+
 // How long a past call went on, from when it connected to its end, in
 // `said`'s words: "under a minute", "42 min", "1 h", "1 h 5 min".
 function lasted(since, ended, said) {

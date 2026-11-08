@@ -17,13 +17,14 @@
 // recent.rs), each named by who it was with, then how long it went on,
 // or "missed" in its place, and when it began: "Ana  42 min \u00b7
 // yesterday 14:10". At its right, how the first of them stands in Tuple
-// now, as their row in People says it. Return calls them again through
-// Tuple, joining their call when they're in one, as People's Call Them
-// does, and closes the launcher; the right arrow lists, after that,
-// each of them as their one row in People, where People knows them.
-// The row itself is a call's, not a person's: it says what the call
-// was, a call may have had several people, and its Return calls where
-// a person's steps in (People.qml).
+// now, as their row in People says it. A call rings a person, so it is
+// never one press (docs/design.md, Return): Return steps into the row, as
+// a person's does, and Call Ana Again (Call Them Again for several) is
+// first inside, so Return twice calls, through Tuple, joining their call
+// when they're in one, as People's Call Them does (VKCF3Z, 2026-11-08).
+// After it, each of them as their one row in People, where People knows
+// them. The row itself is a call's, not a person's: it says what the call
+// was, and a call may have had several people.
 import qs
 import QtQuick
 import "../Tuple.js" as Log
@@ -109,19 +110,13 @@ Provider {
 
     // One past call's row. A missed call from a caller Tuple's log didn't
     // number has nobody to call again, so it stays, dimmed, saying what
-    // it can.
+    // it can, with nothing inside.
     function pastRow(past) {
         const first = past.people.length > 0 ? contact(past.people[0]) : null;
         const busy = first?.status === "busy";
         const book = people();
-        // Its acts, Return's leading as the launcher leads every thing's,
-        // make it a thing holding acts of its own, which Return does from
-        // any mode, as a meeting's joins its call (Catalogue.js's
-        // endsSomething), even with no one People knows to list after it.
-        const theirs = () => past.people.map(one => book?.personOf(one.email) ?? null)
-            .filter(Boolean);
         const now = Date.now();
-        return thing(Object.assign({
+        const row = thing({
             key: `tuple:call:${past.missed ? "missed" : "ended"}:${past.since}`,
             name: Log.who(past.people, said),
             note: Log.note(past, now, said),
@@ -129,12 +124,27 @@ Provider {
             side: first === null ? "" : TuplePeople.how(first).said,
             glyph: Words.glyph("tuple:call", busy ? "busy" : ""),
             hue: "person",
-            verb: Words.verb("tuple:call", busy ? "busy" : ""),
             keywords: past.people.map(one => one.email).filter(Boolean).join(" ") || null,
             at: past.since,
+            later: true
+        });
+        if (first === null)
+            return Object.assign(row, { gone: true, verb: "", run: () => {} });
+        // Calling again first, its verb join where they're in a call now,
+        // then each of them as People knows them.
+        const call = thing({
+            key: `tuple:call:again:${past.since}`,
+            name: busy ? Words.name("verb:person:join") : Log.again(past.people, said),
+            verb: Words.verb("tuple:call", busy ? "busy" : ""),
+            glyph: Words.glyph("tuple:call", busy ? "busy" : ""),
+            side: TuplePeople.how(first).said,
+            hue: "action",
+            main: true,
             later: true,
-            verbs: theirs,
             run: () => TuplePeople.pair(first)
-        }, first !== null ? {} : { gone: true, run: () => {} }));
+        });
+        const inside = () => [call].concat(past.people
+            .map(one => book?.personOf(one.email) ?? null).filter(Boolean));
+        return entering(row, inside);
     }
 }

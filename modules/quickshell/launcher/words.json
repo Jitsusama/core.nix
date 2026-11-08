@@ -9196,7 +9196,9 @@
         "minutes": "{minutes} min",
         "hours": "{hours} h",
         "hoursMinutes": "{hours} h {minutes} min",
-        "seconds": "{seconds} s"
+        "seconds": "{seconds} s",
+        "again": "Call {name} Again",
+        "againAll": "Call Them Again"
       }
     },
     {

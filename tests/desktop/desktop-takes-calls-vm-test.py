@@ -170,10 +170,16 @@ def test_a_tuple_call_that_ended_is_in_tuples_recent_to_call_again(desktop: Desk
         lambda shown: shown["held"][-1:] == ["Recent"] and "Ada Brightwater" in shown["rows"]
     )
     desktop.down_to("Ada Brightwater")
+    desktop.shoot("launcher-tuple-recent")
     row = desktop.showing()["selected"]
     assert row["note"].startswith("9 min \u00b7 "), row
-    assert row["verb"] == "call", row
     assert {"label": "Email", "value": "ada@example.com"} in row["drawer"]["facts"], row
+    # A call rings a person, so Return steps in, calling again first inside.
+    assert row["verb"] != "call", row
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Call Ada Brightwater Again"])
+    assert desktop.showing()["selected"]["verb"] == "call"
+    desktop.shoot("launcher-tuple-call-again")
     desktop.close_launcher()
 
 

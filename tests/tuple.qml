@@ -91,6 +91,8 @@ QtObject {
             length: "Length",
             rang: "Rang For",
             ended: "Ended",
+            again: "Call {name} Again",
+            againAll: "Call Them Again",
             date: (date, format) => Qt.formatDate(date, format)
         };
         const named = (...names) => names.map((name, at) => ({ id: String(at), name: name,
@@ -113,6 +115,20 @@ QtObject {
             const got = Tuple.who(people, said);
             if (got !== expected)
                 failures.push(`${JSON.stringify(people)} was named "${got}", not "${expected}"`);
+        }
+
+        // [people, what calling them again is called]
+        const agains = [
+            [named("Ana"), "Call Ana Again"],
+            [named("Ana", "Ben"), "Call Them Again"],
+            [[{ id: "7", name: "", email: "ada@example.com" }], "Call Them Again"],
+            [[nobody], "Call Them Again"]
+        ];
+        for (const [people, expected] of agains) {
+            asked++;
+            const got = Tuple.again(people, said);
+            if (got !== expected)
+                failures.push(`calling ${JSON.stringify(people)} again was "${got}"`);
         }
 
         // Local times, so the days read the same in any zone the check
