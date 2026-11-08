@@ -1224,9 +1224,10 @@ Provider {
 
     // One of a program's acts as a row found from the top, by its own name
     // only, so typing a program's name doesn't list every act it has. It
-    // weighs half what the rest do, so it comes after anything else found
-    // as well: a call's link just copied comes before Meet's Join by Code
-    // for "join". What Joel picks still lifts it, as it does any row.
+    // sinks below anything else found, whatever its tier (Rank.js): a
+    // call's link just copied comes before Meet's Join by Code for "join",
+    // and the Clipboard's picture before GIMP's New Image for "image".
+    // What Joel picks still lifts it, as it does any row.
     function foundAct(entry, act) {
         const trail = ["collection:applications", `program:${entry.id}`];
         const row = thing({
@@ -1240,6 +1241,7 @@ Provider {
             state: act.state
         });
         row.weight = provider.weight / 2;
+        row.sinks = true;
         // One that asks, as Join by Code does, goes to its ask inside the
         // program on Return and the right arrow alike, since what it asks
         // for is typed there. Going there changes nothing yet, so Return
