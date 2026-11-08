@@ -51,6 +51,7 @@ fn target(leave_out: &[&str]) -> Target {
         start_from_stick: None,
         clear_secure_boot_keys: None,
         secure_boot: true,
+        shared: false,
         leave_out: leave_out.iter().map(ToString::to_string).collect(),
     }
 }

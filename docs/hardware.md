@@ -55,6 +55,12 @@ that partition. So the kernel is Asahi's rather than core's own build, and
 | Boot     | systemd-boot under U-Boot's UEFI, which keeps no variables             |
 | Firmware | Asahi's copy from macOS, unpacked from the EFI partition at each boot  |
 | Stick    | how to start one from U-Boot, for the guide to say                     |
+| Guide    | no Secure Boot or TPM steps, since the model has neither               |
+
+A machine on it sets `jitsusama.disk.shared`, which the hardware module
+can't, since the disk module is a machine's own choice: the guide then puts
+the system in the space Asahi's installer left free and keeps macOS's
+partitions and the boot partition as they are.
 
 The firmware stays on the EFI system partition rather than in the system,
 so the machine evaluates purely and builds anywhere; the initrd unpacks it,
@@ -74,7 +80,7 @@ leaves it out there and spotify-player and the web player stay.
 | Keyboard | its IDs as keyd names them, for Colemak, are read on its first boot    |
 | Devices  | where each driver binds, for device-check, is read on the machine too  |
 | Keys     | the TPM's SSH, signing and link keys need a YubiKey or another home    |
-| Disk     | the guide's install into the space Asahi's installer leaves free       |
+| Install  | the guide's install beside macOS, proven in a VM, then on the Mac      |
 
 ## Dell XPS 14 (DA14260)
 

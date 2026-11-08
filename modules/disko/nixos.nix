@@ -5,7 +5,9 @@
 # The partitions and the open volume are found by the disk's name, so two
 # disks attached at once, such as a machine's drive and a stick it was
 # installed from, need names of their own. The cryptsetup typed by hand
-# reads the disk's YubiKey and TPM tokens, as the boot does.
+# reads the disk's YubiKey and TPM tokens, as the boot does. A disk shared
+# with another system, as an Apple silicon Mac's is with macOS, keeps that
+# system's partitions: the layout formats only the machine's own.
 { disko }:
 {
   config,
@@ -61,6 +63,63 @@ let
     "noatime"
     "discard=async"
   ];
+
+  boot = {
+    type = "filesystem";
+    format = "vfat";
+    mountpoint = "/boot";
+    mountOptions = [ "umask=0077" ];
+  };
+
+  system = {
+    type = "luks";
+    inherit (cfg) name;
+    # Encrypt in 4 KiB sectors, the size Btrfs writes, rather than the
+    # 512 bytes a disk formatted for old systems reports, so each block
+    # is one encryption instead of eight.
+    extraFormatArgs = [
+      "--sector-size"
+      "4096"
+    ];
+    settings = {
+      allowDiscards = true;
+      # NVMe is fast enough that dm-crypt's queues only add latency.
+      bypassWorkqueues = true;
+      crypttabExtraOpts = [
+        "tpm2-device=auto"
+        "fido2-device=auto"
+      ];
+    };
+    passwordFile = lib.mkIf (cfg.installKey != null) cfg.installKey;
+    content = {
+      type = "btrfs";
+      extraArgs = [ "-f" ];
+      subvolumes = {
+        "@" = {
+          mountpoint = "/";
+          mountOptions = btrfs;
+        };
+        "@home" = {
+          mountpoint = "/home";
+          mountOptions = btrfs;
+        };
+        "@nix" = {
+          mountpoint = "/nix";
+          mountOptions = btrfs;
+        };
+        "@log" = {
+          mountpoint = "/var/log";
+          mountOptions = btrfs;
+        };
+        # A swap file can't be compressed or snapshotted, so it gets a
+        # subvolume of its own.
+        "@swap" = {
+          mountpoint = "/swap";
+          swap.swapfile.size = cfg.swapSize;
+        };
+      };
+    };
+  };
 in
 {
   imports = [ disko.nixosModules.disko ];
@@ -96,6 +155,19 @@ in
         makes it in memory and takes its slot off the disk once the
         YubiKeys and the recovery key are enrolled. Only formatting reads
         it; the installed machine never does.
+      '';
+    };
+    shared = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      example = true;
+      description = ''
+        Whether the disk keeps another system's partitions beside this
+        one's, as an Apple silicon Mac's keeps macOS's and the boot
+        partition Asahi's installer made. The guide then makes the partition
+        <name> in the disk's free space and names that boot partition
+        <name>-boot, leaving every other partition as it is, and the layout
+        formats only <name>, mounting the boot partition as it finds it.
       '';
     };
   };
@@ -166,77 +238,49 @@ in
     };
   };
 
-  config.disko.devices.disk.main = {
-    type = "disk";
-    inherit (cfg) device;
-    content = {
-      type = "gpt";
-      partitions = {
+  # Beside another system: each partition by the name the guide gave it,
+  # as disko names a whole disk's, so the machine's mounts and crypttab are
+  # the same either way. disko's own table would renumber and rename the
+  # other system's partitions, so it's never written here. The boot
+  # partition is formatted only when it holds no filesystem, which one
+  # Asahi's installer made always does, and never destroyed.
+  config.disko.devices.disk =
+    if cfg.shared then
+      {
         boot = {
-          label = "${cfg.name}-boot";
-          size = "1G";
-          type = "EF00";
-          content = {
-            type = "filesystem";
-            format = "vfat";
-            mountpoint = "/boot";
-            mountOptions = [ "umask=0077" ];
-          };
+          type = "disk";
+          device = "/dev/disk/by-partlabel/${cfg.name}-boot";
+          destroy = false;
+          content = boot;
         };
         system = {
-          label = cfg.name;
-          size = "100%";
+          type = "disk";
+          device = "/dev/disk/by-partlabel/${cfg.name}";
+          content = system;
+        };
+      }
+    else
+      {
+        # The whole disk, a table and both partitions made afresh.
+        main = {
+          type = "disk";
+          inherit (cfg) device;
           content = {
-            type = "luks";
-            inherit (cfg) name;
-            # Encrypt in 4 KiB sectors, the size Btrfs writes, rather than the
-            # 512 bytes a disk formatted for old systems reports, so each block
-            # is one encryption instead of eight.
-            extraFormatArgs = [
-              "--sector-size"
-              "4096"
-            ];
-            settings = {
-              allowDiscards = true;
-              # NVMe is fast enough that dm-crypt's queues only add latency.
-              bypassWorkqueues = true;
-              crypttabExtraOpts = [
-                "tpm2-device=auto"
-                "fido2-device=auto"
-              ];
-            };
-            passwordFile = lib.mkIf (cfg.installKey != null) cfg.installKey;
-            content = {
-              type = "btrfs";
-              extraArgs = [ "-f" ];
-              subvolumes = {
-                "@" = {
-                  mountpoint = "/";
-                  mountOptions = btrfs;
-                };
-                "@home" = {
-                  mountpoint = "/home";
-                  mountOptions = btrfs;
-                };
-                "@nix" = {
-                  mountpoint = "/nix";
-                  mountOptions = btrfs;
-                };
-                "@log" = {
-                  mountpoint = "/var/log";
-                  mountOptions = btrfs;
-                };
-                # A swap file can't be compressed or snapshotted, so it gets a
-                # subvolume of its own.
-                "@swap" = {
-                  mountpoint = "/swap";
-                  swap.swapfile.size = cfg.swapSize;
-                };
+            type = "gpt";
+            partitions = {
+              boot = {
+                label = "${cfg.name}-boot";
+                size = "1G";
+                type = "EF00";
+                content = boot;
+              };
+              system = {
+                label = cfg.name;
+                size = "100%";
+                content = system;
               };
             };
           };
         };
       };
-    };
-  };
 }

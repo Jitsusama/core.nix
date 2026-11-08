@@ -732,8 +732,9 @@ fn a_machine_with_a_tpm_and_secure_boot_is_sealed_and_keyed() {
 
 #[test]
 fn a_machine_with_neither_has_nothing_to_seal_or_key() {
-    assert!(
-        installed_steps(br#"{"disk_name":"system","secure_boot":false,"tpm":false}"#).is_empty()
+    assert_eq!(
+        installed_steps(br#"{"disk_name":"system","secure_boot":false,"tpm":false}"#),
+        [] as [&str; 0]
     );
 }
 

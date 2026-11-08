@@ -144,6 +144,21 @@ driven on; the installed machine's steps come later.
   the accounts' keys only where `jitsusama.firmware.tpm` says there's a
   TPM. Each is said in the target and `machine.json` only when false, so a
   machine that has both carries what it always has.
+- **Beside another system.** A machine whose disk module sets
+  `jitsusama.disk.shared`, as an Apple silicon Mac does to keep macOS and
+  the boot partition Asahi's installer made, never has its disk wiped.
+  The disk is confirmed the same way, then its table is read with
+  `sfdisk --json` (`observe::table`): the boot partition is the one named
+  `<name>-boot` already, else the one m1n1 names in
+  `/proc/device-tree/chosen/asahi,efi-system-partition`, else the disk's
+  only EFI system partition. One sgdisk write adds `<name>` in the
+  largest free stretch, at least 32 GiB, on a 1 MiB boundary and the
+  lowest free number, and names the boot partition `<name>-boot`. The
+  table is read again, and any other entry changed in place, type,
+  identity, attributes or name stops the install before anything is
+  formatted. A reinstall finds `<name>` there and writes no table. Only
+  `<name>` is wiped, and the machine's disko script formats it alone,
+  mounting the boot partition as it finds it.
 - **Carrying the home folders** (`src/install/carry.rs`). Installing a
   machine again asks first whether to carry its home folders across. If
   so, before anything is wiped it opens the old disk as Recover does and

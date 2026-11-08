@@ -93,6 +93,12 @@ pub struct Target {
     /// A target that doesn't say has one, as every machine did before.
     #[serde(default = "has")]
     pub secure_boot: bool,
+    /// Whether its disk keeps another system's partitions beside its own,
+    /// as an Apple silicon Mac's keeps macOS's (`jitsusama.disk.shared`).
+    /// The install then makes one partition in the disk's free space and
+    /// names the boot partition already there, rather than wiping the disk.
+    #[serde(default)]
+    pub shared: bool,
 }
 
 /// What a target that says nothing of a capability has.
@@ -101,6 +107,11 @@ fn has() -> bool {
 }
 
 impl Target {
+    /// The GPT name of its boot partition.
+    pub fn boot_label(&self) -> String {
+        format!("{}-boot", self.disk_name)
+    }
+
     /// The partition its encrypted volume is on.
     pub fn volume(&self) -> String {
         format!("/dev/disk/by-partlabel/{}", self.disk_name)
@@ -253,7 +264,7 @@ pub fn steps(target: &Target, start: Start) -> Vec<Box<dyn Step>> {
     match start {
         Start::Afresh | Start::Again => steps.push(Box::new(disk::LayOutDisk)),
         Start::CarryingOn => steps.push(Box::new(disk::OpenStoppedInstall {
-            yubikeys: yubikeys.to_vec(),
+            yubikeys: yubikeys.clone(),
         })),
     }
     for name in yubikeys {

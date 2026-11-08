@@ -42,12 +42,13 @@ let
       throw "${config.networking.hostName} names no account for the guide to give a password: set jitsusama.login.account, or pass account";
   keys = map (key: if builtins.isString key then { name = key; } else key) yubikeys;
   recipients = map (key: key.recipient) (builtins.filter (key: key ? recipient) keys);
-  # Said only where the firmware has none, so a machine with one carries
-  # the target it always has.
+  # Said only where the firmware has none, or the disk is shared, so any
+  # other machine carries the target it always has.
   secureBoot = config.jitsusama.firmware.secureBoot or true;
   target = writeText "target.json" (
     builtins.toJSON (
       lib.optionalAttrs (!secureBoot) { secure_boot = false; }
+      // lib.optionalAttrs (disk.shared or false) { shared = true; }
       // {
         machine = config.networking.hostName;
         disk = disk.device;
