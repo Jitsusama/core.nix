@@ -6767,12 +6767,10 @@
         "photo": "photo",
         "eyebrow": "in {where} · {kind}",
         "within": "in {where}",
-        "kinds": {
-          "screenshot": "screenshot",
-          "recording": "recording",
-          "photo": "photo",
-          "video": "video"
-        },
+        "screenshot": "screenshot",
+        "recording": "recording",
+        "photo": "photo",
+        "video": "video",
         "today": "{time} today",
         "yesterday": "{time} yesterday",
         "on": "{time} on {day}"

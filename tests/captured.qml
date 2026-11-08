@@ -23,7 +23,8 @@ QtObject {
     readonly property var said: ({
         eyebrow: "in {where} \u00b7 {kind}",
         within: "in {where}",
-        kinds: { screenshot: "screenshot", recording: "recording" },
+        screenshot: "screenshot",
+        recording: "recording",
         today: "{time} today",
         yesterday: "{time} yesterday",
         on: "{time} on {day}",

@@ -15,6 +15,9 @@ const PICTURE = /\.(png|jpe?g|webp|avif|gif)$/i;
 const VIDEO = /\.(mp4|mkv|webm|mov)$/i;
 const FIELD = /\{(\w+)\}/g;
 const YESTERDAY = "\u0000yesterday";
+// What Capture calls what lands in each of its folders, each a word the
+// vocabulary says.
+const KINDS = ["screenshot", "recording", "photo", "video"];
 
 // "{n}" in a sentence the vocabulary gives, filled.
 function filled(template, fields) {
@@ -87,7 +90,7 @@ function preview(file, shown) {
 // the vocabulary's words (said).
 function drawer(file, shown, told) {
     const { now, named, said } = told;
-    const kind = said.kinds?.[file.kind] ?? "";
+    const kind = KINDS.includes(file.kind) ? said[file.kind] ?? "" : "";
     return {
         eyebrow: filled(kind === "" ? said.within : said.eyebrow, { where: file.where, kind }),
         title: file.name,
