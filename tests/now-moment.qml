@@ -206,10 +206,12 @@ ShellRoot {
             plate?.eyebrow === "via GeoClue" && plate?.title === "Lighthouse",
             JSON.stringify(plate));
         expect("its plate's facts, from what moves most, the zone an identifier",
-            JSON.stringify(plate.facts.map(fact => [fact.label, fact.identifier]))
+            JSON.stringify(plate.facts.map(fact => [fact.label, fact.identifies]))
                 === JSON.stringify([["Located", false], ["Accuracy", false],
                     ["Coordinates", false], ["Country", false], ["Zone", true]]),
             JSON.stringify(plate.facts));
+        expect("its plate names what GeoClue can't say from Wi-Fi, and why",
+            plate.body.includes("no altitude, speed or heading"), plate.body);
         expect("a position within 26 km says a tenth of a degree",
             plate.facts[2].value === "43.7\u00b0 N \u00b7 79.4\u00b0 W"
                 && plate.facts[1].value === "within 26 km",

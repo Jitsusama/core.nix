@@ -4166,7 +4166,19 @@
         "hand": "set by hand",
         "metres": "within {n} m",
         "kilometres": "within {n} km",
-        "yesterday": "yesterday"
+        "yesterday": "yesterday",
+        "north": "N",
+        "south": "S",
+        "east": "E",
+        "west": "W",
+        "unknown": "unknown",
+        "unnamed": "not named yet",
+        "notFound": "not found yet",
+        "unfound": "GeoClue hasn't found the laptop yet",
+        "found": "{within}, found through GeoClue",
+        "knows": "GeoClue, {within}",
+        "elsewhere": "it keeps {zone}, not the clock's {clock}",
+        "leftOut": "Found by the Wi-Fi networks in reach, GeoClue knows no altitude, speed or heading."
       }
     },
     {

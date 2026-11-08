@@ -48,6 +48,10 @@ use fix::{Fix, moved};
 
 /// How long a here still unnamed waits before its name is asked again.
 const AGAIN: std::time::Duration = std::time::Duration::from_mins(5);
+/// How many times one here is asked again for what it lacks, an hour's
+/// worth: a service that names a town but no country never will, and
+/// isn't asked forever.
+const TRIES: u32 = 12;
 
 /// How near, in metres, a town Joel names is taken to be: the width of a
 /// town, which is as sure as its name makes it.
@@ -166,6 +170,8 @@ async fn follow(path: &Path, pin: &Path) -> Result<(), Box<dyn Error>> {
     client.start().await?;
     // A position GeoClue already had may come before the signal is heard.
     let mut found = geoclue::fix(&bus, client.location().await?).await;
+    // How many times this here has been asked again for what it lacks.
+    let mut tried: u32 = 0;
     loop {
         // While Joel's pin holds, GeoClue's positions are heard and left.
         let held = pinned(pin).is_some();
@@ -173,8 +179,10 @@ async fn follow(path: &Path, pin: &Path) -> Result<(), Box<dyn Error>> {
             // A new here, or the last one again while it still lacks its
             // name or its zone.
             let renamed = if moved(last.as_ref(), &now) {
+                tried = 0;
                 Some(now)
             } else {
+                tried = tried.saturating_add(1);
                 last.clone().filter(Fix::unnamed)
             };
             if let Some(fix) = renamed {
@@ -194,8 +202,9 @@ async fn follow(path: &Path, pin: &Path) -> Result<(), Box<dyn Error>> {
         }
         // GeoClue says nothing more of a laptop sitting still, so one still
         // unnamed, as when the program starts before a network does, is
-        // asked again a few minutes on, and never once it's named.
-        let unnamed = !held && last.as_ref().is_some_and(Fix::unnamed);
+        // asked again a few minutes on, and never once it's named or it's
+        // been asked an hour's worth.
+        let unnamed = !held && tried < TRIES && last.as_ref().is_some_and(Fix::unnamed);
         tokio::select! {
             update = updates.next() => match update {
                 Some(update) => found = geoclue::fix(&bus, update.args()?.now().clone()).await,

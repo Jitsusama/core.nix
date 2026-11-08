@@ -200,21 +200,22 @@ Provider {
     //
     // GeoClue's altitude, speed and heading are left out: found from the
     // Wi-Fi networks in reach, as it is here, it gives none of them, only
-    // its "unknown" values.
+    // its "unknown" values. The plate says so, as design.md has what's
+    // left out named on screen with its reason.
     readonly property var location: {
         const here = Location.here;
         const position = here ? `${here.latitude.toFixed(2)}, ${here.longitude.toFixed(2)}` : "";
         // A place Joel set himself says so, since GeoClue no longer moves it.
         const byHand = here?.hand === true;
-        const within = !here ? "" : byHand ? "set by hand"
-            : `within ${Math.ceil(here.accuracy / 1000)} km`;
-        const side = here ? here.place ?? position : Location.read ? "unknown" : "\u2026";
+        const said = hereSaid;
+        const within = !here ? "" : byHand ? said.hand : Here.within(here.accuracy, said, hereTold);
+        const side = here ? here.place ?? position : Location.read ? said.unknown : "\u2026";
         const differs = Location.zoneDiffers;
         // Said plainly where it's unknown, never guessed.
-        const elsewhere = differs ? `it keeps ${here.zone}, not the clock's ${Location.clockZone}`
-            : "";
-        const note = !here ? (Location.read ? "GeoClue hasn't found the laptop yet" : "")
-            : differs ? elsewhere : byHand ? within : `${within}, found through GeoClue`;
+        const elsewhere = differs ? said.elsewhere.replace("{zone}", here.zone)
+            .replace("{clock}", Location.clockZone) : "";
+        const note = !here ? (Location.read ? said.unfound : "")
+            : differs ? elsewhere : byHand ? within : said.found.replace("{within}", within);
         const now = clock.date.getTime();
         const inside = () => {
             const figure = (id, value) => copyRow({
@@ -222,10 +223,10 @@ Provider {
                 name: Words.name(`location:${id}`),
                 side: value
             });
-            const rows = [figure("town", !here ? side : here.place ?? "not named yet")]
+            const rows = [figure("town", !here ? side : here.place ?? said.unnamed)]
                 .concat(here?.country ? [figure("country", here.country)] : [])
-                .concat([figure("knows", !here ? "not found yet" : byHand ? "set by hand"
-                    : `GeoClue, ${within}`)])
+                .concat([figure("knows", !here ? said.notFound : byHand ? said.hand
+                    : said.knows.replace("{within}", within))])
                 .concat(here ? [figure("located", Here.located(here.when, now, hereTold))]
                     : []);
             // Where GeoClue can't find the laptop, or finds it wrong, Joel
@@ -277,8 +278,10 @@ Provider {
             facts: Here.facts(here, now, hereSaid, hereTold).map(fact => ({
                 label: Words.name(`location:${fact.id}`),
                 value: fact.value,
-                identifier: fact.identifier === true
-            }))
+                identifies: fact.identifies === true
+            })),
+            // What GeoClue can't say of a place found by Wi-Fi, and why.
+            body: byHand ? "" : hereSaid.leftOut
         });
         return thingRow(Object.assign({
             key: "on:location",
@@ -299,7 +302,8 @@ Provider {
             yesterday: provider.hereSaid.yesterday ?? "",
             date: (date, format) => Qt.formatDate(date, format)
         }),
-        clock: at => Qt.formatDateTime(new Date(at), "HH:mm")
+        clock: at => Qt.formatDateTime(new Date(at), "HH:mm"),
+        number: (value, decimals) => Qt.locale().toString(value, "f", decimals)
     })
 
     // Made again as the clock turns a minute, so the time says it.
