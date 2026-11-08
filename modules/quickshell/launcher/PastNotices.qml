@@ -69,8 +69,7 @@ Provider {
         // its body that holds what was typed (VKCF3Z, 2026-11-08), as
         // search says it each time; the whole of what it said is what a
         // search looks through.
-        const noteFor = typed => Notice.named(notice.summary, notice.body, typed, provider.holds);
-        const named = noteFor([]);
+        const named = Notice.named(notice.summary, notice.body, [], provider.holds);
         let whole = null;
         const row = member({
             thing: true,
@@ -80,7 +79,10 @@ Provider {
             count: named.note,
             // Its note gives way by whole words, never an ellipsis (Choice.qml).
             countWords: true,
-            noteFor: noteFor,
+            // Its body, which its note is a line of, kept as words rather
+            // than as a way to say it: a row read back from `all` is a
+            // copy, which keeps a row's values and loses its functions.
+            wrote: notice.body,
             // Stepped into, the head says its title alone, its words being
             // the drawer's (VKCF3Z, 2026-11-08).
             title: notice.summary,
@@ -422,10 +424,11 @@ Provider {
         return Fuzzy.match(Fuzzy.prepare(text), [word], false).score >= 0;
     }
 
-    // Each row's note as nothing typed says it, its body's first line.
+    // Each row's note, the line of its body that holds the words typed,
+    // or its first line with none.
     function noted(rows, words) {
         for (const row of rows)
-            row.count = row.noteFor(words).note;
+            row.count = Notice.named(row.title, row.wrote, words, provider.holds).note;
         return rows;
     }
 
