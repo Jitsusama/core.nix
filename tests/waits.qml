@@ -1,7 +1,7 @@
 // Drives the launcher's Lag (modules/quickshell/launcher/Waits.qml) through
 // Quickshell itself, over lag-watch's status file as it writes one: while
 // the processor held the desktop up, "lag" says so in lag-watch's words, then
-// offers to see what's using the processor, which goes there from the top,
+// offers to show what's using the processor, which goes there from the top,
 // then says how fast the desktop answers in plain words, and how hard heavy
 // work runs, which goes to the queue; with nothing in the way, it says
 // nothing's slowing the desktop and offers nothing to look into. It exits 0
@@ -88,14 +88,14 @@ ShellRoot {
         expect("lag is answered", slow !== null, "nothing");
         expect("the worst of what waited leads", slow.headline === line, slow.headline);
         expect("then what to do about it, how fast the desktop answers, and heavy work",
-            names(slow.rows) === `${line}, See What's Using the Processor, Desktop Answers, `
+            names(slow.rows) === `${line}, Show What's Using the Processor, Desktop Answers, `
                 + "Heavy Work", names(slow.rows));
         expect("the desktop's answers in plain words",
             slow.rows[2].side === "in 0.3 ms, at worst 0.4 ms", slow.rows[2].side);
         expect("heavy work says how hard it runs", slow.rows[3].side === "busy",
             slow.rows[3].side);
         slow.rows[1].run();
-        expect("seeing goes to the processor from the top",
+        expect("showing goes to the processor from the top",
             launcher.held.length === 0 && launcher.typed === "processor",
             `${launcher.held.length} ${launcher.typed}`);
         expect("and keeps the launcher there", slow.rows[1].stays === true,

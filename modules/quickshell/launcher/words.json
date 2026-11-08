@@ -5671,7 +5671,7 @@
     {
       "id": "shortcuts:gimp:view",
       "in": "shortcuts",
-      "name": "Zooming"
+      "name": "Zooming the Picture"
     },
     {
       "id": "shortcuts:gimp:selection",
@@ -5691,7 +5691,7 @@
     {
       "id": "shortcuts:inkscape:view",
       "in": "shortcuts",
-      "name": "Zooming"
+      "name": "Zooming the Drawing"
     },
     {
       "id": "shortcuts:inkscape:objects",
