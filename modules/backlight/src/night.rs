@@ -44,11 +44,12 @@ impl Place {
     pub fn read(text: &str) -> Option<Place> {
         let latitude = figure(text, "latitude")?;
         let longitude = figure(text, "longitude")?;
-        ((-90.0..=90.0).contains(&latitude) && (-180.0..=180.0).contains(&longitude))
-            .then_some(Place {
+        ((-90.0..=90.0).contains(&latitude) && (-180.0..=180.0).contains(&longitude)).then_some(
+            Place {
                 latitude,
                 longitude,
-            })
+            },
+        )
     }
 }
 
@@ -59,7 +60,10 @@ fn figure(text: &str, key: &str) -> Option<f64> {
     let end = value
         .find(|letter: char| !(letter.is_ascii_digit() || "+-.eE".contains(letter)))
         .unwrap_or(value.len());
-    value[..end].parse().ok().filter(|number: &f64| number.is_finite())
+    value[..end]
+        .parse()
+        .ok()
+        .filter(|number: &f64| number.is_finite())
 }
 
 /// A night: its sunset and the sunrise after it, in milliseconds since
@@ -168,7 +172,10 @@ pub fn plan(now: i64, place: Place, white: u16) -> Plan {
     let Some(night) = under_way else {
         // By day, or where the sun neither rises nor sets today: a polar
         // night is a night throughout, a midnight sun a day.
-        let dark = matches!(crossing(now.div_euclid(DAY), place, false), Crossing::Unrisen);
+        let dark = matches!(
+            crossing(now.div_euclid(DAY), place, false),
+            Crossing::Unrisen
+        );
         return Plan {
             kelvin: if dark { white.min(WHITE) } else { WHITE },
             night: coming,

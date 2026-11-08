@@ -471,6 +471,10 @@ mod tests {
         warmth.night(4000, now);
         assert_eq!(glide(&mut warmth, now).last(), Some(&4000));
         warmth.night(WHITE, now);
-        assert_eq!(glide(&mut warmth, now).last(), Some(&5000), "the room's by day");
+        assert_eq!(
+            glide(&mut warmth, now).last(),
+            Some(&5000),
+            "the room's by day"
+        );
     }
 }

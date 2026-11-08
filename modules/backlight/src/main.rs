@@ -580,8 +580,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
             }
             kelvin = light(&mut warm) => backlight.warmed(kelvin?),
             shut = lid_moved(&mut lid) => backlight.lid(shut?),
-            woke = woke(&mut sleeps) => {
-                woke?;
+            resumed = woke(&mut sleeps) => {
+                resumed?;
                 backlight.woke();
             }
             follows = switched(&mut said) => backlight.switched(follows),
