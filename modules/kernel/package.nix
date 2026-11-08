@@ -41,8 +41,8 @@ let
   # pinned nixpkgs has no 7.3 package yet, so it's built from 7.2's, whose
   # build is the same. docs/kernel.md says why this release.
   stable = {
-    version = "7.3.1";
-    hash = "sha256-+llarZNzT4KcljwqkO98NnMiT9f9rntJQG45fN4t4jE=";
+    version = "7.3.3";
+    hash = "sha256-ecZt3mbNlod/zej302rslGsfQj0rl7WnsXUbdcdk89E=";
   };
 in
 linux_7_2.override {
