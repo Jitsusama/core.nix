@@ -19,18 +19,22 @@ Piece {
 
     readonly property var said: Words.of("timer").said ?? {}
     readonly property var watch: HeldTimers.stopwatch
-    // The moment it says, read afresh at each tick and as the launcher
-    // opens, since a clock stopped while it was closed holds an old date.
+    // The moment it says, read afresh at each tick, as the launcher opens
+    // and as the stopwatch's count grows a figure, since a clock stopped
+    // while it was closed holds an old date.
     readonly property real moment: {
         void clock.date;
         void HeldTimers.showing;
+        void grown;
         return Date.now();
     }
     readonly property var standing: Timing.onNow(HeldTimers.timers, watch, moment)
-    // Its clock ticks each second only while the launcher is open and
-    // something counts (Timing.js's ticks): the margin wears only the mark,
-    // which doesn't say the time.
-    readonly property bool counting: Timing.ticks(HeldTimers.timers, watch, HeldTimers.showing)
+    // Its clock ticks each second only while the launcher is open and a
+    // timer counts down (Timing.js's ticks): the margin wears only the
+    // mark, which doesn't say the time, and the stopwatch alone is drawn
+    // afresh by the launcher instead.
+    readonly property bool counting: Timing.ticks(HeldTimers.timers, HeldTimers.showing)
+    readonly property bool watchAlone: standing.first === null && watch?.state === "running"
 
     function named(record) {
         if (record.key === "stopwatch")
@@ -47,8 +51,11 @@ Piece {
         : Timing.tenths(Timing.counted(watch, moment))
     // The stopwatch alone counts to the tenth, drawn afresh by the
     // launcher (Launcher.qml's counts), as its row in Timers is.
-    counts: standing.first === null && watch?.state === "running"
-        ? at => Timing.tenths(Timing.counted(watch, at)) : null
+    counts: watchAlone ? at => Timing.tenths(Timing.counted(watch, at)) : null
+    widest: watchAlone ? Timing.widest(Timing.counted(watch, moment)) : ""
+    // When the stopwatch's count last grew a figure, so its room is said
+    // again then (Timing.grows).
+    property real grown: 0
     parts: standing.named.map(record => piece.named(record))
     hint: `${title} ${value}, ${parts.join(", ")}`
     // The daemon signs its notices with the place's name (home.nix's
@@ -60,6 +67,24 @@ Piece {
         verb: Words.verb("verb:on:timers:show"),
         run: shell => shell.launcher.into("timers")
     }]
+
+    // Only while the launcher is open, as the clock is, so the margin never
+    // wakes for it closed; its wait is worked out again whenever it starts,
+    // the stopwatch changes or the count grows.
+    Timer {
+        repeat: true
+        running: piece.watchAlone && HeldTimers.showing
+        interval: {
+            void piece.grown;
+            return running ? piece.untilWider() : 1000;
+        }
+        onTriggered: piece.grown = Date.now()
+    }
+
+    function untilWider() {
+        const count = Timing.counted(watch, Date.now());
+        return Math.max(1, Timing.grows(count) - count);
+    }
 
     SystemClock {
         id: clock

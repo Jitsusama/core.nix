@@ -55,14 +55,16 @@ Singleton {
     }
 
     // Asks the daemon, `then` given the timer as it now stands, null when
-    // it's gone, or the daemon's refusal as { error } or null when it
-    // isn't there to ask.
+    // it's gone, or the daemon's refusal as { error, reason } or null when
+    // it isn't there to ask: its sentence, and the reason the launcher says
+    // in its own words.
     function asking(said, then) {
         daemon.ask(said, answer => {
             if (!then)
                 return;
             if (answer === null || answer.error)
-                then(answer === null ? null : { error: answer.error.message ?? "" });
+                then(answer === null ? null
+                    : { error: answer.error.message ?? "", reason: answer.error.reason ?? "" });
             else
                 then(answer.records?.[0] ?? null);
         });

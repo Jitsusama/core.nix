@@ -530,9 +530,9 @@ fn an_ask_it_cant_do_is_refused() {
         "unknown-ask"
     );
     client.ask(&json!({"id": 6, "ask": "start", "span": 60_000}));
-    assert_eq!(
-        code(client.ask(&json!({"id": 7, "ask": "resume", "key": "timer:1"}))),
-        "refused"
-    );
+    // A refusal says its reason, for the launcher to say in its own words.
+    let refused = client.ask(&json!({"id": 7, "ask": "resume", "key": "timer:1"}));
+    assert_eq!(refused["error"]["code"], "refused");
+    assert_eq!(refused["error"]["reason"], "resumesPaused");
     running.stop();
 }

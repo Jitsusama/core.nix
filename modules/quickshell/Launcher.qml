@@ -2506,8 +2506,13 @@ Scope {
 
     function noteFigures() {
         const step = `${held.map(each => steadyId(each.row)).join("/")}|${typed}`;
+        // A side that counts on by itself holds room for the widest it
+        // reads until it grows a figure (its `sideWidest`), since it's
+        // measured only when its row is made.
         const said = row => ((held.length === 0 ? kindOf(row) : "")
-            || ((row.chord ?? []).length > 0 ? "" : row.side ?? "")).length;
+            || ((row.chord ?? []).length > 0 ? ""
+                : typeof row.counts === "function" ? row.sideWidest ?? row.side ?? ""
+                : row.side ?? "")).length;
         const now = Math.max(0, ...matches.filter(row => !!row.graph).map(said));
         const sides = Math.max(0, ...matches.map(said));
         if (step !== figuresStep) {
@@ -3099,7 +3104,7 @@ Scope {
     // of a second while one is listed: only that side changes, so its
     // provider makes no rows again and the list isn't put together anew
     // (Y2YBTS, 2026-11-08). Its `side` stays what it said when made, for
-    // the column's width and what the tests read.
+    // what the tests read, and its `sideWidest` gives the column its room.
     property real tenth: Date.now()
     readonly property bool counting: open
         && matches.some(row => typeof row?.counts === "function")

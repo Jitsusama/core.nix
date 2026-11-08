@@ -1382,6 +1382,12 @@ in
     console = "W";
     means = "the stopwatch, counting up from when it was started, with its laps";
   };
+  # A flag, as one drops at the end of each stretch (VKCF3Z, 2026-11-08).
+  lap = {
+    glyph = nerd "f023b";
+    console = "L";
+    means = "a lap of the stopwatch, and Lap, which marks one";
+  };
   zone = {
     glyph = nerd "f01e7";
     console = "z";

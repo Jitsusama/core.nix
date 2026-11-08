@@ -1165,6 +1165,15 @@ changes = true
 # answered, and shows at once on the row looked at, so it asks nothing.
 guarded = true
 
+# The stopwatch set back to nothing, its laps taken away, so Return leaves
+# it to the command line (VKCF3Z, 2026-11-08). :res is Neovim's :resize.
+[acts.reset]
+ends = true
+command = "reset"
+short = "rese"
+kinds = ["list"]
+changes = true
+
 # The next track, or with ! the one before: Next Track, Next, Previous
 # Track and Previous, since :next and :previous are Vim's.
 [acts.skip]

@@ -5174,7 +5174,12 @@
         "seconds": "s",
         "notice": "{span} timer",
         "noticeLate": "{span} timer, rang late",
-        "from": "the timers"
+        "from": "the timers",
+        "gone": "that timer is gone",
+        "pausesRunning": "only a running timer pauses",
+        "resumesPaused": "only a paused timer resumes",
+        "nothing": "a timer counts more than nothing",
+        "pastAWeek": "a timer counts a week at most"
       }
     },
     {
@@ -5235,11 +5240,15 @@
       "glyph": "stopwatch",
       "said": {
         "running": "running",
-        "stopped": "stopped",
+        "stopped": "paused",
         "unstarted": "not started",
         "lapsOne": "{state} \u00b7 1 lap",
         "laps": "{state} \u00b7 {count} laps",
-        "at": "at {count}"
+        "at": "at {count}",
+        "runningAlready": "the stopwatch is running already",
+        "pausesRunning": "only a running stopwatch pauses",
+        "lapsRunning": "only a running stopwatch laps",
+        "lapsFull": "the stopwatch keeps 999 laps at most"
       }
     },
     {
@@ -5247,7 +5256,7 @@
       "in": "stopwatch",
       "name": "Lap",
       "term": "Desktop/lap",
-      "glyph": "stopwatch",
+      "glyph": "lap",
       "states": {
         "numbered": {
           "name": "Lap {number}"
@@ -5264,9 +5273,15 @@
       "states": {
         "running": {
           "command": "pause",
-          "name": "Stop",
-          "verb": "stop",
+          "name": "Pause",
+          "verb": "pause",
           "glyph": "pause"
+        },
+        "stopped": {
+          "command": "resume",
+          "name": "Resume",
+          "verb": "resume",
+          "glyph": "resume"
         }
       }
     },
@@ -5276,11 +5291,11 @@
       "in": "stopwatch",
       "name": "Lap",
       "verb": "lap",
-      "glyph": "stopwatch"
+      "glyph": "lap"
     },
     {
       "id": "verb:stopwatch:reset",
-      "command": "delete",
+      "command": "reset",
       "in": "stopwatch",
       "name": "Reset",
       "verb": "reset",
