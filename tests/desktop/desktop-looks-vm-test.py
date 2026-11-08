@@ -1359,6 +1359,9 @@ def the_desk_lights_plate_lies_on_the_lines(desktop: Desktop, scale: str) -> Non
     A stand-in Litra Glow (desk-light-stand-in.py) is plugged in once, lit as a Glow first is,
     and the desk light answer's drawer says where it is and what it is over the light's own
     name, then its output in lumens of its range, its node and its serial (VKCF3Z, 2026-11-08).
+    systemd's hwdb opens a Litra to the seat by its USB parent, which a uhid stand-in hasn't, so
+    its node is given to the account here, as udev gives a real one; `litra watch` tries again
+    when it is.
     """
     machine = desktop.machine
     light = desktop.values["desk_light"]
@@ -1366,10 +1369,12 @@ def the_desk_lights_plate_lies_on_the_lines(desktop: Desktop, scale: str) -> Non
         "systemctl is-active --quiet desk-light"
         f" || systemd-run --unit=desk-light {light} litra /run/desk-light.log"
     )
-    machine.wait_until_succeeds(
+    found = machine.wait_until_succeeds(
         "grep -l HID_ID=0003:0000046D:0000C900 /sys/class/hidraw/*/device/uevent",
         timeout=timedelta(seconds=30),
     )
+    node = found.split("/")[4]
+    machine.succeed(f"chown {desktop.account} /dev/{node}")
     desktop.answer("desk light")
     desktop.launcher_until(
         lambda shown: shown["drawer"]["out"] is True and "Output" in shown["drawer"]["facts"]
