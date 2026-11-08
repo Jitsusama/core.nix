@@ -5,14 +5,19 @@
 
 use serde_json::{Value, json};
 
-use crate::{Root, rounded};
+use crate::{Root, float, rounded};
 
 /// Milliseconds since boot, asleep included, as `/proc/uptime` says.
 pub fn up_ms(root: &Root) -> Option<u64> {
     let uptime = root.read("/proc/uptime")?;
     let seconds: f64 = uptime.split_whitespace().next()?.parse().ok()?;
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    Some((seconds * 1000.0) as u64)
+    // The kernel says it to a hundredth of a second, and never below none.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "a time since boot is positive, and its milliseconds fit"
+    )]
+    Some((seconds.max(0.0) * 1000.0) as u64)
 }
 
 /// How long the machine has slept since it started: the time the kernel
@@ -46,13 +51,13 @@ pub fn record(root: &Root, asleep_s: Option<u64>) -> Value {
     let mut fields = uptime
         .split_whitespace()
         .filter_map(|f| f.parse::<f64>().ok());
-    #[allow(clippy::cast_precision_loss)]
     let idle = match (fields.next(), fields.next()) {
         (Some(up), Some(idle)) if up > 0.0 && cpus > 0 => {
             // The idle time is every processor's, asleep left out, so
             // it's measured against the time awake.
-            let awake = up - asleep_s.unwrap_or(0) as f64;
-            (awake > 0.0).then(|| rounded((idle / (awake * cpus as f64)).min(1.0), 3))
+            let awake = up - float(asleep_s.unwrap_or(0));
+            let cpus = float(u64::try_from(cpus).unwrap_or(u64::MAX));
+            (awake > 0.0).then(|| rounded((idle / (awake * cpus)).min(1.0), 3))
         }
         _ => None,
     };

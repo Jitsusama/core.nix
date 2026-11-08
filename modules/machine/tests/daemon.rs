@@ -133,7 +133,7 @@ fn machine(root: &Path) {
     link(&format!("{controller}/hwmon0/device"), "../../nvme0");
     link(
         "/sys/class/hwmon/hwmon0",
-        &format!("../../devices/pci0000:00/0000:01:00.0/nvme/nvme0/hwmon0"),
+        "../../devices/pci0000:00/0000:01:00.0/nvme/nvme0/hwmon0",
     );
     let disk = "/sys/block/nvme0n1";
     write(&format!("{disk}/size"), "2000409264\n");
@@ -148,7 +148,7 @@ fn machine(root: &Path) {
     write(&format!("{disk}/removable"), "0\n");
     link(
         &format!("{disk}/device"),
-        &format!("../../devices/pci0000:00/0000:01:00.0/nvme/nvme0"),
+        "../../devices/pci0000:00/0000:01:00.0/nvme/nvme0",
     );
     write(&format!("{disk}/nvme0n1p1/dev"), "259:1\n");
     write(&format!("{disk}/nvme0n1p2/holders/dm-0"), "");

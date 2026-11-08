@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
 
-use crate::{Root, per_second, rounded, since};
+use crate::{Root, float, per_second, rounded, since};
 
 /// The counters a rate is measured between, from one read of
 /// `/proc/vmstat`.
@@ -68,7 +68,7 @@ pub fn record(root: &Root, now: &Counters, before: Option<&Counters>, page_b: u6
     let rate = |name: &str, scale: u64| {
         let now = counter(name)?;
         per_second(now, before.and_then(|b| b.vmstat.get(name).copied()), span)
-            .map(|r| rounded(r * scale as f64, 1))
+            .map(|r| rounded(r * float(scale), 1))
     };
     let modules = root
         .read("/run/memory-modules.json")

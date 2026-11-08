@@ -738,9 +738,9 @@ QtObject {
         // less what's shared, which the kernel counts in it.
         const gib = 1073741824;
         machine("what keeps the memory", Machine.keptBy({ AnonPages: 20 * gib, Cached: 12 * gib,
-            Shmem: 2 * gib, Slab: gib, KernelStack: gib / 2, PageTables: gib / 2, Buffers: gib / 4,
+            Shmem: 2 * gib, Slab: gib / 2, KernelStack: gib / 2, PageTables: gib / 2, Buffers: gib / 4,
             Dirty: gib / 8, Writeback: 0 }).map(part => [part.id, part.bytes / gib]),
-            [["programs", 20], ["files", 10], ["shared", 2], ["kernel", 2], ["buffers", 0.25],
+            [["programs", 20], ["files", 10], ["shared", 2], ["kernel", 1.5], ["buffers", 0.25],
                 ["unwritten", 0.125]]);
         machine("no memory said", Machine.keptBy(null), []);
         machine("what zswap holds", Machine.compressed({ Zswap: gib, Zswapped: 4 * gib }),

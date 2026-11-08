@@ -9,9 +9,9 @@ use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 
-use crate::{Root, cpu_list, per_second, rounded, since};
+use crate::{Root, cpu_list, float, per_second, rounded, since};
 
-/// The fields of a processor's line in `/proc/stat`, in USER_HZ ticks.
+/// The fields of a processor's line in `/proc/stat`, in `USER_HZ` ticks.
 pub const TIMES: [&str; 10] = [
     "user",
     "nice",
@@ -218,20 +218,17 @@ fn caches(root: &Root, numbers: &[u32]) -> Value {
                 .all(|field| one[*field] == cache[*field])
                 && one["shared_by"] == json!(cpus.len())
         });
-        match same {
-            Some(one) => {
-                one["count"] = json!(one["count"].as_u64().unwrap_or(0) + 1);
-                if let Some(all) = one["cpus"].as_array_mut() {
-                    all.extend(cpus);
-                    all.sort_by_key(|n| n.as_u64());
-                }
+        if let Some(one) = same {
+            one["count"] = json!(one["count"].as_u64().unwrap_or(0) + 1);
+            if let Some(all) = one["cpus"].as_array_mut() {
+                all.extend(cpus);
+                all.sort_by_key(Value::as_u64);
             }
-            None => {
-                let mut one = cache;
-                one["count"] = json!(1);
-                one["shared_by"] = json!(cpus.len());
-                alike.push(one);
-            }
+        } else {
+            let mut one = cache;
+            one["count"] = json!(1);
+            one["shared_by"] = json!(cpus.len());
+            alike.push(one);
         }
     }
     Value::Array(alike)
@@ -310,8 +307,7 @@ fn spent(now: &[u64], before: Option<&Vec<u64>>) -> (Value, Value) {
     if all == 0 {
         return (Value::Null, Value::Null);
     }
-    #[allow(clippy::cast_precision_loss)]
-    let share = |ticks: u64| rounded(ticks as f64 / all as f64, 4);
+    let share = |ticks: u64| rounded(float(ticks) / float(all), 4);
     let time: serde_json::Map<String, Value> = TIMES
         .iter()
         .enumerate()
@@ -339,8 +335,8 @@ fn temperatures(root: &Root) -> (Value, BTreeMap<u32, f64>) {
             let label = root.said(&format!("{folder}/{file}")).unwrap_or_default();
             let degrees = |what: &str| {
                 root.said(&format!("{folder}/{sensor}_{what}"))
-                    .and_then(|v| v.parse::<i64>().ok())
-                    .map(|milli| rounded(milli as f64 / 1000.0, 1))
+                    .and_then(|v| v.parse::<i32>().ok())
+                    .map(|milli| rounded(f64::from(milli) / 1000.0, 1))
             };
             if let Some(core) = label.strip_prefix("Core ").and_then(|n| n.parse().ok()) {
                 if let Some(Value::Number(value)) = degrees("input") {
@@ -363,6 +359,25 @@ fn temperatures(root: &Root) -> (Value, BTreeMap<u32, f64>) {
         return (whole, cores);
     }
     (Value::Null, cores)
+}
+
+/// The NPU's load over `span` milliseconds, its busy time and its clock,
+/// or none on a machine without one.
+fn npu(root: &Root, now: &Counters, before: Option<&Counters>, span: Option<u64>) -> Option<Value> {
+    let max = root.number(&format!("{NPU}/npu_max_frequency_mhz"))?;
+    let then = before.map_or(Some(0), |b| b.npu_busy_us);
+    let busy = match (now.npu_busy_us, then, span) {
+        (Some(now), Some(then), Some(over)) if over > 0 && now >= then => {
+            rounded((float(now - then) / (float(over) * 1000.0)).min(1.0), 4)
+        }
+        _ => Value::Null,
+    };
+    Some(json!({
+        "busy_ratio": busy,
+        "busy_us": now.npu_busy_us,
+        "clock_mhz": root.number(&format!("{NPU}/npu_current_frequency_mhz")),
+        "max_mhz": max,
+    }))
 }
 
 /// The processor's record, from this read's counters and the one before.
@@ -427,25 +442,7 @@ pub fn record(root: &Root, fixed: &Fixed, now: &Counters, before: Option<&Counte
     let rate = |now: Option<u64>, before: Option<u64>| {
         per_second(now?, before, span).map(|r| rounded(r, 1))
     };
-    let npu = root
-        .number(&format!("{NPU}/npu_max_frequency_mhz"))
-        .map(|max| {
-            let then = before.map_or(Some(0), |b| b.npu_busy_us);
-            let busy = match (now.npu_busy_us, then, span) {
-                (Some(now), Some(then), Some(over)) if over > 0 && now >= then => {
-                    #[allow(clippy::cast_precision_loss)]
-                    let share = ((now - then) as f64 / (over as f64 * 1000.0)).min(1.0);
-                    rounded(share, 4)
-                }
-                _ => Value::Null,
-            };
-            json!({
-                "busy_ratio": busy,
-                "busy_us": now.npu_busy_us,
-                "clock_mhz": root.number(&format!("{NPU}/npu_current_frequency_mhz")),
-                "max_mhz": max,
-            })
-        });
+    let npu = npu(root, now, before, span);
     json!({
         "key": "processor:0",
         "kind": "processor",

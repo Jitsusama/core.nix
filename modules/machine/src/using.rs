@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 
-use crate::{Root, processor::TIMES, rounded};
+use crate::{Root, float, processor::TIMES, rounded};
 
 /// How many programs are named: as many as the launcher's card shows at
 /// once. Three left Joel asking what came after (2026-10-25).
@@ -132,8 +132,7 @@ pub fn records(now: &Counters, before: Option<&Counters>, page_b: u64) -> Vec<Va
     let mut records = Vec::new();
     if all > 0 {
         for (rank, (name, used, count)) in top(ticks).into_iter().enumerate() {
-            #[allow(clippy::cast_precision_loss)]
-            let share = rounded(used as f64 / all as f64, 4);
+            let share = rounded(float(used) / float(all), 4);
             records.push(json!({
                 "key": format!("using:cpu:{}", rank + 1),
                 "kind": "using",

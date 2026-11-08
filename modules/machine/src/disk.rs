@@ -2,14 +2,14 @@
 //! flushed between two reads, in bytes and in requests, how busy it was,
 //! how long each kind of request took and how many waited, how long tasks
 //! waited on any disk, its sensors' temperatures, its health as its
-//! controller tells UDisks, the file systems on it and their room, and
+//! controller tells `UDisks`, the file systems on it and their room, and
 //! what it is: its model, firmware, link, size, block sizes and scheduler.
 
 use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 
-use crate::{Root, per_second, rounded, since};
+use crate::{Root, float, per_second, rounded, since};
 
 /// The fields of `/sys/block/<disk>/stat`, as the kernel's iostats.rst
 /// names them.
@@ -186,7 +186,8 @@ fn temperatures(root: &Root, device: Option<&str>) -> Value {
                         // An NVMe disk without a threshold says one far
                         // out of reach, 65261.85 °C, or absolute zero.
                         .filter(|milli| (-100_000..=200_000).contains(milli))
-                        .map(|milli| rounded(milli as f64 / 1000.0, 1))
+                        .and_then(|milli| i32::try_from(milli).ok())
+                        .map(|milli| rounded(f64::from(milli) / 1000.0, 1))
                 };
                 json!({
                     "label": root.said(&format!("{folder}/{sensor}_label")).unwrap_or_else(|| sensor.to_owned()),
@@ -221,7 +222,7 @@ fn link(root: &Root, controller: Option<&str>) -> Value {
 }
 
 /// A disk's record, from this read's counters and the one before, and its
-/// health as UDisks last said it, or null.
+/// health as `UDisks` last said it, or null.
 pub fn record(
     root: &Root,
     name: &str,
@@ -244,20 +245,17 @@ pub fn record(
     let rate = |i: usize, scale: u64| {
         value(i)
             .and_then(|v| per_second(v, base(i), span))
-            .map(|r| rounded(r * scale as f64, 1))
+            .map(|r| rounded(r * float(scale), 1))
     };
     let latency = |done: usize, ms: usize| {
         let requests = change(done);
-        #[allow(clippy::cast_precision_loss)]
-        (requests > 0).then(|| rounded(change(ms) as f64 / requests as f64, 3))
+        (requests > 0).then(|| rounded(float(change(ms)) / float(requests), 3))
     };
     let span_ms = span.unwrap_or(0);
-    #[allow(clippy::cast_precision_loss)]
     let busy = (span_ms > 0 && value(IO_MS).is_some())
-        .then(|| rounded((change(IO_MS) as f64 / span_ms as f64).min(1.0), 4));
-    #[allow(clippy::cast_precision_loss)]
+        .then(|| rounded((float(change(IO_MS)) / float(span_ms)).min(1.0), 4));
     let queued = (span_ms > 0 && value(WEIGHTED_MS).is_some())
-        .then(|| rounded(change(WEIGHTED_MS) as f64 / span_ms as f64, 3));
+        .then(|| rounded(float(change(WEIGHTED_MS)) / float(span_ms), 3));
     let scheduler = at("queue/scheduler").unwrap_or_default();
     let chosen = scheduler
         .split_whitespace()
@@ -265,9 +263,8 @@ pub fn record(
         .map(str::to_owned);
     let requests = latency(READS, READ_MS).is_some() || latency(WRITES, WRITE_MS).is_some();
     let all = change(READS) + change(WRITES);
-    #[allow(clippy::cast_precision_loss)]
     let overall = (requests && all > 0)
-        .then(|| rounded((change(READ_MS) + change(WRITE_MS)) as f64 / all as f64, 3));
+        .then(|| rounded(float(change(READ_MS) + change(WRITE_MS)) / float(all), 3));
     json!({
         "key": format!("disk:{name}"),
         "kind": "disk",

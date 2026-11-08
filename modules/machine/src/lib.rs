@@ -100,8 +100,18 @@ pub fn per_second(now: u64, before: Option<u64>, over_ms: Option<u64>) -> Option
     if over == 0 || now < before {
         return None;
     }
-    #[allow(clippy::cast_precision_loss)]
-    Some((now - before) as f64 * 1000.0 / over as f64)
+    Some(float(now - before) * 1000.0 / float(over))
+}
+
+/// A count as a float, for a share or a rate of it. Every count the
+/// kernel keeps here, ticks, bytes, requests or milliseconds, stays far
+/// under 2^52, below which a float holds each whole number exactly.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "the kernel's counts stay under 2^52, where a float is exact"
+)]
+pub fn float(count: u64) -> f64 {
+    count as f64
 }
 
 /// A figure rounded to a few places, so a record that hasn't moved says
