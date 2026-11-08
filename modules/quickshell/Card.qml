@@ -19,7 +19,7 @@ Floating {
     id: card
 
     // What it holds, at the inset on every side.
-    default property alias inside: content.data
+    default property alias inside: held.data
     // What lies under everything it holds, edge to edge inside its frame: a
     // click that takes all of the card but what takes its own, as an act's
     // button would, drawn over it.
@@ -29,7 +29,7 @@ Floating {
     // to the frame, as a row's ground hugging its ink does.
     readonly property int inset: Theme.space.rung.inset
     // How wide its content is, the frame's inside less the inset each side.
-    readonly property real contentWidth: content.width
+    readonly property real contentWidth: held.width
     // Whether what it holds is laid in bands, as a list's card is: a head,
     // its rows and its foot, each band reaching from the frame's inside
     // edge and centring its own line, as Vim's lines fill its window
@@ -43,7 +43,7 @@ Floating {
     Item {
         id: room
         width: parent.width
-        implicitHeight: content.implicitHeight + 2 * card.above
+        implicitHeight: held.implicitHeight + 2 * card.above
 
         Item {
             id: under
@@ -51,7 +51,7 @@ Floating {
         }
 
         Item {
-            id: content
+            id: held
             x: card.inset
             y: card.above
             width: parent.width - 2 * x

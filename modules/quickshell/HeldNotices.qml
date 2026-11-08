@@ -1756,7 +1756,7 @@ Card {
             id: lineBand
 
             Line {
-                id: line
+                id: noticeLine
 
                 at: held.shownTop + index
                 markX: mark.x
@@ -1793,7 +1793,7 @@ Card {
                     from: held.inset
                     width: parent.width + 2 * held.inset
                     height: parent.height
-                    ink: line.chosenLine ? "selection" : ""
+                    ink: noticeLine.chosenLine ? "selection" : ""
                 }
 
                 // Its sender's mark, centred on its Name's capitals.
@@ -1801,8 +1801,9 @@ Card {
                     id: mark
                     x: held.columns.mark
                     line: held.rowBase
-                    text: line.from ? String.fromCodePoint(line.from.glyph) : ""
-                    color: line.from && !line.quiet ? Theme[line.from.hue] : Theme.muted
+                    text: noticeLine.from ? String.fromCodePoint(noticeLine.from.glyph) : ""
+                    color: noticeLine.from && !noticeLine.quiet
+                        ? Theme[noticeLine.from.hue] : Theme.muted
                 }
 
                 // Its Name, its capitals centred in the row, and its first
@@ -1820,15 +1821,15 @@ Card {
                         // far end where its card signs it.
                         width: Math.min(implicitWidth, (time.visible
                             ? time.x - named.x - Theme.space.rung.groups
-                            : line.width - named.x) * (first.text === "" ? 1 : 0.6))
-                        text: !line.one ? "" : line.washed
-                            ? Search.washed(line.one.summary, held.pattern,
-                                held.wash(line.chosenLine))
-                            : line.one.summary
-                        textFormat: line.washed ? Text.RichText : Text.PlainText
+                            : noticeLine.width - named.x) * (first.text === "" ? 1 : 0.6))
+                        text: !noticeLine.one ? "" : noticeLine.washed
+                            ? Search.washed(noticeLine.one.summary, held.pattern,
+                                held.wash(noticeLine.chosenLine))
+                            : noticeLine.one.summary
+                        textFormat: noticeLine.washed ? Text.RichText : Text.PlainText
                         elide: Text.ElideRight
                         maximumLineCount: 1
-                        color: line.quiet ? Theme.text : Theme.strong
+                        color: noticeLine.quiet ? Theme.text : Theme.strong
                         font.family: Theme.level.name.family
                         font.pointSize: Theme.level.name.pointSize
                         font.weight: Theme.level.name.weight
@@ -1843,11 +1844,13 @@ Card {
                             - Theme.space.rung.groups, 0)
                         anchors.baseline: who.baseline
                         visible: text !== ""
-                        text: !line.one || line.atCursor ? ""
-                            : line.washed ? Search.washed(held.stack.plain(line.one.body)
-                                .split("\n")[0], held.pattern, held.wash(line.chosenLine))
-                            : held.stack.plain(line.one.body).split("\n")[0]
-                        textFormat: line.washed ? Text.RichText : Text.PlainText
+                        text: !noticeLine.one || noticeLine.atCursor ? ""
+                            : noticeLine.washed
+                                ? Search.washed(held.stack.plain(noticeLine.one.body)
+                                    .split("\n")[0], held.pattern,
+                                    held.wash(noticeLine.chosenLine))
+                            : held.stack.plain(noticeLine.one.body).split("\n")[0]
+                        textFormat: noticeLine.washed ? Text.RichText : Text.PlainText
                         elide: Text.ElideRight
                         maximumLineCount: 1
                         color: Theme.level.words.colour
@@ -1864,7 +1867,7 @@ Card {
                     x: parent.width - implicitWidth
                     y: held.rowBase - baselineOffset
                     visible: !card.visible
-                    text: line.when
+                    text: noticeLine.when
                     color: Theme.level.note.colour
                     font: note.font
                 }
@@ -1873,10 +1876,10 @@ Card {
                     width: parent.width
                     height: held.rowHeight
                     onClicked: {
-                        if (line.atCursor)
+                        if (noticeLine.atCursor)
                             held.open();
                         else
-                            held.cursorId = line.modelData;
+                            held.cursorId = noticeLine.modelData;
                     }
                 }
 
@@ -1917,15 +1920,16 @@ Card {
                         / Theme.level.words.pitch)))
                     // Its words as plain text, and where they're too many,
                     // the whole words that fit.
-                    readonly property string plainWords: line.one && line.atCursor
-                        ? held.stack.plain(line.one.body) : ""
+                    readonly property string plainWords: noticeLine.one && noticeLine.atCursor
+                        ? held.stack.plain(noticeLine.one.body) : ""
                     readonly property var shortened: plainWords === "" ? null
                         : NoticeList.wholeWords(plainWords, wordsFit, width,
                             run => held.wordsWide(run))
 
                     // Folded while the command line's menu is up, which
                     // takes its room.
-                    visible: line.atCursor && line.one !== null && held.mode !== "command"
+                    visible: noticeLine.atCursor && noticeLine.one !== null
+                        && held.mode !== "command"
                     width: parent.width - x
                     // A field ends it as a row does. Else it leaves what a
                     // row leaves under its last baseline, so its band keeps
@@ -1940,7 +1944,7 @@ Card {
                     // follow from it.
                     function told() {
                         if (card.visible)
-                            Qt.callLater(held.cardTold, line.modelData, card.tall);
+                            Qt.callLater(held.cardTold, noticeLine.modelData, card.tall);
                     }
                     onTallChanged: told()
                     onVisibleChanged: told()
@@ -1948,20 +1952,20 @@ Card {
 
                     Text {
                         id: body
-                        y: card.wordsBase - (line.washed ? held.richBase : baselineOffset)
+                        y: card.wordsBase - (noticeLine.washed ? held.richBase : baselineOffset)
                         width: parent.width
                         visible: text !== ""
-                        text: !line.one || !line.atCursor ? "" : line.washed
+                        text: !noticeLine.one || !noticeLine.atCursor ? "" : noticeLine.washed
                             ? Search.washed(card.shortened ?? card.plainWords, held.pattern,
-                                held.wash(line.chosenLine && held.mode === "visual"))
-                            : card.shortened ?? NoticeBody.read(line.one.body).styled
-                        textFormat: line.washed ? Text.RichText
+                                held.wash(noticeLine.chosenLine && held.mode === "visual"))
+                            : card.shortened ?? NoticeBody.read(noticeLine.one.body).styled
+                        textFormat: noticeLine.washed ? Text.RichText
                             : card.shortened !== null ? Text.PlainText : Text.StyledText
                         // A link underlined in the words' own colour, as
                         // its pop-up draws it; gx opens it.
                         linkColor: color
                         onLinkActivated: href => {
-                            Notices.mark(line.one.id, true);
+                            Notices.mark(noticeLine.one.id, true);
                             held.stack.follow(href);
                             held.stack.holding = false;
                         }
@@ -1985,8 +1989,8 @@ Card {
                     Signature {
                         y: card.senderBase - implicitHeight
                         width: parent.width
-                        name: line.from ? line.from.name : ""
-                        side: line.when
+                        name: noticeLine.from ? noticeLine.from.name : ""
+                        side: noticeLine.when
                     }
 
                     // Its own acts as the commands that do them, ":reply" and
@@ -2013,7 +2017,7 @@ Card {
                     // inside edge to its other (VKCF3Z, 2026-11-05).
                     Item {
                         id: field
-                        visible: line.atCursor && held.replyTo === line.modelData
+                        visible: noticeLine.atCursor && held.replyTo === noticeLine.modelData
                         y: card.lastBase + 2 * Theme.space.beat
                         width: parent.width
                         height: held.rowHeight
@@ -2040,7 +2044,8 @@ Card {
                             width: parent.width
                             anchors.verticalCenter: parent.verticalCenter
                             text: held.promptLine.text === "" && held.mode === "insert"
-                                ? line.one?.inlineReplyPlaceholder ?? "" : held.promptLine.text
+                                ? noticeLine.one?.inlineReplyPlaceholder ?? ""
+                                : held.promptLine.text
                             textFormat: Text.PlainText
                             elide: Text.ElideLeft
                             color: held.promptLine.text === "" ? Theme.muted : Theme.strong

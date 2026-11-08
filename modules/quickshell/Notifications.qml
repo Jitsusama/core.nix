@@ -520,8 +520,8 @@ Scope {
             && !Notices.gathered && !root.remaking
         anchors.top: true
         anchors.right: true
-        implicitWidth: stack.x + stack.width + root.inside.right
-        implicitHeight: stack.height + stack.y + Theme.floating.reach
+        implicitWidth: noticeColumn.x + noticeColumn.width + root.inside.right
+        implicitHeight: noticeColumn.height + noticeColumn.y + Theme.floating.reach
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
         mask: notices
@@ -565,7 +565,7 @@ Scope {
         }
 
         Column {
-            id: stack
+            id: noticeColumn
             // Held, the list stands its gutter wider than the column, out
             // to the left, its right edge under the corner as every card's.
             x: Theme.floating.reach + (held.visible ? held.gutter : 0)
@@ -592,7 +592,7 @@ Scope {
             Card {
                 id: track
 
-                width: stack.width
+                width: noticeColumn.width
                 visible: root.playing
                 onVisibleChanged: Qt.callLater(window.gather)
                 onHeightChanged: Qt.callLater(window.gather)
@@ -716,7 +716,7 @@ Scope {
                 live: root.live
                 keysTo: taker
                 x: -gutter
-                width: stack.width + gutter
+                width: noticeColumn.width + gutter
                 visible: root.holding
                 screenHeight: window.screen ? window.screen.height : 768
                 onVisibleChanged: Qt.callLater(window.gather)
@@ -735,7 +735,7 @@ Scope {
             Item {
                 id: pile
 
-                width: stack.width
+                width: noticeColumn.width
                 height: root.shown.length === 0 || root.holding ? 0 : Math.max(root.frontHeight,
                     root.edgeHeight + Math.min(root.shown.length - 1, root.behind) * root.peek)
                 visible: root.shown.length > 0 && !root.holding
@@ -764,7 +764,7 @@ Scope {
                     x: Math.max(rank, 0) * root.peek
                     y: front ? 0 : (Math.max(rank, 1) - 1) * root.peek + root.edgeHeight
                         - Theme.border
-                    width: stack.width - 2 * x
+                    width: noticeColumn.width - 2 * x
                     height: front ? implicitHeight : root.peek + Theme.border
                     flatTop: !front
                     urgent: modelData.urgency === NotificationUrgency.Critical

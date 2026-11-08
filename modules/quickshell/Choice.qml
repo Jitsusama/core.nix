@@ -156,7 +156,7 @@ Rectangle {
     readonly property bool graphed: graph !== null && graph !== undefined
     // Where the name and its detail have to stop: the graph, or else what
     // the row is.
-    readonly property real ends: graphed ? drawing.x : right.x
+    readonly property real ends: graphed ? drawing.x : atRight.x
 
     signal clicked
 
@@ -224,7 +224,7 @@ Rectangle {
     readonly property real detailGap: countText.x - nameBox.x - nameBox.width
     readonly property string detailFace: countText.font.family
     readonly property bool nameCut: nameBox.over > 0
-    readonly property bool sideCut: right.sided && sideText.over > 0
+    readonly property bool sideCut: atRight.sided && sideText.over > 0
     property bool sidesTurn: false
     onReadsChanged: row.sidesTurn = false
 
@@ -292,7 +292,7 @@ Rectangle {
 
     Graph {
         id: drawing
-        x: right.x - width - (right.width > 0 ? Theme.space.rung.groups : 0)
+        x: atRight.x - width - (atRight.width > 0 ? Theme.space.rung.groups : 0)
         anchors.verticalCenter: parent.verticalCenter
         reading: row.warns && row.graphed ? Object.assign({}, row.graph, { warn: true }) : row.graph
         selected: row.selected
@@ -327,11 +327,11 @@ Rectangle {
     // The chord, or what the row is, a step smaller than the name and on
     // its baseline, so the row reads as one line.
     Item {
-        id: right
+        id: atRight
         anchors.right: parent.right
         anchors.rightMargin: Theme.space.rung.inset
         y: monoLine.y + monoLine.baselineOffset
-            - (right.chorded ? keys.baselineOffset : sideText.baselineOffset)
+            - (atRight.chorded ? keys.baselineOffset : sideText.baselineOffset)
         readonly property bool chorded: row.landed === "" && row.carried === ""
             && row.kind === "" && row.chord.length > 0
         readonly property string said: row.landed !== "" ? row.landed
@@ -386,8 +386,8 @@ Rectangle {
         // its share.
         readonly property real column: row.graphed
             ? Math.min(row.figures * noteFace.advanceWidth, row.width * 0.45)
-            : right.sided && (!right.itemised || right.squeezed)
-                ? Math.min(row.sides * noteFace.advanceWidth, right.share) : 0
+            : atRight.sided && (!atRight.itemised || atRight.squeezed)
+                ? Math.min(row.sides * noteFace.advanceWidth, atRight.share) : 0
 
         // Whether a figure stands before the chord, as a collection's count
         // does, so a count is said at a row's right even where its chord
@@ -404,7 +404,7 @@ Rectangle {
         Chord {
             id: keys
             anchors.right: parent.right
-            visible: right.chorded
+            visible: atRight.chorded
             keys: row.chord
             colour: row.flashed ? row.flashInk : row.selected ? Theme.text : Theme.muted
         }
@@ -427,7 +427,7 @@ Rectangle {
         }
         TextMetrics {
             id: countInk
-            text: right.said
+            text: atRight.said
             font.family: Theme.level.note.family
             font.italic: Theme.level.note.italic
             font.weight: Theme.level.note.weight
@@ -435,7 +435,7 @@ Rectangle {
         }
         // From the figure's width as drawn rather than its fine advance,
         // since a face hinted fully draws its advance in whole pixels.
-        readonly property real countBearing: right.said === "" ? 0
+        readonly property real countBearing: atRight.said === "" ? 0
             : Math.max(0, countFigure.implicitWidth - (countInk.tightBoundingRect.x
                 + countInk.tightBoundingRect.width) / row.fine)
         Row {
@@ -444,12 +444,12 @@ Rectangle {
             anchors.rightMargin: Theme.space.rung.mark
             anchors.baseline: keys.baseline
             baselineOffset: countFigure.baselineOffset
-            spacing: Theme.space.rung.mark - right.countBearing
-            visible: right.counted
+            spacing: Theme.space.rung.mark - atRight.countBearing
+            visible: atRight.counted
 
             Text {
                 id: countFigure
-                text: right.said
+                text: atRight.said
                 textFormat: Text.PlainText
                 color: row.flashed ? row.flashInk : row.selected ? Theme.text : Theme.muted
                 font.family: Theme.level.note.family
@@ -478,12 +478,12 @@ Rectangle {
         ReadsOn {
             id: sideText
             anchors.right: parent.right
-            visible: right.sided
-            width: right.itemised ? implicitWidth : Math.min(implicitWidth, right.share)
-            text: right.dotted ? Reading.styledItems(right.kept, Theme.muted, right.inks)
-                : right.said
-            format: right.dotted ? Text.StyledText : Text.PlainText
-            plain: right.said
+            visible: atRight.sided
+            width: atRight.itemised ? implicitWidth : Math.min(implicitWidth, atRight.share)
+            text: atRight.dotted ? Reading.styledItems(atRight.kept, Theme.muted, atRight.inks)
+                : atRight.said
+            format: atRight.dotted ? Text.StyledText : Text.PlainText
+            plain: atRight.said
             wholeWords: true
             endsRight: true
             level: Theme.level.note
@@ -494,7 +494,7 @@ Rectangle {
                 : row.warns && row.kind === "" ? Theme.warning
                 : row.selected ? Theme.text : Theme.muted
             figure: noteFace.advanceWidth
-            reading: row.reads && right.sided && (!row.nameCut || row.sidesTurn)
+            reading: row.reads && atRight.sided && (!row.nameCut || row.sidesTurn)
             onThrough: {
                 if (row.nameCut)
                     row.sidesTurn = false;
@@ -506,8 +506,8 @@ Rectangle {
     // said at the right, as the status line joins its facts, or the inset
     // where nothing's said there, or clear of a graph.
     readonly property real sayEnd: graphed ? drawing.x - Theme.space.rung.groups
-        : right.inked === 0 ? right.x + right.width
-        : right.x + right.width - right.inked - 2 * Theme.space.rung.mark - sayDot.width
+        : atRight.inked === 0 ? atRight.x + atRight.width
+        : atRight.x + atRight.width - atRight.inked - 2 * Theme.space.rung.mark - sayDot.width
     // Where it may start: past the name, and its words where there are any.
     readonly property real sayFrom: (row.detail !== "" ? countText.x + countText.width
         : nameBox.x + nameBox.width) + Theme.space.rung.groups
@@ -555,7 +555,7 @@ Rectangle {
         baselineOffset: sayDotText.baselineOffset
         width: dotInk.tightBoundingRect.width / row.fine
         height: sayDotText.height
-        visible: sayText.visible && !row.graphed && right.inked > 0
+        visible: sayText.visible && !row.graphed && atRight.inked > 0
 
         Text {
             id: sayDotText
