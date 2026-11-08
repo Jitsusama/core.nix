@@ -83,6 +83,11 @@ let
     ExecReload = "${lib.getExe' pkgs.coreutils "kill"} -HUP $MAINPID";
     SuccessExitStatus = "100";
     RestartForceExitStatus = "100";
+    # Its builders are reached with keys of their own, never the account's
+    # agent, which ssh would ask first: on 8 November an agent waiting on
+    # its person stalled the helpers' ssh at login, and every builder was
+    # lost.
+    UnsetEnvironment = "SSH_AUTH_SOCK";
   };
   # Where home-manager's sd-switch reads that a changed unit is reloaded,
   # in [Unit], for the reason `stopping` gives.
