@@ -1037,11 +1037,20 @@ Floating {
         font.pointSize: Theme.level.words.pointSize
         font.variableAxes: Theme.level.words.variableAxes
     }
-    // The face a fact's value is measured and drawn in.
+    // An identifier (`identifies: true`), a node, a serial or a bus name, in
+    // the Name face, as a row's name is, so it reads as something to copy
+    // rather than a figure.
+    FontMetrics {
+        id: nameFace
+        font.family: Theme.level.name.family
+        font.pointSize: Theme.level.name.pointSize
+        font.weight: Theme.level.name.weight
+    }
+    // The face a fact's value is measured and drawn in (DrawerPage.js's
+    // faceOf).
     function faceOf(fact) {
-        if (fact?.words === true)
-            return wordsFace;
-        return drawer.script !== "" && fact?.latin === true ? latinFace : valueFace;
+        return ({ name: nameFace, words: wordsFace, latin: latinFace, value: valueFace })[
+            Page.faceOf(fact, drawer.script)];
     }
     // Every fact it shows, the moment's groups' among them.
     readonly property var allFacts: facts.concat(...groups.map(group => group.facts))
@@ -1060,6 +1069,7 @@ Floating {
         void factFace.font;
         void wordsFace.font;
         void latinFace.font;
+        void nameFace.font;
         void figureInk.advanceWidth;
         const room = column.width - labelsGap;
         const most = room - valueFace.advanceWidth("00000000");
