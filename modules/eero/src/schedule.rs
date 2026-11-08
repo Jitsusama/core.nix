@@ -25,8 +25,10 @@ pub enum Read {
 
 impl Read {
     /// Every read, in the order a cycle takes them: the network first,
-    /// since the others hang from its nodes.
-    pub const ALL: [Read; 4] = [Read::Network, Read::Connections, Read::Usage, Read::Rest];
+    /// since the others hang from its nodes, and the rest before usage,
+    /// since each profile's traffic is asked by the profiles the rest
+    /// reads.
+    pub const ALL: [Read; 4] = [Read::Network, Read::Connections, Read::Rest, Read::Usage];
 
     /// How long its answer is good for.
     pub fn every(self, listening: bool) -> Duration {
@@ -105,7 +107,7 @@ impl Schedule {
     /// eero answers again after it couldn't, what was missed is read
     /// rather than waiting its turn.
     pub fn catch_up(&mut self) {
-        for read in [Read::Connections, Read::Usage, Read::Rest] {
+        for read in [Read::Connections, Read::Rest, Read::Usage] {
             self.last[read.index()] = None;
         }
     }
@@ -294,7 +296,7 @@ mod tests {
 
         assert_eq!(
             schedule.due(start + secs(1), true),
-            [Read::Connections, Read::Usage, Read::Rest]
+            [Read::Connections, Read::Rest, Read::Usage]
         );
     }
 }
