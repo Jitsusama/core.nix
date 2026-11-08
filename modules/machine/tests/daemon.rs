@@ -651,7 +651,7 @@ fn a_supply_says_its_charge_health_and_port_and_sleep_its_steps() {
     assert_eq!(sleep["failed_at"]["freeze"], json!(2));
     assert_eq!(sleep["last_failed_errno"], json!(-16));
     assert_eq!(
-        sleep["longest_hardware_sleep_us"],
+        sleep["hardware_sleep_counts_to_us"],
         json!(523_986_009_990u64)
     );
 }

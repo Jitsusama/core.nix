@@ -47,7 +47,9 @@ pub fn record(root: &Root, logind: &Value) -> Value {
             .and_then(|e| e.parse::<i64>().ok())
             .filter(|e| *e != 0),
         "last_hardware_sleep_us": stat("last_hw_sleep"),
-        "longest_hardware_sleep_us": stat("max_hw_sleep"),
+        // Not the longest sleep but the longest the hardware's counter
+        // can tell: a sleep past it reads short in the other two.
+        "hardware_sleep_counts_to_us": stat("max_hw_sleep"),
         "total_hardware_sleep_us": stat("total_hw_sleep"),
         "logind": logind,
     })
