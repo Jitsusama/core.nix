@@ -132,6 +132,8 @@ QtObject {
             Media.art("data:image/png;base64,iVBORw0", false), "data:image/png;base64,iVBORw0");
         expect("a picture by another scheme isn't drawn",
             Media.art("blob:abc", true), "");
+        expect("art asked for in the clear is never drawn, even with lookups",
+            Media.art("http://i.scdn.co/image/ab67616d", true), "");
 
         // A stream with no length says how far it's come; a player that
         // can't say where it is says nothing of it.
