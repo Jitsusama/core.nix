@@ -1909,7 +1909,7 @@
     parts its places hold and adds one meant below what the letters found, saying where it lives,
     and warns of nothing it drew;
     WARP, read by the real warp from a stand-in warp-cli, says how its link stands in Network
-    after Speed, its figures a step in, and its service not answering;
+    after Speed, and its service not answering;
     and the notices it holds, taken as Super+N takes them, turn, forget and step into their cards
     by vi's keys
   '';

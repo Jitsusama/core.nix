@@ -1147,10 +1147,11 @@ def reading(shown: Json, start: str) -> str:
 def test_warp_says_how_its_link_stands_in_network_and_when_it_isnt_answering(
     shell: Shell,
 ) -> None:
-    """WARP says how its link stands in Network, its figures a step in, and a service down.
+    """WARP says how its link stands in Network after Speed, and a service down not answering.
 
     The shell runs the real warp, given the check's stand-in for warp-cli, which answers with
-    the contract's files as they're written here (tests/warp-cli-stand-in.sh).
+    the contract's files as they're written here (tests/warp-cli-stand-in.sh). What each
+    figure reads as, a step in, is tests/answers.qml's, over the record warp prints.
     """
     said = Path(os.environ["HOME"]) / "warp-cli"
     contract = Path(os.environ["WARP_CONTRACT"])
@@ -1166,26 +1167,6 @@ def test_warp_says_how_its_link_stands_in_network_and_when_it_isnt_answering(
         shell.launcher_until(lambda shown: reading(shown, "WARP") == stands)
         rows = shell.showing()["rows"]
         assert rows.index("WARP") == rows.index("Speed") + 1, rows
-        shell.close_launcher()
-        # Asked by its word, each figure is a part a step in, in its own unit.
-        shell.answer("warp")
-        shell.launcher_until(
-            lambda shown: (shown["selected"] or {}).get("name") == "connected \u00b7 127 ms"
-        )
-        shell.step_in()
-        parts = ["State", "Health", "Latency", "Loss", "Protocol", "Colo", "Sent", "Received"]
-        # An answer's parts end with its own Copy, as every answer's do.
-        shell.launcher_until(lambda shown: shown["rows"] == [*parts, "Copy"])
-        reads = [str(thing["reads"]) for thing in shell.showing()["things"]]
-        assert reads[2:4] == [
-            "Latency \u00b7 127 ms",
-            "Loss \u00b7 1.24%",
-        ], reads
-        assert reads[5:8] == [
-            "Colo \u00b7 YYZ",
-            "Sent \u00b7 9.3 GB",
-            "Received \u00b7 10 GB",
-        ], reads
         shell.close_launcher()
         # Its service gone, WARP says so in its place, as "vpn" asks it too.
         (said / "status.json").unlink()
