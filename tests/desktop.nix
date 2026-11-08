@@ -837,6 +837,9 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         rewrites
         piStandIn
         pkgs.libnotify
+        # Throwaway: the shell's heap, recorded through the walk.
+        pkgs.heaptrack
+        pkgs.zstd
         # The disk guard's own program, without its daemons, so Disk's Keep
         # marks a folder kept in the status file the test writes in the
         # account's guard's place, as the guard itself would.

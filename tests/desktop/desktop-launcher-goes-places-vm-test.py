@@ -49,6 +49,31 @@ def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
     desktop.launcher_left_closed()
 
 
+HEAP = "/tmp/quickshell-heap.raw"
+
+
+def heaptrack_home(desktop: Desktop) -> str:
+    """Give heaptrack's store path, from its program on the path."""
+    return desktop.as_account("dirname $(dirname $(readlink -f $(command -v heaptrack)))").strip()
+
+
+def test_aaa_the_shell_starts_under_heaptrack(desktop: Desktop) -> None:
+    """Throwaway: restart the shell with heaptrack preloaded, so the walk is recorded."""
+    home = heaptrack_home(desktop)
+    desktop.as_account(
+        "systemctl --user stop quickshell; "
+        f"systemctl --user set-environment LD_PRELOAD={home}/lib/heaptrack/libheaptrack_preload.so"
+        f" DUMP_HEAPTRACK_OUTPUT={HEAP}; "
+        "systemctl --user start quickshell; "
+        "systemctl --user unset-environment LD_PRELOAD DUMP_HEAPTRACK_OUTPUT"
+    )
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session("qs ipc show | grep -q launcher"), timeout=120
+    )
+    pid = desktop.as_account("systemctl --user show quickshell -p MainPID --value").strip()
+    print("HEAP preloaded:", desktop.as_account(f"grep -c heaptrack /proc/{pid}/maps; true"))
+
+
 def test_the_screen_never_locks_by_itself_however_long_the_test_waits(desktop: Desktop) -> None:
     """The screen never locks by itself here, however long the test goes without a key.
 
@@ -1021,6 +1046,31 @@ def test_capture_recent_finds_past_its_nine_by_name_then_by_what_a_screenshot_sa
 
 # A binding that throws or assigns the wrong type only warns, and
 # only once a surface draws it, which can be long after the start.
+
+
+def test_zzz_the_shells_memory_after_the_walk(desktop: Desktop) -> None:
+    """Throwaway: print the shell's memory by mapping, then heaptrack's peaks and leaks."""
+    pid = desktop.as_account("systemctl --user show quickshell -p MainPID --value").strip()
+    rollup = desktop.as_account(f"grep -E '^(Rss|Anonymous)' /proc/{pid}/smaps_rollup")
+    print("HEAP rollup:\n" + rollup)
+    script = (
+        "/^[0-9a-f]+-/{name=$6} /^Rss:/{r[name]+=$2} "
+        "END{for(n in r) if(r[n]>2000) print r[n], (n==\"\" ? \"[unnamed]\" : n)}"
+    )
+    by_name = desktop.as_account(f"awk {shlex.quote(script)} /proc/{pid}/smaps | sort -rn")
+    print("HEAP by mapping:\n" + by_name)
+    home = heaptrack_home(desktop)
+    desktop.as_account("systemctl --user stop quickshell")
+    desktop.machine.wait_until_succeeds(f"test -s {HEAP}", timeout=60)
+    desktop.machine.succeed(
+        f"{home}/lib/heaptrack/libexec/heaptrack_interpret < {HEAP} | zstd -q > /tmp/heap.zst"
+    )
+    summary = desktop.machine.succeed(
+        f"{home}/bin/heaptrack_print -f /tmp/heap.zst -p 1 -a 0 -T 0 -l 0"
+        " -n 20 -s 3 2>&1 | cut -c1-220 | head -900"
+    )
+    print("HEAP summary:\n" + summary)
+    desktop.as_account("systemctl --user start quickshell")
 
 
 def test_quickshell_warned_of_nothing_it_drew_all_along(desktop: Desktop) -> None:
