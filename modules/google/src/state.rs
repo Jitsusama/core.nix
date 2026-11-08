@@ -39,7 +39,7 @@ pub struct State {
     /// person's Recent holds beside today's that are over.
     pub held: Vec<Meeting>,
     /// The mail Joel sent or read in the last month, newest first, which
-    /// a person's Recent holds (mail::LATELY).
+    /// a person's Recent holds (`mail::LATELY`).
     pub lately: Vec<Mail>,
     /// When Google last answered, in milliseconds since the epoch.
     pub heard: Option<i64>,

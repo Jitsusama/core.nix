@@ -189,7 +189,7 @@ pub fn window(now: &Zoned) -> (Timestamp, Timestamp) {
 }
 
 /// How far back the meetings Joel held are asked for, in days, for a
-/// person's Recent: a month, as the mail lately is (mail::LATELY).
+/// person's Recent: a month, as the mail lately is (`mail::LATELY`).
 pub const HELD_DAYS: i64 = 30;
 
 /// The window of the meetings held: from `HELD_DAYS` before the day `now`
