@@ -742,7 +742,10 @@ mod tests {
 
     #[test]
     fn a_builder_answers_only_while_something_listens() {
-        let listening = TcpListener::bind("127.0.0.1:0").expect("a port");
+        // On a loopback address of its own, since a port it frees on the
+        // one every other test binds may be taken by one of them at once,
+        // as it was beside the proofs' tests.
+        let listening = TcpListener::bind("127.0.0.3:0").expect("a port");
         let address = listening.local_addr().expect("its address").to_string();
         assert!(answers(&address));
         drop(listening);
