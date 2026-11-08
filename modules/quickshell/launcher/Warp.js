@@ -14,6 +14,14 @@ const AND = " \u00b7 ";
 const PERCENT = 100;
 const SECOND = 1000;
 const MINUTE = 60;
+// How many reads a spark holds, the newest last.
+const KEPT = 20;
+// The least a spark's top stands for: 100 ms of round trip, and 5% of
+// packets lost.
+const LEAST_TRIP = 100;
+const LEAST_LOSS = 0.05;
+const BITS = 8;
+const MEGA = 1e6;
 // warp-cli's reasons that say how the network is, "Network" then a word.
 const NETWORK = /^Network([A-Z].*)$/;
 // A protocol given with how it's carried: "MASQUE (HTTPS via UDP)".
@@ -401,6 +409,151 @@ function coloPart(edge, said) {
     return part("colo", colo, metal === "" ? "" : worded(said, "metal", { metal }));
 }
 
+// One more read kept, the oldest giving way past KEPT, a figure warp
+// didn't give kept as nothing.
+function kept(values, value) {
+    return (Number.isFinite(value) ? values.concat([value]) : values).slice(-KEPT);
+}
+
+// What the shell has seen of WARP while it's shown, once `record` is read
+// at `now`, in milliseconds: its state, the times of its reads, and the
+// tunnel's round trips, losses and the speed each way between two reads
+// in bytes a second, the newest last, as Wi-Fi keeps its signal. A state
+// changed starts them again, and a counter gone back, as a link made
+// again starts its own, gives no speed for that read.
+function saw(seen, record, now) {
+    const state = String(record?.status?.state ?? "");
+    const tunnel = record?.tunnel ?? {};
+    const same = seen && seen.state === state ? seen : null;
+    const before = same ?? { times: [], latency: [], loss: [], inward: [], outward: [] };
+    const seconds = same ? (now - same.at) / SECOND : 0;
+    const gone = (key, was) => {
+        const value = tunnel[key];
+        return seconds > 0 && Number.isFinite(value) && Number.isFinite(was) && value >= was
+            ? (value - was) / seconds : null;
+    };
+    const inward = gone("received_bytes", same?.received);
+    const outward = gone("sent_bytes", same?.sent);
+    const both = inward !== null && outward !== null;
+    return {
+        state,
+        at: now,
+        received: tunnel.received_bytes ?? null,
+        sent: tunnel.sent_bytes ?? null,
+        times: kept(before.times, now),
+        latency: kept(before.latency, tunnel.latency_ms),
+        loss: kept(before.loss, tunnel.loss_fraction),
+        inward: both ? kept(before.inward, inward) : before.inward,
+        outward: both ? kept(before.outward, outward) : before.outward,
+    };
+}
+
+// A spark of reads, each against the most of them or `least`, whichever
+// is more, so a calm link's jitter draws small.
+function sparkOf(values, least) {
+    const most = Math.max(least, ...values);
+    return { shape: "spark", values: values.map((value) => (most > 0 ? value / most : 0)),
+        warn: false };
+}
+
+// A rate in bytes a second, as Network's speed says one.
+function rateOf(bytes, settings) {
+    return HomeNetwork.rate(bytes * BITS / MEGA, settings);
+}
+
+// The tunnel's figures with a history, sparked, each with a drawer whose
+// eyebrow says once whose figures they are ("via WARP \u00b7 tunnel",
+// VKCF3Z, 2026-11-08): Round Trip and Loss their range over the reads
+// and how many, Traffic its speed each way now. One read sparks nothing,
+// so no drawer says only what the row does.
+function drawn(parts, seen, settings, said) {
+    if (!seen) {
+        return parts;
+    }
+    const eyebrow = worded(said, "eyebrow");
+    const times = seen.times ?? [];
+    const span = times.length > 1 ? (times[times.length - 1] - times[0]) / SECOND : 0;
+    const reads = (values) => ({ id: "reads", value: worded(said, "reads", {
+        count: count(values.length, settings),
+        span: worded(said, "seconds", { figure: count(Math.round(span), settings) }),
+    }) });
+    const ranged = (values, least, say) => {
+        const spark = sparkOf(values, least);
+        return { graph: spark, drawer: { eyebrow, facts: [{ id: "range", value: worded(said,
+            "range", { low: say(Math.min(...values)), high: say(Math.max(...values)) }),
+        figure: spark }, reads(values)] } };
+    };
+    const percent = (value) => worded(said, "percent",
+        { figure: HomeNetwork.significant(value * PERCENT, settings) });
+    const made = {
+        latency: seen.latency.length > 1
+            ? ranged(seen.latency, LEAST_TRIP, (value) => ms(value, settings, said)) : null,
+        loss: seen.loss.length > 1 ? ranged(seen.loss, LEAST_LOSS, percent) : null,
+        traffic: seen.inward.length > 1 ? {
+            graph: sparkOf(seen.inward.map((value, at) => value + seen.outward[at]), 0),
+            drawer: { eyebrow, facts: [
+                { id: "in", value: rateOf(seen.inward[seen.inward.length - 1], settings),
+                    figure: sparkOf(seen.inward, 0) },
+                { id: "out", value: rateOf(seen.outward[seen.outward.length - 1], settings),
+                    figure: sparkOf(seen.outward, 0) },
+            ] },
+        } : null,
+    };
+    return parts.map((each) => (made[each.id] ? Object.assign(each, made[each.id]) : each));
+}
+
+// Whether WARP is up or on its way, so its switch takes it down.
+function up(record) {
+    return ["Connected", "Connecting"].includes(record?.status?.state ?? "");
+}
+
+// Who holds a switch the organisation holds, by its name.
+function holds(organisation, said) {
+    return worded(said, "holds", { organisation: text(organisation)
+        ? organisation : worded(said, "theOrganisation") });
+}
+
+// When WARP always on comes back once taken down, after `minutes`.
+function comesBack(minutes, settings, said) {
+    if (!Number.isFinite(minutes)) {
+        return "";
+    }
+    return minutes > 0
+        ? worded(said, "comesBack", { minutes: worded(said, "minutes",
+            { figure: count(minutes, settings) }) })
+        : worded(said, "comesBackNow");
+}
+
+// What WARP's switch says beside it: who holds it, where the organisation
+// does, or, while it's up and always on, when it would come back once
+// taken down; nothing otherwise.
+function switchNote(record, isUp, said) {
+    const set = record?.settings ?? {};
+    if (set.switch_locked === true) {
+        return holds(set.organisation, said);
+    }
+    return isUp && set.always_on === true ? comesBack(set.auto_connect_after_min, {}, said) : "";
+}
+
+// What a switch came to, from what `warp connect` or `warp disconnect`
+// printed (modules/warp/src/switch.rs): { refused, note }, why it wasn't
+// done where it wasn't, in warp's words, or when WARP comes back by
+// itself where it will.
+function switched(printed, said) {
+    if (printed?.act === undefined) {
+        return { refused: text(printed?.said) ? printed.said : worded(said, "couldntSwitch"),
+            note: "" };
+    }
+    if (printed.refused === "held") {
+        return { refused: holds(printed.organisation, said), note: "" };
+    }
+    if (text(printed.refused)) {
+        return { refused: text(printed.said) ? printed.said : worded(said, "couldntSwitch"),
+            note: "" };
+    }
+    return { refused: "", note: comesBack(printed.comes_back_after_min, {}, said) };
+}
+
 // How WARP stands, from what `warp --json` printed: { headline, warns,
 // parts }, each part { id, side, note, copy, warns } by its id in the
 // vocabulary (warp:<id>), one holding more { parts } too, a step in; or
@@ -410,8 +563,9 @@ function coloPart(edge, said) {
 // readings. The headline is its state, or the network's health while
 // connected, with the latency beside it where warp gave one: "connected
 // · 127 ms". `settings` says how a figure is written (its group and
-// point), as HomeNetwork.js takes it, and `said` is warp's words.
-function told(record, settings, said) {
+// point), as HomeNetwork.js takes it, `said` is warp's words, and `seen`
+// what's been read while it's shown (saw), for the sparks, if any.
+function told(record, settings, said, seen) {
     const status = record?.status;
     if (!status || typeof status.state !== "string") {
         return null;
@@ -431,7 +585,8 @@ function told(record, settings, said) {
         judged,
         record.settings
             ? settingsPart(record.settings, record.override ?? null, settings, said) : null,
-        ...(record.tunnel ? tunnelParts(record.tunnel, settings, said) : []),
+        ...(record.tunnel
+            ? drawn(tunnelParts(record.tunnel, settings, said), seen, settings, said) : []),
         record.dns ? dnsPart(record.dns, settings, said) : null,
     ]));
     const warns = judged?.warns === true;

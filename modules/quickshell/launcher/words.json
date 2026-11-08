@@ -1904,6 +1904,15 @@
         "left": "{minutes} left",
         "prefix": "/{size}",
         "emergency": "every device disconnected",
+        "eyebrow": "via WARP \u00b7 tunnel",
+        "range": "{low} to {high}",
+        "reads": "{count} over {span}",
+        "seconds": "{figure} s",
+        "holds": "{organisation} holds the switch",
+        "theOrganisation": "the organisation",
+        "comesBack": "comes back by itself in {minutes}",
+        "comesBackNow": "comes back by itself at once",
+        "couldntSwitch": "warp couldn't switch it",
         "answered": "{success} of {total} answered",
         "proxyOff": "proxy off",
         "by": "set by {who}",
@@ -2025,6 +2034,26 @@
       "id": "warp:emergency",
       "in": "warp",
       "name": "Emergency Disconnect"
+    },
+    {
+      "id": "warp:range",
+      "in": "warp",
+      "name": "Range"
+    },
+    {
+      "id": "warp:reads",
+      "in": "warp",
+      "name": "Reads"
+    },
+    {
+      "id": "warp:in",
+      "in": "warp:traffic",
+      "name": "In"
+    },
+    {
+      "id": "warp:out",
+      "in": "warp:traffic",
+      "name": "Out"
     },
     {
       "id": "warp:tunnel",
