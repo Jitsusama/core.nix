@@ -29,7 +29,7 @@ mod text;
 pub mod theme;
 mod traffic;
 
-pub use clock::{Clock, changes_in};
+pub use clock::{Clock, changes_in, span};
 pub use text::Ink;
 
 /// A rate given in Mb/s as plain text, as every view sets one, for a line
@@ -228,7 +228,7 @@ fn head(page: &mut Page, model: &HomeNetwork, clock: &Clock, title: Line) {
 }
 
 /// A node's name, its location, or its id where eero gives none.
-fn node_name(node: &Node) -> &str {
+pub fn node_name(node: &Node) -> &str {
     node.location.as_deref().unwrap_or(&node.id)
 }
 
@@ -255,7 +255,7 @@ fn on_node<'a>(model: &'a HomeNetwork, id: Option<&str>) -> Vec<&'a Device> {
     on
 }
 
-fn device_name(device: &Device) -> &str {
+pub fn device_name(device: &Device) -> &str {
     device
         .name
         .as_deref()
@@ -265,7 +265,7 @@ fn device_name(device: &Device) -> &str {
 }
 
 /// Words listing names: Hall, Study and Den.
-fn listed(names: &[&str]) -> String {
+pub fn listed(names: &[&str]) -> String {
     match names {
         [] => "none".into(),
         [one] => (*one).into(),
@@ -337,7 +337,7 @@ fn find_device<'a>(model: &'a HomeNetwork, name: &str) -> Result<&'a Device, Str
 }
 
 /// A count and its noun, the noun made plural past one: 1 device, 15 devices.
-fn counted(count: usize, noun: &str) -> String {
+pub fn counted(count: usize, noun: &str) -> String {
     if count == 1 {
         format!("{count} {noun}")
     } else {

@@ -27,12 +27,14 @@
 mod api;
 mod cloud;
 mod daemon;
+mod desktop;
 #[cfg(test)]
 mod golden;
 mod history;
 mod listeners;
 mod live;
 mod model;
+mod notices;
 mod probe;
 mod read;
 mod schedule;

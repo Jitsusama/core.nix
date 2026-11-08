@@ -429,7 +429,10 @@
     most every 25 seconds, and a coming, going or roam only between reads 10 minutes apart at
     most, and draws the last hour's series into a model a busy hour keeps under 350 kB; it times
     its own look at the internet, the gateway node only from home, and an outage from the first
-    look out to the first back; and it sends the conferencing setting as a bare boolean, counted
+    look out to the first back; it tells, as notices, the internet out and back, a node offline
+    and back online, a device new to the home network, firmware waiting and changing, and an event
+    no other notice says, each once and none before eero first answers or on its first answer;
+    and it sends the conferencing setting as a bare boolean, counted
     taken only once eero reads it back; every view's page matches its golden one, saying
     when eero isn't answering or the reading is old, colouring only on a terminal, each view's JSON
     is the record's own slice, and a watch draws its view again from each model the socket writes

@@ -10,7 +10,10 @@
 //! (history.rs), in eero's folder in the account's state. With each read
 //! of the network, and every 10 seconds while eero can't be reached, it
 //! takes its own look at the internet (probe.rs), so an outage is seen and
-//! timed even when eero can't say.
+//! timed even when eero can't say. And it tells Joel what changed on the
+//! home network while it watched, as desktop notices (notices.rs,
+//! desktop.rs): the internet out and back, a node offline and back, a
+//! device new to the home network, firmware, and eero's own events.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -23,9 +26,11 @@ use serde_json::Value;
 
 use crate::api;
 use crate::cloud::{self, Failure};
+use crate::desktop::Notifier;
 use crate::history::History;
 use crate::listeners::{Call, Listeners};
 use crate::model::{Cloud, CloudState, HomeNetwork};
+use crate::notices::{self, Watch};
 use crate::probe::{self, Targets};
 use crate::read::{self, Answers};
 use crate::schedule::{Looks, Read, Schedule};
@@ -137,6 +142,9 @@ struct Daemon {
     schedule: Schedule,
     history: History,
     looks: Looks,
+    /// The model the notices were last worked out against.
+    watch: Watch,
+    notifier: Notifier,
 }
 
 impl Daemon {
@@ -149,6 +157,29 @@ impl Daemon {
             schedule: Schedule::default(),
             history,
             looks: Looks::default(),
+            watch: Watch::default(),
+            notifier: Notifier::default(),
+        }
+    }
+
+    /// Raises the notices a model calls for, and records each change they
+    /// tell, at `at`. A notice the desktop can't take is said to the
+    /// journal and still recorded, since the change it told is past.
+    fn tell(&mut self, next: &notices::Next, at: i64) {
+        for told in &next.settled {
+            if let Err(reason) = self.history.record_told(told, at) {
+                eprintln!("eero: {reason}");
+            }
+        }
+        for notice in &next.notices {
+            if let Err(reason) = self.notifier.tell(notice) {
+                eprintln!("eero: couldn't raise \"{}\": {reason}", notice.summary);
+            }
+            for told in &notice.tells {
+                if let Err(reason) = self.history.record_told(told, at) {
+                    eprintln!("eero: {reason}");
+                }
+            }
         }
     }
 
@@ -223,6 +254,10 @@ impl Daemon {
         if let Err(reason) = self.history.draw(&mut next, now_unix()) {
             eprintln!("eero: {reason}");
         }
+        let told = self
+            .watch
+            .next(&next, heard == Some(Heard::Answered), &self.history);
+        self.tell(&told, now_unix());
         if self.model.as_ref() == Some(&next) {
             return None;
         }

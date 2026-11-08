@@ -20,6 +20,9 @@
 //! Each model the daemon writes has the history drawn into it: the last
 //! hour's samples as series, the last day's roams and comings and goings,
 //! and 30 days of speed tests and outages.
+//!
+//! It also keeps each change a notice told of (notices.rs), by its kind
+//! and subject, so a restart never tells one twice.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -33,6 +36,7 @@ use crate::model::{
     DeviceHistory, HomeNetwork, JoinOrLeave, JoinOrLeaveKind, NodeHistory, Outage, OutageSeenBy,
     Probe, ProbeHistory, RadioHistory, Roam, SpeedTest,
 };
+use crate::notices::{Kind, Said, Told};
 use crate::probe::Reading;
 use crate::time;
 
@@ -91,6 +95,14 @@ CREATE TABLE probe_outages (start INTEGER PRIMARY KEY, ended INTEGER,
 CREATE TABLE meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
 ";
 
+/// The tables added since `SHAPE` was last bumped, each made where it's
+/// missing: a table more changes no table already there, so a history of
+/// this shape keeps all it holds.
+const ADDED: &str = "
+CREATE TABLE IF NOT EXISTS told (kind TEXT NOT NULL, subject TEXT NOT NULL,
+    at INTEGER NOT NULL, PRIMARY KEY (kind, subject)) WITHOUT ROWID;
+";
+
 /// The history, open.
 pub struct History {
     db: Connection,
@@ -103,7 +115,7 @@ impl History {
     /// daemon doesn't know is set aside beside it, rather than read wrong.
     pub fn open(path: &Path) -> Result<History, String> {
         let history = History::connect(path)?;
-        match history.shape()? {
+        let history = match history.shape()? {
             SHAPE => Ok(history),
             0 => history.made(),
             other => {
@@ -117,7 +129,8 @@ impl History {
                 }
                 History::connect(path)?.made()
             }
-        }
+        }?;
+        history.added()
     }
 
     /// A history kept in memory alone, for when the file can't be opened,
@@ -126,6 +139,7 @@ impl History {
         let db = Connection::open_in_memory().expect("SQLite opens a database in memory");
         History { db, pruned: None }
             .made()
+            .and_then(History::added)
             .expect("the tables are made in memory")
     }
 
@@ -146,6 +160,50 @@ impl History {
     fn shape(&self) -> Result<i64, String> {
         self.db
             .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .map_err(sql)
+    }
+
+    fn added(self) -> Result<History, String> {
+        self.db.execute_batch(ADDED).map_err(sql)?;
+        Ok(self)
+    }
+
+    /// Records a change a notice told of at `at`, by its kind and subject.
+    pub fn record_told(&mut self, (kind, subject): &Told, at: i64) -> Result<(), String> {
+        self.db
+            .execute(
+                "INSERT OR IGNORE INTO told VALUES (?1, ?2, ?3)",
+                params![kind.name(), subject, at],
+            )
+            .map_err(sql)?;
+        Ok(())
+    }
+
+    fn was_told(&self, kind: Kind, subject: &str) -> Result<bool, String> {
+        self.db
+            .query_row(
+                "SELECT 1 FROM told WHERE kind = ?1 AND subject = ?2",
+                params![kind.name(), subject],
+                |_| Ok(()),
+            )
+            .optional()
+            .map(|found| found.is_some())
+            .map_err(sql)
+    }
+
+    /// The start of the newest outage a notice said began, where none
+    /// since said it ended: an outage's notices share its start as their
+    /// subject.
+    fn told_out(&self) -> Result<Option<String>, String> {
+        self.db
+            .query_row(
+                "SELECT subject FROM told AS out WHERE kind = ?1 AND NOT EXISTS
+                 (SELECT 1 FROM told WHERE kind = ?2 AND subject = out.subject)
+                 ORDER BY at DESC LIMIT 1",
+                params![Kind::InternetOut.name(), Kind::InternetBack.name()],
+                |row| row.get(0),
+            )
+            .optional()
             .map_err(sql)
     }
 
@@ -536,11 +594,31 @@ impl History {
                  DELETE FROM eero_outages WHERE seen < {before};
                  DELETE FROM probes WHERE at < {before};
                  DELETE FROM probe_outages WHERE coalesce(ended, last_down) < {before};
+                 DELETE FROM told WHERE at < {before};
                  COMMIT;"
             ))
             .map_err(sql)?;
         self.pruned = Some(now);
         Ok(())
+    }
+}
+
+/// What the history says was told, where it can say: one it can't read is
+/// taken as untold and said to the journal, since a notice told twice
+/// costs less than a change never told.
+impl Said for History {
+    fn said(&self, kind: Kind, subject: &str) -> bool {
+        self.was_told(kind, subject).unwrap_or_else(|reason| {
+            eprintln!("eero: {reason}");
+            false
+        })
+    }
+
+    fn out_since(&self) -> Option<String> {
+        self.told_out().unwrap_or_else(|reason| {
+            eprintln!("eero: {reason}");
+            None
+        })
     }
 }
 
@@ -1130,5 +1208,60 @@ mod tests {
         assert_eq!(history.shape().unwrap(), SHAPE);
         assert!(folder.join("history.sqlite.shape-99.1").exists());
         fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn a_history_of_this_shape_from_before_the_notices_keeps_what_it_holds() {
+        let folder = std::env::temp_dir().join(format!("eero-told-{}", std::process::id()));
+        fs::create_dir_all(&folder).unwrap();
+        let path = folder.join("history.sqlite");
+        let _ = fs::remove_file(&path);
+        Connection::open(&path)
+            .unwrap()
+            .execute_batch(&format!(
+                "BEGIN; {TABLES} PRAGMA user_version = {SHAPE};
+                 INSERT INTO speed_tests VALUES ({AT}, 525.0, 48.1); COMMIT;"
+            ))
+            .unwrap();
+
+        let mut history = History::open(&path).unwrap();
+        history
+            .record_told(&(Kind::Joined, "02:00:00:00:00:20".into()), AT)
+            .unwrap();
+
+        assert_eq!(count(&history, "speed_tests"), 1);
+        assert!(history.said(Kind::Joined, "02:00:00:00:00:20"));
+        fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn a_change_is_said_once_told_and_an_outage_stands_until_told_back() {
+        let mut history = History::in_memory();
+        let start = time::from_unix(AT);
+
+        assert!(!history.said(Kind::InternetOut, &start));
+        history
+            .record_told(&(Kind::InternetOut, start.clone()), AT)
+            .unwrap();
+        let out = history.out_since();
+        history
+            .record_told(&(Kind::InternetBack, start.clone()), AT + 60)
+            .unwrap();
+
+        assert!(history.said(Kind::InternetOut, &start));
+        assert_eq!(out, Some(start));
+        assert_eq!(history.out_since(), None);
+    }
+
+    #[test]
+    fn what_was_told_is_dropped_after_30_days() {
+        let mut history = History::in_memory();
+        history
+            .record_told(&(Kind::Updated, "2001 v7.18.0-1".into()), AT)
+            .unwrap();
+
+        history.record(&model(), AT + KEPT_S + 1, false).unwrap();
+
+        assert!(!history.said(Kind::Updated, "2001 v7.18.0-1"));
     }
 }
