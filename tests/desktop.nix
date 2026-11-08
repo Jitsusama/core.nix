@@ -595,6 +595,8 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
 
       virtualisation = {
         memorySize = 4096;
+        # Throwaway: room for heaptrack's raw recording.
+        diskSize = 6144;
         cores = 4;
         qemu.options = [
           "-vga none -device virtio-gpu-pci,xres=${toString screen.width},yres=${toString screen.height}"
