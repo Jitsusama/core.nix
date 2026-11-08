@@ -156,12 +156,23 @@
     # niri walks every window after each wakeup of its loop, and each
     # commit a client makes wakes it, so with 81 windows open, most of them
     # terminals, it woke about 990 times a second and spent 35 to 49% of a
-    # core walking them. The patch (refreshes-once-a-frame.patch, last)
+    # core walking them. The patch (refreshes-once-a-frame.patch)
     # walks them at most once a frame of the fastest screen, a timer taking
     # what a wakeup puts off; input, an action, a focus change and a window
     # coming or going still have it at once. Its tests run as niri builds,
     # and niri-refreshes-once-a-frame counts its refreshes under a client
     # committing a thousand times a second.
+    #
+    # niri powers its monitors off only all at once, and any key lights
+    # them all, so a laptop working through the night lit the monitor
+    # beside the bed, and its own button cuts the hub and network card it
+    # carries. The patch (powers-off-each-output.patch, made on the rest)
+    # adds power-off-monitor and power-on-monitor, naming one output as
+    # niri msg outputs does: its CRTC goes inactive and it stays connected
+    # and laid out. Input leaves it dark while another screen is lit, and
+    # lights them all once every one is off by name; a reconnect or niri
+    # restarting lights it too. niri msg outputs says which is off, and
+    # NIRI_POWERS_OFF_EACH_OUTPUT tells the shell it can ask.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
@@ -193,6 +204,7 @@
         ./on-demand-when-asked.patch
         ./panel-saturation.patch
         ./refreshes-once-a-frame.patch
+        ./powers-off-each-output.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.

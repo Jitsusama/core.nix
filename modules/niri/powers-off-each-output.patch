@@ -1,0 +1,737 @@
+Power one monitor off and on by name
+
+niri powers monitors off only all at once, and any key or pointer
+motion lights them all again. A laptop kept working beside a monitor
+in the bedroom had no way to darken the monitor alone, and turning
+the monitor off at its button cuts the USB hub and network card it
+carries.
+
+power-off-monitor and power-on-monitor name one output, as
+focus-monitor does: by connector, or by make, model and serial. Off,
+the output's CRTC is inactive, as power-off-monitors leaves every
+one, so it stays connected and in the layout, its windows where they
+were, and whatever hangs off its port keeps its power. It isn't drawn,
+and doesn't keep the session from locking.
+
+An output off by name stays off through keys and pointer motion while
+another is lit; its own power-on-monitor, or power-on-monitors, lights
+it. Once every output is off by name, input lights them all, as it does
+after power-off-monitors. A reconnect, coming back from another VT or
+a restart of niri lights it too. power-off-monitors and
+power-on-monitors otherwise keep their behaviour, and input after
+power-off-monitors leaves an output off by name dark.
+
+niri msg outputs says which is off, as powered_off in its JSON, which
+an older niri's answer reads as false. niri sets
+NIRI_POWERS_OFF_EACH_OUTPUT=1 for its children and imports it into
+the session, so a shell restarted under a niri without this patch
+offers it only once niri restarts.
+
+diff --git a/niri-config/src/binds.rs b/niri-config/src/binds.rs
+index 1e8d068..7944ecb 100644
+--- a/niri-config/src/binds.rs
++++ b/niri-config/src/binds.rs
+@@ -106,6 +106,8 @@ pub enum Action {
+     Suspend,
+     PowerOffMonitors,
+     PowerOnMonitors,
++    PowerOffMonitor(#[knuffel(argument)] String),
++    PowerOnMonitor(#[knuffel(argument)] String),
+     ToggleDebugTint,
+     DebugToggleOpaqueRegions,
+     DebugToggleDamage,
+@@ -404,6 +406,8 @@ impl From<niri_ipc::Action> for Action {
+             niri_ipc::Action::Quit { skip_confirmation } => Self::Quit(skip_confirmation),
+             niri_ipc::Action::PowerOffMonitors {} => Self::PowerOffMonitors,
+             niri_ipc::Action::PowerOnMonitors {} => Self::PowerOnMonitors,
++            niri_ipc::Action::PowerOffMonitor { output } => Self::PowerOffMonitor(output),
++            niri_ipc::Action::PowerOnMonitor { output } => Self::PowerOnMonitor(output),
+             niri_ipc::Action::Spawn { command } => Self::Spawn(command),
+             niri_ipc::Action::SpawnSh { command } => Self::SpawnSh(command),
+             niri_ipc::Action::DoScreenTransition { delay_ms } => Self::DoScreenTransition(delay_ms),
+diff --git a/niri-ipc/src/lib.rs b/niri-ipc/src/lib.rs
+index 18a1706..6245fde 100644
+--- a/niri-ipc/src/lib.rs
++++ b/niri-ipc/src/lib.rs
+@@ -201,7 +201,28 @@ pub enum Action {
+     /// Power off all monitors via DPMS.
+     PowerOffMonitors {},
+     /// Power on all monitors via DPMS.
++    ///
++    /// This also powers on the monitors powered off by name.
+     PowerOnMonitors {},
++    /// Power off one monitor via DPMS, by name.
++    ///
++    /// It stays connected and in the layout. Input doesn't power it on again unless every monitor
++    /// is off by name; its power-on-monitor or power-on-monitors does, as does a reconnect.
++    PowerOffMonitor {
++        /// Name of the output to power off.
++        ///
++        /// Run `niri msg outputs` to see the output names.
++        #[cfg_attr(feature = "clap", arg())]
++        output: String,
++    },
++    /// Power on one monitor powered off by name.
++    PowerOnMonitor {
++        /// Name of the output to power on.
++        ///
++        /// Run `niri msg outputs` to see the output names.
++        #[cfg_attr(feature = "clap", arg())]
++        output: String,
++    },
+     /// Spawn a command.
+     Spawn {
+         /// Command to spawn.
+@@ -1250,6 +1271,11 @@ pub struct Output {
+     ///
+     /// `None` if the output is not mapped to any logical output (for example, if it is disabled).
+     pub logical: Option<LogicalOutput>,
++    /// Whether the output was powered off by name, with power-off-monitor.
++    ///
++    /// It stays connected and in the layout while off. Absent from a niri without it.
++    #[serde(default)]
++    pub powered_off: bool,
+ }
+ 
+ /// Output mode.
+diff --git a/src/backend/headless.rs b/src/backend/headless.rs
+index 8b5ee82..c2b9418 100644
+--- a/src/backend/headless.rs
++++ b/src/backend/headless.rs
+@@ -109,6 +109,7 @@ impl Headless {
+                 vrr_supported: false,
+                 vrr_enabled: false,
+                 logical: Some(logical_output(&output)),
++                powered_off: false,
+             },
+         );
+ 
+diff --git a/src/backend/mod.rs b/src/backend/mod.rs
+index 49fbc6b..fadca1c 100644
+--- a/src/backend/mod.rs
++++ b/src/backend/mod.rs
+@@ -177,6 +177,14 @@ impl Backend {
+         }
+     }
+ 
++    pub fn set_output_active(&mut self, output: &Output, active: bool) {
++        match self {
++            Backend::Tty(tty) => tty.set_output_active(output, active),
++            Backend::Winit(_) => (),
++            Backend::Headless(_) => (),
++        }
++    }
++
+     pub fn set_output_on_demand_vrr(&mut self, niri: &mut Niri, output: &Output, enable_vrr: bool) {
+         match self {
+             Backend::Tty(tty) => tty.set_output_on_demand_vrr(niri, output, enable_vrr),
+diff --git a/src/backend/tty.rs b/src/backend/tty.rs
+index 1739ef8..897b94e 100644
+--- a/src/backend/tty.rs
++++ b/src/backend/tty.rs
+@@ -749,6 +749,10 @@ impl Tty {
+                     self.on_output_config_changed(niri);
+                 }
+ 
++                // Coming back lights every monitor below, as it does those power-off-monitors
++                // turned off, so the ones off by name come on with them.
++                niri.forget_outputs_off_by_name();
++
+                 self.refresh_ipc_outputs(niri);
+ 
+                 niri.notify_activity();
+@@ -2235,14 +2239,12 @@ impl Tty {
+                     });
+                 let vrr_enabled = surface.is_some_and(|surface| surface.compositor.vrr_enabled());
+ 
+-                let logical = niri
+-                    .global_space
+-                    .outputs()
+-                    .find(|output| {
+-                        let tty_state: &TtyOutputState = output.user_data().get().unwrap();
+-                        tty_state.node == *node && tty_state.crtc == crtc
+-                    })
+-                    .map(logical_output);
++                let niri_output = niri.global_space.outputs().find(|output| {
++                    let tty_state: &TtyOutputState = output.user_data().get().unwrap();
++                    tty_state.node == *node && tty_state.crtc == crtc
++                });
++                let logical = niri_output.map(logical_output);
++                let powered_off = niri_output.is_some_and(|output| niri.is_off_by_name(output));
+ 
+                 let id = device.known_crtcs.get(&crtc).map(|info| info.id);
+                 let id = id.unwrap_or_else(|| {
+@@ -2262,6 +2264,7 @@ impl Tty {
+                     vrr_supported,
+                     vrr_enabled,
+                     logical,
++                    powered_off,
+                 };
+ 
+                 ipc_outputs.insert(id, ipc_output);
+@@ -2309,6 +2312,25 @@ impl Tty {
+         }
+     }
+ 
++    /// Powers one output off, its CRTC inactive as set_monitors_active leaves every one, so it
++    /// stays connected and whatever hangs off it, such as a monitor's USB hub, keeps its power.
++    /// Like that, powering it on is left to its next frame.
++    pub fn set_output_active(&mut self, output: &Output, active: bool) {
++        if active {
++            return;
++        }
++
++        let tty_state: &TtyOutputState = output.user_data().get().unwrap();
++        let Some(device) = self.devices.get_mut(&tty_state.node) else {
++            return;
++        };
++        if let Some(surface) = device.surfaces.get_mut(&tty_state.crtc) {
++            if let Err(err) = surface.compositor.clear() {
++                warn!("error clearing drm surface: {err:?}");
++            }
++        }
++    }
++
+     pub fn set_output_on_demand_vrr(&mut self, niri: &mut Niri, output: &Output, enable_vrr: bool) {
+         let _span = tracy_client::span!("Tty::set_output_on_demand_vrr");
+ 
+diff --git a/src/backend/winit.rs b/src/backend/winit.rs
+index a9bcc51..02872b4 100644
+--- a/src/backend/winit.rs
++++ b/src/backend/winit.rs
+@@ -95,6 +95,7 @@ impl Winit {
+                 vrr_supported: false,
+                 vrr_enabled: false,
+                 logical: Some(logical_output(&output)),
++                powered_off: false,
+             },
+         )])));
+ 
+diff --git a/src/input/mod.rs b/src/input/mod.rs
+index df8ebb1..abad402 100644
+--- a/src/input/mod.rs
++++ b/src/input/mod.rs
+@@ -122,7 +122,7 @@ impl State {
+         // Make sure some logic like workspace clean-up has a chance to run before doing actions.
+         self.niri.advance_animations();
+ 
+-        if self.niri.monitors_active {
++        if self.niri.is_any_output_lit() {
+             // Notify the idle-notifier of activity.
+             if should_notify_activity(&event) {
+                 self.niri.notify_activity();
+@@ -130,7 +130,7 @@ impl State {
+         } else {
+             // Power on monitors if they were off.
+             if should_activate_monitors(&event) {
+-                self.niri.activate_monitors(&mut self.backend);
++                self.wake_monitors_for_input();
+ 
+                 // Notify the idle-notifier of activity only if we're also powering on the
+                 // monitors.
+@@ -684,8 +684,19 @@ impl State {
+                 self.niri.deactivate_monitors(&mut self.backend);
+             }
+             Action::PowerOnMonitors => {
++                self.niri.power_on_outputs_by_name();
+                 self.niri.activate_monitors(&mut self.backend);
+             }
++            Action::PowerOffMonitor(output) => {
++                if let Some(output) = self.niri.output_by_name_match(&output).cloned() {
++                    self.niri.power_off_output(&mut self.backend, &output);
++                }
++            }
++            Action::PowerOnMonitor(output) => {
++                if let Some(output) = self.niri.output_by_name_match(&output).cloned() {
++                    self.niri.power_on_output(&output);
++                }
++            }
+             Action::ToggleDebugTint => {
+                 self.backend.toggle_debug_tint();
+                 self.niri.queue_redraw_all();
+@@ -4839,6 +4850,8 @@ fn allowed_when_locked(action: &Action) -> bool {
+             | Action::Suspend
+             | Action::PowerOffMonitors
+             | Action::PowerOnMonitors
++            | Action::PowerOffMonitor(_)
++            | Action::PowerOnMonitor(_)
+             | Action::SwitchLayout(_)
+             | Action::ToggleKeyboardShortcutsInhibit
+     )
+@@ -4852,6 +4865,8 @@ fn allowed_during_screenshot(action: &Action) -> bool {
+             | Action::Suspend
+             | Action::PowerOffMonitors
+             | Action::PowerOnMonitors
++            | Action::PowerOffMonitor(_)
++            | Action::PowerOnMonitor(_)
+             // The screenshot UI can handle these.
+             | Action::MoveColumnLeft
+             | Action::MoveColumnLeftOrToMonitorLeft
+diff --git a/src/ipc/client.rs b/src/ipc/client.rs
+index 40a58ef..aab8b19 100644
+--- a/src/ipc/client.rs
++++ b/src/ipc/client.rs
+@@ -568,6 +568,7 @@ fn print_output(output: Output) -> anyhow::Result<()> {
+         vrr_supported,
+         vrr_enabled,
+         logical,
++        powered_off,
+     } = output;
+ 
+     let serial = serial.as_deref().unwrap_or("Unknown");
+@@ -612,6 +613,10 @@ fn print_output(output: Output) -> anyhow::Result<()> {
+         println!("  Disabled");
+     }
+ 
++    if powered_off {
++        println!("  Powered off");
++    }
++
+     if vrr_supported {
+         let enabled = if vrr_enabled { "enabled" } else { "disabled" };
+         println!("  Variable refresh rate: supported, {enabled}");
+diff --git a/src/main.rs b/src/main.rs
+index c1da3f6..3099efa 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -211,6 +211,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
+     // running across a niri without this patch can keep asking exclusively until niri restarts.
+     env::set_var("NIRI_ON_DEMAND_WHEN_ASKED", "1");
+ 
++    // Say to children that one monitor can be powered off by name, so a shell kept running across
++    // a niri without this patch offers it only once niri restarts.
++    env::set_var("NIRI_POWERS_OFF_EACH_OUTPUT", "1");
++
+     // Setup xwayland-satellite integration.
+     xwayland::satellite::setup(&mut state);
+     if let Some(satellite) = &state.niri.satellite {
+@@ -292,6 +296,7 @@ fn import_environment() {
+         "XDG_SESSION_TYPE",
+         SOCKET_PATH_ENV,
+         "NIRI_ON_DEMAND_WHEN_ASKED",
++        "NIRI_POWERS_OFF_EACH_OUTPUT",
+     ]
+     .join(" ");
+ 
+diff --git a/src/niri.rs b/src/niri.rs
+index b8f1919..6de05d7 100644
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -533,6 +533,11 @@ pub struct OutputState {
+     pub lock_color_buffer: SolidColorBuffer,
+     /// Whether a frame has been drawn on this output yet.
+     pub first_frame_shown: bool,
++    /// Whether power-off-monitor powered this output off by name.
++    ///
++    /// It isn't drawn while set, with its CRTC inactive, but stays connected and in the layout.
++    /// A new output state starts without it, so a reconnect powers it on.
++    pub off_by_name: bool,
+     screen_transition: Option<ScreenTransition>,
+     /// Damage tracker used for the debug damage visualization.
+     pub debug_damage_tracker: OutputDamageTracker,
+@@ -858,6 +863,21 @@ impl State {
+         self.backend.on_output_config_changed(&mut self.niri);
+     }
+ 
++    /// Input that powers monitors on arrived with no output lit: it powers on those
++    /// power-off-monitors turned off and, when every output was powered off by name, those too.
++    /// An output off by name beside a lit one stays off, so a monitor turned off to sleep by
++    /// isn't woken by the laptop being used.
++    pub fn wake_monitors_for_input(&mut self) {
++        if self.niri.is_any_output_lit() {
++            return;
++        }
++
++        if self.niri.every_output_off_by_name() {
++            self.niri.power_on_outputs_by_name();
++        }
++        self.niri.activate_monitors(&mut self.backend);
++    }
++
+     /// Someone pressed a key, clicked or moved a pointer while the lid reads
+     /// shut and no screen is lit, which nobody can do with the lid shut. The
+     /// lid's switch is wrong, so the lid is taken as open, lighting the panel
+@@ -2023,13 +2043,13 @@ impl State {
+         let _span = tracy_client::span!("State::refresh_ipc_outputs");
+ 
+         for ipc_output in self.backend.ipc_outputs().lock().unwrap().values_mut() {
+-            let logical = self
++            let output = self
+                 .niri
+                 .global_space
+                 .outputs()
+-                .find(|output| output.name() == ipc_output.name)
+-                .map(logical_output);
+-            ipc_output.logical = logical;
++                .find(|output| output.name() == ipc_output.name);
++            ipc_output.logical = output.map(logical_output);
++            ipc_output.powered_off = output.is_some_and(|output| self.niri.is_off_by_name(output));
+         }
+ 
+         #[cfg(feature = "dbus")]
+@@ -2997,6 +3017,7 @@ impl Niri {
+             lock_color_buffer: SolidColorBuffer::new(size, CLEAR_COLOR_LOCKED),
+             // A screen that comes once the hold is over isn't held.
+             first_frame_shown: !self.holding_first_frames,
++            off_by_name: false,
+             screen_transition: None,
+             debug_damage_tracker: OutputDamageTracker::from_output(&output),
+         };
+@@ -3165,6 +3186,76 @@ impl Niri {
+         self.queue_redraw_all();
+     }
+ 
++    /// Powers one output off, as power-off-monitors powers off every one, keeping it connected
++    /// and in the layout. Input leaves it off while another output is lit.
++    pub fn power_off_output(&mut self, backend: &mut Backend, output: &Output) {
++        let Some(state) = self.output_state.get_mut(output) else {
++            return;
++        };
++        if state.off_by_name {
++            return;
++        }
++
++        info!("{}: powered off by name", output.name());
++        state.off_by_name = true;
++        backend.set_output_active(output, false);
++        self.ipc_outputs_changed = true;
++    }
++
++    /// Powers on one output powered off by name; it lights only if the monitors are active.
++    pub fn power_on_output(&mut self, output: &Output) {
++        let Some(state) = self.output_state.get_mut(output) else {
++            return;
++        };
++        if !state.off_by_name {
++            return;
++        }
++
++        info!("{}: powered on by name", output.name());
++        state.off_by_name = false;
++        self.ipc_outputs_changed = true;
++        self.queue_redraw(output);
++    }
++
++    /// Powers on every output powered off by name.
++    pub fn power_on_outputs_by_name(&mut self) {
++        let off: Vec<_> = self
++            .output_state
++            .iter()
++            .filter(|(_, state)| state.off_by_name)
++            .map(|(output, _)| output.clone())
++            .collect();
++        for output in off {
++            self.power_on_output(&output);
++        }
++    }
++
++    /// Forgets which outputs were powered off by name, for a backend about to light every one.
++    pub fn forget_outputs_off_by_name(&mut self) {
++        for state in self.output_state.values_mut() {
++            state.off_by_name = false;
++        }
++        self.ipc_outputs_changed = true;
++    }
++
++    pub fn is_off_by_name(&self, output: &Output) -> bool {
++        self.output_state
++            .get(output)
++            .is_some_and(|state| state.off_by_name)
++    }
++
++    /// Whether there are outputs and each was powered off by name.
++    pub fn every_output_off_by_name(&self) -> bool {
++        !self.output_state.is_empty() && self.output_state.values().all(|state| state.off_by_name)
++    }
++
++    /// Whether input has a lit output to be activity on, rather than outputs to power on: the
++    /// monitors are active, and not every output is off by name. With no output at all, it does,
++    /// as niri always took it.
++    pub fn is_any_output_lit(&self) -> bool {
++        self.monitors_active && !self.every_output_off_by_name()
++    }
++
+     pub fn output_under(&self, pos: Point<f64, Logical>) -> Option<(&Output, Point<f64, Logical>)> {
+         let output = self.global_space.output_under(pos).next()?;
+         let pos_within_output = pos
+@@ -4762,7 +4853,8 @@ impl Niri {
+         self.update_render_elements(Some(output));
+ 
+         let mut res = RenderResult::Skipped;
+-        if self.monitors_active && !self.first_frame_held(backend, output) {
++        let off_by_name = self.output_state[output].off_by_name;
++        if self.monitors_active && !off_by_name && !self.first_frame_held(backend, output) {
+             let state = self.output_state.get_mut(output).unwrap();
+             state.unfinished_animations_remain = self.layout.are_animations_ongoing(Some(output));
+             state.unfinished_animations_remain |=
+@@ -4829,7 +4921,9 @@ impl Niri {
+         // Update the lock render state on successful render, or if monitors are inactive. When
+         // monitors are inactive on a TTY, they have no framebuffer attached, so no sensitive data
+         // from a last render will be visible.
+-        if res != RenderResult::Skipped || !self.monitors_active {
++        //
++        // An output off by name has none either, so it doesn't keep the session from locking.
++        if res != RenderResult::Skipped || !self.monitors_active || state.off_by_name {
+             state.lock_render_state = if is_locked {
+                 LockRenderState::Locked
+             } else {
+diff --git a/src/tests/mod.rs b/src/tests/mod.rs
+index 2654dfe..2971f63 100644
+--- a/src/tests/mod.rs
++++ b/src/tests/mod.rs
+@@ -10,6 +10,7 @@ mod floating;
+ mod fullscreen;
+ mod layer_shell;
+ mod lid;
++mod power;
+ mod remove_output;
+ mod transactions;
+ mod window_opening;
+diff --git a/src/tests/power.rs b/src/tests/power.rs
+new file mode 100644
+index 0000000..1facdf3
+--- /dev/null
++++ b/src/tests/power.rs
+@@ -0,0 +1,242 @@
++use clap::Parser as _;
++use niri_config::{Action, Config};
++
++use super::*;
++use crate::cli::{Cli, Msg, Sub};
++
++/// A niri with two screens, each drawn once.
++fn two_screens() -> Fixture {
++    let mut f = Fixture::new();
++    f.add_output(1, (1920, 1080));
++    f.add_output(2, (1280, 720));
++    redraw(&mut f);
++    f
++}
++
++/// Draws every screen, as niri does after a turn of its loop with each queued.
++fn redraw(f: &mut Fixture) {
++    f.niri().queue_redraw_all();
++    f.niri_state().refresh_and_flush_clients();
++}
++
++/// How many frames the screen has had, as niri counts them for frame callbacks.
++fn frames(f: &mut Fixture, n: u8) -> u32 {
++    let output = f.niri_output(n);
++    f.niri().output_state[&output].frame_callback_sequence
++}
++
++fn off_by_name(f: &mut Fixture, n: u8) -> bool {
++    let output = f.niri_output(n);
++    f.niri().is_off_by_name(&output)
++}
++
++fn act(f: &mut Fixture, action: Action) {
++    f.niri_state().do_action(action, false);
++}
++
++#[test]
++fn binds_name_a_screen_to_power_off_and_on() {
++    let config = Config::parse_mem(
++        r#"
++        binds {
++            Mod+F1 { power-off-monitor "eDP-1"; }
++            Mod+F2 { power-on-monitor "Dell Inc. DELL U2723QE 1234"; }
++        }
++        "#,
++    )
++    .unwrap();
++
++    let actions: Vec<_> = config.binds.0.into_iter().map(|bind| bind.action).collect();
++    assert_eq!(
++        actions,
++        [
++            Action::PowerOffMonitor(String::from("eDP-1")),
++            Action::PowerOnMonitor(String::from("Dell Inc. DELL U2723QE 1234")),
++        ]
++    );
++}
++
++#[test]
++fn niri_msg_names_a_screen_to_power_off_and_on() {
++    for (verb, expected) in [
++        ("power-off-monitor", Action::PowerOffMonitor(String::from("eDP-1"))),
++        ("power-on-monitor", Action::PowerOnMonitor(String::from("eDP-1"))),
++    ] {
++        let cli = Cli::try_parse_from(["niri", "msg", "action", verb, "eDP-1"]).unwrap();
++        let Some(Sub::Msg {
++            msg: Msg::Action { action },
++            ..
++        }) = cli.subcommand
++        else {
++            panic!("niri msg action {verb} wasn't read as an action");
++        };
++        assert_eq!(Action::from(action), expected);
++    }
++}
++
++#[test]
++fn niri_msg_needs_the_screen_named() {
++    assert!(Cli::try_parse_from(["niri", "msg", "action", "power-off-monitor"]).is_err());
++}
++
++#[test]
++fn a_screen_off_by_name_isnt_drawn_while_the_other_is() {
++    let mut f = two_screens();
++    let (first, second) = (frames(&mut f, 1), frames(&mut f, 2));
++
++    act(&mut f, Action::PowerOffMonitor(String::from("headless-1")));
++    redraw(&mut f);
++
++    assert_eq!(frames(&mut f, 1), first);
++    assert!(frames(&mut f, 2) > second);
++    assert!(f.niri().monitors_active);
++    // It stays connected and in the layout.
++    let output = f.niri_output(1);
++    assert!(f.niri().layout.outputs().any(|o| *o == output));
++}
++
++#[test]
++fn a_screen_is_named_by_make_model_and_serial_too() {
++    let mut f = two_screens();
++
++    act(&mut f, Action::PowerOffMonitor(String::from("niri headless 2")));
++
++    assert!(!off_by_name(&mut f, 1));
++    assert!(off_by_name(&mut f, 2));
++}
++
++#[test]
++fn an_unknown_screen_powers_nothing_off() {
++    let mut f = two_screens();
++
++    act(&mut f, Action::PowerOffMonitor(String::from("DP-9")));
++
++    assert!(!off_by_name(&mut f, 1));
++    assert!(!off_by_name(&mut f, 2));
++}
++
++#[test]
++fn its_own_power_on_draws_it_again() {
++    let mut f = two_screens();
++    act(&mut f, Action::PowerOffMonitor(String::from("headless-1")));
++    redraw(&mut f);
++    let first = frames(&mut f, 1);
++
++    act(&mut f, Action::PowerOnMonitor(String::from("headless-1")));
++    redraw(&mut f);
++
++    assert!(!off_by_name(&mut f, 1));
++    assert!(frames(&mut f, 1) > first);
++}
++
++#[test]
++fn another_screens_power_on_leaves_it_off() {
++    let mut f = two_screens();
++    act(&mut f, Action::PowerOffMonitor(String::from("headless-1")));
++
++    act(&mut f, Action::PowerOnMonitor(String::from("headless-2")));
++
++    assert!(off_by_name(&mut f, 1));
++}
++
++#[test]
++fn input_leaves_a_screen_off_by_name_while_the_other_is_lit() {
++    let mut f = two_screens();
++    act(&mut f, Action::PowerOffMonitor(String::from("headless-1")));
++
++    assert!(f.niri().is_any_output_lit());
++    f.niri_state().wake_monitors_for_input();
++
++    assert!(off_by_name(&mut f, 1));
++}
++
++#[test]
++fn input_after_power_off_monitors_leaves_a_screen_off_by_name() {
++    let mut f = two_screens();
++    act(&mut f, Action::PowerOffMonitor(String::from("headless-1")));
++    act(&mut f, Action::PowerOffMonitors);
++    assert!(!f.niri().is_any_output_lit());
++
++    f.niri_state().wake_monitors_for_input();
++
++    assert!(f.niri().monitors_active);
++    assert!(off_by_name(&mut f, 1));
++    assert!(!off_by_name(&mut f, 2));
++}
++
++#[test]
++fn input_wakes_every_screen_once_each_is_off_by_name() {
++    let mut f = two_screens();
++    act(&mut f, Action::PowerOffMonitor(String::from("headless-1")));
++    act(&mut f, Action::PowerOffMonitor(String::from("headless-2")));
++    assert!(!f.niri().is_any_output_lit());
++
++    f.niri_state().wake_monitors_for_input();
++
++    assert!(!off_by_name(&mut f, 1));
++    assert!(!off_by_name(&mut f, 2));
++    assert!(f.niri().is_any_output_lit());
++}
++
++#[test]
++fn power_on_monitors_powers_on_those_off_by_name() {
++    let mut f = two_screens();
++    act(&mut f, Action::PowerOffMonitor(String::from("headless-1")));
++    act(&mut f, Action::PowerOffMonitors);
++
++    act(&mut f, Action::PowerOnMonitors);
++
++    assert!(f.niri().monitors_active);
++    assert!(!off_by_name(&mut f, 1));
++}
++
++#[test]
++fn power_off_monitors_keeps_its_own_wake() {
++    let mut f = two_screens();
++
++    act(&mut f, Action::PowerOffMonitors);
++    assert!(!f.niri().monitors_active);
++    f.niri_state().wake_monitors_for_input();
++
++    assert!(f.niri().monitors_active);
++}
++
++#[test]
++fn a_reconnected_screen_is_on() {
++    let mut f = two_screens();
++    act(&mut f, Action::PowerOffMonitor(String::from("headless-2")));
++
++    let output = f.niri_output(2);
++    f.niri().remove_output(&output);
++    f.add_output(2, (1280, 720));
++
++    assert!(!off_by_name(&mut f, 2));
++}
++
++#[test]
++fn niri_msg_outputs_says_which_screen_is_off() {
++    let mut f = two_screens();
++    act(&mut f, Action::PowerOffMonitor(String::from("headless-1")));
++    redraw(&mut f);
++
++    let powered_off = |f: &mut Fixture, name: &str| {
++        let outputs = f.niri_state().backend.ipc_outputs();
++        let outputs = outputs.lock().unwrap();
++        outputs.values().find(|o| o.name == name).unwrap().powered_off
++    };
++    assert!(powered_off(&mut f, "headless-1"));
++    assert!(!powered_off(&mut f, "headless-2"));
++
++    act(&mut f, Action::PowerOnMonitor(String::from("headless-1")));
++    redraw(&mut f);
++    assert!(!powered_off(&mut f, "headless-1"));
++}
++
++#[test]
++fn an_older_niris_outputs_read_as_powered_on() {
++    let json = r#"{"name":"eDP-1","make":"Unknown","model":"Unknown","serial":null,
++        "physical_size":null,"modes":[],"current_mode":null,"is_custom_mode":false,
++        "vrr_supported":false,"vrr_enabled":false,"logical":null}"#;
++    let output: niri_ipc::Output = serde_json::from_str(json).unwrap();
++    assert!(!output.powered_off);
++}
