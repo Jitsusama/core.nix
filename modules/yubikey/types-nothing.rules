@@ -1,0 +1,8 @@
+# A YubiKey's keyboard, the interface its OTP types through, refused as it
+# arrives. Touched when nothing has asked for it, the key types a one-time
+# password and presses Enter, and at the disk prompt that is a wrong PIN
+# spent against the TPM's few tries. Its FIDO2 interface is HID too, but
+# not a keyboard (protocol 0), and the smart card is CCID, so both keep
+# working. The kernel unbinds the keyboard the moment it's refused.
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_interface", ATTRS{idVendor}=="1050", \
+  ATTR{bInterfaceClass}=="03", ATTR{bInterfaceProtocol}=="01", ATTR{authorized}="0"

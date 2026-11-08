@@ -116,6 +116,10 @@
     the shell's status file hears a status once its folder is made, after the shell starts and again
     after it's removed, and says nothing while it's gone
   '';
+  a-yubikey-touch-types-nothing = ''
+    a YubiKey's keyboard interface is refused in the running system and in the initrd, so a touch
+    types no one-time password at the disk prompt, and udev reads the rule without a complaint
+  '';
   agents-work-runs-without-real-time = ''
     the jobs sorter takes real time from work under jobs.service, jobs-work.slice and
     jobs-timed.slice, and from nothing that holds Joel's own terminal work
