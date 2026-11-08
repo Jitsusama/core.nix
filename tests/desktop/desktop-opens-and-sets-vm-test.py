@@ -1744,7 +1744,7 @@ def test_ethernet_in_network_holds_each_cable_its_lease_and_its_neighbour(
     assert times["Got"].endswith(" ago"), times
     assert times["Renews"].startswith("in 11 h"), times
     assert times["Ends"].startswith("in 23 h"), times
-    desktop.photograph("launcher-ethernet-lease")
+    desktop.shoot("launcher-ethernet-lease")
     held = len(desktop.showing()["held"])
     desktop.step_out()
     machine.send_chars("cc", delay=KEY_PACE)
