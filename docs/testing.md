@@ -100,7 +100,12 @@ main. `--here` runs it on this machine, as does a base whose merge base
 origin's main doesn't hold, a change to a tracked file not yet
 committed, since the far side checks a commit, or nowhere taking it
 while no lender runs. While one runs and nothing takes the run, it ends
-saying so, rather than evaluating here.
+saying so, rather than evaluating here. With none running and nowhere
+taking it, a run without `--here` runs here only while CPU pressure over
+a minute is under 15%, and otherwise fails saying to run it again; the
+net tries its round again two minutes later. On 2026-11-07, with no
+builder answering, the net's evaluations and a session's ran here at up
+to 6.3 GB each, and held CPU pressure near 70% with Joel at the machine.
 
 A check that passed at a commit isn't built again there, wherever it would
 go: each builder nix-offload lends starts with an empty store, so a check
