@@ -701,13 +701,14 @@ fn watch(
     if watched(&kinds, STOPWATCH) {
         records.push(daemon.held.stopwatch.json());
     }
+    let answer = json!({"id": id, "records": records});
     daemon.watches.push(Watch {
         connection,
-        id: id.clone(),
+        id,
         kinds,
         told: told.clone(),
     });
-    json!({"id": id, "records": records})
+    answer
 }
 
 /// The records asked for by key, the stopwatch's included, passing over a
