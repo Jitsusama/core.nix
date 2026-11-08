@@ -209,7 +209,7 @@ QtObject {
         for (const [id, wanted] of [
             ["model", "eero Pro 6 \u00b7 K010011"],
             ["serial", "SERIAL0003"],
-            ["state", "online \u00b7 heard 5 min ago"],
+            ["state", "online \u00b7 heard 6 min ago"],
             ["backhaul", "Ethernet \u00b7 5 of 5 bars"],
             ["devices", "2 \u00b7 0 Ethernet \u00b7 2 Wi-Fi"],
             ["2.4 GHz", "02:00:00:00:00:0c"],
@@ -218,12 +218,13 @@ QtObject {
             ["port 2", "1 Gb/s of 1 Gb/s \u00b7 0 B in \u00b7 54 kB out"],
             ["firmware", "v7.17.4-5 \u00b7 up to date"],
             ["up", "15 h 31 min \u00b7 since 07:22"],
-            ["cloud", "15 h 7 min"],
+            ["cloud", "15 h 6 min"],
             ["added", "13 Nov 2020"],
             ["address", "10.0.0.1"],
             ["ipv6", "fe80::7/64, fe80::8/64"],
             ["mac", "02:00:00:00:00:21"],
             ["light", "on \u00b7 100%"],
+            ["power", "USB"],
             ["traffic", "150 MB down \u00b7 10 MB up"]
         ])
             expect(`the gateway node's ${id}`, value(hall, id), wanted);
