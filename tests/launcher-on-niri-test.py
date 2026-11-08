@@ -1012,10 +1012,10 @@ MEANT_PART = "where the parts live"
 def test_a_meaning_lands_on_a_part_inside_a_place(shell: Shell) -> None:
     """The parts a place holds are told to the meaning daemon, and one meant is found itself.
 
-    The launcher tells the stand-in its spots, a screen's Scale or Disk's Free, as well as its
-    things (tests/desktop/stand-in-meaning.py), and a spot it says is meant is added below what
-    the letters found as typing would find it, saying where it lives and that it was found by
-    its meaning. That it stands where its place would have, and is meant once by its name, is
+    The launcher tells the stand-in the spots its devices hold, as a screen's Resolution, as well
+    as its things (tests/desktop/stand-in-meaning.py), and a spot it says is meant is added below
+    what the letters found as typing would find it, saying where it lives and that it was found
+    by its meaning. That it stands where its place would have, and is meant once by its name, is
     tests/meaning.qml's to prove; this is the wiring.
     """
     runtime = Path(os.environ["XDG_RUNTIME_DIR"])

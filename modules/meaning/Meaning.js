@@ -10,8 +10,11 @@
 // keys' starts: a window's title, a session, a meeting, a notice, a value
 // read. Each would be embedded again with every change for a row that is
 // found by its name anyway, so only what stays is told: programs, actions,
-// places, settings, collections, and the parts a place holds, its spots,
-// as a screen's Brightness, so a meaning lands on the part itself.
+// places, settings, collections, and the parts a collection's devices
+// hold, its spots, as a screen's Brightness, so a meaning lands on the
+// part itself. An answer's parts, as Lag's "niri took 279 ms to answer",
+// are named for what they read, which changes as it's read, so they
+// aren't.
 // Kept as a set of each key's start up to its first colon, since a walk
 // testing every start of every key cost the shell's thread 62 ms over a
 // thousand things in Qt's engine (2026-11-08).
@@ -27,6 +30,9 @@ const CHANGING = ["agent:", "agents:", "attachment:", "calendar:", "copies:", "c
 // How a spot's key starts (Launcher.qml's spotOf): a part a level inside a
 // thing a place holds, found from the root, its trail naming each step.
 const SPOT = "spot:";
+
+// How a collection's identity starts, on a spot's trail through one.
+const COLLECTION = "collection:";
 
 // What stands between the items of a note, as Reading.js joins them.
 const ITEMS_APART = " \u00b7 ";
@@ -48,7 +54,8 @@ const SPACES = /\s+/;
 function told(choice) {
     const key = String(choice?.key ?? "");
     return key !== "" && choice.byMeaning !== true
-        && CHANGING[key.slice(0, key.indexOf(":") + 1)] !== true;
+        && CHANGING[key.slice(0, key.indexOf(":") + 1)] !== true
+        && (!isSpot(choice) || choice.trail.some(id => String(id).startsWith(COLLECTION)));
 }
 
 // The text a thing's meaning is made from: its name, and the words it is

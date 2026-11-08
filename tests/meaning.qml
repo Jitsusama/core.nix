@@ -130,6 +130,10 @@ QtObject {
         expect("a spot is told by its name, after the choices",
             Meaning.things([screens], [bright]).map(told => told.text),
             ["Screens Displays Monitors", "Brightness"]);
+        const lag = spot(["category:computer", "answer:waits"],
+            "named:niri took 279 ms to answer", "niri took 279 ms to answer");
+        expect("an answer's parts, named for what they read, aren't told",
+            Meaning.things([], [lag, bright]).map(told => told.text), ["Brightness"]);
         expect("another spot is told as another",
             Meaning.telling([screens], [bright]).as === Meaning.telling([screens], []).as,
             false);
