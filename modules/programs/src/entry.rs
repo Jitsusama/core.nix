@@ -54,12 +54,12 @@ pub fn unescaped(value: &str) -> String {
             Some('n') => said.push('\n'),
             Some('t') => said.push('\t'),
             Some('r') => said.push('\r'),
-            Some('\\') => said.push('\\'),
+            // A backslash escaped, or one ending the value, is itself.
+            Some('\\') | None => said.push('\\'),
             Some(other) => {
                 said.push('\\');
                 said.push(other);
             }
-            None => said.push('\\'),
         }
     }
     said

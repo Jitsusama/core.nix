@@ -178,7 +178,10 @@ mod tests {
     #[test]
     fn a_folder_list_keeps_nine_newest_first() {
         let kitty = source(json!({"app": "kitty", "kind": "folder", "list": ["zoxide"]}));
-        let printed: String = (1..=12).map(|n| format!("/f{n}\n")).collect();
+        let printed = (1..=12)
+            .map(|n| format!("/f{n}"))
+            .collect::<Vec<_>>()
+            .join("\n");
         let record = recent(&kitty, &printed);
         assert_eq!(record["key"], "recent:kitty");
         assert_eq!(record["of"], "folder");
@@ -196,7 +199,11 @@ mod tests {
         assert_eq!(record["key"], "recent:shared");
         assert_eq!(
             record["paths"],
-            json!([{"program": "org.pwmt.zathura", "path": "/a\tb.pdf", "used_at_s": 1_793_000_000}])
+            json!([{
+                "program": "org.pwmt.zathura",
+                "path": "/a\tb.pdf",
+                "used_at_s": 1_793_000_000
+            }])
         );
     }
 

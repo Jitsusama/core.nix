@@ -473,10 +473,15 @@ fn names_programs(kinds: &[String], keys: Option<&[String]>) -> bool {
 }
 
 /// What a watch beginning reads after its answer: each list whose file
-/// changed since it was read or that's asked, and what each program it
-/// names has open.
+/// changed since it was read, and, for a watch naming its program's key,
+/// a list that's asked and what the program has open. A watch of a whole
+/// kind, as the launcher holds while it's open, runs neither, so Chrome's
+/// history is read only as Chrome is stepped into.
 fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>) {
     for at in sources_of(shared, Run::List, kinds, keys) {
+        if keys.is_none() && shared.sources[at].asked {
+            continue;
+        }
         let due = {
             let daemon = lock(&shared.daemon);
             due(shared, &daemon, at)
@@ -485,8 +490,10 @@ fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>) {
             start(shared, at, Run::List);
         }
     }
-    for at in sources_of(shared, Run::Opened, kinds, keys) {
-        start(shared, at, Run::Opened);
+    if keys.is_some() {
+        for at in sources_of(shared, Run::Opened, kinds, keys) {
+            start(shared, at, Run::Opened);
+        }
     }
 }
 

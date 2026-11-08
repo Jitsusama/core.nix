@@ -53,19 +53,39 @@ fn fixture(folder: &Path) -> PathBuf {
     );
     write(
         "far/mime/application/pdf.xml",
-        "<mime-type><comment xml:lang=\"fr\">Document</comment><comment>PDF document</comment></mime-type>",
+        concat!(
+            "<mime-type><comment xml:lang=\"fr\">Document</comment>",
+            "<comment>PDF document</comment></mime-type>"
+        ),
     );
     write("lists/folders", "/home/joel/src\n/home/joel\n");
     write("lists/playing", "412\t/films/a.mkv\n");
     let at = |path: &str| folder.join(path).to_string_lossy().into_owned();
+    // Each list says it was read, so a test counts its reads.
+    let folders = format!(
+        "echo read >> {} && cat {}",
+        at("lists/reads"),
+        at("lists/folders")
+    );
+    let sites = format!(
+        "echo read >> {} && printf 'https://a.example\\tA\\t1793000000\\n'",
+        at("lists/site-reads")
+    );
     let sources = json!([
         {
             "app": "kitty",
             "kind": "folder",
             "watch": at("lists/folders"),
-            "list": ["sh", "-c", format!("echo read >> {} && cat {}", at("lists/reads"), at("lists/folders"))],
+            "list": ["sh", "-c", folders],
         },
         {"app": "mpv", "kind": "file", "opened": ["cat", at("lists/playing")]},
+        {
+            "app": "browser",
+            "kind": "site",
+            "asked": true,
+            "dated": true,
+            "list": ["sh", "-c", sites],
+        },
     ]);
     let file = folder.join("sources.json");
     std::fs::write(&file, sources.to_string()).unwrap();
@@ -306,6 +326,23 @@ fn a_list_isnt_read_while_nobody_watches_it() {
         json!([{"path": "/b", "used_at_s": null}])
     );
     assert_eq!(running.reads(), before + 1);
+}
+
+#[test]
+fn an_asked_list_is_read_only_as_its_program_is_watched() {
+    let running = Running::new("asked");
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "watch", "kind": "recent"}));
+    client.changed("recent:kitty");
+    assert!(
+        !running.path("lists/site-reads").exists(),
+        "a browser's history read with every opening"
+    );
+    client.ask(&json!({"id": 2, "ask": "watch", "keys": ["recent:browser"]}));
+    assert_eq!(
+        client.changed("recent:browser")["sites"],
+        json!([{"address": "https://a.example", "title": "A", "used_at_s": 1_793_000_000}])
+    );
 }
 
 #[test]

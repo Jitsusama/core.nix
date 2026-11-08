@@ -131,7 +131,11 @@ mod tests {
 
     #[test]
     fn the_comment_without_a_language_is_the_one() {
-        let xml = r#"<mime-type type="application/pdf"><comment xml:lang="fr">Document PDF</comment><comment>PDF document</comment></mime-type>"#;
+        let xml = concat!(
+            r#"<mime-type type="application/pdf">"#,
+            r#"<comment xml:lang="fr">Document PDF</comment>"#,
+            "<comment>PDF document</comment></mime-type>"
+        );
         assert_eq!(comment_in(xml).as_deref(), Some("PDF document"));
     }
 }
