@@ -13,6 +13,7 @@
 const AND = " \u00b7 ";
 const PERCENT = 100;
 const SECOND = 1000;
+const MINUTE = 60;
 // warp-cli's reasons that say how the network is, "Network" then a word.
 const NETWORK = /^Network([A-Z].*)$/;
 // A protocol given with how it's carried: "MASQUE (HTTPS via UDP)".
@@ -132,6 +133,22 @@ function setBy(shaped, key, said) {
     return known === "" ? worded(said, "by", { who: spoken(who) }) : known;
 }
 
+// An entry of a list, a host or an address, named by itself, what's said
+// of it beside it, and copied as it's named.
+function entry(id, name, side) {
+    return { id, name: String(name), side: side ?? "", note: "", copy: String(name), warns: false };
+}
+
+// A list warp gave, or none.
+function listOf(value) {
+    return Array.isArray(value) ? value : [];
+}
+
+// Seconds as the whole minutes they reach, so a minute begun counts.
+function minutesOf(seconds, settings, said) {
+    return worded(said, "minutes", { figure: count(Math.ceil(seconds / MINUTE), settings) });
+}
+
 // The split tunnel's lists by how many each holds, one that's empty
 // giving way: "2 hosts · 2 networks".
 function listed(split, settings, said) {
@@ -145,7 +162,7 @@ function listed(split, settings, said) {
 // Split Tunnel, the three that decide what reaches the tunnel, then the
 // rest. The part holding them says the mode, and whether it's always on
 // and splits, so the three are read without a step in.
-function settingsPart(shaped, settings, said) {
+function settingsPart(shaped, override, settings, said) {
     const parts = [];
     // A setting by its id, its key in the record, and what it shows:
     // { side, note, copy }, who set it said after its note.
@@ -163,6 +180,12 @@ function settingsPart(shaped, settings, said) {
     if (split && text(split.mode)) {
         add("split-tunnel", "split_tunnel", Object.assign(asGiven(split.mode),
             { note: joined(listed(split, settings, said)) }));
+        // Each host and network it lists, a step in, with what it's for.
+        const entries = listOf(split.host_list).map((one) =>
+            entry("settings:split-tunnel:host", one.value, text(one.description) ? one.description : ""))
+            .concat(listOf(split.ip_list).map((one) => entry("settings:split-tunnel:network",
+                one.value, text(one.description) ? one.description : "")));
+        holding(parts[parts.length - 1], entries);
     }
     if (typeof shaped.switch_locked === "boolean") {
         add("switch-locked", "switch_locked", { side: onOff(shaped.switch_locked, said) });
@@ -183,12 +206,69 @@ function settingsPart(shaped, settings, said) {
     if (text(shaped.post_quantum)) {
         add("post-quantum", "post_quantum", asGiven(shaped.post_quantum));
     }
+    parts.push(...present(lookupParts(shaped, settings, said)),
+        ...present(allowedParts(shaped, override, settings, said)));
     const mode = text(shaped.mode) ? shaped.mode : "";
     const splits = split && split.hosts + split.ips > 0;
     return holding(part("settings", spoken(mode), joined([
         shaped.always_on === true ? worded(said, "alwaysOn") : "",
         splits ? worded(said, "split") : "",
     ]), mode), parts);
+}
+
+// Where names are looked up: the DoH server, its addresses a step in, and
+// the domains looked up on the network's own servers instead, each a
+// step in with the servers it's asked of; then how a sign-in page is met
+// and whether the way's largest packet is found.
+function lookupParts(shaped, settings, said) {
+    const resolvers = listOf(shaped.doh_resolver_ips);
+    const domains = listOf(shaped.fallback_domains);
+    const many = (value, one, several) => worded(said, value === 1 ? one : several,
+        { count: count(value, settings) });
+    const portal = shaped.captive_portal ?? {};
+    const opens = portal.firewall_off_s;
+    return [
+        text(shaped.doh_hostname)
+            ? Object.assign(part("settings:doh", shaped.doh_hostname,
+                resolvers.length > 0 ? many(resolvers.length, "address", "addresses") : ""),
+            resolvers.length > 0 ? { parts: resolvers.map((address) =>
+                entry("settings:doh:address", address)) } : {})
+            : null,
+        holding(part("settings:local-domains", many(domains.length, "domain", "domains"), "",
+            String(domains.length)), domains.map((one) => entry("settings:local-domains:domain",
+            one.domain, joined(listOf(one.dns_servers))))),
+        typeof portal.detection === "boolean"
+            ? part("settings:sign-in-pages", onOff(portal.detection, said),
+                portal.detection && opens > 0
+                    ? worded(said, "firewallOpens", { minutes: minutesOf(opens, settings, said) })
+                    : "")
+            : null,
+        typeof shaped.enable_pmtud === "boolean"
+            ? part("settings:path-mtu", onOff(shaped.enable_pmtud, said)) : null,
+    ];
+}
+
+// What the organisation lets this machine do: switch its mode, leave it,
+// and ask for help where; how large a local network an override reaches,
+// and the override itself, with how long it has left while it's in force.
+function allowedParts(shaped, override, settings, said) {
+    const prefix = shaped.lan_subnet_size;
+    const left = override?.ends_in_secs;
+    return [
+        typeof shaped.allow_mode_switch === "boolean"
+            ? part("settings:mode-switch", onOff(shaped.allow_mode_switch, said)) : null,
+        typeof shaped.allowed_to_leave === "boolean"
+            ? part("settings:may-leave", onOff(shaped.allowed_to_leave, said)) : null,
+        text(shaped.support_url) ? part("settings:support", shaped.support_url) : null,
+        Number.isFinite(prefix)
+            ? part("settings:local-network", worded(said, "prefix", { size: prefix }), "",
+                String(prefix))
+            : null,
+        typeof override?.set === "boolean"
+            ? part("settings:override", onOff(override.set, said), override.set && left > 0
+                ? worded(said, "left", { minutes: minutesOf(left, settings, said) }) : "")
+            : null,
+    ];
 }
 
 // The tunnel's TLS, each figure only where warp gave it, the part holding
@@ -341,9 +421,16 @@ function told(record, settings, said) {
     // A reason that isn't the network's health says why it stands so.
     const why = !judged && status.reason ? spoken(status.reason) : "";
     const parts = [part("state", state, why)];
+    // An organisation disconnecting every device at once is said first.
+    const emergency = record.settings?.emergency_disconnect === true
+        ? Object.assign(part("emergency", worded(said, "on"), worded(said, "emergency")),
+            { warns: true })
+        : null;
     parts.push(...present([
+        emergency,
         judged,
-        record.settings ? settingsPart(record.settings, settings, said) : null,
+        record.settings
+            ? settingsPart(record.settings, record.override ?? null, settings, said) : null,
         ...(record.tunnel ? tunnelParts(record.tunnel, settings, said) : []),
         record.dns ? dnsPart(record.dns, settings, said) : null,
     ]));

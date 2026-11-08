@@ -50,10 +50,7 @@ needs root.
 ## What Comes Next
 
 - The drawer: sparks of latency and loss, kept by the shell while it's
-  shown as Traffic's are, and the figures the record holds for it that no
-  part says yet: the split tunnel's hosts and networks, where names are
-  looked up, sign-in pages, what the organisation allows, an emergency
-  disconnect and an administrator's override.
+  shown as Traffic's are.
 - `:connect` and `:disconnect` in the launcher, running `warp connect`
   and `warp disconnect`.
 

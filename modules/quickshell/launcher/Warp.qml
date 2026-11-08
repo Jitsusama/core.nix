@@ -107,11 +107,13 @@ Provider {
 
     // A part as its row: a figure Return copies, or one holding parts of
     // its own, as the Settings, TLS and DNS do, which wears WARP's glyph
-    // dimmed and steps in to them.
+    // dimmed and steps in to them. An entry of a list, a split tunnel's
+    // host or a DoH server's address, is named by itself.
     function partRow(part) {
+        const entry = part.name !== undefined;
         const fields = {
-            key: `warp:${part.id}`,
-            name: Words.name(`warp:${part.id}`),
+            key: entry ? `warp:${part.id}:${part.name}` : `warp:${part.id}`,
+            name: entry ? part.name : Words.name(`warp:${part.id}`),
             side: part.side,
             copy: part.copy,
             note: part.note,

@@ -1896,6 +1896,14 @@
         "hosts": "{count} hosts",
         "network": "{count} network",
         "networks": "{count} networks",
+        "address": "{count} address",
+        "addresses": "{count} addresses",
+        "domain": "{count} domain",
+        "domains": "{count} domains",
+        "firewallOpens": "opens its firewall for {minutes}",
+        "left": "{minutes} left",
+        "prefix": "/{size}",
+        "emergency": "every device disconnected",
         "answered": "{success} of {total} answered",
         "proxyOff": "proxy off",
         "by": "set by {who}",
@@ -1966,6 +1974,57 @@
       "id": "warp:settings:post-quantum",
       "in": "warp:settings",
       "name": "Post-Quantum"
+    },
+    {
+      "id": "warp:settings:doh",
+      "in": "warp:settings",
+      "name": "DoH Server"
+    },
+    {
+      "id": "warp:settings:local-domains",
+      "in": "warp:settings",
+      "name": "Local Domains"
+    },
+    {
+      "id": "warp:settings:sign-in-pages",
+      "in": "warp:settings",
+      "name": "Sign-In Pages",
+      "term": "Network/sign-in page"
+    },
+    {
+      "id": "warp:settings:path-mtu",
+      "in": "warp:settings",
+      "name": "Path MTU Discovery"
+    },
+    {
+      "id": "warp:settings:mode-switch",
+      "in": "warp:settings",
+      "name": "Mode Switch Allowed"
+    },
+    {
+      "id": "warp:settings:may-leave",
+      "in": "warp:settings",
+      "name": "Leaving Allowed"
+    },
+    {
+      "id": "warp:settings:support",
+      "in": "warp:settings",
+      "name": "Support"
+    },
+    {
+      "id": "warp:settings:local-network",
+      "in": "warp:settings",
+      "name": "Local Network Reach"
+    },
+    {
+      "id": "warp:settings:override",
+      "in": "warp:settings",
+      "name": "Override"
+    },
+    {
+      "id": "warp:emergency",
+      "in": "warp",
+      "name": "Emergency Disconnect"
     },
     {
       "id": "warp:tunnel",

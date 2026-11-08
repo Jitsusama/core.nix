@@ -2300,6 +2300,8 @@ QtObject {
         const warpSaid = vocabulary.find(thing => thing.id === "warp").said;
         const warpTold = record => Warp.told(record, {}, warpSaid);
         const figure = (id, side, note, copy) => ({ id, side, note, copy, warns: false });
+        // An entry of a list, a host or an address, named by itself.
+        const entry = (id, name, side) => ({ id, name, side, note: "", copy: name, warns: false });
         const linked = warpTold(warp);
         machine("WARP connected, as its row says it", linked && [linked.headline, linked.warns],
             ["connected \u00b7 127 ms", false]);
@@ -2311,14 +2313,37 @@ QtObject {
                 figure("settings:mode", "warp+doh",
                     "the tunnel with DNS over HTTPS \u00b7 set by local policy", "warp+doh"),
                 figure("settings:always-on", "on", "the default", "on"),
-                figure("settings:split-tunnel", "include",
-                    "2 hosts \u00b7 2 networks \u00b7 set by network policy", "include"),
+                Object.assign(figure("settings:split-tunnel", "include",
+                    "2 hosts \u00b7 2 networks \u00b7 set by network policy", "include"), { parts: [
+                    entry("settings:split-tunnel:host", "intranet.example.com", "example"),
+                    entry("settings:split-tunnel:host", "*.corp.example.com", "example"),
+                    entry("settings:split-tunnel:network", "10.0.0.0/8", "lan"),
+                    entry("settings:split-tunnel:network", "2001:db8:1::/48", "lan")
+                ] }),
                 figure("settings:switch-locked", "off", "set by an override", "off"),
                 figure("settings:auto-connect", "2 min", "set by local policy", "2"),
                 figure("settings:organisation", "example", "set by local policy", "example"),
                 figure("settings:tunnel-protocol", "masque", "set by network policy", "masque"),
                 figure("settings:post-quantum", "enabled with downgrades",
-                    "set by network policy", "enabled_with_downgrades")
+                    "set by network policy", "enabled_with_downgrades"),
+                Object.assign(figure("settings:doh", "0000.doh.example.com", "4 addresses",
+                    "0000.doh.example.com"), { parts: [
+                    entry("settings:doh:address", "192.0.2.53", ""),
+                    entry("settings:doh:address", "192.0.2.54", ""),
+                    entry("settings:doh:address", "2001:db8::53", ""),
+                    entry("settings:doh:address", "2001:db8::54", "")
+                ] }),
+                Object.assign(figure("settings:local-domains", "3 domains", "", "3"), { parts: [
+                    entry("settings:local-domains:domain", "home.arpa", ""),
+                    entry("settings:local-domains:domain", "local", ""),
+                    entry("settings:local-domains:domain", "example.com", "192.0.2.1")
+                ] }),
+                figure("settings:sign-in-pages", "on", "opens its firewall for 5 min", "on"),
+                figure("settings:path-mtu", "on", "", "on"),
+                figure("settings:mode-switch", "on", "", "on"),
+                figure("settings:may-leave", "off", "", "off"),
+                figure("settings:local-network", "/24", "", "24"),
+                figure("settings:override", "off", "", "off")
             ] }),
             figure("latency", "127 ms", "", "127"),
             figure("loss", "1.24%", "", "0.012355098"),
@@ -2351,8 +2376,9 @@ QtObject {
         const nameless = [];
         const partsNamed = (parts, within) => {
             for (const part of parts ?? []) {
+                // An entry of a list is named by itself, as a host is.
                 const word = vocabulary.find(thing => thing.id === `warp:${part.id}`);
-                if (!word || !word.name || word.in !== within)
+                if (part.name === undefined && (!word || !word.name || word.in !== within))
                     nameless.push(part.id);
                 partsNamed(part.parts, `warp:${part.id}`);
             }
@@ -2419,7 +2445,8 @@ QtObject {
         ]);
         const policed = warpTold(Object.assign({}, warp, { settings: { mode: "tunnel_only",
             always_on: false, split_tunnel: { mode: "exclude", hosts: 1, ips: 0 },
-            set_by: { mode: "someone_else" } }, dns: { proxy_enabled: false, average_ms: null,
+            set_by: { mode: "someone_else" } }, override: null,
+            dns: { proxy_enabled: false, average_ms: null,
             total: 0, success: 0, no_records_found: 0, timed_out: 0, other_error: 0 } }));
         machine("settings warp gave some of, each said as it's set",
             policed && policed.parts.find(part => part.id === "settings"),
@@ -2430,6 +2457,18 @@ QtObject {
                     figure("settings:always-on", "off", "", "off"),
                     figure("settings:split-tunnel", "exclude", "1 host", "exclude")
                 ] }));
+        // An organisation disconnecting every device says so right after
+        // the state, warning; an override in force says how long it has.
+        const emergency = warpTold(Object.assign({}, warp, {
+            settings: Object.assign({}, warp.settings, { emergency_disconnect: true }),
+            override: { set: true, ends_in_secs: 700 } }));
+        machine("an emergency disconnect said after the state, warning",
+            emergency && emergency.parts[1], Object.assign(figure("emergency", "on",
+                "every device disconnected", "on"), { warns: true }));
+        machine("an override in force, with the minutes it has left",
+            emergency && emergency.parts.find(part => part.id === "settings").parts
+                .find(part => part.id === "settings:override"),
+            figure("settings:override", "on", "12 min left", "on"));
         machine("a DNS proxy that's off says so in its place",
             policed && (policed.parts.find(part => part.id === "dns") ?? {}).side, "proxy off");
         machine("WARP's service not answering", Warp.failed({ error: "not-answering",
