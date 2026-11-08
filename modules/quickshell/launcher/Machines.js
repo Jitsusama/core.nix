@@ -7,6 +7,7 @@
 // 2026-11-06: "treated way more like our hardware integrations"). The
 // design is VKCF3Z's ruling of 2026-11-07 (KP0L6A's design-machines.md).
 .pragma library
+.import "Order.js" as Order
 
 const PERCENT = 100;
 const SHORT_COMMIT = 7;
@@ -137,14 +138,15 @@ function startNote(placed, record, place) {
 }
 
 // The machines in the order they're listed: this one first, then those
-// reached, then those out of reach, each by name. A machine two realms
-// both list is one machine, kept once with the realm that said it last.
+// reached, then those out of reach, each by name, as Order.js orders live
+// states. A machine two realms both list is one machine, kept once with
+// the realm that said it last.
 function ordered(records) {
-    const byName = {};
+    const latest = {};
     for (const record of records) {
-        const kept = byName[record.name];
+        const kept = latest[record.name];
         if (!kept || Date.parse(record.measured_at) > Date.parse(kept.measured_at)) {
-            byName[record.name] = Object.assign({}, record, { here: record.here === true
+            latest[record.name] = Object.assign({}, record, { here: record.here === true
                 || kept?.here === true });
         }
     }
@@ -154,8 +156,7 @@ function ordered(records) {
         }
         return reached(record) ? 1 : 2;
     };
-    return Object.values(byName)
-        .sort((a, b) => rank(a) - rank(b) || String(a.name).localeCompare(String(b.name)));
+    return Object.values(latest).sort(Order.live({ stands: rank, name: record => record.name }));
 }
 
 // A fact of the drawer, or none where its value isn't said.

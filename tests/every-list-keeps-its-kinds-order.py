@@ -23,6 +23,7 @@ PLACES = {
     "Applications.qml": "returned",
     "Displays.qml": "choices",
     "Machine.qml": "amounts",
+    "Machines.js": "live",
     "Nearby.js": "live",
     "Networks.qml": "live",
     "Orchestrators.qml": "stream",

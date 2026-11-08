@@ -1187,6 +1187,7 @@ onLinux {
     pkgs.runCommandLocal "the-launcher-says-every-machine-of-the-realm" { } ''
       cp ${../../tests/machines.qml} machines.qml
       cp ${./launcher/Machines.js} Machines.js
+      cp ${./launcher/Order.js} Order.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
