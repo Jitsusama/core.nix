@@ -156,7 +156,8 @@ function ordered(records) {
         }
         return reached(record) ? 1 : 2;
     };
-    return Object.values(latest).sort(Order.live({ stands: rank, name: record => record.name }));
+    return Order.sorted(Object.values(latest),
+        Order.live({ stands: rank, name: record => record.name }));
 }
 
 // A fact of the drawer, or none where its value isn't said.
