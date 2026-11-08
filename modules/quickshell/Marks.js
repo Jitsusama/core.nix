@@ -39,13 +39,13 @@ function sized(gap) {
     return { cell: gap, ink, room: (gap - ink) / FILLS };
 }
 
-// Whether the launcher has What's on open, from { open, collection }: the
+// Whether the launcher has Now open, from { open, collection }: the
 // name of the collection it holds first, empty for none.
 function asked(launcher) {
     return launcher.open && launcher.collection === "on";
 }
 
-// The mark What's on points at, from the launcher's `keys`: the key of each
+// The mark Now points at, from the launcher's `keys`: the key of each
 // row it holds and of the one selected, in order. A thing's row is
 // `on:<mark>` and its actions' `verb:on:<mark>:<name>`, so the last key
 // that names a thing names the one the keys are on. Empty for none.

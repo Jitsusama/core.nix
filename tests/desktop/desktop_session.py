@@ -129,7 +129,7 @@ PI_PRESENCE = "~/.local/state/pi/agentic-harness.pi/mesh-workflow/presence"
 PI_WINDOW = "\u03c0 - TESTQA A quest of\u2026 - my-tree"
 
 # The margin is there only while something's on, each thing its glyph
-# alone, and what each is, in words, is the launcher's What's on: Super+O
+# alone, and what each is, in words, is the launcher's Now: Super+O
 # or a click on a glyph opens it, Return does a thing's first action and
 # Ctrl+] goes into the rest.
 MARGIN = "niri msg layers | grep -q margin"
@@ -177,7 +177,7 @@ def margin_sets(*wanted: tuple[str, str, str]) -> Callable[[str], bool]:
 def margin_points(pointed: str) -> Callable[[str], bool]:
     """Test the margin's cells stay the gap's size, and only the pointed mark wears the accent.
 
-    While What's on is open, the mark of the row the keys are on wears the accent, and
+    While Now is open, the mark of the row the keys are on wears the accent, and
     nothing grows. An empty pointed means none does.
     """
 
@@ -750,7 +750,7 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         """Move the launcher's cursor to the row before, by the key its mode takes."""
         self.machine.send_key(self.row_keys()[1])
 
-    def whats_on(self, selected: str) -> None:
+    def in_now(self, selected: str) -> None:
         """Wait until the launcher holds Now and the keys, with this thing's row selected."""
         self.launcher_until(
             lambda shown: (

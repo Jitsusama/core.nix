@@ -26,7 +26,7 @@
 // same on every side and stays in the cell, off the windows below.
 //
 // What each is, in words, and what can be done about it, is the launcher's
-// What's on (launcher/WhatsOn.qml): Super+O opens it, and clicking a mark
+// Now (launcher/Now.qml): Super+O opens it, and clicking a mark
 // opens it on that mark's row. While it's open on a screen, the mark of
 // the row the keys are on wears the accent on that screen, as where the
 // keys are always does, so the eye joins the row to its mark straight up
@@ -139,7 +139,7 @@ Scope {
         onTriggered: root.settle()
     }
 
-    // Opens What's on with this thing's row selected.
+    // Opens Now with this thing's row selected.
     function show(thing) {
         root.launcher.into("on");
         const row = root.launcher.matches.findIndex(row => row.key === `on:${thing.entry.mark}`);
@@ -157,7 +157,7 @@ Scope {
 
             required property ShellScreen modelData
 
-            // Pointed only on the screen What's on is open on, since that's
+            // Pointed only on the screen Now is open on, since that's
             // where the eye goes between the two.
             readonly property string pointed: root.asked
                 && modelData.name === (root.launcher.screenHere?.name ?? "") ? root.pointed : ""

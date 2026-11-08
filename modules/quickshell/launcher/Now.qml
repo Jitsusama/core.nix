@@ -1,10 +1,10 @@
-// What's on, a collection, and Super+O's: a row for each glyph in the
+// Now, a collection, and Super+O's: a row for each glyph in the
 // margin (Margin.qml), saying in words what the glyph only pictures. Each
 // row is the glyph in the colour the margin gives it, the piece's name, and
 // how it stands at the right, with what more there is to know in the footer
 // while it's picked. They're listed in Now's groups, what wants Joel first,
 // then what reaches other people, what's playing and the modes left on, and
-// by name within each (Now.js), so what can need him leads and one keeps
+// by name within each (NowGroups.js), so what can need him leads and one keeps
 // its place while its group stands. Now's top never changes (docs/design.md,
 // home is a few places): what waits on Joel first, then Now's own rows, the
 // time, the date, the location, the weather and the next meeting, and only
@@ -21,7 +21,7 @@ import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "../Marks.js" as Marks
-import "Now.js" as Now
+import "NowGroups.js" as Groups
 import "Moment.js" as Moment
 
 Provider {
@@ -52,7 +52,7 @@ Provider {
         // What waits on Joel, then this moment's rows, which are always
         // there, so the top never moves; then the rest by group, what
         // wants Joel first, and by name within each, so a row keeps its
-        // place while its group stands (Now.js).
+        // place while its group stands (NowGroups.js).
         const rows = lit.map(fact => ({
             group: fact.piece.group,
             name: fact.piece.title,
@@ -69,7 +69,7 @@ Provider {
         const landed = source("agents")?.landed ?? null;
         if (landed)
             rows.push({ group: "wants", name: landed.name, row: landed });
-        return [waiting].concat(moment, Now.ordered(rows).map(each => each.row));
+        return [waiting].concat(moment, Groups.ordered(rows).map(each => each.row));
     }
     onAllChanged: changed()
 

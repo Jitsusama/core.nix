@@ -128,11 +128,11 @@ QtObject {
         expect("and a gap of another size the same", Marks.sized(16),
             { cell: 16, ink: 8, room: 4 });
 
-        // What's on points at the row the keys are on, or at the thing
+        // Now points at the row the keys are on, or at the thing
         // stepped into, as its actions are; anything else points nowhere.
         const launcher = (open, collection, keys) => ({ open, collection, keys });
-        expect("shut, What's on isn't asked", Marks.asked(launcher(false, "on", [])), false);
-        expect("open on What's on, it is", Marks.asked(launcher(true, "on", [])), true);
+        expect("shut, Now isn't asked", Marks.asked(launcher(false, "on", [])), false);
+        expect("open on Now, it is", Marks.asked(launcher(true, "on", [])), true);
         expect("open on another collection, it isn't",
             Marks.asked(launcher(true, "notices", ["on:camera"])), false);
         expect("the row the keys are on",

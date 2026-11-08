@@ -56,7 +56,7 @@ def now_down_to(desktop: Desktop, name: str) -> None:
     its first, so the same keys land in the same place each time.
     """
     desktop.machine.send_key("meta_l-o")
-    desktop.whats_on("Needs You")
+    desktop.in_now("Needs You")
     desktop.down_to(name)
 
 
@@ -285,10 +285,10 @@ def test_tokens_running_out_are_one_card_that_counts_down_and_rises_as_they_near
     desktop.as_account(f"rm -f {status}")
 
 
-def test_keep_awake_shows_in_the_margin_and_whats_on_says_it_and_lets_it_sleep(
+def test_keep_awake_shows_in_the_margin_and_now_says_it_and_lets_it_sleep(
     desktop: Desktop,
 ) -> None:
-    """Keep Awake shows in the margin, and What's on says it and lets it sleep."""
+    """Keep Awake shows in the margin, and Now says it and lets it sleep."""
     machine = desktop.machine
     # Keep Awake was just let go, and the margin leaves as it fades.
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
@@ -304,7 +304,7 @@ def test_keep_awake_shows_in_the_margin_and_whats_on_says_it_and_lets_it_sleep(
     with desktop.told("drawn margin"):
         desktop.as_account("systemctl --user start keep-awake.service")
     desktop.reported("sets margin ", margin_sets(("awake", "leftOn", "muted")), since)
-    # Super+O opens What's on, on Needs You, since a mode left on is
+    # Super+O opens Now, on Needs You, since a mode left on is
     # never what it opens on; on its row, the mark its keys are on wears
     # the accent, nothing grown; closed, it's as it was.
     glyph = changed_at_the_top(empty, desktop.settled_screen("margin-awake"))
@@ -313,7 +313,7 @@ def test_keep_awake_shows_in_the_margin_and_whats_on_says_it_and_lets_it_sleep(
     desktop.reported("sets margin ", margin_points("awake"), since)
     # Settled, as Joel sees it.
     desktop.held_still()
-    desktop.shoot("launcher-whats-on")
+    desktop.shoot("launcher-now")
     since = desktop.mark()
     desktop.close_launcher()
     desktop.reported("sets margin ", margin_points(""), since)
@@ -333,7 +333,7 @@ def test_keep_awake_shows_in_the_margin_and_whats_on_says_it_and_lets_it_sleep(
     # A click there opens it the same, and Return lets the machine sleep.
     desktop.click(*glyph)
     try:
-        desktop.whats_on("Keep Awake")
+        desktop.in_now("Keep Awake")
     except AssertionError:
         # Where the click went, beside where the shell's surfaces are.
         print(f"clicked at {glyph} of the screen")
@@ -388,8 +388,8 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     stays_showing_it_gone(desktop, "Do Not Disturb")
 
 
-def test_a_missed_notice_shows_its_glyph_and_whats_on_shows_the_notices(desktop: Desktop) -> None:
-    """A missed notice shows its glyph, What's on shows the notices, and u undoes dd there."""
+def test_a_missed_notice_shows_its_glyph_and_now_shows_the_notices(desktop: Desktop) -> None:
+    """A missed notice shows its glyph, Now shows the notices, and u undoes dd there."""
     machine = desktop.machine
     # On screen it isn't waiting yet; once it goes by itself, it is, and
     # it wants Joel, so it's strong.
@@ -402,7 +402,7 @@ def test_a_missed_notice_shows_its_glyph_and_whats_on_shows_the_notices(desktop:
     # Now opens on Needs You, its first row, however much the notices
     # want Joel; they're reached by moving down to them.
     machine.send_key("meta_l-o")
-    desktop.whats_on("Needs You")
+    desktop.in_now("Needs You")
     desktop.down_to("Notices")
     # The time and the date are among Now's own rows, at its top before
     # what comes and goes, the notices among them, each its own answer as

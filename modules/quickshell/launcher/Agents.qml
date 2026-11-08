@@ -612,7 +612,7 @@ Provider {
     // off, and those other machines carried here, offered whatever the
     // boot until each runs here (VKCF3Z's design, [fce929da], [17db838c]).
     // One row after the sessions running while any are left, which Now
-    // shows among what else wants Joel (WhatsOn.qml). Return steps in with
+    // shows among what else wants Joel (Now.qml). Return steps in with
     // Reopen Them All first, so Return twice brings every one back, each in
     // its own window and folder; then each one, as a closed session,
     // reopening just it, the last boot's and then the carried, newest

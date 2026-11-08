@@ -40,7 +40,7 @@
 #
 # The shell is where a call shows (docs/design.md, Calls): a piece in the
 # margin while Joel's in one or one rings, with leaving, sharing and muting
-# in What's on, the launcher's rows to open his room, join a call whose link
+# in Now, the launcher's rows to open his room, join a call whose link
 # was copied, and leave, Tuple's own acts in Programs › Tuple, and notices
 # as people come and go, which Tuple on Linux doesn't give yet. Tuple.qml
 # holds them all through tuple-call. Tuple's contacts are People's, one

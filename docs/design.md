@@ -2761,7 +2761,7 @@ What each studio round settled, newest first, with the reason.
   somehow"). The marks wore the lock screen's text shadows, one set off
   down and right, which is lopsided at six pixels, and one sixteen pixels
   soft, which reached past the twelve pixel gap onto the window. Grown to
-  twice the gap in What's on, they crossed the windows' borders wherever
+  twice the gap in Now, they crossed the windows' borders wherever
   they sat, as anything past the gap must. So each mark has a shade of
   its own, a pixel round it, and nothing grows: the accent alone points,
   since Joel is already looking once he's asked. Research on placement
@@ -2802,7 +2802,7 @@ What each studio round settled, newest first, with the reason.
   stands the same height, inside the gap the windows already leave, since
   a taller gap would move every window. The third round, "it seems nice i
   think", is what's built: glyphs alone, level, coloured only by how much
-  each asks, with their words in the launcher's What's on, a surface Joel
+  each asks, with their words in the launcher's Now, a surface Joel
   already knows. A sixteen-pixel gap read better in the mock but cost
   every window four pixels, so twelve stays.
 
