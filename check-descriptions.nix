@@ -2582,7 +2582,7 @@
     it makes the machine's partition in the free space and names Asahi's boot partition for it,
     every other partition the same byte for byte and every other table entry unchanged, Asahi's
     files kept beside systemd-boot; the machine boots by a YubiKey's PIN, its guide with nothing
-    to seal, then by the recovery words with no key plugged in
+    to seal, and its disk opens by the recovery words alone
   '';
   vm-guide-installs = ''
     the guide, driven by its keys, holding the machine awake and drawing over what writes on its

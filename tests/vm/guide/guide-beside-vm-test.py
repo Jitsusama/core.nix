@@ -304,12 +304,10 @@ def test_the_installed_guide_has_nothing_to_seal(first_boot: QemuMachine) -> Non
 
 
 def test_the_recovery_words_open_the_disk(first_boot: QemuMachine, recovery_key: str) -> None:
-    """With the Nano out, the disk opens with the words the person keeps."""
-    machine = first_boot
-    machine.send_monitor_command("device_del key")
-    machine.wait_until_succeeds('test -z "$(fido2-token -L)"', timeout=PLUGGED)
-    machine.shutdown()
-    machine.start(allow_reboot=True)
-    unlock(machine, recovery_key)
-    machine.connect()
-    machine.wait_for_unit("multi-user.target")
+    """Without the Nano, the disk opens with the words the person keeps."""
+    # Tested on the running machine, since QEMU plugs the Nano back in at
+    # every start, and with the tokens left out, so only the words count.
+    first_boot.succeed(
+        f"echo '{recovery_key}' | cryptsetup open --test-passphrase"
+        " --disable-external-tokens /dev/disk/by-partlabel/system"
+    )
