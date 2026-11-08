@@ -16,7 +16,7 @@ const PERMISSIONS: &str =
 
 /// GitHub's tokens last an hour; one is handed out for fifty minutes of it,
 /// so none reaches a command with less than ten left.
-const KEEP: Duration = Duration::from_secs(50 * 60);
+const KEEP: Duration = Duration::from_mins(50);
 
 /// An installation token and the moment GitHub says it lapses.
 #[derive(Clone, Debug, PartialEq, Eq)]
