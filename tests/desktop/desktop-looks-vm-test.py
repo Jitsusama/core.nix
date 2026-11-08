@@ -1150,7 +1150,7 @@ def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
 def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """A time server's plate has its facts from the beat under the title, on the pitch."""
+    """A time server's plate, and a device's, has its facts from the beat under the title."""
     # chrony keeps the clock by the VM's own time server (tests/desktop.nix), whose plate
     # holds every figure chronyd has of it.
     desktop.machine.wait_until_succeeds(
@@ -1287,6 +1287,42 @@ def test_the_home_network_lays_out_its_place_and_drawers_at_each_scale(
         desktop.down_to("unknown computer 1")
         home_network_plate(desktop, scale, "unknown computer 1")
         desktop.shoot(f"launcher-home-network-device-at-{at}")
+        desktop.close_launcher()
+        devices_plates_lie_on_the_lines(desktop, scale)
+
+
+def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
+    """Hold the speakers', the microphone's and the screen's plates to the lines, as a server's.
+
+    Each says which way it goes or what it is over its name, then its parts, what moves most
+    first, laid one way, every name whole (VKCF3Z, 2026-11-07). The stand-in backlight lights
+    the one screen, so its Brightness leads.
+    """
+    for collection, typed, kind, first in [
+        ("sound", "speakers", "output", "Volume"),
+        ("sound", "microphone", "input", "Gain"),
+        ("displays", "", "monitor", "Brightness"),
+    ]:
+        desktop.launcher_until(lambda shown: not shown["open"])
+        desktop.as_account(f"qs ipc call launcher collection {collection}")
+        desktop.launcher_ready()
+        if typed:
+            desktop.type_in(typed, selecting=typed)
+
+        def plated(shown: Json, first: str = first) -> bool:  # As launcher_until calls it.
+            """Say whether the drawer is out, holding this plate's first fact."""
+            return shown["drawer"]["out"] is True and first in shown["drawer"]["facts"]
+
+        desktop.launcher_until(plated)
+        drawer = plate_shown(desktop, scale)
+        assert str(drawer["eyebrow"]).lower().endswith(kind), f"at {scale}: {drawer}"
+        assert drawer["facts"][0] == first, f"at {scale} {typed or kind} leads wrong: {drawer}"
+        assert things_apart(drawer["lines"]["facts"], drawer["factsWrapped"] > 0), (
+            f"at {scale} {typed or kind}'s facts are off the pitch: {drawer}"
+        )
+        assert drawer["labelsWhole"], f"at {scale} a fact's name is broken: {drawer}"
+        assert drawer["laidOneWay"], f"at {scale} its facts mix beside and under: {drawer}"
+        desktop.shoot(f"launcher-plate-{typed or 'screen'}-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
 
 

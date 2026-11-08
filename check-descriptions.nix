@@ -112,6 +112,12 @@
   a-theme-changes-everything = ''
     another theme leaves none of the first's colours behind, but in the web kit's other look
   '';
+  a-things-drawer-says-its-parts = ''
+    a thing's drawer says each part as a fact, its acts left out, a holder of figures opened in
+    place and a level's bar a stroke; a screen's says whether its mode is preferred or custom, its
+    refresh to every digit niri has where its row rounds it, variable refresh, scale as a multiple,
+    where it sits, its modes and its density to three figures, an off one only what it offers
+  '';
   a-timer-is-read-from-what-is-typed = ''
     a timer's span and name are read from what's typed after "timer" however it's written, a span
     of nothing or past a week is unfit, the time left reads as a clock counting whole seconds up,
@@ -1473,7 +1479,10 @@
   '';
   sound-hears-only-what-can-be-heard = ''
     the launcher's Sound leaves out a jack with nothing plugged in and a display's output with no
-    display, and never listens to a headset's microphone while it plays music
+    display, and never listens to a headset's microphone while it plays music; a device's drawer
+    says where it is and which way it goes, its volume in decibels, its parts, the kernel's facts
+    and its node, ALSA device and priority last, never whether it's muted nor its level; and
+    channels at one level are balanced, a stereo pair's otherwise named without front
   '';
   space-is-set-by-rung = ''
     no QML file of the shell's names a space by its step on the size scale, rather than by the

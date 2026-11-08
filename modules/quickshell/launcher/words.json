@@ -3622,7 +3622,14 @@
         "recording-none": "no program is listening",
         "tuning": "the filter sound goes through on its way out",
         "voice": "the filter programs hear it through",
-        "delay-note": "{frames} frames at {rate}, what it asks to be given at once"
+        "delay-note": "{frames} frames at {rate}, what it asks to be given at once",
+        "plate-out": "output",
+        "plate-in": "input",
+        "joined-built-in": "built in",
+        "joined-usb": "USB",
+        "joined-display": "display",
+        "paused-at": "paused at {level}",
+        "balanced": "balanced"
       }
     },
     {
@@ -3805,6 +3812,21 @@
       "in": "sound",
       "name": "Firmware",
       "term": "Machine/firmware"
+    },
+    {
+      "id": "sound:node",
+      "in": "sound",
+      "name": "Node"
+    },
+    {
+      "id": "sound:alsa-device",
+      "in": "sound",
+      "name": "ALSA Device"
+    },
+    {
+      "id": "sound:priority",
+      "in": "sound",
+      "name": "Priority"
     },
     {
       "id": "verb:sound-louder",
@@ -5333,7 +5355,14 @@
       "noun": "screens",
       "glyph": "display",
       "ask": "which screen?",
-      "empty": "No screens."
+      "empty": "No screens.",
+      "said": {
+        "built-in": "built in",
+        "monitor": "monitor",
+        "following": "following the room",
+        "own-white": "the screen's own white",
+        "steps": "{now} of {most} steps"
+      }
     },
     {
       "id": "displays:brightness",
@@ -5422,7 +5451,11 @@
         "90": "a quarter turn left",
         "180": "upside down",
         "270": "a quarter turn right",
-        "Normal": "upright"
+        "Normal": "upright",
+        "Flipped": "mirrored",
+        "Flipped90": "mirrored, a quarter turn left",
+        "Flipped180": "mirrored, upside down",
+        "Flipped270": "mirrored, a quarter turn right"
       }
     },
     {
@@ -5484,6 +5517,53 @@
       "id": "displays:edid",
       "in": "displays",
       "name": "EDID"
+    },
+    {
+      "id": "displays:mode",
+      "in": "displays",
+      "name": "Mode"
+    },
+    {
+      "id": "displays:variable",
+      "in": "displays",
+      "name": "Variable Refresh",
+      "said": {
+        "supported": "supported",
+        "unsupported": "unsupported",
+        "on": "on",
+        "off": "off"
+      }
+    },
+    {
+      "id": "displays:logical",
+      "in": "displays",
+      "name": "Logical Size"
+    },
+    {
+      "id": "displays:position",
+      "in": "displays",
+      "name": "Position"
+    },
+    {
+      "id": "displays:modes",
+      "in": "displays",
+      "name": "Modes",
+      "said": {
+        "preferred": "preferred",
+        "custom": "custom",
+        "preferred-mode": "preferred {mode}",
+        "at": "{size} at {rate}"
+      }
+    },
+    {
+      "id": "displays:density",
+      "in": "displays",
+      "name": "Density"
+    },
+    {
+      "id": "displays:serial",
+      "in": "displays",
+      "name": "Serial"
     },
     {
       "id": "capture",

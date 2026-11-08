@@ -243,6 +243,8 @@ let
     "launcher/Networkd.js"
     "launcher/Links.js"
     "launcher/Sounds.js"
+    "launcher/Plate.js"
+    "launcher/Screens.js"
     "launcher/Numbers.js"
     "launcher/Addresses.js"
     "launcher/Subnets.js"

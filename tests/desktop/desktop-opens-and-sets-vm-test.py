@@ -729,14 +729,18 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
             )
         )
         desktop.shoot("launcher-displays")
-        percent = round(wanted * 100)
+        # A scale is said as a multiple, "1.5\u00d7", and typed as one. A
+        # whole one starts every other too, and what was picked last leads
+        # them, so the row is gone down to.
+        multiple = f"{wanted:g}"
         if inside:
             desktop.type_in("scale", selecting="Scale")
             desktop.step_in("ret")
-            desktop.launcher_until(lambda shown: "Scale to 150%" in shown["rows"])
-            desktop.type_in(str(percent))
+            desktop.launcher_until(lambda shown: "Scale to 1.5\u00d7" in shown["rows"])
+            desktop.type_in(multiple)
         else:
-            desktop.type_in(f"scale {percent}")
+            desktop.type_in(f"scale {multiple}")
+        desktop.down_to(f"Scale to {multiple}\u00d7")
         desktop.land()
         machine.send_key("ret")
 
