@@ -16,6 +16,12 @@
 //! Joel can say the screen shouldn't follow the room. Then it glides back
 //! to its own white, however near it already is, and holds there until he
 //! says it should follow again.
+//!
+//! At night the screen warms too, whatever its sensor sees (night.rs): the
+//! night light says the white it wants now, which eases from the screen's
+//! own after sunset and back before sunrise, and the screen takes the
+//! warmer of the room's and the night's. Where no sensor sees colour, the
+//! night is all that warms it.
 
 use std::time::{Duration, Instant};
 
@@ -61,6 +67,13 @@ pub struct Warmth {
     shut: bool,
     /// Whether the screen follows the room, as Joel last said.
     follows: bool,
+    /// The room's warmth last trusted, which holds below a dim light.
+    held: Option<u16>,
+    /// The white the night light wants now, the screen's own by day, and
+    /// whether the screen is warmer than its own for the night, so it's
+    /// brought back to it by morning whatever the room says.
+    night: u16,
+    by_night: bool,
 }
 
 impl Warmth {
@@ -74,6 +87,17 @@ impl Warmth {
             lux: None,
             shut: false,
             follows: true,
+            held: None,
+            night: WHITE,
+            by_night: false,
+        }
+    }
+
+    /// The night light wants this white now (night.rs).
+    pub fn night(&mut self, kelvin: u16, now: Instant) {
+        if self.night != kelvin {
+            self.night = kelvin;
+            self.follow(now);
         }
     }
 
@@ -88,6 +112,18 @@ impl Warmth {
     /// Whether the screen follows the room.
     pub fn follows(&self) -> bool {
         self.follows
+    }
+
+    /// The room's light's colour last heard, in kelvin, to the nearest
+    /// hundred as the shell says it, or none while no sensor has said.
+    pub fn room_white(&self) -> Option<u16> {
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "a light's colour, held between 1,000 and 40,000 K, fits"
+        )]
+        self.room
+            .map(|kelvin| ((kelvin.clamp(1000.0, 40_000.0) / 100.0).round() * 100.0) as u16)
     }
 
     /// The warmth the screen is at, or going to.
@@ -136,28 +172,49 @@ impl Warmth {
         self.aim
     }
 
-    /// Where the screen should be, if it should move: the room's warmth
-    /// while it follows the room, else its own white.
-    fn wanted(&self) -> Option<u16> {
-        if self.shut {
-            return None;
-        }
-        if !self.follows {
-            return Some(WHITE);
-        }
+    /// The room's warmth while its light is bright enough to trust.
+    fn lit(&self) -> Option<u16> {
         let (Some(room), Some(lux)) = (self.room, self.lux) else {
             return None;
         };
         (lux >= DIM).then(|| for_room(room))
     }
 
+    /// Where the screen should be, if it should move: the warmer of the
+    /// room's warmth, while it follows the room, else its own white, and
+    /// the night's. The room's last trusted warmth holds in the dark; with
+    /// nothing known of the room, the night alone moves it, and by day only
+    /// back from where the night took it.
+    fn wanted(&self) -> Option<u16> {
+        if self.shut {
+            return None;
+        }
+        let room = if self.follows {
+            self.lit().or(self.held)
+        } else {
+            Some(WHITE)
+        };
+        match room {
+            Some(room) => Some(room.min(self.night)),
+            None => (self.night < WHITE || self.by_night).then_some(self.night),
+        }
+    }
+
     fn follow(&mut self, now: Instant) {
+        if let Some(lit) = self.lit() {
+            self.held = Some(lit);
+        }
         let Some(to) = self.wanted() else {
             return;
         };
         // A small move isn't worth starting for the room, but going back to
-        // white, when Joel asked for it, is always finished.
-        let slight = self.follows && to.abs_diff(self.shown) < WORTH;
+        // white is always finished, and so is each of the night's steps,
+        // which are small by design.
+        let nightly = self.night < WHITE && to == self.night;
+        if nightly {
+            self.by_night = true;
+        }
+        let slight = self.follows && !nightly && to != WHITE && to.abs_diff(self.shown) < WORTH;
         match self.aim {
             Some(aim) if aim == to => {}
             Some(_) => self.aim = Some(to),
@@ -192,6 +249,9 @@ impl Warmth {
     /// The screen took a step to `kelvin`.
     pub fn set(&mut self, kelvin: u16, now: Instant) {
         self.shown = kelvin;
+        if kelvin == WHITE {
+            self.by_night = false;
+        }
         if self.aim == Some(kelvin) {
             self.abandon();
         } else {
@@ -366,5 +426,55 @@ mod tests {
         warmth.follow_the_room(true, now);
         assert!(warmth.follows());
         assert_eq!(warmth.stands(), 5000);
+    }
+
+    #[test]
+    fn the_night_warms_a_screen_whose_sensor_sees_no_colour() {
+        let now = Instant::now();
+        let mut warmth = Warmth::new(WHITE);
+        warmth.light(100.0, now);
+        warmth.night(4000, now);
+        assert_eq!(glide(&mut warmth, now).last(), Some(&4000));
+    }
+
+    #[test]
+    fn each_of_the_nights_small_steps_is_taken() {
+        let now = Instant::now();
+        let mut warmth = Warmth::new(WHITE);
+        warmth.night(6450, now);
+        assert_eq!(glide(&mut warmth, now), vec![6450]);
+        warmth.night(6400, now);
+        assert_eq!(glide(&mut warmth, now), vec![6400]);
+    }
+
+    #[test]
+    fn by_morning_the_screen_comes_back_to_its_own_white() {
+        let now = Instant::now();
+        let mut warmth = Warmth::new(WHITE);
+        warmth.night(4000, now);
+        glide(&mut warmth, now);
+        warmth.night(6450, now);
+        glide(&mut warmth, now);
+        warmth.night(WHITE, now);
+        assert_eq!(glide(&mut warmth, now), vec![WHITE]);
+        warmth.night(WHITE, now);
+        assert_eq!(warmth.wake(), None, "white by day holds");
+    }
+
+    #[test]
+    fn the_screen_takes_the_warmer_of_the_room_and_the_night() {
+        let now = Instant::now();
+        let mut warmth = Warmth::new(WHITE);
+        warmth.light(100.0, now);
+        warmth.room(2700.0, now);
+        glide(&mut warmth, now);
+        warmth.night(4000, now);
+        assert_eq!(glide(&mut warmth, now).last(), Some(&4000));
+        warmth.night(WHITE, now);
+        assert_eq!(
+            glide(&mut warmth, now).last(),
+            Some(&5000),
+            "the room's by day"
+        );
     }
 }

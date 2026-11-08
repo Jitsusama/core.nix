@@ -1285,6 +1285,7 @@ onLinux {
       cp ${./launcher/Zones.js} Zones.js
       cp ${./launcher/Moment.js} Moment.js
       cp ${./launcher/Keeping.js} Keeping.js
+      cp ${./launcher/Warmth.js} Warmth.js
       cp ${./launcher/Colours.js} Colours.js
       cp ${./launcher/Asking.js} Asking.js
       cp ${./launcher/Machine.js} Machine.js

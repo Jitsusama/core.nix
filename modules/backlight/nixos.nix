@@ -45,8 +45,8 @@ let
 
   # wl-gammarelay-rs, which warms the built-in panel for the daemon, is
   # started by the session's bus as the account's unit (home.nix) when the
-  # daemon first sets a warmth, so a machine whose sensor sees no colour
-  # never runs it.
+  # daemon first sets a warmth, so it runs only once the room or the night
+  # first warms the screen.
   relayStarted = pkgs.runCommand "wl-gammarelay-activation" { } ''
     mkdir -p $out/share/dbus-1/services
     printf '[D-BUS Service]\nName=%s\nExec=%s\nSystemdService=%s\n' \

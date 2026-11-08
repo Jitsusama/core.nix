@@ -6811,8 +6811,6 @@
       "said": {
         "built-in": "built in",
         "screen": "screen",
-        "following": "following the room",
-        "own-white": "the screen's own white",
         "steps": "{now} of {most} steps",
         "the-room": "the room",
         "on-its-way": "on its way to {share}",
@@ -6837,21 +6835,73 @@
     },
     {
       "id": "displays:warmth",
-      "command": "set",
-      "argument": "nowarmth",
       "in": "displays",
       "name": "Warmth",
       "term": "Desktop/warmth",
-      "verb": "turn off",
       "answers": [
         "screen warmth"
       ],
+      "said": {
+        "via": "via wl-gammarelay-rs",
+        "screen": "built-in screen",
+        "until": "night light until {time}",
+        "from": "night light from {time}",
+        "waits": "night light waits for where you are",
+        "following": "following the room",
+        "own": "the screen's own white",
+        "tomorrow": "tomorrow",
+        "yesterday": "yesterday"
+      }
+    },
+    {
+      "id": "displays:night-light",
+      "command": "set",
+      "argument": "nonightlight",
+      "in": "displays:warmth",
+      "name": "Night Light",
+      "verb": "turn off",
+      "glyph": "nightLight",
+      "states": {
+        "off": {
+          "verb": "turn on",
+          "argument": "nightlight"
+        }
+      }
+    },
+    {
+      "id": "displays:follow-room",
+      "command": "set",
+      "argument": "nowarmth",
+      "in": "displays:warmth",
+      "name": "Follow the Room",
+      "verb": "turn off",
+      "glyph": "warmth",
       "states": {
         "off": {
           "verb": "turn on",
           "argument": "warmth"
         }
       }
+    },
+    {
+      "id": "displays:warmth:room",
+      "in": "displays:warmth",
+      "name": "Room's White"
+    },
+    {
+      "id": "displays:warmth:sunset",
+      "in": "displays:warmth",
+      "name": "Sunset"
+    },
+    {
+      "id": "displays:warmth:sunrise",
+      "in": "displays:warmth",
+      "name": "Sunrise"
+    },
+    {
+      "id": "displays:warmth:night",
+      "in": "displays:warmth",
+      "name": "Night White"
     },
     {
       "id": "displays:sleep",
