@@ -798,7 +798,7 @@ fn offered(settings: &[Setting]) -> String {
 /// buffer, each the time it holds at its rate, which is the card's own
 /// share of the delay, then in frames: "48 kHz \u{b7} 32 bit \u{b7} period
 /// 21.3 ms (1024) \u{b7} buffer 682.7 ms (32768)". Where the rate isn't
-/// known, only the frames are said.
+/// known, it isn't said, and only the frames are.
 fn running(hw_params: &str) -> String {
     let field = |name: &str| {
         hw_params
@@ -809,8 +809,12 @@ fn running(hw_params: &str) -> String {
     let (Some(format), Some(rate)) = (field("format"), field("rate")) else {
         return String::new();
     };
-    let mut said = format!("{}{APART}{}", kilohertz(&rate), bits(&format));
+    // A rate the stream doesn't know yet is no rate, so it isn't said.
     let hertz = rate.parse::<u32>().ok().filter(|hertz| *hertz > 0);
+    let mut said = match hertz {
+        Some(_) => format!("{}{APART}{}", kilohertz(&rate), bits(&format)),
+        None => bits(&format),
+    };
     for (name, size) in [
         ("period", field("period_size")),
         ("buffer", field("buffer_size")),
@@ -2605,7 +2609,7 @@ Capture:
         // Without a rate, the frames are all there is to say.
         assert_eq!(
             running("format: S16_LE\nrate: 0\nperiod_size: 256\n"),
-            "0 kHz \u{b7} 16 bit \u{b7} period 256"
+            "16 bit \u{b7} period 256"
         );
         assert_eq!(milliseconds(1024, 44_100), "23.2 ms");
         assert_eq!(milliseconds(0, 48_000), "0.0 ms");
