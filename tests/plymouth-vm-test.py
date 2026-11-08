@@ -611,6 +611,14 @@ def test_a_restart_names_a_slow_stop_and_keeps_its_screen_to_the_end(opened: Boo
         f" exec {sleep} 25' TERM;"
         f' {sleep} infinity & wait"',
     )
+    # The encrypted disk is a new root with no profile of its own, so it's
+    # given the one the first boot made, as nix-env would, beside an older
+    # generation that isn't running: the shutdown names the one that is.
+    machine.succeed(
+        "mkdir -p /nix/var/nix/profiles",
+        f"ln -sfn {opened.stops} /nix/var/nix/profiles/system-1-link",
+        f"ln -sfn {opened.encrypted} /nix/var/nix/profiles/system-2-link",
+    )
     mark = len(machine.get_console_log())
     # Asked of systemd, as the launcher asks it: Ctrl+Alt+Delete is lost
     # when it lands as the desktop takes the keyboard. It starts a few
@@ -638,6 +646,7 @@ def test_a_restart_names_a_slow_stop_and_keeps_its_screen_to_the_end(opened: Boo
     machine.wait_for_text("disk is locked", timeout=timedelta(seconds=180))
     machine.send_chars(f"{opened.passphrase}\n")
     machine.wait_for_unit("multi-user.target")
+    machine.succeed("rm /nix/var/nix/profiles/system-1-link /nix/var/nix/profiles/system-2-link")
 
 
 def test_a_failed_initrd_says_what_stopped_it(opened: Boot) -> None:
