@@ -1,14 +1,15 @@
 // Neovim's own acts in Programs › Neovim (programActs, which
 // Applications.qml asks every provider that has it), each found from the
-// top by its name too (foundActs). Open a File by Name steps into the git
-// repositories under ~/src, the one whose git last wrote first, each
-// saying how long ago, and on into a repository's files, the one changed
-// last first, each found by typing as any step is (Repositories.qml).
-// Open the Copied Path comes after it, since it comes and goes: it's
-// there only while the clipboard holds an existing file's path, said
-// beside it, and opens it at the line, and the column after that, the
-// copy gives (Copied.qml), as a compiler's or ripgrep's "main.rs:12:5"
-// says them.
+// top by its name too (foundActs), and each there only while it can act.
+// Open a File by Name is there while a git repository is under ~/src,
+// and steps into them, the one whose git last wrote first, each saying
+// how long ago, and on into a repository's files, the one changed last
+// first, each beside its folder in the repository, found by typing as any
+// step is (Repositories.qml). Open the Copied Path comes after it, since
+// it comes and goes: it's there only while the clipboard holds an
+// existing file's path, said beside it, and opens it at the line, and the
+// column after that, the copy gives (Copied.qml), as a compiler's or
+// ripgrep's "main.rs:12:5" says them.
 //
 // Either opens Neovim in a new window of the kitty used last, through
 // kitty's remote control, as kitty's Recent opens a folder, in the
@@ -31,52 +32,64 @@ Provider {
 
     // The existing file's path the clipboard holds, or null.
     readonly property var place: Copied.place
-    // So Programs › Neovim, held while it's copied, draws its act.
+    // Whether the last read found a repository to open a file of.
+    readonly property bool repositories: Repositories.listed.length > 0
+    // So Programs › Neovim, held while either comes or goes, draws it.
     onPlaceChanged: changed()
+    onRepositoriesChanged: changed()
 
-    // Found from the top by their names, Open the Copied Path only while
-    // there's one.
-    foundActs: [{ program: program, key: "verb:nvim:find" }]
+    // Found from the top by their names, each only while it's listed.
+    foundActs: (repositories ? [{ program: program, key: "verb:nvim:find" }] : [])
         .concat(place !== null ? [{ program: program, key: "verb:nvim:copied" }] : [])
 
-    readonly property Repositories repositories: Repositories {
-        folder: provider.settings.folder ?? ""
-        fd: provider.settings.fd ?? "fd"
-        stat: provider.settings.stat ?? "stat"
-        showing: provider.launcher?.open ?? false
-        onChanged: provider.changed()
+    Component.onCompleted: {
+        Repositories.want(provider.settings, false);
+        Repositories.opened(provider.launcher?.open ?? false);
+    }
+
+    // What's read arrives while a repository's files may be shown.
+    Connections {
+        target: Repositories
+
+        function onChanged() {
+            provider.changed();
+        }
+    }
+
+    Connections {
+        target: provider.launcher
+
+        function onOpenChanged() {
+            Repositories.opened(provider.launcher.open);
+        }
     }
 
     function programActs(asked) {
         if (asked !== program)
             return [];
-        return [finding()].concat(place !== null ? [copied()] : []);
+        return (repositories ? [finding()] : []).concat(place !== null ? [copied()] : []);
     }
 
-    // Open a File by Name, saying how many repositories it holds once
-    // they're read, and, stepped into while there are none, that it's
-    // looking, or that there are none.
+    // Open a File by Name, saying how many repositories it holds, and,
+    // stepped into once a read finds none left, that there are none.
     function finding() {
         const key = "verb:nvim:find";
-        return Repos.saysEmpty(thing({
+        return thing({
             key: key,
             name: Words.name(key),
             verb: Words.verb(key),
             glyph: Words.glyph(key),
             hue: "action",
-            side: provider.repositories.read ? String(provider.repositories.listed.length) : "",
+            side: String(Repositories.listed.length),
             ask: Words.of(key).ask ?? "",
+            empty: (Words.of(key).empty ?? "").replace("{folder}",
+                Files.shown(Repositories.folder)),
             nested: true,
             targets: () => {
-                provider.repositories.ask();
                 const now = Date.now();
-                return provider.repositories.listed.map(one => provider.repository(one, now));
+                return Repositories.listed.map(one => provider.repository(one, now));
             }
-        }), {
-            none: Words.of(key).empty,
-            looking: Words.of(key, "looking").empty,
-            folder: Files.shown(provider.repositories.folder)
-        }, () => provider.repositories.read);
+        });
     }
 
     // A repository as the folder it is, saying when its git last wrote,
@@ -86,11 +99,13 @@ Provider {
         return Object.assign(row, { side: Ago.ago(one.at, now), nested: true });
     }
 
-    // A repository's files, each as the file it is, Return opening it.
+    // A repository's files, each as the file it is beside its folder in the
+    // repository, Return opening it there.
     function filesOf(folder) {
-        provider.repositories.askFiles(folder);
-        return (provider.repositories.files[folder] ?? []).map(file => Files.file(file.path,
-            thing, [provider.opening(file.path, folder, 0, 0)]));
+        Repositories.askFiles(folder);
+        return (Repositories.files[folder] ?? []).map(file => Object.assign(
+            Files.file(file.path, thing, [provider.opening(file.path, folder, 0, 0)]),
+            { side: Repos.within(file.path, folder) }));
     }
 
     // Open the Copied Path, saying the path and its line as copied.

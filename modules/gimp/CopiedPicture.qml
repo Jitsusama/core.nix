@@ -4,10 +4,11 @@
 // From the Copied Picture, there only while the clipboard holds a
 // picture (Copied.qml), saying its size, type and weight where the
 // clipboard's history has it, else its type alone. GIMP opens it as a
-// picture of its own, from the file the history keeps it in
-// (launcher/Copies.qml's `picture`), or, where the history doesn't hold
-// it, from a file wl-paste writes it to in the runtime folder, named for
-// when it was copied, as GIMP's title then says.
+// picture of its own, in a file in the runtime folder named for when it
+// was opened, as GIMP's title then says: a copy of the file the history
+// keeps it in (launcher/Copies.qml's `picture`), so saving over it in
+// GIMP never changes the history, or, where the history doesn't hold it,
+// what wl-paste writes.
 import qs
 import Quickshell
 import QtQuick
@@ -59,22 +60,26 @@ Provider {
     // Opens what the clipboard holds as it runs, which a row found from
     // the top, made as the act came, may not have changed with.
     function open() {
-        const newest = kept();
-        const gimp = provider.settings.gimp ?? "gimp";
-        if (newest !== null) {
-            Niri.spawn([gimp, newest.picture]);
-            return;
-        }
         const type = Copied.picture;
         if (type === "")
             return;
+        const newest = kept();
+        const gimp = provider.settings.gimp ?? "gimp";
+        const source = newest?.picture ?? "";
+        // The history's file keeps the type it was copied as, which its
+        // extension says, and the clipboard's is the type asked for.
+        const dot = source.lastIndexOf(".");
+        const extension = dot > source.lastIndexOf("/") ? source.slice(dot + 1)
+            : Copying.extension(type);
         const runtime = Quickshell.env("XDG_RUNTIME_DIR") ?? "/tmp";
         const named = Qt.formatDateTime(new Date(), "yyyy-MM-dd HH.mm.ss");
-        const file = `${runtime}/gimp/Copied ${named}.${Copying.extension(type)}`;
+        const file = `${runtime}/gimp/Copied ${named}.${extension}`;
         // Through niri, as every program the shell opens, the picture
-        // written first so GIMP opens it whole.
-        Niri.spawn(["sh", "-c",
-            "mkdir -p \"${2%/*}\" && \"$3\" --type \"$1\" > \"$2\" && exec \"$4\" \"$2\"",
-            "sh", type, file, provider.settings.paste ?? "wl-paste", gimp]);
+        // written first so GIMP opens it whole: the history's file copied,
+        // or the clipboard pasted.
+        Niri.spawn(["sh", "-c", "mkdir -p \"${2%/*}\" && if [ -n \"$4\" ];"
+            + " then cp -- \"$4\" \"$2\"; else \"$5\" --type \"$1\" > \"$2\"; fi"
+            + " && exec \"$3\" \"$2\"",
+            "sh", type, file, gimp, source, provider.settings.paste ?? "wl-paste"]);
     }
 }

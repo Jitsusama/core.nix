@@ -3720,8 +3720,9 @@ onLinux {
   # engine (tests/quick-acts.qml, over Copied.js, launcher/Repositories.js
   # and Neovim's NeovimOpening.js), then each program's provider with the
   # shell's one watcher of the clipboard, through Quickshell itself, over
-  # repositories made here and read by the real fd, stat and grep, with
-  # niri and the clipboard's history stood in (tests/program-acts.qml).
+  # repositories made here and read once for both programs by the real fd,
+  # stat and grep (launcher/Repositories.qml), with niri and the
+  # clipboard's history stood in (tests/program-acts.qml).
   the-launcher-acts-only-on-what-it-can =
     let
       qt = pkgs.qt6.qtdeclarative;

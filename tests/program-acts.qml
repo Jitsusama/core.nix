@@ -5,22 +5,28 @@
 // CopiedPicture.qml), with niri and the clipboard's history stood in and
 // the copy set as the clipboard's watcher sets it. A path is acted on only
 // while its file is there, which its folder says, and goes as the file
-// does. Each act is listed in its program, and found from the top, only
-// while the clipboard holds what it takes, says what it takes beside it,
-// and opens it: Neovim in the kitty used last at the line and column
-// copied, the reader the markdown, Chrome the link in a new window, and
-// GIMP the picture from the history's file, or one wl-paste writes where
-// the history has none. Open a File by Name lists the repositories as it's
-// stepped into, the one whose git last wrote first, and a repository's
-// files as it's stepped into, hidden ones but not what git ignores,
-// opening the one picked; Open a Repository on GitHub lists only those
-// with a remote there, by their owners and names, opening each one's page.
-// It exits 0 once every case holds, and otherwise 1, saying which didn't.
+// does. Each act on a copy is listed in its program, and found from the
+// top, only while the clipboard holds what it takes, says what it takes
+// beside it, and opens it: Neovim in the kitty used last at the line and
+// column copied, the reader the markdown by the reader's own Return verb,
+// Chrome the link in a new window, and GIMP the picture in a file of its
+// own, copied from the history's or written by wl-paste where the history
+// has none. The repositories are read once for both acts that list them,
+// as the shell starts, and each is listed only while a read found one it
+// can open: Open a File by Name lists them, the one whose git last wrote
+// first, and a repository's files as it's stepped into, hidden ones but
+// not what git ignores, each beside its folder there, opening the one
+// picked; Open a Repository on GitHub lists only those with a remote
+// there, by their owners and names, opening each one's page. A
+// repository's files are forgotten as the launcher closes, and as it
+// opens they're all read again, so a folder holding none takes both acts
+// away. It exits 0 once every case holds, and otherwise 1, saying which
+// didn't.
 import qs
 import Quickshell
 import Quickshell.Io
 import QtQuick
-import "launcher" as Launcher
+import qs.launcher as Launcher
 
 ShellRoot {
     id: root
@@ -157,8 +163,12 @@ ShellRoot {
         const readme = `${src}/beta/README.md`;
         const code = `${src}/alpha/main.rs`;
         steps = [{
-            what: "nothing copied",
+            what: "the repositories and their remotes read as the shell starts",
+            until: () => Launcher.Repositories.read && Launcher.Repositories.remotesRead,
             then: () => {
+                const repositories = Launcher.Repositories;
+                expect("read once for both", repositories.folder === root.src
+                    && repositories.remoting, `${repositories.folder} ${repositories.remoting}`);
                 for (const [program, provider] of [["nvim", neovim], ["google-chrome", chrome],
                     ["reader", reader], ["gimp", gimp]]) {
                     const acts = provider.programActs(program);
@@ -166,11 +176,14 @@ ShellRoot {
                         !["verb:nvim:copied", "verb:chrome:link", "verb:reader:markdown",
                             "verb:gimp:picture"].includes(act.key)), keys(acts).join(", "));
                 }
-                expect("only the steady acts found from the top",
+                expect("only the acts on repositories found from the top",
                     JSON.stringify(neovim.foundActs.concat(chrome.foundActs, reader.foundActs,
                         gimp.foundActs).map(one => one.key))
                         === JSON.stringify(["verb:nvim:find", "verb:chrome:repository"]),
                     JSON.stringify(neovim.foundActs.concat(chrome.foundActs)));
+                expect("and inside their programs", keys(neovim.programActs("nvim")
+                    .concat(chrome.programActs("google-chrome"))).join(", ")
+                    === "verb:nvim:find, verb:chrome:repository", "");
                 expect("another program given none", neovim.programActs("kitty").length === 0
                     && chrome.programActs("nvim").length === 0, "");
                 root.copy(["text/plain"], `${code}:12:5\n`);
@@ -211,8 +224,9 @@ ShellRoot {
                 const acts = reader.programActs("reader");
                 expect("the reader's act", keys(acts).join(", ") === "verb:reader:markdown",
                     keys(acts).join(", "));
-                expect("its name, from the vocabulary", acts[0].name === "Read the Copied Markdown"
-                    && acts[0].verb === "read", `${acts[0].name} ${acts[0].verb}`);
+                expect("its name, and the verb Return has on the reader's files",
+                    acts[0].name === "Read the Copied Markdown" && acts[0].verb === "open",
+                    `${acts[0].name} ${acts[0].verb}`);
                 expect("its path said", acts[0].side === "~/src/beta/README.md", acts[0].side);
                 expect("found from the top", reader.foundActs.length === 1, "");
                 acts[0].run();
@@ -244,8 +258,8 @@ ShellRoot {
                 const acts = chrome.programActs("google-chrome");
                 expect("Chrome's acts in order", keys(acts).join(", ")
                     === "verb:chrome:repository, verb:chrome:link", keys(acts).join(", "));
-                expect("its address said", acts[1].side === "github.com/Jitsusama/core.nix/pull/12",
-                    acts[1].side);
+                expect("its address said",
+                    acts[1].side === "github.com/Jitsusama/core.nix/pull/12", acts[1].side);
                 acts[1].run();
                 expect("opened in a new window", spawned() === JSON.stringify(["chrome",
                     "--new-window", "https://github.com/Jitsusama/core.nix/pull/12"]), spawned());
@@ -254,16 +268,21 @@ ShellRoot {
                 expect("no act for a link among words",
                     chrome.programActs("google-chrome").length === 1, "");
                 root.copy(["image/png", "image/jpeg"], "");
-                copies.all = [{ picture: "/run/clipboard/7.png", across: 1920, down: 1080,
-                    about: "PNG \u00b7 1.2 MB" }];
+                copies.all = [{ picture: "/run/clipboard/7.jpg", across: 1920, down: 1080,
+                    about: "JPEG \u00b7 1.2 MB" }];
                 const pictured = gimp.programActs("gimp");
                 expect("GIMP's act", keys(pictured).join(", ") === "verb:gimp:picture",
                     keys(pictured).join(", "));
                 expect("its picture said", pictured[0].side
-                    === "1920 \u00d7 1080 \u00b7 PNG \u00b7 1.2 MB", pictured[0].side);
+                    === "1920 \u00d7 1080 \u00b7 JPEG \u00b7 1.2 MB", pictured[0].side);
                 pictured[0].run();
-                expect("the history's file opened", spawned()
-                    === JSON.stringify(["gimp", "/run/clipboard/7.png"]), spawned());
+                // [sh, -c, its script, $0, the type, the file, GIMP, the
+                // history's file, wl-paste]
+                const copied = Niri.spawned;
+                expect("the history's file copied, by its own type, and opened",
+                    copied[0] === "sh" && copied[4] === "image/png"
+                    && /\/runtime\/gimp\/Copied [0-9-]+ [0-9.]+\.jpg$/.test(copied[5])
+                    && copied[6] === "gimp" && copied[7] === "/run/clipboard/7.jpg", spawned());
                 copies.all = [{ text: "words" }];
                 expect("its type alone said", gimp.programActs("gimp")[0].side === "PNG",
                     gimp.programActs("gimp")[0].side);
@@ -271,7 +290,8 @@ ShellRoot {
                 const asked = Niri.spawned;
                 expect("pasted to a file and opened", asked[0] === "sh" && asked[4] === "image/png"
                     && /\/gimp\/Copied [0-9-]+ [0-9.]+\.png$/.test(asked[5])
-                    && asked[6] === "wl-paste" && asked[7] === "gimp", spawned());
+                    && asked[6] === "gimp" && asked[7] === "" && asked[8] === "wl-paste",
+                    spawned());
                 root.copy([], "");
                 expect("nothing once it's gone", gimp.programActs("gimp").length === 0
                     && gimp.foundActs.length === 0, "");
@@ -283,33 +303,29 @@ ShellRoot {
                 expect("its name and ask", finding.name === "Open a File by Name"
                     && finding.ask === "which repository?" && finding.nested === true,
                     `${finding.name} ${finding.ask}`);
-                expect("nothing read before it's stepped into",
-                    !neovim.repositories.read, "read");
-                expect("it says it's looking while none is listed",
-                    finding.empty === "Looking for repositories under ~/src.", finding.empty);
-                finding.targets();
-            }
-        }, {
-            what: "the repositories read",
-            until: () => neovim.repositories.read,
-            then: () => {
-                const finding = neovim.programActs("nvim")[0];
+                expect("and what it would say of none",
+                    finding.empty === "No repositories under ~/src.", finding.empty);
                 const rows = finding.targets();
                 expect("the one whose git wrote last first, none past three folders", names(rows)
                     === "alpha, beta, gamma", names(rows));
                 expect("how many said", finding.side === "3", finding.side);
                 expect("when its git wrote said", /ago|just now/.test(rows[0].side), rows[0].side);
+                const read = Object.keys(Launcher.Repositories.files);
+                expect("no repository's files read before it's stepped into", read.length === 0,
+                    read);
                 rows[0].verbs();
             }
         }, {
             what: "a repository's files read",
-            until: () => neovim.repositories.files[`${src}/alpha`] !== undefined,
+            until: () => Launcher.Repositories.files[`${src}/alpha`] !== undefined,
             then: () => {
                 const alpha = neovim.programActs("nvim")[0].targets()[0];
                 const inside = alpha.verbs();
                 const files = inside.filter(row => String(row.key).startsWith("file:"));
                 expect("the one changed last first, hidden ones but not what git ignores",
                     names(files) === "main.rs, .env, notes.md, .gitignore", names(files));
+                expect("each beside its folder in the repository", files.map(row => row.side)
+                    .join(",") === ",,docs,", files.map(row => row.side).join(","));
                 expect("Copy the Path last", inside[inside.length - 1].name === "Copy the Path",
                     names(inside));
                 Niri.windows = ({ "5": { id: 5, app_id: "kitty", pid: 41,
@@ -318,18 +334,12 @@ ShellRoot {
                 expect("opened in its repository", spawned() === JSON.stringify(["kitty", "@",
                     "--to", "unix:@kitty-41", "launch", "--type=os-window", "--cwd",
                     `${src}/alpha`, "nvim", code]), spawned());
-                chrome.programActs("google-chrome")[0].targets();
-            }
-        }, {
-            what: "the repositories on GitHub read",
-            until: () => chrome.repositories.read && chrome.repositories.remotesRead,
-            then: () => {
                 const opening = chrome.programActs("google-chrome")[0];
                 const pages = opening.targets();
                 expect("only those on GitHub, by owner and name, the newest first",
                     names(pages) === "Jitsusama/alpha, NixOS/gamma", names(pages));
-                expect("how many said", opening.side === "2", opening.side);
-                expect("and what it would say of none",
+                expect("how many on GitHub said", opening.side === "2", opening.side);
+                expect("and what it would say of none on GitHub",
                     opening.empty === "No repository under ~/src has a remote on GitHub.",
                     opening.empty);
                 expect("each the site it is",
@@ -339,8 +349,22 @@ ShellRoot {
                 expect("its page opened", spawned() === JSON.stringify(["chrome", "--new-window",
                     "https://github.com/NixOS/gamma"]), spawned());
                 launcher.open = false;
-                expect("read again once the launcher opens again",
-                    !neovim.repositories.read && !chrome.repositories.remotesRead, "kept");
+                const kept = Object.keys(Launcher.Repositories.files);
+                expect("a repository's files forgotten as the launcher closes", kept.length === 0,
+                    kept);
+                expect("the repositories kept", Launcher.Repositories.listed.length === 3, "");
+                // As if every repository went, so the next read finds none.
+                Launcher.Repositories.folder = `${root.home}/nowhere`;
+                launcher.open = true;
+            }
+        }, {
+            what: "the repositories read again as the launcher opens",
+            until: () => Launcher.Repositories.listed.length === 0,
+            then: () => {
+                expect("neither act listed once none is there", keys(neovim.programActs("nvim")
+                    .concat(chrome.programActs("google-chrome"))).join(", ") === ""
+                    && neovim.foundActs.length === 0 && chrome.foundActs.length === 0,
+                    JSON.stringify(neovim.foundActs.concat(chrome.foundActs)));
             }
         }];
     }

@@ -7308,12 +7308,7 @@
       "verb": "open",
       "glyph": "folder",
       "ask": "which repository?",
-      "empty": "No repositories under {folder}.",
-      "states": {
-        "looking": {
-          "empty": "Looking for repositories under {folder}."
-        }
-      }
+      "empty": "No repositories under {folder}."
     },
     {
       "id": "verb:nvim:copied",
@@ -7333,12 +7328,7 @@
       "verb": "open",
       "glyph": "branch",
       "ask": "which repository?",
-      "empty": "No repository under {folder} has a remote on GitHub.",
-      "states": {
-        "looking": {
-          "empty": "Looking for repositories under {folder}."
-        }
-      }
+      "empty": "No repository under {folder} has a remote on GitHub."
     },
     {
       "id": "verb:chrome:link",
@@ -7355,7 +7345,7 @@
       "argument": "markdown",
       "in": "applications",
       "name": "Read the Copied Markdown",
-      "verb": "read",
+      "verb": "open",
       "glyph": "book"
     },
     {

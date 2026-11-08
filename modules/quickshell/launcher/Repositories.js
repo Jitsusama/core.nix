@@ -1,7 +1,8 @@
 // The git repositories under a folder, as the acts that list them read
 // them (Repositories.qml): which there are and when each one's git last
 // wrote, the one written last first, a repository's files the same way,
-// and the page on GitHub of each that has a remote there. Kept apart from
+// each said from its repository's folder, and the page on GitHub of each
+// that has a remote there. Kept apart from
 // Quickshell's types, so the `the-launcher-acts-only-on-what-it-can`
 // check runs it in Qt's own engine (tests/quick-acts.qml).
 .pragma library
@@ -44,6 +45,17 @@ function dated(text) {
         return { path: line.slice(tab + 1), at: Number(line.slice(0, tab)) * SECOND };
     }).filter(one => one !== null && one.path !== "" && Number.isFinite(one.at))
         .sort((a, b) => b.at - a.at || byPath(a, b));
+}
+
+// The most of one repository's files its list holds, the ones changed
+// last, since a row is built for each as it's stepped into and the
+// largest repository Joel keeps holds over 23,000 files. The rest are
+// left out of the list, as old as they are, for Neovim's own finder.
+const MOST_FILES = 5000;
+
+// A repository's files, dated, cut to the ones changed last.
+function newest(files) {
+    return files.slice(0, MOST_FILES);
 }
 
 // Each repository, by what stat says of its .git, a folder or, in a
@@ -94,20 +106,6 @@ function github(url) {
     return { address: `https://github.com/${name}`, name };
 }
 
-// An act listing repositories, which says, as it's stepped into while it
-// lists none, that it's still looking, until `read` says they've been
-// read, and then that there are none, each sentence as its words say it
-// (`words.none`, then `words.looking`, its words in their looking state)
-// with `words.folder` put in: the act, given back.
-function saysEmpty(act, words, read) {
-    const said = text => (text ?? "").split("{folder}").join(words.folder);
-    Object.defineProperty(act, "empty", {
-        enumerable: true,
-        get: () => (read() ? said(words.none) : said(words.looking))
-    });
-    return act;
-}
-
 // A repository's page on GitHub, from its remotes: origin's, where it's
 // there, since that's the one pushed to, then upstream's, as a fork
 // names what it came from, then the first other remote there, or null
@@ -118,4 +116,21 @@ function onGitHub(listed) {
     const first = there.find(remote => remote.name === "origin")
         ?? there.find(remote => remote.name === "upstream") ?? there[0];
     return first === undefined ? null : first.page;
+}
+
+// The repositories listed that have a page on GitHub, in the order they're
+// listed, each { path, at, page }, by each one's remotes as remotes gives
+// them, by its folder.
+function onGitHubAll(listed, byFolder) {
+    return listed.map(one => ({ path: one.path, at: one.at, page: onGitHub(byFolder[one.path]) }))
+        .filter(one => one.page !== null);
+}
+
+// The folder a file is in, said from its repository's own folder, as the
+// path above it already names the repository: "docs" for one in its
+// docs, "" for one at its top.
+function within(path, repository) {
+    const inside = path.startsWith(`${repository}/`) ? path.slice(repository.length + 1) : path;
+    const cut = inside.lastIndexOf("/");
+    return cut < 0 ? "" : inside.slice(0, cut);
 }

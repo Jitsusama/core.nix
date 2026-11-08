@@ -1,15 +1,16 @@
 // Chrome's own acts in Programs › Chrome (programActs, which
 // Applications.qml asks every provider that has it), each found from the
-// top by its name too (foundActs). Open a Repository on GitHub steps into
-// the git repositories under ~/src with a remote on GitHub, the one whose
-// git last wrote first, each the GitHub page it opens, by its owner and
-// name, saying how long ago, found by typing as any step is
-// (Repositories.qml). Each opens the remote's own page, origin's first,
-// rather than through gh browse, which opens whichever browser gh is set
-// to and may ask GitHub which repository it is. Open the Copied Link comes
-// after it, since it comes and goes: it's there only while the clipboard
-// holds one web address and nothing else, said beside it (Copied.qml).
-// Either opens its page in a new window.
+// top by its name too (foundActs), and each there only while it can act.
+// Open a Repository on GitHub is there while a git repository under ~/src
+// has a remote on GitHub, and steps into them, the one whose git last
+// wrote first, each the GitHub page it opens, by its owner and name,
+// saying how long ago, found by typing as any step is (Repositories.qml).
+// Each opens the remote's own page, origin's first, rather than through
+// gh browse, which opens whichever browser gh is set to and may ask
+// GitHub which repository it is. Open the Copied Link comes after it,
+// since it comes and goes: it's there only while the clipboard holds one
+// web address and nothing else, said beside it (Copied.qml). Either opens
+// its page in a new window.
 pragma ComponentBehavior: Bound
 
 import qs
@@ -29,66 +30,66 @@ Provider {
 
     // The one web address the clipboard holds, or "".
     readonly property string link: Copied.link
-    // So Programs › Chrome, held while it's copied, draws its act.
+    // The repositories with a page on GitHub, as the last reads found them,
+    // the one whose git last wrote first.
+    readonly property var pages: Repos.onGitHubAll(Repositories.listed, Repositories.remotes)
+    readonly property bool onGitHub: pages.length > 0
+    // So Programs › Chrome, held while either comes or goes, draws it.
     onLinkChanged: changed()
+    onOnGitHubChanged: changed()
 
-    // Found from the top by their names, Open the Copied Link only while
-    // there's one.
-    foundActs: [{ program: program, key: "verb:chrome:repository" }]
+    // Found from the top by their names, each only while it's listed.
+    foundActs: (onGitHub ? [{ program: program, key: "verb:chrome:repository" }] : [])
         .concat(link !== "" ? [{ program: program, key: "verb:chrome:link" }] : [])
 
-    readonly property Repositories repositories: Repositories {
-        folder: provider.settings.folder ?? ""
-        fd: provider.settings.fd ?? "fd"
-        stat: provider.settings.stat ?? "stat"
-        grep: provider.settings.grep ?? "grep"
-        showing: provider.launcher?.open ?? false
-        onChanged: provider.changed()
+    Component.onCompleted: {
+        Repositories.want(provider.settings, true);
+        Repositories.opened(provider.launcher?.open ?? false);
+    }
+
+    // What's read arrives while the pages may be shown.
+    Connections {
+        target: Repositories
+
+        function onChanged() {
+            provider.changed();
+        }
+    }
+
+    Connections {
+        target: provider.launcher
+
+        function onOpenChanged() {
+            Repositories.opened(provider.launcher.open);
+        }
     }
 
     function programActs(asked) {
         if (asked !== program)
             return [];
-        return [onGitHub()].concat(link !== "" ? [copied()] : []);
+        return (onGitHub ? [repositories()] : []).concat(link !== "" ? [copied()] : []);
     }
 
-    // The repositories on GitHub, the one whose git last wrote first, once
-    // both they and their remotes are read.
-    function pages() {
-        const known = provider.repositories;
-        if (!known.read || !known.remotesRead)
-            return [];
-        return known.listed
-            .map(one => ({ one: one, page: Repos.onGitHub(known.remotes[one.path]) }))
-            .filter(each => each.page !== null);
-    }
-
-    // Open a Repository on GitHub, saying how many there are once read,
-    // and, stepped into while there are none, that it's looking, or that
-    // there are none.
-    function onGitHub() {
+    // Open a Repository on GitHub, saying how many there are, and, stepped
+    // into once a read finds none left, that there are none.
+    function repositories() {
         const key = "verb:chrome:repository";
-        const known = provider.repositories;
-        return Repos.saysEmpty(thing({
+        return thing({
             key: key,
             name: Words.name(key),
             verb: Words.verb(key),
             glyph: Words.glyph(key),
             hue: "action",
-            side: known.read && known.remotesRead ? String(pages().length) : "",
+            side: String(pages.length),
             ask: Words.of(key).ask ?? "",
+            empty: (Words.of(key).empty ?? "").replace("{folder}",
+                Files.shown(Repositories.folder)),
             nested: true,
             targets: () => {
-                known.ask();
-                known.askRemotes();
                 const now = Date.now();
-                return pages().map(each => provider.page(each.page, each.one.at, now));
+                return provider.pages.map(one => provider.page(one.page, one.at, now));
             }
-        }), {
-            none: Words.of(key).empty,
-            looking: Words.of(key, "looking").empty,
-            folder: Files.shown(known.folder)
-        }, () => known.read && known.remotesRead);
+        });
     }
 
     // A repository's page as the site it is, keyed by its address as a

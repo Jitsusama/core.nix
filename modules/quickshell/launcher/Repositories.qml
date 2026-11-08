@@ -1,37 +1,46 @@
+pragma Singleton
 // The git repositories under a folder, ~/src as the programs' modules give
 // it, for the acts that list them: Neovim's Open a File by Name and
-// Chrome's Open a Repository on GitHub. They're read as such an act is
-// stepped into, never before, and once each time the launcher opens, the
-// one whose git last wrote first (Repositories.js); a repository's files
-// as it's stepped into, the one changed last first; and only where asked,
-// each one's remotes, so Chrome lists those on GitHub. fd finds them,
-// each repository's .git three folders deep at most, and stat dates
-// them, in one command each time, so a hundred repositories start no
-// hundred commands. `changed` says when something asked for arrives.
+// Chrome's Open a Repository on GitHub. Both ask this one (`want`), so
+// they're read once for the shell, not once each. They're read as the
+// shell starts and again each time the launcher opens (`read`), as what
+// was taken is (Taken.qml), and never otherwise, so no folder is watched
+// at rest, and each act is listed only while the last read found one it
+// can open; the one whose git last wrote first (Repositories.js). What's
+// read last is kept while the next is read, so an act never goes and
+// comes back as the launcher opens. Each one's remotes are read the same
+// way, only once an act wants them, so Chrome lists those on GitHub, and
+// a repository's files as it's stepped into, the one changed last first,
+// forgotten as the launcher closes. fd finds them, each repository's .git
+// three folders deep at most, stat dates them and grep reads their
+// remotes, in one command each, so a hundred repositories start no
+// hundred commands. `changed` says when something read arrives.
 import Quickshell
 import Quickshell.Io
 import QtQuick
 import "Repositories.js" as Repos
 
-Scope {
+Singleton {
     id: root
 
-    // The folder they're under, and the commands that find and date them,
-    // by their paths, as the programs' modules give them.
+    // The folder they're under, and the commands that find, date and read
+    // them, by their paths, as the programs' modules give them.
     property string folder: ""
     property string fd: "fd"
     property string stat: "stat"
     property string grep: "grep"
-    // Whether the launcher is open, so what's read is read again the next
-    // time it opens.
+    // Whether an act wants their remotes, as Chrome's does.
+    property bool remoting: false
+    // Whether the launcher is open, so a repository's files read as it
+    // closed aren't kept for the next time it opens.
     property bool showing: false
 
     // Each repository, { path, at }, the one whose git last wrote first,
-    // and whether they've been read since the launcher opened.
+    // and whether they've been read at all.
     property var listed: []
     property bool read: false
     // Each repository's remotes, by its folder, as Repositories.js's
-    // remotes gives them, and whether they've been read.
+    // remotes gives them, and whether they've been read at all.
     property var remotes: ({})
     property bool remotesRead: false
     // Each repository's files, { path, at }, by its folder, the one
@@ -40,34 +49,48 @@ Scope {
 
     signal changed
 
-    onShowingChanged: {
-        if (showing)
+    // An act's settings, { folder, fd, stat, grep }, each kept where it's
+    // given, since Neovim's gives no grep, and whether it wants the
+    // remotes: what's under the folder is read now, unless it is being
+    // read already.
+    function want(settings, remotesToo) {
+        for (const name of ["folder", "fd", "stat", "grep"]) {
+            if ((settings[name] ?? "") !== "")
+                root[name] = settings[name];
+        }
+        root.remoting = root.remoting || remotesToo === true;
+        root.again();
+    }
+
+    // The launcher opening reads them again, and its closing forgets each
+    // repository's files, which are read again as it's stepped into.
+    function opened(open) {
+        root.showing = open;
+        if (open)
+            root.again();
+        else
+            root.files = {};
+    }
+
+    // Reads them now, unless they're being read: two acts asking as the
+    // launcher opens start one read.
+    function again() {
+        if (root.folder === "")
             return;
-        read = false;
-        remotesRead = false;
-        files = {};
-    }
-
-    // The repositories, read now unless they have been since it opened.
-    function ask() {
-        if (!read && !listing.running)
+        if (!listing.running)
             listing.running = true;
-    }
-
-    // Their remotes, the same.
-    function askRemotes() {
-        if (!remotesRead && !configs.running)
+        if (root.remoting && !configs.running)
             configs.running = true;
     }
 
-    // One repository's files, the same; asked for another while one is
-    // read, it's read next.
+    // One repository's files, unless they've been read since the launcher
+    // opened; asked for another while one is read, it's read next.
     function askFiles(repository) {
         const reading = filing.running && filing.repository === repository;
         if (files[repository] !== undefined || reading)
             return;
         next = repository;
-        again();
+        nextFiles();
     }
 
     // The repository whose files are asked for next, or "".
@@ -77,7 +100,7 @@ Scope {
     // done with, both its command ended and its files kept under its name,
     // whichever of the two comes second, so they're never kept under the
     // next one's.
-    function again() {
+    function nextFiles() {
         if (filing.running || !filing.kept || next === "")
             return;
         filing.repository = next;
@@ -97,9 +120,7 @@ Scope {
 
             onStreamFinished: {
                 root.listed = Repos.repositories(listed.text);
-                // Read as the launcher closed, they're read again as it
-                // opens, since they may have changed between.
-                root.read = root.showing;
+                root.read = true;
                 root.changed();
             }
         }
@@ -118,7 +139,7 @@ Scope {
 
             onStreamFinished: {
                 root.remotes = Repos.remotes(configured.text);
-                root.remotesRead = root.showing;
+                root.remotesRead = true;
                 root.changed();
             }
         }
@@ -135,17 +156,17 @@ Scope {
 
         command: [root.fd, "--type", "f", "--hidden", "--exclude", ".git", ".",
             filing.repository, "--exec-batch", root.stat, "--printf", "%Y\\t%n\\n"]
-        onExited: root.again()
+        onExited: root.nextFiles()
         stdout: StdioCollector {
             id: filed
 
             onStreamFinished: {
                 if (root.showing)
                     root.files = Object.assign({}, root.files,
-                        { [filing.repository]: Repos.dated(filed.text) });
+                        { [filing.repository]: Repos.newest(Repos.dated(filed.text)) });
                 filing.kept = true;
                 root.changed();
-                root.again();
+                root.nextFiles();
             }
         }
     }
