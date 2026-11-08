@@ -1865,10 +1865,10 @@
       "said": {
         "notAnswering": "not answering",
         "unreadable": "unreadable",
-        "didntAnswer": "its service didn't answer: {said}",
         "printedNothing": "warp printed nothing it could read",
-        "estimated": "as WARP estimates it",
-        "through": "through the tunnel",
+        "measure": "WARP's measure",
+        "in": "{figure} in",
+        "out": "{figure} out",
         "metal": "metal {metal}",
         "rtt": "round trip",
         "percent": "{figure}%",
@@ -1964,7 +1964,7 @@
     {
       "id": "warp:latency",
       "in": "warp",
-      "name": "Latency"
+      "name": "Round Trip"
     },
     {
       "id": "warp:loss",
@@ -1979,7 +1979,7 @@
     {
       "id": "warp:colo",
       "in": "warp",
-      "name": "Colo"
+      "name": "Data Centre"
     },
     {
       "id": "warp:endpoint",
@@ -1992,14 +1992,9 @@
       "name": "Last Handshake"
     },
     {
-      "id": "warp:sent",
+      "id": "warp:traffic",
       "in": "warp",
-      "name": "Sent"
-    },
-    {
-      "id": "warp:received",
-      "in": "warp",
-      "name": "Received"
+      "name": "Traffic"
     },
     {
       "id": "warp:tls",

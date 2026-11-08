@@ -23,11 +23,12 @@ const PLACEHOLDER = /\{(\w+)\}/g;
 // The unit a figure's key ends in, as warp-cli names them.
 const UNIT = /^(.*)_(percent|ms)$/;
 // What warp says when it couldn't read WARP, by its error, as the words
-// its row says it in; a machine with no warp-cli has no WARP, so says
-// nothing. An unreadable answer's note is what warp said of it.
+// its row says it in, and whether its note says them before why; a
+// machine with no warp-cli has no WARP, so says nothing. An unreadable
+// answer's note is what warp said of it.
 const FAILED = {
-    "not-answering": { headline: "notAnswering", note: "didntAnswer" },
-    unreadable: { headline: "unreadable", note: "" },
+    "not-answering": { headline: "notAnswering", leads: true },
+    unreadable: { headline: "unreadable", leads: false },
 };
 
 // A word of warp's in the vocabulary, its {placeholders} filled.
@@ -103,14 +104,18 @@ function present(parts) {
 }
 
 // The network's health as WARP judges it, from a reason that says so, or
-// null: healthy, or degraded with what WARP measured it by.
+// null: healthy, or degraded with what WARP measured it by, said to be
+// its measure, since the tunnel's own Round Trip and Loss are its
+// estimates and read apart: "5.37% loss \u00b7 170 ms round trip \u00b7 WARP's
+// measure".
 function health(status, settings, said) {
     const judged = NETWORK.exec(status.reason ?? "");
     if (!judged) {
         return null;
     }
     const side = spoken(judged[1]);
-    const note = measured(status.reason_figures, settings, said);
+    const figures = measured(status.reason_figures, settings, said);
+    const note = figures === "" ? "" : joined([figures, worded(said, "measure")]);
     return Object.assign(part("health", side, note), { warns: side !== "healthy" });
 }
 
@@ -252,8 +257,21 @@ function endpoint(tunnel, said) {
     return part("endpoint", v4, v6 === "" ? worded(said, "noIpv6") : v6);
 }
 
-// The tunnel's parts, each only where warp gave its figure. What the
-// record holds and no part says is only this, each for its reason:
+// What the tunnel has carried each way, as Wi-Fi's Speed says its rates:
+// "10.2 GB in \u00b7 9.26 GB out", a way warp didn't give leaving the other
+// alone; or null where it gave neither.
+function trafficPart(tunnel, settings, said) {
+    const way = (key, word) => (Number.isFinite(tunnel[key])
+        ? worded(said, word, { figure: HomeNetwork.bytes(tunnel[key], settings) }) : "");
+    const side = joined([way("received_bytes", "in"), way("sent_bytes", "out")]);
+    return side === "" ? null : part("traffic", side);
+}
+
+// The tunnel's parts, each only where warp gave its figure. That they
+// are WARP's own, through its tunnel, is its drawer's eyebrow's to say
+// once ("via WARP \u00b7 tunnel"), rather than each part's note (VKCF3Z,
+// 2026-11-08), so a note says only what differs. What the record holds
+// and no part says is only this, each for its reason:
 // - `tunnel.on` while it's true, since State already says the link is up;
 // - a reason's figure in a unit other than percent or milliseconds, which
 //   warp-cli hasn't been seen to give, so there's no unit to say it in;
@@ -265,24 +283,18 @@ function endpoint(tunnel, said) {
 // modules/warp/contract/README.md.
 function tunnelParts(tunnel, settings, said) {
     const finite = (key, made) => (Number.isFinite(tunnel[key]) ? made(tunnel[key]) : null);
-    const estimated = worded(said, "estimated");
-    const through = worded(said, "through");
     return present([
         tunnel.on === false ? part("tunnel", worded(said, "off")) : null,
-        finite("latency_ms", (value) => part("latency", ms(value, settings, said), estimated,
+        finite("latency_ms", (value) => part("latency", ms(value, settings, said), "",
             String(value))),
         finite("loss_fraction", (value) => part("loss", worded(said, "percent",
-            { figure: HomeNetwork.significant(value * PERCENT, settings) }), estimated,
-        String(value))),
+            { figure: HomeNetwork.significant(value * PERCENT, settings) }), "", String(value))),
         protocolPart(tunnel.protocol),
         coloPart(tunnel.edge, said),
         endpoint(tunnel, said),
         finite("last_handshake_s", (value) => part("handshake", Ago.ago(0, value * SECOND), "",
             String(value))),
-        finite("sent_bytes", (value) => part("sent", HomeNetwork.bytes(value, settings),
-            through, String(value))),
-        finite("received_bytes", (value) => part("received", HomeNetwork.bytes(value, settings),
-            through, String(value))),
+        trafficPart(tunnel, settings, said),
         tunnel.tls ? tlsPart(tunnel.tls, said) : null,
     ]);
 }
@@ -346,16 +358,18 @@ function told(record, settings, said) {
 
 // What warp said when it couldn't read WARP ({ error, said }), as the row
 // says it in warp's words (`said`): { headline, warns, note }, or null
-// where there's no warp-cli, so no WARP to show.
+// where there's no warp-cli, so no WARP to show. A service not answering
+// says so before why, as a run: "not answering \u00b7 <why>".
 function failed(printed, said) {
     const words = FAILED[printed?.error];
     if (!words) {
         return null;
     }
+    const headline = worded(said, words.headline);
     const why = String(printed.said ?? "");
     return {
-        headline: worded(said, words.headline),
+        headline,
         warns: true,
-        note: words.note === "" ? why : worded(said, words.note, { said: why }),
+        note: words.leads ? joined([headline, why]) : why,
     };
 }

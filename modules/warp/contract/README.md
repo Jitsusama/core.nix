@@ -34,11 +34,11 @@ figure it shows is in `warp --json` too.
 | `status`                                 | place: the row and State; page: its head       |
 | `reason`                                 | place: Health, or State's note; page: its head |
 | a reason's figures                       | place: Health's note; page: its head           |
-| `estimated_latency_ms`                   | place: the row and Latency; page               |
+| `estimated_latency_ms`                   | place: the row and Round Trip; page            |
 | `estimated_loss`                         | place: Loss, as a percentage; page             |
 | `protocol`                               | place: Protocol, how it's carried its note; page |
-| `edge.colo`, `edge.metal`                | place: Colo, the metal its note; page          |
-| `bytes_sent`, `bytes_received`           | place: Sent and Received; page                 |
+| `edge.colo`, `edge.metal`                | place: Data Centre, the metal its note; page   |
+| `bytes_sent`, `bytes_received`           | place: Traffic, in and out; page               |
 | `v4_endpoint`, `v6_endpoint`             | place: Endpoint; page; `::` is none            |
 | `secs_since_last_handshake`              | place: Last Handshake; page                    |
 | `warp_is_on`                             | place: Tunnel, when it's off; page             |

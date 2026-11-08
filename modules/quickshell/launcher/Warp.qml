@@ -4,9 +4,10 @@
 // while WARP finds the network degraded or its service doesn't answer;
 // a step in are its State and why, the network's Health as WARP judges it,
 // its Settings (the mode, always on and the split tunnel first, each saying
-// who set it), the tunnel's Latency and Loss as WARP estimates them, its
-// Protocol, the Colo it ends in, its Endpoint and Last Handshake, what it
-// has Sent and Received and its TLS, and what its DNS proxy answered
+// who set it), the tunnel's Round Trip and Loss as WARP estimates them,
+// its Protocol, the Data Centre it ends in, its Endpoint and Last
+// Handshake, its Traffic each way and its TLS, and what its DNS proxy
+// answered
 // (Warp.js works each out, in the words words.json gives warp). A machine
 // whose system installs no warp-cli has no WARP here at all (home.nix
 // enables this only where it does).

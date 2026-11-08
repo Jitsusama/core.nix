@@ -2224,14 +2224,14 @@ QtObject {
                 figure("settings:post-quantum", "enabled with downgrades",
                     "set by network policy", "enabled_with_downgrades")
             ] }),
-            figure("latency", "127 ms", "as WARP estimates it", "127"),
-            figure("loss", "1.24%", "as WARP estimates it", "0.012355098"),
+            figure("latency", "127 ms", "", "127"),
+            figure("loss", "1.24%", "", "0.012355098"),
             figure("protocol", "MASQUE", "HTTPS via UDP", "MASQUE (HTTPS via UDP)"),
             figure("colo", "YYZ", "metal 0a1b2c", "YYZ"),
             figure("endpoint", "198.51.100.2", "no IPv6", "198.51.100.2"),
             figure("handshake", "2 h ago", "", "8751"),
-            figure("sent", "9.26 GB", "through the tunnel", "9257621853"),
-            figure("received", "10.2 GB", "through the tunnel", "10242929366"),
+            figure("traffic", "10.2 GB in \u00b7 9.26 GB out", "",
+                "10.2 GB in \u00b7 9.26 GB out"),
             Object.assign(figure("tls", "TLSv1.3", "post-quantum", "TLSv1.3"), { parts: [
                 figure("tls:version", "TLSv1.3", "", "TLSv1.3"),
                 figure("tls:curve", "P256Kyber768Draft00", "", "P256Kyber768Draft00"),
@@ -2263,13 +2263,38 @@ QtObject {
         };
         partsNamed(linked && linked.parts, "warp");
         machine("every part of WARP named where it is", nameless, []);
+        // Named as Network names the same figures elsewhere, Traffic's
+        // Round Trip among them (VKCF3Z and YI77D3, 2026-11-08).
+        machine("WARP's figures named as Network names them",
+            ["latency", "colo", "traffic"].map(id =>
+                (vocabulary.find(thing => thing.id === `warp:${id}`) ?? {}).name),
+            ["Round Trip", "Data Centre", "Traffic"]);
+        // A run of items joins with dots, never commas (docs/design.md,
+        // Typesetting).
+        const commas = [];
+        const noCommas = parts => {
+            for (const part of parts ?? []) {
+                if (`${part.side}${part.note}`.includes(","))
+                    commas.push(part.id);
+                noCommas(part.parts);
+            }
+        };
+        noCommas(linked && linked.parts);
+        machine("no part of WARP joins its words with a comma", commas, []);
+        const slight = warpTold(Object.assign({}, warp, { tunnel: Object.assign({}, warp.tunnel,
+            { loss_fraction: 0.0053708, received_bytes: null }) }));
+        machine("a slight loss keeps three digits, and one way's traffic says only it",
+            slight && slight.parts.filter(part => ["loss", "traffic"].includes(part.id))
+                .map(part => part.side),
+            ["0.537%", "9.26 GB out"]);
         const degraded = warpTold(Object.assign({}, warp, { status: { state: "Connected",
             reason: "NetworkDegraded", reason_figures: { loss_percent: 5.3708224, rtt_ms: 170 } } }));
         machine("WARP degraded, as its row says it", degraded && [degraded.headline, degraded.warns],
             ["degraded \u00b7 127 ms", true]);
         machine("WARP's health degraded, with what it measured",
             degraded && degraded.parts.find(part => part.id === "health"),
-            { id: "health", side: "degraded", note: "5.37% loss \u00b7 170 ms round trip",
+            { id: "health", side: "degraded",
+                note: "5.37% loss \u00b7 170 ms round trip \u00b7 WARP's measure",
                 copy: "degraded", warns: true });
         const down = warpTold({ status: { state: "Disconnected", reason: "Manual",
             reason_figures: null }, tunnel: null, settings: null, dns: null });
@@ -2310,7 +2335,7 @@ QtObject {
             policed && (policed.parts.find(part => part.id === "dns") ?? {}).side, "proxy off");
         machine("WARP's service not answering", Warp.failed({ error: "not-answering",
             said: "No such file or directory (os error 2)" }, warpSaid), { headline: "not answering",
-            warns: true, note: "its service didn't answer: No such file or directory (os error 2)" });
+            warns: true, note: "not answering \u00b7 No such file or directory (os error 2)" });
         machine("warp-cli saying what warp can't read", Warp.failed({ error: "unreadable",
             said: "warp-cli status said InvalidAccountType: Invalid account type." }, warpSaid),
         { headline: "unreadable", warns: true,
