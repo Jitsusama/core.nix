@@ -16,6 +16,12 @@
 # in rather than ten minutes. The disks are synced by then, and a stall in
 # the kernel's own reboot is caught the same way.
 #
+# An account's own manager stops within five seconds, then its whole group is
+# killed. Each of its units keeps the stop limit it was started with, 90
+# seconds unless it says otherwise, and the manager waits on the slowest; on 7
+# November one program that took SIGTERM and never exited held a reboot until
+# the minute above forced it. A healthy account stops in under two seconds.
+#
 # With Plymouth on, shutdown-status tells it by keyword when either
 # happens, since a splash that just sits there says nothing. The services that
 # end a healthy stop leave a mark it reads, ignoring any failure to.
@@ -44,24 +50,27 @@ in
     unitConfig.JobTimeoutSec = stopsWithin;
   });
 
-  systemd.services = lib.mkIf config.boot.plymouth.enable (
-    {
-      shutdown-status = {
-        description = "Tells Plymouth when a shutdown is forced on or held up";
-        wantedBy = map (end: "${end}.target") ends;
-        unitConfig = {
-          DefaultDependencies = false;
-          SurviveFinalKillSignal = true;
+  systemd.services = lib.mkMerge [
+    { "user@".serviceConfig.TimeoutStopSec = "5s"; }
+    (lib.mkIf config.boot.plymouth.enable (
+      {
+        shutdown-status = {
+          description = "Tells Plymouth when a shutdown is forced on or held up";
+          wantedBy = map (end: "${end}.target") ends;
+          unitConfig = {
+            DefaultDependencies = false;
+            SurviveFinalKillSignal = true;
+          };
+          environment.PLYMOUTH = "${config.boot.plymouth.package}/bin/plymouth";
+          serviceConfig = {
+            Type = "exec";
+            ExecStart = "${status} ${reached}";
+          };
         };
-        environment.PLYMOUTH = "${config.boot.plymouth.package}/bin/plymouth";
-        serviceConfig = {
-          Type = "exec";
-          ExecStart = "${status} ${reached}";
-        };
-      };
-    }
-    // lib.genAttrs (map (end: "systemd-${end}") ends) (_: {
-      serviceConfig.ExecStartPre = "-${pkgs.coreutils}/bin/touch ${reached}";
-    })
-  );
+      }
+      // lib.genAttrs (map (end: "systemd-${end}") ends) (_: {
+        serviceConfig.ExecStartPre = "-${pkgs.coreutils}/bin/touch ${reached}";
+      })
+    ))
+  ];
 }

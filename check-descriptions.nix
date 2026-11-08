@@ -2582,7 +2582,8 @@
   '';
   vm-reboot-cannot-hang = ''
     a reboot forces on after a minute of a service not stopping, the watchdog resets a stuck last
-    stage, and Plymouth hears which
+    stage, and Plymouth hears which; an account's units that ignore SIGTERM hold its manager under
+    ten seconds, alone or in a reboot
   '';
   vm-screens-come-and-go = ''
     the launcher, a notice, the margin's marks and dictation's bar come back after the screen goes
