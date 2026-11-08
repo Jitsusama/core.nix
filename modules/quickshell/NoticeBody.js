@@ -1,4 +1,6 @@
-// What a notice's body says, read once as it arrives (Notices.qml): as plain
+// What a notice's body says, read into the history as it arrives
+// (Notices.qml), and by the pop-up, the held card and gx from the live
+// notification each holds, since its body can be replaced: as plain
 // text, for the launcher's rows, the find and a copy; as styled text a card
 // and a drawer draw, carrying only the markup the notification spec allows
 // (bold, italics, underline and links) with everything else escaped, so a
