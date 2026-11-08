@@ -69,7 +69,7 @@ def test_print_opens_capture_where_return_takes_the_whole_screen(desktop: Deskto
     assert screen["name"] == "The Whole Screen"
     # Print, pressed here, takes it, so that's its chord here rather than Shift+Print.
     assert screen["chord"] == "Print", "the whole screen's row shows its chord"
-    desktop.photograph("capture")
+    desktop.shoot("capture")
     with desktop.told("shows card Screenshot captured"), desktop.captured():
         desktop.machine.send_key("ret")
 
@@ -323,7 +323,7 @@ def test_capture_holds_what_it_took_lately_a_picture_shown_in_the_drawer(desktop
             and shown["drawer"]["out"]
         )
     )
-    desktop.photograph("capture-recent")
+    desktop.shoot("capture-recent")
     desktop.close_launcher()
 
 
@@ -418,7 +418,7 @@ def test_a_region_is_picked_by_a_vim_users_keys(desktop: Desktop) -> None:
     machine.send_key("shift-right")
     # The pictures before leave their notices, which go on their own.
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
-    desktop.photograph("picker")
+    desktop.shoot("picker")
     with desktop.told(f"picked {x - 32},{y - 16} {width + 32}x{height}"):
         machine.send_key("ret")
     pictures_taken(2)
@@ -429,7 +429,7 @@ def test_a_region_is_picked_by_a_vim_users_keys(desktop: Desktop) -> None:
     with desktop.told("picker typed f b"):
         machine.send_chars("faafb")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
-    desktop.photograph("picker-cells")
+    desktop.shoot("picker-cells")
     rows = round(16 * high / wide)
     with desktop.told(f"picked 0,0 {round(2 * wide / 16)}x{round(2 * high / rows)}"):
         machine.send_chars("b\n")
@@ -451,7 +451,7 @@ def test_minus_goes_back_from_the_picker_to_capture_and_q_closes_it(
     with desktop.told("picker lists keys"):
         machine.send_chars(" ?")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
-    desktop.photograph("picker-keys")
+    desktop.shoot("picker-keys")
     with desktop.told("picker hides keys"):
         machine.send_key("esc")
     with desktop.told("gone picker"):
@@ -575,7 +575,7 @@ def test_the_camera_takes_a_picture_and_a_video_by_the_keys(desktop: Desktop) ->
     machine.send_key("tab")
     machine.send_key("ret")
     retry(lambda last: camera.recording(1, last), timeout=WAKING)
-    desktop.photograph("camera")
+    desktop.shoot("camera")
     camera.saved("ret")
     camera.gone()
     # ZZ while recording saves the video, then closes. The arrows choose that way, so Right
@@ -752,7 +752,7 @@ def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
     assert len(parts) == 3, parts  # noqa: PLR2004 # Open, who has it, and what it gives.
     assert parts[:2] == ["Open", "In Use \u00b7 chrome"], parts
     assert re.fullmatch("Streaming \u00b7 YUYV 640 \u00d7 480 at [0-9]+", parts[2]), parts
-    desktop.photograph("launcher-camera")
+    desktop.shoot("launcher-camera")
     desktop.next_row()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "In Use")
     desktop.follow()

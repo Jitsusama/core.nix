@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # What changed on screen between two runs of a VM test.
 #
-# The desktop test photographs every state it puts the desktop in. Run it on
+# The desktop test shoots every state it puts the desktop in. Run it on
 # main and on a branch, then give this the two results: it names each picture
 # that changed, by how many pixels, and draws each one before, after and the
 # difference, cropped to where it changed, so a change to one surface that

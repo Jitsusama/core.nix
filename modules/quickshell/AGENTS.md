@@ -124,10 +124,10 @@ subtest in its area's file under `tests/desktop/`, and a helper two areas use
 goes in its prelude. An area past about two minutes or twenty subtests splits,
 as [Earning a Check][earning] says, and `every-vm-test-keeps-to-the-pyramid`
 fails on one that grows.
-A picture is taken with `photograph`, once the screen holds still, after
+A picture is taken with `shoot`, once the screen holds still, after
 waiting on what the shell reports for the state it shows. Only an area's
 gallery, `vm-desktop-<area>.gallery`, takes them, so a subtest never leans
-on `photograph` to let the screen settle; one that measures the screen uses
+on `shoot` to let the screen settle; one that measures the screen uses
 `settled_screen`.
 
 To see a surface while changing it, run `shell-preview` from the dev shell.

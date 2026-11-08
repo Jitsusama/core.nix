@@ -349,9 +349,9 @@ login. It lives in [`tests/vm/guide/secure-boot.nix`][4].
 ### What Changed on Screen
 
 Each area of the desktop test has a gallery, `vm-desktop-<area>.gallery`,
-the same test photographing every state it puts the desktop in, each once
+the same test shooting every state it puts the desktop in, each once
 the screen holds still, and keeping the pictures in its result. The area
-itself takes none, since proving a change needs none and each photograph
+itself takes none, since proving a change needs none and each shot
 waits for the screen to hold still; a subtest that measures the screen uses
 `settled_screen`, which the gallery keeps as a picture too. No check
 compares them with stored ones: a stored picture would fail on every change

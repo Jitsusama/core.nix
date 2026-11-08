@@ -15,7 +15,7 @@
 # its call, the clipboard takes and gives text, a picture opens floating in
 # swayimg and a key takes it to GIMP, a document opens in zathura beside
 # the rest, and GTK programs and monospaced text are in the theme. niri says which surfaces it drew,
-# photographs show their colours, to the test and to a person looking, and
+# shots show their colours, to the test and to a person looking, and
 # the portal and fontconfig answer for the settings. Quickshell has to
 # start without a single QML error.
 #
@@ -330,7 +330,7 @@ let
 in
 import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "desktop-${area}${pkgs.lib.optionalString gallery "-gallery"}";
-  # Reads the colours of the windows it photographs. The desktop it drives
+  # Reads the colours of the windows it shoots. The desktop it drives
   # is desktop/desktop_session.py, a module of the driver's Python, which
   # every area imports.
   extraPythonPackages = python: [
@@ -717,7 +717,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           }
         ];
         home.stateVersion = "26.05";
-        # A cursor that holds still, so two runs photograph kitty the same
+        # A cursor that holds still, so two runs shoot kitty the same
         # rather than catching its fade wherever it happens to be.
         xdg.configFile."kitty/kitty.conf".text = lib.mkAfter "cursor_blink_interval 0";
         # And the launcher's caret, for the same reason.
@@ -1001,7 +1001,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           # What a floating frame leaves of the screen across: the screen
           # rung and its border on either side.
           floating_room = 2 * (space.rung.screen + shape.border);
-          photographs = gallery;
+          shots = gallery;
         }
       );
     in

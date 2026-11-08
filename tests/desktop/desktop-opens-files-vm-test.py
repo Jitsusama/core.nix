@@ -52,7 +52,7 @@ def test_the_launchers_home_keeps_its_shape_and_a_collection_opens_by_name(
     windows = len(json.loads(desktop.as_account("niri msg --json windows")))
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.photograph("launcher-home")
+    desktop.shoot("launcher-home")
     rows = desktop.showing()["rows"]
     home = ["Now", "Agents", "Programs", "People", "Desktop", "Machine", "Network", "Keyboard"]
     assert rows == home, rows
@@ -197,7 +197,7 @@ def test_the_launcher_asks_what_to_open_a_picture_with_for_the_portal(desktop: D
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Swayimg")
 
     ask_portal()
-    desktop.photograph("open-with")
+    desktop.shoot("open-with")
     offer_only_swayimg()
     machine.send_key("ret")
     machine.wait_until_succeeds(f"grep -qx 0 {portal_said}", timeout=timedelta(seconds=60))
@@ -290,7 +290,7 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
         machine.wait_until_succeeds(sockets_gone, timeout=timedelta(seconds=10))
 
     choose("open")
-    desktop.photograph("file-chooser")
+    desktop.shoot("file-chooser")
     go_beside(desktop, held)
     goes_up_and_back(desktop, chose, held)
     open_own(desktop, chose)
@@ -713,7 +713,7 @@ def test_the_launchers_picker_fetches_a_file_from_google_drive_for_the_portal(
         desktop.down_to("My Drive")
         desktop.follow()
         desktop.launcher_until(lambda shown: "menu.pdf" in shown["rows"])
-        desktop.photograph("file-chooser-drive")
+        desktop.shoot("file-chooser-drive")
         desktop.down_to("menu.pdf")
         machine.send_key("ret")
         # Fetched first, then handed over, and the launcher closes.
@@ -767,7 +767,7 @@ def test_the_launchers_picker_saves_into_google_drive_for_the_portal(
         desktop.step_in("ret")
         # My Drive's line is the name given, saved by Return.
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "draft.md")
-        desktop.photograph("file-chooser-drive-save")
+        desktop.shoot("file-chooser-drive-save")
         machine.send_key("ret")
         machine.wait_until_succeeds(
             f'[ "$(cat {chose})" = "$(printf \'0\\nfile://{staged}/draft.md\')" ]',
@@ -807,7 +807,7 @@ def test_a_picture_opens_floating_in_swayimg_and_e_takes_it_to_gimp(desktop: Des
             desktop.in_session("niri msg layers | grep -q notifications"),
             timeout=timedelta(seconds=30),
         )
-        desktop.photograph("swayimg")
+        desktop.shoot("swayimg")
         machine.send_key("e")
         machine.wait_until_succeeds(
             f"pgrep -u {desktop.account} -f '[g]imp.*{looked}'", timeout=STARTING
@@ -851,7 +851,7 @@ def test_swayimg_typed_lists_the_picture_it_shows_under_it_and_return_steps_in(
         desktop.launcher_until(under_swayimg)
         # The picture it shows is listed once, as open, and so never counted as recent too.
         assert desktop.showing()["selected"]["note"] == "1 open", desktop.showing()["selected"]
-        desktop.photograph("launcher-swayimg-typed")
+        desktop.shoot("launcher-swayimg-typed")
         # Starting it would open nothing, so Return steps into its page,
         # which holds its Recent and its keys, and never starts it.
         desktop.step_in("ret")
@@ -962,7 +962,7 @@ def test_colon_in_swayimg_opens_the_command_line_where_q_closes_it(desktop: Desk
             and abs(shown["card"]["foot"] - shown["card"]["screen"] * 11 / 12) <= 1
         )
     )
-    desktop.photograph("swayimg-command-line")
+    desktop.shoot("swayimg-command-line")
     machine.send_chars("q")
     desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "q")
     machine.send_key("ret")
@@ -980,7 +980,7 @@ def test_a_document_opens_in_zathura_beside_the_rest_and_zz_closes_it(desktop: D
     windows = json.loads(desktop.as_account("niri msg --json windows"))
     zathura = next(window for window in windows if window["app_id"] == "org.pwmt.zathura")
     assert not zathura["is_floating"], zathura
-    desktop.photograph("zathura")
+    desktop.shoot("zathura")
     machine.send_key("shift-z")
     machine.send_key("shift-z")
     machine.wait_until_fails(
@@ -1003,7 +1003,7 @@ def test_a_markdown_file_opens_in_the_reader_and_takes_neovims_keys(desktop: Des
     )
 
     reader = reader_opened(desktop, page)
-    desktop.photograph("reader")
+    desktop.shoot("reader")
     machine.send_key("shift-g")
     close_the_reader(desktop)
     assert reader_closed_at(desktop, reader)["at_end"], "G didn't go to the end, or ZZ didn't close"
@@ -1113,7 +1113,7 @@ def test_the_reader_started_from_programs_shows_what_to_read(desktop: Desktop) -
     start = desktop.as_account("cat /run/user/$(id -u)/reader/start.md")
     assert start.startswith("# What to Read"), start
     assert f"(<{notes}/to-read.md>)" in start, start
-    desktop.photograph("reader-start")
+    desktop.shoot("reader-start")
     showing = f"~/.local/state/reader/showing/{pid}"
     machine.fail(desktop.in_session(f"test -s {showing}"))
     first = re.search(r"\]\(<(.+?)>\)", start)
@@ -1201,7 +1201,7 @@ def test_chrome_typed_lists_its_tabs_then_its_sites_under_it_and_tab_opens_its_p
             1,
             1,
         ], depths
-        desktop.photograph("launcher-chrome-typed")
+        desktop.shoot("launcher-chrome-typed")
         # Tab opens Chrome's page, its first row Return's own, and its Recent in it.
         desktop.into_program()
         desktop.launcher_until(
@@ -1210,7 +1210,7 @@ def test_chrome_typed_lists_its_tabs_then_its_sites_under_it_and_tab_opens_its_p
             )
         )
         assert desktop.showing()["selected"]["name"] == "Go To", desktop.showing()["selected"]
-        desktop.photograph("launcher-chrome-page")
+        desktop.shoot("launcher-chrome-page")
     finally:
         desktop.close_launcher()
         # The bracket keeps pkill from matching the shell that runs it.
@@ -1235,7 +1235,7 @@ def test_kitty_typed_lists_the_folders_it_visited_under_it(desktop: Desktop) -> 
             return "estuary" in rows[at + 1 : at + 4] and said is not None
 
         desktop.launcher_until(under_kitty)
-        desktop.photograph("launcher-kitty-typed")
+        desktop.shoot("launcher-kitty-typed")
     finally:
         desktop.close_launcher()
         desktop.as_account(f"zoxide remove {folder} && rmdir {folder}")
@@ -1264,7 +1264,7 @@ def test_kittys_recent_opens_a_window_in_a_folder_it_visited(desktop: Desktop) -
     desktop.type_in("recent", selecting="Recent")
     desktop.follow()
     desktop.launcher_until(lambda shown: "tide" in shown["rows"])
-    desktop.photograph("launcher-kitty-recent")
+    desktop.shoot("launcher-kitty-recent")
     desktop.type_in("tide", selecting="tide")
     machine.send_key("ret")
     there = (

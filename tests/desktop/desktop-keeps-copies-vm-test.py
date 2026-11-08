@@ -57,9 +57,9 @@ def test_super_v_finds_what_was_copied_earlier_and_copies_it_again(desktop: Desk
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("reads") == "the second copy\nover two lines"
     )
-    desktop.photograph("launcher-copies-all")
+    desktop.shoot("launcher-copies-all")
     desktop.type_in("tues", selecting="Notes for Tuesday")
-    desktop.photograph("launcher-copies")
+    desktop.shoot("launcher-copies")
     machine.send_key("ret")
 
     def copied_again(_: bool) -> bool:
@@ -203,7 +203,7 @@ def test_a_picture_copied_is_kept_shown_as_it_is_and_copied_again(desktop: Deskt
     screen = json.loads(desktop.as_account("niri msg --json focused-output"))
     assert drawer["cardAt"] < drawer["at"], drawer
     assert drawer["at"] + drawer["width"] <= screen["logical"]["width"], (drawer, screen)
-    desktop.photograph("launcher-copies-picture")
+    desktop.shoot("launcher-copies-picture")
     machine.send_key("ret")
     retry(desktop.pasted_the_picture, timeout=timedelta(seconds=10))
     # Found by a search typed at home, it's in the drawer the same, as the
@@ -271,7 +271,7 @@ def test_forget_the_clipboard_forgets_every_copy_and_what_it_held(desktop: Deskt
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("forget the clip", selecting="Forget the Clipboard")
-    desktop.photograph("launcher-forget-copies")
+    desktop.shoot("launcher-forget-copies")
     # Return writes :forget on the command line, since forgetting ends what's kept; a
     # fresh Return there asks, by the row's own name, as it can't be taken back, and y
     # does it.

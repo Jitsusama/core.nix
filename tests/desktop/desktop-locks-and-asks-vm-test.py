@@ -120,7 +120,7 @@ def test_polkits_prompt_lets_the_account_start_a_system_service(desktop: Desktop
     machine = desktop.machine
     with desktop.told("keys polkit"):
         desktop.as_account("niri msg action spawn -- systemctl start polkit-allowed.service")
-    desktop.photograph("polkit")
+    desktop.shoot("polkit")
     machine.send_chars(f"{desktop.values['secret']}\n")
     machine.wait_for_file("/run/polkit-allowed", timeout=timedelta(seconds=30))
 
@@ -130,7 +130,7 @@ def test_the_askpass_asks_for_a_yes_a_pin_and_a_touch(desktop: Desktop) -> None:
     machine = desktop.machine
     with desktop.told("keys askpass"):
         desktop.ask("confirm", SIGNING)
-    desktop.photograph("askpass")
+    desktop.shoot("askpass")
     machine.send_key("ret")
     desktop.answered_with("confirm", 0)
 
@@ -144,7 +144,7 @@ def test_the_askpass_asks_for_a_yes_a_pin_and_a_touch(desktop: Desktop) -> None:
         desktop.ask(
             "secret", f"Enter PIN for ED25519-SK key /home/{desktop.account}/.ssh/id_ed25519_sk: "
         )
-    desktop.photograph("askpass-pin")
+    desktop.shoot("askpass-pin")
     machine.send_chars("2468\n")
     desktop.answered_with("secret", 0, "2468\n")
 

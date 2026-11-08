@@ -43,7 +43,7 @@ Singleton {
     readonly property var first: stood.first
     property string said: ""
     // Said for the desktop test, which waits on the keys it typed before
-    // photographing them.
+    // shooting them.
     onTypedChanged: Report.say(`picker typed ${typed}`)
     readonly property bool listing: stood.listing
     onListingChanged: Report.say(listing ? "picker lists keys" : "picker hides keys")

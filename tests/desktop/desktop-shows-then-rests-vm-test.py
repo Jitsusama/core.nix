@@ -58,7 +58,7 @@ def test_the_overview_draws_nothing_of_the_shells_and_the_launcher_says_how_thin
         desktop.in_session("niri msg --json overview-state | grep -q '\"is_open\":true'"),
         timeout=GOING,
     )
-    desktop.photograph("overview")
+    desktop.shoot("overview")
     machine.fail(desktop.in_session("niri msg layers | grep -qw status"))
     desktop.as_account("niri msg action close-overview")
     # The time, the battery's charge and the cable, at least, as drawn once the keys beside
@@ -74,7 +74,7 @@ def test_the_overview_draws_nothing_of_the_shells_and_the_launcher_says_how_thin
             and "\U000f0200" in shown["glance"]
         )
     )
-    desktop.photograph("launcher-standing")
+    desktop.shoot("launcher-standing")
     # Typing leaves it as it was, so how things stand is always where Joel looks for it, a
     # row's note going to the field's end instead.
     desktop.type_in("zqxj")
@@ -86,7 +86,7 @@ def test_the_overview_draws_nothing_of_the_shells_and_the_launcher_says_how_thin
             and "\U000f0200" in shown["glance"]
         )
     )
-    desktop.photograph("launcher-glance-typing")
+    desktop.shoot("launcher-glance-typing")
     desktop.close_launcher()
 
 
@@ -94,7 +94,7 @@ def test_a_notification_appears(desktop: Desktop) -> None:
     """A notification appears, and leaves on its own."""
     with desktop.told("drawn notifications"):
         desktop.as_account("notify-send 'Build finished' 'the laptop is ready'")
-    desktop.photograph("notification")
+    desktop.shoot("notification")
     # It leaves on its own, before the meters, whose pictures it would be in for as long as the
     # host takes to reach them.
     desktop.machine.wait_until_fails(desktop.in_session(NOTICES), timeout=SAYING)
@@ -147,7 +147,7 @@ def test_the_brightness_shows_when_the_keys_command_changes_it_then_goes(desktop
             f"grep -qx {share} /sys/class/backlight/stand-in/brightness"
         )
         desktop.reported("level brightness ", as_chosen, since)
-    desktop.photograph("brightness")
+    desktop.shoot("brightness")
     gone(desktop, "brightness")
 
 
@@ -255,7 +255,7 @@ def test_the_charge_shows_when_power_goes_and_comes_back_then_goes(desktop: Desk
     for state in ["off", "on"]:
         with desktop.told("drawn power"):
             desktop.power(state)
-        desktop.photograph(f"power-{state}")
+        desktop.shoot(f"power-{state}")
         gone(desktop, "power")
 
 
@@ -434,4 +434,4 @@ def test_quickshell_warned_of_nothing_it_drew_all_along(desktop: Desktop) -> Non
         "journalctl --user -u quickshell --no-pager -o cat | grep -a -E 'WARN[^ ]* scene' || true"
     )
     assert log.strip() == "", f"Quickshell warned of a scene: {log}"
-    desktop.photograph("desktop")
+    desktop.shoot("desktop")

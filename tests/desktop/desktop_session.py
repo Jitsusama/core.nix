@@ -72,7 +72,7 @@ class Values(TypedDict):
     # What a floating frame leaves of the screen across, in logical pixels.
     floating_room: int
     # Whether this is the gallery, which keeps pictures for a person to look at.
-    photographs: bool
+    shots: bool
 
 
 # A JSON object as niri or the shell gives it, whose fields the test reads as it finds them.
@@ -445,13 +445,13 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
                     return True
         return False
 
-    def photograph(self, name: str, timeout: timedelta = timedelta(seconds=10)) -> None:
-        """Photograph the screen once it holds still, for a person to look at, in the gallery.
+    def shoot(self, name: str, timeout: timedelta = timedelta(seconds=10)) -> None:
+        """Shoot the screen once it holds still, for a person to look at, in the gallery.
 
         One that never holds still is kept as it is. Outside the gallery it takes nothing and
         waits for nothing, so a test must never lean on it to let the screen settle.
         """
-        if self.values["photographs"]:
+        if self.values["shots"]:
             self.held_still(timeout)
             self.machine.screenshot(name)
 
@@ -469,7 +469,7 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         """
         self.held_still(timeout)
         image = self.screen_now()
-        if self.values["photographs"]:
+        if self.values["shots"]:
             image.save(self.machine.out_dir / f"{name}.png")
         return image
 
@@ -851,7 +851,7 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         print(f"niri shows:\n{shown}")
 
     def meter_shows(self, namespace: str, kind: str, change: str) -> None:
-        """Make a change the shell is sure to hear, and photograph the meter that answers it.
+        """Make a change the shell is sure to hear, and shoot the meter that answers it.
 
         Quickshell hears a node change only once it has bound the node's audio, a moment after
         WirePlumber names it the default, which the meter says, so one change is made after
@@ -866,7 +866,7 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         )
         with self.told(f"drawn {namespace}"):
             self.as_account(change)
-        self.photograph(namespace)
+        self.shoot(namespace)
 
     def pi_window(self, address: str, title: str) -> None:
         """Open a window titled so whose program stands in for a pi session's, as pi runs in kitty.

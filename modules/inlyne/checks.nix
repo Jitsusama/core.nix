@@ -125,7 +125,7 @@ onLinux {
             [ "$(many $page "$own")" -eq 0 ] || fail "inlyne drew its own colour $own in $page"
           done
         done
-        # The photographs stay, to look at.
+        # The shots stay, to look at.
         mkdir $out
         cp page.png keys.png $out
       '';

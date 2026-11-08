@@ -107,7 +107,7 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
             )
         )
     )
-    desktop.photograph("launcher-runs")
+    desktop.shoot("launcher-runs")
     # The fleet's own row says more than its share, so what it says reads on while selected, as
     # a long name does (docs/design.md). That a fleet at work draws nothing while it's only
     # looked at is held among its members, where the member at work shows below the way to
@@ -132,7 +132,7 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
             and shown["selected"]["side"] == "opus \u00b7 $2.50 \u00b7 under a minute"
         )
     )
-    desktop.photograph("launcher-run-members")
+    desktop.shoot("launcher-run-members")
     # Its answer, read in a terminal named for the run and the member.
     machine.send_key("ret")
     reading = "paint-crew \u00b7 roller"
@@ -291,7 +291,7 @@ def test_the_launchers_home_says_how_its_sessions_stand_rather_than_naming_them(
     reads = {thing["is"]: thing["reads"] for thing in desktop.showing()["things"]}
     assert "No sessions" not in reads["collection:agents"], reads
     assert "Bootstrap" not in reads["collection:agents"], reads
-    desktop.photograph("launcher-home-agents")
+    desktop.shoot("launcher-home-agents")
     desktop.close_launcher()
     desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(long)['id']}")
     desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
