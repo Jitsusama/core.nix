@@ -68,17 +68,17 @@ Piece {
         run: shell => shell.launcher.into("timers")
     }]
 
+    // Only while the launcher is open, as the clock is, so the margin never
+    // wakes for it closed; its wait is worked out again whenever it starts,
+    // the stopwatch changes or the count grows.
     Timer {
         repeat: true
-        running: piece.watchAlone
-        onRunningChanged: {
-            if (running)
-                interval = piece.untilWider();
+        running: piece.watchAlone && HeldTimers.showing
+        interval: {
+            void piece.grown;
+            return running ? piece.untilWider() : 1000;
         }
-        onTriggered: {
-            piece.grown = Date.now();
-            interval = piece.untilWider();
-        }
+        onTriggered: piece.grown = Date.now()
     }
 
     function untilWider() {
