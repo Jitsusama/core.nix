@@ -65,6 +65,20 @@ in
         && system opened != system cached
       );
 
+  # A guest already changed asks chrony for the time each minute and steps
+  # any error past a second, since its clock stops while the Mac sleeps; one
+  # given nothing keeps the cached guest's clock, so it still needs no build.
+  linux-builder-keeps-a-changed-guests-time =
+    holds "linux-builder-keeps-a-changed-guests-time"
+      "A changed guest doesn't step its clock with chrony at any time, or a guest given nothing does."
+      (
+        opened.services.chrony.enable
+        && !opened.services.timesyncd.enable
+        && lib.hasInfix "makestep 1 -1" opened.services.chrony.extraConfig
+        && marked.services.chrony.enable
+        && !plain.services.chrony.enable
+      );
+
   # Only the accounts named may restart the VM and the Nix daemon without a
   # password, each by the whole command, so the rule lets nothing else
   # through; with none named, sudo gets no rule at all.
