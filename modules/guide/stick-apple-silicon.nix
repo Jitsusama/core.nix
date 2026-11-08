@@ -1,11 +1,23 @@
 # The stick's own system on an Apple silicon Mac, beside stick.nix: the
-# same install and repairs, on Asahi's kernel through nixos-apple-silicon,
-# booted by the U-Boot that Asahi's installer leaves on the Mac's own boot
-# partition. U-Boot has no Secure Boot, so nothing signs this stick.
+# same install and repairs, on core's own build of Asahi's kernel, with the
+# rest of Asahi's support through nixos-apple-silicon, booted by the U-Boot
+# that Asahi's installer leaves on the Mac's own boot partition. U-Boot has
+# no Secure Boot, so nothing signs this stick.
 { nixos-apple-silicon }:
 { ... }:
 {
-  imports = [ nixos-apple-silicon.nixosModules.apple-silicon-support ];
+  imports = [
+    nixos-apple-silicon.nixosModules.apple-silicon-support
+    # The kernel the MacBook Air M2 runs, core's only Apple model, so the
+    # stick starts the very kernel an install will, and one build serves
+    # both. Asahi's kernel holds every Apple model's device trees; this
+    # moves to where every model takes it when a second one comes.
+    ../../hardware/apple-macbook-air-m2-a2681/kernel/nixos.nix
+  ];
+
+  # core builds the kernel itself, so nixos-apple-silicon's kernel module,
+  # which would set its own, is left out.
+  disabledModules = [ "${nixos-apple-silicon}/apple-silicon-support/modules/kernel" ];
 
   nixpkgs.hostPlatform = "aarch64-linux";
 
