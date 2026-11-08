@@ -329,13 +329,14 @@ off.
 
 ## Network
 
-How the machine reaches out: Wi-Fi, Ethernet, a VPN and tethering. A network
-can be connected, signed in to and forgotten; Wi-Fi's radio can be turned off.
+How the machine reaches out: Wi-Fi, Ethernet, a VPN and tethering, and the
+home network it reaches out through at home. A network can be connected,
+signed in to and forgotten; Wi-Fi's radio can be turned off.
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
 | connection | the network link out of the machine | line, uplink | |
-| speed | how fast the connection carries data now, each way | network speed, connection speed, bandwidth | `traffic` |
+| speed | how fast the connection, or a device on the home network, carries data now, each way | network speed, connection speed, bandwidth | `traffic` |
 | address | an address the machine has on a network | network address, IP | `networks` |
 | Wi-Fi | the network without a cable | WLAN, wireless | `wifid`, `wifi` |
 | Ethernet | the network through a cable | wired | |
@@ -344,6 +345,22 @@ can be connected, signed in to and forgotten; Wi-Fi's radio can be turned off.
 | VPN | a private link to another network, carried through this one | tunnel | `jitsusama.shaper.vpns` |
 | firewall | what keeps others' connections out | | nftables |
 | shaper | the program that keeps the network's queue on the machine, sorted by slice, so a call stays quick | | `shaper`, CAKE |
+| home network | the network at home, the eero's, its nodes and the devices on them, and its place in the launcher | eero network, mesh network | `eero` |
+| node | one eero of the home network | satellite, router, extender | `eeros` |
+| gateway node | the node the internet comes in through | base station, primary node | `gateway` |
+| backhaul | how a node reaches the node before it, over Ethernet or Wi-Fi | mesh link, backbone | |
+| device | a thing on the home network, as eero lists it | client, station | `clients` |
+| internet | the home network's way out, through its gateway node | WAN, ISP connection | |
+| internet provider | who carries the internet to the home network, as eero names it | carrier | `isp` |
+| outage | a time the internet was down | downtime | |
+| radio | a Wi-Fi transmitter on one band: the machine's card's, or one of a node's | | |
+| band | the frequencies a radio uses: 2.4, 5 or 6 GHz | frequency band | |
+| channel | the slice of a band a radio uses, with its width | | |
+| signal | how strongly one radio hears another, in dBm | RSSI, signal strength | |
+| rate | how fast a radio link can carry data each way as it's set now, and how it's made: MCS, streams, width and guard interval | link speed, PHY rate, bitrate | `rate_bps` |
+| speed test | eero measuring the most the internet carries each way, from the gateway node | speedtest | `speedtest` |
+| traffic | how much data the home network, a node or a device moved, by hour | data usage | `usage`, `data_usage` |
+| profile | a group of devices eero lets through or holds off together | | `profiles` |
 
 ## Disk
 

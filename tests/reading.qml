@@ -77,6 +77,16 @@ QtObject {
         const where = "Tokyo, Japan \u00b7 Open-Meteo";
         expect("no separator dangling", cut(where, 200) === "Tokyo, Japan\u2026", cut(where, 200));
         expect("no comma dangling", cut(where, 120) === "Tokyo\u2026", cut(where, 120));
+        // A note of items gives way by whole items from its end, never
+        // inside one (VKCF3Z, 2026-11-07: never "11.9 Mb/s\u2026").
+        const note = "Example ISP \u00b7 370 Mb/s down \u00b7 11.9 Mb/s up";
+        const noted = (words, room) => Reading.wholeItemsFromEnd(words, room, width);
+        expect("a note whole where it fits", noted(note, 420) === note, noted(note, 420));
+        expect("a note's last item gives way whole",
+            noted(note, 410) === "Example ISP \u00b7 370 Mb/s down", noted(note, 410));
+        expect("a note's first item alone", noted(note, 200) === "Example ISP", noted(note, 200));
+        expect("its first item at a whole word", noted(note, 100) === "Example\u2026",
+            noted(note, 100));
         // The path's steps: the program's ask, a folder's path, the place,
         // a step's mark between each, three characters wide. Each gives
         // way at whole names, never a piece of one (VKCF3Z, 2026-11-05:
