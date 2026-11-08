@@ -634,6 +634,55 @@ fn a_listing_is_taken_again_six_hours_on_however_busy_the_machine() {
     assert_eq!(store.log()[1], "list 5", "at idle priority");
 }
 
+/// A machine whose tasks wait on the disk nearly all the time, as on 8
+/// November at 01:31, at load 450.
+const OVERLOADED: Senses = Senses {
+    pressure: Pressure {
+        io: disk_guard::moments::Stall {
+            some: 98.0,
+            full: 2.6,
+        },
+        ..CALM.pressure
+    },
+    ..CALM
+};
+
+#[test]
+fn a_healthy_store_is_listed_again_only_once_the_machine_is_not_overloaded() {
+    // A listing reads the whole store's database, and on a healthy disk
+    // nothing needs what it finds yet.
+    let store = Store::new();
+    store.dead("aaa-young", 3600.0, 4096);
+    let mut guard = store.guard(store.config("0%", "0%"));
+    listed_later(&store, &mut guard, 0.0, &CALM);
+    step_later(&mut guard, 7.0 * 3600.0, &OVERLOADED);
+    assert_eq!(lists(&store), 1, "held while overloaded");
+    listed_later(&store, &mut guard, 7.0 * 3600.0 + 60.0, &BUSY);
+    assert_eq!(lists(&store), 2, "taken once only busy");
+}
+
+#[test]
+fn a_filling_store_is_listed_however_overloaded_the_machine() {
+    // Past healthy, what the listing finds is what frees the disk.
+    let store = Store::new();
+    store.dead("aaa-old", 10.0 * DAY, 4096);
+    let mut guard = store.guard(store.config("100%", "0%"));
+    step_later_until(&store, &mut guard, 0.0, &OVERLOADED, |store, _| {
+        lists(store) == 1
+    });
+}
+
+#[test]
+fn routine_upkeep_waits_while_the_machine_is_overloaded() {
+    let store = Store::new();
+    let old = store.dead("aaa-old", 10.0 * DAY, 4096);
+    let mut guard = store.guard(store.config("0%", "0%"));
+    step_later(&mut guard, 0.0, &OVERLOADED);
+    assert!(store.log().is_empty(), "{:?}", store.log());
+    assert!(old.exists());
+    store.step_until(&mut guard, |_| !old.exists());
+}
+
 #[test]
 fn a_listing_kept_by_names_is_listed_again() {
     // As the guard kept them before it held references by place.

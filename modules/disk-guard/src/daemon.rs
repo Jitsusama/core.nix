@@ -6,7 +6,7 @@ use crate::anchor::Dir;
 use crate::band::{Band, Space, Thresholds};
 use crate::clock::Tick;
 use crate::config::{Config, Source};
-use crate::decide::{Decision, Fill, Situation, calm, decide, powered, spare};
+use crate::decide::{Decision, Fill, Situation, calm, decide, overloaded, powered, spare};
 use crate::dedupe::{self, Deduped};
 use crate::discover;
 use crate::finished::{self, Answers, Predicate};
@@ -993,7 +993,12 @@ impl Guard {
         self.heartbeat();
         self.heard_garbage(tick.wall)?;
         self.watch_owners(tick);
-        let spare_moment = spare(senses.power, senses.saver, &self.memory.awake, tick.wall);
+        // An overloaded machine spares nothing for routine work; a disk past
+        // healthy is still answered, since its bands don't ask for a spare
+        // moment.
+        let overload = overloaded(senses.pressure);
+        let spare_moment =
+            spare(senses.power, senses.saver, &self.memory.awake, tick.wall) && !overload;
         let mut due = Vec::new();
         for (&device, watched) in &mut self.watched {
             let Ok(space) = crate::sys::space(&watched.path) else {
@@ -1035,7 +1040,7 @@ impl Guard {
         // October.
         self.measure_holders(tick.wall);
         self.watch_roots();
-        self.list_garbage(tick.wall, spare_moment);
+        self.list_garbage(tick.wall, spare_moment, overload);
         self.collect_garbage(tick.wall, &mut due);
         // Deduplicating reads every file not yet linked and relinks its
         // twins, and nothing is lost by putting it off, so it alone still
@@ -1460,8 +1465,9 @@ impl Guard {
     /// and at once on a filling one, six hours on
     /// at a spare moment, or a day on whenever there's power, at idle
     /// priority; and at once when the store's filesystem is filling
-    /// and the listing is an hour old.
-    fn list_garbage(&mut self, now: f64, spare: bool) {
+    /// and the listing is an hour old. While the machine is overloaded only
+    /// a filling store's listing begins; one asked for meanwhile waits.
+    fn list_garbage(&mut self, now: f64, spare: bool, overloaded: bool) {
         if self.listing_out.is_some() {
             return;
         }
@@ -1472,6 +1478,9 @@ impl Guard {
             .watched
             .get(&device)
             .is_some_and(|watched| watched.band > Band::Healthy);
+        if overloaded && !pressed {
+            return;
+        }
         let age = |at: Option<f64>| at.map_or(f64::INFINITY, |at| now - at);
         let listed = age(self.listing.as_ref().map(|listing| listing.listed_at));
         let retry = if pressed {

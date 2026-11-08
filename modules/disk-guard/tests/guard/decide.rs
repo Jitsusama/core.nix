@@ -1,6 +1,6 @@
 use disk_guard::band::{Band, Thresholds};
 use disk_guard::clock::{Awake, Tick};
-use disk_guard::decide::{Decision, Fill, Situation, calm, decide, spare};
+use disk_guard::decide::{Decision, Fill, Situation, calm, decide, overloaded, spare};
 use disk_guard::moments::{Power, Pressure, Stall};
 use disk_guard::units::{float, whole};
 
@@ -290,4 +290,30 @@ fn only_stalls_on_the_disk_or_memory_keep_a_moment_from_being_calm() {
         ..Pressure::default()
     };
     assert!(calm(cpu));
+}
+
+/// A moment whose tasks stall `some` percent of the time on each of the
+/// disk, memory and the processors.
+fn stalling(io: f64, memory: f64, cpu: f64) -> Pressure {
+    let stall = |some| Stall { some, full: 0.0 };
+    Pressure {
+        io: stall(io),
+        memory: stall(memory),
+        cpu: stall(cpu),
+    }
+}
+
+#[test]
+fn a_machine_stalled_most_of_the_time_on_anything_is_overloaded() {
+    // As on 8 November at 01:31, at load 450.
+    assert!(overloaded(stalling(98.0, 7.0, 60.0)));
+    assert!(overloaded(stalling(0.0, 80.0, 0.0)));
+    assert!(overloaded(stalling(0.0, 0.0, 79.0)));
+}
+
+#[test]
+fn a_machine_busy_building_is_not_overloaded() {
+    // As the same evening, building all the while and still answering.
+    assert!(!overloaded(stalling(7.0, 7.0, 37.0)));
+    assert!(!overloaded(stalling(50.0, 30.0, 70.0)));
 }
