@@ -115,7 +115,7 @@ everything once, before pushing, never after each edit:
 | A Rust crate    | `cargo test`, then `<crate>-passes-clippy`        | its VM test's subtests, if any |
 | A theme         | `a-faint-theme-is-refused`, `a-theme-changes-everything` | the galleries it changes, `shots-changed` |
 | The kernel      | `kernel-settings-hold-<model>`                    | the machine's kernel       |
-| A module        | `example-nixos`, `example-laptop`, `example-darwin` |                          |
+| A module        | `example-nixos`, `example-laptop`, `example-apple-laptop`, `example-darwin` | |
 | Any script      | `nix fmt`, its own check                          |                            |
 
 `changed-checks` names each check whose derivation the change moved from its

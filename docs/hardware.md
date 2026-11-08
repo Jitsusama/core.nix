@@ -35,6 +35,47 @@ anything that's a preference rather than a need, such as a charge limit. The
 disk's layout is the same on every laptop, so it's a module, `disko`, and
 [the install guide][8] says how a machine gets onto it.
 
+## Apple MacBook Air M2 (A2681)
+
+[`hardware/apple-macbook-air-m2-a2681/nixos.nix`][31]. The 13-inch MacBook
+Air of 2022 (Mac14,2, board J413): Apple's M2 (T8112) with four performance
+and four efficiency cores and Apple's own GPU, a 2560x1664 panel, Broadcom's
+BCM4387 for Wi-Fi 6 and Bluetooth, two USB-C ports and MagSafe. Asahi Linux
+drives it, through [nixos-apple-silicon][32]: Asahi's kernel, m1n1, which
+Apple's boot firmware starts in a macOS stub's place, and U-Boot, which m1n1
+starts and which gives systemd-boot a plain UEFI. Asahi's installer, run
+from macOS, shrinks macOS, makes the stub and the EFI system partition, and
+copies the firmware for Wi-Fi, Bluetooth and the camera out of macOS onto
+that partition. So the kernel is Asahi's rather than core's own build, and
+`jitsusama.kernel.cpu` isn't set.
+
+| Part     | What the module does                                                   |
+| -------- | ---------------------------------------------------------------------- |
+| Kernel   | Asahi's, with m1n1 and U-Boot, from nixos-apple-silicon                |
+| Boot     | systemd-boot under U-Boot's UEFI, which keeps no variables             |
+| Firmware | Asahi's copy from macOS, unpacked from the EFI partition at each boot  |
+| Stick    | how to start one from U-Boot, for the guide to say                     |
+
+The firmware stays on the EFI system partition rather than in the system,
+so the machine evaluates purely and builds anywhere; the initrd unpacks it,
+which needs systemd there.
+
+What the model lacks next to the x86 laptops, by [Asahi's table for the
+M2][33]: a TPM and a Secure Boot Linux can use, so the disk can't be sealed
+to the boot and the TPM's keys have to come from elsewhere; a display over
+USB-C, which waits on Asahi's DisplayPort work; Touch ID; and the video
+encoder. Spotify's own client isn't built for aarch64-linux, so its module
+leaves it out there and spotify-player and the web player stay.
+
+### What's Left
+
+| Part     | Why it isn't here yet                                                  |
+| -------- | ---------------------------------------------------------------------- |
+| Keyboard | its IDs as keyd names them, for Colemak, are read on its first boot    |
+| Devices  | where each driver binds, for device-check, is read on the machine too  |
+| Keys     | the TPM's SSH, signing and link keys need a YubiKey or another home    |
+| Disk     | the guide's install into the space Asahi's installer leaves free       |
+
 ## Dell XPS 14 (DA14260)
 
 [`hardware/dell-xps-14-da14260/nixos.nix`][2]. An Intel Core Ultra X7 358H
@@ -1478,3 +1519,6 @@ sealed to.
 [28]: https://github.com/linux-surface/kernel/blob/b571ef6ecb026ac9b1e9ac7c28ef350ec2a0519b/drivers/rtc/rtc-surface.c
 [29]: ../hardware/microsoft-surface-laptop-4-1958/touch/touchscreen.nix
 [30]: ../hardware/microsoft-surface-laptop-4-1958/firmware/firmware.nix
+[31]: ../hardware/apple-macbook-air-m2-a2681/nixos.nix
+[32]: https://github.com/nix-community/nixos-apple-silicon
+[33]: https://asahilinux.org/docs/platform/feature-support/m2/

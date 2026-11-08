@@ -465,7 +465,7 @@ says which module broke.
 | check | one promise that `nix flake check` builds and holds | | `checks.x86_64-linux.<name>` |
 | VM test | a check that boots machines in VMs | | a `vm-` name |
 | subtest | a named part of a VM test, which can run alone | | `with subtest(...)` |
-| example machine | a whole machine built only from core's outputs, as a machine repository would | | `example-nixos`, `example-laptop`, `example-darwin` |
+| example machine | a whole machine built only from core's outputs, as a machine repository would | | `example-nixos`, `example-laptop`, `example-apple-laptop`, `example-darwin` |
 | stand-in | something standing in for a real program or device in a check | fake | |
 | shot | a picture a VM test takes of one state of the screen | photograph | `screendump`, `shots-changed` |
 | decision record | a document saying why the design is what it is | ADR | `docs/decisions/` |
