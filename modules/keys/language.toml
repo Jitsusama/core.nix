@@ -1017,7 +1017,9 @@ changes = true
 undoable = true
 
 # A new window, as Vim's :new opens one: New Window, Start a Session and
-# Wherever It Fits, and New Window Here as :new . for the folder. Two acts
+# Wherever It Fits, and New Window Here as :new . for the folder; beside
+# kitty's New Window, New Window in a Repository is :new repository and
+# SSH to a Machine :new ssh, and a machine's SSH to It is :new. Two acts
 # on one row differ by what follows the command, never by its order.
 [acts.new]
 command = "new"

@@ -730,6 +730,17 @@
     kitty draws !=, >= and -> as the mono face's ligatures with the account's fontconfig features,
     and |> and 1..=2 plain
   '';
+  kitty-lists-its-tabs = ''
+    Programs › kitty matches each kitty OS window to niri's window by order or a title only one
+    has, lists every tab niri shows, the window used last first and its tabs and panes as kitty
+    used them, says what runs in each by its group's leader through env and a session's mycelium,
+    an ssh session's machine, each row's name, state, folder and drawer, goes to and closes one
+    through its own kitty and opens a new window through the kitty used last or a new one; and
+    reads ~/.ssh/config's machines but patterns and Match blocks and ~/.ssh/known_hosts' but
+    hashed, marked and pattern lines, with each one's keys, other names and port, how many times
+    and when zsh's history last reached each, orders them most used first, says each one's row,
+    drawer and ssh, and orders fd's repositories by zoxide's last visit
+  '';
   lag-watch-passes-clippy = ''
     clippy finds nothing in lag-watch or its tests
   '';

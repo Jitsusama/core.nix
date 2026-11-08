@@ -9,6 +9,12 @@
 # machine and sources it after that machine's own zsh setup, and tints the
 # window towards the machine hue while it's connected, so a window that's
 # elsewhere says so whatever draws its prompt.
+#
+# In the launcher, Programs › kitty holds kitty's own as well (Kitty.qml):
+# every tab open in it, each pane's folder and what runs there, a new window
+# in one of the repositories under ~/src, and one running ssh to a machine
+# ~/.ssh/config or ~/.ssh/known_hosts names.
+{ quickshell }:
 {
   config,
   lib,
@@ -16,6 +22,11 @@
   ...
 }:
 let
+  # kitty, scrolling by touch on Wayland too.
+  package = pkgs.kitty.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ./touch-scrolling.patch ];
+  });
+
   inherit (config.jitsusama.theme)
     colours
     terminal
@@ -92,6 +103,8 @@ in
     ../keys/home.nix
     ../prompt/home.nix
     ../quickshell/recents.nix
+    # The launcher, which holds kitty's own as a provider.
+    quickshell
   ];
 
   options.jitsusama.kitty.keys = lib.mkOption {
@@ -161,11 +174,37 @@ in
     ];
   };
 
-  config.home.packages = [
-    (pkgs.kitty.overrideAttrs (old: {
-      patches = (old.patches or [ ]) ++ [ ./touch-scrolling.patch ];
-    }))
-  ];
+  config.home.packages = [ package ];
+
+  # kitty's own in Programs › kitty (Kitty.qml): its tabs and panes as its
+  # remote control lists them, which open-now asks every kitty for at once,
+  # a new window in a repository fd finds under ~/src, most recently
+  # visited first where zoxide knows one, and one running ssh to a machine
+  # ~/.ssh/config or ~/.ssh/known_hosts names, by how many times zsh's
+  # history ran ssh to it. Each is read ahead, as the shell starts and as
+  # the launcher closes, so its act is in its place from the first frame.
+  # zoxide's database is read whole, through od, since only it holds when
+  # each folder was visited, which a repository's row says.
+  config.jitsusama.quickshell.launcher.providers.kitty = {
+    order = 52;
+    source = ./Kitty.qml;
+    openNow = lib.getExe' (pkgs.callPackage ../open-with/recent-files.nix { }) "open-now";
+    fd = lib.getExe pkgs.fd;
+    zoxide = lib.optionalString config.programs.zoxide.enable (
+      lib.getExe config.programs.zoxide.package
+    );
+    zoxideData = lib.optionalString config.programs.zoxide.enable "${config.xdg.dataHome}/zoxide/db.zo";
+    od = lib.getExe' pkgs.coreutils "od";
+    grep = lib.getExe pkgs.gnugrep;
+    history = lib.optionalString config.programs.zsh.enable config.programs.zsh.history.path;
+    sshConfig = "${config.home.homeDirectory}/.ssh/config";
+    knownHosts = "${config.home.homeDirectory}/.ssh/known_hosts";
+    src = "${config.home.homeDirectory}/src";
+    kitten = lib.getExe' package "kitten";
+    kitty = lib.getExe package;
+  };
+  config.xdg.configFile."quickshell/launcher/Kitty.js".source = ./Kitty.js;
+  config.xdg.configFile."quickshell/launcher/KittyOpens.js".source = ./KittyOpens.js;
 
   config.xdg.configFile."kitty/kitty.conf".text = builtins.readFile ./kitty.conf;
 

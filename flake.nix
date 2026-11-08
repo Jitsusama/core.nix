@@ -195,7 +195,7 @@
         inlyne = ./modules/inlyne/home.nix;
         jq = ./modules/jq/home.nix;
         keys = ./modules/keys/home.nix;
-        kitty = ./modules/kitty/home.nix;
+        kitty = moduleFrom ./modules/kitty/home.nix { inherit (self.homeModules) quickshell; };
         lag-watch = ./modules/lag-watch/home.nix;
         libvirt = ./modules/libvirt/home.nix;
         link-keys = ./modules/link-keys/home.nix;
