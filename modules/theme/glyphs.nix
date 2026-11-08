@@ -8,7 +8,7 @@
 # on a 12 by 12 grid, filled even-odd, every one touching the grid's top and
 # bottom and centred across it. A font's glyph is drawn for text's size and
 # goes to mush at half the gap, where these are drawn; the same drawing
-# grows, whole, when What's on opens.
+# grows, whole, when Now opens.
 { lib }:
 let
   # A mark from the icon font by its code point, since an editor may not

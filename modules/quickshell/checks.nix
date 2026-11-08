@@ -1624,9 +1624,9 @@ onLinux {
       cp ${./launcher/Provider.qml} launcher/Provider.qml
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
-      cp ${./launcher/WhatsOn.qml} launcher/WhatsOn.qml
+      cp ${./launcher/Now.qml} launcher/Now.qml
       cp ${./launcher/Moment.js} launcher/Moment.js
-      cp ${./launcher/Now.js} launcher/Now.js
+      cp ${./launcher/NowGroups.js} launcher/NowGroups.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/now-moment.qml} shell.qml
@@ -3212,14 +3212,14 @@ onLinux {
     '';
 
   # Now lists what's on by its groups, what wants Joel first, then by name
-  # within each, as tests/now-groups.qml holds launcher/Now.js to it.
+  # within each, as tests/now-groups.qml holds launcher/NowGroups.js to it.
   now-lists-by-group =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "now-lists-by-group" { } ''
       cp ${../../tests/now-groups.qml} now-groups.qml
-      cp ${./launcher/Now.js} Now.js
+      cp ${./launcher/NowGroups.js} NowGroups.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

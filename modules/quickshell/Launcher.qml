@@ -2769,7 +2769,7 @@ Scope {
             nextTime: row.chord
         });
         // A collection with a plate of its own, as Now's moment is
-        // (WhatsOn.qml), shows it beside its home row.
+        // (Now.qml), shows it beside its home row.
         return typeof source.plate !== "function" ? placed
             : Object.assign(placed, { plated: true, drawer: () => source.plate() });
     }
@@ -5535,7 +5535,7 @@ Scope {
             return;
         // A verb that needs a target asks for it, and one that needs words
         // asks for them. A row with an act of its own besides stepping in
-        // does it, as a meeting's row joins it (WhatsOn.qml), and the
+        // does it, as a meeting's row joins it (Now.qml), and the
         // right arrow still finds what it holds.
         if (held.length > 0 && choice.targets && (!choice.run || choice.verb === "more")) {
             enter(choice);

@@ -23,7 +23,7 @@
 // quiet }`. What doesn't fit is reached by going into it (below).
 //
 // Home's Now gives a plate of the moment instead (look 3's piece 4,
-// launcher/WhatsOn.qml): `{ now: true, eyebrow, seconds, say, groups:
+// launcher/Now.qml): `{ now: true, eyebrow, seconds, say, groups:
 // [[{ label, value, qualifier }]] }`, set by the rule every plate is
 // (VKCF3Z, 2026-11-05): its head the eyebrow, the time large a Display
 // pitch under it with its seconds counting after, and what needs Joel a

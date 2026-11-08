@@ -1858,7 +1858,7 @@
     every mark in the margin stands one height on the gap's middle line, read from the right by
     kind, in the colour that says how much it asks; what was on air lingers, what a notice will say
     waits for its card, and a wait shows once the same one lasts; each stands in a square cell the
-    gap's size with the same room all round, and What's on points at the row the keys are on
+    gap's size with the same room all round, and Now points at the row the keys are on
   '';
   the-margins-marks-are-drawn-level = ''
     every mark the margin can show, a device's kind and Slack's among them, is the theme's
@@ -2463,7 +2463,7 @@
   vm-desktop-minds-the-margin = ''
     the margin shows keeping awake, lid shut too, a camera opened, tokens running out, do not
     disturb, a missed notice, waiting, the muted microphone, dictation, what's playing and caps
-    lock, and What's on says each and answers the keys
+    lock, and Now says each and answers the keys
   '';
   vm-desktop-opens-and-sets = ''
     the launcher sets sound and opens its outputs' and microphones' parts, works a program's media,

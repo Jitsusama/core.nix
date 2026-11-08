@@ -265,7 +265,7 @@ let
     "launcher/Emoji.js"
     "launcher/KeyGroups.js"
     "launcher/Keyboards.js"
-    "launcher/Now.js"
+    "launcher/NowGroups.js"
     "launcher/Notice.js"
   ];
 
@@ -661,7 +661,7 @@ let
     keyboard = ./launcher/Keyboard.qml;
     clipboard = ./launcher/Copies.qml;
     notices = ./launcher/PastNotices.qml;
-    on = ./launcher/WhatsOn.qml;
+    on = ./launcher/Now.qml;
     wifi = ./launcher/Wireless.qml;
     eero = ./launcher/HomeNetwork.qml;
     sound = ./launcher/Sound.qml;

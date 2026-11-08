@@ -3,7 +3,7 @@
 // disk, the processor or niri, has kept them waiting a minute, since a
 // moment's wait Joel feels for himself and a mark for it would only come
 // and go. Work waiting on work is never counted. It's a quiet mark, left on
-// rather than wanting him, and What's on says what waited in lag-watch's
+// rather than wanting him, and Now says what waited in lag-watch's
 // words; the launcher's "lag" answers with the rest (launcher/Waits.qml).
 // Nothing ticks: each window lag-watch writes is heard as it's renamed in.
 import qs
