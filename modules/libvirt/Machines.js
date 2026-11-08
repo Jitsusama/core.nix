@@ -8,16 +8,17 @@
 // virsh is run with LC_ALL=C, so its labels and states are always these
 // English ones, which gettext would otherwise translate.
 .pragma library
+.import "HomeNetwork.js" as Home
 
-// A number keeps to its unit with a no-break space, so "2 GiB" never
-// leaves its GiB alone on the next line.
+// A number keeps to its unit with a no-break space, so "12 s" never
+// leaves its s alone on the next line.
 const KEPT = "\u00a0";
 const BETWEEN = " \u00b7 ";
 // dominfo writes each label padded to 15 columns, a space, then the
 // value; a label longer than that runs on with one space.
 const COLUMN = 16;
-// libvirt counts memory in KiB, each binary step 1024 of the one below.
-const BINARY = 1024;
+// libvirt counts memory in KiB, each 1024 bytes.
+const BYTES_IN_A_KIB = 1024;
 const SECONDS_IN_A_MINUTE = 60;
 const MINUTES_IN_AN_HOUR = 60;
 const HOURS_IN_A_DAY = 24;
@@ -186,13 +187,15 @@ function taken(machines, line, last) {
     return label;
 }
 
-// Each state virsh says, by the word words.json says it in (its vm
-// entry's `said`): idle is libvirt's blocked, on but waiting on what it
-// asked for, in shutdown is powering off, and pmsuspended is the guest
-// asleep, its memory kept. Anything else, as virsh's no state, is unknown.
+// Each state virsh says, by the launcher's own word for it, which
+// words.json's vm entry's `said` spells, never libvirt's (VKCF3Z,
+// 2026-11-08): idle is libvirt's blocked, on but waiting on what it asked
+// for, in shutdown is powering off, as Power It Off does, shut off is
+// off, and pmsuspended is the guest asleep, its memory kept, as the
+// glossary's sleep is. Anything else, as virsh's no state, is unknown.
 const STATES = {
     "running": "running",
-    "idle": "blocked",
+    "idle": "waiting",
     "paused": "paused",
     "in shutdown": "stopping",
     "shut off": "off",
@@ -202,7 +205,7 @@ const STATES = {
 
 // Every state a machine can be in here, in the order Programs' note
 // counts them: those it's on in first, then the rest.
-const ORDER = ["running", "blocked", "paused", "stopping", "crashed", "asleep", "unknown", "off"];
+const ORDER = ["running", "waiting", "paused", "stopping", "crashed", "asleep", "unknown", "off"];
 
 function stateOf(said) {
     return STATES[String(said ?? "").trim()] ?? "unknown";
@@ -223,7 +226,7 @@ function side(state, said) {
 // Nothing is offered in a state virsh can't name.
 const ACTS = {
     running: ["console", "power-off", "force-off"],
-    blocked: ["console", "power-off", "force-off"],
+    waiting: ["console", "power-off", "force-off"],
     paused: ["console", "resume", "force-off"],
     stopping: ["console", "force-off"],
     off: ["start"],
@@ -307,7 +310,7 @@ function ordered(machines) {
 }
 
 // How many are in each state, as the program's row says it below its
-// name: "1 running · 2 shut off", each state in ORDER.
+// name: "1 running · 2 off", each state in ORDER.
 function tally(machines, said) {
     const counts = {};
     for (const one of machines) {
@@ -327,19 +330,15 @@ function places(value) {
     return fixed.endsWith(".0") ? fixed.slice(0, -2) : fixed;
 }
 
-// Memory as libvirt counts it, in binary units: "2 GiB", "1.5 GiB",
-// "512 MiB", and below a MiB in its own KiB.
+// Memory, which libvirt counts in KiB, said in decimal units from its
+// bytes, as the launcher says every size (VKCF3Z, 2026-11-08), through
+// the shell's own formatter: 4194304 KiB as "4.29 GB", 524288 KiB as
+// "537 MB".
 function memory(count) {
     if (count === null || count === undefined) {
         return "";
     }
-    if (count >= BINARY * BINARY) {
-        return `${places(count / (BINARY * BINARY))}${KEPT}GiB`;
-    }
-    if (count >= BINARY) {
-        return `${places(count / BINARY)}${KEPT}MiB`;
-    }
-    return `${count}${KEPT}KiB`;
+    return Home.bytes(count * BYTES_IN_A_KIB);
 }
 
 // Processor time, which dominfo gives in seconds to a tenth: "12.3 s",
@@ -377,12 +376,15 @@ function yesOrNo(value, said) {
 // runs and how it's kept apart from the machine, and what names it last.
 // Its name is the plate's title and its state the row's side, so neither
 // is said again.
+// Memory in use is said only while it's on: dominfo gives one off too,
+// but that's only what it would start with (VKCF3Z, 2026-11-08).
 function everyFigure(machine, said) {
     const words = said ?? {};
     const most = machine.noLimit ? words.noLimit ?? "no limit" : memory(machine.mostMemory);
+    const off = stateOf(machine.state) === "off";
     return [
         ["processor-time", duration(machine.processorTime)],
-        ["memory", memory(machine.memory)],
+        ["memory", off ? "" : memory(machine.memory)],
         ["processors", machine.processors === null ? "" : String(machine.processors)],
         ["most-memory", most],
         ["autostart", yesOrNo(machine.autostart, words)],
@@ -406,17 +408,17 @@ function figures(machine, said) {
         .map(one => ({ id: one[0], value: one[1] }));
 }
 
-// The figures only a running machine has: its Id, the processor time it's
-// used and the label its security model gave this run, all of which
-// libvirt gives up as it stops.
-const WHILE_RUNNING = ["processor-time", "security-label", "id"];
+// The figures only a running machine has: its Id, the processor time and
+// memory it's using and the label its security model gave this run, all
+// of which it gives up as it stops.
+const WHILE_RUNNING = ["processor-time", "memory", "security-label", "id"];
 
 // The figures that are a machine's own whether or not it runs, which
 // dominfo leaves out only where libvirt couldn't tell: an Autostart of
 // "no autostart", a Managed save of "unknown". A DOI and a label come
 // only with a security model, and messages only when there's something
 // to say, so none of those is missing when it's absent.
-const ALWAYS = ["processors", "memory", "most-memory", "autostart", "persistent",
+const ALWAYS = ["processors", "most-memory", "autostart", "persistent",
     "managed-save", "os-type", "uuid"];
 
 // The figures dominfo left out of a machine, by why, each a list of ids in

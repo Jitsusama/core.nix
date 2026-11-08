@@ -6,15 +6,18 @@
 // figure it gives, a running machine's and one shut off, one with no limit
 // on its memory and one with messages and a security label, several in one
 // batch, one virsh couldn't find left out and a label it doesn't know
-// passed over, a name's own spaces kept; each state virsh says read as its
-// word, every word words.json having one, and one it doesn't know as
-// unknown; what can be done in each state, in order, and what virsh is
-// told for each; the figures a drawer shows in their order and units, a
-// figure dominfo left out left out and named by why; the order and count
-// Programs shows;
-// an event read as a change; and virsh's error read as the foot says it.
-// The `vms-read-as-virsh-says` check copies Machines.js and the launcher's
-// words beside this file and runs `qml -platform offscreen machines.qml`.
+// passed over, a name's own spaces kept; each state virsh says read as the
+// launcher's own word, never libvirt's, every word words.json having one,
+// and one it doesn't know as unknown; what can be done in each state, in
+// order, and what virsh is told for each; the figures a drawer shows in
+// their order and units, memory in decimal units from its bytes and in use
+// only while it's on, a figure dominfo left out left out and named by why;
+// the order and count Programs shows; an event read as a change; and
+// virsh's error read as the foot says it.
+// The `vms-read-as-virsh-says` check copies Machines.js, the shell's
+// formatter it says sizes with (HomeNetwork.js, and what that imports) and
+// the launcher's words beside this file and runs
+// `qml -platform offscreen machines.qml`.
 import QtQuick
 import "Machines.js" as Machines
 
@@ -142,7 +145,7 @@ QtObject {
 
         const states = {
             "running": "running",
-            "idle": "blocked",
+            "idle": "waiting",
             "paused": "paused",
             "in shutdown": "stopping",
             "shut off": "off",
@@ -158,16 +161,22 @@ QtObject {
         }
         check("running's word", Machines.side("running", said), "running");
         check("paused's word", Machines.side("paused", said), "paused");
-        check("shut off's word", Machines.side("off", said), "shut off");
+        // The launcher's words, never libvirt's "shut off", "blocked" or
+        // "no state" (VKCF3Z, 2026-11-08).
+        check("off's word", Machines.side("off", said), "off");
+        check("waiting's word", Machines.side("waiting", said), "waiting");
+        check("powering off's word", Machines.side("stopping", said), "powering off");
+        check("asleep's word", Machines.side("asleep", said), "asleep");
+        check("unknown's word", Machines.side("unknown", said), "unknown");
         check("crashed's word", Machines.side("crashed", said), "crashed");
         check("a state with no word says unknown's",
             Machines.side("elsewhere", said), said.unknown);
 
         check("running's acts", Machines.acts("running"), ["console", "power-off", "force-off"]);
-        check("blocked's acts", Machines.acts("blocked"), ["console", "power-off", "force-off"]);
+        check("waiting's acts", Machines.acts("waiting"), ["console", "power-off", "force-off"]);
         check("paused's acts", Machines.acts("paused"), ["console", "resume", "force-off"]);
         check("powering off's acts", Machines.acts("stopping"), ["console", "force-off"]);
-        check("shut off's acts", Machines.acts("off"), ["start"]);
+        check("off's acts", Machines.acts("off"), ["start"]);
         check("crashed's acts", Machines.acts("crashed"), ["console", "force-off"]);
         check("asleep's acts", Machines.acts("asleep"), ["console", "force-off"]);
         check("an unknown state's acts", Machines.acts("unknown"), []);
@@ -188,9 +197,9 @@ QtObject {
         // What moves most first, then what describes it, its identifiers last.
         check("a running machine's figures", Machines.figures(web, said), [
             { id: "processor-time", value: `12${kept}min 34${kept}s` },
-            { id: "memory", value: `2${kept}GiB` },
+            { id: "memory", value: "2.15 GB" },
             { id: "processors", value: "4" },
-            { id: "most-memory", value: `4${kept}GiB` },
+            { id: "most-memory", value: "4.29 GB" },
             { id: "autostart", value: said.no },
             { id: "persistent", value: said.yes },
             { id: "managed-save", value: said.no },
@@ -204,18 +213,28 @@ QtObject {
         ]);
         check("a running machine that gave every figure lacks none",
             Machines.leftOut(web, said), { stopped: [], unsaid: [] });
-        check("one shut off leaves out what it gave none of",
+        // dominfo gives a Used memory while it's off, which is only what
+        // it would start with, so memory in use is said only while it's on.
+        check("one off leaves out what it gave none of, and memory in use",
             Machines.figures(box, said).map(one => one.id),
-            ["memory", "processors", "most-memory", "autostart", "persistent", "os-type",
+            ["processors", "most-memory", "autostart", "persistent", "os-type",
                 "security-model", "security-doi", "uuid"]);
-        check("no limit said", Machines.figures(box, said)[2].value, said.noLimit);
+        check("no limit said", Machines.figures(box, said)[1].value, said.noLimit);
         // Its model is none, so it has no label to lack; what libvirt
         // couldn't tell is named apart from what only a running one has.
-        check("one shut off names what it left out, by why", Machines.leftOut(box, said),
-            { stopped: ["processor-time", "id"], unsaid: ["managed-save"] });
+        check("one off names what it left out, by why", Machines.leftOut(box, said),
+            { stopped: ["processor-time", "memory", "id"], unsaid: ["managed-save"] });
         const confined = Machines.described(off.replace("model: none", "model: apparmor"))[0];
-        check("one shut off under a model lacks its label too",
-            Machines.leftOut(confined, said).stopped, ["processor-time", "security-label", "id"]);
+        check("one off under a model lacks its label too",
+            Machines.leftOut(confined, said).stopped,
+            ["processor-time", "memory", "security-label", "id"]);
+        const held = Machines.described(running.replace("State:          running",
+            "State:          paused"))[0];
+        check("one paused still says its memory in use",
+            Machines.figures(held, said).find(one => one.id === "memory")?.value, "2.15 GB");
+        const unread = Machines.described(running.replace(/Used memory:.*\n/, ""))[0];
+        check("one running that didn't say its memory in use lacks it as unknown",
+            Machines.leftOut(unread, said), { stopped: [], unsaid: ["memory"] });
         const quiet = Machines.described(running.replace(/CPU time:.*\n/, ""))[0];
         check("one running that didn't say a figure lacks it as unknown",
             Machines.leftOut(quiet, said), { stopped: [], unsaid: ["processor-time"] });
@@ -230,9 +249,12 @@ QtObject {
             .every(words => typeof words === "string" && words.includes("{figures}")), true);
         check("each figure has a name", Machines.figures(web, said)
             .filter(one => !vm.parts.includes(`vm:${one.id}`)), []);
-        check("half a GiB", Machines.memory(524288), `512${kept}MiB`);
-        check("a GiB and a half", Machines.memory(1572864), `1.5${kept}GiB`);
-        check("under a MiB", Machines.memory(512), `512${kept}KiB`);
+        // Decimal units from its bytes, each KiB 1024 of them.
+        check("4 GiB in decimal", Machines.memory(4194304), "4.29 GB");
+        check("half a GiB in decimal", Machines.memory(524288), "537 MB");
+        check("a GiB and a half in decimal", Machines.memory(1572864), "1.61 GB");
+        check("under a MiB, in kB", Machines.memory(512), "524 kB");
+        check("no memory said, nothing", Machines.memory(null), "");
         check("seconds", Machines.duration(12.34), `12.3${kept}s`);
         check("whole seconds", Machines.duration(5), `5${kept}s`);
         check("an hour on the dot", Machines.duration(3600), `1${kept}h`);
@@ -251,7 +273,7 @@ QtObject {
         ["Build", "db", "db (system)", "app 9", "app 10", "web"]);
         check("the count by state", Machines.tally([
             listedAs("a", "shut off"), listedAs("b", "running"), listedAs("c", "shut off")
-        ], said), `1 running \u00b7 2 shut off`);
+        ], said), `1 running \u00b7 2 off`);
         check("no machines, no count", Machines.tally([], said), "");
 
         check("a change heard",

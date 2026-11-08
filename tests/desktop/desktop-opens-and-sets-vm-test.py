@@ -1875,7 +1875,8 @@ def test_a_vm_virsh_lists_is_in_programs_with_its_figures_and_starts_from_its_ac
     """A VM virsh lists is in Programs with its state and figures, and Start It starts it."""
     machine = desktop.machine
     # tests/desktop.nix gives the launcher a stand-in virsh, whose session
-    # holds web, shut off, and which keeps each run in virsh-asked.
+    # holds web, which libvirt says is shut off, and which keeps each run
+    # in virsh-asked.
     asked = "/run/user/1000/virsh-asked"
     uuid = "3e8f0a52-1b7d-4c4e-9a7f-2c1f4f6b9d10"
     machine.succeed(f"rm -f {asked} /run/user/1000/virsh-web")
@@ -1891,15 +1892,17 @@ def test_a_vm_virsh_lists_is_in_programs_with_its_figures_and_starts_from_its_ac
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "web"
-            and shown["selected"]["side"] == "shut off"
+            and shown["selected"]["side"] == "off"
             and shown["drawer"]["out"] is True
         )
     )
     drawer = desktop.showing()["drawer"]
     assert drawer["title"] == "web", drawer
-    assert {"Memory in Use", "Processors", "UUID"} <= set(drawer["facts"]), drawer
-    # What a machine shut off can't say is named, never left to look forgotten.
-    assert "Known only while it runs: Processor Time and ID." in drawer["body"], drawer
+    assert {"Most Memory", "Processors", "UUID"} <= set(drawer["facts"]), drawer
+    assert "Memory in Use" not in drawer["facts"], drawer
+    # What a machine that's off can't say is named, never left to look forgotten.
+    known = "Known only while it runs: Processor Time, Memory in Use and ID."
+    assert known in drawer["body"], drawer
     desktop.shoot("launcher-virtual-machines")
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: (shown["rows"] or [""])[0] == "Start It")

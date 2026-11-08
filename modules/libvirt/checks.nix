@@ -65,7 +65,8 @@
   # is missing, each state's word, what can be done in each state and
   # what virsh is told for it, the order and count it shows, and an event
   # heard, are Machines.js's, run in Qt's own engine over the launcher's
-  # own words (tests/machines.qml).
+  # own words, beside the shell's formatter it says sizes with and what
+  # that imports (tests/machines.qml).
   vms-read-as-virsh-says =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -73,6 +74,9 @@
     pkgs.runCommandLocal "vms-read-as-virsh-says" { } ''
       cp ${./tests/machines.qml} machines.qml
       cp ${./Machines.js} Machines.js
+      cp ${../quickshell/launcher/HomeNetwork.js} HomeNetwork.js
+      cp ${../quickshell/launcher/Numbers.js} Numbers.js
+      cp ${../quickshell/launcher/Interfaces.js} Interfaces.js
       cp ${../quickshell/launcher/words.json} words.json
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}

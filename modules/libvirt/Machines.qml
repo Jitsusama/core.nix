@@ -222,7 +222,7 @@ Provider {
 
     // virsh told to do an act on the machine's connection, read-write, the
     // row drawn as what it becomes until virsh's next read agrees; powering
-    // off is left to the guest, so it's done once the row says shut off.
+    // off is left to the guest, so it's done once the row says off.
     // A system machine waits on his password, so it's given two minutes.
     function act(one, doing) {
         const reader = readerOf(one);
