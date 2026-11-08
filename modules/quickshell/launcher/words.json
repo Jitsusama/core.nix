@@ -151,8 +151,8 @@
         "tree": "worktree",
         "folder": "folder",
         "and": "and",
-        "needItem": "{count} Needs You item",
-        "needItems": "{count} Needs You items",
+        "needItem": "{count} to-do",
+        "needItems": "{count} to-dos",
         "full": "{share}% full",
         "contextOf": "{used} of {limit}",
         "turnTook": "{took} \u00b7 {out} out",
@@ -6741,17 +6741,20 @@
     {
       "id": "on:waiting:quest",
       "in": "on:waiting",
-      "name": "Quest"
+      "name": "Quest",
+      "term": "Agents/quest"
     },
     {
       "id": "on:waiting:session",
       "in": "on:waiting",
-      "name": "Session"
+      "name": "Session",
+      "term": "Agents/session"
     },
     {
       "id": "on:waiting:look",
       "in": "on:waiting",
-      "name": "Look"
+      "name": "Look",
+      "term": "Desktop/look"
     },
     {
       "id": "on:waiting:target",

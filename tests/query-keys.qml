@@ -298,12 +298,12 @@ QtObject {
         // at a whole word, never what it does, to what, or its keys, so
         // it's still a true question (VKCF3Z, 2026-11-07).
         const staying = Confirm.questionParts([Object.assign(
-            { leaves: "its worktree and 1 Needs You item stay." }, closing("TESTQC"))], asking);
+            { leaves: "its worktree and 1 to-do stay." }, closing("TESTQC"))], asking);
         holds("one saying what stays is asked in its parts", staying, { head: "Close TESTQC?",
-            clause: "Its worktree and 1 Needs You item stay.", tail: "(y/n)" });
+            clause: "Its worktree and 1 to-do stay.", tail: "(y/n)" });
         const within = most => words => words.length <= most;
         holds("said whole where it fits", Confirm.fitted(staying, within(60)),
-            "Close TESTQC? Its worktree and 1 Needs You item stay. (y/n)");
+            "Close TESTQC? Its worktree and 1 to-do stay. (y/n)");
         holds("what stays gives way from its end at a whole word",
             Confirm.fitted(staying, within(32)), "Close TESTQC? Its worktree\u2026(y/n)");
         holds("and all of it before what it closes does", Confirm.fitted(staying, within(20)),
@@ -329,7 +329,7 @@ QtObject {
         holds("the ask holds its question", ask.question, "Close Notes? (y/n)");
         holds("and one asked in its parts holds it whole",
             Confirm.asked(staying, run, run, 1000).question,
-            "Close TESTQC? Its worktree and 1 Needs You item stay. (y/n)");
+            "Close TESTQC? Its worktree and 1 to-do stay. (y/n)");
         holds("a key in the ask's first 300 ms is let by", Confirm.answer(ask, "y", 1299, 300),
             "early");
         holds("y after it answers yes", Confirm.answer(ask, "y", 1300, 300), "yes");
