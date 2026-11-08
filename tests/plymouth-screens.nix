@@ -61,7 +61,6 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         mountHostNixStore = true;
       };
       boot.loader.systemd-boot.enable = true;
-      boot.initrd.systemd.enable = true;
 
       system.build.encrypted =
         (extendModules {

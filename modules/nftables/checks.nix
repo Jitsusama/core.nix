@@ -9,14 +9,15 @@
   # Every program's rules sit in nftables, each in a table of its own, and a
   # reload deletes only the firewall's: flushing the ruleset would take the
   # others' tables, and their traffic, with it. A raw ruleset is what turns
-  # nixpkgs' flush on, so the machine here adds one.
+  # nixpkgs' flush on, so the machine here adds one. Podman has had no
+  # driver but nftables since its sixth release, and NixOS refuses any
+  # other, so containers need no term of their own.
   one-ruleset-for-every-program =
     let
       machine =
         (workstation.extendModules {
           modules = [ { networking.nftables.ruleset = "table inet probe { }"; } ];
         }).config;
-      containers = machine.virtualisation.containers.containersConf.settings;
     in
     holds "one-ruleset-for-every-program"
       "A program's rules leave nftables, or a reload flushes the others' tables."
@@ -25,6 +26,5 @@
         && machine.networking.nftables.enable
         && !machine.networking.nftables.flushRuleset
         && machine.virtualisation.libvirtd.firewallBackend == "nftables"
-        && containers.network.firewall_driver == "nftables"
       );
 }

@@ -171,8 +171,6 @@ in
     # The signed kernel keeps the command line it was signed with under Secure
     # Boot, so the menu's editor could only offer an edit that does nothing.
     boot.loader.systemd-boot.editor = false;
-    # The TPM and the PIN are asked for by the systemd initrd.
-    boot.initrd.systemd.enable = true;
 
     boot.lanzaboote = {
       enable = true;
@@ -432,12 +430,13 @@ in
 
     # With no NvPCR defined, systemd-tpm2-setup only checks the TPM's storage
     # key. logind measures each first login into the login NvPCR, and takes
-    # that unit being masked as the machine not keeping NvPCRs.
+    # that unit being masked as the machine not keeping NvPCRs. NixOS lists
+    # the unit itself since November 2026, enabled, so masking it is forced.
     environment.etc.nvpcr = lib.mkIf (!config.jitsusama.lanzaboote.nvpcrs) {
       source = maskedNvpcrs;
     };
     systemd.units."systemd-pcrlogin@.service" = lib.mkIf (!config.jitsusama.lanzaboote.nvpcrs) {
-      enable = false;
+      enable = lib.mkForce false;
     };
 
     environment.systemPackages = [ pkgs.sbctl ];

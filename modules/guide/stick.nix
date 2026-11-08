@@ -75,7 +75,6 @@ in
 
   boot = {
     loader.grub.enable = false;
-    initrd.systemd.enable = true;
     kernelPackages = pkgs.linuxPackages_latest;
     # The stick's own disk, and the keyboards that reach the system through
     # a controller of their own, such as the Surface Laptop 4's.

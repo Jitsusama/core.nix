@@ -149,7 +149,7 @@ in
       systemd.services.emergency.serviceConfig.ExecStartPre = lib.mkOrder 1600 [
         "-${lib.getExe stopped}"
       ];
-      boot.initrd.systemd = lib.mkIf config.boot.initrd.systemd.enable {
+      boot.initrd.systemd = {
         storePaths = [ stopped ];
         services.emergency.serviceConfig.ExecStartPre = lib.mkOrder 1600 [
           "-${lib.getExe stopped}"
