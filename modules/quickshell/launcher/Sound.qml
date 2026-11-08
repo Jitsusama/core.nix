@@ -513,8 +513,10 @@ Provider {
         // Load says so in its own form, its stroke full, both warned
         // (VKCF3Z, 2026-11-08).
         const timed = timings[node.id] ?? null;
-        const figure = value => Numbers.format(value, Sounds.places(value), settings.group,
-            settings.point);
+        // A measured figure takes its three significant digits; a count,
+        // dropouts or frames, is whole.
+        const figure = (value, places) => Numbers.format(value, places ?? Sounds.places(value),
+            settings.group, settings.point);
         const load = timed === null ? [] : timed.unfinished ? [{
             label: Words.name("sound:load"),
             value: said("each-cycle", {
@@ -529,11 +531,11 @@ Provider {
         }];
         const keeping = timed === null ? [] : [{
             label: Words.name("sound:dropouts"),
-            value: timed.errors === 0 ? said("none") : figure(timed.errors),
+            value: timed.errors === 0 ? said("none") : figure(timed.errors, 0),
             warns: timed.errors > 0
         }].concat(load, [{
             label: Words.name("sound:cycle"),
-            value: said("cycle", { frames: figure(timed.quantum),
+            value: said("cycle", { frames: figure(timed.quantum, 0),
                 ms: figure(Sounds.cycleMs(timed)) })
         }]);
         const known = (ids, identifies) => ids.filter(([, value]) => value !== "")

@@ -204,6 +204,12 @@ ShellRoot {
         sound.timings = { 52: Object.assign({}, sound.timings[52], { errors: 2 }) };
         expect("a dropout warns", keeping(card)[0].value === "2" && keeping(card)[0].warns,
             JSON.stringify(keeping(card)[0]));
+        const dropouts = errors => {
+            sound.timings = { 52: Object.assign({}, sound.timings[52], { errors }) };
+            return keeping(card)[0].value;
+        };
+        expect("dropouts counted whole", [5, 12, 1500].map(dropouts).join("; ")
+            === "5; 12; 1,500", [5, 12, 1500].map(dropouts).join("; "));
         sound.timings = { 52: Object.assign({}, sound.timings[52], { busy: 0.000938 }) };
         expect("a light load keeps its three significant digits",
             keeping(card)[1].value === "0.0938% of each cycle", JSON.stringify(keeping(card)[1]));
