@@ -15,7 +15,11 @@
       and a title a line; `watch`, the file read again each time it
       changes, or `asked`, read only as the program is stepped into, once
       each time the launcher opens; `list`, the command that prints it,
-      newest first; and `open` and `start`, how Return opens a path ({path})
+      newest first; `dated`, true where each line it prints ends in a tab
+      and when it was last used in seconds since 1970, or nothing where
+      that isn't known, so a program's Recent places it among its other
+      sources by when, and lists one with no time after those with one
+      (launcher/Recent.js); and `open` and `start`, how Return opens a path ({path})
       through the process behind the window used last ({pid}) while one is
       open, and while none is, a site opening by the program's own command.
       A site source may say what's open now too: `opened`, the command

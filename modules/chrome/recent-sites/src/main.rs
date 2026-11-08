@@ -3,7 +3,10 @@
 //!
 //! `chrome-recent-sites [PROFILE]` reads the History of PROFILE, Chrome's
 //! Default profile when none is given, and prints a line a site: the page's
-//! address, a tab and its title. Chrome writes its history as it browses, so
+//! address, its title and when it was last visited in seconds since 1970,
+//! a tab between each, the last left empty where Chrome kept no time, so
+//! the launcher can place it among Recent's other sources by when (as
+//! recents.nix's `dated` says). Chrome writes its history as it browses, so
 //! this reads a copy of it and its journal, which SQLite rolls back to the
 //! last whole write, and never the file Chrome holds. A profile with no
 //! history prints nothing. Google's own windows (Mail, Calendar, Meet,
@@ -47,10 +50,21 @@ const LEFT_OUT: [&str; 9] = [
     "::1",
 ];
 
+/// The seconds from 1601, where Chrome counts its time from, to 1970.
+const FROM_1601: i64 = 11_644_473_600;
+
 #[derive(Debug, PartialEq, Eq)]
 struct Site {
     address: String,
     title: String,
+    /// When it was last visited, in seconds since 1970, where Chrome says.
+    visited: Option<i64>,
+}
+
+/// A time as Chrome keeps it, microseconds since 1601, in seconds since
+/// 1970, or none where it kept none.
+fn since_1970(chrome: i64) -> Option<i64> {
+    (chrome > 0).then(|| chrome / 1_000_000 - FROM_1601)
 }
 
 /// The host a web address names, or none when it isn't one.
@@ -70,7 +84,7 @@ fn host(address: &str) -> Option<&str> {
 /// The newest titled page of each site in a history, newest first.
 fn sites(history: &Connection) -> rusqlite::Result<Vec<Site>> {
     let mut asked = history.prepare(
-        "SELECT url, title FROM urls
+        "SELECT url, title, last_visit_time FROM urls
          WHERE hidden = 0 AND title <> '' AND (url LIKE 'https://%' OR url LIKE 'http://%')
          ORDER BY last_visit_time DESC LIMIT ?1",
     )?;
@@ -80,6 +94,7 @@ fn sites(history: &Connection) -> rusqlite::Result<Vec<Site>> {
     while let Some(row) = rows.next()? {
         let address: String = row.get(0)?;
         let title: String = row.get(1)?;
+        let visited = since_1970(row.get(2)?);
         let Some(host) = host(&address).map(str::to_ascii_lowercase) else {
             continue;
         };
@@ -88,7 +103,11 @@ fn sites(history: &Connection) -> rusqlite::Result<Vec<Site>> {
         }
         // A line a site, so nothing in a title may break one.
         let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
-        found.push(Site { address, title });
+        found.push(Site {
+            address,
+            title,
+            visited,
+        });
         if found.len() == MOST {
             break;
         }
@@ -146,7 +165,10 @@ fn main() -> ExitCode {
         read(&profile, &scratch).and_then(|found| {
             found
                 .iter()
-                .try_for_each(|site| writeln!(out, "{}\t{}", site.address, site.title))
+                .try_for_each(|site| {
+                    let visited = site.visited.map(|at| at.to_string()).unwrap_or_default();
+                    writeln!(out, "{}\t{}\t{visited}", site.address, site.title)
+                })
                 .map_err(|error| error.to_string())
         })
     };
@@ -257,6 +279,21 @@ mod tests {
         let found = read(&profile, &profile).unwrap();
         assert_eq!(found.len(), 9);
         assert_eq!(found[0].address, "https://site11.example.com/");
+    }
+
+    #[test]
+    fn each_says_when_it_was_visited_in_seconds_since_1970() {
+        let profile = folder("visited");
+        history(
+            &profile.join("History"),
+            &[
+                ("https://example.org/", "Dated", 13_444_473_600_500_000, 0),
+                ("https://undated.example.org/", "Undated", 0, 0),
+            ],
+        );
+        let found = read(&profile, &profile).unwrap();
+        let visited: Vec<_> = found.iter().map(|site| site.visited).collect();
+        assert_eq!(visited, [Some(1_800_000_000), None]);
     }
 
     #[test]

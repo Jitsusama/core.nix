@@ -106,7 +106,7 @@ ShellRoot {
         }
 
         function recentOf(program) {
-            return program === "tester" ? [{ key: "gdoc:plan", name: "Plan Doc" }]
+            return program === "tester" ? [{ key: "gdoc:plan", name: "Plan Doc", at: 200000 }]
                 : program === "pair" ? [{ key: "gdoc:notes", name: "Pair Notes" }] : [];
         }
     }
@@ -149,7 +149,8 @@ ShellRoot {
             }, {
                 // The list programs share, as recent-files prints it.
                 watch: `${root.home}/shared`,
-                list: [Quickshell.env("SHARED_LIST")]
+                list: [Quickshell.env("SHARED_LIST")],
+                dated: true
             }, {
                 // Sites, read as the browser is stepped into.
                 app: "browser",
@@ -507,11 +508,12 @@ ShellRoot {
                 + "Draft, Recent, Notices, Quit, Media, Sound, Copy a New Log's Link");
             const [switching, , , secret, logbook, draft, shared, told, quit, media, sound] = tester;
             same("Recent says how many it holds, and their names",
-                `${shared.side} ${shared.count}`, "3 notes.md, plan.md, Plan Doc");
+                `${shared.side} ${shared.count}`, "3 notes.md, Plan Doc, plan.md");
             const files = shared.targets();
-            same("its files from the list programs share, by its name or its id, newest first, then what another provider gives it",
+            same("its files from the list programs share, by its name or its id, and what another "
+                + "provider gives it, merged by when each was last used, newest first",
                 `${names(files)} ${files.map(row => row.key).join(" ")}`,
-                `notes.md, plan.md, Plan Doc file:${root.home}/notes.md file:${root.home}/plan.md gdoc:plan`);
+                `notes.md, Plan Doc, plan.md file:${root.home}/notes.md gdoc:plan file:${root.home}/plan.md`);
             files[0].run();
             same("one opens by the program's own command", JSON.stringify(Niri.spawned),
                 JSON.stringify(["tester", `${root.home}/notes.md`]));
