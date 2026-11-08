@@ -201,6 +201,7 @@ let
     "FileFacts.js"
     "When.js"
     "Taken.qml"
+    "Copied.qml"
     "Pasting.qml"
     "Notices.qml"
     "Forward.js"

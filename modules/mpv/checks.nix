@@ -6,9 +6,120 @@
   lib,
   onLinux,
   pkgs,
+  shellFolderLint,
   ...
 }:
+let
+  # A stand-in for one of the shell's singletons, holding only what a check
+  # needs of it.
+  singleton =
+    name: body:
+    pkgs.writeText name ''
+      pragma Singleton
+      import Quickshell
+      import QtQuick
+      Singleton { ${body} }
+    '';
+in
 onLinux {
+  # mpv's step in the launcher, its provider's as Applications.qml holds it
+  # (tests/mpv-program.qml), over mpv's desktop entry, with niri, the
+  # shortcuts, what's playing and the last copy stood in, and mpv-stopped
+  # by a script that counts its runs: its Recent leads with what an mpv
+  # plays now, then each file it stopped part way through, newest first,
+  # saying where, each once, Return playing on and From the Start inside;
+  # each listed once mpv is stepped into, once an opening; and Play the
+  # Copied Link straight after Go To only while the copy is one address mpv
+  # plays, whose cases Mpv.js's own are, run first in Qt's engine.
+  the-launcher-plays-on-where-mpv-stopped =
+    let
+      home = account graphical;
+      qs = lib.getExe' graphical.pkgs.quickshell "qs";
+      # The launcher's own files the step is made from, each by itself so
+      # no other change there builds this again.
+      launcher = ../quickshell/launcher;
+      launched = [
+        "Provider.qml"
+        "Asking.js"
+        "Numbers.js"
+        "Applications.qml"
+        "Recents.qml"
+        "Ago.js"
+        "words.json"
+      ];
+      # An mpv window, its process playing now.mkv.
+      niri = singleton "Niri.qml" ''
+        property int revision: 0
+        property var windows: ({
+          "21": { id: 21, app_id: "mpv", pid: 5151, title: "now.mkv - mpv", workspace_id: 1,
+            focus_timestamp: { secs: 200, nanos: 0 } }
+        })
+        property var workspaces: ({
+          "1": { id: 1, idx: 1, is_focused: true, active_window_id: 21 }
+        })
+        readonly property int current: 21
+        property var acted: []
+        property var spawned: []
+        function workspace(id) { return workspaces[id ?? "1"] ?? null; }
+        function act(action) { acted = acted.concat([action]); }
+        function spawn(command) { spawned = command; }
+      '';
+      playing = singleton "Playing.qml" ''
+        property var players: []
+        property var streams: []
+        property var recorders: []
+      '';
+      entry = pkgs.writeText "mpv.desktop" ''
+        [Desktop Entry]
+        Type=Application
+        Name=mpv Media Player
+        GenericName=Multimedia player
+        Exec=mpv --player-operation-mode=pseudo-gui -- %U
+      '';
+    in
+    pkgs.runCommandLocal "the-launcher-plays-on-where-mpv-stopped" { } ''
+      mkdir -p launcher share/applications
+      cp ${entry} share/applications/mpv.desktop
+      cp ${home.xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${../quickshell/Fuzzy.js} Fuzzy.js
+      cp ${../quickshell/Words.qml} Words.qml
+      cp ${../quickshell/Files.qml} Files.qml
+      ${lib.concatMapStrings (file: ''
+        cp ${launcher + "/${file}"} launcher/${file}
+      '') launched}
+      cp ${./MpvProgram.qml} launcher/MpvProgram.qml
+      cp ${./Mpv.js} launcher/Mpv.js
+      cp ${../../tests/mpv-program.qml} shell.qml
+      cp ${niri} Niri.qml
+      cp ${playing} launcher/Playing.qml
+      cp ${singleton "Shortcuts.qml" "property var actions: []"} Shortcuts.qml
+      cp ${singleton "Copied.qml" ''property string text: ""''} Copied.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export XDG_DATA_HOME=$TMPDIR/data XDG_DATA_DIRS=$PWD/share NOW=$(date +%s)
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      # The list programs share, as recent-files prints it: what plays now,
+      # a file stopped part way through, and one played to its end.
+      printf 'mpv\t%s\n' "$HOME/Videos/now.mkv" "$HOME/Videos/talk.mkv" "$HOME/Videos/song.mkv" \
+        > $HOME/shared
+      export SHARED_LIST=${pkgs.writeShellScript "shared-list" ''cat "$HOME/shared"''}
+      # What each mpv plays now, as playing.lua keeps it.
+      export PLAYING_LIST=${pkgs.writeShellScript "playing-list" ''printf '5151\t%s\n' "$HOME/Videos/now.mkv"''}
+      # What mpv-stopped prints, newest first, and a line it never would,
+      # counting each run.
+      export STOPPED_LIST=${pkgs.writeShellScript "stopped-list" ''
+        echo $(( $(cat "$HOME/listed" 2> /dev/null || echo 0) + 1 )) > "$HOME/listed"
+        printf '%s\t%s\t%s\t%s\n' \
+          "$HOME/Videos/now.mkv" 30 600 $((NOW - 60)) \
+          "$HOME/Videos/long.mkv" 3723 6000 $((NOW - 600)) \
+          "$HOME/Videos/talk.mkv" 724.5 2470.2 $((NOW - 7200)) \
+          "Videos/half.mkv" 1 2 3
+      ''}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
   # mpv plays a moment of video and sound with the account's settings and
   # those of its controller, console, right-click menu and statistics,
   # saying nothing about any: mpv names an option it doesn't know and goes
@@ -148,6 +259,40 @@ onLinux {
           --frames=2 one.mkv '${stream}' two.mkv > played 2>&1 || { cat played; exit 1; }
         told=$( [ -e said ] && tr '\n' ' ' < said || echo 'nothing said')
         [ "$told" = "$PWD/one.mkv ${stream} $PWD/two.mkv " ] || { echo "mpv said: $told"; exit 1; }
+        touch $out
+      '';
+
+  # The launcher's lister of where mpv stopped (stopped.sh), run as its
+  # provider runs it, reads what the account's mpv kept of clips it quit
+  # part way through, as ZZ quits (stopped-test.sh): each file it played
+  # on, newest first, by its whole path, where it stopped, its length and
+  # when it was left, but no folder's redirect entry, no stream, no file
+  # deleted since and none held on its last frame, nine at most; and a
+  # file started as Play On starts it plays on from where it stopped, and
+  # as Play From the Start does, from its start. mpv and the lister are
+  # given one folder.
+  mpv-says-where-it-stopped =
+    let
+      home = account graphical;
+      mpv = lib.findFirst (package: lib.hasPrefix "mpv" (lib.getName package)) null home.home.packages;
+      listing = home.jitsusama.quickshell.launcher.providers.mpv.stopped;
+    in
+    assert lib.last listing == home.programs.mpv.config.watch-later-dir;
+    pkgs.runCommandLocal "mpv-says-where-it-stopped"
+      {
+        nativeBuildInputs = [
+          mpv
+          pkgs.ffmpeg-headless
+          pkgs.jq
+          pkgs.socat
+        ];
+      }
+      ''
+        export HOME=$PWD FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+        mkdir -p mpv
+        cp ${home.xdg.configFile."mpv/mpv.conf".source} mpv/mpv.conf
+        $BASH ${./stopped-test.sh} $PWD/mpv ${lib.head listing} > ran 2>&1 || true
+        if [ ! -e passed ]; then cat ran; exit 1; fi
         touch $out
       '';
 

@@ -846,6 +846,12 @@
   mpv-says-the-files-it-plays = ''
     mpv says each file it plays to the desktop's list of files opened lately, a stream as it was given
   '';
+  mpv-says-where-it-stopped = ''
+    the launcher's lister reads where the account's mpv stopped each file it quit part way through,
+    newest first with its length and when it was left, nine at most, passing over a folder's
+    redirect entry, a stream, a deleted file and one held on its last frame, and mpv started as
+    Play On starts it plays on from there, and as Play From the Start does, from its start
+  '';
   mycelium-links-what-a-machine-names = ''
     a workstation in a realm runs mycelium's node there, dialling each machine it names, as a user
     service on Linux signing in with the agents' key, or the key its realm names, and an agent on a
@@ -1890,6 +1896,12 @@
   the-launcher-names-the-parts-it-builds = ''
     every part the calculator, the time, today, the waits, a hardware address, a network and a
     character show is named as the vocabulary names it
+  '';
+  the-launcher-plays-on-where-mpv-stopped = ''
+    mpv's Recent leads with what an mpv plays now, then each file it stopped part way through,
+    newest first, saying where and when, each listed once and read once mpv is stepped into, each
+    opening; Return plays on and From the Start is inside; and Play the Copied Link comes straight
+    after Go To only while the copy is one address mpv plays, a video site's page or a media file
   '';
   the-launcher-remakes-only-the-windows-that-changed = ''
     the launcher's windows list This Window, then the rest the one used last first, and when the

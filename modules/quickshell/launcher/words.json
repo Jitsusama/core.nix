@@ -7224,6 +7224,37 @@
       "glyph": "link"
     },
     {
+      "id": "verb:mpv:link",
+      "command": "open",
+      "argument": "link",
+      "in": "applications",
+      "name": "Play the Copied Link",
+      "verb": "play",
+      "glyph": "link"
+    },
+    {
+      "id": "verb:mpv:on",
+      "command": "resume",
+      "in": "path:file",
+      "name": "Play On",
+      "verb": "play",
+      "glyph": "resume",
+      "said": {
+        "stopped": "{at} of {length}",
+        "from": "from {at}",
+        "left": "stopped {ago}"
+      }
+    },
+    {
+      "id": "verb:mpv:start",
+      "command": "resume",
+      "bang": true,
+      "in": "path:file",
+      "name": "Play From the Start",
+      "verb": "play",
+      "glyph": "playing"
+    },
+    {
       "id": "docs:document",
       "of": "program:google-docs",
       "name": "Document",

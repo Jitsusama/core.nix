@@ -3736,6 +3736,7 @@ onLinux {
     in
     pkgs.runCommandLocal "the-shell-hears-tuples-call" { } ''
       cp ${../tuple/Tuple.qml} Tuple.qml
+      cp ${./Copied.qml} Copied.qml
       cp ${./Daemon.qml} Daemon.qml
       # Tuple's rows are named as the launcher's vocabulary says.
       mkdir launcher
