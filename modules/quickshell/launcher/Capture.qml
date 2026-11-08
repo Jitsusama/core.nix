@@ -35,6 +35,7 @@ import Quickshell
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "Recent.js" as Recent
 
 Provider {
     id: provider
@@ -294,8 +295,10 @@ Provider {
     // reader of these folders (Taken.qml): read as the shell starts, so
     // the first step-in draws Recent where it stays, and as the launcher
     // opens, which is asked here.
-    readonly property var taken: Taken.files.filter(file => provider.takenIn.includes(file.folder))
-        .slice(0, 9).map(file => file.path)
+    readonly property var taken: Recent.listed([Taken.files
+        .filter(file => provider.takenIn.includes(file.folder))
+        .map(file => ({ key: `file:${file.path}`, at: file.at, row: file.path }))], [])
+        .map(one => one.row)
 
     onTakenChanged: changed()
 
@@ -318,16 +321,20 @@ Provider {
     // taken, since a row that came once the first capture was read would
     // go below the rows already drawn (Steady.kept), after the screenshot's
     // own rows rather than before them. With nothing typed it holds the
-    // newest nine; typed into, it finds among everything taken (`finds`).
+    // newest nine, laid out as every Recent is (Recent.js); typed into, it
+    // finds among everything taken (`finds`).
+    readonly property var stands: Recent.said(taken.length, taken.length > 0
+        ? taken[0].slice(taken[0].lastIndexOf("/") + 1) : "", false, Words.of("capture:recent").said)
     readonly property var recent: [Object.assign(entering(member({
             key: "capture:recent",
             name: Words.name("capture:recent"),
             glyph: Words.glyph("capture:recent"),
             hue: "program",
             // How many at its right, where a row's figure stands (VKCF3Z,
-            // 2026-11-05: one place for each kind of fact).
-            side: taken.length === 0 ? String((Words.of("capture:recent").said ?? {}).none ?? "")
-                : String(taken.length),
+            // 2026-11-05: one place for each kind of fact), and the newest
+            // one's name as its note, as every Recent says.
+            side: stands.side,
+            note: stands.note,
             ask: "which?",
             empty: Words.of("capture:recent").empty
         }), () => provider.taken.map(path => provider.takenRow(path, ""))), {

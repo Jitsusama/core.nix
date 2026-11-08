@@ -4464,7 +4464,7 @@
       "name": "Recent",
       "verb": "more",
       "glyph": "recent",
-      "empty": "Nothing taken yet.",
+      "empty": "Nothing yet.",
       "said": {
         "none": "none"
       }

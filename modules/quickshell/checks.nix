@@ -2409,6 +2409,7 @@ onLinux {
       cp ${./launcher/KeyGroups.js} launcher/KeyGroups.js
       cp ${./launcher/Windows.qml} launcher/Windows.qml
       cp ${./launcher/Capture.qml} launcher/Capture.qml
+      cp ${./launcher/Recent.js} launcher/Recent.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/windows.qml} shell.qml
