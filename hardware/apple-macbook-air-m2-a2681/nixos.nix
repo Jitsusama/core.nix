@@ -23,9 +23,8 @@
   # partition, and the initrd unpacks it at each boot. The module's default
   # reads it from /boot while evaluating, which a machine built anywhere but
   # on itself, or by a pure evaluation, can't do. Unpacking it needs systemd
-  # in the initrd.
+  # in the initrd, which is the only initrd nixpkgs builds now.
   hardware.asahi.peripheralFirmwareDirectory = null;
-  boot.initrd.systemd.enable = true;
 
   # m1n1, which Asahi's installer puts in the macOS stub's place, starts
   # U-Boot, which gives a plain UEFI with no Secure Boot and no variables
