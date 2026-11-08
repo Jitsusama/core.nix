@@ -41,8 +41,8 @@ let
   # pinned nixpkgs has no 7.3 package yet, so it's built from 7.2's, whose
   # build is the same. docs/kernel.md says why this release.
   stable = {
-    version = "7.3.1";
-    hash = "sha256-+llarZNzT4KcljwqkO98NnMiT9f9rntJQG45fN4t4jE=";
+    version = "7.3.3";
+    hash = "sha256-ecZt3mbNlod/zej302rslGsfQj0rl7WnsXUbdcdk89E=";
   };
 in
 linux_7_2.override {
@@ -125,6 +125,15 @@ linux_7_2.override {
       # nothing. Written here; docs/kernel.md has the cause.
       name = "virtio-gpu-panic-outside-panic";
       patch = ./virtio-gpu-panic-outside-panic.patch;
+    }
+    {
+      # Since 7.3.2 the kernel warns, on a processor that needs the ITS
+      # mitigation, that its trampolines are writable and executable while
+      # it patches its own text at boot, when all of that text still is.
+      # The warning is false; upstream's patch makes it one quiet line. Drop
+      # it once a release has it; docs/kernel.md has the cause.
+      name = "early-wx-warning-gentle";
+      patch = ./early-wx-warning-gentle.patch;
     }
   ];
 }

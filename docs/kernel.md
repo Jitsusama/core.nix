@@ -19,7 +19,7 @@ x86-64 machine as `packages.x86_64-linux.kernel`.
 
 ## What It Is
 
-- **The series:** 7.3, at 7.3.1, the release `package.nix` names in
+- **The series:** 7.3, at 7.3.3, the release `package.nix` names in
   `stable`, while the pinned nixpkgs has only 7.2. nixpkgs's 7.2 package
   builds it, since the two build the same way, and `stable` stops applying
   once nixpkgs's release is as new. 7.3 holds every fix the XPS 14 took
@@ -52,6 +52,7 @@ are fixes written here, kept until the kernel has its own:
 | `cfg80211-ssid-without-country.patch` | the joined network's name | written here; [linux-next][3] since |
 | `hibernate-progress.patch` | a hibernation's image read, on screen | written here |
 | `virtio-gpu-panic-outside-panic.patch` | that bar drawn safely in a VM | written here |
+| `early-wx-warning-gentle.patch` | no false W^X warning at boot | [upstream's][4] |
 
 BORE is a small change to the kernel's own EEVDF scheduler: it favours tasks
 that run in short bursts, such as the compositor, terminal and editor, over
@@ -114,6 +115,16 @@ command queue without the queue's lock. The second patch gives that object
 room and takes the lock when no panic is in progress. The laptops' own
 drivers write the pixels straight into the screen's memory, with nothing
 allocated or queued.
+
+The W^X fix is for a warning 7.3.2 began giving at boot, on a processor
+that needs the mitigation for Indirect Target Selection. 7.3.2 took a fix
+that lets the kernel see that a page is writable through its page tables,
+and so it now notices the ITS trampolines it writes while it patches its own
+text and makes executable before it makes them read-only. All of the
+kernel's text is writable and executable then, so the warning is false, but
+it came with a stack trace that a test reading the console counts as the
+kernel finding something amiss. Upstream's patch, carried until a release
+has it, says it in one quiet line while the text is still writable.
 
 ### The Settings
 
@@ -403,3 +414,4 @@ if less; record a new one after moving to a new series.
 [1]: https://github.com/firelzrd/bore-scheduler
 [2]: https://git.kernel.org/torvalds/c/a6036a41bffb
 [3]: https://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git/commit/?id=577f690ce5dc
+[4]: https://lore.kernel.org/all/20260905044253.GA3816371@ax162
