@@ -6,8 +6,12 @@
 // it by name and since when; muting counts only once connected; whose
 // screen and camera are shown, and Joel's own, are said; someone coming and
 // going is told once the call has settled; muting and opening the room are
-// asked of the daemon, which runs Tuple for each; the call ending ends it;
-// and a ring and a missed call, from Tuple's log, are told. It exits 0 once
+// asked of the daemon, which runs Tuple for each; the call ending ends it
+// and is kept in Recent with everyone who was in it, though they'd left;
+// and a ring and a missed call, from Tuple's log, are told, the missed
+// call kept in Recent ahead of the call; and a call in the room Joel
+// opened is kept as his, where the first was kept with nobody seen to
+// ring. It exits 0 once
 // every case holds, and otherwise 1, saying which didn't.
 pragma ComponentBehavior: Bound
 import qs
@@ -105,6 +109,8 @@ ShellRoot {
     }
 
     readonly property real started: Date.now() - 60 * 1000
+    // When the call in the room Joel opened connected, set as it does.
+    property real inRoom: 0
     // Someone as Tuple's stream says them: whether their voice is sent,
     // their screen shared and their camera on.
     function person(fields, connection, muted, sharing, camera) {
@@ -210,6 +216,15 @@ ShellRoot {
 
     function ended() {
         expect("no mute without a call", Tuple.muted === null, Tuple.muted);
+        const kept = Tuple.recent[0] ?? {};
+        const had = (kept.people ?? []).map(one => `${one.id} ${one.name} ${one.email}`);
+        expect("kept in Recent with everyone who was in it", Tuple.recent.length === 1
+            && kept.since === root.started && kept.missed === false
+            && kept.ended >= Date.now() - 5000
+            && had.join(", ") === "7 Ada Brightwater ada@example.com, 9 Cal Dunmore ",
+            JSON.stringify(Tuple.recent));
+        // Nothing tuple-call heard began it, no ring nor the room opened.
+        expect("kept with nobody seen to ring", kept.caller === null, JSON.stringify(kept));
         Tuple.open();
         root.step("the room's link copied",
             () => Niri.spawned.some(command => command.join(" ") === "wl-copy https://tuple.app/c/opened"),
@@ -239,6 +254,25 @@ ShellRoot {
 
     function missed() {
         expect("no longer ringing", Tuple.ringing === "", Tuple.ringing);
+        expect("kept in Recent, newest first", Tuple.recent.length === 2 && Tuple.recent[0].missed
+            && Tuple.recent[0].people[0]?.name === "Ada Brightwater" && !Tuple.recent[1].missed,
+            JSON.stringify(Tuple.recent));
+        // Ada comes to the room Joel opened a moment ago, and so to his call.
+        root.inRoom = Date.now();
+        root.says(root.call("connected", root.inRoom, [false, false, false],
+            [root.ada(false, false)]));
+        root.step("in Joel's room", () => Tuple.calling && !Tuple.connecting, root.inHisRoom);
+    }
+
+    function inHisRoom() {
+        root.says(null);
+        root.step("Joel's call kept", () => Tuple.recent.length === 3, root.his);
+    }
+
+    function his() {
+        const kept = Tuple.recent[0];
+        expect("kept as Joel's", kept.since === root.inRoom && kept.caller === "",
+            JSON.stringify(Tuple.recent));
         Qt.exit(0);
     }
 

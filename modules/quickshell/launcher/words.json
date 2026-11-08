@@ -9228,6 +9228,68 @@
       "name": "Copy My Room's Link",
       "verb": "copy",
       "by": "tuple"
+    },
+    {
+      "id": "tuple:call",
+      "in": "program:recent",
+      "name": "Call",
+      "verb": "call",
+      "glyph": "call",
+      "states": {
+        "busy": {
+          "verb": "join",
+          "glyph": "joinCall"
+        },
+        "unknown": {
+          "name": "Someone"
+        }
+      },
+      "said": {
+        "missed": "missed",
+        "two": "{first} and {second}",
+        "other": "{first} and one other",
+        "others": "{first} and {count} others",
+        "yesterday": "yesterday",
+        "under": "under a minute",
+        "minutes": "{minutes} min",
+        "hours": "{hours} h",
+        "hoursMinutes": "{hours} h {minutes} min",
+        "youCalled": "you called",
+        "called": "{name} called",
+        "on": "on {program}",
+        "call": "call",
+        "missedCall": "missed call"
+      }
+    },
+    {
+      "id": "tuple:call:again",
+      "in": "tuple:call",
+      "name": "Call {name} Again",
+      "states": {
+        "all": {
+          "name": "Call Them Again"
+        }
+      }
+    },
+    {
+      "id": "tuple:call:rang",
+      "in": "tuple:call",
+      "name": "Who Rang"
+    },
+    {
+      "id": "tuple:call:with",
+      "in": "tuple:call",
+      "name": "With"
+    },
+    {
+      "id": "tuple:call:email",
+      "in": "tuple:call",
+      "name": "Email",
+      "states": {
+        "many": {
+          "name": "Emails"
+        }
+      }
     }
   ],
   "commands": [

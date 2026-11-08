@@ -731,6 +731,10 @@ Provider {
             ask: "which?",
             nested: true,
             empty: waiting ? "\u2026" : words.empty,
+            // Its verbs are the same rows as its targets, as People's
+            // Recent's are, so it steps in inside a program whose step
+            // lists a thing's verbs, as Tuple's does, holding only acts.
+            verbs: () => provider.kept(entry).map(one => provider.made(entry, one)),
             targets: () => provider.kept(entry).map(one => provider.made(entry, one))
         })];
     }

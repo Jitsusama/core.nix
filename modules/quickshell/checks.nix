@@ -3685,8 +3685,9 @@ onLinux {
       touch $out
     '';
 
-  # How the shell says a Tuple call, who's in it and for how long, and a
-  # call's link in what was copied (tests/tuple.qml, over Tuple.js).
+  # How the shell says a Tuple call, who's in it and for how long, a
+  # call's link in what was copied, and Tuple's Recent, its order and each
+  # call's words (tests/tuple.qml, over Tuple.js and the When.js it reads).
   the-shell-follows-tuple-calls =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -3694,6 +3695,7 @@ onLinux {
     pkgs.runCommandLocal "the-shell-follows-tuple-calls" { } ''
       cp ${../../tests/tuple.qml} tuple.qml
       cp ${../tuple/Tuple.js} Tuple.js
+      cp ${./When.js} When.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -3780,6 +3782,7 @@ onLinux {
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../tuple/Tuple.js} Tuple.js
+      cp ${./When.js} When.js
       cp ${../../tests/tuple-call.qml} shell.qml
       cp ${niri} Niri.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime XDG_DATA_HOME=$TMPDIR/data

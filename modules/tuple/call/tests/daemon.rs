@@ -1,10 +1,12 @@
 //! The daemon over its socket, with a stand-in for Tuple: its stream is
 //! followed only while Tuple's daemon answers, and a call, a sign-in gone
 //! and a stream that ends are each said to a watch as they happen, and
-//! who a call is with kept in its file while it lasts; a ring
-//! and a missed call are read from the log as it's written, a new log
-//! from its start; each act runs Tuple's command, and opening the room
-//! keeps its link; and an ask or kind it doesn't know is refused.
+//! a call that ended kept in Recent's file, as the caller's when a ring
+//! answered began it, and read back after a restart; a ring and a missed
+//! call are read from the log as it's written, a new log from its start;
+//! each act runs Tuple's command, and opening the room keeps its link and
+//! makes the call in it Joel's; and an ask or kind it doesn't know is
+//! refused.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -106,7 +108,7 @@ impl Running {
         let socket = folder.join("run/daemons/tuple.sock");
         let tuples = answering.then(|| answering_at(&folder));
         let program = env!("CARGO_BIN_EXE_tuple-call");
-        let mut command = match launcher.split_first() {
+        let command = match launcher.split_first() {
             Some((first, arguments)) => {
                 let mut command = Command::new(first);
                 for argument in arguments {
@@ -117,15 +119,7 @@ impl Running {
             }
             None => Command::new(program),
         };
-        let daemon = command
-            .arg(&socket)
-            .arg(&tuple)
-            .env("XDG_RUNTIME_DIR", folder.join("run"))
-            .env("XDG_DATA_HOME", folder.join("data"))
-            .env("XDG_STATE_HOME", folder.join("state"))
-            .stderr(Stdio::null())
-            .spawn()
-            .unwrap();
+        let daemon = spawned(command, &folder);
         until("the socket never came", || socket.exists());
         Running {
             daemon,
@@ -133,6 +127,16 @@ impl Running {
             socket,
             tuples,
         }
+    }
+
+    /// The daemon stopped and started again over the same folders, its
+    /// socket gone with it, as a restart leaves them.
+    fn restart(&mut self) {
+        let _ = self.daemon.kill();
+        let _ = self.daemon.wait();
+        let _ = std::fs::remove_file(&self.socket);
+        self.daemon = spawned(Command::new(env!("CARGO_BIN_EXE_tuple-call")), &self.folder);
+        until("the socket never came back", || self.socket.exists());
     }
 
     /// Tuple's daemon answering on its socket.
@@ -245,6 +249,19 @@ impl Client {
     }
 }
 
+/// The daemon, run by `command`, over the test's folders.
+fn spawned(mut command: Command, folder: &std::path::Path) -> Child {
+    command
+        .arg(folder.join("run/daemons/tuple.sock"))
+        .arg(folder.join("bin/tuple"))
+        .env("XDG_RUNTIME_DIR", folder.join("run"))
+        .env("XDG_DATA_HOME", folder.join("data"))
+        .env("XDG_STATE_HOME", folder.join("state"))
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap()
+}
+
 /// Tuple's daemon's socket in the test's runtime folder, answering for as
 /// long as it's held.
 fn answering_at(folder: &std::path::Path) -> UnixListener {
@@ -304,6 +321,56 @@ fn a_call_is_said_to_a_watch_as_it_changes() {
     client.until("the call's end wasn't said", |record| {
         record["state"] == "none"
     });
+}
+
+#[test]
+fn a_call_that_ends_is_kept_in_recent_and_read_back_after_a_restart() {
+    let mut running = Running::start("recent", true);
+    running.streams(STATE);
+    let mut client = running.client();
+    client.watch();
+    // Ada rings and Joel answers, so the call that follows was hers.
+    running.logs(&logged(now(), "received incoming call: 7"));
+    client.until("the ring wasn't said", |record| {
+        record["state"] == "ringing"
+    });
+    running.logs(&logged(now(), "accepting call"));
+    client.until("the answer wasn't said", |record| record["state"] == "none");
+    running.streams(CALL);
+    client.until("the call wasn't said", |record| {
+        record["state"] == "connected"
+    });
+    running.streams("{\"type\":\"current_call\",\"data\":null}");
+    let record = client.until("the call wasn't kept", |record| {
+        record["recent"]
+            .as_array()
+            .is_some_and(|recent| !recent.is_empty())
+    });
+    let kept = &record["recent"][0];
+    assert_eq!(
+        (
+            &kept["people"],
+            &kept["since"],
+            &kept["missed"],
+            &kept["caller"]
+        ),
+        (
+            &json!([{"id": "7", "name": "Ada Brightwater", "email": "ada@example.com"}]),
+            &json!(1000),
+            &json!(false),
+            &json!("7")
+        )
+    );
+    assert_eq!(running.read("state/tuple-call/recent.jsonl").len(), 1);
+    // Tuple's stream, as the daemon follows it again, says nothing of the
+    // call, so only the file can.
+    std::fs::write(running.path("bin/stream"), format!("{STATE}\n")).unwrap();
+    drop(client);
+    running.restart();
+    let said = running
+        .client()
+        .ask(&json!({"id": 1, "ask": "get", "keys": ["call:current"]}));
+    assert_eq!(said["records"][0]["recent"], json!([kept]));
 }
 
 #[test]
@@ -445,6 +512,19 @@ fn opening_the_room_answers_and_keeps_its_link() {
     );
     let said = client.ask(&json!({"id": "l", "ask": "list"}));
     assert_eq!(said["records"][0]["room"], "https://tuple.app/c/joels-room");
+    // The room opened starts a call in it, so one coming to it came to
+    // Joel's call.
+    running.streams(CALL);
+    client.until("the call wasn't said", |record| {
+        record["state"] == "connected"
+    });
+    running.streams("{\"type\":\"current_call\",\"data\":null}");
+    let record = client.until("the call wasn't kept", |record| {
+        record["recent"]
+            .as_array()
+            .is_some_and(|recent| !recent.is_empty())
+    });
+    assert_eq!(record["recent"][0]["caller"], "");
 }
 
 #[test]

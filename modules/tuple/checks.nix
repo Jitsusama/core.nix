@@ -13,8 +13,9 @@
 onLinux {
   # tuple-call's tests run as it builds: against a stand-in tuple and log,
   # its stream followed only while Tuple answers, a call, a ring and a
-  # missed call told to a watch, each act run as Tuple's command, and
-  # the socket systemd hands it answered on (call/tests/daemon.rs).
+  # missed call told to a watch, a call that ended kept in Recent and read
+  # back after a restart, each act run as Tuple's command, and the socket
+  # systemd hands it answered on (call/tests/daemon.rs).
   tuple-call-holds-the-call = pkgs.callPackage ./call/package.nix { };
   # clippy finds nothing in tuple-call, its tests included.
   tuple-call-passes-clippy = passesClippy "tuple-call-passes-clippy" (

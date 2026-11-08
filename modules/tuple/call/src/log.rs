@@ -48,9 +48,19 @@ pub struct Ring {
     pub since: i64,
 }
 
-/// A ring that ended unanswered, and when it did.
+/// A ring that ended unanswered: who rang, when they began, which is when
+/// Recent says they called, and when the ring ended.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Missed {
+    pub who: String,
+    pub since: i64,
+    pub at: i64,
+}
+
+/// A ring Joel answered: who rang, and when he answered, which is how
+/// Recent knows they called him (lib.rs).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Answered {
     pub who: String,
     pub at: i64,
 }
@@ -60,6 +70,8 @@ pub struct Missed {
 pub struct Heard {
     /// Whether the ring changed, begun or ended.
     pub rang: bool,
+    /// The ring going, answered.
+    pub answered: Option<Answered>,
     /// A ring that ended unanswered since this program started.
     pub missed: Option<Missed>,
     /// Whether Tuple's daemon has just started.
@@ -115,7 +127,11 @@ impl Log {
         let taken =
             TAKEN_WHOLE.contains(&said) || TAKEN_BEGUN.iter().any(|begun| said.starts_with(begun));
         if taken {
-            heard.rang = self.ringing.take().is_some();
+            heard.answered = self
+                .ringing
+                .take()
+                .map(|ring| Answered { who: ring.who, at });
+            heard.rang = heard.answered.is_some();
         } else if ENDING.contains(&said) || said.starts_with(TURNED_AWAY) {
             heard.rang = self.ringing.is_some();
             heard.missed = self.end(at);
@@ -137,7 +153,11 @@ impl Log {
     fn end(&mut self, at: i64) -> Option<Missed> {
         let ring = self.ringing.take()?;
         let at = at.min(ring.since + RINGS_FOR);
-        (at >= self.began).then_some(Missed { who: ring.who, at })
+        (at >= self.began).then_some(Missed {
+            who: ring.who,
+            since: ring.since,
+            at,
+        })
     }
 }
 
@@ -238,10 +258,17 @@ mod tests {
             heard,
             Heard {
                 rang: true,
+                answered: Some(Answered {
+                    who: "7".into(),
+                    at: NOON - 2_000
+                }),
                 ..Heard::default()
             }
         );
         assert_eq!(log.ringing(), None);
+        // Taken again with nothing ringing, it answered nobody.
+        let heard = log.heard(&line("11:59:59.000", "call connected"), NOON);
+        assert_eq!(heard, Heard::default());
     }
 
     #[test]
@@ -259,6 +286,7 @@ mod tests {
                 heard.missed,
                 Some(Missed {
                     who: "7".into(),
+                    since: NOON - 5_000,
                     at: NOON - 3_000
                 }),
                 "{ending}"
@@ -276,6 +304,7 @@ mod tests {
             log.tick(NOON + 55_000),
             Some(Missed {
                 who: "7".into(),
+                since: NOON - 5_000,
                 at: NOON + 55_000
             })
         );
@@ -305,6 +334,7 @@ mod tests {
                 .missed,
             Some(Missed {
                 who: "7".into(),
+                since: NOON - 30_000,
                 at: NOON + 5_000
             })
         );
