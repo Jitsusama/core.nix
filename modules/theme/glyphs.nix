@@ -679,7 +679,7 @@ in
   desktop = {
     glyph = nerd "f01c4";
     console = "d";
-    means = "the desktop: its windows, columns, workspaces and screens";
+    means = "the desktop: its windows, columns, workspaces and screens, and the place holding them";
   };
   touchscreen = {
     glyph = nerd "f0d76";
@@ -990,7 +990,7 @@ in
   computer = {
     glyph = nerd "f0322";
     console = "l";
-    means = "a computer: the screen built into this one, or another paired";
+    means = "a computer: this one, as Machine, or another paired";
     # A tower, its two bays and its light cut out.
     drawn = drawing [
       "M3.5 0 L3.1 0.1 L2.8 0.3 L2.6 0.6 L2.5 1 L2.5 11 L2.6 11.4 L2.8 11.7 L3.1 11.9 L3.5 12"

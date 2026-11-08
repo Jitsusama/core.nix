@@ -311,13 +311,10 @@ Scope {
     }
 
     // A count as the collection says one, grouped by thousands, with what
-    // it counts, since a bare figure beside a title says neither (VKCF3Z,
-    // 2026-11-08: "78 keys").
+    // it counts where its name doesn't say it (VKCF3Z, 2026-11-08: "78
+    // keys"), as Numbers.js's counted says it.
     function countedAs(size) {
-        if (size === 0)
-            return "empty";
-        const said = (size === 1 ? collection?.one : collection?.many) ?? "{count}";
-        return said.replace("{count}", String(size).replace(/\B(?=(\d{3})+(?!\d))/g, ","));
+        return Numbers.counted(size, collection);
     }
 
     // What a collection's row says below it while it's picked, as the

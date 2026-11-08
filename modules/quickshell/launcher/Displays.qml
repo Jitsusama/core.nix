@@ -556,7 +556,10 @@ Provider {
             verb: on ? "focus" : "turn on",
             name: named(output),
             keywords: output.name,
-            glyph: builtIn(output) ? Theme.glyph.computer : Theme.glyph.display,
+            // A screen, built in or not, wears the screen's mark, its
+            // eyebrow saying it's built in; `computer` is Machine's (VKCF3Z,
+            // 2026-11-08: one mark, one meaning).
+            glyph: Theme.glyph.display,
             hue: "machine",
             side: !on ? "off" : focused ? "focused" : "",
             note: described(output),

@@ -415,6 +415,9 @@ def refuses() -> list[str]:
         out.append(f"The check doesn't find the one key given twice in {TWICE}.")
     if len(unsaid({"things": [], "commands": [REFUSED_COMMAND]})) != 1:
         out.append(f"The check lets a command's program through: {REFUSED_COMMAND}.")
+    markless = {"categories": [{"id": "bad:place", "glyph": "nowhere"}], "things": []}
+    if not any("a glyph the theme hasn't got" in said for said in misplaced(markless, set())):
+        out.append(f"The check lets a place wear a mark the theme hasn't got: {markless}.")
     out.extend(f"The check refuses what it shouldn't: {said}" for said in unsaid(ALLOWED))
     out.extend(f"The check takes {name!r} for Title Case." for name in SENTENCES if titled(name))
     out.extend(

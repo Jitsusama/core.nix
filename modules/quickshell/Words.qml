@@ -131,13 +131,15 @@ Singleton {
         return Object.assign({
             noun: noun,
             // How it says how many it holds, as its own words say one and
-            // many, so a count says what it counts: "78 keys".
-            one: entry.said?.one ?? `{count} ${noun}`,
-            many: entry.said?.many ?? `{count} ${noun}`,
+            // many where the noun adds what its name doesn't ("78 keys" on
+            // Keyboard), else the bare figure, since "Windows \u00b7 3
+            // windows" says the row's name again (VKCF3Z, 2026-11-08).
+            one: entry.said?.one ?? "{count}",
+            many: entry.said?.many ?? "{count}",
             title: entry.name,
             glyph: glyph(id),
             ask: entry.ask ?? words.anyAsk,
-            empty: entry.empty ?? `No ${entry.noun ?? entry.name.toLowerCase()} yet.`
+            empty: entry.empty ?? `No ${noun} yet.`
         }, extra ?? {});
     }
 }

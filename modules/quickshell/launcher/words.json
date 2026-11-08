@@ -4890,7 +4890,6 @@
       "name": "Shortcuts",
       "term": "Keyboards/shortcut",
       "noun": "shortcuts",
-      "said": { "one": "{count} shortcut", "many": "{count} shortcuts" },
       "glyph": "shortcuts",
       "ask": "which shortcut?"
     },
@@ -6405,7 +6404,6 @@
       "name": "Timers",
       "term": "Desktop/timer",
       "noun": "timers",
-      "said": { "one": "{count} timer", "many": "{count} timers" },
       "glyph": "timer",
       "ask": "which timer?",
       "empty": "No timers running."
@@ -6583,8 +6581,6 @@
       "glyph": "notifications",
       "ask": "which notice?",
       "said": {
-        "one": "{count} notice",
-        "many": "{count} notices",
         "no-link": "no link here",
         "one-link": "only 1 link here",
         "links": "only {count} links here",
@@ -8029,7 +8025,6 @@
       "name": "Windows",
       "term": "Desktop/window",
       "noun": "windows",
-      "said": { "one": "{count} window", "many": "{count} windows" },
       "glyph": "windows",
       "ask": "which window?",
       "empty": "No other windows."

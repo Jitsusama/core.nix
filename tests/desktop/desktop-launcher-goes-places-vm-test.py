@@ -971,11 +971,12 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     )
     desktop.shoot("launcher-home-categories")
     desktop.close_launcher()
-    shoot_home_at_joels_scales(desktop, home)
     said = desktop.as_account(
         f"journalctl --user --unit=quickshell --no-pager --output=cat --after-cursor='{since}'"
     )
     assert "asked again by jobs" not in said, f"the queue asked home again: {said}"
+    # After the journal's read, so a gallery run and a plain one read the same.
+    shoot_home_at_joels_scales(desktop, home)
     # Ctrl+Y, which completes, does nothing and says nothing with nothing
     # typed, since the arrows reach every category; Return on one steps
     # into it. The foot names no key for completing either.
