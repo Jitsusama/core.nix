@@ -24,13 +24,14 @@ in
 onLinux {
   # mpv's step in the launcher, its provider's as Applications.qml holds it
   # (tests/mpv-program.qml), over mpv's desktop entry, with niri, the
-  # shortcuts, what's playing and the last copy stood in, and mpv-stopped
-  # by a script that counts its runs: its Recent leads with what an mpv
-  # plays now, then each file it stopped part way through, newest first,
-  # saying where, each once, Return playing on and From the Start inside;
-  # each listed once mpv is stepped into, once an opening; and Play the
-  # Copied Link straight after Go To only while the copy is one address mpv
-  # plays, whose cases Mpv.js's own are, run first in Qt's engine.
+  # shortcuts and what's playing stood in, the shell's own watch of the
+  # clipboard over a wl-paste that says nothing, and mpv-stopped by a
+  # script that counts its runs: its Recent merges each file mpv left by
+  # when, newest first, with the shared list's, each once, none open now;
+  # one stopped part way says "12:04 of 41:10" and Return resumes it, one
+  # watched whole says play; each listed once mpv is stepped into, once an
+  # opening; and Play the Copied Link only while the copy is one address
+  # mpv plays, whose cases Mpv.js's own are, run first in Qt's engine.
   the-launcher-plays-on-where-mpv-stopped =
     let
       home = account graphical;
@@ -44,6 +45,7 @@ onLinux {
         "Numbers.js"
         "Applications.qml"
         "Recents.qml"
+        "Recent.js"
         "Ago.js"
         "words.json"
       ];
@@ -76,6 +78,9 @@ onLinux {
         GenericName=Multimedia player
         Exec=mpv --player-operation-mode=pseudo-gui -- %U
       '';
+      # The clipboard's watcher, which hears nothing, so the case sets
+      # each copy itself.
+      paste = pkgs.writeShellScriptBin "wl-paste" "exec sleep 300";
     in
     pkgs.runCommandLocal "the-launcher-plays-on-where-mpv-stopped" { } ''
       mkdir -p launcher share/applications
@@ -93,26 +98,33 @@ onLinux {
       cp ${niri} Niri.qml
       cp ${playing} launcher/Playing.qml
       cp ${singleton "Shortcuts.qml" "property var actions: []"} Shortcuts.qml
-      cp ${singleton "Copied.qml" ''property string text: ""''} Copied.qml
+      cp ${../quickshell/Copied.qml} Copied.qml
+      cp ${../quickshell/Copied.js} Copied.js
+      export PATH=${paste}/bin:$PATH
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export XDG_DATA_HOME=$TMPDIR/data XDG_DATA_DIRS=$PWD/share NOW=$(date +%s)
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       # The list programs share, as recent-files prints it: what plays now,
-      # a file stopped part way through, and one played to its end.
+      # a file stopped part way through, one played to its end, and one mpv
+      # kept nothing of.
       printf 'mpv\t%s\n' "$HOME/Videos/now.mkv" "$HOME/Videos/talk.mkv" "$HOME/Videos/song.mkv" \
-        > $HOME/shared
+        "$HOME/Videos/clip.mkv" > $HOME/shared
       export SHARED_LIST=${pkgs.writeShellScript "shared-list" ''cat "$HOME/shared"''}
       # What each mpv plays now, as playing.lua keeps it.
-      export PLAYING_LIST=${pkgs.writeShellScript "playing-list" ''printf '5151\t%s\n' "$HOME/Videos/now.mkv"''}
-      # What mpv-stopped prints, newest first, and a line it never would,
-      # counting each run.
+      export PLAYING_LIST=${pkgs.writeShellScript "playing-list" ''
+        printf '5151\t%s\n' "$HOME/Videos/now.mkv"
+      ''}
+      # What mpv-stopped prints, newest first: what plays now, two files
+      # stopped part way, one watched whole two days ago, and a line it
+      # never would, counting each run.
       export STOPPED_LIST=${pkgs.writeShellScript "stopped-list" ''
         echo $(( $(cat "$HOME/listed" 2> /dev/null || echo 0) + 1 )) > "$HOME/listed"
         printf '%s\t%s\t%s\t%s\n' \
           "$HOME/Videos/now.mkv" 30 600 $((NOW - 60)) \
           "$HOME/Videos/long.mkv" 3723 6000 $((NOW - 600)) \
           "$HOME/Videos/talk.mkv" 724.5 2470.2 $((NOW - 7200)) \
+          "$HOME/Videos/song.mkv" 2469.7 2470.2 $((NOW - 172800)) \
           "Videos/half.mkv" 1 2 3
       ''}
       ${shellFolderLint}
@@ -264,11 +276,12 @@ onLinux {
 
   # The launcher's lister of where mpv stopped (stopped.sh), run as its
   # provider runs it, reads what the account's mpv kept of clips it quit
-  # part way through, as ZZ quits (stopped-test.sh): each file it played
-  # on, newest first, by its whole path, where it stopped, its length and
-  # when it was left, but no folder's redirect entry, no stream, no file
-  # deleted since and none held on its last frame, nine at most; and a
-  # file started as Play On starts it plays on from where it stopped, and
+  # part way through or at their end, as ZZ quits (stopped-test.sh): each
+  # file it played on and the one held on its last frame, newest first, by
+  # its whole path, where it stopped, its length and when it was left,
+  # only the last read as watched whole, but no folder's redirect entry, no
+  # stream and no file deleted since, nine at most; and a
+  # file started as Resume starts it plays on from where it stopped, and
   # as Play From the Start does, from its start. mpv and the lister are
   # given one folder.
   mpv-says-where-it-stopped =

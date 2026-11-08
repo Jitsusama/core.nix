@@ -7236,14 +7236,31 @@
       "id": "verb:mpv:on",
       "command": "resume",
       "in": "path:file",
-      "name": "Play On",
-      "verb": "play",
+      "name": "Resume",
+      "verb": "resume",
       "glyph": "resume",
       "said": {
         "stopped": "{at} of {length}",
+        "whole": "{length}",
         "from": "from {at}",
-        "left": "stopped {ago}"
+        "left": "stopped {ago}",
+        "watched": "watched {ago}"
       }
+    },
+    {
+      "id": "mpv:stopped:at",
+      "in": "verb:mpv:on",
+      "name": "Stopped At"
+    },
+    {
+      "id": "mpv:stopped:to-go",
+      "in": "verb:mpv:on",
+      "name": "Still to Play"
+    },
+    {
+      "id": "mpv:stopped:length",
+      "in": "verb:mpv:on",
+      "name": "Length"
     },
     {
       "id": "verb:mpv:start",

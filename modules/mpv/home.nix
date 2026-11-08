@@ -44,11 +44,12 @@
 # it plays over MPRIS, so the media keys and the shell's player reach it,
 # and says each file it plays to the desktop's list of files opened lately
 # (recent-files.lua), so its Recent in the launcher lists them, led by
-# the file each mpv plays now (playing.lua), which Return goes to, then
-# by the files it stopped part way through, each saying where, which
-# Return plays on from (MpvProgram.qml). While the clipboard holds an
-# address it plays, a video site's page or a media file, Programs › mpv
-# leads with Play the Copied Link.
+# the file each mpv plays now (playing.lua), which Return goes to. Among
+# them, by when mpv left each, are the files it stopped part way through,
+# each saying where, which Return resumes, and those it played to their
+# end, which Return plays from the start (MpvProgram.qml). While the
+# clipboard holds an address it plays, a video site's page or a media
+# file, Programs › mpv offers Play the Copied Link, and only then.
 # umpv, the package's second entry, which queues files into one window,
 # stays out of the launcher, where it would sit beside mpv as a second mpv.
 {
@@ -305,9 +306,9 @@ in
   # What mpv's provider works out, beside it, where its import finds it.
   xdg.configFile."quickshell/launcher/Mpv.js".source = ./Mpv.js;
 
-  # The files mpv stopped part way through, leading its Recent, and Play
-  # the Copied Link, leading its acts; after Slack's, beside the desktop's
-  # actions, as GIMP's and Tuple's are.
+  # The files mpv left, in its Recent, and Play the Copied Link, among its
+  # acts; after Slack's, beside the desktop's actions, as GIMP's and
+  # Tuple's are.
   jitsusama.quickshell.launcher.providers.mpv = {
     order = 48;
     source = ./MpvProgram.qml;

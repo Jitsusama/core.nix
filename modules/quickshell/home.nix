@@ -202,6 +202,7 @@ let
     "When.js"
     "Taken.qml"
     "Copied.qml"
+    "Copied.js"
     "Pasting.qml"
     "Notices.qml"
     "Forward.js"

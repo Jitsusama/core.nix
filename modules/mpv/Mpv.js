@@ -2,7 +2,7 @@
 // from Quickshell's types so tests/mpv-program.qml runs it in Qt's own
 // engine: whether what was copied is one address mpv plays, how far into a
 // file mpv stopped, said in words, the files mpv-stopped lists (stopped.sh),
-// and the commands that play each.
+// which of them were watched whole, and the commands that play each.
 .pragma library
 
 // The sites whose pages are something to watch or hear, by host, each with
@@ -35,13 +35,19 @@ const MEDIA =
 // fragment, with no name or password before the host.
 const ADDRESS = /^https?:\/\/([^/?#\s@:]+)(?::\d+)?(\/[^?#\s]*)?(\?[^#\s]*)?(?:#\S*)?$/i;
 
-// What leads a host but doesn't name its site: "m.youtube.com" is
-// youtube.com.
+// What comes before a host's site but doesn't name it: "m.youtube.com"
+// is youtube.com.
 const LEADING = /^(?:www|m)\./;
 
 const MINUTE = 60;
 const HOUR = 3600;
 const MILLISECONDS = 1000;
+
+// How near its end, in seconds, a file mpv left counts as watched whole:
+// mpv quit on a file held on its last frame (keep-open) keeps a time a
+// frame or so short of its length, and stopped.sh reads the rest as part
+// watched by the same second.
+const END = 1;
 
 // An address's host, as its site is known by.
 function siteOf(host) {
@@ -50,7 +56,9 @@ function siteOf(host) {
 
 // The address mpv plays in what was copied, or "" when it holds anything
 // else: more than one address, words around one, or an address of a page
-// with nothing to play.
+// with nothing to play. The shell's watch of the clipboard (Copied.qml)
+// already gives one web address alone as its `link`, which this narrows to
+// the pages and files mpv plays.
 function playable(copied) {
     const address = String(copied ?? "").trim();
     const parts = ADDRESS.exec(address);
@@ -74,10 +82,10 @@ function hostOf(address) {
 // A time into a file as mpv's own clock says it, in whole seconds:
 // "12:04", and past an hour "1:02:03".
 function clock(seconds) {
-    const whole = Math.max(0, Math.floor(Number(seconds) || 0));
-    const hours = Math.floor(whole / HOUR);
-    const minutes = Math.floor((whole % HOUR) / MINUTE);
-    const rest = String(whole % MINUTE).padStart(2, "0");
+    const counted = Math.max(0, Math.floor(Number(seconds) || 0));
+    const hours = Math.floor(counted / HOUR);
+    const minutes = Math.floor((counted % HOUR) / MINUTE);
+    const rest = String(counted % MINUTE).padStart(2, "0");
     const said = hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}` : String(minutes);
     return `${said}:${rest}`;
 }
@@ -106,8 +114,20 @@ function stopped(lines) {
     return read;
 }
 
-// Where a file stopped, as its row says it, by the launcher's words for it
-// (`said`, words.json's "{at} of {length}"): "12:04 of 41:10".
+// Whether mpv was left on a file at its end, so it was watched whole and
+// plays again from its start, rather than part way, where it plays on.
+function whole(one) {
+    return one.start > one.length - END;
+}
+
+// How much of a file is still to play from where it stopped, in seconds.
+function toGo(one) {
+    return Math.max(0, one.length - one.start);
+}
+
+// Where a file stopped, or for one watched whole its length, as its row's
+// note says it, by the launcher's words for each (`said`, words.json's
+// "{at} of {length}" and "{length}"): "12:04 of 41:10".
 function where(one, said) {
     return String(said ?? "")
         .replace("{at}", clock(one.start))

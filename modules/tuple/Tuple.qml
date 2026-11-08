@@ -84,10 +84,12 @@ Singleton {
     }
     // Joel's room's link, once Tuple's said it.
     readonly property string room: call.room ?? ""
-    // The call link last copied, until something else is, read from the
-    // copy the shell's watch heard last (Copied.qml), which mpv's Play the
-    // Copied Link reads too.
-    readonly property string copied: Log.link(Copied.text)
+    // The call link last copied, until something else is. A copy with no
+    // text, such as a screenshot, or one marked as a secret, has none, so
+    // a link copied before it isn't offered after it's gone. Its lines are
+    // run together, as they were before the shell shared one watcher of
+    // the clipboard (Copied.qml).
+    readonly property string copied: Log.link(Copied.text.split("\n").join(" "))
 
     // When the shell started, before which nothing is news.
     readonly property real started: Date.now()
