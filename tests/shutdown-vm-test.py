@@ -33,6 +33,17 @@ HELD_AT_LEAST = 55
 HELD_AT_MOST = 90
 # How soon the watchdog may fire, in seconds: its 30, less a margin.
 WATCHDOG_AT_LEAST = 25
+# How long an account's manager may take to stop, in seconds, whatever its units' own limits.
+ACCOUNT_STOPS_WITHIN = 10
+# How long the account's stubborn units may take to start.
+STARTING = timedelta(seconds=30)
+# The account, its manager, and how root reaches that manager.
+ACCOUNT = "alice"
+MANAGER = "user@1000.service"
+AS_ACCOUNT = f"-M {ACCOUNT}@ --user"
+# What a unit is given to stop when it names no limit of its own: the account's units were
+# started with this, so the manager's own cap is what's proven.
+DEFAULT_LIMIT = "1min 30s"
 
 
 @dataclass(frozen=True)
@@ -113,3 +124,46 @@ def test_a_leftover_that_ignores_sigterm_cant_hold_the_last_stage(
     up.wait_for_shutdown(timeout=HEALTHY)
     assert took > WATCHDOG_AT_LEAST, "the watchdog fired before its 30 seconds"
     assert rebooted.told() == ["leftovers"]
+
+
+@pytest.fixture
+def stubborn_account(up: QemuMachine, values: dict[str, Any]) -> QemuMachine:
+    """Give the machine with the account's manager holding units that ignore SIGTERM.
+
+    A service and a scope, each with the 90 second stop limit a unit gets when it names none.
+    """
+    sleep, stubborn = values["sleep"], values["stubborn"]
+    up.succeed(f"systemctl start {MANAGER}")
+    up.succeed(f"systemd-run {AS_ACCOUNT} --unit=stubborn {stubborn} {sleep}")
+    # A scope takes the process that asks for it, so a service of the account's asks.
+    up.succeed(
+        f"systemd-run {AS_ACCOUNT} --unit=scoper"
+        " /run/current-system/sw/bin/systemd-run --user --scope --unit=stubborn-scope"
+        f" {stubborn} {sleep}"
+    )
+    units = "stubborn.service stubborn-scope.scope"
+    up.wait_until_succeeds(f"systemctl {AS_ACCOUNT} is-active {units}", timeout=STARTING)
+    for unit in units.split():
+        limit = up.succeed(f"systemctl {AS_ACCOUNT} show -P TimeoutStopUSec {unit}").strip()
+        assert limit == DEFAULT_LIMIT, f"{unit} was started with {limit} to stop"
+    return up
+
+
+def test_an_accounts_units_that_wont_stop_hold_its_manager_seconds(
+    stubborn_account: QemuMachine,
+) -> None:
+    """An account's units that ignore SIGTERM hold its manager seconds, then are killed."""
+    started = time.monotonic()
+    stubborn_account.succeed(f"systemctl stop {MANAGER}")
+    took = time.monotonic() - started
+    assert took < ACCOUNT_STOPS_WITHIN, f"the account's manager took {took:.1f} s to stop"
+    stubborn_account.fail(f"pgrep -u {ACCOUNT}")
+
+
+def test_an_accounts_units_that_wont_stop_cant_hold_a_reboot(
+    stubborn_account: QemuMachine,
+) -> None:
+    """An account's units that ignore SIGTERM can't hold a reboot, which tells Plymouth nothing."""
+    rebooted = reboot(stubborn_account)
+    stubborn_account.wait_for_shutdown(timeout=HEALTHY)
+    assert rebooted.told() == []
