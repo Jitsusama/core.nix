@@ -113,8 +113,9 @@ onLinux {
       );
   # Each kind's mark, who's listed with nothing typed and in what order,
   # what a row says, an entry's acts and their order, its link in its
-  # manager's program, its drawer saying every figure and never a secret,
-  # its health warning, and the foot counting a copy down are
+  # manager's program, its drawer's eyebrow, and its facts saying every
+  # figure and never a secret, its health and a weak strength warning,
+  # and the foot counting a copy down are
   # Passwords.js's, run in Qt's own engine (tests/passwords.qml), beside
   # the launcher's own wording of how long ago (Ago.js).
   the-passwords-show-every-figure-but-the-secret =

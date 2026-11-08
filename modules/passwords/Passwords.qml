@@ -9,8 +9,10 @@
 // It's found by typing "passwords", or an entry's name, username or
 // website. With nothing typed it holds the favourites, then what changed
 // lately, newest first (Passwords.js). Each entry is its title and its
-// kind's mark, its username or website below, and Return copies its
-// password and stays, the foot counting down to the clipboard clearing.
+// kind's mark, its username at its side and its website below, and Return
+// copies its password and the launcher goes, as every copy does, so Joel
+// can paste at once; the margin wears the clipboard's mark until the copy
+// clears (Copied.qml), and the foot, opened again, counts down to it.
 // Inside: Copy the Password, Copy the One-Time Code, Copy the Username,
 // Open the Website, Show in its manager, Copy the Link (VKCF3Z, 22949064).
 // Its drawer says every figure its manager gives but the secret.
@@ -113,9 +115,9 @@ Provider {
         return daemon.held[key] ?? null;
     }
 
-    // An entry's row: its title, its kind's mark, its username or website
-    // below, its password copied by Return where it has one, and stepping
-    // in where it hasn't, as a note or an identity.
+    // An entry's row: its title, its kind's mark, its username at its side
+    // and its website below, its password copied by Return where it has
+    // one, and stepping in where it hasn't, as a note or an identity.
     function made(record) {
         const key = record.key;
         const manager = managerNamed(record.manager);
@@ -128,9 +130,9 @@ Provider {
             name: title,
             glyph: Theme.glyph[Passwords.mark(record.category)] ?? "",
             hue: "machine",
+            side: Passwords.side(record),
             note: note,
             favourite: record.favourite === true,
-            stays: true,
             verbs: () => provider.inside(key),
             // The foot says how a copy of it stands, else its note.
             state: () => provider.footFor(key, note),
@@ -139,7 +141,7 @@ Provider {
         });
         Object.assign(row, Passwords.passworded(record)
             ? { returns: provider.act(key, "password") }
-            : { verb: "more", run: () => provider.launcher?.enter(row) });
+            : { verb: "more", stays: true, run: () => provider.launcher?.enter(row) });
         // The words it's found by besides its title, and its drawer, each
         // made when first asked for, since most entries are never searched
         // or shown.
@@ -176,12 +178,15 @@ Provider {
     }
 
     // One act inside an entry, by its id in Passwords.js's acts. A
-    // password or a one-time code is asked of the daemon to copy, and
-    // stays, the foot saying how the copy stands, since its manager may
-    // refuse or wait on Joel; the username and the entry's link are no
-    // secret, and copy as any row's value does, while the launcher holds
-    // the keys; the website and the entry in its manager's program open
-    // through niri as the launcher goes.
+    // password or a one-time code is asked of the daemon to copy, and the
+    // launcher goes, as every copy does, so Joel can paste at once: the
+    // daemon puts it on the clipboard itself, needing no keys of the
+    // launcher's, the margin's mark stands until it clears, and the foot
+    // says how it stands when the launcher opens again, its manager's
+    // refusal among it. The username and the entry's link are no secret,
+    // and copy as any row's value does, while the launcher holds the keys;
+    // the website and the entry in its manager's program open through
+    // niri as the launcher goes.
     function act(key, id, shown) {
         const record = recordOf(key);
         if (record === null)
@@ -197,7 +202,6 @@ Provider {
             hue: "action"
         };
         const copying = (detail, what) => ({
-            stays: true,
             state: () => provider.footFor(key, ""),
             run: () => provider.copySecret(key, detail, what)
         });
@@ -228,61 +232,50 @@ Provider {
         return thing(Object.assign(base, made[id]()));
     }
 
-    // The last copy asked of the daemon, which is the one on the clipboard:
-    // { key, title, detail, clears, lapses, period, why }, and the time
-    // the foot counts it down by, moved each second only while it counts.
-    property var copied: null
-    property real now: Date.now()
-
     // Asks the daemon to put an entry's password, or a detail of it, on
-    // the clipboard, saying so in the foot until it's cleared.
+    // the clipboard, the copy kept where the margin's mark and the foot
+    // read it until it's cleared (Clearing.qml).
     function copySecret(key, detail, what) {
         const record = recordOf(key);
         if (record === null)
             return;
         const copy = { key: key, title: Passwords.titleOf(record),
             detail: what, clears: 0, lapses: 0, period: 0 };
-        copied = copy;
-        now = Date.now();
+        Clearing.copied = copy;
+        Clearing.now = Date.now();
         const asked = { ask: "copy", key: key };
         if (detail !== null)
             asked.detail = detail;
         daemon.ask(asked, answer => {
-            if (copied?.key !== key || copied?.detail !== what)
+            if (Clearing.copied?.key !== key || Clearing.copied?.detail !== what)
                 return;
-            now = Date.now();
-            copied = Passwords.answered(copy, answer, now, said.away ?? "");
+            Clearing.now = Date.now();
+            Clearing.copied = Passwords.answered(copy, answer, Clearing.now, said.away ?? "");
         });
     }
 
     // What the foot says for a row of this entry: how its copy stands,
     // else `otherwise`.
     function footFor(key, otherwise) {
-        const copy = copied?.key === key ? copied : null;
-        return copy ? Passwords.told(copy, now, said) : otherwise;
+        const copy = Clearing.copied?.key === key ? Clearing.copied : null;
+        return copy ? Passwords.told(copy, Clearing.now, said) : otherwise;
     }
 
-    Timer {
-        interval: 1000
-        repeat: true
-        running: (provider.copied?.clears ?? 0) > provider.now
-        onTriggered: provider.now = Date.now()
-    }
-
-    // The row leading the place while a manager can't read, "1Password Is
-    // Locked", Return unlocking it (VKCF3Z's ruling): it asks the manager
-    // to let the launcher in, as Programs' Let the Launcher In does, and
-    // the launcher goes, so its own window can ask Joel. It's the one row
+    // The row leading the place while a manager can't read: a thing, the
+    // manager by its name, "1Password", its side saying it's locked and
+    // Return unlocking it (VKCF3Z's ruling): it asks the manager to let
+    // the launcher in, as Programs' Let the Launcher In does, and the
+    // launcher goes, so its own window can ask Joel. It's the one row
     // whether 1Password is locked or was never let in, since the manager
     // can't tell them apart (op refuses both alike, and every manager
     // starts unlet after a boot, while 1Password is locked), and Return
-    // does the same for both. Its note says nothing more: the name says
-    // how it stands, and the foot what Return does.
+    // does the same for both.
     function unlock(manager) {
         const words = "verb:passwords:unlock";
         return thing({
             key: `${words}:${manager.name}`,
             name: Words.name(words, "", { manager: manager.called }),
+            side: said.locked ?? "",
             verb: Words.verb(words),
             glyph: Words.glyph(words),
             hue: "action",

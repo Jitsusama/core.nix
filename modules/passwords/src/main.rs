@@ -607,15 +607,16 @@ fn held_records(shared: &Shared, id: &Value, keys: &[String]) -> Value {
     json!({"id": id, "records": records, "sources": daemon.held.standings()})
 }
 
-/// A detail's value as it was asked for, its label, and, for a one-time
-/// code, its period and the seconds left in it.
-struct Secret {
+/// A detail's value as its manager revealed it, its label, and, for a
+/// one-time code, its period and the seconds left in it. Not `Secret`,
+/// which names which way the command sends one.
+struct Revealed {
     value: String,
     label: String,
     lasts: Option<(Value, Value)>,
 }
 
-impl Secret {
+impl Revealed {
     /// An answer with how long a one-time code lasts beside it, so a
     /// client can say when the code it was given lapses.
     fn lasting(&self, mut answer: Value) -> Value {
@@ -636,7 +637,7 @@ fn secret(
     shared: &Shared,
     key: &str,
     wanted: Option<&str>,
-) -> Result<Secret, (&'static str, String)> {
+) -> Result<Revealed, (&'static str, String)> {
     let Some((manager, entry)) = named(key) else {
         return Err(("refused", format!("{key} isn't an entry's key")));
     };
@@ -680,7 +681,7 @@ fn secret(
             return Err(("refused", "its manager gave no code".to_owned()));
         };
         let lasts = |name: &str| answer.get(name).cloned().unwrap_or(Value::Null);
-        return Ok(Secret {
+        return Ok(Revealed {
             value: code.to_owned(),
             label,
             lasts: Some((lasts("period"), lasts("left"))),
@@ -696,7 +697,7 @@ fn secret(
         PATIENCE * 6,
     )?;
     match answer.get("value").and_then(Value::as_str) {
-        Some(value) => Ok(Secret {
+        Some(value) => Ok(Revealed {
             value: value.to_owned(),
             label,
             lasts: None,

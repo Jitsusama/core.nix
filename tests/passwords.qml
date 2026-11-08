@@ -95,15 +95,16 @@ QtObject {
         check("twenty changed lately at most", listed.length, 21);
         check("one that never says when it changed", listed.includes(door), false);
 
-        // A row's words: a manager named only while two are here.
+        // A row's words: its username at its side, its website's host
+        // below, and a manager named only while two are here.
         check("one manager isn't named", Passwords.named([{ name: "1password" }]), false);
         check("two are", Passwords.named([{ name: "1password" }, { name: "bitwarden" }]), true);
-        check("its note, its username", Passwords.note(gitHub, ""), "ada");
+        check("its side, its username", Passwords.side(listedGitHub), "ada");
+        check("no username, no side", Passwords.side(bank), "");
+        check("its note, its website's host", Passwords.note(gitHub, ""), "github.com");
         check("its manager leading it", Passwords.note(gitHub, "1Password"),
-            "1Password \u00b7 ada");
-        check("a website's host where it has no username",
-            Passwords.note({ websites: [{ address: "https://bank.example/in" }] }, ""),
-            "bank.example");
+            "1Password \u00b7 github.com");
+        check("no website, no note", Passwords.note(bank, ""), "");
         check("its primary website first", Passwords.websites(gitHub),
             ["https://github.com", "https://github.com/login"]);
         check("a row never reads blank", Passwords.titleOf(door), "Note");
@@ -131,8 +132,7 @@ QtObject {
 
         // Its drawer: every figure but the secret, in the design's order.
         const names = {
-            username: "Username", websites: "Website", collection: "Vault",
-            manager: "Password Manager", tags: "Tags", created: "Created",
+            websites: "Website", manager: "Password Manager", tags: "Tags", created: "Created",
             changed: "Last Changed", strength: "Strength", code: "One-Time Code",
             health: "Health", files: "Files"
         };
@@ -145,53 +145,57 @@ QtObject {
             lapsed: "copied {title}'s {detail} \u00b7 lapsed",
             cleared: "{title}'s {detail} is cleared from the clipboard",
             unfinished: "{title}'s {detail} not copied \u00b7 {why}",
-            hidden: "hidden", set: "set up", none: "none", weak: "weak password",
-            unsecured: "unsecured website"
+            hidden: "hidden", set: "set up", none: "none", unsecured: "unsecured website",
+            within: "in {vault} \u00b7 {kind}"
         };
         const wording = manager => ({ name: name, said: said, now: now, manager: manager });
         const drawer = Passwords.details(gitHub, wording(""));
         const lines = drawer.facts.map(fact => fact.heading !== undefined ? `## ${fact.heading}`
             : `${fact.label}: ${fact.value}`);
-        // The design's own first, in its order, then the rest; a healthy
-        // one says no health, its Strength saying it already.
-        check("every figure, the secret hidden", lines, [
-            "Username: ada",
-            "Websites: https://github.com, https://github.com/login",
-            "Vault: Private",
-            "Last Changed: 3 d ago",
+        // The design's own, in its order, then the rest; a healthy one says
+        // no health, and its username, its vault and its password say
+        // nothing here: its side says the first, its eyebrow the second,
+        // and the third is only copied.
+        check("every figure, the secret left out", lines, [
             "Strength: very good",
             "One-Time Code: set up",
+            "Last Changed: 3 d ago",
+            "Websites: https://github.com, https://github.com/login",
             "Tags: work, code",
             "Created: 982 d ago",
             "Files: 1",
-            "Password: hidden",
             "## Security",
             "Recovery codes: hidden",
             "## Work",
             "Team: Shell"
         ]);
+        check("its eyebrow, its vault and its kind, as written",
+            [drawer.eyebrow, drawer.eyebrowNames], ["in Private \u00b7 login", true]);
+        check("no vault, its kind alone", Passwords.details(Object.assign({}, bank,
+            { collection: null }), wording("")).eyebrow, "card");
         check("its notes are its words", drawer.body, "Two keys, one in the drawer.");
         check("no secret is said", JSON.stringify(drawer).includes(secret), false);
         check("no fact warns of a healthy one", drawer.facts.some(fact => fact.warns), false);
-        check("its manager named where rows name them, after its health",
+        check("its manager named where rows name them, after when it was created",
             Passwords.details(gitHub, wording("1Password")).facts[6],
             { label: "Password Manager", value: "1Password" });
-        // A weak password, on a website sent in the clear, warns of both.
+        // A weak password, on a website sent in the clear: its Strength
+        // warns of the first, and its Health, first, of the second alone.
         const weak = Object.assign({}, gitHub, {
             websites: [{ address: "http://router.example", primary: true }],
             details: [{ id: "password", label: "password", type: "hidden", hidden: true,
                 purpose: "password", empty: false, strength: "weak" }]
         });
-        check("its health warns", Passwords.details(weak, wording("")).facts
-            .filter(fact => fact.warns === true),
-        [{ label: "Health", value: "weak password \u00b7 unsecured website", warns: true }]);
+        check("its health and its strength warn", Passwords.details(weak, wording("")).facts
+            .slice(0, 2), [{ label: "Health", value: "unsecured website", warns: true },
+            { label: "Strength", value: "weak", warns: true }]);
         const summary = Passwords.details(listedGitHub, wording("")).facts
             .map(fact => fact.label);
         check("a summary can't say what's read in full", summary.includes("Strength")
             || summary.includes("One-Time Code"), false);
         check("one with no code says so", Passwords.details(Object.assign({}, bank,
-            { details: [] }), wording("")).facts.map(fact => fact.value).slice(-1),
-        ["none"]);
+            { details: [] }), wording("")).facts.find(fact => fact.label === "One-Time Code"),
+        { label: "One-Time Code", value: "none" });
 
         // The foot, as a copy's time runs out.
         const asking = { title: "GitHub", detail: "password", clears: 0, lapses: 0 };

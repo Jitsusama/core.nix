@@ -635,6 +635,16 @@ in
     glyph = nerd "f014d";
     console = "C";
     means = "the clipboard and what it's kept";
+    # A board under its clip, filled as the glyph is, its lines cut out of
+    # it: in the margin while a copied password waits to clear. Its board
+    # is the grid's full width and its clip half of it, so it never reads
+    # as the low battery, narrower under a narrower cap and hollow.
+    drawn = drawing [
+      "M1 1.5H3V0H9V1.5H11V12H1Z"
+      "M3 4.5H9V5.75H3Z"
+      "M3 7H9V8.25H3Z"
+      "M3 9.5H7V10.75H3Z"
+    ];
   };
   notifications = {
     glyph = nerd "f009c";

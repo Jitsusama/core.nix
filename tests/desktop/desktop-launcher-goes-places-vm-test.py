@@ -1006,15 +1006,17 @@ def walk_passwords(desktop: Desktop) -> None:
     desktop.close_launcher()
     desktop.as_account("qs ipc call launcher collection passwords")
     desktop.launcher_ready()
-    # The favourite leads, then what changed lately, newest first, its drawer out.
+    # The favourite leads, then what changed lately, newest first, its username at its side and
+    # its drawer out, saying its vault and its kind above its title.
     desktop.launcher_until(
         lambda shown: (
             shown["rows"][:3] == [favourite, "GitHub", "Bank Card"]
             and (shown["selected"] or {}).get("name") == favourite
             and shown["drawer"]["shown"]
-            and "Vault" in shown["drawer"]["drawnFacts"]
+            and shown["drawer"]["eyebrow"] == "in Keeping \u00b7 login"
         )
     )
+    assert desktop.showing()["selected"]["side"] == "keeper", desktop.showing()["selected"]
     desktop.shoot("launcher-passwords-place")
     # Stepping into it reads it in full, so its one-time code is there among its acts.
     desktop.follow()
@@ -1028,8 +1030,8 @@ def walk_passwords(desktop: Desktop) -> None:
     ]
     desktop.launcher_until(lambda shown: shown["rows"] == acts)
     desktop.shoot("launcher-passwords-acts")
-    # Back on its row, its drawer says what reading it in full told: its weak password and
-    # its website sent in the clear as its health, and its secret only as hidden.
+    # Back on its row, its drawer says what reading it in full told, first: its website sent
+    # in the clear as its health, its weak password as its strength, and never its secret.
     desktop.step_out()
     desktop.launcher_until(
         lambda shown: (
@@ -1040,10 +1042,11 @@ def walk_passwords(desktop: Desktop) -> None:
     )
     drawer = desktop.showing()["drawer"]
     facts = dict(zip(drawer["drawnFacts"], drawer["values"], strict=True))
-    assert facts["Health"] == "weak password \u00b7 unsecured website", facts
-    assert facts.get("Password") == "hidden", facts
-    # Its drawer is taller than the card, so the keys go into it and to its last line, for
-    # the shot to hold its health and its hidden password, and come back.
+    assert list(facts)[:3] == ["Health", "Strength", "One-Time Code"], facts
+    assert (facts["Health"], facts["Strength"]) == ("unsecured website", "weak"), facts
+    assert "Password" not in facts, facts
+    # Its drawer may be taller than the card, so the keys go into it and to its last line,
+    # for the shot to hold all of it, and come back.
     machine = desktop.machine
     machine.send_key("ctrl-w")
     machine.send_key("l")
@@ -1055,18 +1058,18 @@ def walk_passwords(desktop: Desktop) -> None:
     machine.send_key("ctrl-w")
     machine.send_key("h")
     desktop.launcher_until(lambda shown: not shown["drawer"]["keys"])
-    # Its Return copies its password, and the launcher stays to say when it clears.
+    # Its Return copies its password and the launcher goes, as every copy does, so it pastes
+    # at once, the margin wearing the clipboard's mark till it clears.
+    since = desktop.mark()
     machine.send_key("ret")
-    desktop.launcher_until(
-        lambda shown: (
-            shown["open"]
-            and str(shown["footer"]).startswith(f"copied {favourite}'s password \u00b7 clears in ")
-        )
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.reported("holds margin ", lambda marks: "clipboard" in marks.split(), since)
+    desktop.shoot("margin-password-copied")
+    machine.wait_until_succeeds(
+        desktop.in_session("wl-paste --no-newline | grep -qx stand-in-password"),
+        timeout=dt.timedelta(seconds=30),
     )
-    pasted = desktop.as_account("wl-paste --no-newline")
-    assert pasted == "stand-in-password", pasted
     assert "stand-in-password" not in json.dumps(desktop.showing())
-    desktop.close_launcher()
 
 
 # The programs using the processors and the memory are read as the

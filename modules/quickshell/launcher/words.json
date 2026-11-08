@@ -6877,16 +6877,16 @@
         "hidden": "hidden",
         "set": "set up",
         "none": "none",
-        "weak": "weak password",
         "unsecured": "unsecured website",
-        "locked": "locked"
+        "locked": "locked",
+        "within": "in {vault} \u00b7 {kind}"
       }
     },
     {
       "id": "verb:passwords:unlock",
       "command": "signin",
       "in": "passwords",
-      "name": "{manager} Is Locked",
+      "name": "{manager}",
       "verb": "unlock",
       "glyph": "signIn"
     },
@@ -6956,7 +6956,6 @@
       "name": "Website",
       "states": { "several": { "name": "Websites" } }
     },
-    { "id": "passwords:collection", "in": "passwords", "name": "Vault" },
     { "id": "passwords:tags", "in": "passwords", "name": "Tags" },
     { "id": "passwords:created", "in": "passwords", "name": "Created" },
     { "id": "passwords:changed", "in": "passwords", "name": "Last Changed" },

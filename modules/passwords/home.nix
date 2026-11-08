@@ -99,8 +99,23 @@ in
       (pkgs.callPackage ./completion.nix { })
     ];
 
-    # What the place works out apart from drawing it, beside it.
-    xdg.configFile."quickshell/launcher/Passwords.js".source = ./Passwords.js;
+    # What the place works out apart from drawing it, beside it, and the
+    # copy it last made, which the place and the margin's mark both read.
+    xdg.configFile = {
+      "quickshell/launcher/Passwords.js".source = ./Passwords.js;
+      "quickshell/Clearing.qml".source = ./Clearing.qml;
+    };
+
+    # A password or a one-time code on the clipboard until it clears, in
+    # the margin wearing the clipboard's mark, since the launcher goes as
+    # it copies; after what Joel left on himself, before what's on air.
+    jitsusama.quickshell.overview.pieces.clearing = {
+      order = 66;
+      source = ./Copied.qml;
+      label = "clearing";
+      tier = "when";
+      mark = "clipboard";
+    };
 
     # After Slack's program, before Search Slack, among the programs' own.
     jitsusama.quickshell.launcher.providers.passwords = {

@@ -2069,21 +2069,23 @@
   '';
   the-passwords-place-copies-through-its-daemon-on-niri = ''
     on a nested niri, the Passwords place asks the passwords daemon nothing until Joel steps in,
-    then lists once as his, leads with the row that lets a signed-out manager in, whose Return
-    asks it, copies an entry's password on Return through the daemon to the clipboard, the foot
-    counting to its clearing and nothing on screen saying it, reads an entry in full as the
-    selection rests on it, never as Joel's own ask, its drawer saying its secret is hidden, and
-    holds its acts in the design's order once it's stepped into, with a stand-in for 1Password's
-    manager
+    then lists once as his, leads with the locked manager's row, whose Return unlocks it, copies
+    an entry's password on Return through the daemon to the clipboard as the launcher goes, the
+    margin wearing the clipboard's mark and the foot, opened again, counting to its clearing,
+    nothing on screen saying it, reads an entry in full as the selection rests on it, never as
+    Joel's own ask, its drawer never saying its password, and holds its acts in the design's order
+    once it's stepped into, with a stand-in for 1Password's manager
   '';
   the-passwords-show-every-figure-but-the-secret = ''
     each kind of entry wears its own mark, the favourites are listed first, then what changed
-    lately, newest first, twenty at most, a row names its password manager only while two are on
-    the machine, an entry's acts come in the design's order, each only where it has what it needs,
-    its manager's link is filled only where the entry says every part, its drawer says every
-    figure, the design's first in its order, a hidden detail as hidden and never its value, and a
-    weak password or a website sent in the clear as its health in the warning's role, and the foot
-    counts a copy down to its clearing, or a one-time code to its lapsing
+    lately, newest first, twenty at most, a row says its username at its side and names its
+    password manager only while two are on the machine, an entry's acts come in the design's
+    order, each only where it has what it needs, its manager's link is filled only where the entry
+    says every part, its drawer's eyebrow says its vault and kind, and its facts every figure but
+    its username and its password, the design's first in its order, a hidden detail as hidden and
+    never its value, a website sent in the clear as its health and a weak password as its strength,
+    each in the warning's role, and the foot counts a copy down to its clearing, or a one-time code
+    to its lapsing
   '';
   the-people-are-one-person-each = ''
     every source's people join into one person per email address, a source that knows two

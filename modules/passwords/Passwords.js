@@ -61,11 +61,11 @@ const RECENT = 20;
 // A second, which the foot counts in.
 const SECOND = 1000;
 
-// 1Password's ratings of a password too weak to trust, which its health
-// says in the warning's role; its others are good, very good, excellent
+// 1Password's ratings of a password too weak to trust, which its Strength
+// draws in the warning's role; its others are good, very good, excellent
 // and fantastic.
 const WEAK = ["terrible", "weak", "fair"];
-// A website's address sent in the clear, which its health says too.
+// A website's address sent in the clear, which its health says.
 const UNSECURED = /^http:\/\//i;
 
 // How many managers it takes before rows name theirs.
@@ -139,11 +139,17 @@ function titleOf(record) {
     return host(website(record)) || username(record) || labelled(record.category ?? record.id);
 }
 
-// What its row says below its name: its username, else its website's
-// host; led by its password manager's name where rows name them.
+// What its row says below its name: its website's host, since its side
+// says its username (side); led by its password manager's name where rows
+// name them.
 function note(record, manager) {
-    const own = username(record) || host(website(record));
-    return [manager ?? "", own].filter(part => part !== "").join(" \u00b7 ");
+    return [manager ?? "", host(website(record))].filter(part => part !== "").join(" \u00b7 ");
+}
+
+// What its row says at its side: its username, as every login's row says
+// it, so the drawer needn't (VKCF3Z's ruling), or "".
+function side(record) {
+    return username(record);
 }
 
 // The words besides its title it's found by: its username, every
@@ -238,16 +244,13 @@ function when(at, now) {
     return Ago.ago(at, now);
 }
 
-// What's wrong with it, in the words `said` gives each, or "": a password
-// 1Password rates too weak to trust, and a website sent in the clear.
-// Known only once it's read in full, since a summary carries no strength;
-// with nothing wrong it says nothing, since its Strength already does.
+// What's wrong with it that its Strength doesn't say, in the words `said`
+// gives it, or "": a website sent in the clear. A weak password is its
+// Strength's to say, drawn in the warning's role, so Health never says it
+// again (VKCF3Z's ruling); with nothing wrong it says nothing.
 function health(record, said) {
-    const rated = strength(password(record)?.strength ?? "");
-    return [
-        WEAK.includes(rated) ? said.weak : "",
-        websites(record).some(address => UNSECURED.test(address)) ? said.unsecured : ""
-    ].filter(word => (word ?? "") !== "").join(" \u00b7 ");
+    return websites(record).some(address => UNSECURED.test(address)) ? said.unsecured ?? ""
+        : "";
 }
 
 // A password's strength in words, as 1Password rates it: "very good" of
@@ -256,15 +259,23 @@ function strength(word) {
     return String(word ?? "").toLowerCase().replace(UNDERSCORES, " ");
 }
 
+// Whether a strength, in words, is too weak to trust.
+function weak(rated) {
+    return WEAK.includes(rated);
+}
+
 // Each detail read in full that isn't said elsewhere, as facts: those in
 // no section first, then each section under its name as a heading, each
 // by its label, a hidden one saying `hidden` whatever it holds. Said
-// elsewhere: the username and the one-time code as facts of their own,
-// and the notes as the drawer's words. Left out: a detail with nothing in
-// it, which 1Password's templates keep and which says nothing.
+// elsewhere: the username at the row's side, the one-time code as a fact
+// of its own, and the notes as the drawer's words. Left out: the password,
+// which Return copies and whose Strength says all a drawer can of it, so a
+// fact saying only "hidden" told nothing (VKCF3Z's ruling); and a detail
+// with nothing in it, which 1Password's templates keep and which says
+// nothing.
 function detailFacts(given, hidden) {
     const elsewhere = one => one.empty === true || one.purpose === "username"
-        || one.purpose === "notes" || one.type === "code";
+        || one.purpose === "password" || one.purpose === "notes" || one.type === "code";
     const shown = given.filter(one => !elsewhere(one));
     const sections = [];
     for (const one of shown) {
@@ -289,20 +300,31 @@ function detailFacts(given, hidden) {
     return out;
 }
 
+// Its drawer's eyebrow: the vault it's in and its kind, "in Keeping ·
+// login", by `said`'s words, or its kind alone where it names no vault.
+function eyebrow(record, said) {
+    const kind = String(record.category ?? "");
+    const vault = String(record.collection?.name ?? "");
+    return vault === "" ? kind : fill(said.within, { vault, kind });
+}
+
 // Its drawer, as the launcher's shows it beside its row: every figure the
 // manager gives but the secret. `wording` is { name, said, now, manager }:
 // `name(id, state)` names each fact as the vocabulary does
 // (passwords:<id>), `said` is the place's own words, and `manager` its
-// manager's name where rows name them, else "". First what the design
-// gives it, in its order (VKCF3Z's ruling): Username, Website, Vault,
-// Last Changed, Strength, One-Time Code, saying only whether it has one,
-// and its health in the warning's role (`warns`). Then the password
-// manager, where rows name it, its Tags, when it was Created, how many
-// Files it holds, and each other detail, a hidden one reading "hidden",
-// never dots and never a count of them. Strength, the code, its health and
-// the other details come only once it's read in full, since a summary
-// can't say them. Its notes are its words. Left out: its kind, which its
-// mark and the eyebrow say; whether it's a favourite, which its row's
+// manager's name where rows name them, else "". Its eyebrow says the vault
+// it's in and its kind, as written, since a vault's name is the world's.
+// Then what the design gives it, in its order (VKCF3Z's ruling): its
+// Health, in the warning's role (`warns`), saying only what its Strength
+// doesn't; its Strength, in the warning's role too where it's weak; its
+// One-Time Code, saying only whether it has one; Last Changed; its
+// Website; its Tags; and when it was Created. Then the password manager,
+// where rows name it, how many Files it holds, and each other detail, a
+// hidden one reading "hidden", never dots and never a count of them.
+// Health, Strength, the code and the other details come only once it's
+// read in full, since a summary can't say them. Its notes are its words.
+// Left out: its username, which its row's side says; its vault and its
+// kind, which the eyebrow says; whether it's a favourite, which its row's
 // place says; the account's id, which only makes its link; who last
 // changed it, which op gives only as a person's id; its version, a count
 // Joel never acts on; and 1Password's summary of it, which says the
@@ -319,23 +341,24 @@ function details(record, wording) {
     const addresses = websites(record);
     const own = record.own ?? {};
     const read = Array.isArray(record.details);
-    fact("username", username(record));
-    fact("websites", addresses.join(", "), addresses.length > 1 ? "several" : "");
-    fact("collection", record.collection?.name ?? "");
-    fact("changed", Number.isFinite(record.changed) ? when(record.changed, now) : "");
     if (read) {
-        const rated = password(record)?.strength
-            ?? record.details.find(one => (one.strength ?? "") !== "")?.strength ?? "";
-        fact("strength", strength(rated));
-        fact("code", code(record) === null ? said.none : said.set);
+        const rated = strength(password(record)?.strength
+            ?? record.details.find(one => (one.strength ?? "") !== "")?.strength ?? "");
         fact("health", health(record, said), "", true);
+        fact("strength", rated, "", weak(rated));
+        fact("code", code(record) === null ? said.none : said.set);
     }
-    fact("manager", manager ?? "");
+    fact("changed", Number.isFinite(record.changed) ? when(record.changed, now) : "");
+    fact("websites", addresses.join(", "), addresses.length > 1 ? "several" : "");
     fact("tags", (record.tags ?? []).join(", "));
     fact("created", Number.isFinite(record.created) ? when(record.created, now) : "");
+    fact("manager", manager ?? "");
     fact("files", Number.isFinite(own.files) && own.files > 0 ? String(own.files) : "");
     const notes = read ? record.details.find(one => one.purpose === "notes") : null;
     return {
+        eyebrow: eyebrow(record, said),
+        // A vault's name is the world's, never re-cased.
+        eyebrowNames: true,
         title: String(record.title ?? ""),
         // The other details last, since their sections' headings would
         // otherwise seem to hold the facts after them.
