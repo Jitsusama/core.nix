@@ -432,8 +432,8 @@ def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -
         desktop.in_session(f'niri msg --json focused-window | grep -qF \'"app_id":"{call}"\''),
         timeout=dt.timedelta(seconds=10),
     )
-    # Leave It ends the call, so Return only writes its line, and the call
-    # stays until a fresh Return there runs it, closing its window.
+    # Leave It ends the call, so Return only writes its line, and running
+    # that asks first; the call stays until it's answered yes.
     desktop.close(other)
     now_rows(desktop)
     desktop.down_to("Standup")
@@ -441,8 +441,12 @@ def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -
     desktop.launcher_until(lambda shown: shown["rows"] == inside)
     desktop.down_to("Leave It")
     desktop.line("leave")
+    with desktop.told("ask ready"):
+        machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["question"] == "Leave Standup? (y/n)")
     machine.succeed(desktop.in_session(f'niri msg --json windows | grep -qF \'"app_id":"{call}"\''))
-    machine.send_key("ret")
+    with desktop.told("answered yes"):
+        machine.send_chars("y")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # Its window closed, the call is over, and Now no longer lists it.
     machine.wait_until_fails(
