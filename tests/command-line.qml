@@ -326,9 +326,9 @@ QtObject {
             { error: "E518: Unknown option: wfii" });
         holds("a word for a number says E521", set("volume=loud"),
             { error: "E521: Number required after =: volume=loud" });
-        const timed = Object.assign({ position: { kind: "number", least: 0, clock: true } },
+        const clocked = Object.assign({ position: { kind: "number", least: 0, clock: true } },
             options);
-        const placed = arg => (SetWords.setting(arg, timed).changes ?? [])[0]?.value;
+        const placed = arg => (SetWords.setting(arg, clocked).changes ?? [])[0]?.value;
         holds(":set position=1:30 reads a clock, in seconds, and 1:02:05 past the hour",
             [placed("position=1:30"), placed("position=1:02:05"), placed("position+=10")],
             [90, 3725, 10]);
