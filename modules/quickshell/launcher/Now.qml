@@ -211,9 +211,10 @@ Provider {
         const within = !here ? "" : byHand ? said.hand : Here.within(here.accuracy, said, hereTold);
         const side = here ? here.place ?? position : Location.read ? said.unknown : "\u2026";
         const differs = Location.zoneDiffers;
-        // Said plainly where it's unknown, never guessed.
-        const elsewhere = differs ? said.elsewhere.replace("{zone}", here.zone)
-            .replace("{clock}", Location.clockZone) : "";
+        // Said plainly where it's unknown, never guessed, as a run that
+        // gives way by whole items: the zone it keeps, then that the
+        // clock isn't following it.
+        const elsewhere = differs ? said.elsewhere.replace("{zone}", here.zone) : "";
         const note = !here ? (Location.read ? said.unfound : "")
             : differs ? elsewhere : byHand ? within : said.found.replace("{within}", within);
         const now = clock.date.getTime();
@@ -267,10 +268,11 @@ Provider {
                 }));
             return rows;
         };
-        // Its plate: how it was found, as written, then what of it the
-        // side doesn't say; with nothing found, none.
+        // Its plate: how it was found, then its kind, as an eyebrow says
+        // where then what, and what of it the side doesn't say; with
+        // nothing found, none.
         const plate = !here ? null : () => ({
-            eyebrow: byHand ? hereSaid.hand : hereSaid.via,
+            eyebrow: byHand ? hereSaid.viaHand : hereSaid.via,
             eyebrowNames: true,
             // Its town, the place's first part, as the plate names the
             // thing it's about.

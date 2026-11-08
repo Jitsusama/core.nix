@@ -4162,7 +4162,8 @@
       "name": "Location",
       "term": "Desktop/location",
       "said": {
-        "via": "via GeoClue",
+        "via": "from Wi-Fi \u00b7 location",
+        "viaHand": "set by hand \u00b7 location",
         "hand": "set by hand",
         "metres": "within {n} m",
         "kilometres": "within {n} km",
@@ -4177,8 +4178,8 @@
         "unfound": "GeoClue hasn't found the laptop yet",
         "found": "{within}, found through GeoClue",
         "knows": "GeoClue, {within}",
-        "elsewhere": "it keeps {zone}, not the clock's {clock}",
-        "leftOut": "Found from Wi-Fi, it has no altitude, speed or heading."
+        "elsewhere": "keeps {zone} \u00b7 not following",
+        "leftOut": "Wi-Fi gives no altitude, speed or heading."
       }
     },
     {

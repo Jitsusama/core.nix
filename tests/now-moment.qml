@@ -185,7 +185,7 @@ ShellRoot {
         expect("the location says its town", location.side === "Lighthouse, Ontario",
             location.side);
         expect("and that the place keeps another zone",
-            location.note === "it keeps America/Toronto, not the clock's America/Halifax"
+            location.note === "keeps America/Toronto \u00b7 not following"
                 && location.hue === "strong", `${location.note} ${location.hue}`);
         const inside = location.verbs();
         // In the design's order: its town and country, how it knows and
@@ -202,8 +202,8 @@ ShellRoot {
         // on a map to no more places than it knows, its country and its
         // zone last as the identifier it is (VKCF3Z, 2026-11-08).
         const plate = location.thing === true ? location.drawer() : null;
-        expect("its plate is via GeoClue, titled by its town",
-            plate?.eyebrow === "via GeoClue" && plate?.title === "Lighthouse",
+        expect("its plate says it was found from Wi-Fi, titled by its town",
+            plate?.eyebrow === "from Wi-Fi \u00b7 location" && plate?.title === "Lighthouse",
             JSON.stringify(plate));
         expect("its plate's facts, from what moves most, the zone an identifier",
             JSON.stringify(plate.facts.map(fact => [fact.label, fact.identifies]))
@@ -211,7 +211,7 @@ ShellRoot {
                     ["Coordinates", false], ["Country", false], ["Zone", true]]),
             JSON.stringify(plate.facts));
         expect("its plate names what GeoClue can't say from Wi-Fi, and why",
-            plate.body.includes("no altitude, speed or heading"), plate.body);
+            plate.body === "Wi-Fi gives no altitude, speed or heading.", plate.body);
         expect("a position within 26 km says a tenth of a degree",
             plate.facts[2].value === "12.3\u00b0 N \u00b7 98.8\u00b0 W"
                 && plate.facts[1].value === "within 26 km",

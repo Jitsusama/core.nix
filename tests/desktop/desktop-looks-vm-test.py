@@ -1673,7 +1673,7 @@ def location_plate_shown(desktop: Desktop, scale: str) -> None:
         lambda shown: shown["drawer"]["out"] is True and shown["drawer"]["title"] == "Lighthouse"
     )
     drawer = plate_shown(desktop, scale)
-    assert drawer["eyebrow"] == "via GeoClue", f"at {scale} the location's plate: {drawer}"
+    assert drawer["eyebrow"] == "from Wi-Fi · location", f"at {scale} the plate: {drawer}"
     assert drawer["facts"] == ["Located", "Accuracy", "Coordinates", "Country", "Zone"], drawer
     assert drawer["valuesWhole"], f"at {scale} a fact's value breaks a word: {drawer}"
     desktop.shoot(f"launcher-location-plate-at-{scale.replace('.', '-')}")
