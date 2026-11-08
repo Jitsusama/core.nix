@@ -4,6 +4,7 @@
 // from the shell so the-people-are-one-person-each runs it in Qt's own
 // engine (tests/person.qml).
 .pragma library
+.import "Order.js" as Order
 
 // An address as it's compared: trimmed and in lower case, since Google
 // and Tuple write the same one in different cases.
@@ -179,11 +180,8 @@ function listed(person, stood, now) {
 // It's measured from now only as they're ordered, so the minute passing
 // moves nobody under the keys.
 function ordered(persons, standOf, now) {
-    const rank = person => (standOf(person).favourite ? 0 : 1);
-    const when = person => last(person, now) ?? Number.MIN_SAFE_INTEGER;
-    return persons.slice().sort((a, b) => rank(a) - rank(b)
-        || when(b) - when(a)
-        || a.name.localeCompare(b.name));
+    return persons.slice().sort(Order.returned({ first: person => standOf(person).favourite,
+        last: person => last(person, now), name: person => person.name }));
 }
 
 // Their details, as the launcher's drawer shows them beside their row:

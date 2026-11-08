@@ -425,6 +425,11 @@
     do not disturb turns on while the screen is shared, not recorded, and off after; ended mid-share
     it stays off until the next, and one kept by hand outlasts it
   '';
+  each-list-keeps-its-kinds-order = ''
+    each kind of list the launcher shows keeps one order with nothing typed, A to Z only its last
+    tie and numbers read by their value, a choice never moving when chosen, and each place that
+    lists things sorts by its kind's order with no A to Z made by hand
+  '';
   each-machine-signs-with-its-hardware = ''
     a Linux workstation signs through its TPM and a Mac through its Secure Enclave, both with one
     program and Joel's key by default, and signing alone, with no hardware, signs nothing

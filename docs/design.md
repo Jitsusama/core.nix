@@ -1252,6 +1252,24 @@ works the same way everywhere.
   is only ever what a program holds, as a camera Chrome has open. Rows
   that come and go, such as Media, sit at the end of their group. A check walks every row to hold
   the order.
+- **Each kind of list keeps one order.** With nothing typed, a list
+  moves only by what Joel does, never by a guess, and a choice never
+  moves when it's chosen; only typing ranks, and what's picked is
+  learned wherever typing searches, inside a thing's page too, for that
+  page alone (RSCH-20261030-GB56HX). Every list is one of these kinds:
+
+  | Kind               | With nothing typed                            | Where                             |
+  | ------------------ | --------------------------------------------- | --------------------------------- |
+  | A fixed set        | the order it was designed in                  | home, a thing's parts, its acts   |
+  | Things returned to | open or favourite first, the last act, A to Z | Programs, People                  |
+  | A stream           | newest first                                  | Recent, Notices, Clipboard, mail  |
+  | Live states        | how each stands, then when it started         | Sessions, Windows, devices, Wi-Fi |
+  | Amounts            | the worst first                               | Processor, Memory, Traffic, disks |
+  | Choices            | their natural order, the chosen one said so   | Scale, Refresh, sound's devices   |
+  | A search           | the same letters land on the same row         | everywhere typed                  |
+
+  A to Z is only ever the last tie, or the order of many peers alike, as
+  a large folder's files.
 - **Under what it belongs to, a step in.** A session orchestrated by
   another sits right under it, its glyph and its name a glyph's column
   in, so its glyph stands where the name above it starts, and two steps
@@ -1362,8 +1380,10 @@ works the same way everywhere.
   while the name stays in the mono, so the eye finds the name first; it's
   muted, and the text colour on the selection, where muted reads under Lc
   60. What's on the right, a kind, a chord or a count, stays in the mono.
-  Inside a place, things come by importance and relation, never A to Z,
-  and a typed command comes last in the place whose answer it gives (Network's "ip ⟨address or network⟩").
+  Inside a place, things come by importance and relation, by their
+  kind's order, A to Z only the last tie, and a typed command comes
+  last in the place whose answer it gives (Network's "ip ⟨address or
+  network⟩").
   Tab goes to the next row, as in his Neovim's completion menu, but into
   a row that holds parts, a program or anything else with a page of its
   own, since Down and Ctrl+N already go to the next row (VKCF3Z,

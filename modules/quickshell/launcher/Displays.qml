@@ -43,6 +43,7 @@ import Qt.labs.folderlistmodel
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Numbers.js" as Numbers
+import "Order.js" as Order
 import "Plate.js" as Plate
 import "Power.js" as Power
 import "Screens.js" as Screens
@@ -405,8 +406,10 @@ Provider {
             + `\u00b7 scale ${Screens.scale(output.logical.scale)}`;
     }
 
-    readonly property var shown: Object.values(outputs).sort((a, b) =>
-        Number(builtIn(b)) - Number(builtIn(a)) || a.name.localeCompare(b.name))
+    // Screens are choices: the built-in first, as it's always there, then by
+    // name, and the one in use never moves for being chosen.
+    readonly property var shown: Object.values(outputs).sort(Order.choices({
+        natural: (a, b) => Number(builtIn(b)) - Number(builtIn(a)), name: output => output.name }))
     readonly property var lit: shown.filter(output => output.logical !== null)
 
     readonly property string focusedOutput: {

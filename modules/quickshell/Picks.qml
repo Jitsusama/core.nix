@@ -77,6 +77,11 @@ Scope {
         if (!learns)
             return out;
         for (const asked in picks) {
+            // A pick inside a step was of the step's own row too, which is
+            // counted for what opened it, so home's likely picks stay those
+            // it lists.
+            if (Rank.isStepped(asked))
+                continue;
             const answers = picks[asked];
             for (const thing in answers)
                 out[thing] = (out[thing] ?? 0) + answers[thing].c;

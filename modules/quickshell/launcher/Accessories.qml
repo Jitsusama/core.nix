@@ -43,6 +43,7 @@ import QtQuick
 import "../Devices.js" as Devices
 import "../Fuzzy.js" as Fuzzy
 import "Links.js" as Links
+import "Order.js" as Order
 
 Provider {
     id: provider
@@ -108,7 +109,7 @@ Provider {
             return [];
         const rank = device => device.connected ? 0 : device.paired ? 1 : 2;
         return adapter.devices.values.filter(device => device.deviceName !== "")
-            .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+            .sort(Order.live({ stands: rank, name: device => device.name }));
     }
 
     // The device being connected, and what it said if it wouldn't be.

@@ -39,6 +39,7 @@ import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Numbers.js" as Numbers
+import "Order.js" as Order
 import "Recent.js" as Recent
 import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
@@ -353,7 +354,7 @@ Provider {
         const day = SpendWatch.sessionsToday[presence.session ?? ""] ?? null;
         // What it landed last, newest by when, with its ref and its time.
         const last = (presence.landings ?? []).slice()
-            .sort((a, b) => String(b.at ?? "").localeCompare(String(a.at ?? "")))[0];
+            .sort(Order.stream(one => String(one.at ?? "")))[0];
         // What its quest waits on Joel for, in the order Needs You says it.
         const needs = (presence.quest ?? "") === "" ? []
             : WaitingOnYou.items.filter(item => item.quest === presence.quest);

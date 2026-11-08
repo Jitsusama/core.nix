@@ -969,6 +969,26 @@ onLinux {
       touch $out
     '';
 
+  # Each kind of list keeps its one order with nothing typed (docs/design.md,
+  # Lists): tests/order.qml holds launcher/Order.js's orders to the rule in
+  # Qt's own engine, and tests/every-list-keeps-its-kinds-order.py walks each
+  # place that lists things, its sort its kind's order and no A to Z by hand.
+  each-list-keeps-its-kinds-order =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "each-list-keeps-its-kinds-order" { } ''
+      ${lib.getExe pkgs.python3} ${../../tests/every-list-keeps-its-kinds-order.py} \
+        ${./launcher} ${../people}
+      cp ${../../tests/order.qml} order.qml
+      cp ${./launcher/Order.js} Order.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml order.qml
+      touch $out
+    '';
+
   # A row an act asked a daemon to change is drawn as it will be until its
   # source agrees, as tests/becoming.qml holds launcher/Becoming.js to it in
   # Qt's own engine.
@@ -1033,6 +1053,7 @@ onLinux {
     pkgs.runCommandLocal "the-launcher-lays-sessions-under-their-orchestrators" { } ''
       cp ${../../tests/session-row.qml} session-row.qml
       cp ${./launcher/SessionRow.js} SessionRow.js
+      cp ${./launcher/Order.js} Order.js
       cp ${./launcher/SessionDrawer.js} SessionDrawer.js
       cp ${./Reading.js} Reading.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -1179,6 +1200,7 @@ onLinux {
       cp ${./launcher/Firmware.js} Firmware.js
       cp ${./launcher/Keyboards.js} Keyboards.js
       cp ${./launcher/KeyCounts.js} KeyCounts.js
+      cp ${./launcher/Order.js} Order.js
       cp ${../../tests/colour-cases.js} colour-cases.js
       cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       export QML_XHR_ALLOW_FILE_READ=1
@@ -1224,6 +1246,7 @@ onLinux {
       cp ${./launcher/HomeNetwork.js} HomeNetwork.js
       cp ${./launcher/HomeNetworkDrawers.js} HomeNetworkDrawers.js
       cp ${./launcher/HomeNetworkHistory.js} HomeNetworkHistory.js
+      cp ${./launcher/Order.js} Order.js
       cp ${./launcher/Numbers.js} Numbers.js
       cp ${./launcher/Interfaces.js} Interfaces.js
       cp ${./launcher/Machine.js} Machine.js
@@ -1570,6 +1593,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Quests.qml} launcher/Quests.qml
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/quests.qml} shell.qml
@@ -1627,6 +1651,7 @@ onLinux {
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Orchestrators.qml} launcher/Orchestrators.qml
       cp ${./launcher/SessionRow.js} launcher/SessionRow.js
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/talks.qml} shell.qml
@@ -1688,6 +1713,7 @@ onLinux {
       cp ${./launcher/Now.qml} launcher/Now.qml
       cp ${./launcher/Moment.js} launcher/Moment.js
       cp ${./launcher/NowGroups.js} launcher/NowGroups.js
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/now-moment.qml} shell.qml
@@ -1768,6 +1794,7 @@ onLinux {
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Ask.qml} launcher/Ask.qml
       cp ${./launcher/SessionRow.js} launcher/SessionRow.js
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${niri} Niri.qml
@@ -1834,6 +1861,7 @@ onLinux {
         cp ${./launcher/Networkd.js} launcher/Networkd.js
         cp ${./launcher/Subnets.js} launcher/Subnets.js
         cp ${./launcher/Networks.qml} launcher/Networks.qml
+        cp ${./launcher/Order.js} launcher/Order.js
         cp ${./launcher/Characters.js} launcher/Characters.js
         cp ${./launcher/Characters.qml} launcher/Characters.qml
         cp ${import ./launcher/names.nix { inherit lib pkgs; }} names.txt
@@ -1944,6 +1972,7 @@ onLinux {
       cp ${./launcher/Sounds.js} launcher/Sounds.js
       cp ${./launcher/Plate.js} launcher/Plate.js
       cp ${./launcher/Sound.qml} launcher/Sound.qml
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
@@ -2238,6 +2267,7 @@ onLinux {
       cp ${./launcher/Applications.qml} launcher/Applications.qml
       cp ${./launcher/Media.js} launcher/Media.js
       cp ${./Music.js} Music.js
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${./launcher/Recents.qml} launcher/Recents.qml
       cp ${./launcher/Recents.js} launcher/Recents.js
       cp ${./launcher/Recent.js} launcher/Recent.js
@@ -2459,6 +2489,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Runs.qml} launcher/Runs.qml
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/runs.qml} shell.qml
@@ -2805,6 +2836,7 @@ onLinux {
       cp ${../people/People.qml} launcher/People.qml
       cp ${./launcher/Recent.js} launcher/Recent.js
       cp ${../people/Person.js} launcher/Person.js
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${./launcher/Zones.js} launcher/Zones.js
       cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       cp ${../people/PersonSource.qml} PersonSource.qml
@@ -3124,6 +3156,7 @@ onLinux {
       cp ${./launcher/Keyboards.qml} launcher/Keyboards.qml
       cp ${./launcher/Keyboards.js} launcher/Keyboards.js
       cp ${./launcher/KeyCounts.js} launcher/KeyCounts.js
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
@@ -3185,6 +3218,7 @@ onLinux {
         cp ${./launcher/Asking.js} launcher/Asking.js
         cp ${./launcher/Numbers.js} launcher/Numbers.js
         cp ${./launcher/Accessories.qml} launcher/Accessories.qml
+        cp ${./launcher/Order.js} launcher/Order.js
         cp ${./launcher/Links.js} launcher/Links.js
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
         cp ${./Words.qml} Words.qml
@@ -3361,6 +3395,7 @@ onLinux {
     pkgs.runCommandLocal "now-lists-by-group" { } ''
       cp ${../../tests/now-groups.qml} now-groups.qml
       cp ${./launcher/NowGroups.js} NowGroups.js
+      cp ${./launcher/Order.js} Order.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

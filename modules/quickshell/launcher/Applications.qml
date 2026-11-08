@@ -48,6 +48,7 @@ import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Media.js" as Media
+import "Order.js" as Order
 import "Recent.js" as Recent
 
 Provider {
@@ -61,9 +62,8 @@ Provider {
     // only as it opens or closes, which Joel did himself
     // (collection-order.md).
     function everything() {
-        const shut = row => (running[row.key.slice("program:".length)] ?? []).length === 0;
-        return programs.slice().sort((a, b) => Number(shut(a)) - Number(shut(b))
-            || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+        const open = row => (running[row.key.slice("program:".length)] ?? []).length > 0;
+        return programs.slice().sort(Order.returned({ first: open, name: row => row.name }));
     }
 
     // Inside Programs, by its name or what it is, the best grade first.
