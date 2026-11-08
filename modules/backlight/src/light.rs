@@ -6,6 +6,12 @@
 //! buffer only when the light changes past its hysteresis, so the daemon
 //! reads the light once when it starts and afterwards wakes only for a
 //! change.
+//!
+//! A sensor hub's sensors can come a moment after the daemon starts, as
+//! they did at a boot where the hub appeared 130 ms before the daemon's
+//! look and udev turned their buffers on after it. So a missing sensor is
+//! looked for again each time udev says it has set up an IIO device
+//! (`sets_up_a_sensor`), once its rules have run.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read};
@@ -14,6 +20,8 @@ use std::path::{Path, PathBuf};
 
 use tokio::io::Interest;
 use tokio::io::unix::AsyncFd;
+
+use crate::uevent;
 
 /// Linux's `O_NONBLOCK`, the same on every architecture core builds for.
 const O_NONBLOCK: i32 = 0o4000;
@@ -158,6 +166,17 @@ impl Units {
         let at = last * size + at;
         Some(self.value(field.value(&samples[at..at + field.bytes])))
     }
+}
+
+/// Whether a udev uevent says it has set up an IIO device, which may be a
+/// light sensor with its buffer now on. Its rules have run by the time it's
+/// said, so the buffer is as they left it.
+pub fn sets_up_a_sensor(event: &[u8]) -> bool {
+    let Some(fields) = uevent::udev_fields(event) else {
+        return false;
+    };
+    let fields: Vec<&[u8]> = fields.collect();
+    fields.contains(&&b"SUBSYSTEM=iio"[..]) && !fields.contains(&&b"ACTION=remove"[..])
 }
 
 pub struct Sensor {
@@ -332,6 +351,34 @@ impl Readings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::uevent::tests::udev_event;
+
+    #[test]
+    fn udev_setting_up_an_iio_device_may_bring_a_sensor() {
+        let added = udev_event(&[
+            "ACTION=add",
+            "DEVPATH=/devices/pci0000:00/0000:00:12.0/HID-SENSOR-200041.3.auto/iio:device1",
+            "SUBSYSTEM=iio",
+            "DEVNAME=/dev/iio:device1",
+            "SEQNUM=4211",
+        ]);
+        let changed = udev_event(&["ACTION=change", "SUBSYSTEM=iio"]);
+        assert!(sets_up_a_sensor(&added));
+        assert!(sets_up_a_sensor(&changed));
+    }
+
+    #[test]
+    fn other_uevents_bring_no_sensor() {
+        let removed = udev_event(&["ACTION=remove", "SUBSYSTEM=iio"]);
+        let usb = udev_event(&["ACTION=add", "SUBSYSTEM=usb"]);
+        let lookalike = udev_event(&["ACTION=add", "SUBSYSTEM=iio_sw"]);
+        // The kernel's own word comes before udev's rules have run.
+        let kernel = b"add@/devices/iio:device1\0ACTION=add\0SUBSYSTEM=iio\0";
+        assert!(!sets_up_a_sensor(&removed));
+        assert!(!sets_up_a_sensor(&usb));
+        assert!(!sets_up_a_sensor(&lookalike));
+        assert!(!sets_up_a_sensor(kernel));
+    }
 
     #[test]
     fn a_sensor_hub_s_type_reads() {
