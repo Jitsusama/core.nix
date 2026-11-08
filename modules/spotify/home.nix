@@ -226,12 +226,16 @@ in
   # made beside Slack's program and the other programs' acts. Each is played
   # through spotify-recent while a Spotify runs, else opened in the
   # client; signed out, Sign In runs spotify-player's sign-in in kitty,
-  # since it prints where to sign in and waits for Spotify's answer.
+  # since it prints where to sign in and waits for Spotify's answer. Where
+  # Spotify's client isn't built, as on an Apple laptop on Linux, none is
+  # named, and one is opened in the web player instead.
   jitsusama.quickshell.launcher.providers.spotify-program = {
     order = 47;
     source = ./SpotifyProgram.qml;
     command = [ (lib.getExe (pkgs.callPackage ./spotify-recent/package.nix { })) ];
-    spotify = [ (lib.getExe config.programs.spicetify.spicedSpotify) ];
+    spotify = lib.optional config.programs.spicetify.enable (
+      lib.getExe config.programs.spicetify.spicedSpotify
+    );
     signIn = [
       "kitty"
       (lib.getExe config.programs.spotify-player.package)
