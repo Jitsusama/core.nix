@@ -454,9 +454,12 @@ onLinux {
   # Quickshell's files, not the shell: a property typed by a name its files
   # don't export (AuthFlow, BluetoothAdapter and the like), and a handler
   # whose parameter is a Qt enum QML can't see (QProcess::ExitStatus).
+  # Every message qmllint counts is printed, as its own report can leave
+  # one out and fail showing only infos (tests/qmllint-counted.sh).
   quickshell-passes-qmllint =
     let
       qt = pkgs.kdePackages.qtdeclarative;
+      lint = lib.getExe (pkgs.callPackage ../../tests/qmllint-counted.nix { });
     in
     # In UTF-8, which Qt otherwise switches to and says so.
     pkgs.runCommandLocal "quickshell-passes-qmllint" { LC_ALL = "C.UTF-8"; } ''
@@ -468,7 +471,7 @@ onLinux {
       # names a qmldir's entries: named any other way, the file it lints and
       # the qmldir's entry are two types to it, the first never told it's a
       # singleton.
-      ${qt}/bin/qmllint --ignore-settings --max-warnings 0 \
+      ${lint} --ignore-settings --max-warnings 0 \
         -I ${quickshellTypes}/lib/qt-6/qml -I ${qt}/lib/qt-6/qml -I . \
         --unresolved-type disable --signal-handler-parameters disable \
         $(find "$(pwd -P)/qs" -name '*.qml' | sort)
