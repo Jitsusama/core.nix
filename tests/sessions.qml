@@ -11,7 +11,7 @@ pragma ComponentBehavior: Bound
 // and among a kitty's several windows by kitty's own list; Go To focuses
 // that window, or asks kitty when niri's isn't known. One the node says has
 // ended, parked, is held apart from those running while its marker stands,
-// and only then, however its record reads; Wake, or talking to it, writes
+// and only then, however its record reads, and never once its boot is over; Wake, or talking to it, writes
 // the file its marker names. What an earlier boot's end took away is
 // offered whole, reopened held in its own folder, until put off, one pi
 // never saved started under its own id with its quest, and Reopen Them
@@ -193,8 +193,8 @@ ShellRoot {
     // talking to it asks the node to steer its inbox, then, once the node
     // has, wakes it to read it.
     function parks() {
-        expect("only the one parked whose marker stands is parked", parkedAs() === "NAPPER",
-            parkedAs());
+        expect("only the one parked this boot whose marker stands is parked",
+            parkedAs() === "NAPPER", parkedAs());
         const napper = Sessions.parked[0];
         expect("one parked is named by its record, with no window",
             napper.title === "Napper" && napper.window === null, JSON.stringify(napper));
@@ -237,7 +237,9 @@ ShellRoot {
         id: parking
         command: ["sh", "-c", 'p="$1/pi/agentic-harness.pi/park-workflow/parked"; mkdir -p "$p"'
             + ' && printf \'{"session":"s-NAPPER","wake":"%s/napper.wake"}\' "$1"'
-            + ' > "$p/s-NAPPER.json"', "park", root.state]
+            + ' > "$p/s-NAPPER.json"'
+            + ' && printf \'{"session":"s-STALE7","wake":"%s/stale.wake"}\' "$1"'
+            + ' > "$p/s-STALE7.json"', "park", root.state]
     }
 
     // Why each that didn't open as asked didn't, as its caller is told:
@@ -525,6 +527,10 @@ ShellRoot {
             here("NAPPER", "ended", { state: "parked", busy: false,
                 title: "\u03c0 - Napper - core.nix" }),
             here("WOKEN8", "ended", { state: "parked" }),
+            // Parked before this boot, its marker still standing, as a
+            // restart leaves one whose holder went with the boot.
+            here("STALE7", "ended", { state: "parked",
+                owner: { pid: 4242, bootId: "an-earlier-boot" } }),
             far("r-far", "FARAWY", "busy", now, "mycelium attach r-far"),
             far("r-out", "OUTRCH", "unreachable", now, null),
             far("r-old", "OLDONE", "busy", "2000-01-01T00:00:00Z", "mycelium attach r-old")

@@ -2262,9 +2262,16 @@ Singleton {
             ids[String(markers.get(at, "fileName")).replace(/\.json$/, "")] = true;
         return ids;
     }
+    // A park lasts only while its holder does, and no holder outlives the
+    // boot it began in, so one parked before this boot has nothing left to
+    // wake it, whatever its marker says: it's closed, and reopens as one.
+    // Taken for parked, it was passed over as running by Reopen (11 of them
+    // after the reboot at 19:15 on 2026-11-07). A record naming no boot is
+    // taken as this one's.
     function parks(presence, markers) {
         return !!presence && presence.state === "parked" && (presence.addresses ?? []).length > 0
-            && typeof presence.session === "string" && markers[presence.session] === true;
+            && typeof presence.session === "string" && markers[presence.session] === true
+            && (presence.owner?.bootId ?? bootId) === bootId;
     }
 
     // Wakes a parked session, as a peer sending it a turn does: anything
