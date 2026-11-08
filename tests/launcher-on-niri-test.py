@@ -846,9 +846,8 @@ def test_the_held_notices_are_vims_quickfix_list(shell: Shell) -> None:
 
     The cursor starts on the card in front, the oldest, and the newest is line 1: k and j
     move, G and gg go to the ends, a count goes before a motion. V and k choose three, d is
-    done with them and a second d is taken with it, u brings them back, q says it does
-    nothing, Escape cancels a count, and :q lets them go. Each key's act is told by what the
-    list says it did.
+    done with them, u brings them back, q says it does nothing, Escape cancels a count, and
+    :q lets them go. Each key's act is told by what the list says it did.
     """
     # They stay a minute, so they're all still there when the keys come, the oldest in front.
     for summary in ["Alpha", "Bravo", "Charlie"]:
@@ -871,9 +870,10 @@ def test_the_held_notices_are_vims_quickfix_list(shell: Shell) -> None:
         shell.send_chars("V")
     with shell.told("notice selects 3"):
         shell.send_chars("kk")
-    # The second d, within the wait, joins visual's first rather than waiting on its own.
+    # A second d within 300 ms joins visual's first, which tests/notice-keys.qml holds: a
+    # loaded builder can take longer than that to draw the first, so here d is pressed once.
     with shell.told("notice done 3"):
-        shell.send_chars("dd")
+        shell.send_chars("d")
     with shell.told("notice brought back 3"):
         shell.send_key("u")
     with shell.told("notice says q does nothing \u00b7 :q closes"):

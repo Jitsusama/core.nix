@@ -119,15 +119,28 @@ let
         }
       ]);
       # The shell, niri's configuration, and the theme the shell reads its
-      # colours from.
-      given = lib.filterAttrs (
-        name: _:
-        lib.any (folder: lib.hasPrefix folder name) [
-          "quickshell/"
-          "niri/"
-          "jitsusama/"
-        ]
-      ) home.xdg.configFile;
+      # colours from. A loaded builder can stall the shell past niri's
+      # repeat delay between a key's press and its release, and Qt then
+      # repeats the key: one k moved the held notices two lines. No check
+      # here holds a key, so none repeats.
+      given =
+        lib.filterAttrs (
+          name: _:
+          lib.any (folder: lib.hasPrefix folder name) [
+            "quickshell/"
+            "niri/"
+            "jitsusama/"
+          ]
+        ) home.xdg.configFile
+        // {
+          "niri/keyboard.kdl".source = pkgs.writeText "keyboard.kdl" ''
+            input {
+                keyboard {
+                    repeat-delay 60000
+                }
+            }
+          '';
+        };
       inherit (pkgs) mesa;
     in
     pkgs.runCommandLocal name
