@@ -136,7 +136,7 @@ in
   # The Do Not Disturb key, as the moon a Mac keyboard prints on its Focus
   # key: the key's own print, where the bell is how things stand.
   quietKey = {
-    glyph = nerd "f0594";
+    glyph = nerd "f00a0";
     console = "z";
     means = "the key that holds notices, or lets them show";
   };
@@ -517,7 +517,7 @@ in
     means = "a swipe to the right";
   };
   shell = {
-    glyph = nerd "f313";
+    glyph = nerd "f09ac";
     console = "N";
     means = "a development shell is loaded";
   };
@@ -525,7 +525,7 @@ in
   # Neovim and pi write them in git's own notation (* + ? and arrows with
   # counts), and Neovim marks a buffer not yet written with Vim's [+].
   locked = {
-    glyph = nerd "f023";
+    glyph = nerd "f03ef";
     console = "%";
     means = "can be read but not changed";
   };
@@ -784,19 +784,21 @@ in
     means = "the balanced power profile";
   };
   performance = {
-    glyph = nerd "f04c5";
+    glyph = nerd "f14de";
     console = "^";
     means = "the full performance power profile";
-    # A gauge's arc, open below, and its needle turned high on a pivot
-    # under the arc's middle, so it stands the grid's full height. Each arc
-    # ends where it meets the grid's edge, since Qt draws an arc as curves
-    # that fall just short of an edge met partway along one.
+    # A rocket standing up, as the icon font's launching one is: its nose at
+    # the grid's top, a window cut through its body, a fin each side, and its
+    # flame reaching the grid's bottom, apart from the body so the two read
+    # as two at the margin's size. Speed keeps the gauge, which meant both.
     drawn = drawing [
       (
-        "M0.204 7.553A6 6 0 0 1 0 6A6 6 0 0 1 6 0A6 6 0 0 1 12 6A6 6 0 0 1 11.796 7.553"
-        + "L9.864 7.035A4 4 0 1 0 2.136 7.035Z"
+        "M6 0C8 1.5 8.5 4 8.5 6.5L8.5 9L3.5 9L3.5 6.5C3.5 4 4 1.5 6 0Z"
+        + "M7 4.5A1 1 0 1 0 5 4.5A1 1 0 1 0 7 4.5Z"
       )
-      "M7.341 11.171L9 4.5L4.659 9.829A1.5 1.5 0 0 0 6 12A1.5 1.5 0 0 0 7.341 11.171Z"
+      "M3.5 6.5L1.5 9L1.5 10.5L3.5 9.5Z"
+      "M8.5 6.5L10.5 9L10.5 10.5L8.5 9.5Z"
+      "M4.5 9.75L7.5 9.75L6 12Z"
     ];
   };
   suspend = {
@@ -969,7 +971,7 @@ in
   # Bluetooth's own glyph struck through, as bluetoothOff is, since a
   # device let go is one Bluetooth no longer reaches.
   disconnect = {
-    glyph = nerd "f00b2";
+    glyph = nerd "f033a";
     console = "-";
     means = "letting a connected device go";
   };
@@ -1390,7 +1392,7 @@ in
     means = "how long or how far: metres, miles";
   };
   mass = {
-    glyph = nerd "f05d1";
+    glyph = nerd "f05a1";
     console = "m";
     means = "how heavy: grams, pounds";
   };
@@ -1410,7 +1412,7 @@ in
     means = "how fast: kilometres an hour, knots";
   };
   data = {
-    glyph = nerd "f02ca";
+    glyph = nerd "f01bc";
     console = "b";
     means = "how much data: bytes, bits";
   };
