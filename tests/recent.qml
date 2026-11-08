@@ -84,6 +84,28 @@ QtObject {
         check(failures, "what one source already gave is said while another is asked",
             Recent.said(["a", "b"], true, words).side, "2");
 
+        // A thing taken says when, its folder only where it's not the
+        // usual one, which its drawer's eyebrow says instead (VKCF3Z,
+        // 2026-11-08: a folder the same on every row says nothing).
+        const shots = "~/Pictures/Screenshots";
+        check(failures, "a screenshot says when it was taken",
+            Recent.takenSide("5 min ago", shots, shots), "5 min ago");
+        check(failures, "one from another folder still names it",
+            Recent.takenSide("5 min ago", "~/Pictures/Camera", shots),
+            "5 min ago \u00b7 ~/Pictures/Camera");
+        check(failures, "and one whose time isn't known says its folder",
+            Recent.takenSide("", shots, shots), shots);
+        const eyebrow = Recent.takenEyebrow(shots, "screenshot", { in: "in {folder}" });
+        check(failures, "its drawer says its folder and what it is", eyebrow.eyebrow,
+            "in ~/Pictures/Screenshots \u00b7 screenshot");
+        check(failures, "short of room, what it is goes before its folder",
+            eyebrow.eyebrowItems.map(item => `${item.said}:${item.keep}`).join(", "),
+            "in ~/Pictures/Screenshots:2, screenshot:1");
+        check(failures, "and the folder is set as written", eyebrow.eyebrowNames, true);
+        check(failures, "or its folder alone where it's no kind of its own",
+            Recent.takenEyebrow(shots, "", { in: "in {folder}" }).eyebrow,
+            "in ~/Pictures/Screenshots");
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);

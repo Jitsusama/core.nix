@@ -55,7 +55,7 @@ Provider {
 
     // A clock's time of day, as the launcher says one: "20:42".
     function clockAt(at) {
-        return Qt.formatTime(new Date(at), "HH:mm");
+        return Timing.timeOfDay(at);
     }
 
     // A timer's name, its own or the vocabulary's for one with none. Its
@@ -71,23 +71,9 @@ Provider {
 
     // What it says at its right, now, where every row says how it stands,
     // so it's read on every row: the time left, held and said so while
-    // paused, or when it rang (VKCF3Z, 2026-11-07).
+    // paused, or when it rang (Timing.js), as Now says it too.
     function side(record, now) {
-        const left = Timing.clock(Timing.left(record, now));
-        switch (record.state) {
-        case "running":
-            return left;
-        case "paused":
-            return (said.pausedSide ?? "").replace("{left}", left);
-        default:
-            return rang(record);
-        }
-    }
-
-    // When a rung one rang, and that it was late.
-    function rang(record) {
-        return ((record.late ? said.late : said.rung) ?? "").replace("{clock}",
-            clockAt(record.rang));
+        return Timing.side(record, now, said);
     }
 
     // What it says below, now: what it counts and when it ends, that it's

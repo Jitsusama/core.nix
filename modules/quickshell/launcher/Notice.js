@@ -17,6 +17,7 @@
 // (launcher/words.json) and runs it its own way.
 const OPEN = "open";
 const OFFER = "offer";
+const LINK = "link";
 const GO_TO = "goTo";
 const READ = "read";
 const FORGET = "forget";
@@ -27,7 +28,11 @@ const COPY = "copy";
 // The acts a notice has, in order. `notice` says what it is now: whether
 // its sender opens what it's about (`opens`), what else its sender
 // offers (`offers`, each its identifier and text), and whether it's still
-// open for the sender to act on (`live`). `here` says what the place adds:
+// open for the sender to act on (`live`), and the links in what it said
+// (`links`, each { text, href }), each an act of its own in the order it
+// said them, after what its sender offers and before Read, kept whether or
+// not it's still open, since a link needs nothing of its sender. `here`
+// says what the place adds:
 // whether the sender has a window to go to (`window`) and whether the
 // notice is the front of the stack on screen (`stack`). A notice gone
 // from the screen keeps none of its sender's acts, since Quickshell
@@ -49,6 +54,9 @@ function acts(notice, here) {
         for (const offer of notice.offers) {
             out.push({ act: OFFER, identifier: offer.identifier, text: offer.text });
         }
+    }
+    for (const link of notice.links ?? []) {
+        out.push({ act: LINK, href: link.href, text: link.text });
     }
     out.push({ act: READ });
     if (notice.live && !forgets) {

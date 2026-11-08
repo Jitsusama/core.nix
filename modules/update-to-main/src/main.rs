@@ -6,6 +6,8 @@
 //!   each line as it comes, as JSON. It exits 0 when the machine runs main
 //!   or already did, 1 when the update failed, 2 when it was refused and 3
 //!   when the daemon couldn't be asked or stopped answering.
+//! - `update-to-main stop [--socket FILE]`: stops the update the daemon is
+//!   fetching or building, and prints what it did. A switch runs on.
 //! - `update-to-main follow [--config FILE] [--every SECONDS]`: an
 //!   account's service that asks whenever main moves (src/follow.rs), and
 //!   at least every SECONDS, 600 unless given. It runs until the system's
@@ -17,10 +19,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 use update_to_main::config::Config;
 use update_to_main::follow::{self, Follower};
+use update_to_main::follows::Followed;
 use update_to_main::line::Line;
 use update_to_main::{ask, serve, session};
 
@@ -38,7 +42,11 @@ const CONFIG: &str = "/etc/update-to-main/config.json";
 /// How often a follower asks at least, for a main it can't read cheaply.
 const FOLLOW_EVERY: u64 = 600;
 
-const USAGE: &str = "usage: update-to-main serve --config FILE\n       update-to-main ask [--socket FILE]\n       update-to-main follow [--config FILE] [--every SECONDS]\n       update-to-main job FOLDER";
+const USAGE: &str = "usage: update-to-main serve --config FILE
+       update-to-main ask [--socket FILE]
+       update-to-main stop [--socket FILE]
+       update-to-main follow [--config FILE] [--every SECONDS]
+       update-to-main job FOLDER";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -55,6 +63,8 @@ fn main() -> ExitCode {
         }
         ["ask"] => asked(Path::new(SOCKET)),
         ["ask", "--socket", file] => asked(Path::new(file)),
+        ["stop"] => stopped(Path::new(SOCKET)),
+        ["stop", "--socket", file] => stopped(Path::new(file)),
         ["follow", rest @ ..] => {
             if let Some((config, every)) = follow_args(rest) {
                 followed(&config, Duration::from_secs(every))
@@ -122,7 +132,7 @@ fn followed(file: &Path, every: Duration) -> ExitCode {
                     // Said like an answer's own ending, since otherwise an
                     // ask that never reached the daemon leaves no trace;
                     // once until it changes, since it's asked every minute.
-                    let ending = match ask::ask(&config.socket, &mut |l| println!("{}", l.json())) {
+                    let ending = match heard(&config, &heads) {
                         Ok(ending) => {
                             unanswered = None;
                             ending
@@ -150,6 +160,66 @@ fn followed(file: &Path, every: Duration) -> ExitCode {
             Err(_) => {}
         }
         thread::sleep(follow::LOOK_EVERY);
+    }
+}
+
+/// Asks for an update at `heads` and hears it to its ending, looking at
+/// main meanwhile and stopping the update once it has long built heads
+/// main has moved past (`follow::stale`), so the next ask builds the new.
+fn heard(config: &Config, heads: &Followed) -> std::io::Result<Line> {
+    let (told, lines) = mpsc::channel::<Line>();
+    let socket = config.socket.clone();
+    let asking = thread::spawn(move || {
+        ask::ask(&socket, &mut |line| {
+            println!("{}", line.json());
+            let _ = told.send(line.clone());
+        })
+    });
+    let (mut latest, mut since, mut stopped) = (None, Instant::now(), false);
+    loop {
+        match lines.recv_timeout(follow::LOOK_EVERY) {
+            Ok(line) => {
+                if latest.as_ref() != Some(&line) {
+                    since = Instant::now();
+                }
+                latest = Some(line);
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                if stopped {
+                    continue;
+                }
+                let Ok(now) = follow::heads(config, Some(heads)) else {
+                    continue;
+                };
+                if follow::stale(heads, &now, latest.as_ref(), since.elapsed()) {
+                    println!("main moved past the heads this update builds; stopping it");
+                    match ask::stop(&config.socket) {
+                        Ok(line) => println!("{}", line.json()),
+                        Err(e) => eprintln!("update-to-main: stopping the update: {e}"),
+                    }
+                    stopped = true;
+                }
+            }
+        }
+    }
+    asking
+        .join()
+        .unwrap_or_else(|_| Err(std::io::Error::other("the ask's thread panicked")))
+}
+
+fn stopped(socket: &Path) -> ExitCode {
+    match ask::stop(socket) {
+        Ok(line) => {
+            println!("{}", line.json());
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            if let Line::Refused { why, .. } = ask::unanswered(socket, &e) {
+                eprintln!("update-to-main: {why}");
+            }
+            ExitCode::from(3)
+        }
     }
 }
 

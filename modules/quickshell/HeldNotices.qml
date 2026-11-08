@@ -24,6 +24,7 @@
 // the same table that does the keys, Space ? last.
 pragma ComponentBehavior: Bound
 import Quickshell
+import Quickshell.Services.Notifications
 import QtQuick
 import "Bands.js" as Bands
 import "Changes.js" as Changes
@@ -32,6 +33,7 @@ import "Commands.js" as Commands
 import "Ex.js" as Ex
 import "NoticeKeys.js" as NoticeKeys
 import "NoticeList.js" as NoticeList
+import "NoticeBody.js" as NoticeBody
 import "Search.js" as Search
 import "launcher/Notice.js" as Notice
 
@@ -512,6 +514,25 @@ Card {
         stack.holding = false;
     }
 
+    // gx: the cursor card's link opened, its first or, given a count, its
+    // {n}th, as Vim's opens the one under the cursor; it's read by opening
+    // it, and the keys go back so the page opening takes them.
+    function followLink(count) {
+        const one = current;
+        const links = one ? NoticeBody.read(one.body).links : [];
+        const link = links[Math.max(count, 1) - 1] ?? null;
+        if (!link) {
+            const words = Words.of("notices").said ?? {};
+            said = links.length === 0 ? words["no-link"]
+                : links.length === 1 ? words["one-link"]
+                : String(words.links).replace("{count}", links.length);
+            return;
+        }
+        Notices.mark(one.id, true);
+        stack.follow(link.href);
+        stack.holding = false;
+    }
+
     // :reply: words given are sent at once where the card takes a reply
     // typed here, or else a prompt opens on it; a sender whose own Reply
     // opens it elsewhere is gone to.
@@ -610,6 +631,10 @@ Card {
             out.push(entry(offer.command, offer.command, offer.text, ""));
         out.push(entry("delete", "d", "Done", "dd", { ranged: true }),
             entry("forget", "forg", Words.name("verb:notice:forget"), "", { ranged: true }),
+            // :%d, done with every card at once, as Super+Shift+N puts them
+            // all away from anywhere (Joel, 2026-10-21: "a quick way to
+            // dismiss them all").
+            entry("delete", "d", Words.name("verb:notices:done"), "", { every: true }),
             entry("yank", "y", Words.name("verb:notice:copy"), "yy", { ranged: true }),
             entry("edit", "e", Words.name("verb:notices:all"), "",
                 { argument: "Notices", takes: true }),
@@ -1037,6 +1062,9 @@ Card {
         }
         case "open":
             open();
+            break;
+        case "link":
+            followLink(count);
             break;
         case "repeat":
             if (lastChange)
@@ -1722,7 +1750,12 @@ Card {
                 readonly property bool atCursor: at === held.cursor
                 readonly property bool chosenLine: held.selected.includes(modelData)
                     || atCursor && (held.mode === "normal" || held.pending)
-                readonly property var from: one ? Notices.sender(one.appName) : null
+                readonly property var from: one
+                    ? Notices.sender(one.appName, one.desktopEntry) : null
+                // Sent at low urgency, it's quieter by two cues, as its
+                // pop-up is (NoticeRow.qml).
+                readonly property bool quiet: one !== null
+                    && one.urgency === NotificationUrgency.Low
                 readonly property bool washed: held.pattern !== ""
                 // When it came, said at the far end of its only line, or of
                 // its signing line under the cursor.
@@ -1750,7 +1783,7 @@ Card {
                     x: held.columns.mark
                     line: held.rowBase
                     text: line.from ? String.fromCodePoint(line.from.glyph) : ""
-                    color: line.from ? Theme[line.from.hue] : Theme.muted
+                    color: line.from && !line.quiet ? Theme[line.from.hue] : Theme.muted
                 }
 
                 // Its Name, its capitals centred in the row, and its first
@@ -1776,7 +1809,7 @@ Card {
                         textFormat: line.washed ? Text.RichText : Text.PlainText
                         elide: Text.ElideRight
                         maximumLineCount: 1
-                        color: Theme.strong
+                        color: line.quiet ? Theme.text : Theme.strong
                         font.family: Theme.level.name.family
                         font.pointSize: Theme.level.name.pointSize
                         font.weight: Theme.level.name.weight
@@ -1902,9 +1935,17 @@ Card {
                         text: !line.one || !line.atCursor ? "" : line.washed
                             ? Search.washed(card.shortened ?? card.plainWords, held.pattern,
                                 held.wash(line.chosenLine && held.mode === "visual"))
-                            : card.shortened ?? line.one.body
+                            : card.shortened ?? NoticeBody.read(line.one.body).styled
                         textFormat: line.washed ? Text.RichText
                             : card.shortened !== null ? Text.PlainText : Text.StyledText
+                        // A link underlined in the words' own colour, as
+                        // its pop-up draws it; gx opens it.
+                        linkColor: color
+                        onLinkActivated: href => {
+                            Notices.mark(line.one.id, true);
+                            held.stack.follow(href);
+                            held.stack.holding = false;
+                        }
                         wrapMode: Text.Wrap
                         // Qt's own cut stays behind the whole words', for a
                         // word too wide for a line alone.

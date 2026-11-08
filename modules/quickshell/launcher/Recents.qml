@@ -24,7 +24,10 @@
 // file each mpv plays) is asked that then too, and never otherwise, a line
 // each as its command prints them. One saying no more than that, as mpv's
 // does, has no list of its own, so its program's paths stay the shared
-// list's.
+// list's. A source that's `dated` ends each line with a tab and when it
+// was last used, in seconds since 1970, which is kept apart from the line
+// (`atOf`), so Recent places it among the program's other sources by when
+// and everything else reads its lines as an undated source prints them.
 pragma ComponentBehavior: Bound
 
 import Quickshell
@@ -44,6 +47,13 @@ Scope {
     property var lately: ({})
     property var sharedLines: []
     readonly property var shared: sharedFrom(sharedLines, DesktopEntries.applications.values)
+
+    // When each line a dated source printed was last used, in milliseconds,
+    // by program and then by the line as `of` gives it, and the shared
+    // list's by its line as it's kept without its time.
+    property var latelyAt: ({})
+    property var sharedTimes: ({})
+    readonly property var sharedAt: sharedAtFrom(sharedLines, DesktopEntries.applications.values)
 
     readonly property int most: 9
 
@@ -95,6 +105,23 @@ Scope {
         return lately[app] ?? shared[app] ?? [];
     }
 
+    // When a program last used what one of its lines (`of`) names, in
+    // milliseconds since 1970, or undefined where its source didn't say.
+    function atOf(app, line) {
+        return (app in lately ? latelyAt[app] : sharedAt[app])?.[line];
+    }
+
+    // A line a source printed, apart from when it says it was last used:
+    // { line, at }, `at` in milliseconds, or undefined where the source
+    // isn't dated or the line left its time empty.
+    function dated(line, isDated) {
+        const tab = isDated ? line.lastIndexOf("\t") : -1;
+        if (tab < 0)
+            return { line: line, at: undefined };
+        const seconds = line.slice(tab + 1);
+        return { line: line.slice(0, tab), at: /^\d+$/.test(seconds) ? Number(seconds) * 1000 : undefined };
+    }
+
     // The desktop entry a program on the shared list is, by its id.
     function entryOf(program, entries) {
         const entry = DesktopEntries.heuristicLookup(program)
@@ -116,6 +143,25 @@ Scope {
             const path = line.slice(tab + 1);
             if (paths.length < recents.most && !paths.includes(path))
                 each[app] = paths.concat([path]);
+        }
+        return each;
+    }
+
+    // When each program on the shared list last used each of its paths, in
+    // milliseconds, the newest where it's listed twice, as `sharedFrom`
+    // keeps the newest.
+    function sharedAtFrom(lines, entries) {
+        const each = {};
+        for (const line of lines) {
+            const tab = line.indexOf("\t");
+            const app = tab > 0 ? recents.entryOf(line.slice(0, tab), entries) : "";
+            const at = recents.sharedTimes[line];
+            if (app === "" || at === undefined)
+                continue;
+            const times = each[app] ?? (each[app] = {});
+            const path = line.slice(tab + 1);
+            if (!(path in times))
+                times[path] = at;
         }
         return each;
     }
@@ -201,12 +247,23 @@ Scope {
                     id: listed
 
                     onStreamFinished: {
-                        const lines = listed.text.split("\n").filter(line => line !== "");
-                        if (source.modelData.app === undefined)
+                        const read = listed.text.split("\n").filter(line => line !== "")
+                            .map(line => recents.dated(line, source.modelData.dated === true));
+                        const lines = read.map(one => one.line);
+                        const times = {};
+                        for (const one of read) {
+                            if (one.at !== undefined && !(one.line in times))
+                                times[one.line] = one.at;
+                        }
+                        if (source.modelData.app === undefined) {
+                            recents.sharedTimes = times;
                             recents.sharedLines = lines;
-                        else
+                        } else {
+                            recents.latelyAt = Object.assign({}, recents.latelyAt,
+                                { [source.modelData.app]: times });
                             recents.lately = Object.assign({}, recents.lately,
                                 { [source.modelData.app]: lines.slice(0, recents.most) });
+                        }
                     }
                 }
             }

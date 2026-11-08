@@ -11,6 +11,9 @@
 // people went back to (Tauscher and Greenberg).
 const MOST = 9;
 
+// Between items said in one place, as every note and side joins them.
+const BETWEEN = " \u00b7 ";
+
 // What Recent lists, from what each of its sources kept, each a list of
 // { key, at, row } in that source's own order, newest first: `key` the
 // thing's identity (a file by its path, a site by its page), `at` when
@@ -71,6 +74,41 @@ function said(names, waiting, words, room) {
         return { side: words?.none ?? "", note: "" };
     }
     return { side: String(count), note: noted(names, room ?? ROOM) };
+}
+
+// What a thing taken says at its right in Capture's Recent: when it was
+// taken (`when`, as a file's row says it), in the same spot on every row,
+// as a stream's rows say theirs, and its folder after it only where that
+// isn't the one most are in (`usual`), since a folder said on every row
+// says nothing (VKCF3Z, 2026-11-08). Its folder is said once instead, in
+// its drawer's eyebrow (`takenEyebrow`). Where when isn't known, the
+// folder is all it says.
+function takenSide(when, folder, usual) {
+    if (when === "") {
+        return folder;
+    }
+    return folder === usual || folder === "" ? when : `${when}${BETWEEN}${folder}`;
+}
+
+// The eyebrow over a picture taken, as its drawer takes it: the folder
+// it's in, as its row no longer says, then what it is, a screenshot or a
+// photo (`kind`), "in ~/Pictures/Screenshots \u00b7 screenshot". `words`
+// gives how the folder is said, its `in`. It's set as written, since a
+// folder is a name never re-cased (VKCF3Z, 2026-11-06). Short of room,
+// what it is goes first, since the folder says it too, then the folder
+// gives way from its middle, "in ~/\u2026/Screenshots", and it never goes
+// (VKCF3Z, 2026-11-08).
+function takenEyebrow(folder, kind, words) {
+    const within = folder === "" ? "" : (words?.in ?? "{folder}").replace("{folder}", folder);
+    const items = [
+        { said: within, keep: 2, path: folder },
+        { said: kind ?? "", keep: 1 }
+    ].filter(item => item.said !== "");
+    return {
+        eyebrow: items.map(item => item.said).join(BETWEEN),
+        eyebrowItems: items,
+        eyebrowNames: true
+    };
 }
 
 // The names that fit in `room`, whole, the first always.

@@ -5,7 +5,7 @@ launcher, notifications, the margin, meters,
 prompts, the lock screen. [`home.nix`][home] installs these files as the
 account's Quickshell config and writes the ones that come from settings
 beside them: `Theme.qml` from `jitsusama.theme`, `Providers.qml`,
-`Options.qml`, `Overview.qml` and `Shortcuts.qml`.
+`Options.qml`, `Pieces.qml` and `Shortcuts.qml`.
 
 Every surface is held to [`docs/design.md`][design] and the aesthetic skill
 beside it ([`../theme/SKILL.md`][skill]). Read both before changing anything

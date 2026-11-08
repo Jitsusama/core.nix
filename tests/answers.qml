@@ -1869,9 +1869,9 @@ QtObject {
         machine("a layer locked", boardDrawer.facts[0].value, "Numb \u00b7 locked");
         machine("only the locks on", boardDrawer.facts[1].value, "num");
         machine("its polling rate in Hz", boardDrawer.facts[3].value, "1,000 Hz");
-        const bare = Keyboards.drawer({ device: keyboardsErgodox, name: "", layer: null,
+        const bareBoard = Keyboards.drawer({ device: keyboardsErgodox, name: "", layer: null,
             locks: [{ id: "caps", on: false }], connection: "USB" }, keyNamed, boardSaid);
-        machine("no lock on, and a bus the eyebrow says", bare.facts.map(fact =>
+        machine("no lock on, and a bus the eyebrow says", bareBoard.facts.map(fact =>
             `${fact.label} ${fact.value}`), ["[locks] none"]);
         machine("the laptop's eyebrow", Keyboards.drawer({ device: keyboardsLaptop, name: "",
             layer: null }, keyNamed, boardSaid).eyebrow, "built in \u00b7 keyboard");

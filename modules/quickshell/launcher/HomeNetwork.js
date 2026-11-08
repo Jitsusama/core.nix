@@ -206,9 +206,7 @@ function backhaulOf(node) {
 // A backhaul's bars as a share, for its row's graph; Ethernet has none.
 function backhaulLevel(node) {
     const way = node.backhaul ?? {};
-    return way.kind === "ethernet" || way.bars === null || way.bars === undefined
-        ? null
-        : way.bars / BARS;
+    return way.kind !== "ethernet" && typeof way.bars === "number" ? way.bars / BARS : null;
 }
 
 // A count with its noun, singular for one: "1 device", "9 devices".
@@ -253,9 +251,7 @@ function bandOf(device) {
     if (device.ethernet) {
         return "Ethernet";
     }
-    const channel = device.channel === null || device.channel === undefined
-        ? ""
-        : `channel ${device.channel}`;
+    const channel = typeof device.channel === "number" ? `channel ${device.channel}` : "";
     return [device.band ?? "", channel].filter((part) => part !== "").join(DOT);
 }
 
@@ -336,25 +332,29 @@ function speedTestOf(test, settings) {
     return test ? eachWay(test.down_mbps, test.up_mbps, settings) : "";
 }
 
-// The outages eero recorded, in a few words.
-function outagesOf(outages) {
-    const count = (outages ?? []).length;
-    return count === 0 ? "no outages" : counted(count, "outage");
+// The internet's outages: the 30 days' the history keeps, else eero's.
+function outagesOf(internet) {
+    const kept = internet.history?.outages;
+    const count = (kept ?? internet.outages ?? []).length;
+    return `${count === 0 ? "no outages" : counted(count, "outage")}${kept ? " in 30 days" : ""}`;
 }
 
-// What the internet's row says, the place's head: its state at its side,
-// and after its name who carries it, the last speed test and when, how
-// it's optimized, its outages, the nodes by state and how many devices
-// are on now. Asked at `now`, in milliseconds, for when. Each is an item,
-// so the row gives them way whole from the end (Choice.qml).
+// What the internet's row says, the place's head: its state then the
+// last speed test's down at its side, and after its name the test's up
+// and when, how it's optimized, its outages, the nodes by state and how
+// many devices are on now. Who carries it is the drawer's eyebrow's and
+// its Provider's, so the row doesn't say it again (VKCF3Z, 2026-11-08),
+// and while eero isn't answering, its side says that alone. Asked at
+// `now`, in milliseconds, for when. Each is an item, so the row gives
+// them way whole from the end (Choice.qml).
 function internetRow(model, now, settings) {
     const internet = model?.internet ?? {};
     const test = internet.speed_test ?? null;
-    const tested = speedTestOf(test, settings);
-    const day = test?.at ? `${DOT}${dayOf(test.at, now)}` : "";
-    const optimized = internet.sqm === null || internet.sqm === undefined
-        ? ""
-        : `conferencing and gaming ${internet.sqm ? "on" : "off"}`;
+    const down = eachWay(test?.down_mbps, null, settings);
+    const up = eachWay(null, test?.up_mbps, settings);
+    const day = test?.at ? dayOf(test.at, now) : "";
+    const sqm = typeof internet.sqm === "boolean" ? (internet.sqm ? "on" : "off") : "";
+    const answering = !["signed-out", "unreachable"].includes(model?.cloud?.state);
     const onNow = (model?.devices ?? []).length;
     const devices = onNow === 0 ? "" : `${counted(onNow, "device")} on now`;
     // The nodes' network as a whole is said only once it isn't connected,
@@ -362,14 +362,14 @@ function internetRow(model, now, settings) {
     const mesh = String(internet.mesh ?? "");
     return {
         name: "Internet",
-        side: stateWords(model),
+        side: [stateWords(model), answering ? down : ""].filter((part) => part !== "").join(DOT),
         note: [
             mesh !== "" && mesh !== "connected" ? `home network ${mesh}` : "",
             internet.isp_up === false ? "provider down" : "",
-            internet.isp ?? "",
-            tested === "" ? "" : `${tested}${day}`,
-            optimized,
-            outagesOf(internet.outages),
+            up,
+            up === "" && down === "" ? "" : day,
+            sqm === "" ? "" : `conferencing and gaming ${sqm}`,
+            outagesOf(internet),
             nodesSaid(internet.nodes),
             devices,
         ]

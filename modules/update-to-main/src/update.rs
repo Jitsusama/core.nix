@@ -16,7 +16,7 @@ use crate::git::{self, Repo};
 use crate::hosted;
 use crate::line::Line;
 use crate::power::{self, Power};
-use crate::run::Failure;
+use crate::run::{self, Failure};
 use crate::system;
 use std::fs;
 use std::process::{Command, Stdio};
@@ -143,6 +143,11 @@ fn run(config: &Config, granted: bool, tell: &mut dyn FnMut(&Line)) -> Line {
     tell(&Line::Switching {
         commit: head.clone(),
     });
+    // A stop is taken only before this line is told, so one that came
+    // while the build ended is seen here, before anything switches.
+    if run::stopping() {
+        return failed(last, Failure::new("the update was stopped"));
+    }
     switch(config, &built, last, head, followed)
 }
 

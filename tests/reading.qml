@@ -85,8 +85,12 @@ QtObject {
         expect("a note's last item gives way whole",
             noted(note, 410) === "Example ISP \u00b7 370 Mb/s down", noted(note, 410));
         expect("a note's first item alone", noted(note, 200) === "Example ISP", noted(note, 200));
-        expect("its first item at a whole word", noted(note, 100) === "Example\u2026",
-            noted(note, 100));
+        // And no ellipsis on a note: its first item, where it alone
+        // doesn't fit, isn't said (VKCF3Z, 2026-11-08: never "found by\u2026").
+        expect("its first item whole or not at all", noted(note, 100) === "", noted(note, 100));
+        // A sentence is no list of items: it gives way at a whole word.
+        expect("a sentence at a whole word", noted("Example ISP down", 100) === "Example\u2026",
+            noted("Example ISP down", 100));
         // The path's steps: the program's ask, a folder's path, the place,
         // a step's mark between each, three characters wide. Each gives
         // way at whole names, never a piece of one (VKCF3Z, 2026-11-05:
@@ -173,6 +177,21 @@ QtObject {
         expect("the cost whole", kept(50) === "$5.10 today", kept(50));
         expect("no items, nothing", Reading.wholeItems([], 100, width) === "",
             Reading.wholeItems([], 100, width));
+        // An item naming a path, once the items it outlasts have gone
+        // whole, gives it way from its middle, its last folder whole
+        // (VKCF3Z, 2026-11-08).
+        const shots = "~/Pictures/Screenshots";
+        const pathed = [{ said: `in ${shots}`, keep: 2, path: shots },
+            { said: "screenshot", keep: 1 }];
+        const eyebrow = room => Reading.wholeItems(pathed, room, width);
+        expect("a path whole where it fits", eyebrow(380) === `in ${shots} \u00b7 screenshot`,
+            eyebrow(380));
+        expect("the kind first", eyebrow(370) === `in ${shots}`, eyebrow(370));
+        expect("then the path from its middle", eyebrow(200) === "in ~/\u2026/Screenshots",
+            eyebrow(200));
+        expect("then down to its last folder", eyebrow(170) === "in \u2026/Screenshots",
+            eyebrow(170));
+        expect("which is never lost", eyebrow(50) === "in \u2026/Screenshots", eyebrow(50));
         // Styled, the kept items keep their words and take a dot in the
         // colour given between them, so a selected agent row reads
         // "working \u00b7 $4.20" with its dot muted (VKCF3Z, 2026-11-06), and

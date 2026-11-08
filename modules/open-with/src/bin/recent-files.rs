@@ -8,7 +8,10 @@
 //! so a program can hand on everything it was started with, and nothing
 //! at all is said when none is a file. `recent-files list` prints every local file on
 //! the list that's still there, the one opened last first, a line each: the
-//! program, a tab and the file, once for each program that opened it.
+//! program, the file and when that program last opened it in seconds since
+//! 1970, a tab between each, once for each program that opened it, so the
+//! launcher can place it among Recent's other sources by when (as
+//! recents.nix's `dated` says).
 
 use std::env;
 use std::io::{self, Write};
@@ -39,7 +42,10 @@ fn main() -> ExitCode {
                 opened
                     .iter()
                     .filter(|each| each.path.exists())
-                    .try_for_each(|each| writeln!(out, "{}\t{}", each.program, each.path.display()))
+                    .try_for_each(|each| {
+                        let seconds = each.at.div_euclid(1_000_000);
+                        writeln!(out, "{}\t{}\t{seconds}", each.program, each.path.display())
+                    })
                     .map_err(|error| error.to_string())
             }),
         _ => Err(USAGE.to_owned()),

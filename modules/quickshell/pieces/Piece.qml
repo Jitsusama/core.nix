@@ -30,6 +30,11 @@ Item {
     property bool present: true
     property bool active: false
     property string value: ""
+    // Its value as it runs on by itself, given the time, for one that
+    // counts faster than it's made again, as the stopwatch does to the
+    // tenth: Now's row draws it afresh (Launcher.qml's counts). Null for
+    // one whose value says it.
+    property var counts: null
     property string role: "text"
     // The theme's glyph its value is read by at a glance, by name, or none,
     // and what a glance needs said after it: the least that tells Joel
@@ -43,6 +48,10 @@ Item {
     property string hint: value
     property string title: settings.label ?? ""
     property string context: ""
+    // What it holds, by name, for a piece standing for several things,
+    // as Timers does its timers: Now says them after its title, as a
+    // place says what it holds, giving way by whole names from the end.
+    property var parts: []
     // What its notice says beneath its hint, when it arrives: its context,
     // unless it says more there.
     property string message: context
@@ -115,6 +124,7 @@ Item {
             present: true,
             active: false,
             value: "",
+            counts: null,
             role: "text",
             sign: "",
             glance: "",
@@ -122,6 +132,7 @@ Item {
             hint: "",
             title: "",
             context: "",
+            parts: [],
             message: own.context ?? "",
             wants: wants,
             kind: kind,

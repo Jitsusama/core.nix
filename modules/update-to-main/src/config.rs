@@ -38,6 +38,10 @@ pub struct Config {
     /// Where the last update's ending is kept, as its line, for the group
     /// to read.
     pub ended: PathBuf,
+    /// Where the running update's latest line is kept, for the group to
+    /// read, and taken away once it ends: an ask over the socket shows in
+    /// no process list, so this is how another program sees one running.
+    pub running: PathBuf,
     /// The system profile, which the machine boots and rolls back by.
     pub profile: PathBuf,
     /// The signatures a commit may carry to be built.

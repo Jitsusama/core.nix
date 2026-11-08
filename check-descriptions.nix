@@ -65,6 +65,10 @@
     a notice's card and its row among the notices list the same acts in one order, copying last,
     and a notice gone from the screen keeps none of its sender's
   '';
+  a-notice-keeps-its-links = ''
+    a notice's body keeps its links, bare addresses included, and only the spec's bold, italics,
+    underline and links as markup, everything else escaped as its sender's words
+  '';
   a-player-says-all-it-knows = ''
     a media player's drawer says everything its player tells MPRIS, what moves first and what
     identifies it last, leaving out what it can't say, and its art only from where it may be drawn
@@ -123,7 +127,9 @@
     of nothing or past a week is unfit, the time left reads as a clock counting whole seconds up,
     a span is said in its largest units, timers are listed rung first, then by what each has
     left, and the stopwatch's count runs while it runs, reads to the tenth rounded down, and lists
-    its laps newest first, each its own stretch
+    its laps newest first, each its own stretch; a timer's side says its time left, paused or
+    when it rang, and Now holds timers while any runs, is paused or has rung, or the stopwatch
+    runs, told by the one listed first and naming them in that order, the stopwatch last
   '';
   a-trusted-cable-finds-machines = ''
     a trusted cable's network is a stranger's cable with mDNS on, matched by its card and picked
@@ -422,6 +428,10 @@
   each-machine-signs-with-its-hardware = ''
     a Linux workstation signs through its TPM and a Mac through its Secure Enclave, both with one
     program and Joel's key by default, and signing alone, with no hardware, signs nothing
+  '';
+  each-mark-means-one-thing = ''
+    no two of the theme's marks share a glyph unless they are named as meaning one thing, as heat
+    and temperature are
   '';
   eero-completes-in-zsh = ''
     eero completes in zsh with its views and commands, each node, each device by its name or, where
@@ -774,7 +784,14 @@
   meaning-adds-only-below = ''
     the launcher's search by meaning, in Qt's engine, tells the daemon only the things that stay, by
     the words each is known by, and adds at most three rows below what typing found, none found
-    already and none the launcher no longer holds, each saying in the foot how it was found
+    already and none the launcher no longer holds, each saying in the foot how it was found, and at
+    most three pictures below those Recent found by their names and words, none listed already
+  '';
+  meaning-finds-a-picture-by-what-it-shows = ''
+    the meaning daemon, on the CPU with the service's SigLIP 2 towers, looks at each picture in its
+    folders and finds each drawn shape by words saying what it shows and no other, finds nothing
+    for words showing none, hears and finds one saved while it runs, and after a restart looks at
+    none again
   '';
   meaning-finds-a-thing-by-what-it-means = ''
     the meaning daemon, on the CPU with the service's model, finds each of the launcher's things by
@@ -1935,6 +1952,9 @@
     the processors' and the memory's headlines make no parts and spawn nothing, and their parts,
     once looked at, list the processes once
   '';
+  the-margin-takes-its-pieces = ''
+    a machine moves, cuts, retunes and adds the margin's pieces
+  '';
   the-margins-marks-stand-level = ''
     every mark in the margin stands one height on the gap's middle line, read from the right by
     kind, in the colour that says how much it asks; what was on air lingers, what a notice will say
@@ -1978,9 +1998,6 @@
   '';
   the-npu-finds-its-compiler = ''
     the XPS 14's graphics drivers hold the NPU's driver and Intel's compiler beside it
-  '';
-  the-overview-takes-its-pieces = ''
-    a machine moves, cuts, retunes and adds the overview's pieces
   '';
   the-panel-dims-after-a-bad-read = ''
     the XPS 14's kernel keeps to VESA's brightness controls when its boot-time read of the panel's

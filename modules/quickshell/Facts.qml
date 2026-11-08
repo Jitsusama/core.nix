@@ -1,5 +1,5 @@
 pragma Singleton
-// The desktop's facts: every overview piece (Overview.qml), loaded once from
+// The desktop's facts: every margin piece (Pieces.qml), loaded once from
 // its file with its settings, for the two places that show them, the
 // launcher's foot and the margin, so each fact is heard once, however many
 // screens there are.
@@ -13,11 +13,11 @@ import "Facts.js" as Listed
 Singleton {
     id: root
 
-    // { entry, piece } in the overview's order, piece null until it loads,
+    // { entry, piece } in the pieces' order, piece null until it loads,
     // and one for each thing a piece stands for (Facts.js).
     readonly property var all: {
         loaded.count;
-        return Listed.facts(Overview.pieces, Overview.pieces.map((entry, index) => {
+        return Listed.facts(Pieces.inOrder, Pieces.inOrder.map((entry, index) => {
             const loader = loaded.objectAt(index);
             return loader ? loader.item : null;
         }));
@@ -25,7 +25,7 @@ Singleton {
 
     Instantiator {
         id: loaded
-        model: Overview.pieces
+        model: Pieces.inOrder
 
         Loader {
             required property var modelData

@@ -2,10 +2,54 @@
 //! root was started in: no git configuration but what's given here, no
 //! prompts, and a fixed path, so what runs depends only on the config.
 
+use std::collections::HashMap;
 use std::ffi::{CStr, CString, OsStr};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
+use std::thread::{self, ThreadId};
+
+/// By the thread running each update, the process groups of the commands
+/// it runs now and whether it's being stopped, so a stop can end what runs
+/// and start nothing more. An update runs its commands on one thread.
+static RUNNING: LazyLock<Mutex<HashMap<ThreadId, Running>>> = LazyLock::new(Mutex::default);
+
+#[derive(Default)]
+struct Running {
+    groups: Vec<libc::pid_t>,
+    stopping: bool,
+}
+
+fn running() -> MutexGuard<'static, HashMap<ThreadId, Running>> {
+    RUNNING.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Ends every command the update on `thread` runs now, each with its
+/// whole process group, and lets it start none until it has `ended`, so
+/// the update fails at once. Says how many it ended.
+pub fn stop(thread: ThreadId) -> usize {
+    let mut running = running();
+    let update = running.entry(thread).or_default();
+    update.stopping = true;
+    for group in &update.groups {
+        // SAFETY: kill only sends a signal; a group already gone is ESRCH.
+        unsafe { libc::kill(-group, libc::SIGTERM) };
+    }
+    update.groups.len()
+}
+
+/// Whether this thread's update is being stopped.
+pub fn stopping() -> bool {
+    running()
+        .get(&thread::current().id())
+        .is_some_and(|update| update.stopping)
+}
+
+/// Forgets this thread's update once it has ended.
+pub fn ended() {
+    running().remove(&thread::current().id());
+}
 
 /// The path every command starts with: the system's own programs.
 pub const PATH: &str = "/run/current-system/sw/bin:/usr/bin:/bin:/usr/sbin:/sbin";
@@ -192,10 +236,39 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    let out = command
+    // Each runs in a process group of its own, so a stop ends what it
+    // started too. Its input is what the caller gave, or the daemon's own,
+    // which systemd and launchd make empty.
+    command
         .args(args)
-        .output()
-        .map_err(|e| Failure::new(format!("{what}: {e}")))?;
+        .process_group(0)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let me = thread::current().id();
+    let stopped = || Failure::new(format!("{what}: the update was stopped"));
+    let child = {
+        let mut running = running();
+        let update = running.entry(me).or_default();
+        if update.stopping {
+            return Err(stopped());
+        }
+        let child = command
+            .spawn()
+            .map_err(|e| Failure::new(format!("{what}: {e}")))?;
+        update.groups.push(child.id().cast_signed());
+        child
+    };
+    let group = child.id().cast_signed();
+    let out = child.wait_with_output();
+    {
+        let mut running = running();
+        let update = running.entry(me).or_default();
+        update.groups.retain(|g| *g != group);
+        if update.stopping {
+            return Err(stopped());
+        }
+    }
+    let out = out.map_err(|e| Failure::new(format!("{what}: {e}")))?;
     if out.status.success() {
         let mut said = String::from_utf8_lossy(&out.stdout).into_owned();
         if errors_too {

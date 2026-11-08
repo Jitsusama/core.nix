@@ -113,19 +113,24 @@ impl World {
                  case \" $* \" in\n\
                  *' --dry-run '*) printf 'these 4 derivations will be built:\\n  \
                  /nix/store/a-light.drv\\n  /nix/store/b-heavy.drv\\n  \
-                 /nix/store/c-wrapper.drv\\n  /nix/store/t-secret-tool.drv\\n' >&2; exit 0;;\n\
+                 /nix/store/c-wrapper.drv\\n  /nix/store/t-secret-tool.drv\\n' >&2; \
+                 if [ -e {big} ]; then printf '  /nix/store/e-big.drv\\n' >&2; fi; exit 0;;\n\
                  *' derivation show '*) secret=\n\
+                 big=; [ -e {big} ] && big=', \"e-big.drv\": {{\"name\": \"big-1\", \
+                 \"env\": {{\"requiredSystemFeatures\": \"big-parallel\"}}}}'\n\
                  case \" $* \" in *' --recursive '*) secret=', \"s-secret.drv\": \
                  {{\"name\": \"secret-1.0\", \"env\": {{}}}}';; esac\n\
                  echo '{{\"derivations\": {{\"a-light.drv\": \
                  {{\"env\": {{\"preferLocalBuild\": \"1\"}}}}, \"b-heavy.drv\": {{\"env\": {{}}}}, \
                  \"c-wrapper.drv\": {{\"name\": \"wrapper\", \"env\": {{}}, \
                  \"inputs\": {{\"drvs\": {{\"s-secret.drv\": {{}}}}}}}}, \
-                 \"t-secret-tool.drv\": {{\"name\": \"secret-tool-2\", \"env\": {{}}}}'\"$secret\"'}}}}'; exit 0;;\n\
+                 \"t-secret-tool.drv\": {{\"name\": \"secret-tool-2\", \"env\": {{}}}}\
+                 '\"$secret$big\"'}}}}'; exit 0;;\n\
                  *' --cores '*) echo \"$*\" >> {here}; exit 0;;\n\
                  *' --builders @/etc/kept-builders '*) if [ -e {no_kept_builder} ]; then \
                  echo 'no kept builder answers' >&2; exit 1; fi; echo \"$*\" >> {away}; exit 0;;\n\
-                 *' --max-jobs 0 '*) if [ -e {no_builder} ]; then \
+                 *' --max-jobs 0 '*) if [ -e {no_builder} ] || {{ [ -e {no_small_builder} ] \
+                 && [ \"${{*#*e-big}}\" = \"$*\" ]; }}; then \
                  echo 'local builds are disabled' >&2; exit 1; fi; echo \"$*\" >> {away}; exit 0;;\n\
                  *' eval '*) if [ -e {fetch_fails} ]; then \
                  echo 'could not read Username' >&2; exit 1; fi; \
@@ -149,6 +154,8 @@ impl World {
                 fetch_fails = root.join("fetch-fails").display(),
                 overridden = root.join("overridden").display(),
                 no_builder = root.join("no-builder").display(),
+                no_small_builder = root.join("no-small-builder").display(),
+                big = root.join("big").display(),
                 no_kept_builder = root.join("no-kept-builder").display(),
                 here = root.join("here").display(),
                 call_starts = root.join("call-starts").display(),
@@ -173,6 +180,7 @@ impl World {
             socket: root.join("ask.sock"),
             group: own_group(),
             ended: root.join("last.json"),
+            running: root.join("now.json"),
             profile: root.join("profile"),
             signers: Signers {
                 ssh: Some(signers),
@@ -817,6 +825,13 @@ fn asks_while_an_update_runs_join_it() {
         })
         .collect();
     thread::sleep(std::time::Duration::from_millis(300));
+    // While it runs, what it's doing is kept for another program to see.
+    let running: Line =
+        serde_json::from_str(&fs::read_to_string(&world.config.running).unwrap()).unwrap();
+    assert!(
+        matches!(running, Line::Fetching | Line::Building { .. }),
+        "{running:?}"
+    );
     fs::write(&gate, "").unwrap();
     for asker in askers {
         let (told, ending) = asker.join().unwrap();
@@ -824,6 +839,57 @@ fn asks_while_an_update_runs_join_it() {
         assert_eq!(ending, done(&main));
     }
     assert_eq!(world.builds(), 1);
+}
+
+#[test]
+fn a_stop_ends_an_update_still_building_and_the_next_builds_again() {
+    let world = World::new();
+    let main = world.signed("one");
+    world.system(&main);
+    // The build waits for a gate, so the stop comes while it runs.
+    let gate = world.root.join("gate");
+    let nix = world.config.tools.nix.clone();
+    let text = fs::read_to_string(&nix).unwrap();
+    let waiting = text.replacen(
+        "\nfor a;",
+        &format!(
+            "\nwhile [ ! -e {} ]; do sleep 0.05; done\nfor a;",
+            gate.display()
+        ),
+        1,
+    );
+    write_program(&nix, &waiting);
+    let config = world.config.clone();
+    thread::spawn(move || serve::serve(config));
+    let socket = world.config.socket.clone();
+    while !socket.exists() {
+        thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let nothing = ask::stop(&socket).unwrap();
+    assert!(
+        matches!(&nothing, Line::Refused { why, .. } if why.contains("nothing was stopped")),
+        "{nothing:?}"
+    );
+    let asking = {
+        let socket = socket.clone();
+        thread::spawn(move || ask::ask(&socket, &mut |_| {}).unwrap())
+    };
+    while !fs::read_to_string(&world.config.running).is_ok_and(|line| line.contains("building")) {
+        thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let stopped = ask::stop(&socket).unwrap();
+    assert!(
+        matches!(&stopped, Line::Refused { why, .. }
+            if why.starts_with("stopped the update building")),
+        "{stopped:?}"
+    );
+    let ending = asking.join().unwrap();
+    assert!(matches!(ending, Line::Failed { .. }), "{ending:?}");
+    assert_eq!(world.builds(), 0);
+
+    // What stopped that one doesn't stop the next.
+    fs::write(&gate, "").unwrap();
+    assert_eq!(ask::ask(&socket, &mut |_| {}).unwrap(), done(&main));
 }
 
 #[test]
@@ -842,6 +908,10 @@ fn how_an_update_ended_is_kept_for_its_group_to_read() {
     let kept: Line =
         serde_json::from_str(&fs::read_to_string(&world.config.ended).unwrap()).unwrap();
     assert_eq!(kept, ending, "the file says how it ended");
+    assert!(
+        !world.config.running.exists(),
+        "once it has ended, none is running"
+    );
     let meta = fs::metadata(&world.config.ended).unwrap();
     assert_eq!(meta.mode() & 0o777, 0o640);
     // SAFETY: getgid can't fail.
@@ -1516,6 +1586,45 @@ fn a_piece_the_builders_dont_take_is_built_here_small() {
     // The daemon's builders stay, for what only they take.
     assert!(!here.contains("--builders"), "{here}");
     assert!(here.contains("--max-jobs 1 --cores 4"), "{here}");
+}
+
+#[test]
+fn a_big_piece_is_left_for_a_builder_rather_than_built_here() {
+    let mut world = World::new();
+    elsewhere_with_here(&mut world, "14.99");
+    fs::write(world.root.join("no-builder"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    fs::write(world.root.join("big"), "").unwrap();
+    let Line::Failed { why, .. } = world.update().1 else {
+        panic!("not failed")
+    };
+    // A piece asking for big-parallel, as the kernel does, goes to the
+    // builders first and alone, so nothing here builds it as another's
+    // input.
+    assert!(
+        why.contains("building the big pieces on the machine's builders"),
+        "{why}"
+    );
+    assert!(why.contains("which never build here"), "{why}");
+    assert_eq!(world.read("here"), "");
+    assert_eq!(world.builds(), 0);
+}
+
+#[test]
+fn the_small_pieces_are_built_here_once_the_builders_build_the_big() {
+    let mut world = World::new();
+    elsewhere_with_here(&mut world, "14.99");
+    fs::write(world.root.join("no-small-builder"), "").unwrap();
+    fs::write(world.root.join("big"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    let away = world.read("away");
+    assert!(away.contains("/nix/store/e-big.drv^*"), "{away}");
+    assert!(!away.contains("b-heavy"), "{away}");
+    let here = world.read("here");
+    assert!(here.contains("/nix/store/b-heavy.drv^*"), "{here}");
 }
 
 #[test]

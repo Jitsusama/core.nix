@@ -251,7 +251,7 @@ Provider {
             act("verb:spotify:play", { later: true, run: play }),
             act("verb:spotify:open", {
                 later: true,
-                run: () => Niri.spawn(provider.clientCommand.concat([record.uri]))
+                run: () => provider.openClient(record.uri)
             }),
             act("verb:spotify:link", {
                 now: true,
@@ -267,9 +267,19 @@ Provider {
     // Plays `uri` through the Web API while a Spotify runs, else starts
     // Spotify's client on it; one the API finds nowhere to play opens in
     // the client too.
+    // Opens what a URI names in Spotify's client, or, on a machine its
+    // client isn't built for, which names none (home.nix), in the web
+    // player through its open.spotify.com link.
+    function openClient(uri) {
+        if (clientCommand.length === 0)
+            Qt.openUrlExternally(Spotify.link(uri));
+        else
+            Niri.spawn(clientCommand.concat([uri]));
+    }
+
     function play(uri) {
         if (player() === null || recentCommand.length === 0) {
-            Niri.spawn(clientCommand.concat([uri]));
+            openClient(uri);
             return;
         }
         playReader.played = uri;
@@ -387,7 +397,7 @@ Provider {
         onDone: code => {
             const now = Spotify.standing(code);
             if (now === "nowhere")
-                Niri.spawn(provider.clientCommand.concat([playReader.played]));
+                provider.openClient(playReader.played);
             else if (now === "signedOut")
                 provider.stands = now;
         }

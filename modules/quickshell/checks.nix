@@ -119,15 +119,28 @@ let
         }
       ]);
       # The shell, niri's configuration, and the theme the shell reads its
-      # colours from.
-      given = lib.filterAttrs (
-        name: _:
-        lib.any (folder: lib.hasPrefix folder name) [
-          "quickshell/"
-          "niri/"
-          "jitsusama/"
-        ]
-      ) home.xdg.configFile;
+      # colours from. A loaded builder can stall the shell past niri's
+      # repeat delay between a key's press and its release, and Qt then
+      # repeats the key: one k moved the held notices two lines. No check
+      # here holds a key, so none repeats.
+      given =
+        lib.filterAttrs (
+          name: _:
+          lib.any (folder: lib.hasPrefix folder name) [
+            "quickshell/"
+            "niri/"
+            "jitsusama/"
+          ]
+        ) home.xdg.configFile
+        // {
+          "niri/keyboard.kdl".source = pkgs.writeText "keyboard.kdl" ''
+            input {
+                keyboard {
+                    repeat-delay 60000
+                }
+            }
+          '';
+        };
       inherit (pkgs) mesa;
     in
     pkgs.runCommandLocal name
@@ -316,14 +329,14 @@ onLinux {
   # A machine shapes what the overview shows in a line a change: a piece
   # moved, cut, shown only while true, a threshold changed and the rest kept,
   # and a piece of its own linked beside the built-in ones.
-  the-overview-takes-its-pieces =
+  the-margin-takes-its-pieces =
     let
       own = pkgs.writeText "wide.qml" "Piece { value: settings.text }";
       machine = bareNixos [
         self.nixosModules.workstation
         self.nixosModules.graphical
         {
-          home-manager.users.someone.jitsusama.quickshell.overview.pieces = {
+          home-manager.users.someone.jitsusama.quickshell.margin.pieces = {
             date.tier = null;
             network.order = 25;
             battery.low = 15;
@@ -340,14 +353,14 @@ onLinux {
         }
       ];
       home = account machine;
-      rendered = lib.findFirst (lib.hasInfix "property var pieces: ") "" (
-        lib.splitString "\n" home.xdg.configFile."quickshell/Overview.qml".text
+      rendered = lib.findFirst (lib.hasInfix "property var inOrder: ") "" (
+        lib.splitString "\n" home.xdg.configFile."quickshell/Pieces.qml".text
       );
-      drawn = builtins.fromJSON (lib.last (lib.splitString "property var pieces: " rendered));
+      drawn = builtins.fromJSON (lib.last (lib.splitString "property var inOrder: " rendered));
       piece = lib.listToAttrs (map (piece: lib.nameValuePair piece.name piece) drawn);
     in
-    holds "the-overview-takes-its-pieces"
-      "The overview didn't draw a machine's own pieces as it set them: their order, their cuts, their settings or its own file."
+    holds "the-margin-takes-its-pieces"
+      "The margin didn't draw a machine's own pieces as it set them: their order, their cuts, their settings or its own file."
       (
         map (piece: piece.name) drawn == [
           "time"
@@ -376,6 +389,7 @@ onLinux {
           "sharing"
           "camera"
           "recording"
+          "timers"
           "playing"
         ]
         && piece.battery.low == 15
@@ -829,6 +843,7 @@ onLinux {
       cp ${../../tests/key-map.qml} shell.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/KeyMap.qml} launcher/KeyMap.qml
@@ -1207,6 +1222,7 @@ onLinux {
       cp ${../../tests/home-network.qml} home-network.qml
       cp ${./launcher/HomeNetwork.js} HomeNetwork.js
       cp ${./launcher/HomeNetworkDrawers.js} HomeNetworkDrawers.js
+      cp ${./launcher/HomeNetworkHistory.js} HomeNetworkHistory.js
       cp ${./launcher/Numbers.js} Numbers.js
       cp ${./launcher/Interfaces.js} Interfaces.js
       cp ${./launcher/Machine.js} Machine.js
@@ -1431,6 +1447,7 @@ onLinux {
       cp ${./pieces/StatusFile.qml} StatusFile.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Spend.qml} launcher/Spend.qml
@@ -1548,6 +1565,7 @@ onLinux {
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Quests.qml} launcher/Quests.qml
@@ -1603,6 +1621,7 @@ onLinux {
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Orchestrators.qml} launcher/Orchestrators.qml
@@ -1662,6 +1681,7 @@ onLinux {
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./Marks.js} Marks.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Now.qml} launcher/Now.qml
@@ -1695,6 +1715,7 @@ onLinux {
     mkdir launcher
     cp ${./Fuzzy.js} Fuzzy.js
     cp ${./launcher/Provider.qml} launcher/Provider.qml
+    cp ${./ProgramGlyphs.js} ProgramGlyphs.js
     cp ${./launcher/Asking.js} launcher/Asking.js
     cp ${./launcher/Numbers.js} launcher/Numbers.js
     cp ${./launcher/Moment.js} launcher/Moment.js
@@ -1741,6 +1762,7 @@ onLinux {
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Ask.qml} launcher/Ask.qml
@@ -1767,6 +1789,7 @@ onLinux {
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
         cp ${./Fuzzy.js} Fuzzy.js
         cp ${./launcher/Provider.qml} launcher/Provider.qml
+        cp ${./ProgramGlyphs.js} ProgramGlyphs.js
         cp ${./launcher/Asking.js} launcher/Asking.js
         cp ${./launcher/Numbers.js} launcher/Numbers.js
         cp ${./launcher/Waits.qml} launcher/Waits.qml
@@ -1793,6 +1816,7 @@ onLinux {
           > runtime/lag-watch/status.json
         cp ${./Fuzzy.js} Fuzzy.js
         cp ${./launcher/Provider.qml} launcher/Provider.qml
+        cp ${./ProgramGlyphs.js} ProgramGlyphs.js
         cp ${./launcher/Asking.js} launcher/Asking.js
         cp ${./launcher/Numbers.js} launcher/Numbers.js
         cp ${./launcher/Zones.js} launcher/Zones.js
@@ -1865,6 +1889,7 @@ onLinux {
       mkdir -p launcher runtime && chmod 700 runtime
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Heat.js} launcher/Heat.js
@@ -1912,6 +1937,7 @@ onLinux {
       mkdir -p launcher runtime && chmod 700 runtime
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Sounds.js} launcher/Sounds.js
@@ -1981,6 +2007,7 @@ onLinux {
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./DeskLight.qml} DeskLight.qml
       cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Light.qml} launcher/Light.qml
@@ -2037,9 +2064,11 @@ onLinux {
             glyph: 0xf0f3, hue: "program", read: true, missed: false }
         ]
         property var live: ({})
+        property var resting: ({})
         property var waiting: []
         property bool gathered: false
         property var marked: []
+        function pictureOf(notice) { return ""; }
         function mark(id, read) { marked = marked.concat([id]); }
         function seen() {}
         // Who signs a notice, as its card says it: here by the name it
@@ -2202,6 +2231,7 @@ onLinux {
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Applications.qml} launcher/Applications.qml
@@ -2211,6 +2241,7 @@ onLinux {
       cp ${./launcher/Recent.js} launcher/Recent.js
       cp ${./launcher/PastNotices.qml} launcher/PastNotices.qml
       cp ${./launcher/Notice.js} launcher/Notice.js
+      cp ${./NoticeBody.js} NoticeBody.js
       cp ${./launcher/Ago.js} launcher/Ago.js
       cp ${./Words.qml} Words.qml
       cp ${./Files.qml} Files.qml
@@ -2231,10 +2262,11 @@ onLinux {
       # The list programs share, as recent-files prints it: the tester by
       # its name and by its id, one file twice, one of no program here, and
       # one the radio was given, which can't open a file itself, and one the
-      # viewer opened, named by its command as recent-files names it.
-      printf 'Tester\t%s\nnobody-here\t%s\ntester\t%s\nTester\t%s\nradio\t%s\nviewer\t%s\nviewer\t%s\n' \
-        "$HOME/notes.md" "$HOME/lost.md" "$HOME/plan.md" "$HOME/notes.md" "$HOME/song.ogg" \
-        "$HOME/paper.pdf" "$HOME/old.pdf" > $HOME/shared
+      # viewer opened, named by its command as recent-files names it, each
+      # with when, in seconds, the viewer's last with none.
+      printf '%s\t%s\t%s\n' Tester "$HOME/notes.md" 300 nobody-here "$HOME/lost.md" 290 \
+        tester "$HOME/plan.md" 100 Tester "$HOME/notes.md" 50 radio "$HOME/song.ogg" 40 \
+        viewer "$HOME/paper.pdf" 30 viewer "$HOME/old.pdf" "" > $HOME/shared
       export SHARED_LIST=${pkgs.writeShellScript "shared-list" ''cat "$HOME/shared"''}
       # The browser's sites, as chrome-recent-sites prints them, each
       # reading saying which it is.
@@ -2310,6 +2342,7 @@ onLinux {
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${../open-with/FileChooser.qml} launcher/FileChooser.qml
@@ -2352,9 +2385,11 @@ onLinux {
     '';
 
   # Every program an account lists in the launcher, each desktop entry it
-  # shows, wears a mark of its own in launcher/Provider.qml's table, its
-  # logo or the theme's mark for it, never the program mark the rest share,
-  # and each theme mark it names is one the theme has.
+  # shows, wears a mark of its own in ProgramGlyphs.js's table, its logo or
+  # the theme's mark for it, never the program mark the rest share, and
+  # each theme mark it names is one the theme has. Each program a notice's
+  # sender is named as (Notices.qml's senders) is one the table knows, so
+  # its notices wear the mark its row does.
   every-program-wears-its-own-mark =
     let
       home = account graphical;
@@ -2363,8 +2398,8 @@ onLinux {
       );
     in
     pkgs.runCommandLocal "every-program-wears-its-own-mark" { } ''
-      sed -n '/programGlyphs: Object.assign({/,/settings.glyphs/p' ${./launcher/Provider.qml} > table
-      grep -o '"[^"]*": "' table | cut -d '"' -f 2 > known
+      sed -n '/^const table = {/,/^};/p' ${./ProgramGlyphs.js} > table
+      sed -n -E 's/^ *"?([^":]+)"?: ".*/\1/p' table > known
       grep -o '"mark:[^"]*"' table | cut -d : -f 2 | tr -d '"' > named
       bare=""
       for entry in ${home.home.path}/share/applications/*.desktop; do
@@ -2379,6 +2414,12 @@ onLinux {
       while read -r mark; do
         grep -q -x -F "$mark" ${marks} || { echo "No theme mark is named $mark"; exit 1; }
       done < named
+      grep -o 'program: "[^"]*"' ${./Notices.qml} | cut -d '"' -f 2 > senders
+      [ -s senders ] || { echo "Notices.qml names no sender's program"; exit 1; }
+      while read -r program; do
+        grep -q -x -F "$program" known \
+          || { echo "A notice from $program would wear the bell: no mark is known for it"; exit 1; }
+      done < senders
       touch $out
     '';
 
@@ -2408,6 +2449,7 @@ onLinux {
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Runs.qml} launcher/Runs.qml
@@ -2481,12 +2523,15 @@ onLinux {
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/KeyGroups.js} launcher/KeyGroups.js
       cp ${./launcher/Windows.qml} launcher/Windows.qml
       cp ${./launcher/Capture.qml} launcher/Capture.qml
       cp ${./launcher/Recent.js} launcher/Recent.js
+      cp ${./FileFacts.js} FileFacts.js
+      cp ${./When.js} When.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/windows.qml} shell.qml
@@ -2533,6 +2578,7 @@ onLinux {
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Queue.qml} launcher/Queue.qml
@@ -2747,6 +2793,7 @@ onLinux {
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${../people/People.qml} launcher/People.qml
@@ -2960,6 +3007,7 @@ onLinux {
         cp ${./MarkSize.js} MarkSize.js
         cp ${./Columns.js} Columns.js
         cp ${./Signature.qml} Signature.qml
+        cp ${./Cover.qml} Cover.qml
         cp ${../../tests/notice-columns.qml} shell.qml
         ${shellFolderLint}
         QT_SCALE_FACTOR=$scale timeout 60 ${qs} -p shell.qml > said 2>&1 || { cat said; exit 1; }
@@ -3063,6 +3111,7 @@ onLinux {
       cp ${./KeyboardLayer.qml} KeyboardLayer.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Keyboard.qml} launcher/Keyboard.qml
@@ -3126,6 +3175,7 @@ onLinux {
         cp ${./Devices.js} Devices.js
         cp ${./Crossing.js} Crossing.js
         cp ${./launcher/Provider.qml} launcher/Provider.qml
+        cp ${./ProgramGlyphs.js} ProgramGlyphs.js
         cp ${./launcher/Asking.js} launcher/Asking.js
         cp ${./launcher/Numbers.js} launcher/Numbers.js
         cp ${./launcher/Accessories.qml} launcher/Accessories.qml
@@ -3227,6 +3277,22 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml notice.qml
+      touch $out
+    '';
+
+  # A notice's body read once as it arrives, its links kept and every tag
+  # but the spec's escaped, as tests/notice-body.qml holds NoticeBody.js.
+  a-notice-keeps-its-links =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-notice-keeps-its-links" { } ''
+      cp ${../../tests/notice-body.qml} notice-body.qml
+      cp ${./NoticeBody.js} NoticeBody.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml notice-body.qml
       touch $out
     '';
 
@@ -3346,7 +3412,7 @@ onLinux {
       ]);
       marks = lib.unique (
         lib.filter (mark: mark != null) (
-          lib.mapAttrsToList (_: piece: piece.mark) home.jitsusama.quickshell.overview.pieces
+          lib.mapAttrsToList (_: piece: piece.mark) home.jitsusama.quickshell.margin.pieces
         )
       );
       drawn = lib.mapAttrs (_: mark: mark.drawn) home.jitsusama.theme.marks;

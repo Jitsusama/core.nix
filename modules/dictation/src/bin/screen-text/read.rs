@@ -13,7 +13,7 @@ use std::path::Path;
 use dictation::openvino::{Compiled, Core, Input, Priority, Request};
 
 use crate::find::Place;
-use crate::picture::{Picture, dimension, real, whole};
+use dictation::picture::{Picture, dimension, real, whole};
 
 /// The height the recognizer reads a line at.
 const HEIGHT: usize = 48;

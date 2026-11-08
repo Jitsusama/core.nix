@@ -58,6 +58,7 @@ in
         "${recent-files}/bin/recent-files"
         "list"
       ];
+      dated = true;
     }
   ];
 }

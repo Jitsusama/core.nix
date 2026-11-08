@@ -194,7 +194,7 @@ pub fn steps(
     loop {
         let stepped = crate::sys::tick().and_then(|tick| {
             let before = guard.status(tick.wall);
-            guard.step(&tick, &senses(desk.saving()))?;
+            guard.step(&tick, &desk.senses())?;
             let change =
                 crate::notices::change(&before, &guard.status(tick.wall)).or_else(|| untold.take());
             if let Some(change) = change {
@@ -387,6 +387,13 @@ fn block(signals: &[i32]) -> io::Result<libc::sigset_t> {
 pub trait Desk {
     fn saving(&mut self) -> bool;
     fn tell(&mut self, change: &Change) -> Result<(), String>;
+
+    /// What the machine is doing, read from it unless the desk says
+    /// otherwise, as a test's does: read, a busy machine's stalls would
+    /// decide what the guard spares.
+    fn senses(&mut self) -> Senses {
+        senses(self.saving())
+    }
 }
 
 /// What the machine is doing, with `saver` saying whether its person

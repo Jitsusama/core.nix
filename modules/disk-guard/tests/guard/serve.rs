@@ -1,6 +1,7 @@
 use crate::procs::{link, stat, text};
 use disk_guard::config::Config;
-use disk_guard::daemon::{Guard, Places};
+use disk_guard::daemon::{Guard, Places, Senses};
+use disk_guard::moments::{Power, Pressure};
 use disk_guard::notices::Change;
 use disk_guard::serve::{Desk, Unheard, answering, hold, senses, steps, stopping};
 use disk_guard::socket::{Reply, Request, ask};
@@ -206,6 +207,20 @@ impl Desk for Fake {
         }
         self.told.push(change.clone());
         Ok(())
+    }
+
+    /// On the charger and stalled on nothing, whatever the machine running
+    /// the tests is doing: on 8 November a builder swamped on its disk had
+    /// the guard here hold its routine work.
+    fn senses(&mut self) -> Senses {
+        Senses {
+            power: Power {
+                on_charger: true,
+                battery: None,
+            },
+            saver: self.saving(),
+            pressure: Pressure::default(),
+        }
     }
 }
 

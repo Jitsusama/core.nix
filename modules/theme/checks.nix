@@ -21,6 +21,28 @@
       nerd "f075d" != nerd "f075" + "d" && builtins.stringLength (nerd "f075d") == 4
     );
 
+  # No two marks share a glyph unless they mean one thing, so a mark never
+  # asks Joel to remember which of two meanings it has here (Joel, 2026-11-07:
+  # "icon pairs: we need them to be obvious and not require memory"). Heat
+  # and temperature both say how hot, so they share the thermometer.
+  each-mark-means-one-thing =
+    let
+      glyphs = import ./glyphs.nix { inherit lib; };
+      oneMeaning = [
+        [
+          "heat"
+          "temperature"
+        ]
+      ];
+      sharing = lib.filter (names: lib.length names > 1) (
+        lib.attrValues (lib.groupBy (name: glyphs.${name}.glyph) (lib.attrNames glyphs))
+      );
+      twoMeanings = lib.filter (names: !lib.elem (lib.sort lib.lessThan names) oneMeaning) sharing;
+    in
+    holds "each-mark-means-one-thing"
+      "These marks share a glyph but mean different things: ${builtins.toJSON twoMeanings}."
+      (twoMeanings == [ ]);
+
   # A theme that draws text too faint to read doesn't build, by WCAG's ratio
   # or by APCA's lightness contrast. WCAG's black on white is 21:1, and
   # #777777 on white just misses 4.5:1; Osaka Jade's own muted, at 2.90:1, is

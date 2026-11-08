@@ -18,12 +18,29 @@
 # thing's meaning is kept in the service's state by its text, so a thing
 # renamed is made again and the rest never are.
 #
+# Pictures are found by words too: the screenshots, and the camera's
+# pictures where there's a camera, are each looked at once by SigLIP 2's
+# picture tower (sight.nix) as they land, and kept by their path, so
+# typed into, Capture's Recent lists those that look like what's typed
+# below those whose names or words hold it. What a picture is found by is
+# what the model saw in it, never a caption: nothing is said of it but
+# that it was found by its meaning.
+#
 # The shell asks over $XDG_RUNTIME_DIR/daemons/meaning.sock in its daemon
 # interface, only while the launcher shows, and never waits on it.
-{ pkgs, ... }:
+{ config, pkgs, ... }:
 let
   dictation = pkgs.callPackage ../dictation/package.nix { };
   models = pkgs.callPackage ./models.nix { };
+  sight = pkgs.callPackage ./sight.nix { };
+  pictures = "${config.home.homeDirectory}/Pictures";
+  # Where niri's screenshot-path and the shell's region pictures save, and
+  # where the camera's pictures go, as Capture's Recent lists them; its
+  # videos and the screen's recordings aren't pictures.
+  looked = [
+    "${pictures}/Screenshots"
+  ]
+  ++ pkgs.lib.optional (config.jitsusama.camera.device != null) "${pictures}/Camera";
 in
 {
   systemd.user.services.meaning = {
@@ -32,10 +49,14 @@ in
       X-SwitchMethod = "restart";
     };
     Service = {
-      ExecStart = toString [
-        "${dictation}/bin/meaning serve"
-        "%t/daemons/meaning.sock ${models} %S/meaning/meanings"
-      ];
+      ExecStart = toString (
+        [
+          "${dictation}/bin/meaning serve"
+          "%t/daemons/meaning.sock ${models} %S/meaning/meanings"
+          "${sight} %S/meaning/looks"
+        ]
+        ++ looked
+      );
       ExecStopPost = "${pkgs.coreutils}/bin/rm -f %t/daemons/meaning.sock";
       Slice = "background.slice";
       CacheDirectory = "meaning";

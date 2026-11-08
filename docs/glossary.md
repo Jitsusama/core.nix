@@ -228,10 +228,11 @@ or a copy, can be opened, copied or forgotten.
 | This Window | the launcher's first row in Desktop: the window Joel is in | | |
 | wallpaper | the picture behind every window | painting | |
 | notice | a card at the top right saying what a program said | notification | `Notifications.qml`, `org.freedesktop.Notifications` |
+| notice kind | what a notice is about, as its program files it, said in its drawer's eyebrow: message, mail, device, network, status or transfer, with failed or bounced after it when it went wrong | | `notices:kind`, the notification's `category` hint |
 | Do Not Disturb | the setting that holds notices back while it's on | dnd, quiet | `session:quiet` |
 | question | a centred box asking Joel something, such as a password or a yes | | `Polkit.qml`, `Askpass.qml` |
 | mark | one drawn symbol, such as each one in the margin | glyph, icon | `glyphs.nix` |
-| margin | the row of marks at the top of the screen saying what's true now | corner | `Margin.qml`, `overview.pieces` |
+| margin | the row of marks at the top of the screen saying what's true now | corner | `Margin.qml`, `margin.pieces`, `Pieces.qml` |
 | meter | a level shown while it changes, such as the volume | overlay | `Meter.qml` |
 | card | the one frame the launcher, held notices and a notice are drawn in, all it holds the inset from its edge | | `Card.qml` |
 | drawer | the card's continuation out of its right side, a plate about the selected row: what it has beyond its one line | | `Drawer.qml`, a row's `drawer` |

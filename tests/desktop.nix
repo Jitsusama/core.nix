@@ -759,13 +759,13 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         jitsusama.quickshell.reports = true;
         # A camera whose holders a module would name, for the test to
         # write in its place, since the VM has none.
-        jitsusama.quickshell.overview.pieces.camera.holders = [ "camera" ];
+        jitsusama.quickshell.margin.pieces.camera.holders = [ "camera" ];
         # The VM's disk is the host's, which waits for minutes on end while
         # other builds share it, so lag-watch's real windows would put the
         # Lag mark in the margin of every test that reads it. Waiting is
         # marked only after an hour here, longer than any test runs, and
         # the test of the mark writes a wait that long itself.
-        jitsusama.quickshell.overview.pieces.lag.lasts = 3600;
+        jitsusama.quickshell.margin.pieces.lag.lasts = 3600;
         # Something on air lingers in the margin once it goes; a moment is
         # enough to see it, and keeps the test's waits for it to go short.
         jitsusama.quickshell.margin.linger = 2;
@@ -802,10 +802,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         systemd.user.services.tuple-answers.Service.ExecStart =
           "${lib.getExe pkgs.socat} UNIX-LISTEN:%t/tuple-0,fork,unlink-early /dev/null";
         # The screen-text daemon, where Capture's Recent is searched by
-        # what its screenshots say, a stand-in that reads no picture.
-        systemd.user.services.screen-text.Service.ExecStart = lib.mkIf (area == "launcher-goes-places") (
-          lib.mkForce "${standInScreenText} %t/daemons/screen-text.sock %t/screen-text-texts.json"
-        );
+        # what its screenshots say, a stand-in that reads no picture; in
+        # looks too, where it's photographed beside what meaning saw.
+        systemd.user.services.screen-text.Service.ExecStart = lib.mkIf (builtins.elem area [
+          "launcher-goes-places"
+          "looks"
+        ]) (lib.mkForce "${standInScreenText} %t/daemons/screen-text.sock %t/screen-text-texts.json");
         # The meaning daemon would embed every thing on the processor, with
         # no NPU here, beside every test; a stand-in that loads no model
         # answers what the test writes, and the real one is proven in the

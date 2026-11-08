@@ -30,7 +30,10 @@ or launchd, and [`home.nix`][2] the account's.
   healthy, routine upkeep takes what's due every six hours: on the charger or a
   battery over half, ten minutes after boot or resume, however busy the
   machine, since a workstation that's always busy would otherwise never
-  be tidied. It comes at once, too, when an owner ends: the guard looks
+  be tidied. Only an overloaded one, its tasks stalled on the disk, memory
+  or the processors 75% of the time, holds upkeep and the store's routine
+  listing until it recovers; a disk past healthy is answered all the
+  same. It comes at once, too, when an owner ends: the guard looks
   each minute, and a tree newly spent, a new boot, a guard with new
   rules or a path a producer watches saying something new since it last
   ran makes upkeep due, so what an owner leaves never waits hours for the

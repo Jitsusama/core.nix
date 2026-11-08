@@ -118,7 +118,12 @@ ask takes no arguments, so whoever asks can't choose what runs. How the
 last update ended is kept as its line, for the askers to read, in
 `/run/update-to-main/last.json` on NixOS and
 `/var/run/update-to-main.last.json` on a Mac, so it's there though the
-switch restarted whoever asked:
+switch restarted whoever asked. While one runs, its latest line is in
+`running.json` beside it on NixOS and `/var/run/update-to-main.running.json`
+on a Mac, gone once it ends. An asker can end one still fetching or
+building with `update-to-main stop`, and a switch under way runs on. The
+follower stops one itself once it has built for 30 minutes heads main has
+since moved past, so the next ask builds the new ones:
 
 ```nix
 jitsusama.update-to-main = {
@@ -189,7 +194,10 @@ none takes it. A builder takes only pieces asking for what it must have,
 as one kept for big builds does, so with `here` set what the builders
 don't build is built here instead, a few cores at a time and only while
 CPU pressure over the last minute is below `here.busyAt`, 15% unless set;
-a Mac keeps no pressure, so there they always wait.
+a Mac keeps no pressure, so there they always wait. A big build, one
+asking for `big-parallel` as the kernel does, never builds here: it goes to
+the builders first and alone, and while none takes it the machine stays as
+it is.
 
 Code that may go to some builders and not others is named in `kept`, by
 patterns over its pieces' names. Those pieces go only to `kept.builders`,

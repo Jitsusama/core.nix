@@ -10,7 +10,7 @@
 
 use dictation::openvino::{Compiled, Core, Input, Priority, Request};
 
-use crate::picture::{Picture, dimension, real, whole};
+use dictation::picture::{Picture, dimension, real, whole};
 
 /// The detector's one shape, a square tile.
 pub const TILE: usize = 640;
