@@ -1454,11 +1454,17 @@ Provider {
 
     // While one of its answers is shown, as the answer to what's typed, a
     // row in a category's list or a step held, it's asked again as the
-    // daemon's records change.
+    // daemon's records change. A place lists an answer only once it has
+    // parts, which come from the records, so a place holding one of
+    // Machine's whole answers (the launcher's `placed`, from its words
+    // alone) watches too, or Machine's own place would wait for a read
+    // nothing asks. Kept From Resting, which Power holds, is read from
+    // the telemetry rather than the daemon, so it isn't one of them.
     readonly property bool shown: launcher !== null && launcher.open
         && (launcher.answer?.live === provider
             || launcher.held.some(step => step.row.live === provider)
-            || launcher.matches.some(row => row.live === provider))
+            || launcher.matches.some(row => row.live === provider)
+            || launcher.placed.some(id => /^machine:[a-z]+$/.test(id)))
 
     // Whether a Using row can be seen, so the daemon is asked for the
     // programs: the processor's or the memory's parts stepped into, or
@@ -1474,9 +1480,10 @@ Provider {
     // Whether a Disk answer or row is shown, listed or stepped into, so the
     // daemon reads the disks: each read asks an NVMe disk its temperature,
     // a command to the drive, which nothing else Machine shows needs.
-    readonly property bool disksWanted: shown && [launcher.answer,
+    readonly property bool disksWanted: shown && ([launcher.answer,
         ...launcher.held.map(step => step.row), ...launcher.matches]
         .some(row => row?.live === provider && row.about === kinds.disks)
+        || launcher.placed.includes("machine:disk"))
 
     // The processor's telemetry is watched while a Processor answer is
     // listed, shown or stepped into, so what held it back is there once its
