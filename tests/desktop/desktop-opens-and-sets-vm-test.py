@@ -1622,7 +1622,7 @@ def test_a_timer_started_in_the_launcher_rings_as_a_notice_with_it_closed(
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "Start Tea, a 3 s Timer"
     )
-    desktop.photograph("launcher-timer-typed")
+    desktop.shoot("launcher-timer-typed")
     # Return from the find lands on it, since it starts something, and a second does it, the
     # answer becoming the timer it started, counting.
     desktop.land()
@@ -1633,20 +1633,20 @@ def test_a_timer_started_in_the_launcher_rings_as_a_notice_with_it_closed(
     desktop.close_launcher()
     rang = 'qs ipc call notices front | grep -qF \'"signed":"Timers"\''
     machine.wait_until_succeeds(desktop.in_session(rang), timeout=timedelta(seconds=30))
-    desktop.photograph("notice-timer-rung")
+    desktop.shoot("notice-timer-rung")
     kept = desktop.as_account(f"cat {TIMERS_KEPT}")
     assert '"state":"rung"' in kept, kept
     desktop.as_account("qs ipc call notices putAway")
     gone = f"! grep -q timer: {TIMERS_KEPT}"
     machine.wait_until_succeeds(desktop.in_session(gone), timeout=timedelta(seconds=15))
     desktop.as_account("qs ipc call notices seen")
-    # Only the gallery sets more going, for its pictures.
-    if desktop.values["photographs"]:
-        timers_photographed(desktop)
+    # Only the gallery sets more going, for its shots.
+    if desktop.values["shots"]:
+        shoot_the_timers(desktop)
 
 
-def timers_photographed(desktop: Desktop) -> None:
-    """Photograph Timers holding one running, one paused and one rung, at Joel's two scales."""
+def shoot_the_timers(desktop: Desktop) -> None:
+    """Shoot Timers holding one running, one paused and one rung, at Joel's two scales."""
     machine = desktop.machine
     for typed in TIMERS_SHOWN:
         desktop.answer(typed)
@@ -1679,7 +1679,7 @@ def timers_photographed(desktop: Desktop) -> None:
         desktop.as_account("qs ipc call launcher collection timers")
         desktop.launcher_ready()
         desktop.launcher_until(lambda shown: len(shown["rows"]) == len(TIMERS_SHOWN))
-        desktop.photograph(f"launcher-timers-at-{scale.replace('.', '-')}")
+        desktop.shoot(f"launcher-timers-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
     desktop.as_account("niri msg output winit scale 1")
     desktop.as_account("systemctl --user stop timers.service")
