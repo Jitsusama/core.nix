@@ -60,6 +60,7 @@ const STOP = /\.$/;
 // one Joel might pair, so the strongest heard comes first.
 const strongest = Order.live({
     stands: () => 0,
+    // biome-ignore lint/suspicious/noThenProperty: Order.live's next measure, not a promise's.
     then: (a, b) => b.rssi - a.rssi,
     name: device => device.name
 });
