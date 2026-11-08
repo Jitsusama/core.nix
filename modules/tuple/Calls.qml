@@ -122,7 +122,7 @@ Provider {
             key: `tuple:call:${past.missed ? "missed" : "ended"}:${past.since}`,
             name: Log.who(past.people, said),
             note: Log.note(past, now, said),
-            drawer: Log.details(past, now, said),
+            drawer: Log.details(past, said),
             side: first === null ? "" : TuplePeople.how(first).said,
             glyph: Words.glyph("tuple:call", busy ? "busy" : ""),
             hue: past.missed ? "alert" : "person",

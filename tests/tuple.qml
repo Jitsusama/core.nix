@@ -86,6 +86,8 @@ QtObject {
             hoursMinutes: "{hours} h {minutes} min",
             youCalled: "you called",
             called: "{name} called",
+            onCall: "on Tuple \u00b7 call",
+            onMissed: "on Tuple \u00b7 missed call",
             rang: "Who Rang",
             with: "With",
             email: "Email",
@@ -166,7 +168,7 @@ QtObject {
         const drawers = [
             ["a call with two Joel began", { people: named("Ana", "Ben"),
                 since: at(2, 14, 10), ended: at(2, 14, 52), missed: false, caller: "" }, {
-                eyebrow: "Monday 2 November", title: "Ana and Ben",
+                eyebrow: "on Tuple \u00b7 call", eyebrowNames: true, title: "Ana and Ben",
                 facts: [{ label: "Who Rang", value: "you called" },
                     { label: "With", value: "Ana, Ben" },
                     { label: "Emails", value: "ana@example.com, ben@example.com" }],
@@ -175,7 +177,7 @@ QtObject {
             ["a call after Ada's ring", { people: [{ id: "7", name: "Ada Brightwater",
                 email: "ada@example.com" }], since: at(3, 7, 19), ended: at(3, 7, 28),
                 missed: false, caller: "7" }, {
-                eyebrow: "Tuesday 3 November", title: "Ada Brightwater",
+                eyebrow: "on Tuple \u00b7 call", eyebrowNames: true, title: "Ada Brightwater",
                 facts: [{ label: "Who Rang", value: "Ada Brightwater called" },
                     { label: "Email", value: "ada@example.com" }],
                 body: ""
@@ -184,7 +186,8 @@ QtObject {
                 .map((one, index) => index === 1
                     ? Object.assign(one, { email: "b@example.com" }) : one),
                 since: at(3, 11, 0), ended: at(3, 11, 30), missed: false, caller: "1" }, {
-                eyebrow: "Tuesday 3 November", title: "Ana and 2 others",
+                eyebrow: "on Tuple \u00b7 call", eyebrowNames: true,
+                title: "Ana and 2 others",
                 facts: [{ label: "Who Rang", value: "b@example.com called" },
                     { label: "With", value: "Ana, Cy" },
                     { label: "Emails", value: "ana@example.com, b@example.com, cy@example.com" }],
@@ -192,13 +195,13 @@ QtObject {
             }],
             ["a call nobody saw begin, kept before callers were", { people: named("Ana"),
                 since: at(2, 14, 10), ended: at(2, 14, 52), missed: false }, {
-                eyebrow: "Monday 2 November", title: "Ana",
+                eyebrow: "on Tuple \u00b7 call", eyebrowNames: true, title: "Ana",
                 facts: [{ label: "Email", value: "ana@example.com" }],
                 body: ""
             }],
             ["a call whose caller was never in it", { people: named("Ana"),
                 since: at(2, 14, 10), ended: at(2, 14, 52), missed: false, caller: "9" }, {
-                eyebrow: "Monday 2 November", title: "Ana",
+                eyebrow: "on Tuple \u00b7 call", eyebrowNames: true, title: "Ana",
                 facts: [{ label: "Email", value: "ana@example.com" }],
                 body: ""
             }],
@@ -206,21 +209,21 @@ QtObject {
                 since: new Date(2025, 10, 3, 9, 12, 0).getTime(),
                 ended: new Date(2025, 10, 3, 9, 12, 42).getTime(), missed: true,
                 caller: null }, {
-                eyebrow: "Monday 3 November 2025", title: "Ana",
+                eyebrow: "on Tuple \u00b7 missed call", eyebrowNames: true, title: "Ana",
                 facts: [{ label: "Who Rang", value: "missed" },
                     { label: "Email", value: "ana@example.com" }],
                 body: ""
             }],
             ["a missed call from nobody known", { people: [], since: at(3, 9, 12),
                 ended: at(3, 9, 13), missed: true }, {
-                eyebrow: "Tuesday 3 November", title: "Someone",
+                eyebrow: "on Tuple \u00b7 missed call", eyebrowNames: true, title: "Someone",
                 facts: [{ label: "Who Rang", value: "missed" }],
                 body: ""
             }]
         ];
         for (const [what, past, expected] of drawers) {
             asked++;
-            const got = JSON.stringify(Tuple.details(past, now, said));
+            const got = JSON.stringify(Tuple.details(past, said));
             if (got !== JSON.stringify(expected))
                 failures.push(`${what}'s drawer held ${got}, not ${JSON.stringify(expected)}`);
         }

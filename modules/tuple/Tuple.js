@@ -156,11 +156,10 @@ function rang(past, said) {
     return caller === undefined ? "" : filled(said.called, { name: who([caller], said) });
 }
 
-// A past call's drawer, each thing said once (VKCF3Z, 2026-11-08): the day
-// it began over its name, as a transcript's says it, "Tuesday 3 November",
-// with the year only when it isn't this one, and its time left to the
-// row's note, which cut the eyebrow short at the drawer's least; who
-// rang whom first, left out where it isn't known; With, by name, only for
+// A past call's drawer, each thing said once (VKCF3Z, 2026-11-08): over
+// its name where it was and what it is, as every eyebrow says them, "on
+// Tuple \u00b7 call" or "missed call", in Note since Tuple's name is the
+// world's, when it was being the row's note's; who rang whom first, left out where it isn't known; With, by name, only for
 // two or more, since the name already says one; and their addresses, as
 // Tuple knew them. How long it went on and when it ended are left to the
 // row's note, "9 min \u00b7 07:19", and so is how long a missed call
@@ -169,10 +168,7 @@ function rang(past, said) {
 // Tuple's server carries it are Tuple's own, as is Tuple's id for each,
 // a number Joel never sees in Tuple, used only to call one who has no
 // address. `said` gives the labels too.
-function details(past, now, said) {
-    const at = new Date(past.since);
-    const thisYear = at.getFullYear() === new Date(now).getFullYear();
-    const day = said.date(at, thisYear ? "dddd d MMMM" : "dddd d MMMM yyyy");
+function details(past, said) {
     const names = past.people.map(one => one.name).filter(name => name !== "");
     const emails = past.people.map(one => one.email).filter(email => email !== "");
     const facts = [];
@@ -188,7 +184,8 @@ function details(past, now, said) {
             value: emails.join(", ") });
     }
     return {
-        eyebrow: day,
+        eyebrow: past.missed ? said.onMissed : said.onCall,
+        eyebrowNames: true,
         title: who(past.people, said),
         facts,
         body: ""
