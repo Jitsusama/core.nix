@@ -134,9 +134,9 @@ accounts the YubiKey signs in to.
    YubiKey still held from the lost one, enrols the new one and proves it,
    and only then wipes the lost one's slots, so the disk never has fewer
    ways in.
-2. Turn the new YubiKey's OTP off and make its SSH spare, as in [Make the SSH
-   Keys][3]: `ykman config usb --disable OTP`, then `ssh-keygen -t
-   ed25519-sk -O resident -O verify-required`.
+2. Make the new YubiKey's SSH spare, as in [Make the SSH Keys][3]:
+   `ssh-keygen -t ed25519-sk -O resident -O verify-required`. Its OTP can
+   stay on, since the machine refuses a YubiKey's keyboard.
 3. On GitHub, delete the lost YubiKey's SSH key, the one named
    `<account>@yubikey`, and add the new one's.
 4. Every site where it held a passkey: delete that passkey and add the new

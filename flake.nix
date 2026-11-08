@@ -344,7 +344,7 @@
         v4l2loopback = ./modules/v4l2loopback/nixos.nix;
         wifid = ./modules/wifid/nixos.nix;
         wpa_supplicant = ./modules/wpa_supplicant/nixos.nix;
-        yubikey = ./modules/yubikey/system.nix;
+        yubikey = ./modules/yubikey/nixos.nix;
         zathura = ./modules/zathura/nixos.nix;
         zsh = ./modules/zsh/nixos.nix;
 
