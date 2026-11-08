@@ -1373,6 +1373,13 @@ in
     console = "T";
     means = "a timer, counting down to when it rings";
   };
+  # The filled stopwatch, since duration's outline is only how long
+  # something takes, where this one counts up while Joel watches.
+  stopwatch = {
+    glyph = nerd "f13ab";
+    console = "W";
+    means = "the stopwatch, counting up from when it was started, with its laps";
+  };
   zone = {
     glyph = nerd "f01e7";
     console = "z";

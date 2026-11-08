@@ -3094,6 +3094,23 @@ Scope {
             livesLater.restart();
     }
 
+    // A row whose side runs on, as a running stopwatch's count, says it as
+    // `counts(now)`, which its row draws afresh from this clock each tenth
+    // of a second while one is listed: only that side changes, so its
+    // provider makes no rows again and the list isn't put together anew
+    // (Y2YBTS, 2026-11-08). Its `side` stays what it said when made, for
+    // the column's width and what the tests read.
+    property real tenth: Date.now()
+    readonly property bool counting: open
+        && matches.some(row => typeof row?.counts === "function")
+
+    Timer {
+        interval: 100
+        repeat: true
+        running: root.counting
+        onTriggered: root.tenth = Date.now()
+    }
+
     Timer {
         id: livesLater
 
@@ -7998,7 +8015,8 @@ Scope {
                                     plainName: entry.modelData.name
                                     finds: covered ? [] : Fuzzy.runs(matched)
                                     chord: entry.modelData.chord
-                                    side: entry.modelData.side
+                                    side: typeof entry.modelData.counts === "function"
+                                        ? entry.modelData.counts(root.tenth) : entry.modelData.side
                                     sideItems: entry.modelData.sideItems ?? []
                                     count: entry.modelData.count ?? ""
                                     kind: root.held.length === 0 ? root.kindOf(entry.modelData) : ""

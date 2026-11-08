@@ -149,11 +149,14 @@ Scope {
     // What rows show, as `changedTo` compares them; the first row keyed as
     // the next held step says what it holds too: a thing's verbs, or, below
     // a row that isn't nested, a verb's targets, as the launcher steps in.
+    // A side that runs on by itself (`counts`, Launcher.qml) changes nothing
+    // the rows say, since the launcher draws it afresh.
     function says(rows, held, things) {
         let open = held.length > 0;
         return rows.map(row => {
+            const side = typeof row.counts === "function" ? "" : row.side ?? "";
             const own = [row.is ?? "", row.key ?? "", row.name ?? "", row.verb ?? "",
-                row.side ?? "", row.count ?? "", row.note ?? "", row.glyph ?? "",
+                side, row.count ?? "", row.note ?? "", row.glyph ?? "",
                 row.depth ?? 0]
                 .join("\u241f");
             if (!open || row.key !== held[0])

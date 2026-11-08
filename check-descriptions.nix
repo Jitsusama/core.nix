@@ -111,8 +111,9 @@
   a-timer-is-read-from-what-is-typed = ''
     a timer's span and name are read from what's typed after "timer" however it's written, a span
     of nothing or past a week is unfit, the time left reads as a clock counting whole seconds up,
-    a span is said in its largest units, and timers are listed rung first, then by what each has
-    left
+    a span is said in its largest units, timers are listed rung first, then by what each has
+    left, and the stopwatch's count runs while it runs, reads to the tenth rounded down, and lists
+    its laps newest first, each its own stretch
   '';
   a-trusted-cable-finds-machines = ''
     a trusted cable's network is a stranger's cable with mDNS on, matched by its card and picked
@@ -2258,8 +2259,9 @@
     the timers daemon tells every watch of a timer started and rings it as a critical notice once
     its end passes; the notice's Again sets it going afresh and putting it away ends it, ending one
     rung takes its notice back, a ring with no server to take it is said once one comes, what's
-    kept outlasts the daemon, one that ended meanwhile ringing late, and an ask it can't do is
-    refused
+    kept outlasts the daemon, one that ended meanwhile ringing late, an ask it can't do is
+    refused, and the stopwatch runs, laps, stops and resets, outlasts the daemon, and is heard
+    only by watches of its kind
   '';
   timers-passes-clippy = ''
     clippy finds nothing in the timers daemon or its tests

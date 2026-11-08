@@ -463,6 +463,46 @@ fn a_ring_lost_with_its_server_is_said_to_the_one_after_it() {
 }
 
 #[test]
+fn the_stopwatch_runs_laps_and_stops_and_outlasts_the_daemon() {
+    let folder = folder("stopwatch");
+    let bus = Bus::new(&folder);
+    let running = Running::start(&folder, &bus);
+    let mut client = running.client();
+    let all = client.ask(&json!({"id": "all", "ask": "watch", "kind": ["timer", "stopwatch"]}));
+    assert_eq!(all["records"][0]["state"], "unstarted");
+    let mut timers = running.client();
+    timers.ask(&json!({"id": "timers", "ask": "watch", "kind": "timer"}));
+    let mut watching = running.client();
+    watching.ask(&json!({"id": "it", "ask": "watch", "kind": "stopwatch"}));
+    assert_eq!(
+        client.ask(&json!({"id": 1, "ask": "run"}))["records"][0]["state"],
+        "running"
+    );
+    assert_eq!(watching.change()["changed"][0]["state"], "running");
+    let lapped = client.ask(&json!({"id": 2, "ask": "lap"}));
+    assert_eq!(lapped["records"][0]["laps"].as_array().unwrap().len(), 1);
+    let stopped = client.ask(&json!({"id": 3, "ask": "stop"}));
+    assert_eq!(stopped["records"][0]["state"], "stopped");
+    let counted = stopped["records"][0]["counted"].as_u64().unwrap();
+    // A watch of timers alone heard none of it: the first it hears is a
+    // timer's.
+    client.ask(&json!({"id": 4, "ask": "start", "span": 600_000}));
+    assert_eq!(timers.change()["changed"][0]["key"], "timer:1");
+    running.stop();
+    let running = Running::start(&folder, &bus);
+    let mut client = running.client();
+    let kept = client.ask(&json!({"id": "get", "ask": "get", "keys": ["stopwatch"]}));
+    assert_eq!(kept["records"][0]["state"], "stopped");
+    assert_eq!(kept["records"][0]["counted"], counted);
+    assert_eq!(kept["records"][0]["laps"].as_array().unwrap().len(), 1);
+    let reset = client.ask(&json!({"id": 5, "ask": "reset"}));
+    assert_eq!(reset["records"][0]["state"], "unstarted");
+    let code = |answer: Value| answer["error"]["code"].as_str().unwrap().to_owned();
+    assert_eq!(code(client.ask(&json!({"id": 6, "ask": "lap"}))), "refused");
+    running.stop();
+}
+
+#[test]
 fn an_ask_it_cant_do_is_refused() {
     let folder = folder("refused");
     let bus = Bus::new(&folder);
