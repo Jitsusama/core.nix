@@ -1,8 +1,8 @@
 // How the launcher says where a pi session stands and lays a list of them
 // out, run in Qt's own JavaScript engine, the one the shell runs it in.
 // The `the-launcher-lays-sessions-under-their-orchestrators` check copies
-// modules/quickshell/launcher/SessionRow.js and SessionDrawer.js beside
-// this file and runs
+// modules/quickshell/launcher/SessionRow.js, SessionDrawer.js and
+// Holders.js beside this file and runs
 // `qml -platform offscreen session-row.qml`. Each list of sessions keeps
 // one order of how they stand (needs you, working, in line, listening,
 // paused, parked), and Agents sits each session under the one orchestrating it, a
@@ -11,6 +11,7 @@
 // and what it spent at its right, and its drawer the rest.
 import QtQuick
 import "SessionDrawer.js" as SessionDrawer
+import "Holders.js" as Holders
 import "SessionRow.js" as SessionRow
 import "Reading.js" as Reading
 
@@ -546,7 +547,7 @@ QtObject {
             { address: "TREE", folder: "modules", changed: 20,
                 presence: { questInfo: { id: "TIDE" }, cwd: "/home/ada/trees/tidepool/modules/" } }
         ];
-        const owns = holder => SessionRow.owners(working, holder).map(one => one.address)
+        const owns = holder => Holders.owners(working, holder).map(one => one.address)
             .join(" ");
         const cases = [
             ["a quest's workspace, the session that worked last first",
@@ -574,14 +575,14 @@ QtObject {
 
         // Who a talk goes to outlasts how it stands, so a narrow row keeps
         // "Listening Quest" whole rather than cutting it to "Quest".
-        const talking = SessionRow.talkSide("Listening Quest", "listening");
+        const talking = Holders.talkSide("Listening Quest", "listening");
         const keeps = Reading.keptItems(talking, 15, words => words.length).join(" | ");
         if (keeps !== "Listening Quest")
             failures.push(`a narrow talk row keeps "${keeps}", not its session's title`);
         const roomy = Reading.keptItems(talking, 40, words => words.length).join(" \u00b7 ");
         if (roomy !== "Listening Quest \u00b7 listening")
             failures.push(`a roomy talk row says "${roomy}"`);
-        if (SessionRow.talkSide("Reef", "").length !== 1)
+        if (Holders.talkSide("Reef", "").length !== 1)
             failures.push("a talk row with no state says an empty item");
 
         for (const failure of failures)

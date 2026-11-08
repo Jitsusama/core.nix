@@ -1129,6 +1129,7 @@ onLinux {
     in
     pkgs.runCommandLocal "the-launcher-lays-sessions-under-their-orchestrators" { } ''
       cp ${../../tests/session-row.qml} session-row.qml
+      cp ${./launcher/Holders.js} Holders.js
       cp ${./launcher/SessionRow.js} SessionRow.js
       cp ${./launcher/Order.js} Order.js
       cp ${./launcher/SessionDrawer.js} SessionDrawer.js
@@ -2051,6 +2052,9 @@ onLinux {
         cp ${./launcher/Machine.js} launcher/Machine.js
         cp ${./launcher/Machine.qml} launcher/Machine.qml
         cp ${./launcher/Order.js} launcher/Order.js
+        cp ${./launcher/HomeNetwork.js} launcher/HomeNetwork.js
+        cp ${./launcher/Holders.js} launcher/Holders.js
+        cp ${./launcher/SessionRow.js} launcher/SessionRow.js
         cp ${./launcher/Sensors.qml} launcher/Sensors.qml
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
         cp ${./Words.qml} Words.qml

@@ -1473,6 +1473,19 @@
       "glyph": "offer"
     },
     {
+      "id": "verb:disk:talk",
+      "command": "talk",
+      "in": "machine:disk:filling",
+      "name": "Talk to Its Session",
+      "verb": "talk",
+      "glyph": "reply",
+      "ask": "what to tell {name}?",
+      "said": {
+        "about": "(The disk guard says {path} holds {size}.)",
+        "sent": "told {name}"
+      }
+    },
+    {
       "id": "verb:disk:keep",
       "command": "snooze",
       "in": "machine:disk:filling",
