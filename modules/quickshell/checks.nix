@@ -1925,6 +1925,7 @@ onLinux {
         cp ${./launcher/Interfaces.js} launcher/Interfaces.js
         cp ${./launcher/Machine.js} launcher/Machine.js
         cp ${./launcher/Machine.qml} launcher/Machine.qml
+        cp ${./launcher/Order.js} launcher/Order.js
         cp ${./launcher/Sensors.qml} launcher/Sensors.qml
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
         cp ${./Words.qml} Words.qml

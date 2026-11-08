@@ -19,6 +19,7 @@ PLACES = {
     "Accessories.qml": "live",
     "Applications.qml": "returned",
     "Displays.qml": "choices",
+    "Machine.qml": "amounts",
     "Networks.qml": "live",
     "Orchestrators.qml": "stream",
     "Person.js": "returned",
