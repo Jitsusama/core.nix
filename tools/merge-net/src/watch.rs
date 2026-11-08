@@ -1091,6 +1091,12 @@ fn broke(
     head: &str,
     test: &str,
 ) -> Result<(), String> {
+    // A round taken up again after a restart hears its failures again, and
+    // one already found fixed forward was searched a second time on
+    // 8 November, where runs stalled and held main.
+    if state.found("fixed-forward", test, head) {
+        return Ok(());
+    }
     let merges = to_search(world, state, base, head, test)?;
     // Whether main's newest head fixed it is asked beside the search's first
     // step, and the search waits for the answer before its second. On
@@ -1138,10 +1144,19 @@ fn broke(
     {
         return Ok(());
     }
+    // A search ends with no merge only when a run it needed stalled or no
+    // builder took it, so the test is kept to run again at the next head
+    // without holding switches.
     let Some(commit) = bad else {
         state.set_hold(&json!({
             "test": test, "bad": Value::Null, "since": base, "head": head, "at": now(),
+            "unsettled": true,
         }))?;
+        state.say(&format!(
+            "{test} fails at {}, but its search couldn't tell which merge broke it, since a \
+             run stalled or no builder took it: switches go on, and it runs again at the next head",
+            short(head)
+        ));
         state.find(&json!({
             "kind": "failed", "test": test, "commit": head, "since": base,
             "owner_pr": Value::Null, "log": log, "revert_error": "couldn't tell which merge broke it",
@@ -2145,6 +2160,49 @@ mod tests {
             3,
             "one failure and two stalls, and no bisect"
         );
+    }
+
+    #[test]
+    fn a_search_its_runs_stalled_through_holds_no_switch() {
+        let state = state("search-stalls");
+        let world = Stand {
+            head: "m3".into(),
+            merges: names("m1 m2 m3"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("m3", "vm-a", &[1, 1])
+        .exits("m1", "vm-a", &[STALL, STALL])
+        .exits("m2", "vm-a", &[STALL, STALL]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("m3".into())
+        );
+        assert!(world.reverted.lock().unwrap().is_empty());
+        assert!(
+            !state.hold_file().exists(),
+            "nothing is known broken, so a switch isn't held"
+        );
+        let kept = state.hold().expect("the test is kept to run again");
+        assert_eq!(kept["test"], "vm-a");
+        assert_eq!(kept["unsettled"], true);
+    }
+
+    #[test]
+    fn a_failure_already_found_fixed_forward_is_not_searched_again() {
+        let state = state("heard-again");
+        state
+            .find(&json!({ "kind": "fixed-forward", "test": "vm-a", "commit": "m2" }))
+            .unwrap();
+        let world = Stand {
+            head: "m2".into(),
+            merges: names("m1 m2"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        };
+        broke(&world, &state, "s", "m2", "vm-a").unwrap();
+        assert!(world.built.lock().unwrap().is_empty(), "nothing runs");
+        assert!(state.hold().is_none());
     }
 
     #[test]

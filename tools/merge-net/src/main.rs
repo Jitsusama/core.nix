@@ -330,6 +330,8 @@ fn status() -> ExitCode {
     println!("passed  {}", name(passed));
     println!("seen    {}", name(seen));
     match state.hold() {
+        // One its search couldn't settle leaves switches alone, and says so.
+        Some(hold) if hold["unsettled"] == true => println!("unsettled {hold}, switches go on"),
         Some(hold) => println!("hold    {hold}"),
         None => println!("hold    none"),
     }
