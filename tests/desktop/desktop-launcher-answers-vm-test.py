@@ -1015,7 +1015,7 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
         # GeoClue says, and the clock follows it as it would any fix.
         said = {"v": 2, "latitude": 51.05, "longitude": -114.07, "accuracy": 1000,
                 "when": int(time.time()), "place": "Lighthouse, Alberta",
-                "zone": "America/Edmonton", "hand": True}  # fmt: skip
+                "zone": "America/Edmonton", "country": "Canada", "hand": True}  # fmt: skip
         desktop.as_account(
             f"mkdir -p ~/.local/state/whereabouts && echo '{json.dumps(said)}' > {pin}"
         )
@@ -1029,14 +1029,14 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
         )
         location(lambda row: row["side"] == "Lighthouse, Alberta")
         desktop.follow()
-        # Inside, in the design's order, saying it was set by hand.
-        desktop.launcher_until(
-            lambda shown: (
-                shown["rows"] == ["Town", "How It Knows", "Set It by Hand", "Find It Again", "Copy"]
-            )
-        )
+        # Inside, in the design's order, saying it was set by hand, and in which country.
+        inside = [
+            "Town", "Country", "How It Knows", "Located", "Set It by Hand", "Find It Again", "Copy",
+        ]  # fmt: skip
+        desktop.launcher_until(lambda shown: shown["rows"] == inside)
         reads = [thing["reads"] for thing in desktop.showing()["things"]]
         assert "How It Knows \u00b7 set by hand" in reads, reads
+        assert "Country \u00b7 Canada" in reads, reads
         # Found again, the pin goes, and here is what GeoClue says, which
         # in the VM is nothing yet.
         desktop.down_to("Find It Again")
