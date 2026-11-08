@@ -13,7 +13,8 @@ rustPlatform.buildRustPackage {
       ./Cargo.toml
       ./Cargo.lock
       ./src
-      ./tests
+      # The scenarios alone: the check scripts beside them aren't the crate's.
+      ./tests/guard
     ];
   };
   cargoLock.lockFile = ./Cargo.lock;
