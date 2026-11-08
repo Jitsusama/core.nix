@@ -1344,6 +1344,13 @@ in
     console = "o";
     means = "the time somewhere, and how far it's ahead of here or behind";
   };
+  # An alarm clock, since a timer is a span counted down to a ring, where
+  # duration's stopwatch is only how long something takes.
+  timer = {
+    glyph = nerd "f0020";
+    console = "T";
+    means = "a timer, counting down to when it rings";
+  };
   zone = {
     glyph = nerd "f01e7";
     console = "z";

@@ -108,6 +108,12 @@
   a-theme-changes-everything = ''
     another theme leaves none of the first's colours behind, but in the web kit's other look
   '';
+  a-timer-is-read-from-what-is-typed = ''
+    a timer's span and name are read from what's typed after "timer" however it's written, a span
+    of nothing or past a week is unfit, the time left reads as a clock counting whole seconds up,
+    a span is said in its largest units, and timers are listed rung first, then by what each has
+    left
+  '';
   a-trusted-cable-finds-machines = ''
     a trusted cable's network is a stranger's cable with mDNS on, matched by its card and picked
     first, and a machine naming none gets no such network
@@ -2182,6 +2188,16 @@
   timekeeping-passes-clippy = ''
     clippy finds nothing in timekeeping, which reads chronyd's command port for Time, or its
     tests
+  '';
+  timers-are-kept-and-rung = ''
+    the timers daemon tells every watch of a timer started and rings it as a critical notice once
+    its end passes; the notice's Again sets it going afresh and putting it away ends it, ending one
+    rung takes its notice back, a ring with no server to take it is said once one comes, what's
+    kept outlasts the daemon, one that ended meanwhile ringing late, and an ask it can't do is
+    refused
+  '';
+  timers-passes-clippy = ''
+    clippy finds nothing in the timers daemon or its tests
   '';
   tuple-call-holds-the-call = ''
     tuple-call follows Tuple's stream only while Tuple's daemon answers, at once when its log says
