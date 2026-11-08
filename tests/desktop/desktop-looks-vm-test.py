@@ -3045,13 +3045,13 @@ def buds(shown: dict[str, Any]) -> list[bool]:
 # looks once Nearby is stepped into, and the other is listed with its signal as Quickshell's
 # patch says it (modules/quickshell/bluetooth-rssi-and-failures.patch), never paired. BlueZ
 # starts here after the shell, as a restarted bluetoothd does, which the shell takes up
-# (bluetooth-finds-bluez-late.patch). bluetoothd stopping, as a switch stops it, says nothing of
-# its devices, and comes back knowing none it hadn't paired, so the shell forgets them as it goes
-# and keeps only what BlueZ has on return: with both radios hidden across the restart, Buds stays
-# in Nearby, still open, gone, as Steady keeps a row, rather than heard on with its last signal,
-# while Nearby looks again; shown once more, Buds is heard afresh, by whichever radio the shell
-# now takes for its own, so as the same row or beside the one gone. Last of the area's tests,
-# since BlueZ starting moves what the launcher holds.
+# (bluetooth-finds-bluez-late.patch). bluetoothd restarting, as a switch restarts it, says
+# nothing of its devices as it stops, and comes back knowing none it hadn't paired, so the shell
+# forgets them as it goes and keeps only what BlueZ has on return: with both radios hidden
+# across the restart, Buds stays in Nearby, still open, gone, as Steady keeps a row, rather than
+# heard on with its last signal, while Nearby looks again; shown once more, Buds is heard afresh,
+# by whichever radio the shell now takes for its own, so as the same row or beside the one gone.
+# Last of the area's tests, since BlueZ starting moves what the launcher holds.
 
 
 def test_nearby_lists_a_device_it_hears_at_each_scale(
@@ -3104,8 +3104,9 @@ def test_nearby_lists_a_device_it_hears_at_each_scale(
         desktop.launcher_until(lambda shown: buds(shown) == [False], timeout=timedelta(seconds=60))
         # Hidden at once, then stopped well before BlueZ would forget Buds for going unheard.
         radios_seen(desktop, seen=False)
-        machine.succeed("systemctl stop bluetooth.service")
-        machine.succeed("systemctl start bluetooth.service")
+        # Restarted, not stopped then started: a BlueZ client on the bus (WirePlumber's) may ask
+        # for it the moment it's gone, which has the bus start it again and cancel a stop.
+        machine.succeed("systemctl restart bluetooth.service")
         radios_up(desktop)
         desktop.launcher_until(lambda shown: buds(shown) == [True], timeout=timedelta(seconds=30))
         looks_soon(desktop)
