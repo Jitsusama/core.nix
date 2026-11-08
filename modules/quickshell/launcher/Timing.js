@@ -253,6 +253,16 @@ function onNow(timers, watch, now) {
     };
 }
 
+// Whether Now's row must be told the time each second: only while the
+// launcher is open, where its side is drawn, and something counts then.
+// The margin wears only the mark, which says how things stand and not
+// the time, so a clock ticking with the launcher closed would wake the
+// shell each second for nothing (Y2YBTS, 2026-11-08).
+function ticks(timers, watch, shown) {
+    return shown && (timers.some(record => record.state === "running")
+        || watch?.state === "running");
+}
+
 // The stopwatch's laps, newest first, each { number, lap, at }: its
 // number from the first, its own stretch, and the count when it was
 // marked.

@@ -18,11 +18,18 @@ Piece {
 
     readonly property var said: Words.of("timer").said ?? {}
     readonly property var watch: HeldTimers.stopwatch
-    readonly property var standing: Timing.onNow(HeldTimers.timers, watch, clock.date.getTime())
-    // Only while something counts does its clock tick, each second, as
-    // the time left is told.
-    readonly property bool counting: HeldTimers.timers.some(record => record.state === "running")
-        || watch?.state === "running"
+    // The moment it says, read afresh at each tick and as the launcher
+    // opens, since a clock stopped while it was closed holds an old date.
+    readonly property real moment: {
+        void clock.date;
+        void HeldTimers.showing;
+        return Date.now();
+    }
+    readonly property var standing: Timing.onNow(HeldTimers.timers, watch, moment)
+    // Its clock ticks each second only while the launcher is open and
+    // something counts (Timing.js's ticks): the margin wears only the mark,
+    // which doesn't say the time.
+    readonly property bool counting: Timing.ticks(HeldTimers.timers, watch, HeldTimers.showing)
 
     function named(record) {
         if (record.key === "stopwatch")
@@ -35,8 +42,8 @@ Piece {
     wants: standing.rung
     now: standing.rung
     title: Words.name("timers")
-    value: standing.first !== null ? Timing.side(standing.first, clock.date.getTime(), said)
-        : Timing.tenths(Timing.counted(watch, clock.date.getTime()))
+    value: standing.first !== null ? Timing.side(standing.first, moment, said)
+        : Timing.tenths(Timing.counted(watch, moment))
     // The stopwatch alone counts to the tenth, drawn afresh by the
     // launcher (Launcher.qml's counts), as its row in Timers is.
     counts: standing.first === null && watch?.state === "running"

@@ -47,6 +47,14 @@ ShellRoot {
         value: launcher.open
     }
 
+    // Now's row tells a timer's time left only while the launcher is open
+    // to show it (pieces/Timers.qml).
+    Binding {
+        target: HeldTimers
+        property: "showing"
+        value: launcher.open
+    }
+
     // Sessions opened behind the lock are placed once it's let go, since
     // niri refuses every move while locked (Sessions.qml).
     Binding {

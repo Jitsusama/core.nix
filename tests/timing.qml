@@ -164,6 +164,14 @@ QtObject {
             [true, false, null, ["stopwatch"]]);
         check(failures, "and is named last", onNow([tea], running),
             [true, false, "timer:1", ["timer:1", "stopwatch"]]);
+        check(failures, "a running timer ticks Now's row while it's open",
+            Timing.ticks([tea], null, true), true);
+        check(failures, "and never while the launcher is closed",
+            Timing.ticks([tea], running, false), false);
+        check(failures, "nor while nothing counts", Timing.ticks([held, eggs], stopped, true),
+            false);
+        check(failures, "the stopwatch alone running ticks it", Timing.ticks([], running, true),
+            true);
 
         if (failures.length > 0) {
             for (const failure of failures)
