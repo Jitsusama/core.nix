@@ -1053,8 +1053,15 @@ QtObject {
         machine("a rate", Machine.rate(12000), "12.0 kB/s");
         machine("a clock from kilohertz", [4700000, 400000].map(Machine.hertz),
             ["4.70 GHz", "400 MHz"]);
-        machine("three significant digits", [0.04, 1.234, 12.34, 123.4].map(Machine.digits),
-            ["0.0400", "1.23", "12.3", "123"]);
+        // Every measure takes the one rule: three significant digits, zeros
+        // kept, a carry into the next digit, grouped past three whole
+        // digits, and the real minus under nothing.
+        machine("three significant digits", [0.04, 1.234, 12.34, 123.4, 0.9997, 1234, -3.2]
+            .map(value => Numbers.significant(value)),
+            ["0.0400", "1.23", "12.3", "123", "1.00", "1,230", "\u22123.20"]);
+        machine("three significant digits, grouped and pointed as set",
+            Numbers.significant(1234.5, ".", ",") + " " + Numbers.significant(5.2, ".", ","),
+            "1.230 5,20");
         // Two rates say which is which, and none while both are still.
         machine("rates both ways", Machine.both(12000, 0), "12.0 kB/s in \u00b7 0 B/s out");
         machine("rates both still", Machine.both(0, 0), "none");

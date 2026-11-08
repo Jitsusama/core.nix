@@ -7,31 +7,19 @@
 // as its own telemetry says, and the processor's own sensor among its
 // chip's. Machine.qml says the figures.
 .pragma library
+.import "Numbers.js" as Numbers
 
-// A measure keeps three significant digits, its trailing zeros too, and
-// takes the next unit past 999 (docs/design.md, Set, not styled): "915
-// MB", "1.52 GB", "4.70 GHz". Every amount of bytes, memory's and a
+// A measure keeps three significant digits, its trailing zeros too, by
+// the launcher's one rule (Numbers.significant), and takes the next unit
+// past 999 (docs/design.md, Set, not styled): "915 MB", "1.52 GB", "4.70
+// GHz". Every amount of bytes, memory's and a
 // disk's alike, is in the decimal units the files and Programs already
 // use, converted from bytes, so one page never mixes two families
 // (VKCF3Z, 2026-11-07).
-const SIGNIFICANT = 3;
 const STEP = 1000;
 // Past this a figure rounds to four digits, so it takes the next unit.
 const ROUNDS_UP = 999.5;
 const BYTES = ["B", "kB", "MB", "GB", "TB", "PB"];
-
-// A figure to three significant digits: "915", "1.52", "0.04".
-function digits(value) {
-    const size = Math.abs(value);
-    if (size === 0) {
-        return "0";
-    }
-    const whole = Math.floor(Math.log10(size)) + 1;
-    const fixed = value.toFixed(Math.max(0, SIGNIFICANT - whole));
-    // Rounding can carry into another digit, as 0.9997 does to 1.000.
-    const carried = Math.floor(Math.log10(Math.abs(Number(fixed)))) + 1;
-    return carried > whole ? value.toFixed(Math.max(0, SIGNIFICANT - carried)) : fixed;
-}
 
 // A figure in the units it's counted in, stepping a thousand at a time
 // from the first: bytes in whole bytes below a kilobyte.
@@ -42,12 +30,10 @@ function measure(value, units) {
         scaled /= STEP;
         at += 1;
     }
-    // A figure can round up to a thousand once scaled, as 999.7 kB does.
-    let said = at === 0 && units === BYTES ? String(Math.round(scaled)) : digits(scaled);
-    if (Number(said) >= STEP && at < units.length - 1) {
-        said = digits(scaled / STEP);
-        at += 1;
-    }
+    // Below ROUNDS_UP a figure rounds to three digits at most, so it never
+    // reads a thousand of its unit: 999.7 kB has stepped to "1.00 MB".
+    const said = at === 0 && units === BYTES ? String(Math.round(scaled))
+        : Numbers.significant(scaled);
     return `${said} ${units[at]}`;
 }
 

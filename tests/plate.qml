@@ -189,9 +189,11 @@ QtObject {
         check("a scale is a multiple", [2, 1.25, 1.5, 1.75].map(Screens.scale).join(" ")
             === "2\u00d7 1.25\u00d7 1.5\u00d7 1.75\u00d7",
             [2, 1.25, 1.5, 1.75].map(Screens.scale).join(" "));
-        check("density takes three figures", Screens.density(2880, 300) === "244 ppi"
-            && Screens.density(1920, 527) === "92.5 ppi" && Screens.density(1920, 0) === "",
-            `${Screens.density(2880, 300)}, ${Screens.density(1920, 527)}`);
+        check("density takes three figures, its zeros kept",
+            Screens.density(2880, 300) === "244 ppi" && Screens.density(1920, 527) === "92.5 ppi"
+            && Screens.density(1920, 508) === "96.0 ppi" && Screens.density(1920, 0) === "",
+            `${Screens.density(2880, 300)}, ${Screens.density(1920, 527)}, `
+            + `${Screens.density(1920, 508)}`);
 
         const on = panel();
         check("a screen on says what it runs past its row, where it sits and what it offers",

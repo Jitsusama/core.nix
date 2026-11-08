@@ -335,7 +335,7 @@ Provider {
     }
 
     function ms(value) {
-        return `${pointed(Machine.digits(value))} ms`;
+        return `${Numbers.significant(value, settings.group, settings.point)} ms`;
     }
 
     // A long time, as Interfaces says one: "3 days, 2 hours".
@@ -1259,7 +1259,8 @@ Provider {
                 name: named("disk:queue"),
                 side: `${disk.in_flight}`,
                 note: Machine.items([disk.queued > 0 ? says("disk:queue", "queued", {
-                    queued: pointed(Machine.digits(disk.queued)) }) : "",
+                    queued: Numbers.significant(disk.queued, settings.group,
+                        settings.point) }) : "",
                     disk.queue_depth > 0 ? says("disk:queue", "depth", {
                         depth: disk.queue_depth }) : ""])
             }));
