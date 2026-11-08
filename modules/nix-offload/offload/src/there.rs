@@ -1269,7 +1269,7 @@ pub fn source(folder: &Path, scratch: &Path, pinned: Option<&str>) -> Result<Sou
         .filter(|dir| !dir.is_empty());
     let commit = match pinned {
         Some(commit) => commit.to_owned(),
-        None => committed(&top, scratch).map_err(&not)?,
+        None => committed(&top, scratch).map_err(not)?,
     };
     let base = ["@{upstream}", "origin/main"]
         .iter()
