@@ -498,3 +498,7 @@ function closedAt(endedAt, now, said, day) {
     return String(said[today ? "closedAt" : "closedOn"] ?? "").replace("{time}", time)
         .replace("{day}", today ? "" : day(ended));
 }
+
+function owners(_sessions, _holder) {
+    return [];
+}
