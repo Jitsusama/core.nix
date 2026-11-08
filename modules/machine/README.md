@@ -2,7 +2,8 @@
 
 How this machine is doing, held ready for the shell: a Rust program,
 `machine`, that reads the kernel's files and asks UDisks for each disk's
-health, and answers over `$XDG_RUNTIME_DIR/daemons/machine.sock` in
+health, UPower for each battery's times, logind how the machine sleeps
+and fwupd for each device's firmware, and answers over `$XDG_RUNTIME_DIR/daemons/machine.sock` in
 version 1 of the shell's daemon interface (hello, get, list, watch,
 unwatch, health). [`src/main.rs`][main] says how it reads and when;
 [`src/lib.rs`][lib] how a record names its figures, with its unit in its
@@ -27,6 +28,12 @@ A tree, `tree:<pid>`, is a process and every process under it, by each
 one's parent: a program's drawer watches its own pid's, so what it
 started counts as its own. A process that started since the read before
 counts all its time, and a pid given again counts from its new start.
+
+Each bus is asked on a thread of its own, only while a kind it gives is
+watched: UDisks once a minute, UPower every 5 seconds, logind every 2,
+and fwupd once a minute and at once each time it says something
+changed. A chip's labels and limits are read once, until the chips
+listed change, since some answer every read through slow firmware.
 
 ## Every Figure, and Where It Shows
 
@@ -74,10 +81,31 @@ units, or named here as left out with the reason.
 |                 | time past warning and critical heat          | Health's Too Hot For                      |
 |                 | critical warnings, when it was asked         | Health's Warnings, its note               |
 | `boot:<id>`     | when it started, time asleep, idle share     | Uptime, Asleep, Idle, Started             |
-|                 | kernel release and build                     | Kernel, its Release and Build             |
+|                 | kernel release and build                     | Linux, its Release and Build              |
 | `using:cpu:N`   | each program's share, its processes          | Processor's Using It                      |
 | `using:memory:N`| each program's resident memory, processes    | Memory's Using It                         |
 | `tree:<pid>`    | its share, memory, processes, threads, pids  | a program's drawer, watching it           |
+| `processor:0`   | throttles: package and each core, count, time, longest | Heat's Throttled                |
+| `sensor:<chip>` | each temperature, low, high, critical, emergency, alarm | Heat, each part by what it measures |
+|                 | each fan's speed, least, most, aim, power, mode | Heat's fans                            |
+|                 | each voltage, current and power, with limits | Heat's part's drawer                      |
+| `zone:<type>`   | temperature, policy, mode, each trip point   | Heat, for a part no chip gives; drawer    |
+| `cooling:<type>`| how many, each one's state, the most         | Heat's fans and Processor's drawer        |
+| `supply:<name>` | charge, energy, design, health, cycles       | Power's Charge, Energy, Health, Cycles    |
+|                 | volts, amps, watts, design voltage           | Power's Drawing, Voltage                  |
+|                 | charge type and those offered, limits        | Power's Charge Type, Charge Limit         |
+|                 | maker, model, serial, made, temperature      | Power's Model, Made, Temperature          |
+|                 | a port's USB type, roles, PD revision, partner | Power's Charger, each port              |
+|                 | UPower's state, warning, times, rate         | Power's headline                          |
+| `sleep:main`    | mode and those offered, successes, failures  | Keep Awake's Sleep                        |
+|                 | failures by step, last device, step, errno   | Sleep's Failed                            |
+|                 | last, longest and all hardware sleep         | Sleep's drawer                            |
+|                 | logind: idle, since, idle action and delay   | Keep Awake's headline                     |
+|                 | every inhibitor, the last sleep's start, end | Keep Awake's Held By, Last Slept          |
+| `firmware:<id>` | name, vendor, versions, flags, problems      | Firmware, each device                     |
+|                 | the update offered, or fwupd's words for none | Firmware's row, its note                 |
+|                 | the last update's state, time, version       | Firmware's Last Updated, at the restart   |
+| `firmware:host` | security level, product, fwupd's version     | Firmware's drawer                         |
 
 ## Left Out, and Why
 
@@ -108,6 +136,19 @@ units, or named here as left out with the reason.
   costs as a whole; Using It names programs apart. A tree lists its
   pids, so a drawer counts once a process two watched trees hold, but
   not their figures.
+- **The processor package's power.** Its energy counter is root's alone,
+  so the processor's own telemetry daemon gives it, and Heat reads it
+  there.
+- **Which cooling device each thermal zone drives.** They're the
+  firmware's wiring, and nothing Joel acts on; each device's state shows.
+- **fwupd's devices with no name.** They're pins it keeps for its own
+  checks, with no version and nothing to update.
+- **The last sleep before the daemon started.** logind says a sleep as
+  it happens and keeps none, so it's kept from the daemon's start; time
+  asleep since boot is `boot:<id>`'s, whole.
+- **A sensor's reading the chip can't give.** A sensor saying nothing, or
+  a temperature no part could reach (an unused sensor's 65,261 degrees),
+  is left out rather than shown.
 
 [main]: src/main.rs
 [lib]: src/lib.rs

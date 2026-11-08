@@ -523,7 +523,7 @@ fn the_sensors_zones_and_cooling_say_every_reading() {
     assert_eq!(fan["power_ratio"], json!(0.502), "128 of 255");
     assert_eq!(fan["mode"], "automatic");
     assert_eq!(fans["fans"][1]["rpm"], json!(0), "a stopped fan says so");
-    assert_eq!(fans["fans"][1]["label"], "fan2");
+    assert_eq!(fans["fans"][1]["label"], Value::Null, "no label made up");
     let port = record(records, "sensor:ucsi_source_psy_USBC000:001");
     assert_eq!(port["part"], "port");
     assert_eq!(port["voltages"][0]["volts"], json!(20.0));
@@ -547,6 +547,8 @@ fn the_sensors_zones_and_cooling_say_every_reading() {
     let processor = client.ask(&json!({"id": 2, "ask": "get", "keys": ["processor:0"]}));
     let throttled = &processor["records"][0]["throttled"];
     assert_eq!(throttled["cores_count"], json!(6), "each core counted once");
+    assert_eq!(throttled["cores"][1]["core"], json!(16));
+    assert_eq!(throttled["cores"][1]["count"], json!(2));
     assert_eq!(
         throttled["package_count"],
         json!(1161),

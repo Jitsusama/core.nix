@@ -108,9 +108,56 @@ fn release(said: &Value) -> Value {
 /// none, as fwupd said it.
 pub type Offered = Result<Option<Value>, String>;
 
+/// How an update fwupd kept in its history ended, by `FwupdUpdateState`'s
+/// number, as its own `ToString` names it (libfwupd/fwupd-enums.rs).
+const UPDATE_STATES: [&str; 6] = [
+    "unknown",
+    "pending",
+    "success",
+    "failed",
+    "needs-reboot",
+    "failed-transient",
+];
+
+/// The newest update fwupd's history keeps for each device, by its id:
+/// how it ended, when, to which version, and fwupd's words for why it
+/// failed. Firmware says from it when a device was last updated, and
+/// which version waits for the restart.
+pub fn history(entries: &[Value]) -> BTreeMap<String, Value> {
+    let mut newest: BTreeMap<String, &Value> = BTreeMap::new();
+    for entry in entries {
+        let Some(id) = entry["DeviceId"].as_str() else {
+            continue;
+        };
+        let when = |each: &Value| each["Modified"].as_u64().or(each["Created"].as_u64());
+        if newest.get(id).is_none_or(|kept| when(entry) >= when(kept)) {
+            newest.insert(id.to_owned(), entry);
+        }
+    }
+    newest
+        .into_iter()
+        .map(|(id, entry)| {
+            let said = json!({
+                "state": entry["UpdateState"]
+                    .as_u64()
+                    .and_then(|s| UPDATE_STATES.get(usize::try_from(s).ok()?))
+                    .copied(),
+                "at_s": entry["Modified"].as_u64().or(entry["Created"].as_u64()),
+                "version": entry["Releases"][0]["Version"].as_str(),
+                "error": entry["UpdateError"].as_str(),
+            });
+            (id, said)
+        })
+        .collect()
+}
+
 /// Each device fwupd names, a device with no name (a GPIO pin it keeps
 /// for its own checks) left out, with what's offered for it.
-pub fn records(devices: &[Value], offered: &BTreeMap<String, Offered>) -> Vec<Value> {
+pub fn records(
+    devices: &[Value],
+    offered: &BTreeMap<String, Offered>,
+    history: &BTreeMap<String, Value>,
+) -> Vec<Value> {
     devices
         .iter()
         .filter_map(|device| {
@@ -147,6 +194,7 @@ pub fn records(devices: &[Value], offered: &BTreeMap<String, Offered>) -> Vec<Va
                 "modified_at_s": device["Modified"].as_u64(),
                 "update": update,
                 "no_update": reason,
+                "last_update": history.get(id).cloned(),
             }))
         })
         .collect()
@@ -194,7 +242,19 @@ mod tests {
             ),
             ("b2".to_owned(), Err("No releases found".to_owned())),
         ]);
-        let found = records(&devices, &offered);
+        let kept = history(&[
+            json!({"DeviceId": "a1", "UpdateState": 2, "Modified": 100,
+                "Releases": [{"Version": "1.1.0"}]}),
+            json!({"DeviceId": "a1", "UpdateState": 4, "Modified": 200,
+                "Releases": [{"Version": "1.2.0"}]}),
+        ]);
+        let found = records(&devices, &offered, &kept);
+        assert_eq!(
+            found[0]["last_update"]["state"], "needs-reboot",
+            "the newest kept"
+        );
+        assert_eq!(found[0]["last_update"]["version"], "1.2.0");
+        assert_eq!(found[1]["last_update"], Value::Null);
         assert_eq!(found.len(), 2, "a device with no name is left out");
         assert_eq!(found[0]["update"]["version"], "1.3.0");
         assert_eq!(found[0]["update"]["urgency"], "high");

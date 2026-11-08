@@ -104,11 +104,11 @@ fn numbered(files: &[String], kind: &str) -> Vec<u32> {
 fn chip(root: &Root, kept: &mut Kept, folder: &str, key: &str, name: &str) -> Value {
     let files = root.names(folder);
     let lists = |file: &str| files.iter().any(|f| f == file);
-    let mut label = |kind: &str, n: u32| {
-        kept.said(root, &format!("{folder}/{kind}{n}_label"))
-            .unwrap_or_else(|| format!("{kind}{n}"))
-    };
-    let labels: Vec<(String, u32, String)> = ["temp", "fan", "in", "curr", "power"]
+    // A sensor its chip doesn't label is null, never a name made up for
+    // it, so the shell can tell a fan two chips both report by the one
+    // that names it.
+    let mut label = |kind: &str, n: u32| kept.said(root, &format!("{folder}/{kind}{n}_label"));
+    let labels: Vec<(String, u32, Option<String>)> = ["temp", "fan", "in", "curr", "power"]
         .iter()
         .flat_map(|kind| numbered(&files, kind).into_iter().map(move |n| (*kind, n)))
         .map(|(kind, n)| (kind.to_owned(), n, label(kind, n)))
@@ -117,7 +117,7 @@ fn chip(root: &Root, kept: &mut Kept, folder: &str, key: &str, name: &str) -> Va
         labels
             .iter()
             .find(|(k, m, _)| k == kind && *m == n)
-            .map_or_else(String::new, |(_, _, l)| l.clone())
+            .and_then(|(_, _, l)| l.clone())
     };
     let now = |file: String| root.said(&format!("{folder}/{file}"));
     let mut fixed = |file: String| kept.said(root, &format!("{folder}/{file}"));
@@ -351,7 +351,22 @@ pub fn throttled(root: &Root, cpus: &[(u32, Option<u32>)]) -> Value {
         .iter()
         .max_by_key(|(n, _)| at(*n, "package_throttle_count").unwrap_or(0))
         .map_or(first.0, |(n, _)| *n);
+    // Each core by its first processor, as each processor sharing a core
+    // counts the same slowing, so Heat can say which core slowed most.
+    let each: Vec<Value> = cores
+        .iter()
+        .map(|(core, n)| {
+            json!({
+                "core": core,
+                "cpu": n,
+                "count": at(*n, "core_throttle_count"),
+                "ms": at(*n, "core_throttle_total_time_ms"),
+                "longest_ms": at(*n, "core_throttle_max_time_ms"),
+            })
+        })
+        .collect();
     json!({
+        "cores": each,
         "cores_count": sum("core_throttle_count"),
         "cores_ms": sum("core_throttle_total_time_ms"),
         "cores_longest_ms": most("core_throttle_max_time_ms"),

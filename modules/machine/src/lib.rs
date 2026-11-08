@@ -11,6 +11,10 @@
 //! it doesn't have: a figure the machine can't say is null, never a guess.
 //! Words are the shell's.
 
+// A power supply's record names over forty figures in one `json!`, past
+// the macro's default depth.
+#![recursion_limit = "256"]
+
 pub mod boot;
 pub mod disk;
 pub mod firmware;

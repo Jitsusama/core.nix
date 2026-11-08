@@ -740,7 +740,16 @@ fn fwupd(connection: &zbus::blocking::Connection) -> Vec<Value> {
         };
         offered.insert(id.to_owned(), said);
     }
-    records.extend(firmware::records(&devices, &offered));
+    // fwupd answers an empty history with an error, which is no history.
+    let history = proxy
+        .call::<_, _, Dicts>("GetHistory", &())
+        .map(|entries| entries.iter().map(as_json).collect::<Vec<_>>())
+        .unwrap_or_default();
+    records.extend(firmware::records(
+        &devices,
+        &offered,
+        &firmware::history(&history),
+    ));
     records
 }
 
