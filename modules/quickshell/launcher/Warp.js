@@ -193,7 +193,7 @@ function settingsPart(shaped, override, settings, said) {
             entry("settings:split-tunnel:host", one.value, text(one.description) ? one.description : ""))
             .concat(listOf(split.ip_list).map((one) => entry("settings:split-tunnel:network",
                 one.value, text(one.description) ? one.description : "")));
-        holding(parts[parts.length - 1], entries);
+        holding(parts.at(-1), entries);
     }
     if (typeof shaped.switch_locked === "boolean") {
         add("switch-locked", "switch_locked", { side: onOff(shaped.switch_locked, said) });
@@ -363,11 +363,9 @@ function trafficPart(tunnel, settings, said) {
 // and no part says is only this, each for its reason:
 // - `tunnel.on` while it's true, since State already says the link is up;
 // - a reason's figure in a unit other than percent or milliseconds, which
-//   warp-cli hasn't been seen to give, so there's no unit to say it in;
-// - the split tunnel's hosts and networks themselves, which the record
-//   only counts, and a history of latency and loss to spark, which it
-//   doesn't keep: both WARP's drawer's, still to come (modules/warp's
-//   AGENTS.md).
+//   warp-cli hasn't been seen to give, so there's no unit to say it in.
+// The history the record doesn't keep, to spark latency, loss and traffic,
+// is the shell's, kept while WARP is shown (saw and drawn).
 // What warp-cli gives that the record leaves out, and why, is in
 // modules/warp/contract/README.md.
 function tunnelParts(tunnel, settings, said) {
@@ -472,7 +470,7 @@ function drawn(parts, seen, settings, said) {
     }
     const eyebrow = worded(said, "eyebrow");
     const times = seen.times ?? [];
-    const span = times.length > 1 ? (times[times.length - 1] - times[0]) / SECOND : 0;
+    const span = times.length > 1 ? (times.at(-1) - times[0]) / SECOND : 0;
     const reads = (values) => ({ id: "reads", value: worded(said, "reads", {
         count: count(values.length, settings),
         span: worded(said, "seconds", { figure: count(Math.round(span), settings) }),
@@ -492,9 +490,9 @@ function drawn(parts, seen, settings, said) {
         traffic: seen.inward.length > 1 ? {
             graph: sparkOf(seen.inward.map((value, at) => value + seen.outward[at]), 0),
             drawer: { eyebrow, facts: [
-                { id: "in", value: rateOf(seen.inward[seen.inward.length - 1], settings),
+                { id: "in", value: rateOf(seen.inward.at(-1), settings),
                     figure: sparkOf(seen.inward, 0) },
-                { id: "out", value: rateOf(seen.outward[seen.outward.length - 1], settings),
+                { id: "out", value: rateOf(seen.outward.at(-1), settings),
                     figure: sparkOf(seen.outward, 0) },
             ] },
         } : null,
