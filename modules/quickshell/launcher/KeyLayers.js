@@ -28,16 +28,19 @@ const CHROME_SITE = /^chrome-.+-[^-]+$/;
 // a site window gone on to another of Google's, or else by the site and
 // path the window was opened for, named in its app id, as
 // chrome-docs.google.com__document_ does. Mail's title ends with Gmail, or
-// with a Workspace's own name before Mail.
+// with a Workspace's own name before Mail. Those that end a title with the
+// program's name are tried first, since Calendar's and Meet's begin it and
+// a document may be named for either: "Team - Calendar - Q4 - Google Docs"
+// is a Docs page.
 const GOOGLE_SITES = [
     ["google-mail", /^chrome-mail\.google\.com__/u, / - (Gmail|[^-]+ Mail)$/u],
-    ["google-calendar", /^chrome-calendar\.google\.com__/u,
-        /^(Google Calendar|.+ - Calendar)( - |$)/u],
-    ["google-meet", /^chrome-meet\.google\.com__/u, /^Meet( - |: |$)/u],
     ["google-docs", /^chrome-docs\.google\.com__document/u, / - Google Docs$/u],
     ["google-sheets", /^chrome-docs\.google\.com__spreadsheets/u, / - Google Sheets$/u],
     ["google-slides", /^chrome-docs\.google\.com__presentation/u, / - Google Slides$/u],
-    ["google-drive", /^chrome-drive\.google\.com__/u, / - Google Drive$/u]
+    ["google-drive", /^chrome-drive\.google\.com__/u, / - Google Drive$/u],
+    ["google-calendar", /^chrome-calendar\.google\.com__/u,
+        /^(Google Calendar|.+ - Calendar)( - |$)/u],
+    ["google-meet", /^chrome-meet\.google\.com__/u, /^Meet( - |: |$)/u]
 ];
 const CHROME_NAMED = / - Google Chrome$/u;
 

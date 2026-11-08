@@ -423,6 +423,13 @@ QtObject {
             ["google-chrome", "My Drive - Google Drive - Google Chrome",
                 ["google-drive", "chrome", "desktop"]],
             ["google-mail", "", ["google-mail", "chrome", "desktop"]],
+            // A document named for Calendar or Meet is the program it's in.
+            ["google-chrome", "Team - Calendar - Q4 - Google Docs - Google Chrome",
+                ["google-docs", "chrome", "desktop"]],
+            ["google-chrome", "Meet - agenda - Google Sheets - Google Chrome",
+                ["google-sheets", "chrome", "desktop"]],
+            ["chrome-docs.google.com__presentation_-Default",
+                "Google Calendar - roadmap - Google Slides", ["google-slides", "chrome", "desktop"]],
             // A page only mentioning one, and another program's document
             // named for one, are neither.
             ["google-chrome", "Calendar apps compared - Google Chrome", ["chrome", "desktop"]],
