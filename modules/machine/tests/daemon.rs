@@ -17,6 +17,10 @@ use serde_json::{Value, json};
 
 /// A machine of two cores, one disk with an encrypted volume over its
 /// second partition, a loop device, and two programs.
+#[expect(
+    clippy::too_many_lines,
+    reason = "a fixture machine reads best whole, a file a line, as the kernel lays it out"
+)]
 fn machine(root: &Path) {
     let write = |path: &str, text: &str| {
         let file = root.join(path.trim_start_matches('/'));

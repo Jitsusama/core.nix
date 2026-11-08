@@ -1,31 +1,36 @@
 // How this machine is doing, answered in the field, each thing with its
 // parts a step in:
 //
-// - "cpu", "processor", "cores" or "load": how busy the processors are, and
-//   their Cores (one reading each, oldest core first, with its kind, clock
-//   and temperature), which are Maxed, where their Time was Spent, the
-//   Pressure on them (how long something waited for one), the Clock and
+// Each thing's parts lead with what moves most and end with what
+// describes it, its Model last (VKCF3Z, 2026-11-07); words.json lists
+// them in that order, and `ordered` keeps it.
+//
+// - "cpu", "processor", "cores" or "load": how busy the processors are,
+//   where their Time was Spent, the Pressure on them (how long something
+//   waited for one), how often they Switch tasks, take Interrupts and
+//   Start processes, their Cores (one reading each, oldest core first,
+//   with its kind, clock and temperature), which are Maxed, the Clock and
 //   its range, base, driver, governor, preference and turbo, what Held it
-//   Back over the last second and each core held (as its own telemetry
-//   says, ProcessorTelemetry.qml), the Temperature, the programs Using
-//   it, the Load, how many tasks are Running, how often it Switches tasks,
-//   takes Interrupts and Starts processes, the NPU's Load, the Kinds of
-//   core and the Model with its family, microcode and caches, then what
-//   Kept it From Resting over the last ten seconds and each part that
-//   did. Both telemetry rows stand whenever the telemetry answers, at 0%
-//   when nothing holds it back or keeps it from resting, so the rows
+//   Back over the last second and each core held, and what Kept it From
+//   Resting over the last ten seconds and each part that did (as its own
+//   telemetry says, ProcessorTelemetry.qml), the Temperature, the
+//   programs Using it, the Load, how many tasks are Running, the NPU's
+//   Load, the Kinds of core and the Model with its family, microcode and
+//   caches. Both telemetry rows stand whenever the telemetry answers, at
+//   0% when nothing holds it back or keeps it from resting, so the rows
 //   under them don't move.
-// - "memory" or "ram": what's Used, the Pressure, the Swap, what's Cached,
-//   what it's Kept By, what's Committed, how often pages Fault, the
-//   Swapping, the programs killed for it (Out of Memory), the programs
-//   Using it, and its Type, each module as the machine read it at boot.
+// - "memory" or "ram": what's Used, the Pressure, how often pages Fault,
+//   the Swapping and Paging, the programs Using it, the Swap, what's
+//   Cached, what it's Held By, what's Committed, the programs killed for
+//   it (Out of Memory), Every Count the kernel keeps, and its Type, each
+//   module as the machine read it at boot.
 // - "disk", "storage" or "free space": the Space each disk has, as the disk
 //   guard says it (pieces/Disk.qml, so that fact has one home), or the file
 //   system where no guard watches, then how fast the disk is Reading,
-//   Writing, Discarding and Flushing, how Busy it is, each kind of
-//   request's Latency, its Queue, the Pressure on it, its Temperature,
-//   Health and Model, with its firmware, link, size, block size and
-//   scheduler.
+//   Writing, Discarding and Flushing, the Pressure on it, how Busy it is,
+//   each kind of request's Latency, its Queue, its Temperature, Health,
+//   File Systems and Model, with its firmware, kind, link, size, block
+//   size and scheduler.
 // - "uptime": how long the machine has been up, and of that how long it
 //   was Asleep and its processors Idle, when it Started and its Kernel.
 //

@@ -1617,13 +1617,18 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
     desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Core 0", "Copy"])
     desktop.close_launcher()
-    # What kept it from resting comes and goes, so it's the last part, before
-    # the step's Copy, saying the part that kept it most, and each part that
-    # did a step in.
+    # What kept it from resting stands beside what held it back, both there
+    # whenever the telemetry answers, saying the part that kept it most,
+    # and each part that did a step in.
     desktop.answer("processor")
     desktop.launcher_until(lambda shown: shown["kind"] == "answer")
     desktop.follow()
-    desktop.launcher_until(lambda shown: shown["rows"][-2:] == ["Kept From Resting", "Copy"])
+    desktop.launcher_until(
+        lambda shown: (
+            "Held Back" in shown["rows"]
+            and shown["rows"][shown["rows"].index("Held Back") + 1] == "Kept From Resting"
+        )
+    )
     desktop.type_in("kept", "Kept From Resting")
     desktop.launcher_until(
         lambda shown: (

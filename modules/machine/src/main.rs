@@ -14,7 +14,7 @@
 //! so a figure stands for now as soon as it can. Each read tells every
 //! watch the records it changed, all in one line. The programs are read
 //! only while someone watches `using`, since reading every process costs
-//! the most. Each disk's health is asked of UDisks once a minute while
+//! the most. Each disk's health is asked of `UDisks` once a minute while
 //! disks are watched, on a thread of its own, so a slow bus never holds a
 //! read back.
 
@@ -133,9 +133,9 @@ struct Daemon {
     /// When each kind was last read.
     read_at: HashMap<String, Instant>,
     watches: Vec<Watch>,
-    /// Each disk's health as UDisks last said it.
+    /// Each disk's health as `UDisks` last said it.
     health: BTreeMap<String, Value>,
-    /// How asking UDisks stands: "answering", or "refused" and why.
+    /// How asking `UDisks` stands: "answering", or "refused" and why.
     udisks: Value,
     took: VecDeque<u64>,
     since: u64,
@@ -349,7 +349,7 @@ fn watch_loop(shared: &Shared) {
             if age + LEEWAY >= every {
                 due.insert(kind.clone());
             } else {
-                next = next.min(every - age);
+                next = next.min(every.saturating_sub(age));
             }
         }
         if due.is_empty() {
@@ -366,7 +366,7 @@ fn watch_loop(shared: &Shared) {
     }
 }
 
-/// Asks UDisks for each disk's health once a minute while disks are
+/// Asks `UDisks` for each disk's health once a minute while disks are
 /// watched, and at once when they start to be.
 fn health_loop(shared: &Shared) {
     let mut bus: Option<zbus::blocking::Connection> = None;
@@ -429,9 +429,9 @@ fn health_loop(shared: &Shared) {
     }
 }
 
-/// A disk's health as its controller tells UDisks, with no prompt: every
+/// A disk's health as its controller tells `UDisks`, with no prompt: every
 /// attribute of its SMART log, and its controller's own figures, or null
-/// for a disk UDisks keeps none for, as one that isn't NVMe.
+/// for a disk `UDisks` keeps none for, as one that isn't NVMe.
 fn smart(connection: &zbus::blocking::Connection, name: &str) -> Result<Value, String> {
     let udisks = "org.freedesktop.UDisks2";
     let block = zbus::blocking::Proxy::new(
