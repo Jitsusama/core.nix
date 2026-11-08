@@ -3016,6 +3016,9 @@ Scope {
             // empty place says inside (VKCF3Z, 2026-11-08).
             count: lead === "" && rest === "" ? source.collection.none ?? ""
                 : [lead, rest].filter(part => part !== "").join(" \u00b7 "),
+            // Its count is a run of what it holds, given way by whole names;
+            // any other row's words are items, which a comma doesn't part.
+            names: true,
             // A home row never draws its chord: the foot teaches it as the
             // next time's way while it's the cursor row, furthest from
             // Return, and the row's far end is its say's. Drawn on Now,
@@ -8389,6 +8392,7 @@ Scope {
                                     count: entry.modelData.count ?? ""
                                     countItems: entry.modelData.countItems ?? []
                                     sideWhole: !!entry.modelData.sideWhole
+                                    names: entry.modelData.names === true
                                     kind: root.held.length === 0 ? root.kindOf(entry.modelData) : ""
                                     landed: selected && root.landedOn(entry.modelData)
                                         ? `\u21b5 ${root.verbOf(entry.modelData)}` : ""

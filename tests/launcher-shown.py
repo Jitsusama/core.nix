@@ -38,6 +38,7 @@ SHOWN = (
     "what",
     "ask",
     "empty",
+    "none",
     "said",
     "sure",
     "asked",

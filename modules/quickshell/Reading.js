@@ -290,16 +290,18 @@ function wholeWords(words, room, width) {
 // Where it's several items, its first, where it alone doesn't fit, isn't
 // said at all, since no ellipsis is drawn on a note, never "found
 // by\u2026" (VKCF3Z, 2026-11-08); words that are one item, a sentence,
-// give way at a whole word, as any words do.
-function wholeItemsFromEnd(words, room, width) {
-    const items = words.split(ITEMS_APART);
+// give way at a whole word, as any words do. `apart` is what parts the
+// items, the dot unless a run of names is given way by its commas.
+function wholeItemsFromEnd(words, room, width, apart) {
+    const between = apart ?? ITEMS_APART;
+    const items = words.split(between);
     if (items.length === 1) {
         return wholeWords(words, room, width);
     }
-    while (items.length > 0 && width(items.join(ITEMS_APART)) > room) {
+    while (items.length > 0 && width(items.join(between)) > room) {
         items.pop();
     }
-    return items.join(ITEMS_APART);
+    return items.join(between);
 }
 
 // A drawer's eyebrow as it's drawn in `room`: one given as items
@@ -320,14 +322,13 @@ function eyebrowOf(drawer, room, width) {
 // that doesn't fit alone isn't said; words of items between dots give
 // way as a note's items do.
 function wholeNamesFromEnd(words, room, width) {
-    const names = words.split(NAMES_APART);
-    while (names.length > 1 && width(names.join(NAMES_APART)) > room) {
-        names.pop();
+    if (words.includes(NAMES_APART)) {
+        const kept = wholeItemsFromEnd(words, room, width, NAMES_APART);
+        if (kept.includes(NAMES_APART)) {
+            return kept;
+        }
     }
-    if (names.length > 1) {
-        return names.join(NAMES_APART);
-    }
-    const one = names[0];
+    const one = words.split(NAMES_APART)[0];
     if (one.includes(ITEMS_APART)) {
         return wholeItemsFromEnd(one, room, width);
     }

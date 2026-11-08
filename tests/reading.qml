@@ -102,6 +102,16 @@ QtObject {
         expect("a name whole or not at all", ran(run, 40) === "", ran(run, 40));
         // Words with no run in them give way as a note's items do.
         expect("a note in a run's place", ran(note, 410) === noted(note, 410), ran(note, 410));
+        // A note whose first item doesn't fit says nothing, never a piece
+        // of it with an ellipsis.
+        expect("a note's first item whole or not at all", noted(note, 100) === "",
+            noted(note, 100));
+        // Only a run of names is parted at its commas: any other words
+        // keep theirs, as a side's "370 Mb/s down, 20 up" does.
+        const side = "370 Mb/s down, 20 up";
+        expect("a comma in a note parts nothing", noted(side, 200) === side, noted(side, 200));
+        expect("and gives way at a whole word", noted(side, 150) === "370 Mb/s down\u2026",
+            noted(side, 150));
         // The path's steps: the program's ask, a folder's path, the place,
         // a step's mark between each, three characters wide. Each gives
         // way at whole names, never a piece of one (VKCF3Z, 2026-11-05:
