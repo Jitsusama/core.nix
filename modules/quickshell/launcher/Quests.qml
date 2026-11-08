@@ -19,7 +19,7 @@ import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Order.js" as Order
-import "Machines.js" as Listed
+import "RealmMachines.js" as Listed
 
 Provider {
     id: provider

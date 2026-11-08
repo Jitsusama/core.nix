@@ -1179,14 +1179,14 @@ onLinux {
   # Machines says every machine of the realms this one links, this one
   # first, each in words with how it stands, and its drawer from what
   # moves most to the model's identifier, leaving out what no node said, as
-  # tests/machines.qml holds launcher/Machines.js to it in Qt's own engine.
+  # tests/machines.qml holds launcher/RealmMachines.js to it in Qt's own engine.
   the-launcher-says-every-machine-of-the-realm =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-launcher-says-every-machine-of-the-realm" { } ''
       cp ${../../tests/machines.qml} machines.qml
-      cp ${./launcher/Machines.js} Machines.js
+      cp ${./launcher/RealmMachines.js} RealmMachines.js
       cp ${./launcher/Order.js} Order.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -1794,7 +1794,7 @@ onLinux {
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Quests.qml} launcher/Quests.qml
       cp ${./launcher/Order.js} launcher/Order.js
-      cp ${./launcher/Machines.js} launcher/Machines.js
+      cp ${./launcher/RealmMachines.js} launcher/RealmMachines.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/quests.qml} shell.qml

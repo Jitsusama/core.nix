@@ -1,7 +1,7 @@
 // How Machines says every machine of the realms this one links, run in
 // Qt's own JavaScript engine, the one the shell runs it in. The
 // `the-launcher-says-every-machine-of-the-realm` check copies
-// modules/quickshell/launcher/Machines.js beside this file and runs
+// modules/quickshell/launcher/RealmMachines.js beside this file and runs
 // `qml -platform offscreen machines.qml`, over machine records as the
 // realms' mycelium nodes serve them. This machine comes first, saying
 // so; a row's note says what a machine is in words, never a Mac's
@@ -14,7 +14,7 @@
 // be asked. It exits 0 once every case holds, and otherwise 1, saying
 // which didn't.
 import QtQuick
-import "Machines.js" as Machines
+import "RealmMachines.js" as Machines
 
 QtObject {
     Component.onCompleted: {

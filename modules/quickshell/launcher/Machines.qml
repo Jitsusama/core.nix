@@ -8,7 +8,7 @@
 // Session Here, Update It, which asks first since its sessions restart,
 // and Copy the Name. One out of reach dims, says since when and offers
 // no act (VKCF3Z's ruling of 2026-11-07, in KP0L6A's design-machines.md).
-// Machines.js says each row and drawer, and how an update ended.
+// RealmMachines.js says each row and drawer, and how an update ended.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
@@ -16,7 +16,7 @@ import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Ago.js" as Ago
-import "Machines.js" as Listed
+import "RealmMachines.js" as Listed
 
 Provider {
     id: provider
@@ -76,7 +76,7 @@ Provider {
         return all;
     }
 
-    // What Machines.js needs to say them: the words, the realms, now, this
+    // What RealmMachines.js needs to say them: the words, the realms, now, this
     // machine's core and how the disk guard bands a disk.
     function placeNow(listed) {
         const here = listed.find(record => record.here === true);

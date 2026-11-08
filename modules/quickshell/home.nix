@@ -253,7 +253,7 @@ let
     "launcher/Cameras.js"
     "launcher/Firmware.js"
     "launcher/Warp.js"
-    "launcher/Machines.js"
+    "launcher/RealmMachines.js"
     "launcher/Interfaces.js"
     "launcher/Networkd.js"
     "launcher/WifiLink.js"
