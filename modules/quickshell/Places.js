@@ -278,7 +278,8 @@ function rebootList(text, boot, bootedAt) {
         boot: read.boot,
         taken: read.taken,
         sessions: read.sessions.filter(whole).map(one => ({ id: String(one.id), cwd: one.cwd,
-            title: String(one.title ?? ""), at: at(one) }))
+            title: String(one.title ?? ""), at: at(one),
+            orchestrates: String(one.orchestrates ?? "") }))
     };
 }
 
@@ -289,6 +290,45 @@ function rebootList(text, boot, bootedAt) {
 // (`restored`, {boot, sessions}) kept but the carried, which are offered
 // apart. None from this boot, `now.boot`, or from the boot Joel put off,
 // `now.putOff`.
+// How much of the disk's time may be stalled, as the share of the last ten
+// seconds some task waited on it, before the next session waits too: past
+// it git, rustc and nix sit in D state and journalctl stops answering.
+const ioStalls = 50;
+// How old the queue's heartbeat may be, in seconds, and still be heard.
+const queueHeard = 120;
+
+// Whether Reopen Them All may begin the next session now, from the machine
+// queue's own verdict (`text`, /run/user/$UID/jobs/queue.json): not while
+// it says the memory or the processors are over, or while the disk stalls,
+// as eighty sessions begun two seconds apart did eleven minutes after the
+// 09:23 boot on 2026-11-08 (load 245, IO pressure 98%, 16 GB swapped). A
+// queue unread, or silent past `queueHeard`, holds nothing back, so a
+// reopening never waits on a queue that's gone. `now` is in seconds since
+// the epoch, as the heartbeat is.
+// Reopen Them All's queue, `{ one }` each, with those whose session
+// orchestrates (a reboot's list says `orchestrates`, its address) first,
+// each part in the order it came, so the sessions an orchestrator leads
+// have it back to answer to as they return. Where each goes doesn't hang on
+// the order begun, since each is placed by the kept places of those back.
+function leadersFirst(queue) {
+    const leads = entry => String(entry.one?.orchestrates ?? "") !== "";
+    return queue.filter(leads).concat(queue.filter(entry => !leads(entry)));
+}
+
+function mayBegin(text, now) {
+    let read = null;
+    try {
+        read = JSON.parse(text);
+    } catch (_error) {
+        return true;
+    }
+    const machine = read?.machine;
+    if (typeof read?.heartbeat !== "number" || now - read.heartbeat > queueHeard || !machine) {
+        return true;
+    }
+    return (machine.over ?? []).length === 0 && (machine.pressure?.io ?? 0) < ioStalls;
+}
+
 function lastBoot(listed, restored, now) {
     const { boot, putOff, back } = now;
     const fromList = listed.sessions.length > 0;
