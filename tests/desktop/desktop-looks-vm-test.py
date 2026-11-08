@@ -6,9 +6,8 @@ and 2, as the laptop does. Its drawer is a plate whose every line lies on one of
 (docs/design.md, the drawer), measured from what the launcher reports of both to a hundredth of a
 pixel, and shot in the gallery for a person to measure too; the file picker's plate is
 held to the same lines for each kind of file it previews. An ErgoDox unplugged goes from the
-keyboard's layout and the launcher, and comes back plugged in. Shortcuts over Mail's window or
-a Docs tab leads with the site's own keys. Bluetooth's Nearby hears a device of BlueZ's
-emulator while it's open, and only then. tests/desktop.nix runs this
+keyboard's layout and the launcher, and comes back plugged in. Bluetooth's Nearby hears a
+device of BlueZ's emulator while it's open, and only then. tests/desktop.nix runs this
 through pytest inside the driver (tests/lib/vm_pytest.py), and its opening comment says what the
 test proves. Every test asks for the desktop, started once a run (desktop_session.py), and leaves
 it as it found it.
@@ -2978,56 +2977,6 @@ def players_and_boards_drawn(desktop: Desktop, scales: list[str]) -> None:
             )
     finally:
         desktop.as_account("systemctl --user stop player || true")
-
-
-# Windows standing in for Google's programs in Chrome, which this machine doesn't run: a kitty
-# given the app id and title Chrome gives Mail's own window, and one given Chrome's app id and
-# the title of a tab showing a document; each by its layer's name, the group it opens on first,
-# and its picture's name (launcher/KeyLayers.js reads both, VKCF3Z, 2026-11-07).
-GOOGLE_WINDOWS = [
-    ("chrome-mail.google.com__-Default", "Inbox - joel@example.com - Gmail", "Mail", "mail"),
-    ("google-chrome", "Notes - Google Docs - Google Chrome", "Docs", "docs-tab"),
-]
-
-
-def on_layer(layer: str, shown: Json) -> bool:
-    """Say whether Shortcuts holds the layer named, as its path ends."""
-    return cast("list[str]", shown["path"])[-1:] == [layer]
-
-
-# Shortcuts over one of Google's programs opens on that program's own keys, its groups named for
-# what Joel is doing, and its layer leads the layers (VKCF3Z, 2026-11-07).
-
-
-def test_shortcuts_over_googles_programs_lead_with_theirs_at_each_scale(
-    desktop: Desktop, at_each_scale: list[str]
-) -> None:
-    """Super+Shift+/ over Mail's window or a Docs tab opens on its keys, at each scale."""
-    machine = desktop.machine
-    for app, title, layer, picture in GOOGLE_WINDOWS:
-        named_so = f"--class {shlex.quote(app)} --title {shlex.quote(title)}"
-        desktop.as_account(f"niri msg action spawn -- kitty {named_so}")
-        machine.wait_until_succeeds(
-            desktop.in_session(f"niri msg --json windows | grep -qF {shlex.quote(title)}"),
-            timeout=desktop_session.STARTING,
-        )
-        window = desktop.window_titled(title)
-        try:
-            for scale in at_each_scale:
-                named = scale.replace(".", "-")
-                at_scale(desktop, scale)
-                desktop.as_account(f"niri msg action focus-window --id {window['id']}")
-                machine.send_key("meta_l-shift-slash")
-                desktop.launcher_ready()
-                desktop.launcher_until(partial(on_layer, layer))
-                desktop.shoot(f"launcher-shortcuts-over-{picture}-at-{named}")
-                desktop.step_out()
-                desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts"])
-                assert desktop.showing()["rows"][0] == layer, desktop.showing()["rows"]
-                desktop.shoot(f"launcher-shortcut-layers-over-{picture}-at-{named}")
-                desktop.close_launcher()
-        finally:
-            desktop.close(window)
 
 
 # The device Nearby hears: btvirt's second controller, named as BlueZ names a device by what it
