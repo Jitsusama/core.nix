@@ -1,12 +1,12 @@
 -- The camera's viewfinder, inside mpv (home.nix): the picture mirrored, as a
 -- mirror shows Joel to himself, and a panel below saying what the keys do.
--- Return takes a picture, or starts a video and then stops it, and either
+-- Return takes a photo, or starts a video and then stops it, and either
 -- way the viewfinder goes once it's done, as a screenshot's would; Tab
 -- changes which; ZZ closes it, finishing a video first. Escape and q close
 -- nothing, as in all of Joel's programs. Nothing else is bound, so no
 -- stray key seeks or pauses a camera.
 --
--- A picture is the frame on screen, turned back the way others see it, as
+-- A photo is the frame on screen, turned back the way others see it, as
 -- the camera gives it, and is saved and copied. A video is recorded from the
 -- camera with the default microphone by a program of its own, which outlives
 -- this window, so closing it mid-video loses nothing. A camera gives its

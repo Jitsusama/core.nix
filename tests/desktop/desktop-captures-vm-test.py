@@ -562,7 +562,7 @@ class Camera:
 
 
 def test_the_camera_takes_a_picture_and_a_video_by_the_keys(desktop: Desktop) -> None:
-    """The camera takes a picture and a video by the keys, and keeps a picture unmirrored."""
+    """The camera takes a photo and a video by the keys, and keeps a photo unmirrored."""
     camera = Camera(desktop)
     machine = desktop.machine
     camera.viewfinder("photo from the camera")
