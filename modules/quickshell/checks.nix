@@ -1136,6 +1136,7 @@ onLinux {
       cp ${./launcher/Standing.js} Standing.js
       cp ${./launcher/Traffic.js} Traffic.js
       cp ${./launcher/Interfaces.js} Interfaces.js
+      cp ${./launcher/Networkd.js} Networkd.js
       cp ${./launcher/Links.js} Links.js
       cp ${./launcher/Sounds.js} Sounds.js
       cp ${./launcher/Cameras.js} Cameras.js
@@ -1784,6 +1785,7 @@ onLinux {
         cp ${./launcher/Waits.qml} launcher/Waits.qml
         cp ${./launcher/Vendors.qml} launcher/Vendors.qml
         cp ${./launcher/Interfaces.js} launcher/Interfaces.js
+        cp ${./launcher/Networkd.js} launcher/Networkd.js
         cp ${./launcher/Subnets.js} launcher/Subnets.js
         cp ${./launcher/Networks.qml} launcher/Networks.qml
         cp ${./launcher/Characters.js} launcher/Characters.js

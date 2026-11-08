@@ -7,8 +7,14 @@
 // knows it by, which finds it too. An Ethernet card's holds its link as
 // well, after the names: the Speed and Duplex it agreed with the other
 // end, how often its Link was Lost, and its Errors, each kind a step in,
-// read again each second while they're shown. "gateway" and "dns" ask those parts
-// alone. An IPv4 or IPv6 address or network, written with its prefix or
+// read again each second while they're shown. A connection networkd leased
+// its address for holds its Lease (the server, how long it's given for,
+// when it was got, renews, rebinds and ends, and what else the server
+// offered), and a cable that hears its other end over LLDP holds its
+// Neighbour (its system, port, chassis, what it acts as and its VLAN).
+// "ethernet" asks the cards on a cable alone, Network's Ethernet row,
+// whatever their address. "gateway" and "dns" ask those parts alone. An
+// IPv4 or IPv6 address or network, written with its prefix or
 // its mask, says its size, range, mask and the rest of a subnet's parts
 // (Subnets.js works them out), or which network holds the address typed,
 // and the kind of range it's in; "is 10.1.2.3 in 10.0.0.0/16" says yes or
@@ -24,12 +30,15 @@
 // never for a key; the routes and name servers are read from the kernel's
 // files and resolv.conf when asked, so nothing blocks. A cable's link is
 // read from its folder in /sys/class/net, and read again each second
-// spawns nothing: ip is asked only when the answer is.
+// spawns nothing: ip is asked only when the answer is. The leases and
+// neighbours are asked of networkd over its varlink socket as ip is, so
+// nothing is spawned for them either.
 import qs
 import Quickshell.Io
 import QtQuick
 import "Addresses.js" as Addresses
 import "Interfaces.js" as Interfaces
+import "Networkd.js" as Networkd
 import "Numbers.js" as Numbers
 import "Subnets.js" as Subnets
 
@@ -66,13 +75,17 @@ Provider {
                 out[question] = id;
         return out;
     }
-    questions: own.concat(Object.keys(partsAsked))
+    // The words that ask the cards on a cable alone.
+    readonly property var cableAsked: Words.answers("ethernet")
+    questions: own.concat(Object.keys(partsAsked), cableAsked)
 
     function answer(typed) {
         const text = typed.trim();
         const question = asks(text);
         if (partsAsked[question] !== undefined)
             return alone(partsAsked[question]);
+        if (cableAsked.includes(question))
+            return cabled();
         if (question !== "")
             return mine();
         const said = Subnets.answer(text, settings);
@@ -90,6 +103,57 @@ Provider {
     function look() {
         if (!lister.running)
             lister.running = true;
+        if (!networkd.connected)
+            networkd.connected = true;
+    }
+
+    // What networkd last said over varlink of each connection's DHCP lease
+    // and each cable's neighbours, by the connection's name (Networkd.js);
+    // empty until it answers, and where it isn't running.
+    property var leases: ({})
+    property var neighbours: ({})
+    // The calls to networkd not yet answered, in order: one is sent at a
+    // time, the next once the last is answered.
+    property var calling: []
+
+    function call(method) {
+        return JSON.stringify({ method: `io.systemd.Network.${method}`, parameters: {} })
+            + "\u0000";
+    }
+
+    function heardNetworkd(data) {
+        const method = calling.shift();
+        const reply = parsed(data);
+        const said = reply.error ? null : reply.parameters ?? null;
+        const before = JSON.stringify([leases, neighbours]);
+        if (method === "Describe")
+            leases = Networkd.leases(said);
+        else if (method === "GetLLDPNeighbors")
+            neighbours = Networkd.neighbours(said);
+        if (calling.length > 0) {
+            networkd.write(call(calling[0]));
+            networkd.flush();
+        } else {
+            networkd.connected = false;
+        }
+        if (JSON.stringify([leases, neighbours]) !== before)
+            answered();
+    }
+
+    Socket {
+        id: networkd
+        path: "/run/systemd/netif/io.systemd.Network"
+        onConnectionStateChanged: {
+            if (connected) {
+                provider.calling = ["Describe", "GetLLDPNeighbors"];
+                write(provider.call(provider.calling[0]));
+                flush();
+            }
+        }
+        parser: SplitParser {
+            splitMarker: "\u0000"
+            onRead: data => provider.heardNetworkd(data)
+        }
     }
 
     function heard(text) {
@@ -229,13 +293,22 @@ Provider {
         };
     }
 
-    // The rows the cards on a cable are kept under, so their link is read
-    // again each second while one is shown, and whether one is: stepped
-    // into, or into one of its parts.
-    readonly property var cables: (links ?? []).filter(link => link.kind === "wired")
-        .map(link => `networks:${link.name}`)
+    // The rows each connection is kept under, so a cable's link and a
+    // lease's times are read again each second while one is shown, and
+    // whether one is: stepped into, one of its parts, or the cards on a
+    // cable asked alone.
+    readonly property var connections: (links ?? []).map(link => `networks:${link.name}`)
     readonly property bool watching: launcher !== null && launcher.open
-        && (launcher.held ?? []).some(step => cables.includes(step.row?.key ?? ""))
+        && ((launcher.held ?? []).some(step => cableHeld(step.row))
+            || (launcher.held.length === 0 && cableHeld(launcher.answer)))
+
+    // Whether a row is a connection, one of its parts, or the cards on a
+    // cable asked alone.
+    function cableHeld(row) {
+        const key = row?.key ?? "";
+        return (row?.asker === provider && cableAsked.includes(row?.chip ?? ""))
+            || connections.some(each => key === each || key.startsWith(`${each}:`));
+    }
     // Whether the answer is asked again for the link alone, which asks ip
     // nothing.
     property bool ticking: false
@@ -310,6 +383,10 @@ Provider {
         const cable = link.kind === "wired" ? Interfaces.cable(file => sys(name, file)) : null;
         if (cable !== null)
             rows.push(...cableParts(name, cable));
+        const lease = leases[name] ?? null;
+        if (lease !== null)
+            rows.push(leaseRow(name, lease));
+        (neighbours[name] ?? []).forEach((one, at) => rows.push(neighbourRow(name, one, at)));
         if (link.mac !== "")
             rows.push(part(key("hardware"), "hardware", link.mac,
                 link.own !== "" ? `its own is ${link.own}` : assignedSaid[link.assigned] ?? ""));
@@ -403,6 +480,159 @@ Provider {
         if (errors.droppedOut !== null)
             rows.push(said("dropped-out", errors.droppedOut));
         return rows;
+    }
+
+    // How long the machine's been up, in seconds, as networkd counts a
+    // lease's times.
+    function uptime() {
+        return Number(read(up).trim().split(/\s+/)[0]) || 0;
+    }
+
+    // A moment, in seconds since boot, as how long from now: "in 3 h",
+    // "20 min ago".
+    function fromNow(at, now) {
+        return at >= now ? `in ${Interfaces.lasted(at - now)}`
+            : `${Interfaces.lasted(now - at)} ago`;
+    }
+
+    // A connection's lease, its time left at its right and its server
+    // under its name, the rest a step in.
+    function leaseRow(name, lease) {
+        const now = uptime();
+        let side = lease.server ?? "held";
+        if (lease.ends !== null)
+            side = lease.ends > now ? `${Interfaces.lasted(lease.ends - now)} left` : "ended";
+        return holderRow({
+            key: `networks:${name}:lease`,
+            name: named("lease"),
+            side: side,
+            note: lease.server !== null ? `from ${lease.server}` : "from DHCP",
+            glyph: Theme.glyph.wired
+        }, () => provider.leaseParts(name));
+    }
+
+    // A lease a step in, as networkd last said it, its times from now: the
+    // server, how long it's given for, when it was got, renews, rebinds
+    // and ends, then what else the server offered. Its router and subnet
+    // mask are the connection's Gateway and its address's prefix, so
+    // they aren't said twice.
+    function leaseParts(name) {
+        const lease = leases[name] ?? null;
+        if (lease === null)
+            return [];
+        const now = uptime();
+        const key = id => `networks:${name}:lease:${id}`;
+        const said = (id, side, note, copy) => part(key(id), `lease-${id}`, side, note, copy);
+        const rows = [];
+        if (lease.server !== null)
+            rows.push(said("server", lease.server, "the DHCP server that gave the address"));
+        if (lease.lasts !== null)
+            rows.push(said("lasts", Interfaces.lasted(lease.lasts), "how long each lease lasts",
+                String(lease.lasts)));
+        if (lease.got !== null)
+            rows.push(said("got", fromNow(lease.got, now), "given or last renewed", ""));
+        if (lease.renews !== null)
+            rows.push(said("renews", fromNow(lease.renews, now),
+                "when it asks its server to keep it", ""));
+        if (lease.rebinds !== null)
+            rows.push(said("rebinds", fromNow(lease.rebinds, now),
+                "when it asks any server, if its own hasn't answered", ""));
+        if (lease.ends !== null)
+            rows.push(said("ends", fromNow(lease.ends, now), "when the address goes, unless kept",
+                ""));
+        if (lease.nameServers.length > 0)
+            rows.push(said("name-servers", lease.nameServers.join(", "),
+                "what it offered to answer names"));
+        if (lease.timeServers.length > 0)
+            rows.push(said("time-servers", lease.timeServers.join(", "),
+                "what it offered to keep time by"));
+        if (lease.domain !== null)
+            rows.push(said("domain", lease.domain, "the domain it says this network is"));
+        if (lease.hostname !== null)
+            rows.push(said("hostname", lease.hostname, "the name it gave this machine"));
+        return rows;
+    }
+
+    // What's at a cable's other end, by what it calls itself, the port
+    // it hears this card on under its name, the rest a step in.
+    function neighbourRow(name, one, at) {
+        return holderRow({
+            key: `networks:${name}:neighbour:${at}`,
+            name: named("neighbour"),
+            side: one.system ?? one.chassis ?? one.port ?? "",
+            note: one.portName ?? one.port ? `on its port ${one.portName ?? one.port}` : "",
+            glyph: Theme.glyph.wired
+        }, () => provider.neighbourParts(name, at));
+    }
+
+    // A neighbour a step in, each thing it says over LLDP.
+    function neighbourParts(name, at) {
+        const one = (neighbours[name] ?? [])[at] ?? null;
+        if (one === null)
+            return [];
+        const key = id => `networks:${name}:neighbour:${at}:${id}`;
+        const said = (id, side, note) => part(key(id), `neighbour-${id}`, side, note);
+        const rows = [];
+        if (one.system !== null)
+            rows.push(said("system", one.system, "what it calls itself"));
+        if (one.description !== null)
+            rows.push(said("description", one.description, "what it says it is"));
+        if (one.port !== null)
+            rows.push(said("port", one.port, "the port it hears this card on"));
+        if (one.portName !== null)
+            rows.push(said("port-name", one.portName, "what it calls that port"));
+        if (one.chassis !== null)
+            rows.push(said("chassis", one.chassis, "what tells it apart from others"));
+        if (one.acts.length > 0)
+            rows.push(said("acts", one.acts.join(", "), "what it's doing now"));
+        if (one.vlan !== null)
+            rows.push(said("vlan", String(one.vlan), "the VLAN this port is on"));
+        if (one.profile !== null)
+            rows.push(said("profile", one.profile, "where it says what it should reach"));
+        return rows;
+    }
+
+    // The cards on a cable, asked alone: one's parts, or several each
+    // under its name, whatever their address, since a cable with no link
+    // is what's worth seeing. Nothing on a machine with no Ethernet card,
+    // so Network has no Ethernet row there.
+    function cabled() {
+        const now = standing();
+        if (now === null)
+            return unknown;
+        const cards = now.links.filter(link => link.kind === "wired")
+            .sort((a, b) => a.name.localeCompare(b.name));
+        const said = link => {
+            const cable = Interfaces.cable(file => sys(link.name, file));
+            return cable.speed !== null ? Interfaces.linkRate(cable.speed,
+                (value, places) => Numbers.format(value, places, settings.group, settings.point))
+                : stateSaid[cable.state];
+        };
+        if (cards.length === 0)
+            return { headline: "no Ethernet card", copy: "", rows: [], note: "" };
+        if (cards.length === 1)
+            return {
+                headline: said(cards[0]),
+                copy: "",
+                glyph: Theme.glyph.wired,
+                rows: partsOf(cards[0].name),
+                note: ""
+            };
+        return {
+            headline: `${grouped(cards.length)} cards`,
+            copy: "",
+            glyph: Theme.glyph.wired,
+            rows: cards.map(link => thingRow({
+                thing: true,
+                key: `networks:${link.name}`,
+                name: linkName(link, cards),
+                side: said(link),
+                glyph: Theme.glyph.wired,
+                keywords: link.name,
+                note: addressOf(link)
+            }, () => provider.partsOf(link.name))),
+            note: ""
+        };
     }
 
     // The name servers this machine asks, from resolv.conf, or from
@@ -546,6 +776,12 @@ Provider {
     FileView {
         id: resolved
         path: "/run/systemd/resolve/resolv.conf"
+        blockLoading: true
+        printErrors: false
+    }
+    FileView {
+        id: up
+        path: "/proc/uptime"
         blockLoading: true
         printErrors: false
     }

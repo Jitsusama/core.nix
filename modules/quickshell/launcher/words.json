@@ -91,6 +91,7 @@
       "holds": [
         "wifi",
         "wifi:sign-in",
+        "ethernet",
         "eero",
         "networks",
         "traffic"
@@ -2403,6 +2404,17 @@
       ]
     },
     {
+      "id": "ethernet",
+      "name": "Ethernet",
+      "term": "Network/Ethernet",
+      "provider": "networks",
+      "question": "ethernet",
+      "glyph": "wired",
+      "answers": [
+        "ethernet"
+      ]
+    },
+    {
       "id": "networks:wifi",
       "in": "networks",
       "name": "Wi-Fi"
@@ -2569,6 +2581,106 @@
       "id": "networks:dropped-out",
       "in": "networks:errors",
       "name": "Dropped Out"
+    },
+    {
+      "id": "networks:lease",
+      "in": "networks",
+      "name": "Lease"
+    },
+    {
+      "id": "networks:lease-server",
+      "in": "networks:lease",
+      "name": "Server"
+    },
+    {
+      "id": "networks:lease-lasts",
+      "in": "networks:lease",
+      "name": "Given For"
+    },
+    {
+      "id": "networks:lease-got",
+      "in": "networks:lease",
+      "name": "Got"
+    },
+    {
+      "id": "networks:lease-renews",
+      "in": "networks:lease",
+      "name": "Renews"
+    },
+    {
+      "id": "networks:lease-rebinds",
+      "in": "networks:lease",
+      "name": "Rebinds"
+    },
+    {
+      "id": "networks:lease-ends",
+      "in": "networks:lease",
+      "name": "Ends"
+    },
+    {
+      "id": "networks:lease-name-servers",
+      "in": "networks:lease",
+      "name": "Name Servers"
+    },
+    {
+      "id": "networks:lease-time-servers",
+      "in": "networks:lease",
+      "name": "Time Servers"
+    },
+    {
+      "id": "networks:lease-domain",
+      "in": "networks:lease",
+      "name": "Domain"
+    },
+    {
+      "id": "networks:lease-hostname",
+      "in": "networks:lease",
+      "name": "Host Name"
+    },
+    {
+      "id": "networks:neighbour",
+      "in": "networks",
+      "name": "Neighbour"
+    },
+    {
+      "id": "networks:neighbour-system",
+      "in": "networks:neighbour",
+      "name": "System"
+    },
+    {
+      "id": "networks:neighbour-description",
+      "in": "networks:neighbour",
+      "name": "Description"
+    },
+    {
+      "id": "networks:neighbour-port",
+      "in": "networks:neighbour",
+      "name": "Port"
+    },
+    {
+      "id": "networks:neighbour-port-name",
+      "in": "networks:neighbour",
+      "name": "Port Name"
+    },
+    {
+      "id": "networks:neighbour-chassis",
+      "in": "networks:neighbour",
+      "name": "Chassis"
+    },
+    {
+      "id": "networks:neighbour-acts",
+      "in": "networks:neighbour",
+      "name": "Acts As"
+    },
+    {
+      "id": "networks:neighbour-vlan",
+      "in": "networks:neighbour",
+      "name": "VLAN"
+    },
+    {
+      "id": "networks:neighbour-profile",
+      "in": "networks:neighbour",
+      "name": "Usage Profile"
     },
     {
       "id": "networks:public",

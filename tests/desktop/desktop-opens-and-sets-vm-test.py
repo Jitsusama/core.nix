@@ -1688,6 +1688,69 @@ def shoot_the_timers(desktop: Desktop) -> None:
     desktop.as_account("qs ipc call notices seen")
 
 
+def test_ethernet_in_network_holds_each_cable_its_lease_and_its_neighbour(
+    desktop: Desktop,
+) -> None:
+    """Ethernet in Network holds each cable, its lease and its neighbour."""
+    machine = desktop.machine
+    machine.wait_until_succeeds(
+        "ip -4 address show cable0 | grep -q 'inet 10.9.0'", timeout=timedelta(seconds=60)
+    )
+    # tests/desktop.nix puts a switch at the cable's other end, its own
+    # second card, which says what it is over LLDP every few seconds.
+    machine.wait_until_succeeds(
+        "networkctl lldp cable0 | grep -q switch0", timeout=timedelta(seconds=60)
+    )
+
+    def reads(shown: Json) -> list[str]:
+        return [thing["reads"] for thing in shown["things"]]
+
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    machine.send_chars("network ", delay=KEY_PACE)
+    desktop.launcher_until(
+        lambda shown: shown["held"] == ["network"] and "Ethernet" in shown["rows"]
+    )
+    # Beside Wi-Fi, before what either is addressed by.
+    rows = desktop.showing()["rows"]
+    assert rows.index("Wi-Fi") < rows.index("Ethernet") < rows.index("Address"), rows
+    desktop.type_in("ethernet", selecting="Ethernet")
+    desktop.step_in("ret")
+    # Every card on a cable, whatever its address: the way out, the cable
+    # and the switch's.
+    desktop.launcher_until(lambda shown: "Ethernet 3" in shown["rows"])
+    desktop.type_in("cable0", selecting="Ethernet")
+    desktop.step_in("ret")
+    # Its lease, from QEMU's DHCP server, which gives a day, and what's at
+    # its other end, by the name it gives.
+    desktop.launcher_until(
+        lambda shown: (
+            any(read.startswith("Lease \u00b7 23 h") for read in reads(shown))
+            and "Neighbour \u00b7 machine" in reads(shown)
+        )
+    )
+    desktop.type_in("lease", selecting="Lease")
+    desktop.step_in("ret")
+    lease = ["Server \u00b7 10.9.0.2", "Given For \u00b7 1 d", "Name Servers \u00b7 10.9.0.3"]
+    desktop.launcher_until(lambda shown: set(lease) <= set(reads(shown)))
+    times = dict(read.split(" \u00b7 ", 1) for read in reads(desktop.showing()))
+    assert times["Got"].endswith(" ago"), times
+    assert times["Renews"].startswith("in 11 h"), times
+    assert times["Ends"].startswith("in 23 h"), times
+    desktop.photograph("launcher-ethernet-lease")
+    held = len(desktop.showing()["held"])
+    desktop.step_out()
+    machine.send_chars("cc", delay=KEY_PACE)
+    desktop.launcher_until(lambda shown: len(shown["held"]) == held - 1 and shown["typed"] == "")
+    desktop.type_in("neighbour", selecting="Neighbour")
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: {"System \u00b7 machine", "Port \u00b7 switch0"} <= set(reads(shown))
+    )
+    desktop.close_launcher()
+
+
 # A binding that throws or assigns the wrong type only warns, and
 # only once a surface draws it, which can be long after the start.
 
