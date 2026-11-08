@@ -11,7 +11,7 @@ use crate::drive::{self, Drive, Fault};
 use crate::ledger::Ledger;
 use crate::retry::{again, patiently};
 use crate::seal;
-use crate::token::Login;
+use crate::token::{self, Login};
 
 /// Write the log Drive holds as `name` to `to`, opened with a key the
 /// settings name that this machine holds; answers how long the log is.
@@ -31,12 +31,25 @@ pub fn fetch(config: &Config, name: &str, to: &Path) -> Result<u64, String> {
         ));
     }
     let ledger = Ledger::open(&config.ledger)?;
-    let mut login = Login::read(&config.credentials, &config.token)?;
+    let sign_in = token::sign_in(&config.folder);
+    let mut login = Login::read(&config.credentials, &config.token, sign_in)?;
     let agent = drive::agent();
+    let folder = drive::folder_id(
+        &config.folder,
+        &agent,
+        &config.api,
+        &config.retries,
+        &mut login,
+    )
+    .map_err(|fault| match fault {
+        Fault::Busy(why) => format!("Drive stayed busy, so try again later: {why}"),
+        fault => fault.to_string(),
+    })?;
     let drive = Drive {
         agent: &agent,
         api: &config.api,
-        folder: &config.folder,
+        folder: &folder,
+        sign_in,
     };
     let id = match ledger.id(name) {
         Some(id) => id.to_owned(),

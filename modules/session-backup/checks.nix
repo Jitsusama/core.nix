@@ -18,9 +18,9 @@ onLinux {
     pkgs.callPackage ./package.nix { }
   );
 
-  # An account that names a folder gets an hourly run in the background,
-  # one that catches up on an hour slept through; one that names none gets
-  # nothing.
+  # An account that names a folder, or one of the backup's own, gets an
+  # hourly run in the background, one that catches up on an hour slept
+  # through; one that names none gets nothing.
   session-backup-stays-in-the-background =
     let
       named = account (bareNixos [
@@ -36,6 +36,19 @@ onLinux {
           };
         }
       ]);
+      own = account (bareNixos [
+        self.nixosModules.workstation
+        {
+          home-manager.users.someone = {
+            imports = [ self.homeModules.session-backup ];
+            jitsusama.session-backup = {
+              ownFolder = "pi sessions";
+              host = "a-machine";
+              recipients = [ "age1someone" ];
+            };
+          };
+        }
+      ]);
       unnamed = account (bareNixos [
         self.nixosModules.workstation
         { home-manager.users.someone.imports = [ self.homeModules.session-backup ]; }
@@ -45,12 +58,13 @@ onLinux {
       timer = named.systemd.user.timers.session-backup.Timer;
     in
     holds "session-backup-stays-in-the-background"
-      "session-backup runs outside background.slice, misses an hour slept through, gives up at its first failure, is restarted by a switch, or runs for an account that names no folder."
+      "session-backup runs outside background.slice, misses an hour slept through, gives up at its first failure, is restarted by a switch, runs for an account that names no folder, or doesn't for one that names only its own."
       (
         service.Slice == "background.slice"
         && service.Restart == "on-failure"
         && unit.X-RestartIfChanged == false
         && timer.Persistent
+        && own.systemd.user.services ? session-backup
         && !(unnamed.systemd.user.services ? session-backup)
       );
 }

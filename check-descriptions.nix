@@ -1323,9 +1323,9 @@
     old log from the machine only once Drive still holds its copy
   '';
   session-backup-stays-in-the-background = ''
-    an account naming a folder backs its sessions up hourly in background.slice, catching up on an
-    hour slept through, trying a failed run again and left running by a switch, and one naming
-    none runs nothing
+    an account naming a folder, or one of the backup's own, backs its sessions up hourly in
+    background.slice, catching up on an hour slept through, trying a failed run again and left
+    running by a switch, and one naming none runs nothing
   '';
   session-machines-have-a-bridge = ''
     libvirt's bridge helper lets session machines onto virbr0, and its default network starts at
