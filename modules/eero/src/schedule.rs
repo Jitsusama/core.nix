@@ -48,11 +48,18 @@ impl Read {
 /// hammer eero.
 pub const ASKED_AT_MOST_EVERY: Duration = Duration::from_secs(5);
 
-/// When each read was last done, and whether a listener has asked for one.
+/// How soon the network is read again after eero couldn't be reached. A
+/// machine starting reads before its network is up, and waiting the five
+/// minutes a read is good for would leave the shell with nothing that long.
+pub const UNREACHED_AGAIN_AFTER: Duration = Duration::from_secs(10);
+
+/// When each read was last done, whether a listener has asked for one, and
+/// whether eero couldn't be reached at the last.
 #[derive(Debug, Clone, Default)]
 pub struct Schedule {
     last: [Option<Instant>; 4],
     asked: bool,
+    unreached: bool,
 }
 
 impl Schedule {
@@ -87,6 +94,13 @@ impl Schedule {
         self.asked = true;
     }
 
+    /// Whether eero could be reached at the last read. Only a failure to
+    /// reach it reads sooner: a refusal, or being signed out, isn't helped
+    /// by asking again.
+    pub fn reached(&mut self, reached: bool) {
+        self.unreached = !reached;
+    }
+
     /// Forgets every read but the network's, so all are due at once: once
     /// eero answers again after it couldn't, what was missed is read
     /// rather than waiting its turn.
@@ -100,10 +114,10 @@ impl Schedule {
         let Some(last) = self.last[read.index()] else {
             return Duration::ZERO;
         };
-        let good_for = if read == Read::Network && self.asked {
-            ASKED_AT_MOST_EVERY
-        } else {
-            read.every(listening)
+        let good_for = match read {
+            Read::Network if self.asked => ASKED_AT_MOST_EVERY,
+            Read::Network if self.unreached => UNREACHED_AGAIN_AFTER,
+            _ => read.every(listening),
         };
         (last + good_for).saturating_duration_since(now)
     }
@@ -256,6 +270,19 @@ mod tests {
         assert_eq!(schedule.due(start + secs(5), true), [Read::Network]);
         schedule.done(Read::Network, start + secs(5));
         assert_eq!(schedule.wait(start + secs(5), true), secs(30));
+    }
+
+    #[test]
+    fn the_network_is_read_every_10_seconds_while_eero_cant_be_reached() {
+        let start = Instant::now();
+        let mut schedule = all_done(start);
+
+        schedule.reached(false);
+
+        assert_eq!(schedule.wait(start + secs(4), false), secs(6));
+        assert_eq!(schedule.due(start + secs(10), false), [Read::Network]);
+        schedule.reached(true);
+        assert_eq!(schedule.wait(start + secs(10), false), secs(290));
     }
 
     #[test]
