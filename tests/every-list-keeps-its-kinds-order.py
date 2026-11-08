@@ -24,6 +24,7 @@ PLACES = {
     "Orchestrators.qml": "stream",
     "Person.js": "returned",
     "Quests.qml": "returned",
+    "Recent.js": "stream",
     "Runs.qml": "stream",
     "Sound.qml": "choices",
     "Traffic.qml": "amounts",
