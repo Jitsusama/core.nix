@@ -433,12 +433,12 @@ ShellRoot {
             const drawer = drawn(key);
             return drawer ? factsOf(drawer) : "none";
         };
-        // A share window's row says how much, so its meter rides on when
-        // it resets rather than a Standing that repeats it.
+        // A share window's row says how much, so its drawer has neither a
+        // Standing nor a meter that would say it again.
         const five = drawn("budget:claude:five-hours");
-        expect("a share window's drawer", five?.eyebrow === "Claude Pro \u00b7 window"
+        expect("a share window's drawer", five?.eyebrow === "in Claude Pro \u00b7 window"
             && five.eyebrowNames && five.title === "Five Hours"
-            && factsOf(five) === "Resets=16:20:stroke!; Read By=Claude at 14:20; Warns=at 80%",
+            && factsOf(five) === "Resets=16:20; Read By=Claude at 14:20; Warns=at 80%",
             said("budget:claude:five-hours"));
         expect("a window not read yet", said("budget:claude:week") === "Warns=at 80%",
             said("budget:claude:week"));
@@ -463,17 +463,17 @@ ShellRoot {
         expect("a budget of one window says its facts", said("budget:delta")
             === "Day=$40 of $50:stroke; Resets=05:00 tomorrow; Read By=the AI proxy at 21:35; "
             + "Warns=at $45; Spent=$40 today", said("budget:delta"));
-        // While sharing, no drawer holds a dollar figure, as no row does;
-        // a dollar window's meter, which holds none, rides as a share's.
+        // While sharing, no drawer holds a dollar figure, as no row does,
+        // and a dollar window's meter goes with its Standing.
         Quiet.sharing = true;
         const quiet = ["budget:claude:five-hours", "budget:proxy:weekly", "budget:claude",
             "budget:proxy", "budget:delta"].map(said);
         Quiet.sharing = false;
-        expect("quiet drawers", quiet.join(" | ") === "Resets=16:20:stroke!; "
+        expect("quiet drawers", quiet.join(" | ") === "Resets=16:20; "
             + "Read By=Claude at 14:20; Warns=at 80% | Override Ends=Wed 2 Dec \u00b7 a guess; "
-            + "Read By=the AI proxy at 21:35:stroke! | "
+            + "Read By=the AI proxy at 21:35 | "
             + "Five Hours=85% of 5 h:stroke!; Week=not read yet; Feed=reading fine; "
-            + "Providers=claude-code | Feed=signed out | Resets=05:00 tomorrow:stroke; "
+            + "Providers=claude-code | Feed=signed out | Resets=05:00 tomorrow; "
             + "Read By=the AI proxy at 21:35", quiet.join(" | "));
         expect("the Budgets row's own drawer", !budgets.drawer, "drawn");
         expect("a session's budget", SpendDrawer.sessionBudget(SpendWatch.budgets,

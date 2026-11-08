@@ -470,7 +470,7 @@
       "empty": "Nothing spent yet.",
       "said": {
         "unread": "not read yet",
-        "window": "window"
+        "window": "in {budget} \u00b7 window"
       }
     },
     {
