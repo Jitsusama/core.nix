@@ -412,6 +412,10 @@
     a Linux workstation signs through its TPM and a Mac through its Secure Enclave, both with one
     program and Joel's key by default, and signing alone, with no hardware, signs nothing
   '';
+  each-mark-means-one-thing = ''
+    no two of the theme's marks share a glyph unless they are named as meaning one thing, as heat
+    and temperature are
+  '';
   eero-completes-in-zsh = ''
     eero completes in zsh with its views and commands, each node, each device by its name or, where
     another shares it, its address, each profile, and --json after a view
