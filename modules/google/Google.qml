@@ -43,6 +43,10 @@ Singleton {
     // The mail that wants Joel, newest first: each { id, from, subject,
     // at, page }.
     property var mail: []
+    // The mail that wanted Joel and no longer does, the latest done first,
+    // each as `mail` says it with a `done` of { how, at }: read or archived
+    // in Gmail or here, no longer important, or gone (src/done.rs).
+    property var finished: []
     // How many in the inbox are unread, or null until Gmail says.
     property var unread: null
     // The documents Joel looked at lately, each kind's last first: each

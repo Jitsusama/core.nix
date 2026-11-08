@@ -34,7 +34,11 @@ function gathered(held, answering) {
     return stateOf({
         account: account.account.standing,
         meetings: of("meeting").sort((one, other) => one.start - other.start),
-        mail: of("mail").sort((one, other) => other.at - one.at),
+        // Mail done is still a mail record, saying how it went, so what
+        // wants Joel is the mail without a `done` (src/done.rs).
+        mail: of("mail").filter(mail => !mail.done).sort((one, other) => other.at - one.at),
+        finished: of("mail").filter(mail => mail.done).sort((one, other) => other.done.at
+            - one.done.at),
         unread: account.account.unread,
         documents: of("file").sort((one, other) => rank(one.kind) - rank(other.kind)
             || (other.viewed ?? 0) - (one.viewed ?? 0)),
@@ -59,6 +63,7 @@ function stateOf(said) {
         account: said.account,
         meetings: said.meetings,
         mail: Array.isArray(said.mail) ? said.mail : [],
+        finished: Array.isArray(said.finished) ? said.finished : [],
         unread: typeof said.unread === "number" ? said.unread : null,
         documents: Array.isArray(said.documents) ? said.documents : [],
         held: Array.isArray(said.held) ? said.held : [],

@@ -12,6 +12,7 @@ use std::thread;
 
 use google::api::{Google, Origins};
 use google::calendar::Answer;
+use google::done::How;
 use google::drive::{DOWNLOADS_KEPT, Is, LISTINGS_KEPT, Unlisted, Unsaved};
 use google::files::{Failed, How, Places};
 use google::mail::Tidy;
@@ -1360,6 +1361,63 @@ fn mail_read_or_archived_takes_one_label_and_wants_joel_no_more() {
         let body: serde_json::Value = serde_json::from_str(&asked.body).unwrap();
         assert_eq!(body, serde_json::json!({"removeLabelIds": [label]}));
     }
+}
+
+#[test]
+fn mail_read_elsewhere_or_tidied_here_says_how_it_went_and_a_meeting_its_end() {
+    let read_elsewhere = Arc::new(AtomicBool::new(false));
+    let read = Arc::clone(&read_elsewhere);
+    let stand_in = StandIn::new(move |path, body| {
+        if read.load(Ordering::SeqCst) {
+            if path.starts_with("GET /gmail/v1/users/me/messages?") && !path.contains("newer_than")
+            {
+                return (
+                    200,
+                    r#"{"messages": [{"id": "old", "threadId": "t1"}]}"#.into(),
+                );
+            }
+            if path.starts_with("GET /gmail/v1/users/me/messages/new?") {
+                assert!(path.contains("format=minimal"), "{path}");
+                return (200, r#"{"labelIds": ["INBOX", "IMPORTANT"]}"#.into());
+            }
+        }
+        tidied(path, body)
+    });
+    let path = credentials("done", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    assert!(watch.look(&now()).finished.is_empty());
+    // Joel reads the newer one in Gmail: it's done, read there.
+    read_elsewhere.store(true, Ordering::SeqCst);
+    let state = watch.look(&now()).clone();
+    let held: Vec<_> = state.mail.iter().map(|mail| mail.id.as_str()).collect();
+    assert_eq!(held, ["old"]);
+    let done = state.finished[0].done.expect("it's done");
+    assert_eq!(
+        (state.finished[0].id.as_str(), done.how),
+        ("new", How::ReadInGmail)
+    );
+    assert_eq!(done.at, now().timestamp().as_millisecond());
+    // He archives the other here: done too, archived here, the latest first.
+    let state = watch.tidy("old", Tidy::Archive, &now()).clone();
+    let how: Vec<_> = state
+        .finished
+        .iter()
+        .map(|mail| (mail.id.as_str(), mail.done.map(|done| done.how)))
+        .collect();
+    assert_eq!(
+        how,
+        [
+            ("old", Some(How::ArchivedHere)),
+            ("new", Some(How::ReadInGmail))
+        ]
+    );
+    // Half a day on, neither is told any more; the meeting has ended.
+    let later = now().checked_add(jiff::Span::new().hours(13)).unwrap();
+    let state = watch.look(&later).clone();
+    assert!(state.finished.is_empty(), "{:?}", state.finished);
+    let ended = state.meetings[0].done.expect("it ended");
+    assert_eq!(ended.how, How::Ended);
+    assert_eq!(ended.at, state.meetings[0].end);
 }
 
 #[test]

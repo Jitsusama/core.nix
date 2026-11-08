@@ -10,6 +10,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::calendar;
+use crate::done::Done;
 
 /// What mail wants Joel, as Gmail's search writes it.
 pub const WANTS: &str = "in:inbox is:unread is:important";
@@ -79,6 +80,10 @@ pub struct Mail {
     pub body: String,
     /// The files it carries, in order, as Gmail lists them under it.
     pub attachments: Vec<File>,
+    /// How and when it stopped wanting Joel, or none while it still does
+    /// (done.rs).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub done: Option<Done>,
 }
 
 /// A file a piece of mail carries, as the shell is told it, with where
@@ -213,6 +218,7 @@ pub fn read(answer: &Value) -> Option<Mail> {
         page: format!("https://mail.google.com/mail/u/0/#inbox/{thread}"),
         body: answer.get("payload").map(body).unwrap_or_default(),
         attachments: answer.get("payload").map(attached).unwrap_or_default(),
+        done: None,
     })
 }
 
@@ -469,6 +475,7 @@ mod tests {
                 page: "https://mail.google.com/mail/u/0/#inbox/t1".into(),
                 body: String::new(),
                 attachments: Vec::new(),
+                done: None,
             })
         );
     }

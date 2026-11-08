@@ -16,6 +16,7 @@ use serde_json::Value;
 use crate::account::{self, Missing};
 use crate::api::{Google, MAKES_MEETINGS, Put, READS_MEETINGS, Refused};
 use crate::calendar::{self, Answer};
+use crate::done::{self, Done, How};
 use crate::drive::{
     self, Document, Downloaded, Folder, Kind, Listed, Place, Unlisted, Unsaved, Uploaded,
 };
@@ -55,6 +56,8 @@ pub struct Watch {
     followed_at: i64,
     /// How many times running Meet couldn't be asked about a call.
     calls_failed: u32,
+    /// When Joel was first heard to decline each meeting he declined.
+    declined: HashMap<String, i64>,
 }
 
 /// How long a follow lasts unless the shell says it again: a little over
@@ -100,6 +103,7 @@ impl Watch {
             followed: Vec::new(),
             followed_at: 0,
             calls_failed: 0,
+            declined: HashMap::new(),
         }
     }
 
@@ -202,6 +206,7 @@ impl Watch {
                 self.state.account = Standing::Ready;
                 self.state.meet.granted = self.makes_meetings();
                 self.state.meetings = calendar::meetings(&answer, now.time_zone());
+                self.meetings_done(now.timestamp().as_millisecond());
                 self.state.heard = Some(now.timestamp().as_millisecond());
             }
             Err(looked) => {
@@ -212,11 +217,18 @@ impl Watch {
         let held = std::mem::take(&mut self.state.mail);
         match self.asking(now, |google, token| wanted(google, token, &held)) {
             Ok((found, unread)) => {
+                let left: Vec<Mail> = held
+                    .into_iter()
+                    .filter(|was| !found.iter().any(|mail| mail.id == was.id))
+                    .collect();
                 self.state.mail = found;
                 self.state.unread = unread;
                 // What Gmail lists now says what's unread, any marked
                 // unread again from elsewhere included.
                 self.read.clear();
+                if !self.left(left, now) {
+                    return &self.state;
+                }
             }
             Err(Looked::Refused(Refused::Unreachable(why))) => {
                 eprintln!("<4>{why}");
@@ -228,6 +240,11 @@ impl Watch {
             }
         }
         let at = now.timestamp().as_millisecond();
+        let wanting = &self.state.mail;
+        self.state.finished.retain(|mail| {
+            mail.done.is_some_and(|done| at - done.at < done::KEPT)
+                && !wanting.iter().any(|wants| wants.id == mail.id)
+        });
         if self
             .documented
             .is_none_or(|heard| at - heard >= DOCUMENTS_EVERY)
@@ -438,6 +455,11 @@ impl Watch {
                 if let Some(at) = self.state.mail.iter().position(|mail| mail.id == id) {
                     let gone = self.state.mail.remove(at);
                     self.state.unread = self.state.unread.map(|unread| unread.saturating_sub(1));
+                    let done = match how {
+                        Tidy::Read => How::ReadHere,
+                        Tidy::Archive => How::ArchivedHere,
+                    };
+                    self.finish(gone.clone(), done, now.timestamp().as_millisecond());
                     if how == Tidy::Read {
                         self.read.retain(|mail| mail.id != id);
                         self.read.push(gone);
@@ -457,6 +479,7 @@ impl Watch {
     pub fn unread(&mut self, id: &str, now: &Zoned) -> &State {
         match self.asking(now, |google, token| google.label(token, id, "UNREAD")) {
             Ok(()) => {
+                self.state.finished.retain(|mail| mail.id != id);
                 if let Some(at) = self.read.iter().position(|mail| mail.id == id) {
                     let back = self.read.remove(at);
                     if !self.state.mail.iter().any(|mail| mail.id == id) {
@@ -471,6 +494,64 @@ impl Watch {
             Err(looked) => self.fell(looked, self.state.account),
         }
         &self.state
+    }
+
+    /// Asks Gmail once how each piece of mail gone from what wants Joel
+    /// left it, and holds those done as done (done.rs). One that Gmail
+    /// couldn't be asked about is let go untold. False where the account
+    /// fell while asking, which holds nothing.
+    fn left(&mut self, left: Vec<Mail>, now: &Zoned) -> bool {
+        let at = now.timestamp().as_millisecond();
+        for mail in left {
+            match self.asking(now, |google, token| google.labels(token, &mail.id)) {
+                Ok(labels) => {
+                    if let Some(how) = done::left(labels.as_ref()) {
+                        self.finish(mail, how, at);
+                    }
+                }
+                Err(Looked::Refused(Refused::Unreachable(why))) => eprintln!("<4>{why}"),
+                Err(looked) => {
+                    self.fell(looked, Standing::Unreachable);
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    /// Holds mail as done, `how` and `at`, newest first, once.
+    fn finish(&mut self, mut mail: Mail, how: How, at: i64) {
+        mail.done = Some(Done { how, at });
+        self.state.finished.retain(|was| was.id != mail.id);
+        self.state.finished.insert(0, mail);
+    }
+
+    /// Says of each meeting held whether it's done: declined, since Joel
+    /// was first heard to decline it, or ended, at its end.
+    fn meetings_done(&mut self, at: i64) {
+        let declined = &mut self.declined;
+        for meeting in &mut self.state.meetings {
+            meeting.done = if meeting.answer == Some(Answer::No) {
+                let since = *declined.entry(meeting.id.clone()).or_insert(at);
+                Some(Done {
+                    how: How::Declined,
+                    at: since,
+                })
+            } else if meeting.end <= at {
+                Some(Done {
+                    how: How::Ended,
+                    at: meeting.end,
+                })
+            } else {
+                None
+            };
+        }
+        let meetings = &self.state.meetings;
+        self.declined.retain(|id, _| {
+            meetings
+                .iter()
+                .any(|meeting| &meeting.id == id && meeting.answer == Some(Answer::No))
+        });
     }
 
     /// Whether Joel's sign-in lets this program make a Meet meeting, read

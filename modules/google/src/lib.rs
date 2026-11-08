@@ -6,15 +6,16 @@
 //! carries go (files.rs), the documents he looked at lately and Drive's
 //! own places (drive.rs),
 //! what the shell is told (state.rs) and how, in the daemon interface
-//! (daemon.rs), what the shell asks (ask.rs), what Joel saves into Drive
-//! (saves.rs), the Meet calls Joel is in (meet.rs), and the account as it
-//! stands (watch.rs).
+//! (daemon.rs), how a thing stopped wanting Joel (done.rs), what the
+//! shell asks (ask.rs), what Joel saves into Drive (saves.rs), the Meet
+//! calls Joel is in (meet.rs), and the account as it stands (watch.rs).
 
 pub mod account;
 pub mod api;
 pub mod ask;
 pub mod calendar;
 pub mod daemon;
+pub mod done;
 pub mod drive;
 pub mod files;
 pub mod link;
