@@ -85,9 +85,13 @@
 //!
 //! A lender's end ends the way to its builder, and every build reaching
 //! it with that, so a switch that changes its unit reloads it (SIGHUP)
-//! rather than restarting it. It then ends only once no build reaches its
-//! builder and none waits for one, leaving the builder for the next start
-//! as a stop does, and exits 100, which its unit starts the new one on.
+//! rather than restarting it. It then ends at once, leaving the builder
+//! for the next start as a stop does, and exits 100, which its unit starts
+//! the new one on. While a build reaches the builder, its helper, run
+//! through `--outlasting` in a scope the unit's end leaves, is told to hand
+//! over rather than end, so those builds finish beside the next start's
+//! way. It waits only while a builder it handed to a successor finishes,
+//! since nothing after it would give that one back.
 //!
 //! A second lender may run beside it for VM tests alone: `--dir` gives it
 //! a folder of its own, such as /run/nix-offload-vm, whose files nothing
@@ -159,7 +163,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{env, fs, thread};
 
-use decide::{Hours, Tick};
+use decide::{Hours, Restart, Tick};
 use journal::{Event, Ran};
 use machines::Machines;
 use proof::{Keeper, State};
@@ -221,6 +225,7 @@ const USAGE: i32 = 64;
 const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate DOLLARS \
                     --first-start HH:MM --last-start HH:MM --deadline HH:MM \
                     [--longest HH:MM] [--standing PATH] [--beside PATH] [--dir DIR] [--only-there] \
+                    [--outlasting PROGRAM] [--tell PROGRAM] \
                     | nix-offload stand [--standing PATH] [--beside PATH] \
                     | nix-offload relay --listen ADDRESS --to ADDRESS \
                     | nix-offload report --rate DOLLARS \
@@ -295,6 +300,14 @@ struct Settings {
     /// What each builder it stands builds for itself before taking VM
     /// tests, as `--warm` names them, space-separated.
     warm: Vec<String>,
+    /// What each helper holding a builder runs through, as `--outlasting`
+    /// names it, so it outlasts the service: one that starts it in a scope
+    /// of its own lets a restart hand its builder over rather than cut the
+    /// builds on its way.
+    outlasting: Option<PathBuf>,
+    /// The program told when no builder answers any work, and again once
+    /// one does, as `--tell` names it.
+    telling: Option<PathBuf>,
 }
 
 /// A builder lent to the machine.
@@ -1193,8 +1206,14 @@ impl Sent<'_> {
         let on_builder = |store: Option<String>| self.lent_to(arguments, vm_apart, store);
         // The second lent builder stands in for the first, so one whose
         // tunnel died never leaves the run to an evaluator or this machine
-        // while the other stands.
-        for lender in [dir, more] {
+        // while the other stands. Runs take the two in turn, and each asks
+        // the second's lender for its builder while it lives, so a run's
+        // evaluation never waits on the first for a turn while the second
+        // could have given it one.
+        if there::lends(more) {
+            there::want(more);
+        }
+        for lender in changed::in_turn([dir, more], std::process::id()) {
             if let Some(finished) = on_builder(standing(lender)) {
                 return Some(finished);
             }
@@ -1474,6 +1493,8 @@ fn serving(arguments: &[String], given: impl Fn(&str) -> Option<String>) -> Exit
                 warm: given("--warm")
                     .map(|warm| warm.split_whitespace().map(str::to_owned).collect())
                     .unwrap_or_default(),
+                outlasting: given("--outlasting").map(PathBuf::from),
+                telling: given("--tell").map(PathBuf::from),
             });
             if restarts {
                 ExitCode::from(RESTARTS)
@@ -1571,7 +1592,9 @@ fn machines_of(settings: &Settings) -> Machines {
     }
     let vm_dir =
         env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
-    machines.stand_ins_from(more_dir(), vm_dirs(&vm_dir))
+    machines
+        .stand_ins_from(more_dir(), vm_dirs(&vm_dir))
+        .telling(settings.telling.clone())
 }
 
 /// Prove `builder` with a tiny build when one is due, over `ssh` as
@@ -1684,22 +1707,32 @@ fn give_back_unanswered(settings: &Settings, machines: &mut Machines, builder: L
     give_back(settings, machines, builder, Event::Lost);
 }
 
-/// Whether a lender whose unit changed ends now, as `decide::restarts`
-/// says, saying the first time it's put off why it waits.
-fn ends_superseded(wants: bool, reached: bool, said: &mut bool) -> bool {
+/// Whether a lender whose unit changed ends now, and how, as
+/// `decide::restarts` says, saying the first time it's put off why it
+/// waits.
+fn ends_superseded(reached: bool, finishing: bool, said: &mut bool) -> Option<Restart> {
     let superseded = SUPERSEDED.load(Ordering::SeqCst);
-    if decide::restarts(superseded, wants, reached) {
-        eprintln!("nix-offload: its unit changed and nothing uses its builder, so it starts again");
-        return true;
+    let how = decide::restarts(superseded, reached, finishing);
+    match how {
+        Some(Restart::Ending) => {
+            eprintln!(
+                "nix-offload: its unit changed and nothing uses its builder, so it starts again"
+            );
+        }
+        Some(Restart::HandingOver) => eprintln!(
+            "nix-offload: its unit changed, so it starts again, and its way to the builder \
+             finishes the builds it carries while the next start takes the builder back"
+        ),
+        None if superseded && !*said => {
+            eprintln!(
+                "nix-offload: its unit changed, so it starts again once the builder it handed \
+                 over finishes"
+            );
+            *said = true;
+        }
+        None => {}
     }
-    if superseded && !*said {
-        eprintln!(
-            "nix-offload: its unit changed, so it starts again once no build uses or waits on \
-             its builder"
-        );
-        *said = true;
-    }
-    false
+    how
 }
 
 /// Lend a builder while the queue wants one, until told to end, or until
@@ -1728,6 +1761,8 @@ fn serve(settings: &Settings) -> bool {
     let mut sleep = sleep::Sleep::default();
     let mut said_superseded = false;
     let mut restarts = false;
+    let mut handing_over = false;
+    let mut said_reached = false;
     // The lent builder's proofs, kept past its give-back when it failed
     // them, so its folder says so until another stands.
     let mut keeper: Option<Keeper> = None;
@@ -1750,8 +1785,19 @@ fn serve(settings: &Settings) -> bool {
                     builder.used = tick.now;
                 }
                 let gone = builder.helper.try_wait().ok().flatten().is_some();
-                let unanswered =
-                    !gone && kept(settings, &mut keeper, &builder, Instant::now(), "ssh");
+                let dropped = !gone && kept(settings, &mut keeper, &builder, Instant::now(), "ssh");
+                let failures = keeper.as_ref().map_or(0, |keeper| keeper.health.failures);
+                let unanswered = decide::proven_lost(dropped, failures, reached);
+                if dropped && !unanswered && !std::mem::replace(&mut said_reached, true) {
+                    eprintln!(
+                        "nix-offload: {} failed {failures} proofs in a row, so no new build goes \
+                         there, but builds still reach it, so it's kept until they end or it \
+                         fails {} in a row",
+                        builder.name,
+                        decide::FAILS_WHILE_REACHED
+                    );
+                }
+                said_reached &= dropped;
                 let (used, ends) = (builder.used, builder.ends);
                 match decide::give_back_proven(settings.hours, tick, used, ends, gone, unanswered) {
                     Some(event) => {
@@ -1772,12 +1818,11 @@ fn serve(settings: &Settings) -> bool {
             }
         };
         leaving = let_go(settings, leaving, now());
-        // A leaving builder's helper runs while a build reaches it, which
-        // a restart would cut.
-        reached = reached
-            || leaving
-                .iter_mut()
-                .any(|left| runs(&mut left.builder.helper));
+        // A leaving builder's helper runs while a build reaches it, and
+        // nothing after a restart would give that builder back.
+        let finishing = leaving
+            .iter_mut()
+            .any(|left| runs(&mut left.builder.helper));
         // Once a day, after the deadline, say what's there that isn't this
         // one's to give back.
         let day = local_day();
@@ -1786,16 +1831,15 @@ fn serve(settings: &Settings) -> bool {
             said_on = Some(day);
         }
         named(dir, &mut machines, lent.as_ref(), keeper.as_ref());
-        if ends_superseded(tick.wants, reached, &mut said_superseded) {
+        if let Some(how) = ends_superseded(reached, finishing, &mut said_superseded) {
             restarts = true;
+            handing_over = how == Restart::HandingOver;
             break;
         }
         rest(TICK);
     }
-    if let Some(mut builder) = lent {
-        machines.show(None);
-        end(&mut builder.helper);
-        leave(settings, &builder.name, builder.since, builder.rate);
+    if let Some(builder) = lent {
+        left_as_it_ends(settings, &mut machines, builder, handing_over);
     }
     for Leaving { mut builder, .. } in leaving {
         end(&mut builder.helper);
@@ -1906,6 +1950,25 @@ fn let_go(settings: &Settings, leaving: Vec<Leaving>, now: u64) -> Vec<Leaving> 
         }
     }
     kept
+}
+
+/// Leave the builder lent as the service ends for the next start to take
+/// back. Its helper ends with it, unless it `hands_over`: then the helper,
+/// run through `--outlasting` so the unit's end leaves it, takes no new
+/// connection and finishes the builds it carries beside the next start's.
+fn left_as_it_ends(
+    settings: &Settings,
+    machines: &mut Machines,
+    mut builder: Lent,
+    hands_over: bool,
+) {
+    machines.show(None);
+    if hands_over {
+        told_to_hand_over(&builder.helper);
+    } else {
+        end(&mut builder.helper);
+    }
+    leave(settings, &builder.name, builder.since, builder.rate);
 }
 
 /// Leave a builder for the next start to give back, since a stop that
@@ -2051,7 +2114,15 @@ fn warm(settings: &Settings, name: &str, store: &str) {
 /// Run the helper with `arguments`, and hear what it says until its
 /// machines line, for as long as a builder may take to be ready.
 fn hear(settings: &Settings, arguments: &[&str]) -> Option<(Child, Heard)> {
-    let mut helper = Command::new(&settings.helper)
+    let mut helper = match &settings.outlasting {
+        Some(outlasting) => {
+            let mut through = Command::new(outlasting);
+            through.arg(&settings.helper);
+            through
+        }
+        None => Command::new(&settings.helper),
+    };
+    let mut helper = helper
         .args(arguments)
         .stdout(Stdio::piped())
         .process_group(0)
@@ -2583,6 +2654,8 @@ exit 1
             dir: folder.to_path_buf(),
             only_there: false,
             warm: Vec::new(),
+            outlasting: None,
+            telling: None,
         };
         let file = |name: &str| folder.join(name);
         let machines = Machines::new(
@@ -2688,6 +2761,63 @@ exit 1
         assert_eq!(status.code(), Some(0), "it wasn't told to hand over");
         assert!(!left.outliving);
         end(&mut successor.helper);
+    }
+
+    #[test]
+    fn a_builder_handed_over_as_the_service_ends_keeps_the_builds_on_its_way() {
+        let _heard = unstopped();
+        let folder = tempfile::tempdir().unwrap();
+        let journal = r#"{"at":5,"event":"asked","name":"lend-5"}
+{"at":9,"event":"ended","name":"lend-5","seconds":4}
+"#;
+        let (mut settings, mut machines) = holding(folder.path(), journal);
+        executable(&settings.helper, HANDS_OVER);
+        let outlasting = folder.path().join("outlasting");
+        executable(
+            &outlasting,
+            "#!/bin/sh\necho \"$@\" > \"$(dirname \"$0\")/through\"\nexec \"$@\"\n",
+        );
+        settings.outlasting = Some(outlasting);
+        let old = adopt(&settings, &mut machines, 3600).expect("taken back");
+        let through = fs::read_to_string(folder.path().join("through")).unwrap();
+        assert!(through.ends_with("hold lend-5\n"), "{through}");
+        let pid = libc::pid_t::try_from(old.helper.id()).unwrap();
+        left_as_it_ends(&settings, &mut machines, old, true);
+        // Told to hand over, the stand-in ends as it would once its last
+        // connection closed; told to end, it would die of the signal.
+        let mut status = 0;
+        // SAFETY: waiting on our own child, which nothing else reaps.
+        let reaped = unsafe { libc::waitpid(pid, &raw mut status, 0) };
+        assert_eq!(reaped, pid);
+        assert!(
+            libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0,
+            "it wasn't told to hand over: {status}"
+        );
+        let journal = fs::read_to_string(&settings.journal).unwrap();
+        assert!(
+            journal
+                .lines()
+                .last()
+                .unwrap()
+                .contains(r#""event":"ended","name":"lend-5""#),
+            "{journal}"
+        );
+    }
+
+    #[test]
+    fn a_builder_left_as_the_service_ends_ends_its_helper() {
+        let _heard = unstopped();
+        let folder = tempfile::tempdir().unwrap();
+        let journal = r#"{"at":5,"event":"asked","name":"lend-5"}
+{"at":9,"event":"ended","name":"lend-5","seconds":4}
+"#;
+        let (settings, mut machines) = holding(folder.path(), journal);
+        executable(&settings.helper, HANDS_OVER);
+        let old = adopt(&settings, &mut machines, 3600).expect("taken back");
+        let pid = libc::pid_t::try_from(old.helper.id()).unwrap();
+        left_as_it_ends(&settings, &mut machines, old, false);
+        // SAFETY: a probe of a pid we started, reaped by `end`.
+        assert_ne!(unsafe { libc::kill(pid, 0) }, 0, "its helper runs on");
     }
 
     #[test]
