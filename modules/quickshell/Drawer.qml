@@ -1262,6 +1262,14 @@ Floating {
         return String(words).replace(/(\d) (?=[A-Za-z\u00b5\u00b0%])/g, "$1\u00a0")
             .replace(/([A-Za-z0-9])-(?=[A-Za-z0-9])/g, "$1-\u2060");
     }
+    // An identifier with no space, as a supply's
+    // "ucsi-source-psy-USBC000:001", may break after its own hyphens and
+    // colons rather than draw past the frame (VKCF3Z, 2026-11-08), as a
+    // title breaks after its dots and slashes.
+    function identifierBreaks(fact, said) {
+        return fact?.identifies === true ? said.replace(/([-:])(?=\S)/g, "$1\u200b") : said;
+    }
+
     // A value made of items, "38 s \u00b7 4.1k out \u00b7 0.9 s first token",
     // wraps between them, never inside one, the dot going with the break
     // (DrawerFigure.runLines); a line that fits is held whole, and an item
@@ -2100,8 +2108,9 @@ Floating {
                                         fact.modelData.between ?? " \u00b7 ", fact.valueWide,
                                         text => drawer.faceOf(fact.modelData).advanceWidth(text))
                                         .join("\n")
-                                    : drawer.itemsKept(fact.modelData.value,
-                                        drawer.faceOf(fact.modelData), fact.valueWide)
+                                    : drawer.identifierBreaks(fact.modelData,
+                                        drawer.itemsKept(fact.modelData.value,
+                                            drawer.faceOf(fact.modelData), fact.valueWide))
                                 leading: drawer.pitch
                                 // A fact that warns, as an entry's weak
                                 // password does, says so in the warning's
