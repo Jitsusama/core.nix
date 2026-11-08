@@ -2579,7 +2579,7 @@
     {
       "id": "heat:trip:passive",
       "in": "heat",
-      "name": "Slows It At"
+      "name": "Throttles At"
     },
     {
       "id": "heat:trip:active",
@@ -2594,7 +2594,7 @@
     {
       "id": "heat:trip:critical",
       "in": "heat",
-      "name": "Shuts Down At"
+      "name": "Powers Off At"
     },
     {
       "id": "heat:cooling",

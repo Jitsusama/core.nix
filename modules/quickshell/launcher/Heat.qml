@@ -61,15 +61,15 @@ Provider {
         const part = partsAsked[plainly(typed)];
         if (!part && asks(typed) === "")
             return null;
-        if (!asked)
-            Qt.callLater(() => provider.asked = true);
+        if (!askedSinceOpen)
+            Qt.callLater(() => provider.askedSinceOpen = true);
         return part ? alone(part) : told();
     }
 
     // Whether Heat has been asked since the launcher opened, as Machine's
     // place asks it for its Heat row, so the daemon reads the sensors only
     // then rather than whenever the launcher is open.
-    property bool asked: false
+    property bool askedSinceOpen: false
 
     function number(value, places) {
         return Numbers.format(value, places ?? 0, settings.group, settings.point);
@@ -592,7 +592,7 @@ Provider {
         function onOpenChanged() {
             if (!provider.launcher.open) {
                 provider.heardSinceOpen = false;
-                provider.asked = false;
+                provider.askedSinceOpen = false;
             }
         }
     }
@@ -602,7 +602,7 @@ Provider {
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
         kind: ["sensor", "zone", "cooling", "processor"]
-        live: provider.launcher !== null && provider.launcher.open && provider.asked
+        live: provider.launcher !== null && provider.launcher.open && provider.askedSinceOpen
         keptThroughGap: false
         answersWhole: true
     }

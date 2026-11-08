@@ -104,11 +104,11 @@ Provider {
 
     // Whether Power has been asked since the launcher opened, so the
     // daemon reads the supplies only then.
-    property bool asked: false
+    property bool askedSinceOpen: false
 
     function ask() {
-        if (!asked)
-            Qt.callLater(() => provider.asked = true);
+        if (!askedSinceOpen)
+            Qt.callLater(() => provider.askedSinceOpen = true);
     }
 
     function answer(typed) {
@@ -435,7 +435,7 @@ Provider {
 
         function onOpenChanged() {
             if (!provider.launcher.open)
-                provider.asked = false;
+                provider.askedSinceOpen = false;
         }
     }
 
@@ -446,7 +446,7 @@ Provider {
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
         kind: "supply"
-        live: provider.launcher !== null && provider.launcher.open && provider.asked
+        live: provider.launcher !== null && provider.launcher.open && provider.askedSinceOpen
         keptThroughGap: false
         answersWhole: true
     }
