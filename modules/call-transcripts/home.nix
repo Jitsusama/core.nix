@@ -25,7 +25,7 @@
 # Every model before wrote sentences of its own, and each bent or made
 # up what was said, and a wrong summary is worse than none. The model
 # runs in a process of its own, `call-transcripts ask`, for one summary
-# at a time: only on mains power, never during a call, with a delay on
+# at a time: only on the charger, never during a call, with a delay on
 # sleep held, and only once the memory it needs is free
 # (src/bin/call-transcripts/summarizer.rs says how). Its compiled model
 # is kept in a cache of its own. Only a machine whose hardware names a
