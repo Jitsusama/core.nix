@@ -961,6 +961,7 @@ onLinux {
     pkgs.runCommandLocal "recent-means-one-thing" { } ''
       cp ${../../tests/recent.qml} recent.qml
       cp ${./launcher/Recent.js} Recent.js
+      cp ${./launcher/Recents.js} Recents.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -2238,6 +2239,7 @@ onLinux {
       cp ${./launcher/Media.js} launcher/Media.js
       cp ${./Music.js} Music.js
       cp ${./launcher/Recents.qml} launcher/Recents.qml
+      cp ${./launcher/Recents.js} launcher/Recents.js
       cp ${./launcher/Recent.js} launcher/Recent.js
       cp ${./launcher/PastNotices.qml} launcher/PastNotices.qml
       cp ${./launcher/Notice.js} launcher/Notice.js

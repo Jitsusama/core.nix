@@ -1298,7 +1298,8 @@ Provider {
     }
 
     // The files opened lately, read once an ask: of each line recent-files
-    // prints (a program, a file and when), the file.
+    // prints (a program, a file and when), the file: what lies between the
+    // first tab and the last, kept whole though it holds a tab.
     Process {
         id: listing
 
@@ -1307,7 +1308,8 @@ Provider {
             id: said
 
             onStreamFinished: {
-                const paths = said.text.split("\n").map(line => line.split("\t")[1] ?? "")
+                const paths = said.text.split("\n")
+                    .map(line => line.slice(line.indexOf("\t") + 1, line.lastIndexOf("\t")))
                     .filter(path => path.startsWith("/"));
                 provider.lately = Array.from(new Set(paths));
                 provider.changed();

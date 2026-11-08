@@ -1,11 +1,13 @@
 // What Recent holds, run in Qt's own JavaScript engine, the one the shell
 // runs it in. The `recent-means-one-thing` check copies
-// modules/quickshell/launcher/Recent.js beside this file and runs
-// `qml -platform offscreen recent.qml`. Each case is a promise of the one
-// meaning Joel can hold in his head: the last nine things he did with it,
-// newest first, each once, never what's open or shown already.
+// modules/quickshell/launcher/Recent.js and Recents.js beside this file and
+// runs `qml -platform offscreen recent.qml`. Each case is a promise of the
+// one meaning Joel can hold in his head: the last nine things he did with
+// it, newest first, each once, never what's open or shown already. The last
+// are how a source's lines are read for it, and when each thing was used.
 import QtQuick
 import "Recent.js" as Recent
+import "Recents.js" as Lines
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -105,6 +107,35 @@ QtObject {
         check(failures, "or its folder alone where it's no kind of its own",
             Recent.takenEyebrow(shots, "", { in: "in {folder}" }).eyebrow,
             "in ~/Pictures/Screenshots");
+
+        // A dated source's line ends in a tab and seconds since 1970.
+        const at = line => JSON.stringify(Lines.dated(line, true));
+        check(failures, "a dated line's time is kept apart, in milliseconds",
+            at("~/notes.md\t1700000000"), JSON.stringify({ line: "~/notes.md", at: 1700000000000 }));
+        check(failures, "a line with its time left empty is undated",
+            at("~/notes.md\t"), JSON.stringify({ line: "~/notes.md" }));
+        check(failures, "and so is one whose time isn't digits",
+            at("https://a.ca\tA Site\tsoon"), JSON.stringify({ line: "https://a.ca\tA Site" }));
+        check(failures, "a line with no tab is undated, and whole",
+            at("~/notes.md"), JSON.stringify({ line: "~/notes.md" }));
+        check(failures, "an undated source's line is whole, tabs and all",
+            JSON.stringify(Lines.dated("a\tb\t17", false)), JSON.stringify({ line: "a\tb\t17" }));
+
+        // The list many programs share: a program, a tab and a path, its
+        // time kept apart already, newest first.
+        const appOf = program => ({ zathura: "org.pwmt.zathura", imv: "imv" })[program] ?? "";
+        const shared = ["zathura\t/b.pdf", "imv\t/a.png", "zathura\t/a.pdf",
+            "zathura\t/b.pdf", "gone\t/c.txt", "zathura\t/tab\there.pdf"];
+        check(failures, "each program's paths are its own, newest first, each once",
+            JSON.stringify(Lines.sharedFrom(shared, appOf, 9)), JSON.stringify({
+                "org.pwmt.zathura": ["/b.pdf", "/a.pdf", "/tab\there.pdf"], imv: ["/a.png"] }));
+        check(failures, "at most as many as asked a program",
+            JSON.stringify(Lines.sharedFrom(shared, appOf, 1)["org.pwmt.zathura"]),
+            JSON.stringify(["/b.pdf"]));
+        const times = { "zathura\t/b.pdf": 9000, "zathura\t/a.pdf": 4000 };
+        check(failures, "each path says when it was used, and one undated says nothing",
+            JSON.stringify(Lines.sharedAtFrom(shared, appOf, times)),
+            JSON.stringify({ "org.pwmt.zathura": { "/b.pdf": 9000, "/a.pdf": 4000 } }));
 
         for (const failure of failures)
             console.warn(failure);
