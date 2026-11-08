@@ -180,7 +180,7 @@ function listed(person, stood, now) {
 // It's measured from now only as they're ordered, so the minute passing
 // moves nobody under the keys.
 function ordered(persons, standOf, now) {
-    return persons.slice().sort(Order.returned({ first: person => standOf(person).favourite,
+    return Order.sorted(persons, Order.returned({ first: person => standOf(person).favourite,
         last: person => last(person, now), name: person => person.name }));
 }
 

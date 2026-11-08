@@ -5,11 +5,14 @@ launcher's own and the people module's. Each place named below sorts its rows by
 from launcher/Order.js, which tests/order.qml holds to the rule. No sort in those folders breaks a
 tie A to Z by hand, since A to Z is only ever Order.js's last tie (RSCH-20261030-GB56HX found
 Programs, Screens, Sound, Bluetooth and Connections falling back to it), and Qt's engine leaves out
-the numeric reading a hand-made one asks for.
+the numeric reading a hand-made one asks for. No list sorts by an order of Order.js with Array.sort
+either, since Qt's engine sorts unstably and shuffles rows alike: Order.sorted keeps them as they
+came.
 """
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -50,7 +53,7 @@ def sorts(text: str) -> list[tuple[int, str]]:
 
 
 def failures(folders: list[Path]) -> list[str]:
-    """Say each place that keeps another order than its kind's, and each A to Z made by hand."""
+    """Say each place out of its kind's order, each A to Z by hand, and each unstable sort."""
     files = {
         path.name: path
         for folder in folders
@@ -67,7 +70,15 @@ def failures(folders: list[Path]) -> list[str]:
     for name, path in sorted(files.items()):
         if name == "Order.js":
             continue
-        for line, by in sorts(path.read_text()):
+        text = path.read_text()
+        orders = set(re.findall(r"(?:const|let|var) (\w+) = Order\.", text))
+        for line, by in sorts(text):
+            inside = by[len(".sort(") : -1].strip()
+            if "Order." in inside or inside in orders:
+                said.append(
+                    f"{name}:{line} sorts by Order.js with Qt's Array.sort, which shuffles rows "
+                    "alike; sort with Order.sorted, which keeps them in the order they came"
+                )
             if "localeCompare" in by:
                 said.append(
                     f"{name}:{line} sorts A to Z by hand; give its kind's order from Order.js, "

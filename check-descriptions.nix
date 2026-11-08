@@ -449,7 +449,8 @@
   each-list-keeps-its-kinds-order = ''
     each kind of list the launcher shows keeps one order with nothing typed, A to Z only its last
     tie and numbers read by their value, a choice never moving when chosen, and each place that
-    lists things sorts by its kind's order with no A to Z made by hand
+    lists things sorts by its kind's order with no A to Z made by hand, through Order.sorted, which
+    keeps rows alike in the order they came where Qt's own sort shuffles them
   '';
   each-machine-signs-with-its-hardware = ''
     a Linux workstation signs through its TPM and a Mac through its Secure Enclave, both with one

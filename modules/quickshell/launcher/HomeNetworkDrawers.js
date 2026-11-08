@@ -346,7 +346,7 @@ function devicesCount(devices) {
 // is and how strongly it sends, each beside its last hour; then each
 // radio's hardware address.
 function radios(one) {
-    const list = (one.radios ?? []).slice().sort(Order.byName(radio => radio.band));
+    const list = Order.sorted(one.radios, Order.byName(radio => radio.band));
     if (list.length === 0) {
         return [];
     }

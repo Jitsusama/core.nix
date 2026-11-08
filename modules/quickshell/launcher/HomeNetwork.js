@@ -158,14 +158,14 @@ function nodesInOrder(nodes) {
         placed.add(node.id);
         const below = nodes.filter((other) => !placed.has(other.id)
             && other.backhaul?.upstream === node.location);
-        for (const other of below.sort(byName)) {
+        for (const other of Order.sorted(below, byName)) {
             under(other);
         }
     };
-    for (const node of nodes.filter((one) => one.gateway).sort(byName)) {
+    for (const node of Order.sorted(nodes.filter((one) => one.gateway), byName)) {
         under(node);
     }
-    for (const node of nodes.slice().sort(byName)) {
+    for (const node of Order.sorted(nodes, byName)) {
         if (!placed.has(node.id)) {
             under(node);
         }

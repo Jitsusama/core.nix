@@ -354,8 +354,8 @@ Provider {
         // warning once the launcher reads budgets (VKCF3Z, 2026-11-07).
         const day = SpendWatch.sessionsToday[presence.session ?? ""] ?? null;
         // What it landed last, newest by when, with its ref and its time.
-        const last = (presence.landings ?? []).slice()
-            .sort(Order.stream(one => String(one.at ?? "")))[0];
+        const last = Order.sorted(presence.landings,
+            Order.stream(one => String(one.at ?? "")))[0];
         // What its quest waits on Joel for, in the order Needs You says it.
         const needs = (presence.quest ?? "") === "" ? []
             : WaitingOnYou.items.filter(item => item.quest === presence.quest);

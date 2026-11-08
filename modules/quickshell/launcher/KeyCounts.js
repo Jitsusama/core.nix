@@ -65,9 +65,10 @@ function tallied(each, by) {
         const key = by(row);
         sums.set(key, (sums.get(key) ?? 0) + row.presses);
     }
-    return Array.from(sums, ([name, presses]) => ({ name, presses }))
-        .filter(one => one.presses > 0)
-        .sort(Order.amounts({ amount: one => one.presses, name: one => one.name }));
+    const pressed = Array.from(sums, ([name, presses]) => ({ name, presses }))
+        .filter(one => one.presses > 0);
+    return Order.sorted(pressed,
+        Order.amounts({ amount: one => one.presses, name: one => one.name }));
 }
 
 // What one board has tallied, or null for one it has nothing of:

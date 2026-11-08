@@ -217,9 +217,9 @@ Provider {
     // that's up without one, the way out first, then by kind and name.
     function listed(now) {
         const rank = link => link.name === now.out ? -1 : kindOrder.indexOf(link.kind);
-        return now.links.filter(link => link.four.length + link.six.length > 0
-            || ((link.kind === "wifi" || link.kind === "wired") && link.state === "up"))
-            .sort(Order.live({ stands: rank, name: link => link.name }));
+        return Order.sorted(now.links.filter(link => link.four.length + link.six.length > 0
+            || ((link.kind === "wifi" || link.kind === "wired") && link.state === "up")),
+            Order.live({ stands: rank, name: link => link.name }));
     }
 
     // A connection's name, by what it is, numbered when there are several
