@@ -780,11 +780,16 @@
     records the microphone, and in an idle window nothing,
     reads a stand-in's named thread from the kernel, and sums each generation by its load
   '';
+  launcher-completes-in-zsh = ''
+    launcher completes in zsh, typed in a real line editor against a stand-in shell: its command,
+    each row as its step is typed, the rows inside the steps typed so far, its flags anywhere, and
+    nothing after a step that names nothing
+  '';
   launcher-fits-what-it-shows-to-the-terminal = ''
     `launcher` lays what the shell shows out to the terminal's width, a count and then a side giving
     way by whole items and a name cut only at a word, inks it only where the terminal takes colour,
-    in its sixteen unless it says it takes 24-bit, and says a miss and the nearest names in the
-    launcher's words
+    in its sixteen unless it says it takes 24-bit, sets every row's drawer after the rows when asked,
+    and says a miss and the nearest names in the launcher's words
   '';
   launcher-passes-clippy = ''
     clippy finds nothing in launcher, the launcher in a terminal, or its tests

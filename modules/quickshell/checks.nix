@@ -4248,6 +4248,30 @@ onLinux {
     pkgs.callPackage ./in-a-terminal/package.nix { }
   );
 
+  # launcher completes in zsh, typed in a real line editor with the real
+  # launcher and the completion it writes, asking a stand-in qs what each
+  # place holds: its command, each row a step names as it's typed, the
+  # rows inside the steps typed so far, flags anywhere, and nothing after a
+  # step that names nothing (in-a-terminal/tests/launcher-completion.zsh).
+  launcher-completes-in-zsh =
+    let
+      launcher = pkgs.callPackage ./in-a-terminal/package.nix { };
+    in
+    pkgs.runCommandLocal "launcher-completes-in-zsh"
+      {
+        nativeBuildInputs = [
+          launcher
+          pkgs.zsh
+        ];
+        LAUNCHER_QS = pkgs.writeShellScript "qs" (builtins.readFile ./in-a-terminal/tests/qs);
+      }
+      ''
+        export HOME=$PWD
+        launcher completion zsh > _launcher
+        zsh -f ${./in-a-terminal/tests/launcher-completion.zsh} $PWD/_launcher
+        touch $out
+      '';
+
   # clippy finds nothing in timekeeping, its tests included.
   timekeeping-passes-clippy = passesClippy "timekeeping-passes-clippy" (
     pkgs.callPackage ./timekeeping/package.nix { }

@@ -99,8 +99,45 @@ fn said<'a>(value: &'a Value, key: &str) -> &'a str {
     value.get(key).and_then(Value::as_str).unwrap_or_default()
 }
 
-/// Everything the shell showed, as lines for a terminal.
-pub fn shown(shown: &Value, look: &Look, room: Room, words: &Words) -> String {
+/// Everything the shell showed, as lines for a terminal: with
+/// `every_drawer`, each row's drawer after the rows, as Tab would open it,
+/// two empty lines apart, since one already parts a drawer's own groups.
+pub fn shown(shown: &Value, look: &Look, room: Room, words: &Words, every_drawer: bool) -> String {
+    let mut out = place(shown, look, room, words);
+    if every_drawer {
+        for row in shown
+            .get("rows")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            if let Some(drawer) = row.get("drawer").filter(|drawer| drawer.is_object()) {
+                let blocks = drawn(drawer, row, look, room, words);
+                out.push_str(if out.is_empty() { "" } else { "\n\n" });
+                out.push_str(&joined(blocks));
+            }
+        }
+    }
+    out
+}
+
+/// Blocks as lines, one empty line between each, ending with a newline
+/// where there's anything at all.
+fn joined(blocks: Vec<Vec<String>>) -> String {
+    let mut out = blocks
+        .into_iter()
+        .filter(|block| !block.is_empty())
+        .map(|block| block.join("\n"))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    if !out.is_empty() {
+        out.push('\n');
+    }
+    out
+}
+
+/// A place or a row: its head or drawer, and the rows it holds.
+fn place(shown: &Value, look: &Look, room: Room, words: &Words) -> String {
     let mut blocks: Vec<Vec<String>> = Vec::new();
     let rows: Vec<&Value> = shown
         .get("rows")
@@ -125,16 +162,7 @@ pub fn shown(shown: &Value, look: &Look, room: Room, words: &Words) -> String {
     if !rows.is_empty() {
         blocks.push(listed(&rows, look, room));
     }
-    let mut out = blocks
-        .into_iter()
-        .filter(|block| !block.is_empty())
-        .map(|block| block.join("\n"))
-        .collect::<Vec<_>>()
-        .join("\n\n");
-    if !out.is_empty() {
-        out.push('\n');
-    }
-    out
+    joined(blocks)
 }
 
 /// Where a row is, as the launcher's field says it: the steps before it in
@@ -454,6 +482,17 @@ mod tests {
             &plain(),
             Room(across),
             &words(),
+            false,
+        )
+    }
+
+    fn with_drawers(json: &str, across: usize) -> String {
+        shown(
+            &serde_json::from_str(json).expect("the answer parses"),
+            &plain(),
+            Room(across),
+            &words(),
+            true,
         )
     }
 
@@ -543,6 +582,29 @@ mod tests {
              Read and written since it was made.\n\n\
              Copy\n"
         );
+    }
+
+    #[test]
+    fn every_drawer_follows_the_rows_two_empty_lines_apart() {
+        let place = r#"{"in":["Machine"],"path":["computer"],
+            "row":{"id":"computer","name":"Machine"},
+            "rows":[{"id":"d","name":"Disk","side":"412 GB free",
+                "drawer":{"title":"Disk","facts":[{"label":"Size","value":"1 TB"}]}},
+              {"id":"u","name":"Uptime","side":"2 hours"},
+              {"id":"p","name":"Power","drawer":{"eyebrow":"Machine","title":"Power",
+                "body":"On the charger."}}]}"#;
+        assert_eq!(
+            with_drawers(place, 80),
+            "Machine\n\n\
+             Disk  412 GB free\n\
+             Uptime    2 hours\n\
+             Power\n\n\n\
+             Disk\n\n\
+             Size  1 TB\n\n\n\
+             Machine\nPower\n\n\
+             On the charger.\n"
+        );
+        assert!(!laid(place, 80).contains("On the charger."));
     }
 
     #[test]
