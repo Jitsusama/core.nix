@@ -657,12 +657,13 @@ def a_quest_offers_to_orchestrate(desktop: Desktop) -> None:
 def wakes_parked_orchestrator(desktop: Desktop) -> None:
     """Wake Lighthouse once it's parked, by the file its marker names, rather than resume it."""
     machine = desktop.machine
-    # Parked as the harness parks one: its process ended, its record saying
-    # so, and the marker naming the file that wakes it.
+    # Parked as the harness parks one: its process ended this boot, its
+    # record saying so, and the marker naming the file that wakes it.
     parked = f"{HARNESS}/park-workflow/parked"
+    boot = desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip()
     record = {
         "session": "s-testqa", "addresses": ["TESTQA"], "state": "parked", "busy": False,
-        "title": "\u03c0 - Lighthouse", "owner": {"pid": 1, "bootId": "gone", "startTicks": 1},
+        "title": "\u03c0 - Lighthouse", "owner": {"pid": 1, "bootId": boot, "startTicks": 1},
         "at": "2026-11-06T12:00:00Z",
     }  # fmt: skip
     desktop.as_account(
