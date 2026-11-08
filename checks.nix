@@ -387,6 +387,16 @@ let
         height = 1800;
       };
     };
+    # How Machine's things look at Joel's scales, from the machine daemon,
+    # on the same screen: an area of its own, so looks keeps to twenty.
+    vm-desktop-looks-machine = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "looks-machine";
+      screen = {
+        width = 2880;
+        height = 1800;
+      };
+    };
     # Joining Wi-Fi is the kernel, wifid, wpa_supplicant and networkd
     # together, and what it leaves of other programs' routing only shows
     # once it has. Each area is a machine of its own, so they run side by
@@ -1072,6 +1082,7 @@ gather (
     ./modules/linux-builder/checks.nix
     ./modules/linux-id/checks.nix
     ./modules/litra/checks.nix
+    ./modules/machine/checks.nix
     ./modules/meaning/checks.nix
     ./modules/memory-modules/checks.nix
     ./modules/mic-mute-light/checks.nix

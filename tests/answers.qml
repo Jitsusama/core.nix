@@ -708,17 +708,6 @@ QtObject {
             if (quoted(got) !== quoted(expected))
                 failures.push(`${what} gave ${quoted(got)}, not ${quoted(expected)}`);
         };
-        const before = Machine.counters("cpu  100 0 100 700 100 0 0 0 50 0\n"
-            + "cpu0 50 0 50 400 0 0 0 0 0 0\ncpu1 50 0 50 300 100 0 0 0 0 0\nintr 5\n");
-        const after = Machine.counters("cpu  200 0 200 800 100 0 0 0 90 0\n"
-            + "cpu1 50 0 50 400 100 0 0 0 0 0\ncpu0 150 0 150 400 0 0 0 0 0 0\n");
-        // Guest time is counted in user time already, and waiting on the
-        // disk is idle.
-        machine("the processors since they started", Machine.busy(before.whole, null), 0.2);
-        machine("the processors between two reads", Machine.busy(after.whole, before.whole), 2 / 3);
-        // Core 0 first, however the kernel lists them.
-        machine("each core between two reads", Machine.loads(after, before),
-            [{ n: 0, load: 1 }, { n: 1, load: 0 }]);
         const cores = loads => loads.map((load, n) => ({ n: n, load: load }));
         machine("no core maxed", Machine.maxed(cores([0.5, 0.94])), "none");
         machine("one core maxed", Machine.maxed(cores([0.5, 0.95])), "core 1");
@@ -726,80 +715,57 @@ QtObject {
         machine("most cores maxed", Machine.maxed(cores([1, 1, 1, 1, 1, 0])), "5 of 6");
         machine("a list of CPUs", Machine.cpus("0-3,8\n"), [0, 1, 2, 3, 8]);
         machine("no list of CPUs", Machine.cpus(""), []);
-        // The laptop's: performance cores, then efficient, then low-power,
-        // told apart by their most clock, the third performance core the
-        // fastest of all.
-        const clocked = [4.7, 4.7, 4.7, 4.8, 3.7, 3.7, 3.7, 3.7, 3.7, 3.7, 3.7, 3.7, 3.3, 3.3, 3.3, 3.3]
-            .map((ghz, n) => ({ n: n, max: ghz * 1e6 }));
-        const kinded = Machine.kinds(Machine.cpus("0-3"), clocked);
-        machine("the laptop's kinds of core", ["performance", "efficient", "low-power"]
-            .map(kind => Object.values(kinded).filter(each => each === kind).length), [4, 8, 4]);
-        machine("a processor of one kind", Machine.kinds([], clocked), null);
-        machine("a processor's model", Machine.model("Intel(R) Core(TM) Ultra X7 358H"),
-            "Intel Core Ultra X7 358H");
-        machine("an older processor's model", Machine.model("Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz"),
-            "Intel Core i7-8550U");
-        // Reads, sectors, their milliseconds; writes, the same; in flight;
-        // busy.
-        const disk = Machine.disk("10 0 2000 20 30 0 4000 60 0 100 0");
-        const later = Machine.disk("20 0 4000 30 40 0 6048 80 1 600 0");
-        machine("a disk between two reads", Machine.rates(later, disk, 2),
-            { read: 512000, write: 524288, busy: 0.25, latency: 1.5 });
-        machine("a disk left idle", Machine.rates(disk, disk, 1).latency, null);
-        machine("what isn't a disk's counters", Machine.disk(""), null);
-        for (const [name, known] of [["kitty", "kitty"], [".kitty-wrapped", "kitty"],
-                [".firefox-wrappe", "firefox"], [".rust-analyzer-", "rust-analyzer"],
-                [".hidden", "hidden"]])
-            machine(`the program run as ${name}`, Machine.program(name), known);
-        const stats = (ticks, lines) => `4096\ncpu  ${ticks} 0 0 0 0 0 0 0 0 0\nintr 1\n${lines.join("\n")}\n`;
-        // A process's stat from its state on: its user and system ticks,
-        // its pages resident, and every field around them a figure of its
-        // own, so reading the column beside one gives another sum.
-        const fields = (user, system, pages) => `S 1 1 1 0 -1 4194560 31 7 3 2 ${user} ${system} `
-            + `977 733 20 0 1 0 5 123456 ${pages} 18446744073709551615`;
-        const first = Machine.processes(stats(1000, [`1 (systemd) ${fields(6, 4, 100)}`,
-            `2 (.kitty-wrapped) ${fields(60, 40, 1000)}`, `3 (kitty) ${fields(30, 20, 1000)}`,
-            `4 (cc1 (odd) name) ${fields(1, 1, 10)}`]));
-        const second = Machine.processes(stats(2000, [`1 (systemd) ${fields(6, 4, 100)}`,
-            `2 (.kitty-wrapped) ${fields(180, 120, 1000)}`, `3 (kitty) ${fields(90, 60, 1000)}`,
-            `4 (cc1 (odd) name) ${fields(201, 201, 10)}`, `5 (cat) ${fields(500, 400, 10)}`]));
-        // Each program's processes summed, one started between the reads
-        // left out, and one at nothing left out.
-        machine("the programs using the processors", Machine.using(second, first),
-            [{ name: "cc1 (odd) name", value: 0.4 }, { name: "kitty", value: 0.3 }]);
-        machine("the programs holding the memory", Machine.holding(first),
-            [{ name: "kitty", value: 8192000 }, { name: "systemd", value: 409600 }, { name: "cc1 (odd) name", value: 40960 }]);
-        // Eight are named, as many as the card shows, the smallest of nine
-        // left out.
-        const nine = Machine.processes(stats(1000, [1, 2, 3, 4, 5, 6, 7, 8, 9]
-            .map(n => `${n} (p${n}) ${fields(1, 1, n)}`)));
-        machine("the eight programs holding the most memory",
-            Machine.holding(nine).map(each => each.name),
-            ["p9", "p8", "p7", "p6", "p5", "p4", "p3", "p2"]);
-        // Read by position rather than split: the machine's ticks, a
-        // name closing a bracket of its own, and a last line unended.
-        machine("the processes, the last line unended",
-            Machine.processes(`4096\ncpu  10 0 0 0 0 0 0 0 0 0\nintr 3 (x) 4\n`
-                + `7 (a) b) ${fields(3, 2, 2)}`),
-            { ticks: 10, programs: { 7: { name: "a) b", ticks: 5, bytes: 8192 } } });
-        machine("no processes", Machine.processes(""), { ticks: 0, programs: {} });
+        machine("one core named", Machine.cores([4]), "core 4");
+        machine("cores unbroken", Machine.cores([0, 1, 2, 3]), "cores 0 to 3");
+        machine("cores broken", Machine.cores([0, 2, 5]), "cores 0, 2 and 5");
+        machine("no cores", Machine.cores([]), "");
+        // Where the processor's time went, interrupts both kinds together
+        // and guests' both kinds, each field the kernel keeps.
+        const timeSpent = { user: 0.4, nice: 0, system: 0.1, idle: 0.4, iowait: 0.05, irq: 0.01,
+            softirq: 0.02, steal: 0.02, guest: 0.01, guest_nice: 0 };
+        machine("the processor's time spent inside another machine",
+            Machine.spent(timeSpent, true).map(each => [each.id, Math.round(each.share * 100)]),
+            [["user", 40], ["system", 10], ["iowait", 5], ["interrupts", 3], ["niced", 0],
+                ["stolen", 2], ["guests", 1]]);
+        machine("the processor's time spent on its own hardware, none stolen",
+            Machine.spent(timeSpent, false).map(each => each.id),
+            ["user", "system", "iowait", "interrupts", "niced", "guests"]);
+        machine("an old kernel's time, without steal or guests",
+            Machine.spent({ user: 0.5, nice: 0, system: 0.1, idle: 0.4, iowait: 0, irq: 0, softirq: 0 },
+                true).map(each => each.id), ["user", "system", "iowait", "interrupts", "niced"]);
+        machine("no time said", Machine.spent(null, false), []);
+        // What keeps the memory, biggest first; files are the page cache
+        // less what's shared, which the kernel counts in it.
+        const gib = 1073741824;
+        machine("what keeps the memory", Machine.keptBy({ AnonPages: 20 * gib, Cached: 12 * gib,
+            Shmem: 2 * gib, Slab: gib / 2, KernelStack: gib / 2, PageTables: gib / 2, Buffers: gib / 4,
+            Dirty: gib / 8, Writeback: 0 }).map(part => [part.id, part.bytes / gib]),
+            [["programs", 20], ["files", 10], ["shared", 2], ["kernel", 1.5], ["buffers", 0.25],
+                ["unwritten", 0.125]]);
+        machine("no memory said", Machine.keptBy(null), []);
+        machine("what zswap holds", Machine.compressed({ Zswap: gib, Zswapped: 4 * gib }),
+            { stored: 4 * gib, pool: gib, ratio: 4 });
+        machine("zswap holding nothing", Machine.compressed({ Zswap: 0, Zswapped: 0 }), null);
+        // Modules alike counted once, where they sit gathered, blanks left
+        // blank.
+        const module = { locator: "Controller0-ChannelA", size: "8 GB", type: "LPDDR5X",
+            speed: "7467 MT/s", manufacturer: "SK Hynix", part: "" };
+        machine("the memory modules alike", Machine.modules([module,
+            Object.assign({}, module, { locator: "Controller0-ChannelB" })]),
+            [{ type: "LPDDR5X", speed: "7467 MT/s", size: "8 GB", manufacturer: "SK Hynix", part: "",
+                locator: "Controller0-ChannelA", count: 2,
+                locators: ["Controller0-ChannelA", "Controller0-ChannelB"] }]);
+        machine("modules of two speeds", Machine.modules([module,
+            Object.assign({}, module, { speed: "6400 MT/s" })]).length, 2);
+        machine("no memory modules", Machine.modules(null), []);
+        machine("a disk's warnings", Machine.warnings(["spare", "readonly", "novel"]),
+            ["spare", "read-only", "novel"]);
+        machine("a disk warning of nothing", Machine.warnings([]), []);
+        machine("the machine's disk, the biggest", Machine.biggest([{ key: "disk:sda", size_b: 1 },
+            { key: "disk:nvme0n1", size_b: 10 }]).key, "disk:nvme0n1");
+        machine("no disk", Machine.biggest([]), null);
         machine("the whole processor's sensor", ["Package id 0", "Tctl", "Core 3"]
             .map(label => Machine.namesWhole(label)), [true, true, false]);
-        machine("memory pressure", Machine.pressure("some avg10=12.50 avg60=1.48 avg300=2.33 total=26\n"
-            + "full avg10=0.39 avg60=1.28 avg300=1.78 total=16\n"), 0.125);
-        machine("no memory pressure said", Machine.pressure(""), null);
-        machine("memory's fields", Machine.meminfo("MemTotal:       65000000 kB\nSwapFree:  0 kB\n"),
-            { MemTotal: 65000000, SwapFree: 0 });
-        const module = { locator: "Controller0-ChannelA", size: "8 GB", type: "LPDDR5X", speed: "7467 MT/s",
-            manufacturer: "SK Hynix", part: "" };
-        machine("the memory modules", Machine.modules(JSON.stringify({ modules: [module, module] })),
-            { type: "LPDDR5X", speed: "7467 MT/s", size: "8 GB", maker: "SK Hynix", count: 2 });
-        machine("modules of two speeds", Machine.modules(JSON.stringify({
-            modules: [module, Object.assign({}, module, { speed: "6400 MT/s" })] })).speed, "");
-        machine("no memory modules listed", Machine.modules(JSON.stringify({ modules: [] })), null);
-        machine("no memory modules file", Machine.modules(""), null);
-        machine("modules the firmware says nothing of", Machine.modules(JSON.stringify({
-            modules: [Object.assign({}, module, { type: "" })] })), null);
         machine("a spark against its most", Machine.spark([1, 2, 4], 1), [0.25, 0.5, 1]);
         machine("a spark against the least it's drawn to", Machine.spark([1, 2], 4), [0.25, 0.5]);
         // As Heat says the processor: its package, else its hottest core.
@@ -925,16 +891,26 @@ QtObject {
         machine("what kept it from resting, as a note says it", ["display", "internal",
             "novel"].map(by => Machine.keeper(by).said), ["the display engine",
             "the processor's own power controller", "novel"]);
-        // The NPU's load is its busy time between two reads over the time
-        // between them, its clock said in gigahertz, and "resting" while
-        // it's powered down; with no read before, there's no share yet.
-        const npuThen = { busy: 5000000, clock: 0, top: 2050 };
-        const npuNow = { busy: 5040000, clock: 1400, top: 2050 };
-        machine("the NPU's load over a second", Machine.npuLoad(npuNow, npuThen, 1),
-            { share: 0.04, clock: "at 1.4 GHz of 2.05 GHz" });
-        machine("the NPU resting, unmeasured", Machine.npuLoad(npuThen, null, null),
-            { share: null, clock: "resting" });
-        machine("no NPU, no load", Machine.npuLoad(null, null, 1), null);
+        // The NPU's clock to three significant digits, and "resting"
+        // while it's powered down.
+        machine("the NPU's clock", Machine.npuClock({ clock_mhz: 1400, max_mhz: 2050 }),
+            "at 1.40 GHz of 2.05 GHz");
+        // Bytes in decimal units to three significant digits, each
+        // converted from bytes, stepping up past 999, whole below a kB.
+        machine("bytes, each converted", [873 * 1048576, 6.4 * 1048576, 1.52e9, 873, 0, 999.7e3,
+            4096].map(Machine.bytes), ["915 MB", "6.71 MB", "1.52 GB", "873 B", "0 B",
+            "1.00 MB", "4.10 kB"]);
+        machine("a rate", Machine.rate(12000), "12.0 kB/s");
+        machine("a clock from kilohertz", [4700000, 400000].map(Machine.hertz),
+            ["4.70 GHz", "400 MHz"]);
+        machine("three significant digits", [0.04, 1.234, 12.34, 123.4].map(Machine.digits),
+            ["0.0400", "1.23", "12.3", "123"]);
+        // Two rates say which is which, and none while both are still.
+        machine("rates both ways", Machine.both(12000, 0), "12.0 kB/s in \u00b7 0 B/s out");
+        machine("rates both still", Machine.both(0, 0), "none");
+        machine("a note's items, the empty given way", Machine.items(["btrfs", "", null, "dm-0"]),
+            "btrfs \u00b7 dm-0");
+        machine("the NPU resting", Machine.npuClock({ clock_mhz: 0, max_mhz: 2050 }), "resting");
         machine("no telemetry, no parts of its own", Heat.gather(heatChips, [], {}, null).temps
             .length, 5);
         machine("two disks, numbered", Heat.gather([heatChips[0], heatChips[0]], [], {}).temps

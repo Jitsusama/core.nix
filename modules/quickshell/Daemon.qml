@@ -40,6 +40,19 @@ Scope {
     // The keys to watch ahead, as the shell is about to need them; each
     // change sends the watch again, which replaces the one before.
     property var ahead: []
+    // Whether its kind is watched now. A daemon that reads only while
+    // watched, as the machine daemon reads the processor each second,
+    // is watched only while what it says can be seen: false unwatches
+    // it, and true watches it again, answered whole at once.
+    property bool live: true
+    onLiveChanged: {
+        if (wire === null)
+            return;
+        if (live)
+            watchAll();
+        else
+            tell({ id: "all", ask: "unwatch" });
+    }
     // Whether what was held stays held while the daemon isn't answering,
     // as someone found stays found. A kind true only while the daemon
     // answers, as Slack's unread counts are, lets it go, so no old count
@@ -132,8 +145,13 @@ Scope {
     // Once connected: hello, every record of its kind, and those ahead.
     function greet() {
         tell({ id: "hello", ask: "hello", version: 1, client: "shell" });
-        tell(Object.assign({ id: "all", ask: "watch", kind: kind }, watching));
+        if (live)
+            watchAll();
         watchAhead();
+    }
+
+    function watchAll() {
+        tell(Object.assign({ id: "all", ask: "watch", kind: kind }, watching));
     }
 
     function watchAhead() {

@@ -456,7 +456,8 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(
     )
     desktop.close_launcher()
     # A part asked for alone, by its own words: how fast the disk
-    # reads and writes, each a step in.
+    # reads, writes, discards and flushes, each a step in, as the machine
+    # daemon says them.
     desktop.answer("disk speed")
     desktop.launcher_until(
         lambda shown: (
@@ -466,7 +467,9 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(
         )
     )
     desktop.follow()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Reading", "Writing", "Copy"])
+    desktop.launcher_until(
+        lambda shown: shown["rows"] == ["Reading", "Writing", "Discarding", "Flushing", "Copy"]
+    )
     desktop.close_launcher()
     # What the network carries now, in and out, from the kernel's
     # counters, and what the line can and how quickly it answers, from
@@ -680,7 +683,7 @@ def test_the_queue_the_processors_and_the_memory_say_what_holds_them(desktop: De
     # The memory, and the programs holding most of it, read once it's
     # asked.
     desktop.answer("memory")
-    desktop.launcher_until(lambda shown: "GiB used" in (shown["selected"] or {}).get("name", ""))
+    desktop.launcher_until(lambda shown: "B used" in (shown["selected"] or {}).get("name", ""))
     desktop.step_in()
     desktop.launcher_until(lambda shown: {"Used", "Cached", "Using It"} <= set(shown["rows"]))
     desktop.close_launcher()
@@ -1614,13 +1617,18 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
     desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Core 0", "Copy"])
     desktop.close_launcher()
-    # What kept it from resting comes and goes, so it's the last part, before
-    # the step's Copy, saying the part that kept it most, and each part that
-    # did a step in.
+    # What kept it from resting stands beside what held it back, both there
+    # whenever the telemetry answers, saying the part that kept it most,
+    # and each part that did a step in.
     desktop.answer("processor")
     desktop.launcher_until(lambda shown: shown["kind"] == "answer")
     desktop.follow()
-    desktop.launcher_until(lambda shown: shown["rows"][-2:] == ["Kept From Resting", "Copy"])
+    desktop.launcher_until(
+        lambda shown: (
+            "Held Back" in shown["rows"]
+            and shown["rows"][shown["rows"].index("Held Back") + 1] == "Kept From Resting"
+        )
+    )
     desktop.type_in("kept", "Kept From Resting")
     desktop.launcher_until(
         lambda shown: (

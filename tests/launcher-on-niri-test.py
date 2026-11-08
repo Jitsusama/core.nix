@@ -156,13 +156,13 @@ def test_return_goes_into_an_answer_with_parts_and_y_copies_it(shell: Shell) -> 
         shell.close_launcher()
     # From normal, y copies the answer Return went into, and keeps the launcher.
     shell.answer("memory")
-    shell.launcher_until(lambda shown: "GiB used" in (shown["selected"] or {}).get("name", ""))
+    shell.launcher_until(lambda shown: "B used" in (shown["selected"] or {}).get("name", ""))
     shell.normal()
     assert "y copy" in shell.showing()["selected"]["told"], shell.showing()["selected"]
     since = shell.mark()
     shell.send_chars("yy")
     shell.reported("yanked 1", lambda rest: rest == "", since)
-    assert "GiB used" in shell.copied(), shell.copied()
+    assert "B used" in shell.copied(), shell.copied()
     shell.close_launcher()
     # A sum holds nothing to go into, so its Return copies it still.
     copied(shell, "12*7", "84")

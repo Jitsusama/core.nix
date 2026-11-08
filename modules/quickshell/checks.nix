@@ -28,6 +28,8 @@ let
     '';
   # Quickshell's runner, the one the account's shell runs on.
   qs = lib.getExe' graphical.pkgs.quickshell "qs";
+  # The daemon Machine's answers come from, run over a check's own /proc.
+  machine = pkgs.callPackage ../machine/package.nix { };
   # Every QML file the shell and the modules beside it draw, by its path
   # under modules/, its tests left out: a module's surface is drawn in the
   # theme as the shell's own are.
@@ -242,6 +244,8 @@ let
           "LOGS=logs"
           "TAKE_NOTICES=${lib.escapeShellArgs (spawnedBy "Super+N")}"
           "PYTHONPATH=${checked}"
+          # Machine's answers come from its daemon, as the account's do.
+          "MACHINE=${lib.getExe machine}"
         ]
         # What a file of tests is given besides, as a program it runs.
         ++ given
@@ -1901,51 +1905,49 @@ onLinux {
         touch $out
       '';
 
-  # The launcher's Machine answers the processors and the memory from the
-  # sandbox's own /proc without making their parts or listing the
-  # processes, and lists them only once the parts are looked at
-  # (tests/machine.qml), the list stood in for by one that says each time
-  # it's run, and the queue and niri stood in for.
-  the-machine-lists-processes-for-its-parts =
-    let
-      listing = pkgs.writeShellScript "process-list" ''
-        echo listed >> "$XDG_RUNTIME_DIR/listed"
-        echo 4096
-        exec ${lib.getExe' pkgs.coreutils "cat"} /proc/stat
+  # The launcher's Machine answers the processors, the memory and the
+  # uptime from the machine daemon, run over the sandbox's own /proc,
+  # without making their parts, and asks it for the programs only once a
+  # part saying them is looked at (tests/machine.qml), the queue, niri and
+  # the telemetry stood in for.
+  the-machine-answers-from-its-daemon =
+    pkgs.runCommandLocal "the-machine-answers-from-its-daemon" { }
+      ''
+        mkdir -p launcher runtime/daemons && chmod -R 700 runtime
+        cp ${./Daemon.qml} Daemon.qml
+        cp ${./Fuzzy.js} Fuzzy.js
+        cp ${./launcher/Provider.qml} launcher/Provider.qml
+        cp ${./ProgramGlyphs.js} ProgramGlyphs.js
+        cp ${./launcher/Asking.js} launcher/Asking.js
+        cp ${./launcher/Numbers.js} launcher/Numbers.js
+        cp ${./launcher/Heat.js} launcher/Heat.js
+        cp ${./launcher/Interfaces.js} launcher/Interfaces.js
+        cp ${./launcher/Machine.js} launcher/Machine.js
+        cp ${./launcher/Machine.qml} launcher/Machine.qml
+        cp ${./launcher/Sensors.qml} launcher/Sensors.qml
+        cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+        cp ${./Words.qml} Words.qml
+        cp ${./launcher/words.json} launcher/words.json
+        cp ${singleton "Jobs.qml" "property var said: null"} Jobs.qml
+        cp ${singleton "Niri.qml" "function act(action) {}"} Niri.qml
+        cp ${singleton "Facts.qml" "property var all: []"} Facts.qml
+        cp ${singleton "ProcessorTelemetry.qml" ''
+          property int watching: 0
+          property var reading: null
+          property var kept: null
+          property bool refused: false
+          property bool missing: false
+        ''} ProcessorTelemetry.qml
+        cp ${../../tests/machine.qml} shell.qml
+        export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+        export FONTCONFIG_FILE=${noFonts}
+        ${lib.getExe machine} "$XDG_RUNTIME_DIR/daemons/machine.sock" &
+        daemon=$!
+        ${shellFolderLint}
+        timeout 60 ${qs} -p shell.qml
+        kill "$daemon"
+        touch $out
       '';
-    in
-    pkgs.runCommandLocal "the-machine-lists-processes-for-its-parts" { } ''
-      mkdir -p launcher runtime && chmod 700 runtime
-      cp ${./Fuzzy.js} Fuzzy.js
-      cp ${./launcher/Provider.qml} launcher/Provider.qml
-      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${./launcher/Asking.js} launcher/Asking.js
-      cp ${./launcher/Numbers.js} launcher/Numbers.js
-      cp ${./launcher/Heat.js} launcher/Heat.js
-      cp ${./launcher/Interfaces.js} launcher/Interfaces.js
-      cp ${./launcher/Machine.js} launcher/Machine.js
-      cp ${./launcher/Machine.qml} launcher/Machine.qml
-      cp ${./launcher/Sensors.qml} launcher/Sensors.qml
-      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${./Words.qml} Words.qml
-      cp ${./launcher/words.json} launcher/words.json
-      cp ${singleton "Jobs.qml" "property var said: null"} Jobs.qml
-      cp ${singleton "Niri.qml" "function act(action) {}"} Niri.qml
-      cp ${singleton "ProcessorTelemetry.qml" ''
-        property int watching: 0
-        property var reading: null
-        property var kept: null
-        property bool refused: false
-        property bool missing: false
-      ''} ProcessorTelemetry.qml
-      cp ${../../tests/machine.qml} shell.qml
-      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      export PROCESSES=${listing}
-      export FONTCONFIG_FILE=${noFonts}
-      ${shellFolderLint}
-      timeout 60 ${qs} -p shell.qml
-      touch $out
-    '';
 
   # The launcher's Sound leaves out a jack with nothing plugged in and a
   # display's output with no display, and never listens to a headset's
