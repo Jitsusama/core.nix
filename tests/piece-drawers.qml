@@ -74,7 +74,8 @@ QtObject {
                 "/home", "on this machine \u00b7 disk",
                 "[machine:disk:full-in] 3600 s",
                 "[on:disk:filling] 12 B an hour",
-                "[on:disk:growing] ~/.cache/nix +90 B \u00b7 ~/.local/share +30 B \u00b7 ~/src +5 B",
+                "[on:disk:growing] ~/.cache/nix +90 B \u00b7 ~/.local/share +30 B \u00b7 "
+                    + "~/src +5 B",
                 "[machine:disk:free] 40 B",
                 "[machine:disk:size] 500 B",
                 "[on:disk:cleared] 70 B from ~/.cache/nix at @900",

@@ -1758,7 +1758,8 @@ QtObject {
             "on USB \u00b7 camera");
         machine("powered for hours, to its two largest units", Cameras.drawer([
             { key: "camera:camera:powered", name: "Powered", side: "on", active: 7500000 }],
-            { builtIn: true, said: cameraWords }).facts[0].value, "on \u00b7 2 h 5 min since start");
+            { builtIn: true, said: cameraWords }).facts[0].value,
+            "on \u00b7 2 h 5 min since start");
 
         // The keyboards in the kernel's list of input devices, as the
         // laptop's and an ErgoDox's read, with the hotkeys and keyd's own
