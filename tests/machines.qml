@@ -8,7 +8,8 @@
 // identifier, and its realm only with two realms; its side says how it
 // stands, then what qualifies it; one out of reach dims and says since
 // when; the drawer runs from what moves most to the model's identifier,
-// never repeating the side, and leaves out what no node said. It exits 0
+// never repeating the side, and leaves out what no node said; an update
+// says how it ended, as its updater said it, or why it couldn't be asked. It exits 0
 // once every case holds, and otherwise 1, saying which didn't.
 import QtQuick
 import "Machines.js" as Machines
@@ -40,7 +41,12 @@ QtObject {
         builds: "{count} builds", vmTest: "{count} VM test", vmTests: "{count} VM tests",
         sameCore: "{commit}, as this machine's", reaches: "reached", unreaches: "not reached",
         freeOf: "{free} free of {total}", cores: "{count} cores", on: "on {realm} \u00b7 {kind}",
-        macos: "Mac", linux: "Linux", machine: "machine", gpu: "graphics", npu: "NPU"
+        macos: "Mac", linux: "Linux", machine: "machine", gpu: "graphics", npu: "NPU",
+        "updated:done": "{name} updated to {commit}", "updated:done:bare": "{name} updated",
+        "updated:unchanged": "{name} was on main already",
+        "updated:failed": "{name} didn't update",
+        "updated:refused": "{name} refused the update",
+        notUpdated: "couldn't update {name}: {why}", unanswered: "its node didn't answer"
     })
 
     // A part's name, as the vocabulary's machines: parts are named.
@@ -169,5 +175,23 @@ QtObject {
         expect("out of reach, Measured says as of when, and its figures keep their last values",
             measured === "as of 01:20" && gone.some(fact => fact.value === "4.0%"),
             `${measured} ${JSON.stringify(gone)}`);
+
+        // How an update ended, from what `mycelium update` printed.
+        const ended = [
+            '{"Ok":{"Updated":{"step":"done","commit":"c0ffee1234","restarted":[]}}}',
+            '{"Ok":{"Updated":{"step":"done"}}}',
+            '{"Ok":{"Updated":{"step":"unchanged","commit":"c0ffee1234"}}}',
+            '{"Ok":{"Updated":{"step":"failed"}}}',
+            '{"Ok":{"Updated":{"step":"refused"}}}',
+            '{"Ok":{"Updated":{"step":"switching"}}}',
+            '{"Err":"penelope is out of reach"}',
+            ""
+        ].map(text => Machines.updateEnded("penelope", text, said));
+        expect("an update says how it ended, its commit short, and why one couldn't be asked",
+            JSON.stringify(ended) === JSON.stringify(["penelope updated to c0ffee1",
+                "penelope updated", "penelope was on main already", "penelope didn't update",
+                "penelope refused the update", "couldn't update penelope: its node didn't answer",
+                "couldn't update penelope: penelope is out of reach",
+                "couldn't update penelope: its node didn't answer"]), JSON.stringify(ended));
     }
 }

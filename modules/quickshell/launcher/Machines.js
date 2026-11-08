@@ -204,6 +204,30 @@ function reach(record, place) {
         filled(place.said, probes[probe] ? "reaches" : "unreaches")));
 }
 
+// How an update a machine was asked for ended, as the report says it,
+// from what `mycelium update` printed: its node's answer,
+// `{"Ok": {"Updated": ending}}` with the ending its updater said, or
+// `{"Err": why}`. "penelope updated to c0ffee1", "penelope was on main
+// already", "penelope didn't update" or "penelope refused the update";
+// anything else, an answer that never came included, is why it couldn't
+// be asked, as the node said it.
+function updateEnded(name, text, said) {
+    let answer = null;
+    try {
+        answer = JSON.parse(text);
+    } catch (_error) {
+        answer = null;
+    }
+    const step = String(answer?.Ok?.Updated?.step ?? "");
+    const commit = String(answer?.Ok?.Updated?.commit ?? "").slice(0, SHORT_COMMIT);
+    const key = step === "done" && commit === "" ? "updated:done:bare" : `updated:${step}`;
+    if (step !== "" && said[key] !== undefined) {
+        return filled(said, key, { name, commit });
+    }
+    const why = typeof answer?.Err === "string" ? answer.Err : filled(said, "unanswered");
+    return filled(said, "notUpdated", { name, why });
+}
+
 // Its drawer, from what moves most to what never does: its pressures,
 // memory, charge, the work it would take, its disk, what it reaches, its
 // update, when it was measured, then its processor, accelerators and

@@ -1732,8 +1732,10 @@ Singleton {
     // answers the words that join it, run in a new window of the sessions'
     // kitty. With `on` empty the node places it, as Wherever It Fits does.
     // The folder is the quest's, found at the same place under the home of
-    // the machine it starts on, or that machine's home.
-    function startOn(on, quest, folder) {
+    // the machine it starts on, or that machine's home. With `quest` empty
+    // it starts on none, as Machines' Start a Session Here does; `among`
+    // names the realm whose node is asked, this machine's when left out.
+    function startOn(on, quest, folder, among) {
         if (on === machine) {
             start(quest, folder);
             return;
@@ -1741,9 +1743,10 @@ Singleton {
         if (!holds || starting.running)
             return;
         starting.asked = { on: on, quest: quest };
-        starting.command = ["mycelium", "--realm", realm, "start"]
+        starting.command = ["mycelium", "--realm", among || realm, "start"]
             .concat(on !== "" ? ["--need", `machine=${on}`] : [])
-            .concat(["--folder", folder, "--", "env", `QUEST_WORKFLOW_AUTOLOAD_ID=${quest}`, "pi"]);
+            .concat(["--folder", folder, "--"],
+                quest !== "" ? ["env", `QUEST_WORKFLOW_AUTOLOAD_ID=${quest}`] : [], ["pi"]);
         starting.running = true;
     }
     Process {
@@ -1752,6 +1755,10 @@ Singleton {
         stdout: StdioCollector {
             onStreamFinished: root.started(starting.asked, text)
         }
+    }
+    // " on QEST-..." for a session started on a quest, or nothing.
+    function questNamed(quest) {
+        return quest !== "" ? ` on ${quest}` : "";
     }
     function started(asked, text) {
         let answer;
@@ -1763,11 +1770,11 @@ Singleton {
         const begun = answer?.Ok?.Started;
         if (!begun || !Array.isArray(begun.attach)) {
             const why = typeof answer?.Err === "string" ? answer.Err : "its node didn't answer";
-            Report.say(`couldn't start a session on ${asked.quest}: ${why}`);
+            Report.say(`couldn't start a session${questNamed(asked.quest)}: ${why}`);
             return;
         }
         root.inSessions("kitty", begun.attach);
-        Report.say(`started a session on ${asked.quest} on ${begun.machine}`);
+        Report.say(`started a session${questNamed(asked.quest)} on ${begun.machine}`);
     }
 
     // Puts a steer in a session's inbox: `{ text, id }` talks to it,

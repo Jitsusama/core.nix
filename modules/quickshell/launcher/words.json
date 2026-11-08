@@ -2515,7 +2515,16 @@
         "gpu": "graphics",
         "npu": "NPU",
         "count": "{count} reached",
-        "gone": "{count} out of reach"
+        "gone": "{count} out of reach",
+        "updating": "updating",
+        "restarts": "its sessions restart",
+        "updated:done": "{name} updated to {commit}",
+        "updated:done:bare": "{name} updated",
+        "updated:unchanged": "{name} was on main already",
+        "updated:failed": "{name} didn't update",
+        "updated:refused": "{name} refused the update",
+        "notUpdated": "couldn't update {name}: {why}",
+        "unanswered": "its node didn't answer"
       },
       "parts": [
         "machines:pressure:cpu",
@@ -2552,6 +2561,23 @@
     { "id": "machines:accelerators", "in": "machines", "name": "Accelerators" },
     { "id": "machines:system", "in": "machines", "name": "System" },
     { "id": "machines:model", "in": "machines", "name": "Model" },
+    {
+      "id": "verb:machines:start",
+      "command": "new",
+      "in": "machines",
+      "name": "Start a Session Here",
+      "verb": "start",
+      "glyph": "agent"
+    },
+    {
+      "id": "verb:machines:update",
+      "command": "update",
+      "in": "machines",
+      "name": "Update It",
+      "verb": "update",
+      "glyph": "firmware",
+      "sure": "Update {name} Now"
+    },
     {
       "id": "verb:machines:copy-name",
       "command": "yank",

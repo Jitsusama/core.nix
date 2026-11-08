@@ -2051,7 +2051,7 @@
   the-launcher-says-every-machine-of-the-realm = ''
     Machines says every machine of the realms this one links, this one first, each in words with how
     it stands, and its drawer from what moves most to the model's identifier, leaving out what no
-    node said
+    node said, and says how an update it was asked for ended
   '';
   the-launcher-keeps-its-trials = ''
     each opening of the launcher is kept as its keys by kind, its pick and how long it took, and a

@@ -4,12 +4,15 @@
 // the launcher opens. This machine comes first and its Return opens the
 // Machine place, one place per thing; each other one says what it is and
 // how it stands, its drawer its figures, and its Return steps into those
-// figures as a page, each copying its value, then Copy the Name. One out
-// of reach dims and says since when (VKCF3Z's ruling of 2026-11-07, in
-// KP0L6A's design-machines.md). Machines.js says each row and drawer.
+// figures as a page, each copying its value, then its acts: Start a
+// Session Here, Update It, which asks first since its sessions restart,
+// and Copy the Name. One out of reach dims, says since when and offers
+// no act (VKCF3Z's ruling of 2026-11-07, in KP0L6A's design-machines.md).
+// Machines.js says each row and drawer, and how an update ended.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
+import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Ago.js" as Ago
@@ -40,22 +43,32 @@ Provider {
             kind: "machine"
             changesDiffer: true
             answersWhole: true
-            onRevisionChanged: provider.heard += 1
+            onRevisionChanged: provider.hear(realm, held)
+            Component.onDestruction: provider.hear(realm, null)
         }
     }
-    property int heard: 0
+
+    // What each realm's node holds, by realm, told by the node itself as
+    // it changes, since an Instantiator's objects are only QObjects to the
+    // linter, which can't see a Daemon's records on one.
+    property var heldBy: ({})
+    function hear(realm, held) {
+        const next = Object.assign({}, heldBy);
+        if (held)
+            next[realm] = held;
+        else
+            delete next[realm];
+        heldBy = next;
+    }
 
     // Every record the nodes hold, each with the realm that said it. A
     // node too old to list this machine leaves it out, so it's said from
     // what the shell knows of itself, its name, until one does.
     readonly property var records: {
-        void heard;
-        void nodes.count;
         const all = [];
-        for (let index = 0; index < nodes.count; index += 1) {
-            const node = nodes.objectAt(index);
-            for (const record of Object.values(node?.held ?? {}))
-                all.push(Object.assign({}, record, { realm: node.realm }));
+        for (const realm of Object.keys(heldBy)) {
+            for (const record of Object.values(heldBy[realm]))
+                all.push(Object.assign({}, record, { realm }));
         }
         if (Sessions.machine !== "" && !all.some(record => record.here === true))
             all.push({ name: Sessions.machine, here: true, state: "ready",
@@ -129,14 +142,16 @@ Provider {
         return row;
     }
 
-    // Its figures as a page, each copying its value, then Copy the Name.
+    // Its figures as a page, each copying its value, then its acts, the
+    // last Copy the Name.
     function inside(record, drawn) {
+        const acts = Listed.reached(record) ? [startHere(record), updateIt(record)] : [];
         return drawn.facts.map(fact => copyRow({
             key: `machines:${record.name}:${fact.label}`,
             name: fact.label,
             side: fact.value,
             copy: fact.value
-        })).concat([copyRow({
+        })).concat(acts, [copyRow({
             key: `verb:machines:copy-name:${record.name}`,
             name: Words.name("verb:machines:copy-name"),
             verb: Words.verb("verb:machines:copy-name"),
@@ -146,6 +161,82 @@ Provider {
             plain: false,
             copy: record.name
         })]);
+    }
+
+    // Starts a session there, in the same folder under its home as this
+    // machine's home, held by its node, its window opening here.
+    function startHere(record) {
+        const id = "verb:machines:start";
+        return thing({
+            key: `${id}:${record.name}`,
+            name: Words.name(id),
+            verb: Words.verb(id),
+            glyph: Words.glyph(id),
+            hue: "action",
+            later: true,
+            run: () => Sessions.startOn(record.name, "", Quickshell.env("HOME"), record.realm)
+        });
+    }
+
+    // The machine whose update is going now, or "": one at a time, since
+    // each takes minutes and says how it ended on its own.
+    property string updating: ""
+
+    // Updates it to its configuration's main, which restarts what it
+    // runs, so it asks first, as every act that restarts things does:
+    // "Update penelope Now", noted that its sessions restart. While it
+    // goes, its foot says so.
+    function updateIt(record) {
+        const id = "verb:machines:update";
+        const said = Words.of("machines").said ?? {};
+        const going = () => (provider.updating === record.name ? said.updating : "");
+        const row = {
+            key: `${id}:${record.name}`,
+            name: Words.name(id),
+            verb: Words.verb(id),
+            glyph: Words.glyph(id),
+            hue: "action",
+            stays: true,
+            state: going
+        };
+        if (updating !== "")
+            return thing(Object.assign(row, { gone: true }));
+        const sure = () => [thing({
+            key: `${id}:sure:${record.name}`,
+            // The step that asks Joel to be sure, so its Return does it (Launcher.lands).
+            sure: true,
+            name: String(Words.of(id).sure ?? "").replace("{name}", record.name),
+            note: said.restarts,
+            verb: Words.verb(id),
+            glyph: Words.glyph(id),
+            hue: "alert",
+            stays: true,
+            state: () => going() || said.restarts,
+            run: () => provider.update(record)
+        })];
+        return thing(Object.assign(row, { verbs: sure, targets: sure }));
+    }
+
+    // Asks its realm's node to update it, through mycelium's own command,
+    // which answers once its updater says how it ended.
+    function update(record) {
+        if (updating !== "")
+            return;
+        updating = record.name;
+        updater.machine = record.name;
+        updater.command = ["mycelium", "--realm", record.realm, "update", record.name];
+        updater.running = true;
+    }
+    Process {
+        id: updater
+        property string machine: ""
+        stdout: StdioCollector {
+            onStreamFinished: {
+                provider.updating = "";
+                Report.say(Listed.updateEnded(updater.machine, text,
+                    Words.of("machines").said ?? {}));
+            }
+        }
     }
 
     function search(typed) {
