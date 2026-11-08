@@ -2562,7 +2562,6 @@ onLinux {
       cp ${./launcher/Recents.qml} launcher/Recents.qml
       cp ${./launcher/Recents.js} launcher/Recents.js
       cp ${./launcher/Recent.js} launcher/Recent.js
-      cp ${./Daemon.qml} Daemon.qml
       cp ${./launcher/PastNotices.qml} launcher/PastNotices.qml
       cp ${./launcher/Notice.js} launcher/Notice.js
       cp ${./NoticeBody.js} NoticeBody.js

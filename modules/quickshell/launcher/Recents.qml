@@ -74,6 +74,15 @@ Scope {
     // daemon reads its asked list and what it has open.
     property var stepped: []
 
+    // Each list read as the shell starts is watched until it's first
+    // heard, so the launcher's first opening finds it held, as it did
+    // when the shell read each list once at start; then only while the
+    // launcher is open.
+    readonly property var started: sources.filter(source => !source.asked
+        && (source.list ?? []).length > 0).map(source => `recent:${source.app ?? "shared"}`)
+    property var heardOnce: ({})
+    readonly property bool primed: started.every(key => key in heardOnce)
+
     // Reads the asked sources of a program stepped into, and what it has
     // open, once an opening.
     function ask(app) {
@@ -132,6 +141,11 @@ Scope {
         let lists = recents.lately;
         let times = recents.latelyAt;
         let opened = recents.openNow;
+        const once = Object.assign({}, recents.heardOnce);
+        for (const key of keys)
+            once[key] = true;
+        if (Object.keys(once).length !== Object.keys(recents.heardOnce).length)
+            recents.heardOnce = once;
         for (const key of keys) {
             const record = daemon.held[key];
             const colon = key.indexOf(":");
@@ -164,14 +178,14 @@ Scope {
             recents.openNow = opened;
     }
 
-    // Every program's list while the launcher is open, and the program
-    // stepped into last by name.
+    // Every program's list while the launcher is open, or until each is
+    // first heard, and the program stepped into last by name.
     Daemon {
         id: daemon
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/programs.sock`
         kind: "recent"
-        live: recents.showing
+        live: recents.showing || !recents.primed
         ahead: recents.stepped
 
         onHeard: keys => recents.took(keys)
