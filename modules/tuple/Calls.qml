@@ -89,9 +89,6 @@ Provider {
         rang: Words.name("tuple:call:rang"),
         again: Words.name("tuple:call:again"),
         againAll: Words.name("tuple:call:again", "all"),
-        // Tuple's name as its desktop entry gives it, the world's, which
-        // the vocabulary never spells, as the program's own row says it.
-        program: DesktopEntries.byId("tuple")?.name ?? "",
         date: (date, format) => Qt.formatDate(date, format)
     })
 
@@ -126,7 +123,12 @@ Provider {
             key: `tuple:call:${past.missed ? "missed" : "ended"}:${past.since}`,
             name: Log.who(past.people, said),
             note: Log.note(past, now, said),
-            drawer: Log.details(past, said),
+            // Tuple's name as its desktop entry gives it, the world's,
+            // which the vocabulary never spells, as the program's own row
+            // says it. It's asked each time, since the entries are read
+            // after the shell starts and byId tells no one when they are.
+            drawer: Log.details(past, Object.assign({}, said,
+                { program: DesktopEntries.byId("tuple")?.name ?? "" })),
             side: first === null ? "" : TuplePeople.how(first).said,
             glyph: Words.glyph("tuple:call", busy ? "busy" : ""),
             hue: past.missed ? "alert" : "person",

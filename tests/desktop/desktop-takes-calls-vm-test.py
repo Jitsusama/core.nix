@@ -181,12 +181,14 @@ def test_a_tuple_call_that_ended_is_in_tuples_recent_to_call_again(desktop: Desk
     )
     desktop.down_to("Ada Brightwater")
     # The drawer fades in once the selection rests, so the shot waits until
-    # it's out and drawing her call, who rang first.
+    # it's out and drawing her call, who rang first, over where it was,
+    # Tuple named as its desktop entry names it.
     desktop.launcher_until(
         lambda shown: (
             shown["drawer"]["out"] is True
             and shown["drawer"]["shown"] is True
             and shown["drawer"]["drawn"] == "Ada Brightwater"
+            and shown["drawer"]["eyebrow"] == "on Tuple \u00b7 call"
             and shown["drawer"]["drawnFacts"][:1] == ["Who Rang"]
         )
     )
