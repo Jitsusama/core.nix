@@ -954,16 +954,36 @@ impl<'a, F: Fn(&str) -> bool> Breaking<'a, F> {
     /// round can run long past it: on 7 November the revert merged at
     /// 13:48, and eight merges waited off the machine behind the hold while
     /// the round it was found in ran on.
+    ///
+    /// A failed test that finds another's search under way asks whether
+    /// main's newest head fixed it while it waits, rather than after. On
+    /// 8 November six tests failed at once at 06fc027e, and their searches
+    /// ran one after another from 10:30 to past 15:00, though five of the six
+    /// were fixed forward and each was found so within one search step.
     fn heard(&self, test: &str, outcome: Outcome) {
-        let mut done = self
-            .done
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let searched = outcome == Outcome::Failed && !(self.left_be)(test);
+        let mut done = match self.done.try_lock() {
+            Ok(done) => done,
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+            Err(std::sync::TryLockError::WouldBlock) => {
+                // An error here is asked again beside the search's first
+                // step, so it's left to that.
+                if searched
+                    && fixed_forward(self.world, self.state, self.head, test, None) == Ok(true)
+                {
+                    self.fixed_forward_since();
+                    return;
+                }
+                self.done
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+            }
+        };
         if done.is_err() {
             return;
         }
         *done = clear_if_reverted(self.world, self.state);
-        if done.is_ok() && outcome == Outcome::Failed && !(self.left_be)(test) {
+        if done.is_ok() && searched {
             *done = broke(self.world, self.state, self.base, self.head, test);
         }
         drop(done);
@@ -1208,6 +1228,10 @@ mod tests {
         /// Commits whose each run waits for a second run there to start,
         /// or after a while without, when it's put in `waited_out`.
         pairs: Vec<String>,
+        /// Checks whose each run at main's newest head waits for every one
+        /// of them to start there, or after a while without, when it's put
+        /// in `waited_out`.
+        together_at_newest: Vec<String>,
         build_seen: Condvar,
         waited_out: Mutex<Vec<String>>,
         reaches_main_after: usize,
@@ -1294,6 +1318,23 @@ mod tests {
                 let (built, waited) = self
                     .build_seen
                     .wait_timeout_while(built, Duration::from_secs(10), searched)
+                    .unwrap();
+                drop(built);
+                if waited.timed_out() {
+                    self.waited_out.lock().unwrap().push(check.to_owned());
+                }
+            }
+            if commit == self.head && self.together_at_newest.iter().any(|one| one == check) {
+                let apart = |built: &mut Vec<(String, String)>| {
+                    !self
+                        .together_at_newest
+                        .iter()
+                        .all(|one| built.iter().any(|(at, ran)| at == commit && ran == one))
+                };
+                let built = self.built.lock().unwrap();
+                let (built, waited) = self
+                    .build_seen
+                    .wait_timeout_while(built, Duration::from_secs(10), apart)
                     .unwrap();
                 drop(built);
                 if waited.timed_out() {
@@ -1700,6 +1741,38 @@ mod tests {
             state.hold().is_none(),
             "the revert reached main as the round's test ran"
         );
+    }
+
+    #[test]
+    fn tests_failing_while_another_is_searched_for_ask_main_meanwhile() {
+        let state = state("fixed-forward-meanwhile");
+        state.set_heads("s", "s").unwrap();
+        state.begin("h").unwrap();
+        let world = Stand {
+            head: "n".into(),
+            merges: names("a b c d e f g h"),
+            changed: changed("vm-a vm-b"),
+            together_at_newest: names("vm-a vm-b"),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1])
+        .exits("h", "vm-b", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert!(
+            world.waited_out.lock().unwrap().is_empty(),
+            "one test's search held the other's ask of main's newest head"
+        );
+        assert!(world.reverted.lock().unwrap().is_empty());
+        assert_eq!(state.hold(), None);
+        let fixed: Vec<Value> = findings(&state)
+            .into_iter()
+            .filter(|found| found["kind"] == "fixed-forward")
+            .map(|found| found["test"].clone())
+            .collect();
+        assert_eq!(fixed.len(), 2, "both tests are found fixed forward");
     }
 
     #[test]
