@@ -2877,17 +2877,20 @@ onLinux {
     '';
 
   # pi's sessions are known by their own records as the machine's node
-  # holds them, never by a window's title, and each one's window through
-  # the kitty it runs in (tests/sessions.qml), with the node, niri and
-  # kitten stood in over what tests/sessions-state.sh lays out.
+  # holds them, never by a window's title, and each one's window by the app
+  # id it opened with, or for one opened without, through the kitty it runs
+  # in (tests/sessions.qml), with the node, niri and kitten stood in over
+  # what tests/sessions-state.sh lays out.
   a-session-is-known-by-its-own-record =
     let
-      # Three windows of the same title, one of kitty 500's and two of 600's.
+      # Three windows of the same title, one of kitty 500's and two of 600's,
+      # the second opened as pi-session.7, each with the app id it opened
+      # with kept, as Niri.qml keeps it.
       niri = singleton "Niri.qml" ''
         property var windows: ({
-          "10": { id: 10, pid: 500, title: "\u03c0 - Lighthouse" },
-          "20": { id: 20, pid: 600, title: "\u03c0 - Lighthouse" },
-          "21": { id: 21, pid: 600, title: "\u03c0 - Lighthouse" }
+          "10": { id: 10, pid: 500, title: "\u03c0 - Lighthouse", opened: "kitty" },
+          "20": { id: 20, pid: 600, title: "\u03c0 - Lighthouse", opened: "kitty" },
+          "21": { id: 21, pid: 600, title: "\u03c0 - Lighthouse", opened: "pi-session.7" }
         })
         property int revision: 0
         property var current: null
@@ -2946,16 +2949,18 @@ onLinux {
     '';
 
   # A session handed over while the screen is locked, beside its sender in
-  # the sessions' kitty, waits once the lock is gone until kitty has said
-  # which window is the sender's, then goes to the sender's workspace
-  # (tests/sessions-behind-the-lock.qml), with niri and kitten stood in.
+  # the sessions' kitty, waits once the lock is gone until the node has
+  # said which window is the sender's, then goes to the sender's workspace
+  # (tests/sessions-behind-the-lock.qml), with niri stood in.
   a-session-behind-the-lock-waits-for-its-kin =
     let
-      # The sender's kitty's two windows, on the second workspace.
+      # The sender's kitty's two windows, on the second workspace, the
+      # second opened as pi-session.3, each with the app id it opened with
+      # kept, as Niri.qml keeps it.
       niri = singleton "Niri.qml" ''
         property var windows: ({
-          "20": { id: 20, pid: 600, workspace_id: 2 },
-          "21": { id: 21, pid: 600, workspace_id: 2 }
+          "20": { id: 20, pid: 600, workspace_id: 2, opened: "kitty" },
+          "21": { id: 21, pid: 600, workspace_id: 2, opened: "pi-session.3" }
         })
         property int revision: 0
         property var current: null
@@ -2989,7 +2994,6 @@ onLinux {
     pkgs.runCommandLocal "a-session-behind-the-lock-waits-for-its-kin" { } ''
       export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
       ${lib.getExe pkgs.bash} ${../../tests/sessions-behind-the-lock-state.sh} $XDG_STATE_HOME
-      export PATH=$XDG_STATE_HOME/bin:$PATH
       cp ${./Sessions.qml} Sessions.qml
       cp ${./PiSource.qml} PiSource.qml
       cp ${./PiSource.js} PiSource.js
