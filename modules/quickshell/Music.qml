@@ -112,7 +112,9 @@ Singleton {
         && (windowOf(player) !== undefined || player.canRaise)
 
     function windowOf(player: MprisPlayer): var {
-        const entry = (player?.desktopEntry ?? "").toLowerCase();
+        if (!player)
+            return undefined;
+        const entry = (player.desktopEntry ?? "").toLowerCase();
         return entry === "" ? undefined : Object.values(Niri.windows)
             .find(window => (window.app_id ?? "").toLowerCase() === entry);
     }
