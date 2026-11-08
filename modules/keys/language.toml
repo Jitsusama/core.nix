@@ -1150,6 +1150,9 @@ command = "extend"
 short = "ext"
 kinds = ["list"]
 changes = true
+# A minute more is small and shows at once on the row looked at, so it
+# guards itself rather than asking first.
+guarded = true
 
 # The stopwatch's count now marked as a lap. :la is Vim's :last, so its
 # short form is the whole word.
@@ -1158,6 +1161,9 @@ command = "lap"
 short = "lap"
 kinds = ["list"]
 changes = true
+# A lap is marked in a moment that's gone by the time a question is
+# answered, and shows at once on the row looked at, so it asks nothing.
+guarded = true
 
 # The next track, or with ! the one before: Next Track, Next, Previous
 # Track and Previous, since :next and :previous are Vim's.
