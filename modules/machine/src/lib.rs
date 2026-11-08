@@ -115,13 +115,20 @@ pub fn rounded(value: f64, places: i32) -> Value {
 pub fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |since| u64::try_from(since.as_millis()).unwrap_or(u64::MAX))
+        .map_or(0, |since| {
+            u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
+        })
 }
 
 /// The CPU numbers a list such as `0-3,8` names.
 pub fn cpu_list(text: &str) -> Vec<u32> {
     let mut listed = Vec::new();
-    for part in text.trim().split(',').map(str::trim).filter(|p| !p.is_empty()) {
+    for part in text
+        .trim()
+        .split(',')
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+    {
         let (first, last) = part.split_once('-').unwrap_or((part, part));
         if let (Ok(first), Ok(last)) = (first.parse::<u32>(), last.parse::<u32>()) {
             listed.extend(first..=last);

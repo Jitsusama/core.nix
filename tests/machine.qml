@@ -1,13 +1,11 @@
 // Drives the launcher's Machine (modules/quickshell/launcher/Machine.qml)
-// through Quickshell itself, over the sandbox's own /proc, with a stand-in
-// for the program that lists the processes, which says each time it's run:
-// the processors' and the memory's headlines, asked again as each second
-// asks them, make none of their parts and start nothing, and only once
-// their parts are looked at are the processes listed, once, for the
-// programs using them. It exits 0 once every case holds, and otherwise 1,
-// saying which case didn't.
+// through Quickshell itself, with the machine daemon (modules/machine)
+// running over the sandbox's own /proc: once the launcher opens, the
+// processors', memory's and uptime's headlines are the daemon's, and
+// make none of their parts; the programs using the machine aren't asked
+// for until a part saying them is looked at, and then are. It exits 0
+// once every case holds, and otherwise 1, saying which case didn't.
 import Quickshell
-import Quickshell.Io
 import QtQuick
 import "launcher" as Launcher
 
@@ -19,29 +17,24 @@ ShellRoot {
             throw new Error(`${what}: ${said}`);
     }
 
+    // The launcher as Machine reads it: open, showing what `answer` is.
+    QtObject {
+        id: launcher
+
+        property bool open: true
+        property var answer: null
+        property var held: []
+        property var matches: []
+        property var placed: []
+    }
+
     Launcher.Machine {
         id: machine
 
-        settings: ({ processes: Quickshell.env("PROCESSES") })
+        launcher: launcher
     }
 
-    // How many times the processes were listed, a line each.
-    FileView {
-        id: listings
-        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/listed`
-        blockLoading: true
-        printErrors: false
-    }
-
-    function listed() {
-        listings.reload();
-        listings.waitForJob();
-        return listings.text().split("\n").filter(line => line !== "").length;
-    }
-
-    // Quickshell hears Qt.exit only once the shell has loaded, so the cases
-    // run just after.
-    Component.onCompleted: Qt.callLater(root.headlines)
+    Component.onCompleted: waiting.start()
 
     function fail(error) {
         console.warn(`FAIL ${error.message ?? error}`);
@@ -49,61 +42,75 @@ ShellRoot {
     }
 
     property var processors: null
-    property var memory: null
 
-    // The headlines, asked as the launcher asks them, before anything
-    // looks at their rows.
+    // Asks again every tenth of a second, for at most ten seconds, until
+    // `ready` holds, then runs `then`.
+    Timer {
+        id: waiting
+
+        property int left: 100
+
+        interval: 100
+        repeat: true
+        onTriggered: {
+            if (machine.processor() === null || machine.record("memory:main") === null
+                || machine.bootRecord() === null) {
+                if (--left > 0)
+                    return;
+                stop();
+                root.fail(new Error("the daemon never said the processor, memory and boot"));
+                return;
+            }
+            stop();
+            root.headlines();
+        }
+    }
+
     function headlines() {
         try {
             processors = machine.answer("processor");
-            memory = machine.answer("memory");
-            expect("the processors' headline", processors !== null
-                && /^\d+% busy$/.test(processors.headline), processors?.headline);
-            expect("the memory's headline", memory !== null
-                && / used, \d+%$/.test(memory.headline), memory?.headline);
+            const memory = machine.answer("memory");
+            const uptime = machine.answer("uptime");
+            expect("the processors' headline", /^\d+% busy$/.test(processors.headline),
+                processors.headline);
+            expect("the memory's headline", / used, \d+%$/.test(memory.headline), memory.headline);
+            expect("the uptime's headline", /^up /.test(uptime.headline), uptime.headline);
             expect("both say they have parts", processors.parted && memory.parted,
                 `${processors.parted} ${memory.parted}`);
-            waited.start();
+            expect("the headlines asked for no programs", !machine.usingWanted, "they did");
+            // Shown and looked at, its parts ask for the programs.
+            launcher.answer = processors;
+            const parts = processors.rows.map(row => row.name);
+            expect("the processors' parts", parts.includes("Cores") && parts.includes("Time Spent"),
+                parts.join(", "));
+            programs.start();
         } catch (error) {
             fail(error);
         }
     }
 
-    // Long enough for a list started by the headlines to have been read,
-    // and for each headline to be asked again, as each second would.
     Timer {
-        id: waited
-        interval: 1500
-        onTriggered: {
-            try {
-                machine.answer("processor");
-                machine.answer("memory");
-                root.expect("the headlines started nothing", root.listed() === 0
-                    && machine.programs === null, `${root.listed()} listings`);
-                const parts = root.processors.rows.map(row => row.name);
-                root.expect("the processors' parts", parts.includes("Cores"),
-                    parts.join(", "));
-                root.expect("the memory's parts", root.memory.rows.length > 0, "none");
-                partsShown.start();
-            } catch (error) {
-                root.fail(error);
-            }
-        }
-    }
+        id: programs
 
-    // The parts looked at, the processes are listed, once for both.
-    Timer {
-        id: partsShown
+        property int left: 100
+
         interval: 100
         repeat: true
-        property int left: 50
         onTriggered: {
-            if (machine.programs === null && --left > 0)
+            const users = machine.using("cpu");
+            if (users === null || users.length === 0) {
+                if (--left > 0)
+                    return;
+                stop();
+                root.fail(new Error(`the programs were never asked for: ${machine.usingWanted}`));
                 return;
+            }
             stop();
             try {
-                root.expect("the parts listed the processes", machine.programs !== null
-                    && root.listed() === 1, `${root.listed()} listings`);
+                const parts = machine.answer("processor").rows;
+                const using = parts.find(row => row.name === "Using It");
+                root.expect("the programs using it", using !== undefined && using.side !== "\u2026",
+                    parts.map(row => `${row.name} ${row.side}`).join(", "));
                 Qt.callLater(() => Qt.exit(0));
             } catch (error) {
                 root.fail(error);

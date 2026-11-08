@@ -2,42 +2,51 @@
 // parts a step in:
 //
 // - "cpu", "processor", "cores" or "load": how busy the processors are, and
-//   their Cores (one reading each, oldest core first), which are Maxed, the
-//   Clock, what Held it Back over the last second and each core held (as
-//   its own telemetry says, ProcessorTelemetry.qml), the Temperature (as
-//   Heat reads it), the programs Using it, the Load, the NPU's Load (as
-//   its driver says it), the Kinds of core and the Model, then what Kept
-//   it From Resting over the last ten seconds and each part that did.
-//   Both telemetry rows stand whenever the telemetry answers, at 0% when
-//   nothing holds it back or keeps it from resting, so the rows under
-//   them don't move.
-// - "memory" or "ram": what's Used, the Pressure (how long something waited
-//   for it), the Swap, what's Cached, the programs Using it, and its Type,
-//   as the machine read it at boot.
+//   their Cores (one reading each, oldest core first, with its kind, clock
+//   and temperature), which are Maxed, where their Time was Spent, the
+//   Pressure on them (how long something waited for one), the Clock and
+//   its range, base, driver, governor, preference and turbo, what Held it
+//   Back over the last second and each core held (as its own telemetry
+//   says, ProcessorTelemetry.qml), the Temperature, the programs Using
+//   it, the Load, how many tasks are Running, how often it Switches tasks,
+//   takes Interrupts and Starts processes, the NPU's Load, the Kinds of
+//   core and the Model with its family, microcode and caches, then what
+//   Kept it From Resting over the last ten seconds and each part that
+//   did. Both telemetry rows stand whenever the telemetry answers, at 0%
+//   when nothing holds it back or keeps it from resting, so the rows
+//   under them don't move.
+// - "memory" or "ram": what's Used, the Pressure, the Swap, what's Cached,
+//   what it's Kept By, what's Committed, how often pages Fault, the
+//   Swapping, the programs killed for it (Out of Memory), the programs
+//   Using it, and its Type, each module as the machine read it at boot.
 // - "disk", "storage" or "free space": the Space each disk has, as the disk
 //   guard says it (pieces/Disk.qml, so that fact has one home), or the file
-//   system where no guard watches, then how fast the disk is Reading and
-//   Writing, how Busy it is, its Latency, Temperature, Health and Model.
-// - "uptime": how long the machine has been up.
+//   system where no guard watches, then how fast the disk is Reading,
+//   Writing, Discarding and Flushing, how Busy it is, each kind of
+//   request's Latency, its Queue, the Pressure on it, its Temperature,
+//   Health and Model, with its firmware, link, size, block size and
+//   scheduler.
+// - "uptime": how long the machine has been up, and of that how long it
+//   was Asleep and its processors Idle, when it Started and its Kernel.
 //
 // A part has its own words too, "disk speed" or "ram type", which answer
 // it alone. The words that ask each, and every part's name, are the
-// vocabulary's (launcher/words.json, Words.qml). Everything is read from
-// the kernel's files when asked, on the shell's own thread, since handing
-// each small file to a reader thread and waiting for it cost more than the
-// read under load; and a rate is the difference between two reads, so the
-// last is kept with its time. While the launcher shows one of these, or
-// holds it stepped into, it's read again once a second, and never more:
-// nothing is read for a key. An answer's parts are made only once they're
-// looked at, so a headline alone reads no more than it says. What programs
-// are running is read by one spawned cat, only while the parts saying them
-// are shown, the disk's health by asking UDisks, with no prompt, and the
-// file system's room by stat where no guard says it, each at most once a
-// second while shown, and the health once a minute; the programs once as
-// the launcher opens, too.
+// vocabulary's (launcher/words.json, Words.qml).
+//
+// Every figure is the machine daemon's (modules/machine), held over one
+// connection to its socket (Daemon.qml), so nothing is read or spawned
+// here: the daemon reads the kernel and asks UDisks, and says each
+// record as it changes. It reads only while watched, so the processor,
+// memory, disks and boot are watched while the launcher is open, and the
+// programs using the machine, which cost it the most to read, only once
+// a part saying them has been looked at, until the launcher closes. Its
+// records come at most once a second, and once more a moment after the
+// first, whose rates are since the machine started, so a rate stands for
+// now as soon as it can; each answer here is asked again as they come.
+// With the daemon down, each thing stays, dimmed, saying it isn't
+// answering.
 import qs
-import Qt.labs.folderlistmodel
-import Quickshell.Io
+import Quickshell
 import QtQuick
 import "Heat.js" as Heat
 import "Interfaces.js" as Interfaces
@@ -63,7 +72,7 @@ Provider {
     readonly property var parts: {
         const out = {};
         for (const kind of Object.keys(kinds))
-            for (const part of Words.of(kinds[kind]).parts)
+            for (const part of Words.of(kinds[kind]).parts ?? [])
                 for (const question of Words.answers(part))
                     out[question] = [kind, Words.name(part)];
         return out;
@@ -90,6 +99,14 @@ Provider {
         return Words.name(`machine:${id}`, "", fill);
     }
 
+    // What a part's words say beside it, by its id and the phrase's name.
+    function says(id, phrase, fill) {
+        let said = (Words.of(`machine:${id}`).said ?? {})[phrase] ?? "";
+        for (const key of Object.keys(fill ?? {}))
+            said = said.replace(`{${key}}`, fill[key]);
+        return said;
+    }
+
     function told(kind) {
         switch (kind) {
         case "cpu":
@@ -109,10 +126,12 @@ Provider {
     // step in, and Return copying what it shows, as every value does.
     function alone(kind, name) {
         const whole = told(kind);
-        const part = whole ? whole.rows.find(row => row.name === name) : null;
+        const part = whole && !whole.asking && !whole.gone
+            ? whole.rows.find(row => row.name === name) : null;
         const resting = kind === "cpu" && name === named("cpu:kept-from-resting");
         if (!part)
-            return resting && whole ? awaited(whole, name) : null;
+            return resting && whole ? awaited(whole, name) : whole && (whole.asking || whole.gone)
+                ? Object.assign({}, whole, { title: name }) : null;
         return {
             // Kept From Resting stands in a place whether or not anything
             // keeps it from resting, so it's kept there with no parts too;
@@ -156,11 +175,33 @@ Provider {
         };
     }
 
-    // An answer that's asked again each second while it's shown or held
-    // (the Timer below), so its figures move, and its parts stepped into
-    // are never more than a second old. Its parts are made by `parts` only
-    // when they're first looked at, and it says it has some (`parted`), so
-    // the headline alone, asked each second, makes none of them.
+    // A thing whose record the daemon hasn't said: while it's starting or
+    // the launcher has only just opened, its place held with the fixed
+    // placeholder, so nothing moves when the record comes a moment later;
+    // and while the daemon isn't answering, dimmed, saying so (VKCF3Z's
+    // rules for a daemon that's down).
+    function unheld(kind) {
+        const down = daemon.state === "not answering";
+        return {
+            headline: down ? "" : "\u2026",
+            copy: "",
+            glyph: Words.glyph(kinds[kind]),
+            hue: "machine",
+            title: Words.name(kinds[kind]),
+            about: kinds[kind],
+            rows: [],
+            note: down ? says("cpu", "down") : "",
+            asking: !down,
+            gone: down,
+            live: provider
+        };
+    }
+
+    // An answer that's asked again as its records change, so its figures
+    // move, and its parts stepped into are never more than a second old.
+    // Its parts are made by `parts` only when they're first looked at, and
+    // it says it has some (`parted`), so the headline alone makes none of
+    // them.
     function fresh(fields, parts) {
         const said = Object.assign({ live: provider, parted: true, hue: "machine" }, fields);
         let made = null;
@@ -179,9 +220,10 @@ Provider {
         return copyRow(Object.assign({ copy: "", hue: "machine", glyph: "", note: "" }, fields));
     }
 
-    // A part whose programs aren't read yet, as they're read only once the
-    // launcher opens: listed from the first, saying it's still reading, so
-    // its place is held and nothing below it moves once they are.
+    // A part whose figures aren't held yet, as the programs aren't until a
+    // part saying them is first looked at: listed from the first, saying
+    // it's still reading, so its place is held and nothing below it moves
+    // once they come.
     function reading(name) {
         return figure({ name: name, side: "\u2026" });
     }
@@ -231,8 +273,18 @@ Provider {
         return Numbers.format(value, places, settings.group, settings.point);
     }
 
-    function gib(kib) {
-        return `${number(kib / 1048576, 1)} GiB`;
+    function gib(bytes) {
+        return `${number(bytes / 1073741824, 1)} GiB`;
+    }
+
+    // Bytes in binary units, as memory and caches are counted.
+    function binary(count) {
+        const units = [[1073741824, "GiB"], [1048576, "MiB"], [1024, "KiB"]];
+        const unit = units.find(each => count >= each[0]);
+        if (!unit)
+            return `${Math.round(count)} B`;
+        const scaled = count / unit[0];
+        return `${number(scaled, scaled < 10 && scaled % 1 !== 0 ? 1 : 0)} ${unit[1]}`;
     }
 
     function percent(part) {
@@ -253,205 +305,187 @@ Provider {
         return `${bytes(count)}/s`;
     }
 
-    function degrees(value) {
-        return `${number(value, 0)} \u00b0C`;
+    // A count a second, whole once it's past ten.
+    function often(count) {
+        return `${number(count, count < 10 ? 1 : 0)}/s`;
     }
 
-    // A temperature part: the processor's or the disk's whole reading, as
-    // Heat's Processor and Disk say it and drawn the same way, against
-    // the most it's meant to reach and warning near it (Heat.js's level).
-    // It's one figure here, since its detail, each core, the disk's other
-    // sensors, its history and how often it's slowed, is Heat's alone.
-    function heated(id, heat, part) {
-        const said = Heat.level(heat.value, heat.high, heat.most, part);
-        return figure({
-            name: named(id),
-            side: degrees(heat.value),
-            graph: bar(said.value, said.warn),
-            note: heat.most ? `at most ${degrees(heat.most)}` : ""
-        });
+    function degrees(value) {
+        return `${number(value, 0)} \u00b0C`;
     }
 
     function ghz(khz) {
         return `${number(khz / 1e6, 1)} GHz`;
     }
 
-    // Each thing's last two reads, { last, before }, each { at, said }: a
-    // rate is the difference between them. Read again once a second at
-    // most, or once a moment after a read with nothing recent before it, so
-    // the parts stepped into soon after asking say what's happening now
-    // rather than since the last time it was asked.
-    property var reads: ({})
-    // Each spark's reads, the newest last.
-    property var series: ({})
-    // What's worked out once: what's fixed about the processors, and the
-    // machine's disk.
-    readonly property var memo: ({ processors: null, block: "" })
-    readonly property int second: 1000
-    readonly property int soonest: 200
-    // Reads further apart than this aren't a rate of now, and start a
-    // spark afresh.
-    readonly property int stale: 5000
-
-    function settled(kept) {
-        return kept !== undefined && kept.before !== null && kept.last.at - kept.before.at <= stale;
+    function ms(value) {
+        return `${number(value, value < 10 ? 2 : 0)} ms`;
     }
 
-    function due(kept, now) {
-        if (!kept || !kept.last)
-            return true;
-        const age = now - kept.last.at;
-        return age >= second || (!settled(kept) && age >= soonest);
+    // A long time, as Interfaces says one: "3 days, 2 hours".
+    function lasted(seconds) {
+        return Interfaces.lasted(seconds);
     }
 
-    // Reads a thing again if it's due, and gives its reads.
-    function sampled(kind, reader) {
-        const now = Date.now();
-        const kept = reads[kind];
-        if (due(kept, now)) {
-            reads[kind] = { last: { at: now, said: reader() }, before: kept ? kept.last : null };
-            if (!settled(reads[kind]))
-                soon.restart();
-        }
-        return reads[kind];
+    // A temperature part: the processor's or the disk's whole reading,
+    // drawn as Heat draws it, against the most it's meant to reach and
+    // warning near it (Heat.js's level). It's one figure here, since its
+    // detail, each sensor, its history and how often it's slowed, is
+    // Heat's alone.
+    function heated(id, heat, part) {
+        const said = Heat.level(heat.temperature_c, heat.high_c, heat.critical_c, part);
+        return figure({
+            name: named(id),
+            side: degrees(heat.temperature_c),
+            graph: bar(said.value, said.warn),
+            note: heat.critical_c ? `at most ${degrees(heat.critical_c)}`
+                : heat.high_c ? `at most ${degrees(heat.high_c)}` : ""
+        });
     }
 
-    // Seconds between a thing's two reads, or null with none before.
-    function between(kept) {
-        return kept.before ? (kept.last.at - kept.before.at) / 1000 : null;
+    // A pressure part, from the kernel's pressure stall information: the
+    // share of the last ten seconds something waited, warning past a
+    // tenth, and a step in, the last minute's and five minutes', each with
+    // the share in which everything waited where the kernel keeps that.
+    function pressured(id, pressure, full) {
+        const some = pressure.some;
+        const warn = some.avg10_pct >= 10;
+        const both = (window, name) => figure({
+            name: named(`${id}-${name}`),
+            side: full && pressure.full ? `${number(some[window], 0)}% \u00b7 ${number(
+                pressure.full[window], 0)}%` : `${number(some[window], 0)}%`,
+            graph: bar(some[window] / 100, some[window] >= 10),
+            note: full && pressure.full ? says(id, "both") : says(id, "some")
+        });
+        return holderRow({
+            name: named(id),
+            side: says(id, "side", { pct: number(some.avg10_pct, 0) }),
+            graph: bar(some.avg10_pct / 100, warn),
+            glyph: Words.glyph(`machine:${id.split(":")[0]}`),
+            note: full && pressure.full ? says(id, "note", { full: number(pressure.full.avg10_pct,
+                0) }) : says(id, "note")
+        }, () => [both("avg10_pct", "10"), both("avg60_pct", "60"), both("avg300_pct", "300")]);
     }
 
-    // What a figure between two reads stands for, as the footer says it.
-    function since(kept) {
-        return !kept.before ? "since the machine started"
-            : settled(kept) ? "just now" : "since you last asked";
+    // What a record's rates are measured over, as a note says it.
+    function since(record) {
+        return record.since === "boot" ? "since the machine started"
+            : record.since === "asked" ? "since you last asked" : "just now";
     }
 
-    // Adds a read to a spark, starting it afresh after a gap. A first read
-    // says only what's been since the machine started, so it adds nothing.
-    function push(name, value, kept) {
-        if (!kept.before)
-            return;
-        const drawn = settled(kept) ? series[name] ?? [] : [];
-        series[name] = drawn.concat([value]).slice(-graphed);
+    // The daemon's records.
+
+    // A record by its key, read beside the revision so a binding is told
+    // once a change, or null while it isn't held.
+    function record(key) {
+        return daemon.revision >= 0 ? daemon.held[key] ?? null : null;
+    }
+
+    function processor() {
+        return record("processor:0");
+    }
+
+    // The disk records, the machine's own first.
+    function diskRecords() {
+        const held = daemon.revision >= 0 ? daemon.held : {};
+        return Object.keys(held).filter(key => key.startsWith("disk:")).map(key => held[key]);
+    }
+
+    function machineDisk() {
+        return Machine.biggest(diskRecords());
+    }
+
+    // The programs using most of something, in their places, or null while
+    // the programs aren't held yet.
+    function using(of) {
+        if (!users.answered || users.state === "not answering")
+            return null;
+        const held = users.revision >= 0 ? users.held : {};
+        const found = [];
+        for (let rank = 1; held[`using:${of}:${rank}`]; rank++)
+            found.push(held[`using:${of}:${rank}`]);
+        return found;
+    }
+
+    // The programs are asked for once a part saying them is looked at.
+    function wantsPrograms() {
+        if (!usingWanted)
+            Qt.callLater(() => provider.usingWanted = true);
     }
 
     // The processors.
 
-    // What's fixed about them, read once: the model, each core's most clock,
-    // and which cores are for performance.
-    function fixed() {
-        if (memo.processors !== null)
-            return memo.processors;
-        const named = /^model name\s*:\s*(.*)$/m.exec(read(cpuinfo));
-        const counted = Machine.counters(read(stat)).cores;
-        const maxes = counted.map(core => ({
-            n: core.n,
-            max: Number(said(`/sys/devices/system/cpu/cpu${core.n}/cpufreq/cpuinfo_max_freq`)) || 0
-        }));
-        const performance = Machine.cpus(said("/sys/devices/cpu_core/cpus"));
-        memo.processors = {
-            model: named ? Machine.model(named[1]) : "",
-            maxes: maxes,
-            kinds: Machine.kinds(performance, maxes)
-        };
-        return memo.processors;
-    }
-
-    function cpuRead() {
-        const info = fixed();
-        return sampled("cpu", () => ({
-            counters: Machine.counters(read(stat)),
-            clocks: info.maxes.map(core => Number(said(
-                `/sys/devices/system/cpu/cpu${core.n}/cpufreq/scaling_cur_freq`)) || 0),
-            load: read(loadavg).trim().split(/\s+/).slice(0, 3),
-            heat: processorHeat(),
-            npu: npuRead()
-        }));
-    }
-
-    // The NPU's counters, as its driver gives them to any account: its busy
-    // time since boot and its clock now and at most, or null with no NPU
-    // that says them. Neither wakes it: the busy time is a counter, and
-    // the clock reads 0 unless it's already awake, when a read holds it
-    // awake at most its own 100 ms longer (ivpu_sysfs.c in 7.2).
-    readonly property string npuAt: "/sys/class/accel/accel0/device"
-    function npuRead() {
-        const busy = said(`${npuAt}/npu_busy_time_us`);
-        if (busy === "")
-            return null;
-        return {
-            busy: Number(busy),
-            clock: Number(said(`${npuAt}/npu_current_frequency_mhz`)) || 0,
-            top: Number(said(`${npuAt}/npu_max_frequency_mhz`)) || 0
-        };
-    }
-
-    // The processor's temperature, as Heat says it: its package's sensor
-    // alone where its chip has one, rather than every core's read to find
-    // it, and every sensor only where it hasn't.
-    function processorHeat() {
-        const chip = Sensors.chips().find(each => each.part === "processor");
-        if (!chip)
-            return null;
-        const whole = Sensors.readings(chip, "temp", label => Machine.namesWhole(label));
-        return whole.length > 0 ? Sensors.degrees(chip, whole[0]) : Sensors.processor();
-    }
-
     function cpu() {
-        const kept = cpuRead();
-        const now = kept.last.said;
-        if (now.counters.whole === null)
-            return null;
-        const then = kept.before ? kept.before.said.counters : null;
-        const total = Machine.busy(now.counters.whole, then ? then.whole : null);
+        const p = processor();
+        if (!p || p.busy_ratio === null || p.busy_ratio === undefined)
+            return unheld("cpu");
         return fresh({
-            headline: `${percent(total)} busy`,
-            graph: bar(total),
+            headline: `${percent(p.busy_ratio)} busy`,
+            graph: bar(p.busy_ratio),
             glyph: Words.glyph(kinds.cpu),
             title: Words.name(kinds.cpu),
             about: kinds.cpu,
-            note: since(kept)
-        }, () => cpuParts(kept));
+            note: since(p)
+        }, () => cpuParts(p));
     }
 
-    // The processors' parts, from the reads the headline said.
-    function cpuParts(kept) {
-        list();
-        const info = fixed();
-        const now = kept.last.said;
-        const cores = Machine.loads(now.counters, kept.before ? kept.before.said.counters : null);
-        const kindOf = n => info.kinds ? info.kinds[n] : "";
+    // The processors' parts, from the record the headline said.
+    function cpuParts(p) {
+        wantsPrograms();
         const chip = Words.glyph(kinds.cpu);
+        const cores = (p.cores ?? []).filter(core => core.online);
+        const loads = cores.map(core => ({ n: core.n, load: core.busy_ratio ?? 0 }));
         const rows = [holderRow({
             name: named("cpu:cores"),
             side: `${cores.length}`,
-            graph: strip(cores.map(core => core.load)),
+            graph: strip(loads.map(core => core.load)),
             glyph: chip,
-            note: since(kept)
-        }, () => cores.map((core, i) => figure({
+            note: since(p)
+        }, () => cores.map(core => figure({
             name: named("cpu:core", { n: core.n }),
-            side: percent(core.load),
-            graph: bar(core.load),
-            note: [kindOf(core.n) === "efficient" ? "an efficient core"
-                : kindOf(core.n) ? `a ${kindOf(core.n)} core` : "",
-                now.clocks[i] > 0 ? `at ${ghz(now.clocks[i])}` : ""]
+            side: percent(core.busy_ratio ?? 0),
+            graph: bar(core.busy_ratio ?? 0),
+            note: [core.kind === "efficient" ? "an efficient core"
+                : core.kind ? `a ${core.kind} core` : "",
+                core.clock_khz > 0 ? `at ${ghz(core.clock_khz)}` : "",
+                typeof core.temperature_c === "number" ? degrees(core.temperature_c) : ""]
                 .filter(part => part !== "").join(", ")
         }))), figure({
             name: named("cpu:maxed"),
-            side: Machine.maxed(cores),
+            side: Machine.maxed(loads),
             note: "at 95% or more"
         })];
-        const clocked = now.clocks.filter(clock => clock > 0);
+        const spent = Machine.spent(p.time);
+        if (spent.length > 0)
+            rows.push(holderRow({
+                name: named("cpu:spent"),
+                side: percent(p.busy_ratio),
+                graph: bar(p.busy_ratio),
+                glyph: chip,
+                note: says("cpu:spent", "note")
+            }, () => spent.map(each => figure({
+                name: named(`cpu:spent-${each.id}`),
+                side: percent(each.share),
+                graph: bar(each.share),
+                note: says(`cpu:spent-${each.id}`, "note")
+            }))));
+        // Every task waiting for a processor is never said of the whole
+        // machine (the kernel keeps it for a cgroup alone, and says 0
+        // here), so only some is.
+        if (p.pressure?.some)
+            rows.push(pressured("cpu:pressure", p.pressure, false));
+        const clocked = cores.filter(core => core.clock_khz > 0);
         if (clocked.length > 0) {
-            const mean = clocked.reduce((a, b) => a + b, 0) / clocked.length;
-            const most = info.maxes.reduce((a, b) => a + b.max, 0) / info.maxes.length;
-            rows.push(figure({
+            const mean = clocked.reduce((a, b) => a + b.clock_khz, 0) / clocked.length;
+            const tops = cores.map(core => core.max_khz ?? 0).filter(top => top > 0);
+            const most = tops.length > 0 ? tops.reduce((a, b) => a + b, 0) / tops.length : 0;
+            rows.push(holderRow({
                 name: named("cpu:clock"),
                 side: ghz(mean),
                 graph: most > 0 ? bar(mean / most) : undefined,
+                glyph: chip,
                 note: most > 0 ? `on average, of ${ghz(most)} at most` : "on average"
-            }));
+            }, () => clockParts(p, cores)));
         }
         // Held Back stands while the telemetry answers, held or not, so the
         // rows under it never move under Joel's selection (VKCF3Z).
@@ -478,45 +512,67 @@ Provider {
                 note: held ? `by ${Machine.limit(held.by)}, over the last second`
                     : "nothing holds it back now"
             }));
-        if (now.heat)
-            rows.push(heated("cpu:temperature", now.heat, "processor"));
-        const users = programs
-            ? Machine.using(programs.last.said, programs.before?.said ?? null) : [];
-        if (users.length > 0)
+        if (typeof p.temperature?.temperature_c === "number")
+            rows.push(heated("cpu:temperature", p.temperature, "processor"));
+        const users = using("cpu");
+        if (users && users.length > 0)
             rows.push(holderRow({
                 name: named("cpu:using"),
-                side: `${users[0].name} ${percent(users[0].value)}`,
+                side: `${users[0].name} ${percent(users[0].share_ratio)}`,
                 glyph: chip,
                 note: "of the whole processor"
             }, () => users.map((user, at) => figure({
                 key: ranked("cpu", at),
                 name: user.name,
-                side: percent(user.value),
-                graph: bar(user.value)
+                side: percent(user.share_ratio),
+                graph: bar(user.share_ratio),
+                note: user.processes > 1 ? `${user.processes} processes` : ""
             }))));
-        else if (!programs)
+        else if (!users)
             rows.push(reading(named("cpu:using")));
-        if (now.load.length === 3)
+        if ((p.load ?? []).length === 3)
             rows.push(figure({
                 name: named("cpu:load"),
-                side: now.load.join(" \u00b7 "),
+                side: p.load.map(load => number(load, 2)).join(" \u00b7 "),
                 note: "over 1, 5 and 15 minutes"
+            }));
+        if (typeof p.running === "number")
+            rows.push(figure({
+                name: named("cpu:running"),
+                side: `${p.running}`,
+                note: says("cpu:running", "note", { blocked: p.blocked ?? 0, tasks: p.tasks ?? 0 })
+            }));
+        if (typeof p.switches_per_s === "number")
+            rows.push(figure({
+                name: named("cpu:switches"),
+                side: often(p.switches_per_s),
+                note: since(p)
+            }));
+        if (typeof p.interrupts_per_s === "number")
+            rows.push(figure({
+                name: named("cpu:interrupts"),
+                side: often(p.interrupts_per_s),
+                note: says("cpu:interrupts", "note", { deferred: often(p.softirqs_per_s ?? 0) })
+            }));
+        if (typeof p.forks_per_s === "number")
+            rows.push(figure({
+                name: named("cpu:started"),
+                side: often(p.forks_per_s),
+                note: says("cpu:started", "note")
             }));
         // The NPU's load sits with the processors', so the two read as a
         // pair (VKCF3Z, 2026-10-29).
-        const npu = Machine.npuLoad(now.npu, kept.before?.said.npu ?? null, between(kept));
-        if (npu)
-            rows.push(npu.share === null ? reading(named("cpu:npu-load")) : figure({
+        if (p.npu)
+            rows.push(p.npu.busy_ratio === null ? reading(named("cpu:npu-load")) : figure({
                 name: named("cpu:npu-load"),
-                side: percent(npu.share),
-                graph: bar(npu.share),
-                note: npu.clock
+                side: percent(p.npu.busy_ratio),
+                graph: bar(p.npu.busy_ratio),
+                note: Machine.npuClock(p.npu)
             }));
-        if (info.kinds) {
-            const order = ["performance", "efficient", "low-power"];
-            const present = order.filter(kind => cores.some(core => kindOf(core.n) === kind));
-            const inKind = kind => cores.map((core, i) => ({ core: core, clock: now.clocks[i] }))
-                .filter(each => kindOf(each.core.n) === kind);
+        const order = ["performance", "efficient", "low-power"];
+        const present = order.filter(kind => cores.some(core => core.kind === kind));
+        if (present.length > 0) {
+            const inKind = kind => cores.filter(core => core.kind === kind);
             rows.push(holderRow({
                 name: named("cpu:kinds"),
                 side: present.map(kind => inKind(kind).length).join(" \u00b7 "),
@@ -524,25 +580,25 @@ Provider {
                 note: present.map(kind => `${inKind(kind).length} ${kind}`).join(", ")
             }, () => present.map(kind => {
                 const members = inKind(kind);
-                const clocks = members.map(each => each.clock).filter(clock => clock > 0);
-                const numbers = members.map(each => each.core.n);
-                const last = numbers[numbers.length - 1];
-                const unbroken = last - numbers[0] === numbers.length - 1;
+                const clocks = members.map(core => core.clock_khz ?? 0).filter(clock => clock > 0);
                 return figure({
                     name: named(`cpu:${kind}`),
                     side: clocks.length > 0
                         ? `${members.length} at ${ghz(clocks.reduce((a, b) => a + b, 0)
                             / clocks.length)}`
                         : `${members.length}`,
-                    graph: strip(members.map(each => each.core.load)),
-                    note: numbers.length === 1 ? `core ${numbers[0]}`
-                        : unbroken ? `cores ${numbers[0]} to ${last}`
-                        : `cores ${numbers.slice(0, -1).join(", ")} and ${last}`
+                    graph: strip(members.map(core => core.busy_ratio ?? 0)),
+                    note: Machine.cores(members.map(core => core.n))
                 });
             })));
         }
-        if (info.model !== "")
-            rows.push(leaf({ name: named("cpu:model"), side: info.model }));
+        if (p.model)
+            rows.push(holderRow({
+                name: named("cpu:model"),
+                side: p.model,
+                copy: p.model,
+                glyph: chip
+            }, () => modelParts(p)));
         // Kept From Resting stands while the telemetry says it, kept from
         // resting or not, as Held Back does; last, as VKCF3Z placed it.
         const resting = ProcessorTelemetry.kept;
@@ -566,249 +622,285 @@ Provider {
         return rows;
     }
 
-    // The processes, read by one cat of each one's stat after the page
-    // size and /proc/stat, so their ticks and the machine's come from one
-    // moment: { last, before }, as reads keeps a thing's. They're read as
-    // the launcher opens too, so the programs Using the processors and the
-    // memory are there the first time either is asked, rather than a read
-    // or two later: the processors' since the last read, or since the
-    // machine started, until another a moment later says now. A read is
-    // made sense of only when it's asked, so opening costs one cat and
-    // nothing on the shell's own thread.
-    property var programs: null
-
-    function list() {
-        if (lister.running || (settings.processes ?? "") === "")
-            return;
-        if (due(programs, Date.now()))
-            lister.running = true;
-        else if (!settled(programs) && !soon.running)
-            soon.restart();
+    // The clock's range, the base it's sold at, and how it's driven.
+    function clockParts(p, cores) {
+        const lows = cores.map(core => core.min_khz ?? 0).filter(low => low > 0);
+        const tops = cores.map(core => core.max_khz ?? 0).filter(top => top > 0);
+        const bases = cores.map(core => core.base_khz ?? 0).filter(base => base > 0);
+        const rows = [];
+        if (lows.length > 0 && tops.length > 0)
+            rows.push(figure({
+                name: named("cpu:clock-range"),
+                side: `${ghz(Math.min(...lows))} to ${ghz(Math.max(...tops))}`,
+                note: Math.max(...tops) !== Math.min(...tops)
+                    ? says("cpu:clock-range", "kinds", { least: ghz(Math.min(...tops)) }) : ""
+            }));
+        if (bases.length > 0)
+            rows.push(figure({
+                name: named("cpu:clock-base"),
+                side: Math.min(...bases) === Math.max(...bases) ? ghz(bases[0])
+                    : `${ghz(Math.min(...bases))} to ${ghz(Math.max(...bases))}`,
+                note: says("cpu:clock-base", "note")
+            }));
+        if (p.driver)
+            rows.push(leaf({ name: named("cpu:clock-driver"), side: p.driver }));
+        if (p.governor)
+            rows.push(leaf({ name: named("cpu:clock-governor"), side: p.governor }));
+        if (p.preference)
+            rows.push(leaf({ name: named("cpu:clock-preference"), side: p.preference }));
+        if (typeof p.turbo === "boolean")
+            rows.push(figure({
+                name: named("cpu:clock-turbo"),
+                side: p.turbo ? "on" : "off",
+                note: says("cpu:clock-turbo", p.turbo ? "on" : "off")
+            }));
+        return rows;
     }
 
-    function listed(text) {
-        let said = null;
-        const last = { at: Date.now() };
-        Object.defineProperty(last, "said", {
-            enumerable: true,
-            get: () => said ?? (said = Machine.processes(text))
-        });
-        programs = { last: last, before: programs?.last ?? null };
-        if (!settled(programs))
-            soon.restart();
-        if (shown)
-            provider.answered();
-    }
-
-    Connections {
-        target: provider.launcher
-
-        function onOpenChanged() {
-            if (provider.launcher.open)
-                provider.list();
-        }
+    // What the processor is: who made it, its family, model and stepping
+    // as it says them, its microcode, and its caches.
+    function modelParts(p) {
+        const rows = [leaf({ name: named("cpu:model-name"), side: p.model })];
+        if (p.vendor)
+            rows.push(leaf({ name: named("cpu:vendor"), side: p.vendor }));
+        if (typeof p.family === "number")
+            rows.push(leaf({
+                name: named("cpu:family"),
+                side: [p.family, p.model_number, p.stepping].filter(n => typeof n === "number")
+                    .join(" \u00b7 "),
+                note: says("cpu:family", "note")
+            }));
+        if (p.microcode)
+            rows.push(leaf({ name: named("cpu:microcode"), side: p.microcode }));
+        const caches = p.caches ?? [];
+        if (caches.length > 0)
+            rows.push(holderRow({
+                name: named("cpu:caches"),
+                side: binary(caches.reduce((all, cache) => all + (cache.size_b ?? 0) * cache.count, 0)),
+                glyph: Words.glyph(kinds.cpu),
+                note: says("cpu:caches", "note")
+            }, () => caches.map(cache => figure({
+                name: named("cpu:cache", {
+                    level: cache.level,
+                    type: says("cpu:cache", cache.type) || cache.type
+                }),
+                side: cache.count > 1 ? `${binary(cache.size_b)} \u00d7 ${cache.count}`
+                    : binary(cache.size_b),
+                note: [cache.shared_by > 1 ? says("cpu:cache", "shared", { n: cache.shared_by })
+                    : says("cpu:cache", "own"), Machine.cores(cache.cpus ?? []),
+                    cache.ways ? says("cpu:cache", "ways", { ways: cache.ways }) : ""]
+                    .filter(part => part !== "").join(", ")
+            }))));
+        return rows;
     }
 
     // The memory.
 
-    function memoryRead() {
-        return {
-            info: Machine.meminfo(read(meminfo)),
-            pressure: Machine.pressure(read(memoryPressure)),
-            modules: Machine.modules(read(memoryModules))
-        };
-    }
-
     function memory() {
-        const kept = sampled("memory", memoryRead);
-        const info = kept.last.said.info;
-        if (!(info.MemTotal > 0))
-            return null;
-        const used = info.MemTotal - info.MemAvailable;
+        const m = record("memory:main");
+        if (!m || !(m.total_b > 0))
+            return unheld("memory");
         return fresh({
-            headline: `${gib(used)} used, ${percent(used / info.MemTotal)}`,
-            graph: bar(used / info.MemTotal),
+            headline: `${gib(m.used_b)} used, ${percent(m.used_b / m.total_b)}`,
+            graph: bar(m.used_b / m.total_b),
             glyph: Words.glyph(kinds.memory),
             title: Words.name(kinds.memory),
             note: ""
-        }, () => memoryParts(kept));
+        }, () => memoryParts(m));
     }
 
-    // The memory's parts, from the read the headline said.
-    function memoryParts(kept) {
-        list();
-        const now = kept.last.said;
-        const info = now.info;
-        const used = info.MemTotal - info.MemAvailable;
+    // The memory's parts, from the record the headline said.
+    function memoryParts(m) {
+        wantsPrograms();
+        const info = m.info_b ?? {};
+        const chip = Words.glyph(kinds.memory);
         const rows = [figure({
             name: named("memory:used"),
-            side: `${gib(used)} of ${gib(info.MemTotal)}`,
-            graph: bar(used / info.MemTotal),
-            note: `${gib(info.MemAvailable)} available`
+            side: `${gib(m.used_b)} of ${gib(m.total_b)}`,
+            graph: bar(m.used_b / m.total_b),
+            note: `${gib(m.available_b)} available`
         })];
-        if (now.pressure !== null)
-            rows.push(figure({
-                name: named("memory:pressure"),
-                side: `${percent(now.pressure)} held up`,
-                graph: bar(now.pressure, now.pressure >= 0.1),
-                note: "of the last ten seconds, waiting for memory"
-            }));
+        if (m.pressure?.some)
+            rows.push(pressured("memory:pressure", m.pressure, true));
         if (info.SwapTotal > 0)
             rows.push(figure({
                 name: named("memory:swap"),
                 side: `${gib(info.SwapTotal - info.SwapFree)} of ${gib(info.SwapTotal)}`,
-                graph: bar((info.SwapTotal - info.SwapFree) / info.SwapTotal)
+                graph: bar((info.SwapTotal - info.SwapFree) / info.SwapTotal),
+                note: info.SwapCached > 0 ? says("memory:swap", "cached", {
+                    cached: binary(info.SwapCached) }) : ""
             }));
         if (info.Cached !== undefined)
             rows.push(figure({
                 name: named("memory:cached"),
                 side: gib(info.Cached),
-                graph: bar(info.Cached / info.MemTotal),
+                graph: bar(info.Cached / m.total_b),
                 note: "files kept in memory, given up when it's wanted"
             }));
-        const holders = programs ? Machine.holding(programs.last.said) : [];
-        if (holders.length > 0)
+        const kept = Machine.keptBy(info);
+        const zswap = Machine.compressed(info);
+        if (kept.length > 0)
+            rows.push(holderRow({
+                name: named("memory:kept"),
+                side: `${named(`memory:kept-${kept[0].id}`)} ${gib(kept[0].bytes)}`,
+                glyph: chip,
+                note: says("memory:kept", "note")
+            }, () => kept.map(part => figure({
+                name: named(`memory:kept-${part.id}`),
+                side: binary(part.bytes),
+                graph: bar(part.bytes / m.total_b),
+                note: says(`memory:kept-${part.id}`, "note")
+            })).concat(zswap ? [figure({
+                name: named("memory:kept-compressed"),
+                side: says("memory:kept-compressed", "side", { stored: binary(zswap.stored),
+                    pool: binary(zswap.pool) }),
+                graph: bar(zswap.pool / m.total_b),
+                note: says("memory:kept-compressed", "note", { ratio: number(zswap.ratio, 1) })
+            })] : []).concat(info.AnonHugePages > 0 || (m.huge_pages?.HugePages_Total ?? 0) > 0
+                ? [figure({
+                    name: named("memory:kept-huge"),
+                    side: binary((info.AnonHugePages ?? 0) + (info.Hugetlb ?? 0)),
+                    note: says("memory:kept-huge", "note", {
+                        reserved: m.huge_pages?.HugePages_Total ?? 0 })
+                })] : [])));
+        if (info.CommitLimit > 0)
+            rows.push(figure({
+                name: named("memory:committed"),
+                side: `${gib(info.Committed_AS)} of ${gib(info.CommitLimit)}`,
+                graph: bar(info.Committed_AS / info.CommitLimit),
+                note: says("memory:committed", "note")
+            }));
+        if (typeof m.faults_per_s === "number")
+            rows.push(figure({
+                name: named("memory:faults"),
+                side: often(m.faults_per_s),
+                note: says("memory:faults", "note", { major: often(m.major_faults_per_s ?? 0) })
+            }));
+        if (typeof m.swapped_in_b_per_s === "number")
+            rows.push(figure({
+                name: named("memory:swapping"),
+                side: `${rate(m.swapped_in_b_per_s)} \u00b7 ${rate(m.swapped_out_b_per_s ?? 0)}`,
+                note: typeof m.compressed_in_b_per_s === "number"
+                    ? says("memory:swapping", "compressed", {
+                        in: rate(m.compressed_in_b_per_s), out: rate(m.compressed_out_b_per_s ?? 0) })
+                    : says("memory:swapping", "note")
+            }));
+        if (typeof m.oom_kills === "number")
+            rows.push(figure({
+                name: named("memory:out-of-memory"),
+                side: `${m.oom_kills}`,
+                graph: undefined,
+                note: says("memory:out-of-memory", "note")
+            }));
+        const holders = using("memory");
+        if (holders && holders.length > 0)
             rows.push(holderRow({
                 name: named("memory:using"),
-                side: `${holders[0].name} ${gib(holders[0].value / 1024)}`,
-                glyph: Words.glyph(kinds.memory),
+                side: `${holders[0].name} ${gib(holders[0].resident_b)}`,
+                glyph: chip,
                 note: "each program's processes together"
             }, () => holders.map((each, at) => figure({
                 key: ranked("memory", at),
                 name: each.name,
-                side: gib(each.value / 1024),
-                graph: bar(each.value / 1024 / info.MemTotal)
+                side: gib(each.resident_b),
+                graph: bar(each.resident_b / m.total_b),
+                note: each.processes > 1 ? `${each.processes} processes` : ""
             }))));
-        else if (!programs)
+        else if (!holders)
             rows.push(reading(named("memory:using")));
-        const modules = now.modules;
-        if (modules) {
-            const type = modules.speed !== ""
-                ? `${modules.type} at ${modules.speed}` : modules.type;
-            const counted = modules.count === 1 ? "module" : "modules";
-            rows.push(leaf({
+        const modules = Machine.modules(m.modules);
+        if (modules.length > 0) {
+            const first = modules[0];
+            const type = first.speed !== "" ? `${first.type} at ${first.speed}` : first.type;
+            const count = modules.reduce((all, one) => all + one.count, 0);
+            const each = one => figure({
+                name: one.count > 1 ? `${one.count} \u00d7 ${one.size || one.type}`
+                    : one.size || one.type,
+                side: one.speed !== "" ? `${one.type} at ${one.speed}` : one.type,
+                note: [one.manufacturer !== "" ? `by ${one.manufacturer}` : "",
+                    one.part, one.locators.join(", ")].filter(part => part !== "").join(", ")
+            });
+            rows.push(holderRow({
                 name: named("memory:type"),
                 side: type,
-                note: [modules.count > 0 && modules.size !== ""
-                    ? `${modules.count} ${counted} of ${modules.size}` : "",
-                    modules.maker !== "" ? `by ${modules.maker}` : ""]
+                copy: type,
+                glyph: chip,
+                note: [count > 0 && first.size !== "" && modules.length === 1
+                    ? `${count} ${count === 1 ? "module" : "modules"} of ${first.size}` : "",
+                    first.manufacturer !== "" ? `by ${first.manufacturer}` : ""]
                     .filter(part => part !== "").join(", ")
-            }));
+            }, () => modules.map(each)));
         }
         return rows;
     }
 
     // The disk.
 
-    // The machine's disk: of the disks the kernel lists, leaving out
-    // loops, RAM, mapped and optical ones, the biggest, as a laptop's one
-    // disk is. Found once its folder's been listed.
-    function blockDevice() {
-        if (memo.block !== "")
-            return memo.block;
-        let biggest = 0;
-        for (let i = 0; i < blocks.count; i++) {
-            const name = blocks.get(i, "fileName");
-            if (/^(loop|ram|zram|dm-|md|sr|fd|nbd)/.test(name))
-                continue;
-            const size = Number(said(`/sys/block/${name}/size`));
-            if (size > biggest) {
-                biggest = size;
-                memo.block = name;
-            }
-        }
-        return memo.block;
-    }
+    // Each disk read's rates, for their sparks, the newest last: added once
+    // for each read the daemon says of now.
+    property var series: ({})
 
-    function diskRead() {
-        const name = blockDevice();
-        if (name === "")
-            return null;
-        const kept = sampled("disks", () => ({
-            counters: Machine.disk(said(`/sys/block/${name}/stat`)),
-            up: Number(read(up).trim().split(/\s+/)[0]),
-            heat: Sensors.disk(name)
-        }));
-        if (kept.last.said.counters === null)
-            return kept;
-        // Each read adds once to the sparks.
-        if (kept.last !== kept.sparked) {
-            kept.sparked = kept.last;
-            const moved = diskRates(kept);
-            push("read", moved.read, kept);
-            push("write", moved.write, kept);
-            push("moved", moved.read + moved.write, kept);
-        }
-        return kept;
-    }
-
-    function diskRates(kept) {
-        const then = kept.before ? kept.before.said.counters : null;
-        return Machine.rates(kept.last.said.counters, then, between(kept) ?? kept.last.said.up);
-    }
-
-    // The disk's health, as its controller tells UDisks: { at, said }.
-    property var health: null
-    property string drive: ""
-    readonly property int healthFresh: 60000
-
-    function asksHealth(name) {
-        const program = settings.busctl ?? "";
-        if (program === "" || name === "" || driveAsked.running || healthAsked.running)
+    function sparked(disk) {
+        if (disk.since !== "now")
             return;
-        if (health !== null && Date.now() - health.at < healthFresh)
-            return;
-        if (drive === "") {
-            driveAsked.command = [program, "--json=short", "get-property",
-                "org.freedesktop.UDisks2", `/org/freedesktop/UDisks2/block_devices/${name}`,
-                "org.freedesktop.UDisks2.Block", "Drive"];
-            driveAsked.running = true;
-        } else {
-            healthAsked.command = [program, "--json=short", "call", "org.freedesktop.UDisks2",
-                drive,
-                "org.freedesktop.UDisks2.NVMe.Controller", "SmartGetAttributes", "a{sv}", "1",
-                "auth.no_user_interaction", "b", "true"];
-            healthAsked.running = true;
+        const add = (name, value) => {
+            series[name] = (series[name] ?? []).concat([value]).slice(-graphed);
+        };
+        add("read", disk.read_b_per_s ?? 0);
+        add("write", disk.written_b_per_s ?? 0);
+        add("moved", (disk.read_b_per_s ?? 0) + (disk.written_b_per_s ?? 0));
+    }
+
+    Connections {
+        target: daemon
+
+        function onHeard(keys) {
+            const own = provider.machineDisk();
+            if (own && keys.includes(own.key))
+                provider.sparked(own);
+            if (provider.shown)
+                provider.answered();
         }
     }
 
-    // The file system's room where no guard says it: { at, free, total }.
-    property var room: null
+    Connections {
+        target: users
 
-    function asksRoom() {
-        const program = settings.stat ?? "";
-        if (program === "" || roomAsked.running || (room !== null && Date.now() - room.at < second))
-            return;
-        roomAsked.command = [program, "--file-system", "--format=%a %b %S", "/"];
-        roomAsked.running = true;
+        function onHeard(keys) {
+            if (provider.shown)
+                provider.answered();
+        }
+    }
+
+    // The root file system's room, from the daemon, where no guard says it.
+    function rootRoom(disk) {
+        const all = disk ? disk.file_systems ?? [] : [];
+        const root = all.find(fs => fs.mount === "/") ?? all[0] ?? null;
+        return root && root.size_b > 0 ? root : null;
     }
 
     function disks() {
         const fact = Facts.all.find(fact => fact.entry.name === "disk");
         const guard = fact && fact.piece && fact.piece.present ? fact.piece : null;
-        const name = blockDevice();
-        const kept = diskRead();
-        asksHealth(name);
-        if (guard === null)
-            asksRoom();
-        const counted = kept !== null && kept.last.said.counters !== null;
+        const disk = machineDisk();
+        const room = guard === null ? rootRoom(disk) : null;
         const worst = guard ? guard.worst : null;
         const watching = worst === null ? "nothing watched"
             : `${guard.shown(worst.free)} free on ${worst.path}`;
         const headline = guard ? watching
-            : room ? `${bytes(room.free)} free on /`
-            : counted ? rate(diskRates(kept).read + diskRates(kept).write) : "";
+            : room ? `${bytes(room.available_b)} free on ${room.mount}`
+            : disk ? rate((disk.read_b_per_s ?? 0) + (disk.written_b_per_s ?? 0)) : "";
         if (headline === "")
-            return null;
+            return unheld("disks");
         return fresh({
             headline: headline,
             graph: worst ? bar(1 - worst.free / worst.total, worst.band !== "healthy")
-                : room ? bar(1 - room.free / room.total) : undefined,
+                : room ? bar(1 - room.available_b / room.size_b) : undefined,
             glyph: Words.glyph(kinds.disks),
             title: Words.name(kinds.disks),
             // The guard's own words are each disk's, in its drawer (disked).
-            note: guard ? guardSays(guard, worst) : counted ? since(kept) : ""
-        }, () => diskParts(guard));
+            note: guard ? guardSays(guard, worst) : disk ? since(disk) : ""
+        }, () => diskParts(guard, disk, room));
     }
 
     // How the guard stands, in a phrase: the band the worst file system is
@@ -973,7 +1065,7 @@ Provider {
         }, fields));
     }
 
-    function diskParts(guard) {
+    function diskParts(guard, disk, room) {
         const chip = Words.glyph(kinds.disks);
         const rows = [];
         if (guard && guard.disks.length > 0) {
@@ -981,9 +1073,9 @@ Provider {
             // first is the headline's, and within a band the least room.
             const watched = guard.disks.slice()
                 .sort((a, b) => guard.worse(a, b) ? -1 : guard.worse(b, a) ? 1 : a.free - b.free);
-            const each = disk => disked(guard, disk, {
-                name: disk.path,
-                graph: bar(1 - disk.free / disk.total, disk.band !== "healthy")
+            const each = one => disked(guard, one, {
+                name: one.path,
+                graph: bar(1 - one.free / one.total, one.band !== "healthy")
             });
             const worst = watched[0];
             const space = {
@@ -1003,59 +1095,103 @@ Provider {
         } else if (room) {
             rows.push(figure({
                 name: named("disk:space"),
-                side: `${bytes(room.free)} free`,
-                graph: bar(1 - room.free / room.total),
-                note: `on /, of ${bytes(room.total)}`
+                side: `${bytes(room.available_b)} free`,
+                graph: bar(1 - room.available_b / room.size_b),
+                note: `on ${room.mount}, of ${bytes(room.size_b)}`
             }));
         }
-        const kept = reads.disks;
-        if (kept && kept.last.said.counters !== null) {
-            const moved = diskRates(kept);
-            const when = since(kept);
-            const floor = 1e6;
-            rows.push(holderRow({
-                name: named("disk:speed"),
-                side: rate(moved.read + moved.write),
-                graph: spark(series.moved ?? [], floor),
-                glyph: chip,
-                note: when
-            }, () => [figure({
-                name: named("disk:reading"),
-                side: rate(moved.read),
-                graph: spark(series.read ?? [], floor),
-                note: when
-            }), figure({
-                name: named("disk:writing"),
-                side: rate(moved.write),
-                graph: spark(series.write ?? [], floor),
-                note: when
-            })]), figure({
+        if (!disk)
+            return rows;
+        const when = since(disk);
+        const floor = 1e6;
+        const iops = count => says("disk:speed", "iops", { n: often(count ?? 0) });
+        rows.push(holderRow({
+            name: named("disk:speed"),
+            side: rate((disk.read_b_per_s ?? 0) + (disk.written_b_per_s ?? 0)),
+            graph: spark(series.moved ?? [], floor),
+            glyph: chip,
+            note: when
+        }, () => [figure({
+            name: named("disk:reading"),
+            side: rate(disk.read_b_per_s ?? 0),
+            graph: spark(series.read ?? [], floor),
+            note: iops(disk.reads_per_s)
+        }), figure({
+            name: named("disk:writing"),
+            side: rate(disk.written_b_per_s ?? 0),
+            graph: spark(series.write ?? [], floor),
+            note: iops(disk.writes_per_s)
+        }), figure({
+            name: named("disk:discarding"),
+            side: rate(disk.discarded_b_per_s ?? 0),
+            note: iops(disk.discards_per_s)
+        }), figure({
+            name: named("disk:flushing"),
+            side: often(disk.flushes_per_s ?? 0),
+            note: says("disk:flushing", "note")
+        })]));
+        if (typeof disk.busy_ratio === "number")
+            rows.push(figure({
                 name: named("disk:busy"),
-                side: percent(moved.busy),
-                graph: bar(moved.busy),
+                side: percent(disk.busy_ratio),
+                graph: bar(disk.busy_ratio),
                 note: when
-            }), figure({
-                name: named("disk:latency"),
-                side: moved.latency === null ? "idle"
-                    : `${number(moved.latency, moved.latency < 10 ? 2 : 0)} ms`,
-                note: moved.latency === null ? "nothing asked of it"
-                    : "for each request, on average"
             }));
-            const heat = kept.last.said.heat;
-            if (heat)
-                rows.push(heated("disk:temperature", heat, "disk"));
-        }
-        if (health !== null && health.said !== null) {
-            const smart = health.said;
-            const worn = smart.percent_used / 100;
-            const failing = smart.avail_spare < smart.spare_thresh || smart.media_errors > 0;
+        const latencies = [["reading", disk.read_latency_ms], ["writing", disk.write_latency_ms],
+            ["discarding", disk.discard_latency_ms], ["flushing", disk.flush_latency_ms]];
+        rows.push(holderRow({
+            name: named("disk:latency"),
+            side: typeof disk.latency_ms === "number" ? ms(disk.latency_ms) : "idle",
+            glyph: chip,
+            note: typeof disk.latency_ms === "number" ? "for each request, on average"
+                : "nothing asked of it"
+        }, () => latencies.map(([id, value]) => figure({
+            name: named(`disk:latency-${id}`),
+            side: typeof value === "number" ? ms(value) : "idle",
+            note: typeof value === "number" ? when : says("disk:latency", "idle")
+        }))));
+        if (typeof disk.in_flight === "number")
+            rows.push(figure({
+                name: named("disk:queue"),
+                side: `${disk.in_flight}`,
+                note: says("disk:queue", "note", {
+                    queued: number(disk.queued ?? 0, 1),
+                    depth: disk.queue_depth ?? 0
+                })
+            }));
+        if (disk.pressure?.some)
+            rows.push(pressured("disk:pressure", disk.pressure, true));
+        const sensors = disk.temperatures ?? [];
+        const composite = sensors.find(sensor => sensor.label === "Composite") ?? sensors[0];
+        if (composite && typeof composite.temperature_c === "number")
+            rows.push(heated("disk:temperature", composite, "disk"));
+        const smart = disk.health;
+        if (smart && typeof smart.percent_used === "number")
+            rows.push(healthRow(smart, chip));
+        if (disk.model)
             rows.push(holderRow({
-                name: named("disk:health"),
-                side: `${smart.percent_used}% worn`,
-                graph: bar(worn, failing),
-                glyph: chip,
-                note: failing ? "its controller says it's failing" : "as its controller says"
-            }, () => [figure({
+                name: named("disk:model"),
+                side: disk.model,
+                copy: disk.model,
+                glyph: chip
+            }, () => diskModelParts(disk)));
+        return rows;
+    }
+
+    // The disk's health, as its controller tells UDisks.
+    function healthRow(smart, chip) {
+        const worn = smart.percent_used / 100;
+        const warned = Machine.warnings(smart.critical_warning);
+        const failing = smart.avail_spare < smart.spare_thresh || smart.media_errors > 0
+            || warned.length > 0;
+        return holderRow({
+            name: named("disk:health"),
+            side: `${smart.percent_used}% worn`,
+            graph: bar(worn, failing),
+            glyph: chip,
+            note: failing ? "its controller says it's failing" : "as its controller says"
+        }, () => {
+            const rows = [figure({
                 name: named("disk:spare"),
                 side: `${smart.avail_spare}%`,
                 graph: bar(smart.avail_spare / 100, smart.avail_spare < smart.spare_thresh),
@@ -1066,52 +1202,165 @@ Provider {
             }), figure({
                 name: named("disk:read"),
                 side: bytes(smart.total_data_read)
-            }), figure({
+            })];
+            if (typeof smart.power_on_hours === "number")
+                rows.push(figure({
+                    name: named("disk:powered"),
+                    side: lasted(smart.power_on_hours * 3600),
+                    note: says("disk:powered", "note", { cycles: smart.power_cycles ?? 0 })
+                }));
+            if (typeof smart.ctrl_busy_time === "number")
+                rows.push(figure({
+                    name: named("disk:busy-for"),
+                    side: lasted(smart.ctrl_busy_time * 60),
+                    note: says("disk:busy-for", "note")
+                }));
+            rows.push(figure({
                 name: named("disk:errors"),
                 side: `${smart.media_errors}`,
                 note: "the disk couldn't read or write"
-            }), figure({
+            }));
+            if (typeof smart.num_err_log_entries === "number")
+                rows.push(figure({
+                    name: named("disk:error-log"),
+                    side: `${smart.num_err_log_entries}`,
+                    note: says("disk:error-log", "note")
+                }));
+            rows.push(figure({
                 name: named("disk:shutdowns"),
                 side: `${smart.unsafe_shutdowns}`,
                 note: `of ${smart.power_cycles} times it was powered`
-            })]));
-        }
-        const model = memo.block !== ""
-            ? said(`/sys/block/${memo.block}/device/model`).replace(/\s+/g, " ") : "";
-        if (model !== "")
-            rows.push(leaf({ name: named("disk:model"), side: model }));
+            }));
+            if (typeof smart.warning_temp_time === "number")
+                rows.push(figure({
+                    name: named("disk:too-hot"),
+                    side: lasted((smart.warning_temp_time + (smart.critical_temp_time ?? 0)) * 60),
+                    note: says("disk:too-hot", "note", {
+                        warning: smart.wctemp ? degrees(smart.wctemp - 273.15) : "",
+                        critical: smart.cctemp ? degrees(smart.cctemp - 273.15) : "",
+                        criticalFor: lasted((smart.critical_temp_time ?? 0) * 60)
+                    })
+                }));
+            rows.push(figure({
+                name: named("disk:warnings"),
+                side: warned.length > 0
+                    ? warned.map(id => says("disk:warnings", id) || id).join(", ")
+                    : says("disk:warnings", "none"),
+                note: says("disk:warnings", "note")
+            }));
+            return rows;
+        });
+    }
+
+    // What the disk is: its firmware, the link it's on, its size, its
+    // blocks and how its requests are ordered.
+    function diskModelParts(disk) {
+        const rows = [leaf({ name: named("disk:model-name"), side: disk.model })];
+        if (disk.firmware)
+            rows.push(leaf({ name: named("disk:firmware"), side: disk.firmware }));
+        if (disk.link)
+            rows.push(figure({
+                name: named("disk:link"),
+                side: `${disk.link.speed} \u00d7${disk.link.width}`,
+                note: disk.link.max_speed && (disk.link.max_speed !== disk.link.speed
+                    || disk.link.max_width !== disk.link.width)
+                    ? says("disk:link", "slower", { most: `${disk.link.max_speed} \u00d7${
+                        disk.link.max_width}` }) : says("disk:link", "full")
+            }));
+        if (disk.size_b)
+            rows.push(figure({ name: named("disk:capacity"), side: bytes(disk.size_b) }));
+        if (disk.logical_block_b)
+            rows.push(figure({
+                name: named("disk:block"),
+                side: disk.physical_block_b && disk.physical_block_b !== disk.logical_block_b
+                    ? `${disk.logical_block_b} B \u00b7 ${disk.physical_block_b} B`
+                    : `${disk.logical_block_b} B`
+            }));
+        if (disk.scheduler)
+            rows.push(figure({
+                name: named("disk:scheduler"),
+                side: disk.scheduler,
+                note: (disk.schedulers ?? []).length > 1
+                    ? says("disk:scheduler", "of", { all: disk.schedulers.join(", ") }) : ""
+            }));
         return rows;
     }
 
+    // The boot.
+
+    function bootRecord() {
+        const held = daemon.revision >= 0 ? daemon.held : {};
+        const key = Object.keys(held).find(each => each.startsWith("boot:"));
+        return key ? held[key] : null;
+    }
+
+    // How long it's been up, from when it started, so it moves as the
+    // clock does, though the record changes only when the machine wakes.
     function uptime() {
-        const seconds = Number(read(up).trim().split(/\s+/)[0]);
+        const boot = bootRecord();
+        if (!boot || typeof boot.booted_at_s !== "number")
+            return unheld("uptime");
+        const seconds = Math.max(0, Date.now() / 1000 - boot.booted_at_s);
         const days = Math.floor(seconds / 86400);
         const hours = Math.floor(seconds % 86400 / 3600);
         const minutes = Math.floor(seconds % 3600 / 60);
-        const parts = [];
+        const said = [];
         if (days > 0)
-            parts.push(`${days} ${days === 1 ? "day" : "days"}`);
+            said.push(`${days} ${days === 1 ? "day" : "days"}`);
         if (hours > 0)
-            parts.push(`${hours} ${hours === 1 ? "hour" : "hours"}`);
+            said.push(`${hours} ${hours === 1 ? "hour" : "hours"}`);
         if (days === 0)
-            parts.push(`${minutes} ${minutes === 1 ? "minute" : "minutes"}`);
-        return { headline: `up ${parts.join(", ")}`, rows: [], note: "" };
+            said.push(`${minutes} ${minutes === 1 ? "minute" : "minutes"}`);
+        return fresh({
+            headline: `up ${said.join(", ")}`,
+            glyph: Words.glyph(kinds.cpu),
+            title: Words.name(kinds.uptime),
+            note: ""
+        }, () => bootParts(boot, seconds));
     }
 
-    // What a file in /sys says, or "" when it says nothing.
-    function said(file) {
-        probe.path = file;
-        return read(probe).trim();
+    function bootParts(boot, seconds) {
+        const rows = [];
+        if (typeof boot.asleep_s === "number")
+            rows.push(figure({
+                name: named("uptime:asleep"),
+                side: boot.asleep_s > 0 ? lasted(boot.asleep_s) : says("uptime:asleep", "never"),
+                graph: seconds > 0 ? bar(boot.asleep_s / seconds) : undefined,
+                note: seconds > 0 ? says("uptime:asleep", "note", {
+                    share: percent(boot.asleep_s / seconds) }) : ""
+            }));
+        if (typeof boot.idle_ratio === "number")
+            rows.push(figure({
+                name: named("uptime:idle"),
+                side: percent(boot.idle_ratio),
+                graph: bar(boot.idle_ratio),
+                note: says("uptime:idle", "note")
+            }));
+        rows.push(leaf({
+            name: named("uptime:started"),
+            side: Qt.formatDateTime(new Date(boot.booted_at_s * 1000), "ddd d MMM, HH:mm")
+        }));
+        if (boot.kernel)
+            rows.push(leaf({ name: named("uptime:kernel"), side: boot.kernel,
+                note: boot.kernel_build ?? "" }));
+        return rows;
     }
 
     // While one of its answers is shown, as the answer to what's typed, a
-    // row in a category's list or a step held, it's asked again each
-    // second, so its figures move; and once a moment after a first read, so
-    // a rate stands for now as soon as it can.
+    // row in a category's list or a step held, it's asked again as the
+    // daemon's records change.
     readonly property bool shown: launcher !== null && launcher.open
         && (launcher.answer?.live === provider
             || launcher.held.some(step => step.row.live === provider)
             || launcher.matches.some(row => row.live === provider))
+
+    // Whether a part saying the programs has been looked at since the
+    // launcher opened, so the daemon is asked for them.
+    property bool usingWanted: false
+    onShownChanged: {
+        if (!shown)
+            usingWanted = false;
+    }
 
     // The processor's telemetry is watched while a Processor answer is
     // listed, shown or stepped into, so what held it back is there once its
@@ -1126,146 +1375,33 @@ Provider {
         || launcher.placed.includes("machine:cpu:kept-from-resting"))
     onWatchedChanged: ProcessorTelemetry.watching += watched ? 1 : -1
 
+    // The uptime moves with the clock, a minute at a time, while shown.
     Timer {
-        interval: provider.second
+        interval: 60000
         repeat: true
         running: provider.shown
         onTriggered: provider.answered()
     }
 
-    Timer {
-        id: soon
-        interval: provider.soonest
-        onTriggered: {
-            if (provider.shown)
-                provider.answered();
-        }
+    // The machine daemon: the processor, memory, disks and boot while the
+    // launcher is open, and the programs while a part saying them is.
+    Daemon {
+        id: daemon
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+        kind: ["processor", "memory", "disk", "boot"]
+        live: provider.launcher !== null && provider.launcher.open
+        keptThroughGap: false
+        answersWhole: true
     }
 
-    // The disks the kernel lists, listed once.
-    FolderListModel {
-        id: blocks
-        folder: "file:///sys/block"
-        showFiles: false
-        showDotAndDotDot: false
-        showHidden: false
-        sortField: FolderListModel.Name
-    }
+    Daemon {
+        id: users
 
-    Process {
-        id: lister
-        command: [provider.settings.processes ?? ""]
-        stdout: StdioCollector {
-            id: processes
-            onStreamFinished: provider.listed(processes.text)
-        }
-    }
-
-    Process {
-        id: driveAsked
-        stdout: StdioCollector {
-            id: driveSaid
-            onStreamFinished: {
-                const object = provider.parsed(driveSaid.text).data ?? "";
-                // A disk UDisks has no drive for is never asked again.
-                provider.drive = typeof object === "string" && object !== "/" ? object : "";
-                if (provider.drive !== "")
-                    provider.asksHealth(provider.memo.block);
-                else
-                    provider.health = { at: Date.now() + 1e12, said: null };
-            }
-        }
-    }
-
-    Process {
-        id: healthAsked
-        stdout: StdioCollector {
-            id: healthSaid
-            onStreamFinished: {
-                const fields = (provider.parsed(healthSaid.text).data ?? [])[0] ?? null;
-                const smart = {};
-                for (const key of Object.keys(fields ?? {}))
-                    smart[key] = fields[key].data;
-                // One that isn't NVMe, or that UDisks won't answer without
-                // asking Joel, has no health to say, and isn't asked again
-                // for a minute.
-                provider.health = {
-                    at: Date.now(),
-                    said: smart.percent_used !== undefined ? smart : null
-                };
-                provider.answered();
-            }
-        }
-    }
-
-    Process {
-        id: roomAsked
-        stdout: StdioCollector {
-            id: roomSaid
-            onStreamFinished: {
-                const [free, total, size] = roomSaid.text.trim().split(/\s+/).map(Number);
-                provider.room = total > 0
-                    ? { at: Date.now(), free: free * size, total: total * size } : null;
-                provider.answered();
-            }
-        }
-    }
-
-    FileView {
-        id: stat
-        path: "/proc/stat"
-        preload: false
-        blockAllReads: true
-        printErrors: false
-    }
-    FileView {
-        id: loadavg
-        path: "/proc/loadavg"
-        preload: false
-        blockAllReads: true
-        printErrors: false
-    }
-    FileView {
-        id: meminfo
-        path: "/proc/meminfo"
-        preload: false
-        blockAllReads: true
-        printErrors: false
-    }
-    FileView {
-        id: memoryPressure
-        path: "/proc/pressure/memory"
-        preload: false
-        blockAllReads: true
-        printErrors: false
-    }
-    // What the machine read of its memory modules at boot, as root, since
-    // the firmware's tables are root's alone.
-    FileView {
-        id: memoryModules
-        path: "/run/memory-modules.json"
-        preload: false
-        blockAllReads: true
-        printErrors: false
-    }
-    FileView {
-        id: cpuinfo
-        path: "/proc/cpuinfo"
-        preload: false
-        blockAllReads: true
-        printErrors: false
-    }
-    FileView {
-        id: up
-        path: "/proc/uptime"
-        preload: false
-        blockAllReads: true
-        printErrors: false
-    }
-    FileView {
-        id: probe
-        preload: false
-        blockAllReads: true
-        printErrors: false
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+        kind: "using"
+        live: provider.shown && provider.usingWanted
+        keptThroughGap: false
+        answersWhole: true
     }
 }

@@ -173,7 +173,8 @@ mod tests {
 
     #[test]
     fn a_name_with_spaces_and_brackets_is_read_whole() {
-        let line = "42 (Web (Content)) S 1 42 42 0 -1 4194560 0 0 0 0 30 12 0 0 20 0 1 0 100 1000 250 0";
+        let line =
+            "42 (Web (Content)) S 1 42 42 0 -1 4194560 0 0 0 0 30 12 0 0 20 0 1 0 100 1000 250 0";
         let read = process(line).unwrap();
         assert_eq!(read.name, "Web (Content)");
         assert_eq!(read.ticks, 42);

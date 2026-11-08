@@ -60,11 +60,18 @@ pub fn counters(root: &Root, at_ms: u64, names: &[String]) -> Counters {
         .iter()
         .filter_map(|name| {
             let stat = root.read(&format!("/sys/block/{name}/stat"))?;
-            let fields: Vec<u64> = stat.split_whitespace().filter_map(|f| f.parse().ok()).collect();
+            let fields: Vec<u64> = stat
+                .split_whitespace()
+                .filter_map(|f| f.parse().ok())
+                .collect();
             (fields.len() > WEIGHTED_MS).then(|| (name.clone(), fields))
         })
         .collect();
-    Counters { at_ms, disks, up_ms: crate::boot::up_ms(root).unwrap_or(0) }
+    Counters {
+        at_ms,
+        disks,
+        up_ms: crate::boot::up_ms(root).unwrap_or(0),
+    }
 }
 
 /// The devices a disk's file systems are mounted from: the disk, each of
@@ -131,12 +138,17 @@ fn file_systems(root: &Root, name: &str) -> Value {
     let mut found = Vec::new();
     for line in mountinfo.lines() {
         let fields: Vec<&str> = line.split(' ').collect();
-        let Some(dash) = fields.iter().position(|f| *f == "-") else { continue };
-        let (Some(mount), Some(kind), Some(source)) = (fields.get(4), fields.get(dash + 1), fields.get(dash + 2))
+        let Some(dash) = fields.iter().position(|f| *f == "-") else {
+            continue;
+        };
+        let (Some(mount), Some(kind), Some(source)) =
+            (fields.get(4), fields.get(dash + 1), fields.get(dash + 2))
         else {
             continue;
         };
-        let Some(device) = source_device(root, source) else { continue };
+        let Some(device) = source_device(root, source) else {
+            continue;
+        };
         if !devices.contains(&device) || seen.contains(&device) {
             continue;
         }
@@ -154,7 +166,9 @@ fn file_systems(root: &Root, name: &str) -> Value {
 /// A disk's sensors, as its hwmon says them: each by its label, with the
 /// most it's meant to reach, where it's critical, and the least.
 fn temperatures(root: &Root, device: Option<&str>) -> Value {
-    let Some(device) = device else { return Value::Array(vec![]) };
+    let Some(device) = device else {
+        return Value::Array(vec![]);
+    };
     for hwmon in root.names("/sys/class/hwmon") {
         let folder = format!("/sys/class/hwmon/{hwmon}");
         if root.resolved(&format!("{folder}/device")).as_deref() != Some(device) {
@@ -190,10 +204,14 @@ fn temperatures(root: &Root, device: Option<&str>) -> Value {
 
 /// The PCI link a disk's controller is on, as it's running and at most.
 fn link(root: &Root, controller: Option<&str>) -> Value {
-    let Some(controller) = controller else { return Value::Null };
+    let Some(controller) = controller else {
+        return Value::Null;
+    };
     let pci = format!("{controller}/device");
     let at = |file: &str| root.said(&format!("{pci}/{file}"));
-    let Some(speed) = at("current_link_speed") else { return Value::Null };
+    let Some(speed) = at("current_link_speed") else {
+        return Value::Null;
+    };
     json!({
         "speed": speed,
         "width": at("current_link_width").and_then(|w| w.parse::<u64>().ok()),
@@ -204,7 +222,13 @@ fn link(root: &Root, controller: Option<&str>) -> Value {
 
 /// A disk's record, from this read's counters and the one before, and its
 /// health as UDisks last said it, or null.
-pub fn record(root: &Root, name: &str, now: &Counters, before: Option<&Counters>, health: &Value) -> Value {
+pub fn record(
+    root: &Root,
+    name: &str,
+    now: &Counters,
+    before: Option<&Counters>,
+    health: &Value,
+) -> Value {
     let folder = format!("/sys/block/{name}");
     let at = |file: &str| root.said(&format!("{folder}/{file}"));
     let number = |file: &str| at(file).and_then(|v| v.parse::<u64>().ok());
@@ -218,7 +242,9 @@ pub fn record(root: &Root, name: &str, now: &Counters, before: Option<&Counters>
     let base = |i: usize| Some(then.and_then(|t| t.get(i).copied()).unwrap_or(0));
     let change = |i: usize| value(i).unwrap_or(0).saturating_sub(base(i).unwrap_or(0));
     let rate = |i: usize, scale: u64| {
-        value(i).and_then(|v| per_second(v, base(i), span)).map(|r| rounded(r * scale as f64, 1))
+        value(i)
+            .and_then(|v| per_second(v, base(i), span))
+            .map(|r| rounded(r * scale as f64, 1))
     };
     let latency = |done: usize, ms: usize| {
         let requests = change(done);

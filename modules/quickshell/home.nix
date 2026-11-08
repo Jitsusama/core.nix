@@ -758,15 +758,6 @@ let
   timeZones = import ./launcher/zones.nix { inherit lib pkgs; };
   characterNames = import ./launcher/names.nix { inherit lib pkgs; };
 
-  # Every process's counters at one moment, for the machine's answers to
-  # say which programs use the processors and the memory: the page size,
-  # then the machine's counters and each process's, in one spawn rather
-  # than a read for each of hundreds of files on the shell's thread.
-  processList = pkgs.writeShellScript "process-list" ''
-    ${lib.getExe' pkgs.getconf "getconf"} PAGESIZE
-    exec ${lib.getExe' pkgs.coreutils "cat"} /proc/stat /proc/[0-9]*/stat 2>/dev/null
-  '';
-
   # A Wi-Fi card's link as iw reads it, for a network's detail in the
   # launcher: the link, the access point as the card hears it, and what
   # the card sends at, each headed so the launcher reads them apart, in one
@@ -886,6 +877,8 @@ in
       [ "jitsusama" "quickshell" "overview" "pieces" ]
       [ "jitsusama" "quickshell" "margin" "pieces" ]
     )
+    # Machine's answers are what the machine daemon holds.
+    ../machine/home.nix
   ];
 
   options.jitsusama.quickshell.margin.pieces = lib.mkOption {
@@ -1765,14 +1758,6 @@ in
                     }
                     // lib.optionalAttrs (provider.source == "characters") {
                       names = "${characterNames}";
-                    }
-                    # What the machine's answers spawn: the processes'
-                    # counters, UDisks for the disk's health, and stat for
-                    # a file system's room where no disk guard says it.
-                    // lib.optionalAttrs (provider.source == "machine") {
-                      processes = "${processList}";
-                      busctl = lib.getExe' pkgs.systemd "busctl";
-                      stat = lib.getExe' pkgs.coreutils "stat";
                     }
                     # What each connection is, from ip, and a Wi-Fi link
                     # in detail, from iw.

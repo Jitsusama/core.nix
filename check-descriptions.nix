@@ -774,6 +774,20 @@
     entry on another partition for it, makes it active and first in BootOrder, and writes nothing
     once it is
   '';
+  machine-holds-the-machine-ready = ''
+    the machine daemon says hello on the socket systemd hands it, says every record of a watch's
+    kinds at once and their rates as of now a moment later, a disk's rates, sensors, link and file
+    systems found through what's mapped over it, a disk taken out as gone and programs ranked by
+    their share and memory, reads nothing once nothing is watched, and refuses an ask or a kind it
+    doesn't know
+  '';
+  machine-passes-clippy = ''
+    clippy finds nothing in the machine daemon or its tests
+  '';
+  machine-runs-beside-the-shell = ''
+    the shell brings the machine daemon, on the daemons' socket, which systemd holds whether or not
+    it runs, restarted by a switch
+  '';
   machines-yield-to-what-the-person-works-in = ''
     system virtual machines are weighed as a build is, and the account's containers and session
     machines are idle
@@ -1948,9 +1962,10 @@
     the graphical role's fontconfig, asked for a Mac's system or monospaced font by a name pages give
     it, gives the theme's sans or monospaced face, carrying the name asked for
   '';
-  the-machine-lists-processes-for-its-parts = ''
-    the processors' and the memory's headlines make no parts and spawn nothing, and their parts,
-    once looked at, list the processes once
+  the-machine-answers-from-its-daemon = ''
+    Machine answers the processors, the memory, the disk and the uptime from the machine daemon
+    reading the sandbox's own /proc, their headlines making no parts, and asks it for the programs
+    using the machine only once a part saying them is looked at
   '';
   the-margin-takes-its-pieces = ''
     a machine moves, cuts, retunes and adds the margin's pieces

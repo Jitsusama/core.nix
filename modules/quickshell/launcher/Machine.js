@@ -1,124 +1,35 @@
-// What the launcher's machine answers make of the kernel's files, in plain
-// JavaScript so a check can run it in Qt's own engine, as the shell does:
-// how busy the processors and each core were between two reads, which kind
-// each core is, how fast a disk read and wrote between two reads, which
-// programs use the processors and the memory, what held the processor
-// back and what kept it from resting as its own telemetry says, how busy
-// the NPU was, and the memory modules the machine read at boot. Machine.qml reads the files
-// and says the figures.
+// What the launcher's machine answers make of the machine daemon's records
+// (modules/machine), in plain JavaScript so a check can run it in Qt's own
+// engine, as the shell does: which cores are maxed, where the processor's
+// time went, what the memory is kept by, the caches and memory modules
+// alike counted once, what a disk's controller warns of, which disk is the
+// machine's, what held the processor back and what kept it from resting
+// as its own telemetry says, and the processor's own sensor among its
+// chip's. Machine.qml says the figures.
 .pragma library
 
-// A line of /proc/stat counting a processor's time: "cpu" for them all,
-// "cpu3" for one.
-const CPU_LINE = /^cpu(\d*)\s/;
-const SPACES = /\s+/;
-// A process's line of /proc/<pid>/stat: its id and its name in brackets.
-const PROCESS_LINE = /^(\d+) \(/;
 // The ranges a CPU list is written in: "0-3,8".
 const RANGE = /^(\d+)(?:-(\d+))?$/;
-// Memory pressure: the share of the last ten seconds something waited.
-const SOME_PRESSURE = /^some avg10=([\d.]+)/m;
-// A line of /proc/meminfo.
-const MEMINFO_LINE = /^(\w+):\s+(\d+)/;
-// The marks a processor's maker puts in its name, and the clock some add.
-const MARKS = /\((R|TM)\)|\bCPU\b|@.*$/gi;
-
-// The fields of a processor's line that count time spent, from user to
-// steal; guest time is counted in user time already.
-const COUNTED = 8;
-const IDLE = 3;
-const WAITING_ON_IO = 4;
-// The fields of a process's stat after its name: its user and system
-// time in ticks, and its resident pages. Its line starts with its id, in
-// digits.
-const USER_TIME = 11;
-const SYSTEM_TIME = 12;
-const RESIDENT = 21;
-const DIGIT_ZERO = 48;
-const DIGIT_NINE = 57;
-// The fields of a disk's stat: reads and writes done, sectors read and
-// written, the milliseconds each spent, and the milliseconds it was busy.
-const READS = 0;
-const SECTORS_READ = 2;
-const READING_MS = 3;
-const WRITES = 4;
-const SECTORS_WRITTEN = 6;
-const WRITING_MS = 7;
-const BUSY_MS = 9;
-// The kernel counts a disk's sectors in 512 bytes, whatever the disk's own.
-const SECTOR = 512;
-const MILLISECONDS = 1000;
-const PERCENT = 100;
 
 // A core this busy or busier is maxed.
 const MAXED = 0.95;
 // Past this many maxed cores they're counted, not named.
 const NAMED = 4;
-// How many programs are named as using the machine: as many as the
-// launcher's card shows at once, so the list fills it without scrolling.
-// Three left Joel asking what came after (2026-10-25, "why does memory
-// only show the top 3 using it?").
-const TOP = 8;
-// The longest a process's name is kept by the kernel, after which it's cut.
-const NAME_KEPT = 15;
-const WRAPPED = "-wrapped";
-
-// What each processor's counters say, the whole first and then each core
-// by its number: the time it's been busy, and all its time.
-function counters(text) {
-    const cores = [];
-    let whole = null;
-    for (const line of text.split("\n").filter(each => CPU_LINE.test(each))) {
-        const named = CPU_LINE.exec(line);
-        const fields = line.trim().split(SPACES).slice(1, 1 + COUNTED).map(Number);
-        const all = fields.reduce((sum, field) => sum + field, 0);
-        const idle = fields[IDLE] + (fields[WAITING_ON_IO] ?? 0);
-        const counted = { busy: all - idle, all };
-        if (named[1] === "") {
-            whole = counted;
-        } else {
-            cores.push(Object.assign({ n: Number(named[1]) }, counted));
-        }
-    }
-    cores.sort((a, b) => a.n - b.n);
-    return { whole, cores };
-}
-
-// How busy a processor was between two reads of its counters, from 0 to 1;
-// with no read before, since the machine started.
-function busy(now, then) {
-    const all = now.all - (then ? then.all : 0);
-    return all > 0 ? (now.busy - (then ? then.busy : 0)) / all : 0;
-}
-
-// Each core's share between two reads, in core order.
-function loads(now, then) {
-    return now.cores.map(core => ({
-        n: core.n,
-        load: busy(core, then ? then.cores.find(before => before.n === core.n) : null)
-    }));
-}
 
 // The maxed cores, as a row says them: none, by number while they're few,
-// or how many of how many.
-function maxed(cores) {
-    const flat = cores.filter(core => core.load >= MAXED).map(core => core.n);
+// or how many of how many. Each core is { n, load }.
+function maxed(loads) {
+    const flat = loads.filter(core => core.load >= MAXED).map(core => core.n);
     if (flat.length === 0) {
         return "none";
     }
     if (flat.length > NAMED) {
-        return `${flat.length} of ${cores.length}`;
+        return `${flat.length} of ${loads.length}`;
     }
     if (flat.length === 1) {
         return `core ${flat[0]}`;
     }
     return `cores ${flat.slice(0, -1).join(", ")} and ${flat.slice(-1)[0]}`;
-}
-
-// A processor's model as /proc/cpuinfo names it, without its trade marks:
-// "Intel(R) Core(TM) Ultra X7 358H" is an Intel Core Ultra X7 358H.
-function model(name) {
-    return name.replace(MARKS, " ").trim().split(SPACES).join(" ");
 }
 
 // The CPU numbers a list such as /sys/devices/cpu_core/cpus names.
@@ -133,6 +44,160 @@ function cpus(text) {
         }
     }
     return listed;
+}
+
+// CPU numbers as a note says them: "core 4", "cores 0 to 3", or each
+// named where they don't run unbroken, "cores 0, 2 and 5".
+function cores(numbers) {
+    if (numbers.length === 0) {
+        return "";
+    }
+    if (numbers.length === 1) {
+        return `core ${numbers[0]}`;
+    }
+    const last = numbers[numbers.length - 1];
+    if (last - numbers[0] === numbers.length - 1) {
+        return `cores ${numbers[0]} to ${last}`;
+    }
+    return `cores ${numbers.slice(0, -1).join(", ")} and ${last}`;
+}
+
+// Where the processor's time went, as Time Spent's parts are listed, each
+// by its part's id and the kernel's fields it sums: { id, share }, for
+// each field the kernel keeps. Guests' time is in the user's already, and
+// said beside it as what of it ran a virtual machine.
+const SPENT = [
+    ["user", ["user"]],
+    ["system", ["system"]],
+    ["iowait", ["iowait"]],
+    ["interrupts", ["irq", "softirq"]],
+    ["niced", ["nice"]],
+    ["stolen", ["steal"]],
+    ["guests", ["guest", "guest_nice"]]
+];
+
+function spent(time) {
+    if (!time) {
+        return [];
+    }
+    return SPENT.filter(([, fields]) => fields.some(field => typeof time[field] === "number"))
+        .map(([id, fields]) => ({
+            id,
+            share: fields.reduce((sum, field) => sum + (time[field] ?? 0), 0)
+        }));
+}
+
+// What the memory is kept by, from /proc/meminfo's fields in bytes, as
+// Kept By's parts are listed, biggest first: programs' own memory, files
+// kept from the disk (the page cache, less what's shared, which the
+// kernel counts in it), what programs share, the kernel's own, buffers
+// for the disk, and what waits to be written. Each { id, bytes }, for
+// those the kernel says.
+function keptBy(info) {
+    if (!info) {
+        return [];
+    }
+    const has = field => typeof info[field] === "number";
+    const sum = fields => fields.filter(has).reduce((all, field) => all + info[field], 0);
+    const parts = [];
+    if (has("AnonPages")) {
+        parts.push({ id: "programs", bytes: info.AnonPages });
+    }
+    if (has("Cached")) {
+        parts.push({ id: "files", bytes: Math.max(0, info.Cached - (info.Shmem ?? 0)) });
+    }
+    if (has("Shmem")) {
+        parts.push({ id: "shared", bytes: info.Shmem });
+    }
+    if (has("Slab") || has("KernelStack") || has("PageTables")) {
+        parts.push({
+            id: "kernel",
+            bytes: sum(["Slab", "KernelStack", "PageTables", "SecPageTables", "Percpu", "VmallocUsed"])
+        });
+    }
+    if (has("Buffers")) {
+        parts.push({ id: "buffers", bytes: info.Buffers });
+    }
+    if (has("Dirty") || has("Writeback")) {
+        parts.push({ id: "unwritten", bytes: sum(["Dirty", "Writeback"]) });
+    }
+    return parts.sort((a, b) => b.bytes - a.bytes);
+}
+
+// What zswap holds, from /proc/meminfo: the pages it keeps as they were,
+// in what they take compressed, and how many times smaller; null where
+// it holds nothing or the kernel doesn't say.
+function compressed(info) {
+    const stored = info?.Zswapped ?? 0;
+    const pool = info?.Zswap ?? 0;
+    if (stored <= 0 || pool <= 0) {
+        return null;
+    }
+    return { stored, pool, ratio: stored / pool };
+}
+
+// The memory modules, those alike as one: each kind of module, how many
+// there are, and where they sit. A field the firmware leaves blank is
+// left out, never guessed.
+function modules(listed) {
+    const alike = [];
+    const fields = ["type", "speed", "size", "manufacturer", "part"];
+    for (const module of Array.isArray(listed) ? listed : []) {
+        const said = {};
+        for (const field of fields.concat(["locator"])) {
+            said[field] = String(module?.[field] ?? "").trim();
+        }
+        const same = alike.find(one => fields.every(field => one[field] === said[field]));
+        if (same) {
+            same.count += 1;
+            if (!same.locators.includes(said.locator) && said.locator !== "") {
+                same.locators.push(said.locator);
+            }
+        } else {
+            alike.push(Object.assign(said, {
+                count: 1,
+                locators: said.locator === "" ? [] : [said.locator]
+            }));
+        }
+    }
+    return alike;
+}
+
+// What an NVMe disk's controller warns of, by the bits of its critical
+// warning (NVMe base specification, SMART / Health Information): each
+// warning's id, which the vocabulary words. UDisks says them by name.
+const WARNINGS = {
+    spare: "spare",
+    temperature: "temperature",
+    degraded: "degraded",
+    readonly: "read-only",
+    volatile_mem: "volatile-memory",
+    pmr_readonly: "persistent-memory-read-only"
+};
+
+function warnings(critical) {
+    if (!Array.isArray(critical)) {
+        return [];
+    }
+    return critical.map(bit => WARNINGS[bit] ?? String(bit));
+}
+
+// The NPU's clock, as its driver counts it in megahertz and a note says it
+// in gigahertz to two places at most: "at 1.4 GHz of 2.05 GHz", or
+// "resting" while it's powered down.
+const MEGAHERTZ = 1000;
+const CLOCK_PLACES = 2;
+
+function npuClock(npu) {
+    const ghz = mhz => String(Number((mhz / MEGAHERTZ).toFixed(CLOCK_PLACES)));
+    return npu.clock_mhz > 0 ? `at ${ghz(npu.clock_mhz)} GHz of ${ghz(npu.max_mhz)} GHz` : "resting";
+}
+
+// The machine's disk, of the disk records: the biggest, as a laptop's one
+// disk is.
+function biggest(disks) {
+    return disks.reduce((most, disk) => ((disk.size_b ?? 0) > (most?.size_b ?? -1) ? disk : most),
+        null);
 }
 
 // What held a processor back, as a note says it after "by": the whole
@@ -172,19 +237,19 @@ function heldBack(reading) {
     if (!reading) {
         return null;
     }
-    const cores = [];
+    const held = [];
     for (const cluster of reading.clusters ?? []) {
         const most = strongest(cluster.heldBack);
         if (most) {
             for (const n of cpus(cluster.cpus)) {
-                cores.push({ n, share: most.share, by: most.by });
+                held.push({ n, share: most.share, by: most.by });
             }
         }
     }
-    cores.sort((a, b) => a.n - b.n);
+    held.sort((a, b) => a.n - b.n);
     const whole = strongest(reading.heldBack);
-    const most = whole ?? strongest(cores);
-    return most ? { share: most.share, by: most.by, whole: whole !== null, cores } : null;
+    const most = whole ?? strongest(held);
+    return most ? { share: most.share, by: most.by, whole: whole !== null, cores: held } : null;
 }
 
 // Each part the processor's telemetry says kept the package from resting,
@@ -233,234 +298,6 @@ function kept(readings) {
         .filter(part => part.share >= RESTLESS)
         .sort((a, b) => b.share - a.share);
     return { share, by, quiet: share < RESTLESS };
-}
-
-// The NPU's driver counts its busy time in microseconds and its clock in
-// megahertz, which is said in gigahertz to two decimals at most: 1400 is
-// "1.4", 2050 is "2.05".
-const MICROSECONDS = 1e6;
-const MEGAHERTZ = 1000;
-const CLOCK_DECIMALS = 2;
-
-// The NPU's load between two reads of its driver's counters, each
-// { busy, clock, top }: its busy time since boot in microseconds, and its
-// clock now and at most in megahertz. The share of the time between them
-// it was busy, or null with no read before to measure from, and what its
-// clock says, "resting" while it's powered down. Null with no NPU.
-function npuLoad(now, then, seconds) {
-    if (!now) {
-        return null;
-    }
-    const share = then !== null && seconds > 0
-        ? Math.min(1, Math.max(0, (now.busy - then.busy) / (seconds * MICROSECONDS))) : null;
-    const ghz = mhz => String(Number((mhz / MEGAHERTZ).toFixed(CLOCK_DECIMALS)));
-    const clock = now.clock > 0 ? `at ${ghz(now.clock)} GHz of ${ghz(now.top)} GHz` : "resting";
-    return { share, clock };
-}
-
-// Each core's kind, by its number, on a processor of more than one kind:
-// those the kernel calls cores are for performance, and of its smaller
-// ones, those that clock highest are efficient and the rest low-power.
-// Null when the kernel says no core is a performance core.
-function kinds(performance, cores) {
-    if (performance.length === 0) {
-        return null;
-    }
-    const small = cores.filter(core => !performance.includes(core.n));
-    const fastest = Math.max(...small.map(core => core.max));
-    const kind = {};
-    for (const core of cores) {
-        if (performance.includes(core.n)) {
-            kind[core.n] = "performance";
-        } else {
-            kind[core.n] = core.max >= fastest ? "efficient" : "low-power";
-        }
-    }
-    return kind;
-}
-
-// A disk's counters, from its /sys/block/<disk>/stat.
-function disk(text) {
-    const fields = text.trim().split(SPACES).map(Number);
-    return fields.length > BUSY_MS && !fields.some(Number.isNaN) ? fields : null;
-}
-
-// How a disk did between two reads, `seconds` apart: bytes a second read
-// and written, its share of the time busy, and the milliseconds a request
-// took, or null with none made. With no read before, since it started.
-function rates(now, then, seconds) {
-    const change = field => now[field] - (then ? then[field] : 0);
-    const requests = change(READS) + change(WRITES);
-    const time = seconds > 0 ? seconds : 1;
-    return {
-        read: change(SECTORS_READ) * SECTOR / time,
-        write: change(SECTORS_WRITTEN) * SECTOR / time,
-        busy: Math.min(1, change(BUSY_MS) / (time * MILLISECONDS)),
-        latency: requests > 0 ? (change(READING_MS) + change(WRITING_MS)) / requests : null
-    };
-}
-
-// A program by the name it's known by: the kernel keeps fifteen letters of
-// a process's name, and Nix runs a wrapped program as ".kitty-wrapped",
-// cut short as ".firefox-wrappe" when the name is long.
-function program(name) {
-    if (!name.startsWith(".")) {
-        return name;
-    }
-    const bare = name.slice(1);
-    for (let cut = WRAPPED.length; cut > 0; cut -= 1) {
-        const end = WRAPPED.slice(0, cut);
-        const whole = cut === WRAPPED.length || name.length === NAME_KEPT;
-        if (whole && bare.endsWith(end) && bare.length > end.length) {
-            return bare.slice(0, -end.length);
-        }
-    }
-    return bare;
-}
-
-// Where the field `count` past the one starting at `at` starts, in a line
-// ending at `end`, or `end` when there's none.
-function walk(text, at, end, count) {
-    let start = at;
-    for (let n = 0; n < count && start < end; n += 1) {
-        const space = text.indexOf(" ", start);
-        start = space < 0 || space >= end ? end : space + 1;
-    }
-    return start;
-}
-
-// The number a field starting at `at` says.
-function numberAt(text, at, end) {
-    const space = text.indexOf(" ", at);
-    return Number(text.slice(at, space < 0 || space > end ? end : space));
-}
-
-// What one read of the processes says: the page size first, then
-// /proc/stat, then each process's stat line. The whole machine's ticks, and
-// each process by its id with its program, its ticks and its resident
-// bytes. It's a fifth of a megabyte, read each second while the programs
-// using the processors or the memory are shown, so it's walked by
-// position: splitting every line into its fifty fields took twelve
-// milliseconds of the shell's thread, and under load forty.
-function processes(text) {
-    const firstEnd = text.indexOf("\n");
-    const page = Number(text.slice(0, firstEnd < 0 ? text.length : firstEnd)) || 1;
-    const programs = {};
-    const cpuAt = text.startsWith("cpu ") ? 0 : text.indexOf("\ncpu ") + 1;
-    const cpuEnd = text.indexOf("\n", cpuAt);
-    const machine = cpuAt === 0 && !text.startsWith("cpu ") ? null
-        : text.slice(cpuAt, cpuEnd < 0 ? text.length : cpuEnd);
-    const ticks = machine ? counters(machine).whole.all : 0;
-    let start = 0;
-    while (start < text.length) {
-        const found = text.indexOf("\n", start);
-        const end = found < 0 ? text.length : found;
-        const first = text.charCodeAt(start);
-        // A process's line starts with its id, a digit, and its name in
-        // brackets follows it.
-        const opened = first >= DIGIT_ZERO && first <= DIGIT_NINE ? text.indexOf(" (", start) : -1;
-        if (opened > start && opened < end && PROCESS_LINE.test(text.slice(start, opened + 2))) {
-            const close = text.lastIndexOf(")", end);
-            const user = walk(text, close + 2, end, USER_TIME);
-            const system = walk(text, user, end, SYSTEM_TIME - USER_TIME);
-            const resident = walk(text, system, end, RESIDENT - SYSTEM_TIME);
-            programs[text.slice(start, opened)] = {
-                name: program(text.slice(opened + 2, close)),
-                ticks: numberAt(text, user, end) + numberAt(text, system, end),
-                bytes: numberAt(text, resident, end) * page
-            };
-        }
-        start = end + 1;
-    }
-    return { ticks, programs };
-}
-
-// The programs using most of something, by name, each program's
-// processes summed: [{ name, value }], at most TOP, none at nothing.
-function top(values) {
-    return Object.keys(values)
-        .map(name => ({ name, value: values[name] }))
-        .filter(each => each.value > 0)
-        .sort((a, b) => b.value - a.value || (a.name < b.name ? -1 : 1))
-        .slice(0, TOP);
-}
-
-// The programs that used the processors most between two reads, each
-// with its share of the whole machine, from 0 to 1. A process that started
-// between them is left out, since its time before can't be told. With no
-// read before (`then` null), since the machine started, as the processors'
-// own first figure is, so a first read has its programs too.
-function using(now, then) {
-    const all = now.ticks - (then ? then.ticks : 0);
-    const ticks = {};
-    if (all <= 0) {
-        return [];
-    }
-    for (const id of Object.keys(now.programs)) {
-        const process = now.programs[id];
-        const before = then ? then.programs[id] : { name: process.name, ticks: 0 };
-        if (before && before.name === process.name) {
-            ticks[process.name] = (ticks[process.name] ?? 0) + process.ticks - before.ticks;
-        }
-    }
-    return top(ticks).map(each => ({ name: each.name, value: each.value / all }));
-}
-
-// The programs holding the most memory, in bytes.
-function holding(now) {
-    const bytes = {};
-    for (const process of Object.values(now.programs)) {
-        bytes[process.name] = (bytes[process.name] ?? 0) + process.bytes;
-    }
-    return top(bytes);
-}
-
-// /proc/meminfo's fields, in KiB.
-function meminfo(text) {
-    const info = {};
-    for (const line of text.split("\n")) {
-        const field = MEMINFO_LINE.exec(line);
-        if (field) {
-            info[field[1]] = Number(field[2]);
-        }
-    }
-    return info;
-}
-
-// The share of the last ten seconds something waited for memory, 0 to 1,
-// or null where the kernel doesn't say.
-function pressure(text) {
-    const some = SOME_PRESSURE.exec(text);
-    return some ? Number(some[1]) / PERCENT : null;
-}
-
-// The memory modules the machine read at boot, as /run/memory-modules.json
-// lists them: their type and speed where every module says the same, how
-// many and how big, and who made them. Null with none listed or no type.
-function modules(text) {
-    let said = null;
-    try {
-        said = JSON.parse(text);
-    } catch (_error) {
-        return null;
-    }
-    const listed = Array.isArray(said?.modules) ? said.modules : [];
-    const alike = field => {
-        const values = listed.map(each => String(each[field] ?? "").trim())
-            .filter(value => value !== "");
-        return values.length > 0 && values.every(value => value === values[0]) ? values[0] : "";
-    };
-    const type = alike("type");
-    if (type === "") {
-        return null;
-    }
-    return {
-        type,
-        speed: alike("speed"),
-        size: alike("size"),
-        maker: alike("manufacturer"),
-        count: listed.length
-    };
 }
 
 // A spark's values, from 0 to 1 against the most of them or `least`,

@@ -36,7 +36,9 @@ pub fn meminfo(text: &str) -> (Map<String, Value>, Map<String, Value>) {
     let mut sized = Map::new();
     let mut counted = Map::new();
     for line in text.lines() {
-        let Some((name, rest)) = line.split_once(':') else { continue };
+        let Some((name, rest)) = line.split_once(':') else {
+            continue;
+        };
         let mut fields = rest.split_whitespace();
         let Some(value) = fields.next().and_then(|v| v.parse::<u64>().ok()) else {
             continue;

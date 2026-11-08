@@ -43,7 +43,9 @@ pub fn record(root: &Root, asleep_s: Option<u64>) -> Value {
         .filter(|line| line.starts_with("cpu") && !line.starts_with("cpu "))
         .count();
     let uptime = root.read("/proc/uptime").unwrap_or_default();
-    let mut fields = uptime.split_whitespace().filter_map(|f| f.parse::<f64>().ok());
+    let mut fields = uptime
+        .split_whitespace()
+        .filter_map(|f| f.parse::<f64>().ok());
     #[allow(clippy::cast_precision_loss)]
     let idle = match (fields.next(), fields.next()) {
         (Some(up), Some(idle)) if up > 0.0 && cpus > 0 => {

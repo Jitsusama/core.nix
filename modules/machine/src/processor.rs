@@ -109,7 +109,8 @@ pub fn fixed(root: &Root) -> Fixed {
         .collect();
     let mut numbers = numbers;
     numbers.sort_unstable();
-    let freq = |n: u32, file: &str| root.number(&format!("/sys/devices/system/cpu/cpu{n}/cpufreq/{file}"));
+    let freq =
+        |n: u32, file: &str| root.number(&format!("/sys/devices/system/cpu/cpu{n}/cpufreq/{file}"));
     let mut cpus: Vec<Cpu> = numbers
         .iter()
         .map(|&n| Cpu {
@@ -123,7 +124,10 @@ pub fn fixed(root: &Root) -> Fixed {
             base_khz: freq(n, "base_frequency"),
         })
         .collect();
-    kinds(&mut cpus, &cpu_list(&root.said("/sys/devices/cpu_core/cpus").unwrap_or_default()));
+    kinds(
+        &mut cpus,
+        &cpu_list(&root.said("/sys/devices/cpu_core/cpus").unwrap_or_default()),
+    );
     let number = |field| info(&cpuinfo, field).and_then(|v| v.parse().ok());
     Fixed {
         model: info(&cpuinfo, "model name").map(model),
@@ -133,9 +137,11 @@ pub fn fixed(root: &Root) -> Fixed {
         stepping: number("stepping"),
         microcode: info(&cpuinfo, "microcode").map(str::to_owned),
         caches: caches(root, &numbers),
-        driver: numbers
-            .first()
-            .and_then(|n| root.said(&format!("/sys/devices/system/cpu/cpu{n}/cpufreq/scaling_driver"))),
+        driver: numbers.first().and_then(|n| {
+            root.said(&format!(
+                "/sys/devices/system/cpu/cpu{n}/cpufreq/scaling_driver"
+            ))
+        }),
         cpus,
     }
 }
@@ -173,9 +179,14 @@ fn caches(root: &Root, numbers: &[u32]) -> Value {
     let mut found: BTreeMap<(u64, String, String), Value> = BTreeMap::new();
     for n in numbers {
         let folder = format!("/sys/devices/system/cpu/cpu{n}/cache");
-        for index in root.names(&folder).iter().filter(|name| name.starts_with("index")) {
+        for index in root
+            .names(&folder)
+            .iter()
+            .filter(|name| name.starts_with("index"))
+        {
             let at = |file: &str| root.said(&format!("{folder}/{index}/{file}"));
-            let (Some(level), Some(kind)) = (at("level").and_then(|l| l.parse::<u64>().ok()), at("type"))
+            let (Some(level), Some(kind)) =
+                (at("level").and_then(|l| l.parse::<u64>().ok()), at("type"))
             else {
                 continue;
             };
@@ -223,7 +234,10 @@ fn caches(root: &Root, numbers: &[u32]) -> Value {
 
 /// A size as sysfs writes a cache's, "48K" or "18432K", in bytes.
 fn bytes(size: &str) -> Option<u64> {
-    let (digits, unit) = size.split_at(size.find(|c: char| !c.is_ascii_digit()).unwrap_or(size.len()));
+    let (digits, unit) = size.split_at(
+        size.find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(size.len()),
+    );
     let scale = match unit.trim() {
         "" => 1,
         "K" => 1024,
@@ -239,17 +253,27 @@ pub fn counters(root: &Root, at_ms: u64) -> Counters {
     let mut whole = Vec::new();
     let mut cores = BTreeMap::new();
     let named = |name: &str| -> Option<u64> {
-        stat.lines()
-            .find_map(|line| line.strip_prefix(name)?.split_whitespace().next()?.parse().ok())
+        stat.lines().find_map(|line| {
+            line.strip_prefix(name)?
+                .split_whitespace()
+                .next()?
+                .parse()
+                .ok()
+        })
     };
     let switches = named("ctxt ");
     let interrupts = named("intr ");
     let softirqs = named("softirq ");
     let forks = named("processes ");
     for line in stat.lines() {
-        let Some(rest) = line.strip_prefix("cpu") else { continue };
+        let Some(rest) = line.strip_prefix("cpu") else {
+            continue;
+        };
         let (which, fields) = rest.split_at(rest.find(' ').unwrap_or(rest.len()));
-        let fields: Vec<u64> = fields.split_whitespace().filter_map(|f| f.parse().ok()).collect();
+        let fields: Vec<u64> = fields
+            .split_whitespace()
+            .filter_map(|f| f.parse().ok())
+            .collect();
         if which.is_empty() {
             whole = fields;
         } else if let Ok(n) = which.parse::<u32>() {
@@ -271,7 +295,12 @@ pub fn counters(root: &Root, at_ms: u64) -> Counters {
 /// Where a processor's time went between two reads, each field's share,
 /// and how busy it was: all but idle and waiting on a disk.
 fn spent(now: &[u64], before: Option<&Vec<u64>>) -> (Value, Value) {
-    let change = |i: usize| now.get(i).copied().unwrap_or(0).saturating_sub(before.and_then(|b| b.get(i).copied()).unwrap_or(0));
+    let change = |i: usize| {
+        now.get(i)
+            .copied()
+            .unwrap_or(0)
+            .saturating_sub(before.and_then(|b| b.get(i).copied()).unwrap_or(0))
+    };
     let all: u64 = (0..COUNTED).map(change).sum();
     if all == 0 {
         return (Value::Null, Value::Null);
@@ -323,7 +352,8 @@ fn temperatures(root: &Root) -> (Value, BTreeMap<u32, f64>) {
         if whole.is_null()
             && let Some(hottest) = cores.values().copied().reduce(f64::max)
         {
-            whole = json!({"temperature_c": rounded(hottest, 1), "high_c": null, "critical_c": null});
+            whole =
+                json!({"temperature_c": rounded(hottest, 1), "high_c": null, "critical_c": null});
         }
         return (whole, cores);
     }
@@ -335,7 +365,8 @@ pub fn record(root: &Root, fixed: &Fixed, now: &Counters, before: Option<&Counte
     let over_ms = before.map(|b| now.at_ms.saturating_sub(b.at_ms));
     let (busy, time) = spent(&now.whole, before.map(|b| &b.whole));
     let (heat, core_heat) = temperatures(root);
-    let cpu = |n: u32, file: &str| root.said(&format!("/sys/devices/system/cpu/cpu{n}/cpufreq/{file}"));
+    let cpu =
+        |n: u32, file: &str| root.said(&format!("/sys/devices/system/cpu/cpu{n}/cpufreq/{file}"));
     let cores: Vec<Value> = fixed
         .cpus
         .iter()
@@ -366,36 +397,50 @@ pub fn record(root: &Root, fixed: &Fixed, now: &Counters, before: Option<&Counte
     let (runnable, tasks) = load
         .get(3)
         .and_then(|tasks| tasks.split_once('/'))
-        .map_or((None, None), |(r, t)| (r.parse::<u64>().ok(), t.parse::<u64>().ok()));
+        .map_or((None, None), |(r, t)| {
+            (r.parse::<u64>().ok(), t.parse::<u64>().ok())
+        });
     let stat = root.read("/proc/stat").unwrap_or_default();
     let gauge = |name: &str| -> Option<u64> {
-        stat.lines()
-            .find_map(|line| line.strip_prefix(name)?.split_whitespace().next()?.parse().ok())
+        stat.lines().find_map(|line| {
+            line.strip_prefix(name)?
+                .split_whitespace()
+                .next()?
+                .parse()
+                .ok()
+        })
     };
     let turbo = root
         .number("/sys/devices/system/cpu/intel_pstate/no_turbo")
         .map(|off| off == 0)
-        .or_else(|| root.number("/sys/devices/system/cpu/cpufreq/boost").map(|on| on == 1));
+        .or_else(|| {
+            root.number("/sys/devices/system/cpu/cpufreq/boost")
+                .map(|on| on == 1)
+        });
     // A first read's rates are since the machine started.
     let span = over_ms.or_else(|| crate::boot::up_ms(root));
-    let rate = |now: Option<u64>, before: Option<u64>| per_second(now?, before, span).map(|r| rounded(r, 1));
-    let npu = root.number(&format!("{NPU}/npu_max_frequency_mhz")).map(|max| {
-        let then = before.map_or(Some(0), |b| b.npu_busy_us);
-        let busy = match (now.npu_busy_us, then, span) {
-            (Some(now), Some(then), Some(over)) if over > 0 && now >= then => {
-                #[allow(clippy::cast_precision_loss)]
-                let share = ((now - then) as f64 / (over as f64 * 1000.0)).min(1.0);
-                rounded(share, 4)
-            }
-            _ => Value::Null,
-        };
-        json!({
-            "busy_ratio": busy,
-            "busy_us": now.npu_busy_us,
-            "clock_mhz": root.number(&format!("{NPU}/npu_current_frequency_mhz")),
-            "max_mhz": max,
-        })
-    });
+    let rate = |now: Option<u64>, before: Option<u64>| {
+        per_second(now?, before, span).map(|r| rounded(r, 1))
+    };
+    let npu = root
+        .number(&format!("{NPU}/npu_max_frequency_mhz"))
+        .map(|max| {
+            let then = before.map_or(Some(0), |b| b.npu_busy_us);
+            let busy = match (now.npu_busy_us, then, span) {
+                (Some(now), Some(then), Some(over)) if over > 0 && now >= then => {
+                    #[allow(clippy::cast_precision_loss)]
+                    let share = ((now - then) as f64 / (over as f64 * 1000.0)).min(1.0);
+                    rounded(share, 4)
+                }
+                _ => Value::Null,
+            };
+            json!({
+                "busy_ratio": busy,
+                "busy_us": now.npu_busy_us,
+                "clock_mhz": root.number(&format!("{NPU}/npu_current_frequency_mhz")),
+                "max_mhz": max,
+            })
+        });
     json!({
         "key": "processor:0",
         "kind": "processor",
@@ -436,8 +481,14 @@ mod tests {
 
     #[test]
     fn a_model_loses_its_marks() {
-        assert_eq!(model("Intel(R) Core(TM) Ultra X7 358H"), "Intel Core Ultra X7 358H");
-        assert_eq!(model("Intel(R) Core(TM) i7-8650U CPU @ 1.90GHz"), "Intel Core i7-8650U");
+        assert_eq!(
+            model("Intel(R) Core(TM) Ultra X7 358H"),
+            "Intel Core Ultra X7 358H"
+        );
+        assert_eq!(
+            model("Intel(R) Core(TM) i7-8650U CPU @ 1.90GHz"),
+            "Intel Core i7-8650U"
+        );
     }
 
     #[test]
@@ -460,10 +511,20 @@ mod tests {
 
     #[test]
     fn small_cores_that_clock_highest_are_efficient() {
-        let cpu = |n, max| Cpu { n, core: None, kind: None, min_khz: None, max_khz: Some(max), base_khz: None };
+        let cpu = |n, max| Cpu {
+            n,
+            core: None,
+            kind: None,
+            min_khz: None,
+            max_khz: Some(max),
+            base_khz: None,
+        };
         let mut cpus = vec![cpu(0, 4_700_000), cpu(4, 3_700_000), cpu(12, 3_300_000)];
         kinds(&mut cpus, &[0]);
         let said: Vec<_> = cpus.iter().map(|c| c.kind).collect();
-        assert_eq!(said, [Some("performance"), Some("efficient"), Some("low-power")]);
+        assert_eq!(
+            said,
+            [Some("performance"), Some("efficient"), Some("low-power")]
+        );
     }
 }

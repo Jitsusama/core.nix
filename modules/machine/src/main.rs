@@ -82,12 +82,22 @@ impl Reader {
         let wants = |kind: &str| kinds.contains(kind);
         if wants("processor") {
             let now = processor::counters(&self.root, at);
-            records.push(processor::record(&self.root, &self.fixed, &now, self.processor.as_ref()));
+            records.push(processor::record(
+                &self.root,
+                &self.fixed,
+                &now,
+                self.processor.as_ref(),
+            ));
             self.processor = Some(now);
         }
         if wants("memory") {
             let now = memory::counters(&self.root, at);
-            records.push(memory::record(&self.root, &now, self.memory.as_ref(), self.page_b));
+            records.push(memory::record(
+                &self.root,
+                &now,
+                self.memory.as_ref(),
+                self.page_b,
+            ));
             self.memory = Some(now);
         }
         if wants("disk") {
@@ -95,7 +105,13 @@ impl Reader {
             let now = disk::counters(&self.root, at, &names);
             for name in names.iter().filter(|name| now.disks.contains_key(*name)) {
                 let said = health.get(name).cloned().unwrap_or(Value::Null);
-                records.push(disk::record(&self.root, name, &now, self.disks.as_ref(), &said));
+                records.push(disk::record(
+                    &self.root,
+                    name,
+                    &now,
+                    self.disks.as_ref(),
+                    &said,
+                ));
             }
             self.disks = Some(now);
         }
@@ -213,7 +229,9 @@ fn handed() -> Option<UnixListener> {
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// The kinds some watch holds.
@@ -222,7 +240,11 @@ fn watched(daemon: &Daemon) -> HashSet<String> {
         .watches
         .iter()
         .flat_map(|watch| match &watch.keys {
-            Some(keys) => keys.iter().filter_map(|key| kind_of(key)).map(str::to_owned).collect(),
+            Some(keys) => keys
+                .iter()
+                .filter_map(|key| kind_of(key))
+                .map(str::to_owned)
+                .collect(),
             None => watch.kinds.clone(),
         })
         .collect()
@@ -260,7 +282,9 @@ fn read(shared: &Shared, kinds: &HashSet<String>) {
     }
     let mut changed = Vec::new();
     for record in records {
-        let Some(key) = record["key"].as_str().map(str::to_owned) else { continue };
+        let Some(key) = record["key"].as_str().map(str::to_owned) else {
+            continue;
+        };
         if daemon.held.get(&key) != Some(&record) {
             daemon.held.insert(key, record.clone());
             changed.push(record);
@@ -312,8 +336,15 @@ fn watch_loop(shared: &Shared) {
         let mut next = EVERY;
         for kind in &kinds {
             let one = HashSet::from([kind.clone()]);
-            let every = if unsettled(&daemon, &one) { SOON } else { EVERY };
-            let age = daemon.read_at.get(kind).map_or(Duration::MAX, Instant::elapsed);
+            let every = if unsettled(&daemon, &one) {
+                SOON
+            } else {
+                EVERY
+            };
+            let age = daemon
+                .read_at
+                .get(kind)
+                .map_or(Duration::MAX, Instant::elapsed);
             // A kind nearly due is read with the rest, so reads keep together.
             if age + LEEWAY >= every {
                 due.insert(kind.clone());
@@ -370,13 +401,14 @@ fn health_loop(shared: &Shared) {
             match zbus::blocking::Connection::system() {
                 Ok(connection) => bus = Some(connection),
                 Err(why) => {
-                    lock(&shared.daemon).udisks =
-                        json!({"state": "refused", "reason": format!("the system bus isn't there: {why}")});
+                    lock(&shared.daemon).udisks = json!({"state": "refused", "reason": format!("the system bus isn't there: {why}")});
                     continue;
                 }
             }
         }
-        let Some(connection) = bus.as_ref() else { continue };
+        let Some(connection) = bus.as_ref() else {
+            continue;
+        };
         let mut said = BTreeMap::new();
         let mut refused = None;
         for name in names {
@@ -423,10 +455,14 @@ fn smart(connection: &zbus::blocking::Connection, name: &str) -> Result<Value, S
     )
     .map_err(|why| why.to_string())?;
     let mut options: HashMap<&str, zbus::zvariant::Value> = HashMap::new();
-    options.insert("auth.no_user_interaction", zbus::zvariant::Value::from(true));
-    let Ok(attributes) = controller
-        .call::<_, _, HashMap<String, zbus::zvariant::OwnedValue>>("SmartGetAttributes", &(options,))
-    else {
+    options.insert(
+        "auth.no_user_interaction",
+        zbus::zvariant::Value::from(true),
+    );
+    let Ok(attributes) = controller.call::<_, _, HashMap<String, zbus::zvariant::OwnedValue>>(
+        "SmartGetAttributes",
+        &(options,),
+    ) else {
         return Ok(Value::Null);
     };
     let mut health: serde_json::Map<String, Value> = attributes
@@ -510,14 +546,23 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
 /// fresh, in the daemon's order: by kind, then by key.
 fn records(shared: &Shared, kinds: &[String], keys: Option<&[String]>) -> Vec<Value> {
     let wanted: HashSet<String> = match keys {
-        Some(keys) => keys.iter().filter_map(|key| kind_of(key)).map(str::to_owned).collect(),
+        Some(keys) => keys
+            .iter()
+            .filter_map(|key| kind_of(key))
+            .map(str::to_owned)
+            .collect(),
         None => kinds.iter().cloned().collect(),
     };
     let stale: HashSet<String> = {
         let daemon = lock(&shared.daemon);
         wanted
             .iter()
-            .filter(|kind| daemon.read_at.get(*kind).is_none_or(|at| at.elapsed() > FRESH))
+            .filter(|kind| {
+                daemon
+                    .read_at
+                    .get(*kind)
+                    .is_none_or(|at| at.elapsed() > FRESH)
+            })
             .cloned()
             .collect()
     };
@@ -526,7 +571,11 @@ fn records(shared: &Shared, kinds: &[String], keys: Option<&[String]>) -> Vec<Va
     }
     let daemon = lock(&shared.daemon);
     let mut found: Vec<Value> = match keys {
-        Some(keys) => keys.iter().filter_map(|key| daemon.held.get(key)).cloned().collect(),
+        Some(keys) => keys
+            .iter()
+            .filter_map(|key| daemon.held.get(key))
+            .cloned()
+            .collect(),
         None => daemon
             .held
             .iter()
@@ -594,7 +643,9 @@ fn answer(shared: &Arc<Shared>, asked: Ask, connection: u64, told: &Sender<Strin
                 "took_us": daemon.took.iter().collect::<Vec<_>>(),
             })
         }
-        Ask::UnknownKind { id, kind } => error(&id, "unknown-kind", &format!("no kind {kind} here")),
+        Ask::UnknownKind { id, kind } => {
+            error(&id, "unknown-kind", &format!("no kind {kind} here"))
+        }
         Ask::Unknown { id, ask } => error(&id, "unknown-ask", &format!("no ask {ask:?} here")),
     }
 }
