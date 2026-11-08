@@ -3020,12 +3020,12 @@ def test_nearby_lists_a_device_it_hears_at_each_scale(
     machine.succeed(f"systemd-run --unit=btvirt {values['btvirt']} -l2")
     machine.succeed("systemctl start bluetooth.service")
     try:
+        # An adapter BlueZ lists may still be setting up, and refuses power until it's done.
         for adapter in (LOOKING, LOOKED_FOR):
             machine.wait_until_succeeds(
-                f"busctl get-property org.bluez {adapter} org.bluez.Adapter1 Address",
+                f"busctl set-property org.bluez {adapter} org.bluez.Adapter1 Powered b true",
                 timeout=timedelta(seconds=30),
             )
-            bluez_set(desktop, adapter, "Powered", "b", "true")
         bluez_set(desktop, LOOKED_FOR, "Alias", "s", HEARD)
         bluez_set(desktop, LOOKED_FOR, "DiscoverableTimeout", "u", "0")
         bluez_set(desktop, LOOKED_FOR, "Discoverable", "b", "true")
