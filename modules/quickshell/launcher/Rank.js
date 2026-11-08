@@ -397,6 +397,17 @@ function pinned(rows, id, at) {
     return Math.max(0, Math.min(at, rows.length - 1));
 }
 
+// What a collection's best find says at its right once it's gathered into
+// the main search, from `found` rows found there: what it belongs to, as
+// a session says whom it's under, then how many more the collection
+// holds; or, found alone, the collection's noun, unless the row has a
+// kind (`kinded`), which says what it is already, so a notice found at
+// home says "notice" once (VKCF3Z, 2026-11-08).
+function gatheredSide(belongs, found, noun, kinded) {
+    const counted = found > 1 ? `${found - 1} more ${noun}` : kinded ? "" : noun;
+    return [belongs, counted].filter(part => part !== "").join(" \u00b7 ");
+}
+
 // The keys picked most, most first, ties by name, so home's likely picks
 // change order only when the counts do. `counts` is key -> picks, and
 // `names` key -> its name.
