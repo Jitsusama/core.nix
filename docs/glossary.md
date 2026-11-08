@@ -48,12 +48,15 @@ the-launcher-names-each-thing-its-term holds the row's name to it.
 
 ## The Context Map
 
-Seven contexts are the launcher's places. Six are home's rows, in its order
-after Now: Agents, Programs, Desktop, Machine, Network and Keyboards, so home
-has seven rows. Disk's place is inside Machine, beside Processor, Memory and
-Heat, and Mail and Calendar are places inside Programs. Three contexts are
-never places: Security, which the others lean on, and the Library and Checks,
-which are core.nix's own.
+Nine contexts have places in the launcher. Seven are home's rows, in its
+order after Now: Agents, Programs, People, Desktop, Machine, Network and
+Keyboards, so home has eight rows. Disk's place is inside Machine, beside
+Processor, Memory and Heat, and Mail and Calendar are places inside Programs.
+Security, which the others lean on, has one place, Passwords. The Library and
+Checks, which are core.nix's own, are never places.
+
+- **People reaches across Programs**: a person is found in mail, meetings,
+  calls and chat at once, each program a source of people.
 
 - **Desktop shows every context.** Each launcher place belongs to one; Now is a
   view onto the others' rows, each kept in its own place, with rows of its
@@ -72,7 +75,8 @@ which are core.nix's own.
 
 The models working for Joel, what they work on, and what they cost. Its
 sessions stand in one tree, each under its orchestrator, the orchestrators
-closed at its end, and its places are Quests, Jobs, Runs and AI spend. A
+closed at its end, and its places are Quests, Orchestrators, the Queue, Runs
+and AI spend. A
 session can be talked to, gone to, paused and stopped, and a closed
 orchestrator reopened; a quest can start a session, orchestrate, go first in
 the queue and conclude.
@@ -102,6 +106,8 @@ the queue and conclude.
 | carried | a session another machine handed this one as it went away, to reopen here | | `carried` in `restore.json` |
 | waiting on | what a session can't go on without: Joel, an answer, or its turn in the queue | | |
 | Working on | the line a session tells its peers about its work | Works on | `worksOn` |
+| Doing | the step a session is on now: thinking, or a tool and what it's on | | `stepDetail` |
+| turn | one round of a session's work, from the message or key that starts it to the answer it ends on | | `attention: "turn"`, for a mesh message that starts one at once |
 | peer | another session on the same machine, reached over the mesh | instance, swarm | |
 | mesh | how sessions on one machine message each other | | `mesh_send` |
 | node | mycelium's program on a machine, carrying its mesh to the machines it links with | | `mycelium node` |
@@ -112,7 +118,6 @@ the queue and conclude.
 | group | a set of peers a mesh message goes to, such as an orchestration's | | `#quest/<id>` |
 | question | a mesh message asking peers for an answer | mesh question | `intent: question` |
 | unanswered question | a question no peer has answered in five minutes | stuck question | |
-| turn | a mesh message that starts a peer's turn at once, the mesh's loudest attention level | | |
 | glance | a mesh message given to a peer as one line, since it's another peer's own business | | |
 | hold | a peer asking every other to put something off, such as a switch, until it says it's over | | `intent: hold` |
 | pivot | an orchestrator changing what a session it orchestrates is doing, each answering once it has changed course | | `intent: pivot` |
@@ -139,6 +144,10 @@ the queue and conclude.
 | finding | something a review or a peer found, for whoever owns what it's about | | `intent: finding` |
 | change | work put up for review | PR, pull request, proposal | |
 | AI spend | what agents have cost | cost, usage | spend-watch |
+| model | the AI a session or a subagent runs on, such as Claude Opus | | `provider/model` |
+| context | what a session's model is sent each turn: its conversation so far and what it read | | |
+| cache | the part of a session's context its model's provider kept from the turn before, sent again for less | | the prompt cache |
+| rebuild | a session's context summed up and started afresh once it fills, its log kept whole | compaction | pi's compaction |
 | tokens | what a model is sent and writes, counted as OpenTelemetry's gen_ai names them, never money | | `gen_ai.usage.*` |
 | bill | what a provider charged for AI spend, as its feed reports it, rather than estimated from list prices | | |
 | budget | a named source of money a model call draws on: a Claude plan, an API key, the AI proxy, a team's token | | |
@@ -152,7 +161,7 @@ the queue and conclude.
 ## Programs
 
 What Joel runs, and the terminal he types commands into, and the mail,
-meetings and calls he has through them, and the people they're with. A
+meetings and calls he has through them. A
 program can be opened, opened below, given a new window and quit. A meeting
 can be joined or seen, and an invitation answered yes, maybe or no; mail can
 be read, marked unread and archived.
@@ -175,7 +184,6 @@ be read, marked unread and archived.
 | maybe | an invitation Joel answered maybe | tentative | |
 | not going | an invitation Joel answered no | declined | `no` |
 | not answered | an invitation Joel hasn't answered yet | needs action | `waiting` |
-| person | someone Joel deals with, the same one by their email across mail, meetings, calls and chat | | |
 | call | a talk with others over Meet or Tuple, with sound and sometimes pictures | | Meet, Tuple |
 | transcript | what was said on a call, Joel's words and the others' in the order they were said, written on the machine as the call goes | | `call-transcripts` |
 | summary | a call's transcript summed up once it ends, on the machine: the lines a model picked as worth reading, each quoted word for word with who said it to whom and when | | `summary.md` |
@@ -184,6 +192,17 @@ be read, marked unread and archived.
 | see | looking at a meeting's details in the launcher: when, its call, who's going | | |
 | cancel | taking a meeting Joel holds off everyone's calendar, Google telling each guest | delete | |
 | Slack message | a message in Slack, found by searching Slack and opened in its conversation | | the Slack daemon's `slack-message` |
+
+## People
+
+The people Joel deals with, whichever program they're in. A person can be
+written to, called, met with and made a favourite.
+
+| Word | Means | Not | In code |
+| ---- | ----- | --- | ------- |
+| person | someone Joel deals with, the same one by their email across mail, meetings, calls and chat | | |
+| source | a program people are known from, such as Google, Tuple or Slack, each one an option | | the people daemon's sources |
+| favourite | a person Joel starred, listed first in People | | `star`, `unstar` |
 
 ## Desktop
 
@@ -212,7 +231,7 @@ or a copy, can be opened, copied or forgotten.
 | launcher | the window on Super+Space that finds programs, windows, actions and answers | palette, command palette | `Launcher.qml` |
 | place | a list the launcher opens, belonging to one context, such as Agents or Network | category, collection | |
 | row | one thing in a place | | |
-| home | the launcher's first place: Now, Agents, Programs, Desktop, Machine, Network and Keyboards | | |
+| home | the launcher's first place: Now, Agents, Programs, People, Desktop, Machine, Network and Keyboards | | |
 | crumbs | where Joel is in the launcher, from home | | |
 | field | the line at the top of every place: the find line, or the command line in its place | | |
 | back | going up one place, to the row he was on, with h, - or Backspace | | the `out` act |
@@ -245,6 +264,15 @@ off.
 | machine | one computer | host, computer | `nixosConfigurations.laptop`; `hostName`, which NixOS requires |
 | firmware | the program in the machine's chip that starts it, and its settings | BIOS, UEFI | |
 | processor | what runs every program | CPU | |
+| graphics | the processor's part that draws what the screens show | | the GPU, Xe |
+| NPU | the processor's part that runs models on the machine | | the `intel_vpu` driver |
+| media engine | the processor's part that encodes and decodes video | | |
+| display engine | the processor's part that sends each screen its picture | | |
+| chipset | the chip beside the processor that reaches the disk, USB and the rest | | the PCH |
+| power controller | the processor's part that sets its power and clocks | | |
+| held back | the processor kept below the speed it asked for, by a power or heat limit, and for how long | | `HeldBack` |
+| throttled | the processor slowing itself to cool down, counted each time | | the kernel's `throttle_count` |
+| kept from resting | a part keeping the processor out of its deepest rest while the machine idles, and for how long | | the telemetry's `kept` |
 | memory | what programs run in while the machine is on | RAM | |
 | swap | memory set aside out of the way, compressed first, then in the swap file | swapfile | zswap |
 | memory pressure | how long programs are waiting for memory | | PSI |
@@ -370,9 +398,10 @@ shortcuts are listed inside it.
 
 ## Security
 
-What proves it's Joel or his agents, keeps the disk sealed, and installs or
-recovers a machine from a stick. Never a launcher place: each of its things
-shows where it's used.
+What proves it's Joel or his agents, keeps his passwords, keeps the disk
+sealed, and installs or recovers a machine from a stick. Its one launcher
+place is Passwords; each of its other things shows where it's used. An
+entry can be copied from, opened at its site and filled in.
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
@@ -384,6 +413,11 @@ shows where it's used.
 | agents' key | the key that signs agents' commits | agents' signing key, agent's key | `agent-signing`, `agentKey` |
 | passkey | a key the TPM holds for signing in to websites | FIDO security key | `linux-id` |
 | keyring | where passwords programs keep are held, opened at sign-in | | gnome-keyring |
+| Passwords | the place holding Joel's entries from every password manager | | |
+| password manager | a program keeping Joel's entries, such as 1Password, each one an option | | |
+| entry | one thing a password manager keeps, called by its kind: a login, a card, a note, an identity or a key | | 1Password's items |
+| one-time code | the code an entry gives for signing in, new every half-minute | OTP, TOTP | |
+| hidden | of a part of an entry, shown only when asked, as a password is | concealed | 1Password's `CONCEALED` |
 | greeter | what asks Joel to sign in when the machine starts | | greetd, tuigreet |
 | lock screen | what hides the desktop while Joel is away, until he signs in again | | swayidle |
 | stick | the USB stick the guide writes for one machine, to install or reinstall it | reinstall stick | |
