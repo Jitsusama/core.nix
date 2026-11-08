@@ -186,7 +186,7 @@ function settingsPart(shaped, override, settings, said) {
                 text(one.description) ? one.description : ""))
             .concat(listOf(split.ip_list).map((one) => entry("settings:split-tunnel:network",
                 one.value, text(one.description) ? one.description : "")));
-        holding(parts.at(-1), entries);
+        holding(parts[parts.length - 1], entries);
     }
     if (typeof shaped.switch_locked === "boolean") {
         add("switch-locked", "switch_locked", { side: onOff(shaped.switch_locked, said) });

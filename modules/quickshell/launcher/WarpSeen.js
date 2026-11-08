@@ -82,7 +82,7 @@ function drawn(parts, seen, settings, said) {
     }
     const eyebrow = Warp.worded(said, "eyebrow");
     const times = seen.times ?? [];
-    const span = times.length > 1 ? (times.at(-1) - times[0]) / SECOND : 0;
+    const span = times.length > 1 ? (times[times.length - 1] - times[0]) / SECOND : 0;
     const reads = (values) => ({ id: "reads", value: Warp.worded(said, "reads", {
         count: Warp.count(values.length, settings),
         span: Warp.worded(said, "seconds", { figure: Warp.count(Math.round(span), settings) }),
@@ -102,9 +102,9 @@ function drawn(parts, seen, settings, said) {
         traffic: seen.inward.length > 1 ? {
             graph: sparkOf(seen.inward.map((value, at) => value + seen.outward[at]), 0),
             drawer: { eyebrow, facts: [
-                { id: "in", value: rateOf(seen.inward.at(-1), settings),
+                { id: "in", value: rateOf(seen.inward[seen.inward.length - 1], settings),
                     figure: sparkOf(seen.inward, 0) },
-                { id: "out", value: rateOf(seen.outward.at(-1), settings),
+                { id: "out", value: rateOf(seen.outward[seen.outward.length - 1], settings),
                     figure: sparkOf(seen.outward, 0) },
             ] },
         } : null,
