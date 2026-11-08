@@ -223,7 +223,7 @@ mod tests {
                 &at("a"),
                 &at("b"),
                 Some(&building),
-                long - Duration::from_secs(1)
+                Duration::from_mins(29)
             ),
             "a short build finishes rather than start again at each merge"
         );
