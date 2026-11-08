@@ -19,6 +19,7 @@ import qs
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "pieces"
 
 ShellRoot {
     id: root

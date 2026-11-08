@@ -3296,7 +3296,7 @@ def drawers_at(desktop: Desktop, scale: str) -> None:
         f"launcher-laptops-keyboard-drawer-at-{at}",
     )
     recent_drawer(desktop, f"launcher-capture-drawer-at-{at}")
-    now_drawer(desktop, "Disks", "on /nix \u00b7 disk", f"launcher-disk-drawer-at-{at}")
+    now_drawer(desktop, "Disks", "on this machine \u00b7 disk", f"launcher-disk-drawer-at-{at}")
     lag_lasting(desktop)
     now_drawer(desktop, "Lag", "on this machine \u00b7 lag", f"launcher-lag-drawer-at-{at}")
 

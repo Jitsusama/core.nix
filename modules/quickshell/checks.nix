@@ -1388,18 +1388,20 @@ onLinux {
       '';
     in
     pkgs.runCommandLocal "the-disk-piece-reads-the-guards" { } ''
-      # The piece says sizes as a file does, from the shell's folder above
-      # its own, so the shell is laid a folder down.
-      mkdir -p runtime shell/launcher && chmod 700 runtime
+      # The piece says sizes and folders as a file does, from the shell's
+      # folder above its own, so it's laid in pieces/ as the shell has it,
+      # where the lint reads the whole shell.
+      mkdir -p runtime shell/launcher shell/pieces && chmod 700 runtime
+      cd shell
       cp ${./FileFacts.js} FileFacts.js
       cp ${./When.js} When.js
-      cd shell
-      cp ${./pieces/Piece.qml} Piece.qml
-      cp ${./pieces/Disk.qml} Disk.qml
-      cp ${./pieces/Drawers.js} Drawers.js
+      cp ${./Files.qml} Files.qml
+      cp ${./pieces/Piece.qml} pieces/Piece.qml
+      cp ${./pieces/Disk.qml} pieces/Disk.qml
+      cp ${./pieces/Drawers.js} pieces/Drawers.js
+      cp ${./pieces/StatusFile.qml} pieces/StatusFile.qml
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
-      cp ${./pieces/StatusFile.qml} StatusFile.qml
       cp ${../../tests/disk.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
@@ -2294,6 +2296,8 @@ onLinux {
       cp ${./launcher/Applications.qml} launcher/Applications.qml
       cp ${./launcher/Media.js} launcher/Media.js
       cp ${./launcher/Program.js} launcher/Program.js
+      cp ${./FileFacts.js} FileFacts.js
+      cp ${./When.js} When.js
       cp ${./Music.js} Music.js
       cp ${./launcher/Order.js} launcher/Order.js
       cp ${./launcher/Recents.qml} launcher/Recents.qml

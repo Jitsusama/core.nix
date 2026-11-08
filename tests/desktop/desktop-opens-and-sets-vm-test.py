@@ -410,10 +410,10 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
     desktop.launcher_until(reads("First tone", "Test tones"))
     # Next and Previous keep the launcher, saying what's on now, and what's
     # playing follows.
-    press("Next", then="Second tone, Test tones", lands=False)
+    press("Next", then="Second tone \u00b7 Test tones", lands=False)
     playing("Playing", "Second tone")
     desktop.launcher_until(lambda shown: shown["rows"][-1] == "Second tone")
-    press("Previous", then="First tone, Test tones", lands=False)
+    press("Previous", then="First tone \u00b7 Test tones", lands=False)
     playing("Playing", "First tone")
     desktop.launcher_until(lambda shown: shown["rows"][-1] == "First tone")
     # Paused from elsewhere, as a media key does, Pause says Play.
