@@ -285,10 +285,9 @@ mod tests {
             1,
             "not yet settled"
         );
-        assert!(
-            settle(&history, &[], 60.0 + SETTLE + 1.0)
-                .unwrap()
-                .is_empty()
+        assert_eq!(
+            settle(&history, &[], 60.0 + SETTLE + 1.0).unwrap(),
+            [] as [Finding; 0]
         );
     }
 

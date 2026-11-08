@@ -507,15 +507,15 @@ mod tests {
     #[test]
     fn a_note_never_asks() {
         let history = History::memory();
-        assert!(
+        assert_eq!(
             plan(
                 &history,
                 &[finding("regime", Severity::Note, false)],
                 3,
                 0.0
             )
-            .unwrap()
-            .is_empty()
+            .unwrap(),
+            [] as [Change; 0]
         );
     }
 }

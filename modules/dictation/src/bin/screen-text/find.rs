@@ -254,6 +254,6 @@ mod tests {
             }
         }
         map[15 * width + 10] = 0.99;
-        assert_eq!(places(&map, width, height), [] as [find::Place; 0]);
+        assert_eq!(places(&map, width, height), [] as [Place; 0]);
     }
 }

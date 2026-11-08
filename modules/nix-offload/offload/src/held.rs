@@ -556,14 +556,14 @@ mod tests {
             ["/nix/store/kernel", "/nix/store/module"]
         );
         // Without the module, the kernel is built there for its headers.
-        assert!(
+        assert_eq!(
             instead(
                 &planned,
                 &derivations,
                 &asked,
                 &holding(&["/nix/store/kernel"])
-            )
-            .is_empty()
+            ),
+            [] as [String; 0]
         );
         // Held whole, the system goes up alone and nothing under it is wanted.
         assert_eq!(

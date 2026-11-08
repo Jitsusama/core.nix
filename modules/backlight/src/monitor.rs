@@ -1394,10 +1394,9 @@ mod tests {
     #[test]
     fn no_class_of_buses_is_none_found() {
         let tree = Tree::new("no-class");
-        assert!(
-            buses(&tree.0.join("missing"), &tree.0.join("dev"))
-                .unwrap()
-                .is_empty()
+        assert_eq!(
+            buses(&tree.0.join("missing"), &tree.0.join("dev")).unwrap(),
+            [] as [(String, Reach); 0]
         );
     }
 
