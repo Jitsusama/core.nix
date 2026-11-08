@@ -274,12 +274,31 @@ fn waits_for(done: impl Fn() -> bool) {
     }
 }
 
-/// Says a signal as the notifications server would.
+/// Says a signal about notice `body.0` as the notifications server would,
+/// once the daemon in `folder` has kept that this server gave it. Nobody
+/// acts on a card the moment it shows, and a signal sooner is about a
+/// notice the daemon doesn't know yet, so it would pass unheard.
 fn signal(
+    folder: &Path,
     connection: &Connection,
     member: &str,
     body: &(u32, impl serde::Serialize + zbus::zvariant::Type),
 ) {
+    let server = connection.unique_name().unwrap().to_string();
+    let kept = folder.join("state").join("held.json");
+    waits_for(|| {
+        std::fs::read_to_string(&kept)
+            .ok()
+            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+            .is_some_and(|held| {
+                held["timers"].as_array().is_some_and(|timers| {
+                    timers.iter().any(|timer| {
+                        timer["notice"]["id"] == body.0
+                            && timer["notice"]["server"] == server.as_str()
+                    })
+                })
+            })
+    });
     connection
         .emit_signal(
             None::<&str>,
@@ -334,7 +353,7 @@ fn the_notices_again_sets_it_going_and_putting_it_away_ends_it() {
     client.ask(&json!({"id": "all", "ask": "watch", "kind": "timer"}));
     client.ask(&json!({"id": 1, "ask": "start", "span": 200, "name": "tea"}));
     waits_for(|| server.shown.lock().unwrap().len() == 1);
-    signal(&connection, "ActionInvoked", &(1u32, "again"));
+    signal(&folder, &connection, "ActionInvoked", &(1u32, "again"));
     let again = loop {
         let change = client.change();
         if change["changed"][0]["state"] == "running" {
@@ -343,7 +362,7 @@ fn the_notices_again_sets_it_going_and_putting_it_away_ends_it() {
     };
     assert_eq!(again["changed"][0]["key"], "timer:1");
     waits_for(|| server.shown.lock().unwrap().len() == 2);
-    signal(&connection, "NotificationClosed", &(2u32, 2u32));
+    signal(&folder, &connection, "NotificationClosed", &(2u32, 2u32));
     // Past its ringing again, which it told first.
     let ended = loop {
         let change = client.change();
@@ -434,7 +453,7 @@ fn what_is_kept_outlasts_the_daemon_and_one_ended_meanwhile_rings_late() {
     assert_eq!(server.shown.lock().unwrap()[1].summary, "Timer");
     // The card said before it started again is still its own: put away,
     // it ends its timer.
-    signal(&connection, "NotificationClosed", &(1u32, 2u32));
+    signal(&folder, &connection, "NotificationClosed", &(1u32, 2u32));
     let ended = loop {
         let change = client.change();
         if change["gone"] != json!([]) {
@@ -470,7 +489,7 @@ fn a_ring_lost_with_its_server_is_said_to_the_one_after_it() {
     // Putting it away on the server it's on now still ends it.
     let mut client = running.client();
     client.ask(&json!({"id": "all", "ask": "watch", "kind": "timer"}));
-    signal(&connection, "NotificationClosed", &(1u32, 2u32));
+    signal(&folder, &connection, "NotificationClosed", &(1u32, 2u32));
     let ended = loop {
         let change = client.change();
         if change["gone"] != json!([]) {
