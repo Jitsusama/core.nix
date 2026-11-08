@@ -1137,14 +1137,39 @@ Singleton {
     // then.
     readonly property int reopenPace: 2000
     property real reopenStartedAt: 0
+    // And none is begun while the machine queue says the machine has no
+    // room (Places.mayBegin), looked at again this often, since eighty
+    // sessions begun two seconds apart still swamped it after a boot.
+    readonly property int roomPace: 5000
     function reopenSoon() {
         const wait = reopenStartedAt + reopenPace - Date.now();
-        if (wait > 0 && reopening && reopening.queue.length > 0) {
+        const more = !!reopening && reopening.queue.length > 0;
+        if (wait > 0 && more) {
             reopenPacing.interval = wait;
             reopenPacing.restart();
+        } else if (more && !hasRoom()) {
+            if (!reopening.heldForRoom)
+                Report.say(`reopening waits for room, ${reopening.queue.length} to go`);
+            reopening.heldForRoom = true;
+            reopenPacing.interval = roomPace;
+            reopenPacing.restart();
         } else {
+            if (more)
+                reopening.heldForRoom = false;
             reopenNext();
         }
+    }
+    // The machine queue's verdict, read as it is now: it's written every few
+    // seconds, and only a reopening asks.
+    FileView {
+        id: machineQueue
+        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/jobs/queue.json`
+        blockLoading: true
+        printErrors: false
+    }
+    function hasRoom() {
+        machineQueue.reload();
+        return Places.mayBegin(machineQueue.text(), Date.now() / 1000);
     }
     // It asks again rather than taking the next at once, since a timer
     // this long is a coarse one, which may fire up to a twentieth of its
@@ -1191,8 +1216,8 @@ Singleton {
             : root.keptOrder(a.at, b.at);
         const keptPlaces = here.map(one => kept(one.id));
         const places = Places.placed(keptPlaces, screens, Niri.workspace()?.output ?? null);
-        const queue = here.map((one, at) => ({ one, at: places[at], kept: keptPlaces[at], gone,
-            told })).sort(order);
+        const queue = Places.leadersFirst(here.map((one, at) => ({ one, at: places[at],
+            kept: keptPlaces[at], gone, told })).sort(order));
         if (reopening !== null) {
             reopening.queue = reopening.queue.concat(queue);
             // Settled again once these are placed too, beside the rest.
