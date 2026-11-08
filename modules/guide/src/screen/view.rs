@@ -77,6 +77,8 @@ pub struct Drawn {
     pub lines: Vec<Line>,
     /// Where the caret goes, as a row and a column, when something's typed.
     pub caret: Option<(u16, u16)>,
+    /// The screen's width and height it was laid out for.
+    pub size: (u16, u16),
 }
 
 const MARGIN: usize = 2;
@@ -153,7 +155,8 @@ fn keys(theme: &Theme, keys: &[(Key, &str)]) -> Line {
 
 /// Lines in strong, each in the middle of the screen's width, the whole in
 /// the middle of its height.
-fn alone(shown: &str, width: usize, height: usize) -> Drawn {
+fn alone(shown: &str, size: (u16, u16)) -> Drawn {
+    let (width, height) = (size.0 as usize, size.1 as usize);
     let shown = wrap(shown, width.saturating_sub(2 * MARGIN));
     let mut lines: Vec<Line> = vec![vec![]; height.saturating_sub(shown.len()) / 2];
     for words in shown {
@@ -163,7 +166,11 @@ fn alone(shown: &str, width: usize, height: usize) -> Drawn {
             span(Role::Strong, words),
         ]);
     }
-    Drawn { lines, caret: None }
+    Drawn {
+        lines,
+        caret: None,
+        size,
+    }
 }
 
 /// A step's steps for the person, each a line of its own. Those that open
@@ -203,8 +210,9 @@ fn steps(how: &str, width: usize) -> Vec<Line> {
 }
 
 pub fn draw(theme: &Theme, at: &Where, moment: &Moment, width: u16, height: u16) -> Drawn {
+    let size = (width, height);
     if let Moment::Showing { shown } = moment {
-        return alone(shown, width as usize, height as usize);
+        return alone(shown, size);
     }
     let width = width as usize;
     let height = height as usize;
@@ -246,7 +254,11 @@ pub fn draw(theme: &Theme, at: &Where, moment: &Moment, width: u16, height: u16)
         lines.resize(foot, vec![]);
         lines.push(footer);
     }
-    Drawn { lines, caret }
+    Drawn {
+        lines,
+        caret,
+        size,
+    }
 }
 
 /// The steps done that fit in this many lines, the latest kept first and
