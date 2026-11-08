@@ -540,6 +540,7 @@ fn a_file_mail_carries_is_fetched_only_when_asked_and_a_program_never_to_open() 
     let folder = path.with_file_name("files");
     let places = Places {
         kept: folder.join("kept"),
+        drive: folder.join("drive"),
         saves: folder.join("Downloads"),
     };
     let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
@@ -950,7 +951,10 @@ fn folders(path: &str, body: &str) -> (u16, String) {
     let file = |id: &str, name: &str, mime: &str| {
         (
             200,
-            format!(r#"{{"id": "{id}", "name": "{name}", "mimeType": "{mime}"}}"#),
+            format!(
+                r#"{{"id": "{id}", "name": "{name}", "mimeType": "{mime}",
+                    "modifiedTime": "2026-10-26T18:00:00Z"}}"#
+            ),
         )
     };
     match path.split_once(' ').map_or("", |(_, rest)| rest) {
@@ -1058,6 +1062,7 @@ fn a_drive_file_is_downloaded_to_open_pick_or_save_and_googles_own_exported() {
     let folder = path.with_file_name("files");
     let places = Places {
         kept: folder.join("kept"),
+        drive: folder.join("drive"),
         saves: folder.join("Downloads"),
     };
     let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
@@ -1070,11 +1075,20 @@ fn a_drive_file_is_downloaded_to_open_pick_or_save_and_googles_own_exported() {
     };
     let (opened, _) = download("pdf1", How::Open, None);
     let opened = opened.unwrap();
-    assert_eq!(
-        opened,
-        places.kept.join("drive").join("pdf1").join("menu.pdf")
-    );
+    assert_eq!(opened, places.drive.join("pdf1").join("menu.pdf"));
     assert_eq!(fs::read(&opened).unwrap(), b"menu");
+    // Asked again while Drive hasn't changed it, the copy kept is handed
+    // out, and its bytes never asked for twice.
+    let (picked, _) = download("pdf1", How::Pick, None);
+    assert_eq!(picked, Some(opened.clone()));
+    let fetched = |stand_in: &StandIn| {
+        stand_in
+            .heard()
+            .iter()
+            .filter(|heard| heard.line.contains("/pdf1?alt=media"))
+            .count()
+    };
+    assert_eq!(fetched(&stand_in), 1);
     // Google's own kind comes as its office program's file.
     let (saved, _) = download("doc1", How::Save, None);
     assert_eq!(saved, Some(places.saves.join("Plan.docx")));
@@ -1113,7 +1127,7 @@ fn a_drive_file_is_downloaded_to_open_pick_or_save_and_googles_own_exported() {
         .drive
         .downloads
         .clone();
-    assert_eq!(downloads.len(), 8);
+    assert_eq!(downloads.len(), 9);
     assert_eq!(downloads[1].file, "lost1");
     for _ in 0..30 {
         watch.downloading("pdf1", How::Pick, None, &now());

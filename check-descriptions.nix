@@ -623,7 +623,9 @@
     only once Joel's sign-in grants Meet's scope, lists a Drive folder only when asked, the last
     few asked each told, folders first, a shortcut as what it points at, leaving out what it
     can't show and never asking of a folder no id names, and downloads a Drive file to open, pick
-    or save, Google's own kinds as their office program's file, never opening one that runs, each
+    or save, Google's own kinds as their office program's file, never opening one that runs, one
+    to open or pick kept in the cache, readable only, and fetched again only once Drive changes
+    it, the copies handed out longest ago let go past their room, each
     download asked lately told, and a file cut short leaving nothing behind, and sends what Joel
     saves through the picker up to Drive once it's written and left a moment, a new file and then
     new versions of it, never a second file for one it may not replace, saying which program
