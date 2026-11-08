@@ -93,8 +93,10 @@ the queue and conclude.
 | brief | a quest's document asking someone for something: audience, ask, background, recommendation | | `BRIF-` ids |
 | report | a quest's document on what happened, its outcomes and lessons | | |
 | landing | what a session finished and handed Joel: a merged change, a built plan or a hand-off, at its ref, with a line saying what to try | | presence `landings` |
+| Landed | the group of landings in Agents, named for its state as Unread and Recent are | | `agents:landed` |
 | Journey | a quest's dated log of what happened | | `quest journal` |
 | session | a pi working for Joel on a quest, in a window of its own | | `agents` in the launcher |
+| carry | moving a quest's work and its session to another machine | | `carry` |
 | orchestrator | a session whose quest holds other quests: it hands out their work and gathers what waits on Joel | steward | `orchestrator: true` |
 | orchestration | an orchestrator and every session on a quest below it | | `#orchestration/<address>` |
 | talk | Joel's words to an orchestrator or a session, typed in its field from outside its window | steer | `steer/<ADDRESS>/` |
@@ -164,7 +166,7 @@ the queue and conclude.
 What Joel runs, and the terminal he types commands into, and the mail,
 meetings and calls he has through them. A
 program can be opened, opened below, given a new window and quit. A meeting
-can be joined or seen, and an invitation answered yes, maybe or no; mail can
+can be joined or shown in Calendar, and an invitation answered yes, maybe or no; mail can
 be read, marked unread and archived.
 
 | Word | Means | Not | In code |
@@ -190,7 +192,6 @@ be read, marked unread and archived.
 | summary | a call's transcript summed up once it ends, on the machine: the lines a model picked as worth reading, each quoted word for word with who said it to whom and when | | `summary.md` |
 | noise cancelled | a microphone's voice with the sounds around it taken out on the machine, offered as a microphone of its own named for it | noise suppression, denoised | `noise-cancelled` |
 | join | going into a meeting's call, or a call another sends | | |
-| see | looking at a meeting's details in the launcher: when, its call, who's going | | |
 | cancel | taking a meeting Joel holds off everyone's calendar, Google telling each guest | delete | |
 | Slack message | a message in Slack, found by searching Slack and opened in its conversation | | the Slack daemon's `slack-message` |
 
@@ -237,7 +238,8 @@ or a copy, can be opened, copied or forgotten.
 | field | the line at the top of every place: the find line, or the command line in its place | | |
 | back | going up one place, to the row he was on, with h, - or Backspace | | the `out` act |
 | action | what a row can do: the same set for every row of its kind | verb | |
-| go to | the action moving to something already open, such as a window or a session, a row named Go To with where at its side | | |
+| go to | the action moving to something open on the desktop, a window or a tab such as a session's, and nothing else; a row named Go To with where at its side | | |
+| show | the action opening a place or a program on one thing in it, such as Show in Bluetooth or Show in Calendar, and the one word for looking at what a row holds | see | |
 | open | the action starting something, such as a program or a file | | |
 | turn on | the action starting a setting, a radio or a light | | |
 | turn off | the action stopping a setting, a radio or a light | | |
@@ -307,6 +309,7 @@ off.
 | hinge | the lid's angle from the keyboard, as a sensor in the laptop reads it | | IIO's `hinge` |
 | docked | the laptop at a desk with a monitor plugged in, kept awake with its lid shut | on a dock, at a desk | |
 | Bluetooth | the radio that reaches headphones, keyboards and mice, and the place listing every device it reaches, to pair and connect | | BlueZ |
+| Nearby | the Bluetooth devices heard but not paired | | |
 | camera board | the part in the lid holding the built-in camera, which Dell fits in more than one kind | camera module | `jitsusama.dellXps14.cameraBoard` |
 | image processor | the part turning the built-in camera's raw picture into an image | ISP, IPU | |
 | IR camera | the infrared camera beside the built-in camera, for signing in by face | | `ir-camera`, Howdy |
