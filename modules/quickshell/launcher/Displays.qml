@@ -255,7 +255,10 @@ Provider {
     // stops. sysfs's brightness can't be watched, so this is what moves the
     // drawer with each step the daemon takes.
     property var settled: null
-    onSettledChanged: changed()
+    onSettledChanged: {
+        readLight();
+        changed();
+    }
 
     FileView {
         path: `${Quickshell.env("XDG_RUNTIME_DIR")}/backlight-now`
@@ -393,7 +396,8 @@ Provider {
     // sysfs or asking the sensor writes state the binding reads, a loop; so
     // they read only this and `room`, which are asked for here, each second
     // while the launcher is open, from the moment it opens, since the
-    // Brightness and Room Light answers are found through those rows too.
+    // Brightness and Room Light answers are found through those rows too,
+    // and as the daemon says it stepped.
     property var light: null
     onLightChanged: changed()
 
@@ -553,8 +557,8 @@ Provider {
             // level does, and is asked only for the screen it lights; or
             // that no light is heard, where the daemon follows nothing.
             const said = (key, values) => Backlight.fill(partSaid("", key), values);
-            const heard = inTheRoom(output) ? Backlight.room(settled,
-                askRoom() ? room : null, said, each => lux(each)) : "";
+            const heard = inTheRoom(output) ? Backlight.room(settled, room, said,
+                each => lux(each)) : "";
             if (heard !== "")
                 facts.push({ label: partName("room"), value: heard });
             // What sets the level, the Warmth, then the curve, which moves
