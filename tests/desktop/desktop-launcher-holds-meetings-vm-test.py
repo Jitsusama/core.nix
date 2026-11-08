@@ -381,10 +381,13 @@ def test_a_meetings_attachments_open_from_inside_it(desktop: Desktop) -> None:
     desktop.down_to("Attachments")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["rows"] == ["Quarterly Plan", "Agenda.pdf"])
-    # The plan is the document from Recent, saying who owns it.
-    plan = desktop.showing()["things"][0]
+    # The plan is the document from Recent: its side says only when he opened it, and its
+    # drawer who owns it (VKCF3Z, 2026-11-08).
+    plan = desktop.showing()["selected"]
     assert plan["is"] == "gdoc:plan", plan
-    assert "Ada Lovelace" in plan["reads"], plan
+    assert "Ada Lovelace" not in plan["side"], plan
+    facts = (plan.get("drawer") or {}).get("facts") or []
+    assert {"label": "Owner", "value": "Ada Lovelace"} in facts, plan
     desktop.down_to("Agenda.pdf")
     machine.send_key("ret")
     agenda = "https://drive.google.com/file/d/agenda/view"
