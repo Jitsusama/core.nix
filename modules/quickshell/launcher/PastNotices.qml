@@ -79,9 +79,8 @@ Provider {
             count: named.note,
             // Its note gives way by whole words, never an ellipsis (Choice.qml).
             countWords: true,
-            // Its body, which its note is a line of, kept as words rather
-            // than as a way to say it: a row read back from `all` is a
-            // copy, which keeps a row's values and loses its functions.
+            // Its body, which its note is a line of as each search says it
+            // (lined).
             wrote: notice.body,
             // Stepped into, the head says its title alone, its words being
             // the drawer's (VKCF3Z, 2026-11-08).
@@ -415,7 +414,7 @@ Provider {
     // own row (Applications.qml) holds them and Return on one does what it
     // does here. `sent` says whether a sender's name is the program.
     function sentBy(sent) {
-        return noted(aged(all.filter((row, index) => sent(Notices.history[index]?.app ?? ""))),
+        return lined(aged(all.filter((row, index) => sent(Notices.history[index]?.app ?? ""))),
             []);
     }
 
@@ -425,8 +424,9 @@ Provider {
     }
 
     // Each row's note, the line of its body that holds the words typed,
-    // or its first line with none.
-    function noted(rows, words) {
+    // or its first line with none. Not `noted`, which is Provider's own,
+    // what a collection's row says below it.
+    function lined(rows, words) {
         for (const row of rows)
             row.count = Notice.named(row.title, row.wrote, words, provider.holds).note;
         return rows;
@@ -453,11 +453,11 @@ Provider {
             finest = Math.min(finest, f.grade);
         const kept = Order.sorted(found.filter(f => f.grade === finest),
             (a, b) => b.score - a.score || b.row.at - a.row.at);
-        return { rows: noted(aged(kept.map(f => f.row)), words), grade: finest };
+        return { rows: lined(aged(kept.map(f => f.row)), words), grade: finest };
     }
 
     function everything() {
-        return noted(aged(all.slice()), []);
+        return lined(aged(all.slice()), []);
     }
 
     function counted() {
