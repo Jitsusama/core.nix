@@ -1788,9 +1788,12 @@ def shoot_now_through_the_timers(desktop: Desktop, listed: int) -> None:
     """Shoot Now with one timer rung, then with that one ended, then with only paused ones."""
     machine = desktop.machine
     shoot_now_holding_timers(desktop, "rung")
-    # Eggs ended, by the keys that carry End, leaves them running.
+    # Eggs ended, by the keys that carry End, leaves them running. End can't be undone, so it
+    # asks once.
     pick_a_timer(desktop, "Eggs")
     machine.send_chars("dd")
+    desktop.launcher_until(lambda shown: shown["question"] == "End Eggs? (y/n)")
+    machine.send_chars("y")
     desktop.launcher_until(lambda shown: len(shown["rows"]) == listed - 1)
     desktop.close_launcher()
     shoot_now_holding_timers(desktop, "running")
