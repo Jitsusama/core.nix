@@ -389,27 +389,29 @@ function errorOf(errno) {
 // (words.json's Sleep), with `lasted` saying a time: its mode as the
 // side, the step it last failed at and how often as the note, "failed
 // while freezing \u00b7 2 times", and its drawer's facts by their words'
-// ids, each step's failures in the order taken, the device that failed
-// last, an identifier, last of all. A figure that's none or zero gives
-// way.
+// ids, the failures at every step but the one the note names, in the
+// order taken (VKCF3Z, 2026-11-08: no fact repeats the side), the device
+// that failed last, an identifier, last of all. A figure that's none or
+// zero gives way.
 function sleepSaid(sleep, said, lasted) {
     const times = (count) => count === 1 ? said.time : String(said.times).replace("{count}", count);
     const step = (name) => said[name] ?? name;
     const at = (each) => String(said.at).replace("{count}", each.count).replace("{step}",
         step(each.step));
     const took = (value) => value === null || value <= 0 ? "" : lasted(value);
+    const failed = sleep.lastStep !== "" && sleep.lastFailures > 0;
+    const elsewhere = sleep.failedAt.filter((each) => !failed || each.step !== sleep.lastStep);
     const facts = [
         { id: "sleep:others", value: sleep.others.join(" \u00b7 ") },
         { id: "sleep:ways", value: sleep.states.join(" \u00b7 ") },
         { id: "sleep:slept", value: sleep.slept > 0 ? times(sleep.slept) : "" },
-        { id: "sleep:failed", value: sleep.failedAt.map(at).join(" \u00b7 ") },
+        { id: "sleep:failed", value: elsewhere.map(at).join(" \u00b7 ") },
         { id: "sleep:error", value: sleep.errno === null ? "" : errorOf(sleep.errno) },
         { id: "sleep:hardware", value: took(sleep.lastHardware) },
         { id: "sleep:hardware-all", value: took(sleep.allHardware) },
         { id: "sleep:counts-to", value: took(sleep.countsTo) },
         { id: "sleep:device", value: sleep.lastDevice, identifies: true }
     ].filter((fact) => fact.value !== "");
-    const failed = sleep.lastStep !== "" && sleep.lastFailures > 0;
     return {
         side: sleep.mode,
         note: failed ? `${String(said.failed).replace("{step}", step(sleep.lastStep))} \u00b7 ${

@@ -273,7 +273,7 @@ def test_sleep_that_failed_is_shot_at_each_scale(
             desktop.launcher_until(
                 lambda shown: (
                     (shown["selected"] or {}).get("name") == "Sleep"
-                    and drawer_says(shown, "Failed")
+                    and drawer_says(shown, "Last Error")
                 )
             )
             desktop.shoot(f"launcher-sleep-at-{scale.replace('.', '-')}")

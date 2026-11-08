@@ -1359,18 +1359,18 @@ def test_firmware_says_whats_offered_and_holds_each_devices_version(desktop: Des
         desktop.type_in("firm", "Firmware")
         desktop.shoot("launcher-firmware-in-machine")
         desktop.follow()
-        # A device is a thing, so the drawer is out for the BIOS: who makes
-        # it, its version, what's offered and the release's own words.
+        # A device is a thing, so the drawer is out for the BIOS, with the
+        # release's own words; its versions are the row's side alone.
         desktop.launcher_until(
             lambda shown: (
                 shown["rows"][:2] == ["System Firmware", "PVC10 SK hynix 1024GB"]
                 and (shown.get("drawer") or {}).get("out") is True
-                and shown["drawer"]["facts"] == ["Vendor", "Version", "Offered"]
+                and shown["drawer"]["facts"] == []
                 and "Fixes the keyboard's light." in str(shown["drawer"]["body"])
             )
         )
         reads = [str(thing["reads"]) for thing in desktop.showing()["things"]]
-        assert reads[0].startswith("System Firmware \u00b7 1.12.0"), reads
+        assert reads[0].startswith("System Firmware \u00b7 1.13.0 ready \u00b7 from 1.12.0"), reads
         assert reads[1].startswith("PVC10 SK hynix 1024GB \u00b7 61001171"), reads
         desktop.shoot("launcher-firmware")
         desktop.follow()

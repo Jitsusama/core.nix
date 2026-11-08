@@ -166,14 +166,16 @@ function standing(list) {
     return count === 1 ? "1 update ready" : `${count} updates ready`;
 }
 
-// A device's version as its row says it, with what's offered after it:
-// "1.12.0", "1.12.0, 1.13.0 ready", or "1.12.0, 1.13.0 at the restart" once
-// it's installed to finish there.
+// A device's version as its row says it, how it stands first and the
+// version it runs after a dot (VKCF3Z, 2026-11-08): "1.12.0", "1.13.0
+// ready, from 1.12.0", or "1.13.0 at the restart, from 1.12.0" once it's
+// installed to finish there, each comma a dot as drawn.
 function versionOf(device) {
     if (device.waits !== null) {
-        return `${device.version}, ${device.waits} at the restart`;
+        return `${device.waits} at the restart \u00b7 from ${device.version}`;
     }
-    return device.offered === null ? device.version : `${device.version}, ${device.offered} ready`;
+    return device.offered === null ? device.version
+        : `${device.offered} ready \u00b7 from ${device.version}`;
 }
 
 // The last line fwupdmgr said of why an install didn't go in, as its

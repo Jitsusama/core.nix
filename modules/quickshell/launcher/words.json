@@ -2545,8 +2545,8 @@
       "in": "heat",
       "name": "High",
       "said": {
-        "below": "{by} \u00b0 below high",
-        "past": "{by} \u00b0 past high"
+        "below": "{by} \u00b0C below high",
+        "past": "{by} \u00b0C past high"
       }
     },
     {
@@ -2554,8 +2554,8 @@
       "in": "heat",
       "name": "Critical",
       "said": {
-        "below": "{by} \u00b0 below critical",
-        "past": "{by} \u00b0 past critical"
+        "below": "{by} \u00b0C below critical",
+        "past": "{by} \u00b0C past critical"
       }
     },
     {
@@ -2619,7 +2619,11 @@
     {
       "id": "heat:chip",
       "in": "heat",
-      "name": "Chip"
+      "name": "Chip",
+      "said": {
+        "sensor": "on {chip} \u00b7 sensor",
+        "zone": "on {zone} \u00b7 zone"
+      }
     },
     {
       "id": "heat:zone",
@@ -2718,7 +2722,11 @@
     {
       "id": "firmware:vendor",
       "in": "firmware",
-      "name": "Vendor"
+      "name": "Vendor",
+      "said": {
+        "alone": "firmware",
+        "from": "from {vendor} \u00b7 firmware"
+      }
     },
     {
       "id": "machines",
@@ -2851,11 +2859,6 @@
       "id": "firmware:last-updated",
       "in": "firmware",
       "name": "Last Updated"
-    },
-    {
-      "id": "firmware:offered",
-      "in": "firmware",
-      "name": "Offered"
     },
     {
       "id": "firmware:lowest",

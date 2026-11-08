@@ -93,6 +93,17 @@ function electricOf(list, unit) {
         .map(each => ({ n: each.n, label: each.label ?? "", value: each[unit] }));
 }
 
+// A voltage, current or power in the unit that fits it, to three
+// significant digits with the real minus: a figure under one in its unit
+// is said in thousandths, "3.00 mV", and a negative one "-2.00 mA" with
+// the real minus (VKCF3Z, 2026-11-08), rather than "0.00300 V". One that
+// rounds up to one, as 0.9996 does, is said whole.
+function electricSaid(value, unit) {
+    const small = value !== 0 && Math.abs(Number(Machine.digits(value))) < 1;
+    const figure = Machine.digits(small ? value * 1000 : value).replace("-", "\u2212");
+    return `${figure} ${small ? "m" : ""}${unit}`;
+}
+
 // Each chip as Heat gathers it, from the machine daemon's sensor records,
 // in the order of their keys: its name, what it stands for, each
 // temperature it reads ({ n, label, value, high, crit, low, emergency,

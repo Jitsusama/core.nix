@@ -2301,9 +2301,12 @@ Scope {
 
     // What an ending row's side names for the key that carries it: d with
     // its verb where the row is d's own ending act (Operators.endingOf), else
-    // the line Return writes, ":disconnect" (VKCF3Z, 2026-11-05).
+    // the line Return writes, ":disconnect" (VKCF3Z, 2026-11-05). A row
+    // whose side says how it stands rather than what it does, as Sleep's
+    // does, says `carries: false`, and the foot alone names its line
+    // (VKCF3Z, 2026-11-08).
     function carriedBy(choice) {
-        if (!endsSomething(choice))
+        if (!endsSomething(choice) || choice.carries === false)
             return "";
         if (Operators.endingOf(choice, []) === choice) {
             const key = Object.keys(Operators.operators)

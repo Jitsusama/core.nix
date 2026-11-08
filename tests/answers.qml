@@ -1198,6 +1198,10 @@ QtObject {
         machine("a chip's electricity, each figure it reads", heatHeld[0].electric,
             { volts: [{ n: 0, label: "", value: 1.21 }], amps: [],
                 watts: [{ n: 1, label: "Package", value: 12.5 }] });
+        machine("electricity in the unit that fits it", [Heat.electricSaid(0.003, "V"),
+            Heat.electricSaid(-0.002, "A"), Heat.electricSaid(11.42, "V"),
+            Heat.electricSaid(0.9996, "V"), Heat.electricSaid(0, "W")],
+            ["3.00 mV", "\u22122.00 mA", "11.4 V", "1.00 V", "0 W"]);
         machine("a reading no part could reach, left out", heatHeld[2].temps.map(t => t.label),
             ["Composite"]);
         machine("an unlabelled fan, its speed read", heatHeld[1].fans,
@@ -2062,7 +2066,7 @@ QtObject {
         machine("why nothing's offered, in fwupd's words", firmware[1].about.none,
             "current version is 61001171: 61001171=same");
         machine("firmware's version with an update offered", Firmware.versionOf(firmware[0]),
-            "1.12.0, 1.13.0 ready");
+            "1.13.0 ready \u00b7 from 1.12.0");
         machine("firmware's version alone", Firmware.versionOf(firmware[1]), "61001171");
         machine("one firmware update ready", Firmware.standing(firmware), "1 update ready");
         machine("firmware up to date", Firmware.standing(firmware.slice(1)), "up to date");
@@ -2098,7 +2102,7 @@ QtObject {
         machine("firmware waiting for the restart", [waits.offered, waits.waits],
             ["1.13.0", "1.13.0"]);
         machine("firmware's version waiting for the restart", Firmware.versionOf(waits),
-            "1.12.0, 1.13.0 at the restart");
+            "1.13.0 at the restart \u00b7 from 1.12.0");
         machine("firmware waiting for the restart is held back by nothing",
             Firmware.heldBy(waits), "");
         machine("firmware needing a reboot waits too", waiting("needs-reboot").waits, "1.13.0");
@@ -2855,11 +2859,12 @@ QtObject {
         const sleepTold = Power.sleepSaid(slept, sleepWords, Interfaces.lasted);
         machine("sleep's mode and the step it last failed at", [sleepTold.side, sleepTold.note],
             ["s2idle", "failed while freezing \u00b7 2 times"]);
-        machine("sleep's drawer, the device last", sleepTold.facts, [
+        machine("sleep's drawer, the failures the note doesn't say, the device last",
+            sleepTold.facts, [
             { id: "sleep:others", value: "deep" },
             { id: "sleep:ways", value: "freeze \u00b7 mem \u00b7 disk" },
             { id: "sleep:slept", value: "12 times" },
-            { id: "sleep:failed", value: "2 while freezing \u00b7 1 while resuming" },
+            { id: "sleep:failed", value: "1 while resuming" },
             { id: "sleep:error", value: "EBUSY (\u221216)" },
             { id: "sleep:hardware", value: "1 h" },
             { id: "sleep:counts-to", value: "6 d 1 h" },

@@ -434,7 +434,8 @@ Provider {
     // the step it last failed at, and its drawer (Power.js's sleepSaid).
     // An act has no drawer (Launcher.qml's drawerOf), but Sleep holds
     // what Linux counts of every sleep, so while it has figures to show it
-    // is a thing whose act is Return.
+    // is a thing whose act is Return (VKCF3Z, 2026-11-08). Its side says
+    // how sleep stands, so it carries no ":suspend"; the foot says that.
     function sleepFields() {
         if (sleeping === null)
             return {};
@@ -442,6 +443,7 @@ Provider {
             Interfaces.lasted);
         return {
             thing: told.facts.length > 0,
+            carries: false,
             side: told.side,
             note: told.note,
             drawer: {

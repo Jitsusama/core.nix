@@ -261,19 +261,15 @@ Provider {
         return (said[left.past ? "past" : "below"] ?? "").replace("{by}", number(left.by));
     }
 
-    // A figure to three significant digits in its unit, with the real
-    // minus: "11.4 V".
-    function electric(value, unit) {
-        return `${Machine.digits(value).replace("-", "\u2212")} ${unit}`;
-    }
-
     // The firmware's points that act on heat, in the order it acts.
     readonly property var trips: ["passive", "active", "hot", "critical"]
 
-    // A part's drawer: where the firmware acts on its heat, how far it's
-    // stepping the processor's cooling, what its chip says of electricity,
-    // and last the identifiers it's read by, its chip and its zones, in the
-    // Name face (VKCF3Z, 2026-11-08). None where it has none of these.
+    // A part's drawer: its eyebrow says what it's read on and of what kind,
+    // "on coretemp \u00b7 sensor", or the zone where no chip reads it; then
+    // where the firmware acts on its heat, how far it's stepping the
+    // processor's cooling, what its chip says of electricity, and last the
+    // zones beside a chip, in the Name face (VKCF3Z, 2026-11-08). None
+    // where it has none of these.
     function tempDrawer(part, said) {
         const facts = [];
         const tripped = Heat.tripsFor(said.zones, part.id)
@@ -295,15 +291,19 @@ Provider {
                 facts.push({
                     label: each.label !== "" ? each.label
                         : list.length > 1 ? `${Words.name(id)} ${each.n}` : Words.name(id),
-                    value: electric(each.value, unit)
+                    value: Heat.electricSaid(each.value, unit)
                 });
-        if (part.chip !== "")
-            facts.push({ label: Words.name("heat:chip"), value: part.chip, identifies: true });
         const zoned = tripped.map(trip => trip.zone)
             .filter((zone, at, all) => all.indexOf(zone) === at);
-        if (zoned.length > 0)
+        const eyebrows = (Words.of("heat:chip").said ?? {});
+        const eyebrow = part.chip !== ""
+            ? (eyebrows.sensor ?? "").replace("{chip}", part.chip)
+            : zoned.length > 0 ? (eyebrows.zone ?? "").replace("{zone}", zoned.join(", ")) : "";
+        if (part.chip !== "" && zoned.length > 0)
             facts.push({ label: Words.name("heat:zone"), value: zoned.join(", "), identifies: true });
-        return facts.length > 0 ? { title: partName(part), facts: facts } : undefined;
+        if (facts.length === 0 && eyebrow === "")
+            return undefined;
+        return { eyebrow: eyebrow, eyebrowNames: true, title: partName(part), facts: facts };
     }
 
     function tempRow(part, said) {
@@ -388,7 +388,7 @@ Provider {
             rows.push(figure({
                 name: Words.name("heat:alarm"),
                 side: (Words.of("heat:alarm").said ?? {}).raised ?? "",
-                alerts: true,
+                warns: true,
                 note: "its chip says a limit was crossed"
             }));
         return rows;

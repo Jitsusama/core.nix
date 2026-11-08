@@ -261,10 +261,12 @@ Provider {
         answered();
     }
 
-    // What the drawer shows of a device: what it is and where it stands,
-    // what's offered and what holds it back, then its identifiers in the
-    // Name face, and the notes of what's offered. A fact fwupd doesn't
-    // know is left out rather than shown as coming.
+    // What the drawer shows of a device: who made it in its eyebrow, "from
+    // Dell \u00b7 firmware"; what it is and where it stands, what's offered
+    // and what holds it back, leaving the versions to the row's side
+    // (VKCF3Z, 2026-11-08); then its identifiers in the Name face, and the
+    // notes of what's offered. A fact fwupd doesn't know is left out
+    // rather than shown as coming.
     function drawerOf(device) {
         const facts = [];
         const add = (id, value, extra) => {
@@ -273,14 +275,11 @@ Provider {
         };
         const about = device.about;
         const release = device.release;
-        add("firmware:vendor", device.vendor);
-        add("firmware:version", device.version);
         add("firmware:lowest", about.lowest);
         add("firmware:bootloader", about.bootloader);
         add("firmware:branch", about.branch);
         if (device.updated !== null)
             add("firmware:last-updated", dated(device.updated));
-        add("firmware:offered", device.offered);
         add("firmware:urgency", release?.urgency);
         if (release?.size)
             add("firmware:size", Machine.bytes(release.size));
@@ -303,7 +302,10 @@ Provider {
         const ended = installs[device.id] ?? null;
         const failed = ended?.outcome === "failed" && ended.reason !== ""
             ? `${Words.of("verb:firmware:install").said?.failed ?? ""}: ${ended.reason}` : "";
-        return { title: device.name, facts: facts,
+        const eyebrows = Words.of("firmware:vendor").said ?? {};
+        const eyebrow = device.vendor ? String(eyebrows.from ?? "").replace("{vendor}", device.vendor)
+            : eyebrows.alone ?? "";
+        return { eyebrow: eyebrow, eyebrowNames: !!device.vendor, title: device.name, facts: facts,
             body: [failed, release?.summary ?? "", device.notes].filter(part => part !== "").join("\n\n") };
     }
 
