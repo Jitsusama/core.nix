@@ -298,8 +298,8 @@ Provider {
         if (about.battery !== null)
             add("firmware:battery", `${about.battery}%`);
         add("firmware:protocols", about.protocols.join(" \u00b7 "));
-        add("firmware:plugin", about.plugin, { named: true });
-        add("firmware:serial", about.serial, { named: true });
+        add("firmware:plugin", about.plugin, { identifies: true });
+        add("firmware:serial", about.serial, { identifies: true });
         const ended = installs[device.id] ?? null;
         const failed = ended?.outcome === "failed" && ended.reason !== ""
             ? `${Words.of("verb:firmware:install").said?.failed ?? ""}: ${ended.reason}` : "";

@@ -407,7 +407,7 @@ function sleepSaid(sleep, said, lasted) {
         { id: "sleep:hardware", value: took(sleep.lastHardware) },
         { id: "sleep:hardware-all", value: took(sleep.allHardware) },
         { id: "sleep:counts-to", value: took(sleep.countsTo) },
-        { id: "sleep:device", value: sleep.lastDevice, named: true }
+        { id: "sleep:device", value: sleep.lastDevice, identifies: true }
     ].filter((fact) => fact.value !== "");
     const failed = sleep.lastStep !== "" && sleep.lastFailures > 0;
     return {

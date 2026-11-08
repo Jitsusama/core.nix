@@ -402,7 +402,7 @@ Provider {
                 : what, {
                 thing: said(record.serial),
                 drawer: said(record.serial) ? { title: named("model"), facts: [{
-                    label: named("serial"), value: record.serial, named: true }] } : undefined
+                    label: named("serial"), value: record.serial, identifies: true }] } : undefined
             }));
         const made = Power.madeOf(record.made);
         if (made !== "")

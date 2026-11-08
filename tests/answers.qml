@@ -2863,7 +2863,7 @@ QtObject {
             { id: "sleep:error", value: "EBUSY (\u221216)" },
             { id: "sleep:hardware", value: "1 h" },
             { id: "sleep:counts-to", value: "6 d 1 h" },
-            { id: "sleep:device", value: "0000:00:14.0", named: true }
+            { id: "sleep:device", value: "0000:00:14.0", identifies: true }
         ]);
         const neverFailed = Power.sleepSaid(Power.sleepOf({ mode: "s2idle", modes: ["s2idle"],
             successes: 1, failures: 0, failed_at: {}, last_failed_step: "",

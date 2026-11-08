@@ -449,7 +449,7 @@ Provider {
                 facts: told.facts.map(fact => ({
                     label: Words.name(fact.id),
                     value: fact.value,
-                    named: fact.named === true
+                    identifies: fact.identifies === true
                 })),
                 body: ""
             }

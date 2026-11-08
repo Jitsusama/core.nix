@@ -298,11 +298,11 @@ Provider {
                     value: electric(each.value, unit)
                 });
         if (part.chip !== "")
-            facts.push({ label: Words.name("heat:chip"), value: part.chip, named: true });
+            facts.push({ label: Words.name("heat:chip"), value: part.chip, identifies: true });
         const zoned = tripped.map(trip => trip.zone)
             .filter((zone, at, all) => all.indexOf(zone) === at);
         if (zoned.length > 0)
-            facts.push({ label: Words.name("heat:zone"), value: zoned.join(", "), named: true });
+            facts.push({ label: Words.name("heat:zone"), value: zoned.join(", "), identifies: true });
         return facts.length > 0 ? { title: partName(part), facts: facts } : undefined;
     }
 
