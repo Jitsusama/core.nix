@@ -1186,10 +1186,10 @@ QtObject {
                     critical_c: 100 }], fans: [] }
         ]);
         machine("the daemon's chips, by key, each for its part", heatHeld.map(chip => chip.part),
-            ["", "", "processor"]);
+            ["processor", "", "disk"]);
         machine("a chip of no part, only its labelled sensors", heatHeld[1].temps,
             [{ n: 2, label: "Ambient", value: 40, high: null, crit: null }]);
-        machine("a reading no part could reach, left out", heatHeld[0].temps.map(t => t.label),
+        machine("a reading no part could reach, left out", heatHeld[2].temps.map(t => t.label),
             ["Composite"]);
         machine("an unlabelled fan, its speed read", heatHeld[1].fans,
             [{ n: 1, label: "", value: 2400, max: 5900, target: 2400, power: 0.502 }]);
