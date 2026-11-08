@@ -30,14 +30,16 @@ The app's other reads, and why they're left out:
 
 The places are: the **place** (the Home Network place's rows), a **node**'s
 drawer, a **device**'s drawer, the **internet**'s drawer, a **profile**'s
-drawer, and the CLI's views, named as `eero <view>`. Every CLI view also
-answers `--json`, the daemon's model of it.
+drawer, the CLI's views, named as `eero <view>`, and a **notice** the
+daemon raises when the figure changes while it watches
+(`src/notices.rs`). Every CLI view also answers `--json`, the daemon's
+model of it.
 
 ### The Internet (`network.json`, `net.speedtest.json`, `net.updates.json`)
 
 | Figure | Means | Shows |
 | ------ | ----- | ----- |
-| `health.internet.status`, `isp_up` | the internet as eero sees it | place head, internet, `status`, `internet` |
+| `health.internet.status`, `isp_up` | the internet as eero sees it | place head, internet, `status`, `internet`; a notice when it goes out and comes back |
 | `health.eero_network.status` | the mesh as a whole | place head, `status` |
 | `status` | the network's own state | internet, `status` |
 | `wan_ip`, `ip_settings.public_ip`, `double_nat` | the public address, and whether eero sits behind another NAT | internet, `internet` |
@@ -54,7 +56,7 @@ answers `--json`, the daemon's model of it.
 | `net.speedtest.json` `[].{down_mbps,up_mbps,date}` | every speed test eero kept | internet (a spark of each), `speeds` |
 | `online_eeros_count`, `offline_eeros_count`, `pending_eeros_count` | the nodes by state | place head, `status` |
 | `clients.count` | devices eero counts | place head, `status` |
-| `updates.{target_firmware,update_to_firmware,has_update,can_update_now,preferred_update_hour,last_update_started}` | firmware: what runs, what's next, when it updates | internet, `firmware` |
+| `updates.{target_firmware,update_to_firmware,has_update,can_update_now,preferred_update_hour,last_update_started}` | firmware: what runs, what's next, when it updates | internet, `firmware`; a notice when an update comes to wait |
 | `thread`, `net.thread.json` `{name,channel,border_agent}` | the Thread network and its border agent | internet, `internet`; its keys are dropped |
 | `guest_network.{enabled,name}` | the guest network | internet, `internet`; its password is dropped |
 | `ddns.enabled`, `backup_internet_enabled`, `power_saving` | the rest of the internet's switches | internet, `internet` |
@@ -69,10 +71,10 @@ answers `--json`, the daemon's model of it.
 | ------ | ----- | ----- |
 | `location`, `model`, `model_number`, `serial` | which node it is | place, node, `nodes`, `node` |
 | `gateway`, `is_primary_node`, `using_wan` | whether it's the gateway node | place (drawn first), node |
-| `status`, `state`, `heartbeat_ok`, `last_heartbeat` | whether it's up and when it last said so | place, node, `nodes` |
+| `status`, `state`, `heartbeat_ok`, `last_heartbeat` | whether it's up and when it last said so | place, node, `nodes`; a notice when it goes offline and comes back online |
 | `wired`, `wireless_upstream_node.{name,primary_mesh_radio}`, `mesh_quality_bars` | its backhaul: Ethernet, or which node it hangs from, over which radio, how well | place (the mesh's edges), node, `nodes`, `mesh` |
 | `ip_address`, `ipv6_addresses`, `mac_address`, `ethernet_addresses` | its addresses | node, `node` |
-| `os_version`, `update_available`, `update_status.support_expiration_date` | its firmware and its support's end | node, `node`, `firmware` |
+| `os_version`, `update_available`, `update_status.support_expiration_date` | its firmware and its support's end | node, `node`, `firmware`; a notice when `os_version` changes |
 | `joined`, `last_reboot`, `uptime.since_last_reboot_s`, `uptime.since_cloud_connection_s` | its age, uptime and time on eero's cloud | node, `node` |
 | `connected_clients_count`, `_wired_`, `_wireless_` | its devices | place, node, `nodes` |
 | `radio_channel_stats.<band>.{channel,channel_width,tx_power,channel_utilization,client_count}` | each radio: channel, width, power, how busy, devices | node (a row per band, utilization sparked), `node`, `radio` |
@@ -96,7 +98,7 @@ nodes' urls, so the mesh is joined by name.
 | `device_type`, `manufacturer`, `inferred_make`, `inferred_model` | what it is | place (its mark), device, `devices` |
 | `mac`, `is_private`, `eui64` | its hardware address, and whether that's a private one; this machine is the device with one of its own | device, `device`; this machine first in the place and `status` |
 | `ip`, `ips`, `ipv4`, `ipv6_addresses` | its addresses | place, device, `device` |
-| `connected`, `last_active`, `first_active`, `first_seen` | on now, since when, first ever | place, device, `devices` |
+| `connected`, `last_active`, `first_active`, `first_seen` | on now, since when, first ever | place, device, `devices`; a notice when a device first seen since eero's last answer joins |
 | `connection_type`, `wireless`, `source.{location,model,is_gateway}` | Ethernet or Wi-Fi, and through which node | place (under its node), device |
 | `ssid`, `auth`, `subnet_kind`, `vlan_name`, `is_guest` | which network it joined, how | device, `device` |
 | `channel`, `connectivity.frequency`, `interface.frequency`, `connectivity.bssid` | its radio: band, channel, which BSSID | place (band), device, `devices` |
@@ -127,4 +129,18 @@ are joined by `url`.
 
 | Figure | Means | Shows |
 | ------ | ----- | ----- |
-| `events[].{timestamp_ms,category,description}` | the app's activity list: a device joining or leaving a node, with its band and channel | device (its roams), internet (a timeline), `events` |
+| `events[].{timestamp_ms,category,description}` | the app's activity list: a device joining or leaving a node, with its band and channel | device (its roams), internet (a timeline), `events`; a notice for one that says what no other notice does |
+
+Every event this network gave is a `Device` one, a device connecting to
+one node or disconnecting from another as it roams, so none raises a
+notice of its own: roaming and reconnecting say nothing, and a device new
+to the home network is told from its `first_seen`. A `Network` or `eero`
+event is told unless it names something going offline, online,
+connecting, joining, updating or rebooting, or the internet, which the
+notices tell from eero's own figures, so one change never raises two.
+
+The internet's timeline, and `eero events`, set these beside what the
+daemon told, the model's `told`: none of it is eero's, so this contract
+holds none, and the history (`src/history.rs`) keeps each notice's
+summary and body for 30 days. `home-network.json` holds five, told over
+the days its own outage and firmware cover.

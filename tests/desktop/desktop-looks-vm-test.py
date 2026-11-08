@@ -25,7 +25,10 @@ from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
 import pytest
-from desktop_session import LAUNCHER_OPEN
+
+# pytest finds a fixture by its name in the test's module, so the stand-in Google's is
+# brought here.
+from desktop_session import LAUNCHER_OPEN, google  # noqa: F401
 from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
@@ -1147,7 +1150,7 @@ def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
 def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """A time server's plate has its facts from the beat under the title, on the pitch."""
+    """A time server's plate, and a device's, has its facts from the beat under the title."""
     # chrony keeps the clock by the VM's own time server (tests/desktop.nix), whose plate
     # holds every figure chronyd has of it.
     desktop.machine.wait_until_succeeds(
@@ -1284,6 +1287,66 @@ def test_the_home_network_lays_out_its_place_and_drawers_at_each_scale(
         desktop.down_to("unknown computer 1")
         home_network_plate(desktop, scale, "unknown computer 1")
         desktop.shoot(f"launcher-home-network-device-at-{at}")
+        desktop.close_launcher()
+        devices_plates_lie_on_the_lines(desktop, scale)
+
+
+def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
+    """Hold the speakers', the microphone's and the screen's plates to the lines, as a server's.
+
+    Each says which way it goes or what it is over its name, then its parts, what moves most
+    first, laid one way, every name whole (VKCF3Z, 2026-11-07). The stand-in backlight lights
+    the one screen, so its Brightness leads.
+    """
+    for collection, typed, kind, first in [
+        ("sound", "speakers", "output", "Volume"),
+        ("sound", "microphone", "input", "Gain"),
+        ("displays", "", "monitor", "Brightness"),
+    ]:
+        desktop.launcher_until(lambda shown: not shown["open"])
+        desktop.as_account(f"qs ipc call launcher collection {collection}")
+        desktop.launcher_ready()
+        if typed:
+            desktop.type_in(typed, selecting=typed)
+
+        def plated(shown: Json, first: str = first) -> bool:  # As launcher_until calls it.
+            """Say whether the drawer is out, holding this plate's first fact."""
+            return shown["drawer"]["out"] is True and first in shown["drawer"]["facts"]
+
+        desktop.launcher_until(plated)
+        drawer = plate_shown(desktop, scale)
+        assert str(drawer["eyebrow"]).lower().endswith(kind), f"at {scale}: {drawer}"
+        assert drawer["facts"][0] == first, f"at {scale} {typed or kind} leads wrong: {drawer}"
+        assert things_apart(drawer["lines"]["facts"], drawer["factsWrapped"] > 0), (
+            f"at {scale} {typed or kind}'s facts are off the pitch: {drawer}"
+        )
+        assert drawer["labelsWhole"], f"at {scale} a fact's name is broken: {drawer}"
+        assert drawer["laidOneWay"], f"at {scale} its facts mix beside and under: {drawer}"
+        desktop.shoot(f"launcher-plate-{typed or 'screen'}-at-{scale.replace('.', '-')}")
+        desktop.close_launcher()
+
+
+@pytest.mark.usefixtures("google")
+def test_a_persons_page_names_what_its_rows_hold_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """A person's Unread and Recent say their names after theirs, how many at their right.
+
+    Ada wrote the stand-in Google's Lunch on Friday, so her page holds it in Unread, shot at
+    both of Joel's scales for a person to judge.
+    """
+    for scale in at_each_scale:
+        at_scale(desktop, scale)
+        desktop.answer("ada lovelace")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("is") == "person:ada@example.com"
+        )
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: "Unread" in shown["rows"])
+        desktop.down_to("Unread")
+        unread = desktop.showing()["selected"]
+        assert (unread["count"], unread["side"]) == ("Lunch on Friday", "1"), unread
+        desktop.shoot(f"launcher-person-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
 
 
@@ -2179,9 +2242,11 @@ def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
 
 
 def after_the_sessions(desktop: Desktop, shot: str) -> None:
-    """Shoot what Agents holds after its sessions: the closed, Landed, and Start a Session."""
+    """Shoot what Agents holds after its sessions: the closed, Landed, Recent and Start."""
     closed_stand_last(desktop, shot)
     landed_lists_what_sessions_landed(desktop, shot)
+    desktop.down_to("Recent")
+    desktop.shoot(f"launcher-agents-recent-at-{shot}")
     a_quest_offers_to_orchestrate(desktop, shot)
 
 
@@ -2490,6 +2555,65 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
         desktop.as_account("rm -f $XDG_RUNTIME_DIR/spend-watch/collection.json")
 
 
+# What's typed for the meaning daemon's stand-in to find by its meaning, and the words in the
+# keys of the things it finds for it, among those the launcher told it of.
+MEANT = "too bright to read"
+MEANT_KEYS = ("bright", "display", "night")
+# The most rows meaning adds below what typing found (VKCF3Z, 2026-11-07).
+MEANT_MOST = 3
+
+
+def test_a_thing_found_by_its_meaning_sits_below_what_typing_found_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Find things by their meaning, below what typing found, and shoot them.
+
+    The launcher tells the meaning daemon its things as it opens and asks it what's typed, on
+    a stand-in that loads no model (tests/desktop/stand-in-meaning.py): at most three of what
+    it finds are added below every row typing found, none of them twice, each saying it was
+    found by its meaning (VKCF3Z, 2026-11-07). Which it adds, and that nothing moves when they
+    arrive late, is tests/meaning.qml's to prove; this is the wiring, and the look at Joel's
+    scales.
+    """
+    desktop.as_account("rm -f $XDG_RUNTIME_DIR/meaning-means.json $XDG_RUNTIME_DIR/meaning-asked")
+    desktop.answer(MEANT)
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session("grep -q '^know [1-9]' $XDG_RUNTIME_DIR/meaning-asked"),
+        timeout=timedelta(seconds=10),
+    )
+    typed = [row["is"] for row in desktop.showing()["things"]]
+    desktop.close_launcher()
+    known = desktop.as_account("cat $XDG_RUNTIME_DIR/meaning-known").split()
+    meant = [key for key in known if any(word in key for word in MEANT_KEYS)]
+    assert meant, f"the launcher told of nothing a test can mean: {known}"
+
+    # Two keys can name one thing, a spot and its collection, so what's added is seen by
+    # identity: rows after the typed ones, and none of them twice.
+    def added(shown: dict[str, Any]) -> list[str]:
+        found = [row["is"] for row in shown["things"]]
+        return found[len(typed) :] if found[: len(typed)] == typed else []
+
+    desktop.as_account(
+        f"echo {shlex.quote(json.dumps({MEANT: meant}))} > $XDG_RUNTIME_DIR/meaning-means.json"
+    )
+    try:
+        for scale in at_each_scale:
+            at_scale(desktop, scale)
+            desktop.answer(MEANT)
+            desktop.launcher_until(lambda shown: added(shown) != [])
+            meanings = added(desktop.showing())
+            assert len(meanings) <= MEANT_MOST, f"meaning added too many: {meanings}"
+            assert len(set(meanings)) == len(meanings), f"a meaning came twice: {meanings}"
+            assert not set(meanings) & set(typed), f"a meaning repeats a typed row: {meanings}"
+            desktop.down_to(desktop.showing()["rows"][len(typed)])
+            note = desktop.showing()["selected"]["note"]
+            assert note == "found by its meaning", f"a meant row says {note!r}"
+            desktop.shoot(f"launcher-found-by-meaning-at-{scale.replace('.', '-')}")
+            desktop.close_launcher()
+    finally:
+        desktop.as_account("rm -f $XDG_RUNTIME_DIR/meaning-means.json")
+
+
 # The ErgoDox as the kernel names it, the key the layout finds only on it, and what its watcher
 # says while it's locked on its keypad's layer.
 ERGODOX = "ZSA Technology Labs ErgoDox EZ"
@@ -2640,3 +2764,77 @@ def test_an_unplugged_ergodox_is_shown_nowhere_until_its_back(
     finally:
         desktop.machine.succeed("systemctl stop ergodox || true")
         desktop.as_account("rm -f ~/.config/ergodox/layout.json $XDG_RUNTIME_DIR/keyboard-layer")
+
+
+# A player's and a keyboard's drawers say everything their sources hold (Joel, 2026-11-07:
+# "every integration has an insanely high bar of nerdiness and integration"), each where the
+# thing is and what it is above, and are photographed at each of Joel's scales for the design's
+# look: mpv's Media, playing and paused, the ErgoDox and the laptop's own board.
+def test_a_players_and_a_keyboards_drawers_say_where_they_are_and_what(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """A program's Media and each keyboard open a drawer saying where it is and what it is."""
+    machine = desktop.machine
+    desktop.as_account(
+        "systemd-run --user --unit=player mpv --ao=null --no-video --loop"
+        f" {shlex.quote(desktop.values['track'])}"
+    )
+    named = "busctl --user list --acquired | grep -q '^org\\.mpris\\.MediaPlayer2\\.mpv'"
+    machine.wait_until_succeeds(desktop.in_session(named), timeout=timedelta(seconds=30))
+
+    def media(shot: str, side: str) -> None:
+        """Open mpv's Media, its side saying how it stands, and photograph its drawer."""
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("mpv", selecting="mpv Media Player")
+        desktop.into_program()
+        desktop.type_in("media", selecting="Media")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["drawer"]["out"] is True
+                and shown["drawer"]["title"] == "Bless The Child"
+                and any(
+                    thing["reads"].startswith("Media") and side in thing["reads"]
+                    for thing in shown["things"]
+                )
+            )
+        )
+        drawer = desktop.showing()["drawer"]
+        assert drawer["eyebrow"].endswith(" \u00b7 track"), drawer
+        assert drawer["facts"][0] == "Position", drawer
+        desktop.shoot(shot)
+        desktop.close_launcher()
+
+    def board(name: str, eyebrow: str, shot: str) -> None:
+        """Open the keyboards on one, and photograph its drawer."""
+        desktop.answer("keyboards")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: name in shown["rows"])
+        desktop.down_to(name)
+        desktop.launcher_until(
+            lambda shown: shown["drawer"]["out"] is True and shown["drawer"]["title"] == name
+        )
+        drawer = desktop.showing()["drawer"]
+        assert drawer["eyebrow"] == eyebrow, drawer
+        desktop.shoot(shot)
+        desktop.close_launcher()
+
+    try:
+        plug_in_the_ergodox(desktop)
+        for scale in at_each_scale:
+            at_scale(desktop, scale)
+            at = scale.replace(".", "-")
+            media(f"launcher-media-drawer-playing-at-{at}", "playing")
+            desktop.as_account("qs ipc call music toggle")
+            media(f"launcher-media-drawer-paused-at-{at}", "paused")
+            desktop.as_account("qs ipc call music toggle")
+            board(ERGODOX, "on USB \u00b7 keyboard", f"launcher-ergodox-drawer-at-{at}")
+            board(
+                "The Laptop's Keyboard",
+                "built in \u00b7 keyboard",
+                f"launcher-laptops-keyboard-drawer-at-{at}",
+            )
+    finally:
+        desktop.as_account("systemctl --user stop player || true")
+        machine.succeed("systemctl stop ergodox || true")
+        desktop.as_account("rm -f $XDG_RUNTIME_DIR/keyboard-layer")

@@ -53,6 +53,13 @@ LONGEST_RUNTIME_BASE = 40
 # What a run asked for is refused with, as sysexits.h numbers it.
 USAGE = 64
 
+# What a run that ran and failed exits with: pytest's and nix's own failure,
+# and Nix's for a build that failed. Anything else, such as nix-offload's 75
+# when no builder took it, means nothing ran, so nothing failed that a
+# quarantine could excuse: between 01:30 and 04:15 on 8 November runs that
+# never ran read as passing.
+FAILED = frozenset({1, 100})
+
 # What a word may hold to be matched against a pytest test's name, as
 # pytest's -k reads a name, so no word is read as more of the expression.
 KEYWORD = re.compile(r"[A-Za-z0-9_ -]+")
@@ -251,7 +258,7 @@ def arguments(argv: Sequence[str]) -> Options:
     )
     parser.add_argument("check", help="the VM test, e.g. vm-desktop-starts-clean")
     parser.add_argument("words", nargs="*", help="words a subtest's name holds")
-    parser.add_argument("--flake", default=".", help="the flake, . by default")
+    parser.add_argument("--flake", help="the flake, . by default")
     parser.add_argument("--out", type=Path, help="where the pictures go, a new folder by default")
     parser.add_argument(
         "-I",
@@ -274,16 +281,36 @@ def arguments(argv: Sequence[str]) -> Options:
     parsed = parser.parse_args(argv)
     if parsed.there and (parsed.interactive or parsed.keep_machine_state):
         parser.error("--there runs no prompt and keeps no machines")
+    loaded = another_tree()
+    if parsed.flake is None and loaded is not None:
+        parser.error(
+            f"the shell loaded is {loaded}'s, but this runs in {Path.cwd()}, whose code it "
+            f"would test; cd to {loaded}, or name the one meant with --flake"
+        )
     return Options(
         check=parsed.check,
         words=parsed.words,
-        flake=parsed.flake,
+        flake=parsed.flake or ".",
         out=parsed.out,
         interactive=parsed.interactive,
         keep_machine_state=parsed.keep_machine_state,
         driver=parsed.driver,
         there=parsed.there,
     )
+
+
+def another_tree() -> Path | None:
+    """Give the folder whose shell direnv loaded, when this folder isn't in it.
+
+    `direnv exec TREE run-subtests` loads TREE's shell and stays where it is,
+    so from the main checkout it tests main: on 8 November runs meant for
+    branches did, and their passes were kept at main's commit.
+    """
+    loaded = os.environ.get("DIRENV_DIR", "").removeprefix("-")
+    if not loaded:
+        return None
+    folder = Path(loaded).resolve()
+    return None if Path.cwd().resolve().is_relative_to(folder) else folder
 
 
 def nix_string(text: str) -> str:
@@ -375,7 +402,7 @@ def blocking(options: Options, status: int) -> int:
     Inside a build, given its driver, the status is the build's own, and
     the run that sent it there reads the list.
     """
-    if status in {0, USAGE} or options.driver is not None:
+    if status not in FAILED or options.driver is not None:
         return status
     held = quarantined(options.flake, options.check)
     if held is None:

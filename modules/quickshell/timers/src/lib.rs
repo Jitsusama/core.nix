@@ -3,7 +3,8 @@
 //! rung, until he ends it or starts it again. Everything here is worked
 //! out from the moment it's given, never read from a clock, so the tests
 //! hold it to any moment; main.rs brings the clock, the socket and the
-//! notices.
+//! notices. Beside them it keeps the one stopwatch, counting up from
+//! when Joel starts it, with its laps.
 //!
 //! Every time is milliseconds since the Unix epoch, a time of day rather
 //! than time since boot, so a timer kept on disk means the same moment
@@ -17,8 +18,15 @@ use serde_json::{Value, json};
 /// The daemon interface's version, as the shell's Daemon.qml says hello.
 pub const VERSION: u64 = 1;
 
-/// The one kind of record this daemon keeps.
+/// The kind of record each timer is.
 pub const KIND: &str = "timer";
+
+/// The kind of record the one stopwatch is, and its key.
+pub const STOPWATCH: &str = "stopwatch";
+
+/// The most laps the stopwatch keeps, so what's kept stays small however
+/// long it runs.
+pub const LAPS: usize = 999;
 
 /// How long past its end a timer may ring and still be on time. Later than
 /// that, it ended while the laptop slept or the daemon was down, and says
@@ -120,12 +128,88 @@ impl Refusal {
     }
 }
 
-/// Every timer kept, in the order they were set, and the number the next
-/// one takes in its key.
+/// The one stopwatch: what it counted in the stretches it ran before,
+/// since when it has run now, while it runs, and its count at each lap.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Stopwatch {
+    pub counted: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub since: Option<u64>,
+    #[serde(default)]
+    pub laps: Vec<u64>,
+}
+
+impl Stopwatch {
+    /// The record a client is told: running, stopped, or unstarted while
+    /// it has counted nothing.
+    pub fn json(&self) -> Value {
+        let state = match self.since {
+            Some(_) => "running",
+            None if self.counted == 0 && self.laps.is_empty() => "unstarted",
+            None => "stopped",
+        };
+        let mut record = json!({
+            "key": STOPWATCH, "kind": STOPWATCH, "state": state, "counted": self.counted,
+            "laps": self.laps,
+        });
+        if let Some(since) = self.since {
+            record["since"] = json!(since);
+        }
+        record
+    }
+
+    /// What it has counted by `now`.
+    pub fn count(&self, now: u64) -> u64 {
+        self.counted + self.since.map_or(0, |since| now.saturating_sub(since))
+    }
+
+    /// Sets it counting on from what it has.
+    pub fn run(&mut self, now: u64) -> Result<&Stopwatch, Refusal> {
+        if self.since.is_some() {
+            return Err(Refusal::Unfit("the stopwatch is running already"));
+        }
+        self.since = Some(now);
+        Ok(self)
+    }
+
+    /// Holds what it has counted.
+    pub fn stop(&mut self, now: u64) -> Result<&Stopwatch, Refusal> {
+        let Some(since) = self.since else {
+            return Err(Refusal::Unfit("only a running stopwatch stops"));
+        };
+        self.counted += now.saturating_sub(since);
+        self.since = None;
+        Ok(self)
+    }
+
+    /// Marks its count now as a lap.
+    pub fn lap(&mut self, now: u64) -> Result<&Stopwatch, Refusal> {
+        if self.since.is_none() {
+            return Err(Refusal::Unfit("only a running stopwatch laps"));
+        }
+        if self.laps.len() >= LAPS {
+            return Err(Refusal::Unfit("the stopwatch keeps 999 laps at most"));
+        }
+        self.laps.push(self.count(now));
+        Ok(self)
+    }
+
+    /// Takes it back to nothing counted, its laps with it.
+    pub fn reset(&mut self) -> &Stopwatch {
+        *self = Stopwatch::default();
+        self
+    }
+}
+
+/// Every timer kept, in the order they were set, the number the next one
+/// takes in its key, and the stopwatch, which what was kept before it came
+/// lacks.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Held {
     pub timers: Vec<Timer>,
     pub next: u64,
+    #[serde(default)]
+    pub stopwatch: Stopwatch,
 }
 
 impl Held {
@@ -323,9 +407,11 @@ pub enum Ask {
     Hello {
         id: Value,
     },
-    /// Every timer, then each change.
+    /// Every record of the kinds asked, all of them when none is, then
+    /// each change to one.
     Watch {
         id: Value,
+        kinds: Vec<String>,
     },
     Unwatch {
         id: Value,
@@ -359,6 +445,19 @@ pub enum Ask {
     End {
         id: Value,
         key: String,
+    },
+    /// The stopwatch's asks.
+    Run {
+        id: Value,
+    },
+    Stop {
+        id: Value,
+    },
+    Lap {
+        id: Value,
+    },
+    Reset {
+        id: Value,
     },
     /// A watch of a kind it doesn't keep.
     UnknownKind {
@@ -397,10 +496,19 @@ pub fn ask(line: &str) -> Ask {
     };
     match asked {
         "hello" => Ask::Hello { id },
-        "watch" => match unkept(said.get("kind")) {
-            Some(kind) => Ask::UnknownKind { id, kind },
-            None => Ask::Watch { id },
-        },
+        "watch" => {
+            let kinds = kinds(said.get("kind"));
+            match kinds.iter().find(|kind| ![KIND, STOPWATCH].contains(kind)) {
+                Some(kind) => Ask::UnknownKind {
+                    id,
+                    kind: (*kind).to_owned(),
+                },
+                None => Ask::Watch {
+                    id,
+                    kinds: kinds.into_iter().map(str::to_owned).collect(),
+                },
+            }
+        }
         "unwatch" => Ask::Unwatch { id },
         "get" => Ask::Get {
             keys: said
@@ -434,6 +542,10 @@ pub fn ask(line: &str) -> Ask {
         "resume" => keyed(|id, key| Ask::Resume { id, key }),
         "again" => keyed(|id, key| Ask::Again { id, key }),
         "end" => keyed(|id, key| Ask::End { id, key }),
+        "run" => Ask::Run { id },
+        "stop" => Ask::Stop { id },
+        "lap" => Ask::Lap { id },
+        "reset" => Ask::Reset { id },
         "add" => match (key, span) {
             (Some(key), Some(span)) => Ask::Add { id, key, span },
             _ => Ask::Malformed {
@@ -448,19 +560,20 @@ pub fn ask(line: &str) -> Ask {
     }
 }
 
-/// The first kind asked for that this daemon doesn't keep, from a kind
-/// given alone or as a list, as the shell's Daemon.qml sends it; none
-/// asked means its own.
-fn unkept(kind: Option<&Value>) -> Option<String> {
-    let kinds: Vec<&str> = match kind {
+/// The kinds a watch asks for, given alone or as a list, as the shell's
+/// Daemon.qml sends them.
+fn kinds(kind: Option<&Value>) -> Vec<&str> {
+    match kind {
         Some(Value::String(kind)) => vec![kind.as_str()],
         Some(Value::Array(kinds)) => kinds.iter().filter_map(Value::as_str).collect(),
         _ => Vec::new(),
-    };
-    kinds
-        .into_iter()
-        .find(|kind| *kind != KIND)
-        .map(str::to_owned)
+    }
+}
+
+/// Whether a watch of `kinds` is told of a record of `kind`: every kind,
+/// when it named none.
+pub fn watched(kinds: &[String], kind: &str) -> bool {
+    kinds.is_empty() || kinds.iter().any(|watched| watched == kind)
 }
 
 /// The daemon interface's error, by its code.
@@ -694,6 +807,8 @@ mod tests {
         held.start("tea", MINUTE, 0).unwrap();
         held.start("eggs", MINUTE, 0).unwrap();
         held.pause("timer:2", 1_000).unwrap();
+        held.stopwatch.run(0).unwrap();
+        held.stopwatch.lap(500).unwrap();
         held.write(&path).unwrap();
         assert_eq!(Held::read(&path), held);
         assert_eq!(Held::read(&folder.join("none.json")), Held::default());
@@ -760,9 +875,13 @@ mod tests {
             Ask::Malformed { .. }
         ));
         assert_eq!(
-            ask(r#"{"id":"all","ask":"watch","kind":["timer"]}"#),
-            Ask::Watch { id: json!("all") }
+            ask(r#"{"id":"all","ask":"watch","kind":["timer","stopwatch"]}"#),
+            Ask::Watch {
+                id: json!("all"),
+                kinds: vec!["timer".to_owned(), "stopwatch".to_owned()]
+            }
         );
+        assert_eq!(ask(r#"{"id":5,"ask":"lap"}"#), Ask::Lap { id: json!(5) });
         assert_eq!(
             ask(r#"{"id":"all","ask":"watch","kind":"person"}"#),
             Ask::UnknownKind {
@@ -771,5 +890,61 @@ mod tests {
             }
         );
         assert!(matches!(ask("not json"), Ask::Unknown { .. }));
+    }
+
+    #[test]
+    fn a_watch_hears_only_the_kinds_it_asked_for_or_every_kind() {
+        let timers = vec!["timer".to_owned()];
+        assert!(watched(&timers, KIND));
+        assert!(!watched(&timers, STOPWATCH));
+        assert!(watched(&[], STOPWATCH));
+    }
+
+    #[test]
+    fn the_stopwatch_counts_while_it_runs_and_holds_its_count_stopped() {
+        let mut held = Held::default();
+        assert_eq!(held.stopwatch.json()["state"], "unstarted");
+        held.stopwatch.run(1_000).unwrap();
+        assert_eq!(held.stopwatch.count(4_000), 3_000);
+        assert!(matches!(held.stopwatch.run(4_000), Err(Refusal::Unfit(_))));
+        held.stopwatch.stop(5_000).unwrap();
+        assert_eq!(held.stopwatch.count(60_000), 4_000);
+        assert_eq!(held.stopwatch.json()["state"], "stopped");
+        assert!(matches!(held.stopwatch.stop(6_000), Err(Refusal::Unfit(_))));
+        held.stopwatch.run(10_000).unwrap();
+        assert_eq!(
+            held.stopwatch.json(),
+            json!({"key": "stopwatch", "kind": "stopwatch", "state": "running",
+                "counted": 4_000, "since": 10_000, "laps": []})
+        );
+        assert_eq!(held.stopwatch.count(11_000), 5_000);
+    }
+
+    #[test]
+    fn a_lap_marks_its_count_only_while_it_runs_and_reset_clears_them() {
+        let mut held = Held::default();
+        assert!(matches!(held.stopwatch.lap(0), Err(Refusal::Unfit(_))));
+        held.stopwatch.run(0).unwrap();
+        held.stopwatch.lap(2_000).unwrap();
+        held.stopwatch.stop(3_000).unwrap();
+        held.stopwatch.run(10_000).unwrap();
+        held.stopwatch.lap(12_000).unwrap();
+        assert_eq!(held.stopwatch.laps, vec![2_000, 5_000]);
+        held.stopwatch.laps = vec![0; LAPS];
+        assert!(matches!(held.stopwatch.lap(13_000), Err(Refusal::Unfit(_))));
+        held.stopwatch.reset();
+        assert_eq!(held.stopwatch, Stopwatch::default());
+    }
+
+    #[test]
+    fn what_was_kept_before_the_stopwatch_came_reads_with_one_unstarted() {
+        let folder = std::env::temp_dir().join(format!("timers-older-{}", std::process::id()));
+        let path = folder.join("held.json");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(&path, r#"{"timers":[],"next":3}"#).unwrap();
+        let held = Held::read(&path);
+        assert_eq!(held.next, 3);
+        assert_eq!(held.stopwatch, Stopwatch::default());
+        std::fs::remove_dir_all(folder).unwrap();
     }
 }

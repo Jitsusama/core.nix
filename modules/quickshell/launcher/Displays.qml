@@ -3,7 +3,7 @@
 // focus to one, or turns on one that's off; the right arrow lists its
 // Scale, Refresh, Resolution and Rotation as parts saying how each is set,
 // each stepping into its choices (which what's typed there finds too, so
-// "scale 150" needs no step in), and turning it off while another is on.
+// "scale 1.5" needs no step in), and turning it off while another is on.
 // "colour depth", "refresh rate" and the like ask the focused display's
 // part, or each display's while several are on. niri forgets these choices when its configuration is next read,
 // so they last the session, and what lasts belongs in the configuration.
@@ -43,7 +43,9 @@ import Qt.labs.folderlistmodel
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Numbers.js" as Numbers
+import "Plate.js" as Plate
 import "Power.js" as Power
+import "Screens.js" as Screens
 
 Provider {
     id: provider
@@ -398,9 +400,9 @@ Provider {
         const now = mode(output);
         if (now === null || output.logical === null)
             return "off";
-        // The scale as its part says it, "175%".
+        // The scale as its part and its drawer say it, "1.75\u00d7".
         return `${now.width} \u00d7 ${now.height} \u00b7 ${hertz(now)} Hz `
-            + `\u00b7 scale ${percent(output.logical.scale)}`;
+            + `\u00b7 scale ${Screens.scale(output.logical.scale)}`;
     }
 
     readonly property var shown: Object.values(outputs).sort((a, b) =>
@@ -428,7 +430,8 @@ Provider {
             note: described(output),
             run: on ? () => Niri.act({ FocusMonitor: { output: output.name } })
                 : () => provider.change(output, "On"),
-            verbs: () => provider.verbs(output)
+            verbs: () => provider.verbs(output),
+            drawer: () => provider.drawerOf(output)
         });
     }
 
@@ -448,6 +451,66 @@ Provider {
         note: Words.of("displays:sleep").said?.note ?? "",
         run: () => provider.sleepAll()
     })
+
+    // What the vocabulary says of a screen, by the part it's of and its
+    // own word: displays:modes' "preferred".
+    function partSaid(id, key) {
+        return String((Words.of(id === "" ? "displays" : `displays:${id}`).said ?? {})[key]
+            ?? key);
+    }
+
+    // How niri turns a screen, mirrored ones too, in the vocabulary's words.
+    function turnedSaid(transform) {
+        return partSaid("rotation", transform);
+    }
+
+    // A screen's drawer: its connector and what it is over its name, both
+    // as written, since a connector is a name from the world (VKCF3Z,
+    // 2026-11-07); then what moves most, the light where it lights this
+    // screen (its Brightness with its steps, the Room light, the Warmth);
+    // then what niri says it runs, where it sits and what it offers
+    // (Screens.js); then what its EDID says, as its step lists it, its
+    // size from niri where desk-facts says none. Its focus is its row's
+    // to say, so it isn't said again.
+    function drawerOf(output) {
+        const facts = [];
+        const light = output.logical !== null && backlit(output) ? backlight() : null;
+        if (light !== null) {
+            facts.push({
+                label: partName("brightness"),
+                // A monitor following the panel has none of its steps,
+                // and a hundred steps are its share again.
+                value: inTheRoom(output) && light.most !== 100 ? Plate.runs([`${light.share}%`,
+                    partSaid("", "steps").replace("{now}", light.now)
+                        .replace("{most}", light.most)])
+                    : `${light.share}%`,
+                figure: { shape: "stroke", values: [light.now / light.most], warn: false }
+            });
+            if (inTheRoom(output) && askRoom() && room !== null)
+                facts.push({ label: partName("room"), value: lux(room) });
+            if (inTheRoom(output) && warmth !== null)
+                facts.push({
+                    label: partName("warmth"),
+                    value: Plate.runs([`${Numbers.format(warmth.kelvin, 0, settings.group,
+                        settings.point)} K`,
+                        partSaid("", warmth.followsTheRoom ? "following" : "own-white")])
+                });
+        }
+        const edid = Plate.facts(factRows(output));
+        const physical = edid.some(fact => fact.label === partName("size")) ? ""
+            : Screens.physical(output);
+        return {
+            eyebrow: Plate.runs([output.name, partSaid("", builtIn(output) ? "built-in"
+                : "monitor")]),
+            eyebrowNames: true,
+            title: named(output),
+            facts: facts.concat(Screens.facts(output, {
+                named: id => provider.partName(id),
+                said: (id, key) => provider.partSaid(id, key),
+                turned: transform => provider.turnedSaid(transform)
+            }), edid, physical === "" ? [] : [{ label: partName("size"), value: physical }])
+        };
+    }
 
     readonly property var all: shown.map(output => made(output))
         .concat(lit.length > 0 ? [sleepRow] : [])
@@ -515,7 +578,7 @@ Provider {
     // A display's right arrow: turning it on while it's off; while it's
     // on, each of its settings as a part saying how it's set, whose step
     // in offers the others (and whose choices what's typed finds from
-    // here, so "scale 150" is Scale to 150%), then turning it off while
+    // here, so "scale 1.5" is Scale to 1.5\u00d7), then turning it off while
     // another is on, then what its EDID says.
     function verbs(output) {
         if (output.logical === null)
@@ -556,17 +619,17 @@ Provider {
 
     readonly property var scales: [1, 1.25, 1.5, 1.75, 2, 2.5, 3]
 
-    function percent(scale) {
-        return `${Math.round(scale * 100)}%`;
-    }
-
     // How it's set: Brightness and the Room light where the backlight
     // lights it, then Scale, Refresh, Resolution, Rotation.
     function setUp(output) {
         const now = mode(output);
         const scale = output.logical.scale;
-        const rows = lightRows(output).concat([setting(output, "scale", percent(scale), "scale",
-            scales.map(each => choice(`scale-${each}`, `Scale to ${percent(each)}`, "scale",
+        // A scale is a multiple, as the theme says one, never a share, so
+        // the row, the part and the drawer call it one way (VKCF3Z,
+        // 2026-11-07).
+        const rows = lightRows(output).concat([setting(output, "scale", Screens.scale(scale),
+            "scale", scales.map(each => choice(`scale-${each}`,
+                `Scale to ${Screens.scale(each)}`, "scale",
                 Math.abs(each - scale) < 0.01,
                 () => change(output, { Scale: { scale: { Specific: each } } }))))]);
         if (now !== null) {
@@ -603,8 +666,7 @@ Provider {
                             refresh: null
                         } } } })))));
         }
-        const turned = turns.find(each => each.transform === output.logical.transform);
-        rows.push(setting(output, "rotation", turned ? turned.side : "flipped", "rotation",
+        rows.push(setting(output, "rotation", turnedSaid(output.logical.transform), "rotation",
             turns.map(each => choice(`turn-${each.transform}`, each.name, "rotation",
                 output.logical.transform === each.transform,
                 () => change(output, { Transform: { transform: each.transform } })))));

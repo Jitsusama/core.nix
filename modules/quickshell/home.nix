@@ -131,6 +131,7 @@ let
     "StatusLine.js"
     "Drawer.qml"
     "DrawerPage.js"
+    "Pictures.js"
     "Launcher.qml"
     "Choice.qml"
     "Ground.qml"
@@ -242,6 +243,8 @@ let
     "launcher/Networkd.js"
     "launcher/Links.js"
     "launcher/Sounds.js"
+    "launcher/Plate.js"
+    "launcher/Screens.js"
     "launcher/Numbers.js"
     "launcher/Addresses.js"
     "launcher/Subnets.js"
@@ -268,6 +271,8 @@ let
     "launcher/Emoji.js"
     "launcher/KeyGroups.js"
     "launcher/Keyboards.js"
+    "launcher/KeyCounts.js"
+    "launcher/Media.js"
     "launcher/NowGroups.js"
     "launcher/Notice.js"
   ];
@@ -1165,6 +1170,8 @@ in
         # What each program had open lately, for its Recent
         # (launcher/Recents.qml), as each program's module says (recents.nix).
         inherit (config.jitsusama.quickshell.launcher) recents;
+        # A player's art, in its Media's drawer, may be the network's.
+        inherit (launcher) lookups;
       };
       actions = {
         order = 30;
@@ -1411,6 +1418,8 @@ in
       on = {
         order = 113;
         source = "on";
+        # What's playing's art, in its drawer, may be the network's.
+        inherit (launcher) lookups;
       };
       # Each camera with its parts, and whether one is in use. Return opens
       # the viewfinder on the camera the machine calls camera, the one

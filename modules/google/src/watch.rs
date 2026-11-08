@@ -1,7 +1,7 @@
 //! The account as it stands: one look reads who's signed in, gets a token,
 //! asks for the meetings and the mail that wants Joel, and every few
-//! minutes the documents he looked at lately and how each series of
-//! meetings repeats, and says how it all stands; an answer to an
+//! minutes the documents he looked at lately, Drive's own places and how
+//! each series of meetings repeats, and says how it all stands; an answer to an
 //! invitation, a meeting cancelled or moved, and mail marked read or
 //! archived, are asked the same way, and change what's held at once. A
 //! Drive folder is listed, and a file downloaded, only when the shell
@@ -16,7 +16,9 @@ use serde_json::Value;
 use crate::account::{self, Missing};
 use crate::api::{Google, MAKES_MEETINGS, Put, Refused};
 use crate::calendar::{self, Answer};
-use crate::drive::{self, Document, Downloaded, Folder, Kind, Listed, Unlisted, Unsaved, Uploaded};
+use crate::drive::{
+    self, Document, Downloaded, Folder, Kind, Listed, Place, Unlisted, Unsaved, Uploaded,
+};
 use crate::files::{self, Failed, Fetched, Heard, How, Places};
 use crate::mail::{self, Bytes, Mail, Tidy};
 use crate::saves::{self, Staged};
@@ -38,6 +40,11 @@ pub struct Watch {
     /// When the documents were last heard, in milliseconds since the
     /// epoch, or none since the account was last gone.
     documented: Option<i64>,
+    /// When Drive's places were last asked for, as `documented` is.
+    placed: Option<i64>,
+    /// When the meetings held and the mail lately were last heard, the
+    /// same way.
+    recalled: Option<i64>,
     /// How each series of meetings repeats, by its id, as its rule's lines
     /// were last heard, and when.
     rules: HashMap<String, (Vec<String>, i64)>,
@@ -48,9 +55,21 @@ pub struct Watch {
 /// it's three asks each time.
 const DOCUMENTS_EVERY: i64 = 5 * 60 * 1000;
 
+/// How long Drive's places are kept before Drive is asked again: as long
+/// as the documents, so Drive's Recent moves with Docs', and Starred,
+/// Shared with Me and the shared drives, which change only as someone
+/// stars or shares, are never staler than it. It's four asks each time,
+/// far inside what Drive lets one account ask a minute.
+const PLACES_EVERY: i64 = DOCUMENTS_EVERY;
+
 /// How long a series' rule is kept before Google is asked again: one
 /// seldom changes, and it's an ask for each series.
 const RULES_EVERY: i64 = DOCUMENTS_EVERY;
+
+/// How long the meetings held and the mail lately are kept before Google
+/// is asked again: a person's Recent moves only as Joel sends, reads or
+/// holds something, and today's meetings that end come with the look.
+const RECALLED_EVERY: i64 = 3 * DOCUMENTS_EVERY;
 
 impl Watch {
     pub fn new(google: Google, credentials: PathBuf, account: Option<String>) -> Watch {
@@ -63,6 +82,8 @@ impl Watch {
             writable: Vec::new(),
             read: Vec::new(),
             documented: None,
+            placed: None,
+            recalled: None,
             rules: HashMap::new(),
         }
     }
@@ -131,7 +152,76 @@ impl Watch {
                 Err(looked) => self.fell(looked, Standing::Unreachable),
             }
         }
+        if self.state.account == Standing::Ready
+            && self.placed.is_none_or(|heard| at - heard >= PLACES_EVERY)
+        {
+            self.place(now);
+        }
+        if self.state.account == Standing::Ready
+            && self
+                .recalled
+                .is_none_or(|heard| at - heard >= RECALLED_EVERY)
+        {
+            self.recall(now);
+        }
         &self.state
+    }
+
+    /// Asks Drive what each of its places holds. Each is asked on its own,
+    /// so one Drive won't answer keeps what was held of it until the next
+    /// time, five minutes on, and costs the rest nothing.
+    fn place(&mut self, now: &Zoned) {
+        self.placed = Some(now.timestamp().as_millisecond());
+        for place in Place::ALL {
+            match self.asking(now, |google, token| google.place(token, place)) {
+                Ok(answer) => self.state.drive.places.hold(place, &answer),
+                Err(Looked::Refused(Refused::Unreachable(why))) => eprintln!("<4>{why}"),
+                Err(looked) => {
+                    self.fell(looked, Standing::Unreachable);
+                    return;
+                }
+            }
+        }
+        match self.asking(now, Google::drives) {
+            Ok(answer) => self.state.drive.places.drives = drive::shared_drives(&answer),
+            Err(Looked::Refused(Refused::Unreachable(why))) => eprintln!("<4>{why}"),
+            Err(looked) => self.fell(looked, Standing::Unreachable),
+        }
+    }
+
+    /// Asks for the meetings held in the month before today and the mail
+    /// sent or read lately, for a person's Recent. Either failing alone
+    /// keeps what was held of it, and costs the rest nothing.
+    fn recall(&mut self, now: &Zoned) {
+        let (from, to) = calendar::held_window(now);
+        let mut heard = true;
+        match self.asking(now, |google, token| google.events(token, from, to)) {
+            Ok(answer) => self.state.held = calendar::meetings(&answer, now.time_zone()),
+            Err(Looked::Refused(Refused::Unreachable(why))) => {
+                eprintln!("<4>{why}");
+                heard = false;
+            }
+            Err(looked) => {
+                self.fell(looked, Standing::Unreachable);
+                return;
+            }
+        }
+        let held = std::mem::take(&mut self.state.lately);
+        match self.asking(now, |google, token| lately(google, token, &held)) {
+            Ok(found) => self.state.lately = found,
+            Err(Looked::Refused(Refused::Unreachable(why))) => {
+                eprintln!("<4>{why}");
+                self.state.lately = held;
+                heard = false;
+            }
+            Err(looked) => {
+                self.fell(looked, Standing::Unreachable);
+                return;
+            }
+        }
+        if heard {
+            self.recalled = Some(now.timestamp().as_millisecond());
+        }
     }
 
     /// The rule each series in the calendar's answer repeats by, by its
@@ -674,10 +764,14 @@ impl Watch {
             Looked::Missing => {
                 self.state = State::without(Standing::None);
                 self.documented = None;
+                self.placed = None;
+                self.recalled = None;
             }
             Looked::Refused(Refused::SignedOut) => {
                 self.state = State::without(Standing::SignedOut);
                 self.documented = None;
+                self.placed = None;
+                self.recalled = None;
             }
             Looked::Refused(Refused::Unreachable(why)) => {
                 eprintln!("<4>{why}");
@@ -731,16 +825,33 @@ fn recently(google: &Google, token: &str) -> Result<Vec<Document>, Refused> {
     Ok(found)
 }
 
+/// The mail Joel sent or read lately, newest first, each asked for once,
+/// as `wanted` asks: what's held isn't asked for again.
+fn lately(google: &Google, token: &str, held: &[Mail]) -> Result<Vec<Mail>, Refused> {
+    asked(google, token, &google.lately(token)?, held)
+}
+
 /// The mail that wants Joel, newest first, and how many in the inbox are
-/// unread. Mail already held isn't asked for again, since what Gmail
-/// lists of it never changes.
+/// unread.
 fn wanted(
     google: &Google,
     token: &str,
     held: &[Mail],
 ) -> Result<(Vec<Mail>, Option<u64>), Refused> {
+    let found = asked(google, token, &google.wanting(token)?, held)?;
+    Ok((found, mail::unread(&google.inbox(token)?)))
+}
+
+/// The mail a search of Gmail's listed, newest first. Mail already held
+/// isn't asked for again, since what Gmail lists of it never changes.
+fn asked(
+    google: &Google,
+    token: &str,
+    listed: &Value,
+    held: &[Mail],
+) -> Result<Vec<Mail>, Refused> {
     let mut found = Vec::new();
-    for id in mail::listed(&google.wanting(token)?) {
+    for id in mail::listed(listed) {
         if let Some(kept) = held.iter().find(|kept| kept.id == id) {
             found.push(kept.clone());
             continue;
@@ -754,7 +865,7 @@ fn wanted(
         }
     }
     found.sort_by_key(|mail| std::cmp::Reverse(mail.at));
-    Ok((found, mail::unread(&google.inbox(token)?)))
+    Ok(found)
 }
 
 enum Looked {

@@ -4,7 +4,9 @@
 // `qml -platform offscreen timing.qml`: a span and a name are read from
 // what's typed after "timer" in every way Joel might type them, the time
 // left is told as a clock and a span in its largest units, and timers
-// are listed rung first, then by what they have left.
+// are listed rung first, then by what they have left; and the stopwatch
+// counts on while it runs, shows its count to the tenth, and lists its
+// laps newest first.
 import QtQuick
 import "Timing.js" as Timing
 
@@ -100,6 +102,26 @@ QtObject {
         ], 0).map(record => record.key);
         check(failures, "rung newest first, then running by the soonest end, then paused",
             listed, ["timer:5", "timer:3", "timer:4", "timer:2", "timer:1"]);
+
+        check(failures, "a stopwatch unstarted counts nothing",
+            Timing.counted({ state: "unstarted", counted: 0, laps: [] }, 9000), 0);
+        check(failures, "a stopped one holds its count",
+            Timing.counted({ state: "stopped", counted: 4200, laps: [] }, 9000), 4200);
+        check(failures, "a running one counts on from what it held",
+            Timing.counted({ state: "running", counted: 4200, since: 5000, laps: [] }, 9000),
+            8200);
+        check(failures, "tenths round down", Timing.tenths(42199), "0:42.1");
+        check(failures, "tenths past a minute", Timing.tenths(83400), "1:23.4");
+        check(failures, "tenths from nothing", Timing.tenths(0), "0:00.0");
+        check(failures, "tenths past an hour with hours",
+            Timing.tenths(hour + 2 * minute + 3 * second + 450), "1:02:03.4");
+        check(failures, "laps newest first, each its own stretch",
+            Timing.laps({ laps: [42100, 80000, 125500] }), [
+                { number: 3, lap: 45500, at: 125500 },
+                { number: 2, lap: 37900, at: 80000 },
+                { number: 1, lap: 42100, at: 42100 }
+            ]);
+        check(failures, "no laps", Timing.laps({ laps: [] }), []);
 
         if (failures.length > 0) {
             for (const failure of failures)

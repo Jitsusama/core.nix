@@ -549,6 +549,12 @@ ShellRoot {
             const player = Launcher.Playing.players[0];
             same("Media holds more, saying how it stands", `${media.verb} ${media.side}`,
                 "more playing");
+            // Its drawer is the player's, named by the vocabulary (Media.js).
+            const drawn = media.drawer();
+            same("Media's drawer is its player's", `${drawn.eyebrow}: ${drawn.title}`,
+                "on The Tester \u00b7 track: Song of the test");
+            same("where it is leading", `${drawn.facts[0].label} ${drawn.facts[0].value}`,
+                "Position 1:38 of 6:43");
             const played = media.targets();
             same("Media's acts, then what's playing", names(played),
                 "Pause, Next, Previous, Song of the test");

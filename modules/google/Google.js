@@ -38,6 +38,8 @@ function gathered(held, answering) {
         unread: account.account.unread,
         documents: of("file").sort((one, other) => rank(one.kind) - rank(other.kind)
             || (other.viewed ?? 0) - (one.viewed ?? 0)),
+        held: of("held").sort((one, other) => one.start - other.start),
+        lately: of("lately").sort((one, other) => other.at - one.at),
         heard: account.heard,
         fetched: account.account.fetched,
         meet: account.account.meet,
@@ -58,14 +60,34 @@ function stateOf(said) {
         mail: Array.isArray(said.mail) ? said.mail : [],
         unread: typeof said.unread === "number" ? said.unread : null,
         documents: Array.isArray(said.documents) ? said.documents : [],
+        held: Array.isArray(said.held) ? said.held : [],
+        lately: Array.isArray(said.lately) ? said.lately : [],
         heard: said.heard ?? null,
         fetched: said.fetched ?? null,
         meet: { granted: said.meet?.granted === true, made: said.meet?.made ?? null },
         drive: {
             listings: Array.isArray(said.drive?.listings) ? said.drive.listings : [],
             downloads: Array.isArray(said.drive?.downloads) ? said.drive.downloads : [],
-            uploads: Array.isArray(said.drive?.uploads) ? said.drive.uploads : []
+            uploads: Array.isArray(said.drive?.uploads) ? said.drive.uploads : [],
+            places: placesOf(said.drive?.places)
         }
+    };
+}
+
+// Drive's own places as the program says them (src/drive.rs's Places):
+// its Recent, newest first, and Starred, Shared with Me and the shared
+// drives, each { files, more }; any not said holds none, as from a
+// program before them.
+function placesOf(places) {
+    const placed = place => ({
+        files: Array.isArray(place?.files) ? place.files : [],
+        more: place?.more === true
+    });
+    return {
+        recent: Array.isArray(places?.recent) ? places.recent : [],
+        starred: placed(places?.starred),
+        shared: placed(places?.shared),
+        drives: placed(places?.drives)
     };
 }
 
@@ -199,4 +221,11 @@ function withThem(thing, emails) {
     const has = email => emails.includes(String(email ?? "").toLowerCase());
     return has(thing.address) || has(thing.organizer?.email)
         || (thing.guests ?? []).some(guest => has(guest.email));
+}
+
+// Whether a piece of mail Joel sent or read is with someone: they sent
+// it, or it went to them or was copied to them, as mail Joel sent them is.
+function mailedWith(mail, emails) {
+    const has = email => emails.includes(String(email ?? "").toLowerCase());
+    return has(mail.address) || (mail.others ?? []).some(has);
 }

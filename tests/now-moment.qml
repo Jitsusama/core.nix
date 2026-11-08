@@ -193,7 +193,9 @@ ShellRoot {
                 && Location.hereOf('{"v":2,"latitude":"1","longitude":2}') === null
                 && Location.hereOf("{\"v\":2,") === null, "it was read");
 
+        expect("a drawer's clock rests while the launcher is closed", !now.drawing, "it ran");
         launcher.open = true;
+        expect("and turns while it's open", now.drawing, "it rested");
         expect("opening reads the weather, before the meeting",
             JSON.stringify(names())
                 === JSON.stringify(["Time", "Date", "Location", "Weather", "Standup"]),

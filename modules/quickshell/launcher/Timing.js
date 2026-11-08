@@ -2,8 +2,8 @@
 // tests/timing.qml holds it to its cases in Qt's own engine, as the shell
 // runs it: the span and name typed after "timer", how long a timer has
 // left as it stands, and the time left and a span as the launcher says
-// them. Every time is milliseconds; a record is the timers daemon's
-// (modules/quickshell/timers/src/lib.rs).
+// them, and the stopwatch's count and laps. Every time is milliseconds; a
+// record is the timers daemon's (modules/quickshell/timers/src/lib.rs).
 .pragma library
 
 const SECOND = 1000;
@@ -168,9 +168,9 @@ function clock(span) {
 // "1 h 30 min", "1 min 30 s", each unit's word from `units`, { hours,
 // minutes, seconds }.
 function said(span, units) {
-    const counted = parts(span);
-    const words = ["hours", "minutes", "seconds"].filter(unit => counted[unit] > 0)
-        .map(unit => `${counted[unit]} ${units[unit]}`);
+    const split = parts(span);
+    const words = ["hours", "minutes", "seconds"].filter(unit => split[unit] > 0)
+        .map(unit => `${split[unit]} ${units[unit]}`);
     return words.length > 0 ? words.join(" ") : `0 ${units.seconds}`;
 }
 
@@ -186,4 +186,39 @@ function ordered(records, now) {
         : left(one, now) - left(other, now));
     return records.slice().sort((one, other) => rank(one) - rank(other) || by(one, other)
         || one.set - other.set);
+}
+
+const TENTH = SECOND / 10;
+const TENTHS = SECOND / TENTH;
+
+// What the stopwatch has counted at `now`: what it held, and the stretch
+// since it was last set going while it runs.
+function counted(watch, now) {
+    const since = watch?.since;
+    return (watch?.counted ?? 0) + (since === undefined ? 0 : Math.max(0, now - since));
+}
+
+// A count as the stopwatch shows it, to the tenth: "0:42.1", and
+// "1:02:03.4" past an hour. It rounds down, since a stopwatch never shows
+// time that hasn't passed yet, where a timer's clock rounds up.
+function tenths(span) {
+    const all = Math.floor(Math.max(0, span) / TENTH);
+    const seconds = Math.floor(all / TENTHS);
+    const hours = Math.floor(seconds / (SECONDS * SECONDS));
+    const minutes = Math.floor(seconds / SECONDS) % SECONDS;
+    const two = number => String(number).padStart(2, "0");
+    const shown = `${two(seconds % SECONDS)}.${all % TENTHS}`;
+    return hours > 0 ? `${hours}:${two(minutes)}:${shown}` : `${minutes}:${shown}`;
+}
+
+// The stopwatch's laps, newest first, each { number, lap, at }: its
+// number from the first, its own stretch, and the count when it was
+// marked.
+function laps(watch) {
+    const marked = watch?.laps ?? [];
+    return marked.map((at, index) => ({
+        number: index + 1,
+        lap: at - (index > 0 ? marked[index - 1] : 0),
+        at
+    })).reverse();
 }

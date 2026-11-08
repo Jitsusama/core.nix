@@ -39,6 +39,7 @@ import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Numbers.js" as Numbers
+import "Recent.js" as Recent
 import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
 
@@ -840,10 +841,69 @@ Provider {
     readonly property bool holdsLanded: !!provider.launcher && provider.launcher.open
         && (provider.launcher.held ?? []).some(step => step.row.key === "agents:landed")
 
-    things: [toReopen, landed].filter(row => row !== null).concat([start])
+    // Agents' Recent: the sessions that closed this boot, as every Recent
+    // is laid out (Recent.js), newest first, each once by its id, and
+    // never one Agents already shows, a closed orchestrator at the tree's
+    // end, one of Sessions to Reopen or one running again
+    // (SessionRow.js's shownElsewhere). The last boot's are Sessions to
+    // Reopen's alone. It always stands, after Landed and before Start, its
+    // names after its own and how many at its right, and Return on one
+    // reopens it where it left off, by its id (VKCF3Z, 2026-11-08).
+    readonly property var recent: {
+        const closed = Sessions.closed;
+        const live = Sessions.running.concat(Sessions.parked);
+        const addresses = (source("orchestrators")?.closed ?? []).map(one => one.address)
+            .concat(live.map(one => one.address));
+        const quests = live.map(one => one.presence?.questInfo?.id ?? one.presence?.quest ?? "");
+        const listed = Recent.listed([SessionRow.closedRecent(closed)],
+            SessionRow.shownElsewhere(closed, Sessions.toReopen, addresses, quests));
+        const words = Words.of("agents:recent");
+        const stands = Recent.said(listed.map(one => String(one.row.title || one.row.address
+            || one.row.id)), false, words.said ?? {});
+        const said = Words.of("agents").said ?? {};
+        const now = new Date();
+        const home = Sessions.home;
+        const homely = folder => folder === home || folder.startsWith(`${home}/`)
+            ? `~${folder.slice(home.length)}` : folder;
+        // Here, never by the reboot's list (reopenThemAll), so it opens
+        // alone in the folder its record ran in, as one of Sessions to
+        // Reopen does.
+        const reopen = one => Sessions.reopen(Object.assign({}, one,
+            { machine: undefined, cwd: String(one.presence?.cwd ?? "") }),
+            cwd => provider.launcher?.tellOnOpen([[homely(cwd), String(
+                (Words.of("verb:agents:to-reopen:one").said ?? {}).isGone ?? ""), Theme.alert]]));
+        const row = one => thing({
+            thing: true,
+            key: `agents:recent:${one.id}`,
+            name: String(one.title || one.address || one.id),
+            also: Fuzzy.prepare(`${one.address ?? ""} ${one.folder ?? ""} ${one.quest ?? ""}`),
+            side: SessionRow.closedAt(one.endedAt, now, said,
+                date => Qt.formatDate(date, "ddd")),
+            note: SessionRow.closedNote(one),
+            verb: Words.verb("verb:agents:to-reopen:one"),
+            glyph: Theme.glyph.agent,
+            hue: SessionRow.hue("off"),
+            later: true,
+            run: () => reopen(one)
+        });
+        return Object.assign(thingRow({
+            key: "agents:recent",
+            name: Words.name("agents:recent"),
+            glyph: Words.glyph("agents:recent"),
+            hue: "program",
+            side: stands.side,
+            count: stands.note,
+            ask: "which?",
+            empty: words.empty
+        }, () => listed.map(one => row(one.row))), {
+            stays: true
+        });
+    }
+
+    things: [toReopen, landed].filter(row => row !== null).concat([recent, start])
 
     function everything() {
-        return all.concat([toReopen, landed].filter(row => row !== null), [start]);
+        return all.concat([toReopen, landed].filter(row => row !== null), [recent, start]);
     }
 
     // How every session stands, running and parked, read from Sessions

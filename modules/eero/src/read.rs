@@ -65,6 +65,7 @@ pub fn home_network(answers: &Answers, read: &str, cloud: Cloud) -> Option<HomeN
         profiles: profiles(&answers.profiles),
         events: events(&answers.events),
         joins_and_leaves: Vec::new(),
+        told: Vec::new(),
     })
 }
 

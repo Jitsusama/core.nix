@@ -123,8 +123,8 @@ in
     # on one-way delays passes the bar its review set: five faults in four
     # days came from guessing whose queue a round trip shows and learning
     # rates from its own cuts, and on 3 November it held a 312 Mbit/s
-    # download at 81. A router's own SQM shapes the line meanwhile. Its
-    # VM tests start it themselves.
+    # download at 81. A router's own SQM shapes the connection meanwhile.
+    # Its VM tests start it themselves.
     wantedBy = [ ];
     # The table must be there before the shaper fills its sets, and its
     # queues must be on a link before the first connection leaves by it.

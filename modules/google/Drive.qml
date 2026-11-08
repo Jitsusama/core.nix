@@ -5,10 +5,18 @@ pragma ComponentBehavior: Bound
 // keeps them (src/drive.rs) and Google.qml reads them. With no account
 // there are none, and no Recent shows.
 //
-// `row` is a document's one row, the same in its program's Recent and in
-// search: its title, who owns it and when he last opened it, its details
-// beside it, Return opening it through google-opens (opens.sh) in a
-// window of its own, and the right arrow listing Open and Copy the Link.
+// `row` is a Drive file's one row, the same in its program's Recent, in
+// search, in the picker and in Drive's own places: its title, when he
+// last opened it, its details beside it, Return opening it
+// through google-opens (opens.sh) in a window of its own, its program's
+// for one of Google's own kinds and Drive's for any other, and the right
+// arrow listing Open and Copy the Link.
+//
+// And Drive's own places, for Programs › Google Drive
+// (DriveProgram.qml): its Recent, Starred, Shared with Me and the shared
+// drives, as the google program reads them every few minutes: `recent`
+// is Drive's Recent's rows, and `placeRows` a row for each other place,
+// stepping in to its files.
 //
 // And Drive's folders, for the launcher's picker and Files, which draw
 // them: `list` asks what one holds and `listing` gives it; `download`
@@ -20,12 +28,18 @@ import qs
 import Quickshell
 import QtQuick
 import "Drive.js" as Said
+import "DrivePlaces.js" as Places
 
 Singleton {
     id: root
 
-    // Each { id, title, kind, link, viewed, changed, owner }.
+    // Each { id, title, kind, link, viewed, changed, owner }, and the
+    // rest a Drive file says (src/drive.rs's Document).
     readonly property var documents: Google.documents
+
+    // Drive's own places: { recent, starred, shared, drives }, Recent its
+    // files newest first and each other { files, more }.
+    readonly property var places: Google.drive.places
 
     // Drive's folders, for the picker and Files: what each folder asked
     // lately holds, newest first, { folder, asked, files, more, failed },
@@ -58,9 +72,13 @@ Singleton {
         return Google.downloading(file, since);
     }
 
+    // A Drive file's one row, keyed by Drive's id as a document's always
+    // was, so a document is one row in Docs' Recent and Drive's alike.
     function row(document, provider) {
         const words = Said.kind(document);
         const name = document.title !== "" ? document.title : Words.name(words.thing, "untitled");
+        const details = Said.details(document, Words.name(words.thing, "untitled"), Calendar.now,
+            Mail.dates);
         return provider.thing({
             key: `gdoc:${document.id}`,
             what: "document",
@@ -68,11 +86,14 @@ Singleton {
             kind: document.kind,
             name: name,
             verb: Words.verb(words.open),
-            glyph: Words.glyph(words.thing),
+            glyph: Words.glyph(words.thing, document.kind),
             hue: "program",
             side: Said.beside(document, Calendar.now, Mail.dates),
-            drawer: Said.details(document, Words.name(words.thing, "untitled"), Calendar.now,
-                Mail.dates),
+            drawer: Places.drawn(details, document, Object.assign({
+                    drives: root.places?.drives?.files ?? [],
+                    now: Calendar.now,
+                    dates: Mail.dates
+                }, root.said)),
             later: true,
             run: () => root.open(document),
             verbs: () => root.acts(document, provider)
@@ -100,10 +121,57 @@ Singleton {
         })];
     }
 
-    // The kind a program's desktop entry opens, or "" for one that opens
-    // none.
+    // The kind a program's desktop entry opens, `every` for Drive's own,
+    // or "" for one that opens none.
     function kindOf(program) {
         return Said.kindOf(program);
+    }
+
+    // What `kindOf` says of Drive's own program, whose Recent is every
+    // kind's.
+    readonly property string every: Said.EVERY
+
+    // The words a Drive file's drawer says its kind and where it is in,
+    // from the vocabulary (DrivePlaces.js's drawn): { kinds, said }, said
+    // naming each place by its own place's name, so the eyebrow and the
+    // place Joel steps into read alike.
+    readonly property var said: ({
+            kinds: {
+                document: Words.name("docs:document"),
+                spreadsheet: Words.name("sheets:spreadsheet"),
+                presentation: Words.name("slides:presentation"),
+                folder: Words.name("drive:file", "folder"),
+                drive: Words.name("drive:file", "drive"),
+                file: Words.name("drive:file")
+            },
+            said: Object.assign({}, Words.of("drive:file").said ?? {}, {
+                mine: Words.name("drive:mine"),
+                sharedWithMe: Words.name("drive:place:shared"),
+                drives: Words.name("drive:place:drives")
+            })
+        })
+
+    // Drive's Recent, its files of every kind newest first, each its one
+    // row.
+    function recent(provider) {
+        return (root.places?.recent ?? []).map(file => root.row(file, provider));
+    }
+
+    // Each of Drive's other places holding anything, as a row saying how
+    // many it holds that steps in to each, as Recent does.
+    function placeRows(provider) {
+        const over = key => Words.of(key).said?.more ?? "{count}";
+        return Places.listed(root.places, over).map(place => provider.thing({
+                key: place.key,
+                name: Words.name(place.key),
+                verb: Words.verb(place.key),
+                glyph: Words.glyph(place.key),
+                hue: "program",
+                side: place.count,
+                ask: "which?",
+                nested: true,
+                targets: () => place.files.map(file => root.row(file, provider))
+            }));
     }
 
     function open(document) {

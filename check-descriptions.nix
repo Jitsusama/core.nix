@@ -65,6 +65,10 @@
     a notice's card and its row among the notices list the same acts in one order, copying last,
     and a notice gone from the screen keeps none of its sender's
   '';
+  a-player-says-all-it-knows = ''
+    a media player's drawer says everything its player tells MPRIS, what moves first and what
+    identifies it last, leaving out what it can't say, and its art only from where it may be drawn
+  '';
   a-prompt-waits-for-a-person = ''
     a D-Bus call from the account's shells, as run0 asks for polkit's prompt in, outlasts systemd's
     25 seconds
@@ -108,11 +112,18 @@
   a-theme-changes-everything = ''
     another theme leaves none of the first's colours behind, but in the web kit's other look
   '';
+  a-things-drawer-says-its-parts = ''
+    a thing's drawer says each part as a fact, its acts left out, a holder of figures opened in
+    place and a level's bar a stroke; a screen's says whether its mode is preferred or custom, its
+    refresh to every digit niri has where its row rounds it, variable refresh, scale as a multiple,
+    where it sits, its modes and its density to three figures, an off one only what it offers
+  '';
   a-timer-is-read-from-what-is-typed = ''
     a timer's span and name are read from what's typed after "timer" however it's written, a span
     of nothing or past a week is unfit, the time left reads as a clock counting whole seconds up,
-    a span is said in its largest units, and timers are listed rung first, then by what each has
-    left
+    a span is said in its largest units, timers are listed rung first, then by what each has
+    left, and the stopwatch's count runs while it runs, reads to the tenth rounded down, and lists
+    its laps newest first, each its own stretch
   '';
   a-trusted-cable-finds-machines = ''
     a trusted cable's network is a stranger's cable with mDNS on, matched by its card and picked
@@ -429,7 +440,11 @@
     most every 25 seconds, and a coming, going or roam only between reads 10 minutes apart at
     most, and draws the last hour's series into a model a busy hour keeps under 350 kB; it times
     its own look at the internet, the gateway node only from home, and an outage from the first
-    look out to the first back; and it sends the conferencing setting as a bare boolean, counted
+    look out to the first back; it tells, as notices, the internet out and back, a node offline
+    and back online, a device new to the home network, firmware waiting and changing, and an event
+    no other notice says, each once and none before eero first answers or on its first answer,
+    and keeps what each said, drawing 30 days of it into the model, at most 50, a history from
+    before keeping its rows; and it sends the conferencing setting as a bare boolean, counted
     taken only once eero reads it back; every view's page matches its golden one, saying
     when eero isn't answering or the reading is old, colouring only on a terminal, each view's JSON
     is the record's own slice, and a watch draws its view again from each model the socket writes
@@ -543,7 +558,10 @@
     into a folder only Joel reads or into Downloads, never over a file there, marking it read or
     archiving it when asked, marking it unread again, mail read here wanting Joel again at once, and
     the documents of each kind he looked at lately, his last first, asking Drive again only every
-    five minutes and keeping them while Drive fails, makes a Meet meeting for its link when asked,
+    five minutes and keeping them while Drive fails, and Drive's own places, its Recent of every
+    kind, Starred, Shared with Me and the shared drives he hasn't hidden, each by its own search
+    and order with every figure a row shows and whether there's more, asked with the documents
+    and one failing costing the rest nothing, makes a Meet meeting for its link when asked,
     only once Joel's sign-in grants Meet's scope, lists a Drive folder only when asked, the last
     few asked each told, folders first, a shortcut as what it points at, leaving out what it
     can't show and never asking of a folder no id names, and downloads a Drive file to open, pick
@@ -752,6 +770,19 @@
   '';
   marks-past-the-basic-plane = ''
     a mark past U+FFFF reaches the shell whole
+  '';
+  meaning-adds-only-below = ''
+    the launcher's search by meaning, in Qt's engine, tells the daemon only the things that stay, by
+    the words each is known by, and adds at most three rows below what typing found, none found
+    already and none the launcher no longer holds, each saying in the foot how it was found
+  '';
+  meaning-finds-a-thing-by-what-it-means = ''
+    the meaning daemon, on the CPU with the service's model, finds each of the launcher's things by
+    words sharing none of its letters, nearest first, finds nothing for words meaning none of them,
+    and after a restart answers whole at once from the meanings it kept
+  '';
+  meaning-switches-to-the-new-one = ''
+    a switch restarts meaning after reloading its unit, so the shell asks the new one
   '';
   memory-modules-passes-clippy = ''
     clippy finds nothing in memory-modules or its tests
@@ -1364,27 +1395,28 @@
   '';
   shaper-finds-the-rate = ''
     the shaper reads a queue from delayed pings, not one late ping or a silent host; cuts under what
-    the line carried, holds while it drains, and climbs while it's quiet, past what it held only
-    once busy five seconds, so bursts fit under the line; forgets a cut ten quiet minutes old, and
-    keeps one the line then proves; cuts no download arriving faster than its rate, nor beside one
-    an upload carrying under half the line's best, nor again for a queue back within two seconds;
-    climbs back from a cut no queue returns for, so late pings alone don't wear an upload down, yet
-    retries no cut near one confirmed; never cuts Wi-Fi more than 5% under the best it carried,
-    while following a cable down, unless a busy direction's queue stands six seconds at that floor,
-    or 40% while real-time traffic flows, which a call's packets turn on for 30 s; remembers the
-    line's best, not its latest cut; reads sets, routes and queues from what the kernel prints;
-    replays recorded days as one stay per network across midnight, each second's carried rate from
-    the counters and each direction's own delay voted from its reflectors, and names a cut with no
-    queue of its own, a rate held low on an idle line and one starved under a full one; the rebuilt
-    controller cuts a direction only once its own delay has stood a second, a tenth under what got
-    through, climbs a quarter a second until it nears its last queue and 5% after, takes the air's
-    lateness and an idle direction's path off, leaves the line unlimited with no timestamps, and
-    goes back to its base when a queue outlasts half a minute of cuts; live, it answers what a
-    replay of the same recorded lines does, read as the day files grow and across midnight, for
-    the link the recorder names, and lets the link go unlimited when the recorder falls silent or
-    begins a new stay; and on sixteen simulated lines, clean and rough, from a known base, none or a
-    wrong one, it holds the review's bar against the same line unshaped: a p95 delay of 100 ms or
-    half the unshaped one, 75% of each way carried, and no direction under half 30 s longer
+    the connection carried, holds while it drains, and climbs while it's quiet, past what it held
+    only once busy five seconds, so bursts fit under the connection; forgets a cut ten quiet minutes
+    old, and keeps one the connection then proves; cuts no download arriving faster than its rate,
+    nor beside one an upload carrying under half the connection's best, nor again for a queue back
+    within two seconds; climbs back from a cut no queue returns for, so late pings alone don't wear
+    an upload down, yet retries no cut near one confirmed; never cuts Wi-Fi more than 5% under the
+    best it carried, while following a cable down, unless a busy direction's queue stands six
+    seconds at that floor, or 40% while real-time traffic flows, which a call's packets turn on for
+    30 s; remembers the connection's best, not its latest cut; reads sets, routes and queues from
+    what the kernel prints; replays recorded days as one stay per network across midnight, each
+    second's carried rate from the counters and each direction's own delay voted from its
+    reflectors, and names a cut with no queue of its own, a rate held low on an idle connection and
+    one starved under a full one; the rebuilt controller cuts a direction only once its own delay
+    has stood a second, a tenth under what got through, climbs a quarter a second until it nears its
+    last queue and 5% after, takes the air's lateness and an idle direction's path off, leaves the
+    connection unlimited with no timestamps, and goes back to its base when a queue outlasts half a
+    minute of cuts; live, it answers what a replay of the same recorded lines does, read as the day
+    files grow and across midnight, for the link the recorder names, and lets the link go unlimited
+    when the recorder falls silent or begins a new stay; and on sixteen simulated connections, clean
+    and rough, from a known base, none or a wrong one, it holds the review's bar against the same
+    connection unshaped: a p95 delay of 100 ms or half the unshaped one, 75% of each way carried,
+    and no direction under half 30 s longer
   '';
   shaper-passes-clippy = ''
     clippy finds nothing in the shaper or its tests
@@ -1448,7 +1480,10 @@
   '';
   sound-hears-only-what-can-be-heard = ''
     the launcher's Sound leaves out a jack with nothing plugged in and a display's output with no
-    display, and never listens to a headset's microphone while it plays music
+    display, and never listens to a headset's microphone while it plays music; a device's drawer
+    says where it is and which way it goes, its volume in decibels, its parts, the kernel's facts
+    and its node, ALSA device and priority last, never whether it's muted nor its level; and
+    channels at one level are balanced, a stereo pair's otherwise named without front
   '';
   space-is-set-by-rung = ''
     no QML file of the shell's names a space by its step on the size scale, rather than by the
@@ -1483,6 +1518,16 @@
   '';
   spotify-player-signs-in-where-spotify-answers = ''
     spotify-player's sign-in asks ncspot's Spotify app to answer at the one address that app takes
+  '';
+  spotify-recent-passes-clippy = ''
+    clippy finds nothing in spotify-recent or its tests
+  '';
+  spotify-recent-reads-what-played = ''
+    spotify-recent lists what Spotify played lately one row a playlist, album or show, each with
+    its size, nine at most, Liked Songs and artists left inside; walks Joel's playlists, albums,
+    artists and shows page after page; refreshes a spent sign-in only once, under a lock, and
+    writes it back 0600 in its own shape keeping its refresh token; finds a device to play on;
+    and says signed out, nowhere to play and out of reach apart
   '';
   sshd-lets-a-gone-caller-go = ''
     every NixOS machine's sshd asks a quiet caller every 15 s and lets it go after four unanswered
@@ -1784,6 +1829,12 @@
     apart, together, and a refresh taken another way takes the one waiting with it, so no two
     refreshes begin closer than the pace
   '';
+  the-launcher-plays-from-spotify = ''
+    Spotify's program in the launcher reads Spotify only as it's stepped into, once an opening,
+    and holds its Recent, newest first, each row timed and noting its kind and size, and Liked
+    Songs, Playlists, Albums, Artists and Shows, each counted, each played, opened and copied as
+    it says, its note saying when it's signed out or out of reach
+  '';
   the-launcher-lays-sessions-under-their-orchestrators = ''
     every list of pi sessions keeps one order of how they stand, and Agents lays each under the
     session orchestrating it, a step in and at most two, an orchestration standing where its most
@@ -2082,8 +2133,8 @@
   '';
   the-shell-reads-the-documents = ''
     the shell reads the documents from the google program's state, none from one saying none,
-    knows which Google program opens each kind, and says who owns a document and when Joel
-    last opened it beside its title, with its details for the drawer; reads the Drive folders
+    knows which Google program opens each kind, and says only when Joel last opened a document
+    beside its title, with its details for the drawer; reads the Drive folders
     listed and the downloads, finding each folder asked together, writes the lines that list a
     folder and download a file, a save alone saying where, and says how the newest download asked
     stands; and says a Drive file in the picker by its size and when it changed, or what Google's
@@ -2092,13 +2143,18 @@
     tells each settled since the shell started once, oldest first, by its folder's name, sent as an
     answer with Open in Drive and failed with why and what mends it, a copy that couldn't be read
     going back to the program that saved it while it's open, and finds a failure's notice by its
-    file alone
+    file alone; and reads Drive's own places, Drive's program opening every kind and Drive opening
+    any file no other program does, lists each place holding anything with its count or over it,
+    and says a Drive file's kind with a picture's size and a video's length and the drive it's
+    in as its drawer's eyebrow, and the figures the program read of it in its drawer, what
+    changes most first and its id last
   '';
   the-shell-reads-the-mail = ''
     the shell gathers the google program's whole state from its daemon's records, each kind in
     its order, a signed-out account alone, and no account once the daemon stops answering; says
-    when mail came in words, and what its row and its details say, who was copied and the files it
-    carries among them, each file by its kind and size; writes a reply to who sent it, and to all, copied to everyone else it went to, and a mail to
+    when mail came in words, and a moment as a drawer says one, and what its row and its details
+    say, who was copied and the files it carries among them, each file by its kind and size;
+    writes a reply to who sent it, and to all, copied to everyone else it went to, and a mail to
     everyone else a meeting names; writes the lines that mark mail read or unread again or archive
     it or fetch a file it carries; says how that fetch stands; and writes the line making a Meet
     meeting and says how one asked for stands
@@ -2217,8 +2273,9 @@
     the timers daemon tells every watch of a timer started and rings it as a critical notice once
     its end passes; the notice's Again sets it going afresh and putting it away ends it, ending one
     rung takes its notice back, a ring with no server to take it is said once one comes, what's
-    kept outlasts the daemon, one that ended meanwhile ringing late, and an ask it can't do is
-    refused
+    kept outlasts the daemon, one that ended meanwhile ringing late, an ask it can't do is
+    refused, and the stopwatch runs, laps, stops and resets, outlasts the daemon, and is heard
+    only by watches of its kind
   '';
   timers-passes-clippy = ''
     clippy finds nothing in the timers daemon or its tests

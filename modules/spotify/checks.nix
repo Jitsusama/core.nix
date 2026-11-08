@@ -7,9 +7,89 @@
   onLinux,
   passesClippy,
   pkgs,
+  shellFolderLint,
   ...
 }:
 onLinux {
+  # spotify-recent's tests run as it builds: what played lately is one row
+  # a playlist, album or show, each with its size, repeats dropped, a track
+  # from nowhere its album, Liked Songs and artists left inside, what
+  # plays now first, a show by its episode, nine at most, no tab in a
+  # name; each list Joel keeps is read a page at a time; a sign-in counts
+  # as run out a minute early, a refresh without a new refresh token keeps
+  # the old one, and the sign-in is written back 0600 in its own shape;
+  # and against a stand-in for Spotify, a spent sign-in is refreshed and
+  # kept before anything is asked, one another refreshed while it waited
+  # on the lock is taken as it is, a play finds a device when none plays,
+  # and signed out, nowhere to play and out of reach are each said by
+  # their exit status.
+  spotify-recent-reads-what-played = pkgs.callPackage ./spotify-recent/package.nix { };
+  # clippy finds nothing in it, its tests included.
+  spotify-recent-passes-clippy = passesClippy "spotify-recent-passes-clippy" (
+    pkgs.callPackage ./spotify-recent/package.nix { }
+  );
+
+  # Spotify's program in the launcher reads Spotify only as it's stepped
+  # into, once an opening, and holds its Recent, newest first, each row
+  # timed and noting its kind and size, and Liked Songs, Playlists,
+  # Albums, Artists and Shows, each counted, each played, opened and
+  # copied as it says, its note saying when it's signed out or out of
+  # reach (tests/spotify-program.qml), with spotify-recent, niri and
+  # what's playing stood in.
+  the-launcher-plays-from-spotify =
+    let
+      qs = lib.getExe' graphical.pkgs.quickshell "qs";
+      stand = name: body: pkgs.writeText name body;
+      niri = stand "Niri.qml" ''
+        pragma Singleton
+        import Quickshell
+        import QtQuick
+        Singleton {
+          property var spawned: []
+          function spawn(command) { spawned = command; }
+        }
+      '';
+      # Spotify's client running, as its player on the bus says.
+      playing = stand "Playing.qml" ''
+        pragma Singleton
+        import Quickshell
+        import QtQuick
+        Singleton {
+          property QtObject player: QtObject {
+            property string dbusName: "org.mpris.MediaPlayer2.spotify"
+            property bool isPlaying: true
+          }
+          property var players: [player]
+        }
+      '';
+      standIn = pkgs.writeShellScript "spotify-recent" ''
+        exec ${lib.getExe pkgs.bash} ${../../tests/spotify-recent-stand-in.sh} "$@"
+      '';
+    in
+    pkgs.runCommandLocal "the-launcher-plays-from-spotify" { } ''
+      mkdir launcher
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${../quickshell/Fuzzy.js} Fuzzy.js
+      cp ${../quickshell/Words.qml} Words.qml
+      cp ${../quickshell/launcher/words.json} launcher/words.json
+      cp ${../quickshell/launcher/Provider.qml} launcher/Provider.qml
+      cp ${../quickshell/launcher/Asking.js} launcher/Asking.js
+      cp ${../quickshell/launcher/Numbers.js} launcher/Numbers.js
+      cp ${../quickshell/launcher/Ago.js} launcher/Ago.js
+      cp ${./SpotifyProgram.qml} launcher/SpotifyProgram.qml
+      cp ${./Spotify.js} launcher/Spotify.js
+      cp ${playing} launcher/Playing.qml
+      cp ${niri} Niri.qml
+      cp ${../../tests/spotify-program.qml} shell.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export STAND_IN=${standIn}
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
   # pause-for-calls' tests run as it builds, what counts as a call being
   # modules/calls' and tested there: a call pauses Spotify after
   # two seconds of recording, once, and plays it five seconds after the

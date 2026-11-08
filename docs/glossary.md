@@ -259,6 +259,8 @@ or a copy, can be opened, copied or forgotten.
 | Needs You | what only Joel can do, each raised by the session that needs him | waiting on you, to do | `WaitingOnYou.qml` |
 | clipboard | what was copied last, and what was copied before it | | |
 | timer | a span Joel sets counting down, which rings as a notice when it ends, kept by its daemon so it rings with the launcher closed; Timers is the place holding them | countdown, alarm | `HeldTimers.qml`, the `timers` program |
+| stopwatch | the one count up from when Joel starts it, which keeps its laps; it's listed last in Timers | | `HeldTimers.qml`, the `timers` program |
+| lap | one stretch of the stopwatch, from its start or the lap before to when Joel marks it | | `Timers.qml` |
 | capture | taking a screenshot or a recording of the screen, or a photo or a video with the camera, and the place holding them | | |
 | screenshot | a picture Joel takes of the screen | screen shot | |
 | recording | a video Joel takes of the screen, of all of it, a window or a region | | |
@@ -331,6 +333,7 @@ off.
 | card | the chip a sound device plays through or hears with, as the kernel lists it | | ALSA's card |
 | profile | what a headset carries now: music one way, or both ways for a call | | Bluetooth's A2DP and HFP |
 | level | how loud a sound device plays or hears at this moment, as its meter draws it, apart from its volume | | `sound:level` |
+| graph | how the machine's sound joins each device to each program playing or recording, where a device's Graph ID says which it is and its Graph Format the audio it moves | | PipeWire's graph, its node id |
 | camera board | the part in the lid holding the built-in camera, which Dell fits in more than one kind | camera module | `jitsusama.dellXps14.cameraBoard` |
 | image processor | the part turning the built-in camera's raw picture into an image | ISP, IPU | |
 | IR camera | the infrared camera beside the built-in camera, for signing in by face | | `ir-camera`, Howdy |

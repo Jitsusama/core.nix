@@ -1,13 +1,15 @@
 // Google as one of People's sources (PersonSource.qml): everyone Joel's
-// meetings and mail name, each who holds or is asked to a meeting from
-// today to a week on and each who sent mail that wants him (Google.js's
+// meetings and mail name, each who held or was asked to a meeting from a
+// month ago to a week on and each who sent mail that wants him (Google.js's
 // people). With no account there's nobody. Its main act writes them a
 // new mail in Mail's window; their next meeting is the first with them
 // not yet over, their Unread the mail they sent that wants him, and their
-// Recent the meetings with them that are over, each drawn by its own row
-// (Calendar.row, Mail.row), so a meeting or a mail there is the very one
-// it is everywhere else. Mail is Unread and never Recent, since all the
-// mail held is unread, and Recent is what Joel had with them (GB56HX).
+// Recent the meetings with them over in the last month and the mail he
+// sent them or read from them in it (Google.held, Google.lately), each
+// drawn by its own row (Calendar.row, Mail.row), so a meeting or a mail
+// there is the very one it is everywhere else. Mail that still wants him
+// is Unread and never Recent, and Recent is what Joel had with them
+// (GB56HX).
 // Google's own contacts would need a sign-in pi doesn't ask for, so
 // who's known is only who's met or written.
 import qs
@@ -16,7 +18,9 @@ import QtQuick
 PersonSource {
     id: source
 
-    people: Google.people(Calendar.meetings, Mail.mail)
+    // Those Joel met in the last month too, so whoever his Recent holds a
+    // meeting with can be found.
+    people: Google.people(Google.held.concat(Calendar.meetings), Mail.mail)
 
     function acts(person, provider) {
         const address = person.emails[0] ?? "";
@@ -50,8 +54,11 @@ PersonSource {
 
     function recent(person, provider) {
         const now = Date.now();
-        return Calendar.meetings.filter(meeting => meeting.end <= now
-            && Google.withThem(meeting, person.emails))
+        const meetings = Google.held.concat(Calendar.meetings).filter(meeting => meeting.end
+            <= now && Google.withThem(meeting, person.emails))
             .map(meeting => ({ at: meeting.end, row: Calendar.row(meeting, provider) }));
+        const mail = Google.lately.filter(one => Google.mailedWith(one, person.emails))
+            .map(one => ({ at: one.at, row: Mail.row(one, provider.thing) }));
+        return meetings.concat(mail);
     }
 }

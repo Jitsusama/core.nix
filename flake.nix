@@ -200,6 +200,7 @@
         link-keys = ./modules/link-keys/home.nix;
         load-proof = ./modules/load-proof/home.nix;
         lsd = ./modules/lsd/home.nix;
+        meaning = ./modules/meaning/home.nix;
         merge-net = ./modules/merge-net/home.nix;
         mpv = ./modules/mpv/home.nix;
         mycelium = moduleFrom ./modules/mycelium/home.nix { inherit mycelium; };
@@ -231,7 +232,10 @@
         signing = ./modules/signing/home.nix;
         slack = moduleFrom ./modules/slack/home.nix { inherit (self.homeModules) people quickshell; };
         spend-watch = ./modules/spend-watch/home.nix;
-        spotify = moduleFrom ./modules/spotify/home.nix { inherit spicetify-nix; };
+        spotify = moduleFrom ./modules/spotify/home.nix {
+          inherit spicetify-nix;
+          inherit (self.homeModules) quickshell;
+        };
         ssh-tpm-agent = ./modules/ssh-tpm-agent/home.nix;
         swayidle = ./modules/swayidle/home.nix;
         swayimg = moduleFrom ./modules/swayimg/home.nix { inherit (self.homeModules) niri quickshell; };

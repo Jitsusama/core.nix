@@ -16,13 +16,16 @@ folder is gone says so on its row before Return, holds only Forget It, and Reope
 counts only the other. Home's Agents row, and the row "agents" finds, say how they stand
 together and what they spent today, as spend-watch sums it. Two orchestrators the harness lists,
 closed, stand dimmed at the tree's end, the one last live first, each saying what its
-orchestration spent today only where it spent anything, Return reopening it.
+orchestration spent today only where it spent anything, Return reopening it. A session closed
+this boot, its owner gone, stands alone in Recent, after Landed and before Start a Session,
+saying when it closed and where it ran.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 import subprocess
 import time
@@ -136,8 +139,15 @@ def owner() -> Json:
     }
 
 
-def lay(address: str, title: str, said: Json) -> None:
-    """Lay a session's presence record whole, by rename, as pi does."""
+def gone_owner() -> Json:
+    """Give an owner whose process ran and ended this boot, as a session closed since reads."""
+    process = subprocess.Popen(["true"])  # noqa: S607
+    process.wait()
+    return {**owner(), "pid": process.pid}
+
+
+def lay(address: str, title: str, said: Json, *, closed: bool = False) -> None:
+    """Lay a session's presence record whole, by rename, as pi does; closed, its owner gone."""
     record = {
         "session": f"s-{address.lower()}",
         "addresses": [address],
@@ -145,7 +155,7 @@ def lay(address: str, title: str, said: Json) -> None:
         "questInfo": {"id": f"QEST-20261107-{address}", "title": title, "short": address,
                       "status": "active"},
         "cwd": str(STATE / address.lower()),
-        "owner": owner(),
+        "owner": gone_owner() if closed else owner(),
         # When it was written, which the node reads every record by: one
         # without it isn't a session to the node.
         "at": datetime.now(UTC).isoformat(),
@@ -190,6 +200,7 @@ def shell() -> Iterator[Shell]:
         },
     )
     lay("PAUSED", "Paused Quest", {**under, "state": "paused", "landings": LANDINGS})
+    lay("CLOSED", "Closed Quest", {"state": "idle", "repo": "tidepool"}, closed=True)
     lost_on_the_last_boot()
     orchestrators_listed()
     SPEND.parent.mkdir(parents=True, exist_ok=True)
@@ -619,3 +630,26 @@ def test_a_closed_orchestrator_stands_dimmed_at_the_trees_end_the_last_live_firs
     # Its acts: Reopen, then its talks, of which it has none.
     shell.step_in("ctrl-bracketright")
     shell.launcher_until(lambda shown: shown["rows"] == ["Reopen"])
+
+
+def test_recent_holds_the_sessions_closed_this_boot_after_landed_and_before_start(
+    shell: Shell,
+) -> None:
+    """Recent holds a session closed this boot, never one to reopen; Return reopens it."""
+    opened(shell)
+    shell.launcher_until(lambda shown: "Recent" in shown["rows"])
+    rows = shell.showing()["rows"]
+    assert rows.index("Landed") < rows.index("Recent") < rows.index("Start a Session"), rows
+    shell.down_to("Recent")
+    # Its name after Recent's, how many at its right.
+    recent = shell.showing()["selected"]
+    assert (recent["count"], recent["side"]) == ("Closed Quest", "1"), recent
+    shell.step_in()
+    # Only the one closed: the last boot's are Sessions to Reopen's, and the closed
+    # orchestrators stand at the tree's end.
+    shell.launcher_until(lambda shown: shown["rows"] == ["Closed Quest"])
+    row = shell.showing()["selected"]
+    assert re.fullmatch(r"closed \d\d:\d\d", row["side"]), row
+    # Its note never says its name again, but where it ran.
+    assert row["note"].endswith("\u00b7 tidepool"), row
+    assert (row["verb"], row["told"][:1]) == ("reopen", ["\u21b5 reopen"]), row

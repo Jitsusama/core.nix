@@ -17,31 +17,43 @@ const KINDS = {
         open: "verb:slides:open", link: "verb:slides:link" }
 };
 
+// Drive's own program opens every kind, so its Recent is the files of
+// every kind Joel opened last (DriveProgram.qml), and a file no other
+// program opens, a folder or a shared drive has its words, each opening
+// in Drive's window, a folder or a drive wearing the folder's mark.
+const EVERY = "every";
+const DRIVE = { program: "google-drive", thing: "drive:file", open: "verb:drive:open",
+    link: "verb:drive:link" };
+const DRIVES = ["file", "folder", "other", "drive"];
+
 function kind(document) {
-    return KINDS[document?.kind] ?? null;
+    return KINDS[document?.kind] ?? (DRIVES.includes(document?.kind) ? DRIVE : null);
 }
 
-// The kind a program's desktop entry opens, or "" for one that opens none.
+// The kind a program's desktop entry opens, EVERY for Drive's own, or ""
+// for one that opens none.
 function kindOf(program) {
-    return Object.keys(KINDS).find(each => KINDS[each].program === program) ?? "";
+    return program === DRIVE.program ? EVERY
+        : Object.keys(KINDS).find(each => KINDS[each].program === program) ?? "";
 }
 
-// What its row says at the right: who owns it and when he last opened it,
-// as a mail says when it came, in `said`'s words, either alone when the
-// other isn't known.
+// What its row says at the right: only when he last opened it, in the
+// words a mail says when it came in (`said`'s). A stream's rows say only
+// when, so a Recent reads down one column of times (VKCF3Z, 2026-11-08),
+// and who owns it is its drawer's. One never opened says nothing there.
 function beside(document, now, said) {
-    return [document.owner ?? "", document.viewed ? Mail.came(document.viewed, now, said) : ""]
-        .filter(part => part !== "").join(" \u00b7 ");
+    return document.viewed ? Mail.came(document.viewed, now, said) : "";
 }
 
 // Its details, as the launcher's drawer shows them beside its row: its
-// title, who owns it, when he last opened it and when it last changed.
+// title, when it last changed and who owns it, what changes most first.
+// When he last opened it is its row's side, so the drawer doesn't say it
+// again.
 function details(document, untitled, now, said) {
-    const when = at => (at ? Mail.dated(at, now, said) : "");
+    const when = at => (at ? Mail.moment(at, now, said) : "");
     const facts = [
-        { label: "Owner", value: document.owner ?? "" },
-        { label: "Opened", value: when(document.viewed) },
-        { label: "Changed", value: when(document.changed) }
+        { label: "Changed", value: when(document.changed) },
+        { label: "Owner", value: document.owner ?? "" }
     ];
     return {
         title: document.title === "" ? untitled : document.title,

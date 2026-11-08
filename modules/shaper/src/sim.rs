@@ -1,16 +1,16 @@
-//! A simulated line, to hold the one-way controller (src/oneway.rs) to the bar its review
-//! set before it shapes anything: a modem's two queues, flows that grow
-//! until something drops them, other machines beside this one, a call, and
-//! the air's late spells. Each of sixteen lines runs ten minutes clean and
-//! again rough, the way a real one is: a download's acknowledgements going
-//! up, Wi-Fi's jitter on every sample, the air late mostly on the way down,
-//! and three reflectors whose timestamps come in whole ms with a clock
-//! offset that drifts.
+//! A simulated connection, to hold the one-way controller (src/oneway.rs)
+//! to the bar its review set before it shapes anything: a modem's two
+//! queues, flows that grow until something drops them, other machines
+//! beside this one, a call, and the air's late spells. Each of sixteen
+//! connections runs ten minutes clean and again rough, the way a real one
+//! is: a download's acknowledgements going up, Wi-Fi's jitter on every
+//! sample, the air late mostly on the way down, and three reflectors whose
+//! timestamps come in whole ms with a clock offset that drifts.
 //!
-//! The bar, against the same line unshaped: a 95th percentile delay of at
-//! most 100 ms, or half the unshaped one where that's over 200; at least
-//! 75% of what the line could carry each way; and no direction held under
-//! half of that more than 30 s longer than unshaped holds it.
+//! The bar, against the same connection unshaped: a 95th percentile delay
+//! of at most 100 ms, or half the unshaped one where that's over 200; at
+//! least 75% of what the connection could carry each way; and no direction
+//! held under half of that more than 30 s longer than unshaped holds it.
 
 use crate::oneway::{Controller, Seen};
 use crate::rate::float;
@@ -22,7 +22,7 @@ const HOME: [f64; 2] = [11_000.0, 250_000.0];
 
 struct Scenario {
     name: &'static str,
-    /// The line's rates, up and down, in kbit/s, at a time.
+    /// The connection's rates, up and down, in kbit/s, at a time.
     cap: fn(f64) -> [f64; 2],
     /// What this machine wants to move, up and down, at a time.
     wants: fn(f64) -> [f64; 2],
@@ -99,8 +99,8 @@ impl Draws {
     }
 }
 
-/// The line under way.
-struct Line<'a> {
+/// The connection under way.
+struct Connection<'a> {
     scenario: &'a Scenario,
     rough: bool,
     /// The modem's buffers and what's queued in them, up and down, in kbit.
@@ -115,7 +115,7 @@ struct Line<'a> {
     rand: Draws,
 }
 
-impl Line<'_> {
+impl Connection<'_> {
     /// Moves one step of traffic under the rates held here, and answers
     /// what each way carried.
     fn carry(&mut self, at: f64, here: [f64; 2], score: &mut Score) -> [f64; 2] {
@@ -206,11 +206,11 @@ impl Line<'_> {
     }
 }
 
-/// Ten minutes of a line, shaped by a controller starting from the bases
-/// given, or unshaped with none.
+/// Ten minutes of a connection, shaped by a controller starting from the
+/// bases given, or unshaped with none.
 fn run(scenario: &Scenario, bases: Option<[Option<f64>; 2]>, rough: bool) -> Score {
     let start = (scenario.cap)(0.0);
-    let mut line = Line {
+    let mut connection = Connection {
         scenario,
         rough,
         buffer: [0, 1].map(|i| start[i] * scenario.buffer_ms[i] / 1000.0),
@@ -226,9 +226,9 @@ fn run(scenario: &Scenario, bases: Option<[Option<f64>; 2]>, rough: bool) -> Sco
     let mut score = Score::default();
     let mut at = 0.0;
     while at < 600.0 {
-        let carried = line.carry(at, held, &mut score);
+        let carried = connection.carry(at, held, &mut score);
         if let Some(c) = controller.as_mut() {
-            let (delays, gateway) = line.seen(at);
+            let (delays, gateway) = connection.seen(at);
             let limits = c.step(&Seen {
                 at_s: at,
                 up_delay_ms: Some(delays[0]),
@@ -244,7 +244,8 @@ fn run(scenario: &Scenario, bases: Option<[Option<f64>; 2]>, rough: bool) -> Sco
     score
 }
 
-/// Where a shaped line misses the bar, against the same line unshaped.
+/// Where a shaped connection misses the bar, against the same connection
+/// unshaped.
 fn misses(shaped: &mut Score, unshaped: &mut Score) -> Vec<String> {
     let mut missed = Vec::new();
     let (p95, unshaped_p95) = (shaped.delay(95), unshaped.delay(95));
@@ -334,7 +335,7 @@ fn scenarios() -> Vec<Scenario> {
                     HOME
                 }
             },
-            ..home("download, the line drops to 40 and back", greedy_down)
+            ..home("download, the connection drops to 40 and back", greedy_down)
         },
         Scenario {
             cap: |at| {
@@ -344,7 +345,7 @@ fn scenarios() -> Vec<Scenario> {
                     HOME
                 }
             },
-            ..home("upload, the line drops to 4 and back", greedy_up)
+            ..home("upload, the connection drops to 4 and back", greedy_up)
         },
         Scenario {
             others: |at| {
@@ -411,8 +412,8 @@ fn scenarios() -> Vec<Scenario> {
 }
 
 #[test]
-fn the_controller_holds_the_bar_on_every_line_modelled() {
-    // Bases it may start from: the line's own, nearly; none, as on a new
+fn the_controller_holds_the_bar_on_every_connection_modelled() {
+    // Bases it may start from: the connection's own, nearly; none, as on a new
     // network; and a wrong one, remembered from a bad cut.
     let starts = [
         ("a known base", [Some(9_900.0), Some(225_000.0)]),
@@ -436,7 +437,7 @@ fn the_controller_holds_the_bar_on_every_line_modelled() {
 }
 
 #[test]
-fn an_unshaped_line_misses_the_bar_where_it_should() {
+fn an_unshaped_connection_misses_the_bar_where_it_should() {
     // The bar has teeth: unshaped, a full download at home queues its
     // buffer's 100 ms and more, so a controller that limited nothing fails.
     let scenario = home("home, both ways", greedy_both);

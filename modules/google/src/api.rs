@@ -257,6 +257,18 @@ impl Google {
             .collect())
     }
 
+    /// The ids of the mail Joel sent or read lately, newest first
+    /// (`mail::LATELY`).
+    pub fn lately(&self, token: &str) -> Result<Value, Refused> {
+        let most = mail::LATELY_MOST.to_string();
+        self.get(
+            token,
+            "/gmail/v1/users/me/messages",
+            &[("q", mail::LATELY), ("maxResults", &most)],
+            "the mail lately",
+        )
+    }
+
     /// The ids of the mail that wants Joel, newest first.
     pub fn wanting(&self, token: &str) -> Result<Value, Refused> {
         let shown = mail::SHOWN.to_string();
@@ -376,9 +388,10 @@ impl Google {
 
     /// The documents of one kind Joel looked at lately, the last first,
     /// from his own drive, what's shared with him and shared drives alike,
-    /// with only what Recent says of each.
+    /// with what every Drive file's row says of each.
     pub fn documents(&self, token: &str, kind: drive::Kind) -> Result<Value, Refused> {
         let shown = drive::SHOWN.to_string();
+        let fields = format!("files({})", drive::FILE_FIELDS);
         self.get(
             token,
             "/drive/v3/files",
@@ -389,12 +402,31 @@ impl Google {
                 ("corpora", "allDrives"),
                 ("includeItemsFromAllDrives", "true"),
                 ("supportsAllDrives", "true"),
-                (
-                    "fields",
-                    "files(id,name,webViewLink,viewedByMeTime,modifiedTime,owners(displayName))",
-                ),
+                ("fields", &fields),
             ],
             "the documents",
+        )
+    }
+
+    /// What one of Drive's own places holds, in its order, from every
+    /// drive, with what every Drive file's row says of each, and whether
+    /// it holds more.
+    pub fn place(&self, token: &str, place: drive::Place) -> Result<Value, Refused> {
+        let most = place.most().to_string();
+        let fields = format!("nextPageToken,files({})", drive::FILE_FIELDS);
+        self.get(
+            token,
+            "/drive/v3/files",
+            &[
+                ("q", &place.search()),
+                ("orderBy", place.order()),
+                ("pageSize", &most),
+                ("corpora", "allDrives"),
+                ("includeItemsFromAllDrives", "true"),
+                ("supportsAllDrives", "true"),
+                ("fields", &fields),
+            ],
+            "one of Drive's places",
         )
     }
 
@@ -419,14 +451,16 @@ impl Google {
         )
     }
 
-    /// The shared drives Joel is on.
+    /// The shared drives Joel is on, each with when it was made and
+    /// whether he hid it, which Drive's places say.
     pub fn drives(&self, token: &str) -> Result<Value, Refused> {
+        let most = drive::PLACED_MOST.to_string();
         self.get(
             token,
             "/drive/v3/drives",
             &[
-                ("pageSize", "100"),
-                ("fields", "nextPageToken,drives(id,name)"),
+                ("pageSize", &most),
+                ("fields", "nextPageToken,drives(id,name,createdTime,hidden)"),
             ],
             "the shared drives",
         )

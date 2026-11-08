@@ -1,0 +1,16 @@
+{
+  "is_playing": true,
+  "currently_playing_type": "episode",
+  "context": { "type": "show", "uri": "spotify:show:s1" },
+  "item": {
+    "type": "episode",
+    "uri": "spotify:episode:e1",
+    "name": "An Episode",
+    "show": {
+      "uri": "spotify:show:s1",
+      "name": "The Show",
+      "publisher": "A Publisher",
+      "total_episodes": 212
+    }
+  }
+}

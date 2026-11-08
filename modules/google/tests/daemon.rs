@@ -13,7 +13,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use google::daemon::Daemon;
-use google::drive::{Document, Kind};
+use google::drive::{Document, Is, Kind};
 use google::state::{Standing, State};
 use serde_json::{Value, json};
 
@@ -33,11 +33,25 @@ fn document(id: &str, title: &str) -> Document {
     Document {
         id: id.into(),
         title: title.into(),
-        kind: Kind::Document,
+        kind: Is::Document,
         link: format!("https://docs.google.com/document/d/{id}"),
         viewed: Some(NOW),
         changed: None,
         owner: Some("Ada Lovelace".into()),
+        mime: Kind::Document.mime().into(),
+        size: None,
+        created: None,
+        changed_by: None,
+        changed_by_me: None,
+        shared_with_me: None,
+        shared_by: None,
+        shared: false,
+        starred: false,
+        drive: None,
+        about: None,
+        across: None,
+        down: None,
+        lasts: None,
     }
 }
 

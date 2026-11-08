@@ -8,6 +8,7 @@ use serde_json::Value;
 
 use crate::history::History;
 use crate::model::{Cloud, CloudState, HomeNetwork};
+use crate::notices::{Kind, Notice, Urgency};
 use crate::probe::Reading;
 use crate::read::{self, Answers};
 use crate::time;
@@ -83,15 +84,71 @@ const DNS_MS: [f64; 6] = [14.2, 13.7, 15.9, 13.9, 14.8, 14.1];
 const OUTAGE_FROM: &str = "2026-11-03T03:12:30Z";
 const OUTAGE_LOOKS: usize = 11;
 
+/// What the daemon told over those days, oldest first, each at the read or
+/// look that saw it, with the subjects it told and its words: the probe's
+/// outage out and back, the laptop eero first saw two days before, and the
+/// firmware every node runs, waiting and then updated to as the nodes
+/// rebooted.
+const TOLD: [(&str, Kind, &[&str], &str, &str); 5] = [
+    (
+        "2026-11-03T03:12:40Z",
+        Kind::InternetOut,
+        &["2026-11-03T03:12:40Z"],
+        "The internet is out",
+        "Nothing past the home network answers this machine.",
+    ),
+    (
+        "2026-11-03T03:14:10Z",
+        Kind::InternetBack,
+        &["2026-11-03T03:12:40Z"],
+        "The internet is back",
+        "It was out for 1 min 30 s.",
+    ),
+    (
+        "2026-11-05T02:08:13Z",
+        Kind::Joined,
+        &["02:00:00:00:00:0e 2026-11-05T02:07:45.318Z"],
+        "laptop computer 1 joined the home network",
+        "Never seen before, on Study over Wi-Fi at 5 GHz.",
+    ),
+    (
+        "2026-11-06T16:21:33Z",
+        Kind::UpdateWaiting,
+        &["v7.17.4-5"],
+        "A firmware update is waiting",
+        "eero updates the nodes to v7.17.4-5 at 02:00.",
+    ),
+    (
+        "2026-11-07T07:24:13Z",
+        Kind::Updated,
+        &["2001 v7.17.4-5", "2002 v7.17.4-5", "2003 v7.17.4-5"],
+        "The nodes updated to v7.17.4-5",
+        "From v7.17.3-9.",
+    ),
+];
+
 /// The history behind the golden model: six reads five minutes apart, as
 /// the daemon reads with nobody listening, the last at the model's read,
 /// each the contract with its figures moved a little, and a look at the
 /// internet with each. The tablet roams to the Den's 5 GHz from the
 /// Study's 2.4 GHz, the laptop joins and a phone on the edge of the Den's
 /// reach leaves, and the Study's backhaul drops a bar for a read. Before
-/// them, the probe saw an outage.
+/// them, the probe saw an outage, and the daemon told what changed.
 pub fn history() -> History {
     let mut history = History::in_memory();
+    for (at, kind, subjects, summary, body) in TOLD {
+        // The history keeps no notice's urgency, nor what it was about.
+        let notice = Notice {
+            about: None,
+            summary: summary.into(),
+            body: body.into(),
+            urgency: Urgency::Normal,
+            tells: subjects.iter().map(|s| (kind, (*s).to_owned())).collect(),
+        };
+        history
+            .record_notice(&notice, time::to_unix(at).unwrap())
+            .unwrap();
+    }
     let from = time::to_unix(OUTAGE_FROM).unwrap();
     for (n, at) in (0..OUTAGE_LOOKS).zip((from..).step_by(10)) {
         let out = n > 0 && n < OUTAGE_LOOKS - 1;

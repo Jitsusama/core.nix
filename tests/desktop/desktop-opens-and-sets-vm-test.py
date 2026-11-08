@@ -729,14 +729,18 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
             )
         )
         desktop.shoot("launcher-displays")
-        percent = round(wanted * 100)
+        # A scale is said as a multiple, "1.5\u00d7", and typed as one. A
+        # whole one starts every other too, and what was picked last leads
+        # them, so the row is gone down to.
+        multiple = f"{wanted:g}"
         if inside:
             desktop.type_in("scale", selecting="Scale")
             desktop.step_in("ret")
-            desktop.launcher_until(lambda shown: "Scale to 150%" in shown["rows"])
-            desktop.type_in(str(percent))
+            desktop.launcher_until(lambda shown: "Scale to 1.5\u00d7" in shown["rows"])
+            desktop.type_in(multiple)
         else:
-            desktop.type_in(f"scale {percent}")
+            desktop.type_in(f"scale {multiple}")
+        desktop.down_to(f"Scale to {multiple}\u00d7")
         desktop.land()
         machine.send_key("ret")
 
@@ -1615,7 +1619,8 @@ def test_a_timer_started_in_the_launcher_rings_as_a_notice_with_it_closed(
 
     The timers daemon keeps it, so it rings without the launcher, and the notice is its own over
     D-Bus; the notice put away tells the daemon, which lets the timer go. Its gallery holds
-    Timers with one running, one paused and one rung, at both of Joel's scales.
+    Timers with one running, one paused and one rung, and the stopwatch lapped, at both of
+    Joel's scales.
     """
     machine = desktop.machine
     desktop.answer("timer 3s tea")
@@ -1646,8 +1651,13 @@ def test_a_timer_started_in_the_launcher_rings_as_a_notice_with_it_closed(
 
 
 def shoot_the_timers(desktop: Desktop) -> None:
-    """Shoot Timers holding one running, one paused and one rung, at Joel's two scales."""
+    """Shoot Timers holding one running, one paused and one rung, at Joel's two scales.
+
+    The stopwatch, listed last, is set going and lapped twice first, and its laps are shot from
+    inside it.
+    """
     machine = desktop.machine
+    listed = len(TIMERS_SHOWN) + 1
     for typed in TIMERS_SHOWN:
         desktop.answer(typed)
         desktop.land()
@@ -1666,19 +1676,39 @@ def shoot_the_timers(desktop: Desktop) -> None:
     )
     desktop.as_account("qs ipc call launcher collection timers")
     desktop.launcher_ready()
-    desktop.launcher_until(lambda shown: len(shown["rows"]) == len(TIMERS_SHOWN))
+    desktop.launcher_until(lambda shown: len(shown["rows"]) == listed)
     desktop.type_in("tea", selecting="Tea")
     desktop.normal()
     machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: str((shown["selected"] or {}).get("side")).startswith("paused")
     )
+    # Afresh, since typing on from normal would add to "tea".
+    desktop.close_launcher()
+    desktop.as_account("qs ipc call launcher collection timers")
+    desktop.launcher_ready()
+    desktop.type_in("stopwatch", selecting="Stopwatch")
+    desktop.normal()
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("note") == "running")
+    for note in ("running \u00b7 1 lap", "running \u00b7 2 laps"):
+
+        def lapped(shown: Json, note: str = note) -> bool:
+            return bool((shown["selected"] or {}).get("note") == note)
+
+        machine.send_chars(":lap\n")
+        desktop.launcher_until(lapped)
+    held = len(desktop.showing()["held"])
+    machine.send_key("tab")
+    desktop.launcher_until(lambda shown: len(shown["held"]) > held)
+    desktop.launcher_until(lambda shown: "Lap 2" in shown["rows"])
+    desktop.shoot("launcher-stopwatch-laps")
     desktop.close_launcher()
     for scale in ("1.5", "2"):
         desktop.as_account(f"niri msg output winit scale {scale}")
         desktop.as_account("qs ipc call launcher collection timers")
         desktop.launcher_ready()
-        desktop.launcher_until(lambda shown: len(shown["rows"]) == len(TIMERS_SHOWN))
+        desktop.launcher_until(lambda shown: len(shown["rows"]) == listed)
         desktop.shoot(f"launcher-timers-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
     desktop.as_account("niri msg output winit scale 1")
