@@ -230,6 +230,11 @@ or a copy, can be opened, copied or forgotten.
 | margin | the row of marks at the top of the screen saying what's true now | corner | `Margin.qml`, `overview.pieces` |
 | meter | a level shown while it changes, such as the volume | overlay | `Meter.qml` |
 | card | the one frame the launcher, held notices and a notice are drawn in, all it holds the inset from its edge | | `Card.qml` |
+| drawer | the card's continuation out of its right side, a plate about the selected row: what it has beyond its one line | | `Drawer.qml`, a row's `drawer` |
+| plate | a small page about one thing: its eyebrow, name, facts, preview and description | | |
+| eyebrow | a plate's first line, above its name, saying where the thing is and then its kind, never its state | | a drawer's `eyebrow` |
+| fact | one label and its value on a plate, such as a network's signal | | a drawer's `facts` |
+| preview | a picture or a file's first lines, right under the name on its plate | | a drawer's `preview`, `FileFacts.js` |
 | launcher | the window on Super+Space that finds programs, windows, actions and answers | palette, command palette | `Launcher.qml` |
 | place | a list the launcher opens, belonging to one context, such as Agents or Network | category, collection | |
 | row | one thing in a place | | |
@@ -379,7 +384,8 @@ shortcuts are listed inside it.
 | map | the keyboard's layout, shown on screen | | `KeyboardMap.qml` |
 | release | letting go of a layer locked on, back to the one beneath | | |
 | light | the keyboard's own light | backlight | |
-| shortcut | keys pressed together that do one thing | binding, bind | niri's `binds` |
+| chord | the keys pressed to reach something, drawn key by key, such as Super + O or Ctrl + W l | | |
+| shortcut | a chord and the one thing it does, as Shortcuts lists them | binding, bind | niri's `binds` |
 | key language | the one set of keys every surface of ours speaks, Vim's as Joel's Neovim has it | | `modules/keys/language.toml` |
 | act | one thing the key language's keys do, named once, as down or close | | `acts.<name>` |
 | surface | a program of ours keys act on, of one or more kinds: field, list, page or player | | `jitsusama.surfaces` |
