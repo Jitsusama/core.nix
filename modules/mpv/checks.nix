@@ -48,6 +48,7 @@ onLinux {
         "Numbers.js"
         "Applications.qml"
         "Order.js"
+        "Program.js"
         "Media.js"
         "Recents.qml"
         "Recents.js"
@@ -97,6 +98,7 @@ onLinux {
       cp ${../quickshell/Music.js} Music.js
       cp ${../quickshell/Words.qml} Words.qml
       cp ${../quickshell/Files.qml} Files.qml
+      cp ${../quickshell/Daemon.qml} Daemon.qml
       cp ${../quickshell/FileFacts.js} FileFacts.js
       cp ${../quickshell/When.js} When.js
       ${lib.concatMapStrings (file: ''
