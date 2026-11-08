@@ -48,13 +48,14 @@ QtObject {
 
         const slackNotice = notice("from Ada", { app: "Slack", entry: "slack" });
         const asked = notice("Sign in to Slack", { app: "waiting" });
+        const wants = notice("core.nix asks", { app: "pi" });
         const build = notice("Build finished");
         const seen = notice("Deploy log", { read: true, at: 2000 });
-        const notices = [slackNotice, asked, build, seen];
+        const notices = [slackNotice, asked, wants, build, seen];
 
         const away = Lately.held({ notices: notices, mail: [], messages: null });
-        check(failures, "a Needs You item's notice isn't the desktop's", summaries(away.desktop),
-            ["Build finished"]);
+        check(failures, "neither a Needs You item's notice nor a session's want is the desktop's",
+            summaries(away.desktop), ["Build finished"]);
         check(failures, "with Slack's daemon away, its unread notices stand for it",
             summaries(away.slack), ["from Ada"]);
 

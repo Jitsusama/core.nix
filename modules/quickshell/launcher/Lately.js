@@ -11,10 +11,11 @@
 // The sources, in the order rows alike in weight stand: mail and Slack
 // first, since a person wrote each, then what programs said.
 const SOURCES = ["mail", "slack", "desktop"];
-// The sender the shell signs its own notice for a Needs You item with,
-// which For You lists above Lately itself, so it's never counted twice
-// (Y2YBTS, 2026-11-08).
-const WAITING = "waiting";
+// The senders the shell signs its own notices for what For You lists above
+// Lately itself with, so neither is counted twice: a Needs You item's
+// (Y2YBTS, 2026-11-08) and a pi session's want, For You's Agents row
+// (Sessions.qml). Each is marked read once its item stops waiting.
+const LISTED = ["waiting", "pi"];
 // Slack's sender, by the name its program gives and by its desktop entry.
 const SLACK = "slack";
 
@@ -37,10 +38,11 @@ function sourceOf(notice) {
     return named(notice.app) === SLACK || named(notice.entry) === SLACK ? "slack" : "desktop";
 }
 
-// Whether a notice is one of Lately's: not the shell's own for a Needs You
-// item. One forgotten is gone from the history, so it isn't here either.
+// Whether a notice is one of Lately's: not the shell's own for something
+// For You lists. One forgotten is gone from the history, so it isn't here
+// either.
 function ours(notice) {
-    return notice !== null && typeof notice === "object" && notice.app !== WAITING;
+    return notice !== null && typeof notice === "object" && !LISTED.includes(notice.app);
 }
 
 // How a Slack message or a piece of mail was done with, as its daemon says
