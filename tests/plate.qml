@@ -2,13 +2,14 @@
 // niri gives, run in Qt's own JavaScript engine, the one the shell runs it
 // in. The `a-things-drawer-says-its-parts` check copies
 // modules/quickshell/launcher/Plate.js, Screens.js, Backlight.js and
-// Numbers.js beside this file and runs `qml -platform offscreen plate.qml`. A part's name is a fact's
-// label and what it says the value, a level's bar a stroke after it; an
-// act or a choice isn't said; a holder of figures is opened in place; and a
-// screen says the mode it runs with every digit niri has, where it sits,
-// what it offers and how fine it is, an off one only the last two. The
-// backlight daemon's files are read as Backlight.js reads them: what sets
-// the level, the room or why nothing does, and its curve, dimmest first;
+// Numbers.js beside this file and runs `qml -platform offscreen plate.qml`.
+// A part's name is a fact's label and what it says the value, a level's
+// bar a stroke after it; an act or a choice isn't said; a holder of
+// figures is opened in place; and a screen says the mode it runs with
+// every digit niri has, where it sits, what it offers and how fine it is,
+// an off one only the last two. The backlight daemon's files are read as
+// Backlight.js reads them: what sets the level, the room or why nothing
+// does, and its curve, dimmest first;
 // the room's light measured to three digits, the curve's lux every digit.
 import QtQuick
 import "Backlight.js" as Backlight
