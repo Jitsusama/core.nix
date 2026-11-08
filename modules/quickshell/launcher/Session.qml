@@ -106,8 +106,7 @@ Provider {
         power: {
             kind: "choice",
             values: profileChoices.map(choice => choice.option),
-            now: () => profileChoices.find(choice => choice.profile === PowerProfiles.profile)
-                ?.option ?? "",
+            now: () => profileChoices.find(choice => provider.profileOn(choice))?.option ?? "",
             set: to => provider.pickProfile(profileChoices.find(choice => choice.option === to))
         }
     }, !KeepAwake.lidHolds ? {} : {
@@ -212,7 +211,7 @@ Provider {
     property var profileRefused: ({ daemon: "", why: "" })
     // The pick a read of the daemon was started for, so its answer is
     // judged against that pick, never one made while it ran.
-    property var profileAsked: null
+    property var profileReadFor: null
 
     // Whether the daemon's on a profile: as it said when it last refused a
     // pick, until the next, since Quickshell's copy says what was asked;
@@ -238,22 +237,23 @@ Provider {
         becomes(key, { side: "chosen" }, name, "set", {
             // One a newer pick overtook is let go of, unsaid.
             done: () => provider.profilePicked !== choice
-                || provider.profileHeard === choice.daemon,
-            within: profileWaits
+                || provider.profileHeard === choice.daemon
         });
         PowerProfiles.profile = choice.profile;
         profileAsking.restart();
         return Power.filled(Words.of("session:profile").said.set, { profile: name });
     }
 
-    // How long a pick waits to be said back: the daemon's asked half way.
-    readonly property int profileWaits: 2000
+    // How long after a pick the daemon's asked what it's on: a second, so
+    // a refusal is said within two, well inside the launcher's wait for
+    // any act to be agreed, so a slow answer's why still reaches the foot.
+    readonly property int profileAsksAfter: 1000
 
     // The daemon's answer for the pick it was asked about; one a newer
     // pick has overtaken is let be, its own read already timed.
     function profileToldBack(text) {
-        const picked = provider.profileAsked;
-        provider.profileAsked = null;
+        const picked = provider.profileReadFor;
+        provider.profileReadFor = null;
         if (picked === null || picked !== provider.profilePicked)
             return;
         const heard = Power.activeProfile(text);
@@ -282,13 +282,13 @@ Provider {
 
     Timer {
         id: profileAsking
-        interval: provider.profileWaits / 2
+        interval: provider.profileAsksAfter
         onTriggered: {
             if (profileDaemon.running) {
                 profileAsking.restart();
                 return;
             }
-            provider.profileAsked = provider.profilePicked;
+            provider.profileReadFor = provider.profilePicked;
             profileDaemon.running = true;
         }
     }
