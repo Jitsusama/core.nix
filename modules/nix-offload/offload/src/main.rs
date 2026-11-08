@@ -2806,7 +2806,10 @@ exit 1
                 .contains("\"event\":\"lost\""),
             "{journal}"
         );
-        assert_eq!(journal::unreturned(&journal), Vec::<journal::Unreturned>::new());
+        assert_eq!(
+            journal::unreturned(&journal),
+            Vec::<journal::Unreturned>::new()
+        );
         // Another is asked for at once, as after any builder lost.
         let hold = decide::next_after(Event::Lost, true, 0, u64::MAX, false, 100);
         assert_eq!(hold.until, 100);

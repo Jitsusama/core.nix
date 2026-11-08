@@ -693,7 +693,10 @@ mod tests {
             roster.heard(&snapshot(&usual())),
             [ada("online"), BEN.to_owned(), CAL.to_owned()]
         );
-        assert_eq!(roster.heard(&snapshot(&usual())), [] as [std::string::String; 0]);
+        assert_eq!(
+            roster.heard(&snapshot(&usual())),
+            [] as [std::string::String; 0]
+        );
         // Ada busy is one line; Ben deleted is gone; Cal at a new address
         // is gone from the old one and said at the new.
         let changed = vec![

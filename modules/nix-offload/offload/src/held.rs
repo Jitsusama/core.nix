@@ -486,7 +486,10 @@ mod tests {
         // A fetch that failed leaves the weights to go up too.
         assert_eq!(sent_up(&planned, &planned_fixed, &closure, &[]), 14_005);
         // Weights the builder already holds aren't planned, nor sent.
-        assert_eq!(fetched(&BTreeMap::new(), &closure), [] as [std::string::String; 0]);
+        assert_eq!(
+            fetched(&BTreeMap::new(), &closure),
+            [] as [std::string::String; 0]
+        );
         assert_eq!(sent_up(&planned, &BTreeMap::new(), &closure, &[]), 5);
         // In the second format, a fixed path names its method; a
         // derivation's text isn't fixed.
@@ -607,6 +610,9 @@ mod tests {
             ["/nix/store/out"]
         );
         let asked = [("/nix/store/a.drv".to_owned(), None)];
-        assert_eq!(instead(&planned, &derivations, &asked, &held), [] as [std::string::String; 0]);
+        assert_eq!(
+            instead(&planned, &derivations, &asked, &held),
+            [] as [std::string::String; 0]
+        );
     }
 }

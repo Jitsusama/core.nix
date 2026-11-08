@@ -838,7 +838,12 @@ mod tests {
         stand.keys.extend([Press::Resized, Press::Return]);
         stand.resizes.push_back((160, 50));
         let chosen = walk(&journey, &theme)
-            .choose(&mut stand, "A machine is already here", LONG, &["Recover it"])
+            .choose(
+                &mut stand,
+                "A machine is already here",
+                LONG,
+                &["Recover it"],
+            )
             .unwrap();
         assert_eq!(chosen, Some(0));
         laid_out_again(&stand.shown.lock().unwrap());

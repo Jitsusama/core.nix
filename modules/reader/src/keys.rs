@@ -1305,10 +1305,16 @@ mod tests {
             [(Act::Down, None)],
             "and leaves nothing waiting"
         );
-        assert_eq!(typed(&mut machine, "g"), [] as [(crate::keys::Act, std::option::Option<u32>); 0]);
+        assert_eq!(
+            typed(&mut machine, "g"),
+            [] as [(crate::keys::Act, std::option::Option<u32>); 0]
+        );
         assert_eq!(machine.held(Char('g'), false), None, "nor ends a sequence");
         assert_eq!(typed(&mut machine, "g"), [(Act::First, None)]);
-        assert_eq!(typed(&mut machine, "d"), [] as [(crate::keys::Act, std::option::Option<u32>); 0]);
+        assert_eq!(
+            typed(&mut machine, "d"),
+            [] as [(crate::keys::Act, std::option::Option<u32>); 0]
+        );
         assert_eq!(machine.held(Char('d'), false), None, "nor ends an operator");
         assert_eq!(
             typed(&mut machine, "j"),

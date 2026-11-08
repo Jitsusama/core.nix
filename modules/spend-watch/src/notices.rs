@@ -440,7 +440,10 @@ mod tests {
             "no amount in a summary"
         );
         // Told once: the same findings again change nothing.
-        assert_eq!(plan(&history, &findings, 3, 60.0).unwrap(), [] as [crate::notices::Change; 0]);
+        assert_eq!(
+            plan(&history, &findings, 3, 60.0).unwrap(),
+            [] as [crate::notices::Change; 0]
+        );
     }
 
     #[test]

@@ -1276,7 +1276,10 @@ mod tests {
             [40, 43]
         );
         let lookalike = |_| Some("/jobs.slice/jobs.service-x".to_owned());
-        assert_eq!(still_in(&[40], "jobs.slice/jobs.service", lookalike), [] as [u32; 0]);
+        assert_eq!(
+            still_in(&[40], "jobs.slice/jobs.service", lookalike),
+            [] as [u32; 0]
+        );
     }
 
     #[test]

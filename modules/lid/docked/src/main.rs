@@ -215,7 +215,10 @@ mod tests {
 
     #[test]
     fn finds_nothing_without_a_card() {
-        assert_eq!(plugged_in(Path::new("/nonexistent")), [] as [std::string::String; 0]);
+        assert_eq!(
+            plugged_in(Path::new("/nonexistent")),
+            [] as [std::string::String; 0]
+        );
     }
 
     #[test]

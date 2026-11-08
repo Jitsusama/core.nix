@@ -726,7 +726,10 @@ mod tests {
     fn a_name_resolved_cannot_find_answers_nothing() {
         let (dir, asked) =
             resolved(r#"{"error":"io.systemd.Resolve.NoNameServers","parameters":{}}"#);
-        assert_eq!(found("gone.local:22", &dir.path().join("resolve")), [] as [std::net::SocketAddr; 0]);
+        assert_eq!(
+            found("gone.local:22", &dir.path().join("resolve")),
+            [] as [std::net::SocketAddr; 0]
+        );
         asked.join().expect("the stand-in");
     }
 
@@ -737,7 +740,10 @@ mod tests {
             found("127.0.0.1:9", nowhere),
             ["127.0.0.1:9".parse::<std::net::SocketAddr>().expect("v4")]
         );
-        assert_eq!(found("not an address", nowhere), [] as [std::net::SocketAddr; 0]);
+        assert_eq!(
+            found("not an address", nowhere),
+            [] as [std::net::SocketAddr; 0]
+        );
     }
 
     #[test]

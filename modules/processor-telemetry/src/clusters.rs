@@ -112,6 +112,9 @@ mod tests {
 
     #[test]
     fn a_missing_topology_gives_no_clusters() {
-        assert_eq!(read(Path::new("/nonexistent")), [] as [std::string::String; 0]);
+        assert_eq!(
+            read(Path::new("/nonexistent")),
+            [] as [std::string::String; 0]
+        );
     }
 }

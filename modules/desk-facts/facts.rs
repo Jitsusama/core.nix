@@ -2823,7 +2823,10 @@ Playback:
         let sys = Sys::new("usb-c-two");
         partner(&sys.0, "port0");
         partner(&sys.0, "port1");
-        assert_eq!(usb_c(&sys.0), [] as [(std::string::String, std::string::String); 0]);
+        assert_eq!(
+            usb_c(&sys.0),
+            [] as [(std::string::String, std::string::String); 0]
+        );
     }
 
     #[test]
@@ -3226,7 +3229,13 @@ Playback:
             ]
         );
         // A loopback it isn't told of says nothing.
-        assert_eq!(cameras(&sys.0, &sys.0.join("dev"), &holders, &[]), [] as [(std::string::String, std::vec::Vec<(std::string::String, std::string::String)>); 0]);
+        assert_eq!(
+            cameras(&sys.0, &sys.0.join("dev"), &holders, &[]),
+            [] as [(
+                std::string::String,
+                std::vec::Vec<(std::string::String, std::string::String)>
+            ); 0]
+        );
     }
 
     /// An input device where the kernel keeps it, under `home`, with its

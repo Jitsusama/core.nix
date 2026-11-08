@@ -1220,7 +1220,10 @@ mod tests {
             (&report.up, &report.down),
             (&Score::default(), &Score::default())
         );
-        assert_eq!(report.stays[0].unfounded_cuts, [] as [crate::replay::Cut; 0]);
+        assert_eq!(
+            report.stays[0].unfounded_cuts,
+            [] as [crate::replay::Cut; 0]
+        );
     }
 
     #[test]

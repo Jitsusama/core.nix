@@ -230,20 +230,35 @@ mod tests {
         assert!((found[0].now - 0.55).abs() < 1e-9);
         assert!((found[0].before - 0.72).abs() < 0.01);
         let once = [usual.clone(), vec![0.71, 0.40, 0.72]].concat();
-        assert_eq!(shifts(&days("opus", &once)), [] as [crate::estimate::Shift; 0]);
+        assert_eq!(
+            shifts(&days("opus", &once)),
+            [] as [crate::estimate::Shift; 0]
+        );
         let unsteady = [usual.clone(), vec![1.2, 1.9, 1.4]].concat();
-        assert_eq!(shifts(&days("opus", &unsteady)), [] as [crate::estimate::Shift; 0]);
+        assert_eq!(
+            shifts(&days("opus", &unsteady)),
+            [] as [crate::estimate::Shift; 0]
+        );
         let mut gone = days("opus", &moved);
         gone.push((30 * 24, "sonnet".to_owned(), 10.0, 7.0));
         assert_eq!(shifts(&gone), [] as [crate::estimate::Shift; 0]);
         let drift = [usual.clone(), vec![0.67, 0.67, 0.67]].concat();
-        assert_eq!(shifts(&days("opus", &drift)), [] as [crate::estimate::Shift; 0]);
-        assert_eq!(shifts(&days("opus", &[0.7, 0.5, 0.5, 0.5])), [] as [crate::estimate::Shift; 0]);
+        assert_eq!(
+            shifts(&days("opus", &drift)),
+            [] as [crate::estimate::Shift; 0]
+        );
+        assert_eq!(
+            shifts(&days("opus", &[0.7, 0.5, 0.5, 0.5])),
+            [] as [crate::estimate::Shift; 0]
+        );
         // A ratio that wandered from 80% to 190% of list was never one
         // price, so three steady days below it aren't a new one.
         let wandering: Vec<f64> = (0..20).map(|day| [0.85, 1.0, 1.3, 1.9][day % 4]).collect();
         let settled = [wandering, vec![0.77, 0.74, 0.80]].concat();
-        assert_eq!(shifts(&days("opus", &settled)), [] as [crate::estimate::Shift; 0]);
+        assert_eq!(
+            shifts(&days("opus", &settled)),
+            [] as [crate::estimate::Shift; 0]
+        );
     }
 
     #[test]

@@ -249,7 +249,10 @@ mod tests {
         let mut down = finding("health:proxy:meter", Severity::Note, 0.0);
         down.detector = "health".into();
         settle(&history, &[down], 0.0).unwrap();
-        assert_eq!(settle(&history, &[], 30.0).unwrap(), [] as [crate::findings::Finding; 0]);
+        assert_eq!(
+            settle(&history, &[], 30.0).unwrap(),
+            [] as [crate::findings::Finding; 0]
+        );
     }
 
     // A cap's change is as plain: once the cap is back, the fall is past,

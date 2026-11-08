@@ -388,7 +388,10 @@ mod tests {
     #[test]
     fn a_calm_cycle_asks_nothing() {
         let mut state = State::default();
-        assert_eq!(tick(&calm(100_000), &mut state), [] as [crate::watch::Question; 0]);
+        assert_eq!(
+            tick(&calm(100_000), &mut state),
+            [] as [crate::watch::Question; 0]
+        );
     }
 
     #[test]

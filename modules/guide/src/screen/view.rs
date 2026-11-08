@@ -254,11 +254,7 @@ pub fn draw(theme: &Theme, at: &Where, moment: &Moment, width: u16, height: u16)
         lines.resize(foot, vec![]);
         lines.push(footer);
     }
-    Drawn {
-        lines,
-        caret,
-        size,
-    }
+    Drawn { lines, caret, size }
 }
 
 /// The steps done that fit in this many lines, the latest kept first and

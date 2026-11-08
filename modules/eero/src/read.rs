@@ -767,7 +767,10 @@ mod tests {
         let read = home_network(&answers, "2026-11-07T22:54:43Z", answering()).unwrap();
 
         assert_eq!(read.internet.usage, None);
-        assert_eq!(read.internet.speed_tests, [] as [crate::model::SpeedTest; 0]);
+        assert_eq!(
+            read.internet.speed_tests,
+            [] as [crate::model::SpeedTest; 0]
+        );
         assert_eq!(read.internet.thread.name, None);
         assert_eq!(read.nodes.len(), 3);
         assert!(read.nodes.iter().all(|node| node.usage.is_none()));

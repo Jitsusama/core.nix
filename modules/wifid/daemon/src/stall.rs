@@ -101,7 +101,10 @@ mod tests {
         stalls.step("wlan0", "scanning", start);
 
         assert_eq!(stalls.due(), Some(start + STUCK));
-        assert_eq!(stalls.nudge(start + STUCK - SECOND), [] as [(std::string::String, std::time::Duration); 0]);
+        assert_eq!(
+            stalls.nudge(start + STUCK - SECOND),
+            [] as [(std::string::String, std::time::Duration); 0]
+        );
         assert_eq!(
             stalls.nudge(start + STUCK),
             vec![("wlan0".to_string(), STUCK)]
@@ -116,7 +119,10 @@ mod tests {
         stalls.step("wlan0", "disconnected", start + 5 * SECOND);
 
         assert_eq!(stalls.due(), None);
-        assert_eq!(stalls.nudge(start + STUCK), [] as [(std::string::String, std::time::Duration); 0]);
+        assert_eq!(
+            stalls.nudge(start + STUCK),
+            [] as [(std::string::String, std::time::Duration); 0]
+        );
     }
 
     #[test]

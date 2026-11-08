@@ -159,6 +159,9 @@ mod tests {
 
     #[test]
     fn no_database_is_no_runs() {
-        assert_eq!(read(Path::new("/nonexistent/runs.db")).unwrap(), [] as [crate::runs::Run; 0]);
+        assert_eq!(
+            read(Path::new("/nonexistent/runs.db")).unwrap(),
+            [] as [crate::runs::Run; 0]
+        );
     }
 }

@@ -732,7 +732,10 @@ mod tests {
             to_build(said),
             ["/nix/store/a-one.drv", "/nix/store/b-two.drv"]
         );
-        assert_eq!(to_build("this path will be fetched:\n  /nix/store/c.drv\n"), [] as [std::string::String; 0]);
+        assert_eq!(
+            to_build("this path will be fetched:\n  /nix/store/c.drv\n"),
+            [] as [std::string::String; 0]
+        );
     }
 
     fn every(shown: &str) -> Vec<String> {

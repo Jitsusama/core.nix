@@ -500,7 +500,10 @@ mod tests {
 
     #[test]
     fn an_empty_list_has_no_connections() {
-        assert_eq!(connections(&connection_request(0)), [] as [crate::reply::Connection; 0]);
+        assert_eq!(
+            connections(&connection_request(0)),
+            [] as [crate::reply::Connection; 0]
+        );
         assert_eq!(connections(&[]), [] as [crate::reply::Connection; 0]);
     }
 

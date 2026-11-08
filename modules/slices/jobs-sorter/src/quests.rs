@@ -343,7 +343,10 @@ mod tests {
         let slices = vec![("jobs-work-qesta.slice".to_string(), 200)];
         assert_eq!(weights.unweighed(&slices), slices);
         weights.weighed("jobs-work-qesta.slice", 200);
-        assert_eq!(weights.unweighed(&slices), [] as [(std::string::String, u64); 0]);
+        assert_eq!(
+            weights.unweighed(&slices),
+            [] as [(std::string::String, u64); 0]
+        );
         let raised = vec![("jobs-work-qesta.slice".to_string(), 400)];
         assert_eq!(weights.unweighed(&raised), raised);
     }
