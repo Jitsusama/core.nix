@@ -113,19 +113,24 @@ impl World {
                  case \" $* \" in\n\
                  *' --dry-run '*) printf 'these 4 derivations will be built:\\n  \
                  /nix/store/a-light.drv\\n  /nix/store/b-heavy.drv\\n  \
-                 /nix/store/c-wrapper.drv\\n  /nix/store/t-secret-tool.drv\\n' >&2; exit 0;;\n\
+                 /nix/store/c-wrapper.drv\\n  /nix/store/t-secret-tool.drv\\n' >&2; \
+                 if [ -e {big} ]; then printf '  /nix/store/e-big.drv\\n' >&2; fi; exit 0;;\n\
                  *' derivation show '*) secret=\n\
+                 big=; [ -e {big} ] && big=', \"e-big.drv\": {{\"name\": \"big-1\", \
+                 \"env\": {{\"requiredSystemFeatures\": \"big-parallel\"}}}}'\n\
                  case \" $* \" in *' --recursive '*) secret=', \"s-secret.drv\": \
                  {{\"name\": \"secret-1.0\", \"env\": {{}}}}';; esac\n\
                  echo '{{\"derivations\": {{\"a-light.drv\": \
                  {{\"env\": {{\"preferLocalBuild\": \"1\"}}}}, \"b-heavy.drv\": {{\"env\": {{}}}}, \
                  \"c-wrapper.drv\": {{\"name\": \"wrapper\", \"env\": {{}}, \
                  \"inputs\": {{\"drvs\": {{\"s-secret.drv\": {{}}}}}}}}, \
-                 \"t-secret-tool.drv\": {{\"name\": \"secret-tool-2\", \"env\": {{}}}}'\"$secret\"'}}}}'; exit 0;;\n\
+                 \"t-secret-tool.drv\": {{\"name\": \"secret-tool-2\", \"env\": {{}}}}\
+                 '\"$secret$big\"'}}}}'; exit 0;;\n\
                  *' --cores '*) echo \"$*\" >> {here}; exit 0;;\n\
                  *' --builders @/etc/kept-builders '*) if [ -e {no_kept_builder} ]; then \
                  echo 'no kept builder answers' >&2; exit 1; fi; echo \"$*\" >> {away}; exit 0;;\n\
-                 *' --max-jobs 0 '*) if [ -e {no_builder} ]; then \
+                 *' --max-jobs 0 '*) if [ -e {no_builder} ] || { [ -e {no_small_builder} ] \
+                 && [ \"${{*#*e-big}}\" = \"$*\" ]; }; then \
                  echo 'local builds are disabled' >&2; exit 1; fi; echo \"$*\" >> {away}; exit 0;;\n\
                  *' eval '*) if [ -e {fetch_fails} ]; then \
                  echo 'could not read Username' >&2; exit 1; fi; \
@@ -149,6 +154,8 @@ impl World {
                 fetch_fails = root.join("fetch-fails").display(),
                 overridden = root.join("overridden").display(),
                 no_builder = root.join("no-builder").display(),
+                no_small_builder = root.join("no-small-builder").display(),
+                big = root.join("big").display(),
                 no_kept_builder = root.join("no-kept-builder").display(),
                 here = root.join("here").display(),
                 call_starts = root.join("call-starts").display(),
@@ -196,7 +203,6 @@ impl World {
             holds: None,
             power_supplies: root.join("power"),
             cpu_pressure: root.join("pressure"),
-            small_features: vec!["benchmark".to_owned(), "kvm".to_owned()],
             tools: Tools {
                 git: program("git"),
                 gpg: program("gpg"),
@@ -1538,14 +1544,36 @@ fn a_big_piece_is_left_for_a_builder_rather_than_built_here() {
     fs::write(world.root.join("no-builder"), "").unwrap();
     let head = world.signed("one");
     world.system(&head);
-    world.update();
-    // Nix builds here only what asks for none but these, so a piece that
-    // asks for big-parallel, as the kernel does, waits for a builder.
-    let here = world.read("here");
+    fs::write(world.root.join("big"), "").unwrap();
+    let Line::Failed { why, .. } = world.update().1 else {
+        panic!("not failed")
+    };
+    // A piece asking for big-parallel, as the kernel does, goes to the
+    // builders first and alone, so nothing here builds it as another's
+    // input.
     assert!(
-        here.contains("--option system-features benchmark kvm "),
-        "{here}"
+        why.contains("building the big pieces on the machine's builders"),
+        "{why}"
     );
+    assert!(why.contains("which never build here"), "{why}");
+    assert_eq!(world.read("here"), "");
+    assert_eq!(world.builds(), 0);
+}
+
+#[test]
+fn the_small_pieces_are_built_here_once_the_builders_build_the_big() {
+    let mut world = World::new();
+    elsewhere_with_here(&mut world, "14.99");
+    fs::write(world.root.join("no-small-builder"), "").unwrap();
+    fs::write(world.root.join("big"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    let away = world.read("away");
+    assert!(away.contains("/nix/store/e-big.drv^*"), "{away}");
+    assert!(!away.contains("b-heavy"), "{away}");
+    let here = world.read("here");
+    assert!(here.contains("/nix/store/b-heavy.drv^*"), "{here}");
 }
 
 #[test]

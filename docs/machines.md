@@ -192,8 +192,9 @@ as one kept for big builds does, so with `here` set what the builders
 don't build is built here instead, a few cores at a time and only while
 CPU pressure over the last minute is below `here.busyAt`, 15% unless set;
 a Mac keeps no pressure, so there they always wait. A big build, one
-asking for `big-parallel` as the kernel does, never builds here: it waits
-for a builder, and the machine stays as it is meanwhile.
+asking for `big-parallel` as the kernel does, never builds here: it goes to
+the builders first and alone, and while none takes it the machine stays as
+it is.
 
 Code that may go to some builders and not others is named in `kept`, by
 patterns over its pieces' names. Those pieces go only to `kept.builders`,

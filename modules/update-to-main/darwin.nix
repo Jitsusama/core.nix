@@ -38,7 +38,6 @@ in
       booted = "/var/empty";
       power_supplies = "/var/empty";
       cpu_pressure = "/var/empty";
-      small_features = [ ];
       tools = {
         nix = "${nixBin}/nix";
         nix_env = "${nixBin}/nix-env";

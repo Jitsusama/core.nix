@@ -114,7 +114,8 @@ fn build_elsewhere(config: &Config, flake: &str, overrides: &[String]) -> Result
         show.arg("--recursive");
     }
     let shown = run::output(show, "reading what the system needs", &needed)?;
-    let (kept, rest) = heavy(&pieces(&shown)?, &needed, &config.kept.names);
+    let pieces = pieces(&shown)?;
+    let (kept, rest) = heavy(&pieces, &needed, &config.kept.names);
     eprintln!(
         "the system needs {} pieces built: {} kept apart, {} on the builders, the rest here",
         needed.len(),
@@ -126,6 +127,32 @@ fn build_elsewhere(config: &Config, flake: &str, overrides: &[String]) -> Result
     }
     if !rest.is_empty() {
         let builders = config.builders.as_deref();
+        // A big piece, such as the kernel, goes to the builders first and
+        // alone when the rest may build here, since built here as another
+        // piece's input it held the machine's CPUs for over an hour on 8
+        // November while the lent builders were down.
+        let (big, small): (Vec<String>, Vec<String>) = rest
+            .iter()
+            .cloned()
+            .partition(|drv| pieces.get(drv).is_some_and(|p| p.big));
+        let rest = if config.here.is_some() && !big.is_empty() {
+            away(
+                config,
+                &big,
+                builders,
+                "building the big pieces on the machine's builders",
+            )
+            .map_err(|failed| Failure {
+                why: format!("{}, which never build here", failed.why),
+                lines: failed.lines,
+            })?;
+            small
+        } else {
+            rest
+        };
+        if rest.is_empty() {
+            return Ok(());
+        }
         if let Err(apart) = away(
             config,
             &rest,
@@ -274,13 +301,6 @@ fn here(
     }
     local.args(["--max-jobs", &here.max_jobs.to_string()]);
     local.args(["--cores", &here.cores.to_string()]);
-    // On 8 November the lent builders were down and this built the
-    // kernel here for over an hour; a big piece now waits for a builder.
-    local.args([
-        "--option",
-        "system-features",
-        &config.small_features.join(" "),
-    ]);
     told(local, what, pieces)
 }
 
@@ -323,6 +343,8 @@ fn to_build(said: &str) -> Vec<String> {
 struct Piece {
     names: Vec<String>,
     light: bool,
+    /// Whether it asks for `big-parallel`, as nixpkgs' kernel does.
+    big: bool,
     /// The derivations it's built from, by their paths.
     inputs: Vec<String>,
 }
@@ -354,6 +376,7 @@ fn pieces(shown: &str) -> Result<BTreeMap<String, Piece>, Failure> {
             let piece = Piece {
                 names,
                 light: is_light(d),
+                big: is_big(d),
                 inputs,
             };
             (stored(key), piece)
@@ -366,13 +389,30 @@ fn pieces(shown: &str) -> Result<BTreeMap<String, Piece>, Failure> {
 /// writeText's are, as `true` among them. Newer Nix shows those under
 /// `structuredAttrs`; older keeps them as JSON text in `env.__json`.
 fn is_light(derivation: &serde_json::Value) -> bool {
-    let env = &derivation["env"];
-    let structured = env["__json"]
+    derivation["env"]["preferLocalBuild"].as_str() == Some("1")
+        || structured(derivation)["preferLocalBuild"].as_bool() == Some(true)
+}
+
+/// Whether a derivation asks for `big-parallel`, in its environment as
+/// words or in its structured attributes as a list.
+fn is_big(derivation: &serde_json::Value) -> bool {
+    const BIG: &str = "big-parallel";
+    let asked = derivation["env"]["requiredSystemFeatures"]
+        .as_str()
+        .is_some_and(|words| words.split_whitespace().any(|word| word == BIG));
+    asked
+        || structured(derivation)["requiredSystemFeatures"]
+            .as_array()
+            .is_some_and(|features| features.iter().any(|f| f.as_str() == Some(BIG)))
+}
+
+/// A derivation's structured attributes, from `__json` in older Nix's
+/// environment or `structuredAttrs` in newer's, or null when it has none.
+fn structured(derivation: &serde_json::Value) -> serde_json::Value {
+    derivation["env"]["__json"]
         .as_str()
         .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok())
-        .unwrap_or_else(|| derivation["structuredAttrs"].clone());
-    env["preferLocalBuild"].as_str() == Some("1")
-        || structured["preferLocalBuild"].as_bool() == Some(true)
+        .unwrap_or_else(|| derivation["structuredAttrs"].clone())
 }
 
 /// A derivation's path, given by its path or its name in the store.

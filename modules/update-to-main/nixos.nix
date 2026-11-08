@@ -55,9 +55,6 @@ in
       booted = "/run/booted-system";
       power_supplies = "/sys/class/power_supply";
       cpu_pressure = "/proc/pressure/cpu";
-      # What the builders don't take builds here only if it isn't a big
-      # build, such as the kernel, which waits for a builder instead.
-      small_features = lib.remove "big-parallel" config.nix.settings.system-features;
       tools = {
         nix = lib.getExe' config.nix.package "nix";
         nix_env = lib.getExe' config.nix.package "nix-env";

@@ -86,11 +86,6 @@ pub struct Config {
     /// says whether `here` may build; a Mac has none, so nothing builds
     /// there.
     pub cpu_pressure: PathBuf,
-    /// The system features a piece built here may ask for: the machine's
-    /// own less `big-parallel`, so a kernel, or anything else nixpkgs
-    /// marks a big build, waits for a builder rather than taking the
-    /// machine's CPUs for an hour.
-    pub small_features: Vec<String>,
     /// The programs it runs, by their paths in the store.
     pub tools: Tools,
     /// How a command is run in an account's login session, where a Mac's
