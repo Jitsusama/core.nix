@@ -479,6 +479,47 @@ QtObject {
         if (unsaid.eyebrow !== "B" || unsaid.facts.length !== 1 || unsaid.body !== "")
             failures.push(`a bare landing's drawer: ${JSON.stringify(unsaid)}`);
 
+        // Agents' Recent: those closed this boot, keyed by id at when they
+        // ended, and never one Agents shows already: a closed orchestrator
+        // or one running again by its address, one to reopen by its id.
+        const closed = [
+            { id: "s-1", address: "A", title: "Recent, Once", machine: "here",
+                folder: "tree", endedAt: "2026-11-08T05:41:00.000Z",
+                presence: { questInfo: { title: "Recent, Once" }, repo: "core.nix" } },
+            { id: "s-2", address: "B", title: "notes", machine: "here", folder: "notes",
+                endedAt: "2026-11-08T05:30:00.000Z",
+                presence: { questInfo: { title: "Write It Up" } } },
+            { id: "s-3", address: "C", title: "C", machine: "here", folder: "x",
+                endedAt: "2026-11-08T05:00:00.000Z", presence: {} },
+            { id: "s-4", address: "D", title: "D", machine: "here", folder: "y",
+                endedAt: "2026-11-08T04:00:00.000Z", presence: {} }
+        ];
+        const keyed = SessionRow.closedRecent(closed);
+        const keyedSays = keyed.map(one => `${one.key}@${one.at}`).join(" ");
+        const keyedWant = "session:s-1@1794116460000 session:s-2@1794115800000"
+            + " session:s-3@1794114000000 session:s-4@1794110400000";
+        if (keyedSays !== keyedWant)
+            failures.push(`closed as Recent lists them: "${keyedSays}", not "${keyedWant}"`);
+        const shownSays = SessionRow.shownElsewhere(closed, [{ id: "s-3" }], ["D", "Z"]).join();
+        if (shownSays !== "session:s-3,session:s-4")
+            failures.push(`closed shown elsewhere: "${shownSays}"`);
+        // Its note never says its name again: its quest's title where
+        // that differs, else where it ran, its repository before its folder.
+        const notes = closed.slice(0, 3).map(SessionRow.closedNote).join(" | ");
+        const notesWant = "here \u00b7 core.nix | Write It Up | here \u00b7 x";
+        if (notes !== notesWant)
+            failures.push(`closed notes: "${notes}", not "${notesWant}"`);
+        // When it closed, at its right: the time today, the day before it
+        // otherwise.
+        const closing = { closed: "closed", closedAt: "closed {time}",
+            closedOn: "closed {day} {time}" };
+        const ended = new Date(2026, 10, 7, 23, 41);
+        const at = [new Date(2026, 10, 7, 23, 59), new Date(2026, 10, 8, 9, 5)]
+            .map(now => SessionRow.closedAt(ended.toISOString(), now, closing, () => "Sat"))
+            .concat([SessionRow.closedAt("", ended, closing, () => "Sat")]).join(" | ");
+        if (at !== "closed 23:41 | closed Sat 23:41 | closed")
+            failures.push(`when each closed: "${at}"`);
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);

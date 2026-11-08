@@ -453,3 +453,48 @@ function summary(states, spent, said) {
     ];
     return parts.filter(part => part !== "").join(" \u00b7 ");
 }
+
+// Agents' Recent: the sessions that closed this boot (Sessions.closed),
+// as Recent.js lists them, by id and when each ended (RSCH-20261030-GB56HX).
+function closedRecent(closed) {
+    return (closed ?? []).map(one => ({ key: `session:${one.id}`, at: Date.parse(one.endedAt),
+        row: one }));
+}
+
+// What Agents already shows of those closed, so Recent never holds it
+// again: a closed orchestrator at the tree's end, by its address, and one
+// of Sessions to Reopen, by its id, or one running again by its address.
+// Keys as closedRecent makes them.
+function shownElsewhere(closed, toReopen, addresses) {
+    const reopening = new Set((toReopen ?? []).map(one => String(one.id)));
+    const listed = new Set(addresses ?? []);
+    return (closed ?? []).filter(one => reopening.has(String(one.id))
+        || listed.has(one.address)).map(one => `session:${one.id}`);
+}
+
+// A closed session's note, which never says its name again: its quest's
+// title where that differs from its name, else the machine and repository
+// it ran in, as a session's drawer names them (VKCF3Z, 2026-11-08).
+function closedNote(one) {
+    const quest = String(one.presence?.questInfo?.title ?? "");
+    if (quest !== "" && quest !== one.title) {
+        return quest;
+    }
+    return [one.machine ?? "", one.presence?.repo || one.folder || ""]
+        .filter(part => part !== "").join(" \u00b7 ");
+}
+
+// When a closed session ended, at its right: "closed 23:41" today, and
+// with its day before, "closed Fri 23:41", as `day` names a date. `said`
+// is the vocabulary's agents words.
+function closedAt(endedAt, now, said, day) {
+    const ended = new Date(endedAt);
+    if (Number.isNaN(ended.getTime())) {
+        return String(said.closed ?? "");
+    }
+    const time = [ended.getHours(), ended.getMinutes()].map(part => String(part).padStart(2,
+        "0")).join(":");
+    const today = ended.toDateString() === now.toDateString();
+    return String(said[today ? "closedAt" : "closedOn"] ?? "").replace("{time}", time)
+        .replace("{day}", today ? "" : day(ended));
+}
