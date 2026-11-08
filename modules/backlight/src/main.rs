@@ -489,17 +489,11 @@ async fn run() -> Result<(), Box<dyn Error>> {
     fs::create_dir_all(&kept)?;
     let learned = kept.join("learned");
     let (curve, knows_joel) = learned_curve(standard, &learned)?;
-    let switch = kept.join("warmth");
-    let night_switch = kept.join("night");
     // Beside the runtime folder's other files rather than in a folder of
     // its own, which the shell could start watching before it existed.
     let runtime = env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .ok_or("XDG_RUNTIME_DIR isn't set")?;
-    let chosen = runtime.join("backlight-chosen");
-    let now_file = runtime.join("backlight-now");
-    let note = runtime.join("backlight-warmth");
-    let whereabouts = runtime.join("whereabouts.json");
 
     let bus = Connection::system().await?;
     let session = SessionProxy::new(&bus).await?;
@@ -515,18 +509,18 @@ async fn run() -> Result<(), Box<dyn Error>> {
         session,
         follow: Follow::new(curve, knows_joel),
         learned,
-        chosen,
-        now_file,
+        chosen: runtime.join("backlight-chosen"),
+        now_file: runtime.join("backlight-now"),
         level_said: None,
         seen,
         wrote: None,
         keyboard: keyboard(),
         warmth,
-        switch,
-        note,
+        switch: kept.join("warmth"),
+        note: runtime.join("backlight-warmth"),
         noted: None,
         sees: false,
-        night: Nightly::new(night_white, night_switch, whereabouts),
+        night: Nightly::new(night_white, kept.join("night"), runtime.join("whereabouts.json")),
         relay_down: None,
     };
     // Held for as long as the daemon runs, since it holds the switch's name.
