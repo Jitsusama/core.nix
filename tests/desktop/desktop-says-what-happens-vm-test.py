@@ -155,15 +155,21 @@ def a_line_on(drawer: Json, past: int = 0) -> bool:
     """Say whether the drawer is scrolled past a point to a whole line on the eyebrow's baseline.
 
     The eyebrow scrolls with the rest, so where it rests is where it is now and how far the
-    drawer has scrolled. The first of its facts' or its words' lines at or under that baseline
-    is on it, so no bare rows are left over the first line shown.
+    drawer has scrolled. The first of the words' lines at or under that baseline is on it, so
+    no bare rows are left over the first line shown. Above the words, among its facts, each a
+    label and a value on the drawer's pitch, it rests on a pitch from the fact it's in.
     """
     scrolled = int(drawer["scrolled"])
     lines = drawer["lines"]
     rest = lines["eyebrow"] + drawer["scrolled"]
     first = lines["words"] + max(0, math.ceil((rest - ROUNDING - lines["words"]) / PITCH)) * PITCH
-    facts = [fact for fact in lines.get("facts") or [] if fact is not None]
-    on = abs(first - rest) < ROUNDING or any(abs(fact - rest) < ROUNDING for fact in facts)
+    within = [fact for fact in lines.get("facts") or [] if fact is not None]
+    within = [fact for fact in within if fact <= rest + ROUNDING]
+    if within and rest < lines["words"] - ROUNDING:
+        apart = (rest - max(within)) % PITCH
+        on = min(apart, PITCH - apart) < ROUNDING
+    else:
+        on = abs(first - rest) < ROUNDING
     return scrolled > past and on and held(drawer)
 
 
@@ -1138,6 +1144,8 @@ def pictured_linked_and_quiet_at(desktop: Desktop, named: str) -> None:
     # Put away, so the launcher takes the keys; the history keeps each.
     desktop.as_account("qs ipc call notices putAway")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    if machine.execute(desktop.in_session(LAUNCHER_OPEN))[0] == 0:
+        desktop.close_launcher()
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("standup ten", selecting="Standup in Ten Minutes")
