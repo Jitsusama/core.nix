@@ -1032,7 +1032,9 @@ QtObject {
                 [{ said: "--a-very-long-argument" }], " ", 100, ["--a-v\u2026ment"]],
             ["a path still too wide in its shortest form gives way from its middle too",
                 [{ said: firefox, path: firefox }], " ", 80, ["\u2026/fi\u2026fox"]],
-            ["an empty item is left out", [{ said: "" }, { said: "on" }], " ", 100, ["on"]]
+            ["an empty item is left out", [{ said: "" }, { said: "on" }], " ", 100, ["on"]],
+            ["an emoji in its middle is kept whole or left out, never split",
+                [{ said: "ab\ud83c\udf89cdefgh" }], " ", 60, ["ab\u2026gh"]]
         ];
         for (const [what, items, between, wide, want] of cases)
             holds(`a drawer's value: ${what}`, Page.valueLines(items, between, wide, width), want);
@@ -1049,22 +1051,32 @@ QtObject {
         for (const [what, items, wide, want] of lines)
             holds(`a drawer's list: ${what}`, Page.valueLine(items, "{count} more", wide, width),
                 want);
+        // What's measured beside a name, to choose a table or a list.
+        const opens = { value: kinds.map(kind => kind.said).join(" \u00b7 "), valueItems: kinds,
+            tail: "{count} more" };
+        holds("a list with a tail is measured as the line it's drawn on, never whole",
+            Page.besideText(opens, 200, width), "PDF \u00b7 HTML \u00b7 2 more");
+        holds("any other value is measured whole", Page.besideText({ value: 42,
+            valueItems: kinds, between: " " }, 60, width), "42");
     }
 
-    // How tall a drawer's preview stands, on a pitch of 24 with groups 20
-    // apart: a picture its own height less the pitch's lead of 4, so the
-    // facts start the groups' gap below it rather than below a band rounded
-    // up to the pitch (VKCF3Z, 2026-11-08); lines whole lines of the pitch.
+    // How tall a drawer's preview stands, on a pitch of 24, two beats of
+    // 12, with groups 20 apart: so the facts after it start on the first
+    // beat at least the groups' gap below a picture, never a band rounded up
+    // to the pitch (VKCF3Z, 2026-11-08); lines whole lines of the pitch.
     function drawerPreviewHeights(holds) {
+        const grid = { pitch: 24, beat: 12, gap: 20 };
         // [what, the picture's height, lines of words, what it stands]
         const previews = [
-            ["a picture stands short by the pitch's lead over the groups' gap", 12, 0, 8],
-            ["a picture is never rounded up to the pitch", 100.2, 0, 97],
+            ["a picture and its gap ending on a beat stand no more", 100, 0, 96],
+            ["a picture whose gap ends past a beat stands to the next", 100.2, 0, 108],
+            ["a picture is never rounded up to the pitch", 105, 0, 108],
+            ["a short picture keeps the whole gap", 12, 0, 12],
             ["lines stand whole lines of the pitch", 0, 3, 72],
             ["nothing yet stands nothing", 0, 0, 0]
         ];
         for (const [what, picture, lines, want] of previews)
-            holds(`a drawer's preview: ${what}`, Page.previewHeight(picture, lines, 24, 20), want);
+            holds(`a drawer's preview: ${what}`, Page.previewHeight(picture, lines, grid), want);
     }
 
     function drawerRefusals(holds) {

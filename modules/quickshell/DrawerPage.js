@@ -352,6 +352,9 @@ function moved(act, count, page) {
 const TRAILING = /\s+$/u;
 // What a dotted list's items run on.
 const DOTTED = " \u00b7 ";
+// A line already on a beat, to within the sums' rounding, keeps it rather
+// than going a beat on, as Drawer.qml's onBeat does.
+const BEAT_ROUNDING = 0.001;
 
 // A value given as items, each `{ said, path }`, as lines no wider than
 // `wide` by `width(text)`: as many items to a line as fit, `between` them
@@ -400,6 +403,18 @@ function valueLine(items, tail, wide, width) {
     return saying.length === 0 ? [] : [fitted({ said: more(saying.length) }, wide, width)];
 }
 
+// What of a fact's value stands beside its name, measured to choose
+// whether a drawer reads as a table: a list with a `tail` is the one line
+// valueLine draws in `room`, never every item it holds, so a browser
+// opening dozens of kinds keeps its table (Y2YBTS, 2026-11-08); any other
+// its value whole. `value` stays what's copied either way.
+function besideText(fact, room, width) {
+    if (fact.valueItems && fact.tail) {
+        return valueLine(fact.valueItems, fact.tail, room, width).join("");
+    }
+    return String(fact.value);
+}
+
 // An item's words no wider than `room`: whole where they fit, else its
 // path from the path's middle, else its narrowest form from its middle.
 function fitted(item, room, width) {
@@ -416,9 +431,13 @@ function fitted(item, room, width) {
 // Words given way from their middle, "--a-ver\u2026ument", keeping as much of
 // each end as fits in `room`.
 function middled(words, room, width) {
-    for (let keep = words.length - 1; keep > 0; keep--) {
+    // By characters, never halves of one, so an emoji is kept whole or not:
+    // spread, since Qt's Array.from takes a string's UTF-16 units.
+    const each = [...words];
+    for (let keep = each.length - 1; keep > 0; keep--) {
         const head = Math.ceil(keep / 2);
-        const tried = `${words.slice(0, head)}\u2026${words.slice(words.length - (keep - head))}`;
+        const tried = `${each.slice(0, head).join("")}\u2026`
+            + each.slice(each.length - (keep - head)).join("");
         if (width(tried) <= room) {
             return tried;
         }
@@ -426,14 +445,18 @@ function middled(words, room, width) {
     return "\u2026";
 }
 
-// How tall a preview stands, in a column that sets `pitch` after it: a
-// picture its own height, less the pitch's lead over the groups' `gap`,
-// so what follows is that gap below the picture rather than below a band
-// rounded up to the pitch (VKCF3Z, 2026-11-08); lines whole lines of the
-// pitch, so the words after them stay on the card's; nothing while a
-// picture's size isn't known yet.
-function previewHeight(picture, lines, pitch, gap) {
-    return picture > 0 ? Math.ceil(picture) + gap - pitch : lines * pitch;
+// How tall a preview stands, in a column that sets `grid.pitch` after it:
+// a picture so what follows starts on the first of the card's beats at
+// least the groups' `grid.gap` below it, never a band rounded up to the
+// pitch (VKCF3Z, 2026-11-08), and never off the beat the facts keep
+// (2026-11-05); lines whole lines of the pitch; nothing while a picture's
+// size isn't known yet.
+function previewHeight(picture, lines, grid) {
+    if (picture <= 0) {
+        return lines * grid.pitch;
+    }
+    const beats = Math.ceil((Math.ceil(picture) + grid.gap) / grid.beat - BEAT_ROUNDING);
+    return beats * grid.beat - grid.pitch;
 }
 
 // The face a fact's value is set in, given the script its plate is in, ""

@@ -1078,19 +1078,24 @@ Floating {
         void figureInk.advanceWidth;
         const room = column.width - labelsGap;
         const most = room - valueFace.advanceWidth("00000000");
-        const measured = fact => ({
-            name: Math.ceil(nameWidth(fact)),
-            value: fact.value === null || fact.value === undefined ? 0
-                : faceOf(fact).advanceWidth(unbroken(fact.value)) + figureLeast(fact)
-        });
-        const named = facts.filter(fact => fact && fact.heading === undefined && !proseFact(fact))
-            .map(measured);
-        const moment = [].concat(...groups.map(group => group.facts)).map(measured);
-        const widest = Math.max(0, ...named.concat(moment).map(one => one.name));
+        // Its value as it would stand in `beside`, a list with a tail as the
+        // line it's drawn on there (DrawerPage.besideText).
+        const valueWidth = (fact, beside) => {
+            if (fact.value === null || fact.value === undefined)
+                return 0;
+            const face = faceOf(fact);
+            const said = Page.besideText(fact, beside, text => face.advanceWidth(text));
+            return face.advanceWidth(unbroken(said)) + figureLeast(fact);
+        };
+        const named = facts.filter(fact => fact && fact.heading === undefined && !proseFact(fact));
+        const moment = [].concat(...groups.map(group => group.facts));
+        const widest = Math.max(0, ...named.concat(moment)
+            .map(fact => Math.ceil(nameWidth(fact))));
         const wide = Math.min(most, widest);
         return {
             wide,
-            beside: listsKeys || widest <= most && named.every(one => one.value <= room - wide)
+            beside: listsKeys || widest <= most
+                && named.every(fact => valueWidth(fact, room - wide) <= room - wide)
         };
     }
     // The names' column: as wide as the widest name, short of a value's
@@ -1811,8 +1816,8 @@ Floating {
                 // lines in the mono at body size, each whole or cut short,
                 // a folder's items quiet. Lines take whole lines of the
                 // pitch, so everything after them stays on the card's; a
-                // picture its own height, what follows a gap below it
-                // (DrawerPage.previewHeight).
+                // picture its own height, what follows a gap below it on
+                // the next of the card's beats (DrawerPage.previewHeight).
                 Item {
                     id: previewBox
                     readonly property string picture: drawer.preview?.picture ?? ""
@@ -1832,7 +1837,11 @@ Floating {
                     // drawn square and then jumping to its shape.
                     visible: (picture !== "" && previewFrame.height > 0) || lines.length > 0
                     height: Page.previewHeight(picture !== "" ? previewFrame.height : 0,
-                        lines.length, drawer.pitch, Theme.space.rung.groups)
+                        lines.length, {
+                            pitch: drawer.pitch,
+                            beat: Theme.space.beat,
+                            gap: Theme.space.rung.groups
+                        })
 
                     Rectangle {
                         id: previewFrame
@@ -2205,16 +2214,17 @@ Floating {
                 // A picture in its own shape, as wide as the drawer at
                 // most, its corners a part's, the raised colour until it's
                 // drawn. One whose size isn't given is as wide as the
-                // drawer, square until it's read and then in its own
-                // shape, so a wide picture isn't drawn in a square's middle
-                // with empty bands above and below it.
+                // drawer, a screen's 16:10 until it's read, the shape most
+                // it shows are, and then its own, so a wide picture isn't
+                // drawn in a taller box's middle with bands above and below.
                 Rectangle {
                     id: frame
                     readonly property real across: drawer.shown?.across > 0
                         ? drawer.shown.across : parent.width
                     readonly property real down: drawer.shown?.down > 0 ? drawer.shown.down
                         : drawn.status === Image.Ready && drawn.implicitWidth > 0
-                            ? across * drawn.implicitHeight / drawn.implicitWidth : across
+                            ? across * drawn.implicitHeight / drawn.implicitWidth
+                            : across * 10 / 16
                     readonly property real shrunk: Math.min(1, parent.width / across)
 
                     visible: drawer.picture !== ""
