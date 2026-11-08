@@ -183,6 +183,16 @@ QtObject {
                 entry: { name: "Trips", folder: true } }, now, words), {
                 eyebrow: "Folder", title: "Trips", facts: [{ label: "Where", value: "My Drive" }]
             });
+        expect("where its place says it is leads its eyebrow, in place of Where",
+            FileFacts.plateElsewhere({ name: "menu.pdf", where: "My Drive/Trips",
+                within: "in My Drive/Trips", entry: away, facts: [owner] }, now, words), {
+                eyebrow: "in My Drive/Trips \u00b7 PDF", eyebrowNames: true, title: "menu.pdf",
+                facts: [{ label: "Size", value: kept("2.4_MB") },
+                    { label: "Changed", value: kept("28_Oct") }, owner]
+            });
+        expect("and a folder's, its kind its folder", FileFacts.plateElsewhere({ name: "Trips",
+            where: "My Drive", within: "in My Drive", entry: { name: "Trips", folder: true } },
+            now, words).eyebrow, "in My Drive \u00b7 Folder");
         expect("a file with no ending is a file", FileFacts.plateElsewhere({ name: "notes",
             where: "", entry: { name: "notes", size: 3 } }, now, words).eyebrow, "File");
 

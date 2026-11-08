@@ -637,7 +637,11 @@ Provider {
     function fileElsewhere(fields) {
         elsewhere[fields.key] = { name: fields.name, fetch: fields.fetch };
         const made = acts => {
-            const row = fields.adopt ? Object.assign({}, fields.adopt)
+            // An adopted row says when it changed at its side, as every row
+            // in a folder does, rather than when Joel last opened it, which
+            // its place's listing doesn't say (VKCF3Z, 2026-11-08).
+            const row = fields.adopt ? Object.assign({}, fields.adopt, fields.entry
+                    ? { side: FileFacts.sideElsewhere(fields.entry, Date.now(), factWords) } : {})
                 : Files.elsewhere("file", factsElsewhere(fields), thing, []);
             if (typeof fields.open === "function")
                 row.openOwn = () => provider.openElsewhere(fields);

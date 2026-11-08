@@ -280,6 +280,12 @@ Singleton {
             .map(file => root.pickable(file, where));
     }
 
+    // Where a file the picker lists is, as its eyebrow says it before its
+    // kind, in the words Drive's own drawer says it in: "in My Drive/Trips".
+    function within(where) {
+        return where === "" ? "" : root.said.said.in.replace("{place}", where);
+    }
+
     // A file or a folder in Drive as the picker draws one here, its row
     // and plate saying what Drive listed (Drive.js's placed). Normal's gx
     // opens a file as Return opens it in Drive's own places: one of
@@ -295,6 +301,7 @@ Singleton {
                 note: facts.note,
                 entry: facts.entry,
                 where: where,
+                within: root.within(where),
                 facts: facts.facts,
                 inside: () => root.inside(file.id, `${where}/${file.name}`),
                 empty: () => root.empty(file.id)
@@ -306,6 +313,7 @@ Singleton {
             note: facts.note,
             entry: facts.entry,
             where: where,
+            within: root.within(where),
             facts: facts.facts,
             adopt: document === null ? null : root.row(document, root.provider),
             fetch: (done, failed) => root.fetch(file.id, done, failed, "pick"),

@@ -1862,12 +1862,14 @@ works the same way everywhere.
   folder takes nothing of his) and Shared Drives once he's on one. Each
   folder there lists as one here does, folders first, a row saying its
   size and when it changed as a file here says them, a folder only when,
-  since Drive counts no folder's items; its plate says its kind by its
-  ending, its name, Size, Changed, Where ("My Drive/Trips") and Drive's
-  Owner, with no preview, since nothing is fetched to be looked at, and
-  nothing Drive doesn't give. Google's own kinds are the one row each is
-  everywhere, noted "as .docx", ".xlsx" or ".pptx", the file a program
-  is handed, and left out where the program takes none of those. Return
+  since Drive counts no folder's items; its plate's eyebrow says where it
+  is then its kind, as Drive's own drawer does ("in My Drive/Trips ·
+  PDF"), then its name, Size, Changed and Drive's Owner, with no
+  preview, since nothing is fetched to be looked at, and nothing Drive
+  doesn't give. Google's own kinds are the one row each is everywhere,
+  noted "as .docx", ".xlsx" or ".pptx", the file a program is handed,
+  its side saying when it changed, as every row in a folder does, and
+  left out where the program takes none of those (VKCF3Z, 2026-11-08). Return
   fetches it and hands its path, the foot saying "Fetching it."; gx opens
   it the same way in its own program, one of Google's own kinds by its
   link in its program's window, never one that runs. A file fetched is
