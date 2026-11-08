@@ -238,6 +238,9 @@ QtObject {
         ])
             expect(`the gateway node's ${id}`, value(hall, id), wanted);
         expect("no support end eero didn't give", hall.support, undefined);
+        expect("a node's drawer leads with how it stands", Drawers.node(model, node("2003"), now)
+            .facts.slice(0, 5).map(fact => fact.id), ["state", "backhaul", "devices", "model",
+            "serial"]);
         const radios = Drawers.node(model, node("2003"), now).facts
             .filter(fact => fact.label !== undefined && fact.figure);
         expect("each radio by band", radios.map(fact => [fact.label, fact.value]), [
@@ -293,6 +296,8 @@ QtObject {
         expect("a device's eyebrow", [generic.eyebrow, generic.names], ["on Den \u00b7 Wi-Fi",
             true]);
         expect("no hostname that only says its name again", facts.hostname, undefined);
+        expect("a device's drawer leads with how well it's heard", generic.facts.slice(0, 6)
+            .map(fact => fact.id), ["signal", "score", "band", "rx", "tx", "speed"]);
         expect("no profile it isn't in", facts.profile, undefined);
         expect("its signal as a stroke", facts.signal.figure.shape, "stroke");
         const older = byId(Drawers.device(model, device("printer 1"), now));

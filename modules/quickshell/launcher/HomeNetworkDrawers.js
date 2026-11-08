@@ -208,17 +208,16 @@ function outages(list) {
     return recorded === 0 ? "none recorded" : `${recorded} recorded`;
 }
 
-// A node's drawer: which node it is, how it stands and reaches the one
-// before it, each radio and port, its firmware, uptime and addresses, its
-// light, and the day's traffic through it.
+// A node's drawer: how it stands, reaches the one before it and how many
+// devices are on it, first, as a narrow drawer has room for those before
+// its more; then which node it is, each radio and port, its firmware,
+// uptime and addresses, its light, and the day's traffic through it.
 function node(model, one, now, settings) {
     const devices = one.devices ?? {};
     return {
         eyebrow: joined([one.gateway ? "gateway node" : "node", Home.stateOf(one)]),
         title: Home.nodeName(one),
         facts: kept([
-            fact("model", joined([one.model, one.model_number])),
-            fact("serial", one.serial),
             fact("state", joined([Home.stateOf(one), heartbeat(one, now)])),
             fact("backhaul", joined([Home.backhaulOf(one), known(one.backhaul?.bars)
                 ? `${one.backhaul.bars} of 5 bars` : ""]), {
@@ -227,6 +226,8 @@ function node(model, one, now, settings) {
             fact("devices", joined([devices.all, known(devices.ethernet)
                 ? `${devices.ethernet} Ethernet` : "",
                 known(devices.wifi) ? `${devices.wifi} Wi-Fi` : ""])),
+            fact("model", joined([one.model, one.model_number])),
+            fact("serial", one.serial),
         ]).concat(radios(one), ports(one, settings), kept([
             { heading: "about" },
             fact("firmware", joined([one.firmware, updateWords(one.update_available)])),
@@ -347,10 +348,11 @@ function rateOf(rate, settings) {
         rate.generation]);
 }
 
-// A device's drawer: what it is and where, how well it hears and is
-// heard, each way's rate and how it's made, its speed now, what had to be
-// sent again, its network and addresses, when it was seen, and its
-// profile.
+// A device's drawer: how well it hears and is heard, its band, each way's
+// rate and how it's made and its speed now, first, as a narrow drawer has
+// room for those before its more; then what it is and which node it's on,
+// what had to be sent again, its network and addresses, when it was seen,
+// and its profile.
 // `asked` gives the launcher's number settings and the device's readings
 // since the shell started, { settings, readings }, each optional.
 function device(model, one, now, asked) {
@@ -366,8 +368,6 @@ function device(model, one, now, asked) {
         names: on !== null,
         title: Home.nameOf(one),
         facts: kept([
-            fact("kind", joined([Home.worded(one.kind), one.make, one.model, one.manufacturer])),
-            fact("node", on ? joined([Home.nodeName(on), on.model]) : null),
             fact("signal", joined([Home.signalOf(one), known(one.snr_db)
                 ? `${one.snr_db} dB over the noise` : ""]), {
                 figure: signalFigure(one, seen.signal),
@@ -378,12 +378,14 @@ function device(model, one, now, asked) {
                 settings)}%` : "", known(one.bars) ? `${one.bars} of 5 bars` : ""])),
             fact("band", one.ethernet ? null : joined([Home.bandOf(one), known(one.frequency_mhz)
                 ? `${Home.number(one.frequency_mhz, 0, settings)} MHz` : ""])),
-            fact("bssid", one.bssid),
             fact("port", one.port ? joined([one.port.name, linkSpeed(one.port.mbps, settings)])
                 : null),
             fact("rx", rateOf(one.rx, settings)),
             fact("tx", rateOf(one.tx, settings)),
             fact("speed", Home.speedOf(one, settings), { figure: spark(seen.speed) }),
+            fact("kind", joined([Home.worded(one.kind), one.make, one.model, one.manufacturer])),
+            fact("node", on ? joined([Home.nodeName(on), on.model]) : null),
+            fact("bssid", one.bssid),
             fact("retries", joined([known(one.retry_pct) ? `${Home.number(one.retry_pct, 1,
                 settings)}%` : "", known(one.idle_ms) ? `quiet for ${Home.number(one.idle_ms, 0,
                 settings)} ms` : ""])),
