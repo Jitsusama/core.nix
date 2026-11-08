@@ -7,7 +7,7 @@
 // words.json), given it by the chooser as `words` (wordsOf), so each is
 // said in one place (Y2YBTS, 2026-11-03).
 //
-// A number keeps to its unit with a no-break space, so "2.4 MB" never
+// A number keeps to its unit with a no-break space, so "2.41 MB" never
 // leaves its MB alone on the next line.
 .pragma library
 .import "When.js" as When
@@ -22,8 +22,8 @@ const SECONDS_IN_AN_HOUR = 3600;
 const THOUSAND = 1000;
 const UNITS = [[THOUSAND ** 4, "TB"], [THOUSAND ** 3, "GB"], [THOUSAND ** 2, "MB"],
     [THOUSAND, "kB"]];
-// Under this a size keeps one decimal: 9.95 rounds to 10, which doesn't.
-const KEEPS_A_DECIMAL = 9.95;
+// A size keeps three significant digits, as every figure does (design.md).
+const FIGURES = 3;
 // A file of text's kind by its format's own name, where its ending isn't
 // it, by the ending file-preview says; plain text is said as the words
 // say Text, and any other ending as itself.
@@ -73,20 +73,20 @@ function counted(count, said, more) {
     return filled(count === 1 ? said.one : said.many, "count", count);
 }
 
-// A size in SI units, with one decimal under 10: 12 B, 940 kB, 2.4 MB.
+// A size in SI units at three significant digits: 12 B, 940 kB, 2.41 MB,
+// 19.3 GB, as every size the launcher says reads (VKCF3Z, 2026-11-08).
 function weighed(bytes) {
     const unit = UNITS.find(each => bytes >= each[0]);
     if (!unit) {
         return `${Math.round(bytes)}${KEPT}B`;
     }
-    const scaled = bytes / unit[0];
-    const shown = scaled < KEEPS_A_DECIMAL ? scaled.toFixed(1) : String(Math.round(scaled));
-    // 999.95 kB would round to 1000 kB: it's 1.0 MB instead.
+    // 999.6 kB would round to 1000 kB: it's 1.00 MB instead.
+    const scaled = Number((bytes / unit[0]).toPrecision(FIGURES));
     const next = UNITS[UNITS.indexOf(unit) - 1];
-    if (shown === String(THOUSAND) && next) {
-        return `1.0${KEPT}${next[1]}`;
+    if (scaled >= THOUSAND && next) {
+        return `${(scaled / THOUSAND).toPrecision(FIGURES)}${KEPT}${next[1]}`;
     }
-    return `${shown}${KEPT}${unit[1]}`;
+    return `${scaled.toPrecision(FIGURES)}${KEPT}${unit[1]}`;
 }
 
 // Where a name's own part ends, before its extension, as the caret starts
@@ -140,7 +140,7 @@ function amount(entry, count, words) {
 }
 
 // What sits beside a file's or a folder's name on its row: its size, or a
-// folder's count once it's known, and when it changed, "2.4 MB · 28 Oct".
+// folder's count once it's known, and when it changed, "2.41 MB · 28 Oct".
 function side(entry, count, now, words) {
     return [amount(entry, count, words), when(entry.modified, now, words)]
         .filter(part => part !== "").join(BETWEEN);

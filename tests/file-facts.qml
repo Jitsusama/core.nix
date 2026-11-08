@@ -54,11 +54,12 @@ QtObject {
     function run() {
         const words = launcherWords();
         expect("bytes are bytes", FileFacts.weighed(12), kept("12_B"));
-        expect("under 10 of a unit keeps a decimal", FileFacts.weighed(2_400_000), kept("2.4_MB"));
-        expect("10 and over doesn't", FileFacts.weighed(940_000), kept("940_kB"));
+        expect("a size keeps three figures", FileFacts.weighed(2_412_345), kept("2.41_MB"));
+        expect("its zeros too", FileFacts.weighed(2_400_000), kept("2.40_MB"));
+        expect("tens keep one place", FileFacts.weighed(19_340_000_000), kept("19.3_GB"));
+        expect("hundreds keep none", FileFacts.weighed(940_000), kept("940_kB"));
         expect("a size that rounds up to the next unit says it", FileFacts.weighed(999_960),
-            kept("1.0_MB"));
-        expect("9.96 of a unit is 10, not 10.0", FileFacts.weighed(9_960), kept("10_kB"));
+            kept("1.00_MB"));
 
         expect("a folder counts its items", FileFacts.items(14, words), kept("14_items"));
         expect("one item is one", FileFacts.items(1, words), kept("1_item"));
@@ -89,7 +90,7 @@ QtObject {
 
         const file = { folder: false, size: 2_400_000, modified: at(2026, 10, 28, 14, 32) };
         expect("a file's row says its size and its day", FileFacts.side(file, undefined, now, words),
-            kept("2.4_MB \u00b7 28_Oct"));
+            kept("2.40_MB \u00b7 28_Oct"));
         const folder = { folder: true, size: 4096, modified: at(2026, 10, 28, 14, 32) };
         expect("a folder's row says its count once it's known",
             FileFacts.side(folder, 14, now, words), kept("14_items \u00b7 28_Oct"));
@@ -130,7 +131,7 @@ QtObject {
         const shot = { path: picture, name: "shot.png", where: "~", entry: file };
         const before = FileFacts.plate(shot, null, now, words);
         expect("until it's said, a plate is its facts alone, from its folder", before, {
-            eyebrow: "", title: "shot.png", facts: [{ label: "Size", value: kept("2.4_MB") },
+            eyebrow: "", title: "shot.png", facts: [{ label: "Size", value: kept("2.40_MB") },
                 { label: "Changed", value: kept("28_Oct") }, { label: "Where", value: "~" }]
         });
         const said = { kind: "PNG", size: 2_400_000, changed: file.modified, across: 2400,
