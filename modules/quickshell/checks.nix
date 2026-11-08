@@ -294,6 +294,13 @@ onLinux {
     given = [ "WLRCTL=${lib.getExe pkgs.wlrctl}" ];
   };
 
+  # Turn Every Screen Off and :set noscreens ask niri to power its monitors
+  # off, which keeps each output connected, read on their way to niri.
+  the-screens-go-off-on-niri = launcherOnNiri {
+    name = "the-screens-go-off-on-niri";
+    tests = ../../tests/screens-off-on-niri-test.py;
+  };
+
   # A switch restarts Quickshell when any file it reads changes, so the shell
   # on screen is never the one from before the switch.
   quickshell-restarts-with-its-files =
