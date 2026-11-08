@@ -1872,7 +1872,7 @@
     {
       "id": "power:port:mode",
       "in": "power:port",
-      "name": "Mode"
+      "name": "Power Mode"
     },
     {
       "id": "power:port:offers",
@@ -7920,7 +7920,7 @@
     {
       "id": "session:profile:slowed",
       "in": "session:profile",
-      "name": "Slowed"
+      "name": "Held Back"
     },
     {
       "id": "session:profile:firmware",
