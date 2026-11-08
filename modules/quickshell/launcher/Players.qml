@@ -26,7 +26,6 @@
 // is open, through the clock the launcher's rows already tick by.
 import qs
 import Quickshell
-import Quickshell.Services.Mpris
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "../Music.js" as Players

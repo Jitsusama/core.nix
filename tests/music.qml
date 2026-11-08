@@ -153,24 +153,24 @@ QtObject {
         // workspace, which is kept longest, a file giving way from its
         // middle; a row alone keeps its artist.
         const track = { title: "Bless The Child", artist: "Nightwish", workspace: "" };
-        const said = notes => JSON.stringify(notes);
+        const written = notes => JSON.stringify(notes);
         const byFile = Music.notes([Object.assign({ file: "a.mp3" }, track),
             Object.assign({ file: "b.mp3" }, track)], "workspace {n}");
-        if (said(byFile) !== said([
+        if (written(byFile) !== written([
             [{ said: "Nightwish", keep: 1 }, { said: "a.mp3", keep: 2, file: "a.mp3" }],
             [{ said: "Nightwish", keep: 1 }, { said: "b.mp3", keep: 2, file: "b.mp3" }]]))
-            failures.push(`two players on one track aren't told by file: ${said(byFile)}`);
+            failures.push(`two players on one track aren't told by file: ${written(byFile)}`);
         const bySpace = Music.notes([
             Object.assign({}, track, { file: "a.mp3", workspace: "1" }),
             Object.assign({}, track, { file: "a.mp3", workspace: "2" })], "workspace {n}");
-        if (said(bySpace) !== said([
+        if (written(bySpace) !== written([
             [{ said: "Nightwish", keep: 1 }, { said: "workspace 1", keep: 2 }],
             [{ said: "Nightwish", keep: 1 }, { said: "workspace 2", keep: 2 }]]))
-            failures.push(`two players on one file aren't told by workspace: ${said(bySpace)}`);
+            failures.push(`two players on one file aren't told by workspace: ${written(bySpace)}`);
         const alone = Music.notes([Object.assign({ file: "a.mp3" }, track),
             { title: "Other", artist: "", file: "b.mp3", workspace: "" }], "w {n}");
-        if (said(alone) !== said([[{ said: "Nightwish", keep: 1 }], []]))
-            failures.push(`players apart already gain a note: ${said(alone)}`);
+        if (written(alone) !== written([[{ said: "Nightwish", keep: 1 }], []]))
+            failures.push(`players apart already gain a note: ${written(alone)}`);
 
         asked++;
         if (Music.mark("Spotify") !== String.fromCodePoint(0xf1bc)
