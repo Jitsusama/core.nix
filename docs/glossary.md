@@ -272,6 +272,9 @@ or a copy, can be opened, copied or forgotten.
 | photo | a picture Joel takes with the camera | | |
 | screenshot text | the words in a screenshot, read on the machine as it's taken, so it's found by them and they can be copied | OCR | `screen-text` |
 | location | where the laptop is, its town and the zone it keeps, Now's row and the one place the weather and everything that depends on it read it from | | `Location.qml`, the `whereabouts` program |
+| time server | a clock elsewhere that the machine sets its own time by, over the network, listed in Time's Servers | | chrony's sources, its `server` mode |
+| time peer | a time server that sets its time by the machine's too, each keeping the other right | | chrony's `peer` mode |
+| reference clock | a clock wired to the machine that it sets its time by, such as a GPS receiver | | chrony's `refclock` |
 | here | where the weather is when no town is typed: the location, else the town set, else the clock's time zone's city | | the weather provider's `place` |
 
 ## Machine
