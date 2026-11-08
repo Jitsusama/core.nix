@@ -339,7 +339,7 @@ Provider {
     readonly property var stateSaid: ({
         up: "up",
         off: "turned off",
-        "no link": "up, nothing at the other end"
+        "no link": "nothing at the other end"
     })
 
     // Where a hardware address came from, in words.
@@ -501,7 +501,7 @@ Provider {
         const now = uptime();
         let side = lease.server ?? "held";
         if (lease.ends !== null)
-            side = lease.ends > now ? `${Interfaces.lasted(lease.ends - now)} left` : "ended";
+            side = lease.ends > now ? `ends in ${Interfaces.lasted(lease.ends - now)}` : "ended";
         return holderRow({
             key: `networks:${name}:lease`,
             name: named("lease"),
@@ -553,14 +553,15 @@ Provider {
         return rows;
     }
 
-    // What's at a cable's other end, by what it calls itself, the port
-    // it hears this card on under its name, the rest a step in.
+    // What's at a cable's other end, by what it calls itself and the port
+    // it hears this card on, the rest a step in.
     function neighbourRow(name, one, at) {
+        const port = one.portName ?? one.port;
         return holderRow({
             key: `networks:${name}:neighbour:${at}`,
             name: named("neighbour"),
-            side: one.system ?? one.chassis ?? one.port ?? "",
-            note: one.portName ?? one.port ? `on its port ${one.portName ?? one.port}` : "",
+            side: [one.system ?? one.chassis, port].filter(said => said).join(" \u00b7 "),
+            note: "what the cable is plugged into",
             glyph: Theme.glyph.wired
         }, () => provider.neighbourParts(name, at));
     }

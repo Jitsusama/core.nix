@@ -1584,7 +1584,7 @@ def test_a_cable_says_how_its_link_is_doing(desktop: Desktop) -> None:
     # card counts it.
     machine.send_monitor_command("set_link cable off")
     desktop.launcher_until(
-        lambda shown: "State \u00b7 up, nothing at the other end" in reads(shown),
+        lambda shown: "State \u00b7 nothing at the other end" in reads(shown),
         timeout=timedelta(seconds=10),
     )
     machine.send_monitor_command("set_link cable on")
@@ -1728,8 +1728,8 @@ def test_ethernet_in_network_holds_each_cable_its_lease_and_its_neighbour(
     # its other end, by the name it gives.
     desktop.launcher_until(
         lambda shown: (
-            any(read.startswith("Lease \u00b7 23 h") for read in reads(shown))
-            and "Neighbour \u00b7 machine" in reads(shown)
+            any(read.startswith("Lease \u00b7 ends in 23 h") for read in reads(shown))
+            and any(read.startswith("Neighbour \u00b7 machine \u00b7 ") for read in reads(shown))
         )
     )
     desktop.type_in("lease", selecting="Lease")
