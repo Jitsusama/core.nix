@@ -317,6 +317,7 @@
         hardening = ./modules/hardening/nixos.nix;
         hibernate = ./modules/hibernate/nixos.nix;
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
+        idevicerestore = ./modules/idevicerestore/nixos.nix;
         idle-sleep = ./modules/idle-sleep/nixos.nix;
         inlyne = ./modules/inlyne/nixos.nix;
         ir-camera = ./modules/ir-camera/nixos.nix;
