@@ -2518,12 +2518,88 @@
     {
       "id": "heat:high",
       "in": "heat",
-      "name": "High"
+      "name": "High",
+      "said": {
+        "below": "{by} \u00b0 below high",
+        "past": "{by} \u00b0 past high"
+      }
     },
     {
       "id": "heat:critical",
       "in": "heat",
-      "name": "Critical"
+      "name": "Critical",
+      "said": {
+        "below": "{by} \u00b0 below critical",
+        "past": "{by} \u00b0 past critical"
+      }
+    },
+    {
+      "id": "heat:emergency",
+      "in": "heat",
+      "name": "Emergency"
+    },
+    {
+      "id": "heat:low",
+      "in": "heat",
+      "name": "Low"
+    },
+    {
+      "id": "heat:alarm",
+      "in": "heat",
+      "name": "Alarm",
+      "said": {
+        "raised": "raised"
+      }
+    },
+    {
+      "id": "heat:trip:passive",
+      "in": "heat",
+      "name": "Slows It At"
+    },
+    {
+      "id": "heat:trip:active",
+      "in": "heat",
+      "name": "Fans Up At"
+    },
+    {
+      "id": "heat:trip:hot",
+      "in": "heat",
+      "name": "Hot At"
+    },
+    {
+      "id": "heat:trip:critical",
+      "in": "heat",
+      "name": "Shuts Down At"
+    },
+    {
+      "id": "heat:cooling",
+      "in": "heat",
+      "name": "Cooling Step"
+    },
+    {
+      "id": "heat:voltage",
+      "in": "heat",
+      "name": "Voltage"
+    },
+    {
+      "id": "heat:current",
+      "in": "heat",
+      "name": "Current"
+    },
+    {
+      "id": "heat:drawing",
+      "in": "heat",
+      "name": "Drawing"
+    },
+    {
+      "id": "heat:chip",
+      "in": "heat",
+      "name": "Chip"
+    },
+    {
+      "id": "heat:zone",
+      "in": "heat",
+      "name": "Zone"
     },
     {
       "id": "heat:power",
@@ -2534,6 +2610,21 @@
       "id": "heat:aiming",
       "in": "heat",
       "name": "Aiming For"
+    },
+    {
+      "id": "heat:least",
+      "in": "heat",
+      "name": "Least Speed"
+    },
+    {
+      "id": "heat:control",
+      "in": "heat",
+      "name": "Control",
+      "said": {
+        "automatic": "automatic",
+        "manual": "set by hand",
+        "full": "full speed"
+      }
     },
     {
       "id": "waits",

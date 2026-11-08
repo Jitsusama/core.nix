@@ -88,9 +88,10 @@ units, or named here as left out with the reason.
 | `processor:0`   | throttles: package and each core, count, time, longest | Heat's Throttled                |
 | `sensor:<chip>` | each temperature, low, high, critical, emergency, alarm | Heat, each part by what it measures |
 |                 | each fan's speed, least, most, aim, power, mode | Heat's fans                            |
-|                 | each voltage, current and power, with limits | Heat's part's drawer                      |
-| `zone:<type>`   | temperature, policy, mode, each trip point   | Heat, for a part no chip gives; drawer    |
-| `cooling:<type>`| how many, each one's state, the most         | Heat's fans and Processor's drawer        |
+|                 | each voltage, current and power, with limits | Heat's part's drawer, each figure         |
+|                 | the chip's name                              | Heat's part's drawer, Chip                |
+| `zone:<type>`   | temperature, policy, mode, each trip point   | Heat, for a part no chip gives; drawer's trips and Zone |
+| `cooling:<type>`| how many, each one's state, the most         | Heat's Processor's drawer, Cooling Step   |
 | `supply:<name>` | charge, energy, design, health, cycles       | Power's Charge, Energy, Health, Cycles    |
 |                 | volts, amps, watts, design voltage           | Power's Drawing, Voltage                  |
 |                 | charge type and those offered, limits        | Power's Charge Type, Charge Limit         |
@@ -141,6 +142,11 @@ units, or named here as left out with the reason.
   there.
 - **Which cooling device each thermal zone drives.** They're the
   firmware's wiring, and nothing Joel acts on; each device's state shows.
+- **A chip's electric limits.** The only chips here that say them are
+  the USB-C ports', whose figures Power shows from their supplies, so
+  Heat's drawer gives each reading alone.
+- **A thermal zone's policy and mode.** They say how Linux is set to
+  manage the zone, the same for every zone, and nothing Joel acts on.
 - **fwupd's devices with no name.** They're pins it keeps for its own
   checks, with no version and nothing to update.
 - **The last sleep before the daemon started.** logind says a sleep as

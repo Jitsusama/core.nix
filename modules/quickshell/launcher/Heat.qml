@@ -5,17 +5,21 @@
 // Processor, how often it's Throttled, its NPU, Image Processor, Media
 // Engine and Display Engine, the Disk, the Memory, the Wi-Fi card, the
 // Battery, the Air inside and each fan. Each temperature is drawn
-// against the most its chip says it may reach, warning near it, and holds,
-// a step in, its Last Reads while shown, its other sensors (a
-// disk's second, hottest one), the processor's Cores, and its High and
-// Critical points. A fan is drawn against what it's rated for and holds
-// its history, its Power and what it's Aiming for. Throttled counts the
+// against the most its chip says it may reach, warning near it, beside
+// what's left to its limit, and holds, a step in, its Last Reads
+// while shown, its other sensors (a disk's second, hottest one), the
+// processor's Cores, its High, Critical, Emergency and Low points and its
+// chip's Alarm; its drawer holds where the firmware acts on its heat, the
+// processor's cooling steps, its chip's electricity and the chip and
+// zones it's read by. A fan is drawn against what it's rated for and
+// holds its history, its Power, what it's Aiming for, its Least Speed and
+// what has Control of it. Throttled counts the
 // times the processor slowed itself to cool down, as the whole processor
 // and core by core.
 //
 // The readings are the machine daemon's (modules/machine), its sensor,
-// zone and processor records, which it reads once a second while the
-// launcher is open and holds here, so nothing is read on the shell's
+// zone, cooling and processor records, which it reads once a second once
+// Heat is asked, until the launcher closes, and holds here, so nothing is read on the shell's
 // thread; Heat.js makes them into the parts. The
 // processor's NPU, image processor and media and display engines are
 // measured by no hwmon chip, so they come from its own telemetry
@@ -55,12 +59,17 @@ Provider {
 
     function answer(typed) {
         const part = partsAsked[plainly(typed)];
-        if (part)
-            return alone(part);
-        if (asks(typed) === "")
+        if (!part && asks(typed) === "")
             return null;
-        return told();
+        if (!asked)
+            Qt.callLater(() => provider.asked = true);
+        return part ? alone(part) : told();
     }
+
+    // Whether Heat has been asked since the launcher opened, as Machine's
+    // place asks it for its Heat row, so the daemon reads the sensors only
+    // then rather than whenever the launcher is open.
+    property bool asked: false
 
     function number(value, places) {
         return Numbers.format(value, places ?? 0, settings.group, settings.point);
@@ -154,13 +163,14 @@ Provider {
     // counts.
     function sensed() {
         const chips = Heat.chipsOf(heldOf("sensor"));
-        const zones = Heat.zonesOf(heldOf("zone"))
-            .filter(each => !Heat.gives(chips, each.part));
+        const zones = Heat.zonesOf(heldOf("zone"));
         const processor = heldOf("processor")[0] ?? null;
         return {
-            parts: Heat.gather(chips, zones, Heat.coreCpus(Heat.cpusOf(processor)),
-                ProcessorTelemetry.reading?.temperatures),
-            throttled: Heat.throttledOf(processor)
+            parts: Heat.gather(chips, zones.filter(each => !Heat.gives(chips, each.part)),
+                Heat.coreCpus(Heat.cpusOf(processor)), ProcessorTelemetry.reading?.temperatures),
+            throttled: Heat.throttledOf(processor),
+            zones: zones,
+            cooling: Heat.coolingOf(heldOf("cooling"))
         };
     }
 
@@ -244,7 +254,59 @@ Provider {
         return list.reduce((a, b) => (a && a.value >= b.value ? a : b), null);
     }
 
-    function tempRow(part) {
+    // What's left to a limit, or how far past it, in Heat's words: "29 °
+    // below high".
+    function limitSaid(left) {
+        const said = Words.of(`heat:${left.limit}`).said ?? {};
+        return (said[left.past ? "past" : "below"] ?? "").replace("{by}", number(left.by));
+    }
+
+    // A figure to three significant digits in its unit, with the real
+    // minus: "11.4 V".
+    function electric(value, unit) {
+        return `${Machine.digits(value).replace("-", "\u2212")} ${unit}`;
+    }
+
+    // The firmware's points that act on heat, in the order it acts.
+    readonly property var trips: ["passive", "active", "hot", "critical"]
+
+    // A part's drawer: where the firmware acts on its heat, how far it's
+    // stepping the processor's cooling, what its chip says of electricity,
+    // and last the identifiers it's read by, its chip and its zones, in the
+    // Name face (VKCF3Z, 2026-11-08). None where it has none of these.
+    function tempDrawer(part, said) {
+        const facts = [];
+        const tripped = Heat.tripsFor(said.zones, part.id)
+            .filter(trip => provider.trips.includes(trip.type));
+        for (const trip of tripped)
+            facts.push({ label: Words.name(`heat:trip:${trip.type}`), value: degrees(trip.value) });
+        if (part.id === "processor")
+            for (const cooling of said.cooling)
+                facts.push({
+                    label: Words.name("heat:cooling"),
+                    value: `${cooling.state} of ${cooling.max}`,
+                    qualifier: cooling.count > 1 ? `${cooling.type} \u00d7${cooling.count}`
+                        : cooling.type
+                });
+        const electrics = part.electric ?? { volts: [], amps: [], watts: [] };
+        for (const [list, id, unit] of [[electrics.volts, "heat:voltage", "V"],
+            [electrics.amps, "heat:current", "A"], [electrics.watts, "heat:drawing", "W"]])
+            for (const each of list)
+                facts.push({
+                    label: each.label !== "" ? each.label
+                        : list.length > 1 ? `${Words.name(id)} ${each.n}` : Words.name(id),
+                    value: electric(each.value, unit)
+                });
+        if (part.chip !== "")
+            facts.push({ label: Words.name("heat:chip"), value: part.chip, named: true });
+        const zoned = tripped.map(trip => trip.zone)
+            .filter((zone, at, all) => all.indexOf(zone) === at);
+        if (zoned.length > 0)
+            facts.push({ label: Words.name("heat:zone"), value: zoned.join(", "), named: true });
+        return facts.length > 0 ? { title: partName(part), facts: facts } : undefined;
+    }
+
+    function tempRow(part, said) {
         const core = hottest(part.cores);
         const sensor = hottest(part.sensors);
         // Where a part of it reads hotter than the whole, as a core or a
@@ -253,13 +315,21 @@ Provider {
             ? `the hottest, core ${core.cpu} at ${degrees(core.value)}`
             : sensor && Math.round(sensor.value) > Math.round(part.value)
             ? `${sensorName(sensor.label).toLowerCase()} hotter at ${degrees(sensor.value)}` : "";
+        // Beside it, what's left to its limit, which alone wears the
+        // warning past the high and the alert past the critical (VKCF3Z,
+        // 2026-11-08).
+        const left = Heat.leftTo(part.value, part.high, part.crit);
+        const items = [{ said: degrees(part.value), keep: 3 }];
+        if (left)
+            items.push({ said: limitSaid(left), keep: 1, hue: left.hue });
         return holderRow({
             name: partName(part),
             side: degrees(part.value),
+            sideItems: items,
             graph: level(part.value, part),
             glyph: Words.glyph("heat"),
-            note: [hotter, part.crit !== null ? `at most ${degrees(part.crit)}` : ""]
-                .filter(said => said !== "").join("; ")
+            note: hotter,
+            drawer: tempDrawer(part, said)
         }, () => tempParts(part));
     }
 
@@ -299,6 +369,25 @@ Provider {
                 name: Words.name("heat:critical"),
                 side: degrees(part.crit),
                 note: "the most it's meant to reach"
+            }));
+        if (part.emergency !== null)
+            rows.push(figure({
+                name: Words.name("heat:emergency"),
+                side: degrees(part.emergency),
+                note: "where it shuts itself off"
+            }));
+        if (part.low !== null)
+            rows.push(figure({
+                name: Words.name("heat:low"),
+                side: degrees(part.low),
+                note: "the least it's meant to read"
+            }));
+        if (part.alarm)
+            rows.push(figure({
+                name: Words.name("heat:alarm"),
+                side: (Words.of("heat:alarm").said ?? {}).raised ?? "",
+                alerts: true,
+                note: "its chip says a limit was crossed"
             }));
         return rows;
     }
@@ -345,7 +434,7 @@ Provider {
         const name = fanName(fan);
         return holderRow({
             name: name,
-            side: fan.value > 0 ? rpm(fan.value) : "still",
+            side: fan.value > 0 ? rpm(fan.value) : "stopped",
             graph: fan.max ? bar(fan.value / fan.max, false) : undefined,
             glyph: Theme.glyph.fan,
             note: [fan.max ? `rated for ${rpm(fan.max)}` : "",
@@ -371,6 +460,19 @@ Provider {
                 side: rpm(fan.target),
                 note: "the speed it's asked for"
             }));
+        if (fan.min !== null)
+            rows.push(figure({
+                name: Words.name("heat:least"),
+                side: rpm(fan.min),
+                note: "the slowest it turns while it turns"
+            }));
+        const control = fan.mode === null ? "" : (Words.of("heat:control").said ?? {})[fan.mode];
+        if (control)
+            rows.push(figure({
+                name: Words.name("heat:control"),
+                side: control,
+                note: "what sets its speed"
+            }));
         return rows;
     }
 
@@ -382,7 +484,7 @@ Provider {
             return null;
         const rows = [];
         for (const part of temps) {
-            rows.push(tempRow(part));
+            rows.push(tempRow(part, now));
             if (part.id === "processor" && now.throttled)
                 rows.push(throttledRow(now.throttled));
         }
@@ -396,7 +498,7 @@ Provider {
         if (hot)
             summary.push(`${degrees(hot.value)} at the ${Heat.phrase(partName(hot))}`);
         if (fans.length > 0)
-            summary.push(turning === 0 ? "fans still" : turning === 1 ? "a fan turning"
+            summary.push(turning === 0 ? "fans stopped" : turning === 1 ? "a fan turning"
                 : `${turning} fans turning`);
         return {
             headline: summary.join(", "),
@@ -461,9 +563,9 @@ Provider {
         }
     }
 
-    // The machine daemon's chips, zones and processor, held while the
-    // launcher is open, as Machine holds its parts: Machine's Heat row
-    // says the hottest part whenever Machine is shown.
+    // The machine daemon's chips, zones, cooling and processor, held once
+    // Heat has been asked since the launcher opened, as Machine's place
+    // asks it for its Heat row, until the launcher closes.
     // Whether the daemon has said anything since the launcher opened: its
     // first records are answered at once, shown or not, so Machine's Heat
     // row is there as soon as they are, and a read made before them is
@@ -488,8 +590,10 @@ Provider {
         target: provider.launcher
 
         function onOpenChanged() {
-            if (!provider.launcher.open)
+            if (!provider.launcher.open) {
                 provider.heardSinceOpen = false;
+                provider.asked = false;
+            }
         }
     }
 
@@ -497,8 +601,8 @@ Provider {
         id: daemon
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
-        kind: ["sensor", "zone", "processor"]
-        live: provider.launcher !== null && provider.launcher.open
+        kind: ["sensor", "zone", "cooling", "processor"]
+        live: provider.launcher !== null && provider.launcher.open && provider.asked
         keptThroughGap: false
         answersWhole: true
     }

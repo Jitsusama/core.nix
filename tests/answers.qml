@@ -1034,10 +1034,10 @@ QtObject {
             heatDisk.sensors.map(s => [s.label, s.value]),
             [["Sensor 1", 53.85], ["Sensor 2", 68.85]]);
         machine("the fans by name, with what the unnamed chip says of them", heatParts.fans,
-            [{ id: "video-fan", n: 1, label: "Video Fan", value: 5420, max: 4800, target: 4800,
-                power: 1 },
-                { id: "cpu-fan", n: 2, label: "CPU Fan", value: 5385, max: 4800, target: 4800,
-                    power: 0.5 }]);
+            [{ id: "video-fan", n: 1, label: "Video Fan", value: 5420, max: 4800, min: null,
+                target: 4800, power: 1, mode: null },
+                { id: "cpu-fan", n: 2, label: "CPU Fan", value: 5385, max: 4800, min: null,
+                    target: 4800, power: 0.5, mode: null }]);
         machine("fans no chip names, by number", Heat.fans([heatChips[3]]).map(f => [f.id, f.n]),
             [["fan", 1], ["fan", 2]]);
         machine("no fans", Heat.fans([heatChips[0]]), []);
@@ -1178,24 +1178,67 @@ QtObject {
             { key: "sensor:dell_smm", part: "fans", temperatures: [
                 { n: 1, label: "CPU", temperature_c: 61 },
                 { n: 2, label: "Ambient", temperature_c: 40, critical_c: -273 }], fans: [
-                { n: 1, label: null, rpm: 2400, max_rpm: 5900, target_rpm: 2400,
-                    power_ratio: 0.502 },
+                { n: 1, label: null, rpm: 2400, max_rpm: 5900, min_rpm: 1200, target_rpm: 2400,
+                    power_ratio: 0.502, mode: "automatic" },
                 { n: 2, label: null, rpm: null }] },
-            { key: "sensor:coretemp", part: "processor", temperatures: [
+            { key: "sensor:coretemp", part: "processor", chip: "coretemp", temperatures: [
                 { n: 1, label: "Package id 0", temperature_c: 79, high_c: 100,
-                    critical_c: 100 }], fans: [] }
+                    critical_c: 100, low_c: -273, emergency_c: 105, alarm: true }], fans: [],
+                voltages: [{ n: 0, label: null, volts: 1.21 }, { n: 1, label: "Vcore", volts: null }],
+                currents: [], power: [{ n: 1, label: "Package", watts: 12.5 }] }
         ]);
         machine("the daemon's chips, by key, each for its part", heatHeld.map(chip => chip.part),
             ["processor", "", "disk"]);
         machine("a chip of no part, only its labelled sensors", heatHeld[1].temps,
-            [{ n: 2, label: "Ambient", value: 40, high: null, crit: null }]);
+            [{ n: 2, label: "Ambient", value: 40, high: null, crit: null, low: null,
+                emergency: null, alarm: false, chip: "" }]);
+        machine("a chip's limits past its high and critical, and its alarm",
+            heatHeld[0].temps.map(t => [t.low, t.emergency, t.alarm, t.chip]),
+            [[null, 105, true, "coretemp"]]);
+        machine("a chip's electricity, each figure it reads", heatHeld[0].electric,
+            { volts: [{ n: 0, label: "", value: 1.21 }], amps: [],
+                watts: [{ n: 1, label: "Package", value: 12.5 }] });
         machine("a reading no part could reach, left out", heatHeld[2].temps.map(t => t.label),
             ["Composite"]);
         machine("an unlabelled fan, its speed read", heatHeld[1].fans,
-            [{ n: 1, label: "", value: 2400, max: 5900, target: 2400, power: 0.502 }]);
-        machine("the daemon's zones for a part", Heat.zonesOf([
-            { type: "TCPU", temperature_c: 78.5 }, { type: "SEN1", temperature_c: 40 },
-            { type: "acpitz", temperature_c: null }]), [{ part: "processor", value: 78.5 }]);
+            [{ n: 1, label: "", value: 2400, max: 5900, min: 1200, target: 2400, power: 0.502,
+                mode: "automatic" }]);
+        const heatZones = Heat.zonesOf([
+            { type: "TCPU", temperature_c: 78.5, trips: [
+                { type: "critical", temperature_c: 110 }, { type: "passive", temperature_c: 95 },
+                { type: "active", temperature_c: -273 }] },
+            { type: "x86_pkg_temp", temperature_c: 79, trips: [
+                { type: "passive", temperature_c: 95 }, { type: "hot", temperature_c: 105 }] },
+            { type: "SEN1", temperature_c: 40 }, { type: "acpitz", temperature_c: null }]);
+        machine("the daemon's zones for a part, their trips within reach", heatZones,
+            [{ part: "processor", type: "TCPU", value: 78.5, trips: [
+                { type: "critical", value: 110 }, { type: "passive", value: 95 }] },
+                { part: "processor", type: "x86_pkg_temp", value: 79, trips: [
+                    { type: "passive", value: 95 }, { type: "hot", value: 105 }] }]);
+        machine("a part's trips, coolest first, one two zones share said once",
+            Heat.tripsFor(heatZones, "processor"),
+            [{ type: "passive", value: 95, zone: "TCPU" },
+                { type: "hot", value: 105, zone: "x86_pkg_temp" },
+                { type: "critical", value: 110, zone: "TCPU" }]);
+        machine("no trips for a part no zone stands for", Heat.tripsFor(heatZones, "disk"), []);
+        machine("each kind of cooling, stepped as far as any of it", Heat.coolingOf([
+            { type: "iwlwifi", count: 1, states: [0], max_state: 19 },
+            { type: "Processor", count: 16, states: [0, 2, 1], max_state: 3 },
+            { type: "LCD", count: 1, states: [0], max_state: 0 }]),
+            [{ type: "Processor", count: 16, state: 2, max: 3 },
+                { type: "iwlwifi", count: 1, state: 0, max: 19 }]);
+        machine("what's left to the high", Heat.leftTo(71, 100, 110),
+            { by: 29, limit: "high", past: false, hue: "" });
+        machine("past the high, what's left to the critical, warning", Heat.leftTo(102, 100, 110),
+            { by: 8, limit: "critical", past: false, hue: "warning" });
+        machine("past the critical, alerting", Heat.leftTo(112, 100, 110),
+            { by: 2, limit: "critical", past: true, hue: "alert" });
+        machine("a high that's the critical, warning ten degrees short", [Heat.leftTo(85, 100, 100),
+            Heat.leftTo(92, 100, 100)], [{ by: 15, limit: "critical", past: false, hue: "" },
+            { by: 8, limit: "critical", past: false, hue: "warning" }]);
+        machine("past a high with no critical", Heat.leftTo(83, 80, null),
+            { by: 3, limit: "high", past: true, hue: "warning" });
+        machine("no limit said", Heat.leftTo(50, null, null), null);
         machine("each processor's core, from the daemon", Heat.cpusOf({ cores: [
             { n: 0, core: 0 }, { n: 1, core: 0 }, { n: 2, core: null }] }),
             [{ cpu: 0, core: 0 }, { cpu: 1, core: 0 }]);

@@ -86,16 +86,26 @@ function limitOf(value) {
     return plausible(value) && value > 0 ? value : null;
 }
 
+// A chip's voltages, currents or power, each { label, value }, from the
+// daemon's list of them and the figure each says in its unit.
+function electricOf(list, unit) {
+    return (list ?? []).filter(each => given(each[unit]))
+        .map(each => ({ n: each.n, label: each.label ?? "", value: each[unit] }));
+}
+
 // Each chip as Heat gathers it, from the machine daemon's sensor records,
-// in the order of their keys: what it stands for, each temperature it
-// reads ({ n, label, value, high, crit }) and each fan it turns ({ n,
-// label, value, max, target, power }). A chip of no part keeps only the
-// sensors its labels name, since the rest say nothing of what they
-// measure; a fan whose speed can't be read is left out.
+// in the order of their keys: its name, what it stands for, each
+// temperature it reads ({ n, label, value, high, crit, low, emergency,
+// alarm, chip }), each fan it turns ({ n, label, value, max, min,
+// target, power, mode }) and what it says of electricity ({ volts, amps,
+// watts }). A chip of no part keeps only the sensors its labels name,
+// since the rest say nothing of what they measure; a fan whose speed
+// can't be read is left out.
 function chipsOf(records) {
     return records.slice().sort((a, b) => String(a.key).localeCompare(String(b.key)))
         .map(record => {
             const part = CHIP_PARTS.includes(record.part) ? record.part : "";
+            const chip = record.chip ?? "";
             const temps = (record.temperatures ?? [])
                 .filter(each => plausible(each.temperature_c))
                 .map(each => ({
@@ -103,7 +113,11 @@ function chipsOf(records) {
                     label: each.label ?? "",
                     value: each.temperature_c,
                     high: limitOf(each.high_c),
-                    crit: limitOf(each.critical_c)
+                    crit: limitOf(each.critical_c),
+                    low: plausible(each.low_c) ? each.low_c : null,
+                    emergency: limitOf(each.emergency_c),
+                    alarm: each.alarm === true,
+                    chip
                 }))
                 .filter(each => part !== "" || labelled(each.label) !== "");
             const turning = (record.fans ?? []).filter(each => given(each.rpm)).map(each => ({
@@ -111,19 +125,91 @@ function chipsOf(records) {
                 label: each.label ?? "",
                 value: each.rpm,
                 max: each.max_rpm ?? null,
+                min: each.min_rpm ?? null,
                 target: each.target_rpm ?? null,
-                power: each.power_ratio ?? null
+                power: each.power_ratio ?? null,
+                mode: each.mode ?? null
             }));
-            return { part, temps, fans: turning };
+            const electric = {
+                volts: electricOf(record.voltages, "volts"),
+                amps: electricOf(record.currents, "amps"),
+                watts: electricOf(record.power, "watts")
+            };
+            return { chip, part, temps, fans: turning, electric };
         });
 }
 
-// The thermal zones that stand for a part, each { part, value }, from the
-// machine daemon's zone records.
+// The thermal zones that stand for a part, each { part, type, value,
+// trips }, each trip { type, value }, from the machine daemon's zone
+// records.
 function zonesOf(records) {
     return records.filter(each => plausible(each.temperature_c))
-        .map(each => ({ part: zonePart(each.type ?? ""), value: each.temperature_c }))
+        .map(each => ({
+            part: zonePart(each.type ?? ""),
+            type: each.type ?? "",
+            value: each.temperature_c,
+            trips: (each.trips ?? []).filter(trip => limitOf(trip.temperature_c) !== null)
+                .map(trip => ({ type: trip.type ?? "", value: trip.temperature_c }))
+        }))
         .filter(each => each.part !== "");
+}
+
+// The points at which the firmware acts on a part's heat, from every zone
+// that stands for it, coolest first, each { type, value, zone }: where it
+// slows the part (passive), turns a fan up (active), calls it hot, or
+// shuts the machine down (critical). A point two zones share is said once.
+function tripsFor(zones, part) {
+    const out = [];
+    for (const zone of zones ?? []) {
+        if (zone.part !== part) {
+            continue;
+        }
+        for (const trip of zone.trips) {
+            if (!out.some(each => each.type === trip.type && each.value === trip.value)) {
+                out.push({ type: trip.type, value: trip.value, zone: zone.type });
+            }
+        }
+    }
+    return out.sort((a, b) => a.value - b.value);
+}
+
+// Each kind of cooling device the firmware can step, { type, count,
+// state, max }, its state the furthest any of them is stepped, from the
+// machine daemon's cooling records, by type.
+function coolingOf(records) {
+    return records.slice().sort((a, b) => String(a.type).localeCompare(String(b.type)))
+        .filter(each => given(each.max_state) && each.max_state > 0)
+        .map(each => ({
+            type: each.type ?? "",
+            count: each.count ?? 1,
+            state: Math.max(0, ...(each.states ?? [])),
+            max: each.max_state
+        }));
+}
+
+// What's left of a temperature to its limit, as Heat's side says it
+// (VKCF3Z, 2026-11-08): { by, limit, past, hue }, where `by` is the
+// degrees to it or past it, `limit` "high" or "critical", and `hue` ""
+// below where it warns, "warning" past it and "alert" past the critical.
+// Past the high, what's left is to the critical, where the chip says one.
+// Where a chip's high is its critical, as a processor's often is, it
+// warns ten degrees short of it, as the bar does. Null where it says
+// neither.
+function leftTo(value, high, crit) {
+    const warns = warnsFrom(high, crit);
+    const distinct = given(high) && !(given(crit) && high >= crit);
+    if (given(crit) && value >= crit) {
+        return { by: value - crit, limit: "critical", past: true, hue: "alert" };
+    }
+    const hue = warns !== null && value >= warns ? "warning" : "";
+    if (given(crit) && (!distinct || value >= high)) {
+        return { by: crit - value, limit: "critical", past: false, hue };
+    }
+    if (distinct) {
+        return value >= high ? { by: value - high, limit: "high", past: true, hue }
+            : { by: high - value, limit: "high", past: false, hue };
+    }
+    return null;
 }
 
 // Each logical processor and the core it runs on, { cpu, core }, from the
@@ -256,6 +342,11 @@ function entry(id, whole, sensors, cores) {
         value: whole.value,
         high: whole.high ?? null,
         crit: whole.crit ?? null,
+        low: whole.low ?? null,
+        emergency: whole.emergency ?? null,
+        alarm: whole.alarm === true,
+        chip: whole.chip ?? "",
+        electric: null,
         sensors,
         cores
     };
@@ -279,7 +370,8 @@ function chipParts(chip, cpuOfCore) {
         return [];
     }
     if (chip.part === "processor") {
-        return [processorPart(chip, cpuOfCore)];
+        return [Object.assign(processorPart(chip, cpuOfCore),
+            { chip: chip.chip, electric: chip.electric })];
     }
     if (chip.part === "") {
         return chip.temps.filter(sensor => labelled(sensor.label) !== "")
@@ -288,7 +380,7 @@ function chipParts(chip, cpuOfCore) {
     const whole = chip.temps.find(sensor => WHOLE.test(sensor.label)) ?? hottest(chip.temps);
     const sensors = chip.temps.filter(sensor => sensor !== whole)
         .map(sensor => ({ n: sensor.n, label: sensor.label, value: sensor.value }));
-    return [entry(chip.part, whole, sensors, [])];
+    return [Object.assign(entry(chip.part, whole, sensors, []), { electric: chip.electric })];
 }
 
 // The parts in their order, then as the chips were listed, so two disks
@@ -347,8 +439,10 @@ function fanOf(fan) {
         label: fan.label,
         value: fan.value,
         max: fan.max ?? null,
+        min: fan.min ?? null,
         target: fan.target ?? null,
-        power: fan.power ?? null
+        power: fan.power ?? null,
+        mode: fan.mode ?? null
     };
 }
 
@@ -358,8 +452,10 @@ function toldOf(made, other) {
         return made;
     }
     made.max = made.max ?? other.max ?? null;
+    made.min = made.min ?? other.min ?? null;
     made.target = made.target ?? other.target ?? null;
     made.power = made.power ?? other.power ?? null;
+    made.mode = made.mode ?? other.mode ?? null;
     return made;
 }
 
