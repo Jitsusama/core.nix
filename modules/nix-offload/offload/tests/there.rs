@@ -1818,6 +1818,11 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
             )
             .env("NIX_OFFLOAD_DIR", &offload)
             .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+            // No VM builder stands, whatever this machine's own lenders hold,
+            // since a run no lent builder takes now goes to one that does.
+            .env("NIX_OFFLOAD_VM_DIR", folder.path().join("offload-vm"))
+            .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
+            .env("NIX_OFFLOAD_VM_EXTRA_DIRS", NO_MORE_VMS)
             .env("XDG_RUNTIME_DIR", folder.path())
             .env("XDG_STATE_HOME", folder.path())
             .env("XDG_CONFIG_HOME", folder.path())
