@@ -225,7 +225,7 @@ function landed(sessions, read) {
             url: WEB.test(String(one.url ?? "")) ? String(one.url) : "",
             session
         }))));
-    return rows.filter(one => !read.includes(one.key)).sort(Order.stream(one => one.at));
+    return Order.sorted(rows.filter(one => !read.includes(one.key)), Order.stream(one => one.at));
 }
 
 // A landing's drawer: who landed it and when as its eyebrow, what landed

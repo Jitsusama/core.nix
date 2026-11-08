@@ -176,7 +176,7 @@ Provider {
 
     // Running first, then the newest.
     readonly property var all: {
-        const sorted = runs.map(run => settled(run, started)).sort(Order.stream(
+        const sorted = Order.sorted(runs.map(run => settled(run, started)), Order.stream(
             run => String(run.started ?? ""), run => run.participants.some(p => running(p.state))));
         const sharing = Quiet.sharing;
         const sessions = started;

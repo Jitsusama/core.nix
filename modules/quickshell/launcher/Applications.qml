@@ -63,7 +63,7 @@ Provider {
     // (collection-order.md).
     function everything() {
         const open = row => (running[row.key.slice("program:".length)] ?? []).length > 0;
-        return programs.slice().sort(Order.returned({ first: open, name: row => row.name }));
+        return Order.sorted(programs, Order.returned({ first: open, name: row => row.name }));
     }
 
     // Inside Programs, by its name or what it is, the best grade first.

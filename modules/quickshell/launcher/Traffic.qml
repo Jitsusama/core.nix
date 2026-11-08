@@ -287,8 +287,8 @@ Provider {
                 name: named("connections"),
                 side: String(listed.length),
                 note: "each card, VPN and bridge, busiest first"
-            }, () => listed.map((one, at) => ({ one: one, name: names[at] }))
-                .sort(Order.amounts({ amount: each => each.one.in + each.one.out,
+            }, () => Order.sorted(listed.map((one, at) => ({ one: one, name: names[at] })),
+                Order.amounts({ amount: each => each.one.in + each.one.out,
                     name: each => each.name }))
                 .map(each => figure({
                     name: each.name,

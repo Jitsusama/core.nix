@@ -125,9 +125,9 @@ Provider {
         if (!on)
             return [];
         const rank = device => device.connected ? 0 : 1;
-        return adapter.devices.values.filter(device => device.deviceName !== ""
-            && (device.paired || device.connected))
-            .sort(Order.live({ stands: rank, name: device => device.name }));
+        return Order.sorted(adapter.devices.values.filter(device => device.deviceName !== ""
+            && (device.paired || device.connected)),
+            Order.live({ stands: rank, name: device => device.name }));
     }
 
     // Those Nearby hears, strongest first, as their rows say them: a list

@@ -26,6 +26,6 @@ function rank(row) {
 // says it holds rows (Launcher.qml), so Now's rows are given beside
 // their group rather than carrying it.
 function ordered(rows) {
-    return rows.slice().sort(Order.then((a, b) => rank(a) - rank(b),
+    return Order.sorted(rows, Order.then((a, b) => rank(a) - rank(b),
         Order.byName(row => row.name)));
 }

@@ -1194,7 +1194,7 @@ Provider {
     // marked chosen where it stands, so choosing one never moves it
     // (RSCH-20261030-GB56HX: choices keep their natural order).
     function ordered(nodes) {
-        return nodes.slice().sort(Order.choices({ name: named }));
+        return Order.sorted(nodes, Order.choices({ name: named }));
     }
 
     // A device going away can be read once more before the lists drop it.

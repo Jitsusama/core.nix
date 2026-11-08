@@ -214,7 +214,8 @@ Provider {
                 heard.push(described(card.network, kept ? kept.security : "open", 0));
         }
         const rank = network => network.connected ? 0 : network.known ? 1 : 2;
-        return heard.sort(Order.live({ stands: rank, then: (a, b) => b.strength - a.strength,
+        return Order.sorted(heard, Order.live({ stands: rank,
+            then: (a, b) => b.strength - a.strength,
             name: network => network.name }));
     }
 

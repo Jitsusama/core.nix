@@ -1130,7 +1130,7 @@ Provider {
             // Disks are amounts: the worst band first, as the disk piece
             // judges it, so the first is the headline's, and within a band
             // the least room, then A to Z.
-            const watched = guard.disks.slice().sort(Order.amounts({
+            const watched = Order.sorted(guard.disks, Order.amounts({
                 worse: (a, b) => guard.worse(a, b) ? -1 : guard.worse(b, a) ? 1 : a.free - b.free,
                 name: one => one.path
             }));
