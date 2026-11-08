@@ -46,9 +46,9 @@ function ours(notice) {
 // How a Slack message or a piece of mail was done with, as its daemon says
 // it, { how, at }, or null while it still wants Joel.
 function doneOf(thing) {
-    const done = thing?.done;
-    return done !== null && typeof done === "object" && typeof done.how === "string"
-        ? done : null;
+    const ended = thing?.done;
+    return ended !== null && typeof ended === "object" && typeof ended.how === "string"
+        ? ended : null;
 }
 
 // The notices the history keeps, in their order, newest first: every one
