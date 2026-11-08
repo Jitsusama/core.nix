@@ -94,6 +94,25 @@ function isStepped(query) {
     return String(query).startsWith(STEP);
 }
 
+// What was picked for what's typed in a category, as Picks.qml weighs it:
+// what was picked there with it held first (`top`, kept under what's
+// typed itself) and what was picked there reached from another step
+// (`inside`, kept under `stepped`), each thing's weight and times added,
+// so learning in Machine or Desktop applies however it was reached.
+function joined(top, inside) {
+    const out = {};
+    for (const table of [top, inside]) {
+        for (const thing of Object.keys(table ?? {})) {
+            const found = out[thing] ?? { weight: 0, times: 0 };
+            out[thing] = {
+                weight: found.weight + table[thing].weight,
+                times: found.times + table[thing].times
+            };
+        }
+    }
+    return out;
+}
+
 // The tier of a name starting with what's typed, between one typed whole
 // and one whose later word starts with it.
 const NAME_START = 0.5;

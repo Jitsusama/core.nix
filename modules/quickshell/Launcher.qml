@@ -1590,8 +1590,11 @@ Scope {
         const pool = offered.reduce((all, row) => all.concat([row], row.group ? row.verbs() : []),
             []);
         const inside = offered.filter(row => row.from).map(row => row.from);
-        return namedFirst(within(pool, letters, picks.weights(letters))
-            .concat(gathering(letters, inside)), letters);
+        const here = held[held.length - 1].row.key ?? "";
+        const picked = Rank.joined(picks.weights(letters),
+            picks.weights(Rank.stepped(here, letters)));
+        return namedFirst(within(pool, letters, picked).concat(gathering(letters, inside)),
+            letters);
     }
 
     // Rows named what's typed, whole, before the rest, each in its order.
@@ -5548,9 +5551,12 @@ Scope {
         picks.picked(picking ? typed : first.typed, meant.key, knowing());
         // Inside a thing's own page, what was picked is learned for what was
         // typed there too, apart from the top, so the same letters land on
-        // it there next time (Rank.js's stepped).
+        // it there next time (Rank.js's stepped). A collection or category
+        // held alone has just learned it under what's typed, which it reads
+        // (inCategory); one stepped into past it learns it here too, so a
+        // page inside Machine and Machine reached from a page both find it.
         const step = held.length > 0 ? held[held.length - 1].row : null;
-        if (!picking && step && step !== choice && step.key)
+        if (!(picking && held.length === 1) && step && step !== choice && step.key)
             picks.picked(Rank.stepped(step.key, typed), choice.key, null);
     }
 

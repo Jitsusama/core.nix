@@ -165,6 +165,15 @@ QtObject {
         expect("a step lends the top nothing", at(apart, "n"), "program:notes");
         expect("a step latches nothing", Rank.relatch({ n: "program:notes" }, apart, inKitty,
             all), { n: "program:notes" });
+        // A category reads what was picked in it held alone, under what's
+        // typed, and in it reached from another step, under its stepped
+        // query, added together.
+        expect("a category's picks joined", Rank.joined(
+            { "part:cpu": { weight: 2, times: 2 } },
+            { "part:cpu": { weight: 1, times: 1 }, "part:disk": { weight: 3, times: 3 } }), {
+            "part:cpu": { weight: 3, times: 3 }, "part:disk": { weight: 3, times: 3 }
+        });
+        expect("a category's picks, none", Rank.joined({}, undefined), {});
         // Words typed together latch whole, not by their starts, and lend
         // nothing to their first word.
         const words = picks({ "vol up": { "action:up": 2 }, "time in gmt": { "notice:x": 3 } });
