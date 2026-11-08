@@ -236,7 +236,15 @@
       "name": "Landed",
       "term": "Agents/Landed",
       "verb": "more",
-      "glyph": "done"
+      "glyph": "done",
+      "said": {
+        "today": "{count} today"
+      }
+    },
+    {
+      "id": "agents:repo",
+      "in": "agents",
+      "name": "Repository"
     },
     {
       "id": "agents:recent",

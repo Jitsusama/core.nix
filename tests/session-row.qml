@@ -14,6 +14,7 @@ import "SessionDrawer.js" as SessionDrawer
 import "Holders.js" as Holders
 import "SessionMade.js" as SessionMade
 import "SessionRow.js" as SessionRow
+import "Landed.js" as Landed
 import "Reading.js" as Reading
 
 QtObject {
@@ -460,22 +461,49 @@ QtObject {
         ];
         const landedAs = rows => rows.map(one => `${one.session.address}:${one.ref}`
             + `${one.person === "" ? "" : "+try"}${one.url === "" ? "" : "+url"}`).join(" ");
-        const unread = SessionRow.landed(landers, []);
+        const unread = Landed.landed([], landers, []);
         const unreadWant = "B:world#9 A:core.nix#2140+url A:PLAN-20261106-2ZPAI5#4+try "
             + "B:core.nix#2138";
         if (landedAs(unread) !== unreadWant)
             failures.push(`what landed: "${landedAs(unread)}", not "${unreadWant}"`);
-        const once = SessionRow.landed(landers, [unread[1].key]);
+        const once = Landed.landed([], landers, [unread[1].key]);
         const onceWant = "B:world#9 A:PLAN-20261106-2ZPAI5#4+try B:core.nix#2138";
         if (landedAs(once) !== onceWant)
             failures.push(`with one read: "${landedAs(once)}", not "${onceWant}"`);
-        const kept = SessionRow.stillRead(landers, [unread[1].key, "z gone#1 2026"]);
+        const kept = Landed.stillRead([], landers, [unread[1].key, "z gone#1 2026"]);
         if (kept.join() !== unread[1].key)
             failures.push(`what's kept read: ${JSON.stringify(kept)}`);
+        // What the harness keeps outlives its session: one landed by a
+        // session now closed is listed by its address, with its quest,
+        // repository and machine, and one both kept and still carried by
+        // its session is listed once, read by the same key either way.
+        const keeping = [
+            landing("core.nix#2200", "2026-11-07T09:00:00Z", { session: "d", address: "D",
+                quest: "QEST-20261106-KP0L6A", repo: "Jitsusama/core.nix", machine: "skiff" }),
+            landing("core.nix#2138", "2026-11-07T11:20:00Z", { session: "b", address: "B" }),
+            landing("PLAN-20261106-2ZPAI5#5", "2026-11-07T09:10:00Z", { session: "d" })
+        ];
+        const lasting = Landed.landed(keeping, landers, []);
+        const lastingWant = `${unreadWant} D:core.nix#2200`;
+        if (landedAs(lasting) !== lastingWant)
+            failures.push(`what's kept: "${landedAs(lasting)}", not "${lastingWant}"`);
+        const closedOne = lasting[lasting.length - 1];
+        if (closedOne.quest !== "QEST-20261106-KP0L6A" || closedOne.repo !== "Jitsusama/core.nix"
+            || closedOne.machine !== "skiff")
+            failures.push(`a kept landing's facts: ${JSON.stringify(closedOne)}`);
+        const stillKept = Landed.stillRead(keeping, landers, [closedOne.key, unread[3].key]);
+        if (stillKept.length !== 2)
+            failures.push(`what's kept read with the harness's: ${JSON.stringify(stillKept)}`);
+        const morning = Date.parse("2026-11-07T15:00:00Z");
+        const todayCount = Landed.landedToday(keeping, morning);
+        if (todayCount !== 2)
+            failures.push(`landed today: ${todayCount}, not 2`);
+        if (Landed.landedToday(keeping, Date.parse("2026-11-09T15:00:00Z")) !== 0)
+            failures.push("a landing two days old counted as today's");
         // A landing's drawer says who landed it and when, what it is, and
         // what to try as its words, which the row's one line has no room
         // for; a fact nobody knows isn't said.
-        const plate = SessionRow.landingDrawer(unread[2],
+        const plate = Landed.landingDrawer(unread[2],
             { at: "11:30", session: "A Quest", named: id => id });
         const plateSays = `${plate.eyebrow} | ${plate.title} | `
             + `${plate.facts.map(fact => `${fact.label}=${fact.value}`).join(" ")} | ${plate.body}`;
@@ -483,7 +511,7 @@ QtObject {
             + " session=A Quest | try Stop twice";
         if (plateSays !== plateWant)
             failures.push(`a landing's drawer: "${plateSays}", not "${plateWant}"`);
-        const unsaid = SessionRow.landingDrawer(unread[3],
+        const unsaid = Landed.landingDrawer(unread[3],
             { at: "", session: "", named: id => id });
         if (unsaid.eyebrow !== "B" || unsaid.facts.length !== 1 || unsaid.body !== "")
             failures.push(`a bare landing's drawer: ${JSON.stringify(unsaid)}`);

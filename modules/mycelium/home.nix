@@ -269,8 +269,9 @@ let
   # launcher first, each as a kind of records: the realm's open quests and
   # its ended ones, each list a file the harness keeps, the sessions to
   # restore, the runs of subagents and reviews its sessions started, a
-  # file each, and the talks in its sessions' steer inboxes, a record each
-  # of its lines; and on the home realm's node the machine's
+  # file each, what its sessions landed in the last 30 days, and the
+  # talks in its sessions' steer inboxes, a record each of its lines;
+  # and on the home realm's node the machine's
   # waiting, verdicts and queue, which no realm owns, so nothing is heard
   # twice. The queue is in the login's runtime folder, which the node
   # finds, as a Mac's differs by account: each job, and the queue whole as
@@ -304,6 +305,11 @@ let
         folder = "${harness}/mesh-workflow/runs";
         records = "runs";
         key = "id";
+      };
+      landing = {
+        file = "${harness}/mesh-workflow/landings.json";
+        records = "landings";
+        key = "key";
       };
       talk.talks = "${harness}/steer";
     }

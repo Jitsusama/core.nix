@@ -1081,7 +1081,8 @@
   '';
   mycelium-serves-the-harness-files = ''
     each realm's node serves the harness's files of that realm, its open and ended quests, the
-    sessions to restore, its runs of subagents and reviews and the talks in its steer inboxes,
+    sessions to restore, its runs of subagents and reviews, what its sessions landed, and the talks
+    in its steer inboxes,
     from the realm's own folders, and the home realm's alone the machine's waiting, verdicts and
     queue, the queue's jobs and the queue whole from the login's runtime folder, each keyed as
     the launcher reads it; and each node restarts when what it serves changes, since it reads

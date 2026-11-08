@@ -39,13 +39,14 @@ import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
-import "SpendDrawer.js" as SpendDrawer
+import "Landed.js" as Landed
 import "Numbers.js" as Numbers
 import "Order.js" as Order
 import "Recent.js" as Recent
 import "SessionDrawer.js" as SessionDrawer
 import "SessionMade.js" as SessionMade
 import "SessionRow.js" as SessionRow
+import "SpendDrawer.js" as SpendDrawer
 
 Provider {
     id: provider
@@ -870,11 +871,30 @@ Provider {
     // a mail does: a mark, never an ending, since no Return ends or takes
     // away. Its own step in holds Open the Change, Go To the Session, Copy
     // What to Try and Forget It, its ending, which d does and u takes back,
-    // as a notice's is. Read only from the sessions there are, so one that
-    // ended takes what it landed with it.
+    // as a notice's is. What landed is kept 30 days past its session's end
+    // (the harness's landings.json, served as the node's `landing` kind),
+    // so a session closed leaves what it landed in Landed; its note says
+    // how many landed today.
+    readonly property var keptLandings: {
+        void landingKind?.revision;
+        return Object.values(landingKind?.held ?? {});
+    }
+    readonly property var landingKind: landingLink.item
+    LazyLoader {
+        id: landingLink
+        active: Sessions.nodePath !== ""
+
+        Daemon {
+            socket: Sessions.nodePath
+            kind: "landing"
+            changesDiffer: true
+            answersWhole: true
+        }
+    }
     readonly property var landed: {
         const sessions = Sessions.running.concat(Sessions.parked);
-        const unread = SessionRow.landed(sessions, Sessions.landingsRead);
+        const kept = keptLandings;
+        const unread = Landed.landed(kept, sessions, Sessions.landingsRead);
         // The last read while the launcher holds it, it stays, empty, so
         // the step in can be said again with every landing dimmed, as a
         // row gone from any list is, rather than lost from under it; it
@@ -882,7 +902,7 @@ Provider {
         if (unread.length === 0 && !holdsLanded)
             return null;
         const read = one => Sessions.readLandings([one.key],
-            SessionRow.stillRead(sessions, Sessions.landingsRead));
+            Landed.stillRead(kept, sessions, Sessions.landingsRead));
         const act = (id, fields) => thing(Object.assign({
             key: `verb:agents:landed:${id}`,
             verb: Words.verb(`verb:agents:landed:${id}`),
@@ -918,7 +938,7 @@ Provider {
             key: `agents:landed:${one.key}`,
             name: one.what,
             side: one.ref,
-            drawer: () => SessionRow.landingDrawer(one, {
+            drawer: () => Landed.landingDrawer(one, {
                 at: one.at !== "" ? started(one.at) : "",
                 session: one.session.title ?? "",
                 named: id => Words.name(`agents:${id}`)
@@ -939,9 +959,12 @@ Provider {
             },
             verbs: () => parts(one)
         });
+        const today = Landed.landedToday(kept, Date.now());
+        const todaySaid = String((Words.of("agents:landed").said ?? {}).today ?? "");
         return thingRow({
             key: "agents:landed",
             name: Words.name("agents:landed"),
+            note: today > 0 ? todaySaid.replace("{count}", today) : "",
             side: unread.length > 0 ? String(unread.length) : "",
             glyph: Words.glyph("agents:landed"),
             hue: "action"
