@@ -42,7 +42,7 @@ in
 
   # What in Slack wants Joel, wearing the chat mark; right after the mail,
   # as VKCF3Z placed it, since both keep.
-  jitsusama.quickshell.overview.pieces.slack = {
+  jitsusama.quickshell.margin.pieces.slack = {
     order = 62;
     source = ./NewSlack.qml;
     label = "slack";

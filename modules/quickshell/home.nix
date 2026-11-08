@@ -2,12 +2,12 @@
 # wallpaper, the launcher on Super+Space, notifications, the lock screen,
 # polkit's password prompt, SSH's askpass for a PIN or a yes, the volume,
 # microphone, brightness and charge as they change, what's playing, and the
-# time and status over the overview.
+# margin's facts at the top of the screen.
 # Each is a QML file beside this one, linked as it is; Theme.qml, written
 # here from jitsusama.theme, gives them all the same look. It runs with the
-# graphical session, and restarts if it ever falls over. What the overview
-# shows is
-# jitsusama.quickshell.overview.pieces, rendered into Overview.qml at build,
+# graphical session, and restarts if it ever falls over. What the margin
+# and the launcher's foot show is
+# jitsusama.quickshell.margin.pieces, rendered into Pieces.qml at build,
 # and what the launcher finds and how it learns are
 # jitsusama.quickshell.launcher, rendered into Providers.qml.
 { wallpapers }:
@@ -621,7 +621,7 @@ let
     playing = ./pieces/Playing.qml;
   };
 
-  overview = pieces.drawn config.jitsusama.quickshell.overview.pieces;
+  placed = pieces.drawn config.jitsusama.quickshell.margin.pieces;
 
   # A built-in piece is linked by its file's name, and a machine's own by
   # the piece's name, so two of them never share a file.
@@ -787,7 +787,7 @@ let
     )
   );
 
-  # Named as the overview's pieces are, so two never share a file.
+  # Named as the margin's pieces are, so two never share a file.
   isBuiltInProvider =
     provider: builtins.isString provider.source && builtInProviders ? ${provider.source};
   providerFile =
@@ -869,9 +869,15 @@ in
     ../camera/home.nix
     # The brightness bar shows the picks the backlight daemon tells it of.
     ../backlight/home.nix
+    # The pieces were named for niri's overview, where they first stood;
+    # a machine that still sets the old name reaches the new one, warned.
+    (lib.mkRenamedOptionModule
+      [ "jitsusama" "quickshell" "overview" "pieces" ]
+      [ "jitsusama" "quickshell" "margin" "pieces" ]
+    )
   ];
 
-  options.jitsusama.quickshell.overview.pieces = lib.mkOption {
+  options.jitsusama.quickshell.margin.pieces = lib.mkOption {
     type = lib.types.attrsOf (
       pieces.piece {
         inherit (config.jitsusama.theme) marks;
@@ -879,7 +885,7 @@ in
       }
     );
     description = ''
-      What the overview shows, by name. Each piece has its order, tier,
+      What the margin and the launcher's foot show, by name. Each piece has its order, tier,
       collapse rank, mark and source (docs/design.md, Customising), and its
       own settings beside them: a `label` makes it a row, a muted label
       beside its value, and without one it's a heading above the rows, at
@@ -1447,7 +1453,7 @@ in
     };
 
     # Each setting is a default, so a machine's own wins without a fight.
-    jitsusama.quickshell.overview.pieces = lib.mapAttrs (_: lib.mapAttrs (_: lib.mkDefault)) {
+    jitsusama.quickshell.margin.pieces = lib.mapAttrs (_: lib.mapAttrs (_: lib.mkDefault)) {
       time = {
         order = 10;
         source = "clock";
@@ -1554,7 +1560,7 @@ in
         mark = "agent";
       };
       # What's on only now and then, each also a glyph in the margin while
-      # it's true (Margin.qml), in the order the overview gives them.
+      # it's true (Margin.qml), in the order the pieces give them.
       notices = {
         order = 54;
         source = "notices";
@@ -1681,7 +1687,7 @@ in
       // lib.listToAttrs (
         map (
           piece: lib.nameValuePair "quickshell/pieces/${fileName piece}" { source = linked piece; }
-        ) overview
+        ) placed
       )
       // lib.mapAttrs' (
         name: source: lib.nameValuePair "quickshell/surfaces/${name}.qml" { inherit source; }
@@ -1808,14 +1814,14 @@ in
               }
           }
         '';
-        "quickshell/Overview.qml".text = ''
+        "quickshell/Pieces.qml".text = ''
           pragma Singleton
           import Quickshell
           import QtQuick
 
-          // The overview's pieces, in order, from jitsusama.quickshell.overview.pieces.
+          // The margin's pieces, in order, from jitsusama.quickshell.margin.pieces.
           Singleton {
-              readonly property var pieces: ${
+              readonly property var inOrder: ${
                 builtins.toJSON (
                   map (
                     piece:
@@ -1826,7 +1832,7 @@ in
                     // {
                       file = fileName piece;
                     }
-                  ) overview
+                  ) placed
                 )
               }
           }

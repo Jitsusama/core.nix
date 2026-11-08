@@ -1860,6 +1860,9 @@
     the processors' and the memory's headlines make no parts and spawn nothing, and their parts,
     once looked at, list the processes once
   '';
+  the-margin-takes-its-pieces = ''
+    a machine moves, cuts, retunes and adds the margin's pieces
+  '';
   the-margins-marks-stand-level = ''
     every mark in the margin stands one height on the gap's middle line, read from the right by
     kind, in the colour that says how much it asks; what was on air lingers, what a notice will say
@@ -1903,9 +1906,6 @@
   '';
   the-npu-finds-its-compiler = ''
     the XPS 14's graphics drivers hold the NPU's driver and Intel's compiler beside it
-  '';
-  the-overview-takes-its-pieces = ''
-    a machine moves, cuts, retunes and adds the overview's pieces
   '';
   the-panel-dims-after-a-bad-read = ''
     the XPS 14's kernel keeps to VESA's brightness controls when its boot-time read of the panel's

@@ -316,14 +316,14 @@ onLinux {
   # A machine shapes what the overview shows in a line a change: a piece
   # moved, cut, shown only while true, a threshold changed and the rest kept,
   # and a piece of its own linked beside the built-in ones.
-  the-overview-takes-its-pieces =
+  the-margin-takes-its-pieces =
     let
       own = pkgs.writeText "wide.qml" "Piece { value: settings.text }";
       machine = bareNixos [
         self.nixosModules.workstation
         self.nixosModules.graphical
         {
-          home-manager.users.someone.jitsusama.quickshell.overview.pieces = {
+          home-manager.users.someone.jitsusama.quickshell.margin.pieces = {
             date.tier = null;
             network.order = 25;
             battery.low = 15;
@@ -340,14 +340,14 @@ onLinux {
         }
       ];
       home = account machine;
-      rendered = lib.findFirst (lib.hasInfix "property var pieces: ") "" (
-        lib.splitString "\n" home.xdg.configFile."quickshell/Overview.qml".text
+      rendered = lib.findFirst (lib.hasInfix "property var inOrder: ") "" (
+        lib.splitString "\n" home.xdg.configFile."quickshell/Pieces.qml".text
       );
-      drawn = builtins.fromJSON (lib.last (lib.splitString "property var pieces: " rendered));
+      drawn = builtins.fromJSON (lib.last (lib.splitString "property var inOrder: " rendered));
       piece = lib.listToAttrs (map (piece: lib.nameValuePair piece.name piece) drawn);
     in
-    holds "the-overview-takes-its-pieces"
-      "The overview didn't draw a machine's own pieces as it set them: their order, their cuts, their settings or its own file."
+    holds "the-margin-takes-its-pieces"
+      "The margin didn't draw a machine's own pieces as it set them: their order, their cuts, their settings or its own file."
       (
         map (piece: piece.name) drawn == [
           "time"
@@ -3295,7 +3295,7 @@ onLinux {
       ]);
       marks = lib.unique (
         lib.filter (mark: mark != null) (
-          lib.mapAttrsToList (_: piece: piece.mark) home.jitsusama.quickshell.overview.pieces
+          lib.mapAttrsToList (_: piece: piece.mark) home.jitsusama.quickshell.margin.pieces
         )
       );
       drawn = lib.mapAttrs (_: mark: mark.drawn) home.jitsusama.theme.marks;

@@ -2489,7 +2489,7 @@ anything.
   shape) and settings of its own, such as a format or a threshold. The
   built-in settings are defaults, so a machine's own win without a fight. The
   launcher's foot and the margin's are the first,
-  `jitsusama.quickshell.overview.pieces`, named for where they once stood.
+  `jitsusama.quickshell.margin.pieces`.
 - **The launcher's kinds of thing are named the same way.**
   `jitsusama.quickshell.launcher.providers` lists what it finds (windows,
   applications, actions, the session), each a file of its own with an
