@@ -7,7 +7,8 @@
 //! counts: how long the desktop's and the apps' slices stalled on the CPU,
 //! memory and the disk; what their memory lost to swap; how long niri's
 //! main thread and PipeWire's data loops waited for a CPU each time they
-//! were ready; and, every two seconds, how long niri takes to answer on
+//! were ready, and in a call the worst of Tuple's and of Chrome's call
+//! threads, each apart; and, every two seconds, how long niri takes to answer on
 //! its socket, which it does from the same loop that reads input and
 //! draws. Each window is tagged with the system generation and how hard
 //! the work behind Joel was working, so like is compared with like.
@@ -88,7 +89,7 @@ fn account(cgroups: &Path) -> Option<PathBuf> {
     Some(cgroups.join(manager.trim_start_matches('/')))
 }
 
-fn snapshot(cgroups: &Path, account: &Path, threads: &[(&'static str, PathBuf)]) -> Snapshot {
+fn snapshot(cgroups: &Path, account: &Path, threads: &[kernel::Thread]) -> Snapshot {
     let mut s = Snapshot {
         at: started().elapsed().as_secs_f64(),
         ..Snapshot::default()
@@ -117,14 +118,19 @@ fn snapshot(cgroups: &Path, account: &Path, threads: &[(&'static str, PathBuf)])
                 .insert(entry.file_name().to_string_lossy().to_string(), g);
         }
     }
-    for (label, path) in threads {
-        let text = fs::read_to_string(path).unwrap_or_default();
+    for thread in threads {
+        let text = fs::read_to_string(&thread.schedstat).unwrap_or_default();
         if let Some(sched) = kernel::sched(&text) {
-            s.threads
-                .insert((label.to_string(), path.display().to_string()), sched);
+            s.threads.insert(thread.clone(), sched);
         }
     }
+    kernel::while_in_a_call(&mut s.threads);
     s
+}
+
+/// Tuple's daemon's unit, whose cgroup names its processes.
+fn tuple_unit(account: &Path) -> PathBuf {
+    account.join("app.slice/tuple.service")
 }
 
 fn started() -> Instant {
@@ -305,6 +311,12 @@ fn now() -> ExitCode {
         wait("niri"),
         wait("pipewire")
     );
+    for (program, worst) in &w.call {
+        println!(
+            "in a call, {program}'s {} waits {:.0} us a turn",
+            worst.thread, worst.wait_us
+        );
+    }
     ExitCode::SUCCESS
 }
 
@@ -316,7 +328,7 @@ fn run() -> ExitCode {
     };
     let proc = PathBuf::from("/proc");
     started();
-    let mut threads = kernel::threads(&proc, compositor());
+    let mut threads = kernel::threads(&proc, compositor(), &tuple_unit(&account));
     let mut then = snapshot(&cgroups, &account, &threads);
     let mut answers: Vec<f64> = Vec::new();
     let mut unanswered = 0;
@@ -351,7 +363,7 @@ fn run() -> ExitCode {
         // Threads come and go with their programs: looked for again each
         // minute, with the snapshot taken again so no window spans two.
         if windows.is_multiple_of(6) {
-            threads = kernel::threads(&proc, compositor());
+            threads = kernel::threads(&proc, compositor(), &tuple_unit(&account));
             then = snapshot(&cgroups, &account, &threads);
         } else {
             then = now;
