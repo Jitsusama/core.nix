@@ -218,10 +218,10 @@ ShellRoot {
             expect("called by their id", reach(hal[0]) === "tuple call start 108",
                 Niri.spawned.join(" "));
             expect("and nothing of theirs to copy",
-                names(hal[0].verbs()) === "Call Them, Favourite", names(hal[0].verbs()));
+                names(hal[0].verbs()) === "Call Them, Recent, Favourite", names(hal[0].verbs()));
         }),
         seeking("eli", "flipping Favourite", () => {
-            const making = found("eli")[0].verbs()[1];
+            const making = found("eli")[0].verbs().find(row => row.name === "Favourite");
             expect("a stranger isn't a favourite", making.name === "Favourite"
                 && making.side === "no" && making.verb === "star", `${making.side} ${making.verb}`);
             making.run();
@@ -235,7 +235,7 @@ ShellRoot {
             expect("with a star", home("Eli Fenwick").glyph === String.fromCodePoint(0xf04ce),
                 home("Eli Fenwick").glyph);
 
-            home("Dee Ellery").verbs()[1].run();
+            home("Dee Ellery").verbs().find(row => row.name === "Favourite").run();
             expect("telling Tuple of one no longer a favourite",
                 Niri.spawned.join(" ") === "tuple contacts unfavorite dee@example.com",
                 Niri.spawned.join(" "));
