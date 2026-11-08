@@ -335,8 +335,6 @@ function wholeNamesFromEnd(words, room, width) {
     return width(one) <= room ? one : "";
 }
 
-// Words cut at each whole word but the last, longest first, an ellipsis
-// after each.
 // A note given way by whole words from its end, with no ellipsis, since
 // none is drawn on a note: a notice's line reads "line 7 of the", never
 // "line 7 of the de" (VKCF3Z, 2026-11-08). Where not even its first
@@ -355,6 +353,8 @@ function wordsFromEnd(words, room, width) {
     return "";
 }
 
+// Words cut at each whole word but the last, longest first, an ellipsis
+// after each.
 function wordCuts(words) {
     const parts = words.split(" ");
     const cuts = [];
