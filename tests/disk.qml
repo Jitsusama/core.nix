@@ -9,12 +9,12 @@
 // days says when and how fast whatever its band, and is a warning within a
 // day, with one forecast when it's the worst disk too, a writer frozen
 // wants Joel with a way to let it go on, a guard gone quiet whose unit
-// says it's starting again shows nothing, one whose heartbeat ages past silence with nothing written after
-// it and whose unit failed is a warning of its own saying why, with a way to
-// start it, and the machine's guard stopped says a restart starts it, with
-// no way of its own, what holds the disks is one list
-// from both guards, biggest first, and a guard that never wrote leaves no
-// piece. It exits 0 once every case holds, and otherwise 1, saying which
+// says it's starting again shows nothing, one whose heartbeat ages past
+// silence with nothing written after it and whose unit failed is a
+// warning of its own saying why, with a way to start it, and the machine's
+// guard stopped says a restart starts it, with no way of its own, what
+// holds the disks is one list from both guards, biggest first, and a guard
+// that never wrote leaves no piece. It exits 0 once every case holds, and otherwise 1, saying which
 // case didn't.
 import qs
 import Quickshell
