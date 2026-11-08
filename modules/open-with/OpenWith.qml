@@ -88,7 +88,7 @@ Provider {
             shown = "";
         // It connects only once made: a local socket can connect, say and
         // close at once, and an object still being made can't be destroyed.
-        const answer = answering.createObject(provider, { path: reply, said: `${id}\n` });
+        const answer = answering.createObject(provider, { path: reply, said: `${id}\n` }) as Socket;
         answer.connected = true;
         if (asking !== null)
             Qt.callLater(provider.showNext);
