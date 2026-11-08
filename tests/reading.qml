@@ -99,6 +99,7 @@ QtObject {
         expect("a run's last name gives way whole", ran(run, 330) === "kitty, 1Password, btop++",
             ran(run, 330));
         expect("a run's first name alone", ran(run, 120) === "kitty", ran(run, 120));
+        expect("a name whole or not at all", ran(run, 40) === "", ran(run, 40));
         // Words with no run in them give way as a note's items do.
         expect("a note in a run's place", ran(note, 410) === noted(note, 410), ran(note, 410));
         // The path's steps: the program's ask, a folder's path, the place,

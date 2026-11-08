@@ -316,14 +316,22 @@ function eyebrowOf(drawer, room, width) {
 // What a row holds, as a run of names, given way by whole names from its
 // end and ending on the last that fits, with no ellipsis after it, so home
 // reads "kitty, 1Password, btop++, Calendar", never ", \u2026" or
-// "Calenda\u2026" (VKCF3Z, 2026-11-08: "no ellipsis anywhere"). Words
-// with no run in them give way as a note's items do.
+// "Calenda\u2026" (VKCF3Z, 2026-11-08: "no ellipsis anywhere"). A name
+// that doesn't fit alone isn't said; words of items between dots give
+// way as a note's items do.
 function wholeNamesFromEnd(words, room, width) {
     const names = words.split(NAMES_APART);
     while (names.length > 1 && width(names.join(NAMES_APART)) > room) {
         names.pop();
     }
-    return names.length > 1 ? names.join(NAMES_APART) : wholeItemsFromEnd(names[0], room, width);
+    if (names.length > 1) {
+        return names.join(NAMES_APART);
+    }
+    const one = names[0];
+    if (one.includes(ITEMS_APART)) {
+        return wholeItemsFromEnd(one, room, width);
+    }
+    return width(one) <= room ? one : "";
 }
 
 // Words cut at each whole word but the last, longest first, an ellipsis
