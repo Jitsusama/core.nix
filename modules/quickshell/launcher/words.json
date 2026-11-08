@@ -9198,8 +9198,9 @@
         "hoursMinutes": "{hours} h {minutes} min",
         "youCalled": "you called",
         "called": "{name} called",
-        "onCall": "on Tuple \u00b7 call",
-        "onMissed": "on Tuple \u00b7 missed call"
+        "on": "on {program}",
+        "call": "call",
+        "missedCall": "missed call"
       }
     },
     {

@@ -158,9 +158,11 @@ function rang(past, said) {
 
 // A past call's drawer, each thing said once (VKCF3Z, 2026-11-08): over
 // its name where it was and what it is, as every eyebrow says them, "on
-// Tuple \u00b7 call" or "missed call", in Note since Tuple's name is the
-// world's, when it was being the row's note's; who rang whom first, left out where it isn't known; With, by name, only for
-// two or more, since the name already says one; and their addresses, as
+// Tuple \u00b7 call" or "on Tuple \u00b7 missed call", in Note since Tuple's
+// name is the world's, given as `said.program` from Tuple's own desktop
+// entry, and only what it is where none is given; when it was is the
+// row's note's. Then who rang whom first, left out where it isn't known;
+// With, by name, only for two or more, since the name already says one; and their addresses, as
 // Tuple knew them. How long it went on and when it ended are left to the
 // row's note, "9 min \u00b7 07:19", and so is how long a missed call
 // rang, which only says again that nobody answered. Tuple's stream holds
@@ -184,7 +186,9 @@ function details(past, said) {
             value: emails.join(", ") });
     }
     return {
-        eyebrow: past.missed ? said.onMissed : said.onCall,
+        eyebrow: [said.program ? filled(said.on, { program: said.program }) : "",
+            past.missed ? said.missedCall : said.call].filter(part => part !== "")
+            .join(" \u00b7 "),
         eyebrowNames: true,
         title: who(past.people, said),
         facts,

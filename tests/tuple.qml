@@ -86,8 +86,10 @@ QtObject {
             hoursMinutes: "{hours} h {minutes} min",
             youCalled: "you called",
             called: "{name} called",
-            onCall: "on Tuple \u00b7 call",
-            onMissed: "on Tuple \u00b7 missed call",
+            on: "on {program}",
+            call: "call",
+            missedCall: "missed call",
+            program: "Tuple",
             rang: "Who Rang",
             with: "With",
             email: "Email",
@@ -227,6 +229,13 @@ QtObject {
             if (got !== JSON.stringify(expected))
                 failures.push(`${what}'s drawer held ${got}, not ${JSON.stringify(expected)}`);
         }
+        // With no desktop entry to name Tuple, the eyebrow says only what
+        // it is, never a lone "on".
+        asked++;
+        const unnamed = Tuple.details({ people: [], since: at(3, 9, 12), ended: at(3, 9, 13),
+            missed: true }, Object.assign({}, said, { program: "" })).eyebrow;
+        if (unnamed !== "missed call")
+            failures.push(`an unnamed program's eyebrow said "${unnamed}", not "missed call"`);
 
         // Newest first by when each began, as their times read down, a
         // missed call that rang during a call before the call, and what

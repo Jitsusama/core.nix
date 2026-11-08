@@ -26,6 +26,7 @@
 // them. The row itself is a call's, not a person's: it says what the call
 // was, and a call may have had several people.
 import qs
+import Quickshell
 import QtQuick
 import "../Tuple.js" as Log
 
@@ -88,6 +89,9 @@ Provider {
         rang: Words.name("tuple:call:rang"),
         again: Words.name("tuple:call:again"),
         againAll: Words.name("tuple:call:again", "all"),
+        // Tuple's name as its desktop entry gives it, the world's, which
+        // the vocabulary never spells, as the program's own row says it.
+        program: DesktopEntries.byId("tuple")?.name ?? "",
         date: (date, format) => Qt.formatDate(date, format)
     })
 
