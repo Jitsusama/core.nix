@@ -2,8 +2,7 @@
 # from jitsusama.theme, how it looks: the theme's terminal colours, and its
 # colours for the frame around them, so kitty matches the rest of the desktop.
 # keys.conf, written here from jitsusama.kitty.keys, holds its shortcuts,
-# which also go into the keyboard map (modules/keys). Its kitty scrolls by
-# touch too, which upstream's doesn't on Wayland (touch-scrolling.patch).
+# which also go into the keyboard map (modules/keys).
 #
 # ssh in kitty is kitty's ssh kitten, which carries the prompt to the other
 # machine and sources it after that machine's own zsh setup, and tints the
@@ -161,11 +160,7 @@ in
     ];
   };
 
-  config.home.packages = [
-    (pkgs.kitty.overrideAttrs (old: {
-      patches = (old.patches or [ ]) ++ [ ./touch-scrolling.patch ];
-    }))
-  ];
+  config.home.packages = [ pkgs.kitty ];
 
   config.xdg.configFile."kitty/kitty.conf".text = builtins.readFile ./kitty.conf;
 
