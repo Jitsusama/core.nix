@@ -1,11 +1,13 @@
-// What the launcher's battery and light answers make of the kernel's power
-// supply, USB-C and light sensor files, in plain JavaScript so a check can
-// run it in Qt's own engine, as the shell does: which of a list the kernel
-// marks as in use, what a USB-C port's protocol is called, what each port
-// gives, the date a battery was made, the order a charge limit's two files
-// are written in, how bright a room is, what the power profile's drawer
-// says, and why a profile picked didn't take. Power.qml, Light.qml and
-// Session.qml read the files and say the figures.
+// What the launcher's battery and light answers make of the machine
+// daemon's supply records and the light sensor's files, in plain
+// JavaScript so a check can run it in Qt's own engine, as the shell does:
+// which supply is the battery and which the USB-C ports, what the battery
+// is doing and how long it has, the energy it holds, which of a list the
+// kernel marks as in use, what a USB-C port's protocol is called, what
+// each port gives and its drawer, the date a battery was made, the order
+// a charge limit's two files are written in, how bright a room is, and
+// what the power profile's drawer says, and why a profile picked didn't
+// take. Power.qml, Light.qml and Session.qml say the figures.
 .pragma library
 
 // The one of a kernel's list in brackets: "Trickle Fast [Custom]".
@@ -117,6 +119,13 @@ function protocols(usbType) {
     return each.filter((one, at) => each.indexOf(one) === at).join(" \u00b7 ");
 }
 
+// A kernel's list again as it wrote it, its choice in brackets, from
+// the daemon's choices and the one chosen: ["C", "PD", "PD_PPS"] and
+// "PD" are "C [PD] PD_PPS", as protocols() reads.
+function listed(all, now) {
+    return all.map(one => (one === now ? `[${one}]` : one)).join(" ");
+}
+
 // What a USB-C port gives, in a few words: its watts, volts, amps and
 // protocol while it charges the machine, each figure its own part
 // (VKCF3Z, 2026-11-08: "45.0 W \u00b7 15.0 V \u00b7 3.00 A", never a comma),
@@ -196,6 +205,106 @@ function portDrawer(known, named, said, number) {
             Object.assign(fact("supply", known.supply ?? ""), { identifies: true })
         ].filter(each => (each.value ?? "") !== "")
     };
+}
+
+// A USB-C port's supply, as the kernel names one: ucsi-source-psy-
+// USBC000:001 is port 1.
+const USB_C = /USBC\d+:0*(\d+)$/;
+
+// The machine's own battery, of the daemon's supplies, by key: a
+// battery whose scope is a device's, as a mouse's is, is that device's.
+function batteryOf(records) {
+    return (
+        records
+            .slice()
+            .sort((a, b) => String(a.key).localeCompare(String(b.key)))
+            .find((each) => each.type === "Battery" && each.scope !== "Device") ?? null
+    );
+}
+
+// Each USB-C port the machine charges through, { n, record }, by its
+// number, online or not.
+function portsOf(records) {
+    return records
+        .map((record) => ({ record, port: USB_C.exec(String(record.name ?? "")) }))
+        .filter((each) => each.port !== null)
+        .map((each) => ({ n: Number(each.port[1]), record: each.record }))
+        .sort((a, b) => a.n - b.n);
+}
+
+// Whether a charger is plugged in other than at a USB-C port, as a
+// barrel or a dock is.
+function pluggedElsewhere(records) {
+    return records.some(
+        (each) =>
+            each.type === "Mains" && !USB_C.test(String(each.name ?? "")) && each.online === true,
+    );
+}
+
+// What a USB-C port's record says of it, as port() reads it: whether it's
+// charging the machine, what it gives (now where it says so, else what
+// it's offered), its protocol, whether anything's plugged in and whether
+// the machine is giving the power.
+function portOf(record) {
+    const typec = record.typec ?? null;
+    return {
+        online: record.online === true,
+        volts: record.volts ?? record.max_volts ?? null,
+        amps: record.max_amps ?? record.amps ?? null,
+        protocol: protocol(record.usb_type),
+        partner: typec !== null && typec.partner !== null && typec.partner !== undefined,
+        giving: typec?.power_role === "source",
+    };
+}
+
+// What the battery is doing, as UPower works it out, else as the kernel
+// says it: "charging", "discharging", "full", "pending charge" and so on.
+function stateOf(record) {
+    return record.upower?.state ?? String(record.status ?? "unknown").toLowerCase();
+}
+
+// How the battery stands, as its headline says it: its charge, then how
+// long it has as UPower works it out ("36% \u00b7 3 h 10 min to empty",
+// VKCF3Z, 2026-11-08), or what it's doing where UPower says no time.
+// `lasted` says a span of seconds.
+function doing(record, lasted) {
+    const charge = `${record.capacity_pct ?? 0}%`;
+    const upower = record.upower ?? {};
+    switch (stateOf(record)) {
+        case "charging":
+            return upower.time_to_full_s > 0
+                ? `${charge} \u00b7 ${lasted(upower.time_to_full_s)} to full`
+                : `${charge} \u00b7 charging`;
+        case "discharging":
+            return upower.time_to_empty_s > 0
+                ? `${charge} \u00b7 ${lasted(upower.time_to_empty_s)} to empty`
+                : `${charge} \u00b7 on battery`;
+        case "full":
+            return `${charge} \u00b7 full`;
+        default:
+            return `${charge} \u00b7 on power, holding`;
+    }
+}
+
+// The energy the battery holds now, full and as designed, in watt hours:
+// as it counts them, or from its charge at its design voltage where it
+// counts charge, as UPower works it out. Each null where it can't be.
+function energyOf(record) {
+    const volts = record.min_design_volts ?? null;
+    const of = (wh, ah) => record[wh] ?? (record[ah] !== null && record[ah] !== undefined
+        && volts !== null ? record[ah] * volts : null);
+    return {
+        now: of("energy_wh", "charge_ah"),
+        full: of("energy_full_wh", "charge_full_ah"),
+        design: of("energy_design_wh", "charge_design_ah"),
+    };
+}
+
+// When a battery was made, from the daemon's "2026-07-20", as made() says
+// it.
+function madeOf(text) {
+    const [year, month, day] = String(text ?? "").split("-").map(Number);
+    return made(year, month, day);
 }
 
 // The years a battery's date can be, and the months and days of one.

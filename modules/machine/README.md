@@ -92,12 +92,16 @@ units, or named here as left out with the reason.
 |                 | the chip's name                              | Heat's part's drawer, Chip                |
 | `zone:<type>`   | temperature, policy, mode, each trip point   | Heat, for a part no chip gives; drawer's trips and Zone |
 | `cooling:<type>`| how many, each one's state, the most         | Heat's Processor's drawer, Cooling Step   |
-| `supply:<name>` | charge, energy, design, health, cycles       | Power's Charge, Energy, Health, Cycles    |
+| `supply:<name>` | capacity, its level                          | Power's Charge                            |
+|                 | charge now, full and designed; energy        | Power's Energy and its drawer             |
+|                 | health against design, cycles, health        | Power's Health, Cycles                    |
 |                 | volts, amps, watts, design voltage           | Power's Drawing, Voltage                  |
-|                 | charge type and those offered, limits        | Power's Charge Type, Charge Limit         |
-|                 | maker, model, serial, made, temperature      | Power's Model, Made, Temperature          |
-|                 | a port's USB type, roles, PD revision, partner | Power's Charger, each port              |
-|                 | UPower's state, warning, times, rate         | Power's headline                          |
+|                 | charge type and those offered, limits, settable | Power's Charge Type, Charge Limit      |
+|                 | maker, model, technology, made, temperature  | Power's Model, Made, Temperature          |
+|                 | serial                                       | Power's Model's drawer, Serial            |
+|                 | a port's volts, amps, those offered, USB types | Power's Charger, each port and its drawer |
+|                 | a port's roles, mode, revisions, partner     | each port's drawer                        |
+|                 | UPower's state, times, rate                  | Power's headline, Drawing                 |
 | `sleep:main`    | mode and those offered, successes, failures  | Keep Awake's Sleep                        |
 |                 | failures by step, last device, step, errno   | Sleep's Failed                            |
 |                 | last, longest and all hardware sleep         | Sleep's drawer                            |
@@ -145,6 +149,12 @@ units, or named here as left out with the reason.
 - **A chip's electric limits.** The only chips here that say them are
   the USB-C ports', whose figures Power shows from their supplies, so
   Heat's drawer gives each reading alone.
+- **A battery's alarm and UPower's warning level.** The alarm is a
+  figure in the battery's own unit for when the firmware warns, and the
+  warning says the charge is low, which Charge's bar shows from 20%.
+- **A supply's present and online flags, scope and status for a
+  battery.** They say which supply is the machine's battery and whether
+  something's plugged in, which Power's rows say in their words.
 - **A thermal zone's policy and mode.** They say how Linux is set to
   manage the zone, the same for every zone, and nothing Joel acts on.
 - **fwupd's devices with no name.** They're pins it keeps for its own

@@ -110,7 +110,7 @@ def test_the_launcher_copies_a_vendor_and_the_charge_and_steps_into_the_charger(
     charge = charged(desktop)
     desktop.answer("battery")
     desktop.shoot("launcher-battery")
-    assert yanked(desktop).startswith(f"{charge}%, ")
+    assert yanked(desktop).startswith(f"{charge}% \u00b7 ")
     # Then what feeds it: the stand-in's charger, plugged in, a step
     # into the answer's row.
     desktop.answer("charger")
@@ -130,11 +130,14 @@ def test_the_launcher_copies_a_vendor_and_the_charge_and_steps_into_the_charger(
     # Its charge among them, drawn as a bar, and none of them a glyph.
     desktop.shoot("launcher-charger-parts")
     # Each part is named first, then what it says: the stand-in's health
-    # is good, and its temperature has a bar.
+    # against its design, and its temperature has a bar.
     desktop.launcher_until(
         lambda shown: (
             {"Charger", "Charge", "Health", "Temperature"} <= set(shown["rows"])
-            and any(thing["reads"].startswith("Health \u00b7 Good, ") for thing in shown["things"])
+            and any(
+                thing["reads"].startswith("Health \u00b7 ") and "% of design" in thing["reads"]
+                for thing in shown["things"]
+            )
         )
     )
     desktop.close_launcher()
@@ -142,8 +145,7 @@ def test_the_launcher_copies_a_vendor_and_the_charge_and_steps_into_the_charger(
     desktop.answer("battery health")
     desktop.launcher_until(
         lambda shown: (
-            shown["kind"] == "answer"
-            and (shown["selected"] or {}).get("name", "").startswith("Good, ")
+            shown["kind"] == "answer" and "% of design" in (shown["selected"] or {}).get("name", "")
         )
     )
     desktop.close_launcher()

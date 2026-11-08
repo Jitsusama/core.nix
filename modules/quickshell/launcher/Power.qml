@@ -1,62 +1,54 @@
 // The battery and what feeds it, answered in the field: "battery", "power",
-// "charger", "plugged in" or "energy". The headline is its charge and what
-// it's doing; the rows are the detail a status line leaves out, each a part
-// named first: the Charger, holding each USB-C port and what it gives; the
-// Charge, as a bar; what the machine is Drawing or Charging at, and the
-// Voltage, each a spark of the last reads; the Energy it holds; its Health
-// against its design; the Cycles it's been through; the Charge type and
-// Charge limit; its Temperature, as a bar; and its Model and when it was
-// Made. A charge limit whose files Joel's account may write is a setting,
-// its choices a step in; one only root may set is a figure saying so. A
-// part has its own words too, "battery health" or "charge limit", which
-// answer it alone. The power profile is the session's to show and change
-// (Session.qml), and its row comes beside these. Every name and word is
-// the vocabulary's (launcher/words.json, Words.qml).
+// "charger", "plugged in" or "energy". The headline is its charge and how
+// long it has; the rows are the detail a status line leaves out, each a
+// part named first: the Charger, holding each USB-C port and what it
+// gives, its drawer what the port and what's plugged into it say of
+// themselves; the Charge, as a bar; what the machine is Drawing or
+// Charging at, and the Voltage, each a spark of the last reads; the Energy
+// it holds, its drawer the charge behind it; its Health against its design
+// and the cycles it's been through; the Cycles alone; the Charge type and
+// Charge limit; its Temperature, as a bar; and its Model, its drawer its
+// serial, and when it was Made. A charge limit whose files Joel's account
+// may write is a setting, its choices a step in; one only root may set is
+// a figure saying so. A part has its own words too, "battery health" or
+// "charge limit", which answer it alone. The power profile is the
+// session's to show and change (Session.qml), and its row comes beside
+// these. Every name and word is the vocabulary's (launcher/words.json,
+// Words.qml).
 //
-// UPower says how it's doing and the kernel's power supply and USB-C files
-// the rest, read when asked, so nothing is watched. While the answer shows,
-// it's asked again once a second, never more, so its figures move and its
-// sparks fill; whether the limit's files are writable is asked once, by
-// one spawned test, the first time a limit is shown.
+// The figures are the machine daemon's (modules/machine), its supply
+// records, each power supply's every figure with what UPower works out of
+// the battery; it reads them once a second once Power is asked, as
+// Machine's Power row asks it, until the launcher closes. The charge limit
+// is still written here, through the kernel's own files.
 import qs
+import Quickshell
 import Quickshell.Io
-import Quickshell.Services.UPower
 import QtQuick
 import "Numbers.js" as Numbers
 import "Machine.js" as Machine
 import "Power.js" as Power
+import "Interfaces.js" as Interfaces
 
 Provider {
     id: provider
 
     examples: ["battery", "charger"]
 
-    readonly property var devices: UPower.devices.values
-    readonly property UPowerDevice battery: devices.find(device => device.isLaptopBattery) ?? null
+    // The daemon's supplies, as held now.
+    function supplies() {
+        const held = daemon.revision >= 0 ? daemon.held : {};
+        return Object.keys(held).filter(key => key.startsWith("supply:")).map(key => held[key]);
+    }
+
+    readonly property var battery: daemon.revision >= 0 ? Power.batteryOf(supplies()) : null
     // A battery coming or going changes the answer, so it's said: the
     // launcher keeps what's inside each place until its source says it
-    // changed, and UPower can list the battery only after that was first
-    // made, since a switch restarts both. Unsaid, Battery's Health was
-    // never found from the root (the net's goes-places run, 2026-11-07).
-    onBatteryChanged: provider.answered()
-
-    // What a file says, or "" when it says nothing.
-    function said(file) {
-        probe.path = file;
-        return read(probe).trim();
-    }
-
-    // What the power supply's file says, or "" when it says nothing.
-    function supplied(device, file) {
-        return said(`/sys/class/power_supply/${device}/${file}`);
-    }
-
-    // A value in millionths, as the kernel gives volts, amps and amp hours.
-    function millionths(device, file) {
-        const text = supplied(device, file);
-        const value = Number(text);
-        return text === "" || isNaN(value) ? null : value / 1e6;
-    }
+    // changed. Unsaid, Battery's Health was never found from the root
+    // (the net's goes-places run, 2026-11-07). Its key is followed rather
+    // than its record, which is new with every read.
+    readonly property string batteryKey: battery?.key ?? ""
+    onBatteryKeyChanged: provider.answered()
 
     function number(value, decimals) {
         return Numbers.format(value, decimals, settings.group, settings.point);
@@ -66,6 +58,11 @@ Provider {
     // zeros kept to say how closely (VKCF3Z's one rule for every measure).
     function measured(value) {
         return Numbers.significant(value, settings.group, settings.point);
+    }
+
+    // A figure to three significant digits, with the real minus.
+    function figure(value) {
+        return Machine.digits(value).replace("-", "\u2212");
     }
 
     // Below this share, draining, the battery wants Joel to plug in, as
@@ -81,15 +78,14 @@ Provider {
     readonly property var stops: [60, 70, 80, 90, 100]
     readonly property int restart: 5
 
-    // How long, as the margin's battery says it.
-    function duration(seconds) {
-        const minutes = Math.round(seconds / 60);
-        return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
-    }
-
     // A part's name, as the vocabulary says it.
     function named(id, state, fill) {
         return Words.name(`power:${id}`, state ?? "", fill);
+    }
+
+    // What a part's words say, by the phrase's name.
+    function says(id, phrase) {
+        return (Words.of(`power:${id}`).said ?? {})[phrase] ?? "";
     }
 
     // The parts asked for alone, by their own words, as the part's name.
@@ -106,9 +102,21 @@ Provider {
     questions: Words.started("power").concat(Object.keys(partsAsked),
         Words.olds(Words.of("power:charger")))
 
+    // Whether Power has been asked since the launcher opened, so the
+    // daemon reads the supplies only then.
+    property bool asked: false
+
+    function ask() {
+        if (!asked)
+            Qt.callLater(() => provider.asked = true);
+    }
+
     function answer(typed) {
         const question = asks(typed);
-        if (battery === null || question === "")
+        if (question === "")
+            return null;
+        ask();
+        if (battery === null)
             return null;
         const whole = told();
         const part = partsAsked[question];
@@ -129,71 +137,61 @@ Provider {
     }
 
     // How Power stands, said on its row where Machine holds it (Launcher's
-    // standsOf): the charge and what it's doing, then the power profile in
-    // use, as the session says it (Session.qml), so the row reads "36%,
-    // full in 6:41" and then "Full Performance". A machine with no battery
-    // says its profile alone.
+    // standsOf): the charge and how long it has, then the power profile in
+    // use, as the session says it (Session.qml), so the row reads "36%"
+    // and "6 h 41 min to full" and then "Full Performance", a dot between. A
+    // machine with no battery says its profile alone.
     function stands() {
+        ask();
         const session = (launcher?.sources ?? []).find(one => one.settings.name === "session");
         return [battery ? doing() : "", session?.profile?.side ?? ""]
             .filter(part => part !== "").join(" \u00b7 ");
     }
 
     function doing() {
-        const charge = Math.round(battery.percentage * 100);
-        switch (battery.state) {
-        case UPowerDeviceState.Charging:
-            return battery.timeToFull > 0
-                ? `${charge}%, full in ${duration(battery.timeToFull)}` : `${charge}%, charging`;
-        case UPowerDeviceState.Discharging:
-            return battery.timeToEmpty > 0
-                ? `${charge}%, ${duration(battery.timeToEmpty)} left` : `${charge}%, on battery`;
-        case UPowerDeviceState.FullyCharged:
-            return `${charge}%, full`;
-        default:
-            return `${charge}%, on power, holding`;
-        }
+        return Power.doing(battery, Interfaces.lasted);
     }
 
-    // Each USB-C port the machine charges through, by its number, oldest
-    // first, as UPower lists its power supplies, online or not.
-    function ports() {
-        return devices
-            .filter(device => device.type === UPowerDeviceType.LinePower)
-            .map(device => ({ device: device, port: /USBC\d+:0*(\d+)$/.exec(device.nativePath) }))
-            .filter(each => each.port !== null)
-            .map(each => ({ path: each.device.nativePath, n: Number(each.port[1]) }))
-            .sort((a, b) => a.n - b.n);
-    }
-
-    // What a USB-C port says of itself: its power supply, what it's
-    // offered, and from the port the kernel's USB-C class numbers one below
-    // it, whether anything's plugged in and which way the power goes.
-    function portSaid(port) {
-        const typec = `/sys/class/typec/port${port.n - 1}`;
-        return {
-            online: supplied(port.path, "online") === "1",
-            volts: millionths(port.path, "voltage_now") ?? millionths(port.path, "voltage_max"),
-            amps: millionths(port.path, "current_max") ?? millionths(port.path, "current_now"),
-            protocol: Power.protocol(supplied(port.path, "usb_type")),
-            partner: said(`${typec}-partner/accessory_mode`) !== "",
-            giving: Power.chosen(said(`${typec}/power_role`)).now === "source"
+    // A USB-C port's drawer, the one Power.js's portDrawer lays out, from
+    // what the machine daemon holds of its supply and its USB-C port:
+    // each role as the kernel lists it, what's plugged in offers, its
+    // protocols as its supply's usb_type lists them, and the supply.
+    function portDrawer(port) {
+        const record = port.record;
+        const typec = record.typec ?? {};
+        const partner = typec.partner ?? {};
+        const known = {
+            n: port.n,
+            usbType: Power.listed(record.usb_types ?? [], record.usb_type ?? ""),
+            supply: record.name ?? "",
+            power: typec.power_role ?? "",
+            data: typec.data_role ?? "",
+            mode: typec.operation_mode ?? "",
+            accessory: partner.accessory ?? "",
+            capabilities: (partner.source_capabilities ?? []).map(offer => offer.to_volts === null
+                ? { volts: offer.volts, amps: offer.amps }
+                : { volts: offer.volts, to: offer.to_volts, amps: offer.amps }),
+            revision: typec.power_delivery_revision ?? "",
+            partnerRevision: partner.power_delivery_revision ?? ""
         };
+        return Object.assign({ title: named("port", "", { n: port.n }), eyebrowNames: true },
+            Power.portDrawer(known, id => Words.name(id), Words.of("power:port:drawer").said,
+                provider.number));
     }
 
     // The Charger: what's plugged in, briefly, holding each USB-C port and
     // what it gives, or only saying so where the machine has none.
     function chargerPart() {
-        const usb = ports().map(port => ({ n: port.n, said: portSaid(port) }));
+        const all = supplies();
+        const usb = Power.portsOf(all).map(port => Object.assign({ said: Power.portOf(port.record) },
+            port));
         const charging = usb.find(port => port.said.online && port.said.volts > 0
             && port.said.amps > 0);
         // A charger on a barrel or the dock rather than a USB-C port, said
         // as plugged in, the glossary's word being charger, never mains.
-        const plugged = devices.some(device => device.type === UPowerDeviceType.LinePower
-            && device.nativePath !== "" && !/USBC/.test(device.nativePath)
-            && supplied(device.nativePath, "online") === "1");
+        const plugged = Power.pluggedElsewhere(all);
         const online = usb.find(port => port.said.online);
-        const side = charging ? `${number(charging.said.volts * charging.said.amps, 0)} W `
+        const side = charging ? `${figure(charging.said.volts * charging.said.amps)} W `
             + `on port ${charging.n}`
             : online ? `on port ${online.n}` : plugged ? "plugged in" : "none plugged in";
         const fields = { key: "power:charger", name: named("charger"), side: side, copy: side };
@@ -214,106 +212,29 @@ Provider {
                 glyph: "",
                 // How its power and data go and what's plugged in offers,
                 // under the row (Power.js's portDrawer).
-                drawer: () => provider.portDrawerOf(port.n)
+                drawer: provider.portDrawer(port)
             });
         }));
     }
 
-    // What each USB-C port's drawer read of the kernel's USB-C class, by
-    // its number: read just after the drawer asks, since reading moves the
-    // reader its binding would follow, and again each second while the
-    // launcher is open, so a charger plugged in shows without a key.
-    property var portReadings: ({})
-    property int portDrawn: 0
-
-    function portDrawerOf(n) {
-        const read = portReadings[n];
-        if (read === undefined) {
-            Qt.callLater(() => provider.readPort(n));
-            return null;
-        }
-        return Object.assign({ title: named("port", "", { n }) }, Power.portDrawer(read,
-            id => Words.name(id), Words.of("power:port:drawer").said, provider.number));
-    }
-
-    // A charger's source capabilities, as its partner's power delivery
-    // folder lists them, fixed supplies and programmable ones; the kernel
-    // numbers them from one, and a charger offers at most seven.
-    readonly property int offered: 7
-
-    function capabilitiesOf(folder) {
-        const found = [];
-        for (let i = 1; i <= offered; i++) {
-            const fixed = `${folder}/${i}:fixed_supply`;
-            const programmable = `${folder}/${i}:programmable_supply`;
-            const millis = (path, file) => Number(said(`${path}/${file}`).replace(/\D+$/, ""))
-                / 1000;
-            if (said(`${fixed}/voltage`) !== "")
-                found.push({ volts: millis(fixed, "voltage"),
-                    amps: millis(fixed, "maximum_current") });
-            else if (said(`${programmable}/maximum_voltage`) !== "")
-                found.push({ volts: millis(programmable, "minimum_voltage"),
-                    to: millis(programmable, "maximum_voltage"),
-                    amps: millis(programmable, "maximum_current") });
-        }
-        return found;
-    }
-
-    function readPort(n) {
-        const typec = `/sys/class/typec/port${n - 1}`;
-        const supply = ports().find(port => port.n === n)?.path ?? "";
-        const read = {
-            n: n,
-            usbType: supply === "" ? "" : supplied(supply, "usb_type"),
-            supply: supply,
-            power: said(`${typec}/power_role`),
-            data: said(`${typec}/data_role`),
-            mode: said(`${typec}/power_operation_mode`),
-            accessory: said(`${typec}-partner/accessory_mode`),
-            capabilities: capabilitiesOf(`${typec}-partner/usb_power_delivery/source-capabilities`),
-            revision: said(`${typec}/usb_power_delivery_revision`),
-            partnerRevision: said(`${typec}-partner/usb_power_delivery_revision`)
-        };
-        portDrawn = n;
-        if (JSON.stringify(read) !== JSON.stringify(portReadings[n]))
-            portReadings = Object.assign({}, portReadings, { [n]: read });
-    }
-
-    Timer {
-        interval: 1000
-        repeat: true
-        running: provider.portDrawn > 0 && (provider.launcher?.open ?? false)
-        onRunningChanged: {
-            if (!running) {
-                provider.portReadings = ({});
-                provider.portDrawn = 0;
-            }
-        }
-        onTriggered: provider.readPort(provider.portDrawn)
-    }
-
     // The last reads of what moves, each kept with its time: the watts
-    // drawn or charging at, and the volts. Read at most once a second, and
+    // drawn or charging at, and the volts. Kept at most once a second, and
     // a gap longer than `stale` starts the sparks afresh.
     property var series: ({ at: 0, watts: [], volts: [] })
     readonly property int second: 1000
     readonly property int stale: 5000
     readonly property int graphed: 20
 
-    function sample(path) {
+    function sample(record) {
         const now = Date.now();
         const kept = series;
         if (now - kept.at < second)
             return kept;
         const fresh = now - kept.at <= stale;
-        const volts = millionths(path, "voltage_now");
-        const amps = millionths(path, "current_now");
-        const power = millionths(path, "power_now");
-        const watts = power ?? (volts !== null && amps !== null ? Math.abs(volts * amps)
-            : battery.changeRate);
+        const watts = record.watts ?? record.upower?.rate_w ?? null;
         const add = (list, value) => value === null ? list
             : (fresh ? list : []).concat([value]).slice(-graphed);
-        series = { at: now, watts: add(kept.watts, watts), volts: add(kept.volts, volts) };
+        series = { at: now, watts: add(kept.watts, watts), volts: add(kept.volts, record.volts) };
         return series;
     }
 
@@ -336,49 +257,29 @@ Provider {
         }, fields ?? {}));
     }
 
-    // Whether Joel's account may write the charge limit's files, asked
-    // once: null until it's known.
-    property var settable: null
-
-    Process {
-        id: access
-        onExited: code => provider.settable = code === 0
-    }
-
-    function askSettable(path) {
-        if (provider.settable !== null || access.running)
-            return;
-        const where = `/sys/class/power_supply/${path}`;
-        access.command = ["sh", "-c", "test -w \"$1\" && { test ! -e \"$2\" || test -w \"$2\"; }",
-            "sh", `${where}/charge_control_end_threshold`,
-            `${where}/charge_control_start_threshold`];
-        access.running = true;
-    }
-
     // Moves the charge limit, each file written in the order the kernel
     // takes them.
-    function setLimit(path, start, stop, wanted) {
+    function setLimit(name, start, stop, wanted) {
         for (const write of Power.limitWrites(start, stop, wanted, restart)) {
-            writer.path = `/sys/class/power_supply/${path}/${write[0]}`;
+            writer.path = `/sys/class/power_supply/${name}/${write[0]}`;
             writer.setText(`${write[1]}\n`);
         }
     }
 
     // The Charge limit: where charging stops and starts again, a setting
-    // when it can be set, and otherwise a figure saying only root sets it.
-    function limitPart(path) {
-        const stop = supplied(path, "charge_control_end_threshold");
-        if (stop === "")
+    // when Joel's account may write it, and otherwise a figure saying only
+    // root sets it.
+    function limitPart(record) {
+        const stop = record.limit_stop_pct;
+        if (stop === null || stop === undefined)
             return null;
-        const start = supplied(path, "charge_control_start_threshold");
-        askSettable(path);
-        const side = stop === "100" && (start === "" || start === "0") ? "charges fully"
-            : start !== "" ? `stops at ${stop}%, starts below ${start}%` : `stops at ${stop}%`;
-        if (settable !== true)
+        const start = record.limit_start_pct ?? null;
+        const side = stop === 100 && (start === null || start === 0) ? "charges fully"
+            : start !== null ? `stops at ${stop}%, starts below ${start}%` : `stops at ${stop}%`;
+        if (record.limit_settable !== true)
             return leaf("limit", side, {
-                note: settable === false ? "set in the firmware's settings" : ""
+                note: record.limit_settable === false ? "set in the firmware's settings" : ""
             });
-        const begun = start === "" ? null : Number(start);
         return holderRow({
             key: "power:limit",
             name: named("limit"),
@@ -391,32 +292,38 @@ Provider {
             verb: Words.verb("power:limit:stop"),
             glyph: Theme.glyph.charge,
             hue: "action",
-            side: Number(stop) === each ? "chosen" : "",
+            side: stop === each ? "chosen" : "",
             stays: true,
-            run: () => provider.setLimit(path, begun, Number(stop), each)
+            run: () => provider.setLimit(record.name, start, stop, each)
         })));
     }
 
+    // Whether the kernel said something of it: neither nothing nor
+    // "Unknown".
+    function said(text) {
+        return text !== null && text !== undefined && text !== "" && text !== "Unknown";
+    }
+
     function told() {
-        const path = battery.nativePath;
+        const record = battery;
         const rows = [chargerPart()];
-        const kept = sample(path);
+        const kept = sample(record);
+        const state = Power.stateOf(record);
 
         // The charge, as a bar: the headline says it, but not once it's
         // stepped into. The kernel's word for its level goes with it.
-        const charge = Math.round(battery.percentage * 100);
-        const barred = bar(battery.percentage,
-            battery.state === UPowerDeviceState.Discharging && charge <= low);
-        const level = supplied(path, "capacity_level");
+        const charge = record.capacity_pct ?? 0;
+        const barred = bar(charge / 100, state === "discharging" && charge <= low);
         rows.push(leaf("charge", `${charge}%`, {
             graph: barred,
-            note: level !== "" && level !== "Unknown" ? `its level ${level.toLowerCase()}` : ""
+            note: said(record.capacity_level)
+                ? `its level ${record.capacity_level.toLowerCase()}` : ""
         }));
 
         const watts = kept.watts.length > 0 ? kept.watts[kept.watts.length - 1] : 0;
         if (watts >= 0.05) {
-            const charging = battery.state === UPowerDeviceState.Charging;
-            rows.push(leaf("rate", `${number(watts, 1)} W`, {
+            const charging = state === "charging";
+            rows.push(leaf("rate", `${figure(watts)} W`, {
                 name: named("rate", charging ? "charging" : ""),
                 graph: spark(kept.watts, 1),
                 note: charging ? "into the battery" : "from the battery"
@@ -424,70 +331,78 @@ Provider {
         }
         // A stand-in's energy and voltage can be too small to say, and say
         // nothing true, so each is said from a tenth of its unit.
-        if (battery.energyCapacity >= 0.1)
-            rows.push(leaf("energy", `${number(battery.energy, 1)} of `
-                + `${number(battery.energyCapacity, 1)} Wh`, {
-                note: "now, of what it holds full"
+        const energy = Power.energyOf(record);
+        if (energy.full !== null && energy.full >= 0.1) {
+            const charged = [["energy:charge", record.charge_ah], ["energy:full",
+                record.charge_full_ah], ["energy:design", record.charge_design_ah]]
+                .filter(each => each[1] !== null && each[1] !== undefined)
+                .map(each => ({ label: named(each[0]), value: `${figure(each[1])} Ah` }));
+            if (energy.design !== null)
+                charged.push({ label: named("energy:designed"),
+                    value: `${figure(energy.design)} Wh` });
+            rows.push(leaf("energy", `${figure(energy.now ?? 0)} of ${figure(energy.full)} Wh`, {
+                note: "now, of what it holds full",
+                drawer: charged.length > 0 ? { title: named("energy"), facts: charged } : undefined
             }));
+        }
         const volts = kept.volts.length > 0 ? kept.volts[kept.volts.length - 1] : null;
-        const designed = millionths(path, "voltage_min_design");
+        const designed = record.min_design_volts ?? null;
         // A battery's voltage moves by tenths of a volt around its own, so
         // its spark is drawn above the lowest read, by a fifth of a volt at
         // least, or it would be a flat line at the top.
         if (volts !== null && volts >= 0.1) {
             const lowest = Math.min(...kept.volts);
-            rows.push(leaf("voltage", `${number(volts, 2)} V`, {
+            rows.push(leaf("voltage", `${figure(volts)} V`, {
                 graph: spark(kept.volts.map(each => each - lowest), 0.2),
-                note: designed ? `${number(designed, 2)} V as designed` : ""
+                note: designed ? `${figure(designed)} V as designed` : ""
             }));
         }
 
-        const full = millionths(path, "charge_full") ?? millionths(path, "energy_full");
-        const design = millionths(path, "charge_full_design")
-            ?? millionths(path, "energy_full_design");
-        const health = supplied(path, "health");
-        if (full && design) {
-            const share = `${Math.round(full / design * 100)}% of its design`;
-            const hours = millionths(path, "charge_full") !== null && designed;
+        // Its health against its design and the cycles it's been through,
+        // a dot between ("92% of design" and "312 cycles", VKCF3Z,
+        // 2026-11-08); the kernel's own word for it is the note.
+        const ratio = record.health_ratio ?? null;
+        const cycles = record.cycles ?? null;
+        const healthItems = [ratio !== null ? `${Math.round(ratio * 100)}% of design` : "",
+            cycles !== null ? `${cycles} cycles` : ""].filter(part => part !== "");
+        if (healthItems.length > 0 || said(record.health)) {
             // A battery holding under four fifths of its design is worn,
             // as makers count it, so its bar warns.
-            rows.push(leaf("health", health !== "" && health !== "Unknown"
-                ? `${health}, ${share}` : share, {
-                graph: bar(full / design, full / design < 0.8),
-                note: hours ? `${number(full * designed, 1)} of the `
-                    + `${number(design * designed, 1)} Wh it was made to hold` : ""
+            const side = healthItems.length > 0 ? healthItems.join(" \u00b7 ") : record.health;
+            rows.push(leaf("health", side, {
+                sideItems: healthItems.map((item, at) => ({ said: item, keep: at === 0 ? 2 : 1 })),
+                graph: ratio !== null ? bar(ratio, ratio < 0.8) : undefined,
+                note: said(record.health) && healthItems.length > 0
+                    ? `the battery says it's ${record.health.toLowerCase()}` : ""
             }));
-        } else if (health !== "" && health !== "Unknown") {
-            rows.push(leaf("health", health));
         }
-        const cycles = supplied(path, "cycle_count");
-        if (cycles !== "")
-            rows.push(leaf("cycles", cycles));
-        const types = Power.chosen(supplied(path, "charge_types") || supplied(path, "charge_type"));
-        if (types.now !== "")
-            rows.push(leaf("type", types.now, {
-                note: types.all.length > 1 ? `of ${types.all.slice(0, -1).join(", ")} `
-                    + `and ${types.all[types.all.length - 1]}` : ""
+        if (cycles !== null)
+            rows.push(leaf("cycles", String(cycles)));
+        const types = record.charge_types ?? [];
+        if (said(record.charge_type))
+            rows.push(leaf("type", record.charge_type, {
+                note: types.length > 1 ? `of ${types.slice(0, -1).join(", ")} `
+                    + `and ${types[types.length - 1]}` : ""
             }));
-        const limit = limitPart(path);
+        const limit = limitPart(record);
         if (limit !== null)
             rows.push(limit);
-        const tenths = supplied(path, "temp");
-        if (tenths !== "") {
-            const degrees = Number(tenths) / 10;
-            rows.push(leaf("temperature", `${number(degrees, 1)} \u00b0C`, {
+        const degrees = record.temperature_c ?? null;
+        if (degrees !== null) {
+            rows.push(leaf("temperature", `${figure(degrees)} \u00b0C`, {
                 graph: bar(degrees / hottest, degrees >= warm),
                 note: `of the ${hottest} \u00b0C it's made to run at`
             }));
         }
-        const what = [supplied(path, "manufacturer"), supplied(path, "model_name")]
-            .filter(part => part !== "").join(" ");
-        const technology = supplied(path, "technology");
+        const what = [record.manufacturer ?? "", record.model ?? ""]
+            .filter(part => said(part)).join(" ");
         if (what !== "")
-            rows.push(leaf("model", technology !== "" && technology !== "Unknown"
-                ? `${what}, ${technology}` : what));
-        const made = Power.made(Number(supplied(path, "manufacture_year")),
-            Number(supplied(path, "manufacture_month")), Number(supplied(path, "manufacture_day")));
+            rows.push(leaf("model", said(record.technology) ? `${what}, ${record.technology}`
+                : what, {
+                drawer: said(record.serial) ? { title: named("model"), facts: [{
+                    label: named("serial"), value: record.serial, named: true }] } : undefined
+            }));
+        const made = Power.madeOf(record.made);
         if (made !== "")
             rows.push(leaf("made", made));
 
@@ -501,22 +416,39 @@ Provider {
         };
     }
 
-    // While its answer shows, it's asked again each second, so its figures
-    // move and its sparks fill.
+    // While its answer shows, it's asked again as the daemon's records
+    // change, so its figures move and its sparks fill.
     readonly property bool shown: launcher !== null && launcher.open && launcher.held.length === 0
         && launcher.answer?.live === provider
 
-    Timer {
-        interval: provider.second
-        repeat: true
-        running: provider.shown
-        onTriggered: provider.answered()
+    Connections {
+        target: daemon
+
+        function onHeard(keys) {
+            if (provider.shown)
+                provider.answered();
+        }
     }
 
-    FileView {
-        id: probe
-        blockLoading: true
-        printErrors: false
+    Connections {
+        target: provider.launcher
+
+        function onOpenChanged() {
+            if (!provider.launcher.open)
+                provider.asked = false;
+        }
+    }
+
+    // The machine daemon's supplies, held once Power has been asked since
+    // the launcher opened, until it closes.
+    Daemon {
+        id: daemon
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+        kind: "supply"
+        live: provider.launcher !== null && provider.launcher.open && provider.asked
+        keptThroughGap: false
+        answersWhole: true
     }
 
     // The kernel's files can't be replaced, only written in place.

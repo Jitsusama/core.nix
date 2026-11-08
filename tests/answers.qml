@@ -2461,6 +2461,50 @@ QtObject {
         machine("a port with something in", Power.port({ online: false, partner: true },
             measured, portStates), "plugged in, giving nothing");
         machine("an empty port", Power.port({ online: false }, measured, portStates), "empty");
+        machine("a kernel's list written again", Power.listed(["C", "PD", "PD_PPS"], "PD"),
+            "C [PD] PD_PPS");
+        // The supplies as the machine daemon holds the laptop's: its
+        // battery, a mouse's, the charger's and two USB-C ports.
+        const powerHeld = [
+            { key: "supply:hidpp_battery_0", name: "hidpp_battery_0", type: "Battery",
+                scope: "Device" },
+            { key: "supply:BAT0", name: "BAT0", type: "Battery", scope: null, capacity_pct: 36,
+                status: "Discharging", charge_ah: 1.5, charge_full_ah: 3.6,
+                charge_design_ah: 4, energy_wh: null, energy_full_wh: null,
+                energy_design_wh: null, min_design_volts: 15,
+                upower: { state: "discharging", time_to_empty_s: 11400, time_to_full_s: null } },
+            { key: "supply:AC", name: "AC", type: "Mains", online: false },
+            { key: "supply:ucsi-source-psy-USBC000:002", name: "ucsi-source-psy-USBC000:002",
+                type: "USB", online: false, typec: { power_role: "source", partner: {} } },
+            { key: "supply:ucsi-source-psy-USBC000:001", name: "ucsi-source-psy-USBC000:001",
+                type: "USB", online: true, volts: 20, amps: 1.2, max_volts: 20, max_amps: 2.25,
+                usb_type: "PD", typec: { power_role: "sink", partner: null } }
+        ];
+        machine("the machine's battery, not a mouse's", Power.batteryOf(powerHeld).name, "BAT0");
+        machine("no battery", Power.batteryOf([powerHeld[2]]), null);
+        machine("the USB-C ports, by their number",
+            Power.portsOf(powerHeld).map(port => port.n), [1, 2]);
+        machine("a port charging, as its record says, at what it's offered",
+            Power.portOf(powerHeld[4]), { online: true, volts: 20, amps: 2.25,
+                protocol: "USB PD", partner: false, giving: false });
+        machine("a port powering what's plugged in", [Power.portOf(powerHeld[3]).giving,
+            Power.portOf(powerHeld[3]).partner], [true, true]);
+        machine("a charger plugged in elsewhere", [Power.pluggedElsewhere(powerHeld),
+            Power.pluggedElsewhere([{ name: "AC", type: "Mains", online: true }])],
+            [false, true]);
+        machine("the battery's time, as UPower works it out",
+            Power.doing(powerHeld[1], Interfaces.lasted), "36% \u00b7 3 h 10 min to empty");
+        machine("the battery charging with no time said", Power.doing({ capacity_pct: 80,
+            status: "Charging", upower: null }, Interfaces.lasted), "80% \u00b7 charging");
+        machine("the battery full", Power.doing({ capacity_pct: 100, status: "Full" },
+            Interfaces.lasted), "100% \u00b7 full");
+        machine("the energy a battery counting charge holds", Power.energyOf(powerHeld[1]),
+            { now: 22.5, full: 54, design: 60 });
+        machine("the energy a battery counts itself", Power.energyOf({ energy_wh: 30,
+            energy_full_wh: 50, energy_design_wh: null, charge_design_ah: null }),
+            { now: 30, full: 50, design: null });
+        machine("made, as the daemon says it", [Power.madeOf("2026-07-20"), Power.madeOf(null),
+            Power.madeOf("0000-00-00")], ["2026-07-20", "", ""]);
         machine("made on a day", Power.made(2026, 7, 20), "2026-07-20");
         machine("made in a month", Power.made(2026, 7, 0), "2026-07");
         machine("a date that isn't", Power.made(0, 13, 40), "");

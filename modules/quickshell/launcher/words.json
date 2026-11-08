@@ -2305,6 +2305,26 @@
       "name": "Energy"
     },
     {
+      "id": "power:energy:charge",
+      "in": "power:energy",
+      "name": "Charge Now"
+    },
+    {
+      "id": "power:energy:full",
+      "in": "power:energy",
+      "name": "Charge Full"
+    },
+    {
+      "id": "power:energy:design",
+      "in": "power:energy",
+      "name": "Charge Designed"
+    },
+    {
+      "id": "power:energy:designed",
+      "in": "power:energy",
+      "name": "Energy Designed"
+    },
+    {
       "id": "power:voltage",
       "in": "power",
       "name": "Voltage",
@@ -2363,6 +2383,11 @@
       "in": "power",
       "name": "Model",
       "term": "Machine/model"
+    },
+    {
+      "id": "power:serial",
+      "in": "power:model",
+      "name": "Serial"
     },
     {
       "id": "power:made",
