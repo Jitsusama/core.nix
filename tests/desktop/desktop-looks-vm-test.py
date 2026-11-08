@@ -1616,6 +1616,26 @@ def previewed(shown: Json, name: str, preview: str | None) -> bool:
     return drawer["preview"] is None
 
 
+def facts_follow(drawer: Json, body: float, preview: str | None, after: float) -> float:
+    """Hold a plate's facts to where its preview leaves them; say how far lines leave them.
+
+    After lines, or no preview, they're on the card's beat. A picture stands its own height
+    rather than whole lines of the pitch (VKCF3Z, 2026-11-08), so the facts after it stand as
+    far below it as they do below lines, off the beat.
+    """
+    facts = drawer["lines"]["facts"]
+    if preview == "picture":
+        below = facts[0] - drawer["lines"]["previewEnd"]
+        assert abs(below - after) <= NEAR, (
+            f"{drawer['title']}'s facts stand {below} below its picture, not {after}: {drawer}"
+        )
+        return after
+    assert all(on_the_beat(line, body) for line in facts), (
+        f"{drawer['title']}'s facts are off the beat: {drawer}"
+    )
+    return facts[0] - drawer["lines"]["previewEnd"] if preview == "lines" else after
+
+
 def test_the_file_pickers_plate_previews_each_kind_on_the_cards_lines(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
@@ -1645,6 +1665,8 @@ def test_the_file_pickers_plate_previews_each_kind_on_the_cards_lines(
                 f" {values['choose_a_file']} open {folder}"
             )
             asked_in(desktop, "~/picked", set(PICKED))
+            # How far the facts stand below lines of preview, the first file's a folder's.
+            after = 0.0
             for name, (eyebrow, preview) in PICKED.items():
                 desktop.down_to(name)
                 desktop.launcher_until(partial(previewed, name=name, preview=preview))
@@ -1658,9 +1680,7 @@ def test_the_file_pickers_plate_previews_each_kind_on_the_cards_lines(
                 assert all(on_the_pitch(line, body) for line in shown), (
                     f"at {scale} {name}'s preview is off the pitch: {drawer}"
                 )
-                assert all(on_the_beat(line, body) for line in facts), (
-                    f"at {scale} {name}'s facts are off the beat: {drawer}"
-                )
+                after = facts_follow(drawer, body, preview, after)
                 assert things_apart(facts, drawer["factsWrapped"] > 0), (
                     f"at {scale} {name}'s facts are off the pitch: {drawer}"
                 )

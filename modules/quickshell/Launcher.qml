@@ -6526,6 +6526,7 @@ Scope {
                     title: root.hundredths(lines.title),
                     titleLast: root.hundredths(lines.titleLast),
                     preview: root.hundredths(lines.preview),
+                    previewEnd: root.hundredths(lines.previewEnd),
                     previewLines: lines.previewLines.map(line => root.hundredths(line)),
                     words: root.hundredths(lines.words),
                     facts: lines.facts.map(line => root.hundredths(line)),
