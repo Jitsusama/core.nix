@@ -112,7 +112,10 @@ QtObject {
             named,
             said: {
                 eyebrow: "on this machine \u00b7 lag",
-                over: "{what} \u00b7 over the last {seconds} s"
+                over: "{what} \u00b7 over the last {seconds} s",
+                "stall:cpu": "processor",
+                "stall:memory": "memory",
+                "stall:io": "disk"
             }
         };
         const window = {
