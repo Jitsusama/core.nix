@@ -13,9 +13,10 @@
 // times the processor slowed itself to cool down, as the whole processor
 // and core by core.
 //
-// The readings are the kernel's hwmon files (Sensors.qml, Heat.js), read
-// when asked and once a second while the answer is shown, never for a key,
-// the same way the machine's answers read the processor and the disk. The
+// The readings are the machine daemon's (modules/machine), its sensor,
+// zone and processor records, which it reads once a second while the
+// launcher is open and holds here, so nothing is read on the shell's
+// thread; Heat.js makes them into the parts. The
 // processor's NPU, image processor and media and display engines are
 // measured by no hwmon chip, so they come from its own telemetry
 // (ProcessorTelemetry.qml), asked only while an answer is shown and listed
@@ -27,6 +28,7 @@
 // it measures is left out, so a reading is never shown twice under two
 // names, and a thermal zone is read only for a part no chip gives.
 import qs
+import Quickshell
 import QtQuick
 import "Heat.js" as Heat
 import "Machine.js" as Machine
@@ -36,13 +38,6 @@ Provider {
     id: provider
 
     examples: ["temperature", "fans"]
-
-    // Sensors is made at its first use, and lists the machine's chips a
-    // moment after; asked first as Machine is stepped into, it would have
-    // none yet, and Machine, made once, would list no Heat (15J7N3,
-    // 2026-10-29). So it's made as Heat is, with the shell, as each of
-    // Heat's and Machine's own was before they shared one.
-    Component.onCompleted: Sensors.chips()
 
     // The words it answers whole, and by their start (Provider.qml).
     questions: Words.answers("heat")
@@ -146,38 +141,26 @@ Provider {
         return age >= second || (!settled(kept) && age >= soonest);
     }
 
-    // Everything Heat says, read now: each chip's temperatures (of a chip
-    // measuring many, only those it can name) and fans, a thermal zone
-    // for a part no chip gives, and the throttling counts.
+    // The daemon's records of a kind, as held now.
+    function heldOf(kind) {
+        const held = daemon.revision >= 0 ? daemon.held : {};
+        return Object.keys(held).filter(key => key.startsWith(`${kind}:`))
+            .map(key => held[key]);
+    }
+
+    // Everything Heat says, as the daemon holds it: each chip's
+    // temperatures (of a chip measuring many, only those it can name) and
+    // fans, a thermal zone for a part no chip gives, and the throttling
+    // counts.
     function sensed() {
-        const chips = Sensors.chips().map(chip => ({
-            part: chip.part,
-            temps: Sensors.readings(chip, "temp",
-                chip.part === "" ? label => Heat.labelled(label) !== "" : null).map(s => {
-                const said = Sensors.degrees(chip, s);
-                return {
-                    n: s.n,
-                    label: s.label,
-                    value: said.value,
-                    high: said.high,
-                    crit: said.most
-                };
-            }),
-            fans: Sensors.readings(chip, "fan").map(s => Object.assign({
-                n: s.n,
-                label: s.label,
-                value: s.value
-            }, Sensors.fan(chip, s)))
-        }));
-        const zones = Sensors.zones()
-            .map(zone => ({ part: Heat.zonePart(zone.type), zone: zone }))
-            .filter(each => each.part !== "" && !Heat.gives(chips, each.part))
-            .map(each => ({ part: each.part, value: Sensors.zoneDegrees(each.zone) }))
-            .filter(each => each.value !== null);
+        const chips = Heat.chipsOf(heldOf("sensor"));
+        const zones = Heat.zonesOf(heldOf("zone"))
+            .filter(each => !Heat.gives(chips, each.part));
+        const processor = heldOf("processor")[0] ?? null;
         return {
-            parts: Heat.gather(chips, zones, Heat.coreCpus(Sensors.cpus()),
+            parts: Heat.gather(chips, zones, Heat.coreCpus(Heat.cpusOf(processor)),
                 ProcessorTelemetry.reading?.temperatures),
-            throttled: Heat.throttled(Sensors.throttles())
+            throttled: Heat.throttledOf(processor)
         };
     }
 
@@ -478,11 +461,46 @@ Provider {
         }
     }
 
-    Timer {
-        interval: provider.second
-        repeat: true
-        running: provider.shown
-        onTriggered: provider.answered()
+    // The machine daemon's chips, zones and processor, held while the
+    // launcher is open, as Machine holds its parts: Machine's Heat row
+    // says the hottest part whenever Machine is shown.
+    // Whether the daemon has said anything since the launcher opened: its
+    // first records are answered at once, shown or not, so Machine's Heat
+    // row is there as soon as they are, and a read made before them is
+    // let go; after that, only a shown answer moves with each.
+    property bool heardSinceOpen: false
+
+    Connections {
+        target: daemon
+
+        function onHeard(keys) {
+            if (!provider.heardSinceOpen) {
+                provider.heardSinceOpen = true;
+                provider.reads = null;
+                provider.answered();
+            } else if (provider.shown) {
+                provider.answered();
+            }
+        }
+    }
+
+    Connections {
+        target: provider.launcher
+
+        function onOpenChanged() {
+            if (!provider.launcher.open)
+                provider.heardSinceOpen = false;
+        }
+    }
+
+    Daemon {
+        id: daemon
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+        kind: ["sensor", "zone", "processor"]
+        live: provider.launcher !== null && provider.launcher.open
+        keptThroughGap: false
+        answersWhole: true
     }
 
     Timer {

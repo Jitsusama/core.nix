@@ -243,7 +243,6 @@ let
     "launcher/Recents.qml"
     "launcher/Repositories.qml"
     "launcher/Repositories.js"
-    "launcher/Sensors.qml"
     "launcher/Machine.js"
     "launcher/Heat.js"
     "launcher/Power.js"

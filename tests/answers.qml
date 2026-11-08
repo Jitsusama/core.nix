@@ -996,7 +996,7 @@ QtObject {
             "Core 8");
         machine("a processor's only sensor", Machine.processor([{ label: "", value: 1 }]).value, 1);
 
-        // Heat's parts, from the chips as Sensors.qml reads the laptop's,
+        // Heat's parts, from the chips as Heat.chipsOf gives the laptop's,
         // in degrees: the processor's, its cores numbered by the logical
         // processor each is, the disk's with its hidden second sensor,
         // dell_ddv's named sensors and fans, dell_smm's unnamed fans
@@ -1157,18 +1157,48 @@ QtObject {
         machine("a climbing temperature's spark", Heat.spark([80, 85, 90]), [0, 0.5, 1]);
         machine("a spark with nothing read", Heat.spark([]), []);
         machine("a fan's spark, drawn across its span", Heat.fanSpark([5000, 5250]), [0.25, 0.75]);
-        // The laptop's own counts: the package's events as each processor
-        // saw them, and two processors sharing a core, counting it once.
-        const heatThrottled = Heat.throttled([
-            { cpu: 0, core: 0, cores: 24, package: 3191 },
-            { cpu: 1, core: 22, cores: 8, package: 265 },
-            { cpu: 2, core: 0, cores: 0, package: 3202, packageMs: 19016, packageLongest: 125 }
-        ]);
+        // The laptop's own counts, as the machine daemon holds them: the
+        // package's from the processor that saw most, each core once.
+        const heatThrottled = Heat.throttledOf({ throttled: {
+            cores: [{ core: 22, cpu: 1, count: 8 }, { core: 0, cpu: 0, count: 24 }],
+            cores_count: 32, package_count: 3202, package_ms: 19016, package_longest_ms: 125
+        } });
         machine("the processor throttled, as the package", [heatThrottled.times, heatThrottled.ms,
             heatThrottled.longest], [3202, 19016, 125]);
         machine("each core throttled, once a core", [heatThrottled.cores, heatThrottled.total],
             [[{ cpu: 0, count: 24 }, { cpu: 1, count: 8 }], 32]);
-        machine("no throttling counted", Heat.throttled([]), null);
+        machine("no throttling counted", Heat.throttledOf({ throttled: null }), null);
+        // The chips as the machine daemon holds the laptop's: the fans'
+        // own chip and a USB-C port's stand for no part, so only labels
+        // name their sensors, and an unlabelled fan is null, not "fan2".
+        const heatHeld = Heat.chipsOf([
+            { key: "sensor:nvme", part: "disk", temperatures: [
+                { n: 1, label: "Composite", temperature_c: 52.9, high_c: 82.9, critical_c: 84.9 },
+                { n: 2, label: "Sensor 9", temperature_c: 65261.8, high_c: null }], fans: [] },
+            { key: "sensor:dell_smm", part: "fans", temperatures: [
+                { n: 1, label: "CPU", temperature_c: 61 },
+                { n: 2, label: "Ambient", temperature_c: 40, critical_c: -273 }], fans: [
+                { n: 1, label: null, rpm: 2400, max_rpm: 5900, target_rpm: 2400,
+                    power_ratio: 0.502 },
+                { n: 2, label: null, rpm: null }] },
+            { key: "sensor:coretemp", part: "processor", temperatures: [
+                { n: 1, label: "Package id 0", temperature_c: 79, high_c: 100,
+                    critical_c: 100 }], fans: [] }
+        ]);
+        machine("the daemon's chips, by key, each for its part", heatHeld.map(chip => chip.part),
+            ["", "", "processor"]);
+        machine("a chip of no part, only its labelled sensors", heatHeld[1].temps,
+            [{ n: 2, label: "Ambient", value: 40, high: null, crit: null }]);
+        machine("a reading no part could reach, left out", heatHeld[0].temps.map(t => t.label),
+            ["Composite"]);
+        machine("an unlabelled fan, its speed read", heatHeld[1].fans,
+            [{ n: 1, label: "", value: 2400, max: 5900, target: 2400, power: 0.502 }]);
+        machine("the daemon's zones for a part", Heat.zonesOf([
+            { type: "TCPU", temperature_c: 78.5 }, { type: "SEN1", temperature_c: 40 },
+            { type: "acpitz", temperature_c: null }]), [{ part: "processor", value: 78.5 }]);
+        machine("each processor's core, from the daemon", Heat.cpusOf({ cores: [
+            { n: 0, core: 0 }, { n: 1, core: 0 }, { n: 2, core: null }] }),
+            [{ cpu: 0, core: 0 }, { cpu: 1, core: 0 }]);
         machine("each core's first processor", Heat.coreCpus([{ cpu: 0, core: 0 },
             { cpu: 1, core: 0 }, { cpu: 2, core: 4 }]), { 0: 0, 4: 2 });
         machine("a part's name in a sentence", ["Processor", "Wi-Fi Card", "Air Inside", "HDR"]

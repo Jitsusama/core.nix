@@ -1,6 +1,6 @@
 // What the launcher's Heat makes of the machine's sensors, in plain
 // JavaScript so a check can run it in Qt's own engine, as the shell does:
-// the kernel's hwmon chips, as Sensors.qml reads them, gathered into the
+// the kernel's hwmon chips, as the machine daemon holds them, gathered into the
 // parts Joel knows (the processor and its cores, its NPU, image processor
 // and media and display engines as its own telemetry says them, the disk
 // and its other sensors, the memory, the air inside, each fan), how near
@@ -65,6 +65,93 @@ const WHOLE = /^(Composite|Package|Tctl|Tdie)/;
 // A word with no capital but its first, which a sentence lowers.
 const PLAIN_WORD = /^[A-Z][a-z]*$/;
 const SPACES = /\s+/;
+
+// The parts a chip can stand for in Heat, by the part the machine daemon
+// names it for. A chip it names for something else, as the fans' own
+// chip or a USB-C port's, measures many things or none, so its sensors
+// are named by their labels, as a chip of no part's are.
+const CHIP_PARTS = ["processor", "disk", "wifi", "board", "chipset", "graphics", "battery"];
+// The temperatures a part could read, in degrees, beyond which a sensor
+// says nothing true: an unused disk sensor says 65,261.
+const COLDEST = -40;
+const HOTTEST = 150;
+
+function plausible(value) {
+    return value !== null && value !== undefined && value > COLDEST && value < HOTTEST;
+}
+
+// A limit a chip says, or null where it says one no temperature could
+// reach, or none at all.
+function limitOf(value) {
+    return plausible(value) && value > 0 ? value : null;
+}
+
+// Each chip as Heat gathers it, from the machine daemon's sensor records,
+// in the order of their keys: what it stands for, each temperature it
+// reads ({ n, label, value, high, crit }) and each fan it turns ({ n,
+// label, value, max, target, power }). A chip of no part keeps only the
+// sensors its labels name, since the rest say nothing of what they
+// measure; a fan whose speed can't be read is left out.
+function chipsOf(records) {
+    return records.slice().sort((a, b) => String(a.key).localeCompare(String(b.key)))
+        .map(record => {
+            const part = CHIP_PARTS.includes(record.part) ? record.part : "";
+            const temps = (record.temperatures ?? [])
+                .filter(each => plausible(each.temperature_c))
+                .map(each => ({
+                    n: each.n,
+                    label: each.label ?? "",
+                    value: each.temperature_c,
+                    high: limitOf(each.high_c),
+                    crit: limitOf(each.critical_c)
+                }))
+                .filter(each => part !== "" || labelled(each.label) !== "");
+            const turning = (record.fans ?? []).filter(each => given(each.rpm)).map(each => ({
+                n: each.n,
+                label: each.label ?? "",
+                value: each.rpm,
+                max: each.max_rpm ?? null,
+                target: each.target_rpm ?? null,
+                power: each.power_ratio ?? null
+            }));
+            return { part, temps, fans: turning };
+        });
+}
+
+// The thermal zones that stand for a part, each { part, value }, from the
+// machine daemon's zone records.
+function zonesOf(records) {
+    return records.filter(each => plausible(each.temperature_c))
+        .map(each => ({ part: zonePart(each.type ?? ""), value: each.temperature_c }))
+        .filter(each => each.part !== "");
+}
+
+// Each logical processor and the core it runs on, { cpu, core }, from the
+// machine daemon's processor record.
+function cpusOf(processor) {
+    return (processor?.cores ?? []).filter(each => given(each.core))
+        .map(each => ({ cpu: each.n, core: each.core }));
+}
+
+// How often the processor has slowed itself to cool down since the
+// machine started, from the machine daemon's processor record, as
+// Heat.qml says it: { times, ms, longest, cores, total }, each core by
+// its first logical processor, or null where the machine counts none.
+function throttledOf(processor) {
+    const said = processor?.throttled ?? null;
+    if (said === null) {
+        return null;
+    }
+    const cores = (said.cores ?? []).map(each => ({ cpu: each.cpu, count: each.count ?? 0 }))
+        .sort((a, b) => a.cpu - b.cpu);
+    return {
+        times: said.package_count ?? 0,
+        ms: said.package_ms ?? null,
+        longest: said.package_longest_ms ?? null,
+        cores,
+        total: said.cores_count ?? cores.reduce((sum, each) => sum + each.count, 0)
+    };
+}
 
 function labelled(label) {
     const match = LABELLED.find(each => each[0] === label);
@@ -295,32 +382,4 @@ function fans(chips) {
     }
     const told = unnamed.find(list => list.length === named.length) ?? [];
     return named.map((fan, i) => toldOf(fanOf(fan), told[i]));
-}
-
-// How often the processor has slowed itself to cool down since the
-// machine started, from each logical processor's counts, { cpu, core,
-// cores, package, packageMs, packageLongest }: the package's events are
-// counted by each processor that saw them, so the most any saw is the
-// package's, and a core's are said by each processor sharing it, so each
-// core counts once, by its lowest processor. Gives { times, ms, longest,
-// cores, total }, or null with nothing counted.
-function throttled(cpus) {
-    if (cpus.length === 0) {
-        return null;
-    }
-    const most = cpus.reduce((a, b) => (a && a.package >= b.package ? a : b), null);
-    const byCore = {};
-    for (const each of cpus) {
-        if (byCore[each.core] === undefined || each.cpu < byCore[each.core].cpu) {
-            byCore[each.core] = { cpu: each.cpu, count: each.cores };
-        }
-    }
-    const cores = Object.keys(byCore).map(core => byCore[core]).sort((a, b) => a.cpu - b.cpu);
-    return {
-        times: most.package,
-        ms: most.packageMs ?? null,
-        longest: most.packageLongest ?? null,
-        cores,
-        total: cores.reduce((sum, each) => sum + each.count, 0)
-    };
 }

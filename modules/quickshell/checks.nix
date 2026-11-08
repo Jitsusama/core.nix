@@ -2194,7 +2194,6 @@ onLinux {
         cp ${./launcher/HomeNetwork.js} launcher/HomeNetwork.js
         cp ${./launcher/Holders.js} launcher/Holders.js
         cp ${./launcher/SessionRow.js} launcher/SessionRow.js
-        cp ${./launcher/Sensors.qml} launcher/Sensors.qml
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
         cp ${./Words.qml} Words.qml
         cp ${./launcher/words.json} launcher/words.json
