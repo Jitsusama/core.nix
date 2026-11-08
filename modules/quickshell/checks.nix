@@ -961,6 +961,7 @@ onLinux {
     pkgs.runCommandLocal "recent-means-one-thing" { } ''
       cp ${../../tests/recent.qml} recent.qml
       cp ${./launcher/Recent.js} Recent.js
+      cp ${./launcher/Recents.js} Recents.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -2238,6 +2239,7 @@ onLinux {
       cp ${./launcher/Media.js} launcher/Media.js
       cp ${./Music.js} Music.js
       cp ${./launcher/Recents.qml} launcher/Recents.qml
+      cp ${./launcher/Recents.js} launcher/Recents.js
       cp ${./launcher/Recent.js} launcher/Recent.js
       cp ${./launcher/PastNotices.qml} launcher/PastNotices.qml
       cp ${./launcher/Notice.js} launcher/Notice.js
@@ -2346,6 +2348,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${../open-with/FileChooser.qml} launcher/FileChooser.qml
+      cp ${./launcher/Recents.js} launcher/Recents.js
       cp ${./Words.qml} Words.qml
       cp ${./Files.qml} Files.qml
       cp ${./FileFacts.js} FileFacts.js
@@ -2358,13 +2361,16 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       # A folder of notes, two hidden things in it, and a file opened lately
       # elsewhere beside one of its own; notes.txt is the largest, then b.png.
-      # Two folders deep elsewhere go from one to the other on ]b.
+      # Two folders deep elsewhere go from one to the other on ]b. The list
+      # opened lately is as recent-files prints it, its time last, empty
+      # where it's not known.
       mkdir -p $HOME/notes/sub $HOME/notes/.secret $HOME/elsewhere/deep/one $HOME/elsewhere/deep/two
       touch $HOME/notes/a.md $HOME/notes/.hidden.txt
       printf 'twelve bytes' > $HOME/notes/notes.txt
       printf 'png' > $HOME/notes/b.png
       touch $HOME/elsewhere/old.md
-      printf 'Notes\t%s\nNotes\t%s\n' "$HOME/elsewhere/old.md" "$HOME/notes/a.md" > $HOME/recent
+      printf 'Notes\t%s\t1700000000\nNotes\t%s\t\n' "$HOME/elsewhere/old.md" "$HOME/notes/a.md" \
+        > $HOME/recent
       export RECENT_LIST=${pkgs.writeShellScript "recent-list" ''cat "$HOME/recent"''}
       printf '50:text/markdown:*.md\n50:image/png:*.png\n50:text/plain:*.txt\n' > kinds/globs2
       printf 'text/markdown text/plain\n' > kinds/subclasses

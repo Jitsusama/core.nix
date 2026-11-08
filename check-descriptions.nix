@@ -1834,7 +1834,8 @@
   recent-means-one-thing = ''
     Recent lists at most nine things, newest first across its sources, each once where it's
     newest, none already shown above it, an undated source after the dated in its own order, and
-    its row says how many and the first one's name, none while empty and an ellipsis while waiting
+    its row says how many and the first one's name, none while empty and an ellipsis while waiting,
+    and a source's lines are read with their times apart, the shared list's by each program
   '';
   an-act-shows-before-its-daemon-answers = ''
     a row an act asked a daemon to change is drawn as it will be, keeping what the launcher made
