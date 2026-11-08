@@ -253,9 +253,7 @@ function bandOf(device) {
     if (device.ethernet) {
         return "Ethernet";
     }
-    const channel = device.channel === null || device.channel === undefined
-        ? ""
-        : `channel ${device.channel}`;
+    const channel = typeof device.channel === "number" ? `channel ${device.channel}` : "";
     return [device.band ?? "", channel].filter((part) => part !== "").join(DOT);
 }
 
@@ -340,8 +338,7 @@ function speedTestOf(test, settings) {
 function outagesOf(internet) {
     const kept = internet.history?.outages;
     const count = (kept ?? internet.outages ?? []).length;
-    const said = count === 0 ? "no outages" : counted(count, "outage");
-    return kept ? `${said} in 30 days` : said;
+    return `${count === 0 ? "no outages" : counted(count, "outage")}${kept ? " in 30 days" : ""}`;
 }
 
 // What the internet's row says, the place's head: its state at its side,
