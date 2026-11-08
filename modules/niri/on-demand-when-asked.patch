@@ -19,6 +19,11 @@ window opening on its own leave focus with the surface that asked, as
 exclusive focus did, so a shell moving windows from its open launcher
 keeps the launcher's keys.
 
+It sets NIRI_ON_DEMAND_WHEN_ASKED=1 for its children and imports it
+into the session, so a shell restarted by a switch, under a niri still
+running without this patch, keeps asking exclusively until niri
+restarts.
+
 diff --git a/src/handlers/layer_shell.rs b/src/handlers/layer_shell.rs
 index 0c5c1cd..dda321b 100644
 --- a/src/handlers/layer_shell.rs
@@ -152,6 +157,29 @@ index fbaa6fc..50499b6 100644
      pub fn place_within_backdrop(&self) -> bool {
          if !self.rules.place_within_backdrop {
              return false;
+diff --git a/src/main.rs b/src/main.rs
+index 2065cb5..c1da3f6 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -207,6 +207,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
+         info!("IPC listening on: {}", socket_path.to_string_lossy());
+     }
+ 
++    // Say to children that on-demand focus is given as a mapped surface asks, so a shell kept
++    // running across a niri without this patch can keep asking exclusively until niri restarts.
++    env::set_var("NIRI_ON_DEMAND_WHEN_ASKED", "1");
++
+     // Setup xwayland-satellite integration.
+     xwayland::satellite::setup(&mut state);
+     if let Some(satellite) = &state.niri.satellite {
+@@ -287,6 +291,7 @@ fn import_environment() {
+         "XDG_CURRENT_DESKTOP",
+         "XDG_SESSION_TYPE",
+         SOCKET_PATH_ENV,
++        "NIRI_ON_DEMAND_WHEN_ASKED",
+     ]
+     .join(" ");
+ 
 diff --git a/src/niri.rs b/src/niri.rs
 index 82d88f9..b8f1919 100644
 --- a/src/niri.rs

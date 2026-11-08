@@ -13,10 +13,20 @@
 pragma Singleton
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 import QtQuick
 
 Singleton {
     id: root
+
+    // How a surface Joel opens asks niri for the keys: on demand, once
+    // niri says it gives them as a mapped surface asks
+    // (modules/niri/on-demand-when-asked.patch), so the newest he opened
+    // has them and a click on a window takes them; exclusively until then.
+    // A switch restarts the shell under the niri already running, and an
+    // older niri never gives a mapped surface the keys on demand.
+    readonly property int asksForKeys: Quickshell.env("NIRI_ON_DEMAND_WHEN_ASKED") === "1"
+        ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive
 
     // Requests asked for before the socket connects, sent once it does, and
     // what hears each one's answer, in the order niri answers them.
