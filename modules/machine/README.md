@@ -77,7 +77,7 @@ units, or named here as left out with the reason.
 |                 | kernel release and build                     | Kernel, its Release and Build             |
 | `using:cpu:N`   | each program's share, its processes          | Processor's Using It                      |
 | `using:memory:N`| each program's resident memory, processes    | Memory's Using It                         |
-| `tree:<pid>`    | its share, resident memory, processes, threads | a program's drawer, which watches it    |
+| `tree:<pid>`    | its share, resident memory, processes, threads, every pid in it | a program's drawer, which watches it |
 
 ## Left Out, and Why
 
@@ -105,7 +105,9 @@ units, or named here as left out with the reason.
   a note had no room for them beside the rates.
 - **The boot's id.** Nothing is done with it.
 - **Each process of a tree on its own.** A drawer says what its program
-  costs as a whole; Using It names programs apart.
+  costs as a whole; Using It names programs apart. A tree lists its
+  pids, so a drawer counts once a process two watched trees hold, but
+  not their figures.
 
 [main]: src/main.rs
 [lib]: src/lib.rs
