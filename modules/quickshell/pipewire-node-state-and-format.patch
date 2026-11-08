@@ -1,0 +1,243 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] services/pipewire: say a node's state and its format
+
+A PwNode said its name, its properties and its volumes, but not what
+pipewire says it's doing, running, idle or suspended, nor the format it
+moves audio in, which pw-cli and pw-top both show. A shell saying every
+figure a sound device has could only read them by running pw-dump.
+
+PwNode now has a `state`, from the node's info, and PwNodeAudio a
+`format`, from its Format param, read whenever the node's params change:
+its rate, its channels and its sample format's short name, empty while
+the node is suspended and has none. Reading a param opens no stream, so
+a sleeping card stays asleep.
+
+---
+diff --git a/src/services/pipewire/node.cpp b/src/services/pipewire/node.cpp
+--- a/src/services/pipewire/node.cpp
++++ b/src/services/pipewire/node.cpp
+@@ -14,7 +14,11 @@
+ #include <qstring.h>
+ #include <qtmetamacros.h>
+ #include <qtypes.h>
++#include <spa/debug/types.h>
+ #include <spa/node/keys.h>
++#include <spa/param/audio/format-utils.h>
++#include <spa/param/audio/type-info.h>
++#include <spa/param/format-utils.h>
+ #include <spa/param/param.h>
+ #include <spa/param/props.h>
+ #include <spa/pod/builder.h>
+@@ -212,6 +216,14 @@
+ void PwNode::onInfo(void* data, const pw_node_info* info) {
+ 	auto* self = static_cast<PwNode*>(data);
+ 
++	if ((info->change_mask & PW_NODE_CHANGE_MASK_STATE) != 0) {
++		auto state = QString::fromUtf8(pw_node_state_as_string(info->state));
++		if (state != self->state) {
++			self->state = state;
++			emit self->stateChanged();
++		}
++	}
++
+ 	if ((info->change_mask & PW_NODE_CHANGE_MASK_PROPS) != 0) {
+ 		auto properties = QMap<QString, QString>();
+ 
+@@ -323,11 +335,46 @@
+ 					qCWarning(logNode) << "Unable to enumerate props param for" << this->node
+ 					                   << "as the param does not have read+write permissions.";
+ 				}
++			} else if (param.id == SPA_PARAM_Format) {
++				// A node has a format only while it's set up to move audio: a
++				// suspended one's can be written but not read, and it has none.
++				if ((param.flags & SPA_PARAM_INFO_READ) != 0) {
++					pw_node_enum_params(this->node->proxy(), 0, param.id, 0, UINT32_MAX, nullptr);
++				} else if (!this->mFormat.isEmpty()) {
++					this->mFormat.clear();
++					emit this->formatChanged();
++				}
+ 			}
+ 		}
+ 	}
+ }
+ 
++QVariantMap PwNodeBoundAudio::format() const { return this->mFormat; }
++
++void PwNodeBoundAudio::updateFormat(const spa_pod* param) {
++	uint32_t mediaType = 0;
++	uint32_t mediaSubtype = 0;
++	if (spa_format_parse(param, &mediaType, &mediaSubtype) < 0) return;
++
++	// Only raw audio says a rate, channels and a sample format of its own;
++	// a passthrough format such as IEC 958 is left unsaid.
++	auto format = QVariantMap();
++	if (mediaType == SPA_MEDIA_TYPE_audio && mediaSubtype == SPA_MEDIA_SUBTYPE_raw) {
++		auto raw = spa_audio_info_raw();
++		if (spa_format_audio_raw_parse(param, &raw) < 0) return;
++
++		const auto* sample = spa_debug_type_find_short_name(spa_type_audio_format, raw.format);
++		format.insert("rate", raw.rate);
++		format.insert("channels", raw.channels);
++		format.insert("sample", QString::fromUtf8(sample != nullptr ? sample : ""));
++	}
++
++	if (format != this->mFormat) {
++		this->mFormat = format;
++		emit this->formatChanged();
++	}
++}
++
+ void PwNodeBoundAudio::onSpaParam(quint32 id, quint32 index, const spa_pod* param) {
+ 	if (id == SPA_PARAM_Props && index == 0) {
+ 		if (this->node->shouldUseDevice()) {
+@@ -338,6 +385,8 @@
+ 		}
+ 
+ 		this->updateVolumeProps(PwVolumeProps::parseSpaPod(param));
++	} else if (id == SPA_PARAM_Format && index == 0) {
++		this->updateFormat(param);
+ 	}
+ }
+ 
+diff --git a/src/services/pipewire/node.hpp b/src/services/pipewire/node.hpp
+--- a/src/services/pipewire/node.hpp
++++ b/src/services/pipewire/node.hpp
+@@ -11,6 +11,7 @@
+ #include <qtclasshelpermacros.h>
+ #include <qtmetamacros.h>
+ #include <qtypes.h>
++#include <qvariant.h>
+ #include <spa/param/audio/raw.h>
+ #include <spa/pod/pod.h>
+ 
+@@ -202,10 +203,13 @@
+ 
+ 	[[nodiscard]] QVector<float> server() const;
+ 
++	[[nodiscard]] QVariantMap format() const;
++
+ signals:
+ 	void volumesChanged();
+ 	void channelsChanged();
+ 	void mutedChanged();
++	void formatChanged();
+ 
+ private slots:
+ 	void onDeviceReady();
+@@ -213,8 +217,10 @@
+ 
+ private:
+ 	void updateVolumeProps(const PwVolumeProps& volumeProps);
++	void updateFormat(const spa_pod* param);
+ 
+ 	bool mMuted = false;
++	QVariantMap mFormat;
+ 	QVector<PwAudioChannel::Enum> mChannels;
+ 	QVector<float> mVolumes;
+ 	QVector<float> mServerVolumes;
+@@ -242,6 +248,9 @@
+ 	PwNodeType::Flags type = PwNodeType::Untracked;
+ 
+ 	bool ready = false;
++	// What pipewire says the node is doing: running, idle, suspended,
++	// creating or error.
++	QString state;
+ 
+ 	PwNodeBoundData* boundData = nullptr;
+ 
+@@ -258,6 +267,7 @@
+ signals:
+ 	void propertiesChanged();
+ 	void readyChanged();
++	void stateChanged();
+ 
+ private slots:
+ 	void onCoreSync(quint32 id, qint32 seq);
+diff --git a/src/services/pipewire/qml.cpp b/src/services/pipewire/qml.cpp
+--- a/src/services/pipewire/qml.cpp
++++ b/src/services/pipewire/qml.cpp
+@@ -293,6 +293,7 @@
+ 	QObject::connect(boundData, &PwNodeBoundAudio::mutedChanged, this, &PwNodeAudioIface::mutedChanged);
+ 	QObject::connect(boundData, &PwNodeBoundAudio::channelsChanged, this, &PwNodeAudioIface::channelsChanged);
+ 	QObject::connect(boundData, &PwNodeBoundAudio::volumesChanged, this, &PwNodeAudioIface::volumesChanged);
++	QObject::connect(boundData, &PwNodeBoundAudio::formatChanged, this, &PwNodeAudioIface::formatChanged);
+ 	// clang-format on
+ }
+ 
+@@ -314,9 +315,12 @@
+ 	this->boundData->setVolumes(volumes);
+ }
+ 
++QVariantMap PwNodeAudioIface::format() const { return this->boundData->format(); }
++
+ PwNodeIface::PwNodeIface(PwNode* node): PwObjectIface(node), mNode(node) {
+ 	QObject::connect(node, &PwNode::propertiesChanged, this, &PwNodeIface::propertiesChanged);
+ 	QObject::connect(node, &PwNode::readyChanged, this, &PwNodeIface::readyChanged);
++	QObject::connect(node, &PwNode::stateChanged, this, &PwNodeIface::stateChanged);
+ 
+ 	if (auto* audioBoundData = dynamic_cast<PwNodeBoundAudio*>(node->boundData)) {
+ 		this->audioIface = new PwNodeAudioIface(audioBoundData, this);
+@@ -352,6 +356,8 @@
+ 
+ PwNodeAudioIface* PwNodeIface::audio() const { return this->audioIface; }
+ 
++QString PwNodeIface::state() const { return this->mNode->state; }
++
+ PwNodeIface* PwNodeIface::instance(PwNode* node) {
+ 	if (node == nullptr) return nullptr;
+ 
+diff --git a/src/services/pipewire/qml.hpp b/src/services/pipewire/qml.hpp
+--- a/src/services/pipewire/qml.hpp
++++ b/src/services/pipewire/qml.hpp
+@@ -239,6 +239,12 @@
+ 	///
+ 	/// > [!WARNING] This property is invalid unless the node is bound using @@PwObjectTracker.
+ 	Q_PROPERTY(QVector<float> volumes READ volumes WRITE setVolumes NOTIFY volumesChanged);
++	/// The format the node moves audio in, while it has one: `rate` in hertz,
++	/// `channels` and `sample`, the sample format's short name, such as `S32LE`.
++	/// Empty while the node is suspended, and for audio that isn't raw.
++	///
++	/// > [!WARNING] This property is invalid unless the node is bound using @@PwObjectTracker.
++	Q_PROPERTY(QVariantMap format READ format NOTIFY formatChanged);
+ 	// clang-format on
+ 	QML_NAMED_ELEMENT(PwNodeAudio);
+ 	QML_UNCREATABLE("PwNodeAudio cannot be created directly");
+@@ -257,10 +263,13 @@
+ 	[[nodiscard]] QVector<float> volumes() const;
+ 	void setVolumes(const QVector<float>& volumes);
+ 
++	[[nodiscard]] QVariantMap format() const;
++
+ signals:
+ 	void mutedChanged();
+ 	void channelsChanged();
+ 	void volumesChanged();
++	void formatChanged();
+ 
+ private:
+ 	PwNodeBoundAudio* boundData;
+@@ -315,6 +324,9 @@
+ 	/// > [!NOTE] The node may be used before it is fully bound, but some data
+ 	/// > may be missing or incorrect.
+ 	Q_PROPERTY(bool ready READ isReady NOTIFY readyChanged);
++	/// What pipewire says the node is doing: `running`, `idle`, `suspended`,
++	/// `creating` or `error`, as `pw-cli i <id>` says it.
++	Q_PROPERTY(QString state READ state NOTIFY stateChanged);
+ 	QML_NAMED_ELEMENT(PwNode);
+ 	QML_UNCREATABLE("PwNodes cannot be created directly");
+ 
+@@ -332,12 +344,14 @@
+ 	[[nodiscard]] PwNodeType::Flags type() const;
+ 	[[nodiscard]] QVariantMap properties() const;
+ 	[[nodiscard]] PwNodeAudioIface* audio() const;
++	[[nodiscard]] QString state() const;
+ 
+ 	static PwNodeIface* instance(PwNode* node);
+ 
+ signals:
+ 	void propertiesChanged();
+ 	void readyChanged();
++	void stateChanged();
+ 
+ private:
+ 	PwNode* mNode;

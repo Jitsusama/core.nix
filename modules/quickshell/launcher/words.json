@@ -4533,9 +4533,9 @@
       "term": "Machine/firmware"
     },
     {
-      "id": "sound:node",
+      "id": "sound:graph-id",
       "in": "sound",
-      "name": "Node"
+      "name": "Graph ID"
     },
     {
       "id": "sound:alsa-device",
@@ -4546,6 +4546,21 @@
       "id": "sound:priority",
       "in": "sound",
       "name": "Priority"
+    },
+    {
+      "id": "sound:state",
+      "in": "sound",
+      "name": "State"
+    },
+    {
+      "id": "sound:format",
+      "in": "sound",
+      "name": "Format"
+    },
+    {
+      "id": "sound:graph-format",
+      "in": "sound",
+      "name": "Graph Format"
     },
     {
       "id": "verb:sound-louder",
@@ -6218,7 +6233,7 @@
       "empty": "No screens.",
       "said": {
         "built-in": "built in",
-        "monitor": "monitor",
+        "screen": "screen",
         "following": "following the room",
         "own-white": "the screen's own white",
         "steps": "{now} of {most} steps"

@@ -24,6 +24,16 @@ const FRONT = /^front /;
 const DIGITAL = /-dmic$/;
 const HERTZ_PER_KILOHERTZ = 1000;
 const MILLISECONDS = 1000;
+// A measured figure is said to three significant digits.
+const SIGNIFICANT = 3;
+// A sample format as the sound server names it short: signed, unsigned or
+// floating, its bits, then how it's laid out, S24_32LE or F32LE.
+const SAMPLE = /^([SUF])(\d+)/;
+// The units a figure is said in, as desk-facts says a card's.
+const KILOHERTZ = "kHz";
+const BITS = "bit";
+const FLOATING = "float";
+const APART = " \u00b7 ";
 // A level is a share of the whole cubed, as the sound server and wpctl
 // give it, so its gain in decibels is twenty times the log of the cube.
 const DECIBELS_CUBED = 60;
@@ -116,6 +126,41 @@ function fraction(text) {
     const frames = Number(found[1]);
     const hertz = Number(found[2]);
     return { frames, hertz, ms: (frames / hertz) * MILLISECONDS };
+}
+
+// A sample format's bits, as desk-facts says a card's, a floating one said
+// so: S32LE is "32 bit", F32LE "32 bit float", one it can't read its
+// own short name. S24_32LE is "24 bit": the bits it holds are its
+// resolution, while its 32-bit container and its byte order are how
+// the graph lays them in memory, which no figure Joel reads turns on,
+// so they're left out, as desk-facts leaves a card's out.
+function sample(name) {
+    const found = SAMPLE.exec(String(name ?? ""));
+    if (!found) {
+        return String(name ?? "");
+    }
+    return [`${found[2]} ${BITS}`].concat(found[1] === "F" ? [FLOATING] : []).join(" ");
+}
+
+// The format the sound server moves a node's audio in, as pipewire's
+// Format says it: "48 kHz · 32 bit float", its rate to three significant
+// digits; "" while it has none. Its channels are its Channels' to say.
+function graphFormat(format) {
+    if (!format || !(format.rate > 0)) {
+        return "";
+    }
+    const measured = Number((format.rate / HERTZ_PER_KILOHERTZ).toPrecision(SIGNIFICANT));
+    return [`${measured} ${KILOHERTZ}`].concat(format.sample ? [sample(format.sample)] : [])
+        .join(APART);
+}
+
+// Whether the card already says the format the graph moves: its running
+// stream's figures, "48 kHz · 32 bit · period 21.3 ms (1024)", open with
+// the same rate and bits. They're compared whole, since a graph in float
+// over a card in integer is the difference Graph Format is there to show,
+// and desk-facts names a float card's format by ALSA's name, FLOAT_LE.
+function sameFormat(graph, card) {
+    return card === graph || String(card ?? "").startsWith(`${graph}${APART}`);
 }
 
 // A stream's rate, from its "1/44100".

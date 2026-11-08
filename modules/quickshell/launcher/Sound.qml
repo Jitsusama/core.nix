@@ -442,14 +442,16 @@ Provider {
 
     // A device's drawer (Plate.js): where it is and which way it goes over
     // its name, then its parts as facts, what moves most first (VKCF3Z,
-    // 2026-11-07): its Volume in decibels, its share being its row's, the
-    // programs Playing through it and how loud, its Channels balanced or
-    // each at its own level, its
-    // Tuning, Port and Profile; then what describes it, its Hardware's
-    // figures each a fact and what the kernel says of its card; and last
-    // what it's known by: its node's id, as wpctl takes it, the ALSA
-    // device it opens, as aplay -D takes it, the priority that picks the
-    // one in use, and a USB card's ids. Whether it's Muted is its row's
+    // 2026-11-07): its State as pipewire says it, its Volume in decibels,
+    // its share being its row's, the programs Playing through it and how
+    // loud, its Channels balanced or each at its own level, its Tuning,
+    // Port and Profile; then what describes it, its Hardware's figures
+    // each a fact and what the kernel says of its card, and the Format the
+    // graph moves its audio in where the card's doesn't say it; then the
+    // priority that picks the one in use; and last what it's known by,
+    // marked as identifiers (`identifies`): the ALSA device it opens, as
+    // aplay -D takes it, a USB card's ids, and its Graph ID, as wpctl
+    // takes it, ending the drawer (VKCF3Z, 2026-11-08). Whether it's Muted is its row's
     // to say, so it isn't said again. Its Level is left out, since reading
     // it opens a stream on a microphone and wakes a sleeping card, which
     // only the step in does; so is a Bluetooth device's codec, which is
@@ -488,16 +490,32 @@ Provider {
             }
         });
         const properties = node.properties;
-        const known = [
-            ["node", String(node.id ?? "")],
-            ["alsa-device", String(properties["api.alsa.path"] ?? "")],
-            ["priority", String(properties["priority.session"] ?? "")]
-        ].filter(([, value]) => value !== "")
-            .map(([id, value]) => ({ label: Words.name(`sound:${id}`), value: value }));
+        // What pipewire says the node is doing moves most, so it leads, in
+        // pipewire's own words, running, idle or suspended (VKCF3Z,
+        // 2026-11-08); the row's side never says it.
+        const state = String(node.state ?? "");
+        const doing = state === "" ? [] : [{ label: Words.name("sound:state"), value: state }];
+        // The format the graph moves its audio in is said once: as Format
+        // where the card's running stream doesn't say one, not at all where
+        // it says the same, and as Graph Format beside a card's that differs.
+        const graph = Sounds.graphFormat(node.audio.format);
+        const card = factsOf(node)
+            .find(fact => ["playing", "recording"].includes(fact.name.toLowerCase()))?.value;
+        const format = graph === "" || (card && Sounds.sameFormat(graph, card)) ? []
+            : [{ label: Words.name(card ? "sound:graph-format" : "sound:format"), value: graph }];
+        const known = (ids, identifies) => ids.filter(([, value]) => value !== "")
+            .map(([id, value]) => ({
+                label: Words.name(`sound:${id}`), value: value, identifies: identifies
+            }));
+        const identified = fact => Object.assign({}, fact, { identifies: true });
         return {
             eyebrow: Plate.runs([joinedBy(node), said(node.isSink ? "plate-out" : "plate-in")]),
             title: named(node),
-            facts: facts.concat(known, Plate.facts(hardware.filter(row => row.key === usb)))
+            facts: doing.concat(facts, format,
+                known([["priority", String(properties["priority.session"] ?? "")]], false),
+                known([["alsa-device", String(properties["api.alsa.path"] ?? "")]], true),
+                Plate.facts(hardware.filter(row => row.key === usb)).map(identified),
+                known([["graph-id", String(node.id ?? "")]], true))
         };
     }
 
