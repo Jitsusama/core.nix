@@ -595,9 +595,6 @@
   hibernate-unlock-passes-clippy = ''
     clippy finds nothing in hibernate-unlock or its tests
   '';
-  icon-marks-past-the-basic-plane = ''
-    an icon mark past U+FFFF reaches the shell whole
-  '';
   idle-pi-windows-yield = ''
     the sorter is given the folder where the harness marks pi sessions nobody is at, and weighs pi
     sessions started outside a terminal as it weighs windows
@@ -746,6 +743,9 @@
   machines-yield-to-what-the-person-works-in = ''
     system virtual machines are weighed as a build is, and the account's containers and session
     machines are idle
+  '';
+  marks-past-the-basic-plane = ''
+    a mark past U+FFFF reaches the shell whole
   '';
   memory-modules-passes-clippy = ''
     clippy finds nothing in memory-modules or its tests
@@ -1051,16 +1051,6 @@
   '';
   open-with-passes-clippy = ''
     clippy finds nothing in the portal's chooser or its tests
-  '';
-  palette-graphs-draw-in-braille = ''
-    a row's graph is ten braille characters over a dim track, a bar from the left, a spark from the
-    right and a strip a reading a member, warning at 95%; graphs line up in one column, and a
-    figure wears no glyph
-  '';
-  palette-rows-keep-their-words-apart = ''
-    a palette's row and field keep their words apart and inside them, however long, ending what
-    doesn't fit in an ellipsis, and the launcher's note, nothing typed, ends where a row's value
-    ends and says all it has room for
   '';
   passwords-holds-no-secret = ''
     the passwords daemon holds every entry each password manager lists without a secret, even one
@@ -1835,6 +1825,16 @@
     it, a void above a list's first row is told from a list scrolled down, and the whole is sent
     in OTLP's JSON mapping
   '';
+  the-launchers-graphs-draw-in-braille = ''
+    a row's graph is ten braille characters over a dim track, a bar from the left, a spark from the
+    right and a strip a reading a member, warning at 95%; graphs line up in one column, and a
+    figure wears no glyph
+  '';
+  the-launchers-rows-keep-their-words-apart = ''
+    a launcher row and field keep their words apart and inside them, however long, ending what
+    doesn't fit in an ellipsis, and the launcher's note, nothing typed, ends where a row's value
+    ends and says all it has room for
+  '';
   the-lid-shuts-when-the-hinge-agrees = ''
     lid-hinge believes a shut switch once the hinge last read nearly shut, a light sensor lit at
     the switch reads dark, or none was lit, doubts it otherwise, and reads the hinge's buffer
@@ -1854,8 +1854,8 @@
     the processors' and the memory's headlines make no parts and spawn nothing, and their parts,
     once looked at, list the processes once
   '';
-  the-margins-glyphs-stand-level = ''
-    every glyph in the margin stands one height on the gap's middle line, read from the right by
+  the-margins-marks-stand-level = ''
+    every mark in the margin stands one height on the gap's middle line, read from the right by
     kind, in the colour that says how much it asks; what was on air lingers, what a notice will say
     waits for its card, and a wait shows once the same one lasts; each stands in a square cell the
     gap's size with the same room all round, and What's on points at the row the keys are on

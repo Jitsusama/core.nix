@@ -2845,11 +2845,11 @@ onLinux {
   # when it says it warns; rows' graphs stand in one column, and a figure
   # wears no glyph, as tests/graphs.qml draws them through Quickshell in the
   # theme's own face and sizes, at a panel's width.
-  palette-graphs-draw-in-braille =
+  the-launchers-graphs-draw-in-braille =
     let
       machine = graphical.config;
     in
-    pkgs.runCommandLocal "palette-graphs-draw-in-braille" { } ''
+    pkgs.runCommandLocal "the-launchers-graphs-draw-in-braille" { } ''
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Choice.qml} Choice.qml
       cp ${./Ground.qml} Ground.qml
@@ -2926,7 +2926,7 @@ onLinux {
   # edges however long they run, ending what doesn't fit in an ellipsis, as
   # tests/rows.qml draws them through Quickshell in the theme's own face and
   # sizes, at a panel's width.
-  palette-rows-keep-their-words-apart =
+  the-launchers-rows-keep-their-words-apart =
     let
       machine = graphical.config;
       lights = pkgs.writeText "Lights.qml" ''
@@ -2936,7 +2936,7 @@ onLinux {
         Singleton { property bool caps: false }
       '';
     in
-    pkgs.runCommandLocal "palette-rows-keep-their-words-apart" { } ''
+    pkgs.runCommandLocal "the-launchers-rows-keep-their-words-apart" { } ''
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Choice.qml} Choice.qml
       cp ${./Ground.qml} Ground.qml
@@ -3231,11 +3231,11 @@ onLinux {
   # line, however tall its font draws it, and they line up from the corner
   # by how much each asks, in the colour that says so, as tests/marks.qml
   # holds them.
-  the-margins-glyphs-stand-level =
+  the-margins-marks-stand-level =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
-    pkgs.runCommandLocal "the-margins-glyphs-stand-level" { } ''
+    pkgs.runCommandLocal "the-margins-marks-stand-level" { } ''
       cp ${../../tests/marks.qml} marks.qml
       cp ${./Marks.js} Marks.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
