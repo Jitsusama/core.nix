@@ -2643,7 +2643,7 @@ def test_a_screenshot_found_by_what_it_shows_sits_below_recents_finds_at_each_sc
             desktop.down_to(found[2])
             note = desktop.showing()["selected"]["note"]
             assert note == "found by its meaning", f"a looked-at screenshot says {note!r}"
-            desktop.photograph(f"capture-recent-found-by-meaning-at-{scale.replace('.', '-')}")
+            desktop.shoot(f"capture-recent-found-by-meaning-at-{scale.replace('.', '-')}")
             desktop.close_launcher()
         asked = desktop.as_account("cat $XDG_RUNTIME_DIR/meaning-asked").split("\n")
         assert "look wombat" in asked, f"the pictures were never asked of: {asked}"
