@@ -80,6 +80,9 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
       };
       environment.systemPackages = [ pkgs.libfido2 ];
       systemd.settings.Manager.ShowStatus = lib.mkForce true;
+      # The test framework leaves switching out, and nixos-install switches
+      # the installed system once to lay down its boot loader.
+      system.switch.enable = true;
       system.stateVersion = "26.05";
       virtualisation = {
         directBoot.enable = false;
