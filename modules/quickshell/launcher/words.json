@@ -5490,6 +5490,72 @@
       "glyph": "link"
     },
     {
+      "id": "spotify:context",
+      "of": "program:spotify",
+      "name": "Playlist, Album or Artist",
+      "glyph": "playing",
+      "verb": "play",
+      "said": {
+        "playlist": "playlist",
+        "album": "album",
+        "artist": "artist",
+        "collection": "liked songs",
+        "playing": "playing",
+        "paused": "paused",
+        "song": "1 song",
+        "songs": "{count} songs",
+        "signedOut": "signed out",
+        "unreachable": "can't reach Spotify",
+        "failed": "couldn't read Spotify"
+      }
+    },
+    {
+      "id": "spotify:liked",
+      "of": "program:spotify",
+      "name": "Liked Songs",
+      "glyph": "favourite",
+      "verb": "play"
+    },
+    {
+      "id": "spotify:playlists",
+      "of": "program:spotify",
+      "name": "Playlists",
+      "verb": "more",
+      "glyph": "playing"
+    },
+    {
+      "id": "verb:spotify:play",
+      "command": "resume",
+      "in": "spotify:context",
+      "name": "Play",
+      "verb": "play",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:spotify:open",
+      "command": "open",
+      "in": "spotify:context",
+      "name": "Open in Spotify",
+      "verb": "open",
+      "glyph": "program"
+    },
+    {
+      "id": "verb:spotify:link",
+      "command": "yank",
+      "in": "spotify:context",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    },
+    {
+      "id": "verb:spotify:sign-in",
+      "command": "open",
+      "in": "applications",
+      "name": "Sign In",
+      "verb": "open",
+      "glyph": "signIn"
+    },
+    {
       "id": "verb:person:favourite",
       "command": "favourite",
       "in": "people",
@@ -7838,6 +7904,14 @@
     }
   },
   "meant": [
+    {
+      "word": "sign in",
+      "things": [
+        "verb:slack:sign-in",
+        "verb:spotify:sign-in"
+      ],
+      "why": "Slack and Spotify each sign in again inside their own program, never side by side."
+    },
     {
       "word": "devices",
       "things": [

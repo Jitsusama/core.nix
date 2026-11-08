@@ -1,0 +1,17 @@
+{
+  "items": [
+    {
+      "uri": "spotify:playlist:p1",
+      "name": "Focus",
+      "owner": { "display_name": "Joel" },
+      "items": { "total": 42 }
+    },
+    {
+      "uri": "spotify:playlist:p3",
+      "name": "Road\ttrip",
+      "owner": { "display_name": "Spotify" },
+      "tracks": { "total": 7 }
+    }
+  ],
+  "next": "https://api.spotify.com/v1/me/playlists?offset=2&limit=50"
+}

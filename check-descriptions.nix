@@ -1464,6 +1464,14 @@
   spotify-player-signs-in-where-spotify-answers = ''
     spotify-player's sign-in asks ncspot's Spotify app to answer at the one address that app takes
   '';
+  spotify-recent-passes-clippy = ''
+    clippy finds nothing in spotify-recent or its tests
+  '';
+  spotify-recent-reads-what-played = ''
+    spotify-recent lists what Spotify played lately one row a playlist, album or artist, nine at
+    most, refreshes a spent sign-in and writes it back in its own shape keeping its refresh token,
+    finds a device to play on, and says signed out, nowhere to play and out of reach apart
+  '';
   sshd-lets-a-gone-caller-go = ''
     every NixOS machine's sshd asks a quiet caller every 15 s and lets it go after four unanswered
   '';
@@ -1759,6 +1767,11 @@
     an open launcher takes the first of its sources' changes at once and those after it a pace
     apart, together, and a refresh taken another way takes the one waiting with it, so no two
     refreshes begin closer than the pace
+  '';
+  the-launcher-plays-from-spotify = ''
+    Spotify's program in the launcher reads Spotify only as it's stepped into, once an opening,
+    and holds its Recent, Liked Songs and Playlists, each played, opened and copied as it says,
+    its note saying when it's signed out or out of reach
   '';
   the-launcher-lays-sessions-under-their-orchestrators = ''
     every list of pi sessions keeps one order of how they stand, and Agents lays each under the

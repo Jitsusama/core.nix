@@ -219,7 +219,10 @@
         signing = ./modules/signing/home.nix;
         slack = moduleFrom ./modules/slack/home.nix { inherit (self.homeModules) people quickshell; };
         spend-watch = ./modules/spend-watch/home.nix;
-        spotify = moduleFrom ./modules/spotify/home.nix { inherit spicetify-nix; };
+        spotify = moduleFrom ./modules/spotify/home.nix {
+          inherit spicetify-nix;
+          inherit (self.homeModules) quickshell;
+        };
         ssh-tpm-agent = ./modules/ssh-tpm-agent/home.nix;
         swayidle = ./modules/swayidle/home.nix;
         swayimg = moduleFrom ./modules/swayimg/home.nix { inherit (self.homeModules) niri quickshell; };

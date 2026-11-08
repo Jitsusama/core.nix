@@ -1,0 +1,156 @@
+{
+  "items": [
+    {
+      "played_at": "2026-11-07T08:50:00.000Z",
+      "context": { "type": "playlist", "uri": "spotify:playlist:p1" },
+      "track": {
+        "uri": "spotify:track:t1",
+        "name": "First",
+        "album": {
+          "uri": "spotify:album:a1",
+          "name": "One",
+          "artists": [{ "name": "Band" }]
+        }
+      }
+    },
+    {
+      "played_at": "2026-11-07T08:46:00.000Z",
+      "context": { "type": "playlist", "uri": "spotify:playlist:p1" },
+      "track": {
+        "uri": "spotify:track:t2",
+        "name": "Second",
+        "album": {
+          "uri": "spotify:album:a1",
+          "name": "One",
+          "artists": [{ "name": "Band" }]
+        }
+      }
+    },
+    {
+      "played_at": "2026-11-07T08:40:00.000Z",
+      "context": null,
+      "track": {
+        "uri": "spotify:track:t3",
+        "name": "Third",
+        "album": {
+          "uri": "spotify:album:a2",
+          "name": "Tab\tAlbum\nTwo",
+          "artists": [{ "name": "Singer" }, { "name": "Guest" }]
+        }
+      }
+    },
+    {
+      "played_at": "2026-11-07T08:35:00.000Z",
+      "context": { "type": "album", "uri": "spotify:album:a3" },
+      "track": {
+        "uri": "spotify:track:t4",
+        "name": "Fourth",
+        "album": {
+          "uri": "spotify:album:a3",
+          "name": "Three",
+          "artists": [{ "name": "Trio" }]
+        }
+      }
+    },
+    {
+      "played_at": "2026-11-07T08:30:00.000Z",
+      "context": { "type": "artist", "uri": "spotify:artist:r1" },
+      "track": {
+        "uri": "spotify:track:t5",
+        "name": "Fifth",
+        "album": {
+          "uri": "spotify:album:a9",
+          "name": "Nine",
+          "artists": [{ "name": "Artist" }]
+        }
+      }
+    },
+    {
+      "played_at": "2026-11-07T08:25:00.000Z",
+      "context": { "type": "collection", "uri": "spotify:user:joel:collection" },
+      "track": {
+        "uri": "spotify:track:t6",
+        "name": "Sixth",
+        "album": {
+          "uri": "spotify:album:a10",
+          "name": "Ten",
+          "artists": [{ "name": "Someone" }]
+        }
+      }
+    },
+    {
+      "played_at": "2026-11-07T08:20:00.000Z",
+      "context": { "type": "playlist", "uri": "spotify:playlist:p2" },
+      "track": {
+        "uri": "spotify:track:t7",
+        "name": "Seventh",
+        "album": {
+          "uri": "spotify:album:a4",
+          "name": "Four",
+          "artists": [{ "name": "Quartet" }]
+        }
+      }
+    },
+    {
+      "played_at": "2026-11-07T08:15:00.000Z",
+      "context": { "type": "playlist", "uri": "spotify:playlist:p3" },
+      "track": {
+        "uri": "spotify:track:t8",
+        "name": "Eighth",
+        "album": {
+          "uri": "spotify:album:a11",
+          "name": "Eleven",
+          "artists": [{ "name": "Band" }]
+        }
+      }
+    },
+    {
+      "played_at": "2026-11-07T08:10:00.000Z",
+      "context": null,
+      "track": {
+        "uri": "spotify:track:t9",
+        "name": "Ninth",
+        "album": {
+          "uri": "spotify:album:a2",
+          "name": "Tab\tAlbum\nTwo",
+          "artists": [{ "name": "Singer" }, { "name": "Guest" }]
+        }
+      }
+    },
+    {
+      "played_at": "2026-11-07T08:05:00.000Z",
+      "context": { "type": "album", "uri": "spotify:album:a5" },
+      "track": {
+        "uri": "spotify:track:t10",
+        "name": "Tenth",
+        "album": {
+          "uri": "spotify:album:a5",
+          "name": "Five",
+          "artists": [{ "name": "Quintet" }]
+        }
+      }
+    },
+    {
+      "played_at": "2026-11-07T08:00:00.000Z",
+      "context": { "type": "album", "uri": "spotify:album:a6" },
+      "track": {
+        "uri": "spotify:track:t11",
+        "name": "Eleventh",
+        "album": {
+          "uri": "spotify:album:a6",
+          "name": "Six",
+          "artists": [{ "name": "Sextet" }]
+        }
+      }
+    },
+    {
+      "played_at": "2026-11-07T07:55:00.000Z",
+      "context": null,
+      "track": {
+        "uri": "spotify:local:Someone:Home:Demo:120",
+        "name": "A local file",
+        "album": { "uri": null, "name": "Home", "artists": [] }
+      }
+    }
+  ]
+}
