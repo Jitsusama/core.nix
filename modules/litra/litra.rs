@@ -365,13 +365,16 @@ fn hear(state: &mut State, report: &[u8]) -> Heard {
 
 /// Text as a JSON string holds it.
 fn quoted(text: &str) -> String {
+    use std::fmt::Write as _;
     let mut said = String::with_capacity(text.len() + 2);
     said.push('"');
     for c in text.chars() {
         match c {
             '"' => said.push_str("\\\""),
             '\\' => said.push_str("\\\\"),
-            c if u32::from(c) < 0x20 => said.push_str(&format!("\\u{:04x}", u32::from(c))),
+            c if u32::from(c) < 0x20 => {
+                let _ = write!(said, "\\u{:04x}", u32::from(c));
+            }
             c => said.push(c),
         }
     }
@@ -670,6 +673,19 @@ struct Watched {
     about: About,
 }
 
+impl Watched {
+    /// A light found out, with what its HID device says of it.
+    fn new(node: PathBuf, light: Light, state: State) -> Self {
+        let about = about(Path::new("/sys"), &node);
+        Self {
+            node,
+            light,
+            state,
+            about,
+        }
+    }
+}
+
 fn watch() -> ExitCode {
     let mut devices = match devices() {
         Ok(devices) => devices,
@@ -698,13 +714,7 @@ fn watch() -> ExitCode {
                 let mut state = State::default();
                 let asking = vec![TEMPERATURE_IS, BRIGHTNESS_IS, POWER_IS];
                 if find_out(&mut light, &mut state, asking).is_ok() {
-                    let about = about(Path::new("/sys"), &node);
-                    watched.push(Watched {
-                        node,
-                        light,
-                        state,
-                        about,
-                    });
+                    watched.push(Watched::new(node, light, state));
                 }
             }
             look = false;
