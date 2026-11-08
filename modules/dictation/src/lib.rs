@@ -6,8 +6,8 @@
 //! cache of what's compiled. screen-text
 //! (bin/screen-text), which reads the words in screenshots, and meaning
 //! (bin/meaning), which finds the launcher's things by what they mean,
-//! share its OpenVINO calls, and they and call-transcripts serve the
-//! shell alike (daemon.rs).
+//! share its OpenVINO calls and its reading of pictures (picture.rs),
+//! and they and call-transcripts serve the shell alike (daemon.rs).
 
 pub mod cache;
 pub mod daemon;
@@ -17,6 +17,7 @@ pub mod language;
 pub mod mel;
 pub mod openvino;
 pub mod parakeet;
+pub mod picture;
 pub mod speech;
 pub mod takes;
 pub mod transcript;
