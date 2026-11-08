@@ -225,7 +225,7 @@ const USAGE: i32 = 64;
 const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate DOLLARS \
                     --first-start HH:MM --last-start HH:MM --deadline HH:MM \
                     [--longest HH:MM] [--standing PATH] [--beside PATH] [--dir DIR] [--only-there] \
-                    [--outlasting PROGRAM] \
+                    [--outlasting PROGRAM] [--tell PROGRAM] \
                     | nix-offload stand [--standing PATH] [--beside PATH] \
                     | nix-offload relay --listen ADDRESS --to ADDRESS \
                     | nix-offload report --rate DOLLARS \
@@ -305,6 +305,9 @@ struct Settings {
     /// of its own lets a restart hand its builder over rather than cut the
     /// builds on its way.
     outlasting: Option<PathBuf>,
+    /// The program told when no builder answers any work, and again once
+    /// one does, as `--tell` names it.
+    telling: Option<PathBuf>,
 }
 
 /// A builder lent to the machine.
@@ -1485,6 +1488,7 @@ fn serving(arguments: &[String], given: impl Fn(&str) -> Option<String>) -> Exit
                     .map(|warm| warm.split_whitespace().map(str::to_owned).collect())
                     .unwrap_or_default(),
                 outlasting: given("--outlasting").map(PathBuf::from),
+                telling: given("--tell").map(PathBuf::from),
             });
             if restarts {
                 ExitCode::from(RESTARTS)
@@ -1582,7 +1586,9 @@ fn machines_of(settings: &Settings) -> Machines {
     }
     let vm_dir =
         env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
-    machines.stand_ins_from(more_dir(), vm_dirs(&vm_dir))
+    machines
+        .stand_ins_from(more_dir(), vm_dirs(&vm_dir))
+        .telling(settings.telling.clone())
 }
 
 /// Prove `builder` with a tiny build when one is due, over `ssh` as
@@ -2626,6 +2632,7 @@ exit 1
             only_there: false,
             warm: Vec::new(),
             outlasting: None,
+            telling: None,
         };
         let file = |name: &str| folder.join(name);
         let machines = Machines::new(
