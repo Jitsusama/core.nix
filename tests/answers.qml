@@ -1788,7 +1788,7 @@ QtObject {
         // counted, how it's set, what describes it, its identifiers, and
         // its keys last; what it doesn't say is left out.
         const boardSaid = { usb: "on USB \u00b7 keyboard", builtIn: "built in \u00b7 keyboard",
-            caps: "Caps", num: "Num", scroll: "Scroll", none: "none", locked: "locked" };
+            caps: "caps", num: "num", scroll: "scroll", none: "none", locked: "locked" };
         const boardDrawer = Keyboards.drawer({
             device: keyboardsErgodox,
             name: "ErgoDox EZ",
@@ -1812,7 +1812,7 @@ QtObject {
             "[repeat]", "[connection]", "[maker]", "[model]", "[keys]", "[firmware]",
             "[usb-id]", "[most]"]);
         machine("a layer locked", boardDrawer.facts[0].value, "Numb \u00b7 locked");
-        machine("only the locks on", boardDrawer.facts[1].value, "Num");
+        machine("only the locks on", boardDrawer.facts[1].value, "num");
         machine("its polling rate in Hz", boardDrawer.facts[3].value, "1,000 Hz");
         const bare = Keyboards.drawer({ device: keyboardsErgodox, name: "", layer: null,
             locks: [{ id: "caps", on: false }], connection: "USB" }, keyNamed, boardSaid);
