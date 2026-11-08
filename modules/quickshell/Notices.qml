@@ -178,9 +178,17 @@ Singleton {
     // mark stays (VKCF3Z, 2026-11-07). Quickshell serves one sent as data
     // only while the notice is open, so the history keeps a picture only
     // when it's a file.
+    // Quickshell hands an image-path hint that isn't a file: URL to its
+    // icon provider, so a plain path arrives as image://icon/ and the path,
+    // which is a file, and a name there is an icon's.
     function picture(notification) {
         const image = notification?.image ?? "";
-        if (image === "" || image === notification.appIcon || image.startsWith("image://icon/"))
+        const iconed = image.startsWith("image://icon/") ? image.slice("image://icon/".length)
+            : null;
+        if (iconed !== null)
+            return iconed.startsWith("/") && iconed !== notification.appIcon
+                ? `file://${iconed}` : "";
+        if (image === "" || image === notification.appIcon)
             return "";
         return image.startsWith("/") ? `file://${image}` : image;
     }

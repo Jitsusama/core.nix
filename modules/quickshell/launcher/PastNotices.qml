@@ -79,13 +79,14 @@ Provider {
             // reads them in, so they don't change face between the two
             // (VKCF3Z, 2026-11-03). Its sender is a name from the world,
             // so the eyebrow is set as it's written (VKCF3Z, 2026-11-07).
-            // Its words styled as its card draws them, links and all, where
-            // the history kept them so (one kept before it did has them
-            // plain); its own picture while it has one; and how it was sent
-            // and how it left, as facts.
+            // Its words styled as its card draws them where they carry
+            // markup or a link, and plain otherwise, so a long log keeps its
+            // own lines to scroll by; its own picture while it has one; and
+            // how it was sent and how it left, as facts.
             drawer: { eyebrow: provider.whoAndWhen(notice), eyebrowNames: true,
                 title: notice.summary,
-                body: notice.styled ?? notice.body, styled: notice.styled !== undefined,
+                body: provider.marked(notice) ? notice.styled : notice.body,
+                styled: provider.marked(notice),
                 prose: true, picture: Notices.pictureOf(notice),
                 facts: provider.facts(notice) },
             // Its sender's, which the history keeps as a code point
@@ -134,6 +135,12 @@ Provider {
             }
         });
         return row;
+    }
+
+    // Whether what a notice said carries markup or a link of its own, which
+    // its drawer draws styled.
+    function marked(notice) {
+        return typeof notice.styled === "string" && /<(?:a|b|i|u)[ >]/.test(notice.styled);
     }
 
     // What its drawer says of a notice beyond its words: how it left the
