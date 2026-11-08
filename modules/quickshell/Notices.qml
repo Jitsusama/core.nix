@@ -29,15 +29,16 @@ import QtQuick
 import "Forward.js" as Forward
 import "NoticeBody.js" as NoticeBody
 import "ProgramGlyphs.js" as ProgramGlyphs
+import "launcher/Lately.js" as Lately
 
 Singleton {
     id: root
 
-    // How many are kept, and for how long; the oldest go first.
+    // How many are kept, and how long one read is; one unread stays until
+    // it's read or forgotten.
     readonly property int keep: 200
     readonly property real day: 24 * 60 * 60 * 1000
     readonly property real readFor: 7 * day
-    readonly property real unreadFor: 30 * day
 
     // { id, at, app, entry, summary, body, styled, links, picture, glyph,
     // hue, urgency, category, low, urgent, held, missed, read, waits, left,
@@ -202,11 +203,10 @@ Singleton {
         return still ? picture(still) : notice.picture ?? "";
     }
 
-    // Those still young enough to keep, at most `keep` of them.
+    // Those kept: every one unread, and those read for `readFor`, at most
+    // `keep` of them, the oldest read going first (Lately.js's kept).
     function fresh(notices) {
-        const now = Date.now();
-        return notices.filter(notice => now - notice.at < (notice.read ? readFor : unreadFor))
-            .slice(0, keep);
+        return Lately.kept(notices, Date.now(), readFor, keep);
     }
 
     // Keeps a notification as it arrives, missed until it's seen unless

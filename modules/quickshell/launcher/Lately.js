@@ -51,6 +51,26 @@ function doneOf(thing) {
         ? done : null;
 }
 
+// The notices the history keeps, in their order, newest first: every one
+// unread whatever its age, since one stays until it's read or forgotten
+// (Y2YBTS, 2026-11-08), and those read for `readFor`. Past `most`, the
+// oldest read go first, and the oldest unread only once none read are
+// left, so what Joel hasn't seen outlasts what he has.
+function kept(notices, now, readFor, most) {
+    const young = notices.filter(notice => notice.read !== true || now - notice.at < readFor);
+    let over = young.length - most;
+    const gone = new Set();
+    for (const read of [true, false]) {
+        for (let at = young.length - 1; at >= 0 && over > 0; at--) {
+            if ((young[at].read === true) === read) {
+                gone.add(at);
+                over--;
+            }
+        }
+    }
+    return young.filter((_notice, at) => !gone.has(at));
+}
+
 // What each source holds now, as { mail, slack, desktop }, each in the
 // order its source gives, newest first. `given` is { notices, mail,
 // messages }: Notices' history, the mail that wants him (Google's, which

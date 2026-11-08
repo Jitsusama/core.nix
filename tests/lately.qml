@@ -98,6 +98,18 @@ QtObject {
                 at: "1970-01-01T00:00:01.000Z" } })] }, say).map(one => [one.how, one.at]),
             [["gone", 1000]]);
 
+        const keptFor = 100;
+        const ages = [notice("new read", { read: true, at: 950 }),
+            notice("new unread", { at: 940 }), notice("old read", { read: true, at: 920 }),
+            notice("old unread", { at: 10 }), notice("stale read", { read: true, at: 5 })];
+        check(failures, "an unread notice stays whatever its age, a read one for a while",
+            summaries(Lately.kept(ages, 1000, keptFor, 10)),
+            ["new read", "new unread", "old read", "old unread"]);
+        check(failures, "past the most kept, the oldest read go before any unread",
+            summaries(Lately.kept(ages, 1000, keptFor, 2)), ["new unread", "old unread"]);
+        check(failures, "and the oldest unread go only once none read are left",
+            summaries(Lately.kept(ages, 1000, keptFor, 1)), ["new unread"]);
+
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(failure);
