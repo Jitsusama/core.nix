@@ -4396,11 +4396,6 @@
       "term": "Desktop/time server"
     },
     {
-      "id": "time:server:address",
-      "in": "time:server",
-      "name": "Address"
-    },
-    {
       "id": "time:server:why",
       "in": "time:server",
       "name": "Why"
@@ -4466,9 +4461,9 @@
       "name": "Skew"
     },
     {
-      "id": "time:server:reference",
+      "id": "time:server:leap",
       "in": "time:server",
-      "name": "Reference"
+      "name": "Leap Second"
     },
     {
       "id": "time:server:reference-time",
@@ -4484,11 +4479,6 @@
       "id": "time:server:exchange",
       "in": "time:server",
       "name": "Exchange"
-    },
-    {
-      "id": "time:server:local-address",
-      "in": "time:server",
-      "name": "Local Address"
     },
     {
       "id": "time:server:precision",
@@ -4534,6 +4524,21 @@
       "id": "time:server:packets",
       "in": "time:server",
       "name": "Packets"
+    },
+    {
+      "id": "time:server:address",
+      "in": "time:server",
+      "name": "Address"
+    },
+    {
+      "id": "time:server:reference",
+      "in": "time:server",
+      "name": "Reference"
+    },
+    {
+      "id": "time:server:local-address",
+      "in": "time:server",
+      "name": "Local Address"
     },
     {
       "id": "sound",

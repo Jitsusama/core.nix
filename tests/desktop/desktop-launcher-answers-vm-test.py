@@ -1223,9 +1223,8 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: shown["rows"][: len(servers)] == servers)
     desktop.down_to("time.harbour.test")
     assert desktop.showing()["selected"]["note"] == "chosen", desktop.showing()["selected"]
-    inside = [
-        "Address", "Why", "Stratum", "Poll Interval", "Reach", "Last Sample", "Offset",
-    ]  # fmt: skip
+    # Its identifiers, its address among them, come last (Y2YBTS's review of #2303).
+    inside = ["Why", "Stratum", "Poll Interval", "Reach", "Last Sample", "Offset"]
     desktop.launcher_until(
         lambda shown: (
             shown["drawer"]["out"] is True

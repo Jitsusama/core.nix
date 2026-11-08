@@ -19,9 +19,10 @@
 //
 // The time here goes on to how chrony keeps the clock, as timekeeping
 // reads it from chronyd (Timekeeping.qml, timekeeping/src/main.rs): Clock,
-// stepping into its offset, frequency, skew, root delay and dispersion,
-// leap second, last sync, next poll, the hardware clock and its drift and
-// the service; then Servers, every server chrony asks, the chosen first,
+// stepping into its offset and RMS offset, frequency, skew, stratum, root
+// delay and dispersion, leap second, last sync, update interval, next
+// poll, the hardware clock, its drift and samples, and the service; then
+// Servers, every server chrony asks, the chosen first,
 // each a thing whose side is its offset, whose note says where it stands,
 // and whose drawer and inside give every figure chronyd has of it and why
 // it was chosen or set aside (VKCF3Z's design, for Joel's "for time i want
@@ -31,11 +32,16 @@
 // so and no more.
 //
 // Every figure timekeeping reads is shown (docs/design.md, As deep as the
-// deepest) but four, each left out as the same figure told again: a
-// server's last exchange gives its stratum, its leap and its offset, which
-// its own Stratum and Offset already say, and the clock's address is the
-// chosen server's, which its plate's eyebrow names and Servers lists.
-// Leap is the clock's to say.
+// deepest) but three, each left out as the same figure told again: a
+// server's last exchange gives its stratum and its offset, which its own
+// Stratum and Offset already say, and the clock's address is the chosen
+// server's, which its plate's eyebrow names and Servers lists. A server's
+// leap indicator is its own, since an unsynchronised one says so by it.
+// timekeeping reads no more than these (chrony.rs): chronyd's activity
+// counts the servers online, which Servers' own count already says, and a
+// last exchange's port and mode are NTP's own, 123 and a server's answer
+// for every server, and its poll the one the server would ask at, which
+// sets nothing here, chronyd asking at its own, its Poll Interval.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -253,8 +259,11 @@ Provider {
 
     // What Time says of its keeping, in the vocabulary's words: the
     // clock's and the servers'.
-    readonly property var clockSaid: Words.of("time:clock").said ?? {}
-    readonly property var serversSaid: Words.of("time:servers").said ?? {}
+    // and the decimal mark every figure is said in.
+    readonly property var clockSaid: Object.assign({ point: settings.point ?? "." },
+        Words.of("time:clock").said ?? {})
+    readonly property var serversSaid: Object.assign({ point: settings.point ?? "." },
+        Words.of("time:servers").said ?? {})
 
     // A figure of the keeping, a row that copies what it shows.
     function figure(id, side, note) {
@@ -283,14 +292,14 @@ Provider {
         // chronyd's correction is how far the clock is behind true time.
         return [
             part("offset", Keeping.out(-clock.correction, said), said.lastOffset
-                .replace("{offset}", Keeping.seconds(clock.lastOffset, true))),
-            part("rms-offset", Keeping.seconds(clock.rmsOffset, false), said.average),
+                .replace("{offset}", Keeping.seconds(clock.lastOffset, true, said.point))),
+            part("rms-offset", Keeping.seconds(clock.rmsOffset, false, said.point), said.average),
             part("frequency", Keeping.runs(clock.frequency, said), said.residual
-                .replace("{ppm}", Keeping.ppm(clock.residualFrequency, true))),
-            part("skew", Keeping.ppm(clock.skew, false)),
+                .replace("{ppm}", Keeping.ppm(clock.residualFrequency, true, said.point))),
+            part("skew", Keeping.ppm(clock.skew, false, said.point)),
             part("stratum", clock.stratum > 0 ? String(clock.stratum) : ""),
-            part("root-delay", Keeping.seconds(clock.rootDelay, false)),
-            part("root-dispersion", Keeping.seconds(clock.rootDispersion, false)),
+            part("root-delay", Keeping.seconds(clock.rootDelay, false, said.point)),
+            part("root-dispersion", Keeping.seconds(clock.rootDispersion, false, said.point)),
             part("leap", Keeping.leap(clock.leap, said)),
             part("last-sync", clock.lastSync ? Ago.ago(clock.lastSync, now) : said.never,
                 clock.reference ? said.by.replace("{server}", clock.reference) : ""),
@@ -301,7 +310,7 @@ Provider {
                 chosen ? said.every.replace("{span}", Keeping.span(chosen.poll)) : ""),
             part("hardware", hardware ? Keeping.out(hardware.fast, said) : ""),
             part("drift", hardware ? Keeping.daily(hardware.gain, said) : "",
-                hardware ? Keeping.ppm(hardware.gain, true) : ""),
+                hardware ? Keeping.ppm(hardware.gain, true, said.point) : ""),
             part("hardware-samples", hardware && hardware.samples > 0 ? said.samples
                 .replace("{samples}", String(hardware.samples))
                 .replace("{span}", Keeping.span(hardware.span)) : "",
@@ -315,26 +324,28 @@ Provider {
 
     // What a server says, each a part named and its figure, in the order
     // its inside lists them; its drawer shows the same, so both read alike.
-    function serverParts(server) {
+    function serverParts(server, now) {
         const said = serversSaid;
         const samples = server.samples ?? null;
         const exchange = server.exchange ?? null;
         const chosen = server.chosen ?? null;
         const part = (id, side, note) => ({ id: id, side: side, note: note ?? "" });
+        // An identifier, set as written and last (Y2YBTS's review of #2303).
+        const named = (id, side) => Object.assign(part(id, side), { identifies: true });
         const exchanged = exchange ? [
-            part("reference", exchange.reference),
+            // A server unsynchronised says so by its leap indicator.
+            part("leap", Keeping.leap(exchange.leap, clockSaid)),
             part("reference-time", typeof exchange.referenceTime === "number"
-                ? Ago.ago(exchange.referenceTime, Date.now()) : ""),
+                ? Ago.ago(exchange.referenceTime, now) : ""),
             part("ntp-version", String(exchange.version)),
             part("exchange", Keeping.exchanged(exchange, said)),
-            part("local-address", exchange.localAddress ?? ""),
-            part("precision", Keeping.seconds(exchange.precision, false)),
-            part("root-delay", Keeping.seconds(exchange.rootDelay, false)),
-            part("root-dispersion", Keeping.seconds(exchange.rootDispersion, false)),
-            part("delay", Keeping.seconds(exchange.delay, false)),
-            part("dispersion", Keeping.seconds(exchange.dispersion, false)),
-            part("response", Keeping.seconds(exchange.responseTime, false)),
-            part("jitter-asymmetry", Keeping.asymmetry(exchange.jitterAsymmetry)),
+            part("precision", Keeping.seconds(exchange.precision, false, said.point)),
+            part("root-delay", Keeping.seconds(exchange.rootDelay, false, said.point)),
+            part("root-dispersion", Keeping.seconds(exchange.rootDispersion, false, said.point)),
+            part("delay", Keeping.seconds(exchange.delay, false, said.point)),
+            part("dispersion", Keeping.seconds(exchange.dispersion, false, said.point)),
+            part("response", Keeping.seconds(exchange.responseTime, false, said.point)),
+            part("jitter-asymmetry", Keeping.asymmetry(exchange.jitterAsymmetry, said.point)),
             part("tests", said.tests.replace("{passed}", String(exchange.testsPassed))),
             part("packets", Keeping.packets(exchange, said))
         ] : [];
@@ -342,15 +353,19 @@ Provider {
             part("samples", said.samples.replace("{samples}", String(samples.count))
                 .replace("{span}", Keeping.span(samples.span)),
                 said.runs.replace("{runs}", String(samples.runs))),
-            part("estimate", Keeping.seconds(samples.offset, true), said.within
-                .replace("{error}", Keeping.seconds(samples.offsetError, false))),
-            part("deviation", Keeping.seconds(samples.deviation, false)),
-            part("frequency", Keeping.ppm(samples.residualFrequency, true)),
-            part("skew", Keeping.ppm(samples.skew, false))
+            part("estimate", Keeping.seconds(samples.offset, true, said.point), said.within
+                .replace("{error}", Keeping.seconds(samples.offsetError, false, said.point))),
+            part("deviation", Keeping.seconds(samples.deviation, false, said.point)),
+            part("frequency", Keeping.ppm(samples.residualFrequency, true, said.point)),
+            part("skew", Keeping.ppm(samples.skew, false, said.point))
         ] : [];
         const sampledNow = server.lastSample !== null && server.lastSample !== undefined;
+        const identifiers = [
+            named("address", server.address !== server.name ? server.address : ""),
+            named("reference", exchange?.reference ?? ""),
+            named("local-address", exchange?.localAddress ?? "")
+        ];
         return [
-            part("address", server.address !== server.name ? server.address : ""),
             part("why", Keeping.why(server, said)),
             part("stratum", server.stratum > 0 ? String(server.stratum) : ""),
             // Its name already says it's an interval, so the span stands alone.
@@ -360,23 +375,23 @@ Provider {
                 ? said.ago.replace("{span}", Keeping.span(server.lastSample)) : ""),
             // Adjusted for the slewing since, as chronyc sources says it,
             // with what was measured beside it.
-            part("offset", sampledNow ? Keeping.seconds(server.offset, true) : "", said.measured
-                .replace("{offset}", Keeping.seconds(server.measured, true))
-                .replace("{error}", Keeping.seconds(server.error, false))),
+            part("offset", sampledNow ? Keeping.seconds(server.offset, true, said.point) : "", said.measured
+                .replace("{offset}", Keeping.seconds(server.measured, true, said.point))
+                .replace("{error}", Keeping.seconds(server.error, false, said.point))),
             // What chronyc's selectdata calls the Interval: the range expected
             // to hold the clock's true offset at the last selection, named
             // Error Bounds here since it bounds how wrong this source may be.
             part("interval", chosen && chosen.high > chosen.low ? said.interval
-                .replace("{low}", Keeping.seconds(chosen.low, true))
-                .replace("{high}", Keeping.seconds(chosen.high, true)) : ""),
-            part("score", chosen ? Keeping.score(chosen.score) : "")
-        ].concat(sampled, exchanged).filter(each => each.side !== "");
+                .replace("{low}", Keeping.seconds(chosen.low, true, said.point))
+                .replace("{high}", Keeping.seconds(chosen.high, true, said.point)) : ""),
+            part("score", chosen ? Keeping.score(chosen.score, said.point) : "")
+        ].concat(sampled, exchanged, identifiers).filter(each => each.side !== "");
     }
 
     // One server chrony asks, a thing: its side its last offset, its note
     // where it stands, its drawer and its inside every figure (VKCF3Z).
-    function serverThing(server) {
-        const parts = serverParts(server);
+    function serverThing(server, now) {
+        const parts = serverParts(server, now);
         const name = server.name || server.address;
         const sampled = server.lastSample !== null && server.lastSample !== undefined;
         // Known by its address, since the launcher knows a row by what it
@@ -385,7 +400,7 @@ Provider {
         return thingRow({
             key: `time-server:${server.address}`,
             name: name,
-            side: sampled ? Keeping.seconds(server.offset, true) : "",
+            side: sampled ? Keeping.seconds(server.offset, true, serversSaid.point) : "",
             note: Keeping.standing(server, serversSaid),
             glyph: Theme.glyph.clock,
             thing: true,
@@ -394,8 +409,10 @@ Provider {
                 // server, a peer or a reference clock (VKCF3Z, 2026-11-08).
                 eyebrow: Keeping.mode(server, serversSaid) || Words.name("time:server"),
                 title: name,
-                facts: parts.map(each => ({ label: Words.name(`time:server:${each.id}`),
-                    value: Keeping.told(each) }))
+                facts: parts.map(each => Object.assign({
+                    label: Words.name(`time:server:${each.id}`),
+                    value: Keeping.told(each)
+                }, each.identifies ? { identifies: true } : {}))
             })
         }, () => parts.map(each => figure(`time:server:${each.id}`, each.side, each.note)));
     }
@@ -460,7 +477,7 @@ Provider {
                 side: String(servers.length),
                 note: serversNote,
                 glyph: Theme.glyph.clock
-            }, () => servers.map(server => serverThing(server))) : null
+            }, () => servers.map(server => serverThing(server, now))) : null
         ].filter(row => row !== null);
     }
 

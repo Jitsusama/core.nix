@@ -370,7 +370,7 @@ ShellRoot {
         const chosen = servers[0];
         const offset = chosen.verbs().find(each => each.name === Words.name("time:server:offset"));
         expect("a server's offset notes what was measured",
-            offset?.note === "measured \u2212391 \u00b5s \u00b7 within 20 \u00b5s", offset?.note);
+            offset?.note === "measured \u2212391 \u00b5s \u00b7 within 20.0 \u00b5s", offset?.note);
         const figures = chosen.verbs().map(each => each.name);
         const plate = chosen.drawer();
         expect("the chosen server holds every figure the vocabulary names for one",
