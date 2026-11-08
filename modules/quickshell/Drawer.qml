@@ -119,6 +119,9 @@ Floating {
         text: reader && styled ? plain.replace(/ color="[^"]*"/g, "") : plain
         textFormat: styled ? Text.StyledText : Text.PlainText
         color: reader ? "transparent" : ink
+        // A link is underlined in the words' own colour, never Qt's blue,
+        // since colour goes on glyphs and never on text.
+        linkColor: color
         // Broken only at spaces, as a page is: a drawer too narrow for a
         // word lets it run past the edge rather than split it (VKCF3Z).
         wrapMode: elides || !wraps ? Text.NoWrap : Text.WordWrap
@@ -176,8 +179,10 @@ Floating {
                     + (words.leading > 0
                         ? `; line-height:${words.leading}px; -qt-line-height-type:fixed` : "")
                     // A match in a styled text lands the cursor but isn't
-                    // washed, since washing inside markup isn't done.
-                    + `">${words.styled ? said
+                    // washed, since washing inside markup isn't done. Its
+                    // links take its ink, as the Text's do, never rich
+                    // text's blue.
+                    + `">${words.styled ? said.replace(/<a /g, `<a style="color:${words.ink}" `)
                         : words.sought !== "" ? Search.washed(said, words.sought, words.wash)
                             : Search.escaped(said)}</div>`
 
@@ -2164,14 +2169,16 @@ Floating {
                 // A picture in its own shape, as wide as the drawer at
                 // most, its corners a part's, the raised colour until it's
                 // drawn. One whose size isn't given is as wide as the
-                // drawer, and square: never its own width, which is worked
-                // out from it.
+                // drawer, square until it's read and then in its own
+                // shape, so a wide picture isn't drawn in a square's middle
+                // with empty bands above and below it.
                 Rectangle {
                     id: frame
                     readonly property real across: drawer.shown?.across > 0
                         ? drawer.shown.across : parent.width
-                    readonly property real down: drawer.shown?.down > 0
-                        ? drawer.shown.down : across
+                    readonly property real down: drawer.shown?.down > 0 ? drawer.shown.down
+                        : drawn.status === Image.Ready && drawn.implicitWidth > 0
+                            ? across * drawn.implicitHeight / drawn.implicitWidth : across
                     readonly property real shrunk: Math.min(1, parent.width / across)
 
                     visible: drawer.picture !== ""
@@ -2186,8 +2193,9 @@ Floating {
                         source: Pictures.source(drawer.picture)
                         asynchronous: true
                         fillMode: Image.PreserveAspectFit
+                        // Its width alone, so it keeps its own shape and
+                        // its height never waits on the one it gives.
                         sourceSize.width: 2 * width
-                        sourceSize.height: 2 * height
                         layer.enabled: true
                         layer.effect: MultiEffect {
                             maskEnabled: true

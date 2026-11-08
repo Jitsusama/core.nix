@@ -68,6 +68,22 @@ QtObject {
                 { window: false, stack: false })),
             ["read", "forget", "copy"]);
 
+        // Each link in what it said is an act of its own, in the order it
+        // said them, after what its sender offers and before Read, and
+        // stays once the notice has gone, needing nothing of its sender.
+        const links = [{ text: "#3", href: "https://github.com/x/y/pull/3" },
+            { text: "the doc", href: "https://docs.google.com/d/1" }];
+        const linked = acts => acts.map(act => act.href ? `link:${act.href}` : act.act);
+        expect("its links, open",
+            linked(Notice.acts(Object.assign({ links }, open), { window: true, stack: false })),
+            ["open", "offer", "link:https://github.com/x/y/pull/3",
+                "link:https://docs.google.com/d/1", "read", "forget", "copy"]);
+        expect("and gone from the screen",
+            linked(Notice.acts({ live: false, opens: true, offers: [], links },
+                { window: false, stack: false })),
+            ["link:https://github.com/x/y/pull/3", "link:https://docs.google.com/d/1", "read",
+                "copy"]);
+
         // Its sender's own Read, where it offers one, by its identifier or
         // its words, which d sends at once on the card and in the launcher.
         const marking = { identifier: "mark-as-read", text: "Mark as Read" };

@@ -20,6 +20,7 @@ import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "../NoticeBody.js" as NoticeBody
 import "Notice.js" as Notice
 import "Ago.js" as Ago
 
@@ -69,6 +70,9 @@ Provider {
             verb: nowhere ? "more" : opened || !from.window ? "open" : "go to",
             name: notice.body === "" ? notice.summary
                 : `${notice.summary} · ${notice.body.replace(/\s+/g, " ")}`,
+            // Stepped into, the head says its title alone, its words being
+            // the drawer's (VKCF3Z, 2026-11-08).
+            title: notice.summary,
             // The whole of what it said, each part once: the summary as
             // the drawer's title, then the body, rather than the row's
             // name, which already holds both, over both again (VKCF3Z,
@@ -78,12 +82,23 @@ Provider {
             // reads them in, so they don't change face between the two
             // (VKCF3Z, 2026-11-03). Its sender is a name from the world,
             // so the eyebrow is set as it's written (VKCF3Z, 2026-11-07).
+            // Its words styled as its card draws them where they carry
+            // markup or a link, and plain otherwise, so a long log keeps its
+            // own lines to scroll by; its own picture while it has one; and
+            // how it was sent and how it left, as facts.
             drawer: { eyebrow: provider.whoAndWhen(notice), eyebrowNames: true,
-                title: notice.summary, body: notice.body, prose: true },
+                title: notice.summary,
+                body: provider.marked(notice) ? notice.styled : notice.body,
+                styled: provider.marked(notice),
+                // The drawer takes a file's path, as a file's plate gives it.
+                prose: true, picture: Notices.pictureOf(notice).startsWith("file://")
+                    ? Notices.pictureOf(notice).slice("file://".length) : "",
+                facts: provider.facts(notice) },
             // Its sender's, which the history keeps as a code point
-            // (Notices.qml).
+            // (Notices.qml), muted for one sent at low urgency, as its card
+            // draws it.
             glyph: String.fromCodePoint(notice.glyph),
-            hue: notice.hue,
+            hue: notice.low ? "muted" : notice.hue,
             note: notice.app,
             // Who sent it, which ends a paragraph of rows (Launcher.qml's
             // runOf), so dip takes away what one sender sent.
@@ -127,6 +142,36 @@ Provider {
         return row;
     }
 
+    // Whether what a notice said carries markup or a link of its own, which
+    // its drawer draws styled.
+    function marked(notice) {
+        return typeof notice.styled === "string" && /<(?:a|b|i|u)[ >]/.test(notice.styled);
+    }
+
+    // What its drawer says of a notice beyond its words: how it left the
+    // screen and when, or that it's still open; the urgency its sender
+    // asked; and what kind of notice it says it is, where it says. What the
+    // spec gives besides is left out: a sound, which the desktop never
+    // plays for a sender; the icons of its actions, since its acts wear the
+    // desktop's marks; and how long it asked to stay, which its leaving
+    // already tells.
+    function facts(notice) {
+        const out = [];
+        const at = notice.leftAt ? Qt.formatDateTime(new Date(notice.leftAt), "HH:mm") : "";
+        const how = notice.left ?? (notice.id in Notices.resting ? "resting"
+            : notice.id in Notices.live ? "shown" : "");
+        if (how !== "")
+            out.push({ label: Words.name("notices:left"),
+                value: (Words.of("notices:left", how).said ?? "").replace("{at}", at) });
+        if (notice.urgency)
+            out.push({ label: Words.name("notices:urgency"),
+                value: Words.name("notices:urgency", notice.urgency) });
+        // Its kind is no fact: it comes as the eyebrow's last word once its
+        // words are named, never the spec's raw category (VKCF3Z,
+        // 2026-11-08), so the record keeps it until then.
+        return out;
+    }
+
     // Who sent a notice and when, as its drawer's eyebrow says it: the
     // sender by the name its card signs it with (Notices.qml), so the two
     // never differ (VKCF3Z, 2026-11-03), and the time alone today, and its
@@ -152,7 +197,8 @@ Provider {
         const acts = Notice.acts({
             live: live !== null,
             opens: live ? Notice.opens(live.actions) : false,
-            offers: live ? Notice.offers(live.actions) : []
+            offers: live ? Notice.offers(live.actions) : [],
+            links: notice.links ?? []
         }, { window: from.window !== null, stack: false });
         return acts.map(act => provider.act(notice, said, from, act));
     }
@@ -200,6 +246,19 @@ Provider {
                         provider.go(notice.app);
                 }
             });
+        case "link":
+            // A link in what it said, opened in the program the desktop
+            // opens it with, its host at its side so two read apart.
+            return thing(Object.assign(named("verb:notice:link"), {
+                key: `verb:notice:link:${act.href}`,
+                verb: Words.verb("verb:notice:link"),
+                side: NoticeBody.host(act.href),
+                later: true,
+                run: () => {
+                    Notices.mark(notice.id, true);
+                    Niri.spawn(["xdg-open", act.href]);
+                }
+            }));
         case "goTo":
             // Going to its program while a window of it is open. Opening a
             // program that isn't open would be named Open, which the
@@ -215,13 +274,14 @@ Provider {
                 }
             }));
         case "read":
-            // One switch, its name the same either way and what it is at
-            // its side, as every setting's is. It changes the notice rather
+            // Named for what it will do, Mark It Read or Mark It Unread,
+            // with nothing at its side, since a state there would read as
+            // the act's (VKCF3Z, 2026-11-08). It changes the notice rather
             // than taking Joel anywhere, so the launcher stays and shows it
             // changed.
             return thing(Object.assign(named("verb:notice:read"), {
+                name: Words.name("verb:notice:read", notice.read ? "read" : ""),
                 glyph: Words.glyph("verb:notice:read", notice.read ? "read" : ""),
-                side: notice.read ? "yes" : "no",
                 stays: true,
                 run: () => Notices.mark(notice.id, !notice.read)
             }));

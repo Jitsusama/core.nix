@@ -1,11 +1,10 @@
 // The keys of the held notices, Vim's quickfix list (docs/design.md, Vi's
 // Keys; VKCF3Z's vi-paradigm spec, Notices), as one table of key and act in
-// each mode, read apart from the stack (Notifications.qml) so
-// tests/notice-keys.qml can hold it in Qt's own engine. The foot's hints
-// and Space ?'s list come from the same table, so neither can name a key
-// that does nothing. Beside it, how the find, the command line and a
-// reply's prompt are typed. Letters go by what they type, wherever they sit
-// on the layout.
+// each mode, apart from the stack (Notifications.qml) so tests/notice-keys.qml
+// holds it in Qt's own engine. The foot's hints and Space ?'s list come from
+// the same table, so neither can name a key that does nothing. Beside it, how
+// the find, the command line and a reply's prompt are typed. Letters go by
+// what they type, wherever they sit on the layout.
 .pragma library
 .import "LineEditing.js" as LineEditing
 
@@ -53,10 +52,12 @@ const table = [
     { act: "viewAtBottom", keys: [["z", "b"]], modes: scrolling, does: "line to the foot" },
 
     // Return goes to whoever sent it, as the quickfix list's goes to the
-    // line's file. A card's other acts are commands, : and Return, never a
-    // row stepped into, so h, l, Backspace and - mean nothing here (Joel,
-    // 2026-11-05: "where in vi does that step into shit?").
+    // line's file, and gx to its link, a count its {n}th, as Vim's. Its
+    // other acts are commands, never a row stepped into, so h, l, Backspace
+    // and - mean nothing here (Joel, 2026-11-05: "where in vi does that
+    // step into shit?").
     { act: "open", keys: ["Return", "Enter"], hint: "go to", does: "go to its sender" },
+    { act: "link", keys: [["g", "x"]], does: "open its link" },
 
     // Operators: d is done, marked read where the sender offers Read and
     // then forgotten; y copies what it said. c changes nothing here, so
@@ -167,8 +168,7 @@ function inMode(row, mode) {
     return (row.modes ?? ["normal"]).includes(mode);
 }
 
-// The row a typed sequence matches in a mode, "begun" when it could go on
-// to one, or null.
+// The row a typed sequence matches in a mode, "begun" if it could go on, or null.
 function matched(typed, mode) {
     let begun = false;
     for (const row of table.filter(one => inMode(one, mode))) {

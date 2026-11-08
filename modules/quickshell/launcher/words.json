@@ -5303,7 +5303,12 @@
       "term": "Desktop/notice",
       "noun": "notices",
       "glyph": "notifications",
-      "ask": "which notice?"
+      "ask": "which notice?",
+      "said": {
+        "no-link": "no link here",
+        "one-link": "only 1 link here",
+        "links": "only {count} links here"
+      }
     },
     {
       "id": "verb:notice:open",
@@ -5333,11 +5338,12 @@
       "id": "verb:notice:read",
       "command": "delete",
       "in": "notices",
-      "name": "Read",
+      "name": "Mark It Read",
       "verb": "mark",
       "glyph": "read",
       "states": {
         "read": {
+          "name": "Mark It Unread",
           "glyph": "unread"
         }
       }
@@ -5360,6 +5366,24 @@
       "name": "Forget Them All",
       "verb": "forget",
       "glyph": "dismiss"
+    },
+    {
+      "id": "verb:notices:done",
+      "command": "delete",
+      "range": "%",
+      "in": "notices",
+      "name": "Done With Them All",
+      "verb": "done",
+      "glyph": "dismiss"
+    },
+    {
+      "id": "verb:notice:link",
+      "command": "open",
+      "argument": "link",
+      "in": "notices",
+      "name": "Open the Link",
+      "verb": "open",
+      "glyph": "link"
     },
     {
       "id": "verb:notices:all",
@@ -5393,6 +5417,44 @@
       "in": "notices",
       "name": "Calls",
       "glyph": "call"
+    },
+    {
+      "id": "notices:left",
+      "in": "notices",
+      "name": "Left",
+      "states": {
+        "expired": {
+          "said": "by itself at {at}"
+        },
+        "dismissed": {
+          "said": "put away at {at}"
+        },
+        "withdrawn": {
+          "said": "taken back by its sender at {at}"
+        },
+        "resting": {
+          "said": "off the screen, still open"
+        },
+        "shown": {
+          "said": "still on the screen"
+        }
+      }
+    },
+    {
+      "id": "notices:urgency",
+      "in": "notices",
+      "name": "Urgency",
+      "states": {
+        "low": {
+          "name": "Low"
+        },
+        "normal": {
+          "name": "Normal"
+        },
+        "critical": {
+          "name": "Critical"
+        }
+      }
     },
     {
       "id": "wifi",

@@ -41,9 +41,9 @@ import Quickshell.Io
 import Quickshell.Services.Notifications
 import Quickshell.Wayland
 import QtQuick
-import QtQuick.Effects
 import "Columns.js" as Columns
 import "Levels.js" as Levels
+import "NoticeBody.js" as NoticeBody
 import "Stack.js" as Stack
 
 Scope {
@@ -265,8 +265,14 @@ Scope {
     }
 
     function plain(body) {
-        return body.replace(/<[^>]*>/g, "").replace(/&lt;/g, "<")
-            .replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+        return NoticeBody.read(body).plain;
+    }
+
+    // A link in what a notice said opened in the program the desktop opens
+    // it with, through niri, as every program is (NoticeBody.js lets only
+    // the web's and mail's through).
+    function follow(href) {
+        Niri.spawn(["xdg-open", href]);
     }
 
     // What a notice's sender does when it's chosen, or null.
@@ -354,9 +360,10 @@ Scope {
         }
 
         // Where the front card is drawn, as a fraction of the screen across
-        // and down, for a test to click on it, since no shot says
-        // where a card without a coloured mark is; and what it's signed,
-        // the glyph it wears and that glyph's hue.
+        // and down, for a test to click on it, since no shot says where a
+        // card without a coloured mark is; what it's signed, the glyph it
+        // wears and that glyph's hue; whether a picture of its own stands
+        // in its mark column; and where its links go.
         function front(): string {
             const card = cards.itemAt(server.trackedNotifications.values
                 .findIndex(one => one.id === root.shown[0])) as Card;
@@ -365,11 +372,13 @@ Scope {
                 return "{}";
             const at = card.mapToItem(null, 0, 0);
             const left = screen.width - window.width + at.x;
-            const from = Notices.sender(root.front.appName);
+            const from = Notices.sender(root.front.appName, root.front.desktopEntry);
             return JSON.stringify({
                 signed: from.name,
                 glyph: String.fromCodePoint(from.glyph),
                 hue: from.hue,
+                pictured: Notices.picture(root.front) !== "",
+                links: NoticeBody.read(root.front.body).links.map(link => link.href),
                 left: left / screen.width,
                 top: at.y / screen.height,
                 right: (left + card.width) / screen.width,
@@ -394,6 +403,14 @@ Scope {
     NotificationServer {
         id: server
         bodySupported: true
+        // Said to every sender, which otherwise sends its words plain, its
+        // links taken out, and no picture of its own: the markup a card
+        // draws (NoticeBody.js lets only the spec's through), its links,
+        // and an image, as an avatar or a thumbnail. Pictures in the words
+        // aren't, since a card fetches nothing it isn't handed.
+        bodyMarkupSupported: true
+        bodyHyperlinksSupported: true
+        imageSupported: true
         actionsSupported: true
         // A reply typed on the card, as the held list's :reply writes one.
         inlineReplySupported: true
@@ -410,7 +427,10 @@ Scope {
             // One its sender marks transient asks not to be kept, as niri's
             // screenshot notice does.
             if (!notification.transient)
-                Notices.arrived(notification, urgent, held, reach.counted);
+                Notices.arrived(notification, urgent, held, reach.counted,
+                    notification.urgency === NotificationUrgency.Low ? "low"
+                    : notification.urgency === NotificationUrgency.Critical ? "critical"
+                    : "normal");
             if (held)
                 Report.say(`held ${notification.summary}`);
             const id = notification.id;
@@ -605,40 +625,12 @@ Scope {
                         width: parent.width
                         height: Math.max(cover.y + cover.height, lines.height)
 
-                        // Two lines tall from the title's capital, its
-                        // corners the theme's inner radius, and the raised
-                        // colour until it arrives.
-                        Rectangle {
+                        // Two lines tall from the title's capital.
+                        Cover {
                             id: cover
                             x: track.columns.mark
                             y: title.baselineOffset + capital.tightBoundingRect.y
-                            width: 2 * Theme.level.name.pitch
-                            height: width
-                            radius: Theme.inner
-                            color: Theme.raised
-                            visible: root.song.art !== ""
-
-                            Image {
-                                anchors.fill: parent
-                                source: root.song.art
-                                asynchronous: true
-                                fillMode: Image.PreserveAspectCrop
-                                sourceSize.width: 2 * width
-                                sourceSize.height: 2 * height
-                                layer.enabled: true
-                                layer.effect: MultiEffect {
-                                    maskEnabled: true
-                                    maskSource: corners
-                                }
-                            }
-
-                            Rectangle {
-                                id: corners
-                                anchors.fill: parent
-                                radius: Theme.inner
-                                visible: false
-                                layer.enabled: true
-                            }
+                            source: root.song.art
                         }
 
                         // The title and who plays it, lines of one saying,
@@ -761,7 +753,8 @@ Scope {
                     id: card
 
                     required property Notification modelData
-                    readonly property var from: Notices.sender(modelData.appName)
+                    readonly property var from: Notices.sender(modelData.appName,
+                        modelData.desktopEntry)
                     // Where it stands in the stack, 0 at the front.
                     readonly property int rank: root.shown.indexOf(modelData.id)
                     readonly property bool front: rank === 0
@@ -826,8 +819,11 @@ Scope {
                         width: parent.width
                         mark: String.fromCodePoint(card.from.glyph)
                         hue: Theme[card.from.hue]
+                        picture: Notices.picture(card.modelData)
+                        quiet: card.modelData.urgency === NotificationUrgency.Low
                         title: card.modelData.summary
-                        words: card.modelData.body
+                        words: NoticeBody.read(card.modelData.body).styled
+                        onLinked: href => root.follow(href)
                         from: card.from.name
                         when: (more > 0 ? `${more} more \u00b7 ` : "")
                             + root.since(root.arrived[card.modelData.id] ?? now, now)

@@ -65,6 +65,10 @@
     a notice's card and its row among the notices list the same acts in one order, copying last,
     and a notice gone from the screen keeps none of its sender's
   '';
+  a-notice-keeps-its-links = ''
+    a notice's body keeps its links, bare addresses included, and only the spec's bold, italics,
+    underline and links as markup, everything else escaped as its sender's words
+  '';
   a-player-says-all-it-knows = ''
     a media player's drawer says everything its player tells MPRIS, what moves first and what
     identifies it last, leaving out what it can't say, and its art only from where it may be drawn
