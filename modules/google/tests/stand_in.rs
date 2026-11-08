@@ -207,8 +207,24 @@ fn pis_fresh_token_is_used_without_a_refresh() {
 }
 
 /// The stand-in's Gmail: two pieces of mail that want Joel, the newer
-/// listed second, and five unread in the inbox.
+/// listed second, five unread in the inbox, and one Joel sent lately.
 fn gmail(path: &str, body: &str) -> (u16, String) {
+    if path.starts_with("GET /gmail/v1/users/me/messages?") && path.contains("newer_than") {
+        return (
+            200,
+            r#"{"messages": [{"id": "sent", "threadId": "t3"}]}"#.into(),
+        );
+    }
+    if path.starts_with("GET /gmail/v1/users/me/messages/sent?") {
+        return (
+            200,
+            r#"{"id": "sent", "threadId": "t3", "internalDate": "1793030000000",
+                "payload": {"headers": [{"name": "From", "value": "Joel <joel@example.com>"},
+                {"name": "To", "value": "Ada <ada@example.com>"},
+                {"name": "Subject", "value": "Lunch"}]}}"#
+                .into(),
+        );
+    }
     if path.starts_with("GET /gmail/v1/users/me/messages?") {
         return (
             200,
@@ -280,9 +296,70 @@ fn the_mail_that_wants_joel_is_told_newest_first_and_asked_for_once() {
             .filter(|heard| heard.line.starts_with("GET /gmail/v1/users/me/messages/"))
             .count()
     };
-    assert_eq!(asked(&stand_in), 2);
+    // The two that want him, and the one he sent lately.
+    assert_eq!(asked(&stand_in), 3);
     watch.look(&now());
-    assert_eq!(asked(&stand_in), 2, "mail already held was asked for again");
+    assert_eq!(asked(&stand_in), 3, "mail already held was asked for again");
+}
+
+#[test]
+fn a_months_meetings_held_and_mail_sent_or_read_are_told_a_while_apart() {
+    let stand_in = StandIn::new(gmail);
+    let path = credentials("lately", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let state = watch.look(&now()).clone();
+    let lately: Vec<_> = state
+        .lately
+        .iter()
+        .map(|mail| (mail.id.as_str(), mail.subject.as_str(), mail.others.clone()))
+        .collect();
+    assert_eq!(
+        lately,
+        [("sent", "Lunch", vec!["ada@example.com".to_owned()])]
+    );
+    assert_eq!(state.held.len(), 1);
+    let events = |stand_in: &StandIn| -> Vec<String> {
+        stand_in
+            .heard()
+            .into_iter()
+            .filter(|heard| {
+                heard
+                    .line
+                    .starts_with("GET /calendar/v3/calendars/primary/events?")
+            })
+            .map(|heard| heard.line)
+            .collect()
+    };
+    // The month before today, ending where the week's window begins.
+    let held = events(&stand_in);
+    assert_eq!(held.len(), 2, "{held:?}");
+    assert!(
+        held[1].contains("timeMin=2026-09-26T04%3A00%3A00Z")
+            && held[1].contains("timeMax=2026-10-26T04%3A00%3A00Z"),
+        "{}",
+        held[1]
+    );
+    let searched = |stand_in: &StandIn| {
+        stand_in
+            .heard()
+            .iter()
+            .filter(|heard| heard.line.contains("newer_than"))
+            .count()
+    };
+    assert_eq!(searched(&stand_in), 1);
+    // A minute on, only the week and the mail that wants him are asked.
+    let later: Zoned = "2026-10-26T15:21:00-04:00[-04:00]".parse().unwrap();
+    watch.look(&later);
+    assert_eq!(events(&stand_in).len(), 3);
+    assert_eq!(
+        searched(&stand_in),
+        1,
+        "the month was asked for again at once"
+    );
+    // A quarter hour on, the month is asked for again.
+    let quarter: Zoned = "2026-10-26T15:35:00-04:00[-04:00]".parse().unwrap();
+    watch.look(&quarter);
+    assert_eq!(searched(&stand_in), 2);
 }
 
 /// The stand-in's Gmail with one piece of mail carrying a menu, whose

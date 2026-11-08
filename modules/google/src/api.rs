@@ -257,6 +257,18 @@ impl Google {
             .collect())
     }
 
+    /// The ids of the mail Joel sent or read lately, newest first
+    /// (`mail::LATELY`).
+    pub fn lately(&self, token: &str) -> Result<Value, Refused> {
+        let most = mail::LATELY_MOST.to_string();
+        self.get(
+            token,
+            "/gmail/v1/users/me/messages",
+            &[("q", mail::LATELY), ("maxResults", &most)],
+            "the mail lately",
+        )
+    }
+
     /// The ids of the mail that wants Joel, newest first.
     pub fn wanting(&self, token: &str) -> Result<Value, Refused> {
         let shown = mail::SHOWN.to_string();

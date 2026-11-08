@@ -17,6 +17,17 @@ pub const WANTS: &str = "in:inbox is:unread is:important";
 /// How many the shell is told of, at most.
 pub const SHOWN: usize = 20;
 
+/// The mail Joel had with people lately, as Gmail's search writes it:
+/// what he sent or read in the last 30 days, never what still waits on
+/// him, which `WANTS` finds, and never chat, spam or the bin. A person's
+/// Recent holds it (RSCH-20261030-GB56HX).
+pub const LATELY: &str = "newer_than:30d (in:sent OR -is:unread) -in:chats -in:spam -in:trash";
+
+/// How many of it are kept, at most: enough that each person Joel wrote
+/// to in a month has their last few, and few enough that a first look
+/// asks Gmail for each once without a wait he'd notice.
+pub const LATELY_MOST: usize = 100;
+
 /// How much of a body is kept: enough to read in the launcher's drawer,
 /// never a whole thread quoted below it.
 pub const BODY_MOST: usize = 4000;

@@ -62,8 +62,8 @@ QtObject {
             Object.assign({ standing, unread: null, fetched: null, meet: unmade,
                 drive: undriven }, more), heard);
         const none = {
-            account: "none", meetings: [], mail: [], unread: null, documents: [],
-            heard: null, fetched: null, meet: unmade, drive: undriven
+            account: "none", meetings: [], mail: [], unread: null, documents: [], held: [],
+            lately: [], heard: null, fetched: null, meet: unmade, drive: undriven
         };
         const later = Object.assign({}, standup, { id: "later", start: now + 60_000 });
         const older = Object.assign({}, mail, { id: "m_0", at: now - 60_000 });
@@ -79,20 +79,23 @@ QtObject {
                 true,
                 {
                     account: "ready", meetings: [standup], mail: [mail], unread: 3,
-                    documents: [], heard: 1793042446024, fetched: null, meet: unmade,
-                    drive: undriven
+                    documents: [], held: [], lately: [], heard: 1793042446024, fetched: null,
+                    meet: unmade, drive: undriven
                 }],
             ["each kind in its order, whatever order it's held in",
                 Object.assign({}, record("meeting", "later", later, 1),
                     record("meeting", "standup", standup, 1), record("mail", "m_0", older, 1),
                     record("mail", "m_1", mail, 1), record("file", "s1", sheet, 1),
                     record("file", "d1", doc, 1), record("file", "d2", newer, 1),
+                    record("held", "later", later, 1), record("held", "standup", standup, 1),
+                    record("lately", "m_0", older, 1), record("lately", "m_1", mail, 1),
                     account("ready", {}, 2)),
                 true,
                 {
                     account: "ready", meetings: [standup, later], mail: [mail, older],
-                    unread: null, documents: [newer, doc, sheet], heard: 2, fetched: null,
-                    meet: unmade, drive: undriven
+                    unread: null, documents: [newer, doc, sheet], held: [standup, later],
+                    lately: [mail, older], heard: 2, fetched: null, meet: unmade,
+                    drive: undriven
                 }],
             ["a signed-out account, alone", account("signedOut", {}, 3), true,
                 Object.assign({}, none, { account: "signedOut", heard: 3 })],
@@ -290,6 +293,13 @@ QtObject {
         check("a meeting with them", Google.withThem(standupWith, ["grace@example.com"]), true);
         check("mail from them", Google.withThem(lunch, ["ada@example.com"]), true);
         check("nothing with a stranger", Google.withThem(standupWith, ["x@example.com"]), false);
+        // Mail Joel sent or read is with whoever sent it and whoever it went
+        // or was copied to; a mail that wants him is only its sender's.
+        const sent = { address: "joel@example.com", others: ["ada@example.com"] };
+        check("mail sent them", [Google.mailedWith(sent, ["ada@example.com"]),
+            Google.mailedWith(lunch, ["ada@example.com"]),
+            Google.mailedWith(sent, ["x@example.com"]),
+            Google.withThem(sent, ["ada@example.com"])], [true, true, false, false]);
 
         // Reply All: to who sent it, copied to everyone else, each once.
         check("a reply to all, copied to the others", Mail.replyingAll(Object.assign({}, lunch,
