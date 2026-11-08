@@ -23,7 +23,7 @@ Singleton {
         id: google
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR") ?? ""}/daemons/google.sock`
-        kind: ["meeting", "mail", "file", "account"]
+        kind: ["meeting", "mail", "file", "held", "lately", "account"]
         // What Google held may not be Joel's to see once it answers again,
         // and a meeting cancelled in the gap would otherwise stay.
         keptThroughGap: false
@@ -48,6 +48,11 @@ Singleton {
     // The documents Joel looked at lately, each kind's last first: each
     // { id, title, kind, link, viewed, changed, owner }.
     property var documents: []
+    // The meetings held in the month before today, by start, as `meetings`
+    // says each, and the mail Joel sent or read in it, newest first, as
+    // `mail` says each: what a person's Recent holds (GoogleSource.qml).
+    property var held: []
+    property var lately: []
     // When Google last answered, or null.
     property var heard: null
     // The file mail carries last asked for, as it stands: { mail, file,
@@ -141,6 +146,12 @@ Singleton {
     // addresses.
     function withThem(thing, emails) {
         return Said.withThem(thing, emails);
+    }
+
+    // Whether mail Joel sent or read is with someone: from them, or to
+    // them or copied to them.
+    function mailedWith(mail, emails) {
+        return Said.mailedWith(mail, emails);
     }
 
     // Asks the program one thing, a line its ask.rs reads, as the daemon's

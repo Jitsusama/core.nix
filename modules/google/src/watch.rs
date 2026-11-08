@@ -42,6 +42,9 @@ pub struct Watch {
     documented: Option<i64>,
     /// When Drive's places were last asked for, as `documented` is.
     placed: Option<i64>,
+    /// When the meetings held and the mail lately were last heard, the
+    /// same way.
+    recalled: Option<i64>,
     /// How each series of meetings repeats, by its id, as its rule's lines
     /// were last heard, and when.
     rules: HashMap<String, (Vec<String>, i64)>,
@@ -63,6 +66,11 @@ const PLACES_EVERY: i64 = DOCUMENTS_EVERY;
 /// seldom changes, and it's an ask for each series.
 const RULES_EVERY: i64 = DOCUMENTS_EVERY;
 
+/// How long the meetings held and the mail lately are kept before Google
+/// is asked again: a person's Recent moves only as Joel sends, reads or
+/// holds something, and today's meetings that end come with the look.
+const RECALLED_EVERY: i64 = 3 * DOCUMENTS_EVERY;
+
 impl Watch {
     pub fn new(google: Google, credentials: PathBuf, account: Option<String>) -> Watch {
         Watch {
@@ -75,6 +83,7 @@ impl Watch {
             read: Vec::new(),
             documented: None,
             placed: None,
+            recalled: None,
             rules: HashMap::new(),
         }
     }
@@ -148,6 +157,13 @@ impl Watch {
         {
             self.place(now);
         }
+        if self.state.account == Standing::Ready
+            && self
+                .recalled
+                .is_none_or(|heard| at - heard >= RECALLED_EVERY)
+        {
+            self.recall(now);
+        }
         &self.state
     }
 
@@ -170,6 +186,41 @@ impl Watch {
             Ok(answer) => self.state.drive.places.drives = drive::shared_drives(&answer),
             Err(Looked::Refused(Refused::Unreachable(why))) => eprintln!("<4>{why}"),
             Err(looked) => self.fell(looked, Standing::Unreachable),
+        }
+    }
+
+    /// Asks for the meetings held in the month before today and the mail
+    /// sent or read lately, for a person's Recent. Either failing alone
+    /// keeps what was held of it, and costs the rest nothing.
+    fn recall(&mut self, now: &Zoned) {
+        let (from, to) = calendar::held_window(now);
+        let mut heard = true;
+        match self.asking(now, |google, token| google.events(token, from, to)) {
+            Ok(answer) => self.state.held = calendar::meetings(&answer, now.time_zone()),
+            Err(Looked::Refused(Refused::Unreachable(why))) => {
+                eprintln!("<4>{why}");
+                heard = false;
+            }
+            Err(looked) => {
+                self.fell(looked, Standing::Unreachable);
+                return;
+            }
+        }
+        let held = std::mem::take(&mut self.state.lately);
+        match self.asking(now, |google, token| lately(google, token, &held)) {
+            Ok(found) => self.state.lately = found,
+            Err(Looked::Refused(Refused::Unreachable(why))) => {
+                eprintln!("<4>{why}");
+                self.state.lately = held;
+                heard = false;
+            }
+            Err(looked) => {
+                self.fell(looked, Standing::Unreachable);
+                return;
+            }
+        }
+        if heard {
+            self.recalled = Some(now.timestamp().as_millisecond());
         }
     }
 
@@ -714,11 +765,13 @@ impl Watch {
                 self.state = State::without(Standing::None);
                 self.documented = None;
                 self.placed = None;
+                self.recalled = None;
             }
             Looked::Refused(Refused::SignedOut) => {
                 self.state = State::without(Standing::SignedOut);
                 self.documented = None;
                 self.placed = None;
+                self.recalled = None;
             }
             Looked::Refused(Refused::Unreachable(why)) => {
                 eprintln!("<4>{why}");
@@ -772,16 +825,33 @@ fn recently(google: &Google, token: &str) -> Result<Vec<Document>, Refused> {
     Ok(found)
 }
 
+/// The mail Joel sent or read lately, newest first, each asked for once,
+/// as `wanted` asks: what's held isn't asked for again.
+fn lately(google: &Google, token: &str, held: &[Mail]) -> Result<Vec<Mail>, Refused> {
+    asked(google, token, &google.lately(token)?, held)
+}
+
 /// The mail that wants Joel, newest first, and how many in the inbox are
-/// unread. Mail already held isn't asked for again, since what Gmail
-/// lists of it never changes.
+/// unread.
 fn wanted(
     google: &Google,
     token: &str,
     held: &[Mail],
 ) -> Result<(Vec<Mail>, Option<u64>), Refused> {
+    let found = asked(google, token, &google.wanting(token)?, held)?;
+    Ok((found, mail::unread(&google.inbox(token)?)))
+}
+
+/// The mail a search of Gmail's listed, newest first. Mail already held
+/// isn't asked for again, since what Gmail lists of it never changes.
+fn asked(
+    google: &Google,
+    token: &str,
+    listed: &Value,
+    held: &[Mail],
+) -> Result<Vec<Mail>, Refused> {
     let mut found = Vec::new();
-    for id in mail::listed(&google.wanting(token)?) {
+    for id in mail::listed(listed) {
         if let Some(kept) = held.iter().find(|kept| kept.id == id) {
             found.push(kept.clone());
             continue;
@@ -795,7 +865,7 @@ fn wanted(
         }
     }
     found.sort_by_key(|mail| std::cmp::Reverse(mail.at));
-    Ok((found, mail::unread(&google.inbox(token)?)))
+    Ok(found)
 }
 
 enum Looked {

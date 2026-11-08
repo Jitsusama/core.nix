@@ -188,6 +188,19 @@ pub fn window(now: &Zoned) -> (Timestamp, Timestamp) {
     (from, to)
 }
 
+/// How far back the meetings Joel held are asked for, in days, for a
+/// person's Recent: a month, as the mail lately is (`mail::LATELY`).
+pub const HELD_DAYS: i64 = 30;
+
+/// The window of the meetings held: from `HELD_DAYS` before the day `now`
+/// falls in to its start, where `window` begins, so no meeting is asked
+/// for twice.
+pub fn held_window(now: &Zoned) -> (Timestamp, Timestamp) {
+    let today = now.date();
+    let from = midnight(today.saturating_sub(HELD_DAYS.days()), now.time_zone());
+    (from, midnight(today, now.time_zone()))
+}
+
 fn midnight(day: Date, zone: &TimeZone) -> Timestamp {
     day.to_zoned(zone.clone())
         .map_or(Timestamp::UNIX_EPOCH, |zoned| zoned.timestamp())

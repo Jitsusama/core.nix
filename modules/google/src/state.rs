@@ -35,6 +35,12 @@ pub struct State {
     pub unread: Option<u64>,
     /// The documents Joel looked at lately, each kind's last first.
     pub documents: Vec<Document>,
+    /// The meetings held in the month before today, by start, which a
+    /// person's Recent holds beside today's that are over.
+    pub held: Vec<Meeting>,
+    /// The mail Joel sent or read in the last month, newest first, which
+    /// a person's Recent holds (`mail::LATELY`).
+    pub lately: Vec<Mail>,
     /// When Google last answered, in milliseconds since the epoch.
     pub heard: Option<i64>,
     /// The file mail carries that was last asked for, as it stands.

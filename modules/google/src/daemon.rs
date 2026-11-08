@@ -3,9 +3,11 @@
 //!
 //! Each meeting is a `meeting:<id>` record, each piece of mail that wants
 //! Joel a `mail:<id>`, each document he looked at lately a `file:<id>`,
-//! and how the account stands, its unread count, Meet, Drive's transfers
-//! and Drive's own places one `account:google`, each place's files told
-//! in its own order, which records alone don't keep. A record carries its thing under a
+//! each meeting held in the month before today a `held:<id>`, each piece
+//! of mail he sent or read lately a `lately:<id>`, and how the account
+//! stands, its unread count, Meet, Drive's transfers and Drive's own
+//! places one `account:google`, each place's files told in its own order,
+//! which records alone don't keep. A record carries its thing under a
 //! field named for its kind, since meetings and documents have a `kind`
 //! of their own. A record's `heard` is when it last changed, so a look at
 //! Google that finds nothing new tells a watch only that the account was
@@ -38,7 +40,7 @@ use crate::state::{Meet, Standing, State};
 pub const VERSION: u64 = 1;
 
 /// The kinds this daemon keeps.
-const KINDS: [&str; 4] = ["meeting", "mail", "file", "account"];
+const KINDS: [&str; 6] = ["meeting", "mail", "file", "held", "lately", "account"];
 
 /// The one account's key.
 const ACCOUNT: &str = "account:google";
@@ -77,6 +79,12 @@ pub fn records(state: &State) -> Vec<(String, Value)> {
     }
     for document in &state.documents {
         made.push(record("file", &document.id, as_value(document)));
+    }
+    for meeting in &state.held {
+        made.push(record("held", &meeting.id, as_value(meeting)));
+    }
+    for mail in &state.lately {
+        made.push(record("lately", &mail.id, as_value(mail)));
     }
     let account = Account {
         standing: state.account,
