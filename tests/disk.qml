@@ -6,7 +6,8 @@
 // that still asks for nothing, a critical one wants Joel with nothing slow
 // to run, the worse of the two guards' words wins for a disk both watch, a
 // disk only the
-// machine's guard watches counts, a writer frozen wants Joel with a way to let
+// machine's guard watches counts, a disk full within a few days says when
+// and how fast whatever its band, and is a warning within a day, a writer frozen wants Joel with a way to let
 // it go on, a guard gone quiet whose unit says it's starting again shows
 // nothing, one whose heartbeat ages past silence with nothing written after
 // it and whose unit failed is a warning of its own saying why, with a way to
@@ -31,6 +32,12 @@ ShellRoot {
     function disk(path, band, free, forecast) {
         return { path: path, band: band, free: free * gib, total: 950 * gib,
             forecast: forecast ?? null };
+    }
+
+    // A disk filling at `perHour` GiB an hour, full in `fullIn` seconds.
+    function filling(said, fullIn, perHour) {
+        return Object.assign(said, { full_at: root.now + fullIn,
+            fill_per_hour: perHour * gib });
     }
 
     function status(disks, last, heartbeat, frozen) {
@@ -95,6 +102,27 @@ ShellRoot {
         holds: piece => piece.active && piece.role === "warning" && !piece.wants && !piece.now
             && piece.value === "filling \u00b7 129\u00a0GB free"
             && piece.context === "nearly full in 1 h 30 min; nothing more is safe to take"
+    }, {
+        what: "a healthy disk full within a day",
+        // cargo's builds on 7 November: healthy, 21 GiB free, full in 6.8
+        // hours, and nothing said.
+        account: status([disk("/", "healthy", 286),
+            filling(disk("/var/cache/cargo-builds", "healthy", 21), 24500, 3)]),
+        machine: status([disk("/", "healthy", 286)]),
+        holds: piece => piece.active && piece.role === "warning" && !piece.wants
+            && piece.value === "286.0 GiB free on /"
+            && piece.context === "/var/cache/cargo-builds full in 6:48 at 3.0 GiB an hour"
+    }, {
+        what: "a disk full in a few days",
+        account: status([filling(disk("/", "healthy", 286), 2 * 24 * 3600 + 600, 4.4)]),
+        machine: status([disk("/", "healthy", 286)]),
+        holds: piece => !piece.active && piece.role === "text"
+            && piece.context === "/ full in 2 days at 4.4 GiB an hour"
+    }, {
+        what: "a disk full past a few days",
+        account: status([filling(disk("/", "healthy", 286), 5 * 24 * 3600, 2)]),
+        machine: status([disk("/", "healthy", 286)]),
+        holds: piece => !piece.active && piece.context === ""
     }, {
         what: "a critical disk",
         account: status([disk("/", "critical", 8.25)],
