@@ -128,6 +128,8 @@ QtObject {
 
         expect("a remote picture isn't asked for with lookups off",
             Media.drawer(full(), named, said, false).preview, null);
+        expect("art held in its address shows with lookups off",
+            Media.art("data:image/png;base64,iVBORw0", false), "data:image/png;base64,iVBORw0");
         expect("a picture by another scheme isn't drawn",
             Media.art("blob:abc", true), "");
 

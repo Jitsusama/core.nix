@@ -23,7 +23,9 @@ const PLACES = 100;
 
 // A remote picture, which the network gives.
 const REMOTE = /^https?:/i;
-const LOCAL = /^file:\/\//i;
+// One on the machine, or held in the address itself, as mpv's gives the
+// art a file carries: neither asks the network.
+const LOCAL = /^(?:file:\/\/|data:image\/)/i;
 
 // "{n}" in a sentence the vocabulary gives, filled.
 function filled(words, fill) {
