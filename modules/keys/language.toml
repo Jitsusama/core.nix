@@ -844,8 +844,8 @@ changes = true
 undoable = true
 
 # A row's acts, each the verb on its row in lower case. A row's verb Vim
-# already has for the same thing is Vim's: Go To and Show {player} are :b,
-# to that window; Show Them, Show in Bluetooth, See It, All the Notices,
+# already has for the same thing is Vim's: Go To and Go To {player} are :b,
+# to that window; Show Them, Show in Bluetooth, Show in Calendar, All the Notices,
 # Guests and Attachments are :e, to that place; Done, Read and Clear are
 # :d, the row's ending; every Copy is :y; Save a Copy and Save Here are :w,
 # and Replace It :w!; New Window Below is :sp; Move the Meeting, Move to a

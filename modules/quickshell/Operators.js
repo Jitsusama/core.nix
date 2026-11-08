@@ -294,7 +294,7 @@ function doing(action) {
 
 // A row's copy: the row itself, where Return copies it, as an answer's
 // rows and a figure do; else the first of its actions that copies, as a
-// file's Copy the Path or a window's Copy Title; else none. `copies` says
+// file's Copy the Path or a window's Copy the Title; else none. `copies` says
 // whether a row copies, as the launcher reads its verb.
 function copyOf(row, actions, copies) {
     if (copies(row)) {

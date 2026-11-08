@@ -270,7 +270,7 @@ Singleton {
             && (before.ringing === null || before.ringing.who !== ring.who
                 || before.ringing.since !== ring.since))
             notify(`${ring.name || "Someone"} is calling`, "Answer in Tuple's window", [
-                ["show", "Show the Call"]
+                ["show", "Go To the Call"]
             ], true);
         const told = before.missed.map(missed => `${missed.who}@${missed.at}`);
         for (const missed of now.missed)

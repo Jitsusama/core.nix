@@ -387,7 +387,7 @@ Provider {
         if (count === 0)
             return [];
         // Its rows are both what it holds and what it steps into, as a
-        // meeting's See It's are, so it steps in at any level: inside
+        // meeting's Show in Calendar's are, so it steps in at any level: inside
         // People, where a row's insides are its verbs, and inside a
         // person found from the top, where they're its targets.
         const row = thing({

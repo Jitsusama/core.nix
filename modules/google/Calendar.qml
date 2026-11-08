@@ -212,7 +212,7 @@ Singleton {
 
     // Its acts, in the one order every surface lists them (VKCF3Z's
     // design, RSCH-20261028-2NK1E5): Join the Meeting when it has a call,
-    // Write to the Guests when anyone else is asked, See It, Open the
+    // Write to the Guests when anyone else is asked, Show in Calendar, Open the
     // Transcript once its call has been written down, then, for an
     // invitation, Going, Maybe and Not Going, inline since answering is
     // what's done most after joining, each keeping the launcher, the one
@@ -378,7 +378,7 @@ Singleton {
 
     // Copy the Link copies its call's link, what others join it by, or,
     // for a meeting with no call, its page in Google Calendar; the side
-    // says which, as See It's facts do.
+    // says which, as Show in Calendar's facts do.
     function linking(meeting, provider) {
         const key = "verb:calendar:link";
         const link = meeting.link || meeting.page;
@@ -478,7 +478,7 @@ Singleton {
         });
     }
 
-    // See It: the meeting's details a step in, made as it's stepped into,
+    // Show in Calendar: the meeting's details a step in, made as it's stepped into,
     // so they're what the program last said. Stepped into by the meeting's
     // own Return, it's named for the meeting, so the path says which.
     function seeing(meeting, provider, name) {

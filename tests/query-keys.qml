@@ -165,7 +165,7 @@ QtObject {
             { from: 0, to: -1 });
 
         // Rows and what can be done to them, as the launcher's providers
-        // make them: a window, whose Close ends it and whose Copy Title
+        // make them: a window, whose Close ends it and whose Copy the Title
         // copies; an answer's row, which is a copy itself; an act that
         // ends, as a step into a window lists it; and one with neither.
         const run = () => {};
@@ -197,7 +197,7 @@ QtObject {
         holds("and a Close as it runs", Operators.doing(close), run);
         holds("an ending action with nothing to do ends nothing",
             Operators.endingOf({ key: "verb:close", act: "ending" }, []), null);
-        holds("a window's copy is its Copy Title",
+        holds("a window's copy is its Copy the Title",
             Operators.copyOf(window, actions(window), copies), title);
         holds("an answer's row is its own copy", Operators.copyOf(answer, [], copies), answer);
         holds("a row with no copy has none", Operators.copyOf(bare, [], copies), null);
