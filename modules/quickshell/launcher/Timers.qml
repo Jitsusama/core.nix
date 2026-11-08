@@ -273,6 +273,10 @@ Provider {
             // paused timer is.
             hue: running ? "action" : "muted",
             side: watchCount(watch),
+            // While it runs, the launcher draws its count afresh each tenth
+            // of a second, its rows made again only when the daemon says
+            // it changed (Launcher.qml's counts).
+            counts: running ? now => Timing.tenths(Timing.counted(watch, now)) : undefined,
             note: watchNote(watch),
             record: watch,
             verb: Words.verb("verb:stopwatch:run", running ? "running" : ""),
@@ -287,6 +291,18 @@ Provider {
     // Inside the stopwatch: Start or Stop, Lap while it runs, its laps
     // newest first, Reset once it has counted, then Copy the Time.
     function watchActs(watch) {
+        // Made once for each record the daemon sends, so a laps' list as
+        // long as 999 isn't made again each time the rows are.
+        if (watchMade.watch === watch)
+            return watchMade.rows;
+        const rows = watchActsOf(watch);
+        watchMade = { watch: watch, rows: rows };
+        return rows;
+    }
+
+    property var watchMade: ({ watch: null, rows: [] })
+
+    function watchActsOf(watch) {
         const running = watch.state === "running";
         const rows = [act("verb:stopwatch:run", running ? "running" : "",
             { run: () => provider.watchAsk(running ? "stop" : "run") })];
@@ -433,29 +449,10 @@ Provider {
     readonly property bool counts: launcher !== null && launcher.open
         && HeldTimers.timers.some(record => record.state === "running")
 
-    // While the stopwatch runs and its row is shown, in Timers or held
-    // open, its rows are made again each tenth of a second, so its count
-    // runs on; never while it's out of sight.
-    readonly property bool watched: launcher !== null && launcher.open
-        && HeldTimers.stopwatch?.state === "running"
-        && [...launcher.held.map(step => step.row), ...launcher.matches]
-            .some(row => row?.key === "stopwatch")
-
-    Timer {
-        interval: 100
-        repeat: true
-        running: provider.watched
-        onTriggered: {
-            provider.changedTo(provider.rows());
-            if (provider.launcher?.answer?.live === provider)
-                provider.answered();
-        }
-    }
-
     Timer {
         interval: 1000
         repeat: true
-        running: provider.counts && !provider.watched
+        running: provider.counts
         onTriggered: {
             provider.changedTo(provider.rows());
             if (provider.launcher?.answer?.live === provider)
