@@ -33,6 +33,11 @@ pub const LAPS: usize = 999;
 /// so.
 pub const LATE: u64 = 5_000;
 
+/// How long past its end a timer coming due is still heard aloud. Later,
+/// as after a reboot or a night's suspend, its notice saying it rang late
+/// is enough, and a ding for a tea that went cold hours ago is noise.
+pub const HEARD: u64 = 60_000;
+
 /// The longest span a timer takes: a week, past which it's a reminder,
 /// not a timer.
 pub const LONGEST: u64 = 7 * 24 * 60 * 60 * 1000;
@@ -339,6 +344,14 @@ impl Held {
             .position(|timer| timer.key == key)
             .ok_or_else(|| Refusal::Unknown(key.to_owned()))?;
         Ok(self.timers.remove(at))
+    }
+
+    /// Whether any running one whose end has passed by `now` passed it
+    /// recently enough to be heard, asked before `due` rings them.
+    pub fn heard(&self, now: u64) -> bool {
+        self.timers.iter().any(|timer| {
+            matches!(timer.standing, Standing::Running { ends } if ends <= now && now - ends <= HEARD)
+        })
     }
 
     /// Rings every running one whose end has passed by `now`, saying which.
@@ -740,6 +753,22 @@ mod tests {
             held.pause("timer:9", 0),
             Err(Refusal::Unknown("timer:9".to_owned()))
         );
+    }
+
+    #[test]
+    fn a_timer_coming_due_is_heard_only_within_a_minute_of_its_end() {
+        let mut held = Held::default();
+        assert!(!held.heard(MINUTE));
+        held.start("tea", MINUTE, 0).unwrap();
+        assert!(!held.heard(MINUTE - 1));
+        assert!(held.heard(MINUTE));
+        assert!(held.heard(MINUTE + HEARD));
+        assert!(!held.heard(MINUTE + HEARD + 1));
+        // One heard among those due is enough to sound the ring once.
+        held.start("eggs", MINUTE + HEARD, 0).unwrap();
+        assert!(held.heard(MINUTE + HEARD + 1));
+        held.due(MINUTE + HEARD + 1);
+        assert!(!held.heard(MINUTE + HEARD + 1));
     }
 
     #[test]

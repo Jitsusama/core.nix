@@ -5,7 +5,8 @@
 //! notice back; a ring with no server to take it is said once one comes;
 //! a ring lost with its server is said to the one after it; what's kept
 //! outlasts the daemon, its notices with it, one that ended meanwhile
-//! ringing late as it starts again; and an ask it can't do is refused.
+//! ringing late as it starts again; a timer coming due is heard once,
+//! quietly during a call; and an ask it can't do is refused.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -154,6 +155,12 @@ struct Running {
 
 impl Running {
     fn start(folder: &Path, bus: &Bus) -> Running {
+        Running::heard(folder, bus, &[])
+    }
+
+    /// The daemon, given `sound`'s player, sound and call to ring aloud
+    /// with, or none.
+    fn heard(folder: &Path, bus: &Bus, sound: &[&Path]) -> Running {
         let socket = folder.join("daemons").join("timers.sock");
         let words = folder.join("words.json");
         std::fs::write(
@@ -171,6 +178,7 @@ impl Running {
             .arg(&socket)
             .arg(folder.join("state").join("held.json"))
             .arg(&words)
+            .args(sound)
             .env("DBUS_SESSION_BUS_ADDRESS", &bus.address)
             .stdout(Stdio::null())
             .spawn()
@@ -246,6 +254,18 @@ fn folder(test: &str) -> PathBuf {
     folder
 }
 
+/// A stand-in program at `path`, running `body` in the shell found on
+/// PATH, since a build's sandbox has no /bin/sh.
+fn stand_in(path: &Path, body: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    let shell = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+        .map(|folder| folder.join("sh"))
+        .find(|shell| shell.exists())
+        .expect("a shell on PATH");
+    std::fs::write(path, format!("#!{}\n{body}\n", shell.display())).unwrap();
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
 fn waits_for(done: impl Fn() -> bool) {
     let began = Instant::now();
     while !done() {
@@ -254,12 +274,31 @@ fn waits_for(done: impl Fn() -> bool) {
     }
 }
 
-/// Says a signal as the notifications server would.
+/// Says a signal about notice `body.0` as the notifications server would,
+/// once the daemon in `folder` has kept that this server gave it. Nobody
+/// acts on a card the moment it shows, and a signal sooner is about a
+/// notice the daemon doesn't know yet, so it would pass unheard.
 fn signal(
+    folder: &Path,
     connection: &Connection,
     member: &str,
     body: &(u32, impl serde::Serialize + zbus::zvariant::Type),
 ) {
+    let server = connection.unique_name().unwrap().to_string();
+    let kept = folder.join("state").join("held.json");
+    waits_for(|| {
+        std::fs::read_to_string(&kept)
+            .ok()
+            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+            .is_some_and(|held| {
+                held["timers"].as_array().is_some_and(|timers| {
+                    timers.iter().any(|timer| {
+                        timer["notice"]["id"] == body.0
+                            && timer["notice"]["server"] == server.as_str()
+                    })
+                })
+            })
+    });
     connection
         .emit_signal(
             None::<&str>,
@@ -314,7 +353,7 @@ fn the_notices_again_sets_it_going_and_putting_it_away_ends_it() {
     client.ask(&json!({"id": "all", "ask": "watch", "kind": "timer"}));
     client.ask(&json!({"id": 1, "ask": "start", "span": 200, "name": "tea"}));
     waits_for(|| server.shown.lock().unwrap().len() == 1);
-    signal(&connection, "ActionInvoked", &(1u32, "again"));
+    signal(&folder, &connection, "ActionInvoked", &(1u32, "again"));
     let again = loop {
         let change = client.change();
         if change["changed"][0]["state"] == "running" {
@@ -323,7 +362,7 @@ fn the_notices_again_sets_it_going_and_putting_it_away_ends_it() {
     };
     assert_eq!(again["changed"][0]["key"], "timer:1");
     waits_for(|| server.shown.lock().unwrap().len() == 2);
-    signal(&connection, "NotificationClosed", &(2u32, 2u32));
+    signal(&folder, &connection, "NotificationClosed", &(2u32, 2u32));
     // Past its ringing again, which it told first.
     let ended = loop {
         let change = client.change();
@@ -414,7 +453,7 @@ fn what_is_kept_outlasts_the_daemon_and_one_ended_meanwhile_rings_late() {
     assert_eq!(server.shown.lock().unwrap()[1].summary, "Timer");
     // The card said before it started again is still its own: put away,
     // it ends its timer.
-    signal(&connection, "NotificationClosed", &(1u32, 2u32));
+    signal(&folder, &connection, "NotificationClosed", &(1u32, 2u32));
     let ended = loop {
         let change = client.change();
         if change["gone"] != json!([]) {
@@ -450,7 +489,7 @@ fn a_ring_lost_with_its_server_is_said_to_the_one_after_it() {
     // Putting it away on the server it's on now still ends it.
     let mut client = running.client();
     client.ask(&json!({"id": "all", "ask": "watch", "kind": "timer"}));
-    signal(&connection, "NotificationClosed", &(1u32, 2u32));
+    signal(&folder, &connection, "NotificationClosed", &(1u32, 2u32));
     let ended = loop {
         let change = client.change();
         if change["gone"] != json!([]) {
@@ -499,6 +538,67 @@ fn the_stopwatch_runs_laps_and_stops_and_outlasts_the_daemon() {
     assert_eq!(reset["records"][0]["state"], "unstarted");
     let code = |answer: Value| answer["error"]["code"].as_str().unwrap().to_owned();
     assert_eq!(code(client.ask(&json!({"id": 6, "ask": "lap"}))), "refused");
+    running.stop();
+}
+
+#[test]
+fn a_timer_coming_due_is_heard_once_and_quietly_during_a_call() {
+    let folder = folder("aloud");
+    let bus = Bus::new(&folder);
+    let (connection, server) = bus.serve();
+    let record = folder.join("record");
+    let calling = folder.join("calling");
+    let player = folder.join("player");
+    let call = folder.join("call");
+    stand_in(&player, &format!("echo \"$*\" >> '{}'", record.display()));
+    stand_in(&call, &format!("test -e '{}'", calling.display()));
+    let sound = folder.join("ding.wav");
+    let running = Running::heard(&folder, &bus, &[&player, &sound, &call]);
+    let mut client = running.client();
+    let heard = || {
+        std::fs::read_to_string(&record)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    };
+    client.ask(&json!({"id": 1, "ask": "start", "span": 100, "name": "tea"}));
+    waits_for(|| heard().len() == 1);
+    assert_eq!(heard(), vec![sound.display().to_string()]);
+    waits_for(|| server.shown.lock().unwrap().len() == 1);
+    // Its notice said afresh to a server taking the last one's place
+    // isn't heard again: it would be the next line, at full volume.
+    drop(connection);
+    let (_connection, after) = bus.serve();
+    waits_for(|| after.shown.lock().unwrap().len() == 1);
+    assert_eq!(server.shown.lock().unwrap().len(), 1);
+    std::fs::write(&calling, "").unwrap();
+    client.ask(&json!({"id": 2, "ask": "start", "span": 100, "name": "eggs"}));
+    waits_for(|| after.shown.lock().unwrap().len() == 2);
+    waits_for(|| heard().len() == 2);
+    assert_eq!(heard()[1], format!("--volume=0.3 {}", sound.display()));
+    // One found long past its end as the daemon starts, as after a night's
+    // suspend, is said late but not heard: were it heard, its ring would
+    // come next, at full volume with no call on.
+    client.ask(&json!({"id": 3, "ask": "start", "span": 3_600_000, "name": "bread"}));
+    let kept = folder.join("state").join("held.json");
+    waits_for(|| {
+        std::fs::read_to_string(&kept).is_ok_and(|text| text.matches(r#""notice":"#).count() == 2)
+    });
+    running.stop();
+    let mut held: Value = serde_json::from_str(&std::fs::read_to_string(&kept).unwrap()).unwrap();
+    let ends = held["timers"][2]["ends"].as_u64().unwrap();
+    held["timers"][2]["ends"] = json!(ends - 3_700_000);
+    std::fs::write(&kept, held.to_string()).unwrap();
+    std::fs::remove_file(&calling).unwrap();
+    let running = Running::heard(&folder, &bus, &[&player, &sound, &call]);
+    waits_for(|| after.shown.lock().unwrap().len() == 3);
+    assert!(after.shown.lock().unwrap()[2].body.ends_with("rang late"));
+    std::fs::write(&calling, "").unwrap();
+    let mut client = running.client();
+    client.ask(&json!({"id": 4, "ask": "start", "span": 100}));
+    waits_for(|| heard().len() == 3);
+    assert_eq!(heard()[2], format!("--volume=0.3 {}", sound.display()));
     running.stop();
 }
 
