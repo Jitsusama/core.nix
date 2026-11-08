@@ -63,13 +63,14 @@ QtObject {
                 drive: undriven }, more), heard);
         const none = {
             account: "none", meetings: [], mail: [], unread: null, documents: [], held: [],
-            lately: [], heard: null, fetched: null, meet: unmade, drive: undriven
+            lately: [], calls: [], heard: null, fetched: null, meet: unmade, drive: undriven
         };
         const later = Object.assign({}, standup, { id: "later", start: now + 60_000 });
         const older = Object.assign({}, mail, { id: "m_0", at: now - 60_000 });
         const sheet = { id: "s1", kind: "spreadsheet", viewed: now };
         const doc = { id: "d1", kind: "document", viewed: now - 60_000 };
         const newer = { id: "d2", kind: "document", viewed: now };
+        const followed = { code: "abc-defg-hij", granted: true, people: [] };
         // [what, what's held, whether the daemon answers, what's read of it]
         const held = [
             ["the whole account",
@@ -79,8 +80,8 @@ QtObject {
                 true,
                 {
                     account: "ready", meetings: [standup], mail: [mail], unread: 3,
-                    documents: [], held: [], lately: [], heard: 1793042446024, fetched: null,
-                    meet: unmade, drive: undriven
+                    documents: [], held: [], lately: [], calls: [], heard: 1793042446024,
+                    fetched: null, meet: unmade, drive: undriven
                 }],
             ["each kind in its order, whatever order it's held in",
                 Object.assign({}, record("meeting", "later", later, 1),
@@ -89,12 +90,13 @@ QtObject {
                     record("file", "d1", doc, 1), record("file", "d2", newer, 1),
                     record("held", "later", later, 1), record("held", "standup", standup, 1),
                     record("lately", "m_0", older, 1), record("lately", "m_1", mail, 1),
-                    account("ready", {}, 2)),
+                    record("call", "abc-defg-hij", followed, 1), account("ready", {}, 2)),
                 true,
                 {
                     account: "ready", meetings: [standup, later], mail: [mail, older],
                     unread: null, documents: [newer, doc, sheet], held: [standup, later],
-                    lately: [mail, older], heard: 2, fetched: null, meet: unmade,
+                    lately: [mail, older], calls: [followed], heard: 2, fetched: null,
+                    meet: unmade,
                     drive: undriven
                 }],
             ["a signed-out account, alone", account("signedOut", {}, 3), true,

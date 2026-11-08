@@ -1,13 +1,18 @@
 // How a thing's drawer says its parts, and what a screen's says of what
 // niri gives, run in Qt's own JavaScript engine, the one the shell runs it
 // in. The `a-things-drawer-says-its-parts` check copies
-// modules/quickshell/launcher/Plate.js and Screens.js beside this file and
-// runs `qml -platform offscreen plate.qml`. A part's name is a fact's
-// label and what it says the value, a level's bar a stroke after it; an
-// act or a choice isn't said; a holder of figures is opened in place; and a
-// screen says the mode it runs with every digit niri has, where it sits,
-// what it offers and how fine it is, an off one only the last two.
+// modules/quickshell/launcher/Plate.js, Screens.js, Backlight.js and
+// Numbers.js beside this file and runs `qml -platform offscreen plate.qml`.
+// A part's name is a fact's label and what it says the value, a level's
+// bar a stroke after it; an act or a choice isn't said; a holder of
+// figures is opened in place; and a screen says the mode it runs with
+// every digit niri has, where it sits, what it offers and how fine it is,
+// an off one only the last two. The backlight daemon's files are read as
+// Backlight.js reads them: what sets the level, the room or why nothing
+// does, and its curve, dimmest first;
+// the room's light measured to three digits, the curve's lux every digit.
 import QtQuick
+import "Backlight.js" as Backlight
 import "Plate.js" as Plate
 import "Screens.js" as Screens
 
@@ -33,6 +38,81 @@ QtObject {
             ?? key,
         turned: transform => transform === "Normal" ? "upright" : transform
     })
+
+    // The backlight's words as the vocabulary gives them, filled.
+    function backlightSaid(key, values) {
+        return Backlight.fill(({ "the-room": "the room", "on-its-way": "on its way to {share}",
+            "no-light": "no light heard", at: "{share} at {lux}" })[key] ?? key, values);
+    }
+
+    // What backlight-now says as #2333's daemon writes it: following the
+    // room, there, resting a gap too slight to move, or still stepping to
+    // what it asks; the lid shut, where the room is still said; no light
+    // heard, where the Room Light says so; and nothing, for an empty file
+    // or one the daemon never writes. Then the curve, every point dimmest
+    // first and kept where the daemon keeps it, none for a file it would
+    // refuse.
+    function backlight(check) {
+        const lx = each => `${each} lx`;
+        const there = Backlight.now("level\t0.380\nlux\t28\nasks\t0.380\nfollowing\tyes\n");
+        check("the daemon's level, what the curve asks and whether it follows",
+            JSON.stringify(there)
+                === JSON.stringify({ level: 0.38, lux: 28, asks: 0.38, following: true }),
+            JSON.stringify(there));
+        check("following the room, there", Backlight.follows(there, backlightSaid) === "the room"
+            && Backlight.room(there, 28, backlightSaid, lx) === "28 lx",
+            Backlight.follows(there, backlightSaid));
+        const stepping = Backlight.now("level\t0.600\nlux\t28\nasks\t0.950\nfollowing\tyes\n");
+        check("following the room, on its way",
+            Backlight.follows(stepping, backlightSaid) === "the room \u00b7 on its way to 95%",
+            Backlight.follows(stepping, backlightSaid));
+        // The panel's steps put the level a point or two from what's asked,
+        // under the daemon's 0.03, where it rests.
+        const resting = Backlight.now("level\t0.380\nlux\t28\nasks\t0.400\nfollowing\tyes\n");
+        check("a gap too slight to move is there",
+            Backlight.follows(resting, backlightSaid) === "the room",
+            Backlight.follows(resting, backlightSaid));
+        const shut = Backlight.now("level\t0.600\nlux\t28\nasks\t0.950\nfollowing\tno\n");
+        check("the lid shut, the room still said",
+            Backlight.follows(shut, backlightSaid) === ""
+            && Backlight.room(shut, 30, backlightSaid, lx) === "30 lx"
+            && Backlight.room(shut, null, backlightSaid, lx) === "28 lx",
+            Backlight.room(shut, null, backlightSaid, lx));
+        const unheard = Backlight.now("level\t0.600\nfollowing\tno\n");
+        check("no light heard, said where nothing hears the room", unheard?.asks === null
+            && unheard?.lux === null
+            && Backlight.follows(unheard, backlightSaid) === ""
+            && Backlight.room(unheard, null, backlightSaid, lx) === "no light heard"
+            && Backlight.room(unheard, 0, backlightSaid, lx) === "0 lx",
+            JSON.stringify(unheard));
+        check("an empty file, or one with no following, says nothing", Backlight.now("") === null
+            && Backlight.now("level\t0.600\nasks\t0.950\n") === null
+            && Backlight.follows(null, backlightSaid) === ""
+            && Backlight.room(null, 28, backlightSaid, lx) === "28 lx"
+            && Backlight.room(null, null, backlightSaid, lx) === "",
+            JSON.stringify(Backlight.now("level\t0.600\nasks\t0.950\n")));
+        const points = Backlight.curve("# the curve\n28 0.950\n\n6 0.377\n10000 1.000\n");
+        const curve = Backlight.curveSaid(points, backlightSaid, each => Backlight.chosen(each));
+        check("the curve, dimmest first",
+            curve === "38% at 6 lx \u00b7 95% at 28 lx \u00b7 100% at 10 klx", curve);
+        const readings = [0, 5.2, 28.47, 999.4, 999.6, 1235, 40000]
+            .map(each => Backlight.reading(each)).join("; ");
+        check("the room's light measured to three digits, zeros kept", readings
+            === "0 lx; 5.20 lx; 28.5 lx; 999 lx; 1.00 klx; 1.24 klx; 40.0 klx", readings);
+        const chosen = [0, 50, 400, 1234, 1500, 2000]
+            .map(each => Backlight.chosen(each)).join("; ");
+        check("a curve's lux every digit, none added, in a reading's units", chosen
+            === "0 lx; 50 lx; 400 lx; 1.234 klx; 1.5 klx; 2 klx", chosen);
+        check("a file the daemon would refuse is no curve",
+            ["6 0.377\nnot a point\n", "6 0.377 1\n", "1.2.3 0.5\n", "0x10 0.5\n", ""]
+                .every(text => Backlight.curve(text).length === 0),
+            JSON.stringify(Backlight.curve("0x10 0.5\n")));
+        const kept = Backlight.curve("-5 0.010\n100 1.500\n");
+        check("a point past the curve's bounds is kept where the daemon keeps it",
+            JSON.stringify(kept)
+                === JSON.stringify([{ lux: 0, level: 0.02 }, { lux: 100, level: 1 }]),
+            JSON.stringify(kept));
+    }
 
     // The laptop's panel as niri says it: two modes, both preferred.
     function panel() {
@@ -95,6 +175,13 @@ QtObject {
             ? { leave: true } : null).every(fact => fact.label !== "Level"), "it wasn't");
         check("a run leaves out what's empty", Plate.runs(["a", "", null, "b"]) === "a \u00b7 b",
             Plate.runs(["a", "", null, "b"]));
+        const named = Plate.identified([{ label: "Serial", value: "0x1234" },
+            { label: "Mode", value: "preferred" }, { label: "Serial", value: "CN41" },
+            { label: "Size", value: "300 \u00d7 190 mm" }], ["Serial"]);
+        check("what identifies it ends the drawer, marked, and said once",
+            said(named) === "Mode=preferred; Size=300 \u00d7 190 mm; Serial=0x1234"
+            && named.map(fact => fact.identifies === true).join() === "false,false,true",
+            said(named));
 
         check("a rate keeps every digit niri has", [120001, 60000, 59940, 143999]
             .map(Screens.hertz).join(", ") === "120.001 Hz, 60 Hz, 59.94 Hz, 143.999 Hz",
@@ -134,6 +221,8 @@ QtObject {
             + "120.001 Hz; density=244 ppi", said(Screens.facts(off, words)));
         check("niri's size, in millimetres", Screens.physical(on) === "300 \u00d7 190 mm"
             && Screens.physical({ physical_size: [0, 0] }) === "", Screens.physical(on));
+
+        backlight(check);
 
         if (failures.length > 0) {
             for (const failure of failures)

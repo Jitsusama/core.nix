@@ -100,12 +100,14 @@ Row {
             width: Math.max(said.implicitWidth, hints.widths[index] ?? 0)
             height: said.implicitHeight
 
-            // The dot before every hint but the first, a mark before what
-            // it says, so it goes with that hint: a place held wider than
-            // what it says keeps its room before the dot, never between
-            // the dot and its key (VKCF3Z, 2026-11-06).
+            // The dot before every hint but the first, at its place's left
+            // edge, a mark from the hint before it, so the dots run evenly:
+            // a place held wider than what it says, as Return's is set to
+            // the right end, keeps its room between the dot and its key,
+            // and nothing left of it moves as its words change (VKCF3Z,
+            // 2026-11-08).
             Text {
-                x: said.x - Theme.space.rung.mark - implicitWidth
+                x: -Theme.space.rung.mark - implicitWidth
                 visible: hints.dotted && hint.index > 0
                 text: hints.dot
                 textFormat: Text.PlainText

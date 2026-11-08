@@ -245,13 +245,11 @@ Floating {
     // drawer's count of them stays.
     readonly property var eyebrowLevel: shown?.eyebrowNames ? Theme.level.note
         : Theme.level.label
-    // The eyebrow as it's drawn: one given as items gives way by whole
-    // items, those it keeps least first (Reading.wholeItems), never cut
-    // mid-item; any other is cut at its end.
-    readonly property string eyebrowSaid: (shown?.eyebrowItems ?? []).length > 0
-        ? Reading.wholeItems(shown.eyebrowItems, eyebrowText.width,
-            words => Math.ceil(eyebrowFace.advanceWidth(words)) + 1)
-        : eyebrow
+    // The eyebrow as it's drawn, given way by whole items and never cut
+    // inside a word (Reading.eyebrowOf), so it's one line with no ellipsis
+    // of Qt's.
+    readonly property string eyebrowSaid: Reading.eyebrowOf(shown, eyebrowText.width,
+        words => Math.ceil(eyebrowFace.advanceWidth(words)) + 1)
     FontMetrics {
         id: eyebrowFace
         font.family: drawer.eyebrowLevel.family
@@ -352,7 +350,7 @@ Floating {
     // to report: the eyebrow's and the middle of its line, the title's first
     // and last lines',
     // each fact's first line's, the words' first line's, and the top of a
-    // preview and its lines' baselines. Worked out
+    // preview, its end and its lines' baselines. Worked out
     // only when asked, since nothing drawn depends on them.
     function baselines() {
         const contentTop = Theme.border + drawer.viewTop - view.contentY;
@@ -370,6 +368,8 @@ Floating {
             titleLast: titleText.visible ? flowed(titleText)
                 + (titleText.lineCount - 1) * drawer.titleLeading : null,
             preview: previewBox.visible ? contentTop + flow.y + previewBox.y : null,
+            previewEnd: previewBox.visible ? contentTop + flow.y + previewBox.y
+                + previewBox.height : null,
             previewLines: previewLines.visible ? Array.from({ length: previewRows.count },
                 (_, at) => {
                     const line = previewRows.itemAt(at);
@@ -1538,7 +1538,7 @@ Floating {
                 visible: drawer.eyebrow !== ""
                 plain: drawer.eyebrowSaid
                 leading: 0
-                elides: true
+                wraps: false
                 ink: Theme.muted
                 font.family: drawer.eyebrowLevel.family
                 font.pointSize: drawer.eyebrowLevel.pointSize

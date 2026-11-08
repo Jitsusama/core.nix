@@ -1250,6 +1250,7 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         assert drawer["besideOnOneLine"], f"at {scale} a value wraps beside its name: {drawer}"
         desktop.shoot(f"launcher-plate-zone-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
+        warmth_shown(desktop, scale)
 
 
 def home_network_plate(desktop: Desktop, scale: str, title: str) -> None:
@@ -1308,6 +1309,7 @@ def home_network_laid_out(desktop: Desktop, at_each_scale: list[str]) -> None:
         desktop.close_launcher()
         devices_plates_lie_on_the_lines(desktop, scale)
         the_desk_lights_plate_lies_on_the_lines(desktop, scale)
+        the_screens_plate_says_what_sets_it(desktop, scale)
 
 
 def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
@@ -1334,13 +1336,17 @@ def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
             """Say whether the drawer is out, holding this plate's first fact, its facts laid.
 
             A busy VM has reported a plate out before its facts were placed, all on one line,
-            so it's waited for laid rather than held to the pitch at once.
+            and a fact that arrives late, as Curve does when the backlight daemon writes its
+            curve, lays them out again; so the plate is waited for laid, on the pitch, every
+            name whole and one way, rather than held to it in a later snapshot.
             """
             drawer = shown["drawer"]
             return (
                 drawer["out"] is True
                 and first in drawer["facts"]
                 and things_apart(drawer["lines"]["facts"], drawer["factsWrapped"] > 0)
+                and drawer["labelsWhole"] is True
+                and drawer["laidOneWay"] is True
             )
 
         desktop.launcher_until(plated)
@@ -1349,11 +1355,6 @@ def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
         assert drawer["facts"][: len(leading)] == leading, (
             f"at {scale} {typed or kind} leads wrong: {drawer}"
         )
-        assert things_apart(drawer["lines"]["facts"], drawer["factsWrapped"] > 0), (
-            f"at {scale} {typed or kind}'s facts are off the pitch: {drawer}"
-        )
-        assert drawer["labelsWhole"], f"at {scale} a fact's name is broken: {drawer}"
-        assert drawer["laidOneWay"], f"at {scale} its facts mix beside and under: {drawer}"
         desktop.shoot(f"launcher-plate-{typed or 'screen'}-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
 
@@ -1428,6 +1429,126 @@ def the_desk_lights_plate_lies_on_the_lines(desktop: Desktop, scale: str) -> Non
         desktop.close_launcher()
     finally:
         machine.succeed("systemctl stop desk-light")
+
+
+def the_screens_plate_says_what_sets_it(desktop: Desktop, scale: str) -> None:
+    """Hold the screen's plate to the lines with the lid shut, then following the room.
+
+    The backlight daemon says what it settled, whole by a rename, in backlight-now, and keeps
+    its curve in learned; the VM's stand-in backlight and sensor give it no real figures, so
+    both are written here as it writes them. With the lid shut, Follows is gone and the Room
+    Light still says the stand-in sensor's live reading; following the room on its way to
+    what it asks, with a curve, it says both, the Curve last of the light, every point
+    dimmest first (VKCF3Z, 2026-11-08).
+    """
+    now = "/run/user/1000/backlight-now"
+    learned = "~/.local/state/backlight/learned"
+
+    def settled(said: str) -> None:
+        """Say what the daemon settled, as it does."""
+        desktop.as_account(f"printf '{said}' > {now}.writing && mv {now}.writing {now}")
+
+    def shown_with(labels: list[str], missing: str) -> Callable[[Json], bool]:
+        """Give a test that the plate is out and laid, saying these and not the one missing."""
+
+        def laid(shown: Json) -> bool:  # As launcher_until calls it.
+            """Say whether the plate says these facts, laid on the pitch, whole, one way."""
+            drawer = shown["drawer"]
+            return (
+                drawer["out"] is True
+                and all(label in drawer["facts"] for label in labels)
+                and missing not in drawer["facts"]
+                and things_apart(drawer["lines"]["facts"], drawer["factsWrapped"] > 0)
+                and drawer["labelsWhole"] is True
+                and drawer["laidOneWay"] is True
+            )
+
+        return laid
+
+    at = scale.replace(".", "-")
+    desktop.as_account(f"rm -f {learned}")
+    settled("level\\t0.600\\nlux\\t28\\nasks\\t0.950\\nfollowing\\tno\\n")
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.as_account("qs ipc call launcher collection displays")
+    desktop.launcher_ready()
+    desktop.launcher_until(shown_with(["Brightness", "Room Light"], "Follows"))
+    drawer = plate_shown(desktop, scale)
+    room = drawer["values"][drawer["facts"].index("Room Light")]
+    assert room.endswith(" lx"), f"at {scale}: {drawer}"
+    desktop.shoot(f"launcher-plate-screen-lid-shut-at-{at}")
+    curve = "0 0.150\\n6 0.377\\n28 0.950\\n10000 1.000\\n"
+    desktop.as_account(
+        f"mkdir -p $(dirname {learned}) && printf '{curve}'"
+        f" > {learned}.writing && mv {learned}.writing {learned}"
+    )
+    settled("level\\t0.600\\nlux\\t28\\nasks\\t0.950\\nfollowing\\tyes\\n")
+    desktop.launcher_until(shown_with(["Brightness", "Follows", "Curve"], ""))
+    drawer = plate_shown(desktop, scale)
+    facts = drawer["facts"]
+    assert facts.index("Follows") < facts.index("Curve"), f"at {scale}: {drawer}"
+    assert drawer["values"][facts.index("Follows")] == "the room \u00b7 on its way to 95%", (
+        f"at {scale}: {drawer}"
+    )
+    desktop.shoot(f"launcher-plate-screen-following-at-{at}")
+    desktop.close_launcher()
+    desktop.as_account(f"rm -f {now} {learned}")
+
+
+def warmth_shown(desktop: Desktop, scale: str) -> None:
+    """See the screen's Warmth say what holds it by night and by day, inside and on its plate."""
+    note = "/run/user/1000/backlight-warmth"
+    now = int(desktop.machine.succeed("date +%s").strip()) * 1000
+    hour = 3_600_000
+    # As the backlight daemon says it, whole by a rename: a night under way, then the same
+    # night still to come, as at noon.
+    night = {
+        "kelvin": 4000,
+        "followsTheRoom": True,
+        "seesColour": True,
+        "roomWhite": 3200,
+        "nightLight": True,
+        "nightWhite": 4000,
+        "sunset": now - hour,
+        "sunrise": now + 10 * hour,
+    }
+    day = night | {"kelvin": 6500, "sunset": now + 5 * hour, "sunrise": now + 19 * hour}
+
+    def warmth_plated(shown: Json, kelvin: str) -> bool:
+        """Say whether the Warmth is selected at this kelvin, its plate out."""
+        return bool(
+            (shown["selected"] or {}).get("side") == kelvin
+            and shown["drawer"]["out"] is True
+            and shown["drawer"]["title"] == "Warmth"
+        )
+
+    def said(warmth: dict[str, Any]) -> None:
+        """Say how the warmth stands as the backlight daemon does, whole, by a rename."""
+        text = shlex.quote(json.dumps(warmth))
+        desktop.as_account(f"printf %s {text} > {note}.writing && mv {note}.writing {note}")
+
+    named = scale.replace(".", "-")
+    try:
+        for when, warmth, kelvin in (("night", night, "4,000 K"), ("day", day, "6,500 K")):
+            said(warmth)
+            desktop.as_account("qs ipc call launcher collection displays")
+            desktop.launcher_ready()
+            desktop.follow()
+            desktop.launcher_until(lambda shown: "Warmth" in shown["rows"])
+            desktop.down_to("Warmth")
+            desktop.launcher_until(partial(warmth_plated, kelvin=kelvin))
+            # The plate is held to the lines, as every plate is; its facts' order is
+            # answers.qml's to hold.
+            drawer = plate_shown(desktop, scale)
+            assert drawer["eyebrowNames"] is True, drawer
+            desktop.shoot(f"launcher-warmth-{when}-at-{named}")
+            desktop.follow()
+            desktop.launcher_until(
+                lambda shown: shown["rows"][:2] == ["Night Light", "Follow the Room"]
+            )
+            desktop.shoot(f"launcher-warmth-{when}-inside-at-{named}")
+            desktop.close_launcher()
+    finally:
+        desktop.as_account(f"echo '{{}}' > {note}")
 
 
 def test_nows_plate_sets_its_head_and_groups_as_every_plate(
@@ -1553,6 +1674,26 @@ def previewed(shown: Json, name: str, preview: str | None) -> bool:
     return drawer["preview"] is None
 
 
+def facts_follow(drawer: Json, body: float, preview: str | None, after: float) -> float:
+    """Hold a plate's facts to where its preview leaves them; say how far lines leave them.
+
+    After lines, or no preview, they're on the card's beat. A picture stands its own height
+    rather than whole lines of the pitch (VKCF3Z, 2026-11-08), so the facts after it stand as
+    far below it as they do below lines, off the beat.
+    """
+    facts = drawer["lines"]["facts"]
+    if preview == "picture":
+        below = facts[0] - drawer["lines"]["previewEnd"]
+        assert abs(below - after) <= NEAR, (
+            f"{drawer['title']}'s facts stand {below} below its picture, not {after}: {drawer}"
+        )
+        return after
+    assert all(on_the_beat(line, body) for line in facts), (
+        f"{drawer['title']}'s facts are off the beat: {drawer}"
+    )
+    return facts[0] - drawer["lines"]["previewEnd"] if preview == "lines" else after
+
+
 def test_the_file_pickers_plate_previews_each_kind_on_the_cards_lines(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
@@ -1582,6 +1723,8 @@ def test_the_file_pickers_plate_previews_each_kind_on_the_cards_lines(
                 f" {values['choose_a_file']} open {folder}"
             )
             asked_in(desktop, "~/picked", set(PICKED))
+            # How far the facts stand below lines of preview, the first file's a folder's.
+            after = 0.0
             for name, (eyebrow, preview) in PICKED.items():
                 desktop.down_to(name)
                 desktop.launcher_until(partial(previewed, name=name, preview=preview))
@@ -1595,9 +1738,7 @@ def test_the_file_pickers_plate_previews_each_kind_on_the_cards_lines(
                 assert all(on_the_pitch(line, body) for line in shown), (
                     f"at {scale} {name}'s preview is off the pitch: {drawer}"
                 )
-                assert all(on_the_beat(line, body) for line in facts), (
-                    f"at {scale} {name}'s facts are off the beat: {drawer}"
-                )
+                after = facts_follow(drawer, body, preview, after)
                 assert things_apart(facts, drawer["factsWrapped"] > 0), (
                     f"at {scale} {name}'s facts are off the pitch: {drawer}"
                 )
@@ -2828,10 +2969,12 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
         )
 
 
-# What's typed for the meaning daemon's stand-in to find by its meaning, and the words in the
-# keys of the things it finds for it, among those the launcher told it of.
+# What's typed for the meaning daemon's stand-in to find by its meaning, the words in the keys
+# of the things it finds for it, among those the launcher told it of, and the place it finds,
+# Screens, whose Brightness stands in its stead.
 MEANT = "too bright to read"
-MEANT_KEYS = ("bright", "display", "night")
+MEANT_KEYS = ("bright", "night")
+MEANT_PLACE = "collection:displays"
 # The most rows meaning adds below what typing found (VKCF3Z, 2026-11-07).
 MEANT_MOST = 3
 
@@ -2867,7 +3010,7 @@ def a_thing_found_by_its_meaning(desktop: Desktop, at_each_scale: list[str]) -> 
     typed = [row["is"] for row in desktop.showing()["things"]]
     desktop.close_launcher()
     known = desktop.as_account("cat $XDG_RUNTIME_DIR/meaning-known").split()
-    meant = [key for key in known if any(word in key for word in MEANT_KEYS)]
+    meant = [key for key in known if key == MEANT_PLACE or any(word in key for word in MEANT_KEYS)]
     assert meant, f"the launcher told of nothing a test can mean: {known}"
 
     # Two keys can name one thing, a spot and its collection, so what's added is seen by
@@ -2888,6 +3031,7 @@ def a_thing_found_by_its_meaning(desktop: Desktop, at_each_scale: list[str]) -> 
             assert len(meanings) <= MEANT_MOST, f"meaning added too many: {meanings}"
             assert len(set(meanings)) == len(meanings), f"a meaning came twice: {meanings}"
             assert not set(meanings) & set(typed), f"a meaning repeats a typed row: {meanings}"
+            assert MEANT_PLACE not in meanings, f"Screens stood beside its Brightness: {meanings}"
             desktop.down_to(desktop.showing()["rows"][len(typed)])
             note = desktop.showing()["selected"]["note"]
             assert note == "found by its meaning", f"a meant row says {note!r}"
@@ -3207,7 +3351,7 @@ def lasting_window(now: int) -> Json:
 def now_drawer(desktop: Desktop, row: str, eyebrow: str, shot: str) -> None:
     """Open Now by Super+O, move down to a piece's row, and photograph its drawer."""
     desktop.machine.send_key("meta_l-o")
-    desktop.in_now("Needs You")
+    desktop.in_now("For You")
     desktop.launcher_until(lambda shown: row in shown["rows"])
     desktop.down_to(row)
     desktop.launcher_until(

@@ -192,6 +192,20 @@ QtObject {
         expect("then down to its last folder", eyebrow(170) === "in \u2026/Screenshots",
             eyebrow(170));
         expect("which is never lost", eyebrow(50) === "in \u2026/Screenshots", eyebrow(50));
+        // A drawer's eyebrow given as words, not items, gives way as a
+        // note does, by whole items from its end, never cut inside a word
+        // as "IN ~/PICTURES/SCREENS\u2026" was (VKCF3Z, 2026-11-08); one
+        // given as items, as they say.
+        const light = { eyebrow: "on USB \u00b7 desk light" };
+        const brow = (given, room) => Reading.eyebrowOf(given, room, width);
+        expect("an eyebrow whole where it fits", brow(light, 300) === light.eyebrow,
+            brow(light, 300));
+        expect("an eyebrow's last item gives way whole", brow(light, 150) === "on USB",
+            brow(light, 150));
+        expect("one given as items gives way as they say",
+            brow({ eyebrow: "", eyebrowItems: pathed }, 200) === "in ~/\u2026/Screenshots",
+            brow({ eyebrow: "", eyebrowItems: pathed }, 200));
+        expect("no eyebrow, nothing", brow(null, 300) === "", brow(null, 300));
         // Styled, the kept items keep their words and take a dot in the
         // colour given between them, so a selected agent row reads
         // "working \u00b7 $4.20" with its dot muted (VKCF3Z, 2026-11-06), and

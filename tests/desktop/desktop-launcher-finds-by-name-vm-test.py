@@ -1591,6 +1591,13 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
     shown = json.loads(desktop.as_account("launcher show machine --json"))
     assert shown["in"] == ["Machine"], shown
     assert "Disk" in [row["name"] for row in shown["rows"]], shown
+    # Only --drawers asks the shell to build each row's drawer, as each screen has.
+    screens = json.loads(desktop.as_account("launcher show --json desktop screens"))
+    assert screens["rows"], screens
+    assert not any("drawer" in row for row in screens["rows"]), screens
+    drawn = json.loads(desktop.as_account("launcher show --drawers --json desktop screens"))
+    held = {row["name"]: "drawer" in row for row in drawn["rows"]}
+    assert any(held.values()), f"--drawers gave no row of Screens its drawer: {held}"
     status, said = machine.execute(desktop.in_session("launcher show mahcine 2>&1 >/dev/null"))
     assert status == 1, (status, said)
     assert "did you mean Machine?" in said, said
@@ -1600,8 +1607,11 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
         desktop.as_account(f"niri msg output winit scale {scale}")
         for asked, picture in [
             ("launcher show", "terminal-home"),
-            ("launcher show machine disk", "terminal-disk"),
+            # Screens, which niri answers at once, where Disk waits on the
+            # machine's daemon in the VM.
+            ("launcher show desktop screens", "terminal-screens"),
             ("launcher show mahcine", "terminal-miss"),
+            ("launcher show desktop screens --drawers", "terminal-drawers"),
         ]:
             window = desktop.opened(
                 picture, f"sh -c {shlex.quote(f'echo {asked}; {asked}; exec sleep infinity')}"

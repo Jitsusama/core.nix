@@ -212,7 +212,7 @@ QtObject {
             taken: "2026-11-07T16:59:00Z", sessions: [
                 { id: "01-boss", cwd: "/home/j/boss", title: "Boss", output: "eDP-1",
                     workspace: 2, column: 1 },
-                { id: "01-loose", cwd: "/home/j/loose", title: "Loose" },
+                { id: "01-loose", cwd: "/home/j/loose", title: "Loose", orchestrates: "REEF01" },
                 { id: "01; rm -rf ~", cwd: "/tmp" },
                 { id: "01-nowhere", title: "Nowhere" }
             ] }, fields));
@@ -220,9 +220,17 @@ QtObject {
         expect("a reboot's list names each whole one, with its place where it has one",
             Places.rebootList(listed({}), "this-one", began).sessions, [
                 { id: "01-boss", cwd: "/home/j/boss", title: "Boss",
-                    at: { output: "eDP-1", workspace: 2, column: 1, tile: 1 } },
-                { id: "01-loose", cwd: "/home/j/loose", title: "Loose", at: null }
+                    at: { output: "eDP-1", workspace: 2, column: 1, tile: 1 }, orchestrates: "" },
+                { id: "01-loose", cwd: "/home/j/loose", title: "Loose", at: null,
+                    orchestrates: "REEF01" }
             ]);
+        // Those that orchestrate are begun first, so the sessions they lead
+        // have them back to answer to; the rest keep their order.
+        const queued = (id, orchestrates) => ({ one: { id, orchestrates } });
+        expect("orchestrators first, each part in its order",
+            Places.leadersFirst([queued("a", ""), queued("b", "REEF01"), queued("c", ""),
+                queued("d", "HARB02"), queued("e")]).map(entry => entry.one.id),
+            ["b", "d", "a", "c", "e"]);
         expect("it says the boot it was taken in",
             Places.rebootList(listed({}), "this-one", began).boot, "the-last");
         expect("a list this boot took names none, so a shell restart offers nothing",
@@ -260,6 +268,23 @@ QtObject {
         expect("nothing of this boot's own", ids(Places.lastBoot(unlisted,
             { boot: "this-one", sessions: restored.sessions },
             { boot: "this-one", putOff: "", back: [] })), []);
+
+        // Reopen Them All begins the next session only while the machine has
+        // room for it, as the machine queue judges it, so eighty sessions
+        // never start into a machine already short of memory or disk.
+        const queue = (over, io, heartbeat) => JSON.stringify({ v: 1,
+            heartbeat: heartbeat ?? 5000,
+            machine: { over, pressure: { cpu: 30, memory: 2, io } } });
+        expect("room: the next begins", Places.mayBegin(queue([], 10), 5010), true);
+        expect("memory over: it waits", Places.mayBegin(queue(["memory"], 10), 5010), false);
+        expect("processors over: it waits", Places.mayBegin(queue(["cpu"], 10), 5010), false);
+        expect("the disk stalling: it waits", Places.mayBegin(queue([], 60), 5010), false);
+        // A queue that isn't heard from says nothing of the machine, so it
+        // never holds a reopening for good.
+        expect("a queue gone quiet holds nothing",
+            Places.mayBegin(queue(["memory"], 90, 5000), 5000 + 121), true);
+        expect("no queue holds nothing",
+            [Places.mayBegin("", 5010), Places.mayBegin("{", 5010)], [true, true]);
 
         if (failures.length > 0) {
             for (const failure of failures)

@@ -4,7 +4,8 @@
 //! Each meeting is a `meeting:<id>` record, each piece of mail that wants
 //! Joel a `mail:<id>`, each document he looked at lately a `file:<id>`,
 //! each meeting held in the month before today a `held:<id>`, each piece
-//! of mail he sent or read lately a `lately:<id>`, and how the account
+//! of mail he sent or read lately a `lately:<id>`, each Meet call the
+//! shell follows a `call:<code>`, and how the account
 //! stands, its unread count, Meet, Drive's transfers and Drive's own
 //! places one `account:google`, each place's files told in its own order,
 //! which records alone don't keep. A record carries its thing under a
@@ -40,7 +41,9 @@ use crate::state::{Meet, Standing, State};
 pub const VERSION: u64 = 1;
 
 /// The kinds this daemon keeps.
-const KINDS: [&str; 6] = ["meeting", "mail", "file", "held", "lately", "account"];
+const KINDS: [&str; 7] = [
+    "meeting", "mail", "file", "held", "lately", "call", "account",
+];
 
 /// The one account's key.
 const ACCOUNT: &str = "account:google";
@@ -85,6 +88,9 @@ pub fn records(state: &State) -> Vec<(String, Value)> {
     }
     for mail in &state.lately {
         made.push(record("lately", &mail.id, as_value(mail)));
+    }
+    for call in &state.calls {
+        made.push(record("call", &call.code, as_value(call)));
     }
     let account = Account {
         standing: state.account,
@@ -284,7 +290,10 @@ impl Daemon {
                 return error(
                     &id,
                     "unknown-kind",
-                    &format!("this daemon keeps meeting, mail, file and account, not {kind}"),
+                    &format!(
+                        "this daemon keeps meeting, mail, file, held, lately, call and \
+                         account, not {kind}"
+                    ),
                 );
             }
         };
@@ -367,18 +376,24 @@ impl Daemon {
             }
             "act" => {
                 drop(held);
-                let act = said.get("act").map(Value::to_string).unwrap_or_default();
-                if ask::read(&act).is_none() {
-                    return error(&id, "unknown-ask", "no such act");
-                }
-                if asks.send(act).is_err() {
-                    return error(&id, "not-ready", "the account isn't being held");
-                }
-                json!({"id": id, "taken": true})
+                act(&id, &said, asks)
             }
             _ => error(&id, "unknown-ask", &format!("no ask {asked:?}")),
         }
     }
+}
+
+/// An act asked of the account, handed to what holds it, or why it can't
+/// be: one this program doesn't know, or no account held to do it.
+fn act(id: &Value, said: &Value, asks: &Sender<String>) -> Value {
+    let act = said.get("act").map(Value::to_string).unwrap_or_default();
+    if ask::read(&act).is_none() {
+        return error(id, "unknown-ask", "no such act");
+    }
+    if asks.send(act).is_err() {
+        return error(id, "not-ready", "the account isn't being held");
+    }
+    json!({"id": id, "taken": true})
 }
 
 /// Whether two records hold the same, whenever each was heard.

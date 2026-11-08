@@ -1476,7 +1476,8 @@ impl Guard {
     /// at a spare moment, or a day on whenever there's power, at idle
     /// priority; and at once when the store's filesystem is filling
     /// and the listing is an hour old. While the machine is overloaded only
-    /// a filling store's listing begins; one asked for meanwhile waits.
+    /// a filling store's listing begins, at idle priority short of urgent;
+    /// one asked for meanwhile waits.
     fn list_garbage(&mut self, now: f64, spare: bool, overloaded: bool) {
         if self.listing_out.is_some() {
             return;
@@ -1484,13 +1485,19 @@ impl Guard {
         let Some((_, device)) = self.store() else {
             return;
         };
-        let pressed = self
+        let band = self
             .watched
             .get(&device)
-            .is_some_and(|watched| watched.band > Band::Healthy);
+            .map_or(Band::Healthy, |watched| watched.band);
+        let pressed = band > Band::Healthy;
         if overloaded && !pressed {
             return;
         }
+        // On an overloaded machine a filling store's listing takes only
+        // what the rest leaves: on 8 November it took half a processor at
+        // load 74. Near full it can't wait on that, since idle priority on
+        // a busy machine may never finish.
+        let idle = !pressed || overloaded && band < Band::Urgent;
         let age = |at: Option<f64>| at.map_or(f64::INFINITY, |at| now - at);
         let listed = age(self.listing.as_ref().map(|listing| listing.listed_at));
         let retry = if pressed {
@@ -1521,7 +1528,7 @@ impl Guard {
             .name(GARBAGE.to_owned())
             .spawn(move || {
                 // A guard that stopped meanwhile has no one to hear it.
-                let _ = tell.send(garbage::list(&nix, !pressed));
+                let _ = tell.send(garbage::list(&nix, idle));
             });
         self.listing_begun = Some(now);
         self.relist = false;

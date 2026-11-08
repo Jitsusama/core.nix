@@ -25,6 +25,12 @@ Provider {
     // account is ready and the meeting is on, starts today or starts
     // within the hour, or else null, as on a machine without google, where
     // this provider isn't there at all.
+    // While the launcher is open, who's in each Meet call is asked of Meet,
+    // so Now's call says it (Calendar.qml's watchingCalls); never while
+    // it's closed.
+    readonly property bool callsWatched: launcher !== null && launcher.open === true
+    onCallsWatchedChanged: Calendar.watchingCalls += callsWatched ? 1 : -1
+
     readonly property var next: Google.account === "ready" && Calendar.upNext(Calendar.next)
         ? things.find(row => row.key === `calendar:meeting:${Calendar.next.id}`) ?? null
         : null

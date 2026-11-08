@@ -40,6 +40,7 @@ function gathered(held, answering) {
             || (other.viewed ?? 0) - (one.viewed ?? 0)),
         held: of("held").sort((one, other) => one.start - other.start),
         lately: of("lately").sort((one, other) => other.at - one.at),
+        calls: of("call"),
         heard: account.heard,
         fetched: account.account.fetched,
         meet: account.account.meet,
@@ -62,6 +63,7 @@ function stateOf(said) {
         documents: Array.isArray(said.documents) ? said.documents : [],
         held: Array.isArray(said.held) ? said.held : [],
         lately: Array.isArray(said.lately) ? said.lately : [],
+        calls: Array.isArray(said.calls) ? said.calls : [],
         heard: said.heard ?? null,
         fetched: said.fetched ?? null,
         meet: { granted: said.meet?.granted === true, made: said.meet?.made ?? null },
@@ -161,6 +163,12 @@ function downloading(drive, file, since) {
 // The line that asks the program to make a new Meet meeting.
 function make() {
     return `${JSON.stringify({ make: {} })}\n`;
+}
+
+// The ask that follows the Meet calls of these codes, those open in
+// windows of their own, so the program asks Meet who's in each.
+function follow(codes) {
+    return `${JSON.stringify({ follow: { codes } })}\n`;
 }
 
 // How the meeting asked for at `since` stands, as { state, link }: "making"

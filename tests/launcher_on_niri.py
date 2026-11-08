@@ -7,7 +7,8 @@ it. wtype's keys reach the surface holding the keyboard, the launcher's or the
 held notices', but never niri's binds, so what a bind runs is run instead, and
 nothing of a machine's is here: no battery, backlight, system services or
 other programs, only the machine daemon over the sandbox's own /proc when
-the check gives it as MACHINE. A case needing any of those stays in the
+the check gives it as MACHINE, and the meaning daemon's stand-in when it
+gives that as MEANING. A case needing any of those stays in the
 desktop's VM tests (tests/desktop/); one that only types and reads the
 launcher comes here. The helpers keep desktop_session.Desktop's names, so a
 case moves between the two with few words changed: keys are pressed on the
@@ -70,21 +71,20 @@ class Shell:
         self.folder = folder
         self.log = logs / "shell.log"
         self.process: subprocess.Popen[bytes] | None = None
-        self.machine: subprocess.Popen[bytes] | None = None
+        self.daemons: list[subprocess.Popen[bytes]] = []
 
     def start(self) -> None:
         """Start the shell, and wait until its launcher answers, closed."""
         # Machine's answers come from the machine daemon, over the sandbox's own /proc, on the
         # socket the account's systemd would hold for it.
         if "MACHINE" in os.environ:
-            daemons = Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons"
-            daemons.mkdir(mode=0o700, exist_ok=True)
-            with (self.log.parent / "machine.log").open("wb") as log:
-                self.machine = subprocess.Popen(  # noqa: S603
-                    [os.environ["MACHINE"], str(daemons / "machine.sock")],
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                )
+            self.daemon("machine", os.environ["MACHINE"])
+        # Meanings come from the meaning daemon's stand-in, given what a test writes that each
+        # text means in meaning-means.json, since no model loads here
+        # (tests/desktop/stand-in-meaning.py).
+        if "MEANING" in os.environ:
+            means = Path(os.environ["XDG_RUNTIME_DIR"]) / "meaning-means.json"
+            self.daemon("meaning", os.environ["MEANING"], str(means))
         with self.log.open("wb") as log:
             self.process = subprocess.Popen(  # noqa: S603
                 ["qs", "-p", str(self.folder)],  # noqa: S607
@@ -100,9 +100,22 @@ class Shell:
         failed = f"the shell never answered:\n{self.tail()}"
         raise AssertionError(failed)
 
+    def daemon(self, name: str, program: str, *given: str) -> None:
+        """Start a daemon on the socket the account's systemd would hold for it, its log beside."""
+        daemons = Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons"
+        daemons.mkdir(mode=0o700, exist_ok=True)
+        with (self.log.parent / f"{name}.log").open("wb") as log:
+            self.daemons.append(
+                subprocess.Popen(  # noqa: S603
+                    [program, str(daemons / f"{name}.sock"), *given],
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                )
+            )
+
     def stop(self) -> None:
         """End the shell."""
-        for process in (self.process, self.machine):
+        for process in (self.process, *self.daemons):
             if process is not None:
                 process.terminate()
                 process.wait(timeout=10)

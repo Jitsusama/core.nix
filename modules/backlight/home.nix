@@ -8,7 +8,10 @@
 # until the light moves well away from where it was set (src/follow.rs).
 # Learning starts from jitsusama.backlight.standard; what it learns stays in
 # the account's state, and each pick is told to the shell's brightness bar
-# through $XDG_RUNTIME_DIR/backlight-chosen.
+# through $XDG_RUNTIME_DIR/backlight-chosen. Each level it settles at, the
+# light it was heard in, what the curve asks there and whether it follows
+# the light now are told in $XDG_RUNTIME_DIR/backlight-now for Screens'
+# Brightness, emptied as the daemon stops.
 # A monitor on a DisplayPort or MST bus that answers DDC/CI follows the
 # panel at the same share of its own brightest (src/monitor.rs), once
 # udev opens its bus to the seat, as modules/ddcutil does. What such a
@@ -16,17 +19,19 @@
 # for the launcher's Displays facts, which desk-facts adds to its own
 # (../desk-facts).
 # Where a sensor sees the light's colour, the built-in panel's warmth
-# follows the room part of the way (src/warmth.rs), through
+# follows the room part of the way (src/warmth.rs), and from sunset to
+# sunrise where the laptop is the night light warms it whatever the sensor
+# sees (src/night.rs), to jitsusama.backlight.night.kelvin, both through
 # wl-gammarelay-rs, which holds niri's gamma for each screen and takes its
 # warmth over the session's bus. It's the daemon's own, so it comes with it,
 # and the bus starts it the first time the daemon sets a warmth
-# (nixos.nix), rather than every session: only a machine whose sensor sees
-# the light's colour needs it, and a compositor that can't set gamma, as a
-# nested one can't, would fail it at each start.
-# Whether it follows the room is Joel's to say, through the daemon's own
-# name on the session's bus (src/switch.rs), which the shell's Warmth part
-# sets, and how it stands is kept in $XDG_RUNTIME_DIR/backlight-warmth for
-# that part's note: {} while nothing warms the screen, so no part shows.
+# (nixos.nix), rather than every session: a compositor that can't set
+# gamma, as a nested one can't, would fail it at each start.
+# Whether it follows the room, and whether the night light is on, are
+# Joel's to say, through the daemon's own name on the session's bus
+# (src/switch.rs), which the shell's Warmth sets, and how it stands is kept
+# in $XDG_RUNTIME_DIR/backlight-warmth for the shell: {} while nothing
+# warms the screen, so no Warmth shows.
 {
   config,
   lib,
@@ -41,8 +46,22 @@ let
       point: "${toString point.lux} ${toString point.level}\n"
     ) config.jitsusama.backlight.standard
   );
+
+  nightWhite = toString config.jitsusama.backlight.night.kelvin;
 in
 {
+  options.jitsusama.backlight.night.kelvin = lib.mkOption {
+    type = lib.types.ints.between 1000 6500;
+    # GNOME's Night Light's, gentle enough that code's colours still read
+    # (VKCF3Z, 2026-11-08).
+    default = 4000;
+    description = ''
+      The built-in screen's white at night, in kelvin, eased into over the
+      half hour after sunset and out of over the half hour before sunrise;
+      6500, the screen's own, keeps it from warming at all.
+    '';
+  };
+
   options.jitsusama.backlight.standard = lib.mkOption {
     type = lib.types.listOf (
       lib.types.submodule {
@@ -113,7 +132,7 @@ in
       After = [ "graphical-session.target" ];
     };
     Service = {
-      ExecStart = "${lib.getExe package} ${standard}";
+      ExecStart = "${lib.getExe package} ${standard} ${nightWhite}";
       Restart = "on-failure";
       RestartSec = 1;
       # A monitor's facts go with the daemon however it ends, a stop or a
@@ -123,6 +142,7 @@ in
       ExecStopPost = [
         "${pkgs.runtimeShell} -c '${pkgs.coreutils}/bin/rm -f %t/desk/ddc-*'"
         "${pkgs.runtimeShell} -c 'echo {} > %t/backlight-warmth'"
+        "${pkgs.runtimeShell} -c ': > %t/backlight-now'"
       ];
     };
     Install.WantedBy = [ "graphical-session.target" ];

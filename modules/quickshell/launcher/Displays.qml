@@ -31,22 +31,28 @@
 // and shown once it's come. While its answer shows, it's asked again once
 // a second, never more, so the screen following the room moves as it does.
 //
-// Where the backlight daemon warms the built-in screen toward the room's
-// light, it says how that stands in a file (modules/backlight), and the
-// Warmth follows the Brightness there: on or off, its note the warmth and
-// whether it follows the room, and Return switching it, which the daemon
-// is told over the session's bus and keeps. "screen warmth" asks it.
+// The backlight daemon warms the built-in screen at night from sunset to
+// sunrise, and toward the room's light where its sensor sees colour, and
+// says how that stands in a file (modules/backlight), so the Warmth
+// follows the Brightness on every machine with a panel to warm: its side
+// the warmth now, its note what holds it, and Return stepping into the
+// Night Light and Follow the Room switches, which the daemon is told over
+// the session's bus and keeps, then the room's white, the night's sunset
+// and sunrise and its white (Warmth.js; VKCF3Z, 2026-11-08). "screen
+// warmth" asks it.
 import qs
 import Quickshell
 import Quickshell.Io
 import Qt.labs.folderlistmodel
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "Backlight.js" as Backlight
 import "Numbers.js" as Numbers
 import "Order.js" as Order
 import "Plate.js" as Plate
 import "Power.js" as Power
 import "Screens.js" as Screens
+import "Warmth.js" as Warmth
 
 Provider {
     id: provider
@@ -59,8 +65,8 @@ Provider {
     property var outputs: ({})
 
     // :set brightness=60 sets the screen as its Brightness row does, on a
-    // machine with a backlight, and :set nowarmth gives it its own white as
-    // its Warmth row does, where the backlight daemon warms it. :set
+    // machine with a backlight, and :set nowarmth gives it its own white by
+    // day as Warmth's Follow the Room does, where a sensor sees colour. :set
     // noscreens turns every screen off, as Turn Every Screen Off does; they
     // are on whenever the launcher can be seen, so screens alone does
     // nothing.
@@ -86,6 +92,17 @@ Provider {
             }
         }
     }, warmth === null ? {} : {
+        // :set nightlight and nonightlight turn the night light on and off,
+        // as its switch in Warmth does.
+        nightlight: {
+            kind: "switch",
+            now: () => provider.warmth?.nightLight ?? false,
+            set: to => {
+                provider.nightLight(to);
+                return "";
+            }
+        }
+    }, warmth === null || !warmth.seesColour ? {} : {
         warmth: {
             kind: "switch",
             now: () => provider.warmth?.followsTheRoom ?? false,
@@ -184,8 +201,9 @@ Provider {
             warn: false };
     }
 
+    // The room's light as it's measured, Room Light's row and fact alike.
     function lux(value) {
-        return `${Numbers.format(value, value >= 10 ? 0 : 1, settings.group, settings.point)} lx`;
+        return Backlight.reading(value, settings.group, settings.point);
     }
 
     // The Brightness and, where the room is heard, the Room light, or
@@ -233,9 +251,7 @@ Provider {
     onWarmthChanged: changed()
 
     function warmed(text) {
-        const said = parsed(text);
-        return typeof said.kelvin === "number" && typeof said.followsTheRoom === "boolean"
-            ? said : null;
+        return Warmth.read(parsed(text));
     }
 
     FileView {
@@ -247,28 +263,114 @@ Provider {
         onLoadFailed: provider.warmth = null
     }
 
-    // The Warmth, a switch: Return turns its following the room off or
-    // back on, the launcher staying to show it change.
-    function warmthRow(output) {
-        const follows = warmth.followsTheRoom;
-        const stands = follows ? `${warmth.kelvin} K, following the room`
-            : `${warmth.kelvin} K, the screen's own white`;
+    // The level the backlight daemon last settled, what its curve asks for
+    // the room it heard and whether it follows the room, as it writes them
+    // each time a step ends or a pick is heard (Backlight.js), or null
+    // where no daemon says: no file, or an empty one, as it leaves when it
+    // stops. sysfs's brightness can't be watched, so this is what moves the
+    // drawer with each step the daemon takes.
+    property var settled: null
+    onSettledChanged: {
+        readLight();
+        changed();
+    }
+
+    FileView {
+        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/backlight-now`
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: provider.settled = Backlight.now(text())
+        onLoadFailed: provider.settled = null
+    }
+
+    // The daemon's curve, dimmest first, where it keeps it: its standard
+    // points with each of Joel's picks learned into them.
+    property var curve: []
+    onCurveChanged: changed()
+
+    FileView {
+        path: `${Quickshell.env("XDG_STATE_HOME") || `${Quickshell.env("HOME")}/.local/state`}`
+            + "/backlight/learned"
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: provider.curve = Backlight.curve(text())
+        onLoadFailed: provider.curve = []
+    }
+
+    // How Warmth says a time and a kelvin: by the clock, and with its
+    // thousands grouped (VKCF3Z, 2026-11-08: "4,000 K").
+    readonly property var warmthTold: ({
+        clock: at => Qt.formatDateTime(new Date(at), "HH:mm"),
+        kelvin: value => `${Numbers.format(value, 0, settings.group ?? ",",
+            settings.point ?? ".")} K`
+    })
+    readonly property var warmthSaid: Words.of("displays:warmth").said ?? {}
+
+    // A switch of Warmth's, in its words' state, so the : line says its
+    // command: Return turns it off or back on, the launcher staying to
+    // show it change.
+    function warmthSwitch(output, id, on, run) {
         return thing({
-            key: `displays:${output.name}:warmth`,
-            // Its words, which its key never walks back to, in its state,
-            // so the : line says :set nowarmth or warmth.
-            wordsId: "displays:warmth",
-            wordState: follows ? "" : "off",
-            name: partName("warmth"),
-            verb: Words.verb("displays:warmth", follows ? "" : "off"),
-            glyph: Theme.glyph.warmth,
+            key: `displays:${output.name}:${id}`,
+            wordsId: `displays:${id}`,
+            wordState: on ? "" : "off",
+            name: Words.name(`displays:${id}`),
+            verb: Words.verb(`displays:${id}`, on ? "" : "off"),
+            glyph: Words.glyph(`displays:${id}`),
             hue: "machine",
-            side: follows ? "on" : "off",
-            said: stands,
-            note: stands,
+            side: on ? "on" : "off",
             stays: true,
-            run: () => provider.followTheRoom(!follows)
+            run: () => run(!on)
         });
+    }
+
+    // The Warmth, a thing: its side the warmth now, its note what holds
+    // it, and Return stepping into the Night Light, Follow the Room where
+    // a sensor sees colour, then its figures, which its plate shows too,
+    // under where it's set and what it warms (VKCF3Z, 2026-11-08).
+    function warmthRow(output) {
+        const now = Date.now();
+        const figures = Warmth.figures(warmth, now, warmthSaid, warmthTold);
+        const name = partName("warmth");
+        return thingRow({
+            key: `displays:${output.name}:warmth`,
+            name: name,
+            glyph: Theme.glyph.warmth,
+            side: warmthTold.kelvin(warmth.kelvin),
+            note: Warmth.note(warmth, now, warmthSaid, warmthTold),
+            thing: true,
+            // Where it's set, then what it warms, which gives way first
+            // where the plate is narrow (VKCF3Z: where, then kind).
+            drawer: () => ({
+                eyebrow: [warmthSaid.via, warmthSaid.screen].join(" \u00b7 "),
+                eyebrowItems: [{ said: warmthSaid.via ?? "", keep: 2 },
+                    { said: warmthSaid.screen ?? "", keep: 1 }],
+                eyebrowNames: true,
+                title: name,
+                facts: figures.map(figure => ({
+                    label: Words.name(`displays:warmth:${figure.id}`),
+                    value: figure.side
+                }))
+            })
+        }, () => [warmthSwitch(output, "night-light", warmth.nightLight,
+            on => provider.nightLight(on))]
+            .concat(warmth.seesColour ? [warmthSwitch(output, "follow-room",
+                warmth.followsTheRoom, follows => provider.followTheRoom(follows))] : [])
+            .concat(figures.map(figure => copyRow({
+                name: Words.name(`displays:warmth:${figure.id}`),
+                side: figure.side,
+                copy: figure.side,
+                glyph: ""
+            }))));
+    }
+
+    // Tells the backlight daemon whether the night light is on.
+    function nightLight(on) {
+        Niri.spawn(["busctl", "--user", "set-property", "io.jitsusama.Backlight",
+            "/io/jitsusama/Backlight", "io.jitsusama.Backlight", "NightLight", "b",
+            on ? "true" : "false"]);
     }
 
     // Tells the backlight daemon whether the screen follows the room.
@@ -359,7 +461,8 @@ Provider {
     // sysfs or asking the sensor writes state the binding reads, a loop; so
     // they read only this and `room`, which are asked for here, each second
     // while the launcher is open, from the moment it opens, since the
-    // Brightness and Room Light answers are found through those rows too.
+    // Brightness and Room Light answers are found through those rows too,
+    // and as the daemon says it stepped.
     property var light: null
     onLightChanged: changed()
 
@@ -515,15 +618,32 @@ Provider {
                     : `${light.share}%`,
                 figure: { shape: "stroke", values: [light.now / light.most], warn: false }
             });
-            if (inTheRoom(output) && room !== null)
-                facts.push({ label: partName("room"), value: lux(room) });
+            // The room as the sensor hears it now, which moves before the
+            // level does, and is asked only for the screen it lights; or
+            // that no light is heard, where the daemon follows nothing.
+            const said = (key, values) => Backlight.fill(partSaid("", key), values);
+            const heard = inTheRoom(output) ? Backlight.room(settled, room, said,
+                each => lux(each)) : "";
+            if (heard !== "")
+                facts.push({ label: partName("room"), value: heard });
+            // What sets the level, the Warmth, then the curve, which moves
+            // only with a pick, so goes last of the light (VKCF3Z, 2026-11-08).
+            const follows = inTheRoom(output) ? Backlight.follows(settled, said) : "";
+            if (follows !== "")
+                facts.push({ label: partName("follows"), value: follows });
             if (inTheRoom(output) && warmth !== null)
                 facts.push({
                     label: partName("warmth"),
                     value: Plate.runs([`${Numbers.format(warmth.kelvin, 0, settings.group,
                         settings.point)} K`,
-                        partSaid("", warmth.followsTheRoom ? "following" : "own-white")])
+                        // What holds it, as its row's note says it: the
+                        // night light by night, not the room.
+                        Warmth.note(warmth, Date.now(), warmthSaid, warmthTold)])
                 });
+            if (inTheRoom(output) && curve.length > 0)
+                facts.push({ label: partName("curve"),
+                    value: Backlight.curveSaid(curve, said,
+                        each => Backlight.chosen(each, settings.group, settings.point)) });
         }
         const edid = Plate.facts(factRows(output));
         const physical = edid.some(fact => fact.label === partName("size")) ? ""
@@ -533,11 +653,13 @@ Provider {
                 : "screen")]),
             eyebrowNames: true,
             title: named(output),
-            facts: facts.concat(Screens.facts(output, {
+            // Its serial, from niri or the EDID, identifies it, so ends it.
+            facts: Plate.identified(facts.concat(Screens.facts(output, {
                 named: id => provider.partName(id),
                 said: (id, key) => provider.partSaid(id, key),
                 turned: transform => provider.turnedSaid(transform)
-            }), edid, physical === "" ? [] : [{ label: partName("size"), value: physical }])
+            }), edid, physical === "" ? [] : [{ label: partName("size"), value: physical }]),
+                [partName("serial")])
         };
     }
 

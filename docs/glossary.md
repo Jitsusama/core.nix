@@ -85,6 +85,8 @@ the queue and conclude.
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
 | agent | a model working for Joel, as a session or a subagent | AI, assistant, bot | |
+| sandbox | the fence around a command an agent runs: what it may read, write, reach and be told | | `PI_SANDBOX`, landrun |
+| broker | a program outside the sandbox holding a credential, which hands what's inside only a short-lived part of it | | `github-broker` |
 | quest | a piece of Joel's work, with its own folder, README and documents | task, project, todo | `QEST-` ids, the `quest` tool |
 | short name | a quest's name in two or three words, on its windows and in the launcher | | `short:` |
 | subquest | a quest that is part of another's work | | `kind: subquest` |
@@ -262,6 +264,7 @@ or a copy, can be opened, copied or forgotten.
 | forget | the action taking an item out of its list, such as a notice, a copy or what's waiting | let it go | |
 | foot | the status line at the bottom of the launcher and held notices: the mode, the position and what the keys do | | `foot` |
 | Now | the launcher's view of what's on and waiting, on Super+O | What's on | `Now.qml` |
+| For You | Now's first row: what wants Joel, weighed, the most pressing first | | `ForYou.js` |
 | Needs You | what only Joel can do, each raised by the session that needs him | waiting on you, to do | `WaitingOnYou.qml` |
 | clipboard | what was copied last, and what was copied before it | | |
 | timer | a span Joel sets counting down, which rings as a notice when it ends, kept by its daemon so it rings with the launcher closed; Timers is the place holding them | countdown, alarm | `HeldTimers.qml`, the `timers` program |

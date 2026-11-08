@@ -1,0 +1,108 @@
+//! The rows a place holds as zsh's completion offers them: each as a step
+//! is typed, its name in lower case with a hyphen for each space, which
+//! launcher/Showing.js reads as the name itself, so a step needs no
+//! quoting; and what it says, its side or else its count, beside it.
+
+use serde_json::Value;
+
+use crate::words::Words;
+
+/// The commands zsh's completion offers first.
+const COMMANDS: [&str; 1] = ["show"];
+
+/// zsh's completion for launcher, each command described in words.json's
+/// words, single-quoted as zsh reads them, a colon in a name escaped.
+pub fn completion(words: &Words) -> String {
+    let commands = COMMANDS
+        .iter()
+        .map(|command| {
+            let offered = format!("{}:{}", command.replace(':', "\\:"), words.offered(command));
+            format!("'{}'", offered.replace('\'', "'\\''"))
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    include_str!("completion.zsh").replace("@commands@", &commands)
+}
+
+/// A row's name as a step is typed: `Sessions to Reopen` is
+/// `sessions-to-reopen`.
+pub fn typed(name: &str) -> String {
+    name.split_whitespace()
+        .map(str::to_lowercase)
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+/// The rows the shell showed, then a thing's own acts, which a step names
+/// as it names a row, a line each as zsh's `_describe` reads it: the step,
+/// its colons escaped, and what the row says after a colon.
+pub fn for_zsh(shown: &Value) -> String {
+    let mut out = String::new();
+    for row in ["rows", "acts"]
+        .into_iter()
+        .filter_map(|key| shown.get(key).and_then(Value::as_array))
+        .flatten()
+    {
+        let said = |key: &str| row.get(key).and_then(Value::as_str).unwrap_or_default();
+        let step = typed(said("name"));
+        if step.is_empty() {
+            continue;
+        }
+        out.push_str(&step.replace(':', "\\:"));
+        let what = match said("side") {
+            "" => said("count"),
+            side => side,
+        };
+        if !what.is_empty() {
+            out.push(':');
+            out.push_str(what);
+        }
+        out.push('\n');
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_command_is_offered_in_the_launchers_words() {
+        let words = Words::from_value(&serde_json::json!({"terminal": {"offers": {
+            "show": "what Joel's launcher holds"}}}));
+        let written = completion(&words);
+        assert!(written.starts_with("#compdef launcher\n"));
+        assert!(written.contains("commands=('show:what Joel'\\''s launcher holds')"));
+        let bare = completion(&Words::from_value(&Value::Null));
+        assert!(bare.contains("commands=('show:show')"));
+    }
+
+    #[test]
+    fn a_name_is_typed_in_lower_case_a_hyphen_for_a_space() {
+        assert_eq!(typed("Sessions to Reopen"), "sessions-to-reopen");
+        assert_eq!(typed("Disk"), "disk");
+    }
+
+    #[test]
+    fn a_things_acts_are_offered_after_its_rows() {
+        let shown = serde_json::json!({
+            "rows": [{"name": "Space", "side": "412 GB free"}],
+            "acts": [{"name": "Copy"}]
+        });
+        assert_eq!(for_zsh(&shown), "space:412 GB free\ncopy\n");
+    }
+
+    #[test]
+    fn each_row_is_offered_with_its_side_or_its_count() {
+        let shown = serde_json::json!({"rows": [
+            {"name": "Disk", "side": "412 GB free"},
+            {"name": "Machine", "count": "Disk \u{b7} Power"},
+            {"name": "Ratio 16:9"},
+            {"name": ""}
+        ]});
+        assert_eq!(
+            for_zsh(&shown),
+            "disk:412 GB free\nmachine:Disk \u{b7} Power\nratio-16\\:9\n"
+        );
+    }
+}

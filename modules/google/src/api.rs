@@ -36,6 +36,13 @@ const ENTRY_FIELDS: &str =
 /// those it made, which a sign-in from before pi asked for it lacks.
 pub const MAKES_MEETINGS: &str = "https://www.googleapis.com/auth/meetings.space.created";
 
+/// How many pages of a call's people are read, a hundred each.
+const PEOPLE_PAGES: usize = 5;
+
+/// The scope that lets this program read the calls Joel is in and who's
+/// in them, which a sign-in from before it was asked for lacks.
+pub const READS_MEETINGS: &str = "https://www.googleapis.com/auth/meetings.space.readonly";
+
 /// Where Google answers.
 pub struct Origins {
     /// The OAuth token endpoint.
@@ -203,9 +210,22 @@ impl Google {
         query: &[(&str, &str)],
         what: &str,
     ) -> Result<Option<Value>, Refused> {
+        self.found_at(&self.origins.api, token, path, query, what)
+    }
+
+    /// Asks as `found` does, of the API at `origin`, as Meet's, which
+    /// answers on a host of its own.
+    fn found_at(
+        &self,
+        origin: &str,
+        token: &str,
+        path: &str,
+        query: &[(&str, &str)],
+        what: &str,
+    ) -> Result<Option<Value>, Refused> {
         let mut request = self
             .agent
-            .get(format!("{}{path}", self.origins.api))
+            .get(format!("{origin}{path}"))
             .header("Authorization", &format!("Bearer {token}"));
         for (name, value) in query {
             request = request.query(*name, *value);
@@ -327,6 +347,58 @@ impl Google {
             .and_then(Value::as_str)
             .map(str::to_owned)
             .ok_or_else(|| Refused::Unreachable("Google answered a file without it".into()))
+    }
+
+    /// The conference records of the Meet meeting `code`, the one under
+    /// way among them (meet.rs reads which), or none Meet keeps.
+    pub fn conferences(&self, token: &str, code: &str) -> Result<Value, Refused> {
+        let filter = format!("space.meeting_code = \"{code}\" AND end_time IS NULL");
+        self.found_at(
+            &self.origins.meet,
+            token,
+            "/v2/conferenceRecords",
+            &[("filter", &filter)],
+            "the call's conference",
+        )
+        .map(Option::unwrap_or_default)
+    }
+
+    /// Everyone who has been in the conference `record`, as Meet names it
+    /// ("conferenceRecords/abc123"), each since when and, once gone, until
+    /// when.
+    /// Meet's pages are each a hundred people, so a call of more is read a
+    /// page at a time, up to `PEOPLE_PAGES` of them.
+    pub fn participants(&self, token: &str, record: &str) -> Result<Value, Refused> {
+        let path = format!("/v2/{record}/participants");
+        let mut everyone = Vec::new();
+        let mut page: Option<String> = None;
+        for _ in 0..PEOPLE_PAGES {
+            let mut query = vec![("pageSize", "100")];
+            if let Some(token) = &page {
+                query.push(("pageToken", token.as_str()));
+            }
+            let answer = self
+                .found_at(
+                    &self.origins.meet,
+                    token,
+                    &path,
+                    &query,
+                    "who's in the call",
+                )?
+                .unwrap_or_default();
+            if let Some(some) = answer.get("participants").and_then(Value::as_array) {
+                everyone.extend(some.iter().cloned());
+            }
+            page = answer
+                .get("nextPageToken")
+                .and_then(Value::as_str)
+                .filter(|next| !next.is_empty())
+                .map(str::to_owned);
+            if page.is_none() {
+                break;
+            }
+        }
+        Ok(serde_json::json!({ "participants": everyone }))
     }
 
     /// A new Meet meeting, made as Joel's own, and the link that joins it.

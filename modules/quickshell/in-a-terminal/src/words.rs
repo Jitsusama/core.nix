@@ -73,6 +73,16 @@ impl Words {
         usage
     }
 
+    /// What a command does, as zsh's completion describes it.
+    pub fn offered(&self, command: &str) -> String {
+        self.said
+            .get("offers")
+            .and_then(|offers| offers.get(command))
+            .and_then(Value::as_str)
+            .unwrap_or(command)
+            .to_string()
+    }
+
     /// The shell not answering.
     pub fn silent(&self) -> String {
         self.word("silent", &[])

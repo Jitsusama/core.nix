@@ -297,10 +297,19 @@ onLinux {
 
   # The launcher answers what's typed into it, and the held notices take
   # vi's keys, on the account's whole shell on niri, in seconds rather than
-  # a machine's minutes (tests/launcher-on-niri-test.py).
+  # a machine's minutes (tests/launcher-on-niri-test.py). Its meanings come
+  # from the meaning daemon's stand-in, which loads no model
+  # (tests/desktop/stand-in-meaning.py).
   the-launcher-answers-whats-typed-on-niri = launcherOnNiri {
     name = "the-launcher-answers-whats-typed-on-niri";
     tests = ../../tests/launcher-on-niri-test.py;
+    given = [
+      "MEANING=${
+        pkgs.writers.writePython3 "stand-in-meaning" {
+          doCheck = false;
+        } (builtins.readFile ../../tests/desktop/stand-in-meaning.py)
+      }"
+    ];
   };
 
   # An agent's row does, on Return, the act its state makes harmless, its
@@ -1140,9 +1149,10 @@ onLinux {
 
   # A thing's drawer says each of its parts as a fact, leaving out its
   # acts and opening a holder of figures in place, and a screen's says
-  # what niri says it runs, where it sits and what it offers, as
-  # tests/plate.qml holds launcher/Plate.js and Screens.js to it in Qt's
-  # own engine.
+  # what niri says it runs, where it sits and what it offers, and what the
+  # backlight daemon says sets its level and has learned, as
+  # tests/plate.qml holds launcher/Plate.js, Screens.js and Backlight.js to
+  # it in Qt's own engine, with the Numbers.js Backlight.js says lux through.
   a-things-drawer-says-its-parts =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -1151,6 +1161,8 @@ onLinux {
       cp ${../../tests/plate.qml} plate.qml
       cp ${./launcher/Plate.js} Plate.js
       cp ${./launcher/Screens.js} Screens.js
+      cp ${./launcher/Backlight.js} Backlight.js
+      cp ${./launcher/Numbers.js} Numbers.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -1197,8 +1209,9 @@ onLinux {
   # Reopen Them All puts each session back on its own screen, found by what
   # the screen is rather than its connector, a gone screen's workspaces
   # after the one in use's and to it once it's back, and each window that
-  # reopens itself beside those kept with it, as tests/places.qml holds
-  # Places.js to it in Qt's own engine.
+  # reopens itself beside those kept with it, and begins the next session
+  # only while the machine queue says there's room, as tests/places.qml
+  # holds Places.js to it in Qt's own engine.
   reopening-finds-each-screen =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -1210,6 +1223,25 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml places.qml
+      touch $out
+    '';
+
+  # For You weighs what needs Joel, heaviest first and ties as they came,
+  # says each row's strongest reason, and reads the looks folder's files
+  # into what waits and what's history, as tests/for-you.qml holds
+  # ForYou.js to it in Qt's own engine.
+  for-you-weighs-what-needs-joel =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "for-you-weighs-what-needs-joel" { } ''
+      cp ${../../tests/for-you.qml} for-you.qml
+      cp ${./launcher/ForYou.js} ForYou.js
+      cp ${./launcher/Order.js} Order.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml for-you.qml
       touch $out
     '';
 
@@ -1260,6 +1292,7 @@ onLinux {
       cp ${./launcher/Zones.js} Zones.js
       cp ${./launcher/Moment.js} Moment.js
       cp ${./launcher/Keeping.js} Keeping.js
+      cp ${./launcher/Warmth.js} Warmth.js
       cp ${./launcher/Colours.js} Colours.js
       cp ${./launcher/Asking.js} Asking.js
       cp ${./launcher/Machine.js} Machine.js
@@ -1783,13 +1816,21 @@ onLinux {
         function windowOf(each) { return null; }
         function settle(each, how) {}
         function go(each) {}
+        property var asked: []
+        property var settled: ({})
+        function session(each) { return null; }
       '';
-      # Where an item is done names its session, and Needs You lists
+      # Where an item is done names its session, and For You lists
       # the sessions wanting Joel, none of which it needs here.
       sessions = singleton "Sessions.qml" ''
         property var running: []
         property var wanting: []
         function wanted(wants) { return "needs you"; }
+        function goTo(session) {}
+      '';
+      # A look For You opens is opened through niri, which nothing here does.
+      niri = singleton "Niri.qml" ''
+        function spawn(command) {}
       '';
       timedatectl = pkgs.writeShellScriptBin "timedatectl" "echo America/Halifax";
     in
@@ -1806,12 +1847,15 @@ onLinux {
       cp ${./launcher/Moment.js} launcher/Moment.js
       cp ${./launcher/NowGroups.js} launcher/NowGroups.js
       cp ${./launcher/Order.js} launcher/Order.js
+      cp ${./launcher/ForYou.js} launcher/ForYou.js
+      cp ${./launcher/Ago.js} launcher/Ago.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/now-moment.qml} shell.qml
       cp ${facts} Facts.qml
       cp ${waiting} WaitingOnYou.qml
       cp ${sessions} Sessions.qml
+      cp ${niri} Niri.qml
       cp ${./Location.qml} Location.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export PATH=${timedatectl}/bin:$PATH
@@ -4254,6 +4298,31 @@ onLinux {
   launcher-passes-clippy = passesClippy "launcher-passes-clippy" (
     pkgs.callPackage ./in-a-terminal/package.nix { }
   );
+
+  # launcher completes in zsh, typed in a real line editor with the real
+  # launcher and the completion it writes, asking a stand-in qs what each
+  # place holds: its command, each row a step names as it's typed, the
+  # rows inside the steps typed so far, flags anywhere, and nothing after a
+  # step that names nothing (in-a-terminal/tests/launcher-completion.zsh).
+  launcher-completes-in-zsh =
+    let
+      launcher = pkgs.callPackage ./in-a-terminal/package.nix { };
+    in
+    pkgs.runCommandLocal "launcher-completes-in-zsh"
+      {
+        nativeBuildInputs = [
+          launcher
+          pkgs.zsh
+        ];
+        LAUNCHER_QS = pkgs.writeShellScript "qs" (builtins.readFile ./in-a-terminal/tests/qs);
+        LAUNCHER_WORDS = ./launcher/words.json;
+      }
+      ''
+        export HOME=$PWD
+        launcher completion zsh > completion.zsh
+        zsh -f ${./in-a-terminal/tests/launcher-completion.zsh} $PWD/completion.zsh
+        touch $out
+      '';
 
   # clippy finds nothing in timekeeping, its tests included.
   timekeeping-passes-clippy = passesClippy "timekeeping-passes-clippy" (

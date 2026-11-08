@@ -6062,14 +6062,15 @@
     {
       "id": "on:waiting",
       "in": "on",
-      "name": "Needs You",
-      "term": "Desktop/Needs You",
+      "name": "For You",
+      "term": "Desktop/For You",
       "verb": "go to",
       "glyph": "waitsOnJoel",
       "empty": "Nothing needs you.",
       "tells": {
         "known": "Known done {how}.",
-        "person": "Only you can say it's done."
+        "person": "Only you can say it's done.",
+        "ready-to-deal": "I'm ready to deal with \"{title}\" now, if it's still valid. Check it's still true before you ask me anything."
       },
       "said": {
         "first": "{title} \u00b7 {minutes} min",
@@ -6085,18 +6086,123 @@
         "signin": "once signed in to {value}",
         "device": "once the {value} is seen",
         "file": "once its file is written",
-        "check": "once its check passes"
+        "check": "once its check passes",
+        "from": "from {from} \u00b7 {kind}",
+        "blocks": "blocks {count} session",
+        "blocksMany": "blocks {count} sessions",
+        "due": "due {time}",
+        "overdue": "overdue since {time}",
+        "ready": "ready now",
+        "waitedFor": "waiting {span}",
+        "spanMinutes": "{count} min",
+        "spanHours": "{count} h",
+        "spanDays": "{count} d",
+        "todo": "to do",
+        "look": "to look at",
+        "ended": "session ended",
+        "concluded": "quest concluded",
+        "takes": "{minutes} min",
+        "history": "{how} {time}",
+        "opened": "opened",
+        "cleared": "cleared",
+        "resolved": "resolved",
+        "openedHow": "opened",
+        "clearedHow": "cleared by you",
+        "doneByYou": "done by you",
+        "clearsLook": "you open or clear it",
+        "clearsPr": "it merges or closes"
       }
+    },
+    {
+      "id": "on:waiting:weight",
+      "in": "on:waiting",
+      "name": "Weight"
+    },
+    {
+      "id": "on:waiting:since",
+      "in": "on:waiting",
+      "name": "Waiting Since"
+    },
+    {
+      "id": "on:waiting:clears",
+      "in": "on:waiting",
+      "name": "Clears When"
+    },
+    {
+      "id": "on:waiting:takes",
+      "in": "on:waiting",
+      "name": "Takes"
+    },
+    {
+      "id": "on:waiting:checked",
+      "in": "on:waiting",
+      "name": "Last Checked"
+    },
+    {
+      "id": "on:waiting:resolved",
+      "in": "on:waiting",
+      "name": "Resolved"
+    },
+    {
+      "id": "on:waiting:quest",
+      "in": "on:waiting",
+      "name": "Quest"
+    },
+    {
+      "id": "on:waiting:session",
+      "in": "on:waiting",
+      "name": "Session"
+    },
+    {
+      "id": "on:waiting:look",
+      "in": "on:waiting",
+      "name": "Look"
+    },
+    {
+      "id": "on:waiting:target",
+      "in": "on:waiting",
+      "name": "Target"
+    },
+    {
+      "id": "on:waiting:item",
+      "in": "on:waiting",
+      "name": "Item"
+    },
+    {
+      "id": "on:waiting:history",
+      "in": "on",
+      "name": "History",
+      "verb": "more",
+      "glyph": "recent",
+      "empty": "Nothing resolved yet.",
+      "said": {
+        "note": "what no longer needs you"
+      }
+    },
+    {
+      "id": "verb:on:look:open",
+      "command": "open",
+      "in": "on",
+      "name": "Open",
+      "verb": "open",
+      "glyph": "link"
+    },
+    {
+      "id": "verb:on:look:clear",
+      "command": "delete",
+      "in": "on",
+      "name": "Clear It",
+      "verb": "clear",
+      "glyph": "dismiss",
+      "act": "ending",
+      "ends": "clear"
     },
     {
       "id": "on:waiting:later",
       "in": "on",
       "name": "Later",
       "verb": "more",
-      "glyph": "queued",
-      "said": {
-        "note": "what can't be done yet"
-      }
+      "glyph": "queued"
     },
     {
       "id": "verb:on:waiting:go",
@@ -6107,18 +6213,34 @@
       "glyph": "windows"
     },
     {
+      "id": "verb:on:waiting:deal",
+      "command": "talk",
+      "in": "on",
+      "name": "Deal With It",
+      "verb": "deal",
+      "glyph": "reply"
+    },
+    {
       "id": "verb:on:waiting:done",
       "command": "delete",
       "in": "on",
-      "name": "Done",
+      "name": "Mark It Done",
       "verb": "done",
       "glyph": "done"
+    },
+    {
+      "id": "verb:on:waiting:quest",
+      "command": "open",
+      "in": "on",
+      "name": "Open Its Quest",
+      "verb": "open",
+      "glyph": "agent"
     },
     {
       "id": "verb:on:waiting:notNow",
       "command": "snooze",
       "in": "on",
-      "name": "Not Now",
+      "name": "Put It Off",
       "verb": "later",
       "glyph": "queued"
     },
@@ -6689,9 +6811,11 @@
       "said": {
         "built-in": "built in",
         "screen": "screen",
-        "following": "following the room",
-        "own-white": "the screen's own white",
-        "steps": "{now} of {most} steps"
+        "steps": "{now} of {most} steps",
+        "the-room": "the room",
+        "on-its-way": "on its way to {share}",
+        "no-light": "no light heard",
+        "at": "{share} at {lux}"
       }
     },
     {
@@ -6711,21 +6835,73 @@
     },
     {
       "id": "displays:warmth",
-      "command": "set",
-      "argument": "nowarmth",
       "in": "displays",
       "name": "Warmth",
       "term": "Desktop/warmth",
-      "verb": "turn off",
       "answers": [
         "screen warmth"
       ],
+      "said": {
+        "via": "via wl-gammarelay-rs",
+        "screen": "built-in screen",
+        "until": "night light until {time}",
+        "from": "night light from {time}",
+        "waits": "night light waits for where you are",
+        "following": "following the room",
+        "own": "the screen's own white",
+        "tomorrow": "tomorrow",
+        "yesterday": "yesterday"
+      }
+    },
+    {
+      "id": "displays:night-light",
+      "command": "set",
+      "argument": "nonightlight",
+      "in": "displays:warmth",
+      "name": "Night Light",
+      "verb": "turn off",
+      "glyph": "nightLight",
+      "states": {
+        "off": {
+          "verb": "turn on",
+          "argument": "nightlight"
+        }
+      }
+    },
+    {
+      "id": "displays:follow-room",
+      "command": "set",
+      "argument": "nowarmth",
+      "in": "displays:warmth",
+      "name": "Follow the Room",
+      "verb": "turn off",
+      "glyph": "warmth",
       "states": {
         "off": {
           "verb": "turn on",
           "argument": "warmth"
         }
       }
+    },
+    {
+      "id": "displays:warmth:room",
+      "in": "displays:warmth",
+      "name": "Room's White"
+    },
+    {
+      "id": "displays:warmth:sunset",
+      "in": "displays:warmth",
+      "name": "Sunset"
+    },
+    {
+      "id": "displays:warmth:sunrise",
+      "in": "displays:warmth",
+      "name": "Sunrise"
+    },
+    {
+      "id": "displays:warmth:night",
+      "in": "displays:warmth",
+      "name": "Night White"
     },
     {
       "id": "displays:sleep",
@@ -6838,6 +7014,16 @@
       "id": "displays:size",
       "in": "displays",
       "name": "Size"
+    },
+    {
+      "id": "displays:follows",
+      "in": "displays",
+      "name": "Follows"
+    },
+    {
+      "id": "displays:curve",
+      "in": "displays",
+      "name": "Curve"
     },
     {
       "id": "displays:input",
@@ -10412,6 +10598,72 @@
           "name": "Emails"
         }
       }
+    },
+    {
+      "id": "meet:call",
+      "in": "on",
+      "name": "Call",
+      "glyph": "call",
+      "said": {
+        "eyebrow": "on Meet \u00b7 call",
+        "muted": "muted",
+        "live": "live",
+        "mute": "mute",
+        "unmute": "unmute",
+        "under": "under a minute",
+        "minutes": "{minutes} min",
+        "hours": "{hours} h",
+        "hoursMinutes": "{hours} h {minutes} min",
+        "inCall": "{count} in the call",
+        "signIn": "needs Google sign-in",
+        "unknown": "not known to Meet yet",
+        "since": "since {time}",
+        "left": "left {time}"
+      }
+    },
+    {
+      "id": "meet:call:microphone",
+      "in": "meet:call",
+      "name": "Microphone"
+    },
+    {
+      "id": "meet:call:people",
+      "in": "meet:call",
+      "name": "People"
+    },
+    {
+      "id": "meet:call:started",
+      "in": "meet:call",
+      "name": "Started"
+    },
+    {
+      "id": "meet:call:meeting",
+      "in": "meet:call",
+      "name": "Meeting"
+    },
+    {
+      "id": "meet:call:code",
+      "in": "meet:call",
+      "name": "Code"
+    },
+    {
+      "id": "meet:call:show",
+      "in": "meet:call",
+      "name": "Go To the Call",
+      "verb": "go to"
+    },
+    {
+      "id": "meet:call:link",
+      "in": "meet:call",
+      "name": "Copy the Link",
+      "verb": "copy"
+    },
+    {
+      "id": "meet:call:leave",
+      "command": "leave",
+      "in": "meet:call",
+      "name": "Leave It",
+      "verb": "leave"
     }
   ],
   "commands": [
@@ -10851,14 +11103,21 @@
   ],
   "terminal": {
     "usage": [
-      "launcher show [--json] [step ...] [-- step ...]",
+      "launcher show [--drawers] [--json] [step ...] [-- step ...]",
       "",
       "Shows a place or a row the launcher holds, its drawer and what is inside it,",
       "as the launcher would: launcher show machine disk. Each step is a row's name,",
       "in any case, a hyphen for a space, or the start of only one. With none, it",
-      "shows home. --json prints what the launcher says as JSON. After --, every",
-      "word is a step, so one starting with a hyphen can be named."
+      "shows home. --drawers shows every row's drawer after the rows. --json prints",
+      "what the launcher says as JSON, with every row's drawer given --drawers.",
+      "After --, every word is a step, so one starting with a hyphen can be named.",
+      "",
+      "launcher completion zsh writes zsh's completion, which offers each place's",
+      "rows as you type."
     ],
+    "offers": {
+      "show": "any place, row or drawer the launcher holds"
+    },
     "missing": "nothing called {step}",
     "missingIn": "nothing called {step} in {place}",
     "meant": "did you mean {names}?",

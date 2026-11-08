@@ -145,7 +145,7 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     # It's the meeting coming too, which wants Joel, and it's that one
     # row, never a second beside it. Now opens on its first row, as every
     # place does, and the meeting is reached by moving down to it.
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Needs You")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "For You")
     desktop.down_to("Design Review")
     today = desktop.showing()
     assert today["rows"].count("Design Review") == 1, today["rows"]
@@ -177,7 +177,7 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:on")
     desktop.step_in("ret")
     # Now opens on its first row, and the meeting is below the time.
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Needs You")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "For You")
     desktop.down_to("Design Review")
     rows = cast("list[str]", desktop.showing()["rows"])
     for name in reversed(rows[rows.index("Time") : rows.index("Design Review")]):
@@ -399,7 +399,12 @@ def test_a_meetings_attachments_open_from_inside_it(desktop: Desktop) -> None:
 
 @pytest.mark.usefixtures("google")
 def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -> None:
-    """A Meet call in a window of its own is in Now named for its meeting, and goes from it."""
+    """A Meet call in a window of its own is in Now named for its meeting, and goes from it.
+
+    It's the call itself, named for its meeting, saying first whether Joel can be heard and
+    how long it's gone on; inside are the microphone, who's in it, then its acts (VKCF3Z,
+    2026-11-08). Who's in it and the rest of its words are Meet.js's (tests/calendar.qml).
+    """
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     # Standup's call, in the window Chrome would open its link in as an
@@ -413,25 +418,46 @@ def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -
     # Another window takes the keys, so Return going to the call is seen.
     other = desktop.opened("Beside the call")
     now_rows(desktop)
-    desktop.down_to("In a call")
-    # Return goes to the call, as its first act, Go To the Call, says.
+    desktop.down_to("Standup")
     desktop.launcher_until(
-        lambda shown: shown["selected"]["side"] == "Standup" and shown["selected"]["verb"] == "go"
+        lambda shown: shown["selected"]["side"].startswith(("live \u00b7 ", "muted \u00b7 "))
     )
+    desktop.step_in()
+    inside = ["Microphone", "People", "Go To the Call", "Leave It", "Copy the Link"]
+    desktop.launcher_until(lambda shown: shown["rows"] == inside)
+    desktop.down_to("Go To the Call")
     machine.send_key("ret")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     machine.wait_until_succeeds(
         desktop.in_session(f'niri msg --json focused-window | grep -qF \'"app_id":"{call}"\''),
         timeout=dt.timedelta(seconds=10),
     )
-    # Its window closed, the call is over, and Now no longer lists it.
-    desktop.as_account("niri msg action close-window")
+    # Leave It ends the call, so Return only writes its line, and running
+    # that asks first; the call stays until it's answered yes.
     desktop.close(other)
+    now_rows(desktop)
+    desktop.down_to("Standup")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"] == inside)
+    desktop.down_to("Leave It")
+    desktop.line("leave")
+    with desktop.told("ask ready"):
+        machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["question"] == "Leave Standup? (y/n)")
+    machine.succeed(desktop.in_session(f'niri msg --json windows | grep -qF \'"app_id":"{call}"\''))
+    with desktop.told("answered yes"):
+        machine.send_chars("y")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Its window closed, the call is over, and Now no longer lists it.
     machine.wait_until_fails(
         desktop.in_session(f'niri msg --json windows | grep -qF \'"app_id":"{call}"\''),
         timeout=dt.timedelta(seconds=10),
     )
-    assert "In a call" not in now_rows(desktop)["rows"], desktop.showing()
+    # The meeting itself may still be in Now, as it's to come, but not as a call.
+    if "Standup" in now_rows(desktop)["rows"]:
+        desktop.down_to("Standup")
+        side = desktop.showing()["selected"]["side"]
+        assert not side.startswith(("live \u00b7 ", "muted \u00b7 ")), desktop.showing()
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 

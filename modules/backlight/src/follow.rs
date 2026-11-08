@@ -51,6 +51,17 @@ impl Follow {
         self.lux
     }
 
+    /// Whether the screen follows the light now: some heard, and the lid
+    /// open, since a shut lid hears only itself.
+    pub fn following(&self) -> bool {
+        self.lux.is_some() && !self.shut
+    }
+
+    /// Whether a move is under way.
+    pub fn moving(&self) -> bool {
+        self.ramp.is_some()
+    }
+
     /// The light changed to `lux`, with the screen at `shown`. Light that
     /// can't be, or that the shut lid hears, is passed over. It says whether
     /// the curve learned, as the first light heard teaches it the brightness

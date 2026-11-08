@@ -18,10 +18,15 @@
 // It's home's first row, Now, saying what's in it by name.
 import qs
 import Quickshell
+import Quickshell.Io
 import QtQuick
+import Qt.labs.folderlistmodel
 import "../Fuzzy.js" as Fuzzy
 import "../Marks.js" as Marks
+import "Ago.js" as Ago
+import "ForYou.js" as ForYou
 import "NowGroups.js" as Groups
+import "Order.js" as Order
 import "Moment.js" as Moment
 
 Provider {
@@ -319,7 +324,17 @@ Provider {
     }
 
     function waitingSaid(id, fill) {
-        let words = (Words.of("on:waiting").said ?? {})[id] ?? id;
+        return filledIn((Words.of("on:waiting").said ?? {})[id] ?? id, fill);
+    }
+
+    // The line Deal With It fills a session's prompt with: a sentence of
+    // its own, so it's told rather than said.
+    function readyToDeal(title) {
+        return filledIn((Words.of("on:waiting").tells ?? {})["ready-to-deal"] ?? title,
+            { title: title });
+    }
+
+    function filledIn(words, fill) {
         for (const key of Object.keys(fill))
             words = words.replace(`{${key}}`, fill[key]);
         return words;
@@ -362,17 +377,94 @@ Provider {
         return parts.join(" \u00b7 ");
     }
 
-    // Its drawer: its steps, numbered, then why only Joel can do it, then
-    // how it'll be known done (VKCF3Z, 2026-10-31), the four parts an item
-    // says, each only when it says it.
+    // Its drawer: where it's from and that it's a thing to do, its title,
+    // then its facts, what it weighs and why, since when it has waited, how
+    // it'll be known done, its quest and session, and who it is last; then
+    // its steps, numbered, and why only Joel can do it (VKCF3Z, 2026-10-31
+    // and 2026-11-08), each only when it says it. How it's known done is a
+    // fact now, so the words don't say it again.
     function drawerOf(each) {
         const steps = (Array.isArray(each.steps) ? each.steps : [])
             .filter(step => typeof step === "string" && step !== "")
             .map((step, at) => `${at + 1}. ${step}`);
         const why = typeof each.why === "string" ? each.why : "";
-        const known = knownSaid(each);
-        const after = [why, known].filter(part => part !== "").join("\n");
-        return { title: each.title, body: steps.concat(after === "" ? [] : ["", after]).join("\n") };
+        const now = Date.now();
+        const say = forYouSaid(now);
+        const session = WaitingOnYou.session(each);
+        const quest = WaitingOnYou.questOf(each) ?? "";
+        const since = ForYou.when(each.raisedAt);
+        const checked = ForYou.when(each.checkedAt);
+        const facts = [
+            fact("weight", ForYou.weightSaid(itemThing(each), now, say)),
+            fact("takes", typeof each.minutes === "number"
+                ? waitingSaid("takes", { minutes: each.minutes }) : ""),
+            fact("since", since === null ? "" : clocked(since)),
+            // When the session that raised it last found it still true, so
+            // Joel can tell an ask that's gone stale (Joel, 2026-11-08: "i
+            // don't know if it is still relevant").
+            fact("checked", checked === null ? "" : clocked(checked)),
+            fact("clears", knownSaid(each)),
+            fact("quest", quest),
+            fact("session", session?.title ?? ""),
+            Object.assign(fact("item", WaitingOnYou.identity(each)), { identifies: true })
+        ].filter(one => one.value !== "");
+        return {
+            eyebrow: waitingSaid("from", { from: session?.title || quest, kind: say.todo }),
+            eyebrowNames: true,
+            title: each.title,
+            facts: facts,
+            body: steps.concat(why === "" ? [] : ["", why]).join("\n").trim()
+        };
+    }
+
+    // Whether the session or quest that raised an item is gone, as its
+    // record says (harness: `owner.state`), or "" while it's there.
+    function ownerSaid(each) {
+        const state = each.owner?.state;
+        return state === "ended" || state === "concluded" ? waitingSaid(state, {}) : "";
+    }
+
+    // Takes Joel to the session an item is from, ready to deal with it: its
+    // window comes forward with its prompt filled in, never sent, naming
+    // the item and asking the session to check it still holds before it
+    // asks him anything (Joel, 2026-11-08: "it should give me a prompt that
+    // gets filled into it stating i'm reayd to deal with it if it is still
+    // valid"). The harness fills a prompt only while it's empty.
+    function dealWith(each) {
+        const session = WaitingOnYou.session(each);
+        if (session)
+            Sessions.steer(session.address, {
+                act: "fill",
+                text: readyToDeal(each.title)
+            });
+        WaitingOnYou.go(each);
+    }
+
+    // A fact of For You's drawers, named in the vocabulary.
+    function fact(id, value) {
+        return { label: Words.name(`on:waiting:${id}`), value: String(value ?? "") };
+    }
+
+    // The words For You's rows and drawers are said in, with the clock and
+    // how long ago as the launcher says them (Ago.js), at `now`.
+    function forYouSaid(now) {
+        return Object.assign({}, Words.of("on:waiting").said ?? {}, {
+            clock: at => provider.clocked(at),
+            ago: at => Ago.ago(at, now)
+        });
+    }
+
+    // An item as ForYou.js weighs it: a thing to do, ready while Joel can do
+    // it and hasn't put it off, due by its deadline, waiting since it was
+    // raised, and blocking each session whose want is it.
+    function itemThing(each) {
+        return {
+            kind: "todo",
+            blocks: ForYou.blocked(each, Sessions.wanting),
+            due: each.deadline ?? null,
+            ready: each.ready === true && !each.putOff,
+            since: each.raisedAt ?? null
+        };
     }
 
     // How an item will be known done, in words (Waiting.doneBy): by its
@@ -420,8 +512,12 @@ Provider {
     // done, its window or its session's, and with nowhere to go steps in, as
     // the right arrow does: Go To, then Done and Not Now, which stay open as
     // the item leaves its place, then its quest.
-    function item(each) {
+    // In For You's weighed list (`weighed`, the time it's weighed at), its
+    // side says the strongest reason it's there instead (ForYou.js's reason).
+    function item(each, weighed) {
         const now = each.ready && !each.putOff;
+        const reason = weighed === undefined ? ""
+            : ForYou.reason(itemThing(each), weighed, forYouSaid(weighed));
         const where = whereOf(each);
         // Go To, where it goes at its side, as going to anything open is
         // said everywhere, so the word never changes shape.
@@ -430,31 +526,62 @@ Provider {
             later: true,
             run: () => WaitingOnYou.go(each)
         });
-        const quest = () => (source("quests")?.everything() ?? [])
-            .find(row => row.key === `quest:${each.quest}`) ?? null;
-        const inside = () => [does,
+        // Dealing with it in its session leads, when it has one to go to.
+        const deal = WaitingOnYou.session(each) === null ? null : act(each, "deal", {
+            side: WaitingOnYou.session(each).title,
+            later: true,
+            run: () => provider.dealWith(each)
+        });
+        // Its quest, said as the act it is (VKCF3Z, 2026-11-08: acts are
+        // imperatives), its title at its side; Return opens the quest's row
+        // as Quests has it, which never closes the launcher.
+        const quest = () => {
+            const found = (source("quests")?.everything() ?? [])
+                .find(row => row.key === `quest:${each.quest}`) ?? null;
+            return found === null ? null : act(each, "quest", {
+                side: found.name,
+                stays: true,
+                drawer: found.drawer,
+                run: () => provider.launcher?.enter(found)
+            });
+        };
+        // An item done in a window of its own leads with going there, its
+        // app; one done in its session leads with dealing with it there.
+        const own = typeof each.window === "string" && each.window !== "";
+        const inside = () => (own ? [does, deal] : [deal, does]).concat([
             act(each, "done", { stays: true, run: () => WaitingOnYou.settle(each, "done") }),
             act(each, "notNow", { stays: true, run: () => WaitingOnYou.settle(each, "notNow") }),
             quest()
-        ].filter(row => row !== null);
+        ]).filter(row => row !== null);
         const row = member({
             thing: true,
             key: `on:waiting:${WaitingOnYou.identity(each)}`,
-            verb: does === null ? "more" : "go to",
-            stays: does === null,
+            // What it is and where it's from, which For You filters by; not
+            // `kind`, which a row says beside its side (Choice.qml).
+            forYou: { kind: "do", source: "needs-you" },
+            // Return steps in, to what it is, why and how, never straight
+            // into a session past what's asked (Joel, 2026-11-08: "Selecting
+            // one brings me often into a pi session that is so far past what
+            // i'm being asked that i don't know if it is still relevant").
+            verb: "more",
+            stays: true,
             name: each.title,
             glyph: Theme.glyph.waitsOnJoel,
             hue: now ? "strong" : "muted",
-            side: !now && waitsSaid(each) !== "" ? waitsSaid(each)
+            // An ended session or concluded quest is a state, so it leads
+            // the side, said once (VKCF3Z, 2026-11-08).
+            side: [ownerSaid(each), reason !== "" ? reason
+                : !now && waitsSaid(each) !== "" ? waitsSaid(each)
                 : typeof each.minutes === "number"
-                ? waitingSaid("minutes", { minutes: each.minutes }) : "",
+                ? waitingSaid("minutes", { minutes: each.minutes }) : ""]
+                .filter(part => part !== "").join(" \u00b7 "),
             note: noteOf(each),
             drawer: () => provider.drawerOf(each),
             // Its verbs and targets both make it a row holding rows, which
             // Return's own act never leads (Catalogue.js's leading).
             verbs: inside,
             targets: inside,
-            run: () => does === null ? provider.launcher?.enter(row) : WaitingOnYou.go(each)
+            run: () => provider.launcher?.enter(row)
         });
         return row;
     }
@@ -469,23 +596,275 @@ Provider {
         glyph: Words.glyph("on:waiting:later"),
         hue: "muted",
         side: String(WaitingOnYou.later.length),
-        note: (Words.of("on:waiting:later").said ?? {}).note ?? "",
+        // A row holding parts names its members, as Timers does, by whole
+        // names rather than a sentence (VKCF3Z, 2026-11-08).
+        note: WaitingOnYou.later.map(each => each.title).join(", "),
         nested: true,
         verbs: () => WaitingOnYou.later.map(each => provider.item(each)),
         targets: () => WaitingOnYou.later.map(each => provider.item(each)),
         run: () => provider.launcher?.enter(provider.laterRow)
     })
 
-    // Everything waiting on Joel's hands, one row however many: the pi
+    // What the agents left for Joel to look at, each a file of the looks
+    // folder the harness writes, ~/.local/state/pi/agentic-harness.pi/
+    // looks/<id>.json: a pull request, a page, a file, a diff or a
+    // terminal, with why. The folder is listed only while the launcher is
+    // open and each file read then, so a closed launcher costs nothing and
+    // nothing is polled (VKCF3Z, 2026-11-08); what was read last stays
+    // while it's closed, so For You opens on it before the folder answers.
+    readonly property string looksAt: `${Quickshell.env("XDG_STATE_HOME")
+        || `${Quickshell.env("HOME")}/.local/state`}/pi/agentic-harness.pi/looks`
+    // Each file's text, by its name, as it was last read.
+    property var lookTexts: ({})
+    readonly property var looks: ForYou.looks(Object.keys(lookTexts)
+        .map(file => ({ file: file, text: lookTexts[file] })))
+
+    FolderListModel {
+        id: lookFiles
+        folder: provider.launcher?.open ? `file://${provider.looksAt}` : ""
+        nameFilters: ["*.json"]
+        showDirs: false
+        showDotAndDotDot: false
+        // A file gone from the folder goes from what's read, once it has
+        // been listed whole.
+        onStatusChanged: provider.relisted()
+        onCountChanged: provider.relisted()
+    }
+
+    Instantiator {
+        model: lookFiles
+
+        FileView {
+            required property string fileName
+            required property string filePath
+
+            path: filePath
+            printErrors: false
+            onLoaded: provider.heardLook(fileName, text())
+        }
+    }
+
+    function heardLook(file, text) {
+        lookTexts = Object.assign({}, lookTexts, { [file]: text });
+    }
+
+    function relisted() {
+        if (lookFiles.folder.toString() === "" || lookFiles.status !== FolderListModel.Ready)
+            return;
+        const listed = {};
+        for (let at = 0; at < lookFiles.count; at += 1)
+            listed[lookFiles.get(at, "fileName")] = true;
+        const kept = Object.keys(lookTexts).filter(file => listed[file]);
+        if (kept.length === Object.keys(lookTexts).length)
+            return;
+        const next = {};
+        for (const file of kept)
+            next[file] = lookTexts[file];
+        lookTexts = next;
+    }
+
+    // A look's file written again whole, as it's done with, through a file
+    // beside it renamed over it (atomicWrites), and before the launcher
+    // goes (blockWrites), so a reader never sees half of one.
+    FileView {
+        id: lookWriter
+        preload: false
+        printErrors: false
+        atomicWrites: true
+        blockWrites: true
+    }
+
+    function settleLook(one, state, how) {
+        if (one.file === "")
+            return;
+        const text = ForYou.rewritten(one, state, how, Date.now());
+        lookWriter.path = `${provider.looksAt}/${one.file}`;
+        lookWriter.setText(text);
+        heardLook(one.file, text);
+    }
+
+    // The session a terminal look is about, by the session or address it
+    // names, or null when none runs.
+    function lookSession(one) {
+        const names = [one.session, one.address].filter(name => typeof name === "string"
+            && name !== "");
+        return Sessions.running.find(session => names.some(name => name === session.address
+            || name === session.presence?.session
+            || (session.presence?.addresses ?? []).includes(name))) ?? null;
+    }
+
+    // Opening a look: a terminal's session gone to, anything else opened
+    // by what opens its link or its file. Opened, it no longer needs Joel,
+    // so a waiting one is written so and moves to History.
+    function openLook(one) {
+        if (one.kind === "terminal") {
+            const session = lookSession(one);
+            if (session !== null)
+                Sessions.goTo(session);
+        } else {
+            Niri.spawn(["xdg-open", one.target]);
+        }
+        if (one.state === "waiting")
+            settleLook(one, "opened", waitingSaid("openedHow", {}));
+    }
+
+    // A look as ForYou.js weighs it: a thing to look at, waiting since it
+    // was left.
+    function lookThing(one) {
+        return { kind: "look", since: one.since };
+    }
+
+    // A look's drawer: where it's from and that it's to look at, its title,
+    // what it weighs while it waits, since when, what clears it, how it
+    // went once it has, its quest and session, then who it is and what it
+    // points at; and why, whole.
+    function lookDrawer(one) {
+        const now = Date.now();
+        const say = forYouSaid(now);
+        const waits = one.state === "waiting";
+        const session = lookSession(one);
+        const from = session?.title || one.quest || one.session || "";
+        const identified = (id, value) => Object.assign(fact(id, value), { identifies: true });
+        const facts = [
+            fact("weight", waits ? ForYou.weightSaid(lookThing(one), now, say) : ""),
+            fact("since", one.since === null ? "" : clocked(one.since)),
+            fact("clears", !waits ? "" : one.kind === "pr" ? say.clearsPr : say.clearsLook),
+            fact("resolved", waits ? "" : ForYou.historySide(one, say)),
+            fact("quest", one.quest ?? ""),
+            fact("session", session?.title ?? one.session ?? ""),
+            identified("look", one.id),
+            identified("target", ["pr", "page", "diff"].includes(one.kind) ? one.target : "")
+        ].filter(each => each.value !== "");
+        return {
+            eyebrow: waitingSaid("from", { from: from, kind: say.look }),
+            eyebrowNames: true,
+            title: one.title,
+            facts: facts,
+            body: one.why
+        };
+    }
+
+    // A look's row: its title, why in its note, its kind's mark, and at its
+    // side the strongest reason it's there, or, in History, how it went and
+    // when. Return opens it, or goes to a terminal's session; the right
+    // arrow holds that, then Clear It while it waits, an ending act d does
+    // and Return never does.
+    function lookRow(one, now) {
+        const say = forYouSaid(now);
+        const waits = one.state === "waiting";
+        const opens = one.kind === "terminal" ? "verb:on:waiting:go" : "verb:on:look:open";
+        const inside = () => [thing({
+            key: `verb:on:look:open:${one.id}`,
+            verb: Words.verb(opens),
+            name: Words.name(opens),
+            glyph: Words.glyph(opens),
+            hue: "action",
+            later: true,
+            run: () => provider.openLook(one)
+        })].concat(waits ? [thing(Object.assign({
+            key: `verb:on:look:clear:${one.id}`,
+            verb: Words.verb("verb:on:look:clear"),
+            name: Words.name("verb:on:look:clear"),
+            glyph: Words.glyph("verb:on:look:clear"),
+            hue: "action",
+            stays: true,
+            run: () => provider.settleLook(one, "cleared", waitingSaid("clearedHow", {}))
+        }, Words.ending("verb:on:look:clear")))] : []);
+        return member({
+            thing: true,
+            key: `on:look:${one.id}`,
+            forYou: { kind: "look", source: "looks" },
+            verb: Words.verb(opens),
+            name: one.title,
+            glyph: Theme.glyph[ForYou.glyphOf(one.kind)],
+            hue: waits ? "strong" : "muted",
+            side: waits ? ForYou.reason(lookThing(one), now, say) : ForYou.historySide(one, say),
+            note: one.why,
+            later: true,
+            drawer: () => provider.lookDrawer(one),
+            verbs: inside,
+            targets: inside,
+            run: () => provider.openLook(one)
+        });
+    }
+
+    // Needs You's items Joel said were done, while their quest's file
+    // still tells of them (ForYou.js's settledItems).
+    readonly property var doneItems: ForYou.settledItems(WaitingOnYou.asked,
+        WaitingOnYou.settled, each => WaitingOnYou.identity(each))
+
+    // A done item's row in History: its title, how it went and when at its
+    // side, and its drawer as it had, with when it was resolved. Return
+    // goes where it was done, while that's open.
+    function doneRow(one) {
+        const each = one.item;
+        const say = forYouSaid(Date.now());
+        const side = ForYou.historySide({ how: say.doneByYou, resolved: one.resolved,
+            since: null }, say);
+        return member({
+            thing: true,
+            key: `on:waiting:done:${WaitingOnYou.identity(each)}`,
+            verb: Words.verb("verb:on:waiting:go"),
+            name: each.title,
+            glyph: Theme.glyph.waitsOnJoel,
+            hue: "muted",
+            side: side,
+            note: noteOf(each),
+            later: true,
+            drawer: () => {
+                const drawn = provider.drawerOf(each);
+                // What it weighed and what would clear it no longer matter
+                // once it's done, so how it went stands in their place, as
+                // a look's does.
+                const gone = [Words.name("on:waiting:weight"), Words.name("on:waiting:clears")];
+                const facts = drawn.facts.filter(part => !gone.includes(part.label));
+                const since = facts.findIndex(part => part.label
+                    === Words.name("on:waiting:since"));
+                facts.splice(since + 1, 0, fact("resolved", side));
+                return Object.assign(drawn, { facts: facts });
+            },
+            run: () => WaitingOnYou.go(each)
+        });
+    }
+
+    // Every look no longer waiting and every item done, the newest first,
+    // one row at the very end of For You, so what's resolved can still be
+    // found (Joel, 2026-11-08: "have a history so i can see anything
+    // resolved in case i want to see it later").
+    function historyRows() {
+        const now = Date.now();
+        const rows = looks.history.map(one => ({ at: one.resolved ?? one.since,
+            row: () => provider.lookRow(one, now) }))
+            .concat(doneItems.map(one => ({ at: one.resolved, row: () => provider.doneRow(one) })));
+        return Order.sorted(rows, Order.stream(one => one.at)).map(one => one.row());
+    }
+    readonly property int resolvedCount: looks.history.length + doneItems.length
+    readonly property var historyRow: resolvedCount === 0 ? null : member({
+        key: "on:waiting:history",
+        verb: "more",
+        stays: true,
+        name: Words.name("on:waiting:history"),
+        glyph: Words.glyph("on:waiting:history"),
+        hue: "muted",
+        side: String(resolvedCount),
+        note: (Words.of("on:waiting:history").said ?? {}).note ?? "",
+        empty: Words.of("on:waiting:history").empty,
+        nested: true,
+        verbs: () => provider.historyRows(),
+        targets: () => provider.historyRows(),
+        run: () => provider.launcher?.enter(provider.historyRow)
+    })
+
+    // Everything that wants Joel, For You, one row however many: the pi
     // sessions that want him, each the row it is in Agents (Agents.qml's
-    // made), whose Return goes to its window, then what the agents have
-    // waiting on him (the launcher's shape, RSCH-20261028-2NK1E5: sessions
-    // wanting him first, drawn as sessions, then the orchestrator's items;
-    // Now's own pi row goes). It counts and colours only what he can do
-    // now, a session wanting him among it, its note names the first of
-    // those, else the first for later, and the right arrow lists the
-    // sessions, what's for now and then what's for later, each in its own
-    // order, the oldest want first. With
+    // made), whose Return goes to its window, what the agents have
+    // waiting on him that he can do now, and what they left him to look
+    // at, in one list weighed by ForYou.js, the heaviest first, since
+    // what blocks a session or is due bubbles up whatever kind it is
+    // (VKCF3Z, 2026-11-08); the mark and the drawer's eyebrow say the kind.
+    // Then what's for later and the history, each one row. It counts and
+    // colours only what he can do now, its note names the first of
+    // those, else the first for later. With
     // only later things, the row is muted and says how many. With nothing
     // waiting it's still there, muted, saying so, since Now's top never
     // changes shape (the launcher's shape, RSCH-20261028-2NK1E5, landing
@@ -500,15 +879,74 @@ Provider {
     readonly property var sessions: Sessions.wanting
         .filter(session => session.presence?.wants?.kind !== "action")
     readonly property int waitsNow: sessions.length + WaitingOnYou.now.length
+        + looks.waiting.length
     readonly property string first: sessions.length > 0
         ? `${sessions[0].title} ${Sessions.wanted(sessions[0].presence.wants)}`
-        : WaitingOnYou.foremost ? WaitingOnYou.titled(WaitingOnYou.foremost) : ""
-    // What's inside, made as it's stepped into.
+        : WaitingOnYou.foremost ? WaitingOnYou.titled(WaitingOnYou.foremost)
+        : looks.waiting.length > 0 ? looks.waiting[0].title : ""
+    // What's inside, made and weighed as it's stepped into, so the order
+    // is the one it had then; Steady.js keeps the rows still while it's
+    // open. A session wanting him blocks one, itself.
+    // A session that wants Joel, its row as Agents draws it, but Return steps
+    // into what it asks rather than into the session, which may have moved
+    // past it (Joel, 2026-11-08: "Selecting one brings me often into a pi
+    // session that is so far past what i'm being asked that i don't know if
+    // it is still relevant"). Inside, Deal With It brings its window forward
+    // with the prompt filled in, naming what it asked, then Go To.
+    function wantRow(made, session) {
+        // What it asked, in its own words, or the session by its name.
+        const asked = String(session.presence?.wants?.said || session.title);
+        const key = `on:waiting:want:${session.address}`;
+        const named = id => ({
+            verb: Words.verb(`verb:on:waiting:${id}`),
+            name: Words.name(`verb:on:waiting:${id}`),
+            glyph: Words.glyph(`verb:on:waiting:${id}`),
+            hue: "action",
+            side: session.title,
+            later: true
+        });
+        const inside = () => [
+            thing(Object.assign(named("deal"), {
+                key: `verb:on:waiting:deal:${key}`,
+                run: () => {
+                    Sessions.steer(session.address, {
+                        act: "fill",
+                        text: readyToDeal(asked)
+                    });
+                    Sessions.goTo(session);
+                }
+            })),
+            thing(Object.assign(named("go"), {
+                key: `verb:on:waiting:go:${key}`,
+                run: () => Sessions.goTo(session)
+            }))
+        ];
+        const row = member(Object.assign({}, made, {
+            key: key,
+            forYou: { kind: "do", source: "sessions" },
+            // Its Return is stepping in, not Agents' own act on the session.
+            returns: null,
+            verb: "more",
+            stays: true,
+            verbs: inside,
+            targets: inside,
+            run: () => provider.launcher?.enter(row)
+        }));
+        return row;
+    }
+
     function waitingRows() {
         const agents = source("agents");
-        return (agents ? sessions.map(session => agents.made(session)) : [])
-            .concat(WaitingOnYou.now.map(each => provider.item(each)),
-                laterRow === null ? [] : [laterRow]);
+        const now = Date.now();
+        const weighed = (row, thing) => ({ row: row, weight: ForYou.weigh(thing, now).weight });
+        const wanting = agents ? sessions.map(session => weighed(wantRow(agents.made(session),
+            session), { kind: "todo", blocks: 1, since: session.presence?.wants?.since ?? null }))
+            : [];
+        const rows = wanting.concat(
+            WaitingOnYou.now.map(each => weighed(provider.item(each, now), itemThing(each))),
+            looks.waiting.map(one => weighed(provider.lookRow(one, now), lookThing(one))));
+        return ForYou.ordered(rows).map(one => one.row)
+            .concat(laterRow === null ? [] : [laterRow], historyRow === null ? [] : [historyRow]);
     }
     readonly property var waiting: member({
         // Not `on:waiting`, which is the missed notices' row, by its mark
@@ -584,7 +1022,9 @@ Provider {
         // A piece standing for things of the launcher's own, such as the
         // mail that wants Joel, lists them on Return, each the row it is
         // everywhere else, and its own acts after them (Piece.qml's rows).
-        const holding = piece.rows ? () => piece.rows(thing).concat(actions) : null;
+        // Its rows say what they hold after their names as its own row
+        // does, giving way by whole items (listedAfter).
+        const holding = piece.rows ? () => piece.rows(thing, listedAfter).concat(actions) : null;
         // Everything its source says, under the row, where the piece gives
         // it (Piece.qml's drawer), as the network allows, read again as the
         // drawn clock turns.
@@ -635,11 +1075,16 @@ Provider {
     // from the end as a place's are (Launcher.qml's listed), or all of them
     // where no launcher says the room.
     function parted(piece) {
-        const parts = piece.parts ?? [];
+        return listedAfter(piece.parts ?? [], piece.title, piece.value);
+    }
+
+    // Parts said after a row's name, in the room its name and side leave,
+    // giving way by whole parts.
+    function listedAfter(parts, name, side) {
         const launcher = provider.launcher;
         if (parts.length === 0 || !launcher)
             return parts.join(", ");
-        const beside = piece.title.length + piece.value.length + "  ".length;
+        const beside = name.length + side.length + "  ".length;
         return launcher.listed(parts, launcher.rowRoom() - beside);
     }
 

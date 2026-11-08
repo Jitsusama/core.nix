@@ -299,6 +299,21 @@ QtObject {
         expect("pinned", Rank.pinned([row("x", "X")].concat(before), "window:2", 1), 2);
         expect("gone, kept in place", Rank.pinned(before, "window:9", 5), 1);
 
+        // A collection's best find, gathered into the main search, says
+        // what it belongs to and how many more it found, and its
+        // collection's noun only where no kind says what it is already, so
+        // a notice found at home reads "notice" once, never "notices"
+        // beside it too (VKCF3Z, 2026-11-08).
+        expect("one of a kind says no noun", Rank.gatheredSide("", 1, "notices", true), "");
+        expect("one with no kind says where it's from",
+            Rank.gatheredSide("", 1, "actions", false), "actions");
+        expect("more found say how many", Rank.gatheredSide("", 3, "notices", true),
+            "2 more notices");
+        expect("what it belongs to leads", Rank.gatheredSide("REEF", 3, "sessions", true),
+            "REEF \u00b7 2 more sessions");
+        expect("and stands alone for one", Rank.gatheredSide("REEF", 1, "sessions", true),
+            "REEF");
+
         // Home's likeliest picks, most first, ties by name.
         expect("likeliest", Rank.likeliest({ "b": 3, "a": 3, "c": 9, "gone": 50 },
             { a: "Alpha", b: "Beta", c: "Gamma" }), ["c", "a", "b"]);

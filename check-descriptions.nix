@@ -137,7 +137,12 @@
     a thing's drawer says each part as a fact, its acts left out, a holder of figures opened in
     place and a level's bar a stroke; a screen's says whether its mode is preferred or custom, its
     refresh to every digit niri has where its row rounds it, variable refresh, scale as a multiple,
-    where it sits, its modes and its density to three figures, an off one only what it offers
+    where it sits, its modes and its density to three figures, an off one only what it offers;
+    the backlight daemon's files say whether the room sets the level and what it's on its way
+    to past a gap too slight to move, the room's light with the lid shut or that none is heard,
+    measured to three digits in lx or klx, and every point of its curve, dimmest first, kept
+    where the daemon keeps it, its lux every digit in the same units; and the facts
+    that identify a thing end its drawer, marked, each said once
   '';
   a-timer-is-read-from-what-is-typed = ''
     a timer's span and name are read from what's typed after "timer" however it's written, a span
@@ -554,6 +559,12 @@
   firmware-settings-passes-clippy = ''
     clippy finds nothing in firmware-settings or its tests
   '';
+  for-you-weighs-what-needs-joel = ''
+    For You weighs what needs Joel by what it blocks, what's due, what he can do now, its kind
+    and how long it has waited, the heaviest first and ties as they came, says each row's
+    strongest reason at its side, and reads the looks folder's files into what waits and what's
+    history, newest first, leaving out any it can't read
+  '';
   formatting = ''
     everything is formatted and passes the linters
   '';
@@ -572,6 +583,12 @@
   '';
   git-settings-stay-writable = ''
     programs write git's settings and the declared ones still win
+  '';
+  github-broker-answers-only-its-account = ''
+    github-broker listens on a socket only its account may open, and runs in the background
+  '';
+  github-broker-passes-clippy = ''
+    clippy finds nothing in github-broker or its tests, which mint a narrow token from a stand-in
   '';
   google-answers-on-systemds-socket = ''
     google serves the daemon interface on %t/daemons/google.sock, a socket systemd holds, made only
@@ -780,11 +797,16 @@
     records the microphone, and in an idle window nothing,
     reads a stand-in's named thread from the kernel, and sums each generation by its load
   '';
+  launcher-completes-in-zsh = ''
+    launcher completes in zsh, typed in a real line editor against a stand-in shell: its command,
+    each row as its step is typed, the rows inside the steps typed so far, its flags anywhere, and
+    nothing after a step that names nothing
+  '';
   launcher-fits-what-it-shows-to-the-terminal = ''
     `launcher` lays what the shell shows out to the terminal's width, a count and then a side giving
     way by whole items and a name cut only at a word, inks it only where the terminal takes colour,
-    in its sixteen unless it says it takes 24-bit, and says a miss and the nearest names in the
-    launcher's words
+    in its sixteen unless it says it takes 24-bit, sets every row's drawer after the rows when
+    asked, and says a miss and the nearest names in the launcher's words
   '';
   launcher-passes-clippy = ''
     clippy finds nothing in launcher, the launcher in a terminal, or its tests
@@ -795,6 +817,10 @@
   linux-builder-offers-the-features-it-is-given = ''
     a Mac's Linux builder offers benchmark and big-parallel and any feature it's given, on the Mac's
     line and in the guest's Nix, and with none given offers only its own
+  '';
+  linux-builder-keeps-a-changed-guests-time = ''
+    a Mac's Linux VM given keys or features steps its clock with chrony at any time, past a second,
+    in place of timesyncd, and one given nothing keeps the cached guest's clock
   '';
   linux-builder-lets-only-those-named-restart-it = ''
     a Mac's sudo lets each account named restart its Linux VM and Nix daemon without a password,
@@ -851,9 +877,11 @@
   '';
   meaning-adds-only-below = ''
     the launcher's search by meaning, in Qt's engine, tells the daemon only the things that stay, by
-    the words each is known by, and adds at most three rows below what typing found, none found
-    already and none the launcher no longer holds, each saying in the foot how it was found, and at
-    most three pictures below those Recent found by their names and words, none listed already
+    the words each is known by, and the parts places hold by their names, and adds at most three
+    rows below what typing found, none found already and none the launcher no longer holds, each
+    saying in the foot how it was found, a part meant standing where its place would and each
+    part's name meant once, and at most three pictures below those Recent found by their names and
+    words, none listed already
   '';
   meaning-finds-a-picture-by-what-it-shows = ''
     the meaning daemon, on the CPU with the service's SigLIP 2 towers, looks at each picture in its
@@ -1437,7 +1465,10 @@
     rather than its connector, and on the one it was kept on of two alike, a gone screen's
     workspaces after the one in use's and then to it, each to its rank, once it's back, and each
     window that reopens itself by its program and title, beside the windows kept with it, under
-    the one kept above it in its column, and a window already where it goes left there
+    the one kept above it in its column, and a window already where it goes left there; and those
+    that orchestrate are begun first, the next session only while the machine queue says the
+    memory and the processors have room and the disk isn't stalling, a queue unread or gone quiet
+    holding nothing back
   '';
   resolved-is-set-per-network = ''
     a laptop leaves resolved's global DNS settings as they ship
@@ -1844,7 +1875,9 @@
     as it opens, draws nothing left open and still, its caret steady, searches text a program
     types at once once for its newest letters, a Return among them acting on the row those
     letters found, glides the selection to its row by the arrows only and draws it on its row as
-    rows above it change, reads on a long name while it's selected, and warns of nothing it drew;
+    rows above it change, reads on a long name while it's selected, tells the meaning daemon the
+    parts its places hold and adds one meant below what the letters found, saying where it lives,
+    and warns of nothing it drew;
     and the notices it holds, taken as Super+N takes them, turn, forget and step into their cards
     by vi's keys
   '';

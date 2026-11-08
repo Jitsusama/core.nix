@@ -259,6 +259,7 @@ let
     "launcher/Sounds.js"
     "launcher/Plate.js"
     "launcher/Screens.js"
+    "launcher/Backlight.js"
     "launcher/Numbers.js"
     "launcher/Addresses.js"
     "launcher/Subnets.js"
@@ -267,6 +268,7 @@ let
     "launcher/Zones.js"
     "launcher/Moment.js"
     "launcher/Keeping.js"
+    "launcher/Warmth.js"
     "launcher/Ago.js"
     "launcher/Timing.js"
     "launcher/Colours.js"
@@ -293,6 +295,7 @@ let
     "launcher/KeyCounts.js"
     "launcher/Media.js"
     "launcher/NowGroups.js"
+    "launcher/ForYou.js"
     "launcher/Program.js"
     "launcher/Captured.js"
     "launcher/Notice.js"
@@ -922,7 +925,7 @@ let
 
   # `launcher`, the launcher in a terminal (in-a-terminal/): what it asks
   # the shell through, how it inks and the words it says, from the
-  # launcher's own vocabulary.
+  # launcher's own vocabulary; and zsh's completion, as it writes it.
   launcherInATerminal =
     let
       program = lib.getExe (pkgs.callPackage ./in-a-terminal/package.nix { });
@@ -937,6 +940,9 @@ let
           --set LAUNCHER_QS ${lib.getExe' pkgs.quickshell "qs"} \
           --set LAUNCHER_LOOK ${terminalLook} \
           --set LAUNCHER_WORDS ${pkgs.writeText "words.json" (builtins.toJSON launcher.words)}
+        mkdir -p $out/share/zsh/site-functions
+        $out/bin/launcher completion zsh > $out/share/zsh/site-functions/_launcher
+        grep -q '^#compdef launcher$' $out/share/zsh/site-functions/_launcher
       '';
 
   # A pi session that has come to want Joel, said as a notice from pi

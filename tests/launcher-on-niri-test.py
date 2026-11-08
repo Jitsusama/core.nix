@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import itertools
 import json
+import os
 import re
 import shlex
 import subprocess
 import time
 from datetime import timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import launcher_on_niri
@@ -434,8 +436,8 @@ def test_return_typed_with_the_text_acts_on_what_it_found(shell: Shell) -> None:
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     # Found before its letters, Return would step into the first row at home, Now.
-    typed_at_once(shell, "'needs you' -k Return")
-    shell.launcher_until(lambda shown: shown["path"][-1:] == ["Needs You"])
+    typed_at_once(shell, "'for you' -k Return")
+    shell.launcher_until(lambda shown: shown["path"][-1:] == ["For You"])
     shell.close_launcher()
 
 
@@ -1001,6 +1003,53 @@ def test_a_terminal_is_shown_a_place_by_its_names_and_a_miss_the_nearest(shell: 
     assert shown("mahcine") == {"missing": "mahcine", "near": ["Machine"], "in": []}
     assert shown("machine", "zebra")["in"] == ["Machine"]
     assert not shell.showing()["open"]
+
+
+# What's typed for the meaning daemon's stand-in to find a part by, which no letters find.
+MEANT_PART = "where the parts live"
+
+
+def test_a_meaning_lands_on_a_part_inside_a_place(shell: Shell) -> None:
+    """The parts a place holds are told to the meaning daemon, and one meant is found itself.
+
+    The launcher tells the stand-in the spots its devices hold, as a screen's Resolution, as well
+    as its things (tests/desktop/stand-in-meaning.py), and a spot it says is meant is added below
+    what the letters found as typing would find it, saying where it lives and that it was found
+    by its meaning. That it stands where its place would have, and is meant once by its name, is
+    tests/meaning.qml's to prove; this is the wiring.
+    """
+    runtime = Path(os.environ["XDG_RUNTIME_DIR"])
+    means = runtime / "meaning-means.json"
+    means.unlink(missing_ok=True)
+    shell.answer(MEANT_PART)
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    spots: list[str] = []
+    while not spots:
+        assert time.monotonic() < deadline, "the launcher told the meaning daemon of no spot"
+        time.sleep(launcher_on_niri.POLL)
+        known = runtime / "meaning-known"
+        told = known.read_text().split() if known.exists() else []
+        spots = [key for key in told if key.startswith("spot:")]
+    typed = [row["is"] for row in shell.showing()["things"]]
+    shell.close_launcher()
+    spot = next((key for key in spots if key not in typed), "")
+    assert spot, f"every spot told was found by its letters: {spots}"
+    means.write_text(json.dumps({MEANT_PART: [spot]}))
+    try:
+        shell.answer(MEANT_PART)
+        shell.launcher_until(lambda shown: spot in [row["is"] for row in shown["things"]])
+        shown = shell.showing()
+        found = [row["is"] for row in shown["things"]]
+        assert found[: len(typed)] == typed, f"the meaning moved a typed row: {found}"
+        for _ in range(found.index(spot) - shown["current"]):
+            shell.send_key("down")
+        shell.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == spot)
+        selected = shell.showing()["selected"]
+        assert selected["note"].startswith("found by its meaning"), f"a meant part: {selected}"
+        assert selected["side"] != "", f"a meant part says nothing of where it lives: {selected}"
+        shell.close_launcher()
+    finally:
+        means.unlink(missing_ok=True)
 
 
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
