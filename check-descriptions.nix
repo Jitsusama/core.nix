@@ -108,6 +108,12 @@
   a-theme-changes-everything = ''
     another theme leaves none of the first's colours behind, but in the web kit's other look
   '';
+  a-timer-is-read-from-what-is-typed = ''
+    a timer's span and name are read from what's typed after "timer" however it's written, a span
+    of nothing or past a week is unfit, the time left reads as a clock counting whole seconds up,
+    a span is said in its largest units, and timers are listed rung first, then by what each has
+    left
+  '';
   a-trusted-cable-finds-machines = ''
     a trusted cable's network is a stranger's cable with mDNS on, matched by its card and picked
     first, and a machine naming none gets no such network
@@ -924,6 +930,10 @@
     settings with it, but srgb-gamut's, in every niri booted since, and opens-next-window-on's
     action and opens-next-window-as-column's field of it, which only IPC takes
   '';
+  niri-refreshes-once-a-frame = ''
+    the session's niri, nested in the sandbox, walks its windows at most once a frame while a
+    client's commits wake it hundreds of times a second
+  '';
   niri-says-what-the-gpu-gave-it = ''
     the session's niri lets smithay say which GPU priority niri got, keeping the rest of niri's own
     log filter
@@ -1027,6 +1037,9 @@
   onepassword-answers-op = ''
     1Password's command-line tool, op, runs setgid in the onepassword-cli group, so the app answers it
   '';
+  onepassword-brings-ops-zsh-completion = ''
+    the account's zsh is given op's own completion, the file the op the system wraps was built with
+  '';
   onepassword-manager-passes-clippy = ''
     clippy finds nothing in 1Password's manager for Passwords or its tests
   '';
@@ -1052,12 +1065,25 @@
   open-with-passes-clippy = ''
     clippy finds nothing in the portal's chooser or its tests
   '';
+  passwords-completes-in-zsh = ''
+    passwords completes in zsh with its commands, each entry the daemon holds by its title, a held
+    entry's details by their labels, each password manager and --json, and no Tab asks a password
+    manager anything
+  '';
   passwords-holds-no-secret = ''
     the passwords daemon holds every entry each password manager lists without a secret, even one
-    given with its secrets on, gives a secret only to the client that asked to see it or to the
-    clipboard marked sensitive and cleared when its time is up, says a one-time code's period, says
-    a manager signed out and gives no secret from it, tells a watch of entries as they arrive, and
-    refuses an ask or a kind it doesn't know
+    given with its secrets on, answers a held list or get without asking a manager, gives a secret
+    only to the client that asked to see it or to the clipboard marked sensitive and cleared when
+    its time is up, says a one-time code's period, says a manager signed out and gives no secret
+    from it, tells a watch of entries as they arrive, and refuses an ask or a kind it doesn't know;
+    and the passwords command sets each answer in columns under a header for a person and
+    tab-separated for a program, gives the daemon's answer with --json and no secret but show's,
+    finds an entry by its title and a detail by its label, and exits as its usage says
+  '';
+  passwords-lists-1passwords-ssh-keys = ''
+    passwords keys lists the keys an SSH agent holds at 1Password's socket, each by its type, size,
+    fingerprint, comment and public half, as rows and as JSON, nothing for an agent holding none,
+    and says how to turn the agent on when none listens, against a stand-in agent alone
   '';
   passwords-passes-clippy = ''
     clippy finds nothing in the passwords daemon or its tests
@@ -1317,9 +1343,9 @@
     old log from the machine only once Drive still holds its copy
   '';
   session-backup-stays-in-the-background = ''
-    an account naming a folder backs its sessions up hourly in background.slice, catching up on an
-    hour slept through, trying a failed run again and left running by a switch, and one naming
-    none runs nothing
+    an account naming a folder, or one of the backup's own, backs its sessions up hourly in
+    background.slice, catching up on an hour slept through, trying a failed run again and left
+    running by a switch, and one naming none runs nothing
   '';
   session-machines-have-a-bridge = ''
     libvirt's bridge helper lets session machines onto virbr0, and its default network starts at
@@ -1485,6 +1511,10 @@
   swayimg-says-the-picture-it-shows = ''
     swayimg keeps the picture it shows, read by its Recent's command as its process and whole path,
     and nothing once ZZ closes it, clearing what a killed one left
+  '';
+  the-apple-silicon-stick-evaluates = ''
+    the stick for an Apple silicon Mac, aarch64-linux on Asahi's kernel and booted as BOOTAA64.EFI,
+    evaluates
   '';
   the-askpass-outlives-its-shell = ''
     the askpass asks a restarted shell again, never asks twice what's answered, and refuses about 20
@@ -1858,7 +1888,7 @@
     every mark in the margin stands one height on the gap's middle line, read from the right by
     kind, in the colour that says how much it asks; what was on air lingers, what a notice will say
     waits for its card, and a wait shows once the same one lasts; each stands in a square cell the
-    gap's size with the same room all round, and What's on points at the row the keys are on
+    gap's size with the same room all round, and Now points at the row the keys are on
   '';
   the-margins-marks-are-drawn-level = ''
     every mark the margin can show, a device's kind and Slack's among them, is the theme's
@@ -2183,6 +2213,16 @@
     clippy finds nothing in timekeeping, which reads chronyd's command port for Time, or its
     tests
   '';
+  timers-are-kept-and-rung = ''
+    the timers daemon tells every watch of a timer started and rings it as a critical notice once
+    its end passes; the notice's Again sets it going afresh and putting it away ends it, ending one
+    rung takes its notice back, a ring with no server to take it is said once one comes, what's
+    kept outlasts the daemon, one that ended meanwhile ringing late, and an ask it can't do is
+    refused
+  '';
+  timers-passes-clippy = ''
+    clippy finds nothing in the timers daemon or its tests
+  '';
   tuple-call-holds-the-call = ''
     tuple-call follows Tuple's stream only while Tuple's daemon answers, at once when its log says
     it started, and tells a watch of a call, a sign-in gone and a stream ended as they happen, of a
@@ -2463,7 +2503,7 @@
   vm-desktop-minds-the-margin = ''
     the margin shows keeping awake, lid shut too, a camera opened, tokens running out, do not
     disturb, a missed notice, waiting, the muted microphone, dictation, what's playing and caps
-    lock, and What's on says each and answers the keys
+    lock, and Now says each and answers the keys
   '';
   vm-desktop-opens-and-sets = ''
     the launcher sets sound and opens its outputs' and microphones' parts, works a program's media,
@@ -2535,6 +2575,14 @@
     the greeter signs in and out, not waiting on the account's setup; greetd leaves its console
     in graphics, and tuigreet, after the greeter falls over, finds it in text again, even after
     a compositor that fell over before taking the screen
+  '';
+  vm-guide-installs-beside-another-system = ''
+    the guide installs a machine with no TPM and no Secure Boot onto a disk laid out as Asahi's
+    installer leaves a Mac, confirming only its own partition and running no Secure Boot step:
+    it makes the machine's partition in the free space and names Asahi's boot partition for it,
+    every other partition the same byte for byte and every other table entry unchanged, Asahi's
+    files kept beside systemd-boot; the machine boots by a YubiKey's PIN, its guide with nothing
+    to seal, and its disk opens by the recovery words alone
   '';
   vm-guide-installs = ''
     the guide, driven by its keys, holding the machine awake and drawing over what writes on its

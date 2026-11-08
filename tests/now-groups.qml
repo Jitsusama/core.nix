@@ -1,9 +1,9 @@
 // The order Now lists what's on in, run in Qt's own JavaScript engine, the
-// one the shell runs it in. The `now-lists-by-group` check copies Now.js
+// one the shell runs it in. The `now-lists-by-group` check copies NowGroups.js
 // beside this file and runs `qml -platform offscreen now-groups.qml`. The
 // rows are one of every group Now has, named as their pieces name them.
 import QtQuick
-import "Now.js" as Now
+import "NowGroups.js" as Groups
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -38,19 +38,19 @@ QtObject {
             { group: "wants", name: "Notices" },
             { group: "onAir", name: "Camera" }
         ];
-        expect("every group, in its place", names(Now.ordered(every)),
+        expect("every group, in its place", names(Groups.ordered(every)),
             "Needs You, Notices, Camera, In a Call, Playing, Do Not Disturb, Keep Awake");
 
         // A name is read as Joel reads it, its numbers by their value and
         // its case aside.
-        expect("names as Joel reads them", names(Now.ordered([
+        expect("names as Joel reads them", names(Groups.ordered([
             { group: "wants", name: "pi 10" },
             { group: "wants", name: "Pi 9" }
         ])), "Pi 9, pi 10");
 
         // A group Now doesn't know goes last, never ahead of what wants
         // Joel.
-        expect("an unknown group goes last", names(Now.ordered([
+        expect("an unknown group goes last", names(Groups.ordered([
             { group: "elsewhere", name: "Aardvark" },
             { group: "leftOn", name: "Keep Awake" },
             { group: "wants", name: "Needs You" }
@@ -58,7 +58,7 @@ QtObject {
 
         // The rows given stay as they were, since the launcher keeps them.
         const given = [{ group: "leftOn", name: "B" }, { group: "wants", name: "A" }];
-        Now.ordered(given);
+        Groups.ordered(given);
         expect("the rows given stay as they were", names(given), "B, A");
 
         for (const failure of failures)

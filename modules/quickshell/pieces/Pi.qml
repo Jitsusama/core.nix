@@ -3,7 +3,7 @@
 // margin while any wants Joel (Sessions.qml: a question, an approval, or a
 // run stuck without him), and a way to each one's window on its notice.
 // Now has no row of its own for it: Waiting on You lists each session that
-// wants Joel, as the session (launcher/WhatsOn.qml's above). With no pi
+// wants Joel, as the session (launcher/Now.qml's above). With no pi
 // running there's nothing to show.
 import qs
 import QtQuick

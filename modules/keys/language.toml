@@ -907,6 +907,8 @@ guarded = true
 
 # Signed in to a network by an account, over the way it names, as :signin
 # peap, Sign In being the glossary's word; the account typed was the asking.
+# On a password manager's program row it's Let the Launcher In, which asks
+# the manager to let Passwords in, as Sign In does a program signed out.
 # Its short form clears Neovim's :sign.
 [acts.signin]
 command = "signin"
@@ -1122,7 +1124,8 @@ command = "search"
 short = "sea"
 kinds = ["list"]
 
-# The same asked again: Try Again and Check It Again.
+# The same asked again: Try Again, Check It Again, and a timer's Start
+# Again.
 [acts.retry]
 command = "retry"
 short = "retr"
@@ -1140,6 +1143,13 @@ short = "spee"
 kinds = ["list"]
 changes = true
 guarded = true
+
+# More of what counts down: a timer's Add a Minute.
+[acts.extend]
+command = "extend"
+short = "ext"
+kinds = ["list"]
+changes = true
 
 # The next track, or with ! the one before: Next Track, Next, Previous
 # Track and Previous, since :next and :previous are Vim's.

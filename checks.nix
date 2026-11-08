@@ -245,6 +245,11 @@ let
     # The guide's install is a stick, a disk, FIDO2 keys, the firmware and
     # a TPM together, driven by its keys as a person drives it.
     vm-guide-installs = import ./tests/vm/guide/guide-install.nix { inherit self pkgs; };
+    # Whether the guide leaves another system's partitions as they were is
+    # a real disk's table, the kernel's view of it and the firmware's boot.
+    vm-guide-installs-beside-another-system = import ./tests/vm/guide/guide-beside.nix {
+      inherit self pkgs;
+    };
     # Writing a stick on a host is UDisks2, polkit and a USB disk together,
     # as the person rather than root, and a bundle sealed to a FIDO2 key
     # opens only where the plugin, the key and its PIN meet.
@@ -879,6 +884,10 @@ gather (
           core = self;
           inherit nix-darwin;
         }
+      );
+      # Only an aarch64 builder makes its image, so here it's evaluated.
+      the-apple-silicon-stick-evaluates = pkgs.writeText "the-apple-silicon-stick-evaluates" (
+        builtins.unsafeDiscardStringContext self.packages.aarch64-linux.stick.drvPath
       );
 
       # Every folder says what goes in it, so a reader reaches any file from the

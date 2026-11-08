@@ -33,6 +33,12 @@
   # beside it on each switch.
   boot.loader.systemd-boot.enable = true;
 
+  # With neither Secure Boot nor a TPM, the guide makes no Secure Boot keys
+  # and seals nothing, and the disk opens with a YubiKey or the recovery
+  # words at every start.
+  jitsusama.firmware.secureBoot = false;
+  jitsusama.firmware.tpm = false;
+
   # U-Boot starts a stick before the disk while nothing is installed, and
   # after once something is; its own menu picks one.
   jitsusama.firmware.startFromStick = "Plug the stick in and press the power button. If the installed system starts instead, restart, press a key when U-Boot says it will start on its own, type bootmenu and pick usb 0.";

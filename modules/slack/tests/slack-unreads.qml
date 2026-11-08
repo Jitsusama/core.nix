@@ -88,8 +88,6 @@ QtObject {
         check("merely unread uncounted", Unreads.value(all, "ok"), "7 to read");
         check("merely unread unnamed in Now", Unreads.context(all, "ok"),
             "Ada Lovelace, Grace and Ada and 2 more");
-        check("named in Unread", Unreads.context(all, "ok", true),
-            "Ada Lovelace, Grace and Ada and 3 more");
         check("merely unread wants nothing", Unreads.shown(told("ok", [random]), "ok"), false);
 
         const ok = told("ok", [ada, deploys, threads]);

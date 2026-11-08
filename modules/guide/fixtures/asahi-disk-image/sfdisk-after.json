@@ -1,0 +1,56 @@
+{
+   "partitiontable": {
+      "label": "gpt",
+      "id": "4B0A2C11-6A0F-4E8B-9C35-7C1E0D8E4F21",
+      "device": "/dev/nvme0n1",
+      "unit": "sectors",
+      "firstlba": 6,
+      "lastlba": 244276259,
+      "sectorsize": 4096,
+      "partitions": [
+         {
+            "node": "/dev/nvme0n1p1",
+            "start": 6,
+            "size": 128000,
+            "type": "69646961-6700-11AA-AA11-00306543ECAC",
+            "uuid": "1E1B5C2A-6E43-4A0B-9F16-2C8B3D6A9E01",
+            "name": "iBootSystemContainer"
+         },{
+            "node": "/dev/nvme0n1p2",
+            "start": 128006,
+            "size": 24414062,
+            "type": "7C3457EF-0000-11AA-AA11-00306543ECAC",
+            "uuid": "2E2B5C2A-6E43-4A0B-9F16-2C8B3D6A9E02",
+            "name": "Container"
+         },{
+            "node": "/dev/nvme0n1p3",
+            "start": 242965540,
+            "size": 1310720,
+            "type": "52637672-7900-11AA-AA11-00306543ECAC",
+            "uuid": "3E3B5C2A-6E43-4A0B-9F16-2C8B3D6A9E03",
+            "name": "RecoveryOSContainer"
+         },{
+            "node": "/dev/nvme0n1p4",
+            "start": 24542068,
+            "size": 610352,
+            "type": "7C3457EF-0000-11AA-AA11-00306543ECAC",
+            "uuid": "4E4B5C2A-6E43-4A0B-9F16-2C8B3D6A9E04",
+            "name": "Asahi Linux"
+         },{
+            "node": "/dev/nvme0n1p5",
+            "start": 25152420,
+            "size": 122070,
+            "type": "C12A7328-F81F-11D2-BA4B-00A0C93EC93B",
+            "uuid": "5E5B5C2A-6E43-4A0B-9F16-2C8B3D6A9E05",
+            "name": "system-boot"
+         },{
+            "node": "/dev/nvme0n1p6",
+            "start": 25274624,
+            "size": 217690916,
+            "type": "CA7D7CCB-63ED-4C53-861C-1742536059CC",
+            "uuid": "6E6B5C2A-6E43-4A0B-9F16-2C8B3D6A9E06",
+            "name": "system"
+         }
+      ]
+   }
+}

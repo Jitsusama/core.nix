@@ -6,11 +6,11 @@
 // is pi's own library, which these paths import but never reach.
 import assert from "node:assert/strict";
 import { chmodSync, cpSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import * as http from "node:http";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const provider = process.argv[2];
+const [, , provider] = process.argv;
 const work = mkdtempSync(join(tmpdir(), "claude-unloaded-"));
 cpSync(join(provider, "src"), join(work, "src"), { recursive: true });
 
@@ -40,14 +40,19 @@ writeFileSync(join(library, "providers", "all.js"), "export const getBuiltinMode
 
 // A relayed stream broken by what pi throws while reading it says what was thrown.
 const { TurnRelay } = await import(join(work, "src", "turn-relay.ts"));
-const upstream = http.createServer(async (request, response) => {
-  for await (const _chunk of request);
+const upstream = createServer(async (request, response) => {
+  for await (const _chunk of request) {
+    // The request is read to its end, and what it asks doesn't matter.
+  }
   response.writeHead(200, { "content-type": "text/event-stream" });
-  const start = { type: "message_start", message: { id: "m1", role: "assistant", content: [], usage: {} } };
+  const start = {
+    type: "message_start",
+    message: { id: "m1", role: "assistant", content: [], usage: {} },
+  };
   response.end(`data: ${JSON.stringify(start)}\n\n`);
 });
 await new Promise((resolve) => upstream.listen(0, "127.0.0.1", resolve));
-const relay = new TurnRelay(`http://127.0.0.1:${upstream.address().port}`, 5_000, () => {
+const relay = new TurnRelay(`http://127.0.0.1:${upstream.address().port}`, 5000, () => {
   throw new Error("Claude Code returned unavailable tool jobs");
 });
 const base = await relay.start();
@@ -86,13 +91,16 @@ try {
   const answered = await runClaudeRequest({
     model: "sonnet",
     cwd: work,
-    frames: [{ type: "user", message: { role: "user", content: [{ type: "text", text: "status?" }] } }],
+    frames: [
+      { type: "user", message: { role: "user", content: [{ type: "text", text: "status?" }] } },
+    ],
     systemPrompt: "system",
     manifest: [],
     extraBody: { tools: [] },
     toolNames: new Set(["bash"]),
+    // biome-ignore lint/style/useNamingConvention: the environment's names are upper case.
     env: { PATH: process.env.PATH, HOME: work, PI_CLAUDE_CODE_COMMAND: claude },
-    timeoutMs: 5_000,
+    timeoutMs: 5000,
   });
   assert.equal(answered.message.stop_reason, "tool_use");
   assert.equal(answered.message.content[0].name, "mcp__pi__jobs");

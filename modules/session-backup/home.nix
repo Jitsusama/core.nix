@@ -9,18 +9,32 @@
 #     recipients = [ "age1tag1..." "age1fido2-hmac1..." ];
 #   };
 #
-# With no folder named, nothing runs. It signs in as the account's gcloud
-# application-default login, which needs a Drive scope gcloud doesn't ask
-# for by itself, so the account signs in once with
+# or, rather than a folder made in Drive's web page, `ownFolder = "<a
+# name>"`, one the backup makes at the top of Drive and finds again. With
+# neither, nothing runs.
+#
+# It signs in as a gcloud application-default login, which needs a Drive
+# scope gcloud doesn't ask for by itself. A folder made in the web page
+# needs the whole of Drive:
 #
 #   gcloud auth application-default login --scopes=openid,\
 #     https://www.googleapis.com/auth/userinfo.email,\
 #     https://www.googleapis.com/auth/cloud-platform,\
 #     https://www.googleapis.com/auth/drive
 #
-# That rewrites the one login other tools may use too. To give the backup
-# its own, sign in with CLOUDSDK_CONFIG set to a folder of its own and name
-# the file it writes there as `credentials`.
+# That rewrites the one login other tools use too, and any program running
+# as the account can read it, so it would hand them all of Drive. Its own
+# folder needs only the files the backup made (drive.file), in a login of
+# its own, leaving the account's own with no Drive scope at all:
+#
+#   CLOUDSDK_CONFIG=~/.config/session-backup/gcloud \
+#     gcloud auth application-default login --scopes=openid,\
+#     https://www.googleapis.com/auth/userinfo.email,\
+#     https://www.googleapis.com/auth/cloud-platform,\
+#     https://www.googleapis.com/auth/drive.file
+#
+# with `credentials` naming the application_default_credentials.json it
+# writes there. gcloud insists on cloud-platform in any login it makes.
 #
 # `session-backup status` says what is sent and what waits. A copy is
 # opened with age and one of the recipients' keys, then zstd -d.
@@ -44,6 +58,7 @@ let
       records = "${config.xdg.stateHome}/pi/agentic-harness.pi/quest-workflow/sessions";
       inherit (cfg)
         folder
+        ownFolder
         host
         keepDays
         recipients
@@ -70,6 +85,16 @@ in
       '';
       type = lib.types.nullOr lib.types.str;
       default = null;
+    };
+    ownFolder = lib.mkOption {
+      description = ''
+        The name of a folder the backup makes at the top of Google Drive and
+        keeps its copies in, rather than `folder`. Its login then needs only
+        the files the backup made, and can read nothing else in Drive.
+      '';
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "pi sessions";
     };
     recipients = lib.mkOption {
       description = ''
@@ -125,56 +150,62 @@ in
     };
   };
 
-  config = lib.mkIf (cfg.folder != null && pkgs.stdenv.hostPlatform.isLinux) {
-    assertions = [
+  config =
+    lib.mkIf ((cfg.folder != null || cfg.ownFolder != null) && pkgs.stdenv.hostPlatform.isLinux)
       {
-        assertion = cfg.recipients != [ ];
-        message = "jitsusama.session-backup names a folder but no recipient, so nothing could open a copy.";
-      }
-    ];
+        assertions = [
+          {
+            assertion = cfg.folder == null || cfg.ownFolder == null;
+            message = "jitsusama.session-backup names a folder and an own folder; name one.";
+          }
+          {
+            assertion = cfg.recipients != [ ];
+            message = "jitsusama.session-backup names a folder but no recipient, so nothing could open a copy.";
+          }
+        ];
 
-    home.packages = [ configured ];
+        home.packages = [ configured ];
 
-    systemd.user.services.session-backup = {
-      Unit = {
-        Description = "Copies the account's settled pi session logs, sealed, to Drive";
-        # A run takes most of an hour, so a switch leaves a run going; the
-        # next hour's starts on the new program.
-        X-RestartIfChanged = false;
-        # Tried four times in half an hour before it counts as failed, as
-        # set out under Restart.
-        StartLimitIntervalSec = "30min";
-        StartLimitBurst = 4;
+        systemd.user.services.session-backup = {
+          Unit = {
+            Description = "Copies the account's settled pi session logs, sealed, to Drive";
+            # A run takes most of an hour, so a switch leaves a run going; the
+            # next hour's starts on the new program.
+            X-RestartIfChanged = false;
+            # Tried four times in half an hour before it counts as failed, as
+            # set out under Restart.
+            StartLimitIntervalSec = "30min";
+            StartLimitBurst = 4;
+          };
+          Service = {
+            # Started once it runs, not once it's done: a oneshot's start job
+            # lasts the whole run, and the hour a boot catches up on kept the
+            # account's manager "starting" for minutes, in which a switch
+            # reloads none of the account's units. A timer still never starts
+            # a run while one is going.
+            Type = "exec";
+            ExecStart = "${lib.getExe package} run --config ${configFile}";
+            # Whatever the account runs comes first: the slice gives it the
+            # disk's idle priority and a small share of the processor.
+            Slice = "background.slice";
+            # The hour a resume catches up on starts before Wi-Fi is back, and
+            # a user's unit can't wait on the machine's network, so a run that
+            # fails is tried again a few minutes on. One still failing half an
+            # hour later, a login refused or no connection at all, is a failed
+            # unit.
+            Restart = "on-failure";
+            RestartSec = "5min";
+          };
+        };
+        systemd.user.timers.session-backup = {
+          Unit.Description = "Copies the account's settled pi session logs every hour";
+          Timer = {
+            OnCalendar = "hourly";
+            RandomizedDelaySec = "10min";
+            # An hour slept through runs once the machine wakes.
+            Persistent = true;
+          };
+          Install.WantedBy = [ "timers.target" ];
+        };
       };
-      Service = {
-        # Started once it runs, not once it's done: a oneshot's start job
-        # lasts the whole run, and the hour a boot catches up on kept the
-        # account's manager "starting" for minutes, in which a switch
-        # reloads none of the account's units. A timer still never starts
-        # a run while one is going.
-        Type = "exec";
-        ExecStart = "${lib.getExe package} run --config ${configFile}";
-        # Whatever the account runs comes first: the slice gives it the
-        # disk's idle priority and a small share of the processor.
-        Slice = "background.slice";
-        # The hour a resume catches up on starts before Wi-Fi is back, and
-        # a user's unit can't wait on the machine's network, so a run that
-        # fails is tried again a few minutes on. One still failing half an
-        # hour later, a login refused or no connection at all, is a failed
-        # unit.
-        Restart = "on-failure";
-        RestartSec = "5min";
-      };
-    };
-    systemd.user.timers.session-backup = {
-      Unit.Description = "Copies the account's settled pi session logs every hour";
-      Timer = {
-        OnCalendar = "hourly";
-        RandomizedDelaySec = "10min";
-        # An hour slept through runs once the machine wakes.
-        Persistent = true;
-      };
-      Install.WantedBy = [ "timers.target" ];
-    };
-  };
 }

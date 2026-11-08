@@ -64,7 +64,9 @@ driven on; the installed machine's steps come later.
   Mac's raw disks need. Reading back forgets the system's cached copy first,
   then compares both tables, hashes each partition again and opens the
   vault.
-- **Signing.** A stick for one machine has its boot program,
+- **Signing.** An Apple silicon Mac's stick (`stick-apple-silicon.nix`)
+  boots `EFI/BOOT/BOOTAA64.EFI` under U-Boot, which has no Secure Boot, so
+  it's never signed. A stick for one machine has its boot program,
   `EFI/BOOT/BOOTX64.EFI` and nothing else on its boot partition, signed with that
   machine's db key, so it boots there with Secure Boot enforced. The
   signature is byte for byte what sbsign makes from the same key at the same
@@ -131,6 +133,32 @@ driven on; the installed machine's steps come later.
   names, opened in memory, and signs the stick with them.
   Every step stays done through the steps after it, since the journey runs
   the first that isn't.
+- **Without Secure Boot or a TPM.** A machine whose hardware module sets
+  `jitsusama.firmware.secureBoot` false, as an Apple silicon Mac's does
+  under U-Boot, is installed with no steps for Secure Boot keys: none to
+  check the firmware takes, make, seal into a rescue bundle, ready for
+  enrolment or sign the stick with. Its YubiKeys, recovery key, system and
+  password are installed as on any machine, and its first-start card says
+  the disk asks for a key or the words at every start. The installed guide
+  seals the disk only where there's a TPM and Secure Boot both, and makes
+  the accounts' keys only where `jitsusama.firmware.tpm` says there's a
+  TPM. Each is said in the target and `machine.json` only when false, so a
+  machine that has both carries what it always has.
+- **Beside another system.** A machine whose disk module sets
+  `jitsusama.disk.shared`, as an Apple silicon Mac does to keep macOS and
+  the boot partition Asahi's installer made, never has its disk wiped.
+  The disk is confirmed the same way, then its table is read with
+  `sfdisk --json` (`observe::table`): the boot partition is the one named
+  `<name>-boot` already, else the one m1n1 names in
+  `/proc/device-tree/chosen/asahi,efi-system-partition`, else the disk's
+  only EFI system partition. One sgdisk write adds `<name>` in the
+  largest free stretch, at least 32 GiB, on a 1 MiB boundary and the
+  lowest free number, and names the boot partition `<name>-boot`. The
+  table is read again, and any other entry changed in place, type,
+  identity, attributes or name stops the install before anything is
+  formatted. A reinstall finds `<name>` there and writes no table. Only
+  `<name>` is wiped, and the machine's disko script formats it alone,
+  mounting the boot partition as it finds it.
 - **Carrying the home folders** (`src/install/carry.rs`). Installing a
   machine again asks first whether to carry its home folders across. If
   so, before anything is wiped it opens the old disk as Recover does and
@@ -463,6 +491,7 @@ driven on; the installed machine's steps come later.
 | `src/screen/`         | the view, drawn as lines in roles; the terminal; the walk through a journey |
 | `payload.nix`         | what a stick carries for one machine            |
 | `stick.nix`           | the stick's own system                                    |
+| `stick-apple-silicon.nix` | the same on an Apple silicon Mac, on Asahi's kernel   |
 | `theme.nix`           | the theme as the guide and the stick's console draw it    |
 | `fixtures/<hardware>/` | what each tool printed on a real machine, as it printed it |
 | `tests/journey.rs`    | the journey's promises, with toy steps                    |

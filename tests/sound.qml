@@ -63,7 +63,7 @@ ShellRoot {
     // starts through it.
     function playingThrough(plugged) {
         return { "PCH,0:out": [{ name: "Plugged in", value: plugged },
-            { name: "playing", value: "48 kHz, 32 bit, period 1024 (21.3 ms)" }] };
+            { name: "playing", value: "48 kHz \u00b7 32 bit \u00b7 period 21.3 ms (1024)" }] };
     }
 
     // Each time whether the headphones are listed is worked out again, as

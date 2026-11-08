@@ -61,6 +61,7 @@ tools! {
     Rsync => "rsync", "GUIDE_RSYNC";
     Runuser => "runuser", "GUIDE_RUNUSER";
     Sbctl => "sbctl", "GUIDE_SBCTL";
+    Sfdisk => "sfdisk", "GUIDE_SFDISK";
     Sgdisk => "sgdisk", "GUIDE_SGDISK";
     SshKeygen => "ssh-keygen", "GUIDE_SSH_KEYGEN";
     SshTpmKeygen => "ssh-tpm-keygen", "GUIDE_SSH_TPM_KEYGEN";

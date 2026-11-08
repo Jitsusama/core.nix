@@ -995,7 +995,7 @@ fn install() -> Result<(), Fault> {
         return Ok(());
     }
     let target = install::target(&mut machine)?;
-    let journey = Journey::new(install::steps(&target.yubikeys, start))
+    let journey = Journey::new(install::steps(&target, start))
         .map_err(|why| Fault::unreadable("the install's steps", why))?;
     walk.journey = &journey;
     walk.whole = true;
@@ -1007,7 +1007,7 @@ fn install() -> Result<(), Fault> {
     // machine shuts down rather than restarting, so the stick comes out
     // of a machine that's off.
     let installed = format!("{} is installed", target.machine);
-    let next = first_start(&target.machine, &target.yubikeys);
+    let next = first_start(&target.machine, &target.yubikeys, target.secure_boot);
     if !walk.card(&mut terminal, &installed, &next, "shut down")? {
         return Ok(());
     }
@@ -1023,11 +1023,22 @@ fn install() -> Result<(), Fault> {
 
 /// What the first start from the disk asks, in the order it asks it: on
 /// that start only a YubiKey opens the disk, since the TPM is sealed after.
-fn first_start(machine: &str, yubikeys: &[String]) -> String {
-    format!(
-        "Press Return to shut down. Take the stick out, plug in {}, then turn {machine} on. When its disk asks for a security token PIN, type that key's PIN, and touch the key when it blinks. The guide then finishes {machine} before you sign in, and asks for a PIN of the TPM's own, which opens the disk from the next start with no key plugged in.",
+fn first_start(machine: &str, yubikeys: &[String], secure_boot: bool) -> String {
+    let plug = format!(
+        "Press Return to shut down. Take the stick out, plug in {}, then turn {machine} on. When its disk asks for a security token PIN, type that key's PIN, and touch the key when it blinks.",
         guide::rescue::either(yubikeys)
-    )
+    );
+    // The TPM's seal counts on Secure Boot, so a machine without it opens
+    // its disk with a YubiKey or the recovery words at every start.
+    if secure_boot {
+        format!(
+            "{plug} The guide then finishes {machine} before you sign in, and asks for a PIN of the TPM's own, which opens the disk from the next start with no key plugged in."
+        )
+    } else {
+        format!(
+            "{plug} It asks the same at every start, or for the recovery words when no key is plugged in."
+        )
+    }
 }
 
 fn tools() -> ExitCode {
@@ -1209,7 +1220,7 @@ mod tests {
     fn the_first_start_says_to_plug_in_a_key_and_that_after_it_the_pin_alone_will_do() {
         // A card that said only "asks for a security token PIN" left which
         // key, and when, for the person to guess.
-        let said = first_start("laptop", &["the Nano".into(), "the 5Ci".into()]);
+        let said = first_start("laptop", &["the Nano".into(), "the 5Ci".into()], true);
         let out = said.find("Take the stick out").unwrap();
         let plug = said.find("plug in the Nano or the 5Ci").unwrap();
         let on = said.find("then turn laptop on").unwrap();
@@ -1217,6 +1228,21 @@ mod tests {
         assert!(
             said.ends_with(
                 "asks for a PIN of the TPM's own, which opens the disk from the next start with no key plugged in."
+            ),
+            "{said}"
+        );
+    }
+
+    #[test]
+    fn a_machine_without_secure_boot_is_told_its_disk_asks_every_start() {
+        // It has nothing to seal to, so a card promising the TPM's PIN
+        // would leave the person waiting for a prompt that never comes.
+        let said = first_start("laptop", &["the Nano".into()], false);
+        assert!(said.contains("plug in the Nano"), "{said}");
+        assert!(!said.contains("TPM"), "{said}");
+        assert!(
+            said.ends_with(
+                "It asks the same at every start, or for the recovery words when no key is plugged in."
             ),
             "{said}"
         );

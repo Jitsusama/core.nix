@@ -20,6 +20,7 @@
         "displays",
         "notices",
         "clipboard",
+        "timers",
         "capture",
         "session:recording",
         "emoji",
@@ -29,6 +30,7 @@
         "command:brightness",
         "command:desk",
         "command:time",
+        "command:timer",
         "command:weather",
         "command:epoch",
         "command:sum",
@@ -89,6 +91,7 @@
       "holds": [
         "wifi",
         "wifi:sign-in",
+        "ethernet",
         "eero",
         "networks",
         "traffic"
@@ -218,6 +221,7 @@
       "id": "agents:landed",
       "in": "agents",
       "name": "Landed",
+      "term": "Agents/Landed",
       "verb": "more",
       "glyph": "done"
     },
@@ -734,6 +738,7 @@
       "id": "machine:cpu:model",
       "in": "machine:cpu",
       "name": "Model",
+      "term": "Machine/model",
       "answers": [
         "processor model"
       ]
@@ -976,7 +981,8 @@
     {
       "id": "machine:disk:spare",
       "in": "machine:disk:health",
-      "name": "Spare"
+      "name": "Spare",
+      "term": "Disk/spare"
     },
     {
       "id": "machine:disk:written",
@@ -1002,6 +1008,7 @@
       "id": "machine:disk:model",
       "in": "machine:disk",
       "name": "Model",
+      "term": "Machine/model",
       "answers": [
         "disk model"
       ]
@@ -1158,7 +1165,8 @@
     {
       "id": "power:model",
       "in": "power",
-      "name": "Model"
+      "name": "Model",
+      "term": "Machine/model"
     },
     {
       "id": "power:made",
@@ -1386,7 +1394,8 @@
     {
       "id": "firmware:version",
       "in": "firmware",
-      "name": "Version"
+      "name": "Version",
+      "term": "Machine/version"
     },
     {
       "id": "firmware:vendor",
@@ -1854,7 +1863,8 @@
     {
       "id": "keyboards:model",
       "in": "keyboards",
-      "name": "Model"
+      "name": "Model",
+      "term": "Machine/model"
     },
     {
       "id": "eero",
@@ -1979,7 +1989,8 @@
     {
       "id": "eero:internet:lease",
       "in": "eero:internet",
-      "name": "Lease"
+      "name": "Lease",
+      "term": "Network/lease"
     },
     {
       "id": "eero:internet:gateway",
@@ -1990,7 +2001,8 @@
     {
       "id": "eero:internet:mode",
       "in": "eero:internet",
-      "name": "Mode"
+      "name": "Mode",
+      "term": "Network/mode"
     },
     {
       "id": "eero:internet:dns",
@@ -2136,7 +2148,8 @@
     {
       "id": "eero:node:model",
       "in": "eero:node",
-      "name": "Model"
+      "name": "Model",
+      "term": "Machine/model"
     },
     {
       "id": "eero:node:serial",
@@ -2239,7 +2252,8 @@
     {
       "id": "eero:node:light",
       "in": "eero:node",
-      "name": "Light"
+      "name": "Light",
+      "term": "Network/light"
     },
     {
       "id": "eero:node:power",
@@ -2398,6 +2412,17 @@
       "term": "Network/address",
       "answers": [
         "address"
+      ]
+    },
+    {
+      "id": "ethernet",
+      "name": "Ethernet",
+      "term": "Network/Ethernet",
+      "provider": "networks",
+      "question": "ethernet",
+      "glyph": "wired",
+      "answers": [
+        "ethernet"
       ]
     },
     {
@@ -2567,6 +2592,108 @@
       "id": "networks:dropped-out",
       "in": "networks:errors",
       "name": "Dropped Out"
+    },
+    {
+      "id": "networks:lease",
+      "in": "networks",
+      "name": "Lease",
+      "term": "Network/lease"
+    },
+    {
+      "id": "networks:lease-server",
+      "in": "networks:lease",
+      "name": "Server"
+    },
+    {
+      "id": "networks:lease-lasts",
+      "in": "networks:lease",
+      "name": "Given For"
+    },
+    {
+      "id": "networks:lease-got",
+      "in": "networks:lease",
+      "name": "Got"
+    },
+    {
+      "id": "networks:lease-renews",
+      "in": "networks:lease",
+      "name": "Renews"
+    },
+    {
+      "id": "networks:lease-rebinds",
+      "in": "networks:lease",
+      "name": "Rebinds"
+    },
+    {
+      "id": "networks:lease-ends",
+      "in": "networks:lease",
+      "name": "Ends"
+    },
+    {
+      "id": "networks:lease-name-servers",
+      "in": "networks:lease",
+      "name": "Name Servers"
+    },
+    {
+      "id": "networks:lease-time-servers",
+      "in": "networks:lease",
+      "name": "Time Servers"
+    },
+    {
+      "id": "networks:lease-domain",
+      "in": "networks:lease",
+      "name": "Domain"
+    },
+    {
+      "id": "networks:lease-hostname",
+      "in": "networks:lease",
+      "name": "Machine Name"
+    },
+    {
+      "id": "networks:neighbour",
+      "in": "networks",
+      "name": "Neighbour",
+      "term": "Network/neighbour"
+    },
+    {
+      "id": "networks:neighbour-system",
+      "in": "networks:neighbour",
+      "name": "System"
+    },
+    {
+      "id": "networks:neighbour-description",
+      "in": "networks:neighbour",
+      "name": "Description"
+    },
+    {
+      "id": "networks:neighbour-port",
+      "in": "networks:neighbour",
+      "name": "Port"
+    },
+    {
+      "id": "networks:neighbour-port-name",
+      "in": "networks:neighbour",
+      "name": "Port Name"
+    },
+    {
+      "id": "networks:neighbour-chassis",
+      "in": "networks:neighbour",
+      "name": "Chassis"
+    },
+    {
+      "id": "networks:neighbour-acts",
+      "in": "networks:neighbour",
+      "name": "Acts As"
+    },
+    {
+      "id": "networks:neighbour-vlan",
+      "in": "networks:neighbour",
+      "name": "VLAN"
+    },
+    {
+      "id": "networks:neighbour-profile",
+      "in": "networks:neighbour",
+      "name": "Maker's Profile"
     },
     {
       "id": "networks:public",
@@ -3333,6 +3460,7 @@
     {
       "id": "sound",
       "name": "Sound",
+      "term": "Machine/Sound",
       "noun": "devices",
       "what": "sound",
       "glyph": "volume",
@@ -3391,7 +3519,8 @@
     {
       "id": "sound:level",
       "in": "sound",
-      "name": "Level"
+      "name": "Level",
+      "term": "Machine/level"
     },
     {
       "id": "sound:volume",
@@ -3457,7 +3586,8 @@
     {
       "id": "sound:card",
       "in": "sound",
-      "name": "Card"
+      "name": "Card",
+      "term": "Machine/card"
     },
     {
       "id": "sound:amplifiers",
@@ -3512,7 +3642,8 @@
     {
       "id": "sound:profile",
       "in": "sound",
-      "name": "Profile"
+      "name": "Profile",
+      "term": "Machine/profile"
     },
     {
       "id": "sound:rate",
@@ -4801,6 +4932,95 @@
       "ask": "which copy?"
     },
     {
+      "id": "timers",
+      "name": "Timers",
+      "term": "Desktop/timer",
+      "noun": "timers",
+      "glyph": "timer",
+      "ask": "which timer?",
+      "empty": "No timers running."
+    },
+    {
+      "id": "timer",
+      "in": "timers",
+      "name": "Timer",
+      "term": "Desktop/timer",
+      "glyph": "timer",
+      "states": {
+        "starting": {
+          "name": "Start {name}, a {span} Timer"
+        },
+        "startingUnnamed": {
+          "name": "Start a {span} Timer"
+        }
+      },
+      "said": {
+        "running": "of {span} \u00b7 ends {clock}",
+        "paused": "of {span}",
+        "pausedSide": "paused \u00b7 {left}",
+        "rung": "rang {clock}",
+        "late": "rang late, {clock}",
+        "unfit": "a timer counts more than nothing and a week at most",
+        "away": "the timers aren't answering",
+        "hours": "h",
+        "minutes": "min",
+        "seconds": "s",
+        "notice": "{span} timer",
+        "noticeLate": "{span} timer, rang late",
+        "from": "the timers"
+      }
+    },
+    {
+      "id": "verb:timer:pause",
+      "command": "pause",
+      "in": "timer",
+      "name": "Pause",
+      "verb": "pause",
+      "glyph": "pause",
+      "states": {
+        "paused": {
+          "command": "resume",
+          "name": "Resume",
+          "verb": "resume",
+          "glyph": "resume"
+        }
+      }
+    },
+    {
+      "id": "verb:timer:again",
+      "command": "retry",
+      "in": "timer",
+      "name": "Start Again",
+      "verb": "start again",
+      "glyph": "timer"
+    },
+    {
+      "id": "verb:timer:add",
+      "command": "extend",
+      "in": "timer",
+      "name": "Add a Minute",
+      "verb": "add",
+      "glyph": "timer"
+    },
+    {
+      "id": "verb:timer:end",
+      "command": "delete",
+      "in": "timer",
+      "name": "End",
+      "verb": "end",
+      "glyph": "close",
+      "act": "ending",
+      "ends": "end"
+    },
+    {
+      "id": "verb:timer:copy",
+      "command": "yank",
+      "in": "timer",
+      "name": "Copy the Time Left",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
       "id": "notices",
       "once": ["Notifications"],
       "name": "Notices",
@@ -5052,7 +5272,8 @@
     {
       "id": "displays:model",
       "in": "displays",
-      "name": "Model"
+      "name": "Model",
+      "term": "Machine/model"
     },
     {
       "id": "displays:made",
@@ -5131,6 +5352,7 @@
       "id": "capture:recent",
       "in": "capture",
       "name": "Recent",
+      "term": "Desktop/Recent",
       "verb": "more",
       "glyph": "recent",
       "empty": "Nothing yet.",
@@ -5415,8 +5637,20 @@
       "id": "person:recent",
       "in": "people",
       "name": "Recent",
+      "term": "Desktop/Recent",
       "verb": "more",
-      "glyph": "recent"
+      "glyph": "recent",
+      "empty": "Nothing yet.",
+      "said": {
+        "none": "none"
+      }
+    },
+    {
+      "id": "person:unread",
+      "in": "people",
+      "name": "Unread",
+      "verb": "more",
+      "glyph": "unread"
     },
     {
       "id": "transcripts",
@@ -6064,12 +6298,14 @@
     {
       "id": "bluetooth:version",
       "in": "bluetooth",
-      "name": "Version"
+      "name": "Version",
+      "term": "Machine/version"
     },
     {
       "id": "bluetooth:chip",
       "in": "bluetooth",
-      "name": "Model"
+      "name": "Model",
+      "term": "Machine/model"
     },
     {
       "id": "verb:bluetooth-trust",
@@ -6704,6 +6940,7 @@
       "id": "program:sound",
       "in": "applications",
       "name": "Sound",
+      "term": "Machine/Sound",
       "verb": "more",
       "glyph": "volume",
       "said": {
@@ -6755,6 +6992,7 @@
       "id": "program:microphone",
       "in": "program:sound",
       "name": "Microphone",
+      "term": "Machine/microphone",
       "verb": "more",
       "states": {
         "muted": {
@@ -6774,6 +7012,7 @@
       "id": "program:recent",
       "in": "applications",
       "name": "Recent",
+      "term": "Desktop/Recent",
       "verb": "more",
       "glyph": "recent",
       "empty": "Nothing yet.",
@@ -7491,6 +7730,14 @@
       "start": "time in ",
       "form": "⟨place⟩",
       "says": "The time somewhere"
+    },
+    {
+      "id": "command:timer",
+      "provider": "timers",
+      "start": "timer ",
+      "form": "⟨span⟩ ⟨name⟩",
+      "says": "Starts a timer that rings as a notice",
+      "verb": "start"
     },
     {
       "id": "command:weather",

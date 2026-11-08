@@ -30,6 +30,7 @@ import "Sounds.js" as Sounds
 import "Cameras.js" as Cameras
 import "Firmware.js" as Firmware
 import "Interfaces.js" as Interfaces
+import "Networkd.js" as Networkd
 import "colour-cases.js" as ColourCases
 
 QtObject {
@@ -1254,6 +1255,60 @@ QtObject {
             (value, places) => value.toFixed(places)));
         machine("a link's rate in its own units", linkRates,
             ["10 Mb/s", "100 Mb/s", "1 Gb/s", "2.5 Gb/s", "10 Gb/s"]);
+
+        // A DHCP lease as networkd's Describe says it over varlink: its
+        // times in microseconds since boot, the server's offer as options,
+        // each its bytes in hex.
+        const described = {
+            Interfaces: [{
+                Name: "cable0",
+                DHCPv4Client: {
+                    Lease: {
+                        LeaseTimestampUSec: 100000000, Timeout1USec: 43300000000,
+                        Timeout2USec: 75700000000, Hostname: "desk",
+                        Message: {
+                            options: [{ tag: 1, data: "ffffff00" }, { tag: 3, data: "0a090002" },
+                                { tag: 6, data: "0a0900030a090004" },
+                                { tag: 15, data: "686f6d652e6172706100" },
+                                { tag: 42, data: "0a090005" }, { tag: 51, data: "00015180" },
+                                { tag: 54, data: "0a090002" }]
+                        }
+                    }
+                }
+            }, { Name: "wlan0" }]
+        };
+        const leases = Networkd.leases(described);
+        machine("a lease, by its connection", leases.cable0, {
+            server: "10.9.0.2", lasts: 86400, got: 100, renews: 43300, rebinds: 75700,
+            ends: 86500, nameServers: ["10.9.0.3", "10.9.0.4"], timeServers: ["10.9.0.5"],
+            domain: "home.arpa", hostname: "desk"
+        });
+        machine("no lease where networkd holds none", "wlan0" in leases, false);
+        // An older networkd says the times alone.
+        const bare = Networkd.leases({ Interfaces: [{ Name: "eth0", DHCPv4Client: {
+            Lease: { LeaseTimestampUSec: 5000000, Timeout1USec: 6000000 } } }] }).eth0;
+        machine("a lease whose offer isn't said", [bare.server, bare.lasts, bare.got,
+            bare.renews, bare.rebinds, bare.ends, bare.nameServers], [null, null, 5, 6, null,
+            null, []]);
+        machine("nothing from a reply that isn't one", Networkd.leases(null), {});
+
+        // What's at a cable's other end, as networkd's GetLLDPNeighbors says.
+        const neighbours = Networkd.neighbours({
+            Neighbors: [{
+                InterfaceIndex: 3, InterfaceName: "cable0",
+                Neighbors: [{
+                    ChassisID: "52:54:00:aa:bb:cc", RawChassisID: [], PortID: "gi1/0/3",
+                    RawPortID: [], PortDescription: "desk drop 3", SystemName: "closet",
+                    SystemDescription: "a switch", EnabledCapabilities: 20, VlanID: 10
+                }]
+            }]
+        });
+        machine("a cable's neighbour", neighbours.cable0, [{
+            system: "closet", description: "a switch", port: "gi1/0/3",
+            portName: "desk drop 3", chassis: "52:54:00:aa:bb:cc", acts: ["bridge", "router"],
+            vlan: 10, profile: null
+        }]);
+        machine("no neighbours from a reply that isn't one", Networkd.neighbours(undefined), {});
 
         // A Wi-Fi card's link as iw reads it.
         const networkIw = "@@ link\nConnected to 02:00:00:00:02:00 (on wlp0s20f3)\n"

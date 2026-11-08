@@ -67,6 +67,18 @@ pub struct Facts {
     /// online, after GitHub's (`guide finish`), none when it adds none.
     #[serde(default)]
     pub once_signed_in: Vec<crate::finish::Added>,
+    /// Whether its firmware has a Secure Boot that takes the machine's own
+    /// keys, and whether it has a TPM, as its hardware module says. Facts
+    /// that don't say have both, as every machine did before.
+    #[serde(default = "has")]
+    pub secure_boot: bool,
+    #[serde(default = "has")]
+    pub tpm: bool,
+}
+
+/// What facts that say nothing of a capability have.
+fn has() -> bool {
+    true
 }
 
 pub fn facts(machine: &mut dyn Machine) -> Result<Facts, Fault> {
@@ -486,14 +498,21 @@ fn prove_tpm_opens(machine: &mut dyn Machine, volume: &str, pin: &Secret) -> Res
 }
 
 /// Every step on the installed machine, in order, with a spare's for
-/// each YubiKey the stick named.
+/// each YubiKey the stick named. The disk is sealed only where there's a
+/// TPM and Secure Boot both, since the seal's policy counts on Secure
+/// Boot's state, and the accounts' keys are made only where there's a TPM
+/// to hold them.
 pub fn steps(machine: &mut dyn Machine) -> Result<Vec<Box<dyn Step>>, Fault> {
-    let mut steps: Vec<Box<dyn Step>> = vec![
-        Box::new(CheckSecureBoot),
-        Box::new(SealTpm),
-        Box::new(policies::FreeOldPolicies),
-        Box::new(keys::MakeKeys),
-    ];
+    let facts = facts(machine)?;
+    let mut steps: Vec<Box<dyn Step>> = vec![];
+    if facts.secure_boot && facts.tpm {
+        steps.push(Box::new(CheckSecureBoot));
+        steps.push(Box::new(SealTpm));
+        steps.push(Box::new(policies::FreeOldPolicies));
+    }
+    if facts.tpm {
+        steps.push(Box::new(keys::MakeKeys));
+    }
     steps.extend(spares::steps(machine)?);
     Ok(steps)
 }

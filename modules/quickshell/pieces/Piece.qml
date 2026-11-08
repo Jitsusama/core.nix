@@ -13,8 +13,8 @@
 //
 // A piece with a mark is also drawn in the margin while it's true
 // (Margin.qml), as its mark alone, placed and coloured by its `kind` and
-// whether it's needed `now`. The launcher's What's on says it in words
-// (launcher/WhatsOn.qml): its `title`, how it stands (`value`), what more
+// whether it's needed `now`. The launcher's Now says it in words
+// (launcher/Now.qml): its `title`, how it stands (`value`), what more
 // there is to know (`context`), and what can be done (`actions`, launcher
 // rows that run with the launcher as `shell.launcher`); `hint` is the
 // sentence that says it whole. It `wants` Joel when he should act on it,
@@ -53,7 +53,7 @@ Item {
     // `leftOn` for a mode he set and might forget. And whether it needs
     // him now, not soon (`now`): the battery about to die, a call ringing.
     property string kind: wants ? "wants" : "leftOn"
-    // Which of Now's groups it's listed in (launcher/Now.js): its kind,
+    // Which of Now's groups it's listed in (launcher/NowGroups.js): its kind,
     // but for one with a group of its own, as what's playing has.
     property string group: kind
     property bool now: false
@@ -74,7 +74,7 @@ Item {
     // reminders and as it starts. Empty, it's said once.
     property string telling: ""
     // Whether another piece's mark stands for it, so the margin leaves its
-    // own out while What's on still lists it: quiet turned on by a share is
+    // own out while Now still lists it: quiet turned on by a share is
     // the share's, whose words say notices are held.
     property bool collected: false
     // The glyph its mark is drawn with, by name, where it isn't the mark's
@@ -129,7 +129,7 @@ Item {
             markGlyph: "",
             // The launcher's place that lists it as a row of its own, by the
             // place's name, its row's key the thing's mark, so Now draws it
-            // as that row rather than a second way (launcher/WhatsOn.qml's
+            // as that row rather than a second way (launcher/Now.qml's
             // own); "" for one that's only a fact.
             place: "",
             hue: "machine",

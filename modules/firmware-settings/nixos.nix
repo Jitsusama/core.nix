@@ -48,6 +48,27 @@ in
     '';
   };
 
+  options.jitsusama.firmware.secureBoot = lib.mkOption {
+    type = lib.types.bool;
+    default = true;
+    example = false;
+    description = ''
+      Whether the firmware has a Secure Boot that takes the machine's own
+      keys. The guide makes, seals and signs with them only where it does.
+    '';
+  };
+
+  options.jitsusama.firmware.tpm = lib.mkOption {
+    type = lib.types.bool;
+    default = true;
+    example = false;
+    description = ''
+      Whether the machine has a TPM 2.0 for the system to keep keys in. The
+      guide seals the disk to it, and makes the accounts' keys in it, only
+      where it does.
+    '';
+  };
+
   config = lib.mkIf (settings != { }) {
     environment.etc."firmware-settings".text = lib.concatLines (
       lib.mapAttrsToList (name: value: "${name}=${value}") settings

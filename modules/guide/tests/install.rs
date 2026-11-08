@@ -51,7 +51,56 @@ fn target(disk: &str) -> Target {
         start_from_stick: None,
         clear_secure_boot_keys: None,
         leave_out: vec![],
+        secure_boot: true,
+        shared: false,
     }
+}
+
+/// The ids of the install's steps for this target, starting afresh.
+fn step_ids(target: &Target) -> Vec<&'static str> {
+    guide::install::steps(target, Start::Afresh)
+        .iter()
+        .map(|step| step.id())
+        .collect()
+}
+
+#[test]
+fn a_machine_without_secure_boot_is_installed_with_no_keys_to_sign_with() {
+    let mut target = target("/dev/disk/by-id/virtio-root");
+    target.secure_boot = false;
+    let ids = step_ids(&target);
+    for absent in [
+        "check-firmware",
+        "secure-boot-keys",
+        "seal-rescue-bundle",
+        "ready-enrolment",
+        "keep-on-stick",
+    ] {
+        assert!(!ids.contains(&absent), "{absent} in {ids:?}");
+    }
+    for kept in [
+        "confirm-disk",
+        "lay-out-disk",
+        "enrol-nano",
+        "make-recovery-key",
+        "keep-recovery-key",
+        "install-system",
+        "set-password",
+        "wipe-install-key",
+    ] {
+        assert!(ids.contains(&kept), "{kept} not in {ids:?}");
+    }
+}
+
+#[test]
+fn a_target_that_says_nothing_of_secure_boot_has_it() {
+    // Sticks written before the field was there carry targets without it,
+    // and every machine they were written for boots with Secure Boot.
+    let mut written = serde_json::to_value(target("/dev/disk/by-id/virtio-root")).unwrap();
+    written.as_object_mut().unwrap().remove("secure_boot");
+    let read: Target = serde_json::from_value(written).unwrap();
+    assert!(read.secure_boot);
+    assert!(step_ids(&read).contains(&"secure-boot-keys"));
 }
 
 /// A stand-in machine on the stick, its vault open and holding this target.
@@ -583,6 +632,180 @@ fn a_volume_laid_out_for_another_machine_is_still_wiped() {
     assert!(matches!(standing, Standing::Needed { .. }), "{standing:?}");
 }
 
+/// What sfdisk printed for a disk laid out as Asahi's installer leaves an
+/// Apple silicon Mac, and once the machine's partition was added.
+const ASAHI_BEFORE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/fixtures/asahi-disk-image/sfdisk-before.json"
+));
+const ASAHI_AFTER: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/fixtures/asahi-disk-image/sfdisk-after.json"
+));
+const MAC_DISK: &str = "/dev/nvme0n1";
+const SFDISK: [&str; 2] = ["--json", MAC_DISK];
+const MADE_ROOM: [&str; 6] = [
+    "--set-alignment=256",
+    "--new=6:25274624:242965539",
+    "--typecode=6:8309",
+    "--change-name=6:system",
+    "--change-name=5:system-boot",
+    MAC_DISK,
+];
+
+/// A Mac's target, its disk shared with macOS.
+fn shared_target() -> Target {
+    let mut target = target("/dev/disk/by-id/nvme-APPLE_SSD_AP1024Z");
+    target.shared = true;
+    target.secure_boot = false;
+    target
+}
+
+/// The Mac's disk as lsblk shows it, only its boot partition named here.
+fn mac_disk() -> guide::observe::disks::Disk {
+    guide::observe::disks::Disk {
+        path: MAC_DISK.into(),
+        by_id: Some("nvme-APPLE_SSD_AP1024Z".into()),
+        model: Some("APPLE SSD AP1024Z".into()),
+        serial: None,
+        bytes: 1_000_555_581_440,
+        kind: guide::observe::disks::Kind::Internal,
+        partitions: vec![],
+    }
+}
+
+/// A machine on the Mac's stick whose partition table reads `before`, then
+/// `after` once written, m1n1 naming no boot partition.
+fn mac_stick(before: &str, after: &str) -> StandIn {
+    let mut stand_in = StandIn::new();
+    stand_in
+        .prints(Tool::Sfdisk, &SFDISK, before)
+        .prints(Tool::Sfdisk, &SFDISK, after)
+        .no_file(guide::install::disk::ASAHI_ESP)
+        .prints(Tool::Udevadm, &["settle"], "")
+        .link("/dev/disk/by-partlabel/system", Some("/dev/nvme0n1p6"))
+        .prints(Tool::Wipefs, &["--all", "/dev/nvme0n1p6"], "");
+    stand_in
+}
+
+#[test]
+fn asahis_table_is_read_with_its_numbers_and_free_space() {
+    let table = guide::observe::table::parse(ASAHI_BEFORE, MAC_DISK).unwrap();
+    assert_eq!(table.sector_size, 4096);
+    let numbers: Vec<u32> = table.entries.iter().map(|entry| entry.number).collect();
+    assert_eq!(numbers, [1, 2, 3, 4, 5]);
+    assert_eq!(table.free_number(), Some(6));
+    let esps: Vec<u32> = table
+        .entries
+        .iter()
+        .filter(|entry| entry.is_esp())
+        .map(|entry| entry.number)
+        .collect();
+    assert_eq!(esps, [5]);
+    // From the first MiB after Asahi's boot partition to the recovery
+    // container at the end.
+    let gap = table.largest_gap().unwrap();
+    assert_eq!((gap.first, gap.last), (25_274_624, 242_965_539));
+}
+
+#[test]
+fn a_shared_disk_gains_one_partition_and_a_name_for_its_boot_partition() {
+    let mut stand_in = mac_stick(ASAHI_BEFORE, ASAHI_AFTER);
+    stand_in.prints(Tool::Sgdisk, &MADE_ROOM, "");
+    guide::install::disk::make_room(&mut stand_in, &shared_target(), &mac_disk()).unwrap();
+    assert_eq!(
+        stand_in.calls,
+        [
+            "sfdisk --json /dev/nvme0n1",
+            &format!("sgdisk {}", MADE_ROOM.join(" ")),
+            "sfdisk --json /dev/nvme0n1",
+            "udevadm settle",
+            "wipefs --all /dev/nvme0n1p6",
+        ]
+    );
+}
+
+#[test]
+fn a_write_that_changed_another_partition_stops_before_anything_is_formatted() {
+    let moved = ASAHI_AFTER.replacen("\"name\": \"Container\"", "\"name\": \"Contained\"", 1);
+    let mut stand_in = mac_stick(ASAHI_BEFORE, &moved);
+    stand_in.prints(Tool::Sgdisk, &MADE_ROOM, "");
+    let made = guide::install::disk::make_room(&mut stand_in, &shared_target(), &mac_disk());
+    assert!(
+        matches!(&made, Err(Fault::Blocked { why, .. }) if why.contains("partition 2 isn't as it was")),
+        "{made:?}"
+    );
+    assert!(
+        !stand_in.calls.iter().any(|call| call.starts_with("wipefs")),
+        "{:#?}",
+        stand_in.calls
+    );
+}
+
+#[test]
+fn a_reinstall_on_a_shared_disk_wipes_only_its_own_partition() {
+    let mut stand_in = mac_stick(ASAHI_AFTER, ASAHI_AFTER);
+    guide::install::disk::make_room(&mut stand_in, &shared_target(), &mac_disk()).unwrap();
+    assert_eq!(
+        stand_in.calls,
+        ["sfdisk --json /dev/nvme0n1", "wipefs --all /dev/nvme0n1p6"]
+    );
+}
+
+#[test]
+fn a_shared_disk_without_room_for_the_machine_is_left_alone() {
+    // macOS kept nearly all of it.
+    let full = ASAHI_BEFORE.replacen("\"size\": 24414062", "\"size\": 242000000", 1);
+    let mut stand_in = mac_stick(&full, &full);
+    let made = guide::install::disk::make_room(&mut stand_in, &shared_target(), &mac_disk());
+    assert!(
+        matches!(&made, Err(Fault::Blocked { why, .. }) if why.contains("largest free space is 3 GB")),
+        "{made:?}"
+    );
+    assert_eq!(stand_in.calls, ["sfdisk --json /dev/nvme0n1"]);
+}
+
+#[test]
+fn the_boot_partition_m1n1_names_is_the_one_named_for_the_machine() {
+    // Partition 2 is macOS's container, which no system boots from.
+    let mut stand_in = mac_stick(ASAHI_BEFORE, ASAHI_AFTER);
+    stand_in.file(
+        guide::install::disk::ASAHI_ESP,
+        b"2e2b5c2a-6e43-4a0b-9f16-2c8b3d6a9e02\0",
+    );
+    let made = guide::install::disk::make_room(&mut stand_in, &shared_target(), &mac_disk());
+    assert!(
+        matches!(&made, Err(Fault::Blocked { why, .. }) if why.contains("isn't an EFI system partition")),
+        "{made:?}"
+    );
+
+    let mut stand_in = mac_stick(ASAHI_BEFORE, ASAHI_AFTER);
+    stand_in
+        .file(
+            guide::install::disk::ASAHI_ESP,
+            b"5e5b5c2a-6e43-4a0b-9f16-2c8b3d6a9e05\0",
+        )
+        .prints(Tool::Sgdisk, &MADE_ROOM, "");
+    guide::install::disk::make_room(&mut stand_in, &shared_target(), &mac_disk()).unwrap();
+}
+
+#[test]
+fn a_shared_disk_is_confirmed_as_its_partition_rather_than_the_whole_disk() {
+    let mut target = target("/dev/disk/by-id/virtio-root");
+    target.shared = true;
+    let scratch = Scratch::new("install-confirm-shared");
+    let mut stand_in = stick(&scratch, &target);
+    lsblk(&mut stand_in, fixture!("lsblk-blank.json"));
+    let Standing::Needed { asks } = ConfirmDisk.observe(&mut stand_in).unwrap() else {
+        panic!("the disk is still to confirm")
+    };
+    let said = format!("{asks:?}");
+    assert!(
+        said.contains("leaves its other partitions as they are"),
+        "{said}"
+    );
+}
+
 #[test]
 fn a_key_plugged_in_beside_another_is_never_enrolled() {
     let target = target("/dev/disk/by-id/virtio-root");
@@ -850,11 +1073,9 @@ const DUMP: [&str; 3] = [
 
 #[test]
 fn carrying_on_opens_the_disk_as_it_was_left_rather_than_wiping_it() {
-    let afresh: Vec<&str> = guide::install::steps(&["the Nano".into()], Start::Afresh)
-        .iter()
-        .map(|step| step.id())
-        .collect();
-    let carrying_on: Vec<&str> = guide::install::steps(&["the Nano".into()], Start::CarryingOn)
+    let target = target("/dev/disk/by-id/virtio-root");
+    let afresh = step_ids(&target);
+    let carrying_on: Vec<&str> = guide::install::steps(&target, Start::CarryingOn)
         .iter()
         .map(|step| step.id())
         .collect();
@@ -1281,10 +1502,7 @@ fn a_firmware_that_wont_take_the_keys_stops_the_install_before_the_disk_is_touch
         Standing::Blocked { .. }
     ));
 
-    let ids: Vec<&str> = guide::install::steps(&["the Nano".into()], Start::Afresh)
-        .iter()
-        .map(|step| step.id())
-        .collect();
+    let ids = step_ids(&target);
     let at = |id: &str| ids.iter().position(|found| *found == id).unwrap();
     assert!(at("check-firmware") < at("confirm-disk"), "{ids:?}");
     assert!(at("confirm-disk") < at("lay-out-disk"), "{ids:?}");
@@ -1435,10 +1653,7 @@ fn the_install_seals_the_keys_to_the_recovery_key_before_its_typed_back() {
         Standing::Blocked { .. }
     ));
 
-    let ids: Vec<&str> = guide::install::steps(&["the Nano".into()], Start::Afresh)
-        .iter()
-        .map(|step| step.id())
-        .collect();
+    let ids = step_ids(&target);
     let at = |id: &str| ids.iter().position(|found| *found == id).unwrap();
     assert!(at("secure-boot-keys") < at("seal-rescue-bundle"), "{ids:?}");
     assert!(
@@ -1697,10 +1912,7 @@ fn a_boot_partition_on_another_disk_than_the_vaults_is_never_signed() {
 
 #[test]
 fn the_stick_is_made_the_machines_own_only_once_the_machine_is_finished() {
-    let ids: Vec<&str> = guide::install::steps(&["the Nano".into()], Start::Afresh)
-        .iter()
-        .map(|step| step.id())
-        .collect();
+    let ids = step_ids(&target("/dev/disk/by-id/virtio-root"));
     let at = |id: &str| ids.iter().position(|found| *found == id).unwrap();
     assert!(at("set-password") < at("keep-on-stick"), "{ids:?}");
     assert!(at("wipe-install-key") < at("keep-on-stick"), "{ids:?}");

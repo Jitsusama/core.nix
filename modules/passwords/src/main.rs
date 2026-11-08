@@ -1,6 +1,7 @@
 //! passwords daemon SOCKET MANAGERS
-//! passwords find WORDS | list | show ENTRY [DETAIL] | copy ENTRY [DETAIL]
-//! passwords code ENTRY | let-in MANAGER | health
+//! passwords find WORDS | list | details ENTRY | show ENTRY [DETAIL]
+//! passwords copy ENTRY [DETAIL] | code ENTRY | let-in MANAGER | health
+//! passwords keys | help [--json]
 //!
 //! Joel's passwords, from every password manager he keeps, held ready for
 //! the shell and the command line over SOCKET in the shell's daemon
@@ -22,8 +23,13 @@
 //! cleared after CLEARS, and is never kept, written or logged here.
 //!
 //! Run with any other word, it's the command line, asking the daemon at
-//! `$PASSWORDS_SOCKET`, else `$XDG_RUNTIME_DIR/daemons/passwords.sock`. ENTRY
-//! is an entry's key or words that find just one.
+//! `$PASSWORDS_SOCKET`, else `$XDG_RUNTIME_DIR/daemons/passwords.sock`, its
+//! words, output and exit statuses as `passwords help` says (cli.rs). ENTRY
+//! is an entry's key, its title, or words that find just one. zsh completes
+//! it with what `passwords completion zsh` writes (completion.zsh), which
+//! asks `passwords names` for what the daemon holds, and never wakes a
+//! manager. `passwords keys` lists the keys 1Password's SSH agent holds,
+//! through ssh-add, only when asked: ssh and git use the TPM's agent.
 
 use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, IsTerminal, Write};
@@ -37,8 +43,8 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use passwords::{
-    Ask, Changes, DOMAIN, Held, KIND, PATIENCE, Said, Standing, VERSION, ask, error, named, now,
-    said, standing,
+    Ask, Changes, DOMAIN, Held, KIND, PATIENCE, Said, Standing, VERSION, ask, cli, error, named,
+    now, said, standing,
 };
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
@@ -91,28 +97,19 @@ struct Daemon {
 type Shared = Arc<(Mutex<Daemon>, Condvar)>;
 
 fn main() {
-    let mut args = std::env::args().skip(1);
-    match args.next().as_deref() {
-        Some("daemon") => {
-            let (Some(socket), Some(managers)) = (args.next(), args.next()) else {
-                eprintln!("usage: passwords daemon SOCKET MANAGERS");
-                std::process::exit(64);
-            };
-            daemon(&PathBuf::from(socket), &managers);
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let typed = match cli::parse(&args) {
+        Ok(typed) => typed,
+        Err(why) => {
+            eprintln!("passwords: {why}\n\n{}", cli::USAGE);
+            std::process::exit(cli::MISTYPED);
         }
-        Some(asked) => {
-            let rest: Vec<String> = args.collect();
-            std::process::exit(command_line(asked, &rest));
-        }
-        None => {
-            eprintln!("{USAGE}");
-            std::process::exit(64);
-        }
+    };
+    match typed.command {
+        cli::Command::Daemon { socket, managers } => daemon(&PathBuf::from(socket), &managers),
+        command => std::process::exit(command_line(command, typed.json)),
     }
 }
-
-const USAGE: &str = "usage: passwords find WORDS | list | show ENTRY [DETAIL] | copy ENTRY [DETAIL]
-       passwords code ENTRY | let-in MANAGER | health | daemon SOCKET MANAGERS";
 
 fn daemon(socket: &std::path::Path, managers: &str) {
     let managers: Vec<Manager> = match std::fs::read_to_string(managers)
@@ -446,22 +443,22 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
             limit,
             fresh,
             asked,
+            held,
             patience,
         } => {
-            list(shared, fresh, asked, patience);
-            let daemon = lock(shared);
-            let mut records = daemon.held.records();
-            if let Some(limit) = limit {
-                records.truncate(limit);
+            if !held {
+                list(shared, fresh, asked, patience);
             }
-            json!({"id": id, "records": records, "sources": daemon.held.standings()})
+            listed(shared, &id, limit)
         }
         Ask::Get {
             id,
             keys,
             asked,
+            held,
             patience,
-        } => get(shared, &id, &keys, asked, patience),
+        } if !held => get(shared, &id, &keys, asked, patience),
+        Ask::Get { id, keys, .. } => held_records(shared, &id, &keys),
         Ask::Watch { id } => {
             let mut daemon = lock(shared);
             let records = daemon.held.records();
@@ -522,6 +519,16 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
         ),
         Ask::Unknown { id, ask } => error(&id, "unknown-ask", &format!("can't answer {ask:?}")),
     }
+}
+
+/// Every entry held, at most `limit`, and how each manager stands.
+fn listed(shared: &Shared, id: &Value, limit: Option<usize>) -> Value {
+    let daemon = lock(shared);
+    let mut records = daemon.held.records();
+    if let Some(limit) = limit {
+        records.truncate(limit);
+    }
+    json!({"id": id, "records": records, "sources": daemon.held.standings()})
 }
 
 /// Reads every manager's list, each on its own thread, where one hasn't
@@ -585,6 +592,11 @@ fn get(shared: &Shared, id: &Value, keys: &[String], asked: bool, patience: u64)
     for thread in reading {
         let _ = thread.join();
     }
+    held_records(shared, id, keys)
+}
+
+/// Entries by key as they're held now, whether in full or in summary.
+fn held_records(shared: &Shared, id: &Value, keys: &[String]) -> Value {
     let daemon = lock(shared);
     let records: Vec<Value> = keys
         .iter()
@@ -720,103 +732,208 @@ fn code(shared: &Shared, id: &Value, key: &str) -> Value {
     }
 }
 
-/// The command line: one ask of the daemon, said for a person to read.
-fn command_line(asked: &str, rest: &[String]) -> i32 {
-    let socket = std::env::var("PASSWORDS_SOCKET").map_or_else(
-        |_| {
-            let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_owned());
-            PathBuf::from(runtime).join("daemons/passwords.sock")
-        },
-        PathBuf::from,
-    );
-    let Ok(stream) = UnixStream::connect(&socket) else {
-        eprintln!("passwords isn't answering at {}", socket.display());
-        return 69;
+/// The command line: one command, its answer set for a person at a
+/// terminal or for a program reading a pipe, or as `--json`, and its exit
+/// status as the usage says.
+fn command_line(command: cli::Command, json: bool) -> i32 {
+    let terminal = std::io::stdout().is_terminal();
+    match command {
+        cli::Command::Help => {
+            say(cli::USAGE);
+            return 0;
+        }
+        cli::Command::Completion => {
+            say(include_str!("completion.zsh"));
+            return 0;
+        }
+        cli::Command::Keys => return keys(json, terminal),
+        _ => {}
+    }
+    let Some(mut talk) = Talk::open(matches!(command, cli::Command::Names(_))) else {
+        return cli::UNANSWERED;
     };
-    let mut talk = Talk {
-        reading: BufReader::new(
-            stream
-                .try_clone()
-                .expect("a socket can be read and written"),
-        ),
-        writing: stream,
-        next: 1,
-    };
-    let words = rest.join(" ");
-    match asked {
-        "find" | "list" => {
-            let answer = if asked == "find" {
-                talk.ask(json!({"ask": "list", "asked": true}));
-                talk.ask(json!({"ask": "search", "words": words}))
-            } else {
-                talk.ask(json!({"ask": "list", "asked": true}))
-            };
-            print_entries(&answer);
+    match command {
+        cli::Command::Find(words) => talk.found(&words, json, terminal),
+        cli::Command::List => {
+            let answer = talk.ask(json!({"ask": "list", "asked": true}));
+            entries(&answer, json, terminal);
             0
         }
-        "show" | "copy" => {
-            let Some((entry, detail)) = rest.split_first() else {
-                eprintln!("{USAGE}");
-                return 64;
-            };
-            let Some(key) = talk.find(entry) else {
-                return 1;
-            };
-            let mut ask =
-                json!({"ask": if asked == "show" { "reveal" } else { "copy" }, "key": key});
-            if let Some(detail) = detail.first() {
-                ask["detail"] = json!(detail);
-            }
-            let answer = talk.ask(ask);
-            if let Some(failed) = failed(&answer) {
-                return failed;
-            }
-            if asked == "show" {
-                println!("{}", answer["value"].as_str().unwrap_or(""));
-            } else {
-                let left = answer["clears"].as_u64().unwrap_or(0).saturating_sub(now()) / 1000;
-                println!(
-                    "Copied its {}; the clipboard clears in {left} s.",
-                    answer["detail"].as_str().unwrap_or("password")
-                );
-            }
-            0
-        }
-        "code" => {
+        cli::Command::Details(words) => {
             let Some(key) = talk.find(&words) else {
-                return 1;
+                return cli::FAILED;
+            };
+            match talk.entry(&key) {
+                Ok(record) if json => say(&cli::as_json(&record)),
+                Ok(record) => say(&cli::details(&record, terminal)),
+                Err(failed) => return failed,
+            }
+            0
+        }
+        cli::Command::Show { entry, detail } => {
+            talk.secret(&entry, detail.as_deref(), Secret::Show, json, terminal)
+        }
+        cli::Command::Copy { entry, detail } => {
+            talk.secret(&entry, detail.as_deref(), Secret::Copy, json, terminal)
+        }
+        cli::Command::Code(words) => {
+            let Some(key) = talk.find(&words) else {
+                return cli::FAILED;
             };
             let answer = talk.ask(json!({"ask": "code", "key": key}));
             if let Some(failed) = failed(&answer) {
                 return failed;
             }
-            println!(
-                "{} ({} s left)",
-                answer["code"].as_str().unwrap_or(""),
-                answer["left"].as_u64().unwrap_or(0)
-            );
+            say(&if json {
+                cli::as_json(&answer)
+            } else {
+                cli::code(&answer, terminal)
+            });
             0
         }
-        "let-in" => {
-            let answer = talk.ask(json!({"ask": "let-in", "manager": words}));
-            failed(&answer).unwrap_or_else(|| {
-                println!("{words} let passwords in.");
-                0
-            })
+        cli::Command::LetIn(manager) => {
+            // Letting in waits on Joel, for as long as he takes to answer.
+            let answer =
+                talk.ask(json!({"ask": "let-in", "manager": manager, "patience": 120_000}));
+            if let Some(failed) = failed(&answer) {
+                return failed;
+            }
+            if json {
+                say(&cli::as_json(&answer));
+            } else if terminal {
+                say(&format!("{manager} let passwords in.\n"));
+            }
+            0
         }
-        "health" => {
+        cli::Command::Health => {
             let answer = talk.ask(json!({"ask": "health"}));
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&answer).unwrap_or_default()
-            );
+            say(&if json {
+                cli::as_json(&answer)
+            } else {
+                cli::health(&answer, terminal)
+            });
             0
         }
-        _ => {
-            eprintln!("{USAGE}");
-            64
+        cli::Command::Names(names) => {
+            talk.names(&names);
+            0
+        }
+        cli::Command::Daemon { .. }
+        | cli::Command::Help
+        | cli::Command::Completion
+        | cli::Command::Keys => unreachable!("answered before the daemon was asked"),
+    }
+}
+
+/// Writes what the command says, saying nothing more if whatever reads it
+/// has gone, as `head` goes once it has its lines.
+fn say(text: &str) {
+    let mut out = std::io::stdout().lock();
+    let _ = out.write_all(text.as_bytes()).and_then(|()| out.flush());
+}
+
+/// Entries from a list or a search, as `--json`, a person or a program reads
+/// them; a program is told on standard error of a manager not answering,
+/// which a person reads in the head.
+fn entries(answer: &Value, json: bool, terminal: bool) {
+    if json {
+        say(&cli::as_json(&answer["records"]));
+        return;
+    }
+    say(&cli::entries(answer, terminal));
+    if !terminal {
+        for said in cli::standings(&answer["sources"]) {
+            eprintln!("{said}");
         }
     }
+}
+
+/// ssh-add and ssh-keygen as the package names them, else as the PATH has
+/// them.
+const SSH_ADD: &str = match option_env!("PASSWORDS_SSH_ADD") {
+    Some(program) => program,
+    None => "ssh-add",
+};
+const SSH_KEYGEN: &str = match option_env!("PASSWORDS_SSH_KEYGEN") {
+    Some(program) => program,
+    None => "ssh-keygen",
+};
+
+/// The keys 1Password's SSH agent holds, read from its socket only when
+/// Joel asks. ssh and git sign with the TPM's agent, never this one, so
+/// nothing else here reaches it. Listing keys reads only their public
+/// halves; nothing is signed and no key is added or taken away.
+fn keys(json: bool, terminal: bool) -> i32 {
+    let home = std::env::var_os("HOME").unwrap_or_default();
+    let socket = PathBuf::from(home).join(".1password/agent.sock");
+    let unanswered = |said: &str| {
+        eprintln!(
+            "1Password's SSH agent isn't answering at {}{said}; 1Password's Settings, under \
+             Developer, turns it on.",
+            socket.display()
+        );
+        cli::UNANSWERED
+    };
+    if !socket.exists() {
+        return unanswered("");
+    }
+    let listed = match Command::new(SSH_ADD)
+        .arg("-L")
+        .env("SSH_AUTH_SOCK", &socket)
+        .stdin(Stdio::null())
+        .output()
+    {
+        Ok(listed) => listed,
+        Err(why) => {
+            eprintln!("couldn't run ssh-add: {why}");
+            return cli::FAILED;
+        }
+    };
+    let public = String::from_utf8_lossy(&listed.stdout).into_owned();
+    let refused = String::from_utf8_lossy(&listed.stderr).trim().to_owned();
+    let keys = match listed.status.code() {
+        Some(0) => match fingerprints(&public) {
+            Ok(fingerprints) => cli::keys(&public, &fingerprints),
+            Err(why) => {
+                eprintln!("couldn't read the keys' fingerprints: {why}");
+                return cli::FAILED;
+            }
+        },
+        // ssh-add says on standard output that an agent holds no key, and
+        // on standard error why it couldn't list them.
+        Some(1) if refused.is_empty() => Vec::new(),
+        Some(1) => {
+            eprintln!("1Password's SSH agent didn't list its keys: {refused}");
+            return cli::FAILED;
+        }
+        _ => return unanswered(&format!(" ({refused})")),
+    };
+    say(&if json {
+        cli::as_json(&Value::Array(keys))
+    } else {
+        cli::keys_text(&keys, terminal)
+    });
+    0
+}
+
+/// What `ssh-keygen -l` says of each public key, a line each, in order.
+fn fingerprints(public: &str) -> std::io::Result<String> {
+    let mut child = Command::new(SSH_KEYGEN)
+        .args(["-l", "-E", "sha256", "-f", "-"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    if let Some(mut input) = child.stdin.take() {
+        input.write_all(public.as_bytes())?;
+    }
+    let said = child.wait_with_output()?;
+    if !said.status.success() {
+        return Err(std::io::Error::other(
+            String::from_utf8_lossy(&said.stderr).trim().to_owned(),
+        ));
+    }
+    Ok(String::from_utf8_lossy(&said.stdout).into_owned())
 }
 
 /// One client's talk with the daemon over its socket.
@@ -827,6 +944,36 @@ struct Talk {
 }
 
 impl Talk {
+    /// A talk with the daemon at `$PASSWORDS_SOCKET`, else in the account's
+    /// runtime folder, saying so if it isn't answering, unless it's for
+    /// completion, which says nothing and waits only a moment: it reads
+    /// what's held alone, which answers at once, so a Tab is never held up.
+    fn open(completing: bool) -> Option<Talk> {
+        let socket = std::env::var("PASSWORDS_SOCKET").map_or_else(
+            |_| {
+                let runtime =
+                    std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_owned());
+                PathBuf::from(runtime).join("daemons/passwords.sock")
+            },
+            PathBuf::from,
+        );
+        let Ok(stream) = UnixStream::connect(&socket) else {
+            if !completing {
+                eprintln!("passwords isn't answering at {}", socket.display());
+            }
+            return None;
+        };
+        if completing {
+            let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+        }
+        let reading = stream.try_clone().ok()?;
+        Some(Talk {
+            reading: BufReader::new(reading),
+            writing: stream,
+            next: 1,
+        })
+    }
+
     /// Asks one thing and waits for its answer.
     fn ask(&mut self, mut asked: Value) -> Value {
         let id = self.next;
@@ -853,106 +1000,166 @@ impl Talk {
         }
     }
 
+    /// The entries some words find, every one read first, as Joel asked;
+    /// failing when they find none.
+    fn found(&mut self, words: &str, json: bool, terminal: bool) -> i32 {
+        let listed = self.ask(json!({"ask": "list", "asked": true}));
+        let mut answer = self.ask(json!({"ask": "search", "words": words, "limit": cli::EVERY}));
+        if let Some(failed) = failed(&answer) {
+            return failed;
+        }
+        // A search says nothing of the managers; the list it follows does.
+        answer["sources"] = listed["sources"].clone();
+        entries(&answer, json, terminal);
+        if answer["records"].as_array().is_some_and(Vec::is_empty) {
+            eprintln!("No entry is found by {words:?}.");
+            return cli::FAILED;
+        }
+        0
+    }
+
     /// The key of the one entry these words name: a key as it is, else
-    /// the one entry a search finds, else none, saying which it found.
+    /// the one entry a search finds, or the one of them titled so, else
+    /// none, saying what it found. Joel typed it, so a manager not read
+    /// yet may ask him to let passwords in.
     fn find(&mut self, words: &str) -> Option<String> {
         if named(words).is_some() {
             return Some(words.to_owned());
         }
         self.ask(json!({"ask": "list", "asked": true}));
-        let answer = self.ask(json!({"ask": "search", "words": words}));
+        let answer = self.ask(json!({"ask": "search", "words": words, "limit": cli::EVERY}));
         let found = answer["records"].as_array().cloned().unwrap_or_default();
-        match found.as_slice() {
-            [one] => one["key"].as_str().map(str::to_owned),
-            [] => {
+        match cli::resolve(words, &found) {
+            cli::Resolved::One(key) => Some(key),
+            cli::Resolved::None => {
                 eprintln!("No entry is found by {words:?}.");
                 None
             }
-            many => {
-                // The one titled exactly so, if just one is.
-                let exact: Vec<&Value> = many
-                    .iter()
-                    .filter(|record| {
-                        record["title"]
-                            .as_str()
-                            .is_some_and(|title| title.eq_ignore_ascii_case(words))
-                    })
-                    .collect();
-                if let [one] = exact.as_slice() {
-                    return one["key"].as_str().map(str::to_owned);
-                }
-                eprintln!("{} entries are found by {words:?}; say which:", many.len());
-                print_entries(&json!({"records": many}));
+            cli::Resolved::Many(many) => {
+                eprintln!("{words:?} finds more than one entry; name one by its title or key:");
+                eprint!(
+                    "{}",
+                    cli::entries(&json!({"records": many}), std::io::stderr().is_terminal())
+                );
                 None
             }
         }
     }
+
+    /// One entry in full, every detail but no hidden one's value, read
+    /// from its manager if only its summary is held; or the exit status,
+    /// having said why.
+    fn entry(&mut self, key: &str) -> Result<Value, i32> {
+        let answer = self.ask(json!({"ask": "get", "keys": [key], "asked": true}));
+        if let Some(failed) = failed(&answer) {
+            return Err(failed);
+        }
+        match answer["records"].get(0) {
+            Some(record) if record["details"].is_array() => Ok(record.clone()),
+            Some(_) => {
+                for said in cli::standings(&answer["sources"]) {
+                    eprintln!("{said}");
+                }
+                eprintln!("Its details couldn't be read.");
+                Err(cli::FAILED)
+            }
+            None => {
+                eprintln!("No entry is held as {key}.");
+                Err(cli::FAILED)
+            }
+        }
+    }
+
+    /// A detail's value shown or copied, the password unless one is named
+    /// by its label or id.
+    fn secret(
+        &mut self,
+        entry: &str,
+        detail: Option<&str>,
+        secret: Secret,
+        json: bool,
+        terminal: bool,
+    ) -> i32 {
+        let Some(key) = self.find(entry) else {
+            return cli::FAILED;
+        };
+        let asked = match secret {
+            Secret::Show => "reveal",
+            Secret::Copy => "copy",
+        };
+        let mut ask = json!({"ask": asked, "key": key});
+        if let Some(detail) = detail {
+            let named = self.entry(&key).and_then(|record| {
+                cli::detail_id(&record, detail).map_err(|why| {
+                    eprintln!("{why}");
+                    cli::FAILED
+                })
+            });
+            match named {
+                Ok(id) => ask["detail"] = json!(id),
+                Err(failed) => return failed,
+            }
+        }
+        let answer = self.ask(ask);
+        if let Some(failed) = failed(&answer) {
+            return failed;
+        }
+        say(&match (json, secret) {
+            (true, _) => cli::as_json(&answer),
+            (false, Secret::Show) => format!("{}\n", answer["value"].as_str().unwrap_or("")),
+            (false, Secret::Copy) => cli::copied(&answer, now(), terminal),
+        });
+        0
+    }
+
+    /// What zsh's completion offers, from what the daemon holds alone: no
+    /// manager is asked anything, so a Tab never makes one ask Joel's
+    /// leave. Saying nothing is enough when nothing's held or found.
+    fn names(&mut self, names: &cli::Names) {
+        let offered = match names {
+            cli::Names::Entries => {
+                let answer = self.ask(json!({"ask": "list", "held": true}));
+                let records = answer["records"].as_array().cloned().unwrap_or_default();
+                cli::entry_names(&records)
+            }
+            cli::Names::Details(entry) => {
+                let key = if named(entry).is_some() {
+                    entry.clone()
+                } else {
+                    // A search reads only what's held.
+                    let answer =
+                        self.ask(json!({"ask": "search", "words": entry, "limit": cli::EVERY}));
+                    let found = answer["records"].as_array().cloned().unwrap_or_default();
+                    let cli::Resolved::One(key) = cli::resolve(entry, &found) else {
+                        return;
+                    };
+                    key
+                };
+                let answer = self.ask(json!({"ask": "get", "keys": [key], "held": true}));
+                answer["records"]
+                    .get(0)
+                    .map(cli::detail_names)
+                    .unwrap_or_default()
+            }
+            cli::Names::Managers => {
+                let answer = self.ask(json!({"ask": "hello"}));
+                cli::manager_names(&answer["sources"])
+            }
+        };
+        say(&cli::for_zsh(&offered));
+    }
+}
+
+/// Which way a secret goes: to the terminal, or onto the clipboard.
+#[derive(Clone, Copy)]
+enum Secret {
+    Show,
+    Copy,
 }
 
 /// Whether an answer failed, saying why and giving the exit status.
 fn failed(answer: &Value) -> Option<i32> {
     let error = answer.get("error")?;
     eprintln!("{}", error["message"].as_str().unwrap_or("it failed"));
-    Some(match error["code"].as_str() {
-        Some("signed-out") => 77,
-        Some("not-ready") => 75,
-        _ => 1,
-    })
-}
-
-/// Entries, one a line: the title, its kind, its username and website,
-/// then its key, in columns when a person reads them, tabs when a program
-/// does.
-fn print_entries(answer: &Value) {
-    let records = answer["records"].as_array().cloned().unwrap_or_default();
-    let rows: Vec<[String; 5]> = records
-        .iter()
-        .map(|record| {
-            let text = |name: &str| record[name].as_str().unwrap_or("").to_owned();
-            let website = record["websites"]
-                .as_array()
-                .and_then(|websites| websites.first())
-                .and_then(|website| website["address"].as_str())
-                .unwrap_or("")
-                .to_owned();
-            [
-                text("title"),
-                text("category"),
-                text("username"),
-                website,
-                text("key"),
-            ]
-        })
-        .collect();
-    if !std::io::stdout().is_terminal() {
-        for row in rows {
-            println!("{}", row.join("\t"));
-        }
-        return;
-    }
-    let mut widths = [0usize; 5];
-    for row in &rows {
-        for (width, cell) in widths.iter_mut().zip(row) {
-            *width = (*width).max(cell.chars().count());
-        }
-    }
-    for row in rows {
-        let cells: Vec<String> = row
-            .iter()
-            .zip(widths)
-            .map(|(cell, width)| format!("{cell:width$}"))
-            .collect();
-        println!("{}", cells.join("  ").trim_end());
-    }
-    if let Some(managers) = answer["sources"].as_object() {
-        for (manager, standing) in managers {
-            if standing["state"] != "answering" {
-                eprintln!(
-                    "{manager}: {} {}",
-                    standing["state"].as_str().unwrap_or(""),
-                    standing["reason"].as_str().unwrap_or("")
-                );
-            }
-        }
-    }
+    Some(cli::status(error))
 }

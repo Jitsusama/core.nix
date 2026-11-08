@@ -65,6 +65,7 @@ in
   GUIDE_RSYNC = lib.getExe pkgs.rsync;
   GUIDE_RUNUSER = lib.getExe' pkgs.util-linux "runuser";
   GUIDE_SBCTL = lib.getExe pkgs.sbctl;
+  GUIDE_SFDISK = lib.getExe' pkgs.util-linux "sfdisk";
   GUIDE_SGDISK = lib.getExe' pkgs.gptfdisk "sgdisk";
   # Built for the guide alone, so nothing else on a machine rebuilds: its
   # spares step reads a YubiKey holding no resident keys as having none to

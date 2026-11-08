@@ -1,0 +1,16 @@
+# The timers daemon: Joel's timers, kept and rung whether or not the shell
+# is up to show them (src/main.rs says how).
+[package]
+name = "timers"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# A clock that wakes at a time of day, through a suspend or a clock change.
+rustix = { version = "1.1", features = ["event", "time"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Its notice when one rings, and what Joel does with it, over D-Bus.
+zbus = "5"

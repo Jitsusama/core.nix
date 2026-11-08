@@ -1,12 +1,13 @@
-// biome lints the JavaScript the shell runs in Qt's engine, through
-// tests/qt-javascript-lint.sh, with every rule on but those below, each with
-// the reason it doesn't fit. Qt's engine (QV4) parses neither an object
-// spread nor a catch with no binding, so the rules asking for those are off.
-// It lints Chrome's open-tabs extension too, as it is (treefmt.nix), which
-// runs in Chrome with its `chrome` object, and the web kit's CSS
-// (modules/theme/web), which keeps every colour in theme.css's roles. Qt's
-// engine gives every library its `Qt` object, whose locale names the days and
-// months. Nothing here is formatted by biome.
+// biome lints four kinds of file, with every rule on but those below, each
+// with the reason it doesn't fit. The shell's JavaScript runs in Qt's engine
+// and is read through tests/qt-javascript-lint.sh, unformatted. Qt's engine
+// (QV4) parses neither an object spread nor a catch with no binding, so the
+// rules asking for those are off for it, and it gives every library its `Qt`
+// object, whose locale names the days and months. Chrome's open-tabs
+// extension is linted as it is (treefmt.nix), running in Chrome with its
+// `chrome` object, and so is the web kit's CSS (modules/theme/web), which
+// keeps every colour in theme.css's roles. Node's JavaScript, the .mjs tests
+// and pi's TypeScript extensions, is formatted too, by `nix fmt`.
 {
   "formatter": { "enabled": false },
   "assist": { "enabled": false },
@@ -50,6 +51,57 @@
             // after the kit, which only !important can promise.
             "noImportantStyles": "off"
           }
+        }
+      }
+    },
+    {
+      // Node's JavaScript, at core's line width, with what Qt's engine
+      // can't parse asked for again.
+      "includes": ["**/*.mjs", "**/*.ts"],
+      "formatter": { "enabled": true, "indentStyle": "space", "lineWidth": 100 },
+      "linter": {
+        "rules": {
+          "complexity": { "noUselessCatchBinding": "error" },
+          "correctness": {
+            // Node's programs import Node's own modules and read its process.
+            "noNodejsModules": "off",
+            "noProcessGlobal": "off"
+          },
+          "performance": { "noNamespaceImport": "error" },
+          "style": {
+            // A program here is configured by its environment, as pi is.
+            "noProcessEnv": "off",
+            "useFilenamingConvention": "error",
+            "useObjectSpread": "error"
+          },
+          "suspicious": {
+            // A test here is a script that asserts as it goes, with no
+            // framework around its asserts.
+            "noMisplacedAssertion": "off"
+          }
+        }
+      }
+    },
+    {
+      // A test's numbers are its example's, read where they're used, and
+      // its strings are selectors and stand-ins' sources, which read to the
+      // secrets rule as random, never a secret.
+      "includes": ["tests/**/*.mjs"],
+      "linter": {
+        "rules": {
+          "style": { "noMagicNumbers": "off" },
+          "security": { "noSecrets": "off" }
+        }
+      }
+    },
+    {
+      "includes": ["modules/pi/**/*.ts"],
+      "linter": {
+        "rules": {
+          // pi loads an extension by its default export, and gives it pi's
+          // own packages as it loads it, so core installs none.
+          "style": { "noDefaultExport": "off" },
+          "correctness": { "noUndeclaredDependencies": "off", "noUnresolvedImports": "off" }
         }
       }
     }

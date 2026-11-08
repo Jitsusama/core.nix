@@ -177,10 +177,16 @@ of each kind of line it sets, and a row's pitch is its height.
   taking the next unit past 999 ("370 Mb/s", "1.20 Gb/s"), and a negative
   one the real minus ("−48 dBm"), never a hyphen; a figure that names
   rather than measures keeps every digit (a mode's "120.001 Hz", a
-  channel's "5,745 MHz", a version). A count says what it
-  counts, never its source's name ("24 known · 15 on Wi-Fi"), and a part
-  of it that's zero gives way ("9, all on Wi-Fi"). A run of items joins
-  with dots, never a comma beside a dot. **Check:** each feature named in the table
+  channel's "5,745 MHz", a version). Sizes are decimal, worked out
+  from bytes ("1.52 GB of 4.08 GB", "915 MB"), never a GiB beside a GB;
+  thousands take a comma ("4,000 K", "2,400 rpm"); a scale reads "2×",
+  never "200%"; and a pair says which is which ("12 kB/s in · 0 B/s
+  out"). A count says what it counts, never its source's name ("24 known ·
+  15 on Wi-Fi"), a part of it that's zero gives way, and one its row
+  already says isn't said again ("all on Wi-Fi" under "9 devices"). A run
+  of items joins with dots, never a comma beside a dot, and a qualifier
+  follows its figure after a dot ("−60 dBm · strong", "Wed 2 Dec · a
+  guess"). **Check:** each feature named in the table
   and seen in a crop at the device scale.
 - **At least what it replaces.** A redesign keeps whatever today's surface
   does better (2026-11-02: "the existing launcher design has better
@@ -773,7 +779,13 @@ give way. Nothing says what Escape does, since it only ever leaves a mode.
 session, a network, a device, a copy) says its kind at its right edge, muted:
 `program`, `window`, `pi`, from one closed list, so a kind is learned once.
 Its detail, a window count, a workspace or what the program is, follows its
-name, muted. A row for an act or a set already says what it is in its name
+name, muted. How it stands goes at its right, the state first and then
+its figure ("paused · 9:50", "ready · short of memory", "this machine ·
+−75 dBm"), never after its name. A note is a run of items, lowercase
+where the words are ours, never a sentence with a capital and a stop
+("found by its meaning"), written most-needed first, so that short of
+room it gives way by whole items from its end, never to an ellipsis
+(VKCF3Z, 2026-11-08). A row for an act or a set already says what it is in its name
 ("Lock the screen", "Windows"), so its chord stays at the right. A thing's
 chord is taught in the foot instead, "next time" and the keys. Inside a
 collection the path in the field says the kind, so its rows don't. What
@@ -1168,12 +1180,13 @@ works the same way everywhere.
   same for every program and each only while it applies, made as it's
   stepped into: first what can be done (Go To the window used last,
   New Window, New Window Below, and its desktop entry's own actions such
-  as Chrome's New Incognito Window), then its Recent, what it had open
-  lately, newest first, each the thing it is (a file, a folder, a site),
-  led by what it has open now, which says so first at its right and
-  where it is after ("open in 2 windows · ~/Downloads"), so a side cut
-  short loses where and never the state, then its other windows by
-  title, its Notifications, newest first, its Shortcuts, any part of
+  as Chrome's New Incognito Window), then what it has open now, each
+  the thing it is (a file, a site, every tab behind the front one too),
+  newest looked at first, saying so first at its right and where it is
+  after ("open in 2 windows · ~/Downloads"), so a side cut short loses
+  where and never the state, then its other windows by title, only
+  those no open thing stands for, then its Recent, only what's closed,
+  its Notifications, newest first, its Shortcuts, any part of
   its own, such as the theme, and Quit, asked once
   since a window may hold unsaved work. Media while it has a player
   (Play or Pause, Next, Previous, and what's playing) and Sound while it
@@ -1204,6 +1217,23 @@ works the same way everywhere.
   (Joel, 2026-11-07: "keep"). Its say counts what it holds by kind ("1 tab
   · 2 recent", "3 today") and names one ("next 14:00 · Design Review") only
   where none is listed under it, so it never says a row below it again.
+- **Recent means one thing.** Recent is the last nine things Joel did
+  with a thing, newest first, each once, by what it is (a file by its
+  path, a site by its page), never what's open now or already shown
+  above it (VKCF3Z, 2026-10-30). A program's holds what it opened or
+  saved and has closed since, a person's what he had with them (a
+  meeting held, a call, a conversation), Capture's what he took, and
+  each is laid out by the one rule (Recent.js). It always
+  stands where its thing keeps any, so it never arrives late at the
+  bottom: how many at its right, "none" while it holds nothing and an
+  ellipsis while its source first answers, after its name the names it
+  holds, newest first, as many whole as fit and never how many more,
+  which its right already says ("Wikipedia, Kayak" after Recent and 9
+  at its right; VKCF3Z, 2026-11-07), and "Nothing yet." stepped into empty. Every row
+  holding things reads that way, Unread too: names after its name, how
+  many at its right, nothing in the foot. What waits on Joel is
+  never Recent: a person's unread mail is their Unread, before it,
+  standing only while there's any.
 - **Acts in one order.** Every kind of thing lists what's inside it in
   the same order, so three anchors are all there is to learn: the top row
   does it, what ends it comes near the bottom, and Copy is last. Between
@@ -1404,7 +1434,9 @@ works the same way everywhere.
   likeliest act first inside, so Return twice does it: a person, a quest,
   a device, a network, a setting, a place. A network's Return only shows
   it, since connecting to one lets go of another. Return never calls
-  someone or starts something new by itself. A meeting joins on Return
+  someone or starts something new by itself: a call in Tuple's Recent
+  goes in, Call Ada Again first, so Return twice rings her (VKCF3Z,
+  2026-11-08). A meeting joins on Return
   only from ten minutes before it starts, and
   before then goes in, Join first, so Joel is never made to join early
   (2026-10-26: "they force me to join, and what if I want to cancel");
@@ -1607,7 +1639,16 @@ works the same way everywhere.
   fixed placeholder, and none that only says again the name, or what the
   row's side or note already says: a speaker's row saying "volume 100%"
   leaves its Volume fact "0 dB", and a fact equal in every part says it
-  once ("stereo · balanced"); then its words,
+  once ("stereo · balanced"). Said once runs the other way too: a row
+  says what its neighbours' rows say, and what more only its own would
+  is the drawer's, so with the drawer out the selected row's side reads
+  as the rows around it ("9 devices", its backhaul in Backhaul), and a
+  note leaves out what its drawer's facts say (a cap's "$0 spent", its
+  Resets in the drawer). What's the same on every row of a list, as a
+  folder every screenshot shares, is said once, in the eyebrow. A thing
+  has one drawer wherever it's reached: Now's Microphone opens Sound's
+  drawer for it, and Now draws its own only for what no place holds,
+  as Disk or Lag (VKCF3Z, 2026-11-08); then its words,
   a notice's in the serif upright its card reads them in; then its picture. Its
   text is as far from its frame as the card's (the inset, l and the
   hairline) on every side, its foot included, so it ends at the last
@@ -1666,7 +1707,7 @@ works the same way everywhere.
 - **A file picked shows what it is** (Joel, 2026-11-03: "i see no
   previews for files ... no clue about sizes or when last updated"). In
   the file picker, a row in the folder shown says its size in SI units,
-  one decimal under 10 ("940 kB", "2.4 MB"), or a folder its count, and
+  three significant digits ("940 kB", "2.41 MB"), or a folder its count, and
   when it changed, as the launcher says when on a row: "just now", then
   minutes ago under an hour, its time today, "yesterday", its weekday
   within six days, its day this year, and its day and year before that,
@@ -2761,7 +2802,7 @@ What each studio round settled, newest first, with the reason.
   somehow"). The marks wore the lock screen's text shadows, one set off
   down and right, which is lopsided at six pixels, and one sixteen pixels
   soft, which reached past the twelve pixel gap onto the window. Grown to
-  twice the gap in What's on, they crossed the windows' borders wherever
+  twice the gap in Now, they crossed the windows' borders wherever
   they sat, as anything past the gap must. So each mark has a shade of
   its own, a pixel round it, and nothing grows: the accent alone points,
   since Joel is already looking once he's asked. Research on placement
@@ -2802,7 +2843,7 @@ What each studio round settled, newest first, with the reason.
   stands the same height, inside the gap the windows already leave, since
   a taller gap would move every window. The third round, "it seems nice i
   think", is what's built: glyphs alone, level, coloured only by how much
-  each asks, with their words in the launcher's What's on, a surface Joel
+  each asks, with their words in the launcher's Now, a surface Joel
   already knows. A sixteen-pixel gap read better in the mock but cost
   every window four pixels, so twelve stays.
 

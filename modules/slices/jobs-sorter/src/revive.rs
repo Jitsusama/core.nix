@@ -15,7 +15,11 @@
 //! to give back [`ASK`] through its `memory.reclaim`, more than the high
 //! watermark of about 700 MB: reclaim that makes progress clears the
 //! give-up once the node is balanced. It asks at most once every
-//! [`SPACED`], so a give-up that lasts doesn't empty the jobs slice.
+//! [`SPACED`], so a give-up that lasts doesn't empty the jobs slice, and
+//! each ask the give-up outlasts doubles the wait before the next, up to
+//! [`LONGEST`]: on 8 November free memory sat at 70 MB for hours, and an
+//! ask every 5 s, 599 in six hours, kept the sorter reclaiming at a whole
+//! core and pushed agents' work into swap without clearing anything.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -25,8 +29,11 @@ use std::time::{Duration, Instant};
 /// What the jobs slice is asked to give back.
 pub const ASK: &str = "1G";
 
-/// The least time between two asks while a give-up lasts.
+/// The time between the first two asks of a give-up.
 pub const SPACED: Duration = Duration::from_secs(5);
+
+/// The most time between two asks while a give-up lasts.
+pub const LONGEST: Duration = Duration::from_mins(5);
 
 /// How often the give-up is looked for.
 pub const EVERY: Duration = Duration::from_secs(1);
@@ -45,6 +52,7 @@ pub fn hopeless(zoneinfo: &str) -> bool {
 pub struct Reviver {
     reclaim: PathBuf,
     asked: Option<Instant>,
+    spacing: Duration,
 }
 
 impl Reviver {
@@ -53,19 +61,27 @@ impl Reviver {
         Reviver {
             reclaim: jobs.join("memory.reclaim"),
             asked: None,
+            spacing: SPACED,
         }
     }
 
     /// Looks at `zoneinfo` at `now` and asks the jobs slice for [`ASK`] if
-    /// a node has given up and the last ask is [`SPACED`] ago or more.
-    /// Says whether it asked.
+    /// a node has given up and the last ask is long enough ago: [`SPACED`]
+    /// after a give-up's first, then twice the wait before it, up to
+    /// [`LONGEST`]. Says whether it asked.
     pub fn step(&mut self, zoneinfo: &str, now: Instant) -> bool {
-        if !hopeless(zoneinfo)
-            || self
-                .asked
-                .is_some_and(|asked| now.duration_since(asked) < SPACED)
-        {
+        if !hopeless(zoneinfo) {
+            self.asked = None;
+            self.spacing = SPACED;
             return false;
+        }
+        if let Some(asked) = self.asked {
+            if now.duration_since(asked) < self.spacing {
+                return false;
+            }
+            // The give-up outlasted the last ask, so this one waits longer
+            // for the next.
+            self.spacing = (self.spacing * 2).min(LONGEST);
         }
         self.asked = Some(now);
         // A reclaim that falls short of the ask says so, having still
@@ -151,5 +167,45 @@ mod tests {
         assert!(reviver.step(&zoneinfo(1), began));
         assert!(!reviver.step(&zoneinfo(1), began + Duration::from_secs(1)));
         assert!(reviver.step(&zoneinfo(1), began + SPACED));
+    }
+
+    #[test]
+    fn a_give_up_that_outlasts_each_ask_is_asked_of_less_and_less() {
+        // On 8 November free memory sat at 70 MB under a 686 MB high
+        // watermark for hours, and an ask every 5 s, 599 in six hours,
+        // kept the sorter reclaiming at a whole core and pushed agents'
+        // work into swap without ever clearing the give-up.
+        let folder = folder("backs-off");
+        let mut reviver = Reviver::new(folder.as_path());
+        let began = Instant::now();
+        let at = |seconds| began + Duration::from_secs(seconds);
+        assert!(reviver.step(&zoneinfo(1), at(0)));
+        assert!(reviver.step(&zoneinfo(1), at(5)));
+        assert!(!reviver.step(&zoneinfo(1), at(14)));
+        assert!(reviver.step(&zoneinfo(1), at(15)));
+        assert!(!reviver.step(&zoneinfo(1), at(34)));
+        assert!(reviver.step(&zoneinfo(1), at(35)));
+        let mut last = 35;
+        for _ in 0..10 {
+            last += LONGEST.as_secs();
+            assert!(
+                reviver.step(&zoneinfo(1), at(last)),
+                "never spaced past LONGEST"
+            );
+        }
+    }
+
+    #[test]
+    fn a_cleared_give_up_starts_the_spacing_again() {
+        let folder = folder("starts-again");
+        let mut reviver = Reviver::new(folder.as_path());
+        let began = Instant::now();
+        let at = |seconds| began + Duration::from_secs(seconds);
+        assert!(reviver.step(&zoneinfo(1), at(0)));
+        assert!(reviver.step(&zoneinfo(1), at(5)));
+        assert!(reviver.step(&zoneinfo(1), at(15)));
+        assert!(!reviver.step(&zoneinfo(0), at(16)));
+        assert!(reviver.step(&zoneinfo(1), at(17)));
+        assert!(reviver.step(&zoneinfo(1), at(22)));
     }
 }

@@ -2,6 +2,7 @@
 # run as it builds.
 {
   lib,
+  openssh,
   rustPlatform,
 }:
 rustPlatform.buildRustPackage {
@@ -17,6 +18,12 @@ rustPlatform.buildRustPackage {
     ];
   };
   cargoLock.lockFile = ./Cargo.lock;
+  # `passwords keys` lists 1Password's SSH agent's keys with these, named
+  # as it's built so it never runs whichever an account's PATH finds first.
+  env = {
+    PASSWORDS_SSH_ADD = lib.getExe' openssh "ssh-add";
+    PASSWORDS_SSH_KEYGEN = lib.getExe' openssh "ssh-keygen";
+  };
   meta = {
     description = "Holds Joel's passwords ready for the shell and the command line, from each password manager";
     license = lib.licenses.mit;

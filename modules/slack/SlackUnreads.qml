@@ -29,6 +29,9 @@ Singleton {
     readonly property string stands: Unreads.standing(told)
     readonly property bool shown: Unreads.shown(told, stands)
     readonly property string value: Unreads.value(told, stands)
+    // How many to read, bare, for a row whose name says what it counts, as
+    // Slack's own Unread (VKCF3Z, 2026-11-08).
+    readonly property string counted: stands === "ok" ? String(Unreads.count(told)) : ""
     readonly property string context: Unreads.context(told, stands)
     readonly property string hint: Unreads.hint(told, stands)
     // Why there's no count, for Slack's program row (SlackProgram.qml).
@@ -41,8 +44,6 @@ Singleton {
     // merely unread, for Slack's own Unread, of which Now's are the first
     // three groups, so the two never disagree.
     readonly property var unread: stands === "ok" ? told.conversations : []
-    // Who and where, of every one unread.
-    readonly property string unreadContext: Unreads.context(told, stands, true)
     // What he read last, newest first, for Slack's Recent.
     readonly property var recent: stands === "ok" ? told.recent : []
 

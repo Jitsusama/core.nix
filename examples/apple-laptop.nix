@@ -9,20 +9,16 @@ nixpkgs.lib.nixosSystem {
     core.nixosModules.graphical
     core.nixosModules.laptop
     core.nixosModules.apple-macbook-air-m2-a2681
+    core.nixosModules.disko
     {
       networking.hostName = "example-apple-laptop";
 
       # Asahi's installer leaves the EFI system partition beside macOS's
       # stub, and the system goes in the space it left free.
-      fileSystems = {
-        "/" = {
-          device = "/dev/disk/by-label/nixos";
-          fsType = "btrfs";
-        };
-        "/boot" = {
-          device = "/dev/disk/by-partuuid/example";
-          fsType = "vfat";
-        };
+      jitsusama.disk = {
+        device = "/dev/disk/by-id/nvme-example";
+        swapSize = "24G";
+        shared = true;
       };
 
       users.users.joel.isNormalUser = true;

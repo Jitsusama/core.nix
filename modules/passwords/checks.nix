@@ -14,12 +14,74 @@
 onLinux {
   # The passwords daemon's tests run as it builds, with stand-in password
   # managers in the shell: a list holds every entry and no secret, even
-  # one a manager gives with its secrets on; a secret goes only to the
-  # client that asked to see it, or to the clipboard marked sensitive,
-  # cleared when its time is up; a one-time code says its period; a
-  # manager signed out is said so and gives no secret; a watch hears
-  # entries arrive; and an ask or kind it doesn't know is refused.
+  # one a manager gives with its secrets on; a held list or get asks no
+  # manager anything; a secret goes only to the client that asked to see
+  # it, or to the clipboard marked sensitive, cleared when its time is up;
+  # a one-time code says its period; a manager signed out is said so and
+  # gives no secret; a watch hears entries arrive; and an ask or kind it
+  # doesn't know is refused. The command's tests run too: each answer set
+  # in columns under a header for a person and tab-separated for a
+  # program, its --json the daemon's answer with no secret but show's, a
+  # title and a detail's label naming what they name, each exit status the
+  # usage says, and what completion asks answered from what's held.
   passwords-holds-no-secret = pkgs.callPackage ./package.nix { };
+  # passwords keys lists what an SSH agent holds where 1Password's
+  # listens, ~/.1password/agent.sock: a row a key, its type, size,
+  # fingerprint, comment and public half, the same as --json, nothing for
+  # an agent holding nothing, and how to turn it on when none listens. Its
+  # agent is a stand-in ssh-agent the tests start in a home of their own,
+  # holding a key made for them, so 1Password's is never reached
+  # (tests/keys.rs).
+  passwords-lists-1passwords-ssh-keys = (pkgs.callPackage ./package.nix { }).overrideAttrs (old: {
+    pname = "passwords-lists-1passwords-ssh-keys";
+    nativeCheckInputs = (old.nativeCheckInputs or [ ]) ++ [ pkgs.openssh ];
+    cargoTestFlags = [
+      "--test"
+      "keys"
+    ];
+    checkFlags = [ "--ignored" ];
+    installPhase = ''
+      touch $out
+    '';
+  });
+  # passwords completes in zsh, typed in a real line editor with the real
+  # passwords and the completion home.nix installs, against a daemon with
+  # a stand-in manager: its commands, each entry by its title once a list
+  # has read it, an entry's details by their labels once it's been read in
+  # full, each manager, and --json; and no Tab asks the manager anything
+  # (tests/passwords-completion.zsh).
+  passwords-completes-in-zsh =
+    let
+      passwords = pkgs.callPackage ./package.nix { };
+    in
+    pkgs.runCommandLocal "passwords-completes-in-zsh"
+      {
+        nativeBuildInputs = [
+          passwords
+          pkgs.bash
+          pkgs.zsh
+        ];
+      }
+      ''
+        export HOME=$PWD PASSWORDS_SOCKET=$PWD/run/passwords.sock ASKED=$PWD/asked.log
+        mkdir -m 700 run
+        cat > managers.json <<EOF
+        {"managers": [{"name": "keeping",
+          "command": ["${lib.getExe pkgs.bash}", "${./tests/keeping-manager.sh}", "$ASKED"]}]}
+        EOF
+        passwords daemon "$PASSWORDS_SOCKET" managers.json &
+        daemon=$!
+        for _ in $(seq 100); do
+          [ -S "$PASSWORDS_SOCKET" ] && passwords health | grep -q answering && break
+          sleep 0.1
+        done
+        status=0
+        zsh -f ${./tests/passwords-completion.zsh} \
+          ${pkgs.callPackage ./completion.nix { }}/share/zsh/site-functions/_passwords || status=$?
+        kill $daemon
+        [ $status = 0 ] || exit $status
+        touch $out
+      '';
   # clippy finds nothing in the passwords daemon, its tests included.
   passwords-passes-clippy = passesClippy "passwords-passes-clippy" (
     pkgs.callPackage ./package.nix { }

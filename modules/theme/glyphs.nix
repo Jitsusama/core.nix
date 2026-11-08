@@ -8,7 +8,7 @@
 # on a 12 by 12 grid, filled even-odd, every one touching the grid's top and
 # bottom and centred across it. A font's glyph is drawn for text's size and
 # goes to mush at half the gap, where these are drawn; the same drawing
-# grows, whole, when What's on opens.
+# grows, whole, when Now opens.
 { lib }:
 let
   # A mark from the icon font by its code point, since an editor may not
@@ -1343,6 +1343,13 @@ in
     glyph = nerd "f0150";
     console = "o";
     means = "the time somewhere, and how far it's ahead of here or behind";
+  };
+  # An alarm clock, since a timer is a span counted down to a ring, where
+  # duration's stopwatch is only how long something takes.
+  timer = {
+    glyph = nerd "f0020";
+    console = "T";
+    means = "a timer, counting down to when it rings";
   };
   zone = {
     glyph = nerd "f01e7";

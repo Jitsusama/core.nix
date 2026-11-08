@@ -987,6 +987,24 @@ onLinux {
       touch $out
     '';
 
+  # A timer's span and name are read from what's typed after "timer", its
+  # time left told as a clock and its span in its largest units, and timers
+  # listed rung first, as tests/timing.qml holds launcher/Timing.js to it in
+  # Qt's own engine.
+  a-timer-is-read-from-what-is-typed =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-timer-is-read-from-what-is-typed" { } ''
+      cp ${../../tests/timing.qml} timing.qml
+      cp ${./launcher/Timing.js} Timing.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml timing.qml
+      touch $out
+    '';
+
   # Every list of pi sessions keeps one order of how they stand, and Agents
   # lays each under the session orchestrating it, a step in, at most two,
   # an orchestration standing where its most urgent row would, as
@@ -1118,6 +1136,7 @@ onLinux {
       cp ${./launcher/Standing.js} Standing.js
       cp ${./launcher/Traffic.js} Traffic.js
       cp ${./launcher/Interfaces.js} Interfaces.js
+      cp ${./launcher/Networkd.js} Networkd.js
       cp ${./launcher/Links.js} Links.js
       cp ${./launcher/Sounds.js} Sounds.js
       cp ${./launcher/Cameras.js} Cameras.js
@@ -1624,9 +1643,9 @@ onLinux {
       cp ${./launcher/Provider.qml} launcher/Provider.qml
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
-      cp ${./launcher/WhatsOn.qml} launcher/WhatsOn.qml
+      cp ${./launcher/Now.qml} launcher/Now.qml
       cp ${./launcher/Moment.js} launcher/Moment.js
-      cp ${./launcher/Now.js} launcher/Now.js
+      cp ${./launcher/NowGroups.js} launcher/NowGroups.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/now-moment.qml} shell.qml
@@ -1766,6 +1785,7 @@ onLinux {
         cp ${./launcher/Waits.qml} launcher/Waits.qml
         cp ${./launcher/Vendors.qml} launcher/Vendors.qml
         cp ${./launcher/Interfaces.js} launcher/Interfaces.js
+        cp ${./launcher/Networkd.js} launcher/Networkd.js
         cp ${./launcher/Subnets.js} launcher/Subnets.js
         cp ${./launcher/Networks.qml} launcher/Networks.qml
         cp ${./launcher/Characters.js} launcher/Characters.js
@@ -2704,6 +2724,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${../people/People.qml} launcher/People.qml
+      cp ${./launcher/Recent.js} launcher/Recent.js
       cp ${../people/Person.js} launcher/Person.js
       cp ${./launcher/Zones.js} launcher/Zones.js
       cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
@@ -3212,14 +3233,14 @@ onLinux {
     '';
 
   # Now lists what's on by its groups, what wants Joel first, then by name
-  # within each, as tests/now-groups.qml holds launcher/Now.js to it.
+  # within each, as tests/now-groups.qml holds launcher/NowGroups.js to it.
   now-lists-by-group =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "now-lists-by-group" { } ''
       cp ${../../tests/now-groups.qml} now-groups.qml
-      cp ${./launcher/Now.js} Now.js
+      cp ${./launcher/NowGroups.js} NowGroups.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -3777,6 +3798,19 @@ onLinux {
   # clippy finds nothing in timekeeping, its tests included.
   timekeeping-passes-clippy = passesClippy "timekeeping-passes-clippy" (
     pkgs.callPackage ./timekeeping/package.nix { }
+  );
+
+  # The timers daemon's tests run as it builds: a timer started is told to
+  # every watch and rings as a critical notice once its end passes, the
+  # notice's Again sets it going afresh and putting it away ends it, ending
+  # one rung takes its notice back, a ring with no server to take it is
+  # said once one comes, what's kept outlasts the daemon, one that ended
+  # meanwhile ringing late, and an ask it can't do is refused.
+  timers-are-kept-and-rung = pkgs.callPackage ./timers/package.nix { };
+
+  # clippy finds nothing in the timers daemon, its tests included.
+  timers-passes-clippy = passesClippy "timers-passes-clippy" (
+    pkgs.callPackage ./timers/package.nix { }
   );
 
   # clippy finds nothing in whereabouts, its tests included.

@@ -264,7 +264,7 @@ STRAY_UNITS = [
 # second word is part of it ("log out", "go to"), as the launcher's foot
 # keeps it whole (Launcher.qml's `phrasal`).
 TURN = "turn"
-PHRASAL = {"in", "out", "back", "to", "afresh"}
+PHRASAL = {"in", "out", "back", "to", "afresh", "again"}
 FORGET = "forget"
 FORGETTING = {"forget", "dismiss"}
 

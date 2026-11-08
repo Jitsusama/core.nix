@@ -152,6 +152,16 @@
     # colourful through the same degamma curve, colour matrix and gamma
     # curve, as much as NIRI_PANEL_SATURATION says, which home.nix sets from
     # jitsusama.niri.panelSaturation; an IPC-only action changes it live.
+    #
+    # niri walks every window after each wakeup of its loop, and each
+    # commit a client makes wakes it, so with 81 windows open, most of them
+    # terminals, it woke about 990 times a second and spent 35 to 49% of a
+    # core walking them. The patch (refreshes-once-a-frame.patch, last)
+    # walks them at most once a frame of the fastest screen, a timer taking
+    # what a wakeup puts off; input, an action, a focus change and a window
+    # coming or going still have it at once. Its tests run as niri builds,
+    # and niri-refreshes-once-a-frame counts its refreshes under a client
+    # committing a thousand times a second.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
@@ -182,6 +192,7 @@
         ./opens-next-window-as-column.patch
         ./on-demand-when-asked.patch
         ./panel-saturation.patch
+        ./refreshes-once-a-frame.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.

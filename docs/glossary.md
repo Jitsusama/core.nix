@@ -194,6 +194,10 @@ be read, marked unread and archived.
 | join | going into a meeting's call, or a call another sends | | |
 | cancel | taking a meeting Joel holds off everyone's calendar, Google telling each guest | delete | |
 | Slack message | a message in Slack, found by searching Slack and opened in its conversation | | the Slack daemon's `slack-message` |
+| Media | the place holding every player and what each is playing, beside Sound, which holds the devices it plays through | | `program:media` |
+| player | a program playing sound or video that the desktop can pause, skip and go to, such as Spotify or a browser's tab | | MPRIS, `Playing.qml` |
+| track | what a player is playing: one song, episode or video, with its artist and album | | MPRIS's `xesam` metadata |
+| speed | how fast a player plays its track against the track's own pace, such as one and a half times | | MPRIS's `Rate` |
 
 ## People
 
@@ -240,6 +244,7 @@ or a copy, can be opened, copied or forgotten.
 | row | one thing in a place | | |
 | home | the launcher's first place: Now, Agents, Programs, People, Desktop, Machine, Network and Keyboards | | |
 | crumbs | where Joel is in the launcher, from home | | |
+| Recent | the group of the last things done with what holds it, as in a program, a person or Capture: newest first, each once, never one open or shown already | | `*:recent` |
 | field | the line at the top of every place: the find line, or the command line in its place | | |
 | back | going up one place, to the row he was on, with h, - or Backspace | | the `out` act |
 | action | what a row can do: the same set for every row of its kind | verb | |
@@ -250,11 +255,14 @@ or a copy, can be opened, copied or forgotten.
 | turn off | the action stopping a setting, a radio or a light | | |
 | forget | the action taking an item out of its list, such as a notice, a copy or what's waiting | let it go | |
 | foot | the status line at the bottom of the launcher and held notices: the mode, the position and what the keys do | | `foot` |
-| Now | the launcher's view of what's on and waiting, on Super+O | What's on | `WhatsOn.qml` |
+| Now | the launcher's view of what's on and waiting, on Super+O | What's on | `Now.qml` |
 | Needs You | what only Joel can do, each raised by the session that needs him | waiting on you, to do | `WaitingOnYou.qml` |
 | clipboard | what was copied last, and what was copied before it | | |
-| capture | taking a picture or a recording of the screen | | |
+| timer | a span Joel sets counting down, which rings as a notice when it ends, kept by its daemon so it rings with the launcher closed; Timers is the place holding them | countdown, alarm | `HeldTimers.qml`, the `timers` program |
+| capture | taking a screenshot or a recording of the screen, or a photo or a video with the camera, and the place holding them | | |
 | screenshot | a picture Joel takes of the screen | screen shot | |
+| recording | a video Joel takes of the screen, of all of it, a window or a region | | |
+| photo | a picture Joel takes with the camera | | |
 | screenshot text | the words in a screenshot, read on the machine as it's taken, so it's found by them and they can be copied | OCR | `screen-text` |
 | location | where the laptop is, its town and the zone it keeps, Now's row and the one place the weather and everything that depends on it read it from | | `Location.qml`, the `whereabouts` program |
 | here | where the weather is when no town is typed: the location, else the town set, else the clock's time zone's city | | the weather provider's `place` |
@@ -270,8 +278,10 @@ off.
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
 | machine | one computer | host, computer | `nixosConfigurations.laptop`; `hostName`, which NixOS requires |
-| firmware | the program in the machine's chip that starts it, and its settings | BIOS, UEFI | |
+| firmware | the program in a chip that runs it: the machine's, which starts it and keeps its settings, or a device's, such as a keyboard's or a sound card's | BIOS, UEFI | |
 | processor | what runs every program | CPU | |
+| model | a device's maker's name for what it is, such as a processor's, a disk's, a battery's or a keyboard's | | |
+| version | which release of a device's firmware is in it, or which Bluetooth its radio speaks, as its maker numbers them | | fwupd's `version` |
 | graphics | the processor's part that draws what the screens show | | the GPU, Xe |
 | NPU | the processor's part that runs models on the machine | | the `intel_vpu` driver |
 | media engine | the processor's part that encodes and decodes video | | |
@@ -315,6 +325,12 @@ off.
 | docked | the laptop at a desk with a monitor plugged in, kept awake with its lid shut | on a dock, at a desk | |
 | Bluetooth | the radio that reaches headphones, keyboards and mice, and the place listing every device it reaches, to pair and connect | | BlueZ |
 | Nearby | the Bluetooth devices heard but not paired | | |
+| Sound | the place holding what the machine plays through and hears with, built in or plugged in, and what each program plays and records | | `Sound.qml`, PipeWire |
+| volume | how loud a device or a program plays, as a share of its full level | | |
+| microphone | what the machine hears with: built in, a headset's or plugged in, chosen in Sound | | |
+| card | the chip a sound device plays through or hears with, as the kernel lists it | | ALSA's card |
+| profile | what a headset carries now: music one way, or both ways for a call | | Bluetooth's A2DP and HFP |
+| level | how loud a sound device plays or hears at this moment, as its meter draws it, apart from its volume | | `sound:level` |
 | camera board | the part in the lid holding the built-in camera, which Dell fits in more than one kind | camera module | `jitsusama.dellXps14.cameraBoard` |
 | image processor | the part turning the built-in camera's raw picture into an image | ISP, IPU | |
 | IR camera | the infrared camera beside the built-in camera, for signing in by face | | `ir-camera`, Howdy |
@@ -338,6 +354,8 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | connection | the network link out of the machine | line, uplink | |
 | speed | how fast the connection, or a device on the home network, carries data now, each way | network speed, connection speed, bandwidth | `traffic` |
 | address | an address the machine has on a network | network address, IP | `networks` |
+| lease | an address a network's server lends for a while, to the machine or to the gateway node, with the name servers and domain that come with it | | DHCP, `leases` |
+| neighbour | what a cable's other end says it is, such as a switch, and the port of it the machine is plugged into | | LLDP, `neighbours` |
 | Wi-Fi | the network without a cable | WLAN, wireless | `wifid`, `wifi` |
 | Ethernet | the network through a cable | wired | |
 | tethering | reaching out through a phone's connection, over its cable | | |
@@ -361,6 +379,8 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | speed test | eero measuring the most the internet carries each way, from the gateway node | speedtest | `speedtest` |
 | traffic | how much data the home network, a node or a device moved, by hour | data usage | `usage`, `data_usage` |
 | profile | a group of devices eero lets through or holds off together | | `profiles` |
+| light | a node's status light, on or off and how bright | | eero's `led_on`, `led_brightness` |
+| mode | how the gateway node gets its address: lent by the internet provider's server, set by hand, or through a sign-in | | eero's `lease.mode` |
 
 ## Disk
 
@@ -371,6 +391,7 @@ now, and keep or stop keeping a folder.
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
 | disk | the machine's storage | drive, SSD, storage | NVMe; `jitsusama.disk`, from disko |
+| spare | the share of a disk's reserve blocks left, which it puts in place of worn ones | | SMART's `avail_spare` |
 | boot partition | the disk's small first part, which the firmware starts from | ESP | `/boot` |
 | filesystem | how a disk's room is kept as files | | Btrfs, a subvolume |
 | snapshot | a filesystem's copy kept from a moment, which the guard may clear | | a Btrfs snapshot |

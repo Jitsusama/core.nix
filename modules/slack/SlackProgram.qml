@@ -17,6 +17,7 @@
 // stands is SlackUnreads.qml's, so this keeps nothing of its own.
 import qs
 import QtQuick
+import "Recent.js" as Recent
 
 Provider {
     id: provider
@@ -76,7 +77,10 @@ Provider {
     }
 
     // Unread, which steps in to each conversation as it stands when
-    // stepped into.
+    // stepped into. Its row reads as every row holding things does: their
+    // names after its name, as many whole as fit, and how many to read at
+    // its side, bare, since its name says what's counted, nothing in the
+    // foot (VKCF3Z, 2026-11-07 and 2026-11-08).
     function unread() {
         const key = "slack:unread";
         return thing({
@@ -85,9 +89,8 @@ Provider {
             verb: Words.verb(key),
             glyph: Words.glyph(key),
             hue: "program",
-            count: String(SlackUnreads.unread.length),
-            side: SlackUnreads.value,
-            note: SlackUnreads.unreadContext,
+            count: Recent.said(SlackUnreads.unread.map(one => one.name), false, {}).note,
+            side: SlackUnreads.counted,
             ask: "which?",
             nested: true,
             targets: () => SlackUnreads.unread.map(conversation)

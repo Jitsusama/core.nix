@@ -157,6 +157,7 @@ let
     "Changes.js"
     "Ex.js"
     "HeldNotices.qml"
+    "HeldTimers.qml"
     "Notifications.qml"
     "Music.qml"
     "Music.js"
@@ -238,6 +239,7 @@ let
     "launcher/Cameras.js"
     "launcher/Firmware.js"
     "launcher/Interfaces.js"
+    "launcher/Networkd.js"
     "launcher/Links.js"
     "launcher/Sounds.js"
     "launcher/Numbers.js"
@@ -249,6 +251,7 @@ let
     "launcher/Moment.js"
     "launcher/Keeping.js"
     "launcher/Ago.js"
+    "launcher/Timing.js"
     "launcher/Colours.js"
     "launcher/Asking.js"
     "launcher/Catalogue.js"
@@ -265,7 +268,7 @@ let
     "launcher/Emoji.js"
     "launcher/KeyGroups.js"
     "launcher/Keyboards.js"
-    "launcher/Now.js"
+    "launcher/NowGroups.js"
     "launcher/Notice.js"
   ];
 
@@ -645,6 +648,7 @@ let
     characters = ./launcher/Characters.qml;
     colours = ./launcher/Colours.qml;
     time = ./launcher/Clocks.qml;
+    timers = ./launcher/Timers.qml;
     weather = ./launcher/Weather.qml;
     ask = ./launcher/Ask.qml;
     machine = ./launcher/Machine.qml;
@@ -661,7 +665,7 @@ let
     keyboard = ./launcher/Keyboard.qml;
     clipboard = ./launcher/Copies.qml;
     notices = ./launcher/PastNotices.qml;
-    on = ./launcher/WhatsOn.qml;
+    on = ./launcher/Now.qml;
     wifi = ./launcher/Wireless.qml;
     eero = ./launcher/HomeNetwork.qml;
     sound = ./launcher/Sound.qml;
@@ -706,6 +710,26 @@ let
   # the machine keeps it with chrony.
   timekeeping = pkgs.callPackage ./timekeeping/package.nix { };
   keepsTime = osConfig.services.chrony.enable or false;
+  # The program that keeps Joel's timers and rings them, for Timers.
+  timers = pkgs.callPackage ./timers/package.nix { };
+  keepsTimers = launcher.providers.timers.enable or false;
+  # What a timer's notice says, from the launcher's vocabulary, so a word
+  # is said in one place.
+  timerWords =
+    let
+      named = id: (lib.findFirst (thing: thing.id == id) { } launcher.words.things).name or id;
+      said = (lib.findFirst (thing: thing.id == "timer") { } launcher.words.things).said or { };
+    in
+    pkgs.writeText "timer-words.json" (
+      builtins.toJSON {
+        app = named "timers";
+        unnamed = named "timer";
+        rang = said.notice;
+        late = said.noticeLate;
+        again = named "verb:timer:again";
+        inherit (said) hours minutes seconds;
+      }
+    );
   # Whether shutting the lid on the charger suspends the machine, as logind
   # does unless told otherwise; the lid module tells it to ignore it. Only
   # where it suspends does keeping awake need to hold the lid too. Only
@@ -1209,6 +1233,12 @@ in
         source = "time";
         zone = osConfig.time.timeZone or null;
         inherit (launcher) lookups;
+      };
+      # Joel's timers, beside the time, which the timers daemon keeps and
+      # rings.
+      timers = {
+        order = 95;
+        source = "timers";
       };
       machine = {
         order = 100;
@@ -2103,6 +2133,38 @@ in
       };
       Install.WantedBy = [ "sockets.target" ];
     };
+    # Joel's timers, kept and rung by their daemon whether or not the shell
+    # is up (timers/src/main.rs). It runs from the start of the session, not
+    # only once asked, so a timer kept through a reboot rings on time; its
+    # socket is systemd's, so the shell asking while it starts again waits
+    # on it rather than finding nothing there.
+    systemd.user.sockets.timers = lib.mkIf keepsTimers {
+      Unit.Description = "Where the launcher asks after Joel's timers";
+      Socket = {
+        ListenStream = "%t/daemons/timers.sock";
+        SocketMode = "0600";
+        DirectoryMode = "0700";
+      };
+      Install.WantedBy = [ "sockets.target" ];
+    };
+    systemd.user.services.timers = lib.mkIf keepsTimers {
+      Unit = {
+        Description = "Keeps Joel's timers and rings each as a notice";
+        # Restarted after a switch, it comes back as the new one, every
+        # timer read back from where it's kept.
+        X-SwitchMethod = "restart";
+        Requires = [ "timers.socket" ];
+        After = [ "timers.socket" ];
+      };
+      Service = {
+        StateDirectory = "timers";
+        ExecStart = "${lib.getExe timers} %t/daemons/timers.sock %S/timers/held.json ${timerWords}";
+        Restart = "on-failure";
+        RestartSec = 1;
+      };
+      Install.WantedBy = [ "default.target" ];
+    };
+
     systemd.user.services.timekeeping = lib.mkIf keepsTime {
       Unit = {
         Description = "Says how the clock is kept, for the launcher's Time";

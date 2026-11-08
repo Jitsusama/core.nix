@@ -1,4 +1,4 @@
-// Drives Now's own rows (modules/quickshell/launcher/WhatsOn.qml) through
+// Drives Now's own rows (modules/quickshell/launcher/Now.qml) through
 // Quickshell itself, with the margin's pieces, the agents' waiting list,
 // the launcher, the weather and the calendar stood in, and Location.qml's
 // own, reading a file beside the shell and a stand-in timedatectl. After
@@ -101,7 +101,7 @@ ShellRoot {
         }
     }
 
-    Launcher.WhatsOn {
+    Launcher.Now {
         id: now
 
         launcher: launcher

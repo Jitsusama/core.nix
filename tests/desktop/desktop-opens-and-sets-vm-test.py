@@ -1,7 +1,7 @@
 """The desktop test's opens and sets area.
 
 Here the launcher opens and sets what the machine has: sound and its outputs' parts, the
-power profile, displays, Wi-Fi and the addresses.
+power profile, displays, Wi-Fi, the addresses and Joel's timers.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
@@ -1584,7 +1584,7 @@ def test_a_cable_says_how_its_link_is_doing(desktop: Desktop) -> None:
     # card counts it.
     machine.send_monitor_command("set_link cable off")
     desktop.launcher_until(
-        lambda shown: "State \u00b7 up, nothing at the other end" in reads(shown),
+        lambda shown: "State \u00b7 nothing at the other end" in reads(shown),
         timeout=timedelta(seconds=10),
     )
     machine.send_monitor_command("set_link cable on")
@@ -1599,6 +1599,161 @@ def test_a_cable_says_how_its_link_is_doing(desktop: Desktop) -> None:
         lambda shown: shown["rows"][:4] == ["In", "Out", "Dropped In", "Dropped Out"]
     )
     assert reads(desktop.showing())[:2] == ["In \u00b7 none", "Out \u00b7 none"]
+    desktop.close_launcher()
+
+
+# Where the timers daemon keeps its timers, in the account's state.
+TIMERS_KEPT = "~/.local/state/timers/held.json"
+# The timers the gallery shows: one left running, one paused, one rung.
+TIMERS_SHOWN = ("timer 25m bread", "timer 10m tea", "timer 1s eggs")
+
+
+def test_a_timer_started_in_the_launcher_rings_as_a_notice_with_it_closed(
+    desktop: Desktop,
+) -> None:
+    """A timer typed in the launcher rings as a notice with it closed, and putting it away ends it.
+
+    The timers daemon keeps it, so it rings without the launcher, and the notice is its own over
+    D-Bus; the notice put away tells the daemon, which lets the timer go. Its gallery holds
+    Timers with one running, one paused and one rung, at both of Joel's scales.
+    """
+    machine = desktop.machine
+    desktop.answer("timer 3s tea")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name") == "Start Tea, a 3 s Timer"
+    )
+    desktop.shoot("launcher-timer-typed")
+    # Return from the find lands on it, since it starts something, and a second does it, the
+    # answer becoming the timer it started, counting.
+    desktop.land()
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: str((shown["selected"] or {}).get("name")).startswith("Tea \u00b7 ")
+    )
+    desktop.close_launcher()
+    rang = 'qs ipc call notices front | grep -qF \'"signed":"Timers"\''
+    machine.wait_until_succeeds(desktop.in_session(rang), timeout=timedelta(seconds=30))
+    desktop.shoot("notice-timer-rung")
+    kept = desktop.as_account(f"cat {TIMERS_KEPT}")
+    assert '"state":"rung"' in kept, kept
+    desktop.as_account("qs ipc call notices putAway")
+    gone = f"! grep -q timer: {TIMERS_KEPT}"
+    machine.wait_until_succeeds(desktop.in_session(gone), timeout=timedelta(seconds=15))
+    desktop.as_account("qs ipc call notices seen")
+    # Only the gallery sets more going, for its shots.
+    if desktop.values["shots"]:
+        shoot_the_timers(desktop)
+
+
+def shoot_the_timers(desktop: Desktop) -> None:
+    """Shoot Timers holding one running, one paused and one rung, at Joel's two scales."""
+    machine = desktop.machine
+    for typed in TIMERS_SHOWN:
+        desktop.answer(typed)
+        desktop.land()
+        machine.send_key("ret")
+        desktop.launcher_until(
+            lambda shown: " \u00b7 " in str((shown["selected"] or {}).get("name"))
+        )
+        desktop.close_launcher()
+    # The rung one's notice is taken back as its sender would take it, which
+    # leaves the timer rung, since putting it away would end it; the test
+    # doesn't know its number, and only the daemon's notices are up.
+    desktop.as_account(
+        "for id in $(seq 1 30); do busctl --user call org.freedesktop.Notifications"
+        " /org/freedesktop/Notifications org.freedesktop.Notifications"
+        " CloseNotification u $id 2>/dev/null || true; done"
+    )
+    desktop.as_account("qs ipc call launcher collection timers")
+    desktop.launcher_ready()
+    desktop.launcher_until(lambda shown: len(shown["rows"]) == len(TIMERS_SHOWN))
+    desktop.type_in("tea", selecting="Tea")
+    desktop.normal()
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: str((shown["selected"] or {}).get("side")).startswith("paused")
+    )
+    desktop.close_launcher()
+    for scale in ("1.5", "2"):
+        desktop.as_account(f"niri msg output winit scale {scale}")
+        desktop.as_account("qs ipc call launcher collection timers")
+        desktop.launcher_ready()
+        desktop.launcher_until(lambda shown: len(shown["rows"]) == len(TIMERS_SHOWN))
+        desktop.shoot(f"launcher-timers-at-{scale.replace('.', '-')}")
+        desktop.close_launcher()
+    desktop.as_account("niri msg output winit scale 1")
+    desktop.as_account("systemctl --user stop timers.service")
+    desktop.as_account(f"rm -f {TIMERS_KEPT}")
+    desktop.as_account("qs ipc call notices putAway || true")
+    desktop.as_account("qs ipc call notices seen")
+
+
+def test_ethernet_in_network_holds_each_cable_its_lease_and_its_neighbour(
+    desktop: Desktop,
+) -> None:
+    """Ethernet in Network holds each cable, its lease and its neighbour."""
+    machine = desktop.machine
+    machine.wait_until_succeeds(
+        "ip -4 address show cable0 | grep -q 'inet 10.9.0'", timeout=timedelta(seconds=60)
+    )
+    # tests/desktop.nix puts a switch at the cable's other end, its own
+    # second card, which says what it is over LLDP every few seconds.
+    machine.wait_until_succeeds(
+        "networkctl lldp cable0 | grep -q switch0", timeout=timedelta(seconds=60)
+    )
+
+    def reads(shown: Json) -> list[str]:
+        return [thing["reads"] for thing in shown["things"]]
+
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    machine.send_chars("network ", delay=KEY_PACE)
+    desktop.launcher_until(
+        lambda shown: shown["held"] == ["network"] and "Ethernet" in shown["rows"]
+    )
+    # Beside Wi-Fi, before what either is addressed by.
+    rows = desktop.showing()["rows"]
+    assert rows.index("Wi-Fi") < rows.index("Ethernet") < rows.index("Address"), rows
+    # The whole word asks the answer itself, so the start of it finds the
+    # row, an answer that Tab goes into.
+    desktop.type_in("eth", selecting="Ethernet")
+    desktop.step_in("tab")
+    # Every card on a cable, whatever its address: the way out, the cable
+    # and the switch's.
+    desktop.launcher_until(lambda shown: "Ethernet 3" in shown["rows"])
+    desktop.type_in("cable0", selecting="Ethernet")
+    desktop.step_in("ret")
+    # Its lease, from QEMU's DHCP server, which gives a day, and what's at
+    # its other end, by the name it gives.
+    desktop.launcher_until(
+        lambda shown: (
+            any(read.startswith("Lease \u00b7 ends in 23 h") for read in reads(shown))
+            and any(read.startswith("Neighbour \u00b7 machine \u00b7 ") for read in reads(shown))
+        )
+    )
+    desktop.type_in("lease", selecting="Lease")
+    desktop.step_in("ret")
+    # No name servers: the cable asks for none (tests/desktop.nix), and
+    # QEMU's server offers only what's asked.
+    lease = ["Server \u00b7 10.9.0.2", "Given For \u00b7 1 d"]
+    desktop.launcher_until(lambda shown: set(lease) <= set(reads(shown)))
+    times = dict(
+        read.split(" \u00b7 ", 1) for read in reads(desktop.showing()) if " \u00b7 " in read
+    )
+    assert times["Got"].endswith(" ago"), times
+    assert times["Renews"].startswith("in 11 h"), times
+    assert times["Ends"].startswith("in 23 h"), times
+    desktop.shoot("launcher-ethernet-lease")
+    held = len(desktop.showing()["held"])
+    desktop.step_out()
+    machine.send_chars("cc", delay=KEY_PACE)
+    desktop.launcher_until(lambda shown: len(shown["held"]) == held - 1 and shown["typed"] == "")
+    desktop.type_in("neighbour", selecting="Neighbour")
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: {"System \u00b7 machine", "Port \u00b7 switch0"} <= set(reads(shown))
+    )
     desktop.close_launcher()
 
 

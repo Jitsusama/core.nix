@@ -42,27 +42,34 @@ let
       throw "${config.networking.hostName} names no account for the guide to give a password: set jitsusama.login.account, or pass account";
   keys = map (key: if builtins.isString key then { name = key; } else key) yubikeys;
   recipients = map (key: key.recipient) (builtins.filter (key: key ? recipient) keys);
+  # Said only where the firmware has none, or the disk is shared, so any
+  # other machine carries the target it always has.
+  secureBoot = config.jitsusama.firmware.secureBoot or true;
   target = writeText "target.json" (
-    builtins.toJSON {
-      machine = config.networking.hostName;
-      disk = disk.device;
-      disk_name = disk.name;
-      install_key = installKey;
-      layout_packages = map lib.getName (config.disko.devices._packages pkgs);
-      system = "${system}";
-      account = account';
-      yubikeys = map (key: key.name) keys;
-      # How a person reaches its firmware, as its hardware module says.
-      start_from_stick = config.jitsusama.firmware.startFromStick or null;
-      clear_secure_boot_keys = config.jitsusama.firmware.clearSecureBootKeys or null;
-      # What a reinstall leaves behind of the home folders it carries.
-      leave_out = config.jitsusama.guide.carry.leaveOut or [ ];
-      recipients =
-        if recipients == [ ] || builtins.length recipients == builtins.length keys then
-          recipients
-        else
-          throw "${config.networking.hostName} names a recipient for some of its YubiKeys but not all";
-    }
+    builtins.toJSON (
+      lib.optionalAttrs (!secureBoot) { secure_boot = false; }
+      // lib.optionalAttrs (disk.shared or false) { shared = true; }
+      // {
+        machine = config.networking.hostName;
+        disk = disk.device;
+        disk_name = disk.name;
+        install_key = installKey;
+        layout_packages = map lib.getName (config.disko.devices._packages pkgs);
+        system = "${system}";
+        account = account';
+        yubikeys = map (key: key.name) keys;
+        # How a person reaches its firmware, as its hardware module says.
+        start_from_stick = config.jitsusama.firmware.startFromStick or null;
+        clear_secure_boot_keys = config.jitsusama.firmware.clearSecureBootKeys or null;
+        # What a reinstall leaves behind of the home folders it carries.
+        leave_out = config.jitsusama.guide.carry.leaveOut or [ ];
+        recipients =
+          if recipients == [ ] || builtins.length recipients == builtins.length keys then
+            recipients
+          else
+            throw "${config.networking.hostName} names a recipient for some of its YubiKeys but not all";
+      }
+    )
   );
   cache = mkBinaryCache { rootPaths = [ system ]; };
 in

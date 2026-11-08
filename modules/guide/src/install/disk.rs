@@ -11,6 +11,7 @@ use crate::install::{
     INSTALL_KEY, LAYOUT, LAYOUT_SCRIPT, MOUNT, ROOT, Target, boot_journal, target, vault,
 };
 use crate::observe::disks::{self, Disk, Kind};
+use crate::observe::table::{self, Entry, Gap, Table};
 use crate::observe::{fido2, luks};
 use crate::tool::{self, Path};
 use crate::{
@@ -108,14 +109,30 @@ impl Step for ConfirmDisk {
         };
         Ok(if machine.journal().knows(self.id(), &disk.path) {
             Standing::Done {
-                evidence: format!("{} is {}'s, to wipe", described(&disk), target.machine),
+                evidence: if target.shared {
+                    format!(
+                        "{}'s partition on {} is its to wipe",
+                        target.machine,
+                        described(&disk)
+                    )
+                } else {
+                    format!("{} is {}'s, to wipe", described(&disk), target.machine)
+                },
             }
         } else {
             Standing::Needed {
                 asks: vec![Ask::TypeBack {
                     id: "machine",
                     expected: target.machine.clone(),
-                    why: format!("installing wipes {} and everything on it", described(&disk)),
+                    why: if target.shared {
+                        format!(
+                            "installing wipes {}'s partition on {}, or makes one in its free space, and leaves its other partitions as they are",
+                            target.machine,
+                            described(&disk)
+                        )
+                    } else {
+                        format!("installing wipes {} and everything on it", described(&disk))
+                    },
                 }],
             }
         })
@@ -185,9 +202,224 @@ fn new_key() -> Result<String, Fault> {
     }))
 }
 
-/// The disk wiped and laid out by the machine's own disko script, its
-/// encrypted volume made with a key held only in memory and mounted at
-/// the install's root.
+/// Where m1n1 tells an Apple silicon Mac's Linux which boot partition is
+/// its own, by the partition's unique GUID: the one Asahi's installer made.
+pub const ASAHI_ESP: &str = "/proc/device-tree/chosen/asahi,efi-system-partition";
+
+/// The least room a machine is installed into beside another system: its
+/// store, its home folders and a swap file the size of its memory.
+const LEAST_ROOM: u64 = 32 << 30;
+
+/// The GPT type sgdisk gives a partition holding LUKS.
+const LUKS_TYPE: &str = "8309";
+
+/// The boot partition a machine on a shared disk boots from: the one named
+/// for it already, else the one m1n1 says is its own, else the only EFI
+/// system partition on the disk.
+fn boot_partition<'t>(
+    machine: &mut dyn Machine,
+    table: &'t Table,
+    target: &Target,
+    disk: &Disk,
+) -> Result<Result<&'t Entry, Standing>, Fault> {
+    if let Some(named) = table.named(&target.boot_label()) {
+        return Ok(Ok(named));
+    }
+    if let Some(bytes) = machine.read(ASAHI_ESP)? {
+        let uuid = String::from_utf8_lossy(&bytes)
+            .trim_matches(char::from(0))
+            .trim()
+            .to_string();
+        return Ok(match table.with_uuid(&uuid) {
+            Some(entry) if entry.is_esp() => Ok(entry),
+            _ => Err(blocked(
+                format!(
+                    "m1n1 names {uuid} as this system's boot partition, which isn't an EFI system partition on {}",
+                    described(disk)
+                ),
+                "run Asahi's installer again from macOS, choosing UEFI environment only".into(),
+            )),
+        });
+    }
+    let esps: Vec<&Entry> = table
+        .entries
+        .iter()
+        .filter(|entry| entry.is_esp())
+        .collect();
+    Ok(match esps.as_slice() {
+        [only] => Ok(only),
+        [] => Err(blocked(
+            format!(
+                "{} has no EFI system partition to boot from",
+                described(disk)
+            ),
+            "run Asahi's installer from macOS, choosing UEFI environment only".into(),
+        )),
+        _ => Err(blocked(
+            format!(
+                "{} has {} EFI system partitions, and nothing says which is {}'s",
+                described(disk),
+                esps.len(),
+                target.machine
+            ),
+            format!(
+                "start the stick from the system Asahi's installer made for {}",
+                target.machine
+            ),
+        )),
+    })
+}
+
+/// Where a shared disk's new partition goes: the lowest free number and the
+/// largest free stretch, or why there's no room for one.
+fn new_place(table: &Table, target: &Target, disk: &Disk) -> Result<(u32, Gap), Standing> {
+    let gap = table.largest_gap();
+    let room = gap.map_or(0, |gap| table.bytes(gap.sectors()));
+    match (table.free_number(), gap) {
+        (Some(number), Some(gap)) if room >= LEAST_ROOM => Ok((number, gap)),
+        (None, _) => Err(blocked(
+            format!("{}'s partition table has no entry left", described(disk)),
+            "remove a partition from macOS's Disk Utility".into(),
+        )),
+        _ => Err(blocked(
+            format!(
+                "{}'s largest free space is {} GB, and {} needs at least {} GB",
+                described(disk),
+                room / 1_000_000_000,
+                target.machine,
+                LEAST_ROOM / 1_000_000_000
+            ),
+            "run Asahi's installer again from macOS, keeping less room for macOS".into(),
+        )),
+    }
+}
+
+/// What stops a shared disk being laid out, before anything is written.
+fn shared_blocked(
+    machine: &mut dyn Machine,
+    target: &Target,
+    disk: &Disk,
+) -> Result<Option<Standing>, Fault> {
+    let table = table::observe(machine, &disk.path)?;
+    if let Err(standing) = boot_partition(machine, &table, target, disk)? {
+        return Ok(Some(standing));
+    }
+    if table.named(&target.disk_name).is_none()
+        && let Err(standing) = new_place(&table, target, disk)
+    {
+        return Ok(Some(standing));
+    }
+    Ok(None)
+}
+
+/// A shared disk readied for the machine's layout: a partition named for
+/// its volume made in the free space when there's none yet, and the boot
+/// partition named for it, in one write that's then proven to have changed
+/// nothing else in the table. Whatever an earlier system left in the
+/// volume's partition is wiped, so the layout makes its volume afresh.
+pub fn make_room(machine: &mut dyn Machine, target: &Target, disk: &Disk) -> Result<(), Fault> {
+    let stop = |why: String| Fault::Blocked {
+        step: "lay-out-disk",
+        why,
+    };
+    let before = table::observe(machine, &disk.path)?;
+    let boot = boot_partition(machine, &before, target, disk)?
+        .map_err(|standing| stop(standing.to_string()))?
+        .clone();
+    let made = match before.named(&target.disk_name) {
+        Some(_) => None,
+        None => {
+            Some(new_place(&before, target, disk).map_err(|standing| stop(standing.to_string()))?)
+        }
+    };
+    let mut args = vec![];
+    if let Some((number, gap)) = made {
+        args.push(format!("--set-alignment={}", before.alignment()));
+        args.push(format!("--new={number}:{}:{}", gap.first, gap.last));
+        args.push(format!("--typecode={number}:{LUKS_TYPE}"));
+        args.push(format!("--change-name={number}:{}", target.disk_name));
+    }
+    if boot.name.as_deref() != Some(target.boot_label().as_str()) {
+        args.push(format!(
+            "--change-name={}:{}",
+            boot.number,
+            target.boot_label()
+        ));
+    }
+    if !args.is_empty() {
+        args.push(disk.path.clone());
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        machine.run(Tool::Sgdisk, &args)?.ok()?;
+        let after = table::observe(machine, &disk.path)?;
+        if let Some(changed) = changed_beyond(&before, &after, target, boot.number, made) {
+            return Err(stop(format!(
+                "writing {}'s partition changed more of {}'s table: {changed}. Nothing was formatted",
+                target.machine,
+                described(disk)
+            )));
+        }
+        machine.run(Tool::Udevadm, &["settle"])?.ok()?;
+    }
+    let volume = machine.resolve(&target.volume())?.ok_or_else(|| {
+        stop(format!(
+            "{} isn't there once its partition is",
+            target.volume()
+        ))
+    })?;
+    machine.run(Tool::Wipefs, &["--all", &volume])?.ok()?;
+    Ok(())
+}
+
+/// What a write to a shared disk's table changed beyond the machine's own
+/// partition and its boot partition's name, said as a person reads it, or
+/// nothing when it changed nothing more.
+fn changed_beyond(
+    before: &Table,
+    after: &Table,
+    target: &Target,
+    boot: u32,
+    made: Option<(u32, Gap)>,
+) -> Option<String> {
+    for entry in &before.entries {
+        let Some(now) = after.with_uuid(&entry.uuid) else {
+            return Some(format!("partition {} is gone", entry.number));
+        };
+        let name = if entry.number == boot {
+            Some(target.boot_label())
+        } else {
+            entry.name.clone()
+        };
+        if !entry.same_but_named(now) || now.name != name {
+            return Some(format!("partition {} isn't as it was", entry.number));
+        }
+    }
+    let expected = before.entries.len() + usize::from(made.is_some());
+    if after.entries.len() != expected {
+        return Some(format!(
+            "it holds {} partitions where it should hold {expected}",
+            after.entries.len()
+        ));
+    }
+    if let Some((number, gap)) = made {
+        let placed = after.named(&target.disk_name).is_some_and(|entry| {
+            entry.number == number
+                && entry.start >= gap.first
+                && entry.start + entry.size - 1 <= gap.last
+        });
+        if !placed {
+            return Some(format!(
+                "{}'s partition isn't number {number} in the free space",
+                target.machine
+            ));
+        }
+    }
+    None
+}
+
+/// The disk laid out by the machine's own disko script, its encrypted
+/// volume made with a key held only in memory and mounted at the install's
+/// root: the whole disk wiped first, or on a shared disk only the
+/// machine's own partition, made in the free space when there's none yet.
 pub struct LayOutDisk;
 
 impl Step for LayOutDisk {
@@ -244,6 +476,11 @@ impl Step for LayOutDisk {
                 "write the stick again from a guide whose disk tools hold them".into(),
             ));
         }
+        if target.shared
+            && let Some(standing) = shared_blocked(machine, &target, &disk)?
+        {
+            return Ok(standing);
+        }
         Ok(Standing::Needed { asks: vec![] })
     }
 
@@ -273,15 +510,19 @@ impl Step for LayOutDisk {
         machine.write(LAYOUT, &script)?;
         machine.write(INSTALL_KEY, new_key()?.as_bytes())?;
 
-        for partition in &disk.partitions {
+        if target.shared {
+            make_room(machine, &target, &disk)?;
+        } else {
+            for partition in &disk.partitions {
+                machine
+                    .run(Tool::Wipefs, &["--all", &partition.path])?
+                    .ok()?;
+            }
+            machine.run(Tool::Wipefs, &["--all", &disk.path])?.ok()?;
             machine
-                .run(Tool::Wipefs, &["--all", &partition.path])?
+                .run(Tool::Sgdisk, &["--zap-all", &disk.path])?
                 .ok()?;
         }
-        machine.run(Tool::Wipefs, &["--all", &disk.path])?.ok()?;
-        machine
-            .run(Tool::Sgdisk, &["--zap-all", &disk.path])?
-            .ok()?;
         machine.run(Tool::Udevadm, &["settle"])?.ok()?;
 
         let ran = machine.run_given(

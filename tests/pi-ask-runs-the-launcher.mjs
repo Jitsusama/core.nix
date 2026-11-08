@@ -7,7 +7,14 @@
 // launcher that doesn't answer is said so. pi's own library, which the tool
 // takes its schema builder from, is a stand-in too.
 import assert from "node:assert/strict";
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -16,7 +23,10 @@ copyFileSync(process.argv[2], join(work, "ask-launcher.ts"));
 
 const library = join(work, "node_modules", "@earendil-works", "pi-ai");
 mkdirSync(library, { recursive: true });
-writeFileSync(join(library, "package.json"), JSON.stringify({ name: "@earendil-works/pi-ai", type: "module" }));
+writeFileSync(
+  join(library, "package.json"),
+  JSON.stringify({ name: "@earendil-works/pi-ai", type: "module" }),
+);
 writeFileSync(
   join(library, "index.js"),
   "const schema = (kind) => (...args) => ({ kind, args });\n" +
@@ -76,7 +86,11 @@ process.env.ASK_LAUNCHER = qs;
 
 let tool;
 const { default: register } = await import(join(work, "ask-launcher.ts"));
-register({ registerTool: (registered) => (tool = registered) });
+register({
+  registerTool: (registered) => {
+    tool = registered;
+  },
+});
 assert.equal(tool.name, "launcher");
 assert.match(tool.description, /never that it happened/);
 
@@ -93,11 +107,20 @@ assert.match(everything, /Machine › Screen › Brightness \(now 60%\) \(takes 
 const power = await said({ action: "list", match: "power" });
 assert.match(power, /Reboot/);
 assert.doesNotMatch(power, /Kitty/);
-assert.equal(await said({ action: "list", match: "toaster" }), 'Nothing in the launcher matches "toaster".');
+assert.equal(
+  await said({ action: "list", match: "toaster" }),
+  'Nothing in the launcher matches "toaster".',
+);
 
 assert.equal(await said({ action: "run", id: "app:kitty" }), "Done: Opened Kitty");
-assert.equal(await said({ action: "run", id: "category:computer›setting:brightness", arg: "40" }), "Done: Brightness at 40%");
-assert.match(await said({ action: "run", id: "category:computer›category:energy›session:Reboot" }), /^Not done yet: .*a row \(Reboot\?\) and Return does it/);
+assert.equal(
+  await said({ action: "run", id: "category:computer›setting:brightness", arg: "40" }),
+  "Done: Brightness at 40%",
+);
+assert.match(
+  await said({ action: "run", id: "category:computer›category:energy›session:Reboot" }),
+  /^Not done yet: .*a row \(Reboot\?\) and Return does it/,
+);
 assert.equal(await said({ action: "run", id: "nothing" }), "Not done: no entry by that id");
 assert.equal(await said({ action: "run" }), "Name the id to run, as list gives it.");
 

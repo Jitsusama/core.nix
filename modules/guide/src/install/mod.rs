@@ -86,9 +86,32 @@ pub struct Target {
     /// reinstall, each a path inside a home folder.
     #[serde(default)]
     pub leave_out: Vec<String>,
+    /// Whether its firmware has a Secure Boot that takes the machine's own
+    /// keys, as its hardware module says. Without one, as under an Apple
+    /// silicon Mac's U-Boot, the install makes no Secure Boot keys and no
+    /// rescue bundle to keep them, and leaves the stick as it was written.
+    /// A target that doesn't say has one, as every machine did before.
+    #[serde(default = "has")]
+    pub secure_boot: bool,
+    /// Whether its disk keeps another system's partitions beside its own,
+    /// as an Apple silicon Mac's keeps macOS's (`jitsusama.disk.shared`).
+    /// The install then makes one partition in the disk's free space and
+    /// names the boot partition already there, rather than wiping the disk.
+    #[serde(default)]
+    pub shared: bool,
+}
+
+/// What a target that says nothing of a capability has.
+fn has() -> bool {
+    true
 }
 
 impl Target {
+    /// The GPT name of its boot partition.
+    pub fn boot_label(&self) -> String {
+        format!("{}-boot", self.disk_name)
+    }
+
     /// The partition its encrypted volume is on.
     pub fn volume(&self) -> String {
         format!("/dev/disk/by-partlabel/{}", self.disk_name)
@@ -211,14 +234,19 @@ pub enum Start {
     CarryingOn,
 }
 
-/// Every step of installing from the stick, the YubiKeys named as the
-/// vault's target names them, in the order they're enrolled. Again, the
-/// old system's home folders are packed first, if the person chooses,
-/// while its disk still opens. Carrying on, the disk is opened as it was
-/// left rather than wiped and laid out.
-pub fn steps(yubikeys: &[String], start: Start) -> Vec<Box<dyn Step>> {
+/// Every step of installing from the stick for the vault's target, its
+/// YubiKeys in the order they're enrolled. Again, the old system's home
+/// folders are packed first, if the person chooses, while its disk still
+/// opens. Carrying on, the disk is opened as it was left rather than
+/// wiped and laid out. A machine without Secure Boot has no steps for its
+/// keys: none to check the firmware takes, make, seal or keep.
+pub fn steps(target: &Target, start: Start) -> Vec<Box<dyn Step>> {
+    let yubikeys = &target.yubikeys;
+    let secure_boot = target.secure_boot;
     let mut steps = opening();
-    steps.push(Box::new(system::CheckFirmware));
+    if secure_boot {
+        steps.push(Box::new(system::CheckFirmware));
+    }
     if start == Start::Again {
         steps.push(Box::new(carry::ChooseCarry));
         steps.push(Box::new(carry::WhenCarried(Box::new(
@@ -236,7 +264,7 @@ pub fn steps(yubikeys: &[String], start: Start) -> Vec<Box<dyn Step>> {
     match start {
         Start::Afresh | Start::Again => steps.push(Box::new(disk::LayOutDisk)),
         Start::CarryingOn => steps.push(Box::new(disk::OpenStoppedInstall {
-            yubikeys: yubikeys.to_vec(),
+            yubikeys: yubikeys.clone(),
         })),
     }
     for name in yubikeys {
@@ -245,15 +273,21 @@ pub fn steps(yubikeys: &[String], start: Start) -> Vec<Box<dyn Step>> {
     steps.push(Box::new(keys::NameYubikeys));
     // The Secure Boot keys before the recovery key, so the rescue bundle
     // is sealed to it while it's still held, before it's typed back.
-    steps.push(Box::new(system::SecureBootKeys));
+    if secure_boot {
+        steps.push(Box::new(system::SecureBootKeys));
+    }
     steps.push(Box::new(keys::MakeRecoveryKey));
-    steps.push(Box::new(system::SealRescueBundle));
+    if secure_boot {
+        steps.push(Box::new(system::SealRescueBundle));
+    }
     steps.push(Box::new(keys::KeepRecoveryKey));
     steps.push(Box::new(system::InstallSystem));
     // Whatever the start, since one carrying on after a restart may follow
     // a start that packed them.
     steps.push(Box::new(carry::RestoreHome));
-    steps.push(Box::new(system::ReadyEnrolment));
+    if secure_boot {
+        steps.push(Box::new(system::ReadyEnrolment));
+    }
     steps.push(Box::new(system::SetPassword));
     steps.push(Box::new(disk::WipeInstallKey {
         yubikeys: yubikeys.len(),
@@ -261,6 +295,8 @@ pub fn steps(yubikeys: &[String], start: Start) -> Vec<Box<dyn Step>> {
     // The stick last, once the machine is finished, since it needs only
     // the keys on the disk and the vault's key, and a stick that won't
     // take them should cost only the stick.
-    steps.push(Box::new(system::KeepOnStick));
+    if secure_boot {
+        steps.push(Box::new(system::KeepOnStick));
+    }
     steps
 }

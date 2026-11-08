@@ -8,13 +8,33 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
-/// How to sign in so the login can reach Drive. gcloud's own login asks
-/// for no Drive scope, and insists on cloud-platform among any it is given.
-/// The whole of Drive, rather than only the files this makes, because a
-/// folder made in Drive's web page is one this could not otherwise add to.
+use crate::config::Folder;
+
+/// How to sign in so the login can reach a folder made in Drive's web page.
+/// gcloud's own login asks for no Drive scope, and insists on
+/// cloud-platform among any it is given. The whole of Drive, rather than
+/// only the files this makes, because a folder made in the web page is one
+/// this could not otherwise add to.
 pub const SIGN_IN: &str = "gcloud auth application-default login \
      --scopes=openid,https://www.googleapis.com/auth/userinfo.email,\
      https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/drive";
+
+/// How to sign in so the login can reach the backup's own folder: only the
+/// files the backup made, so the login can read nothing else in Drive. It
+/// goes in a gcloud folder of the backup's own, so the account's own login
+/// needs no Drive scope at all.
+pub const SIGN_IN_OWN: &str = "CLOUDSDK_CONFIG=<the backup's own folder> \
+     gcloud auth application-default login \
+     --scopes=openid,https://www.googleapis.com/auth/userinfo.email,\
+     https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/drive.file";
+
+/// How to sign in for a backup into `folder`.
+pub fn sign_in(folder: &Folder) -> &'static str {
+    match folder {
+        Folder::Given(_) => SIGN_IN,
+        Folder::Own(_) => SIGN_IN_OWN,
+    }
+}
 
 /// A token this close to its end is traded again before it is sent.
 const MARGIN: Duration = Duration::from_mins(5);
@@ -25,16 +45,19 @@ pub struct Login {
     client_secret: String,
     refresh_token: String,
     endpoint: String,
+    /// How to sign in again, said when Google refuses the login.
+    sign_in: &'static str,
     held: Option<(String, Instant)>,
 }
 
 impl Login {
     /// The login in an application-default credentials file, as
-    /// `gcloud auth application-default login` writes it.
-    pub fn read(path: &Path, endpoint: &str) -> Result<Login, String> {
+    /// `gcloud auth application-default login` writes it. `sign_in` says
+    /// how to make it again, when it is missing or Google refuses it.
+    pub fn read(path: &Path, endpoint: &str, sign_in: &'static str) -> Result<Login, String> {
         let text = fs::read_to_string(path).map_err(|why| {
             format!(
-                "can't read the Google login in {}: {why}; sign in once with {SIGN_IN}",
+                "can't read the Google login in {}: {why}; sign in once with {sign_in}",
                 path.display()
             )
         })?;
@@ -58,6 +81,7 @@ impl Login {
             client_secret: field("client_secret")?,
             refresh_token: field("refresh_token")?,
             endpoint: endpoint.to_owned(),
+            sign_in,
             held: None,
         })
     }
@@ -83,8 +107,9 @@ impl Login {
         let body = answer.body_mut().read_to_string().unwrap_or_default();
         if status != 200 {
             return Err(format!(
-                "Google refused the login ({status}): {}; sign in again with {SIGN_IN}",
-                body.trim()
+                "Google refused the login ({status}): {}; sign in again with {}",
+                body.trim(),
+                self.sign_in
             ));
         }
         let value: Value = serde_json::from_str(&body)

@@ -216,19 +216,25 @@ in
     security.polkit.enable = true;
 
     environment.systemPackages = [ guide ];
-    environment.etc."guide/machine.json".text = builtins.toJSON {
-      disk_name = config.jitsusama.disk.name;
-      inherit (config.jitsusama.guide) keys spares;
-      once_signed_in = map (step: {
-        inherit (step)
-          id
-          title
-          command
-          about
-          ;
-        done = lib.getExe step.done;
-      }) config.jitsusama.guide.onceSignedIn;
-    };
+    # What the hardware lacks is said only where it lacks it, so a machine
+    # with Secure Boot and a TPM keeps the facts it always had.
+    environment.etc."guide/machine.json".text = builtins.toJSON (
+      lib.optionalAttrs (!(config.jitsusama.firmware.secureBoot or true)) { secure_boot = false; }
+      // lib.optionalAttrs (!(config.jitsusama.firmware.tpm or true)) { tpm = false; }
+      // {
+        disk_name = config.jitsusama.disk.name;
+        inherit (config.jitsusama.guide) keys spares;
+        once_signed_in = map (step: {
+          inherit (step)
+            id
+            title
+            command
+            about
+            ;
+          done = lib.getExe step.done;
+        }) config.jitsusama.guide.onceSignedIn;
+      }
+    );
 
     # Every boot, before anyone signs in, the guide looks at the machine on
     # the first console, as root, so nothing has to be remembered or asked
