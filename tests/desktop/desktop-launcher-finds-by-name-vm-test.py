@@ -1594,7 +1594,7 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
     status, said = machine.execute(desktop.in_session("launcher show mahcine 2>&1 >/dev/null"))
     assert status == 1, (status, said)
     assert "did you mean Machine?" in said, said
-    if not desktop.values["photographs"]:
+    if not desktop.values["shots"]:
         return
     for scale in ("1.5", "2"):
         desktop.as_account(f"niri msg output winit scale {scale}")
@@ -1606,7 +1606,7 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
             window = desktop.opened(
                 picture, f"sh -c {shlex.quote(f'echo {asked}; {asked}; exec sleep infinity')}"
             )
-            desktop.photograph(f"{picture}-at-{scale.replace('.', '-')}")
+            desktop.shoot(f"{picture}-at-{scale.replace('.', '-')}")
             desktop.close(window)
     desktop.as_account("niri msg output winit scale 1")
 
