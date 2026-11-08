@@ -239,6 +239,10 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     desktop.launcher_until(lambda shown: shown["held"] == ["screens"] and shown["rows"] != [])
     desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][:3] == ["Focus", "Brightness", "Room Light"])
+    # The screen's drawer and rows read the light outside the launcher's
+    # bindings, so reading it writes nothing they read.
+    log = desktop.shell_said("Binding loop")
+    assert "Binding loop" not in log, f"the screen's light is read inside a binding: {log}"
     desktop.next_row()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Brightness")
     desktop.step_in("ret")
