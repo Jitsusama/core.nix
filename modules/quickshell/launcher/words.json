@@ -9692,7 +9692,7 @@
       "verb": "sleep",
       "glyph": "suspend",
       "said": {
-        "eyebrow": "from Linux \u00b7 sleep",
+        "eyebrow": "on this machine \u00b7 sleep",
         "failed": "failed while {step}",
         "at": "{count} while {step}",
         "time": "1 time",
