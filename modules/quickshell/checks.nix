@@ -297,10 +297,19 @@ onLinux {
 
   # The launcher answers what's typed into it, and the held notices take
   # vi's keys, on the account's whole shell on niri, in seconds rather than
-  # a machine's minutes (tests/launcher-on-niri-test.py).
+  # a machine's minutes (tests/launcher-on-niri-test.py). Its meanings come
+  # from the meaning daemon's stand-in, which loads no model
+  # (tests/desktop/stand-in-meaning.py).
   the-launcher-answers-whats-typed-on-niri = launcherOnNiri {
     name = "the-launcher-answers-whats-typed-on-niri";
     tests = ../../tests/launcher-on-niri-test.py;
+    given = [
+      "MEANING=${
+        pkgs.writers.writePython3 "stand-in-meaning" {
+          doCheck = false;
+        } (builtins.readFile ../../tests/desktop/stand-in-meaning.py)
+      }"
+    ];
   };
 
   # An agent's row does, on Return, the act its state makes harmless, its

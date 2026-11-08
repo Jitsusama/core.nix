@@ -1,26 +1,32 @@
 // What Meaning.qml works out, kept apart from it so tests/meaning.qml
 // proves it in Qt's own engine: which of the launcher's things the meaning
 // daemon is told and as what text, how what's typed is asked, the rows an
-// answer adds below everything typing found, and the pictures one adds
-// below those Capture's Recent found by their names and words.
+// answer adds below everything typing found, landing on the part a place
+// holds rather than the place, and the pictures one adds below those
+// Capture's Recent found by their names and words.
 .pragma library
 
 // The kinds whose rows come and go or are renamed as Joel works, by their
 // keys' starts: a window's title, a session, a meeting, a notice, a value
 // read. Each would be embedded again with every change for a row that is
 // found by its name anyway, so only what stays is told: programs, actions,
-// places, settings, collections.
+// places, settings, collections, and the parts a place holds, its spots,
+// as a screen's Brightness, so a meaning lands on the part itself.
 // Kept as a set of each key's start up to its first colon, since a walk
 // testing every start of every key cost the shell's thread 62 ms over a
 // thousand things in Qt's engine (2026-11-08).
 const CHANGING = ["agent:", "agents:", "attachment:", "calendar:", "copies:", "copy:",
     "drive:", "fact:", "gdoc:", "group:", "job:", "mail:", "mine:", "notice:",
     "orchestrator:", "participant:", "person:", "picture:", "quest:", "slack:", "spend:",
-    "spot:", "talk:", "time:", "today:", "transcript:", "window:", "workspace:"]
+    "talk:", "time:", "today:", "transcript:", "window:", "workspace:"]
     .reduce((starts, start) => {
         starts[start] = true;
         return starts;
     }, {});
+
+// How a spot's key starts (Launcher.qml's spotOf): a part a level inside a
+// thing a place holds, found from the root, its trail naming each step.
+const SPOT = "spot:";
 
 // What stands between the items of a note, as Reading.js joins them.
 const ITEMS_APART = " \u00b7 ";
@@ -54,20 +60,39 @@ function textOf(choice) {
 }
 
 // Every thing told, as the daemon's know takes them: [{ key, text }], one
-// a key, in the launcher's order.
-function things(choices) {
-    return telling(choices).things;
+// a key, in the launcher's order, its spots after its choices.
+function things(choices, spots) {
+    return telling(choices, spots).things;
+}
+
+// Whether a row is a spot, which stands for a part inside a place.
+function isSpot(row) {
+    return String(row?.key ?? "").startsWith(SPOT) && Array.isArray(row.trail);
+}
+
+// Rows by their keys, as Launcher.qml's keyed holds its choices, for the
+// spots, which aren't among them. Walked by index, as `telling` is.
+function keyedBy(listed) {
+    const out = {};
+    const all = listed ?? [];
+    for (let at = 0; at < all.length; at += 1) {
+        const key = all[at]?.key;
+        if (typeof key === "string" && key !== "") {
+            out[key] = all[at];
+        }
+    }
+    return out;
 }
 
 // The things told, and `as`, one text standing for them all, so the shell
 // tells them again only when it changes. It's walked by index and seen in
 // a plain object, which Qt's engine does in a tenth of the time an
 // iterator and a Set take, and `as` is joined rather than stringified.
-function telling(choices) {
+function telling(choices, spots) {
     const seen = {};
     const out = [];
     const lines = [];
-    const all = choices ?? [];
+    const all = (choices ?? []).concat(spots ?? []);
     for (let at = 0; at < all.length; at += 1) {
         const choice = all[at];
         if (!told(choice) || seen[choice.key] === true) {
@@ -95,19 +120,23 @@ function enough(words) {
 }
 
 // The rows an answer adds, nearest first: each record's thing as the
-// launcher keys it, a copy saying in the foot how it was found, but none
-// already shown (`shown`, a set of identities, as Rank.identity makes
-// them) and none the launcher no longer holds, at most `how.most`, each
-// noting `how.note` before its own note, so it says where it is as when
-// typed; a note gives way from its end, so how it was found always stays.
+// launcher keys it, or its spot as `how.spots` keys them, a copy saying in
+// the foot how it was found, but none already shown (`shown`, a set of
+// identities, as Rank.identity makes them) and none the launcher no longer
+// holds, at most `how.most`, each noting `how.note` before its own note,
+// so it says where it is as when typed; a note gives way from its end, so
+// how it was found always stays.
+// A meaning lands on the part rather than the place it lives in (VKCF3Z,
+// 2026-11-08): a spot found stands where a place on its trail was found,
+// and that place isn't added after it. A spot's name is meant once, so
+// "too loud" is one Volume rather than every device's, the nearest.
 function rows(records, keyed, shown, how) {
-    const out = [];
+    const found = [];
     const taken = new Set(shown);
+    const named = {};
     for (const record of records ?? []) {
-        if (out.length >= how.most) {
-            break;
-        }
-        const choice = keyed?.[record?.key];
+        const key = record?.key;
+        const choice = keyed?.[key] ?? how.spots?.[key];
         if (!choice) {
             continue;
         }
@@ -115,11 +144,29 @@ function rows(records, keyed, shown, how) {
         if (taken.has(id)) {
             continue;
         }
+        if (isSpot(choice)) {
+            if (named[choice.name] === true) {
+                continue;
+            }
+            named[choice.name] = true;
+            taken.add(id);
+            const place = found.findIndex(row => choice.trail.includes(row.is ?? row.key));
+            if (place >= 0) {
+                found[place] = choice;
+            } else {
+                found.push(choice);
+            }
+            continue;
+        }
         taken.add(id);
-        const note = [how.note, choice.note ?? ""].filter(item => item !== "").join(ITEMS_APART);
-        out.push(Object.assign({}, choice, { note, byMeaning: true, tier: TIER }));
+        if (!found.some(row => isSpot(row) && row.trail.includes(id))) {
+            found.push(choice);
+        }
     }
-    return out;
+    return found.slice(0, how.most).map(choice => {
+        const note = [how.note, choice.note ?? ""].filter(item => item !== "").join(ITEMS_APART);
+        return Object.assign({}, choice, { note, byMeaning: true, tier: TIER });
+    });
 }
 
 // The pictures an answer adds, nearest first, by their paths: none

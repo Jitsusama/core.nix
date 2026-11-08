@@ -112,6 +112,58 @@ QtObject {
         expect("what's shown is left as it was", Array.from(shown), ["program:kitty"]);
         expect("no answer adds nothing", Meaning.rows(undefined, keyed, new Set(), how), []);
 
+        // The spots: a part inside a place, as Launcher.qml's spotOf makes
+        // one, told and found as itself rather than as its place.
+        const spot = (trail, part, name) => ({
+            key: `spot:${trail.join("/")}/${part}`,
+            name: name,
+            side: "Screens \u203a Built-in",
+            verb: "go to",
+            trail: trail,
+            spot: part
+        });
+        const screens = thing("collection:displays", "Screens", "Screens Displays Monitors");
+        const bright = spot(["collection:displays", "screen:edp-1"], "displays:brightness",
+            "Brightness");
+        const loud = spot(["collection:sound", "sink:speakers"], "sound:volume", "Volume");
+        const louder = spot(["collection:sound", "sink:headset"], "sound:volume", "Volume");
+        expect("a spot is told by its name, after the choices",
+            Meaning.things([screens], [bright]).map(told => told.text),
+            ["Screens Displays Monitors", "Brightness"]);
+        expect("another spot is told as another",
+            Meaning.telling([screens], [bright]).as === Meaning.telling([screens], []).as,
+            false);
+        expect("spots are keyed by their keys", Object.keys(Meaning.keyedBy([bright, loud])),
+            [bright.key, loud.key]);
+        expect("no spots key nothing", Meaning.keyedBy(undefined), {});
+        const placesKeyed = { "collection:displays": screens, "program:kitty": kitty };
+        const spotsKeyed = Meaning.keyedBy([bright, loud, louder]);
+        const inside = Object.assign({ spots: spotsKeyed }, how);
+        expect("a spot found stands where its place was found",
+            Meaning.rows(records(["collection:displays", "program:kitty", bright.key]),
+                placesKeyed, new Set(), inside).map(row => row.key),
+            [bright.key, "program:kitty"]);
+        expect("a place found after its spot is left out",
+            Meaning.rows(records([bright.key, "program:kitty", "collection:displays"]),
+                placesKeyed, new Set(), inside).map(row => row.key),
+            [bright.key, "program:kitty"]);
+        expect("a place standing for a spot leaves room for one more",
+            Meaning.rows(records(["collection:displays", bright.key, "program:kitty",
+                loud.key]), placesKeyed, new Set(), inside).map(row => row.key),
+            [bright.key, "program:kitty", loud.key]);
+        expect("a spot's name is meant once, the nearest",
+            Meaning.rows(records([loud.key, louder.key]), placesKeyed, new Set(), inside)
+                .map(row => row.key), [loud.key]);
+        expect("a spot found by its letters isn't added again",
+            Meaning.rows(records([bright.key]), placesKeyed, new Set([bright.key]), inside),
+            []);
+        expect("a spot says where it lives, and how it was found",
+            Meaning.rows(records([bright.key]), placesKeyed, new Set(), inside)
+                .map(row => [row.name, row.side, row.verb, row.note, row.byMeaning]),
+            [["Brightness", "Screens \u203a Built-in", "go to", note, true]]);
+        expect("a spot the launcher no longer holds is left out",
+            Meaning.rows(records([bright.key]), placesKeyed, new Set(), how), []);
+
         // The pictures: nearest first, by path, none listed already, a few.
         const looks = (keys, kind) => keys.map((key, at) => ({ key: key,
             kind: kind ?? "picture", near: 0.15 - at / 100 }));
