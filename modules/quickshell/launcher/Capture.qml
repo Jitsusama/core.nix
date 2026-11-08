@@ -225,7 +225,7 @@ Provider {
             key: "capture:camera-picture",
             verb: "open",
             name: Words.name("capture:camera-picture"),
-            keywords: "photo selfie webcam photograph",
+            keywords: "picture selfie webcam photograph",
             glyph: picture,
             hue: "action",
             later: true,

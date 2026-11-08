@@ -5211,7 +5211,7 @@
     {
       "id": "capture:camera-picture",
       "in": "capture",
-      "name": "A Picture From the Camera"
+      "name": "A Photo From the Camera"
     },
     {
       "id": "capture:camera-video",
