@@ -596,6 +596,13 @@ in
     console = "#";
     means = "a category of the launcher's things, such as computer or ai";
   };
+  # A place of the launcher's wears its own mark, as Desktop wears the
+  # desktop's and Machine the computer's, so three at home aren't one tag.
+  network = {
+    glyph = nerd "f0317";
+    console = "n";
+    means = "the network: what this machine is joined to, and what's on it";
+  };
   command = {
     glyph = nerd "f018d";
     console = ">";

@@ -91,8 +91,9 @@ ShellRoot {
             // A chord doing one thing in several places is one row.
             const total = Shortcuts.layers.reduce((all, layer) => all
                 + KeyGroups.merged(layer.name, layer.binds).length, 0);
-            expect("home counts every chord", map.counted() === String(total).replace(
-                /\B(?=(\d{3})+(?!\d))/g, ","), map.counted());
+            // And says what it counts, as every count does.
+            expect("home counts every chord", map.counted() === `${String(total).replace(
+                /\B(?=(\d{3})+(?!\d))/g, ",")} shortcuts`, map.counted());
             // A second chord for one act is said in the first's note.
             const spelt = map.spelled([{ text: "Super" }, { text: "L" }, { text: "g", after: true }]);
             expect("a chord as words", spelt === "Super+L g", spelt);

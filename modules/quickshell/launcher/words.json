@@ -15,6 +15,7 @@
       "id": "desktop",
       "name": "Desktop",
       "term": "Desktop",
+      "glyph": "desktop",
       "holds": [
         "windows:this",
         "windows",
@@ -46,6 +47,7 @@
       "id": "computer",
       "name": "Machine",
       "term": "Machine",
+      "glyph": "computer",
       "holds": [
         "energy",
         "bluetooth",
@@ -89,6 +91,7 @@
       "id": "network",
       "name": "Network",
       "term": "Network",
+      "glyph": "network",
       "holds": [
         "wifi",
         "wifi:sign-in",
@@ -4800,6 +4803,7 @@
       "name": "Keyboard",
       "term": "Keyboards/keyboard",
       "noun": "keys",
+      "said": { "one": "{count} key", "many": "{count} keys" },
       "lead": "parts",
       "glyph": "keyboard",
       "parts": [
@@ -4886,6 +4890,7 @@
       "name": "Shortcuts",
       "term": "Keyboards/shortcut",
       "noun": "shortcuts",
+      "said": { "one": "{count} shortcut", "many": "{count} shortcuts" },
       "glyph": "shortcuts",
       "ask": "which shortcut?"
     },
@@ -6391,6 +6396,7 @@
       "name": "Clipboard",
       "term": "Desktop/clipboard",
       "noun": "copies",
+      "said": { "one": "{count} copy", "many": "{count} copies" },
       "glyph": "clipboard",
       "ask": "which copy?"
     },
@@ -6399,6 +6405,7 @@
       "name": "Timers",
       "term": "Desktop/timer",
       "noun": "timers",
+      "said": { "one": "{count} timer", "many": "{count} timers" },
       "glyph": "timer",
       "ask": "which timer?",
       "empty": "No timers running."
@@ -6573,6 +6580,7 @@
       "name": "Notices",
       "term": "Desktop/notice",
       "noun": "notices",
+      "said": { "one": "{count} notice", "many": "{count} notices" },
       "glyph": "notifications",
       "ask": "which notice?",
       "said": {
@@ -8020,6 +8028,7 @@
       "name": "Windows",
       "term": "Desktop/window",
       "noun": "windows",
+      "said": { "one": "{count} window", "many": "{count} windows" },
       "glyph": "windows",
       "ask": "which window?",
       "empty": "No other windows."

@@ -127,8 +127,13 @@ Singleton {
     // the provider.
     function collection(id, extra) {
         const entry = of(id);
+        const noun = entry.noun ?? entry.name.toLowerCase();
         return Object.assign({
-            noun: entry.noun ?? entry.name.toLowerCase(),
+            noun: noun,
+            // How it says how many it holds, as its own words say one and
+            // many, so a count says what it counts: "78 keys".
+            one: entry.said?.one ?? `{count} ${noun}`,
+            many: entry.said?.many ?? `{count} ${noun}`,
             title: entry.name,
             glyph: glyph(id),
             ask: entry.ask ?? words.anyAsk,

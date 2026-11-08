@@ -144,6 +144,8 @@ def misplaced(vocabulary: Entry, glyphs: set[str]) -> list[str]:
     for category in vocabulary["categories"]:
         placed.update(category.get("holds", []))
         out.extend(stray(category, things, categories))
+        if "glyph" in category and category["glyph"] not in glyphs:
+            out.append(f"{category['id']} wears {category['glyph']}, a glyph the theme hasn't got.")
     for entry in things.values():
         for part in entry.get("parts", []):
             placed.add(part)
