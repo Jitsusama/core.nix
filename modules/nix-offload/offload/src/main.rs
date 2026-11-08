@@ -1273,7 +1273,13 @@ impl Sent<'_> {
         {
             eprintln!("nix-offload: evaluating on {}", evaluator.host);
             let ask = |words: &[String]| {
-                changed::evaluated("ssh", &evaluator.host, &self.sending(words), scratch)
+                changed::evaluated(
+                    "ssh",
+                    &evaluator.host,
+                    &self.sending(words),
+                    scratch,
+                    changed::evaluating_longest(),
+                )
             };
             let asked = match ask(&evaluating) {
                 Ok((USAGE, _)) => ask(older),

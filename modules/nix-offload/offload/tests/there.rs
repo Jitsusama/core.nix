@@ -34,7 +34,8 @@ printf '%s\n' "$1" >> "$here/ssh-hosts"
 printf '%s %s\n' "$1" "$2" >> "$here/ssh-sent"
 [ -f "$here/unreached-$1" ] && exit 255
 case "$2" in
-  *--name-only*) [ -f "$here/refuses-name-only" ] && exit 64 ;;
+  *--name-only*) [ -f "$here/refuses-name-only" ] && exit 64
+    [ -f "$here/evaluates-forever" ] && exec sleep 120 ;;
   */proc/pressure/cpu*) cat "$here/pressure-$1" 2>/dev/null; exit 0 ;;
   *--dry-run*) cat "$here/plans" 2>/dev/null; exit 0 ;;
   *"&& echo"*) cat > "$here/fetched"
@@ -1887,6 +1888,7 @@ impl Changed {
         let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
             .args(["there", "--changed"])
             .args(arguments)
+            .env("NIX_OFFLOAD_EVALUATING_LONGEST", "5")
             .current_dir(&self.tree)
             .env(
                 "PATH",
@@ -1945,6 +1947,39 @@ fn changed_checks_go_to_a_vm_builder_that_stands_while_no_lent_builder_answers()
     let sent = sent.unwrap();
     assert!(sent.contains("changed-checks -- --name-only"), "{sent}");
     assert!(String::from_utf8_lossy(&ran.stdout).contains("changed  a"));
+}
+
+#[test]
+fn an_evaluator_that_names_nothing_is_left_on_its_clock() {
+    // On 8 November six runs sat on one evaluator for up to three hours,
+    // having printed nothing. With no other, it's as though none answered.
+    let changed = Changed::new();
+    fs::remove_file(changed.offload.join("store")).unwrap();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = answering.local_addr().unwrap();
+    fs::create_dir_all(changed.folder.path().join("nix-offload")).unwrap();
+    fs::write(
+        changed.folder.path().join("nix-offload/evaluators"),
+        format!("{address} far o\n"),
+    )
+    .unwrap();
+    fs::write(changed.bin.join("evaluates-forever"), "").unwrap();
+    let asked = std::time::Instant::now();
+    let (ran, sent) = changed.run(&["--no-vm"]);
+    assert!(
+        asked.elapsed() < std::time::Duration::from_secs(60),
+        "it waited {:?}",
+        asked.elapsed()
+    );
+    assert!(
+        sent.is_some_and(|sent| sent.contains("--name-only")),
+        "{ran:?}"
+    );
+    assert_eq!(ran.status.code(), Some(75), "{ran:?}");
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains("far named nothing within 5 seconds"),
+        "{ran:?}"
+    );
 }
 
 #[test]

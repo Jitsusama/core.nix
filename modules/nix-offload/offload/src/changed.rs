@@ -19,7 +19,8 @@
 //! repository's owner, named in `nix-offload/evaluators` under XDG's
 //! config folder, which only
 //! evaluates, and the checks it names are built by `there` as any build
-//! is. With none, it exits [`UNBUILT`] while a lender runs, so nothing is
+//! is. One that names nothing within [`EVALUATING_LONGEST`] is left for
+//! the next. With none, it exits [`UNBUILT`] while a lender runs, so nothing is
 //! evaluated here unasked, and otherwise [`NOT_TAKEN`], and changed-checks
 //! runs here.
 //!
@@ -30,9 +31,13 @@
 //! which checks passed at the commit, so the far side builds none again.
 
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{self, BufRead, BufReader, Write};
+use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::thread;
+use std::time::Duration;
 
 use crate::there::{self, Sending, Source};
 
@@ -45,6 +50,22 @@ pub const NOT_TAKEN: u8 = 75;
 /// took their build: sysexits.h's unavailable service, apart from
 /// [`NOT_TAKEN`], so the run isn't done here instead.
 pub const UNBUILT: u8 = 69;
+
+/// How long an evaluator has to name the checks before it's left, unless
+/// `NIX_OFFLOAD_EVALUATING_LONGEST` says how many seconds. On 8 November
+/// six runs sat on one evaluator for up to three hours, having printed
+/// nothing since connecting, while its own Nix said its database was busy
+/// with the others; a run there evaluated both sides in 400 to 900 s.
+pub const EVALUATING_LONGEST: Duration = Duration::from_mins(20);
+
+/// How long an evaluator has, from the environment or
+/// [`EVALUATING_LONGEST`].
+pub fn evaluating_longest() -> Duration {
+    std::env::var("NIX_OFFLOAD_EVALUATING_LONGEST")
+        .ok()
+        .and_then(|seconds| seconds.parse().ok())
+        .map_or(EVALUATING_LONGEST, Duration::from_secs)
+}
 
 /// What the far side's changed-checks is told, so it runs there and never
 /// sends itself on, and so the far side's slices treat it as other work.
@@ -222,18 +243,34 @@ pub fn in_turn<T>(lenders: [T; 2], run: u32) -> [T; 2] {
 
 /// Runs `command` on `host` by ssh, sending `bundle` on its standard
 /// input, and gives its status and what it printed, which comes here as
-/// it goes. Its log goes to this one's standard error.
+/// it goes. Its log goes to this one's standard error. One that hasn't
+/// ended within `longest` is ended, and given as unreached, so the next
+/// evaluator is asked.
 pub fn evaluated(
     ssh: &str,
     host: &str,
     sending: &Sending,
     scratch: &Path,
+    longest: Duration,
 ) -> Result<(i32, String), String> {
     fs::create_dir_all(scratch).map_err(|error| format!("{}: {error}", scratch.display()))?;
     let said = there::mine(scratch, "evaluator-ssh.log");
     let mut command = there::reaching(ssh, &said);
     command.arg(host).arg(there::far(&sending.command));
     command.stdout(Stdio::piped());
+    // The far side ends once its ssh does, but an ssh whose caller was
+    // ended went on alone: on 8 November two sat under the account's
+    // manager for over an hour after theirs were gone.
+    // SAFETY: prctl is async-signal-safe and touches only the child.
+    unsafe {
+        command.pre_exec(|| {
+            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) == 0 {
+                Ok(())
+            } else {
+                Err(io::Error::last_os_error())
+            }
+        });
+    }
     if let Some(bundle) = &sending.bundle {
         let bundle = fs::File::open(bundle).map_err(|error| format!("the bundle: {error}"))?;
         command.stdin(bundle);
@@ -241,6 +278,7 @@ pub fn evaluated(
     let mut running = command
         .spawn()
         .map_err(|error| format!("couldn't run {ssh}: {error}"))?;
+    let clock = left_after(running.id(), longest);
     let mut printed = String::new();
     if let Some(output) = running.stdout.take() {
         let mut out = std::io::stdout();
@@ -250,11 +288,53 @@ pub fn evaluated(
             printed.push('\n');
         }
     }
+    // Told before the ssh is waited for, so it's never ended once its
+    // number may belong to another.
+    let left = clock.stop();
     let status = running
         .wait()
         .map_err(|error| format!("couldn't run {ssh}: {error}"))?;
     let _ = fs::remove_file(&said);
+    if left {
+        let within = match longest.as_secs() {
+            seconds if seconds >= 60 => format!("{} minutes", seconds.div_ceil(60)),
+            seconds => format!("{seconds} seconds"),
+        };
+        eprintln!("nix-offload: {host} named nothing within {within}, so it's left");
+        return Ok((there::UNREACHED, printed));
+    }
     Ok((status.code().unwrap_or(there::UNREACHED), printed))
+}
+
+/// A clock that ends a process unless it's stopped first.
+struct Clock {
+    stopping: mpsc::Sender<()>,
+    ended: thread::JoinHandle<bool>,
+}
+
+impl Clock {
+    /// Stops it, and says whether it had ended the process already.
+    fn stop(self) -> bool {
+        let _ = self.stopping.send(());
+        self.ended.join().unwrap_or(false)
+    }
+}
+
+/// Ends process `pid` once `longest` passes, unless stopped before.
+fn left_after(pid: u32, longest: Duration) -> Clock {
+    let (stopping, stopped) = mpsc::channel();
+    let ended = thread::spawn(move || {
+        let late = matches!(
+            stopped.recv_timeout(longest),
+            Err(RecvTimeoutError::Timeout)
+        );
+        if late && let Ok(pid) = libc::pid_t::try_from(pid) {
+            // SAFETY: the process is this one's child, not yet waited for.
+            unsafe { libc::kill(pid, libc::SIGTERM) };
+        }
+        late
+    });
+    Clock { stopping, ended }
 }
 
 /// The command that builds `checks` of the tree `folder` for `system`, as
