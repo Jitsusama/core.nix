@@ -98,7 +98,8 @@ struct Daemon {
     since: u64,
     /// The copy on the clipboard now, cleared when its time is up.
     copied: Option<Child>,
-    /// Whether an audit is running, so a second waits for none.
+    /// Whether an audit is running, so a second is refused rather than
+    /// reading every password again beside it.
     auditing: bool,
 }
 
