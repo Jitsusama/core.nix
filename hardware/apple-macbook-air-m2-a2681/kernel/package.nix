@@ -65,6 +65,16 @@ buildLinux (
         name = "fairydust";
         patch = ./fairydust.patch;
       }
+      {
+        # Gilles Goetsch's hotplug fixes for fairydust, Asahi's PR 622, as
+        # its two commits leave the two files once on fairydust here.
+        # Without them a screen plugged in after start-up freezes the
+        # desktop for 10 seconds a frame and never gets a DisplayPort link;
+        # tested on this model. Asahi closed it unmerged under its rule on
+        # generated code, so it's carried here until fairydust has its own.
+        name = "hotplug-fixes";
+        patch = ./hotplug-fixes.patch;
+      }
     ]
     ++ (args.kernelPatches or [ ]);
   }
