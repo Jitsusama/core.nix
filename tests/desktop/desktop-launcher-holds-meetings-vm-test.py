@@ -265,7 +265,9 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
         lambda shown: shown["path"] == [] and (shown["selected"] or {}).get("name") == "Standup"
     )
     desktop.follow()
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Show in Calendar")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name") == "Show in Calendar"
+    )
     desktop.down_to("Join the Meeting")
     # Joining starts something, so Return writes :meet, and a fresh Return joins, asking
     # nothing, since leaving takes it back.
@@ -778,7 +780,13 @@ def found_with_ada_and_in_standup(desktop: Desktop, ada: str) -> None:
     desktop.launcher_until(
         lambda shown: (
             shown["rows"][:5]
-            == ["Show in Calendar", "Join the Meeting", "Write to the Guests", "Open the Transcript", "Going"]
+            == [
+                "Show in Calendar",
+                "Join the Meeting",
+                "Write to the Guests",
+                "Open the Transcript",
+                "Going",
+            ]
         )
     )
 
