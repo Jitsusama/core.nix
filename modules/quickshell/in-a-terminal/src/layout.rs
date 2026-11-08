@@ -1,6 +1,7 @@
 //! What the launcher shows, laid out for a terminal as the launcher lays
-//! it on the card: a place's or a row's head, its drawer's facts and words
-//! when it has a drawer, and then its rows, each its glyph in its hue, its
+//! it on the card: a place's or a row's head, Home's at home, its drawer's
+//! facts and words when it has a drawer, and then its rows, its acts left
+//! to `launcher do` and `--json`, since a terminal can't press them, each its glyph in its hue, its
 //! name, what it holds after it in muted, and its side, right-aligned in one
 //! column. Type is the material: only the title is bold, and space alone
 //! groups, one empty line between the drawer's groups and between the
@@ -106,7 +107,11 @@ pub fn shown(shown: &Value, look: &Look, room: Room, words: &Words) -> String {
         .and_then(Value::as_array)
         .map(|rows| rows.iter().collect())
         .unwrap_or_default();
-    if let Some(row) = shown.get("row").filter(|row| row.is_object()) {
+    let row = shown.get("row").filter(|row| row.is_object());
+    if row.is_none() {
+        blocks.push(vec![look.title(words.home())]);
+    }
+    if let Some(row) = row {
         if let Some(drawer) = row.get("drawer").filter(|drawer| drawer.is_object()) {
             blocks.extend(drawn(drawer, row, look, room, words));
         } else {
@@ -438,7 +443,8 @@ mod tests {
 
     fn words() -> Words {
         Words::from_value(
-            &serde_json::from_str(r#"{"terminal":{"waiting":"\u2026"}}"#).expect("parses"),
+            &serde_json::from_str(r#"{"terminal":{"waiting":"\u2026"},"field":{"home":"Home"}}"#)
+                .expect("parses"),
         )
     }
 
@@ -461,7 +467,8 @@ mod tests {
     fn home_lists_its_rows_their_sides_in_one_column() {
         assert_eq!(
             laid(HOME, 100),
-            "\u{25c8} Now  2 need you\n\
+            "Home\n\n\
+             \u{25c8} Now  2 need you\n\
              \u{25c6} Machine  Disk \u{b7} Power \u{b7} Sound\n\
              \u{25c6} Disk    412 GB free \u{b7} nvme0n1\n"
         );
@@ -471,7 +478,8 @@ mod tests {
     fn a_count_gives_way_first_then_a_side_by_whole_items() {
         assert_eq!(
             laid(HOME, 24),
-            "\u{25c8} Now  2 need you\n\
+            "Home\n\n\
+             \u{25c8} Now  2 need you\n\
              \u{25c6} Machine  Disk \u{b7} Power\n\
              \u{25c6} Disk       412 GB free\n"
         );
@@ -489,6 +497,18 @@ mod tests {
         let place = r#"{"in":["Machine","Disk"],"path":["computer","disk"],
             "row":{"id":"computer\u203adisk","name":"Disk","side":"412 GB free"},
             "rows":[{"id":"s","name":"Space","side":"412 GB free"}]}"#;
+        assert_eq!(
+            laid(place, 80),
+            "Machine \u{203a} Disk\n\nSpace  412 GB free\n"
+        );
+    }
+
+    #[test]
+    fn a_place_leaves_its_acts_to_launcher_do() {
+        let place = r#"{"in":["Machine","Disk"],"path":["computer","disk"],
+            "row":{"id":"computer\u203adisk","name":"Disk"},
+            "rows":[{"id":"s","name":"Space","kind":"figure","side":"412 GB free"}],
+            "acts":[{"id":"c","name":"Copy","kind":"action"}]}"#;
         assert_eq!(
             laid(place, 80),
             "Machine \u{203a} Disk\n\nSpace  412 GB free\n"

@@ -1261,6 +1261,7 @@ Scope {
         const steps = String(path ?? "").split(catalogueStep).filter(said => said.trim() !== "");
         let rows = home();
         let things = true;
+        let among = true;
         const trail = [];
         for (const said of steps) {
             const found = Showing.step(rows.filter(one => !!one && !one.gone), said,
@@ -1268,6 +1269,7 @@ Scope {
             if (!found.row)
                 return { missing: said, near: found.near, in: trail.map(one => one.name) };
             trail.push(found.row);
+            among = things;
             rows = catalogueHolds(found.row, things);
             things = collects({ row: found.row });
         }
@@ -1280,12 +1282,20 @@ Scope {
             drawer: drawerOf(one)
         });
         const last = trail.length > 0 ? trail[trail.length - 1] : null;
+        // A thing's own acts, Copy on Disk, are what `launcher do` does
+        // rather than rows to read, so they're said apart (VKCF3Z,
+        // 2026-11-08); a place's or a collection's rows are its things.
+        const acting = last !== null && asThing(last, among) && !last.category
+            && !collects({ row: last });
+        const acts = acting ? led(last, last.verbs?.() ?? []).map(one => steadyId(one)) : [];
+        const sayable = rows.filter(one => !!one && !one.gone && (one.name ?? "") !== "");
         return {
             in: trail.map(one => one.name),
             path: ids,
             row: last === null ? null : entry(last, ids.slice(0, -1)),
-            rows: rows.filter(one => !!one && !one.gone && (one.name ?? "") !== "")
-                .map(one => entry(one, ids))
+            rows: sayable.filter(one => !acts.includes(steadyId(one)))
+                .map(one => entry(one, ids)),
+            acts: sayable.filter(one => acts.includes(steadyId(one))).map(one => entry(one, ids))
         };
     }
 

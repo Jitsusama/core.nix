@@ -9,10 +9,11 @@ use std::fs;
 
 use serde_json::Value;
 
-/// The `terminal` section of words.json.
+/// The `terminal` section of words.json, and home's name, the field's.
 #[derive(Debug, Clone)]
 pub struct Words {
     said: Value,
+    home: String,
 }
 
 impl Words {
@@ -29,7 +30,17 @@ impl Words {
     pub fn from_value(all: &Value) -> Self {
         Self {
             said: all.get("terminal").cloned().unwrap_or(Value::Null),
+            home: all
+                .pointer("/field/home")
+                .and_then(Value::as_str)
+                .unwrap_or("home")
+                .to_string(),
         }
+    }
+
+    /// Home's name, as the launcher's field says it with nothing typed.
+    pub fn home(&self) -> &str {
+        &self.home
     }
 
     /// A word by its key, its `{name}`s filled from `filled`.
@@ -141,6 +152,7 @@ mod tests {
     #[test]
     fn a_word_missing_from_the_file_is_said_as_its_key() {
         assert_eq!(Words::from_value(&Value::Null).silent(), "silent");
+        assert_eq!(Words::from_value(&Value::Null).home(), "home");
         assert_eq!(words().usage(), "launcher show\n");
     }
 }

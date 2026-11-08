@@ -964,13 +964,13 @@ def test_a_terminal_is_shown_a_place_by_its_names_and_a_miss_the_nearest(shell: 
 
     The shell walks from home by its own rows (Launcher.qml's shownToTerminal), each step a
     name in any case or the start of only one (launcher/Showing.js, whose cases are
-    tests/showing.qml), so a terminal says what the launcher would. The launcher stays
-    closed: a terminal's asking never opens it.
+    tests/showing.qml), so a terminal says what the launcher would, a thing's own acts apart
+    from its rows. The launcher stays closed: a terminal's asking never opens it.
     """
 
     def shown(*steps: str) -> Json:
         # Asked as the program asks: each step after the mark, since qs takes no empty
-        # argument, and after `--`, since qs 0.3.1 refuses one given with its -p otherwise.
+        # argument, and after `--`, since `show` is also qs ipc's own command otherwise.
         path = shlex.quote("".join(f"\u203a{step}" for step in steps) or "\u203a")
         asked = f"qs -p {shell.folder} ipc call -- launcher show {path}"
         return cast("Json", json.loads(shell.as_account(asked)))
@@ -979,6 +979,7 @@ def test_a_terminal_is_shown_a_place_by_its_names_and_a_miss_the_nearest(shell: 
     names = [row["name"] for row in home["rows"]]
     assert home["in"] == [], home
     assert home["row"] is None, home
+    assert home["acts"] == [], home
     assert "Machine" in names, names
     machine = shown("machine")
     assert machine["in"] == ["Machine"], machine
@@ -987,9 +988,13 @@ def test_a_terminal_is_shown_a_place_by_its_names_and_a_miss_the_nearest(shell: 
     # A step's start names the one row it starts; each row's id is its path's.
     power = shown("MACH", "pow")
     assert power["in"] == ["Machine", "Power"], power
-    reboot = next(row for row in power["rows"] if row["name"] == "Reboot")
+    reboot = next(row for row in power["rows"] + power["acts"] if row["name"] == "Reboot")
     assert reboot["id"].startswith("\u203a".join(power["path"]) + "\u203a"), reboot
     assert reboot["verb"] == "reboot", reboot
+    # A thing's own acts are said apart from its rows, for `launcher do` (VKCF3Z).
+    disk = shown("machine", "disk")
+    assert "Copy" in [row["name"] for row in disk["acts"]], disk
+    assert "Copy" not in [row["name"] for row in disk["rows"]], disk
     # A miss says where, and the names it was nearest.
     assert shown("mahcine") == {"missing": "mahcine", "near": ["Machine"], "in": []}
     assert shown("machine", "zebra")["in"] == ["Machine"]

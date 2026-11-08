@@ -37,8 +37,8 @@ pub enum Answer {
 /// not answering, with what qs said where it said anything.
 pub fn show(qs: &str, steps: &[String]) -> Result<Answer, String> {
     let mut child = Command::new(qs)
-        // After `--`, since qs 0.3.1 refuses a call's argument as one it
-        // didn't expect wherever it reads its options otherwise.
+        // After `--`, since `show` is also qs ipc's own command, which
+        // takes no argument, and qs reads the call as it otherwise.
         .args(["ipc", "call", "--", "launcher", "show", &path(steps)])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
