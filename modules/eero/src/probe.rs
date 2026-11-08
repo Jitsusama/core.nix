@@ -387,9 +387,12 @@ mod tests {
 
     #[test]
     fn the_route_table_reads_in_the_kernels_byte_order() {
-        let table = "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\n\
-                     wlan0\t00000000\t0100000A\t0003\t0\t0\t600\t00000000\t0\t0\t0\n\
-                     wlan0\t0000000A\t00000000\t0001\t0\t0\t600\t00FFFFFF\t0\t0\t0\n";
+        let table = concat!(
+            "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\t",
+            "MTU\tWindow\tIRTT\n",
+            "wlan0\t00000000\t0100000A\t0003\t0\t0\t600\t00000000\t0\t0\t0\n",
+            "wlan0\t0000000A\t00000000\t0001\t0\t0\t600\t00FFFFFF\t0\t0\t0\n",
+        );
 
         let routes = parse_routes(table);
 
