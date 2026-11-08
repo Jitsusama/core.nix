@@ -1,18 +1,21 @@
+pragma ComponentBehavior: Bound
 // Drives the launcher's quests (modules/quickshell/launcher/Quests.qml)
-// through Quickshell itself, over a quest store written beside this and
-// read by the real pi-quests, with niri, pi's sessions and the launcher
-// stood in. With nothing typed it lists the open quests, the one driving
-// first, each saying its kind and priority; typing finds a finished one
-// too, after the open ones that match as well, and by its id; Return opens
-// pi on a quest in the folder the harness would pick, autoloaded, unless a
+// through Quickshell itself, over a stand-in for the realm's node serving
+// the harness's two lists, the open quests and the ended ones, as
+// mycelium's does (its PROTOCOL.md, The Daemon Interface), with niri, pi's
+// sessions and the launcher stood in. With nothing typed it lists the open
+// quests, the one driving first, each saying its kind, as the harness says
+// it past the node's own, and priority; typing finds an ended one too,
+// after the open ones that match as well, and by its id; Return opens pi
+// on a quest in the folder its record says, autoloaded, unless a
 // session has it loaded, when it goes to that session's window; the right
 // arrow steps into its facts, its parent's title among them, and y takes
 // its id without making them; Start a
 // Session there steps into the machines the realm's node places on, where
 // it has more than this one, each that can't take a session dimmed with
-// why, and Wherever It Fits last; and a quest made while the launcher was
-// shut is there when it opens. It exits 0 once
-// every case holds, and otherwise 1, saying which didn't.
+// why, and Wherever It Fits last; and a quest made since is heard, each
+// other's row kept as every quest is told again. It exits 0 once every
+// case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -22,7 +25,6 @@ import "launcher" as Launcher
 ShellRoot {
     id: root
 
-    readonly property string store: Quickshell.env("QUESTS")
     readonly property string here: Quickshell.env("PWD")
     property string waiting: "the first reading"
     // The rows before the store is written again, and how many were made.
@@ -55,18 +57,70 @@ ShellRoot {
         settings: ({ name: "quests" })
         // Each after the change is done, since a case changes them again.
         onAllChanged: {
-            if (root.waiting === "the first reading" && quests.all.length > 0)
+            if (root.waiting === "the first reading" && quests.all.length === 4)
                 Qt.callLater(root.first);
             else if (root.waiting === "the quest made since" && quests.all.length > 4)
                 Qt.callLater(root.since);
         }
     }
 
-    Process {
-        id: making
-        command: ["mv", `${root.here}/later/QEST-20261020-NEWONE`, `${root.store}/`]
-        onExited: {
-            launcher.open = true;
+    // A quest as the harness lists it, and as the node serves it: under
+    // the node's kind, with the quest's own again as quest.kind.
+    function quest(id, title, served, fields) {
+        return Object.assign({
+            key: `${served}:${id}`, kind: served, heard: 1, id: id, title: title,
+            "quest.kind": "quest", summary: `What ${title} is about.`, start: root.here
+        }, fields);
+    }
+    readonly property var open: [
+        quest("QEST-20261001-LAPTOP", "Bootstrap the laptop", "quest", { status: "active",
+            priority: "driving", rank: 1, updated: "2026-10-22", start: `${root.here}/newer` }),
+        quest("QEST-20261003-PROMPT", "Retune the prompt", "quest", {
+            "quest.kind": "subquest", parent: "QEST-20261001-LAPTOP", status: "active",
+            priority: "queued", rank: 2, updated: "2026-10-21T09:00:00.000Z",
+            start: `${root.here}/session` }),
+        quest("QEST-20261004-STICK", "Wait on the stick", "quest", { status: "blocked",
+            priority: "bench", rank: 1, updated: "2026-10-04" })
+    ]
+    readonly property var ended: [
+        quest("QEST-20250105-BANNER", "Tune the banner", "ended-quest", { status: "concluded",
+            updated: "2025-01-05" })
+    ]
+
+    // The shell's watch of each kind, by kind, so the node can tell it more.
+    property var watches: ({})
+
+    function tell(kind, change) {
+        const watch = root.watches[kind];
+        watch.socket.write(`${JSON.stringify(Object.assign({ id: watch.id }, change))}\n`);
+        watch.socket.flush();
+    }
+
+    // A stand-in for the machine's node, speaking the daemon interface:
+    // hello, and a watch of either list answered with it whole.
+    SocketServer {
+        active: true
+        path: Sessions.nodePath
+        handler: Socket {
+            id: asked
+            parser: SplitParser {
+                onRead: line => {
+                    const ask = JSON.parse(line);
+                    let answer;
+                    if (ask.ask === "hello") {
+                        answer = { id: ask.id, version: 1, domain: "node", state: "running" };
+                    } else if (ask.ask === "watch" && ["quest", "ended-quest"].includes(ask.kind)) {
+                        root.watches[ask.kind] = { socket: asked, id: ask.id };
+                        answer = { id: ask.id,
+                            records: ask.kind === "quest" ? root.open : root.ended };
+                    } else {
+                        root.fail(`an ask the quests have no need of: ${line}`);
+                        answer = { id: ask.id, error: { code: "unknown-ask", message: line } };
+                    }
+                    asked.write(`${JSON.stringify(answer)}\n`);
+                    asked.flush();
+                }
+            }
         }
     }
 
@@ -209,7 +263,12 @@ ShellRoot {
             root.made = quests.looksThrough();
             root.counted = quests.tally.rows;
             root.waiting = "the quest made since";
-            making.running = true;
+            // The node tells every quest again as the harness writes its
+            // list, heard anew, and the new one whole.
+            tell("quest", { changed: root.open.map(one => ({ key: one.key, heard: 2 })).concat([
+                quest("QEST-20261020-NEWONE", "Newly made", "quest", { status: "active",
+                    priority: "someday", rank: 1, updated: "2026-10-20" })
+            ]) });
         } catch (error) {
             fail(error.message);
         }
@@ -222,7 +281,7 @@ ShellRoot {
         try {
             const found = quests.search("newly").rows;
             expect("a quest made since", names(found) === "Newly made", names(found));
-            // pi-quests' text differs once any quest is written, and every
+            // Every quest is told again as a list is written, and every
             // quest's row was made again: about 824 at each change on Joel's
             // shell (2026-11-03). Each row is kept while its quest and its
             // session read the same, so only the new one is made.

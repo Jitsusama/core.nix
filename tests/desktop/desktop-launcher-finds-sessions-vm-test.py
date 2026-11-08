@@ -24,12 +24,13 @@ from desktop_session import (
     INBOX,
     LAUNCHER_OPEN,
     PI_PRESENCE,
-    PI_QUEST,
     PI_WINDOW,
     SHELL_STARTS,
     kept,
     laid_out,
     lighthouse_listed,
+    listed_quest,
+    quests_listed,
     started_apart,
 )
 
@@ -477,17 +478,20 @@ def test_the_launcher_finds_pis_quests_going_to_the_session_on_one_and_opening_p
     """The launcher finds pi's quests, going to the session on one and opening pi on another."""
     machine = desktop.machine
     desktop.pi_session()
-    # Their READMEs as pi keeps them, front matter first: the session's
-    # quest, and another in a tree of its own with no session on it.
-    another = "~/.local/share/pi/agentic-harness.pi/quest-workflow/quests/QEST-20261022-HALLWY"
-    desktop.as_account(
-        "printf '%s\\n' '---' 'id: QEST-20261022-TESTQA' 'kind: quest' 'status: active'"
-        " 'priority: driving' 'rank: 1' '---' '# A quest of its own & whole'"
-        f" > {PI_QUEST}/README.md"
-        f" && mkdir -p {another} ~/hallway && printf '%s\\n' '---' 'id: QEST-20261022-HALLWY'"
-        " 'kind: quest' 'status: active' 'priority: queued' 'rank: 1' 'trees:'"
-        ' "  - path: $HOME/hallway"'
-        f" '---' '# Paint the hallway' > {another}/README.md"
+    # As the harness lists them: the session's quest, and another with no
+    # session on it, which a new session opens in its tree for.
+    desktop.as_account("mkdir -p ~/hallway")
+    quests_listed(
+        desktop,
+        [
+            listed_quest("QEST-20261022-TESTQA", "A quest of its own & whole"),
+            listed_quest(
+                "QEST-20261022-HALLWY",
+                "Paint the hallway",
+                priority="queued",
+                start="/home/jitsusama/hallway",
+            ),
+        ],
     )
     desktop.presence_says(
         {"addresses": ["TESTQA"], "busy": False, "owns": ["QEST-20261022-TESTQA"]}
@@ -538,7 +542,8 @@ def test_the_launcher_finds_pis_quests_going_to_the_session_on_one_and_opening_p
         ),
         timeout=dt.timedelta(seconds=30),
     )
-    desktop.as_account(f"rm -rf {another} ~/hallway $XDG_RUNTIME_DIR/pi-opened")
+    quests_listed(desktop, [])
+    desktop.as_account("rm -rf ~/hallway $XDG_RUNTIME_DIR/pi-opened")
 
 
 def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
@@ -553,23 +558,20 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     # one long dead.
     a_quest_offers_to_orchestrate(desktop)
     lighthouse_listed(desktop)
-    index = {
-        "quests": [
-            {
-                "id": "QEST-20261022-TESTQA",
-                "sessions": ["01a0-long-dead"],
-                "resume": {"id": "01a1-lighthouse", "cwd": "/home/jitsusama/lighthouse"},
-            }
-        ]
-    }
+    lighthouse = listed_quest(
+        "QEST-20261022-TESTQA",
+        LIGHTHOUSE,
+        sessions=["01a0-long-dead"],
+        resume={"id": "01a1-lighthouse", "cwd": "/home/jitsusama/lighthouse"},
+    )
     record = {"type": "session", "id": "01a1-lighthouse", "cwd": "/home/jitsusama/lighthouse"}
     sessions = "~/.pi/agent/sessions/--home-jitsusama-lighthouse--"
     kept = f"{sessions}/2026-10-28T20-00-00-000Z_01a1-lighthouse.jsonl"
     desktop.as_account(
         f"rm -f {PI_PRESENCE}/testqa.json {opened} && mkdir -p {sessions} ~/lighthouse"
         f" && echo '{json.dumps(record)}' > {kept}"
-        f" && echo '{json.dumps(index)}' > {HARNESS}/quest-workflow/quests.json"
     )
+    quests_listed(desktop, [lighthouse])
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.down_to("Agents")
@@ -627,7 +629,7 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     wakes_parked_orchestrator(desktop)
     desktop.as_account(
         f"rm -rf {opened} {sessions} ~/lighthouse {HARNESS}/quest-workflow/orchestrators.json"
-        f" {HARNESS}/quest-workflow/quests.json"
+        f" {HARNESS}/quest-workflow/quests.json {HARNESS}/quest-workflow/ended.json"
     )
 
 
@@ -638,10 +640,8 @@ def a_quest_offers_to_orchestrate(desktop: Desktop) -> None:
     """
     desktop.as_account(
         f"rm -f {HARNESS}/quest-workflow/orchestrators.json {PI_PRESENCE}/testqa.json"
-        f" && mkdir -p {PI_QUEST}"
-        f" && printf '%s\\n' '---' 'id: QEST-20261022-TESTQA' 'kind: quest' 'status: active'"
-        f" 'priority: driving' 'rank: 1' '---' '# {LIGHTHOUSE}' > {PI_QUEST}/README.md"
     )
+    quests_listed(desktop, [listed_quest("QEST-20261022-TESTQA", LIGHTHOUSE)])
     desktop.as_account("qs ipc call launcher collection agents")
     desktop.launcher_ready()
     desktop.down_to("Start a Session")

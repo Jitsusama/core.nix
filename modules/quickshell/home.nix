@@ -1596,9 +1596,8 @@ in
 
     # The recorder's tools (Recorder.qml): wf-recorder records the screen
     # and record-window a window, grim takes a region's picture and wl-copy
-    # copies it, and notify-send says where the file went. The launcher's
-    # quests read pi through pi-quests (launcher/Quests.qml), and a
-    # terminal shows a run's answer through jq (launcher/Runs.qml). The
+    # copies it, and notify-send says where the file went. A terminal
+    # shows a run's answer through jq (launcher/Runs.qml). The
     # clipboard's Paste presses its window's paste keys through wtype
     # (launcher/Copies.qml).
     home.packages = lib.optional followsTheLaptop whereabouts ++ [
@@ -1608,10 +1607,6 @@ in
       pkgs.quickshell
       pkgs.wf-recorder
       (pkgs.callPackage ./record-window/package.nix { })
-      (pkgs.callPackage ./pi-helper.nix {
-        name = "pi-quests";
-        source = ./quests.rs;
-      })
       pkgs.jq
       pkgs.grim
       pkgs.wl-clipboard

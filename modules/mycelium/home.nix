@@ -266,10 +266,11 @@ let
       (servesFile realm)
     ];
   # The harness's files a realm's node serves whoever reads it, the
-  # launcher first, each as a kind of records: the realm's quests, the
-  # sessions to restore, the runs of subagents and reviews its sessions
-  # started, a file each, and the talks in its sessions' steer inboxes, a
-  # record each of its lines; and on the home realm's node the machine's
+  # launcher first, each as a kind of records: the realm's open quests and
+  # its ended ones, each list a file the harness keeps, the sessions to
+  # restore, the runs of subagents and reviews its sessions started, a
+  # file each, and the talks in its sessions' steer inboxes, a record each
+  # of its lines; and on the home realm's node the machine's
   # waiting, verdicts and queue, which no realm owns, so nothing is heard
   # twice. The queue is in the login's runtime folder, which the node
   # finds, as a Mac's differs by account: each job, and the queue whole as
@@ -286,6 +287,11 @@ let
     {
       quest = {
         file = "${harness}/quest-workflow/quests.json";
+        records = "quests";
+        key = "id";
+      };
+      ended-quest = {
+        file = "${harness}/quest-workflow/ended.json";
         records = "quests";
         key = "id";
       };
