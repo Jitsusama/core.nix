@@ -1983,7 +1983,8 @@
     {
       "id": "eero:internet:lease",
       "in": "eero:internet",
-      "name": "Lease"
+      "name": "Lease",
+      "term": "Network/lease"
     },
     {
       "id": "eero:internet:gateway",
@@ -2586,7 +2587,8 @@
     {
       "id": "networks:lease",
       "in": "networks",
-      "name": "Lease"
+      "name": "Lease",
+      "term": "Network/lease"
     },
     {
       "id": "networks:lease-server",
@@ -2641,7 +2643,8 @@
     {
       "id": "networks:neighbour",
       "in": "networks",
-      "name": "Neighbour"
+      "name": "Neighbour",
+      "term": "Network/neighbour"
     },
     {
       "id": "networks:neighbour-system",
