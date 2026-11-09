@@ -269,8 +269,9 @@ function versionOf(device, said) {
 // A sentence's closing full stop.
 const CLOSING_STOP = /\.$/u;
 // A word opened by two capitals, as BIOS and UEFI are, which keeps its
-// first.
-const CAPITALS = /^\p{Lu}\p{Lu}/u;
+// first. Named as letters, since Qt's engine has no \p{Lu}: fwupd's lines
+// are in English.
+const CAPITALS = /^[A-Z]{2}/u;
 
 // The last line fwupdmgr or systemctl said of why what it was asked
 // didn't go, or "" where it said nothing, as a note says it, after a

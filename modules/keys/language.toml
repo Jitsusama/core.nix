@@ -1241,6 +1241,15 @@ kinds = ["list"]
 changes = true
 undoable = true
 
+# A firmware security setting fwupd changes to what the next level needs:
+# Fix It. Named secure, since Neovim's :fixdel takes :fix; it asks once,
+# since only fwupd's undo takes it back.
+[acts.secure]
+command = "secure"
+short = "sec"
+kinds = ["list"]
+changes = true
+
 # A firmware's new version put on the device. Install {version}.
 [acts.install]
 ends = true

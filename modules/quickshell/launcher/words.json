@@ -3232,7 +3232,7 @@
     },
     {
       "id": "verb:firmware:fix",
-      "command": "fix",
+      "command": "secure",
       "in": "firmware",
       "name": "Fix It",
       "verb": "fix",
@@ -3266,17 +3266,18 @@
     },
     {
       "id": "verb:firmware:setup",
-      "command": "setup",
+      "command": "reboot",
+      "argument": "setup",
       "in": "firmware",
-      "name": "Restart Into Firmware Setup",
+      "name": "Reboot Into Firmware Setup",
       "verb": "reboot",
       "glyph": "firmware",
-      "sure": "Restart Into Firmware Setup Now",
+      "sure": "Reboot Into Firmware Setup Now",
       "said": {
         "set": "set {setting} to {target} there",
         "find": "set it there",
         "final": "it closes every window",
-        "failed": "didn't restart"
+        "failed": "didn't reboot"
       }
     },
     {
