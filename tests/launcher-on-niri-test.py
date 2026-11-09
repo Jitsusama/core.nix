@@ -1419,6 +1419,44 @@ def test_a_terminal_is_shown_warps_state_health_and_round_trips_drawer(shell: Sh
         shutil.rmtree(said)
 
 
+def test_a_terminal_disconnects_warp_once_sure_and_connects_it_unasked(shell: Shell) -> None:
+    """`launcher do` asks before WARP's Disconnect, as its card does, and connects it unasked.
+
+    Disconnect WARP ends the link, so the terminal is asked the launcher's own question and
+    warp-cli hears nothing until it's sure; Connect WARP ends nothing, so it's done at once.
+    The shell walks the same rows the card draws (Launcher.qml's doneFromTerminal), so there's
+    nothing of WARP's own to wire; this proves it reaches warp-cli through warp.
+    """
+
+    def done(*steps: str, path: list[str] | None = None, sure: bool = False) -> Json:
+        said = {"steps": steps, "path": path or [], "words": "", "sure": sure}
+        asked_for = shlex.quote(json.dumps(said))
+        answer = shell.as_account(f"qs -p {shell.folder} ipc call -- launcher doing {asked_for}")
+        return cast("Json", json.loads(answer))
+
+    def rows_say(name: str) -> Callable[[Json], bool]:
+        return lambda shown: name in [row["name"] for row in shown.get("rows", [])]
+
+    said = warp_said()
+    (said / "connect.json").write_text('"Success"\n')
+    try:
+        terminal_shown_until(shell, rows_say("Disconnect WARP"), "network", "warp")
+        asking = done("network", "warp", "disconnect warp")
+        assert asking["asks"].startswith("Disconnect WARP"), asking
+        assert asking["asks"].endswith("? (y/n)"), asking
+        assert "disconnect" not in asked(said), "warp-cli was told before the terminal was sure"
+        disconnected = done(path=asking["path"], sure=True)
+        assert disconnected["done"] is True, disconnected
+        assert disconnected["in"] == ["Network", "WARP", "Disconnect WARP"], disconnected
+        shell.launcher_until(lambda _: "disconnect" in asked(said))
+        terminal_shown_until(shell, rows_say("Connect WARP"), "network", "warp")
+        connected = done("network", "warp", "connect warp")
+        assert connected == {"done": True, "in": ["Network", "WARP", "Connect WARP"]}, connected
+        shell.launcher_until(lambda _: "connect" in asked(said))
+    finally:
+        shutil.rmtree(said)
+
+
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
     """No answer raised an error, and Quickshell warned of nothing it drew."""
     log = shell.log.read_text(errors="replace").splitlines()
