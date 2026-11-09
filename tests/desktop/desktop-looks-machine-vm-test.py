@@ -301,6 +301,10 @@ def test_keep_awake_held_by_another_is_shot_at_each_scale(
                     and drawer_says(shown, "Idle Sleep")
                 )
             )
+            # The holder reads as who and why, apart, from logind's own lock.
+            drawer = desktop.showing()["drawer"]
+            facts = dict(zip(drawer["drawnFacts"], drawer["values"], strict=True))
+            assert facts.get("Idle Held By") == "Tuple: sharing the screen", facts
             desktop.shoot(f"launcher-keep-awake-at-{scale.replace('.', '-')}")
             desktop.close_launcher()
     finally:
