@@ -2553,8 +2553,8 @@ hairline, the rows, a hairline, the status line.
   far end in Note, before its side across a dot, cut from its end and
   never narrowing the name, and whole in the drawer. Its note follows
   its name, after what it holds across a dot, in Words and muted, never
-  at the right (Wi-Fi's "Lantern  a password", "connected" at its
-  right). It has the room the rest leave and gives way first, by whole
+  at the right (Wi-Fi's "Lantern" then "a password", "connected" at
+  its right). It has the room the rest leave and gives way first, by whole
   items from its end, so the right never gives way to it (VKCF3Z,
   2026-11-09). A held notice's card
   opens under its line, typed as the drawer's plate is.
