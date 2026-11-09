@@ -96,6 +96,20 @@ pub fn breaches(s: &Snapshot) -> Vec<Breach> {
     if let Some(breach) = switch_failing(s) {
         out.push(breach);
     }
+    // Said at once, unlike a merge not on yet: after this refusal the
+    // follower asks no more, so nothing moves until someone asks with a
+    // hold sent, and sessions-kitty joined the held daemons on 9 November.
+    if let Some((at, why)) = &s.follower.held {
+        let why: String = why.chars().take(240).collect();
+        out.push(Breach {
+            key: format!("heldfor:{at}"),
+            text: format!(
+                "an update was refused {} min ago, and the follower asks no more until someone \
+                 asks with a hold sent: {why}",
+                (s.now - at) / 60
+            ),
+        });
+    }
     let waits: Vec<f64> = s
         .runs
         .iter()
@@ -510,6 +524,30 @@ mod tests {
         // With nothing waiting, a failure isn't said.
         s.landings.clear();
         assert_eq!(breaches(&s), Vec::<Breach>::new());
+    }
+
+    #[test]
+    fn an_update_refused_for_a_held_daemon_is_said_at_once_and_once() {
+        let mut s = calm(100_000);
+        s.follower.held = Some((100_000 - 60, "switching would change sessions-kitty".into()));
+        let mut state = State::default();
+        let said = tick(&s, &mut state);
+        assert_eq!(said.len(), 1, "{said:?}");
+        assert!(
+            said[0]
+                .text
+                .contains("refused 1 min ago, and the follower asks no more"),
+            "{}",
+            said[0].text
+        );
+        assert!(
+            said[0]
+                .text
+                .ends_with("switching would change sessions-kitty."),
+            "{}",
+            said[0].text
+        );
+        assert_eq!(tick(&s, &mut state), Vec::<Question>::new());
     }
 
     #[test]
