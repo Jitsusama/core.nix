@@ -47,7 +47,7 @@ onLinux {
         "Asking.js"
         "Numbers.js"
         "Applications.qml"
-        "AppWindows.js"
+        "BrowserWindows.js"
         "Order.js"
         "Program.js"
         "Media.js"

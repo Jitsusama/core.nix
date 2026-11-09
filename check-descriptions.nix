@@ -97,8 +97,8 @@
     others say of it, the kinds of file and links it opens and its categories, and its command
     and desktop id last, leaving out what it can't say
   '';
-  an-app-window-deeper-in-is-its-programs = ''
-    a browser's app window opened deeper than its program's own page is that program's, by the
+  a-browser-window-deeper-in-is-its-programs = ''
+    a browser's window of its own opened deeper than its program's own page is that program's, by the
     longest page of the same host and profile, never another program's on that host nor another
     profile's
   '';

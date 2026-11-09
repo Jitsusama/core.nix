@@ -2544,7 +2544,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Applications.qml} launcher/Applications.qml
-      cp ${./launcher/AppWindows.js} launcher/AppWindows.js
+      cp ${./launcher/BrowserWindows.js} launcher/BrowserWindows.js
       cp ${./launcher/Media.js} launcher/Media.js
       cp ${./launcher/Program.js} launcher/Program.js
       cp ${./FileFacts.js} FileFacts.js
@@ -3613,22 +3613,22 @@ onLinux {
       touch $out
     '';
 
-  # A browser's app window opened deeper than its program's own page, a
-  # new document or a mail opened from the shell, is that program's, as
-  # tests/app-windows.qml holds launcher/AppWindows.js to desktop entries
-  # made up there.
-  an-app-window-deeper-in-is-its-programs =
+  # A browser's window of its own opened deeper than its program's own
+  # page, a new document or a mail opened from the shell, is that
+  # program's, as tests/browser-windows.qml holds launcher/BrowserWindows.js
+  # to desktop entries made up there.
+  a-browser-window-deeper-in-is-its-programs =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
-    pkgs.runCommandLocal "an-app-window-deeper-in-is-its-programs" { } ''
+    pkgs.runCommandLocal "a-browser-window-deeper-in-is-its-programs" { } ''
       mkdir launcher
-      cp ${../../tests/app-windows.qml} app-windows.qml
-      cp ${./launcher/AppWindows.js} launcher/AppWindows.js
+      cp ${../../tests/browser-windows.qml} browser-windows.qml
+      cp ${./launcher/BrowserWindows.js} launcher/BrowserWindows.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml app-windows.qml
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml browser-windows.qml
       touch $out
     '';
 

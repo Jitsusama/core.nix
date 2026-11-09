@@ -1,11 +1,11 @@
-// Which program a browser's app window belongs to, run in Qt's own
+// Which program a browser's window of its own belongs to, run in Qt's own
 // JavaScript engine, the one the shell runs it in. The
-// `an-app-window-deeper-in-is-its-programs` check copies
-// launcher/AppWindows.js beside this file and runs `qml -platform
-// offscreen app-windows.qml` over desktop entries made up here, each
+// `a-browser-window-deeper-in-is-its-programs` check copies
+// launcher/BrowserWindows.js beside this file and runs `qml -platform
+// offscreen browser-windows.qml` over desktop entries made up here, each
 // saying the class of its own page's window as Google's programs do.
 import QtQuick
-import "launcher/AppWindows.js" as AppWindows
+import "launcher/BrowserWindows.js" as BrowserWindows
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -29,7 +29,7 @@ QtObject {
     ]
 
     function owner(appId) {
-        return AppWindows.ownerOf(appId, entries)?.id ?? null;
+        return BrowserWindows.ownerOf(appId, entries)?.id ?? null;
     }
 
     property var failures: []
@@ -58,9 +58,9 @@ QtObject {
             owner("chrome-docs.google.com__document_create-Profile_1"), null);
         expect("a page no program keeps is nobody's",
             owner("chrome-calendar.google.com__calendar_r_eventedit-Default"), null);
-        expect("a window that isn't a browser's app is nobody's here", owner("kitty"), null);
+        expect("a window that isn't a browser's own is nobody's here", owner("kitty"), null);
         expect("nor is one with no app id", owner(undefined), null);
-        expect("nor is any, with no entries", AppWindows.ownerOf(
+        expect("nor is any, with no entries", BrowserWindows.ownerOf(
             "chrome-mail.google.com__-Default", undefined), null);
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
