@@ -6455,9 +6455,6 @@
         "minutes": "{minutes} min",
         "later": "nothing now, {count} later",
         "none": "nothing now",
-        "at": "at {time}",
-        "by": "by {time}",
-        "on": "on {machine}",
         "nobody": "nobody's watching this",
         "boot": "after the next boot",
         "switch": "after the next switch",
@@ -6470,12 +6467,11 @@
         "blocksMany": "blocks {count} sessions",
         "due": "due {time}",
         "overdue": "overdue since {time}",
-        "ready": "ready now",
         "waitedFor": "waiting {span}",
         "spanMinutes": "{count} min",
         "spanHours": "{count} h",
         "spanDays": "{count} d",
-        "todo": "to do",
+        "todo": "to-do",
         "look": "to look at",
         "ended": "session ended",
         "concluded": "quest concluded",
@@ -6488,7 +6484,11 @@
         "clearedHow": "cleared by you",
         "doneByYou": "done by you",
         "clearsLook": "you open or clear it",
-        "clearsPr": "it merges or closes"
+        "clearsPr": "it merges or closes",
+        "today": "today",
+        "yesterday": "yesterday",
+        "tomorrow": "tomorrow",
+        "moment": "{day} {time}"
       }
     },
     {
@@ -6510,6 +6510,36 @@
       "id": "on:waiting:takes",
       "in": "on:waiting",
       "name": "Takes"
+    },
+    {
+      "id": "on:waiting:due",
+      "in": "on:waiting",
+      "name": "Due"
+    },
+    {
+      "id": "on:waiting:set-for",
+      "in": "on:waiting",
+      "name": "Set For"
+    },
+    {
+      "id": "on:waiting:machine",
+      "in": "on:waiting",
+      "name": "Machine"
+    },
+    {
+      "id": "on:waiting:where",
+      "in": "on:waiting",
+      "name": "Where"
+    },
+    {
+      "id": "on:waiting:address",
+      "in": "on:waiting",
+      "name": "Address"
+    },
+    {
+      "id": "on:waiting:check",
+      "in": "on:waiting",
+      "name": "Check"
     },
     {
       "id": "on:waiting:checked",
@@ -8318,6 +8348,7 @@
         "writing": "being written down",
         "on": "not written down",
         "yesterday": "yesterday",
+        "tomorrow": "tomorrow",
         "under": "under a minute",
         "minutes": "{minutes} min",
         "hours": "{hours} h",
@@ -9607,6 +9638,7 @@
         "now": "just now",
         "minutes": "{minutes} min ago",
         "yesterday": "yesterday",
+        "tomorrow": "tomorrow",
         "readInGmail": "read in Gmail",
         "archivedInGmail": "archived in Gmail",
         "unimportant": "no longer important",
@@ -9748,7 +9780,8 @@
         "off": "off",
         "now": "just now",
         "minutes": "{minutes} min ago",
-        "yesterday": "yesterday"
+        "yesterday": "yesterday",
+        "tomorrow": "tomorrow"
       }
     },
     {
@@ -10844,7 +10877,8 @@
       "said": {
         "now": "just now",
         "minutes": "{minutes} min ago",
-        "yesterday": "yesterday"
+        "yesterday": "yesterday",
+        "tomorrow": "tomorrow"
       }
     },
     {
@@ -11184,6 +11218,7 @@
         "other": "{first} and one other",
         "others": "{first} and {count} others",
         "yesterday": "yesterday",
+        "tomorrow": "tomorrow",
         "under": "under a minute",
         "minutes": "{minutes} min",
         "hours": "{hours} h",

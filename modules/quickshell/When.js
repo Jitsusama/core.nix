@@ -4,7 +4,7 @@
 .pragma library
 
 const DAY = 86_400_000;
-// How many days back a day is said by its weekday.
+// How many days back, or on, a day is said by its weekday.
 const LATELY_DAYS = 6;
 
 function midnight(moment) {
@@ -17,12 +17,14 @@ function daysBefore(at, now) {
     return Math.round((midnight(now) - midnight(at)) / DAY);
 }
 
-// The day it was on, both in milliseconds: nothing today, which the one
-// saying it says as a time; "yesterday"; its weekday within the last six
-// days; this year, "28 Oct"; before, "28 Oct 2024". A day ahead of today,
-// as a clock set wrong gives, is said by its date. `said` gives the words:
-// its `yesterday`, and `date(date, format)`, Qt's `formatDate` in the
-// shell, so days and months are named as the locale names them.
+// The day it was or will be on, both in milliseconds: nothing today,
+// which the one saying it says as a time; "yesterday" or "tomorrow"; its
+// weekday within six days either way; this year, "28 Oct"; else "28 Oct
+// 2024". A day runs forward as it runs back, so a deadline reads as a
+// file's day does (VKCF3Z, 2026-11-08). `said` gives the words: its
+// `yesterday` and `tomorrow`, and `date(date, format)`, Qt's `formatDate`
+// in the shell, so days and months are named as the locale names them. One
+// that gives no `tomorrow` says tomorrow by its weekday.
 function day(time, now, said) {
     const at = new Date(time);
     const today = new Date(now);
@@ -33,7 +35,10 @@ function day(time, now, said) {
     if (days === 1) {
         return said.yesterday;
     }
-    if (days > 1 && days <= LATELY_DAYS) {
+    if (days === -1 && typeof said.tomorrow === "string") {
+        return said.tomorrow;
+    }
+    if (days !== 0 && Math.abs(days) <= LATELY_DAYS) {
         return said.date(at, "dddd");
     }
     return said.date(at, at.getFullYear() === today.getFullYear() ? "d MMM" : "d MMM yyyy");

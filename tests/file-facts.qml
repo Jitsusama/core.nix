@@ -11,6 +11,7 @@
 // lists by name, change or size, its folders first (VKCF3Z, 2026-11-04).
 import QtQuick
 import "FileFacts.js" as FileFacts
+import "When.js" as When
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -85,8 +86,18 @@ QtObject {
             FileFacts.when(at(2024, 10, 28, 1, 0), now, words), kept("28_Oct_2024"));
         expect("a moment ahead of now is said as today's",
             FileFacts.when(now + 3_600_000, now, words), "17:30");
-        expect("and a day ahead as its day", FileFacts.when(at(2026, 11, 12, 9, 0), now, words),
-            kept("12_Nov"));
+        expect("and a day ahead as days behind are, its weekday within six",
+            [at(2026, 11, 11, 9, 0), at(2026, 11, 12, 9, 0), at(2026, 11, 24, 9, 0)]
+                .map(day => FileFacts.when(day, now, words)),
+            ["Wednesday", "Thursday", kept("24_Nov")]);
+        // When.js on its own, given a word for tomorrow, as For You's
+        // deadlines are said (VKCF3Z, 2026-11-08).
+        const days = { yesterday: "yesterday", tomorrow: "tomorrow",
+            date: (date, format) => Qt.formatDate(date, format) };
+        expect("tomorrow, then a weekday, then a date, as yesterday's run back",
+            [at(2026, 11, 11, 9, 0), at(2026, 11, 16, 9, 0), at(2026, 11, 17, 9, 0),
+                at(2026, 11, 10, 20, 0)].map(day => When.day(day, now, days)),
+            ["tomorrow", "Monday", "17 Nov", ""]);
 
         const file = { folder: false, size: 2_400_000, modified: at(2026, 10, 28, 14, 32) };
         expect("a file's row says its size and its day", FileFacts.side(file, undefined, now, words),
