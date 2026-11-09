@@ -1,8 +1,9 @@
 // Draws a notice as the pop-up draws it, on its card with no gutter, and as
 // the held list will, with a gutter, through the one card and the one row
 // (Card.qml, NoticeRow.qml), then keeps a picture of each and says where
-// their columns and frames were meant to stand. tests/notice-columns.py
-// reads the pictures back to the ink, at the scale the shell ran at.
+// their columns and frames were meant to stand.
+// modules/quickshell/tests/notice-columns.py reads the pictures back to the
+// ink, at the scale the shell ran at.
 import Quickshell
 import QtQuick
 

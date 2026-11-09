@@ -64,6 +64,10 @@
   "modules/plymouth/tests/the-splash-prompt-is-the-locks.sh" = 3;
   "modules/power-profiles-daemon/follow.sh" = 8;
   "modules/quickshell/askpass.sh" = 3;
+  "modules/quickshell/tests/askpass-waits.sh" = 3;
+  "modules/quickshell/tests/imports-installed.sh" = 2;
+  "modules/quickshell/tests/qml-compiles.sh" = 2;
+  "modules/quickshell/tests/stand-ins/spend-session.sh" = 3;
   "modules/reader/tests/reader-takes-its-keys.sh" = 120;
   "modules/screen-text/tests/a-screenshot-is-found-by-its-words.sh" = 2;
   "modules/secure-enclave-signing/se-keys.sh" = 7;
@@ -79,7 +83,6 @@
   "modules/zathura/keys-test.sh" = 12;
   "modules/zoom/opens.sh" = 2;
   "modules/zsh/tests/the-shell-starts-nothing.sh" = 3;
-  "tests/askpass-waits.sh" = 3;
   "tests/battery-stand-ins/busctl.sh" = 5;
   "tests/battery-stand-ins/gdbus.sh" = 2;
   "tests/battery-stand-ins/niri.sh" = 4;
@@ -87,7 +90,6 @@
   "tests/desktop/stand-in-virsh.sh" = 1;
   "tests/desktop/tuple-stand-in.sh" = 2;
   "tests/google-opens-its-links.sh" = 1;
-  "tests/imports-installed.sh" = 2;
   "tests/lib/qemu-after-its-sockets.sh" = 1;
   "tests/lib/says-what-it-has-open.sh" = 5;
   "tests/lib/shell-folder-lint.sh" = 5;
@@ -95,10 +97,8 @@
   "tests/nested-niri.sh" = 1;
   "tests/network-revive-stand-in.sh" = 4;
   "tests/notices-on-niri.sh" = 1;
-  "tests/qml-compiles.sh" = 2;
   "tests/repository/docs-name-what-exists.sh" = 4;
   "tests/repository/every-folder-says-what-it-holds.sh" = 9;
-  "tests/spend-session.sh" = 3;
   "tests/spotify-recent-stand-in.sh" = 1;
   "tests/vm/guide/asahi-shaped-disk.sh" = 2;
   "tools/shots-changed/shots-changed.sh" = 12;

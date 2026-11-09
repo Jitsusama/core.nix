@@ -1,7 +1,7 @@
 // Drives the shell's client of a daemon (modules/quickshell/Daemon.qml)
 // against the real people daemon (modules/people), with two sources stood
-// in for, one asked (tests/daemon-source.sh) and one saying everyone
-// unasked (tests/daemon-roster.sh), through Quickshell itself. With no
+// in for, one asked (daemon-source.sh) and one saying everyone
+// unasked (daemon-roster.sh), through Quickshell itself. With no
 // daemon running the client says it isn't answering and gives a get none
 // at once; once the daemon starts the client connects by itself and says
 // hello, which names the source; a watch narrowed to those listed holds
@@ -13,7 +13,7 @@
 // it starts again, the client connects again by itself, asks ahead
 // again, and the one that let go holds again. A client of a daemon
 // holding two kinds, as Google's does, stood in for
-// (tests/daemon-kinds.py), holds records of both over one connection,
+// (daemon-kinds.py), holds records of both over one connection,
 // and names both in the watch ahead too. A client of a daemon that says
 // only what differs, as mycelium's node does, lays a change over the
 // record it holds, letting go a field said as null. A client of a kind
@@ -21,6 +21,7 @@
 // answer is the whole of its kind, as the node's is, lets go what went in
 // a gap. Each step waits on what the client says, at most ten seconds.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
+// Its stand-ins are in modules/quickshell/tests/stand-ins.
 import Quickshell
 import Quickshell.Io
 import QtQuick

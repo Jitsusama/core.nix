@@ -475,7 +475,8 @@ onLinux {
       );
 
   # Qt's own compiler takes every file of the shell as the account gets it,
-  # the greeter's included, on the Qt the shell runs on (tests/qml-compiles.sh).
+  # the greeter's included, on the Qt the shell runs on
+  # (modules/quickshell/tests/qml-compiles.sh).
   # It refuses what the shell's engine can't run, such as an object spread,
   # and crashes on what would crash the shell as it loads the file, which
   # qmllint and the checks that run a file offscreen can both pass.
@@ -485,7 +486,7 @@ onLinux {
     in
     pkgs.runCommandLocal "quickshell-compiles-every-file" { LC_ALL = "C.UTF-8"; } ''
       ${shellAsGiven}
-      ${lib.getExe pkgs.bash} ${../../tests/qml-compiles.sh} ${qt}/libexec/qmlcachegen qs
+      ${lib.getExe pkgs.bash} ${./tests/qml-compiles.sh} ${qt}/libexec/qmlcachegen qs
       touch $out
     '';
 
@@ -507,8 +508,8 @@ onLinux {
     pkgs.runCommandLocal "quickshell-passes-qmllint" { LC_ALL = "C.UTF-8"; } ''
       ${shellAsGiven}
       # Quickshell finds a folder's files as a module by its path; qmllint
-      # needs a qmldir saying so (tests/qmldir.sh).
-      ${lib.getExe pkgs.bash} ${../../tests/qmldir.sh} qs
+      # needs a qmldir saying so (modules/quickshell/tests/qmldir.sh).
+      ${lib.getExe pkgs.bash} ${./tests/qmldir.sh} qs
       # Each file is named by its real, whole path, as Qt 6.12's qmllint
       # names a qmldir's entries: named any other way, the file it lints and
       # the qmldir's entry are two types to it, the first never told it's a
@@ -528,7 +529,7 @@ onLinux {
     pkgs.runCommandLocal "quickshell-installs-what-it-imports" { }
       ''
         ${shellAsGiven}
-        ${lib.getExe pkgs.bash} ${../../tests/imports-installed.sh} qs
+        ${lib.getExe pkgs.bash} ${./tests/imports-installed.sh} qs
         touch $out
       '';
 
@@ -1551,22 +1552,24 @@ onLinux {
 
   # The askpass asks a shell that restarted mid-prompt again, and refuses
   # once none has answered for a while, rather than holding ssh-tpm-agent
-  # and every key behind it forever, as tests/askpass-waits.sh says. The
-  # desktop test restarts a real shell, in minutes; this says it in one.
+  # and every key behind it forever, as
+  # modules/quickshell/tests/askpass-waits.sh says. The desktop test restarts
+  # a real shell, in minutes; this says it in one.
   the-askpass-outlives-its-shell =
     let
       askpass = (account graphical).home.sessionVariables.SSH_ASKPASS;
     in
     pkgs.runCommandLocal "the-askpass-outlives-its-shell" { } ''
       ${lib.getExe' pkgs.coreutils "timeout"} 300 ${lib.getExe pkgs.bash} \
-        ${../../tests/askpass-waits.sh} ${askpass} ||
+        ${./tests/askpass-waits.sh} ${askpass} ||
         { echo "the askpass is still waiting, or got something wrong"; exit 1; }
       touch $out
     '';
 
   # A D-Bus call from the account's shells, as run0 asks for polkit's prompt
   # in, waits past systemd's own 25 seconds for an answer, as
-  # tests/prompt-outlasts-the-bus.py says, on a session bus of its own.
+  # modules/quickshell/tests/prompt-outlasts-the-bus.py says, on a session
+  # bus of its own.
   a-prompt-waits-for-a-person =
     let
       timeout = (account graphical).home.sessionVariables.SYSTEMD_BUS_TIMEOUT or "";
@@ -1577,7 +1580,7 @@ onLinux {
       ${lib.getExe' pkgs.dbus "dbus-run-session"} \
         --dbus-daemon=${lib.getExe' pkgs.dbus "dbus-daemon"} \
         --config-file=${pkgs.dbus}/share/dbus-1/session.conf -- \
-        ${lib.getExe python} ${../../tests/prompt-outlasts-the-bus.py} \
+        ${lib.getExe python} ${./tests/prompt-outlasts-the-bus.py} \
         ${lib.escapeShellArg timeout} ${lib.getExe' pkgs.systemd "busctl"}
       touch $out
     '';
@@ -1706,7 +1709,7 @@ onLinux {
     in
     pkgs.runCommandLocal "the-desktop-reads-the-spend-watch" { } ''
       mkdir -p runtime/written runtime/spend-watch sessions/thing state launcher && chmod 700 runtime
-      ${lib.getExe pkgs.bash} ${../../tests/spend-session.sh} sessions/thing/session.jsonl
+      ${lib.getExe pkgs.bash} ${./tests/stand-ins/spend-session.sh} sessions/thing/session.jsonl
       cat > config.json <<EOF
       {"sessions": "$PWD/sessions", "runs": "$PWD/runs.db", "registry": "$PWD/registry",
        "quests": "$PWD/quests", "state": "$PWD/state", "runtime": "$PWD/runtime/written",
@@ -1745,11 +1748,11 @@ onLinux {
 
   # The shell holds a daemon's records over one connection (Daemon.qml),
   # against the real people daemon with two sources stood in for, one
-  # asked (tests/daemon-source.sh) and one saying everyone unasked
-  # (tests/daemon-roster.sh), started, stopped and started again by
+  # asked (daemon-source.sh) and one saying everyone unasked
+  # (daemon-roster.sh), started, stopped and started again by
   # tests/daemon.qml; and over one connection, records of two kinds from a
   # daemon holding both, and kinds told as the mycelium node tells them
-  # (tests/daemon-kinds.py).
+  # (daemon-kinds.py). The stand-ins are in modules/quickshell/tests/stand-ins.
   the-desktop-holds-a-daemons-records =
     let
       people = pkgs.callPackage ../people/package.nix { };
@@ -1758,15 +1761,15 @@ onLinux {
       mkdir -p runtime/daemons && chmod 700 runtime
       cat > sources.json <<EOF
       {"sources": [{"name": "slack",
-        "command": ["${lib.getExe pkgs.bash}", "${../../tests/daemon-source.sh}"]},
+        "command": ["${lib.getExe pkgs.bash}", "${./tests/stand-ins/daemon-source.sh}"]},
         {"name": "tuple",
-        "command": ["${lib.getExe pkgs.bash}", "${../../tests/daemon-roster.sh}"]}]}
+        "command": ["${lib.getExe pkgs.bash}", "${./tests/stand-ins/daemon-roster.sh}"]}]}
       EOF
       cp ${./Daemon.qml} Daemon.qml
       cp ${../../tests/daemon.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts} PEOPLE=${lib.getExe people} SOURCES=$PWD/sources.json
-      export PYTHON=${lib.getExe pkgs.python3} KINDS=${../../tests/daemon-kinds.py}
+      export PYTHON=${lib.getExe pkgs.python3} KINDS=${./tests/stand-ins/daemon-kinds.py}
       ${shellFolderLint}
       timeout 90 ${qs} -p shell.qml
       touch $out
@@ -1779,7 +1782,7 @@ onLinux {
   # none for fewer than three letters, a ragged line given as one short
   # one, and finds a few thousand files by name within a frame, as
   # tests/taken.qml holds it to, with what each screenshot says in
-  # tests/taken-texts.json.
+  # modules/quickshell/tests/stand-ins/taken-texts.json.
   the-desktop-finds-screenshots-by-their-words =
     let
       standIn = pkgs.writers.writePython3 "stand-in-screen-text" {
@@ -1789,7 +1792,7 @@ onLinux {
     pkgs.runCommandLocal "the-desktop-finds-screenshots-by-their-words" { } ''
       mkdir -p runtime/daemons shots && chmod 700 runtime
       touch shots/2026-10-{29,30,31}\ 09-00-00.png
-      substitute ${../../tests/taken-texts.json} texts.json --subst-var-by shots "$PWD/shots"
+      substitute ${./tests/stand-ins/taken-texts.json} texts.json --subst-var-by shots "$PWD/shots"
       cp ${./Daemon.qml} Daemon.qml
       cp ${./Taken.qml} Taken.qml
       cp ${./Fuzzy.js} Fuzzy.js
@@ -2957,7 +2960,7 @@ onLinux {
   # holds them, never by a window's title, and each one's window by the app
   # id it opened with, or for one opened without, through the kitty it runs
   # in (tests/sessions.qml), with the node, niri and kitten stood in over
-  # what tests/sessions-state.sh lays out.
+  # what modules/quickshell/tests/stand-ins/sessions-state.sh lays out.
   a-session-is-known-by-its-own-record =
     let
       # Three windows of the same title, one of kitty 500's and two of 600's,
@@ -3002,7 +3005,7 @@ onLinux {
     in
     pkgs.runCommandLocal "a-session-is-known-by-its-own-record" { } ''
       export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
-      ${lib.getExe pkgs.bash} ${../../tests/sessions-state.sh} $XDG_STATE_HOME
+      ${lib.getExe pkgs.bash} ${./tests/stand-ins/sessions-state.sh} $XDG_STATE_HOME
       export PATH=$XDG_STATE_HOME/bin:$PATH
       cp ${./Sessions.qml} Sessions.qml
       cp ${./PiSource.qml} PiSource.qml
@@ -3070,7 +3073,7 @@ onLinux {
     in
     pkgs.runCommandLocal "a-session-behind-the-lock-waits-for-its-kin" { } ''
       export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
-      ${lib.getExe pkgs.bash} ${../../tests/sessions-behind-the-lock-state.sh} $XDG_STATE_HOME
+      ${lib.getExe pkgs.bash} ${./tests/stand-ins/sessions-behind-the-lock-state.sh} $XDG_STATE_HOME
       cp ${./Sessions.qml} Sessions.qml
       cp ${./PiSource.qml} PiSource.qml
       cp ${./PiSource.js} PiSource.js
@@ -3351,7 +3354,8 @@ onLinux {
   # as the held list will, through the one card and row, at 2 and at 1.5,
   # its ink stands the inset from the frame on every side, its mark centred
   # on the title's capitals, and the two cards' text columns differ by the
-  # gutter alone, as tests/notice-columns.py reads the pictures back.
+  # gutter alone, as modules/quickshell/tests/notice-columns.py reads the
+  # pictures back.
   notices-stand-on-the-cards-columns =
     let
       machine = graphical.config;
@@ -3376,7 +3380,7 @@ onLinux {
         cp ${../../tests/notice-columns.qml} shell.qml
         ${shellFolderLint}
         QT_SCALE_FACTOR=$scale timeout 60 ${qs} -p shell.qml > said 2>&1 || { cat said; exit 1; }
-        ${measure} ${../../tests/notice-columns.py} . said
+        ${measure} ${./tests/notice-columns.py} . said
         cd ..
       done
       touch $out
