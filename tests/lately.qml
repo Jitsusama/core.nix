@@ -76,9 +76,6 @@ QtObject {
         check(failures, "with the launcher closed, nothing read is held",
             summaries(Lately.held(Lately.holdingStill(still, Number.POSITIVE_INFINITY))
                 .desktop), []);
-        check(failures, "who sent them, each with how many, the last to send first",
-            Lately.senders([build, notice("Tests failed", { app: "CI" }), build]),
-            [{ label: "Build", value: "2" }, { label: "CI", value: "1" }]);
 
         const unread = message("Ada");
         const read = message("Grace", { done: { how: "read in Slack", at: 5000 } });

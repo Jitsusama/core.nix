@@ -133,17 +133,6 @@ function members(things, nameOf) {
     return named;
 }
 
-// Who sent a source's unread notices, each with how many, the one that
-// sent last first, as its row's drawer says them, as the missed notices'
-// did (pieces/Drawers.js's notices).
-function senders(notices) {
-    const counts = new Map();
-    for (const notice of notices) {
-        counts.set(notice.app, (counts.get(notice.app) ?? 0) + 1);
-    }
-    return [...counts].map(([app, count]) => ({ label: String(app), value: String(count) }));
-}
-
 // How a notice read was done with: withdrawn, by its sender or the shell;
 // read, here, when the history says when; or read before it kept when.
 function readHow(notice) {

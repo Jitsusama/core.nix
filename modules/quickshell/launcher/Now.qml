@@ -34,6 +34,7 @@ import "Order.js" as Order
 import "Moment.js" as Moment
 import "NeedsYou.js" as NeedsYou
 import "Here.js" as Here
+import "PlaceRow.js" as PlaceRow
 
 Provider {
     id: provider
@@ -1281,24 +1282,33 @@ Provider {
     readonly property string latelyNames: latelyBands(Date.now()).bands
         .map(band => latelyName(band.source)).join(", ")
 
-    // Each is a place's row (VKCF3Z, 2026-11-09): who it holds is from
-    // follows its name, whole names given way from the end, and its side
-    // says how many alone, so the two never share the side.
+    // Each is a place's row, stepped into for rows of its own (VKCF3Z,
+    // 2026-11-09, fef0c4d5): nothing after its name, as no place says
+    // there since #2600, its side how many to read, and its drawer a
+    // place's, naming who it holds is from, the newest first, as a run that
+    // wraps between names (PlaceRow.js's drawer).
     function latelyRows(now) {
         const { holding, bands } = latelyBands(now);
         return bands.map(band => {
-            const senders = Lately.members(holding[band.source], one => one.who).join(", ");
+            const senders = Lately.members(holding[band.source], one => one.who);
             const forYou = { kind: "notice", source: band.source };
             const fact = latelyPieces.find(one => one.piece.lately === band.source);
             if (fact === undefined)
                 return provider.noticesRow(band.source, senders, forYou);
-            return made(fact, { forYou: forYou, count: senders, names: true, note: "" });
+            return made(fact, { forYou: forYou, count: "", note: "",
+                drawer: () => latelyDrawer(fact.piece.title, senders) });
         });
     }
 
+    // A Lately source's drawer, a place's: its eyebrow saying so, as every
+    // place's does, and who it holds is from.
+    function latelyDrawer(name, senders) {
+        return PlaceRow.drawer(name, senders, (Words.field.drawer ?? {}).place ?? "");
+    }
+
     // A source's unread notices' row, the desktop's, or Slack's while its
-    // piece can't speak: how many to read, and from whom, and its drawer
-    // who sent how many. Return steps in to each, the row it is in
+    // piece can't speak: how many to read, and its drawer from whom.
+    // Return steps in to each, the row it is in
     // Notices, then Mark Them Read, and last its History, what's read.
     // With none unread it says so where an empty place does, over its
     // History alone, the cursor on it: a row Return does nothing on would
@@ -1335,18 +1345,10 @@ Provider {
             glyph: Words.glyph(`for-you:source:${from}`),
             hue: "muted",
             side: ForYou.filled(said.count ?? "{count}", { count: ids.length }),
-            count: senders,
-            names: true,
             empty: none,
             nested: true,
             thing: true,
-            drawer: () => ({
-                // What it is, a source of For You's, since its title names
-                // the desktop already (VKCF3Z, 2026-11-09).
-                eyebrow: said.eyebrow ?? "",
-                title: Words.name(`for-you:source:${from}`),
-                facts: Lately.senders(notices)
-            }),
+            drawer: () => latelyDrawer(Words.name(`for-you:source:${from}`), senders),
             verbs: listed,
             targets: listed,
             stepped: () => Qt.callLater(() => Notices.seen()),
