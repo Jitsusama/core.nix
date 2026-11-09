@@ -132,6 +132,7 @@ onLinux {
       cp ${./InkscapeProgram.qml} launcher/InkscapeProgram.qml
       cp ${./Inkscape.js} launcher/Inkscape.js
       cp ${../../tests/inkscape-program.qml} shell.qml
+      cp ${../../tests/lib/Expect.js} Expect.js
       cp ${niri} Niri.qml
       cp ${playing} launcher/Playing.qml
       cp ${singleton "Shortcuts.qml" "property var actions: []"} Shortcuts.qml
