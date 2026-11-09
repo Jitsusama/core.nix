@@ -177,10 +177,10 @@ Provider {
             side: Keyboards.joined(device),
             glyph: Theme.glyph.keyboard,
             // Everything it says, under the row (Keyboards.js's drawer),
-            // null only until the read its first ask starts lands, a turn
-            // later, so a terminal asks again (Launcher.qml's shownWalked).
+            // null until the read its first ask starts lands, a turn later,
+            // so a terminal asks again (Launcher.qml's drawerOf).
             drawer: () => provider.drawerOf(device, Keyboards.lightHolder(found)),
-            drawsOnAsk: true
+            drawerUnread: () => provider.drawerUnread(device)
         }, () => provider.parts(device, Keyboards.lightHolder(found))));
     }
 
@@ -253,10 +253,13 @@ Provider {
         if (read === undefined) {
             if (!reading[key]) {
                 reading[key] = true;
-                Qt.callLater(() => provider.readFor(device, holder));
+                Qt.callLater(() => provider.readOnce(device, holder));
             }
             return null;
         }
+        // One whose read threw has no drawer until it's read again.
+        if (read === null)
+            return null;
         const words = Words.of("keyboards").said;
         const board = Keyboards.zsa(device) ? "ergodox" : Keyboards.builtIn(device) ? "laptop"
             : "";
@@ -272,6 +275,27 @@ Provider {
             counted: KeyCounts.facts(tally, named, KeyCounts.since(countsBegan, words)),
             most: KeyCounts.most(tally, named)
         }, read), named, words);
+    }
+
+    // Whether a keyboard's drawer is still to be read: asked for and not
+    // yet in, so a terminal asks again (Launcher.qml's drawerOf).
+    function drawerUnread(device) {
+        return readings[readingKey(device)] === undefined;
+    }
+
+    // Reads a keyboard's drawer, and one that throws is kept as unreadable
+    // until its files are read again, so no show waits on it.
+    function readOnce(device, holder) {
+        const key = readingKey(device);
+        try {
+            readFor(device, holder);
+        } catch (error) {
+            console.warn(`a keyboard's drawer wasn't read: ${error}`);
+            const left = Object.assign({}, reading);
+            delete left[key];
+            reading = left;
+            readings = Object.assign({}, readings, { [key]: null });
+        }
     }
 
     // What a keyboard's drawer reads of sysfs, as its parts do: its locks,

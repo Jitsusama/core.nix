@@ -97,10 +97,22 @@ Provider {
         triggeredOnStart: true
         running: provider.on && provider.launcher !== null
             && (provider.launcher.open || provider.terminalLooks)
-        onTriggered: Wifi.scan()
+        onTriggered: {
+            if (provider.terminalLooks)
+                provider.lookedFrom = Wifi.looks;
+            Wifi.scan();
+        }
     }
     readonly property bool terminalLooks: (launcher?.terminalSees.walked ?? [])
         .some(row => row?.from === provider)
+    // How many looks wifid had finished when a terminal's look was asked
+    // for, or -1 before it's asked, as the walk starts it: the look is done
+    // once wifid says more.
+    property int lookedFrom: -1
+    onTerminalLooksChanged: {
+        if (!terminalLooks)
+            lookedFrom = -1;
+    }
 
     readonly property var radio: radioRow(on)
 
@@ -417,13 +429,16 @@ Provider {
     // whether wifid has answered at all rather than detailOf, which is
     // null for an answer with no points too, as the joined network hiding
     // its name gets, and which would hold every show of it for the wait.
-    // A terminal walked into Wi-Fi waits too while the cards have heard no
-    // network yet, as they haven't before their first look: wifid says
-    // nothing when a look ends, only what it heard, so a list already
-    // heard is said at once and the look freshens it for the next ask.
+    // A terminal walked into Wi-Fi with no network heard waits too, for
+    // the look its walk asked for, until wifid says a look is done, so
+    // with nothing in range it waits for one look and no longer, and with
+    // wifid not answering, not at all. A list already heard is said at
+    // once, and the look freshens it for the next ask. With the launcher
+    // open, its own looks keep the list, and a terminal asks for none.
     stillReading: looking !== "" && (Wifi.detail?.name !== looking
         || looked !== "" && reader !== "" && !linkAnswered)
-        || terminalLooks && on && Wifi.nearby.length === 0
+        || terminalLooks && !(launcher?.open ?? false) && on && Wifi.described
+            && Wifi.nearby.length === 0 && (lookedFrom === -1 || lookedFrom === Wifi.looks)
 
     // Its rows change as wifid hears more of it. Without iw to read the
     // signal, wifid's own reading draws its spark.
