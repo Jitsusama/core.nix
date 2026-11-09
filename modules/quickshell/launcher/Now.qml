@@ -423,7 +423,9 @@ Provider {
     // its steps, numbered, and why only Joel can do it (VKCF3Z, 2026-10-31
     // and 2026-11-08), each only when it says it. How it's known done is a
     // fact now, so the words don't say it again.
-    function drawerOf(each) {
+    // `reason` is the weighed row's side, "" for one not weighed, such as
+    // Later's, whose side says what it waits for.
+    function drawerOf(each, reason) {
         const steps = (Array.isArray(each.steps) ? each.steps : [])
             .filter(step => typeof step === "string" && step !== "")
             .map((step, at) => `${at + 1}. ${step}`);
@@ -436,7 +438,8 @@ Provider {
         const checked = ForYou.when(each.checkedAt);
         const owner = ForYou.figures(each, {
             now,
-            blocks: itemThing(each).blocks,
+            sideSaysDue: (reason ?? "") !== "" && itemThing(each).blocks === 0
+                && ForYou.when(each.deadline) !== null,
             window: WaitingOnYou.windowOf(each)?.title ?? ""
         }, say);
         // An identifier is set in the Name face; a check's command stands
@@ -652,7 +655,7 @@ Provider {
                 ? waitingSaid("minutes", { minutes: each.minutes }) : ""]
                 .filter(part => part !== "").join(" \u00b7 "),
             note: noteOf(each, reason),
-            drawer: () => provider.drawerOf(each),
+            drawer: () => provider.drawerOf(each, reason),
             // Its verbs and targets both make it a row holding rows, which
             // Return's own act never leads (Catalogue.js's leading).
             verbs: inside,
@@ -889,10 +892,11 @@ Provider {
             later: true,
             drawer: () => {
                 const drawn = provider.drawerOf(each);
-                // What it weighed and what would clear it no longer matter
-                // once it's done, so how it went stands in their place, as
-                // a look's does.
-                const gone = [Words.name("on:waiting:weight"), Words.name("on:waiting:clears")];
+                // What it weighed, when it was due and what would clear it
+                // no longer matter once it's done, so how it went stands in
+                // their place, as a look's does.
+                const gone = ["weight", "due", "clears", "check"]
+                    .map(id => Words.name(`on:waiting:${id}`));
                 const facts = drawn.facts.filter(part => !gone.includes(part.label));
                 const since = facts.findIndex(part => part.label
                     === Words.name("on:waiting:since"));

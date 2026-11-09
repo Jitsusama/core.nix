@@ -704,6 +704,18 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
     """For You steps into one with nowhere to go, whose drawer gives its steps and why."""
     machine = desktop.machine
     asked = f"{MISSION}/waiting/GONEQA.json"
+    # Its quest by its title, in the eyebrow (VKCF3Z, 2026-11-08). The
+    # index goes first, so the node has told its title before the item
+    # can be stepped into, whose drawer is the one it was entered with.
+    kept(
+        desktop,
+        INDEX,
+        {
+            "quests": [
+                {"id": "GONEQA", "address": "GONEQA", "title": "Reef Quest", "status": "active"}
+            ]
+        },
+    )
     # A session that's gone, so the item has no window to go to.
     kept(
         desktop,
@@ -730,12 +742,6 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
     # Its steps, then why only Joel can; how it'll be known done is its
     # Clears When fact, so the words don't say it again.
     steps = "1. Print it\n2. Sign it\n\nIt goes out in your name."
-    # Its quest by its title, in the eyebrow (VKCF3Z, 2026-11-08).
-    kept(
-        desktop,
-        INDEX,
-        {"quests": [{"id": "GONEQA", "address": "GONEQA", "title": "Reef Quest"}]},
-    )
     # What its owner said of it, each a fact in For You's order (VKCF3Z,
     # 2026-11-08). Its row's side says when it's due, so Due doesn't, and
     # with no window open there's no Where.

@@ -104,7 +104,6 @@ QtObject {
             blocksMany: "blocks {count} sessions",
             due: "due {time}",
             overdue: "overdue since {time}",
-            ready: "ready now",
             waitedFor: "waiting {span}",
             spanMinutes: "{count} min",
             spanHours: "{count} h",
@@ -211,13 +210,15 @@ QtObject {
         const figures = (item, told) => ForYou.figures(item,
             Object.assign({ now, window: "" }, told ?? {}), ownSay);
         const later = Object.assign({}, owned, { deadline: "2026-11-12T15:00:00Z" });
-        expect("due, where neither the side nor the weight says it",
-            figures(later, { blocks: 1 }).due, "12 Nov 15:00");
-        expect("no due while the side says the deadline", figures(later).due, "");
-        expect("no due while the weight says it, within the day",
-            figures(owned, { blocks: 1 }).due, "");
+        // Later's rows aren't weighed, so their side says what they wait
+        // for, never the deadline, even blocking nothing (Y2YBTS).
+        expect("due for one under Later, days off, blocking nothing",
+            figures(later).due, "12 Nov 15:00");
+        expect("no due while the side says the deadline",
+            figures(later, { sideSaysDue: true }).due, "");
+        expect("no due while the weight says it, within the day", figures(owned).due, "");
         expect("set for another day, by its day", figures(owned).setFor, "9 Nov 09:30");
-        expect("no deadline, no due", figures({}, { blocks: 1 }).due, "");
+        expect("no deadline, no due", figures({}).due, "");
         expect("a moment as For You says each", [ForYou.moment("2026-11-08T15:00:00Z", now,
             ownSay), ForYou.moment("2026-11-09T09:30:00Z", now, ownSay),
         ForYou.moment(null, now, ownSay)], ["today 15:00", "9 Nov 09:30", ""]);

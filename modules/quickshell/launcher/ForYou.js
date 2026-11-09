@@ -194,12 +194,12 @@ function moment(at, now, say) {
         { day: say.day(read, now) || say.today, time: say.time(read) });
 }
 
-// Whether an item's deadline is said already, by its row's side, which
-// says it unless what it blocks is stronger, or by its weight, which says
-// it while it's within the day or past.
-function dueSaidElsewhere(item, blocks, now) {
+// Whether an item's deadline is said already, by its row's side, as its
+// owner tells (`sideSaysDue`), or by its weight, which says it while it's
+// within the day or past.
+function dueSaidElsewhere(item, sideSaysDue, now) {
     const due = when(item.deadline);
-    return due !== null && (Number(blocks ?? 0) === 0 || dueing(due, now) > 0);
+    return due !== null && (sideSaysDue === true || dueing(due, now) > 0);
 }
 
 // What an item's owner said of it that its drawer shows beyond its weight
@@ -209,13 +209,14 @@ function dueSaidElsewhere(item, blocks, now) {
 // on, as its owner names it; the window it's done in, by its title, its
 // quest and session being facts of their own; and, as written, its
 // owner's address and the command that checks it's done. Each is ""
-// where nothing says it. `told` holds `now`, how many sessions it
-// `blocks` and the open `window`'s title; `say` the words, as `moment`
-// takes them.
+// where nothing says it. `told` holds `now`, whether its row's side
+// says its deadline (`sideSaysDue`), as a weighed row's does while it
+// blocks nothing, and the open `window`'s title; `say` the words, as
+// `moment` takes them.
 function figures(item, told, say) {
     const named = value => typeof value === "string" ? value : "";
     return {
-        due: dueSaidElsewhere(item, told.blocks, told.now) ? ""
+        due: dueSaidElsewhere(item, told.sideSaysDue, told.now) ? ""
             : moment(item.deadline, told.now, say),
         setFor: moment(item.at, told.now, say),
         machine: named(item.where?.machine),

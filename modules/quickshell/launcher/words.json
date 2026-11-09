@@ -6467,7 +6467,6 @@
         "blocksMany": "blocks {count} sessions",
         "due": "due {time}",
         "overdue": "overdue since {time}",
-        "ready": "ready now",
         "waitedFor": "waiting {span}",
         "spanMinutes": "{count} min",
         "spanHours": "{count} h",
