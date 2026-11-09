@@ -820,9 +820,8 @@ fn keeping_a_base_elsewhere_never_asks_for_a_builder_nor_goes_where_it_must() {
 
 #[test]
 fn a_session_asking_to_go_first_waits_its_turn_and_says_so() {
-    let stand_in = StandIn::new("first");
+    let stand_in = StandIn::elsewhere("first");
     fs::create_dir_all(stand_in.path("repo")).expect("the repository");
-    fs::write(stand_in.path("takes-changed"), "").expect("written");
     fs::write(stand_in.path("takes-first"), "").expect("written");
     fs::write(stand_in.path("clean"), "").expect("written");
 
