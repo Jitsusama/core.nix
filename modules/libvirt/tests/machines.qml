@@ -109,7 +109,7 @@ QtObject {
         check("its Id", web.id, 3);
         check("its name", web.name, "web");
         check("its UUID", web.uuid, "3e8f0a52-1b7d-4c4e-9a7f-2c1f4f6b9d10");
-        check("its OS type", web.osType, "hvm");
+        check("its OS type, which is machinery, is left out", web.osType, undefined);
         check("its state", web.state, "running");
         check("its processors", web.processors, 4);
         check("its processor time", web.processorTime, 754.2);
@@ -202,8 +202,6 @@ QtObject {
             { id: "most-memory", value: "4.29 GB" },
             { id: "autostart", value: said.no },
             { id: "persistent", value: said.yes },
-            { id: "managed-save", value: said.no },
-            { id: "os-type", value: "hvm" },
             { id: "security-model", value: "apparmor" },
             { id: "security-doi", value: "0" },
             { id: "security-label", value: web.securityLabel },
@@ -217,7 +215,7 @@ QtObject {
         // it would start with, so memory in use is said only while it's on.
         check("one off leaves out what it gave none of, and memory in use",
             Machines.figures(box, said).map(one => one.id),
-            ["processors", "most-memory", "autostart", "persistent", "os-type",
+            ["processors", "most-memory", "autostart", "persistent",
                 "security-model", "security-doi", "uuid"]);
         check("no limit said", Machines.figures(box, said)[1].value, said.noLimit);
         // Its model is none, so it has no label to lack; what libvirt
@@ -228,6 +226,12 @@ QtObject {
         check("one off under a model lacks its label too",
             Machines.leftOut(confined, said).stopped,
             ["processor-time", "memory", "security-label", "id"]);
+        // A saved state is said only where there is one.
+        const saved = Machines.described(running.replace("Managed save:   no",
+            "Managed save:   yes"))[0];
+        check("one with a saved state says so",
+            Machines.figures(saved, said).find(one => one.id === "managed-save")?.value,
+            said.yes);
         const held = Machines.described(running.replace("State:          running",
             "State:          paused"))[0];
         check("one paused still says its memory in use",

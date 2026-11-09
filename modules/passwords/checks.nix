@@ -122,7 +122,8 @@ onLinux {
   # figure and never a secret, its health and a weak strength warning,
   # its password reused and breached once every password is checked and
   # nothing before, those needing attention, and the foot counting a copy
-  # down are Passwords.js's, run in Qt's own engine (tests/passwords.qml),
+  # down are Passwords.js's, and a manager's entries by vault Managers.js's,
+  # run in Qt's own engine (tests/passwords.qml),
   # beside the launcher's own wording of how long ago (Ago.js) and of a
   # figure (Numbers.js).
   the-passwords-show-every-figure-but-the-secret =
@@ -132,6 +133,7 @@ onLinux {
     pkgs.runCommandLocal "the-passwords-show-every-figure-but-the-secret" { } ''
       cp ${../../tests/passwords.qml} passwords.qml
       cp ${./Passwords.js} Passwords.js
+      cp ${./Managers.js} Managers.js
       cp ${../quickshell/launcher/Ago.js} Ago.js
       cp ${../quickshell/launcher/Numbers.js} Numbers.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

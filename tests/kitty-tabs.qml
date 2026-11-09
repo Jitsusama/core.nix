@@ -351,27 +351,35 @@ QtObject {
             ["devbox", "build", "quoted", "lower", "nas", "nas2200"]);
         const state = { open: ["build"], reached: reached, time: 1700000100000 + 3 * 86400000 };
         const now = {
-            now: "connected now", once: "once", times: "{count} times",
+            now: "connected now", once: "once", times: "{count} times", never: "never",
             config: "~/.ssh/config", known: "~/.ssh/known_hosts",
             eyebrow: "in {file} \u00b7 machine"
         };
-        // Its use alone, its address being the drawer's; where it goes
-        // only for one never reached.
+        // Its use alone, its address being the drawer's, or that it never
+        // was.
         check("a machine reached", Opens.machineSide(machines[0], state, now),
             "3 d ago \u00b7 2 times");
         check("one connected now", Opens.machineSide(machines[1], state, now),
             "connected now \u00b7 once");
-        check("one never reached, by where it goes",
+        check("one never reached says so, not where it goes",
             Opens.machineSide(machines[0], { open: [], reached: {}, time: state.time }, now),
-            "joel@10.0.0.5:2222");
-        check("one never reached, with nothing to say",
-            Opens.machineSide(machines[3], state, now), "");
+            "never");
+        check("one never reached, with nowhere set",
+            Opens.machineSide(machines[3], state, now), "never");
         check("one known by two names", Opens.machineSide(machines[4], state, now),
             "2 d ago \u00b7 2 times");
         check("one on a port", Opens.machineSide(machines[5], state, now),
             "2 d ago \u00b7 once");
         const named = { said: now, named: id => `<${id}>` };
-        // The file naming it is its eyebrow's, so no fact says it again.
+        // The file naming it is its eyebrow's, so no fact says it again;
+        // its HostName, User and Port are its one Address, in the Name face.
+        check("a configured machine's drawer", Opens.machineDrawer(machines[1], state, named), {
+            eyebrow: "in ~/.ssh/config \u00b7 machine", eyebrowNames: true,
+            title: "build", facts: [
+                { label: "<connected>", value: "connected now" },
+                { label: "<times>", value: "once" },
+                { label: "<address>", value: "joel@10.0.0.5:2222", identifies: true },
+                { label: "<keys>", value: "ssh-ed25519 \u00b7 ssh-rsa" }] });
         check("a machine's drawer", Opens.machineDrawer(machines[2], state, named), {
             eyebrow: "in ~/.ssh/config \u00b7 machine", eyebrowNames: true,
             title: "quoted", facts: [
@@ -384,7 +392,7 @@ QtObject {
             title: "nas", facts: [
                 { label: "<connected>", value: "2 d ago" },
                 { label: "<times>", value: "once" },
-                { label: "<port>", value: "2200" },
+                { label: "<address>", value: "nas:2200", identifies: true },
                 { label: "<keys>", value: "ssh-ed25519" }] });
         check("its other names", Opens.machineDrawer(machines[4], state, named).facts
             .filter(fact => fact.label === "<also>"), [{ label: "<also>", value: "192.168.1.9" }]);
@@ -419,11 +427,15 @@ QtObject {
         const seen = { "/h/src/a": 1700000000000, "/h/src/a/docs": 1700003600000 };
         const later = 1700003600000 + 2 * 3600000;
         const places = { src: "/h/src", home: "/h" };
-        check("a repository in ~/src", Opens.repositorySide("/h/src/a", places, seen, later),
-            "2 h ago");
-        check("one deeper, never seen", Opens.repositorySide("/h/src/work/b", places, seen, later),
-            "~/src/work");
-        check("one outside home", Opens.repositorySide("/srv/c", places, seen, later), "/srv");
+        check("a repository in ~/src",
+            Opens.repositorySide("/h/src/a", places, seen, { now: later }), "2 h ago");
+        const when = { now: later, never: "never opened" };
+        check("one deeper, never seen", Opens.repositorySide("/h/src/work/b", places, seen, when),
+            "~/src/work \u00b7 never opened");
+        check("one outside home", Opens.repositorySide("/srv/c", places, seen, when),
+            "/srv \u00b7 never opened");
+        check("one in ~/src never seen", Opens.repositorySide("/h/src/e", places, seen, when),
+            "never opened");
 
         for (const failure of failures)
             console.warn(failure);

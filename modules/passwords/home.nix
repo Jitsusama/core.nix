@@ -119,6 +119,7 @@ in
     # copy it last made, which the place and the margin's mark both read.
     xdg.configFile = {
       "quickshell/launcher/Passwords.js".source = ./Passwords.js;
+      "quickshell/launcher/Managers.js".source = ./Managers.js;
       "quickshell/Clearing.qml".source = ./Clearing.qml;
     };
 

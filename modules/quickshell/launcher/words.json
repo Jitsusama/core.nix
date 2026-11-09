@@ -8786,7 +8786,6 @@
         "vm:autostart",
         "vm:persistent",
         "vm:managed-save",
-        "vm:os-type",
         "vm:id",
         "vm:uuid",
         "vm:security-model",
@@ -8806,8 +8805,8 @@
         "reading": "\u2026",
         "count": "{count} {state}",
         "system": "system",
-        "session": "your VM",
-        "inSystem": "the system's VM",
+        "session": "on this machine \u00b7 VM",
+        "inSystem": "on the system \u00b7 VM",
         "password": "asks for your password",
         "yes": "yes",
         "no": "no",
@@ -8854,11 +8853,6 @@
       "id": "vm:managed-save",
       "in": "vm",
       "name": "Saved State"
-    },
-    {
-      "id": "vm:os-type",
-      "in": "vm",
-      "name": "OS Type"
     },
     {
       "id": "vm:id",
@@ -10320,7 +10314,8 @@
       },
       "said": {
         "in": "in {place}",
-        "onDrive": "{drive} (shared drive)"
+        "onDrive": "{drive} (shared drive)",
+        "opened": "opened {when}"
       }
     },
     {
@@ -10817,7 +10812,10 @@
       "name": "New Window in a Repository",
       "verb": "open",
       "glyph": "folder",
-      "ask": "which repository?"
+      "ask": "which repository?",
+      "said": {
+        "never": "never opened"
+      }
     },
     {
       "id": "verb:kitty:ssh",
@@ -10840,6 +10838,7 @@
         "now": "connected now",
         "once": "once",
         "times": "{count} times",
+        "never": "never",
         "config": "~/.ssh/config",
         "known": "~/.ssh/known_hosts",
         "eyebrow": "in {file} \u00b7 machine"
@@ -10856,9 +10855,9 @@
       "name": "Times Connected"
     },
     {
-      "id": "kitty:machine:port",
+      "id": "kitty:machine:address",
       "in": "kitty:machine",
-      "name": "Port"
+      "name": "Address"
     },
     {
       "id": "kitty:machine:also",

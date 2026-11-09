@@ -65,7 +65,6 @@ function blank() {
         id: null,
         name: "",
         uuid: "",
-        osType: "",
         state: "",
         processors: null,
         processorTime: null,
@@ -109,11 +108,12 @@ function seconds(value) {
 }
 
 // What each of dominfo's labels sets, given its value with the spaces
-// around it taken off; the name is set apart, as it's kept whole.
+// around it taken off; the name is set apart, as it's kept whole. Its OS
+// Type is left out, since it says only how libvirt runs it ("hvm"), which
+// is machinery (VKCF3Z, 2026-11-08).
 const TAKES = {
     "Id:": (machine, value) => { machine.id = whole(value); },
     "UUID:": (machine, value) => { machine.uuid = value; },
-    "OS Type:": (machine, value) => { machine.osType = value; },
     "State:": (machine, value) => { machine.state = value; },
     "CPU(s):": (machine, value) => { machine.processors = whole(value); },
     "CPU time:": (machine, value) => { machine.processorTime = seconds(value); },
@@ -372,10 +372,12 @@ function yesOrNo(value, said) {
 // words.json's `vm:<id>` naming it, "" where it gave none, in the order a
 // plate runs (docs/design.md, the drawer): what moves most, its processor
 // time and memory in use, then what it's given to run with, whether it
-// starts by itself and keeps its definition and a saved state, what it
-// runs and how it's kept apart from the machine, and what names it last.
+// starts by itself and keeps its definition, a saved state where it has
+// one, how it's kept apart from the machine, and what names it last.
 // Its name is the plate's title and its state the row's side, so neither
-// is said again.
+// is said again. A saved state is said only where there is one, since
+// most never have one and "no" would take a line for nothing (VKCF3Z,
+// 2026-11-08).
 // Memory in use is said only while it's on: dominfo gives one off too,
 // but that's only what it would start with (VKCF3Z, 2026-11-08).
 function everyFigure(machine, said) {
@@ -389,8 +391,7 @@ function everyFigure(machine, said) {
         ["most-memory", most],
         ["autostart", yesOrNo(machine.autostart, words)],
         ["persistent", yesOrNo(machine.persistent, words)],
-        ["managed-save", yesOrNo(machine.managedSave, words)],
-        ["os-type", machine.osType],
+        ["managed-save", machine.managedSave === true ? words.yes ?? "yes" : ""],
         ["security-model", machine.securityModel],
         ["security-doi", machine.securityDoi],
         ["security-label", machine.securityLabel],
@@ -419,17 +420,20 @@ const WHILE_RUNNING = ["processor-time", "memory", "security-label", "id"];
 // only with a security model, and messages only when there's something
 // to say, so none of those is missing when it's absent.
 const ALWAYS = ["processors", "most-memory", "autostart", "persistent",
-    "managed-save", "os-type", "uuid"];
+    "managed-save", "uuid"];
 
 // The figures dominfo left out of a machine, by why, each a list of ids in
 // the plate's order: `stopped`, those only a running machine has, while
 // it's not running, and `unsaid`, those libvirt couldn't tell. A label is
 // missing only where a model would give one, so a machine whose model is
-// none, or that has none, never lacks it.
+// none, or that has none, never lacks it; and a saved state only where
+// libvirt couldn't say whether there is one, not where there's none.
 function leftOut(machine, said) {
     const off = stateOf(machine.state) === "off";
     const labelled = machine.securityModel !== "" && machine.securityModel !== "none";
-    const missing = everyFigure(machine, said).filter(one => one[1] === "").map(one => one[0]);
+    const missing = everyFigure(machine, said)
+        .filter(one => one[1] === "" && (one[0] !== "managed-save" || machine.managedSave === null))
+        .map(one => one[0]);
     return {
         stopped: missing.filter(id => off && WHILE_RUNNING.includes(id)
             && (id !== "security-label" || labelled)),

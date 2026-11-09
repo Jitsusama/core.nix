@@ -254,6 +254,10 @@ function goesTo(one) {
     return one.port === "" ? whereTo(one) : `${one.name}:${one.port}`;
 }
 
+// The settings its Address says, as ssh's keywords spell them, which its
+// drawer says once there rather than again apart.
+const ADDRESSED = ["hostname", "user", "port"];
+
 // When a machine was reached, in its row's words: connected now while an
 // ssh session to it is open (`state.open`), or how long ago it was last.
 function lastReached(one, state, said) {
@@ -274,32 +278,36 @@ function timesOf(one, state, said) {
 }
 
 // What's said beside a machine: when it was reached and how many times,
-// which order the list, or, for one never reached, where it goes. Its
-// address is its drawer's HostName, User and Port otherwise, said once
-// there rather than again in a side too long to fit beside them.
+// which order the list, or that it never was. Its address is its
+// drawer's, said once there rather than again in a side too long to fit
+// beside it (VKCF3Z, 2026-11-08).
 function machineSide(one, state, said) {
     const use = [lastReached(one, state, said), timesOf(one, state, said)]
         .filter(part => part !== "");
-    return use.length > 0 ? use.join(" \u00b7 ") : goesTo(one);
+    return use.length > 0 ? use.join(" \u00b7 ") : said.never ?? "";
 }
 
 // A machine's drawer: over its name, the file naming it and what it is,
 // "in ~/.ssh/config \u00b7 machine", in Note since a path is the world's
 // (VKCF3Z, 2026-11-08); then when it was last reached and how many times,
-// every setting its own block gives it, by ssh's own keyword, as written,
-// and its known_hosts port, other names and kinds of key.
+// its Address, as ssh would be told it by hand and in the Name face, as an
+// identifier is, rather than its HostName, User and Port apart, every
+// other setting its own block gives it, by ssh's own keyword, as written,
+// and its other names and kinds of key.
 function machineDrawer(one, state, words) {
     const { said } = words;
+    const named = fact => ({ label: words.named(fact[0]), value: fact[1] });
     const facts = [
         ["connected", lastReached(one, state, said)],
         ["times", timesOf(one, state, said)]
-    ].map(fact => ({ label: words.named(fact[0]), value: fact[1] }))
-        .concat(one.options.map(each => ({ label: each.keyword, value: each.value })))
+    ].map(named)
+        .concat([Object.assign(named(["address", goesTo(one)]), { identifies: true })])
+        .concat(one.options.filter(each => !ADDRESSED.includes(each.keyword.toLowerCase()))
+            .map(each => ({ label: each.keyword, value: each.value })))
         .concat([
-            ["port", one.port],
             ["also", one.also.join(" \u00b7 ")],
             ["keys", one.keys.join(" \u00b7 ")]
-        ].map(fact => ({ label: words.named(fact[0]), value: fact[1] })));
+        ].map(named));
     return {
         eyebrow: Kitty.fill(said.eyebrow ?? "", { file: said[one.from] ?? "" }),
         eyebrowNames: true,
@@ -352,14 +360,17 @@ function fromHome(folder, home) {
 
 // What's said beside a repository: the folder holding it, said from ~,
 // where that isn't `places.src`, which every row would say again, then
-// when zoxide last saw it or a folder inside it.
-function repositorySide(path, places, seen, now) {
+// when zoxide last saw it or a folder inside it, as of `when.now`, or
+// `when.never` where it never has, so the row isn't bare (VKCF3Z,
+// 2026-11-08).
+function repositorySide(path, places, seen, when) {
+    const { now, never } = when;
     const parent = path.slice(0, path.lastIndexOf("/"));
     const folder = parent === places.src ? "" : fromHome(parent, places.home);
     const last = Object.keys(seen ?? {})
         .filter(each => each === path || each.startsWith(`${path}/`))
         .reduce((most, each) => Math.max(most, seen[each]), 0);
-    return [folder, last > 0 ? Ago.ago(last, now) : ""].filter(part => part !== "")
+    return [folder, last > 0 ? Ago.ago(last, now) : never ?? ""].filter(part => part !== "")
         .join(" \u00b7 ");
 }
 

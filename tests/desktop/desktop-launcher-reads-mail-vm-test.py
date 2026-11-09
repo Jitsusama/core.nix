@@ -87,6 +87,8 @@ def test_a_signed_out_account_wants_joel_to_sign_in_again(desktop: Desktop) -> N
 # a side says it: just now within a minute, on a fast builder, minutes ago within the hour,
 # then its time, or yesterday past midnight.
 CAME = r"(just now|\d+ min ago|\d\d:\d\d|yesterday)"
+# A document's side says that it's when he opened it, its drawer's Changed being another time.
+OPENED = rf"opened {CAME}"
 
 
 @pytest.mark.usefixtures("google")
@@ -873,7 +875,7 @@ def test_docs_and_drives_recent_list_what_joel_opened_lately_and_return_opens_it
     assert plan["is"] == "gdoc:plan", plan
     # Its side says only when he opened it, and its drawer whose it is,
     # after when it changed.
-    assert re.fullmatch(CAME, plan["side"]), plan
+    assert re.fullmatch(OPENED, plan["side"]), plan
     facts = (plan.get("drawer") or {}).get("facts") or [{}, {}]
     assert facts[0].get("label") == "Changed", plan
     assert facts[1] == {"label": "Owner", "value": "Ada Lovelace"}, plan
@@ -889,7 +891,7 @@ def test_docs_and_drives_recent_list_what_joel_opened_lately_and_return_opens_it
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("is") == "gdoc:budget"
-            and re.fullmatch(CAME, str(shown["selected"].get("side", ""))) is not None
+            and re.fullmatch(OPENED, str(shown["selected"].get("side", ""))) is not None
         )
     )
     desktop.as_account("qs ipc call launcher toggle")
@@ -927,7 +929,7 @@ def drive_holds_its_places(desktop: Desktop, opened: str, closed: str) -> None:
     assert menu["is"] == "gdoc:menu", menu
     # Its drawer says where it is and its kind, then what changes most
     # first, its id last.
-    assert re.fullmatch(CAME, menu["side"]), menu
+    assert re.fullmatch(OPENED, menu["side"]), menu
     drawer = menu.get("drawer") or {}
     assert drawer.get("eyebrow") == "in My Drive \u00b7 PDF", menu
     labels = [fact["label"] for fact in drawer.get("facts") or []]
