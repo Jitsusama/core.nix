@@ -12,16 +12,24 @@
 # still high enough that a laptop's speakers carry it, its partials up to
 # 1 kHz giving it its ring; it dies
 # away over about two seconds, and its peak sits just under full scale,
-# so it's heard from across the room. It is a different sound from the
-# shell's soft one for a session wanting Joel, since it means something
+# so it's heard from across the room.
+#
+# `want` is what the shell plays when a session first wants Joel: "make
+# sure you make some loud dinging noises when you need me" (16 October).
+# It had been the freedesktop theme's message, the high sound that scared
+# his dog. It is the same bell struck twice and damped sooner, so it reads
+# as a call rather than the done ding's ending, which means something
 # else: work he handed over is done.
 { pkgs, lib }:
 let
-  ding = pkgs.runCommand "pi-ding.wav" { nativeBuildInputs = [ pkgs.sox ]; } ''
-    ${lib.getExe pkgs.bash} ${./ding.sh} $out
-  '';
+  struck =
+    name: script:
+    pkgs.runCommand name { nativeBuildInputs = [ pkgs.sox ]; } ''
+      ${lib.getExe pkgs.bash} ${script} $out
+    '';
 in
 {
-  ding = "${ding}";
+  ding = "${struck "pi-ding.wav" ./ding.sh}";
+  want = "${struck "pi-want.wav" ./want.sh}";
   player = lib.getExe' pkgs.pipewire "pw-play";
 }

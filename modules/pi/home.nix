@@ -208,8 +208,10 @@ in
     description = ''
       What pi rings with on Linux when a run is done, for anything else
       that wants the same loud, low, dog-safe sound: `ding`, a WAV of a
-      bell on G3 that dies away over about three seconds, and `player`,
-      PipeWire's pw-play, which plays it as `player ding`. Read it rather
+      bell on G3 that dies away over about three seconds; `want`, the
+      same bell struck twice, which the shell plays when a session first
+      wants Joel; and `player`, PipeWire's pw-play, which plays either as
+      `player ding`. Read it rather
       than setting it; a Mac rings with its own sound and has no use for it.
     '';
   };
@@ -445,7 +447,7 @@ in
     xdg.configFile."pi/agentic-harness.pi/done-chime-widget/sound.json" =
       lib.mkIf pkgs.stdenv.hostPlatform.isLinux
         {
-          text = builtins.toJSON config.jitsusama.pi.chime;
+          text = builtins.toJSON { inherit (config.jitsusama.pi.chime) ding player; };
         };
 
     home.file.".pi/agent/keybindings.json".text = builtins.toJSON (
