@@ -373,6 +373,7 @@ Scope {
                 return "{}";
             const at = card.mapToItem(null, 0, 0);
             const left = screen.width - window.width + at.x;
+            const pileAt = pile.mapToItem(null, 0, 0);
             const from = Notices.sender(root.front.appName, root.front.desktopEntry);
             return JSON.stringify({
                 signed: from.name,
@@ -383,7 +384,9 @@ Scope {
                 left: left / screen.width,
                 top: at.y / screen.height,
                 right: (left + card.width) / screen.width,
-                bottom: (at.y + card.height) / screen.height
+                bottom: (at.y + card.height) / screen.height,
+                // Where the stack ends, below its last edge.
+                foot: (pileAt.y + pile.height) / screen.height
             });
         }
     }

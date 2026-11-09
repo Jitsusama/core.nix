@@ -1082,6 +1082,12 @@ def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
     machine = desktop.machine
     desktop.as_account(f"niri msg output winit scale {scale}")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    # One whose time is up rests off the screen, still open, while the next stands alone; its
+    # frame, never drawn, mustn't be blurred under the next card (Joel, 2026-11-09: "shadows
+    # where things don't exist").
+    with desktop.told("shows card Rested Off the Screen"):
+        desktop.as_account("notify-send --expire-time=1000 'Rested Off the Screen' 'by itself'")
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
     with desktop.told("shows card Tokens Run Out in About an Hour"):
         desktop.as_account(
             "notify-send --app-name=tokens --expire-time=60000"
@@ -1173,8 +1179,7 @@ def pictured_linked_and_quiet_at(desktop: Desktop, named: str) -> None:
     with desktop.told("lets notices go"):
         machine.send_chars(":q\n")
     # Put away, so the launcher takes the keys; the history keeps each.
-    desktop.as_account("qs ipc call notices putAway")
-    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    blurs_only_under_the_cards(desktop)
     if machine.execute(desktop.in_session(LAUNCHER_OPEN))[0] == 0:
         desktop.close_launcher()
     desktop.as_account("qs ipc call launcher toggle")
@@ -1194,8 +1199,40 @@ def pictured_linked_and_quiet_at(desktop: Desktop, named: str) -> None:
     desktop.close_launcher()
 
 
+def blurs_only_under_the_cards(desktop: Desktop) -> None:
+    """Blur only under the cards drawn, past the stack's last edge and as the edges glide.
+
+    A fifth notice stands behind the last edge, never drawn, and an edge brought to the front
+    makes the front card shorter, so the edges glide up after it. Under the stack's foot each
+    time, a blur where no card is drawn would take out the detail a shadow only darkens, so the
+    room is held to the same room once the notices are put away (Joel, 2026-11-09: "shadows
+    where things don't exist").
+    """
+    machine = desktop.machine
+    for summary in ["Fourth in Line", "Fifth in Line"]:
+        with desktop.told(f"shows card {summary}"):
+            desktop.as_account(f"notify-send --expire-time=60000 {shlex.quote(summary)} 'behind'")
+    measured = [under_the_card(desktop)]
+    tall = json.loads(desktop.as_account("qs ipc call notices front"))
+    high = json.loads(desktop.as_account("niri msg --json focused-output"))["logical"]["height"]
+    # A click on the first edge, a few points under the front card, brings it forward.
+    desktop.click((tall["left"] + tall["right"]) / 2, tall["bottom"] + 4 / high)
+    desktop.held_still()
+    short = json.loads(desktop.as_account("qs ipc call notices front"))
+    assert short["foot"] < tall["foot"], f"no shorter card came forward: {tall}, then {short}"
+    measured.append(under_the_card(desktop))
+    desktop.as_account("qs ipc call notices putAway")
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    desktop.held_still()
+    gone = desktop.screen_now()
+    for under, shown in measured:
+        kept = shown / detail(gone.crop(under))
+        print(f"UNDER THE STACK at {under}, {kept:.2f} of the detail was left")
+        assert kept > UNBLURRED, f"under the stack, at {under}, only {kept:.2f} was left"
+
+
 def under_the_card(desktop: Desktop) -> tuple[tuple[int, int, int, int], float]:
-    """Give the room under the front card, in the screen's points, and how much detail it holds.
+    """Give the room under the stack's foot, in the screen's points, and how much detail it holds.
 
     A card shown after what played alone, at a new scale, came in where it would stand under
     the track, and the column moved it up a frame later, which its window's regions didn't
@@ -1211,12 +1248,13 @@ def under_the_card(desktop: Desktop) -> tuple[tuple[int, int, int, int], float]:
     wide, high, scale = logical["width"], logical["height"], logical["scale"]
     space = json.loads(desktop.as_account("cat ~/.config/jitsusama/theme.json"))["space"]
     inset, tie = space["rung"]["inset"], space["rung"]["tie"]
-    # The room under the card, as far as its shadow reaches, and inside its sides.
+    # The room under the stack, past its last edge, as far as its shadow reaches, and inside
+    # the front card's sides.
     under = (
         int((card["left"] * wide + inset) * scale),
-        int((card["bottom"] * high + tie) * scale),
+        int((card["foot"] * high + tie) * scale),
         int((card["right"] * wide - inset) * scale),
-        int((card["bottom"] * high + inset) * scale),
+        int((card["foot"] * high + inset) * scale),
     )
     return under, detail(shown.crop(under))
 
