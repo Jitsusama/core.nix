@@ -907,10 +907,12 @@ def home_holds_still_as_the_queue_changes(desktop: Desktop) -> None:
 
 
 def shoot_home_at_joels_scales(desktop: Desktop, home: list[str]) -> None:
-    """Shoot home at 1.5 and 2, where each place's own mark is judged, for the gallery.
+    """Shoot home and Machine at 1.5 and 2, where each place's own mark is judged, for the gallery.
 
     The launcher opens afresh at each, as an open one keeps the size it opened at, and
     steps down to its last row, so the places stand in view where only a few rows fit.
+    Machine follows, so home's rows and the same places' rows inside it are judged side by
+    side, as one row wherever it stands (VKCF3Z, 2a429f67).
     """
     if not desktop.values["shots"]:
         return
@@ -925,6 +927,14 @@ def shoot_home_at_joels_scales(desktop: Desktop, home: list[str]) -> None:
             lambda shown: (shown["selected"] or {}).get("is") == "collection:keyboard"
         )
         desktop.shoot(f"launcher-home-categories-at-{scale.replace('.', '-')}")
+        desktop.close_launcher()
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.launcher_until(lambda shown: shown["rows"] == home)
+        desktop.down_to("Machine")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: shown["held"] == ["computer"])
+        desktop.shoot(f"launcher-machine-places-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
     desktop.as_account("niri msg output winit scale 1")
 
