@@ -223,6 +223,16 @@ fn main() -> ExitCode {
 /// steady ids the shell gave with its question, so rows moving between
 /// the question and the y can't put another in its place.
 fn done(qs: &str, steps: &[String], said: &str, yes: bool, words: &Words) -> ExitCode {
+    // A row its provider's daemon makes, as Power's Charge Limit, is there
+    // only once the provider is seen, and with the launcher closed only a
+    // terminal's show sees it (Launcher.qml's terminalSees). So the place
+    // the act is in is shown first, settled as `show` is, and the act
+    // walks rows already read.
+    if let Some((_, place)) = steps.split_last()
+        && !place.is_empty()
+    {
+        let _ = asking::settled(qs, place, false);
+    }
     let mut sure = yes;
     let mut path = Vec::new();
     loop {
