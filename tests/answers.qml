@@ -1185,7 +1185,8 @@ QtObject {
             { key: "sensor:coretemp", part: "processor", chip: "coretemp", temperatures: [
                 { n: 1, label: "Package id 0", temperature_c: 79, high_c: 100,
                     critical_c: 100, low_c: -273, emergency_c: 105, alarm: true }], fans: [],
-                voltages: [{ n: 0, label: null, volts: 1.21 }, { n: 1, label: "Vcore", volts: null }],
+                voltages: [{ n: 0, label: null, volts: 1.21 },
+                    { n: 1, label: "Vcore", volts: null }],
                 currents: [], power: [{ n: 1, label: "Package", watts: 12.5 }] }
         ]);
         machine("the daemon's chips, by key, each for its part", heatHeld.map(chip => chip.part),
@@ -2095,7 +2096,8 @@ QtObject {
         // charger's, unplugged; nothing, with nothing offered or once it
         // waits for the restart.
         const unplugged = Firmware.devicesOf([fw("bios", { name: "System Firmware",
-            version: "1.12.0", problems: ["require-ac-power"], update: { version: "1.13.0" } })])[0];
+            version: "1.12.0", problems: ["require-ac-power"],
+            update: { version: "1.13.0" } })])[0];
         machine("an update held back on battery", Firmware.heldBy(unplugged), "require-ac-power");
         machine("nothing held back with nothing offered", Firmware.heldBy(Firmware.devicesOf([
             fw("pk", { name: "Platform Key", version: "1", problems: ["firmware-locked"] })])[0]),

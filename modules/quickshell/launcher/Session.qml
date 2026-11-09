@@ -424,9 +424,22 @@ Provider {
     })
 
     // Whether Sleep's row is listed, in Power or found by name, so the
-    // machine daemon is asked how sleep stands only while it can be seen.
-    readonly property bool sleepShown: launcher !== null && launcher.open
-        && launcher.matches.some(row => row.key === "session:Suspend")
+    // machine daemon is asked how sleep stands only while it can be seen:
+    // in the open launcher, or among the rows a terminal's show walked or
+    // listed (Launcher.qml's terminalSees), so a cold `launcher show` of
+    // Power has Sleep's figures.
+    readonly property bool sleepShown: {
+        if (launcher === null)
+            return false;
+        const sleep = row => row?.key === "session:Suspend";
+        const terminal = launcher.terminalSees ?? { walked: [], listed: [] };
+        return launcher.open && launcher.matches.some(sleep) || terminal.walked.some(sleep)
+            || terminal.listed.some(sleep);
+    }
+    // Whether the sleep watch hasn't yet answered whole, so a terminal's
+    // show asks again (Provider.stillReading).
+    stillReading: sleepWatch.live && !sleepWatch.answeredThisWatch
+        && sleepWatch.state !== "not answering"
     readonly property var sleeping: sleepWatch.revision >= 0
         ? Power.sleepOf(sleepWatch.held["sleep:main"] ?? null) : null
 

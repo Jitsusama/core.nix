@@ -240,6 +240,7 @@ mod tests {
         assert_eq!(limit_settable(&held, folder), Some(true), "a stop alone");
         let start = at.join("charge_control_start_threshold");
         std::fs::write(&start, "75\n").unwrap();
+        assert_eq!(limit_settable(&held, folder), Some(true), "both ends");
         std::fs::set_permissions(&start, std::fs::Permissions::from_mode(0o444)).unwrap();
         let settable = limit_settable(&held, folder);
         std::fs::remove_dir_all(&root).unwrap();

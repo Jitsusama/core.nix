@@ -314,6 +314,19 @@ Provider {
         })));
     }
 
+    // The Model's drawer: who made it in its eyebrow, where the battery
+    // says, then its serial in the Name face.
+    function modelDrawer(record) {
+        const maker = said(record.manufacturer)
+            ? says("model", "eyebrow", { maker: record.manufacturer }) : "";
+        return {
+            eyebrow: maker,
+            eyebrowNames: true,
+            title: named("model"),
+            facts: [{ label: named("serial"), value: record.serial, identifies: true }]
+        };
+    }
+
     // Where charging stops and starts again, as the limit's row says it.
     function limitSaid(start, stop) {
         if (stop === 100 && (start === null || start === 0))
@@ -451,12 +464,7 @@ Provider {
             rows.push(leaf("model", said(record.technology) ? `${what}, ${record.technology}`
                 : what, {
                 thing: said(record.serial),
-                drawer: said(record.serial) ? {
-                    eyebrow: said(record.manufacturer)
-                        ? says("model", "eyebrow").replace("{maker}", record.manufacturer) : "",
-                    eyebrowNames: true,
-                    title: named("model"), facts: [{
-                    label: named("serial"), value: record.serial, identifies: true }] } : undefined
+                drawer: said(record.serial) ? modelDrawer(record) : undefined
             }));
         const made = Power.madeOf(record.made);
         if (made !== "")
