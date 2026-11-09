@@ -283,7 +283,7 @@ Singleton {
     // the same card rather than another.
     function raise(id) {
         history = history.map(notice => notice.id !== id ? notice
-            : Object.assign({}, notice, { read: false }));
+            : Object.assign({}, notice, { read: false, readHow: null }));
         raised = { id: id, at: Date.now() };
     }
 
@@ -311,7 +311,7 @@ Singleton {
         history = history.map(notice => notice.id !== id ? notice
             : Object.assign({}, notice, { left: how, leftAt: at },
                 how === "expired" ? {} : { missed: false },
-                how === "withdrawn" ? { read: true } : {}));
+                how === "withdrawn" ? { read: true, readHow: null } : {}));
         const still = Object.assign({}, live);
         delete still[id];
         live = still;
@@ -389,7 +389,8 @@ Singleton {
             && (notice.missed || !notice.read);
         if (history.some(stale))
             history = history.map(notice => stale(notice)
-                ? Object.assign({}, notice, { read: true, missed: false }) : notice);
+                ? Object.assign({}, notice, { read: true, missed: false, readHow: null })
+                : notice);
     }
 
     // Everything kept has been seen, though not necessarily read.

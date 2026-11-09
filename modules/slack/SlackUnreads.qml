@@ -61,13 +61,13 @@ Singleton {
     readonly property var doneWith: messages === null ? null : messages.filter(Unreads.done)
 
     // Slack's notices still unread whose message was read in Slack, found
-    // again only when the notices or what's done with change, as this
+    // again only when the notices or the messages held change, as this
     // watch hears them whether or not the launcher is open, so none waits
     // in Notices or comes back while Slack's daemon is away (Joel,
     // 2026-11-08: "i shouldn't be required to mark a notice as read if I
     // looked at the slack message in slack"). Each is read in one change,
     // saying where, so History says "read in Slack" rather than "read here".
-    readonly property var readThere: Unreads.readInSlack(Notices.history, doneWith)
+    readonly property var readThere: Unreads.readInSlack(Notices.history, messages)
     onReadThereChanged: {
         if (readThere.length > 0)
             Notices.markRead(readThere, "readInSlack");
