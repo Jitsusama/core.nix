@@ -302,6 +302,13 @@ impl Keys {
         self.pending.map(|(_, due)| due)
     }
 
+    /// Whether the change the light asked for is due by `now`, so the
+    /// level is worth reading. On a Dell each read is a firmware call that
+    /// stops every core while it runs, and the screen steps every 16 ms.
+    pub fn is_due(&self, now: Instant) -> bool {
+        self.wake().is_some_and(|due| due <= now)
+    }
+
     /// The level to set, once the light has held long enough.
     pub fn due(&mut self, now: Instant) -> Option<u32> {
         let (level, _) = self.pending.filter(|&(_, due)| due <= now)?;
@@ -526,6 +533,17 @@ mod tests {
         assert_eq!(keys_after_the_hold(&mut keys, start), Some(1));
         keys.heard(500.0, start + LATER);
         assert_eq!(keys_after_the_hold(&mut keys, start + LATER), Some(0));
+    }
+
+    #[test]
+    fn nothing_is_due_until_the_light_has_held() {
+        let start = Instant::now();
+        let mut keys = Keys::new(0);
+        keys.heard(500.0, start);
+        assert!(!keys.is_due(start + LATER), "due with nothing asked for");
+        keys.heard(5.0, start);
+        assert!(!keys.is_due(start), "due before the light held");
+        assert!(keys.is_due(start + KEYS_HOLD), "not due once it held");
     }
 
     #[test]
