@@ -26,7 +26,7 @@ settings
   Wi-Fi mode              default
   Wi-Fi 5 compatibility   off
   name clash              no
-  MLO mode                disabled
+  MLO mode                off
   DDNS                    off
   backup internet         on
   power saving            off

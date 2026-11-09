@@ -2,15 +2,17 @@
 // Qt's own JavaScript engine, the one the shell runs it in, over the
 // record the eero daemon's parsers are tested against
 // (modules/eero/home-network.json). The `the-home-network-says-each-figure`
-// check copies HomeNetwork.js, HomeNetworkDrawers.js, what they import and
-// the record beside this file, and runs `qml home-network.qml` in UTC. Each
-// case names what's asked and what has to come back: the rows' order,
-// what each row says, and every figure the eero contract places in the
+// check copies HomeNetwork.js, HomeNetworkDrawers.js and what they import
+// into launcher/, as the shell lays them out, When.js and the record
+// beside this file, and runs `qml home-network.qml` in UTC. Each case
+// names what's asked and what has to come back: the rows' order, what
+// each row says, and every figure the eero contract places in the
 // internet's, a node's, a device's and a profile's drawer
 // (modules/eero/contract/README.md).
 import QtQuick
-import "HomeNetwork.js" as Home
-import "HomeNetworkDrawers.js" as Drawers
+import "launcher/HomeNetwork.js" as Home
+import "launcher/HomeNetworkDrawers.js" as Drawers
+import "launcher/HomeNetworkHistory.js" as History
 
 QtObject {
     // A moment a few minutes after eero last answered.
@@ -65,9 +67,12 @@ QtObject {
         expect("the lower 5 GHz radio", Home.radioBand("5.2GHz"), "5 GHz low");
         expect("a radio eero hasn't named before", Home.radioBand("3.5GHz"), "3.5 GHz");
         expect("eero's word", Home.worded("laptop_computer"), "laptop computer");
-        expect("a time today", Home.when("2026-11-07T07:22:42.035Z", now), "07:22");
-        expect("a day this year", Home.when("2026-11-05T10:52:15Z", now), "5 Nov 10:52");
-        expect("a year before", Home.when("2020-11-13T21:47:15Z", now), "13 Nov 2020");
+        expect("a time today", History.when("2026-11-07T07:22:42.035Z", now), "07:22");
+        expect("yesterday", History.when("2026-11-06T16:21:33Z", now), "yesterday 16:21");
+        expect("a day this week by its weekday", History.when("2026-11-05T10:52:15Z", now),
+            "Thursday 10:52");
+        expect("a day this year", History.when("2026-09-24T09:53:00Z", now), "24 Sep 09:53");
+        expect("a year before", History.when("2020-11-13T21:47:15Z", now), "13 Nov 2020");
         expect("a moment ago", Home.ago("2026-11-07T22:59:48Z", now), "12 s ago");
         expect("minutes ago", Home.ago("2026-11-07T22:54:06.658Z", now), "5 min ago");
 
@@ -195,10 +200,10 @@ QtObject {
             ["guest-subnet", "off \u00b7 10.0.0.0/21 \u00b7 DHCP 10.0.0.20 to 10.0.0.254"],
             ["forwards", "none"],
             ["pinholes", "none"],
-            ["speed-test", "370 Mb/s down \u00b7 11.9 Mb/s up \u00b7 5 Nov 10:52"],
+            ["speed-test", "370 Mb/s down \u00b7 11.9 Mb/s up \u00b7 Thursday 10:52"],
             ["down", "370 Mb/s"],
             ["up", "11.9 Mb/s"],
-            ["kept", "15 since 24 Sep 09:53"],
+            ["kept", "15 speed tests since 24 Sep 09:53"],
             ["sqm", "optimized"],
             ["upnp", "on"],
             ["randomization", "off"],
@@ -208,7 +213,7 @@ QtObject {
             ["wifi-mode", "default"],
             ["ac-compatibility", "off"],
             ["name-clash", "none seen"],
-            ["mlo", "disabled"],
+            ["mlo", "off"],
             ["thread", "off \u00b7 name 56 \u00b7 channel 25"],
             ["guest", "off \u00b7 name 49"],
             ["ddns", "off"],
@@ -279,7 +284,7 @@ QtObject {
             return facts.slice(from, to);
         };
         expect("an outage this machine saw", listed("outage-list"), [
-            { label: "3 Nov 03:12", value: "1 min \u00b7 seen by this machine" }
+            { label: "Tuesday 03:12", value: "1 min \u00b7 seen by this machine" }
         ]);
         const outageList = Drawers.internet(Object.assign({}, model, {
             internet: Object.assign({}, model.internet, {
@@ -544,10 +549,13 @@ QtObject {
         // device's own in its.
         const events = Drawers.internet(model, now).facts;
         const timeline = events.slice(events.findIndex(fact => fact.heading === "events") + 1);
+        // Each is prose, set in Words, and eero's figures are set as ours.
         expect("what happened, newest first", timeline.slice(0, 2), [
             { label: "22:42",
-                value: "tablet\u00a01\u200b connected to Den eero Pro 6 on 5.2GHz channel 52." },
-            { label: "22:42", value: "tablet\u00a01\u200b disconnected from Study eero Pro 6." }
+                value: "tablet\u00a01\u200b connected to Den eero Pro 6 "
+                    + "on 5.2\u00a0GHz channel 52.", words: true },
+            { label: "22:42", value: "tablet\u00a01\u200b disconnected from Study eero Pro 6.",
+                words: true }
         ]);
         // A name in what eero said keeps its words on one line, a name
         // inside a longer one kept as part of it.
@@ -559,13 +567,15 @@ QtObject {
             "laptop\u00a0computer\u00a01\u200b joined, then phone\u00a01.");
         expect("every event and every notice", timeline.length, 10);
         expect("a notice by when it was told, then what it said", timeline.slice(5, 7), [
-            { label: "07:24", value: "The nodes updated to v7.17.4-5. From v7.17.3-9." },
+            { label: "07:24",
+                value: "The nodes updated to v7.17.4-5. They were on v7.17.3-9.", words: true },
             { label: "yesterday 16:21",
                 value: "A firmware update is waiting. "
-                    + "eero updates the nodes to v7.17.4-5 at 02:00." }
+                    + "eero updates the nodes to v7.17.4-5 at 02:00.", words: true }
         ]);
-        expect("the oldest last", timeline[9], { label: "3 Nov 03:12",
-            value: "The internet is out. Nothing past the home network answers this machine." });
+        expect("the oldest last", timeline[9], { label: "Tuesday 03:12",
+            value: "The internet is out. Nothing past the home network answers this machine.",
+            words: true });
         const quiet = Drawers.internet(Object.assign({}, model, { events: [], told: [{
             at: "2026-11-07T07:24:13Z", summary: "The internet is back", body: "" }] }), now)
             .facts;
@@ -575,7 +585,7 @@ QtObject {
         const tablet = Drawers.device(model, device("tablet 1"), now).facts;
         expect("a device's own events", tablet.slice(tablet.findIndex(fact =>
             fact.heading === "events") + 1).map(fact => fact.value), [
-            "tablet\u00a01\u200b connected to Den eero Pro 6 on 5.2GHz channel 52.",
+            "tablet\u00a01\u200b connected to Den eero Pro 6 on 5.2\u00a0GHz channel 52.",
             "tablet\u00a01\u200b disconnected from Study eero Pro 6."
         ]);
         expect("none of another's", Drawers.device(model, device("generic 2"), now).facts

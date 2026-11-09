@@ -74,7 +74,10 @@ Provider {
                 : {
                     label: one.label ?? provider.named(scope, one.id, one.fill),
                     value: one.value,
-                    figure: one.figure ?? undefined
+                    figure: one.figure ?? undefined,
+                    // A sentence, as eero's events are, set as prose in
+                    // Words rather than as a figure (VKCF3Z, 2026-11-08).
+                    words: one.words ?? undefined
                 })
         };
     }
