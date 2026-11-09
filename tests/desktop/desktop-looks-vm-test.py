@@ -3043,6 +3043,23 @@ def drawer_shot(desktop: Desktop, title: str, picture: str) -> list[str]:
     return cast("list[str]", desktop.showing()["drawer"]["facts"])
 
 
+def budgets_stand_in_agents(desktop: Desktop, named: str) -> None:
+    """Shoot Agents' Budgets row, which is AI spend's: its rows, their order and drawers."""
+    desktop.as_account("qs ipc call launcher collection agents")
+    desktop.launcher_ready()
+    desktop.launcher_until(lambda shown: "Budgets" in shown["rows"])
+    desktop.down_to("Budgets")
+    assert desktop.showing()["selected"]["side"] == "$21,564 this month"
+    desktop.shoot(f"launcher-agents-budgets-at-{named}")
+    desktop.step_in()
+    rows = desktop.showing()["rows"]
+    assert rows[:3] == ["All AI Spend", "Claude Pro", "Your AI proxy token"], rows
+    desktop.down_to("Claude Pro")
+    facts = drawer_shot(desktop, "Claude Pro", f"launcher-agents-budgets-each-at-{named}")
+    assert facts == ["Five Hours", "Week", "Worth at List", "Feed", "Providers"], facts
+    desktop.close_launcher()
+
+
 def test_the_budgets_stand_behind_one_row_at_each_scale(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
@@ -3053,8 +3070,9 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
     steps into its windows (docs/design.md; VKCF3Z, 2026-11-06). A budget's drawer and a
     window's say what budgets.json holds of each (VKCF3Z, 2026-11-07): a plan's, the employer's
     money's, a share window's and a dollar window past where it warns. A running period's
-    drawer says its days and what its cuts went to most, and a cap's is its window's. Each is
-    kept for the design's look at Joel's scales.
+    drawer says its days and what its cuts went to most, and a cap's is its window's. Agents
+    shows the same Budgets row after its sessions. Each is kept for the design's look at
+    Joel's scales.
     """
     written(desktop, "budgets.json", BUDGETS)
     written(desktop, "collection.json", BUDGETED)
@@ -3109,6 +3127,7 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
             facts = drawer_shot(desktop, "Five Hours", f"launcher-budgets-windows-at-{named}")
             assert facts == ["Resets", "Read By", "Warns"], facts
             desktop.close_launcher()
+            budgets_stand_in_agents(desktop, named)
     finally:
         desktop.as_account(
             "rm -f $XDG_RUNTIME_DIR/spend-watch/collection.json"
