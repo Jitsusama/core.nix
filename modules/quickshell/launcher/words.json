@@ -1867,7 +1867,8 @@
     {
       "id": "traffic:connections",
       "in": "traffic",
-      "name": "Connections"
+      "name": "Connections",
+      "term": "Network/connection"
     },
     {
       "id": "warp",
@@ -3556,7 +3557,8 @@
     {
       "id": "eero:internet:updates",
       "in": "eero:internet",
-      "name": "Updates"
+      "name": "Updates",
+      "term": "Network/update"
     },
     {
       "id": "eero:internet:traffic",
@@ -4283,7 +4285,8 @@
     {
       "id": "networks:hosts",
       "in": "networks",
-      "name": "Addresses"
+      "name": "Addresses",
+      "term": "Network/address"
     },
     {
       "id": "networks:size",
@@ -6860,7 +6863,8 @@
     {
       "id": "on:waiting:check",
       "in": "on:waiting",
-      "name": "Check"
+      "name": "Check",
+      "term": "Desktop/check"
     },
     {
       "id": "on:waiting:checked",
@@ -9580,7 +9584,8 @@
     {
       "id": "wifi:estimate",
       "in": "wifi:point",
-      "name": "Speed"
+      "name": "Speed",
+      "term": "Network/speed"
     },
     {
       "id": "wifi:busy",
@@ -9721,7 +9726,8 @@
     {
       "id": "bluetooth:powered",
       "in": "bluetooth",
-      "name": "Radio"
+      "name": "Radio",
+      "term": "Network/radio"
     },
     {
       "id": "bluetooth:discoverable",
