@@ -708,6 +708,12 @@ ShellRoot {
             // Each is named by its title alone, as every notice row is (VKCF3Z,
             // 2026-11-08); what it said is its note.
             same("its notices, newest first", names(sent), "Newest, Oldest");
+            // A picture its card draws is its drawer's too, whether held in
+            // memory while the notice lives or kept as a file (VKCF3Z,
+            // 210afa2f).
+            same("each drawer holds the picture its card draws",
+                sent.map(row => row.drawer?.picture ?? "none").join(" "),
+                "image://qsimage/3/0 file:///kept/oldest.png");
             Niri.acted = [];
             sent[0].run();
             same("Return on one reads it", Notices.marked.join(" "), "3");

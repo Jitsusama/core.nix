@@ -104,9 +104,10 @@ Provider {
                 title: notice.summary,
                 body: provider.marked(notice) ? notice.styled : notice.body,
                 styled: provider.marked(notice),
-                // The drawer takes a file's path, as a file's plate gives it.
-                prose: true, picture: Notices.pictureOf(notice).startsWith("file://")
-                    ? Notices.pictureOf(notice).slice("file://".length) : "",
+                // Its picture as its card draws it, a file's URL or one held
+                // in memory while it lives, since the drawer draws either
+                // (Pictures.js's source; VKCF3Z, 210afa2f).
+                prose: true, picture: Notices.pictureOf(notice),
                 facts: provider.facts(notice) },
             // Its sender's, which the history keeps as a code point
             // (Notices.qml), muted for one sent at low urgency, as its card
