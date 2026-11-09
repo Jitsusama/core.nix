@@ -4581,15 +4581,26 @@ Scope {
             for (const source of due)
                 Report.say(`refresh of ${source.settings.name} began ${refreshedAt}`);
         refreshing = [];
-        // Each a span of the opening (Traces.qml), saying which source
-        // changed, how long its refresh took by the shell's clock, and how
-        // many rows the list held after (Y2YBTS, 2026-11-07).
-        for (const source of due) {
+        // The list is shown again once for every source that changed it,
+        // not once each: at home, sessions and people changing together
+        // composed it twice a refresh (keeps-up, 48 times in 46 refreshes,
+        // 2026-11-09).
+        const done = due.map(source => {
             const startedAt = Date.now();
             const started = KeyTimes.now();
-            refreshNow(source);
-            traces.did("refresh", startedAt, { source: source.settings.name,
-                tookMs: KeyTimes.now() - started, rows: matches.length, depth: held.length });
+            const shown = refreshNow(source);
+            return { source, startedAt, shown, tookMs: KeyTimes.now() - started };
+        });
+        if (done.some(one => one.shown))
+            reshow(held.length);
+        // Each a span of the opening (Traces.qml), saying which source
+        // changed, how long its own work took by the shell's clock, and how
+        // many rows the list held after (Y2YBTS, 2026-11-07).
+        for (const one of done) {
+            if (one.shown)
+                Report.say(`refreshed ${one.source.settings.name}`);
+            traces.did("refresh", one.startedAt, { source: one.source.settings.name,
+                tookMs: one.tookMs, rows: matches.length, depth: held.length });
         }
         actsRefreshed(due, begun);
         heldAgreed(due);
@@ -4738,9 +4749,12 @@ Scope {
         id: becomingDue
         onTriggered: root.becameLate()
     }
+    // Whether what's shown is to be said again for the source, which
+    // refreshDue does once for all of them; the steps held are made again
+    // here, each source's on the last's.
     function refreshNow(source) {
         if (!open || asking)
-            return;
+            return false;
         // Out at the top, a row the search found from it is said again in
         // place, so a setting Return changed shows how it stands now
         // (Joel, 2026-10-26: an act that changes something stays open and
@@ -4759,13 +4773,9 @@ Scope {
             // never showed until they changed (2026-11-07, the picker's
             // Drive save in vm-desktop-opens-files, core #2148).
             const home = typed.trim() === "" && collections.includes(source);
-            if (home || typed.trim() !== "" && (matches.some(row => row.endedBy === source
+            return home || typed.trim() !== "" && (matches.some(row => row.endedBy === source
                 || row.key === `collection:${source.settings.name}`
-                || source.things.some(own => own.key === row.key)) || reaches(source))) {
-                reshow(0);
-                Report.say(`refreshed ${source.settings.name}`);
-            }
-            return;
+                || source.things.some(own => own.key === row.key)) || reaches(source));
         }
         const from = held.findIndex(step => step.row.from === source);
         const ofSource = step => !!step.row.category && holdsFrom(step.row.category, source);
@@ -4789,17 +4799,16 @@ Scope {
             : source.things.some(found) ? source.things : source.looksThrough();
         const top = fromTop && own.some(found);
         if (from < 0 && !top && !held.some(ofSource))
-            return;
+            return false;
         const steps = held.map(step => ofSource(step) ? Object.assign({}, step, {
             rows: Steady.kept(step.rows, members(step.row.category), pairedId)
                 .map(row => heldBack(step.row.category, row))
         }) : step);
         const above = top ? own : from < 0 ? [] : source.everything();
         if (!remade(steps, top ? 0 : from < 0 ? held.length : from + 1, above))
-            return;
+            return false;
         held = steps;
-        reshow(steps.length);
-        Report.say(`refreshed ${source.settings.name}`);
+        return true;
     }
 
     // Each step from `from` on made again from the rows the one above it
