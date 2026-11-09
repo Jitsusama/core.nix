@@ -969,7 +969,9 @@ onLinux {
 
   # A file in the launcher's chooser of files says its size and when it
   # changed as VKCF3Z set them, and its plate its kind, preview and facts,
-  # as tests/file-facts.qml holds FileFacts.js to it in Qt's own engine.
+  # one kept elsewhere, as in Google Drive, alike from what its place
+  # listed, as tests/file-facts.qml holds FileFacts.js to it in Qt's own
+  # engine.
   a-file-says-its-size-and-when-it-changed =
     let
       qt = pkgs.qt6.qtdeclarative;

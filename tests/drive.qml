@@ -315,19 +315,18 @@ QtObject {
                 { name: "Numbers.xlsx",
                     mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }
             ]);
-        check("a file's row says its size and when it changed", Drive.placed(menu, now, said), {
-            key: "drive:pdf1", name: "menu.pdf", note: "2.4 MB \u00b7 09:05",
-            drawer: { title: "menu.pdf", facts: [
-                { label: "Owner", value: "Ada Lovelace" },
-                { label: "Changed", value: "Wednesday 28 October \u00b7 09:05" },
-                { label: "Size", value: "2.4 MB" }
-            ], body: "" }
-        });
-        check("Google's own says what it comes as", Drive.placed(sheet, now, said).note,
-            "as .xlsx");
-        check("a folder's row, keyed as one", Drive.placed(trips, now, said),
-            { key: "drive:folder:dir1", name: "Trips", note: "",
-                drawer: { title: "Trips", facts: [], body: "" } });
+        check("a file says what a folder's read would, its size and when it changed, and its owner",
+            Drive.placed(menu), {
+                key: "drive:pdf1", name: "menu.pdf", note: "",
+                entry: { name: "menu.pdf", folder: false, size: 2400000, modified: at(28, 9, 5) },
+                facts: [{ label: "Owner", value: "Ada Lovelace" }]
+            });
+        check("Google's own says what it comes as, and no size Drive doesn't give",
+            [Drive.placed(sheet).note, Drive.placed(sheet).entry],
+            ["as .xlsx", { name: "Numbers", folder: false, modified: at(26, 9, 30) }]);
+        check("a folder's row, keyed as one, saying nothing Drive doesn't give",
+            Drive.placed(trips), { key: "drive:folder:dir1", name: "Trips", note: "",
+                entry: { name: "Trips", folder: true }, facts: [] });
         check("Google's own adopts its document row, no other file",
             [Drive.asDocument(sheet), Drive.asDocument(menu)], [{
                 id: "sheet1", title: "Numbers", kind: "spreadsheet",

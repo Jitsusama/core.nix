@@ -774,7 +774,9 @@ impl Watch {
     /// Downloads the file `downloading` named last into `places`: where
     /// it is once written, or why it isn't. A program or a script is never
     /// downloaded to open, and one of Google's own kinds comes as the
-    /// office program's file.
+    /// office program's file. One to open or hand on is fetched only when
+    /// Drive has changed it since the copy kept, which Drive is asked
+    /// first.
     pub fn download(&mut self, places: &Places, now: &Zoned) -> &State {
         let Some(asked) = self.state.drive.downloads.first().cloned() else {
             return &self.state;
@@ -808,6 +810,12 @@ impl Watch {
             None if file.kind == drive::Is::Folder => return Err(Failed::Gone),
             None => (None, file.name.clone()),
         };
+        // A copy of the version Drive holds is handed out again as it is.
+        if asked.how != How::Save
+            && let Some(path) = files::fresh(&places.drive, &file.id, &name, file.changed)
+        {
+            return Ok(path);
+        }
         let body = match self.asking(now, |google, token| {
             google.content(token, &file.id, exported)
         }) {
@@ -820,7 +828,9 @@ impl Watch {
         let mut heard = Heard::new(body);
         match asked.how {
             How::Open | How::Pick => {
-                files::kept(&places.kept.join("drive"), &file.id, &name, &mut heard)
+                let path = files::cached(&places.drive, &file.id, &name, file.changed, &mut heard);
+                files::pruned(&places.drive, files::CACHED_MOST, &file.id);
+                path
             }
             How::Save => match &asked.to {
                 Some(to) => files::put(Path::new(to), &mut heard),

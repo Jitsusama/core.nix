@@ -22,7 +22,8 @@ Quarterly Plan in Docs, and Team Budget in Sheets, on a shared drive. His sign-i
 scope, so a shell may ask for a new Meet meeting, which is made at once as new-abcd-efg. His
 Drive holds a Trips folder, with an itinerary in it, the menu and the Quarterly Plan; Team
 Budget is shared with him, and the Team shared drive is empty. A shell may ask what a folder
-holds, and for a file in one, to open, pick or save, Google's own as their office files.
+holds, and for a file in one, to open or pick, kept in the cache home's google/drive as the
+program keeps it, or to save, Google's own as their office files.
 Drive's own places hold the menu, which he opened last, then the two documents, as its Recent;
 the Trips folder, as Starred; Team Budget, as Shared with Me; and the Team shared drive.
 """
@@ -538,7 +539,7 @@ class Account:
             failed = "gone"
         else:
             name = f"{file['name']}{EXPORTED.get(str(file['kind']), '')}"
-            path = self.files / "drive" / str(file["id"]) / name
+            path = Path.home() / ".cache" / "google" / "drive" / str(file["id"]) / name
             if asked["how"] == "save":
                 path = Path(str(asked.get("to") or Path.home() / "Downloads" / name))
             path.parent.mkdir(parents=True, exist_ok=True)

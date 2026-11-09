@@ -682,8 +682,8 @@ def test_the_launchers_picker_fetches_a_file_from_google_drive_for_the_portal(
     machine = desktop.machine
     notes = f"/home/{desktop.account}/drive-notes"
     chose = "/run/user/1000/portal-chose"
-    # The stand-in Google fetches a file into its own folder, its bytes its id.
-    fetched = "/run/user/1000/google-files/drive/menu/menu.pdf"
+    # The stand-in Google fetches a file into the cache, as the program does, its bytes its id.
+    fetched = f"/home/{desktop.account}/.cache/google/drive/menu/menu.pdf"
     desktop.as_account("systemctl --user restart google.service")
     try:
         # The shell hears the stand-in before the picker asks: its meeting is found.
@@ -716,6 +716,11 @@ def test_the_launchers_picker_fetches_a_file_from_google_drive_for_the_portal(
         desktop.launcher_until(lambda shown: "menu.pdf" in shown["rows"])
         desktop.shoot("file-chooser-drive")
         desktop.down_to("menu.pdf")
+        # Its row says its size and when it changed, as a file here does.
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("side", "").startswith("4\u00a0B \u00b7 ")
+        )
+        desktop.shoot("file-chooser-drive-file")
         machine.send_key("ret")
         # Fetched first, then handed over, and the launcher closes.
         machine.wait_until_succeeds(

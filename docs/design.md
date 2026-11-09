@@ -1861,6 +1861,36 @@ works the same way everywhere.
   Ctrl+C let it go, and any other key, or one in its first 300 ms, does
   nothing. :w [name] and :x save from anywhere, asking the same, and :w!
   saves over a name already there without asking.
+- **Google Drive is a folder among his own** (Joel's Mac mounted it for
+  every dialog, 2026-10-29: "i've used the folder a little bit but not a
+  lot"; here it comes through the google program's own sign-in, never a
+  client of its own, a mount or a second sign-in, 2026-11-07). Home lists
+  Google Drive after its own files, apart, and typing finds it from any
+  folder: My Drive, Shared with Me (not when saving, since another's
+  folder takes nothing of his) and Shared Drives once he's on one. Each
+  folder there lists as one here does, folders first, a row saying its
+  size and when it changed as a file here says them, a folder only when,
+  since Drive counts no folder's items; its plate's eyebrow says where it
+  is then its kind, as Drive's own drawer does ("in My Drive/Trips ·
+  PDF"), then its name, Size, Changed and Drive's Owner, with no
+  preview, since nothing is fetched to be looked at, and nothing Drive
+  doesn't give. Google's own kinds are the one row each is everywhere,
+  noted "as .docx", ".xlsx" or ".pptx", the file a program is handed,
+  its side saying when it changed, as every row in a folder does, and
+  left out where the program takes none of those (VKCF3Z, 2026-11-08). Return
+  fetches it and hands its path, the foot saying "Fetching it."; gx opens
+  it the same way in its own program, one of Google's own kinds by its
+  link in its program's window, never one that runs. A file fetched is
+  kept in the cache home's google/drive/<id>/<name>, as Drive last
+  changed it, so one asked again while Drive's modifiedTime holds is
+  never fetched twice, and past 2 GB the copies handed out longest ago
+  go. It's readable only, since nothing written to it goes back to Drive:
+  a program opening it says so rather than losing a change. Saving into
+  Drive is the picker's own save, never the cached copy: a name in My
+  Drive or a shared drive's folder is staged in the state home's
+  google/drive-saves and sent up once written, a new version of a file
+  this program made, and a notice says if Drive wouldn't take it, since
+  Joel's sign-in grants replacing only those.
 - **Ctrl+C copies the selected row.** Any row with a Copy inside copies
   it with Ctrl+C from wherever it's listed, without stepping in, as
   Ctrl+C copies everywhere else on the desktop; while text is selected

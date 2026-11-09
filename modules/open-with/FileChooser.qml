@@ -41,9 +41,11 @@
 // (modules/google), by `chooserPlaces(chooser)`: asked once as an ask is
 // shown, so what's listed never changes while it's shown, and listed after
 // home's files, apart, found by typing from any folder (VKCF3Z,
-// 2026-10-29). Their files are fetched before they're picked: the launcher
+// 2026-10-29). Their files and folders say beside them and on their plates
+// what one here would, from what their place listed (`entry`), with no
+// preview. Their files are fetched before they're picked: the launcher
 // stays, its foot saying so, and closes once every path is here, or stays
-// saying why one couldn't be. Saving, the launcher's line holds the name
+// saying why one couldn't be; gx opens one the same way, once fetched. Saving, the launcher's line holds the name
 // to save as, a prompt's words rather than a find, the caret before its
 // extension, kept from folder to folder; each folder, here or there whose
 // place gives `saveTo`, leads with it, and a name already there (`names`)
@@ -535,7 +537,8 @@ Provider {
         elsewhere[fields.key] = { name: fields.name, folder: true };
         const saves = saving && typeof fields.saveTo === "function";
         const inside = () => fields.inside();
-        const row = Object.assign(Files.elsewhere("folder", fields, thing, [], inside),
+        const drawn = factsElsewhere(fields);
+        const row = Object.assign(Files.elsewhere("folder", drawn, thing, [], inside),
             saves ? naming(inside, () => provider.namingElsewhere(fields, provider.saveName))
                 : {});
         Object.defineProperties(row, {
@@ -610,14 +613,38 @@ Provider {
         id: folding
     }
 
+    // A file or a folder kept elsewhere whose place says what its folder's
+    // read would, as `entry` ({ name, folder, size, modified }), with the
+    // folders it's in (`where`) and what more it says (`facts`), says
+    // them on its row and plate as one here does (FileFacts.js), so a
+    // folder there reads as a folder here (Joel, 2026-11-03: "no clue
+    // about sizes or when last updated"); one without says what its
+    // place gives.
+    function factsElsewhere(fields) {
+        if (!fields.entry)
+            return fields;
+        return Object.assign({}, fields, {
+            side: FileFacts.sideElsewhere(fields.entry, Date.now(), factWords),
+            drawer: () => FileFacts.plateElsewhere(fields, Date.now(), factWords)
+        });
+    }
+
     // A file kept elsewhere: fetched, then picked by Return, or gathered
     // where several may be opened. One of Google's own kinds is the row it
-    // is everywhere (`adopt`), picked the same way.
+    // is everywhere (`adopt`), picked the same way. Normal's gx opens it
+    // in its own program, as a file here, once its place has it
+    // (`open`), the ask still waiting.
     function fileElsewhere(fields) {
         elsewhere[fields.key] = { name: fields.name, fetch: fields.fetch };
         const made = acts => {
-            const row = fields.adopt ? Object.assign({}, fields.adopt)
-                : Files.elsewhere("file", fields, thing, []);
+            // An adopted row says when it changed at its side, as every row
+            // in a folder does, rather than when Joel last opened it, which
+            // its place's listing doesn't say (VKCF3Z, 2026-11-08).
+            const row = fields.adopt ? Object.assign({}, fields.adopt, fields.entry
+                    ? { side: FileFacts.sideElsewhere(fields.entry, Date.now(), factWords) } : {})
+                : Files.elsewhere("file", factsElsewhere(fields), thing, []);
+            if (typeof fields.open === "function")
+                row.openOwn = () => provider.openElsewhere(fields);
             Object.assign(row, { verb: acts[0].verb, run: acts[0].run, verbs: () => acts, stays: true });
             Object.defineProperty(row, "note", {
                 get: () => provider.fetchingSaid() || (fields.note ?? ""),
@@ -628,6 +655,31 @@ Provider {
         if (several)
             return gatheringRow(fields.key, made);
         return made([act("verb:path:file:open", fields.key, [fields.key])]);
+    }
+
+    // Opens a file kept elsewhere in its own program once its place has
+    // fetched it, the foot saying so meanwhile or why it couldn't be, as
+    // a pick's fetch does; one its place opens itself, as Google's own
+    // kinds open in their program, comes back with no path.
+    function openElsewhere(fields) {
+        if (asking === null || fetching !== null && fetching.why === "")
+            return;
+        const reply = asking.reply;
+        fetching = { asked: 1, here: 0, why: "" };
+        changed();
+        fields.open(path => {
+            if (asking?.reply !== reply || fetching === null)
+                return;
+            fetching = null;
+            changed();
+            if (path !== "")
+                Niri.spawn(["xdg-open", path]);
+        }, why => {
+            if (asking?.reply !== reply || fetching === null)
+                return;
+            fetching = Object.assign({}, fetching, { why: why });
+            changed();
+        });
     }
 
     // What the foot says while what's kept elsewhere is fetched.

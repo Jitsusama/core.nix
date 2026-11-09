@@ -159,6 +159,44 @@ QtObject {
             { kind: "ZIP", size: 7, changed: now }, now, words);
         expect("anything else shows its facts alone, no stand-in", plain.preview, undefined);
 
+        // One kept elsewhere, as in Google's Drive, reads as one here does.
+        const away = { name: "menu.pdf", folder: false, size: 2_400_000,
+            modified: at(2026, 10, 28, 14, 32) };
+        expect("a file kept elsewhere says its size and its day, as one here does",
+            FileFacts.sideElsewhere(away, now, words), FileFacts.side(away, undefined, now, words));
+        expect("a folder kept elsewhere, uncounted, says its day alone",
+            FileFacts.sideElsewhere({ name: "Trips", folder: true, modified: away.modified }, now,
+                words), kept("28_Oct"));
+        expect("and with nothing said of it, nothing",
+            FileFacts.sideElsewhere({ name: "Team", folder: true }, now, words), "");
+        const owner = { label: "Owner", value: "Ada Lovelace" };
+        expect("its plate is a file's here, by its ending, its place's facts after",
+            FileFacts.plateElsewhere({ name: "menu.pdf", where: "My Drive/Trips", entry: away,
+                facts: [owner] }, now, words), {
+                eyebrow: "PDF", title: "menu.pdf", facts: [
+                    { label: "Size", value: kept("2.40_MB") },
+                    { label: "Changed", value: kept("28_Oct") },
+                    { label: "Where", value: "My Drive/Trips" }, owner]
+            });
+        expect("what its place doesn't say is left out, never awaited",
+            FileFacts.plateElsewhere({ name: "Trips", where: "My Drive",
+                entry: { name: "Trips", folder: true } }, now, words), {
+                eyebrow: "Folder", title: "Trips", facts: [{ label: "Where", value: "My Drive" }]
+            });
+        expect("where its place says it is leads its eyebrow, in place of Where",
+            FileFacts.plateElsewhere({ name: "menu.pdf", where: "My Drive/Trips",
+                within: "in My Drive/Trips", entry: away, facts: [owner] }, now, words), {
+                eyebrow: "in My Drive/Trips \u00b7 PDF", title: "menu.pdf",
+                facts: [{ label: "Size", value: kept("2.40_MB") },
+                    { label: "Changed", value: kept("28_Oct") }, owner],
+                eyebrowNames: true
+            });
+        expect("and a folder's, its kind its folder", FileFacts.plateElsewhere({ name: "Trips",
+            where: "My Drive", within: "in My Drive", entry: { name: "Trips", folder: true } },
+            now, words).eyebrow, "in My Drive \u00b7 Folder");
+        expect("a file with no ending is a file", FileFacts.plateElsewhere({ name: "notes",
+            where: "", entry: { name: "notes", size: 3 } }, now, words).eyebrow, "File");
+
         const entries = [
             { name: "note 10.md", path: "/n/note 10.md", size: 5, modified: 3 },
             { name: "Note 2.md", path: "/n/Note 2.md", size: 900, modified: 1 },

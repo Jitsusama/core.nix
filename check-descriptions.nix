@@ -28,7 +28,9 @@
     its preview and its facts, each number kept to its unit, and only its facts before it's said;
     every word is the launcher's words', and text past what's counted says it's over its count; a
     folder's entries order by name, change or size, folders first, 2 before 10; a save's name puts
-    the caret before its extension
+    the caret before its extension; and one kept elsewhere, as in Google Drive, says the same on
+    its row and plate from what its place listed, its place's facts after, leaving out what isn't
+    given
   '';
   a-firmware-update-frees-pcr-0-only-for-fwupds-entry = ''
     the shutdown step takes PCR 0 out of the TPM's policy only when BootNext names fwupd's
@@ -623,7 +625,9 @@
     only once Joel's sign-in grants Meet's scope, lists a Drive folder only when asked, the last
     few asked each told, folders first, a shortcut as what it points at, leaving out what it
     can't show and never asking of a folder no id names, and downloads a Drive file to open, pick
-    or save, Google's own kinds as their office program's file, never opening one that runs, each
+    or save, Google's own kinds as their office program's file, never opening one that runs, one
+    to open or pick kept in the cache, readable only, and fetched again only once Drive changes
+    it, the copies handed out longest ago let go past their room, each
     download asked lately told, and a file cut short leaving nothing behind, and sends what Joel
     saves through the picker up to Drive once it's written and left a moment, a new file and then
     new versions of it, never a second file for one it may not replace, saying which program
@@ -2368,9 +2372,9 @@
     beside its title, with its details for the drawer; reads the Drive folders
     listed and the downloads, finding each folder asked together, writes the lines that list a
     folder and download a file, a save alone saying where, and says how the newest download asked
-    stands; and says a Drive file in the picker by its size and when it changed, or what Google's
-    own kind comes as, picked by that name and kind, adopting its document row, with why a file or
-    a folder couldn't be had; and reads the saves into Drive, writes the line that sends one again,
+    stands; and says a Drive file in the picker by what a folder's read would, its size and when
+    it changed, and its owner, or what Google's own kind comes as, picked by that name and kind,
+    adopting its document row, with why a file or a folder couldn't be had; and reads the saves into Drive, writes the line that sends one again,
     tells each settled since the shell started once, oldest first, by its folder's name, sent as an
     answer with Open in Drive and failed with why and what mends it, a copy that couldn't be read
     going back to the program that saved it while it's open, and finds a failure's notice by its

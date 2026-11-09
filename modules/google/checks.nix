@@ -59,6 +59,8 @@ onLinux {
   # and then only those a change touched and those gone, of the kinds it
   # watches, an act handed on as the socket's asks are, on the socket
   # systemd hands it,
+  # a Drive file to open or pick is kept in the cache, readable only, and
+  # fetched again only once Drive changes it, the longest unused let go,
   # and a save staged by the picker goes up once it settles, as a new file
   # and then new versions of it, never a second file for one it may not
   # replace. A stand-in on the machine answers for Google.
