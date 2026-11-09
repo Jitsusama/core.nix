@@ -784,11 +784,7 @@ Provider {
     // The session a terminal look is about, by the session or address it
     // names, or null when none runs.
     function lookSession(one) {
-        const names = [one.session, one.address].filter(name => typeof name === "string"
-            && name !== "");
-        return Sessions.running.find(session => names.some(name => name === session.address
-            || name === session.presence?.session
-            || (session.presence?.addresses ?? []).includes(name))) ?? null;
+        return Sessions.running.find(session => ForYou.leftBy(one, session)) ?? null;
     }
 
     // Opening a look: a terminal's session gone to, anything else opened
@@ -806,20 +802,10 @@ Provider {
             settleLook(one, "opened", waitingSaid("openedHow", {}));
     }
 
-    // A look as ForYou.js weighs it: a thing to look at, waiting since it
-    // was left, due by its deadline where its file says one, and blocking
-    // the session that left it while that session waits on Joel, since
-    // nothing says what else it waits on, so such a look stands among what
-    // needs him now (VKCF3Z, 2026-11-09).
+    // A look as ForYou.js weighs it, blocking the session that left it
+    // while that session waits on Joel (ForYou.js's lookThing).
     function lookThing(one) {
-        const left = typeof one.session === "string" && one.session !== "";
-        return {
-            kind: "look",
-            blocks: left ? Sessions.wanting.filter(session => session.presence?.session
-                === one.session).length : 0,
-            due: one.due ?? null,
-            since: one.since
-        };
+        return ForYou.lookThing(one, Sessions.wanting);
     }
 
     // A look's drawer: its quest, by its title in the index, and that it's
@@ -1114,8 +1100,10 @@ Provider {
     // make }, `make(now)` giving its row as it's stepped into: the sessions
     // wanting Joel, each blocking one, itself; what he can do now; what
     // he's to look at; and what the launcher's sources give, by the kind
-    // its row says, a to-do where it says none.
-    readonly property var forYouItems: sessions.map(session => ({
+    // its row says, a to-do where it says none. A session's row is Agents',
+    // so without Agents there is none, and none is counted.
+    readonly property var forYouItems: (provider.source("agents") ? sessions : [])
+        .map(session => ({
             kind: "do",
             thing: { kind: "todo", blocks: 1, since: session.presence?.wants?.since ?? null },
             make: () => {
@@ -1138,7 +1126,11 @@ Provider {
     // How many each band holds, as they stand now (ForYou.js's banded):
     // what needs Joel now, lifted looks and things to try among them, then
     // what To Look At and To Try hold, for Now's side to say as a run, "1 to
-    // do \u00b7 44 to look at \u00b7 2 to try" (VKCF3Z, 2026-11-09).
+    // do \u00b7 44 to look at \u00b7 2 to try" (VKCF3Z, 2026-11-09). Nothing
+    // reads them yet: they're for PI3KKD's side of Now, which comes next.
+    // Being bound, they're banded at the moment the items last changed, so
+    // For You's rows are banded again as it's stepped into, at that time,
+    // since a deadline coming within the day lifts a row with no change.
     readonly property var forYouBands: ForYou.banded(forYouItems, Date.now())
     readonly property int toDoCount: forYouBands.now.length
     readonly property int toLookAtCount: forYouBands.look.length
@@ -1154,8 +1146,11 @@ Provider {
     // at section"), none when it holds nothing: at its side how many, in
     // its note the heaviest's title, and inside each, heaviest first. It's
     // a place, so Return steps in, as the right arrow does, and its head
-    // says "For You \u203a To Look At", as :filter look's does. Muted, as
-    // Later and Lately are, so what needs him now leads by its colour too.
+    // says "For You \u203a To Look At", as :filter look's does. It's a
+    // place's row, so nothing stands beside its name and its side is a bare
+    // count; its drawer names the heaviest. Its mark is muted, as any row
+    // that holds more draws one, its name in text, so what needs him now
+    // leads by its order (VKCF3Z, 2026-11-09).
     function kindRow(kind, rows) {
         if (rows.length === 0)
             return [];
@@ -1168,8 +1163,12 @@ Provider {
             glyph: Words.glyph(id),
             hue: "muted",
             side: String(rows.length),
-            note: rows[0].name,
             nested: true,
+            thing: true,
+            drawer: () => ({
+                title: Words.name(id),
+                facts: [provider.fact("heaviest", rows[0].name)]
+            }),
             verbs: () => rows,
             targets: () => rows,
             run: () => provider.launcher?.enter(row)

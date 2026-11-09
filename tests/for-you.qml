@@ -131,6 +131,27 @@ QtObject {
         expect("no items, three empty bands", ForYou.banded(undefined, now),
             { now: [], look: [], try: [] });
 
+        // A look blocks the session that left it while that session wants
+        // Joel, named by its session or its address, as the session's own
+        // address, its presence's session or an address it answers to.
+        const left = { session: "S1", address: "", since: now - hour };
+        const wanting = presence => [{ address: "A9", presence: presence }];
+        const lookBand = (one, sessions) => band("look", ForYou.lookThing(one, sessions));
+        expect("a look whose session wants Joel is lifted",
+            lookBand(left, wanting({ session: "S1" })), ["now"]);
+        expect("as is one naming its session by an address it answers to",
+            lookBand({ session: "", address: "A2" }, wanting({ addresses: ["A2"] })), ["now"]);
+        expect("or by the session's own address",
+            lookBand({ address: "A9" }, wanting({})), ["now"]);
+        expect("a look whose session doesn't want Joel goes in To Look At",
+            lookBand(left, wanting({ session: "S2", addresses: ["A2"] })), ["look"]);
+        expect("as does one with no session named", lookBand({ session: "" },
+            wanting({ session: "" })), ["look"]);
+        expect("its thing counts each session it blocks, and keeps its times",
+            ForYou.lookThing({ session: "S1", due: now + hour, since: now - hour },
+                wanting({ session: "S1" }).concat(wanting({ session: "S1" }))),
+            { kind: "look", blocks: 2, due: now + hour, since: now - hour });
+
         // What blocks a session: one whose want is an action its quest or
         // its file's address holds.
         const sessions = [
@@ -162,7 +183,8 @@ QtObject {
             cleared: "cleared",
             resolved: "resolved",
             clock: at => new Date(at).toISOString().slice(11, 16),
-            ago: at => `${Math.round((now - at) / 60000)} min ago`
+            ago: at => `${Math.round((now - at) / 60000)} min ago`,
+            day: at => (now - at >= 24 * hour ? "yesterday" : "")
         };
         const reason = thing => ForYou.reason(thing, now, say);
         expect("blocking beats due", reason({ blocks: 2, due: now + hour, since: now - hour }),
@@ -173,6 +195,8 @@ QtObject {
             "overdue since 13:00");
         expect("when, with nothing stronger", reason({ since: now - 12 * 60 * 1000 }),
             "12 min ago");
+        expect("and before today its day, never a count of days",
+            reason({ since: now - 30 * hour }), "yesterday");
         expect("nothing to say", reason({}), "");
 
         // The weight in words: the total, then each part that counts.

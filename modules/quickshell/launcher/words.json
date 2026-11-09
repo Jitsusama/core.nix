@@ -7304,6 +7304,11 @@
       "name": "Weight"
     },
     {
+      "id": "on:waiting:heaviest",
+      "in": "on:waiting",
+      "name": "Heaviest"
+    },
+    {
       "id": "on:waiting:since",
       "in": "on:waiting",
       "name": "Waiting Since"

@@ -1158,7 +1158,8 @@ def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desk
             waiting_opened(desktop)
             desktop.machine.send_key("ret")
             # The look blocks nothing and isn't due, so it's in To Look At, after the to-do,
-            # which names it as the heaviest it holds (VKCF3Z, 2026-11-09).
+            # a place's row saying a bare count, its drawer naming the heaviest it holds
+            # (VKCF3Z, 2026-11-09).
             desktop.launcher_until(
                 lambda shown: (
                     shown["rows"][:2] == ["Answer the ask", "To Look At"]
@@ -1169,8 +1170,10 @@ def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desk
             desktop.down_to("To Look At")
             desktop.launcher_until(
                 lambda shown: (
-                    (shown["selected"] or {}).get("note") == "Read the plan"
-                    and (shown["selected"] or {}).get("side") == "1"
+                    (shown["selected"] or {}).get("side") == "1"
+                    and not (shown["selected"] or {}).get("note")
+                    and shown["drawer"]["title"] == "To Look At"
+                    and shown["drawer"]["facts"] == ["Heaviest"]
                 )
             )
             named = scale.replace(".", "-")

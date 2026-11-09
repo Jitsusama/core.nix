@@ -1,9 +1,10 @@
 // For You, Now's first row (Now.qml): what needs Joel in one list, weighed
 // so the most pressing leads (VKCF3Z, 2026-11-08; Joel: "should somehow
 // weight ordering so the most critical stuff bubbles up"). What a row
-// weighs is worked out here from its parts, each { id, points }, and so is
-// which band it stands in, what its side says and how the looks folder's files are read, apart from
-// the launcher, so tests/for-you.qml holds them in Qt's own engine.
+// weighs is worked out here from its parts, each { id, points }, and so
+// is which band it stands in, what its side says and how the looks
+// folder's files are read, apart from the launcher, so tests/for-you.qml
+// holds them in Qt's own engine.
 .pragma library
 .import "Order.js" as Order
 
@@ -147,6 +148,31 @@ function banded(items, now) {
         try: Order.sorted(bands.try, order) };
 }
 
+// Whether a look was left by a session, by the session or the address the
+// look names, matched against the session's address, its presence's
+// session or any address its presence answers to.
+function leftBy(one, session) {
+    const names = [one.session, one.address].filter(name => typeof name === "string"
+        && name !== "");
+    return names.some(name => name === session.address
+        || name === session.presence?.session
+        || (session.presence?.addresses ?? []).includes(name));
+}
+
+// A look as it's weighed and banded: a thing to look at, waiting since it
+// was left, due by its deadline where its file says one, and blocking the
+// session that left it while that session is among those `wanting` Joel,
+// since nothing says what else it waits on, so such a look stands among
+// what needs him now (VKCF3Z, 2026-11-09).
+function lookThing(one, wanting) {
+    return {
+        kind: "look",
+        blocks: (wanting ?? []).filter(session => leftBy(one, session)).length,
+        due: one.due ?? null,
+        since: one.since
+    };
+}
+
 // How many sessions an item blocks: those whose want is an action of the
 // item's quest or its file's address, since a session's presence mirrors
 // what its quest has waiting on Joel (Waiting.js's asksJoel).
@@ -193,8 +219,14 @@ function reason(thing, now, say) {
     if (due !== null) {
         return dueSaid(due, now, say);
     }
+    // How long ago within the day, and before it the day, as When says one
+    // ("yesterday"), never a count of days (VKCF3Z, 2026-11-09).
     const since = when(thing.since);
-    return since === null ? "" : say.ago(since);
+    if (since === null) {
+        return "";
+    }
+    const day = say.day(since, now);
+    return day === "" ? say.ago(since) : day;
 }
 
 // A span waited, in its largest whole unit: "12 min", "2 h", "3 d".
