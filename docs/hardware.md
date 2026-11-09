@@ -48,10 +48,11 @@ m1n1 in a macOS stub's place loads, with the Air's own device tree and
 U-Boot, which gives systemd-boot a plain UEFI. The firmware unpacking
 (`modules/asahi-firmware`) and the speakers (`modules/asahi-audio`, with
 `modules/speakersafetyd`) are core's too; all of it began from
-[nixos-apple-silicon][32]'s modules, under their MIT notice. Asahi's
-installer, run from macOS, shrinks macOS,
-makes the stub and the EFI system partition, and copies the firmware for
-Wi-Fi, Bluetooth and the camera out of macOS onto that partition. The kernel
+[nixos-apple-silicon][32]'s modules, under their MIT notice. Asahi's NVRAM
+tools (`modules/asahi-nvram`) come from nixpkgs. Asahi's installer, run
+from macOS, shrinks macOS, makes the stub and the EFI system partition, and
+copies the firmware for Wi-Fi, Bluetooth and the camera out of macOS onto
+that partition. The kernel
 is Asahi's tree rather than core's mainline one, so `jitsusama.kernel.cpu`
 isn't set.
 
@@ -62,6 +63,7 @@ isn't set.
 | Boot     | systemd-boot under U-Boot's UEFI, which keeps no variables             |
 | Firmware | Asahi's copy from macOS, unpacked from the EFI partition at each boot  |
 | Sound    | asahi-audio's speaker filters, behind speakersafetyd                   |
+| NVRAM    | asahi-bless to start macOS next; asahi-btsync for macOS's pairings     |
 | Stick    | how to start one from U-Boot, for the guide to say                     |
 | Guide    | no Secure Boot or TPM steps, since the model has neither               |
 

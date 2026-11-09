@@ -280,6 +280,7 @@
       nixosModules = {
         asahi-audio = ./modules/asahi-audio/nixos.nix;
         asahi-firmware = ./modules/asahi-firmware/nixos.nix;
+        asahi-nvram = ./modules/asahi-nvram/nixos.nix;
         backlight = ./modules/backlight/nixos.nix;
         bluetooth = ./modules/bluetooth/nixos.nix;
         bluetooth-disk-prompt = ./modules/bluetooth-disk-prompt/nixos.nix;
