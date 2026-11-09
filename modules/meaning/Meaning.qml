@@ -174,15 +174,19 @@ Provider {
         // What was answered before was of the things told then, as before
         // the spots were made, a moment after the first key; so each
         // answer is kept on screen but asked again a moment later, and
-        // what's new is added below it.
+        // what's new is added below it. It's started rather than restarted,
+        // as `settled` is, so things told more often than it waits can't
+        // starve it, and heard's own ask again with it.
         provider.searches = provider.searches.map(search => search.kind !== "thing" ? search
             : Object.assign({}, search, { whole: false }));
-        again.restart();
+        if (!again.running)
+            again.start();
     }
 
     // The things change while the launcher is open as windows and notices
     // come and go, often several at once; walking them takes the shell's
-    // thread about 5 ms over a thousand in Qt's engine (2026-11-08), so a
+    // thread 4 to 6 ms over a thousand in Qt's engine, and 5 to 7 with three
+    // hundred of their devices' parts beside them (2026-11-08), so a
     // run of changes is told once, after it settles, never between keys.
     Timer {
         id: settled
