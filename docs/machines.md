@@ -384,6 +384,19 @@ every-suppression-says-why = core.lib.everySuppressionSaysWhy pkgs {
 };
 ```
 
+Its shell scripts meet shellcheck's optional checks that find faults, as
+core's do, through an eighth:
+
+```nix
+every-script-meets-shellcheck-at-its-strictest =
+  core.lib.everyScriptMeetsShellcheckAtItsStrictest pkgs
+    {
+      src = ./.;
+      # How many findings each script holds while they're fixed.
+      waiting = { };
+    };
+```
+
 Its names say the glossary's words, as core's do, through a check that reads
 the glossary of the core it locks:
 

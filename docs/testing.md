@@ -36,7 +36,8 @@ is what makes VM tests time out.
 
 `nix fmt` lints as it formats, at each linter's strictest, test code
 included: ruff with every rule and mypy `--strict` for Python (`ruff.toml`,
-`mypy.ini`), shellcheck for shell, luacheck for Lua, each file read as the
+`mypy.ini`), shellcheck for shell with the optional checks no script
+breaks, luacheck for Lua, each file read as the
 Lua of the program that runs it (`.luacheckrc`), biome with every rule that
 fits for the JavaScript QML imports (`biome.jsonc`, read through
 `tests/qt-javascript-lint.sh`) and, formatting it too, for Node's `.mjs`
@@ -60,6 +61,12 @@ rest: a `# noqa`, `# type: ignore`, `# shellcheck disable=` or `qmllint
 disable` says why after the codes it names or in a comment just above.
 Those before the rule wait, counted by file, in
 `tests/every-suppression-says-why-waiting.nix`, where a count only falls.
+shellcheck's four optional checks that find faults but that many scripts
+still break, for a hidden failure, a `set -e` turned off, an uppercase
+variable nothing sets and a `case` with no default, run in
+`every-script-meets-shellcheck-at-its-strictest`, whose findings wait by
+script in the same way. Two more stay off, as `modules/treefmt/treefmt.nix`
+says why: braces on every variable and `[[ ]]` for every test.
 
 `nix flake check` runs every check, but Nix reuses any check whose inputs
 didn't change, so a change pays only for the builds it can affect. It still

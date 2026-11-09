@@ -522,6 +522,15 @@
       # waits with, and on one holding fewer until its count is lowered.
       lib.everySuppressionSaysWhy = pkgs: pkgs.callPackage ./tests/every-suppression-says-why.nix { };
 
+      # How a repository built on core holds its shell scripts to shellcheck's
+      # optional checks that find faults, as core does:
+      # `core.lib.everyScriptMeetsShellcheckAtItsStrictest pkgs { src = ./.;
+      # waiting = { ... }; }` is a check that fails on a script holding more
+      # findings than it waits with, and on one holding fewer until its count is
+      # lowered.
+      lib.everyScriptMeetsShellcheckAtItsStrictest =
+        pkgs: pkgs.callPackage ./tests/every-script-meets-shellcheck-at-its-strictest.nix { };
+
       # How a repository built on core holds its names to core's glossary:
       # `core.lib.namesSayTheGlossary pkgs { names = ...; otherSenses = ...;
       # waiting = ...; }` is a check that no name says a name the glossary

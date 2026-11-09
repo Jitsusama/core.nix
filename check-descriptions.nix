@@ -549,6 +549,10 @@
     every path pattern merge-net's must-run.txt, ruff.toml's per-file ignores and treefmt's
     unread kinds past treefmt-nix's own give matches a file the repository holds
   '';
+  every-script-meets-shellcheck-at-its-strictest = ''
+    every shell script meets shellcheck's optional checks for a hidden failure, a set -e turned
+    off, an unset uppercase variable and a case with no default, but those still waiting
+  '';
   every-suppression-says-why = ''
     every noqa, type: ignore, shellcheck disable and qmllint disable says why, after its codes or
     in a comment just above, but those still waiting for their reason
