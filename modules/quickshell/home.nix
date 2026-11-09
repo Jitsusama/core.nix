@@ -288,6 +288,7 @@ let
     "launcher/Standing.js"
     "launcher/Steady.js"
     "launcher/Order.js"
+    "launcher/PlaceRow.js"
     "launcher/Becoming.js"
     "launcher/Recent.js"
     "launcher/Recents.js"

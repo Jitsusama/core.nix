@@ -1034,6 +1034,24 @@ onLinux {
       touch $out
     '';
 
+  # A place's row reads alike at home and inside its parent (VKCF3Z's
+  # 2a429f67, on Joel's 2026-11-08 "i don't like how the title and values on
+  # the home screen differ from every other sub-menu"): tests/place-row.qml
+  # holds launcher/PlaceRow.js, which makes it in both, in Qt's own engine.
+  a-place-reads-alike-everywhere =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-place-reads-alike-everywhere" { } ''
+      cp ${../../tests/place-row.qml} place-row.qml
+      cp ${./launcher/PlaceRow.js} PlaceRow.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml place-row.qml
+      touch $out
+    '';
+
   # For You's :filter narrows to a kind and a source, by their words, as
   # VKCF3Z ruled it; tests/for-you-filter.qml holds launcher/ForYouFilter.js
   # to it in Qt's own engine.

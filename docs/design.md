@@ -785,9 +785,10 @@ mark at Note's size reads as a gear (Joel's shot of 2026-11-06 read "⚙ +
 0"), and a chord's figures take Monaspace's slashed zero (`cv01`), in
 chords, the foot's keys and the key list alone, so Super + O never reads as
 a zero. A chord sits at the right of its row, at least `space.xxl` from the
-name, but home's rows hand theirs to the foot, which teaches Now's "Super +
-O next time" while the cursor is on it, furthest from Return and first to
-give way. Nothing says what Escape does, since it only ever leaves a mode.
+name, but a place's row, at home or in Desktop, hands its chord to the
+foot, which teaches Now's "Super + O next time" while the cursor is on it,
+furthest from Return and first to give way, since its right says how it
+stands. Nothing says what Escape does, since it only ever leaves a mode.
 
 **A row says what it is.** A thing's row (a program, a window, a pi
 session, a network, a device, a copy) says its kind at its right edge, muted:
@@ -1416,8 +1417,15 @@ works the same way everywhere.
   last name that fits, never an ellipsis, which no note wears (VKCF3Z,
   2026-11-08). A note is a lowercase run, never a sentence: a place
   holding none says "none running" or "nobody lately", and the sentence
-  stays inside it. A place that measures
-  something says how it stands instead, as Processor says "99% busy".
+  stays inside it. At its right, in Note, it says how it stands, as that
+  row reads inside its parent (Processor's "99% busy", Disk's "nearly
+  full · 19.3 GB free", Power's charge, how Agents' sessions stand), or
+  else how many it holds; Now says there what For You's own row says. A
+  place's row is the same row at home and inside its parent, made by one
+  function (Joel, 2026-11-08: "i don't like how the title and values on
+  the home screen differ from every other sub-menu"; VKCF3Z, 2a429f67),
+  and home's head is a place's: its mark, then "Home" in Title where
+  what's typed goes.
   What a row holds, and a found row's note ("1 window · 14 tabs"), is set
   in the serif upright at the name's size, on its baseline and a step after it,
   while the name stays in the mono, so the eye finds the name first; it's

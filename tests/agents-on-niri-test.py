@@ -585,7 +585,11 @@ def test_a_session_whose_folder_is_gone_says_so_before_return_and_is_forgotten(
 def test_agents_says_how_its_sessions_stand_together_at_home_and_found_by_name(
     shell: Shell,
 ) -> None:
-    """Home's Agents row and the row "agents" finds read "1 working \u00b7 $214 today"."""
+    """Home's Agents row and the row "agents" finds say "1 working \u00b7 $214 today" at the right.
+
+    At home, as everywhere a place's row stands, its sessions are named after its name and how
+    they stand together is said at its right (VKCF3Z, 2a429f67).
+    """
     together = "1 working \u00b7 $214 today"
     shell.close_launcher()
     shell.as_account(shell.ipc("toggle"))
@@ -593,7 +597,9 @@ def test_agents_says_how_its_sessions_stand_together_at_home_and_found_by_name(
     shell.launcher_until(
         lambda shown: any(
             thing["is"] == "collection:agents"
-            and thing["reads"].startswith(f"Agents \u00b7 {together}")
+            and thing["reads"].startswith("Agents \u00b7 ")
+            and thing["reads"].split(" \u00b7 ")[1] not in {"", "none running"}
+            and thing["reads"].endswith(f" \u00b7 {together}")
             for thing in shown["things"]
         )
     )

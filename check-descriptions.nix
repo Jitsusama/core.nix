@@ -2038,6 +2038,11 @@
   the-launcher-holds-still-as-it-refreshes = ''
     a list the launcher shows keeps its order and its selection as what's in it changes
   '';
+  a-place-reads-alike-everywhere = ''
+    a place's row names what it holds after its name in the room its name and what it says at its
+    right leave, as many whole as fit and never an ellipsis, saying so where it holds none, and at
+    its right says how it stands where it says, else how many it holds
+  '';
   recent-means-one-thing = ''
     Recent lists at most nine things, newest first across its sources, each once where it's
     newest, none already shown above it, an undated source after the dated in its own order, and

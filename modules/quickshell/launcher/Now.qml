@@ -338,7 +338,7 @@ Provider {
         return rows.filter(row => row !== null);
     }
 
-    // Home's Now as a plate beside the card (Launcher.qml's homeRow): the
+    // Home's Now as a plate beside the card (Launcher.qml's whole): the
     // date as its eyebrow, the time large with its seconds (Drawer.qml
     // keeps them, counting), what needs Joel or that nothing does, and the
     // facts behind the moment in two groups, as the card's rows fall in
@@ -1332,11 +1332,6 @@ Provider {
         });
         return row;
     }
-    // What home's Now leads with: the first thing waiting, after its row's
-    // own name, or nothing.
-    readonly property string foremost: first === "" ? ""
-        : `${Words.name("on:waiting")}: ${first}`
-
     // The launcher, as a piece's actions are given it, so one that opens a
     // collection opens it here.
     readonly property var shell: ({ launcher: provider.launcher })
@@ -1477,6 +1472,20 @@ Provider {
 
     function everything() {
         return all.slice();
+    }
+
+    // Now's row says at its right what For You's own row says there, how
+    // many wait on Joel (VKCF3Z, 2a429f67), since that's the one thing in
+    // it only he can move.
+    function homeSays() {
+        return waiting.side;
+    }
+
+    // So its row names what else is on after its name, and never For You,
+    // whose count it already says at its right.
+    function memberNames(held = all) {
+        return held.filter(one => one.key !== waiting.key && one.folded !== true)
+            .map(one => one.name);
     }
 
     // The key of the row above, Now's top, that already stands for what's

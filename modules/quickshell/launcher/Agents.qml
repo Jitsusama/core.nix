@@ -87,20 +87,53 @@ Provider {
     readonly property var keeping: keeper()
 
     function rowsFor() {
-        // Those parked after, standing last in the one order, under their
-        // orchestrators as the rest are.
-        const running = Sessions.running.concat(Sessions.parked);
+        const running = sessionsInOrder();
         // The orchestrators the harness lists, which say what their whole
         // orchestration spent even with none of theirs running.
         const orchestrators = source("orchestrators");
         const listed = (orchestrators?.listed ?? []).map(one => one.address);
-        const laid = SessionRow.tree(running.map(session => ({
+        return rowsOf(treeOf(running), running, listed)
+            .concat((orchestrators?.closed ?? []).map(one => closedRow(one, orchestrators)));
+    }
+
+    // Every session, those parked after, standing last in the one order,
+    // under their orchestrators as the rest are.
+    function sessionsInOrder() {
+        return Sessions.running.concat(Sessions.parked);
+    }
+
+    // Where each session stands in the tree, read from Sessions alone.
+    function treeOf(running) {
+        return SessionRow.tree(running.map(session => ({
             address: session.address,
             under: session.presence?.orchestratedBy ?? "",
             state: stateOf(session)
         })), true);
-        return rowsOf(laid, running, listed)
-            .concat((orchestrators?.closed ?? []).map(one => closedRow(one, orchestrators)));
+    }
+
+    // The names its row says after its own, its rows' names in their
+    // order, read from Sessions itself as how they stand is (states),
+    // never from its rows. Home says how its sessions stand, so it wants
+    // none of them (Wanted.js), and laying them out for their names would
+    // make every session's row at each change nobody sees
+    // (vm-desktop-launcher-keeps-up).
+    function memberNames() {
+        const running = sessionsInOrder();
+        const closed = source("orchestrators")?.closed ?? [];
+        return treeOf(running)
+            .map(one => one.fold ? foldName(one.counts) : running[one.at].title)
+            .concat(closed.map(one => closedName(one)),
+                [toReopen, landed, recent].filter(row => row !== null).map(row => row.name));
+    }
+
+    // A fold's name: how many of its sessions stand each way.
+    function foldName(counts) {
+        return counts.map(each => `${each.count} ${word(each.state)}`).join(", ");
+    }
+
+    // A closed orchestrator's name: what the harness calls it, short first.
+    function closedName(one) {
+        return one.short || one.title || one.address;
     }
 
     // A closed orchestrator's row: its glyph muted, as one paused is, its
@@ -119,7 +152,7 @@ Provider {
             thing: true,
             key: `orchestrator:${one.address}`,
             kind: SessionRow.KIND,
-            name: one.short || one.title || one.address,
+            name: closedName(one),
             also: Fuzzy.prepare(`${one.address} ${one.quest ?? ""} ${one.title ?? ""}`),
             glyph: Theme.glyph.agent,
             hue: SessionRow.hue("off"),
@@ -185,7 +218,7 @@ Provider {
             const held = rowsOf(one.members, running, listed);
             const row = thingRow({
                 key: `agents:fold:${one.under}`,
-                name: one.counts.map(each => `${each.count} ${word(each.state)}`).join(", "),
+                name: foldName(one.counts),
                 glyph: Theme.glyph.agent,
                 hue: "program",
                 copiesNothing: true,
@@ -1043,9 +1076,10 @@ Provider {
         return SessionRow.summary(states(), spent, Words.of("agents").said ?? {});
     }
 
-    // What it holds, at its row's right wherever it's found, and what
-    // Home's row says in place of naming its sessions (VKCF3Z,
-    // 2026-11-06). Found by its name, "agents", its row is the answer, as
+    // How its sessions stand together, at its row's right wherever it
+    // stands, home included, while its sessions are named after its name
+    // as every place's are (VKCF3Z, 2a429f67). Found by its name,
+    // "agents", its row is the answer, as
     // Processor's is for "cpu", and Return still opens it, since that's
     // what Joel types its name for.
     function counted() {

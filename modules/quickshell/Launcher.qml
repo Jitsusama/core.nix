@@ -74,6 +74,7 @@ import "launcher/Becoming.js" as Becoming
 import "launcher/Pacing.js" as Pacing
 import "launcher/Wanted.js" as Wanted
 import "launcher/Order.js" as Order
+import "launcher/PlaceRow.js" as PlaceRow
 
 Scope {
     id: root
@@ -781,7 +782,7 @@ Scope {
         }
         for (const id of Words.home.filter(one => !root.placeNamed(one)))
             out = out.concat(piece(`home/${id}`, id, () => {
-                const place = root.answerPlace(id);
+                const place = root.resolved(id);
                 return { answers: true,
                     spots: place && place.answered ? root.answerSpots(place, [place]) : [] };
             }).spots);
@@ -1628,22 +1629,18 @@ Scope {
             .sort((a, b) => named.indexOf(a.key) - named.indexOf(b.key));
     }
 
-    // What a category holds, said after its name at home so scrolling
-    // through them says what's there: its members' names by name, as
-    // their rows name them ("Agents, AI spend, Calls, Capture"), as many
-    // whole as fit in `room` characters, but for one its own name already
-    // says (Sound's Sound). Read from the vocabulary as home is made, so no
-    // answer is asked for it. Its typed commands are rows inside it but
-    // not named here: the words they start with read as stray lowercase
-    // words among the places (VKCF3Z, 2026-11-05: "Wi-Fi, Address, Speed,
-    // ip, is, split, mac").
-    function holding(category, room) {
-        const stands = standsOf(category);
-        if (stands !== "")
-            return stands;
+    // What a category holds, said after its name so scrolling through
+    // them says what's there: its members' names, as their rows name them
+    // ("Agents, AI spend, Calls, Capture"), but for one its own name
+    // already says (Sound's Sound). Read from the vocabulary as its row is
+    // made, so no answer is asked for it. Its typed commands are rows
+    // inside it but not named here: the words they start with read as
+    // stray lowercase words among the places (VKCF3Z, 2026-11-05: "Wi-Fi,
+    // Address, Speed, ip, is, split, mac").
+    function holding(category) {
         const names = holdings(category).map(id => heldName(id)).filter(name => name !== "");
         const own = (category.name ?? category.id).toLowerCase();
-        return listed(names.filter(name => name.toLowerCase() !== own), room);
+        return names.filter(name => name.toLowerCase() !== own);
     }
 
     // How a place stands, where the vocabulary names a provider that says
@@ -1661,19 +1658,11 @@ Scope {
         return source?.stands?.() ?? "";
     }
 
-    // Names as one line, as many whole as fit in `room` characters, ending
-    // on the last that fits with nothing after it (VKCF3Z, 2026-11-08: "no
-    // ellipsis anywhere"). The row gives way by whole names again where
-    // its face is wider than a character a letter (Reading.wholeNamesFromEnd).
+    // Names as one line, as many whole as fit in `room` characters, as a
+    // place's row says them (PlaceRow.js), for Now's rows to say their
+    // parts the same way.
     function listed(cased, room) {
-        let said = "";
-        for (let at = 0; at < cased.length; at++) {
-            const next = said === "" ? cased[at] : `${said}, ${cased[at]}`;
-            if (next.length > room)
-                return said;
-            said = next;
-        }
-        return said;
+        return PlaceRow.listed(cased, room);
     }
 
     // The name of a thing a category holds, as it's shown now, or "" where
@@ -1702,10 +1691,18 @@ Scope {
     // things as one row holding them. Null where this machine has none.
     function resolved(id) {
         const place = placeNamed(id);
-        if (place)
+        if (place) {
+            // How it stands at its right, as Power's charge, and what it
+            // holds by name after its name, at home and inside Machine
+            // alike (VKCF3Z, 2a429f67).
+            const side = PlaceRow.side(standsOf(place.category), "");
             return Object.assign({}, place, {
-                count: holding(place.category, Math.max(1, rowRoom() - place.name.length))
+                side: side,
+                count: PlaceRow.holds(holding(place.category),
+                    { name: place.name, says: side, room: rowRoom() }),
+                names: true
             });
+        }
         const known = keyed[id];
         if (known && !known.category)
             return known;
@@ -1940,11 +1937,11 @@ Scope {
         restart(start);
     }
 
-    // A collection as a row the search finds: as it is at home, but for its
-    // count, which would read all of it at every change, unless it says
-    // what it holds without reading it, as Agents says how its sessions
-    // stand (homeSays), which is then its answer by name, read as the
-    // launcher opens, as home is.
+    // A collection as a row the search finds: as it is at home, but naming
+    // and counting none of what it holds, which would read all of it at
+    // every change. One that says how it stands without reading it, as
+    // Agents says how its sessions stand (homeSays), says that at its
+    // right, its answer by name, read as the launcher opens, as home is.
     function named(source) {
         const collection = source.collection;
         const says = source.homeSays();
@@ -2479,8 +2476,8 @@ Scope {
     }
 
     // The chord the foot teaches for a row its row doesn't draw: a thing's,
-    // whose row says its kind where a chord would be, and a home row's,
-    // which opens its place straight (homeRow).
+    // whose row says its kind where a chord would be, and a collection's,
+    // which opens it straight (whole), at home or not.
     function taughtChord(choice) {
         return kindOf(choice) !== "" ? choice.chord ?? [] : choice.nextTime ?? [];
     }
@@ -3035,84 +3032,27 @@ Scope {
     }
 
     function home() {
-        const room = rowRoom();
         // Now is home's first row, not a group of its own, so the rows sit
         // a row apart from the head's hairline to the foot's (VKCF3Z,
         // 2026-11-05).
-        const rows = Words.home.map(id => homeRow(id, room)).filter(row => row !== null);
-        return rows;
+        return Words.home.map(id => homeRow(id)).filter(row => row !== null);
     }
 
-    // One of home's rows: a category, or a collection whole, Now and
-    // Programs, each saying what it holds by name.
-    function homeRow(id, room) {
-        const category = categories.find(row => row.category.id === id);
-        if (category)
-            return Object.assign({}, category, {
-                count: holding(category.category, room > 0 ? room - category.name.length
-                    : Infinity)
-            });
-        const source = collections.find(one => one.settings.name === id);
-        if (!source)
-            return answerPlace(id);
-        const row = whole(source, false, false);
-        // In Now, what waits on Joel leads, named by the first of it, since
-        // it's the one thing there only he can move; the rest follow by
-        // name, and its row, there with nothing in it too, isn't one.
-        const lead = source.foremost ?? "";
-        // A row folded into a place, as Agents' Start a Session is, does
-        // something there rather than being one of what it holds, so home
-        // never names it. A place that says what it holds itself is never
-        // read for names it won't show, so its rows wait to be wanted.
-        const says = source.homeSays();
-        const names = says !== null ? [] : source.everything()
-            .filter(one => one.key !== "on:waitingOnYou" && one.folded !== true)
-            .map(one => one.name);
-        const left = room > 0 ? room - row.name.length : Infinity;
-        const fitted = names.length === 0 ? ""
-            : listed(names, lead === "" ? left : left - lead.length - " \u00b7 ".length);
-        // Where not even the first name fits, as a session's whole quest
-        // title doesn't, it says how many it holds, as its own count does,
-        // and never that it holds none (Joel, 2026-10-28: "agents shows no
-        // sessions when i super space right now").
-        // A place whose things are better counted than named says so
-        // instead, as Agents says how its sessions stand together.
-        const rest = says !== null ? says
-            : names.length > 0 && fitted === "" ? source.counted() : fitted;
-        const placed = Object.assign({}, row, {
-            // Holding none, it says so as a run, never the sentence an
-            // empty place says inside (VKCF3Z, 2026-11-08).
-            count: lead === "" && rest === "" ? source.collection.none ?? ""
-                : [lead, rest].filter(part => part !== "").join(" \u00b7 "),
-            // Its count is a run of what it holds, given way by whole names;
-            // any other row's words are items, which a comma doesn't part.
-            names: true,
-            // A home row never draws its chord: the foot teaches it as the
-            // next time's way while it's the cursor row, furthest from
-            // Return, and the row's far end is its say's. Drawn on Now,
-            // Super+O stood alone at the row's end and read as a stray
-            // "+ 0" (VKCF3Z, 2026-11-06).
-            chord: [],
-            nextTime: row.chord
-        });
-        // A collection with a plate of its own, as Now's moment is
-        // (Now.qml), shows it beside its home row.
-        return typeof source.plate !== "function" ? placed
-            : Object.assign(placed, { plated: true, drawer: () => source.plate() });
-    }
-
-    // A place that's one answer, as Disk is: named as the vocabulary names
-    // it, what it says now after its name, and its parts a step in. Until
-    // the machine can say, as before its first reading is back, it's there
-    // by name with nothing after it, so home never gains a row while it's
-    // open, and Return leaves it open rather than closing on nothing.
-    function answerPlace(id) {
+    // One of home's rows: the row its place is everywhere else, made by
+    // the one function that makes it there (VKCF3Z, 2a429f67, on Joel's
+    // "i don't like how the title and values on the home screen differ
+    // from every other sub-menu"). A place that's one answer, as Disk is,
+    // is there by name with nothing after it until the machine can say,
+    // as before its first reading is back, so home never gains a row
+    // while it's open, and Return leaves it open rather than closing on
+    // nothing.
+    function homeRow(id) {
+        const row = resolved(id);
+        if (row)
+            return row;
         const entry = Words.of(id);
         if (!entry.name)
             return null;
-        const row = resolved(id);
-        if (row)
-            return Object.assign({}, row, { name: entry.name, count: row.side ?? "", side: "" });
         return {
             key: `place:${id}`,
             name: entry.name,
@@ -3128,26 +3068,52 @@ Scope {
         };
     }
 
-    // A collection as one row at home: Return or the right arrow opens all
-    // of it.
-    function whole(source, gap, counted = true) {
+    // A collection as one row, at home and in a place such as Desktop:
+    // Return or the right arrow opens all of it. Read whole, it names what
+    // it holds after its name and says how it stands at its right, or how
+    // many it holds (PlaceRow.js); a row the search finds isn't read, since
+    // naming it would read all of it at every change (`named`).
+    function whole(source, gap, read = true) {
         const collection = source.collection;
         const name = source.settings.name;
         const opener = Shortcuts.actions.find(action => action.opens === name);
-        return {
+        const title = collection.title ?? collection.noun;
+        // What it holds is read once, for its names and for its count. A
+        // place that says how it stands itself (saysAtHome) isn't read for
+        // its rows at all, so they wait to be wanted (Wanted.js), and it
+        // names what it holds without making them, as Agents does.
+        const rowsRead = read && !source.saysAtHome;
+        const held = rowsRead ? source.everything() : [];
+        const members = !read ? [] : rowsRead ? source.memberNames(held)
+            : source.memberNames();
+        const none = collection.none ?? "";
+        const side = read ? PlaceRow.side(source.homeSays(),
+            rowsRead ? source.counted(held) : "", members.length === 0 && none !== "") : "";
+        const row = {
             key: `collection:${name}`,
             verb: "open",
-            name: collection.title ?? collection.noun,
+            name: title,
             plain: true,
             note: source.noted(),
             glyph: collection.glyph,
             hue: "voice",
-            // The chord that opens it straight, at its right as Desktop's
-            // collections draw theirs (home's rows hand it to the foot).
-            chord: opener ? opener.chord : [],
-            // How many it holds at its right, where a row's figure stands
-            // (VKCF3Z, 2026-11-05).
-            side: counted ? source.counted() : "",
+            // No row draws the chord that opens it straight: the foot
+            // teaches it as the next time's way while it's the cursor row,
+            // and the row's far end is its say's. Drawn on Now, Super+O
+            // stood alone at the row's end and read as a stray "+ 0"
+            // (VKCF3Z, 2026-11-06), and Desktop's collections now read as
+            // home's do (2a429f67).
+            chord: [],
+            nextTime: opener ? opener.chord : [],
+            // How it stands, or how many it holds, at its right, where a
+            // row's figure stands (VKCF3Z, 2026-11-05).
+            side: side,
+            // What it holds by name, given way by whole names; holding
+            // none, it says so as a run, never the sentence an empty place
+            // says inside (VKCF3Z, 2026-11-08).
+            count: read ? PlaceRow.holds(members,
+                { name: title, says: side, room: rowRoom(), none: none }) : "",
+            names: read,
             gap: gap,
             opens: name,
             from: source,
@@ -3158,6 +3124,10 @@ Scope {
             leadHue: "voice",
             verbs: () => source.everything()
         };
+        // A collection with a plate of its own, as Now's moment is
+        // (Now.qml), shows it beside its row.
+        return typeof source.plate !== "function" ? row
+            : Object.assign(row, { plated: true, drawer: () => source.plate() });
     }
 
     readonly property bool atHome: typed === "" && held.length === 0
@@ -7534,10 +7504,10 @@ Scope {
                         lead: root.asked !== null ? "" : secret ? Theme.glyph.secret
                             : thing ? thing.lead ?? thing.glyph
                             : home ? Theme.glyph.home : ""
-                        // Home's glyph muted, since it's no kind of thing,
-                        // and the accent stays where the keys go.
+                        // Home's mark in a place's own hue, since home's
+                        // head is every place's head (VKCF3Z, 2a429f67).
                         leadHue: secret ? Theme.machine
-                            : thing ? Theme[thing.leadHue ?? thing.hue] : Theme.muted
+                            : thing ? Theme[thing.leadHue ?? thing.hue] : Theme.voice
                         glyphWidth: root.textAreaAt
                         leadColumn: root.glyphColumn
                         // A folder's path gives way before any other step.

@@ -661,9 +661,10 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     desktop.answer("machine")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Machine")
     desktop.step_in("ret")
-    # Power comes first, saying how it stands, the charge and what it's
-    # doing, as Processor says how busy it is, never a list of what it
-    # holds. Memory is a row of its own, before Heat, as the processor is,
+    # Power comes first, saying how it stands at its right, the charge and
+    # what it's doing, as Processor says how busy it is, and what it holds
+    # after its name, as at home (VKCF3Z, 2a429f67). Memory is a row of its
+    # own, before Heat, as the processor is,
     # Disk after it and Lag last, since what it points at is the
     # processor, the memory and the disk.
     # The queue is Agents', so Machine keeps only the machine's own.
@@ -671,9 +672,7 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Power"
             and "Queue" not in shown["rows"]
-            and any(
-                re.match(r"Power \u00b7 \d+%, ", str(thing["reads"])) for thing in shown["things"]
-            )
+            and re.match(r"\d+%, ", str(shown["selected"].get("side", "")))
             and "Memory" in shown["rows"]
             and shown["rows"][shown["rows"].index("Memory") + 1 :][:3] == ["Heat", "Disk", "Lag"]
         )
@@ -907,10 +906,12 @@ def home_holds_still_as_the_queue_changes(desktop: Desktop) -> None:
 
 
 def shoot_home_at_joels_scales(desktop: Desktop, home: list[str]) -> None:
-    """Shoot home at 1.5 and 2, where each place's own mark is judged, for the gallery.
+    """Shoot home and Machine at 1.5 and 2, where each place's own mark is judged, for the gallery.
 
     The launcher opens afresh at each, as an open one keeps the size it opened at, and
     steps down to its last row, so the places stand in view where only a few rows fit.
+    Machine follows, so home's rows and the same places' rows inside it are judged side by
+    side, as one row wherever it stands (VKCF3Z, 2a429f67).
     """
     if not desktop.values["shots"]:
         return
@@ -925,6 +926,14 @@ def shoot_home_at_joels_scales(desktop: Desktop, home: list[str]) -> None:
             lambda shown: (shown["selected"] or {}).get("is") == "collection:keyboard"
         )
         desktop.shoot(f"launcher-home-categories-at-{scale.replace('.', '-')}")
+        desktop.close_launcher()
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.launcher_until(lambda shown: shown["rows"] == home)
+        desktop.down_to("Machine")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: shown["held"] == ["computer"])
+        desktop.shoot(f"launcher-machine-places-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
     desktop.as_account("niri msg output winit scale 1")
 
