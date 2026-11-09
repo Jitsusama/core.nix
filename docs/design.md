@@ -826,8 +826,12 @@ back.
 **A long name reads on.** A name too long for its row ends in an ellipsis,
 and once the selection rests on it, it reads on in place: after half a
 second it slides until its end shows, rests a second, then glides back to
-its start and rests again, for as long as it's selected, so holding an
-arrow never sets one going. The slide is a reading motion, not an
+its start. It reads on twice, then rests at its start, ellipsis showing,
+until the selection moves, since motion that never ends ranks nothing and
+costs frames while he reads; the start is what names the row, moving off
+and back reads it again, and the drawer holds the whole name where the row
+has one. Only a selection at rest sets it going, so holding an arrow never
+does. The slide is a reading motion, not an
 arrival: a steady twelve characters a second with soft ends, gathering
 speed from rest and settling back in at most a fifth of a second each, so
 the eye follows one speed and nothing starts or stops hard. It moves on

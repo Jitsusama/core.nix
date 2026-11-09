@@ -259,8 +259,17 @@ Rectangle {
     // so does what the row says at its right. With both cut they take
     // turns, the name first, so only one thing moves at a time and each
     // reads whole; given up by the selection, or no longer seen, both are
-    // back at their start at once.
+    // back at their start at once. They read on twice, then rest at their
+    // start, cut, until the selection moves again (VKCF3Z, 2026-11-09:
+    // motion that never ends ranks nothing and costs frames while Joel
+    // reads; the start names the row, and the drawer holds it whole).
     readonly property bool reads: row.selected && row.shown
+    readonly property int readings: 2
+    // How many turns its cut words have read on through since it was
+    // selected: a turn is the name's and then the side's, where both are
+    // cut.
+    property int readsDone: 0
+    readonly property bool readingOn: row.reads && row.readsDone < row.readings
     // Where its name has its baseline, down from its top, which the
     // launcher's drawer sets its title on.
     readonly property real nameBaseline: nameBox.y + nameBox.baselineOffset
@@ -278,7 +287,10 @@ Rectangle {
     readonly property bool nameCut: nameBox.over > 0
     readonly property bool sideCut: atRight.sided && sideText.over > 0
     property bool sidesTurn: false
-    onReadsChanged: row.sidesTurn = false
+    onReadsChanged: {
+        row.sidesTurn = false;
+        row.readsDone = 0;
+    }
 
     // The name's room, which it's cut to.
     ReadsOn {
@@ -301,10 +313,12 @@ Rectangle {
         color: row.flashed ? row.flashInk : row.quiet ? Theme.muted
             : row.selected ? Theme.strong : Theme.text
         figure: figureFace.advanceWidth
-        reading: row.reads && !(row.sideCut && row.sidesTurn)
+        reading: row.readingOn && !(row.sideCut && row.sidesTurn)
         onThrough: {
             if (row.sideCut)
                 row.sidesTurn = true;
+            else
+                row.readsDone += 1;
         }
     }
 
@@ -564,10 +578,11 @@ Rectangle {
                 : row.warns && row.kind === "" ? Theme.warning
                 : row.selected ? Theme.text : Theme.muted
             figure: noteFace.advanceWidth
-            reading: row.reads && atRight.sided && (!row.nameCut || row.sidesTurn)
+            reading: row.readingOn && atRight.sided && (!row.nameCut || row.sidesTurn)
             onThrough: {
                 if (row.nameCut)
                     row.sidesTurn = false;
+                row.readsDone += 1;
             }
         }
     }
