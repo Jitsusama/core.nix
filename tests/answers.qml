@@ -1767,10 +1767,13 @@ QtObject {
             "R   79   1024  48000  20.1us 665.6us  0.00  0.03    2    S32LE 2 48000 "
             + "alsa_output.pci-0000_00_1f.3-platform-sof_sdw.HiFi__Speaker__sink", null);
         const four = share => share === null ? null : Number(share.toFixed(4));
+        // Its cycle and load are measures, said by the one rule.
+        const threeDigits = value => Numbers.significant(value);
         machine("a running node's timing", [running?.id, running?.quantum, running?.rate,
-            running ? Sounds.cycleMs(running) : null, four(running?.busy ?? null),
-            running?.errors, running ? Sounds.load(running.busy) : null, running?.drives],
-        [79, 1024, 48000, 21.3, 0.0312, 2, 3.12, true]);
+            running ? threeDigits(Sounds.cycleMs(running)) : null, four(running?.busy ?? null),
+            running?.errors, running ? threeDigits(Sounds.load(running.busy)) : null,
+            running?.drives],
+        [79, 1024, 48000, "21.3", 0.0312, 2, "3.12", true]);
         const busyIn = (state, busy) => Sounds.timing(
             `${state} 80 1024 48000 20.1us ${busy} 0.00 0.07 0 F32LE 2 48000 a`, null);
         machine("busy in each unit pw-top says, unfinished past its cycle, a transport running", [
@@ -1781,16 +1784,13 @@ QtObject {
             four(busyIn("T", "1.5ms")?.busy ?? null),
             four(busyIn("t", "1.5ms")?.busy ?? null)],
         [0.0703, 4.6875, null, true, false, false, 0.0703, 0.0703]);
-        machine("a measured figure's places, to three significant digits",
-            [3.12, 0.0938, 21.3, 1024, 0, 100].map(value => Sounds.places(value)),
-            [2, 4, 1, 0, 0, 0]);
         const follower = "R   81   0   0   1.0us   2.1ms  0.00  0.10   0  F32LE 2 48000 + pw-cat";
         const followed = Sounds.timing(follower, running);
         machine("a follower in its driver's cycle, and none without one", [followed?.quantum,
-            followed ? Sounds.cycleMs(followed) : null,
-            followed ? Sounds.load(followed.busy) : null,
+            followed ? threeDigits(Sounds.cycleMs(followed)) : null,
+            followed ? threeDigits(Sounds.load(followed.busy)) : null,
             followed?.drives, Sounds.timing(follower, null)],
-        [1024, 21.3, 9.84, false, null]);
+        [1024, "21.3", "9.84", false, null]);
         // An async follower is marked "=" rather than "+" (pw-top.c).
         const async = "R   82  256  48000   1.0us   2.1ms  0.00  0.10   0  F32LE 2 48000 = a";
         machine("an async follower in its driver's cycle, and what's a follower", [

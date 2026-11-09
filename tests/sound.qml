@@ -213,6 +213,13 @@ ShellRoot {
         sound.timings = { 52: Object.assign({}, sound.timings[52], { busy: 0.000938 }) };
         expect("a light load keeps its three significant digits",
             keeping(card)[1].value === "0.0938% of each cycle", JSON.stringify(keeping(card)[1]));
+        // A measure keeps its zeros, as every measure does (VKCF3Z,
+        // 2026-11-08): 960 frames at 48 kHz take 20.0 ms.
+        sound.timings = { 52: Object.assign({}, sound.timings[52],
+            { busy: 0.031, quantum: 960, ms: 20 }) };
+        const zeros = keeping(card).slice(1, 3).map(fact => fact.value).join("; ");
+        expect("a load and a cycle keep their zeros",
+            zeros === "3.10% of each cycle; 960 frames \u00b7 20.0 ms", zeros);
         sound.timings = { 52: Object.assign({}, sound.timings[52],
             { busy: null, unfinished: true }) };
         expect("one that ran past its cycle is over all of it, its stroke full, warned",
