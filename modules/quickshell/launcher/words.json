@@ -1433,11 +1433,6 @@
       }
     },
     {
-      "id": "machine:disk:free",
-      "in": "machine:disk:space",
-      "name": "Free"
-    },
-    {
       "id": "machine:disk:size",
       "in": "machine:disk:space",
       "name": "Size"
