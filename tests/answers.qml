@@ -2949,7 +2949,7 @@ QtObject {
         machine("sleep before the daemon answers", Power.sleepOf(null), null);
         machine("an error Linux names", Power.errorOf(-5), "EIO");
 
-        // What keeps the machine awake, from logind's part of sleep:main:
+        // What keeps the machine awake, from the daemon's awake:main:
         // a call holding idle off, a download holding sleep, Keep Awake's
         // own two locks left out, two delays, one of them twice, and a
         // sleep of six hours.

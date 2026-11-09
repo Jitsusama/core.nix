@@ -74,8 +74,7 @@ Provider {
     }
 
     function awakeFields() {
-        const logind = sleepWatch.revision >= 0
-            ? sleepWatch.held["sleep:main"]?.logind ?? null : null;
+        const logind = awakeWatch.revision >= 0 ? awakeWatch.held["awake:main"] ?? null : null;
         if (!logind)
             return {};
         const words = Words.of("session:awake").said ?? {};
@@ -478,23 +477,26 @@ Provider {
         }
     })
 
-    // Whether Sleep's row or Keep Awake's is listed, in Power, at home or
-    // found by name, so the machine daemon is asked how sleep stands only
-    // while it can be seen: in the open launcher, or among the rows a
-    // terminal's show walked or listed (Launcher.qml's terminalSees), so a
-    // cold `launcher show` of Power has Sleep's figures.
-    readonly property bool sleepShown: {
+    // Whether a row of this key is listed, so the machine daemon is asked
+    // for its figures only while it can be seen: in the open launcher, or
+    // among the rows a terminal's show walked or listed (Launcher.qml's
+    // terminalSees), so a cold `launcher show` of Power has them.
+    function listed(key) {
         if (launcher === null)
             return false;
-        const sleep = row => row?.key === "session:Suspend" || row?.key === "session:awake";
+        const keyed = row => row?.key === key;
         const terminal = launcher.terminalSees ?? { walked: [], listed: [] };
-        return launcher.open && launcher.matches.some(sleep) || terminal.walked.some(sleep)
-            || terminal.listed.some(sleep);
+        return launcher.open && launcher.matches.some(keyed) || terminal.walked.some(keyed)
+            || terminal.listed.some(keyed);
     }
-    // Whether the sleep watch hasn't yet answered whole, so a terminal's
-    // show asks again (Provider.stillReading).
-    stillReading: sleepWatch.live && !sleepWatch.answeredThisWatch
-        && sleepWatch.state !== "not answering"
+    // Sleep's row, in Power or found by name: how sleep stands.
+    readonly property bool sleepShown: listed("session:Suspend")
+    // Keep Awake's row, in Power, at home or found by name: logind's locks.
+    readonly property bool awakeShown: listed("session:awake")
+    // Whether a watch hasn't yet answered whole, so a terminal's show
+    // asks again (Provider.stillReading).
+    stillReading: [sleepWatch, awakeWatch].some(watch => watch.live
+        && !watch.answeredThisWatch && watch.state !== "not answering")
     readonly property var sleeping: sleepWatch.revision >= 0
         ? Power.sleepOf(sleepWatch.held["sleep:main"] ?? null) : null
 
@@ -537,6 +539,18 @@ Provider {
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
         kind: "sleep"
         live: provider.sleepShown
+        keptThroughGap: false
+        answersWhole: true
+    }
+
+    // What logind says keeps the machine up or lets it sleep, the machine
+    // daemon's awake:main.
+    Daemon {
+        id: awakeWatch
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+        kind: "awake"
+        live: provider.awakeShown
         keptThroughGap: false
         answersWhole: true
     }

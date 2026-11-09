@@ -1,6 +1,6 @@
-// What Keep Awake's drawer says of logind's part of the machine daemon's
-// sleep:main record, in plain JavaScript so a check can run it in Qt's
-// own engine, as the shell does: who else keeps the machine from idling,
+// What Keep Awake's drawer says of the machine daemon's awake:main
+// record, what logind holds, in plain JavaScript so a check can run it
+// in Qt's own engine, as the shell does: who else keeps the machine from idling,
 // sleeping or sleeping with the lid shut, when an idle machine sleeps,
 // who puts sleep off a moment, and when it last slept. Session.qml says
 // it.
