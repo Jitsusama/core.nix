@@ -164,9 +164,10 @@ passed, from nix-offload's record of what passed at each commit. A rebase
 needs no run of its own when that run passed at an earlier commit of the
 same change, by git's patch id of a diff without context lines, so an
 edit of main's beside the change leaves it the same, and main has since
-moved none of its
-files; when main moved some, a check passed at the rebased head, covering
-them, is enough. A machine
+moved none of its files. When main moved some, `changed-checks` runs again
+at the rebased head, never a single check chosen by hand, since which checks
+read a file shows only in their derivations; Nix builds only what the
+rebase moved and takes the rest from the builders. A machine
 switches only to merged main, and a bad switch is undone by switching
 back to the generation before it.
 

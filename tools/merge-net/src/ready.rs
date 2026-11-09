@@ -43,11 +43,8 @@ pub enum Before {
     /// The same change passed at this commit, and main has since moved
     /// none of its files, so the rebase changed nothing it was checked on.
     Clean(String),
-    /// The same change passed at this commit, and main has since moved
-    /// these of its files, and a check has passed at the head since.
-    Rechecked(String, Vec<String>),
     /// The same change passed at this commit, but main has since moved
-    /// these of its files, and nothing has run at the head to cover them.
+    /// these of its files, so changed-checks runs again at the head.
     Shares(String, Vec<String>),
     /// No commit of the same change passed.
     Unchecked,
@@ -59,15 +56,16 @@ pub enum Before {
 /// of a candidate, whether it makes the same change and, if so, which
 /// files main moved since the base it was checked on. On 8 November a
 /// rule let a change merge after a rebase onto main without running its
-/// checks again when main's new commits share none of its files, and when
-/// they share some, once what covers those has run again at the rebased
-/// head, so the gate takes what the rule takes. Which checks cover a file
-/// is the session's to judge, so any check or subtests passed at the head
-/// (`head_record`) counts.
+/// checks again when main's new commits share none of its files, so the
+/// gate takes what the rule takes. When they share some, only changed-checks
+/// at the head counts, since which checks read a file shows only in their
+/// derivations: on 9 November #2504 merged with words.json's checks rerun
+/// at its head after main moved two other of its files, which no check
+/// that ran read. Nix builds only what the rebase moved, and takes the
+/// rest from the builders.
 pub fn checked_before(
     candidates: &[String],
     files: &[String],
-    head_record: &str,
     record: &dyn Fn(&str) -> String,
     on_main: &dyn Fn(&str) -> bool,
     same: &dyn Fn(&str) -> Option<Vec<String>>,
@@ -87,39 +85,9 @@ pub fn checked_before(
         if shared.is_empty() {
             return Before::Clean(candidate.clone());
         }
-        if rechecked(head_record) || rechecked_since(candidates, files, record, same) {
-            return Before::Rechecked(candidate.clone(), shared);
-        }
         first_shared.get_or_insert(Before::Shares(candidate.clone(), shared));
     }
     first_shared.unwrap_or(Before::Unchecked)
-}
-
-/// Whether a check passed at an earlier commit of the same change, since
-/// whose base main moved none of the change's files. On 9 November two
-/// branches sharing a busy file reran its checks after one rebase, rebased
-/// again over commits that touched none of their files, and were asked to
-/// rerun them once more, since only the head's own runs counted.
-fn rechecked_since(
-    candidates: &[String],
-    files: &[String],
-    record: &dyn Fn(&str) -> String,
-    same: &dyn Fn(&str) -> Option<Vec<String>>,
-) -> bool {
-    candidates.iter().any(|candidate| {
-        rechecked(&record(candidate))
-            && same(candidate).is_some_and(|moved| !moved.iter().any(|file| files.contains(file)))
-    })
-}
-
-/// Whether a record holds a check or subtests that passed, sent from the
-/// repository's root.
-fn rechecked(record: &str) -> bool {
-    record
-        .lines()
-        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-        .filter(|line| line["dir"].is_null())
-        .any(|line| line["check"].is_string() || line["subtests"].is_string())
 }
 
 /// The commits nix-offload kept a passed record for in the last day,
@@ -214,26 +182,23 @@ mod tests {
         };
         let files = vec!["a.rs".to_owned(), "b.md".to_owned()];
         let candidates = vec!["other".to_owned(), "old".to_owned(), "older".to_owned()];
-        let rerun = "{\"check\":\"checks.x86_64-linux.formatting\",\"dir\":null}\n";
         // Main moved other files since: the rebase changed nothing checked.
         let moved = |commit: &str| (commit == "old").then(|| vec!["c.nix".to_owned()]);
         assert_eq!(
-            checked_before(&candidates, &files, "", &record, &on_main, &moved),
+            checked_before(&candidates, &files, &record, &on_main, &moved),
             Before::Clean("old".to_owned())
         );
-        // Main moved one of its files: what covers it runs again first.
+        // Main moved one of its files: changed-checks runs again at the
+        // head, whatever single checks passed there.
         let moved =
             |commit: &str| (commit == "old").then(|| vec!["b.md".to_owned(), "c.nix".to_owned()]);
         assert_eq!(
-            checked_before(&candidates, &files, "", &record, &on_main, &moved),
+            checked_before(&candidates, &files, &record, &on_main, &moved),
             Before::Shares("old".to_owned(), vec!["b.md".to_owned()])
         );
-        assert_eq!(
-            checked_before(&candidates, &files, rerun, &record, &on_main, &moved),
-            Before::Rechecked("old".to_owned(), vec!["b.md".to_owned()])
-        );
-        // A recheck at an earlier commit of the same change counts while
-        // main has moved none of its files since that commit's base.
+        // Only single checks passed at a later commit of the same change:
+        // they don't say what read the shared file.
+        let rerun = "{\"check\":\"checks.x86_64-linux.formatting\",\"dir\":null}\n";
         let record_rechecked = |commit: &str| match commit {
             "old" => passed.to_owned(),
             "rebased" => rerun.to_owned(),
@@ -246,29 +211,25 @@ mod tests {
             _ => None,
         };
         assert_eq!(
-            checked_before(&candidates, &files, "", &record_rechecked, &on_main, &moved),
-            Before::Rechecked("old".to_owned(), vec!["b.md".to_owned()])
+            checked_before(&candidates, &files, &record_rechecked, &on_main, &moved),
+            Before::Shares("old".to_owned(), vec!["b.md".to_owned()])
         );
-        let moved_again =
-            |commit: &str| matches!(commit, "old" | "rebased").then(|| vec!["b.md".to_owned()]);
+        // changed-checks passed at that later commit, and main moved none of
+        // the change's files since its base.
+        let record_rerun = |commit: &str| match commit {
+            "old" | "rebased" => passed.to_owned(),
+            _ => String::new(),
+        };
         assert_eq!(
-            checked_before(
-                &candidates,
-                &files,
-                "",
-                &record_rechecked,
-                &on_main,
-                &moved_again
-            ),
-            Before::Shares("old".to_owned(), vec!["b.md".to_owned()]),
-            "main moved the file again since the recheck"
+            checked_before(&candidates, &files, &record_rerun, &on_main, &moved),
+            Before::Clean("rebased".to_owned())
         );
         let candidates = vec!["other".to_owned(), "old".to_owned(), "older".to_owned()];
         // An earlier commit of another change, or the same change that
         // never passed, says nothing.
         let moved = |commit: &str| (commit == "other").then(Vec::new);
         assert_eq!(
-            checked_before(&candidates, &files, rerun, &record, &on_main, &moved),
+            checked_before(&candidates, &files, &record, &on_main, &moved),
             Before::Unchecked
         );
     }
