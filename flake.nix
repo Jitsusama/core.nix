@@ -181,7 +181,9 @@
         home-manager = ./modules/home-manager/home.nix;
         homebrew = ./modules/homebrew/home.nix;
         identity = ./modules/identity/home.nix;
-        inkscape = moduleFrom ./modules/inkscape/home.nix { inherit (self.homeModules) niri; };
+        inkscape = moduleFrom ./modules/inkscape/home.nix {
+          inherit (self.homeModules) niri quickshell;
+        };
         inlyne = ./modules/inlyne/home.nix;
         jq = ./modules/jq/home.nix;
         keys = ./modules/keys/home.nix;

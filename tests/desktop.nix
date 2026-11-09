@@ -13,7 +13,8 @@
 # missed, a copied call's link can be joined until something else is
 # copied, a meeting on the calendar is found by its name and Return joins
 # its call, the clipboard takes and gives text, a picture opens floating in
-# swayimg and a key takes it to GIMP, a document opens in zathura beside
+# swayimg and a key takes it to GIMP, a new drawing opens in Inkscape from
+# the template and leads its Recent, a document opens in zathura beside
 # the rest, a VM virsh lists is in Programs and starts from its acts,
 # and GTK programs and monospaced text are in the theme. niri says which surfaces it drew,
 # shots show their colours, to the test and to a person looking, and
@@ -387,6 +388,14 @@ let
 
   # pi, as the launcher opens it, since the VM has no pi.
   piStandIn = import ./pi-stand-in.nix { inherit pkgs; };
+
+  # Stands in for Inkscape where keeps-copies opens a new drawing in it
+  # (desktop/inkscape-stand-in.sh), adding it to the list of files opened
+  # lately as Inkscape does, through the open-with module's recent-files.
+  standInInkscape = pkgs.writeShellScript "inkscape" ''
+    PATH=${pkgs.coreutils}/bin:${pkgs.callPackage ../modules/open-with/recent-files.nix { }}/bin \
+      exec ${pkgs.lib.getExe pkgs.bash} ${./desktop/inkscape-stand-in.sh} "$@"
+  '';
 
   # spotify-recent signed in, as the-launcher-plays-from-spotify stands it
   # in (spotify-recent-stand-in.sh), for looks-programs to shoot Spotify's page;
@@ -908,6 +917,10 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # the test that reads what it was sent.
         systemd.user.services.stand-in-collector = lib.mkIf (area == "launcher-goes-places") {
           Service.ExecStart = "${standInCollector}";
+        };
+        # Inkscape stood in where keeps-copies opens a new drawing in it.
+        jitsusama.quickshell.launcher.providers.inkscape = lib.mkIf (area == "keeps-copies") {
+          inkscape = lib.mkForce "${standInInkscape}";
         };
         # Spotify signed in where looks-programs shoots its page.
         jitsusama.quickshell.launcher.providers.spotify-program.command = lib.mkIf (

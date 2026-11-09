@@ -22,7 +22,7 @@ from desktop_session import STARTING, retry
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from desktop_session import Desktop
+    from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
 
 
@@ -233,6 +233,70 @@ def test_a_picture_copied_is_kept_shown_as_it_is_and_copied_again(desktop: Deskt
     desktop.launcher_until(lambda shown: "New Image From the Copied Picture" in shown["rows"])
     desktop.shoot("launcher-gimp-copied-picture")
     desktop.close_launcher()
+    a_new_drawing_is_the_template_copied_and_leads_inkscapes_recent(desktop)
+
+
+def a_new_drawing_is_the_template_copied_and_leads_inkscapes_recent(desktop: Desktop) -> None:
+    """Open a new drawing from Inkscape's page, and find it leading its Recent.
+
+    While the picture is copied, Inkscape's page holds New Drawing From the Copied Picture too,
+    saying its size. Return on New Drawing gives Inkscape, stood in, a fresh copy of the
+    account's own template in the drawings folder, the account's settings reaching the act;
+    the stand-in adds it to the list of files opened lately as Inkscape does, and the
+    provider's watch of that list and the account's inkscape-drawings put it first in
+    Inkscape's Recent, its drawer saying the template's size. What the act writes, the
+    template left be, and the order, sizes and words of what Recent holds are held offscreen
+    (the-launcher-lists-inkscapes-drawings-lately).
+    """
+    machine = desktop.machine
+    given = "/run/user/1000/inkscape-given"
+    template = f"/home/{desktop.account}/.config/inkscape/templates/default.svg"
+    drawn = f"/home/{desktop.account}/Pictures/Drawings"
+    machine.succeed(f"rm -f {given}")
+    try:
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("inkscape", selecting="Inkscape")
+        desktop.into_program()
+        desktop.launcher_until(
+            lambda shown: (
+                {"New Drawing", "New Drawing From the Copied Picture"} <= set(shown["rows"])
+            )
+        )
+        desktop.down_to("New Drawing")
+        machine.send_key("ret")
+        machine.wait_until_succeeds(f"test -s {given}", timeout=timedelta(seconds=30))
+        drawing = machine.succeed(f"cat {given}").strip()
+        assert drawing.startswith(f"{drawn}/Drawing "), drawing
+        assert drawing.endswith(".svg"), drawing
+        machine.succeed(f"cmp '{drawing}' {template}")
+        name = drawing.rsplit("/", 1)[-1]
+
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("inkscape", selecting="Inkscape")
+        desktop.into_program()
+        desktop.type_in("recent", selecting="Recent")
+        desktop.follow()
+
+        def leads(shown: Json) -> bool:
+            """Say whether the new drawing leads Recent, selected, its drawer drawn whole."""
+            row = shown["selected"] or {}
+            drawer = shown.get("drawer") or {}
+            return (
+                row.get("name") == name
+                and row.get("side") == "just now"
+                and drawer.get("out") is True
+                and drawer.get("drawn") == name
+                and drawer.get("eyebrow") == "in ~/Pictures/Drawings \u00b7 drawing"
+                and drawer.get("drawnFacts") == ["Dimensions", "Size", "Path"]
+                and (drawer.get("values") or [None])[0] == "210 \u00d7 297\u00a0mm"
+            )
+
+        desktop.launcher_until(leads)
+    finally:
+        desktop.close_launcher()
+        machine.succeed(f"rm -rf {given} {drawn}")
 
 
 def test_a_picture_outlives_the_program_that_copied_it(desktop: Desktop) -> None:

@@ -2166,6 +2166,15 @@
   the-launcher-lands-where-it-did = ''
     a thing is one row, the same letters keep their row, one slip teaches nothing
   '';
+  the-launcher-lists-inkscapes-drawings-lately = ''
+    Inkscape's Recent merges each drawing Inkscape opened by when, to the microsecond, newest
+    first, with the shared list's files, each once, a drawing that's gone left out, each saying
+    when, its drawer its size as its SVG says it in its own units, its weight and its path, and
+    Return opening it in Inkscape; New Drawing gives Inkscape a fresh copy of the template, and
+    New Drawing From the Copied Picture is offered only while an SVG, or a picture whose size
+    the history keeps, is copied, and makes a drawing of it; and Inkscape's drawer in Programs
+    says its last drawing and how many
+  '';
   the-launcher-makes-texts-ready-lightly = ''
     making a text ready to match and keeping it grows the launcher's memory by at most 3.5 KB a
     text, where one whose letters were spread into calls took 7.6

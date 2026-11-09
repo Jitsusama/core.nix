@@ -28,6 +28,7 @@
     "modules/eero/src/views/golden/*"
     "modules/guide/fixtures/*"
     "modules/signing/tests/*.sig"
+    "tests/inkscape-recent.xbel"
     "*.pem"
     "tests/update-to-main-signer"
     # C and C++ built by the kernel's, QMK's and CMake's own builds, which
