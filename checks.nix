@@ -397,6 +397,17 @@ let
         height = 1800;
       };
     };
+    # How Joel's programs' own pages look at his scales, each a subtest of
+    # its own: an area of its own, so looks keeps to twenty and both run
+    # side by side.
+    vm-desktop-looks-programs = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "looks-programs";
+      screen = {
+        width = 2880;
+        height = 1800;
+      };
+    };
     # Joining Wi-Fi is the kernel, wifid, wpa_supplicant and networkd
     # together, and what it leaves of other programs' routing only shows
     # once it has. Each area is a machine of its own, so they run side by
