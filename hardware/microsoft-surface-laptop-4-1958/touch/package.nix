@@ -26,11 +26,11 @@ stdenv.mkDerivation {
     # or not, and its controller's FIFO was read a byte at a time: 7.6 ms of
     # a core for each, about 70% of one while the lid is open.
     ./fifo-reads-four-bytes.patch
-    # heat_rest_after rests the panel between short scans while nothing
-    # touches it, off until a trial shows it wakes on a touch. For that
-    # trial, touch_stats says without root how many heat maps held a
-    # contact, where the last ones were and what else the panel sent, and
-    # heat_scan stops or starts the heat maps by hand.
+    # After a second with no contact the panel rests, looking for three
+    # frames after each 100 ms, about a quarter of the heat maps it sent.
+    # touch_stats says without root how many heat maps held a contact,
+    # how often it rested, where the last contacts were and what else the
+    # panel sent; heat_scan stops or starts the heat maps by hand.
     ./heat-rests-when-untouched.patch
   ];
 

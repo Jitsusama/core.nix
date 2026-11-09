@@ -20,31 +20,38 @@ index aee6dad..4a9aa31 100644
  		/* ── Stage 6: Hungarian global assignment ── */
  		{
 diff --git a/spi-hid-core.c b/spi-hid-core.c
-index 54b0f39..ee6cdb0 100644
+index 54b0f39..c92d7b0 100644
 --- a/spi-hid-core.c
 +++ b/spi-hid-core.c
-@@ -2611,6 +2611,74 @@ static int spi_hid_seq_write_setfeat(struct spi_hid *shid)
+@@ -2611,6 +2611,86 @@ static int spi_hid_seq_write_setfeat(struct spi_hid *shid)
  				       setfeat_speed_hz);
  }
  
 +/*
 + * The idle rest. The panel sends its heat maps about 95 times a second while
 + * the lid is open, touched or not, and each costs a core several
-+ * milliseconds. After heat_rest_after heat maps in a row with no contact the
-+ * panel is asked to stop them (SET_FEATURE 5 = 0), and heat_rest_ms later to
-+ * start them again, so an untouched screen scans a few frames at a time
-+ * rather than all the time. Anything else the panel sends while it rests
-+ * starts them at once, in case it says so when touched. 0 leaves it off.
++ * milliseconds. After heat_rest_after heat maps in a row with no contact
++ * (about a second) the panel is asked to stop them (SET_FEATURE 5 = 0), and
++ * heat_rest_ms later to start them again for heat_rest_scan frames, so an
++ * untouched screen looks a few frames at a time rather than all the time. A
++ * contact in those frames keeps it scanning until the next quiet second.
++ * Anything else the panel sends while it rests starts them at once, in case
++ * it says so when touched. heat_rest_after = 0 leaves the panel scanning.
 + */
-+static uint heat_rest_after;
++static uint heat_rest_after = 100;
 +module_param(heat_rest_after, uint, 0644);
 +MODULE_PARM_DESC(heat_rest_after,
 +	"Heat maps in a row with no contact before the panel rests; 0 = never");
 +
-+static uint heat_rest_ms = 200;
++static uint heat_rest_ms = 100;
 +module_param(heat_rest_ms, uint, 0644);
 +MODULE_PARM_DESC(heat_rest_ms,
-+	"How long the panel rests before it scans again, in ms");
++	"How long the panel rests before it looks again, in ms");
++
++static uint heat_rest_scan = 3;
++module_param(heat_rest_scan, uint, 0644);
++MODULE_PARM_DESC(heat_rest_scan,
++	"Heat maps the panel sends between rests while nothing touches it");
 +
 +enum { HEAT_SCANNING, HEAT_STOPPING, HEAT_RESTING };
 +
@@ -88,7 +95,12 @@ index 54b0f39..ee6cdb0 100644
 +			schedule_delayed_work(&shid->heat_rest_work,
 +				msecs_to_jiffies(READ_ONCE(heat_rest_ms)));
 +		} else {
-+			shid->heat_empty_frames = 0;
++			u32 after = READ_ONCE(heat_rest_after);
++			u32 scan = READ_ONCE(heat_rest_scan);
++
++			/* Rest again after `scan` empty frames, not a whole quiet
++			 * second: a contact resets the count to 0. */
++			shid->heat_empty_frames = after > scan ? after - scan : 0;
 +			shid->heat_rest_phase = HEAT_SCANNING;
 +		}
 +	}
@@ -98,7 +110,7 @@ index 54b0f39..ee6cdb0 100644
  /* ── GET_FEATURE Report ID 6 (raw-mode configuration read) ──────────
   *
   * Windows reads report ID 6 between the report descriptor and the SET_FEATURE
-@@ -4055,8 +4123,20 @@ static void seq_handle_data(struct spi_hid *shid, int type, u16 blen)
+@@ -4055,8 +4135,20 @@ static void seq_handle_data(struct spi_hid *shid, int type, u16 blen)
  						cret, rblen);
  					shid->stat_frames_dropped++;
  				}
@@ -119,7 +131,7 @@ index 54b0f39..ee6cdb0 100644
  
  		if (rl >= 3 && rl - 3 <= avail) {
  			if (shid->raw_mode_active && body[7] == 0x40 && rl - 2 >= 6) {
-@@ -4536,6 +4616,52 @@ static ssize_t lifecycle_status_show(struct device *dev,
+@@ -4536,6 +4628,52 @@ static ssize_t lifecycle_status_show(struct device *dev,
  }
  static DEVICE_ATTR_RO(lifecycle_status);
  
@@ -172,7 +184,7 @@ index 54b0f39..ee6cdb0 100644
  static const struct attribute *const spi_hid_attributes[] = {
  	&dev_attr_ready.attr,
  	&dev_attr_bus_error_count.attr,
-@@ -4547,6 +4673,8 @@ static const struct attribute *const spi_hid_attributes[] = {
+@@ -4547,6 +4685,8 @@ static const struct attribute *const spi_hid_attributes[] = {
  	&dev_attr_baseline_status.attr,
  	&dev_attr_build_info.attr,
  	&dev_attr_lifecycle_status.attr,
@@ -181,7 +193,7 @@ index 54b0f39..ee6cdb0 100644
  	NULL	/* Terminator */
  };
  
-@@ -4607,6 +4735,10 @@ static void spi_hid_cancel_workers(struct spi_hid *shid)
+@@ -4607,6 +4747,10 @@ static void spi_hid_cancel_workers(struct spi_hid *shid)
  	cancel_delayed_work_sync(&shid->feat_delay_work);
  	cancel_delayed_work_sync(&shid->stream_watchdog);
  	cancel_delayed_work_sync(&shid->wait_reset_watchdog);
@@ -192,7 +204,7 @@ index 54b0f39..ee6cdb0 100644
  	cancel_work_sync(&shid->create_device_work);
  	cancel_work_sync(&shid->error_work);
  }
-@@ -5012,6 +5144,7 @@ static int spi_hid_probe(struct spi_device *spi)
+@@ -5012,6 +5156,7 @@ static int spi_hid_probe(struct spi_device *spi)
  	shid->stream_watchdog_active = false;
  
  	INIT_DELAYED_WORK(&shid->poll_work, spi_hid_poll_work);

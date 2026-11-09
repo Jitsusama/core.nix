@@ -12,7 +12,7 @@
 let
   touchscreen = config.boot.kernelPackages.callPackage ./package.nix { };
   parameters = "/sys/module/sl4a_spi_hid/parameters";
-  trial = "/sys/bus/spi/devices/spi-MSHW0231:00/heat_scan ${parameters}/heat_rest_after ${parameters}/heat_rest_ms";
+  trial = "/sys/bus/spi/devices/spi-MSHW0231:00/heat_scan ${parameters}/heat_rest_after ${parameters}/heat_rest_ms ${parameters}/heat_rest_scan";
 in
 {
   boot.extraModulePackages = [ touchscreen ];
