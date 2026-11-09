@@ -1339,16 +1339,20 @@ def the_internet_paged_through(desktop: Desktop, at: str) -> None:
         if cursor["line"] == cursor["lines"] - 1:
             break
         assert page < INTERNET_PAGES, f"the internet's drawer runs past {page} pages: {drawer}"
-        scrolled = drawer["scrolled"]
         machine.send_key("ctrl-f")
-        desktop.launcher_until(
-            lambda shown, was=scrolled: shown["drawer"]["scrolled"] != was
-            or shown["drawer"]["cursor"]["line"] == shown["drawer"]["cursor"]["lines"] - 1
-        )
+        desktop.launcher_until(partial(paged_on, drawer["scrolled"]))
         page += 1
         desktop.shoot(f"launcher-home-network-internet-{page}-at-{at}")
     pressed(desktop, "ctrl-w h")
     desktop.launcher_until(lambda shown: not shown["drawer"]["keys"])
+
+
+def paged_on(scrolled: int, shown: Json) -> bool:
+    """Say whether the drawer has paged on from where it was scrolled, or stands at its end."""
+    drawer = shown["drawer"]
+    return bool(
+        drawer["scrolled"] != scrolled or drawer["cursor"]["line"] == drawer["cursor"]["lines"] - 1
+    )
 
 
 def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
