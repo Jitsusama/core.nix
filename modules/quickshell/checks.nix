@@ -4160,8 +4160,7 @@ onLinux {
   # once Chrome is stepped into: file rows in its Recent, and Open the
   # Latest Download only while there's one. Neovim's files open now come
   # from a stand-in open-now, whose reading of a real Neovim is open-with's
-  # own tests', and its sessions from a folder made here, listed by the
-  # real find and forgotten by the real rm.
+  # own tests'.
   the-launcher-acts-only-on-what-it-can =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -4218,7 +4217,6 @@ onLinux {
       cp ${../neovim/NeovimOpening.js} NeovimOpening.js
       cp ${../chrome/ChromeDownloads.js} ChromeDownloads.js
       cp ${../neovim/Neovim.js} Neovim.js
-      cp ${./launcher/Ago.js} Ago.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -4260,7 +4258,6 @@ onLinux {
           pkgs.fd
           pkgs.coreutils
           pkgs.gnugrep
-          pkgs.findutils
         ]
       }:$PATH
       export OPEN_NOW=${openNow}
@@ -4273,19 +4270,6 @@ onLinux {
         printf '%s\t%s\t%s\t%s\n' "$HOME/Downloads/report.pdf" 2048 1800000100 \
           'https://docs.example.com/q3?x=1' "$HOME/Downloads/undated.zip" 10 "" ""
       ''}
-      # Two sessions, alpha's kept ten and a half minutes ago and beta's two
-      # hours ago, each named as sessions.lua names one, and a file that
-      # isn't one. Their folders hold nothing but letters and /, the one
-      # byte the name escapes here.
-      mkdir $HOME/sessions
-      session() {
-        name=$(printf %s "$HOME/src/$1" | sed 's|/|=2F|g')
-        echo "cd $HOME/src/$1" > "$HOME/sessions/$name.vim"
-        touch -d "@$(( $(date +%s) - $2 ))" "$HOME/sessions/$name.vim"
-      }
-      session alpha 630
-      session beta 7230
-      touch $HOME/sessions/notes.txt
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
       touch $out

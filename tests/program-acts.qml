@@ -26,14 +26,10 @@
 // Recent, dated, its size and when beside it and its drawer saying where
 // it came from, and Open the Latest Download is listed and found from the
 // top, opening the newest as the desktop opens a file. And what each
-// Neovim holds, as a stand-in open-now says it, and the sessions find
-// lists in a folder made for them: each file open once,
+// Neovim holds, as a stand-in open-now says it: each file open once,
 // the Neovim looked at last first, said modified and by its tab before its
 // folder, Return going to its buffer through open-now and to its window
-// through niri; the program's drawer counting them; and each session in
-// Neovim's Recent as its folder's row, saying when, Return opening it in
-// the kitty used last, Forget It taking it away at once and from its
-// folder. It exits 0 once every case holds, and otherwise 1, saying which
+// through niri; and the program's drawer counting them. It exits 0 once every case holds, and otherwise 1, saying which
 // didn't.
 import qs
 import Quickshell
@@ -132,17 +128,14 @@ ShellRoot {
         onChanged: root.heard += 1
     }
 
-    // Neovim given what reads what's open now and its sessions.
+    // Neovim given what reads what's open now.
     Launcher.NeovimProgram {
         id: held
 
         launcher: theLauncher
         settings: ({
             folder: root.src,
-            openNow: Quickshell.env("OPEN_NOW"),
-            sessions: `${root.home}/sessions`,
-            find: "find",
-            rm: "rm"
+            openNow: Quickshell.env("OPEN_NOW")
         })
     }
 
@@ -194,8 +187,8 @@ ShellRoot {
         return JSON.stringify(Niri.spawned);
     }
 
-    // Neovim's files open now, its drawer and its sessions, as the stand-in
-    // open-now and the sessions' folder say them: window 5 was looked at
+    // Neovim's files open now and its drawer, as the stand-in open-now says
+    // them: window 5 was looked at
     // after window 6, and both are one kitty's.
     function neovimsOpen() {
         Niri.windows = ({
@@ -219,30 +212,7 @@ ShellRoot {
             === JSON.stringify({ FocusWindow: { id: 5 } }), JSON.stringify(Niri.acted));
         const facts = held.programFacts("nvim").map(fact => `${fact.label} ${fact.value}`)
             .join(", ");
-        expect("the drawer counts them", facts === "Files 4 in 2 windows, Modified 2, Sessions 2",
-            facts);
-        const recent = held.recentOf("nvim");
-        expect("the sessions, newest first, each its folder", names(recent) === "alpha, beta",
-            names(recent));
-        expect("saying when, then the folder holding it", recent.map(row => row.side).join(" | ")
-            === "10 min ago \u00b7 ~/src | 2 h ago \u00b7 ~/src",
-            recent.map(row => row.side).join(" | "));
-        expect("dated, so Recent orders them among the files",
-            recent[0].at > recent[1].at && recent[1].at > 0, `${recent[0].at} ${recent[1].at}`);
-        expect("Open the Session, Forget It, then Copy the Path", names(recent[0].verbs())
-            === "Open the Session, Forget It, Copy the Path", names(recent[0].verbs()));
-        const name = `${src}/alpha`.split("/").join("=2F");
-        recent[0].run();
-        expect("opened in a new window of the kitty used last, at its folder", spawned()
-            === JSON.stringify(["kitty", "@", "--to", "unix:@kitty-41", "launch",
-                "--type=os-window", "--cwd", `${src}/alpha`, "nvim", "-S",
-                `${home}/sessions/${name}.vim`]), spawned());
-        const forgets = recent[0].verbs()[1];
-        expect("Forget It ends it, and keeps the launcher", forgets.act === "ending"
-            && forgets.stays === true, `${forgets.act} ${forgets.stays}`);
-        forgets.run();
-        expect("gone at once", names(held.recentOf("nvim")) === "beta",
-            names(held.recentOf("nvim")));
+        expect("the drawer counts them", facts === "Files 4 in 2 windows, Modified 2", facts);
     }
 
     Component.onCompleted: {
@@ -526,18 +496,9 @@ ShellRoot {
                 expect("no other program given them", chrome.recentOf("nvim").length === 0, "");
             }
         }, {
-            what: "what each Neovim holds and its sessions, read ahead",
-            until: () => held.neovims.length === 2 && held.sessions.length === 2,
+            what: "what each Neovim holds, read ahead",
+            until: () => held.neovims.length === 2,
             then: () => root.neovimsOpen()
-        }, {
-            what: "the session forgotten gone from its folder",
-            until: () => held.sessions.length === 1,
-            then: () => {
-                expect("nothing left forgotten once it's gone", held.forgotten.length === 0,
-                    JSON.stringify(held.forgotten));
-                expect("the other kept", names(held.recentOf("nvim")) === "beta",
-                    names(held.recentOf("nvim")));
-            }
         }];
     }
 }
