@@ -337,9 +337,11 @@ where
 /// lines, which nix starts with the piece's name and `> `, count as
 /// something said but are left out of what's given, which only needs
 /// nix's own. While nix's newest line says it is copying a path back
-/// from a builder, it may stay quiet `COPYING` times as long, since a
-/// copy says nothing until it ends: on 8 November a switch was stopped
-/// four minutes into copying two pieces back.
+/// from a builder, or building a piece, it may stay quiet `COPYING` times
+/// as long, since a copy says nothing until it ends and a compile may
+/// say nothing for minutes as it works: on 8 November a switch was
+/// stopped four minutes into copying two pieces back, and on 9 November
+/// another 84 minutes in, while ONNX Runtime compiled quietly.
 pub fn built<I, S>(
     mut command: Command,
     what: &str,
@@ -390,7 +392,7 @@ where
                 let mut heard = heard.lock().unwrap_or_else(PoisonError::into_inner);
                 heard.0 = Instant::now();
                 if !is_log(&line) {
-                    heard.2 = is_copy_back(&line);
+                    heard.2 = is_copy_back(&line) || is_building(&line);
                     heard.1.push_str(&line);
                     heard.1.push('\n');
                 }
@@ -405,11 +407,11 @@ where
             Ok(None) => {}
             Err(e) => break Err(e),
         }
-        let (last, copying) = {
+        let (last, patient) = {
             let heard = heard.lock().unwrap_or_else(PoisonError::into_inner);
             (heard.0, heard.2)
         };
-        let limit = if copying { silent * COPYING } else { silent };
+        let limit = if patient { silent * COPYING } else { silent };
         if quiet.is_none() && last.elapsed() >= limit {
             // SAFETY: kill only sends a signal; a group already gone is ESRCH.
             unsafe { libc::kill(-group, libc::SIGTERM) };
@@ -456,6 +458,12 @@ const COPYING: u32 = 3;
 /// as in `copying path '/nix/store/...' from 'ssh-ng://...'...`.
 fn is_copy_back(line: &str) -> bool {
     line.starts_with("copying path ") && line.contains(" from '")
+}
+
+/// Whether a line is nix starting to build a piece, here or on a builder,
+/// as in `building '/nix/store/...drv' on 'ssh-ng://...'...`.
+fn is_building(line: &str) -> bool {
+    line.starts_with("building '/nix/store/")
 }
 
 /// Whether a line is a build's own log, as nix's `-L` gives it: the
@@ -593,6 +601,27 @@ mod tests {
         assert!(!is_copy_back(
             "copying path '/nix/store/a-x' to 'ssh-ng://builder'..."
         ));
+    }
+
+    #[test]
+    fn a_piece_building_may_stay_quiet_longer_but_waiting_for_one_may_not() {
+        let after = |first: &str| {
+            let mut sh = Command::new(std::env::var_os("BASH").unwrap_or_else(|| "sh".into()));
+            sh.args(["-c", &format!("echo \"{first}\"; sleep 1.6; echo done")]);
+            built(
+                sh,
+                "building",
+                std::iter::empty::<&str>(),
+                Duration::from_secs(1),
+            )
+        };
+        // A compile that says nothing for a while still works.
+        assert!(after("building '/nix/store/a-x.drv' on 'ssh-ng://builder'...").is_ok());
+        assert!(after("building '/nix/store/a-x.drv'...").is_ok());
+        // Before any piece builds, a quiet build is one waiting on a
+        // builder that doesn't answer.
+        let failed = after("these 2 derivations will be built:").unwrap_err();
+        assert!(failed.why.contains("said nothing"), "{}", failed.why);
     }
 
     #[test]
