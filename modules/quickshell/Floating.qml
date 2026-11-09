@@ -39,9 +39,15 @@ Item {
     readonly property Region area: Region {
         item: panel
         radius: Theme.radius
+        topLeftRadius: floating.topRadius
+        topRightRadius: floating.topRadius
         bottomLeftRadius: floating.footRadius
         bottomRightRadius: floating.footRadius
     }
+    // The frame its window gathers: its own area, which follows it only as
+    // it moves itself, or one its window places where it stands, which
+    // follows what holds it too, as a stack of notices does.
+    property Region framed: area
 
     implicitHeight: body.implicitHeight + 2 * Theme.border
 
