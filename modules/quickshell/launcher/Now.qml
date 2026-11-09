@@ -384,14 +384,6 @@ Provider {
         return words;
     }
 
-    // A time an item names, as the clock says it: today's by its hour, and
-    // another day's with its day.
-    function clocked(at) {
-        const when = new Date(at);
-        const today = new Date().toDateString() === when.toDateString();
-        return Qt.formatDateTime(when, today ? "HH:mm" : "ddd d MMM, HH:mm");
-    }
-
     // What one not ready yet waits for, in words (Waiting.waitsFor), or its
     // owner's own words in a file older than that.
     function waitsSaid(each) {
@@ -407,14 +399,12 @@ Provider {
     // view (NeedsYou.js) from what this says in words: its times as the
     // clock says them, the machine it's done on, whether anything will see
     // it done, and its side, so its note never says the side again.
-    function toldOf(each) {
-        const time = at => Number.isNaN(Date.parse(at ?? "")) ? "" : clocked(at);
+    // In For You, its side is the strongest reason it's there (`reason`).
+    function toldOf(each, reason) {
         return {
-            at: time(each.at),
-            by: time(each.deadline),
-            machine: typeof each.where?.machine === "string" ? each.where.machine : "",
             watched: WaitingOnYou.watched(each),
-            side: sideOf(each),
+            side: (reason ?? "") !== "" ? reason : sideOf(each),
+            ready: each.ready === true && !each.putOff,
             now: Date.now()
         };
     }
@@ -423,8 +413,8 @@ Provider {
     // watching it when only Joel can say it's done and the session that
     // raised it has gone (VKCF3Z, 2026-10-30), led by its owner's words for
     // when and ended by how long it's waited (VKCF3Z, 2026-11-07).
-    function noteOf(each) {
-        return NeedsYou.note(each, Words.of("on:waiting").said ?? {}, toldOf(each));
+    function noteOf(each, reason) {
+        return NeedsYou.note(each, Words.of("on:waiting").said ?? {}, toldOf(each, reason));
     }
 
     // Its drawer: where it's from and that it's a thing to do, its title,
@@ -446,35 +436,38 @@ Provider {
         const checked = ForYou.when(each.checkedAt);
         const owner = ForYou.figures(each, {
             now,
-            window: WaitingOnYou.windowOf(each)?.title ?? "",
-            quest
+            blocks: itemThing(each).blocks,
+            window: WaitingOnYou.windowOf(each)?.title ?? ""
         }, say);
-        // An identifier is set in the Name face, under its name, and a
-        // check's command wraps at its own punctuation (Drawer.qml).
-        const identifier = (id, value) => Object.assign(fact(id, value),
-            { words: true, identifies: true });
+        // An identifier is set in the Name face; a check's command stands
+        // under its name, wrapping at its own punctuation (Drawer.qml).
+        const identifier = (id, value, under) => Object.assign(fact(id, value),
+            { identifies: true }, under ? { words: true } : {});
         const facts = [
             fact("weight", ForYou.weightSaid(itemThing(each), now, say)),
             fact("due", owner.due),
             fact("set-for", owner.setFor),
             fact("takes", typeof each.minutes === "number"
                 ? waitingSaid("takes", { minutes: each.minutes }) : ""),
-            fact("since", since === null ? "" : clocked(since)),
+            fact("since", since === null ? "" : say.clock(since)),
             // When the session that raised it last found it still true, so
             // Joel can tell an ask that's gone stale (Joel, 2026-11-08: "i
             // don't know if it is still relevant").
-            fact("checked", checked === null ? "" : clocked(checked)),
-            fact("clears", knownSaid(each)),
+            fact("checked", checked === null ? "" : say.clock(checked)),
+            // A sentence, so it's set in Words, under its name.
+            Object.assign(fact("clears", knownSaid(each)), { words: true }),
             fact("machine", owner.machine),
             fact("where", owner.where),
             fact("quest", quest),
             fact("session", session?.title ?? ""),
-            identifier("address", owner.address),
-            identifier("check", owner.check),
+            identifier("address", owner.address, false),
+            identifier("check", owner.check, true),
             Object.assign(fact("item", WaitingOnYou.identity(each)), { identifies: true })
         ].filter(one => one.value !== "");
         return {
-            eyebrow: waitingSaid("from", { from: session?.title || quest, kind: say.todo }),
+            // Its quest by its title (VKCF3Z, 2026-11-08); its owner's
+            // address is a fact of its own.
+            eyebrow: waitingSaid("from", { from: quest || session?.title || "", kind: say.todo }),
             eyebrowNames: true,
             title: each.title,
             facts: facts,
@@ -514,15 +507,18 @@ Provider {
     // how long ago as the launcher says them (Ago.js), at `now`.
     function forYouSaid(now) {
         const said = Words.of("on:waiting").said ?? {};
-        return Object.assign({}, said, {
-            clock: at => provider.clocked(at),
+        const say = Object.assign({}, said, {
             ago: at => Ago.ago(at, now),
             day: (at, today) => When.day(at, today, {
                 yesterday: said.yesterday,
+                tomorrow: said.tomorrow,
                 date: (date, format) => Qt.formatDate(date, format)
             }),
             time: at => Qt.formatTime(new Date(at), "HH:mm")
         });
+        // Every moment For You says, one way (ForYou.js's moment).
+        say.clock = at => ForYou.moment(at, now, say);
+        return say;
     }
 
     // An item as ForYou.js weighs it: a thing to do, ready while Joel can do
@@ -655,7 +651,7 @@ Provider {
                 : typeof each.minutes === "number"
                 ? waitingSaid("minutes", { minutes: each.minutes }) : ""]
                 .filter(part => part !== "").join(" \u00b7 "),
-            note: noteOf(each),
+            note: noteOf(each, reason),
             drawer: () => provider.drawerOf(each),
             // Its verbs and targets both make it a row holding rows, which
             // Return's own act never leads (Catalogue.js's leading).
@@ -807,7 +803,7 @@ Provider {
         const identified = (id, value) => Object.assign(fact(id, value), { identifies: true });
         const facts = [
             fact("weight", waits ? ForYou.weightSaid(lookThing(one), now, say) : ""),
-            fact("since", one.since === null ? "" : clocked(one.since)),
+            fact("since", one.since === null ? "" : say.clock(one.since)),
             fact("clears", !waits ? "" : one.kind === "pr" ? say.clearsPr : say.clearsLook),
             fact("resolved", waits ? "" : ForYou.historySide(one, say)),
             fact("quest", one.quest ?? ""),

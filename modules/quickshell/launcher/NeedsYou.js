@@ -28,27 +28,29 @@ function fill(words, blanks) {
     return filled;
 }
 
+// mesh_wait's word for an item Joel can do now, which one ready already
+// says by its hue, so it's no reason of its own (VKCF3Z, 2026-11-08).
+const NOW = "now";
+
 // Its owner's own words for when, or "".
 function whenOf(each) {
     return typeof each.when === "string" ? each.when.trim() : "";
 }
 
 // Its note (VKCF3Z, 2026-11-07): its owner's words for when, unless its
-// side already says them; when it's for and by, and the machine it's done
-// on, each where its owner said; that nobody's watching it, when only Joel
-// can say it's done and its session has gone; and how long it has waited,
-// last, so it's the first to give way as the note is cut from its end.
-// One that says none of it, from a file older than mesh_wait's, says why it
-// waits instead. `told` is { at, by, machine, watched, side, now }: the
-// times already said as the clock says them, whether anything will see it
-// done, the side it shows, and the time now.
+// side already says them or they're "now" for one ready; that nobody's
+// watching it, when only Joel can say it's done and its session has gone;
+// and how long it has waited, last, so it's the first to give way as the
+// note is cut from its end. When it's for and by, and the machine it's
+// done on, are its drawer's facts, said there alone (Y2YBTS, 2026-11-08).
+// One that says none of it, from a file older than mesh_wait's, says why
+// it waits instead. `told` is { watched, side, ready, now }: whether
+// anything will see it done, the side it shows, whether Joel can do it
+// now, and the time now.
 function note(each, said, told) {
     const when = whenOf(each);
     const parts = [
-        when !== "" && when !== told.side ? when : "",
-        told.at ? fill(said.at, { time: told.at }) : "",
-        told.by ? fill(said.by, { time: told.by }) : "",
-        told.machine ? fill(said.on, { machine: told.machine }) : "",
+        when !== "" && when !== told.side && !(told.ready && when === NOW) ? when : "",
         told.watched ? "" : said.nobody
     ].filter(part => part !== "");
     const words = parts.length === 0 && each.v !== 2 && typeof each.why === "string"

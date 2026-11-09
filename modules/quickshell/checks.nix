@@ -1865,6 +1865,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Now.qml} launcher/Now.qml
+      cp ${./When.js} When.js
       cp ${./launcher/NeedsYou.js} launcher/NeedsYou.js
       cp ${./launcher/Moment.js} launcher/Moment.js
       cp ${./launcher/NowGroups.js} launcher/NowGroups.js

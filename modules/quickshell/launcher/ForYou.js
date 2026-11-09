@@ -166,43 +166,60 @@ function span(length, say) {
 }
 
 // The weight as the drawer's fact says it: the total, then each part that
-// counts, in words.
+// counts and says something of its own, in words. Being ready and its
+// kind count, but say nothing the row and the eyebrow don't already
+// (VKCF3Z, 2026-11-08: "40 \u00b7 due tomorrow 15:00").
 function weightSaid(thing, now, say) {
     const weighed = weigh(thing, now);
     const words = {
         blocks: () => blocksSaid(Number(thing.blocks), say),
         due: () => dueSaid(when(thing.due), now, say),
-        ready: () => say.ready,
-        kind: () => say[thing.kind] ?? "",
+        ready: () => "",
+        kind: () => "",
         waited: () => filled(say.waitedFor, { span: span(now - when(thing.since), say) })
     };
     const said = weighed.parts.filter(part => part.points > 0).map(part => words[part.id]());
     return [String(weighed.weight)].concat(said.filter(one => one !== "")).join(" \u00b7 ");
 }
 
+// A moment as For You says every one, its day as When.js says a day,
+// back or forward, then its time: "today 15:00", "tomorrow 15:00",
+// "Wednesday 14:10", "28 Nov 09:30" (VKCF3Z, 2026-11-08: one moment
+// reads one way everywhere). `at` is milliseconds or an ISO time; "" for
+// none. `say` holds its words, with `day(ms, now)` as When.js says a day,
+// "" today, and `time(ms)` as the clock does.
+function moment(at, now, say) {
+    const read = when(at);
+    return read === null ? "" : filled(say.moment,
+        { day: say.day(read, now) || say.today, time: say.time(read) });
+}
+
+// Whether an item's deadline is said already, by its row's side, which
+// says it unless what it blocks is stronger, or by its weight, which says
+// it while it's within the day or past.
+function dueSaidElsewhere(item, blocks, now) {
+    const due = when(item.deadline);
+    return due !== null && (Number(blocks ?? 0) === 0 || dueing(due, now) > 0);
+}
+
 // What an item's owner said of it that its drawer shows beyond its weight
-// and how long it's waited (VKCF3Z, 2026-11-08): when it's due and when
-// it's set for, each a day and a time ("today 15:00"); the machine it's
-// done on, as its owner names it; where, the window it's done in, else
-// its quest's session; and, as written, its owner's address and the
-// command that checks it's done. Each is "" where nothing says it.
-// `told` holds `now`, the open `window`'s title and its `quest` by name;
-// `say` the words, with `day(ms, now)` as When.js says a day, "" today,
-// and `time(ms)` as the clock does.
+// and how long it's waited (VKCF3Z, 2026-11-08): when it's due, only
+// where neither the row's side nor its weight says it (no fact repeats
+// another), and when it's set for, each a moment; the machine it's done
+// on, as its owner names it; the window it's done in, by its title, its
+// quest and session being facts of their own; and, as written, its
+// owner's address and the command that checks it's done. Each is ""
+// where nothing says it. `told` holds `now`, how many sessions it
+// `blocks` and the open `window`'s title; `say` the words, as `moment`
+// takes them.
 function figures(item, told, say) {
     const named = value => typeof value === "string" ? value : "";
-    const moment = at => {
-        const read = when(at);
-        return read === null ? "" : filled(say.moment,
-            { day: say.day(read, told.now) || say.today, time: say.time(read) });
-    };
-    const window = named(told.window);
-    const quest = named(told.quest);
     return {
-        due: moment(item.deadline),
-        setFor: moment(item.at),
+        due: dueSaidElsewhere(item, told.blocks, told.now) ? ""
+            : moment(item.deadline, told.now, say),
+        setFor: moment(item.at, told.now, say),
         machine: named(item.where?.machine),
-        where: window !== "" ? window : quest === "" ? "" : filled(say.inSession, { quest }),
+        where: named(told.window),
         address: named(item.owner?.address),
         check: named(item.doneWhen?.check)
     };

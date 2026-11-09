@@ -131,10 +131,9 @@ QtObject {
 
         // The weight in words: the total, then each part that counts.
         expect("the weight said", ForYou.weightSaid(item, now, say),
-            "120 \u00b7 blocks 2 sessions \u00b7 due 14:30 \u00b7 ready now \u00b7 to do"
-            + " \u00b7 waiting 1 h");
-        expect("a look's weight said", ForYou.weightSaid({ kind: "look",
-            since: now - 12 * 60 * 1000 }, now, say), "6 \u00b7 to look at \u00b7 waiting 12 min");
+            "120 \u00b7 blocks 2 sessions \u00b7 due 14:30 \u00b7 waiting 1 h");
+        expect("a look's weight said, its kind left to its eyebrow", ForYou.weightSaid({
+            kind: "look", since: now - 12 * 60 * 1000 }, now, say), "6 \u00b7 waiting 12 min");
 
         // The looks folder's files, each read whole or left out.
         const lookOf = fields => JSON.stringify(Object.assign({
@@ -199,10 +198,10 @@ QtObject {
         const ownSay = {
             moment: "{day} {time}",
             today: "today",
-            inSession: "{quest}'s session",
             // When.js's day, its date where it isn't today's, in UTC here.
             day: (at, today) => new Date(at).toISOString().slice(0, 10)
-                === new Date(today).toISOString().slice(0, 10) ? "" : "9 Nov",
+                === new Date(today).toISOString().slice(0, 10) ? ""
+                : `${new Date(at).getUTCDate()} Nov`,
             time: at => new Date(at).toISOString().slice(11, 16)
         };
         const owned = { quest: "QEST-1", deadline: "2026-11-08T15:00:00Z",
@@ -210,16 +209,22 @@ QtObject {
             owner: { address: "8IDU4E" },
             doneWhen: { check: "test -e /run/booted-system/sw/bin/ok" } };
         const figures = (item, told) => ForYou.figures(item,
-            Object.assign({ now, window: "", quest: "Small Figures" }, told ?? {}), ownSay);
-        expect("due today, by its time", figures(owned).due, "today 15:00");
+            Object.assign({ now, window: "" }, told ?? {}), ownSay);
+        const later = Object.assign({}, owned, { deadline: "2026-11-12T15:00:00Z" });
+        expect("due, where neither the side nor the weight says it",
+            figures(later, { blocks: 1 }).due, "12 Nov 15:00");
+        expect("no due while the side says the deadline", figures(later).due, "");
+        expect("no due while the weight says it, within the day",
+            figures(owned, { blocks: 1 }).due, "");
         expect("set for another day, by its day", figures(owned).setFor, "9 Nov 09:30");
-        expect("no deadline, no due", figures({}).due, "");
+        expect("no deadline, no due", figures({}, { blocks: 1 }).due, "");
+        expect("a moment as For You says each", [ForYou.moment("2026-11-08T15:00:00Z", now,
+            ownSay), ForYou.moment("2026-11-09T09:30:00Z", now, ownSay),
+        ForYou.moment(null, now, ownSay)], ["today 15:00", "9 Nov 09:30", ""]);
         expect("the machine as its owner names it", figures(owned).machine, "harbour");
         expect("where, the window it's done in", figures(owned, { window: "pi \u00b7 core" })
             .where, "pi \u00b7 core");
-        expect("where, else its quest's session", figures(owned).where,
-            "Small Figures's session");
-        expect("where, nowhere with no quest", figures({}, { quest: "" }).where, "");
+        expect("where, nowhere with no window open", figures(owned).where, "");
         expect("its owner's address, as written", figures(owned).address, "8IDU4E");
         expect("its check's command, as written", figures(owned).check,
             "test -e /run/booted-system/sw/bin/ok");

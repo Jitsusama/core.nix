@@ -315,21 +315,30 @@ QtObject {
 
         // What an item tells beyond its title (NeedsYou.js): its note leads
         // with its owner's when, unless its side says it, and ends with how
-        // long it has waited (VKCF3Z, 2026-11-07).
-        const said = { at: "at {time}", by: "by {time}", on: "on {machine}",
-            nobody: "nobody's watching this", waitedFor: "waiting {span}" };
+        // long it has waited (VKCF3Z, 2026-11-07); its times and machine
+        // are its drawer's facts alone (Y2YBTS, 2026-11-08).
+        const said = { nobody: "nobody's watching this", waitedFor: "waiting {span}" };
         const raised = Date.parse("2026-11-07T06:46:47.006Z");
         const cable = { v: 2, id: "dock-cable", title: "Swap the network cable",
             why: "Only Joel can swap a cable.", minutes: 2, when: "any time, outside a call",
             raisedAt: "2026-11-07T06:46:47.006Z" };
-        const told = { at: "", by: "", machine: "", watched: true, side: "2 min",
+        const told = { watched: true, side: "2 min", ready: false,
             now: raised + 15 * 3600 * 1000 + 5000 };
         expect("a note leads with when and ends with how long it's waited",
             NeedsYou.note(cable, said, told), "any time, outside a call \u00b7 waiting 15 h");
         expect("when the side says when, the note doesn't",
             NeedsYou.note(cable, said, with_(told, { side: "any time, outside a call",
-                watched: false, by: "18:00" })),
-            "by 18:00 \u00b7 nobody's watching this \u00b7 waiting 15 h");
+                watched: false })),
+            "nobody's watching this \u00b7 waiting 15 h");
+        expect("its times and machine are left to its drawer",
+            NeedsYou.note(with_(cable, { at: "2026-11-07T20:00:00Z",
+                deadline: "2026-11-07T22:00:00Z", where: { machine: "harbour" } }), said, told),
+            "any time, outside a call \u00b7 waiting 15 h");
+        expect("\"now\" is no reason for one ready now",
+            NeedsYou.note(with_(cable, { when: "now" }), said, with_(told, { ready: true })),
+            "waiting 15 h");
+        expect("but is for one not ready yet",
+            NeedsYou.note(with_(cable, { when: "now" }), said, told), "now \u00b7 waiting 15 h");
         expect("a wait shorter than a minute is a minute",
             NeedsYou.waited(cable.raisedAt, raised + 20_000), "1 min");
         expect("one of days says days", NeedsYou.waited(cable.raisedAt, raised + 3 * 86_400_000),

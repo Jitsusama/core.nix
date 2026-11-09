@@ -719,6 +719,7 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
                     "steps": ["Print it", "Sign it"],
                     "at": "2026-11-09T09:30:00Z",
                     "deadline": "2026-11-09T15:00:00Z",
+                    "raisedAt": "2026-11-08T09:00:00Z",
                     "where": {"machine": "harbour"},
                     "owner": {"address": "8IDU4E"},
                     "doneWhen": {"check": "test -e /run/user/1000/form/signed"},
@@ -729,9 +730,16 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
     # Its steps, then why only Joel can; how it'll be known done is its
     # Clears When fact, so the words don't say it again.
     steps = "1. Print it\n2. Sign it\n\nIt goes out in your name."
+    # Its quest by its title, in the eyebrow (VKCF3Z, 2026-11-08).
+    kept(
+        desktop,
+        INDEX,
+        {"quests": [{"id": "GONEQA", "address": "GONEQA", "title": "Reef Quest"}]},
+    )
     # What its owner said of it, each a fact in For You's order (VKCF3Z,
-    # 2026-11-08); Where is its quest's session, since none is open.
-    owned = ["Due", "Set For", "Machine", "Where", "Address", "Check"]
+    # 2026-11-08). Its row's side says when it's due, so Due doesn't, and
+    # with no window open there's no Where.
+    owned = ["Set For", "Waiting Since", "Clears When", "Machine", "Address", "Check"]
     try:
         retry(
             lambda _: waiting_inside(desktop) == ("1", ["Sign the Form"]),
@@ -748,6 +756,8 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
                 (shown.get("drawer") or {}).get("out") is True
                 and shown["drawer"]["body"] == steps
                 and [fact for fact in shown["drawer"]["facts"] if fact in owned] == owned
+                and "Due" not in shown["drawer"]["facts"]
+                and shown["drawer"]["eyebrow"] == "from Reef Quest \u00b7 to-do"
             )
         )
         desktop.shoot("launcher-for-you-drawer")
@@ -756,7 +766,7 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
         desktop.launcher_until(lambda shown: shown["rows"] == ["Mark It Done", "Put It Off"])
         desktop.close_launcher()
     finally:
-        desktop.as_account(f"rm -f {asked}")
+        desktop.as_account(f"rm -f {asked} {INDEX}")
         # Its notice goes a moment after its item does; until then the
         # margin holds it, and Now would open on it in the next subtest.
         machine.wait_until_succeeds(
