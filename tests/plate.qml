@@ -39,6 +39,31 @@ QtObject {
         turned: transform => transform === "Normal" ? "upright" : transform
     })
 
+    // A screen's white point and primaries, from desk-facts' figures for an
+    // HP Z27k G3: the white a measure, three figures by Joel's settings,
+    // each point to three places; nothing for figures that aren't whole.
+    function colours(check) {
+        const words = {
+            said: (id, key) => ({ point: "x {x} y {y}", red: "red x {x} y {y}",
+                green: "green x {x} y {y}", blue: "blue x {x} y {y}" })[key]
+        };
+        const z27k = "0.6396 0.3301 0.2998 0.5996 0.1504 0.0596";
+        const white = Screens.whitePoint("6462 0.3135 0.3291", words, {});
+        check("a white is its temperature, then its point",
+            white === "6,460 K \u00b7 x 0.313 y 0.329", white);
+        const pointed = Screens.whitePoint("6462 0.3135 0.3291", words,
+            { group: ".", point: "," });
+        check("a white is grouped and pointed as Joel says",
+            pointed === "6.460 K \u00b7 x 0,313 y 0,329", pointed);
+        const primaries = Screens.primaries(z27k, words, {});
+        check("primaries name each colour and keep three places",
+            primaries === "red x 0.640 y 0.330 \u00b7 green x 0.300 y 0.600 \u00b7 "
+                + "blue x 0.150 y 0.060", primaries);
+        const broken = [Screens.whitePoint("6462 0.3135", words, {}),
+            Screens.whitePoint("", words, {}), Screens.primaries("0.64 0.33 x", words, {})];
+        check("figures that aren't whole say nothing", broken.join("") === "", broken);
+    }
+
     // The backlight's words as the vocabulary gives them, filled.
     function backlightSaid(key, values) {
         return Backlight.fill(({ "the-room": "the room", "on-its-way": "on its way to {share}",
@@ -195,6 +220,7 @@ QtObject {
             && Screens.density(1920, 527, ".", ",") === "92,5 ppi",
             `${Screens.density(2880, 300)}, ${Screens.density(1920, 527)}, `
             + `${Screens.density(1920, 508)}, ${Screens.density(1920, 527, ".", ",")}`);
+        colours(check);
 
         const on = panel();
         check("a screen on says what it runs past its row, where it sits and what it offers",

@@ -791,14 +791,15 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
     # What desk-facts would say of the display, which this machine doesn't
     # run: each fact reads by the vocabulary's name for it, those asked most
     # first, in desk-facts' order: the depth, then the white point and
-    # primaries, as the colours would be.
+    # primaries, as the colours would be, each as the figures desk-facts
+    # gives for the launcher to say.
     shown_as = next(iter(json.loads(desktop.as_account("niri msg --json outputs"))))
     said = {
         shown_as: [
             {"name": "EDID", "value": "1.4"},
             {"name": "depth", "value": "8 bit"},
-            {"name": "white", "value": "6,460 K \u00b7 x 0.313 y 0.329"},
-            {"name": "primaries", "value": "red x 0.640 y 0.330"},
+            {"name": "white", "value": "6462 0.3135 0.3291"},
+            {"name": "primaries", "value": "0.6396 0.3301 0.2998 0.5996 0.1504 0.0596"},
         ]
     }
     desktop.as_account(

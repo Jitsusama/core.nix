@@ -5,16 +5,18 @@
 // each stepping into its choices (which what's typed there finds too, so
 // "scale 1.5" needs no step in), and turning it off while another is on.
 // "colour depth", "refresh rate" and the like ask the focused display's
-// part, or each display's while several are on. niri forgets these choices when its configuration is next read,
-// so they last the session, and what lasts belongs in the configuration.
-// Everything goes over niri's socket, asked again whenever the launcher
-// opens or the workspaces change, as they do when a display comes or goes,
-// since niri sends no event for a display itself. What a display's EDID
-// says of itself, who made it and when, its size, native mode, refresh
-// range, colour depth, colours, white point, primaries and HDR, desk-facts
-// writes to a file
+// part, or each display's while several are on. niri forgets these
+// choices when its configuration is next read, so they last the session,
+// and what lasts belongs in the configuration. Everything goes over
+// niri's socket, asked again whenever the launcher opens or the workspaces
+// change, as they do when a display comes or goes, since niri sends no
+// event for a display itself. What a display's EDID says of itself, who
+// made it and when, its size, native mode, refresh range, colour depth,
+// colours, white point, primaries and HDR, desk-facts writes to a file
 // (modules/desk-facts), and the right arrow lists after the settings,
 // named first as parts are (Colour depth "10 bit"), Return copying one.
+// The white point and primaries come as figures, said here by Joel's
+// grouping and decimal point (Screens.js).
 //
 // The panel's backlight is the one brightness, lid shut or not: the
 // backlight daemon (modules/backlight) sets every monitor it reaches to
@@ -778,8 +780,24 @@ Provider {
         // A monitor's brightness is the panel's, which the Brightness
         // setting says, so it isn't said again as a fact.
         const said = (facts[output.name] ?? [])
-            .filter(fact => fact.name.toLowerCase() !== "brightness");
+            .filter(fact => fact.name.toLowerCase() !== "brightness")
+            .map(fact => {
+                const told = toldFigures[fact.name.toLowerCase()];
+                return told ? { name: fact.name, value: told(fact.value) } : fact;
+            })
+            .filter(fact => fact.value !== "");
         return factParts("displays", output.name, said, askedFirst);
+    }
+
+    // The facts desk-facts gives as figures, said here by the launcher's
+    // grouping and decimal point, as Warmth beside them is (Y2YBTS,
+    // 2026-11-09).
+    readonly property var toldFigures: {
+        const words = { said: (id, key) => provider.partSaid(id, key) };
+        return {
+            white: figures => Screens.whitePoint(figures, words, settings),
+            primaries: figures => Screens.primaries(figures, words, settings)
+        };
     }
 
     // The facts asked of a display most, which lead the rest, its white
@@ -926,7 +944,7 @@ Provider {
     readonly property var partsAsked: {
         const out = {};
         for (const id of ["brightness", "warmth", "room", "scale", "refresh", "resolution",
-            "rotation", "depth", "colours", "white", "hdr"])
+            "rotation", "depth", "colours", "white", "primaries", "hdr"])
             for (const question of Words.answers(`displays:${id}`))
                 out[question] = id;
         return out;
