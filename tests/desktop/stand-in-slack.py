@@ -6,15 +6,16 @@ read last, each message wanting Joel and how it stands is the runtime folder's s
 slack-unreads' rounds would tell it; with none, Slack answers with nothing unread. It's held
 as the daemon's records, slack-unread, slack-recent, slack-message and slack-account, the
 account saying it holds every message once slack-says.json lists any, listed and watched,
-each watch told what changed and went and how Slack stands as that changes; each conversation is given a timestamp falling with its place,
-so the order a test lists them in is Slack's. Hello says how Slack stands, a search answers
-the Slack messages found for its words, and a get of a message's key answers the messages
-around it. Each search is written down in slack-searched beside the socket, one
-line of words each, so a test can count how often Slack was asked, and is held until the
-runtime folder's slack-answers file exists, so a test sees what the launcher shows while Slack
-is asked. "launcher" finds two messages, Ada's in #launcher and Joel's own to her; "busy" is
-refused as Slack's rate limit refuses; anything else finds nothing. Nothing else is answered.
-Each hello is written down in slack-hellos, so a test knows the shell has reached it.
+each watch told what changed and went and how Slack stands as that changes; each conversation
+is given a timestamp falling with its place, so the order a test lists them in is Slack's.
+Hello says how Slack stands, a search answers the Slack messages found for its words, and a
+get of a message's key answers the messages around it. Each search is written down in
+slack-searched beside the socket, one line of words each, so a test can count how often Slack
+was asked, and is held until the runtime folder's slack-answers file exists, so a test sees
+what the launcher shows while Slack is asked. "launcher" finds two messages, Ada's in
+#launcher and Joel's own to her; "busy" is refused as Slack's rate limit refuses; anything
+else finds nothing. Nothing else is answered. Each hello is written down in slack-hellos, so a
+test knows the shell has reached it.
 """
 
 import contextlib
