@@ -97,6 +97,11 @@
     others say of it, the kinds of file and links it opens and its categories, and its command
     and desktop id last, leaving out what it can't say
   '';
+  a-browser-window-deeper-in-is-its-programs = ''
+    a browser's window of its own opened deeper than its program's own page is that program's, by the
+    longest page of the same host and profile, never another program's on that host nor another
+    profile's
+  '';
   a-prompt-waits-for-a-person = ''
     a D-Bus call from the account's shells, as run0 asks for polkit's prompt in, outlasts systemd's
     25 seconds

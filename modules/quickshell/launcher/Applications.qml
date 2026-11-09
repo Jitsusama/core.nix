@@ -48,6 +48,7 @@ import Quickshell.Io
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "BrowserWindows.js" as BrowserWindows
 import "Media.js" as Media
 import "Order.js" as Order
 import "Program.js" as Program
@@ -147,12 +148,15 @@ Provider {
     // Each program's open windows by its desktop entry's id, the one used
     // last first, followed as niri's windows change. Read when a row is
     // drawn or run, so a window opening never prepares every program again.
+    // A browser's window of its own opened deeper than its program's own
+    // page is that program's too (BrowserWindows.js).
     readonly property var running: {
         void Niri.revision;
         const by = {};
         for (const window of Object.values(Niri.windows)
             .sort((a, b) => provider.focusedAt(b) - provider.focusedAt(a))) {
-            const entry = window.app_id ? DesktopEntries.heuristicLookup(window.app_id) : null;
+            const entry = window.app_id ? (DesktopEntries.heuristicLookup(window.app_id)
+                ?? BrowserWindows.ownerOf(window.app_id, DesktopEntries.applications.values)) : null;
             if (entry)
                 (by[entry.id] ?? (by[entry.id] = [])).push(window);
         }
