@@ -6935,6 +6935,7 @@
     },
     {
       "id": "verb:on:waiting:desktop:read",
+      "command": "delete",
       "in": "on:waiting:desktop",
       "name": "Mark Them Read",
       "verb": "mark",

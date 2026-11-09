@@ -4,9 +4,9 @@
 // 2026-11-08: "i shouldn't be required to mark a notice as read if I
 // looked at the slack message in slack"). What's done goes to For You's
 // History, saying how: mail as Google's daemon says it went, and notices
-// as read here or withdrawn. Slack's messages are done once the shell
-// reads Slack's daemon's, which `done` is ready for; until then Slack's
-// notices stand for them.
+// as read here or withdrawn. Slack's messages are done as its daemon says,
+// once the shell reads its messages, which `done` is ready for; Slack's
+// notices stand for them only while the daemon doesn't answer (held).
 // Kept apart from the QML so Qt's own engine holds it (tests/lately.qml).
 .pragma library
 .import "Order.js" as Order
