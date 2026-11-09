@@ -451,10 +451,11 @@ def test_a_missed_notice_shows_its_glyph_and_now_shows_the_notices(desktop: Desk
 
 
 def says_each_thing_once(desktop: Desktop) -> None:
-    """Say Peter's sender once, in the drawer's eyebrow, and History's nothing as "none".
+    """Say Peter's sender once, in the drawer's eyebrow, and what History keeps, or "none".
 
-    The cursor row adds nothing to its age, as a Slack message's adds nothing, and History,
-    keeping nothing yet, says "none" as every place holding nothing does (VKCF3Z, 2026-11-09).
+    The cursor row adds nothing to its age, as a Slack message's adds nothing, and History
+    says how many it keeps, or "none" as every place holding nothing does (VKCF3Z,
+    2026-11-09). Which it says hangs on what the subtests before this one sent.
     """
     desktop.launcher_until(lambda shown: shown["drawer"]["out"] and shown["footer"] == "")
     things = desktop.showing()["things"]
@@ -462,7 +463,7 @@ def says_each_thing_once(desktop: Desktop) -> None:
         thing["reads"].split(" \u00b7 ") for thing in things if thing["reads"].startswith("History")
     ]
     assert kept, things
-    assert kept[0][1] == "none", things
+    assert re.fullmatch(r"none|[1-9]\d*\skept", kept[0][1]), things
 
 
 def reads_them_all(desktop: Desktop) -> None:
