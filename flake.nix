@@ -237,6 +237,7 @@
         swayimg = moduleFrom ./modules/swayimg/home.nix { inherit (self.homeModules) niri quickshell; };
         telnet = ./modules/telnet/home.nix;
         theme = ./modules/theme/home.nix;
+        to-do = ./modules/to-do/home.nix;
         tpm-signing = ./modules/tpm-signing/home.nix;
         tree = ./modules/tree/home.nix;
         tree-sitter = ./modules/tree-sitter/home.nix;

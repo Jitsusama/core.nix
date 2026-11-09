@@ -1292,6 +1292,7 @@ gather (
     ./modules/systemd-networkd/checks.nix
     ./modules/tcp/checks.nix
     ./modules/theme/checks.nix
+    ./modules/to-do/checks.nix
     ./modules/touchpad/checks.nix
     ./modules/treefmt/checks.nix
     ./modules/tuple/checks.nix
