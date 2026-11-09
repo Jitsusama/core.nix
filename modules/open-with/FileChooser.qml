@@ -364,6 +364,10 @@ Provider {
                 enumerable: true,
                 configurable: true
             });
+        // One listed in its folder is named as the folder holds it, so the
+        // store's entries keep their hashes and stay apart (Files.named).
+        if (!away)
+            made.name = Files.named(path, true);
         made.drawer = () => provider.plateOf(path);
         return made;
     }
@@ -376,7 +380,8 @@ Provider {
         const said = previews[path];
         if (settings.preview && (said === undefined || entry && askedAt[path] !== entry.modified))
             Qt.callLater(provider.preview, path);
-        const file = { path: path, name: Files.named(path), where: Files.within(path), entry: entry };
+        const file = { path: path, name: Files.named(path, true), where: Files.within(path),
+            entry: entry };
         return FileFacts.plate(file, said || null, factWords);
     }
 

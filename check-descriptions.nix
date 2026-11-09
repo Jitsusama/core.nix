@@ -30,7 +30,8 @@
     folder's entries order by name, change or size, folders first, 2 before 10; a save's name puts
     the caret before its extension; and one kept elsewhere, as in Google Drive, says the same on
     its row and plate from what its place listed, its place's facts after, leaving out what isn't
-    given
+    given; a file in the Nix store goes by its own name past its hash, kept whole where the store's
+    own listing holds it
   '';
   a-firmware-update-frees-pcr-0-only-for-fwupds-entry = ''
     the shutdown step takes PCR 0 out of the TPM's policy only when BootNext names fwupd's

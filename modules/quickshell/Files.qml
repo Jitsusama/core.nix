@@ -17,6 +17,7 @@ pragma Singleton
 import qs
 import Quickshell
 import QtQuick
+import "FileFacts.js" as FileFacts
 
 Singleton {
     id: root
@@ -29,11 +30,11 @@ Singleton {
     }
 
     // Its name, the last part of its path: "~/src/core.nix" is core.nix,
-    // and / and ~ are themselves.
-    function named(path) {
-        const said = shown(path);
-        const cut = said.lastIndexOf("/");
-        return cut < 0 || said === "/" ? said : said.slice(cut + 1);
+    // and / and ~ are themselves; one in the Nix store goes by its own
+    // name past its hash, but where it's `listed` in its folder, as the
+    // file chooser lists it, whose rows keep the hash (FileFacts.named).
+    function named(path, listed) {
+        return FileFacts.named(shown(path), listed === true);
     }
 
     // The folder it's in, as said beside it: "~/src/core.nix" is in ~/src,

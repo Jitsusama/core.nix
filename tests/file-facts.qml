@@ -9,6 +9,8 @@
 // its kind and numbers, its name, its preview and its facts, every number
 // kept to its unit, and every word said as words.json says it. A folder
 // lists by name, change or size, its folders first (VKCF3Z, 2026-11-04).
+// A file in the Nix store goes by its own name, past its hash (VKCF3Z,
+// 2026-11-08).
 import QtQuick
 import "FileFacts.js" as FileFacts
 import "When.js" as When
@@ -257,6 +259,27 @@ QtObject {
         ];
         for (const [what, name, want] of ends)
             expect(what, FileFacts.nameEnd(name), want);
+
+        // A file in the Nix store goes by its own name past its hash, but
+        // kept whole where the store's own listing holds it (VKCF3Z,
+        // 2026-11-08), and every other path by its last part.
+        const hash = "bdmylmvw562fyhfd39fkn89zcw7qn66w";
+        const names = [
+            ["a store file goes by its own name", `/nix/store/${hash}-track.mp3`, false, "track.mp3"],
+            ["one listed in the store keeps its hash", `/nix/store/${hash}-track.mp3`, true,
+                `${hash}-track.mp3`],
+            ["one deeper in the store is its last part", `/nix/store/${hash}-pkg/share/a.mp3`, false,
+                "a.mp3"],
+            ["a store-like name elsewhere keeps its hash", `~/Music/${hash}-track.mp3`, false,
+                `${hash}-track.mp3`],
+            ["a hash Nix can't write isn't one", "/nix/store/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee-track.mp3",
+                false, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee-track.mp3"],
+            ["a file at home is its last part", "~/src/core.nix", false, "core.nix"],
+            ["the root is itself", "/", false, "/"],
+            ["home is itself", "~", false, "~"]
+        ];
+        for (const [what, said, listed, want] of names)
+            expect(what, FileFacts.named(said, listed), want);
 
         if (failures.length > 0) {
             for (const failure of failures)
