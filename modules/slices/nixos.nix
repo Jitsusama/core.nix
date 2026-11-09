@@ -472,6 +472,11 @@ in
           # reclaims for itself until the OOM killer ends one.
           "--revive"
           "jobs.slice"
+          # A Nix evaluation agents start waits, frozen as it starts, while
+          # under 16 GiB is available, and they come in 30 s apart once
+          # there's room, so a few at once no longer fill memory together.
+          "--door"
+          "jobs.slice"
           # A window holding a session others report to, as the harness's
           # mesh says, keeps a memory floor and is the last systemd-oomd
           # ends, and every other pi gives way first to the OOM killer.

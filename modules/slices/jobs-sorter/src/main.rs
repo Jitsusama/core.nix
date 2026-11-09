@@ -49,6 +49,9 @@
 //! every pi is marked there as one nobody is at runs at `--low-weight`
 //! until a mark goes, as `src/low.rs` says why and how.
 //!
+//! With `--door`, a new Nix evaluation under a cgroup waits while memory is
+//! short, as `src/door.rs` says why and how.
+//!
 //! With `--revive`, a cgroup gives memory back when the kernel's reclaim
 //! thread gives up, as `src/revive.rs` says why and how.
 //!
@@ -66,8 +69,9 @@
 //!        [--no-real-time jobs.slice/jobs-work.slice]...
 //!        [--by-quest jobs-work.slice]... [--quests FILE]
 //!        [--background DIR] [--low-weight 10] [--weigh PREFIX]...
-//!        [--revive jobs.slice] [--orchestrators DIR]
+//!        [--revive jobs.slice] [--door jobs.slice] [--orchestrators DIR]
 
+mod door;
 mod keep;
 mod low;
 mod oom;
@@ -104,6 +108,7 @@ struct Settings {
     weigh: Vec<String>,
     revive: Option<String>,
     orchestrators: Option<PathBuf>,
+    door: Option<String>,
 }
 
 /// One process, as /proc/<pid>/stat describes it.
@@ -870,6 +875,7 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
         weigh: Vec::new(),
         revive: None,
         orchestrators: None,
+        door: None,
     };
     while let Some(flag) = args.next() {
         let mut value = || args.next().ok_or(format!("{flag} needs a value"));
@@ -885,6 +891,7 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
             "--background" => settings.background = Some(PathBuf::from(value()?)),
             "--weigh" => settings.weigh.push(value()?),
             "--revive" => settings.revive = Some(value()?),
+            "--door" => settings.door = Some(value()?),
             "--orchestrators" => settings.orchestrators = Some(PathBuf::from(value()?)),
             "--low-weight" => {
                 settings.low_weight = value()?.parse().map_err(|_| "--low-weight is a weight")?;
@@ -994,6 +1001,7 @@ fn run() -> Result<(), String> {
     let watch = settings.background.as_deref().and_then(watch_marks);
     let mut weighing = low::Weighing::default();
     let mut keeping = keep::Keeping::default();
+    let mut door = door::Door::default();
     loop {
         match (&watch, &settings.background) {
             (Some(watch), Some(dir)) => {
@@ -1047,8 +1055,59 @@ fn run() -> Result<(), String> {
                 oom::raise(Path::new("/proc"), &work, &mut warned);
             }
         }
+        watch_door(&mut door, &root, settings.door.as_deref(), now);
         pass = pass.wrapping_add(1);
         sorter.finish(&alive, now);
+    }
+}
+
+/// Holds new evaluations under `cgroup` in `root`, when there's a door,
+/// while memory is short, as src/door.rs says, `uptime` ticks since boot.
+fn watch_door(door: &mut door::Door, root: &Path, cgroup: Option<&str>, uptime: u64) {
+    let Some(cgroup) = cgroup.map(|cgroup| root.join(cgroup)) else {
+        return;
+    };
+    let free = fs::read_to_string("/proc/meminfo")
+        .ok()
+        .and_then(|meminfo| door::available(&meminfo));
+    let Some(free) = free else {
+        return;
+    };
+    let read: Vec<(u32, u64, String, PathBuf)> = real_time::processes_under(&cgroup)
+        .into_iter()
+        .filter_map(|pid| {
+            let stat = parse_stat(&fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)?;
+            let words = fs::read(format!("/proc/{pid}/cmdline")).ok()?;
+            let words = String::from_utf8_lossy(&words).replace('\0', " ");
+            let own = fs::read_to_string(format!("/proc/{pid}/cgroup")).ok()?;
+            let path = own.lines().find_map(|line| line.strip_prefix("0::"))?;
+            let scope = Path::new(CGROUPS).join(path.trim_start_matches('/'));
+            Some((pid, stat.start, words, scope))
+        })
+        .collect();
+    let coming: Vec<door::Coming> = read
+        .iter()
+        .map(|(pid, start, words, scope)| door::Coming {
+            pid: *pid,
+            start: *start,
+            words: words.split_whitespace().collect(),
+            scope: scope.clone(),
+        })
+        .collect();
+    for done in door.look(
+        &coming,
+        free,
+        std::time::Instant::now(),
+        uptime,
+        door::freeze,
+    ) {
+        match done {
+            door::Done::Held(pid) => {
+                door::tell(pid, free);
+                eprintln!("Held evaluation {pid} at the door, with {free} bytes available.");
+            }
+            door::Done::LetIn(pid) => eprintln!("Let evaluation {pid} in."),
+        }
     }
 }
 
@@ -1081,6 +1140,7 @@ mod tests {
             weigh: Vec::new(),
             revive: None,
             orchestrators: None,
+            door: None,
         }
     }
 
