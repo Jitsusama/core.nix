@@ -15,6 +15,9 @@ use std::process::{Command, Output};
 /// `complains` file holds, and exits as the `status` file beside it says.
 /// Once a test writes `refuses-name-only`, a command asking `--name-only`
 /// is refused with 64, as a changed-checks from before it was refuses it.
+/// A host an `unreached-<host>` file names is never reached, exiting 255,
+/// and one a `busy-<host>` file names says it's busy, 76, to a run marked
+/// to move on rather than wait.
 /// A read of the builder's CPU pressure prints the `pressure-<host>` file
 /// beside it, when there is one, and nothing else, and a dry run of a
 /// build prints the `plans` file, when there is one, and nothing else.
@@ -30,9 +33,19 @@ done
 printf '%s\n%s\n' "$1" "$2" > "$here/ssh-was-given"
 printf '%s\n' "$2" >> "$here/ssh-commands"
 printf '%s\n' "$1" >> "$here/ssh-hosts"
-printf '%s %s\n' "$1" "$2" >> "$here/ssh-sent"
+# Written whole, then appended in one write, since a run's parts call
+# this at once and a long command printed straight on took more than
+# one, so two lines could interleave and a host's go missing.
+printf '%s %s\n' "$1" "$2" > "$here/ssh-line-$$"
+cat "$here/ssh-line-$$" >> "$here/ssh-sent"
+rm -f "$here/ssh-line-$$"
+[ -f "$here/unreached-$1" ] && exit 255
+if [ -f "$here/busy-$1" ]; then
+  case "$2" in *": NIX_OFFLOAD_MOVES=1; "*) exit 76 ;; esac
+fi
 case "$2" in
-  *--name-only*) [ -f "$here/refuses-name-only" ] && exit 64 ;;
+  *--name-only*) [ -f "$here/refuses-name-only" ] && exit 64
+    [ -f "$here/evaluates-forever" ] && exec sleep 120 ;;
   */proc/pressure/cpu*) cat "$here/pressure-$1" 2>/dev/null; exit 0 ;;
   *--dry-run*) cat "$here/plans" 2>/dev/null; exit 0 ;;
   *"&& echo"*) cat > "$here/fetched"
@@ -175,8 +188,10 @@ fn given_to(folder: &Path) -> String {
 /// A command sent far, without what makes it end with its caller.
 fn within_far(command: &str) -> &str {
     command
-        .split_once("trap 'exit 143' HUP TERM; ")
-        .and_then(|(_, rest)| rest.strip_suffix("; exit $?"))
+        .split_once("trap 'kill $watching 2>/dev/null; exit 143' HUP TERM; ")
+        .and_then(|(_, rest)| {
+            rest.strip_suffix("; status=$?; kill $watching 2>/dev/null; exit $status")
+        })
         .unwrap_or_else(|| panic!("it doesn't end with its caller: {command}"))
 }
 
@@ -366,6 +381,18 @@ fn derivations_go_up_to_the_lent_builder_alone_and_build_there() {
         given_to(folder.path()),
         "nix-offload\nnix build --no-link -L '/nix/store/aaaa-x.drv^*'\n"
     );
+    // Each step before the build says what it does, since a fresh
+    // builder given 104 derivations on 8 November took 15 minutes over
+    // them while the run said nothing at all.
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains("copying 1 derivation up to the lent builder nix-offload, which lacks it"),
+        "{said}"
+    );
+    assert!(
+        said.contains("asking the lent builder nix-offload what it would build of it"),
+        "{said}"
+    );
 
     // One that can't be copied up isn't built anywhere unasked.
     fs::write(folder.path().join("nix-status"), "1").unwrap();
@@ -393,6 +420,14 @@ fn derivations_go_up_to_the_lent_builder_alone_and_build_there() {
         "not built there"
     );
     // With no closure to ask about, it tried copying them whole.
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains(
+            "copying the derivations up to the lent builder nix-offload with all they're \
+             built from, since what it lacks is unknown"
+        ),
+        "{said}"
+    );
     assert_eq!(
         fs::read_to_string(folder.path().join("nix-was-given")).unwrap(),
         format!(
@@ -1226,6 +1261,72 @@ fn a_nearby_machine_that_cant_fetch_the_flake_builds_none_of_it() {
     );
 }
 
+// On 8 November a run's part for a nearby machine whose ssh then failed
+// was built here, compiling biome beside Joel's work, unasked.
+#[test]
+fn a_part_for_a_nearby_machine_ssh_cant_reach_goes_with_the_rest() {
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    for (name, script) in [("ssh", NEARBY_SSH), ("nix", NEARBY_NIX)] {
+        executable(&bin.join(name), script);
+    }
+    fs::write(bin.join("status"), "255").unwrap();
+    let zone = folder.path().join("zone");
+    fs::create_dir(&zone).unwrap();
+    fs::write(zone.join("flake.nix"), "{ }").unwrap();
+    fs::write(zone.join("flake.lock"), r#"{"nodes": {}}"#).unwrap();
+    let listening = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let config = folder.path().join("config/nix-offload");
+    fs::create_dir_all(&config).unwrap();
+    fs::write(
+        config.join("nearby"),
+        format!("{} mac aarch64-darwin\n", listening.local_addr().unwrap()),
+    )
+    .unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    let flake = format!("path:{}", zone.display());
+    let asked = |extra: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+            .args(["there", "-L"])
+            .args(extra)
+            .args([&flake, "checks.aarch64-darwin.a", "checks.x86_64-linux.b"])
+            .env(
+                "PATH",
+                format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+            )
+            .env("NIX_OFFLOAD_DIR", &offload)
+            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+            .env("XDG_RUNTIME_DIR", folder.path())
+            .env("XDG_STATE_HOME", folder.path())
+            .env("XDG_CONFIG_HOME", folder.path().join("config"))
+            .output()
+            .unwrap()
+    };
+    let given = bin.join("nix-was-given");
+
+    let ran = asked(&[]);
+    assert_eq!(ran.status.code(), Some(75), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(said.contains("ssh couldn't reach mac"), "{said}");
+    assert!(
+        said.contains("no builder is lent, so nothing was built"),
+        "{said}"
+    );
+    assert!(!given.exists(), "nothing was built here");
+
+    let ran = asked(&["--here"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(
+        fs::read_to_string(&given).unwrap(),
+        format!(
+            "build --no-link -L {flake}#checks.x86_64-linux.b {flake}#checks.aarch64-darwin.a\n"
+        ),
+        "asked to, both are built here as one"
+    );
+}
+
 #[test]
 fn a_folder_sent_to_a_nearby_machine_leaves_what_its_git_ignores_here() {
     // A working tree's zone held 509 MB, almost all one ignored target.
@@ -1689,9 +1790,19 @@ fn it_says_what_it_takes_a_word_a_line() {
         String::from_utf8_lossy(&said.stdout),
         concat!(
             "tree\napply\nout\nwants\nfolder\nchanged\nhere\n",
-            "here-when-idle\nprint\nderivation\noutlive\nbulk\nnever-ask\n"
+            "here-when-idle\nprint\nderivation\noutlive\nbulk\nnever-ask\nfirst\n"
         )
     );
+}
+
+/// The variables that name VM builders' folders, so none stands: the
+/// first's in `folder`, where a test may make one, and no others.
+fn no_vm_builders(folder: &Path) -> [(&'static str, PathBuf); 3] {
+    [
+        ("NIX_OFFLOAD_VM_DIR", folder.join("offload-vm")),
+        ("NIX_OFFLOAD_VM_MORE_DIR", PathBuf::from(NO_SECOND_VM)),
+        ("NIX_OFFLOAD_VM_EXTRA_DIRS", PathBuf::from(NO_MORE_VMS)),
+    ]
 }
 
 #[test]
@@ -1729,6 +1840,9 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
             )
             .env("NIX_OFFLOAD_DIR", &offload)
             .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+            // No VM builder stands, whatever this machine's own lenders hold,
+            // since a run no lent builder takes now goes to one that does.
+            .envs(no_vm_builders(folder.path()))
             .env("XDG_RUNTIME_DIR", folder.path())
             .env("XDG_STATE_HOME", folder.path())
             .env("XDG_CONFIG_HOME", folder.path())
@@ -1860,18 +1974,59 @@ impl Changed {
     /// `there --changed` with these arguments, and what ssh was told to
     /// run, if anything.
     fn run(&self, arguments: &[&str]) -> (Output, Option<String>) {
+        self.run_with(&[], arguments, Path::new(NO_SECOND))
+    }
+
+    /// `run`, with `before` given ahead of `--changed`.
+    fn run_after(&self, before: &[&str], arguments: &[&str]) -> (Output, Option<String>) {
+        self.run_with(before, arguments, Path::new(NO_SECOND))
+    }
+
+    /// A second lender beside the first, standing, with a builder of its
+    /// own, `nix-offload-more`.
+    fn second(&self) -> PathBuf {
+        let more = self.folder.path().join("offload-more");
+        fs::create_dir_all(&more).unwrap();
+        fs::write(more.join("lender"), std::process::id().to_string()).unwrap();
+        fs::write(
+            more.join("store"),
+            STORE.replace("nix-offload", "nix-offload-more"),
+        )
+        .unwrap();
+        more
+    }
+
+    /// `run`, with the second lender `more`'s folder names.
+    fn run_beside(&self, arguments: &[&str], more: &Path) -> (Output, Option<String>) {
+        self.run_with(&[], arguments, more)
+    }
+
+    /// `there`, given `before`, then `--changed` and `arguments`, with the
+    /// second lender `more`'s folder names.
+    fn run_with(
+        &self,
+        before: &[&str],
+        arguments: &[&str],
+        more: &Path,
+    ) -> (Output, Option<String>) {
         let given = self.bin.join("ssh-was-given");
         let _ = fs::remove_file(&given);
         let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-            .args(["there", "--changed"])
+            .arg("there")
+            .args(before)
+            .arg("--changed")
             .args(arguments)
+            .env("NIX_OFFLOAD_EVALUATING_LONGEST", "5")
             .current_dir(&self.tree)
             .env(
                 "PATH",
                 format!("{}:{}", self.bin.display(), std::env::var("PATH").unwrap()),
             )
             .env("NIX_OFFLOAD_DIR", &self.offload)
-            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+            .env("NIX_OFFLOAD_MORE_DIR", more)
+            .env("NIX_OFFLOAD_VM_DIR", self.folder.path().join("offload-vm"))
+            .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
+            .env("NIX_OFFLOAD_VM_EXTRA_DIRS", NO_MORE_VMS)
             .env("XDG_RUNTIME_DIR", self.folder.path())
             .env("XDG_STATE_HOME", self.folder.path())
             .env("XDG_CONFIG_HOME", self.folder.path())
@@ -1884,6 +2039,157 @@ impl Changed {
             .map(|given| given.lines().nth(1).unwrap().to_owned());
         (ran, sent)
     }
+
+    /// Each host ssh was given, with whether its command was marked to
+    /// move on rather than wait, in the order they were asked.
+    fn asked(&self) -> Vec<(String, bool)> {
+        fs::read_to_string(self.bin.join("ssh-sent"))
+            .unwrap()
+            .lines()
+            .map(|line| {
+                let (host, command) = line.split_once(' ').unwrap();
+                (host.to_owned(), command.contains(": NIX_OFFLOAD_MOVES=1; "))
+            })
+            .collect()
+    }
+}
+
+#[test]
+fn a_changed_run_a_busy_lent_builder_turns_away_goes_to_the_other() {
+    // On 8 November runs queued at one lent builder for an hour while the
+    // other stood idle, since each run takes the one its turn names.
+    let changed = Changed::new();
+    let more = changed.second();
+    fs::write(changed.bin.join("busy-nix-offload"), "").unwrap();
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    let (ran, _) = changed.run_beside(&["--name-only", "--system", "x86_64-linux"], &more);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let asked = changed.asked();
+    assert_eq!(
+        asked.last(),
+        Some(&("nix-offload-more".to_owned(), true)),
+        "{asked:?}"
+    );
+    assert!(asked.iter().all(|(_, marked)| *marked), "{asked:?}");
+    assert!(String::from_utf8_lossy(&ran.stdout).contains("changed  a"));
+}
+
+#[test]
+fn a_changed_run_both_lent_builders_turn_away_waits_at_the_first_it_asked() {
+    let changed = Changed::new();
+    let more = changed.second();
+    fs::write(changed.bin.join("busy-nix-offload"), "").unwrap();
+    fs::write(changed.bin.join("busy-nix-offload-more"), "").unwrap();
+    let (ran, _) = changed.run_beside(&["--name-only", "--system", "x86_64-linux"], &more);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let asked = changed.asked();
+    assert_eq!(asked.len(), 3, "{asked:?}");
+    assert_ne!(asked[0].0, asked[1].0, "{asked:?}");
+    assert_eq!(
+        asked[2],
+        (asked[0].0.clone(), false),
+        "waits at the first, unmarked: {asked:?}"
+    );
+    assert!(asked[0].1 && asked[1].1, "{asked:?}");
+}
+
+#[test]
+fn a_changed_run_with_one_lent_builder_waits_there_unmarked() {
+    // With nowhere else to go, a run turned away would only come back and
+    // send its tree again.
+    let changed = Changed::new();
+    fs::write(changed.bin.join("busy-nix-offload"), "").unwrap();
+    let (ran, sent) = changed.run(&["--name-only", "--system", "x86_64-linux"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(changed.asked(), [("nix-offload".to_owned(), false)]);
+    assert!(!sent.unwrap().contains("NIX_OFFLOAD_MOVES"));
+}
+
+#[test]
+fn a_changed_run_sent_first_tells_the_builders_gate_so() {
+    // As the net's runs are, so the gate lets it past the sessions' runs
+    // waiting for a turn; a run not sent first isn't marked.
+    let changed = Changed::new();
+    let (ran, sent) = changed.run_after(&["--first"], &["--no-vm", "--system", "x86_64-linux"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let sent = sent.unwrap();
+    assert!(
+        sent.contains("NIX_OFFLOAD_FIRST=1 nix run .#changed-checks"),
+        "{sent}"
+    );
+    let _ = fs::remove_dir_all(changed.folder.path().join("nix-offload/passed"));
+    let (ran, sent) = changed.run(&["--no-vm", "--system", "x86_64-linux"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert!(!sent.unwrap().contains("NIX_OFFLOAD_FIRST"));
+}
+
+#[test]
+fn changed_checks_go_to_a_vm_builder_that_stands_while_no_lent_builder_answers() {
+    // From 01:00 to 08:05 on 8 November the lent builders' disks stalled
+    // them, and every `there --changed` waited on them and ended 69,
+    // while the VM builders took every VM test sent them by name.
+    let changed = Changed::new();
+    fs::write(
+        changed.offload.join("lender"),
+        std::process::id().to_string(),
+    )
+    .unwrap();
+    fs::write(changed.bin.join("unreached-nix-offload"), "").unwrap();
+    let vm = changed.folder.path().join("offload-vm");
+    fs::create_dir(&vm).unwrap();
+    fs::write(vm.join("lender"), std::process::id().to_string()).unwrap();
+    fs::write(
+        vm.join("store"),
+        STORE.replace("nix-offload", "nix-offload-vm"),
+    )
+    .unwrap();
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    let began = std::time::Instant::now();
+    let (ran, sent) = changed.run(&["--name-only", "--system", "x86_64-linux"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert!(
+        began.elapsed() < std::time::Duration::from_secs(60),
+        "sent on at once, not after waiting for a lent builder: {:?}",
+        began.elapsed()
+    );
+    let hosts = fs::read_to_string(changed.bin.join("ssh-hosts")).unwrap();
+    assert_eq!(hosts.lines().last(), Some("nix-offload-vm"), "{hosts}");
+    let sent = sent.unwrap();
+    assert!(sent.contains("changed-checks -- --name-only"), "{sent}");
+    assert!(String::from_utf8_lossy(&ran.stdout).contains("changed  a"));
+}
+
+#[test]
+fn an_evaluator_that_names_nothing_is_left_on_its_clock() {
+    // On 8 November six runs sat on one evaluator for up to three hours,
+    // having printed nothing. With no other, it's as though none answered.
+    let changed = Changed::new();
+    fs::remove_file(changed.offload.join("store")).unwrap();
+    let answering = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = answering.local_addr().unwrap();
+    fs::create_dir_all(changed.folder.path().join("nix-offload")).unwrap();
+    fs::write(
+        changed.folder.path().join("nix-offload/evaluators"),
+        format!("{address} far o\n"),
+    )
+    .unwrap();
+    fs::write(changed.bin.join("evaluates-forever"), "").unwrap();
+    let asked = std::time::Instant::now();
+    let (ran, sent) = changed.run(&["--no-vm"]);
+    assert!(
+        asked.elapsed() < std::time::Duration::from_secs(60),
+        "it waited {:?}",
+        asked.elapsed()
+    );
+    assert!(
+        sent.is_some_and(|sent| sent.contains("--name-only")),
+        "{ran:?}"
+    );
+    assert_eq!(ran.status.code(), Some(75), "{ran:?}");
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains("far named nothing within 5 seconds"),
+        "{ran:?}"
+    );
 }
 
 #[test]
@@ -2900,6 +3206,38 @@ fn a_bulk_run_waiting_for_room_lets_one_that_isnt_go_first() {
         said.contains("this run is bulk, so runs that aren't go first"),
         "{said}"
     );
+}
+
+#[test]
+fn a_run_sent_first_goes_ahead_of_every_run_waiting_for_room() {
+    // On 8 November the net tested nothing for an hour while sessions'
+    // runs held the builders, so the net's are sent first, and go ahead
+    // of runs that came before them and aren't.
+    let tests = |name: &str, count: usize, flags: &[&str]| -> Vec<String> {
+        flags
+            .iter()
+            .copied()
+            .chain(["-L", "github:o/r/abc"])
+            .map(str::to_owned)
+            .chain((0..count).map(|test| format!("checks.x.vm-{name}{test}")))
+            .collect()
+    };
+    let (building, waiting, first) = (
+        tests("a", 3, &[]),
+        tests("b", 2, &[]),
+        tests("c", 2, &["--bulk", "--first"]),
+    );
+    let (_, sent, said) = one_after_another(&[&building, &waiting, &first]);
+    let order: Vec<&str> = sent
+        .iter()
+        .map(|build| {
+            ["vm-a0", "vm-b0", "vm-c0"]
+                .into_iter()
+                .find(|test| build.contains(*test))
+                .unwrap_or(build)
+        })
+        .collect();
+    assert_eq!(order, ["vm-a0", "vm-c0", "vm-b0"], "{said}");
 }
 
 /// Two `there` runs with `runs`' arguments, the second started while the

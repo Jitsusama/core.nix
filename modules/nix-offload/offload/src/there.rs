@@ -1,10 +1,13 @@
 //! `nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
-//! [--print-out-paths] [--here] [--here-when-idle] [--outlive] [--bulk] FLAKE ATTR...`, or
+//! [--print-out-paths] [--here] [--here-when-idle] [--outlive] [--bulk] [--first]
+//! FLAKE ATTR...`, or
 //! `DRV...` in place of the flake and its attributes: builds a flake's
 //! attributes on the lent builder by sending it a command, or here with
 //! `--here` when none takes it, or with `--here-when-idle` while this
 //! machine is idle and they hold no VM test. With `--bulk`, its VM tests
-//! waiting for room let any run's that isn't go first.
+//! waiting for room let any run's that isn't go first, and with `--first`
+//! they go ahead of every other run's, as its changed-checks evaluation
+//! does for a turn on the lent builder.
 //!
 //! The build hook builds a build's inputs here and copies each up, and a
 //! VM test took 1025 s that way against 60 s here, nearly all of it the
@@ -462,6 +465,17 @@ pub fn builder(store: &str) -> Option<Builder> {
 /// no build gives.
 pub const UNREACHED: i32 = 255;
 
+/// What a lent builder's gate ends a run marked [`MOVES`] with when the
+/// run would have to wait there: sysexits.h's protocol error, which
+/// neither ssh nor a build gives.
+pub const BUSY: i32 = 76;
+
+/// What a run's command opens with when it may go to the other lent
+/// builder, so the gate of one that would make it wait says so at once,
+/// as [`BUSY`]: on 8 November runs queued at one builder for an hour
+/// while the other stood idle. A gate from before it runs it, waiting.
+pub const MOVES: &str = ": NIX_OFFLOAD_MOVES=1; ";
+
 /// Where a build ran and how it ended.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Ran {
@@ -648,12 +662,29 @@ fn derivations_up(
     let mut copying = Command::new(nix);
     match closure(paths, nix).and_then(|closure| lacking(lent, &closure, scratch, ssh)) {
         Some(lacking) if lacking.is_empty() => return Ok(()),
-        Some(lacking) => copying
-            .args(["copy", "--no-recursive", "--to", &lent.store])
-            .args(lacking),
-        None => copying
-            .args(["copy", "--to", &lent.store, "--derivation"])
-            .args(paths),
+        Some(lacking) => {
+            let (count, them) = match lacking.len() {
+                1 => ("1 derivation".to_owned(), "it"),
+                count => (format!("{count} derivations"), "them"),
+            };
+            eprintln!(
+                "nix-offload: copying {count} up to the lent builder {}, which lacks {them}",
+                lent.host
+            );
+            copying
+                .args(["copy", "--no-recursive", "--to", &lent.store])
+                .args(lacking)
+        }
+        None => {
+            eprintln!(
+                "nix-offload: copying the derivations up to the lent builder {} with all \
+                 they're built from, since what it lacks is unknown",
+                lent.host
+            );
+            copying
+                .args(["copy", "--to", &lent.store, "--derivation"])
+                .args(paths)
+        }
     };
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let copied = copying
@@ -754,6 +785,13 @@ const PLANS: &str = "xargs -r nix-store --realise --dry-run 2>&1";
 /// itself, as it would for a build. The builder's account is one its daemon trusts, so they go
 /// unsigned. When any of it fails, the builder builds them, as before.
 fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, nix]: [&str; 2]) {
+    // Said before it's asked, since a fresh builder asks its caches about
+    // every path the build takes, which can run for minutes.
+    eprintln!(
+        "nix-offload: asking the lent builder {} what it would build of {}",
+        lent.host,
+        if paths.len() == 1 { "it" } else { "them" }
+    );
     let Some(planned) = answered(lent, PLANS, paths, scratch, ssh).map(|said| held::planned(&said))
     else {
         return;
@@ -1190,9 +1228,10 @@ impl Source {
 /// made here while this machine is idle, `--print-out-paths`,
 /// what was built brought into this store, derivations' paths,
 /// `--outlive`, a build that goes on once its caller is gone, `--bulk`,
-/// one whose VM tests let others' go first, and `--never-ask`, a run
-/// that asks the lender for no builder.
-pub const TAKES: [&str; 13] = [
+/// one whose VM tests let others' go first, `--never-ask`, a run
+/// that asks the lender for no builder, and `--first`, one that goes
+/// ahead of every other run waiting for room or for a turn.
+pub const TAKES: [&str; 14] = [
     "tree",
     "apply",
     "out",
@@ -1206,7 +1245,27 @@ pub const TAKES: [&str; 13] = [
     "outlive",
     "bulk",
     "never-ask",
+    "first",
 ];
+
+/// The variable, with its value, that marks a run sent first, as
+/// `there --first` sets it: the net's runs are, since on 8 November it
+/// tested nothing for an hour while sessions' runs held the builders.
+pub const FIRST: (&str, &str) = ("NIX_OFFLOAD_FIRST", "1");
+
+/// Whether this run was sent first.
+pub fn first() -> bool {
+    std::env::var_os(FIRST.0).is_some_and(|value| value == FIRST.1)
+}
+
+/// Where a run waiting for a VM builder's room stands among the others:
+/// one sent first ahead of every other, and a bulk one behind them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Rank {
+    First,
+    Plain,
+    Bulk,
+}
 
 /// A ref for one bundle to carry its commit under, here only while it's
 /// made. Worktrees share their repository's refs, so runs from two of them
@@ -1481,9 +1540,29 @@ fn far_within(command: &str, grace: &str, outlives: bool) -> String {
          done; if [ -n \"$held\" ]; then gone=0; else gone=$((gone + 1)); fi; done; \
          {unnamed}rmdir \"$claims\" 2>/dev/null; kill -TERM 0) \
          </dev/null >/dev/null 2>&1 & \
-         trap 'exit 143' HUP TERM; {command}; exit $?"
+         {ROOM_SAID} watching=$!; \
+         trap 'kill $watching 2>/dev/null; exit 143' HUP TERM; {command}; \
+         status=$?; kill $watching 2>/dev/null; exit $status"
     )
 }
+
+/// What a run sent far says every `NIX_OFFLOAD_ROOM_EVERY` seconds, 300 by
+/// default, while its builder runs as many builds as it runs at once, so a
+/// run waiting there for room is never read as a hung one: on 8 November
+/// the net's VM test said nothing for 30 minutes on a busy VM builder and
+/// held main as a stall. A builder with room says nothing, so a hung build
+/// stays silent. Builds are counted by their users, a build user's or an
+/// allocated range of 65536 from Nix's first, and nothing is said where
+/// either can't be read.
+const ROOM_SAID: &str = "(said=0; while kill -0 $$ 2>/dev/null; do sleep 1; \
+     said=$((said + 1)); [ \"$said\" -lt \"${NIX_OFFLOAD_ROOM_EVERY:-300}\" ] && continue; \
+     said=0; most=$(nix config show max-jobs 2>/dev/null); \
+     running=$(ps -eo uid= 2>/dev/null | awk '$1 >= 872415232 \
+     { print int(($1 - 872415232) / 65536) } $1 > 30000 && $1 < 31000 { print \"b\" $1 }' \
+     | sort -u | wc -l); \
+     if [ -n \"$most\" ] && [ \"$running\" -ge \"$most\" ] 2>/dev/null; then \
+     echo \"nix-offload: the builder runs $running builds, as many as it runs at once, \
+     so this may wait there for room\" >&2; fi; done) </dev/null >/dev/null &";
 
 /// ssh to `host`, never asking anything, logging where `said` names, whose
 /// verbose log ends with what it sent, which is what a build put on the
@@ -2234,9 +2313,16 @@ pub fn count(asked: &Asked) -> usize {
     asked.attributes.len()
 }
 
-/// Whether a part is bulk, as `--bulk` asks.
-pub fn bulk(asked: &Asked) -> bool {
-    asked.bulk
+/// Where a part waits for room, as `--first` and `--bulk` ask, the
+/// first winning.
+pub fn rank(asked: &Asked) -> Rank {
+    if first() {
+        Rank::First
+    } else if asked.bulk {
+        Rank::Bulk
+    } else {
+        Rank::Plain
+    }
 }
 
 /// The VM tests a run has sent a VM builder, counted while it goes on: a
@@ -2293,13 +2379,14 @@ pub const VM_ROOM: usize = 4;
 /// A `bulk` run lets every run that isn't go before it, those waiting
 /// and those coming while it waits, and they wait for no bulk run: the
 /// after-merge net sends dozens of VM tests a round, and on 5 November a
-/// session's few waited behind the whole round.
+/// session's few waited behind the whole round. A run sent first goes
+/// ahead of every run that isn't, bulk or not.
 pub fn admitted<'a>(
     dir: &'a Path,
     others: &[&'a Path],
     count: usize,
     room: usize,
-    bulk: bool,
+    rank: Rank,
 ) -> (&'a Path, Option<Claim>) {
     use std::os::fd::AsRawFd;
     let wants = count.clamp(1, room.max(1));
@@ -2314,7 +2401,7 @@ pub fn admitted<'a>(
             return (dir, claim(dir, wants));
         }
         let busy = claimed(dir);
-        let before = ahead(dir, place.as_ref(), bulk);
+        let before = ahead(dir, place.as_ref(), rank);
         if before == 0 && (busy == 0 || busy + wants <= room) {
             // Claimed, and its place given up, before the lock is let go,
             // as dropping it does.
@@ -2323,7 +2410,7 @@ pub fn admitted<'a>(
             return (dir, claimed);
         }
         if place.is_none() {
-            place = queued(dir, wants, bulk);
+            place = queued(dir, wants, rank);
         }
         // Let go before the other's is taken, so two runs waiting on each
         // other's builders never hold one lock each and wait on the other.
@@ -2334,7 +2421,7 @@ pub fn admitted<'a>(
         if let Some((other, claimed)) = others
             .iter()
             .filter(|other| !here_warm || warm(other))
-            .find_map(|other| Some((*other, free(other, wants, room, bulk)?)))
+            .find_map(|other| Some((*other, free(other, wants, room, rank)?)))
         {
             eprintln!(
                 "nix-offload: another VM builder has room now and nothing waiting, so this goes \
@@ -2353,7 +2440,7 @@ pub fn admitted<'a>(
                 "nix-offload: the VM builder has {busy} VM tests of runs here and room for \
                  {room}{queue}, so this waits for room"
             );
-            if bulk {
+            if rank == Rank::Bulk {
                 eprintln!("nix-offload: this run is bulk, so runs that aren't go first");
             }
             said = true;
@@ -2364,9 +2451,9 @@ pub fn admitted<'a>(
 
 /// A claim of `wants` VM tests on the builder `dir`'s lender lends, taken
 /// under its lock only while no run waits there ahead of a run that's
-/// `bulk` or not and it has room for them as [`admitted`] counts it; none
+/// at its `rank` and it has room for them as [`admitted`] counts it; none
 /// otherwise.
-fn free(dir: &Path, wants: usize, room: usize, bulk: bool) -> Option<Claim> {
+fn free(dir: &Path, wants: usize, room: usize, rank: Rank) -> Option<Claim> {
     use std::os::fd::AsRawFd;
     let lock = fs::File::create(dir.join("sending.lock")).ok()?;
     // SAFETY: flock only locks the file it's given, open until dropped.
@@ -2374,7 +2461,7 @@ fn free(dir: &Path, wants: usize, room: usize, bulk: bool) -> Option<Claim> {
         return None;
     }
     let busy = claimed(dir);
-    if ahead(dir, None, bulk) == 0 && (busy == 0 || busy + wants <= room) {
+    if ahead(dir, None, rank) == 0 && (busy == 0 || busy + wants <= room) {
         claim(dir, wants)
     } else {
         None
@@ -2384,9 +2471,9 @@ fn free(dir: &Path, wants: usize, room: usize, bulk: bool) -> Option<Claim> {
 /// A place among the runs waiting for room in `dir`, after every run
 /// already there: named by when it was taken, then this run's pid, so
 /// they sort in the order they came and one whose run ended is seen, and
-/// a [`BULK`] run's marked so. It holds how many VM tests the run `wants`,
-/// which [`waiting`] counts.
-fn queued(dir: &Path, wants: usize, bulk: bool) -> Option<Claim> {
+/// a [`BULK`] or [`FIRST_PLACE`] run's marked so. It holds how many VM
+/// tests the run `wants`, which [`waiting`] counts.
+fn queued(dir: &Path, wants: usize, rank: Rank) -> Option<Claim> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let waiting = dir.join("waiting");
@@ -2399,7 +2486,11 @@ fn queued(dir: &Path, wants: usize, bulk: bool) -> Option<Claim> {
         "{came:020}.{}.{}{}",
         std::process::id(),
         NEXT.fetch_add(1, Ordering::Relaxed),
-        if bulk { BULK } else { "" }
+        match rank {
+            Rank::First => FIRST_PLACE,
+            Rank::Plain => "",
+            Rank::Bulk => BULK,
+        }
     ));
     fs::write(&path, format!("{wants}\n")).ok()?;
     Some(Claim(path))
@@ -2429,12 +2520,14 @@ pub fn waiting(dir: &Path) -> usize {
 /// What ends a bulk run's place among those waiting.
 const BULK: &str = ".bulk";
 
+/// What ends the place of a run sent first.
+const FIRST_PLACE: &str = ".first";
+
 /// How many runs still going wait for room in `dir` ahead of the one at
-/// `place`, or at all for one with no place yet: for a `bulk` run, every
-/// run that isn't and bulk ones that came before it, and for one that
-/// isn't, only those that aren't bulk and came before it. A place whose
-/// run ended without giving it up is taken away here.
-fn ahead(dir: &Path, place: Option<&Claim>, bulk: bool) -> usize {
+/// `place`, or at all for one with no place yet: every run of a rank
+/// ahead of its `rank`, and those of its own that came before it. A place
+/// whose run ended without giving it up is taken away here.
+fn ahead(dir: &Path, place: Option<&Claim>, rank: Rank) -> usize {
     let Ok(entries) = fs::read_dir(dir.join("waiting")) else {
         return 0;
     };
@@ -2446,14 +2539,14 @@ fn ahead(dir: &Path, place: Option<&Claim>, bulk: bool) -> usize {
             .to_str()
             .and_then(|name| name.split('.').nth(1)?.parse().ok());
         let came_before = mine.as_ref().is_none_or(|mine| name < *mine);
-        let theirs_bulk = name.to_str().is_some_and(|name| name.ends_with(BULK));
+        let theirs = match name.to_str() {
+            Some(name) if name.ends_with(FIRST_PLACE) => Rank::First,
+            Some(name) if name.ends_with(BULK) => Rank::Bulk,
+            _ => Rank::Plain,
+        };
         if !pid.is_some_and(runs) {
             let _ = fs::remove_file(entry.path());
-        } else if if bulk {
-            !theirs_bulk || came_before
-        } else {
-            !theirs_bulk && came_before
-        } {
+        } else if theirs < rank || (theirs == rank && came_before) {
             before += 1;
         }
     }
@@ -2748,25 +2841,26 @@ pub fn rejoined(rest: Option<Asked>, part: &Asked) -> Asked {
     }
 }
 
-/// Builds what was asked on a machine nearby, or here when ssh can't reach
-/// it, sending a flake that's a folder here with it. `tar` and `nix` are
-/// the programs run here, beside `ssh`.
-pub fn nearby_run(machine: &Nearby, asked: &Asked, scratch: &Path, programs: [&str; 3]) -> Ran {
+/// Builds what was asked on a machine nearby, sending a flake that's a
+/// folder here with it, or none when ssh can't reach it, so what it was
+/// to take goes with the rest. It was built here instead, unasked: on 8
+/// November a run's part for a Mac gone quiet compiled biome here for 55
+/// minutes beside Joel's work. `tar` and `nix` are the programs run here,
+/// beside `ssh`.
+pub fn nearby_run(
+    machine: &Nearby,
+    asked: &Asked,
+    scratch: &Path,
+    programs: [&str; 3],
+) -> Option<Ran> {
     let [ssh, tar, nix] = programs;
-    match sent_nearby(machine, asked, scratch, ssh, tar, nix) {
-        Ok(ran) if ran.status != UNREACHED => ran,
-        Ok(_) => {
-            eprintln!(
-                "nix-offload: ssh couldn't reach {}, so this builds here",
-                machine.host
-            );
-            here(asked, nix)
-        }
-        Err(error) => {
-            eprintln!("nix-offload: {error}, so this builds here");
-            here(asked, nix)
-        }
-    }
+    let why = match sent_nearby(machine, asked, scratch, ssh, tar, nix) {
+        Ok(ran) if ran.status != UNREACHED => return Some(ran),
+        Ok(_) => format!("ssh couldn't reach {}", machine.host),
+        Err(error) => error,
+    };
+    eprintln!("nix-offload: {why}, so what it takes goes the other way");
+    None
 }
 
 fn sent_nearby(
@@ -3129,10 +3223,16 @@ mod tests {
     /// process group of its own, as sshd does, and ends once its input
     /// closes. A run cut off waits a second for another to claim it.
     fn calling(run: &str, scratch: &Path) -> std::process::Child {
+        calling_within(run, scratch, 1)
+    }
+
+    /// `calling`, with a run cut off going on `grace` seconds for the
+    /// same run sent again.
+    fn calling_within(run: &str, scratch: &Path, grace: u32) -> std::process::Child {
         Command::new("sh")
             .args(["-c", "sh -c \"$1\" & read -r line", "caller", run])
             .env("TMPDIR", scratch)
-            .env("NIX_OFFLOAD_GRACE", "1")
+            .env("NIX_OFFLOAD_GRACE", grace.to_string())
             .env("NIX_OFFLOAD_OUTLIVE", "60")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -3146,21 +3246,23 @@ mod tests {
         // A lender restarting cuts every ssh to its builder, and the run
         // sent again waits on what the first was building. Each run writes
         // its shell's pid once its work is done, so two lines say the
-        // first went on past its caller.
+        // first went on past its caller. Its grace is 5 s: at 1 s, a
+        // builder busy with a suite's other tests on 8 November started
+        // the second caller too late, and the first was ended.
         let folder = tempfile::tempdir().unwrap();
         let done = folder.path().join("done");
         let run = far(&format!(
             "echo started; sleep 8; echo $$ >> {}",
             done.display()
         ));
-        let mut first = calling(&run, folder.path());
+        let mut first = calling_within(&run, folder.path(), 5);
         let mut said = BufReader::new(first.stdout.take().unwrap());
         let mut line = String::new();
         said.read_line(&mut line).unwrap();
         assert_eq!(line, "started\n");
         drop(first.stdin.take());
         first.wait().unwrap();
-        let mut again = calling(&run, folder.path());
+        let mut again = calling_within(&run, folder.path(), 5);
         let mut said = BufReader::new(again.stdout.take().unwrap());
         let mut line = String::new();
         said.read_line(&mut line).unwrap();
@@ -3251,6 +3353,60 @@ mod tests {
             .unwrap();
         assert_eq!(ran.status.code(), Some(1), "{ran:?}");
         assert_eq!(String::from_utf8_lossy(&ran.stdout), "ran\n");
+    }
+
+    /// What a run sent far says while it runs for `seconds`, and how long
+    /// it took, on a builder whose `ps` names `uids` as running and whose
+    /// Nix runs `most` builds at once, asked about every second.
+    fn said_far(seconds: u32, uids: &str, most: &str) -> (String, Duration) {
+        use std::os::unix::fs::PermissionsExt;
+        let folder = tempfile::tempdir().unwrap();
+        let bin = folder.path().join("bin");
+        fs::create_dir(&bin).unwrap();
+        for (name, says) in [("ps", uids), ("nix", most)] {
+            let fake = bin.join(name);
+            fs::write(&fake, format!("#!/bin/sh\nprintf '%s\\n' {says}\n")).unwrap();
+            fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let began = std::time::Instant::now();
+        let ran = Command::new("sh")
+            .args(["-c", &far(&format!("sleep {seconds}"))])
+            .env(
+                "PATH",
+                format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+            )
+            .env("TMPDIR", folder.path())
+            .env("NIX_OFFLOAD_ROOM_EVERY", "1")
+            .process_group(0)
+            .output()
+            .unwrap();
+        assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+        (
+            String::from_utf8_lossy(&ran.stderr).into_owned(),
+            began.elapsed(),
+        )
+    }
+
+    #[test]
+    fn a_run_sent_to_a_full_builder_says_it_may_wait_there_for_room() {
+        // On 8 November the net's VM test said "building on the lent
+        // builder nix-offload-vm-4" and then nothing for 30 minutes, which
+        // the net read as a stall and held main. A builder running as
+        // many builds as it runs at once, two allocated and one build
+        // user's here, says so; one with room says nothing, so a hung
+        // build stays silent.
+        let full = "872415232 872415233 872480768 30001 0 1000";
+        let (said, took) = said_far(3, full, "3");
+        assert!(
+            said.contains(
+                "nix-offload: the builder runs 3 builds, as many as it runs at once, \
+                 so this may wait there for room"
+            ),
+            "{said}"
+        );
+        assert!(took < Duration::from_secs(6), "it ended late: {took:?}");
+        let (said, _) = said_far(3, full, "4");
+        assert_eq!(said, "");
     }
 
     #[test]

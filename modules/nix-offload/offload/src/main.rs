@@ -7,7 +7,7 @@
 //! [--beside PATH]` to name standing builders alone and lend none, or
 //! `nix-offload report --rate DOLLARS` for today's line, or `nix-offload
 //! there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
-//! [--print-out-paths] [--here] [--here-when-idle] [--outlive] [--bulk]
+//! [--print-out-paths] [--here] [--here-when-idle] [--outlive] [--bulk] [--first]
 //! (FLAKE ATTR... | DRV...)` to build a flake, or derivations, on the
 //! builder, or on a machine nearby for systems this one can't build, as
 //! src/there.rs says. A build waiting for a builder
@@ -231,9 +231,10 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     | nix-offload report --rate DOLLARS \
                     | nix-offload there [--never-ask] [-L] [--keep-going] [--apply FUNCTION] \
                     [--out DIR] [--print-out-paths] [--here] [--here-when-idle] [--outlive] \
-                    [--bulk] \
+                    [--bulk] [--first] \
                     (FLAKE ATTR... | DRV...) \
-                    | nix-offload there [--never-ask] --changed [CHANGED-CHECKS ARGUMENT...]";
+                    | nix-offload there [--never-ask] [--first] --changed \
+                    [CHANGED-CHECKS ARGUMENT...]";
 
 /// Set when the service is told to end, so its builder is journalled for the
 /// next start to give back.
@@ -436,21 +437,37 @@ fn main() -> ExitCode {
     serving(&arguments, given)
 }
 
+/// Starts `there` again marked as work run elsewhere, and as sent first
+/// when asked `--first`, unless it's so marked already; how it ended when
+/// it couldn't. A `there` run only waits on a build done elsewhere, mostly,
+/// so the machine's slices let its processes go after other work when
+/// memory runs out; they read the mark from where each started, so this
+/// starts again with it rather than only handing it on. `--first` is
+/// carried the same way, so everything the run starts and sends is marked
+/// sent first, and taken off what it's asked.
+fn marked(arguments: &[String]) -> Option<ExitCode> {
+    let asked_first = arguments.iter().any(|word| word == "--first");
+    if !asked_first && env::var_os(ELSEWHERE.0).is_some_and(|value| value == ELSEWHERE.1) {
+        return None;
+    }
+    let mut again = Command::new("/proc/self/exe");
+    again
+        .arg("there")
+        .args(arguments.iter().filter(|word| *word != "--first"))
+        .env(ELSEWHERE.0, ELSEWHERE.1);
+    if asked_first {
+        again.env(there::FIRST.0, there::FIRST.1);
+    }
+    let again = again.exec();
+    eprintln!("nix-offload: couldn't start there again marked: {again}");
+    Some(ExitCode::from(71))
+}
+
 /// `there`: builds a flake's attributes where src/there.rs says, each part
 /// journalled, exiting with the first status that failed.
 fn there(arguments: &[String]) -> ExitCode {
-    // A `there` run only waits on a build done elsewhere, mostly, so the
-    // machine's slices let its processes go after other work when memory
-    // runs out; they read the mark from where each started, so this starts
-    // again with it rather than only handing it on.
-    if env::var_os(ELSEWHERE.0).is_none_or(|value| value != ELSEWHERE.1) {
-        let again = Command::new("/proc/self/exe")
-            .arg("there")
-            .args(arguments)
-            .env(ELSEWHERE.0, ELSEWHERE.1)
-            .exec();
-        eprintln!("nix-offload: couldn't start there again marked: {again}");
-        return ExitCode::from(71);
+    if let Some(code) = marked(arguments) {
+        return code;
     }
     // What this `there` takes, a word each, so a caller can tell it from
     // an older one, which refuses the flag with 64.
@@ -491,9 +508,18 @@ fn there(arguments: &[String]) -> ExitCode {
         .unwrap_or_default();
     let (near, mut left) = there::shared(&asked, &nearby, machines::answers);
     let mut status = 0;
-    let mut timed = |part: &there::Asked, build: &dyn Fn() -> there::Ran| {
+    for (machine, part) in &near {
+        // What a machine that can't fetch the flake, or that ssh can't
+        // reach, takes goes with the rest, to the builders, rather than
+        // failing there.
         let began = now();
-        let ran = build();
+        let ran = there::fetches(machine, part, &scratch, "ssh")
+            .then(|| there::nearby_run(machine, part, &scratch, ["ssh", "tar", "nix"]))
+            .flatten();
+        let Some(ran) = ran else {
+            left = Some(there::rejoined(left.take(), part));
+            continue;
+        };
         let ended = now();
         there::note(
             &journal,
@@ -507,17 +533,6 @@ fn there(arguments: &[String]) -> ExitCode {
         if status == 0 {
             status = ran.status;
         }
-    };
-    for (machine, part) in &near {
-        // What a machine that can't fetch the flake takes goes with the
-        // rest, to the lent builder or here, rather than failing there.
-        if !there::fetches(machine, part, &scratch, "ssh") {
-            left = Some(there::rejoined(left.take(), part));
-            continue;
-        }
-        timed(part, &|| {
-            there::nearby_run(machine, part, &scratch, ["ssh", "tar", "nix"])
-        });
     }
     let (vm_dirs, vm_parts, left) = vm_apart_from(left, &vm_dir);
     // The rest goes to a second builder while the first is full, when a
@@ -753,8 +768,8 @@ fn at_once<'a>(
                 scope.spawn(move || {
                     let began = now();
                     let (dir, _claim) = if vm {
-                        let bulk = there::bulk(part);
-                        there::admitted(dir, &others, there::count(part), room, bulk)
+                        let rank = there::rank(part);
+                        there::admitted(dir, &others, there::count(part), room, rank)
                     } else {
                         (dir.as_path(), None)
                     };
@@ -1017,8 +1032,8 @@ fn standing(dir: &Path) -> Option<String> {
 }
 
 /// `there --changed`: changed-checks run for the tree here on the lent
-/// builder, else an evaluator with its builds sent on, else a builder
-/// waited for as `waiting` says (`changed.rs` says why). It exits with the
+/// builder, else a warm VM builder, else an evaluator with its builds
+/// sent on, else a builder waited for as `waiting` says (`changed.rs` says why). It exits with the
 /// run's status, or `NOT_TAKEN` when nowhere else took it.
 fn changed_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
     let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
@@ -1092,9 +1107,10 @@ fn changed_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
         folder: &folder,
         scratch: &scratch,
         waiting,
+        moves: false,
     };
     let more_dir = more_dir();
-    let finished = sent.somewhere(arguments, [&dir, &more_dir], vm_apart);
+    let finished = sent.somewhere(arguments, [&dir, &more_dir], &vm_dirs(&vm_dir), vm_apart);
     forget();
     let Some(finished) = finished else {
         // While a lender runs, this machine is one that sends its work
@@ -1140,18 +1156,25 @@ impl Finished {
 /// source, the checks `told` passed at its commit already, the tree's
 /// folder here, the scratch folder its files go in meanwhile, and how it
 /// waits for a builder when none stands.
+#[derive(Clone, Copy)]
 struct Sent<'a> {
     source: &'a there::Source,
     told: &'a [String],
     folder: &'a Path,
     scratch: &'a Path,
     waiting: there::Waiting,
+    /// Whether it may go to the other lent builder, rather than wait.
+    moves: bool,
 }
 
 impl Sent<'_> {
     /// The command changed-checks is sent as with `arguments`.
     fn sending(&self, arguments: &[String]) -> there::Sending {
-        changed::sending(self.source.clone(), arguments, self.told)
+        let mut sending = changed::sending(self.source.clone(), arguments, self.told);
+        if self.moves {
+            sending.command.insert_str(0, there::MOVES);
+        }
+        sending
     }
 
     /// The run on the lent builder a store names, or none when there's no
@@ -1187,13 +1210,43 @@ impl Sent<'_> {
         }
     }
 
+    /// The run on a lent builder, the two taken in turn, or none when
+    /// neither stood or ssh reached neither. While both stand, each is
+    /// asked to turn it away rather than make it wait, so it goes to the
+    /// other; when both do, it waits at the first it asked.
+    fn lent_somewhere(
+        &self,
+        arguments: &[String],
+        lenders: [&Path; 2],
+        vm_apart: bool,
+    ) -> Option<Finished> {
+        let stores = changed::in_turn(lenders, std::process::id()).map(standing);
+        let moving = Self {
+            moves: stores.iter().all(Option::is_some),
+            ..*self
+        };
+        let mut busy = None;
+        for store in &stores {
+            match moving.lent_to(arguments, vm_apart, store.clone()) {
+                Some(finished) if moving.moves && finished.status == there::BUSY => {
+                    busy = busy.or_else(|| store.clone());
+                }
+                Some(finished) => return Some(finished),
+                None => {}
+            }
+        }
+        busy.and_then(|store| self.lent_to(arguments, vm_apart, Some(store)))
+    }
+
     /// Where `there --changed` runs, in its order, or none when nowhere
-    /// did. With `vm_apart`, VM tests go to a builder of their own, as any
-    /// `there` sends them.
+    /// did: a lent builder, else a warm VM builder of `vm`'s. With
+    /// `vm_apart`, VM tests go to a builder of their own, as any `there`
+    /// sends them.
     fn somewhere(
         &self,
         arguments: &[String],
         [dir, more]: [&Path; 2],
+        vm: &[PathBuf],
         vm_apart: bool,
     ) -> Option<Finished> {
         let Self {
@@ -1213,8 +1266,16 @@ impl Sent<'_> {
         if there::lends(more) {
             there::want(more);
         }
-        for lender in changed::in_turn([dir, more], std::process::id()) {
-            if let Some(finished) = on_builder(standing(lender)) {
+        if let Some(finished) = self.lent_somewhere(arguments, [dir, more], vm_apart) {
+            return Some(finished);
+        }
+        // A warm VM builder that stands takes the run while no lent
+        // builder answers, rather than its waiting minutes for one: from
+        // 01:00 to 08:05 on 8 November the lent builders ran out of
+        // memory and went silent, and every run waited and ended 69, while
+        // the VM builders took every VM test sent them by name.
+        for builder in vm.iter().filter(|builder| there::warm(builder)) {
+            if let Some(finished) = on_builder(standing(builder)) {
                 return Some(finished);
             }
         }
@@ -1261,7 +1322,13 @@ impl Sent<'_> {
         {
             eprintln!("nix-offload: evaluating on {}", evaluator.host);
             let ask = |words: &[String]| {
-                changed::evaluated("ssh", &evaluator.host, &self.sending(words), scratch)
+                changed::evaluated(
+                    "ssh",
+                    &evaluator.host,
+                    &self.sending(words),
+                    scratch,
+                    changed::evaluating_longest(),
+                )
             };
             let asked = match ask(&evaluating) {
                 Ok((USAGE, _)) => ask(older),
