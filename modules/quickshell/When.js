@@ -13,8 +13,8 @@ const LATELY_DAYS = 6;
 // How wide a clock's hours and minutes are written.
 const DIGITS = 2;
 
-function midnight(moment) {
-    return new Date(moment.getFullYear(), moment.getMonth(), moment.getDate()).getTime();
+function midnight(date) {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
 // How many days before `now` a moment's day is, by the calendar, so a
