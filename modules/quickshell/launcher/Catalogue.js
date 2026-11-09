@@ -413,48 +413,51 @@ function isPlace(row) {
 
 // Where the row `id` lives, which Ctrl+] goes to as Vim follows a tag:
 // `path`, the ids from one of home's `rows` down to the shallowest row
-// that is it, or null for one living nowhere. It's looked for on the press,
-// breadth first, and only as far as it's found, so nothing is walked while
-// Joel isn't asking: a walk of every row, kept until a provider changed,
-// ran again on most openings and made 96% of People's rows (2026-11-09,
-// `made`). `ways` says a row's steady id (`idOf`), the rows it holds inside
-// the row above it (`holds`), as the launcher makes them, and optionally
-// whether the look goes inside it (`enters`), as a look through places
-// alone does, and whether its budget is spent (`spent`, given the rows
-// listed so far). The look is a key's own work, so a spent budget ends it
-// unfound (`spent`) rather than holding the key (Y2YBTS, 2026-11-09).
-// `listed` says how many rows it listed.
+// that is it, or null. It's looked for on the press, breadth first and
+// only as far as it's found: a walk of every row, kept until a provider
+// changed, made 96% of People's rows (2026-11-09, `made`). `ways` says a
+// row's steady id (`idOf`), the rows it holds inside the row above it
+// (`holds`), and optionally whether the look goes inside it (`enters`),
+// whether before the rest (`first`, as places are: the rest wait, and the
+// look carries on into them, counting no row twice), and whether its
+// budget is spent (`spent`, given the rows `listed`), which ends it unfound
+// rather than holding the key (Y2YBTS, 2026-11-09). A provider makes a
+// list whole, so the budget is asked once it's made, after each row.
 function livesOf(rows, id, ways) {
     const queue = rows.map(row => ({ row, path: [ways.idOf(row)], above: null, depth: 0 }));
-    const said = (path, spent) => ({ path, listed: queue.length, spent });
+    let count = queue.length;
+    const said = (path, spent) => ({ path, listed: count, spent });
     const found = queue.find(one => one.path[0] === id);
     if (found) {
         return said(found.path, false);
     }
     const seen = new Set();
-    for (let next = 0; next < queue.length; next += 1) {
-        if (ways.spent?.(queue.length)) {
-            return said(null, true);
+    const waiting = [];
+    for (let next = 0; next < queue.length || waiting.length > 0; next += 1) {
+        if (next === queue.length) {
+            queue.push(...waiting.splice(0));
         }
         const one = queue[next];
         const key = one.path[one.path.length - 1];
-        if (seen.has(key)) {
-            continue;
-        }
-        seen.add(key);
-        if (!followsInto(one.row, one.depth, one.above)
+        if (seen.has(key) || !followsInto(one.row, one.depth, one.above)
             || (ways.enters && !ways.enters(one.row, one.above))) {
             continue;
         }
-        // Each row held is asked whether it's the one as it's listed, so
-        // the look stops there rather than listing the rest of its depth.
+        if (!one.later && ways.first && !ways.first(one.row, one.above)) {
+            waiting.push(Object.assign({}, one, { later: true }));
+            continue;
+        }
+        seen.add(key);
+        // Each row is asked whether it's the one as it's listed.
         for (const inside of ways.holds(one.row, one.above)) {
             const path = one.path.concat([ways.idOf(inside)]);
             if (path[path.length - 1] === id) {
                 return said(path, false);
             }
-            queue.push({ row: inside, path, above: one.row, depth: one.depth + 1 });
-            if (ways.spent?.(queue.length)) {
+            queue.push({ row: inside, path, above: one.row, depth: one.depth + 1,
+                later: one.later });
+            count += 1;
+            if (ways.spent?.(count)) {
                 return said(null, true);
             }
         }

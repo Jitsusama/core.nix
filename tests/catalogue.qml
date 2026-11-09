@@ -428,6 +428,7 @@ QtObject {
             "collection:applications": [kitty],
             "program:kitty": [window],
             "wifi:home": [row("wifi:home:forget")],
+            "session:quiet": [row("session:quiet:until")],
             "collection:people": [ada],
             "person:ada": [row("mail:1")]
         };
@@ -484,14 +485,21 @@ QtObject {
             [4, false]);
         expect("a row at home is found without asking a place",
             [looked("category:desktop").path, asked], [["category:desktop"], []]);
-        // Through places alone, a place's own rows are found without a
-        // thing's insides made, which the launcher looks through first.
-        const places = { enters: one => Catalogue.isPlace(one) };
-        expect("through places, Lock is found deep in them", looked("session:Lock", places).path,
+        // Places first, as the launcher looks: a thing's insides wait
+        // until no place is left, and the look carries on from them
+        // rather than starting again, so each row is listed once.
+        const places = { first: one => Catalogue.isPlace(one) };
+        expect("places first, Lock is found deep in them", looked("session:Lock", places).path,
             ["category:desktop", "category:energy", "session:Lock"]);
-        expect("through places, a thing's insides aren't found",
-            looked("wifi:home:forget", places).path, null);
-        expect("nor asked", asked.includes("wifi:home"), false);
+        expect("without a thing's insides asked", asked.includes("session:quiet"), false);
+        expect("a thing's own row is found after the places",
+            looked("wifi:home:forget", places).path,
+            ["category:desktop", "wifi:home", "wifi:home:forget"]);
+        expect("a place asked before a thing set aside",
+            asked.indexOf("category:energy") < asked.indexOf("session:quiet"), true);
+        expect("each asked once", asked.length === new Set(asked).size, true);
+        expect("a miss lists each row once, as many as a look in one order",
+            looked("none:here", places).listed, looked("none:here").listed);
         expect("a place is a category or a collection",
             [row("a", { category: {} }), emoji, wifi].map(Catalogue.isPlace), [true, true, false]);
         // A look past its budget gives up, saying so, rather than holding
@@ -501,6 +509,22 @@ QtObject {
         expect("a look past its budget gives up, unfound", [spentLook.path, spentLook.spent],
             [null, true]);
         expect("as soon as it's listed past it", spentLook.listed, 6);
+        // A provider makes a list whole, so the budget is asked once it's
+        // made: the look gives up partway down Desktop's rows, asking no
+        // place after it.
+        expect("a list made whole, then given up at once", asked,
+            ["collection:applications", "category:desktop"]);
+        // One budget runs across places and the things set aside after
+        // them: the places list 12 rows, so a look allowed 12 gives up in
+        // the first thing it goes into, and one allowed 13 finds the row.
+        const across = most => looked("wifi:home:forget",
+            Object.assign({ spent: listed => listed > most }, places));
+        const short = across(12);
+        expect("a budget runs on from the places into things",
+            [short.path, short.spent, short.listed, asked.includes("session:quiet")],
+            [null, true, 13, true]);
+        expect("counting the places once", across(13).path,
+            ["category:desktop", "wifi:home", "wifi:home:forget"]);
         expect("a miss within it isn't given up", looked("none:here").spent, false);
         // Where Ctrl+] goes from where the launcher stands: the place that
         // holds it and the row there, or nowhere when it's held here.

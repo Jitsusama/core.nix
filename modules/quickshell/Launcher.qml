@@ -3420,8 +3420,9 @@ Scope {
     // How many rows one look may list before it gives up, saying the row
     // isn't found here: the look is the key's own work, so it's bounded
     // rather than left to hold the key (Y2YBTS, 2026-11-09). Joel's home
-    // places list a few hundred rows between them (2026-11-09), and a count
-    // rather than a time keeps the VM's slow drawing from cutting it short.
+    // places listed 344 rows between them, People's 117 the most (the
+    // `names` call, 2026-11-09), and a count rather than a time keeps the
+    // VM's slow drawing from cutting it short.
     readonly property int livesMost: 3000
 
     // Where the row `id` lives, looked for on the press that asks
@@ -3430,8 +3431,9 @@ Scope {
     // made 18,693 of People's 19,461 rows and 5,876 of Agents' 9,865 at
     // home in Joel's morning, so keys landed behind it (2026-11-09). The
     // look goes through places first, what home's categories and
-    // collections list, where a notice's program, a found act or Do Not
-    // Disturb lives, and only then into things. Neither goes into a place
+    // collections list, where a notice's program or Do Not Disturb lives,
+    // and only then on into the things it set aside, each row listed and
+    // counted against the budget once. It never goes into a place
     // that says itself at home, as Agents does, whose rows wait to be
     // wanted (Wanted.js), nor a person's insides, which ask every source
     // (People.qml's `parted`). It says `path`, by steady ids from home or
@@ -3439,22 +3441,14 @@ Scope {
     function livesOf(id) {
         const looking = Date.now();
         const before = tallies();
-        const rows = home();
-        let listed = 0;
-        const unsaid = one => one.from?.saysAtHome !== true;
-        const ways = enters => ({
+        const said = Catalogue.livesOf(home(), id, {
             idOf: one => steadyId(one),
             holds: (one, above) => catalogueHolds(one,
                 above === null || collects({ row: above })),
-            enters: enters,
-            spent: now => listed + now > livesMost
+            enters: one => one.from?.saysAtHome !== true,
+            first: one => Catalogue.isPlace(one),
+            spent: listed => listed > livesMost
         });
-        const places = Catalogue.livesOf(rows, id,
-            ways(one => Catalogue.isPlace(one) && unsaid(one)));
-        listed = places.listed;
-        const things = places.path === null && !places.spent
-            ? Catalogue.livesOf(rows, id, ways(unsaid)) : null;
-        const said = things ?? places;
         const after = tallies();
         let made = 0;
         for (const name of Object.keys(after)) {
@@ -3462,8 +3456,8 @@ Scope {
             livesMade[name] = (livesMade[name] ?? 0) + more;
             made += more;
         }
-        return { path: said.path, listed: listed + (things ? things.listed : 0), made: made,
-            took: Date.now() - looking, spent: said.spent };
+        return { path: said.path, listed: said.listed, made: made, took: Date.now() - looking,
+            spent: said.spent };
     }
 
     // A row whose side runs on, as a running stopwatch's count, says it as
