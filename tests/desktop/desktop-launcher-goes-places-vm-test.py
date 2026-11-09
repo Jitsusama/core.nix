@@ -1018,6 +1018,121 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     )
     desktop.step_in("ret")
     walk_passwords(desktop)
+    walk_passwords_for_you(desktop)
+
+
+# What the passwords daemon keeps of a check that found the console's password breached and
+# shared with GitHub's, as Joel's state folder holds it: no secret and no hash, only counts.
+CHECKED = "~/.local/state/passwords/checked.json"
+HOUR_MS = 3_600_000
+TODO = "Change the Passwords the Check Found"
+
+
+def walk_passwords_for_you(desktop: Desktop) -> None:
+    """Walk For You's one to-do for what the last check found, read as the daemon starts.
+
+    What a check found is written where the daemon keeps it, and the daemon started again, so
+    it's read from its unit's state folder as after a boot; For You then holds one to-do for
+    it, saying how many are breached and reused, and Return steps into those logins alone, read
+    from 1Password through op's stand-in. One path through that wiring is all this walks: the
+    to-do's cases are the-passwords-show-every-figure-but-the-secret's and
+    for-you-weighs-what-needs-joel's, and the daemon keeping a check, passwords-holds-no-secret's.
+    At scale 2 in the gallery, where Joel judges it.
+    """
+    now = int(desktop.as_account("date +%s%3N"))
+    kept = {
+        "version": 1,
+        "at": now - HOUR_MS,
+        "since": now - 3 * HOUR_MS,
+        "cleared": None,
+        "health": {
+            "entry:1password:console": {"reused": 1, "breached": 3},
+            "entry:1password:github": {"reused": 1, "breached": 0},
+        },
+    }
+    desktop.as_account(
+        f"install -d -m 700 ~/.local/state/passwords && umask 077 && "
+        f"printf %s {shlex.quote(json.dumps(kept))} > {CHECKED}"
+    )
+    desktop.as_account("systemctl --user restart passwords.service")
+    shots = desktop.values["shots"]
+    try:
+        if shots:
+            desktop.as_account("niri msg output winit scale 2")
+        into_the_todo(desktop)
+        # Its drawer is out, though at scale 2 there's no room for it beside the card.
+        desktop.launcher_until(
+            lambda shown: shown["drawer"]["out"] and shown["drawer"]["title"] == TODO
+        )
+        shown = desktop.showing()
+        assert shown["selected"]["side"] == "1 breached \u00b7 2 reused", shown["selected"]
+        assert shown["drawer"]["eyebrow"] == "from Passwords \u00b7 to do", shown["drawer"]
+        desktop.shoot("launcher-for-you-passwords-todo")
+        # The keys go into its drawer, which draws it wherever there's room, to read its facts.
+        machine = desktop.machine
+        machine.send_key("ctrl-w")
+        machine.send_key("l")
+        desktop.launcher_until(lambda shown: shown["drawer"]["keys"] and shown["drawer"]["shown"])
+        drawer = desktop.showing()["drawer"]
+        facts = dict(zip(drawer["drawnFacts"], drawer["values"], strict=True))
+        assert list(facts) == [
+            "Weight",
+            "Takes",
+            "Waiting Since",
+            "Last Checked",
+            "Clears When",
+            "Breached",
+            "Reused",
+        ], facts
+        assert (facts["Breached"], facts["Reused"]) == ("1", "2"), facts
+        desktop.shoot("launcher-for-you-passwords-todo-drawer")
+        machine.send_key("ctrl-w")
+        machine.send_key("h")
+        desktop.launcher_until(lambda shown: not shown["drawer"]["keys"])
+        # Return steps into the logins it's for, never acting, which asks 1Password for them as
+        # stepping into Passwords does. Until it's answered the list leads with 1Password
+        # locked, so it's opened again once it has, to stand as Joel finds it then.
+        desktop.step_in("ret")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["held"][-1:] == [TODO]
+                and {"GitHub", "Lighthouse Console"} <= set(shown["rows"])
+            )
+        )
+        desktop.close_launcher()
+        into_the_todo(desktop)
+        desktop.step_in("ret")
+        # The card, which no check found, isn't there.
+        desktop.launcher_until(
+            lambda shown: (
+                shown["held"][-1:] == [TODO] and shown["rows"] == ["GitHub", "Lighthouse Console"]
+            )
+        )
+        desktop.shoot("launcher-for-you-passwords-list")
+        desktop.close_launcher()
+    finally:
+        if shots:
+            desktop.as_account("niri msg output winit scale 1")
+        # Every subtest after finds the daemon as it was, holding no check.
+        desktop.as_account(f"rm -f {CHECKED} && systemctl --user restart passwords.service")
+
+
+def into_the_todo(desktop: Desktop) -> None:
+    """Open Now, step into For You and rest on the to-do for what the last check found."""
+    desktop.as_account("qs ipc call launcher collection on")
+    desktop.launcher_ready()
+    # For You names it first, nothing else waiting on Joel here, once the shell has asked the
+    # daemon started again.
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "For You"
+            and shown["selected"]["count"] == TODO
+            and shown["selected"]["side"] == "1"
+        )
+    )
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: TODO in shown["rows"])
+    desktop.down_to(TODO)
 
 
 def walk_passwords(desktop: Desktop) -> None:
