@@ -235,6 +235,93 @@ pub fn to_build(printed: &str, vm: bool) -> Vec<String> {
         .collect()
 }
 
+/// Where the net keeps the tests it holds in quarantine, as changed-checks'
+/// own `quarantine.rs` reads it: a test that failed and then passed on the
+/// same input, whose failure says nothing about a change.
+pub const QUARANTINE: &str = "tools/merge-net/quarantine.json";
+
+/// A test main holds in quarantine, and why its failure blocks nothing.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Held {
+    pub test: String,
+    pub why: String,
+}
+
+/// The quarantine list as origin's main holds it in the tree at `folder`,
+/// read from main rather than the tree, so a branch can't quarantine its
+/// own failure. A tree without one quarantines nothing, and so does a list
+/// that doesn't read, said so, so every failure still blocks.
+pub fn held_on_main(folder: &Path) -> Vec<Held> {
+    let shown = Command::new("git")
+        .arg("-C")
+        .arg(folder)
+        .args(["show", &format!("origin/main:{QUARANTINE}")])
+        .stderr(Stdio::null())
+        .output();
+    let Some(shown) = shown.ok().filter(|shown| shown.status.success()) else {
+        return Vec::new();
+    };
+    held(&String::from_utf8_lossy(&shown.stdout)).unwrap_or_else(|why| {
+        eprintln!(
+            "nix-offload: {QUARANTINE} on main doesn't read, so nothing is quarantined: {why}"
+        );
+        Vec::new()
+    })
+}
+
+/// Read a quarantine list, each entry's test with why it blocks nothing,
+/// said as changed-checks says it.
+pub fn held(listed: &str) -> Result<Vec<Held>, String> {
+    let list: serde_json::Value =
+        serde_json::from_str(listed).map_err(|error| error.to_string())?;
+    let entries = list.as_array().ok_or("it isn't a list")?;
+    entries
+        .iter()
+        .map(|entry| {
+            let test = entry["test"]
+                .as_str()
+                .ok_or_else(|| format!("an entry names no test: {entry}"))?;
+            let reason = entry["reason"].as_str().unwrap_or("no reason given");
+            let owner = entry["owner_pr"]
+                .as_u64()
+                .map_or_else(String::new, |pr| format!("; #{pr} owns it"));
+            Ok(Held {
+                test: test.to_owned(),
+                why: format!("main quarantines it ({reason}{owner})"),
+            })
+        })
+        .collect()
+}
+
+/// `targets` parted into those whose failure blocks and those main holds,
+/// each with why. A test's part, such as its gallery, `vm-a.gallery`, is
+/// held with its test, since it fails as its test does.
+pub fn apart(targets: Vec<String>, held: &[Held]) -> (Vec<String>, Vec<(String, String)>) {
+    let mut blocking = Vec::new();
+    let mut alone = Vec::new();
+    for target in targets {
+        let test = target.split('.').next().unwrap_or(&target);
+        match held.iter().find(|held| held.test == test) {
+            Some(held) => alone.push((target, held.why.clone())),
+            None => blocking.push(target),
+        }
+    }
+    (blocking, alone)
+}
+
+/// Build each held test alone with `build`, after the rest, so a failure is
+/// known for the test it was, and say of each that failed that it blocks
+/// nothing: changed-checks' own run does the same, and without it every
+/// run sent to an evaluator failed on a test main holds, and left no
+/// record of passing for the gate (9 November).
+pub fn built_alone(held: &[(String, String)], build: &mut dyn FnMut(&[String]) -> i32) {
+    for (name, why) in held {
+        if build(std::slice::from_ref(name)) != 0 {
+            eprintln!("nix-offload: {name} failed, but {why}, so it blocks nothing");
+        }
+    }
+}
+
 /// The two lent builders in the order run `run` tries them: every other
 /// run tries the second first. Each evaluation waits on its builder for a
 /// turn, and on 8 November 33 runs waited on the first for its 4 while the
@@ -524,5 +611,68 @@ mod tests {
         let printed = "added    a\nchanged  vm-b\nremoved  c\nbroken   d\nchanged  e\n";
         assert_eq!(to_build(printed, true), ["a", "vm-b", "e"]);
         assert_eq!(to_build(printed, false), ["a", "e"]);
+    }
+
+    #[test]
+    fn a_list_says_why_each_test_it_holds_blocks_nothing() {
+        let listed = r#"[{"test": "vm-a", "reason": "failed then passed at abc", "owner_pr": 12},
+            {"test": "vm-b", "reason": "flaky", "owner_pr": null}]"#;
+        assert_eq!(
+            held(listed),
+            Ok(vec![
+                Held {
+                    test: "vm-a".to_owned(),
+                    why: "main quarantines it (failed then passed at abc; #12 owns it)".to_owned(),
+                },
+                Held {
+                    test: "vm-b".to_owned(),
+                    why: "main quarantines it (flaky)".to_owned(),
+                },
+            ])
+        );
+        assert!(held("{}").is_err(), "a list that isn't one read as one");
+        assert!(
+            held(r#"[{"reason": "x"}]"#).is_err(),
+            "an entry naming no test read"
+        );
+    }
+
+    #[test]
+    fn a_tree_without_main_holds_nothing() {
+        let tree = tempfile::tempdir().expect("a folder for the tree");
+        assert_eq!(held_on_main(tree.path()), []);
+    }
+
+    #[test]
+    fn held_tests_and_their_parts_are_parted_from_those_that_block() {
+        let held = [Held {
+            test: "vm-a".to_owned(),
+            why: "main quarantines it (flaky)".to_owned(),
+        }];
+        let targets = words("formatting vm-a vm-a.gallery vm-ab");
+        let (blocking, alone) = apart(targets, &held);
+        assert_eq!(blocking, ["formatting", "vm-ab"]);
+        let why = "main quarantines it (flaky)".to_owned();
+        assert_eq!(
+            alone,
+            [
+                ("vm-a".to_owned(), why.clone()),
+                ("vm-a.gallery".to_owned(), why)
+            ]
+        );
+    }
+
+    #[test]
+    fn each_held_test_is_built_alone_and_its_failure_blocks_nothing() {
+        let held = [
+            ("vm-a".to_owned(), "flaky".to_owned()),
+            ("vm-b".to_owned(), "flaky".to_owned()),
+        ];
+        let mut asked = Vec::new();
+        built_alone(&held, &mut |names| {
+            asked.push(names.to_vec());
+            i32::from(names[0] == "vm-a")
+        });
+        assert_eq!(asked, [vec!["vm-a".to_owned()], vec!["vm-b".to_owned()]]);
     }
 }
