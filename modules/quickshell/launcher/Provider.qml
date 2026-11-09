@@ -221,7 +221,8 @@ Scope {
     }
     // Whether homeSays says something, so home reads none of its rows: a
     // property rather than asking it, since what it says may cost a walk
-    // of everything it holds.
+    // of everything it holds. Such a source names what it holds without
+    // making its rows, by a memberNames of its own given nothing.
     property bool saysAtHome: false
 
     // Whether its rows are wanted now: walked from outside, searched, held,
@@ -264,7 +265,8 @@ Scope {
     // The names its row says after its own: each thing it holds, but for
     // one folded into it, as Agents' Start a Session does something there
     // rather than being one of what it holds. Given what it holds where
-    // its row has read it already, so a row reads it once.
+    // its row has read it already, so a row reads it once; one that
+    // saysAtHome is asked with nothing, and names them from elsewhere.
     function memberNames(held = everything()) {
         return held.filter(one => one.folded !== true).map(one => one.name);
     }

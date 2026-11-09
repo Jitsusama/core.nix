@@ -3078,12 +3078,17 @@ Scope {
         const name = source.settings.name;
         const opener = Shortcuts.actions.find(action => action.opens === name);
         const title = collection.title ?? collection.noun;
-        // What it holds is read once, for its names and for its count.
-        const held = read ? source.everything() : [];
-        const members = read ? source.memberNames(held) : [];
+        // What it holds is read once, for its names and for its count. A
+        // place that says how it stands itself (saysAtHome) isn't read for
+        // its rows at all, so they wait to be wanted (Wanted.js), and it
+        // names what it holds without making them, as Agents does.
+        const rowsRead = read && !source.saysAtHome;
+        const held = rowsRead ? source.everything() : [];
+        const members = !read ? [] : rowsRead ? source.memberNames(held)
+            : source.memberNames();
         const none = collection.none ?? "";
-        const side = read ? PlaceRow.side(source.homeSays(), source.counted(held),
-            members.length === 0 && none !== "") : "";
+        const side = read ? PlaceRow.side(source.homeSays(),
+            rowsRead ? source.counted(held) : "", members.length === 0 && none !== "") : "";
         const row = {
             key: `collection:${name}`,
             verb: "open",
