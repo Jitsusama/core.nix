@@ -8079,6 +8079,8 @@
       "said": {
         "built-in": "built in",
         "screen": "screen",
+        "chosen": "chosen",
+        "set": "set",
         "steps": "{now} of {most} steps",
         "the-room": "the room",
         "on-its-way": "on its way to {share}",
@@ -8273,11 +8275,6 @@
       }
     },
     {
-      "id": "displays:rotate",
-      "in": "displays",
-      "name": "Rotate {way}"
-    },
-    {
       "id": "displays:depth",
       "in": "displays",
       "name": "Colour Depth",
@@ -8380,8 +8377,13 @@
       "id": "displays:variable",
       "in": "displays",
       "name": "Variable Refresh",
+      "verb": "turn off",
+      "states": {
+        "off": {
+          "verb": "turn on"
+        }
+      },
       "said": {
-        "supported": "supported",
         "unsupported": "unsupported",
         "on": "on",
         "off": "off"

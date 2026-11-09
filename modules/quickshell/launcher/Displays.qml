@@ -216,9 +216,13 @@ Provider {
         if (light === null)
             return [];
         const rows = [Object.assign(setting(output, "brightness", `${light.share}%`, "brightness",
-            levels.map(each => choice(`brightness-${each}`,
-                Words.name("displays:brightness:level", "", { n: each }), "brightness",
-                light.share === each, () => provider.brighten(each)))), {
+            levels.map(each => choice({
+                key: `brightness-${each}`,
+                name: Words.name("displays:brightness:level", "", { n: each }),
+                mark: "brightness",
+                chosen: light.share === each,
+                run: () => provider.brighten(each)
+            }))), {
             graph: level(light.now, light.most),
             // With the lid shut nothing hears the room, and a monitor has
             // no steps of the panel's, so it only says what sets it.
@@ -543,10 +547,6 @@ Provider {
         return `${output.make} ${model}`.trim() || output.name;
     }
 
-    function hertz(mode) {
-        return Math.round(mode.refresh_rate / 1000);
-    }
-
     function mode(output) {
         return output.current_mode === null ? null : output.modes[output.current_mode];
     }
@@ -556,7 +556,7 @@ Provider {
         if (now === null || output.logical === null)
             return "off";
         // The scale as its part and its drawer say it, "1.75\u00d7".
-        return `${now.width} \u00d7 ${now.height} \u00b7 ${hertz(now)} Hz `
+        return `${now.width} \u00d7 ${now.height} \u00b7 ${Screens.hertz(now.refresh_rate)} `
             + `\u00b7 scale ${Screens.scale(output.logical.scale)}`;
     }
 
@@ -658,6 +658,13 @@ Provider {
         return partSaid("rotation", transform);
     }
 
+    // The vocabulary as Screens.js says a screen in it.
+    readonly property var screenWords: ({
+        named: id => provider.partName(id),
+        said: (id, key) => provider.partSaid(id, key),
+        turned: transform => provider.turnedSaid(transform)
+    })
+
     // A screen's drawer: its connector and what it is over its name, both
     // as written, since a connector is a name from the world (VKCF3Z,
     // 2026-11-07); then what moves most, the light where it lights this
@@ -716,11 +723,8 @@ Provider {
             eyebrowNames: true,
             title: named(output),
             // Its serial, from niri or the EDID, identifies it, so ends it.
-            facts: Plate.identified(facts.concat(Screens.facts(output, {
-                named: id => provider.partName(id),
-                said: (id, key) => provider.partSaid(id, key),
-                turned: transform => provider.turnedSaid(transform)
-            }, settings), edid,
+            facts: Plate.identified(facts.concat(Screens.facts(output, screenWords, settings),
+                edid,
                 physical === "" ? [] : [{ label: partName("size"), value: physical }]),
                 [partName("serial")])
         };
@@ -745,18 +749,27 @@ Provider {
             : provider.ask(provider.darkening)
     }
 
-    // A choice wears the theme's mark of the setting it's for, by name.
-    // Setting it keeps the launcher, the setting saying what it's at now.
-    function choice(key, name, mark, chosen, run, keywords) {
+    // A setting's choice, said by its value alone, its setting named in the
+    // path above (design.md), with what it is beside it, as a mode the
+    // screen prefers, muted in its note, and Return's verb "set", as
+    // every choice's is (VKCF3Z, 2026-11-09). It wears the theme's mark of
+    // the setting it's for, by name, and its setting's name is a hidden
+    // word, so "scale 1.5" still finds 1.5\u00d7 from outside. Setting it
+    // keeps the launcher, the setting saying what it's at now. `made`
+    // holds its key, name, mark, whether it's chosen, its run, and its
+    // hidden words and note where it has them.
+    function choice(made) {
         return thing({
-            key: `verb:display-${key}`,
-            name: name,
-            keywords: keywords ?? "",
-            glyph: Theme.glyph[mark],
+            key: `verb:display-${made.key}`,
+            name: made.name,
+            verb: partSaid("", "set"),
+            keywords: [partName(made.mark), made.keywords ?? ""].join(" ").trim(),
+            note: made.note ?? "",
+            glyph: Theme.glyph[made.mark],
             hue: "action",
-            side: chosen ? "chosen" : "",
+            side: made.chosen ? partSaid("", "chosen") : "",
             stays: true,
-            run: run
+            run: made.run
         });
     }
 
@@ -812,7 +825,7 @@ Provider {
     // A display's right arrow: turning it on while it's off or dark; while
     // it's lit, each of its settings as a part saying how it's set, whose
     // step in offers the others (and whose choices what's typed finds from
-    // here, so "scale 1.5" is Scale to 1.5\u00d7), then the ways it turns
+    // here, so "scale 1.5" is Scale's 1.5\u00d7), then the ways it turns
     // off that Screens.js gives, then what its EDID says.
     function verbs(output) {
         const ways = Screens.ways(output, shown, Niri.powersOffEach).map(way => powerRow(way));
@@ -870,16 +883,36 @@ Provider {
             () => choices);
     }
 
-    // How niri turns a display, as a part says it and as its choice does,
-    // in the vocabulary's words; niri turns "90" counter-clockwise.
-    readonly property var turns: ["Normal", "90", "180", "270"].map(transform => {
-        const side = (Words.of("displays:rotation").said ?? {})[transform] ?? transform;
-        return {
-            transform: transform,
-            side: side,
-            name: Words.name("displays:rotate", "", { way: side })
-        };
-    })
+    // How niri turns a display, its four turns then its four mirrored, as a
+    // part says it and as its choice does, in the vocabulary's words; niri
+    // turns "90" counter-clockwise.
+    readonly property var turns: Screens.transforms().map(transform => ({
+        transform: transform,
+        name: turnedSaid(transform)
+    }))
+
+    // Variable Refresh, a switch keeping its name as it flips, saying on or
+    // off, Return flipping it and the launcher staying (VKCF3Z,
+    // 2026-11-09). niri's on-demand variable refresh, on only while a
+    // window rule asks, would make it a setting of three; nothing here
+    // sets that, so it's on or off.
+    function variableSwitch(output) {
+        const on = output.vrr_enabled === true;
+        return thing({
+            key: `displays:${output.name}:variable`,
+            wordsId: "displays:variable",
+            wordState: on ? "" : "off",
+            name: partName("variable"),
+            verb: Words.verb("displays:variable", on ? "" : "off"),
+            // Its own mark, as a switch wears its thing's (VKCF3Z,
+            // 2026-11-09): one mark, one meaning, so never Refresh's.
+            glyph: Theme.glyph.variableRefresh,
+            hue: "machine",
+            side: partSaid("variable", on ? "on" : "off"),
+            stays: true,
+            run: () => change(output, { Vrr: { vrr: { vrr: !on, on_demand: false } } })
+        });
+    }
 
     readonly property var scales: [1, 1.25, 1.5, 1.75, 2, 2.5, 3]
 
@@ -893,49 +926,62 @@ Provider {
         // 2026-11-07). Its share is a hidden word, so "scale 150", as niri
         // and other systems say it, still finds 1.5\u00d7.
         const rows = lightRows(output).concat([setting(output, "scale", Screens.scale(scale),
-            "scale", scales.map(each => choice(`scale-${each}`,
-                `Scale to ${Screens.scale(each)}`, "scale",
-                Math.abs(each - scale) < 0.01,
-                () => change(output, { Scale: { scale: { Specific: each } } }),
-                `${Math.round(each * 100)}%`)))]);
+            "scale", scales.map(each => choice({
+                key: `scale-${each}`,
+                name: Screens.scale(each),
+                mark: "scale",
+                chosen: Math.abs(each - scale) < 0.01,
+                run: () => change(output, { Scale: { scale: { Specific: each } } }),
+                keywords: `${Math.round(each * 100)}%`
+            })))]);
         if (now !== null) {
-            const rates = output.modes.filter(m => m.width === now.width && m.height === now.height);
-            const refreshes = rates.length < 2 ? [] : rates.map(each =>
-                choice(`rate-${hertz(each)}`, `Refresh at ${hertz(each)} Hz`, "refresh",
-                    each === now, () => change(output, { Mode: { mode: { Specific: {
-                        width: each.width,
-                        height: each.height,
-                        refresh: each.refresh_rate / 1000
-                    } } } })));
-            if (output.vrr_supported) {
-                const vrr = { vrr: !output.vrr_enabled, on_demand: false };
-                refreshes.push(choice("vrr", output.vrr_enabled ? "Stop variable refresh"
-                    : "Use variable refresh", "refresh", false,
-                    () => change(output, { Vrr: { vrr } })));
-            }
-            const variable = output.vrr_enabled ? ", variable" : "";
-            rows.push(setting(output, "refresh", `${hertz(now)} Hz${variable}`, "refresh",
-                refreshes));
-            const sizes = [];
-            for (const each of output.modes)
-                if (!sizes.some(size => size.width === each.width && size.height === each.height))
-                    sizes.push(each);
+            // Each by its value, every digit niri gives, the mode the
+            // screen prefers noted so, as a custom one is (VKCF3Z,
+            // 2026-11-09).
+            const rates = Screens.refreshes(output, screenWords);
+            // Its side says the rate as its choices do, every digit, so
+            // 59.94 Hz running isn't said as the 60 Hz beside it.
+            rows.push(setting(output, "refresh", Screens.hertz(now.refresh_rate), "refresh",
+                rates.length < 2 ? [] : rates.map(each => choice({
+                    // By the mode's place in niri's list, the one key a
+                    // mode has even where two share a size and a rate.
+                    key: `mode-${output.modes.indexOf(each.mode)}`,
+                    name: each.value,
+                    mark: "refresh",
+                    chosen: each.chosen,
+                    run: () => change(output, { Mode: { mode: { Specific: {
+                        width: each.mode.width,
+                        height: each.mode.height,
+                        refresh: each.mode.refresh_rate / 1000
+                    } } } }),
+                    note: each.note
+                }))));
+            if (output.vrr_supported)
+                rows.push(variableSwitch(output));
+            const sizes = Screens.sizes(output, screenWords);
             rows.push(setting(output, "resolution", `${now.width} \u00d7 ${now.height}`,
                 "resolution",
-                sizes.length < 2 ? [] : sizes.map(each =>
-                    choice(`size-${each.width}x${each.height}`,
-                        `Use ${each.width} \u00d7 ${each.height}`, "resolution",
-                        each.width === now.width && each.height === now.height,
-                        () => change(output, { Mode: { mode: { Specific: {
-                            width: each.width,
-                            height: each.height,
-                            refresh: null
-                        } } } })))));
+                sizes.length < 2 ? [] : sizes.map(each => choice({
+                    key: `size-${each.mode.width}x${each.mode.height}`,
+                    name: each.value,
+                    mark: "resolution",
+                    chosen: each.chosen,
+                    run: () => change(output, { Mode: { mode: { Specific: {
+                        width: each.mode.width,
+                        height: each.mode.height,
+                        refresh: null
+                    } } } }),
+                    note: each.note
+                }))));
         }
         rows.push(setting(output, "rotation", turnedSaid(output.logical.transform), "rotation",
-            turns.map(each => choice(`turn-${each.transform}`, each.name, "rotation",
-                output.logical.transform === each.transform,
-                () => change(output, { Transform: { transform: each.transform } })))));
+            turns.map(each => choice({
+                key: `turn-${each.transform}`,
+                name: each.name,
+                mark: "rotation",
+                chosen: output.logical.transform === each.transform,
+                run: () => change(output, { Transform: { transform: each.transform } })
+            }))));
         return rows;
     }
 

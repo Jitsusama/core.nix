@@ -15,7 +15,8 @@
 // powers-off-each-output.patch), the only niri that says `powered_off`.
 // Displays.qml reads niri and lays the plate, the light and what the
 // EDID says around these, its white point and primaries said here from
-// the figures desk-facts gives.
+// the figures desk-facts gives. Its settings' choices of mode and turn
+// are said here too, each by its value, the mode it prefers noted so.
 
 // Two items of one value, as a figure's runs are set apart.
 const APART = " \u00b7 ";
@@ -115,6 +116,67 @@ function preferredOf(output) {
     return (output.modes ?? []).find(mode => mode.is_preferred) ?? null;
 }
 
+// niri's eight transforms, as Rotation offers them: the four turns, then
+// the four mirrored (VKCF3Z, 2026-11-09).
+const TRANSFORMS = ["Normal", "90", "180", "270",
+    "Flipped", "Flipped90", "Flipped180", "Flipped270"];
+
+function transforms() {
+    return TRANSFORMS.slice();
+}
+
+// What a mode's choice notes after its value: "preferred" where the EDID
+// prefers it, "custom" where it's a custom mode niri runs, in
+// displays:modes' words (`words.said(id, key)`).
+function noted(preferred, custom, words) {
+    return [preferred ? words.said("modes", "preferred") : "",
+        custom ? words.said("modes", "custom") : ""].filter(part => part !== "").join(APART);
+}
+
+// Refresh's choices: each rate the mode it runs is offered at, at its
+// size, each { mode, value, note, chosen }, said by its value alone with
+// every digit niri gives, so 59.94 Hz and 60 Hz are two (design.md: a
+// choice is its value, its setting named in the path above).
+function refreshes(output, words) {
+    const now = modeOf(output);
+    if (now === null) {
+        return [];
+    }
+    return output.modes.filter(mode => mode.width === now.width && mode.height === now.height)
+        .map(mode => ({
+            mode,
+            value: hertz(mode.refresh_rate),
+            note: noted(mode.is_preferred === true,
+                mode === now && output.is_custom_mode === true, words),
+            chosen: mode === now
+        }));
+}
+
+// Resolution's choices: each size once, in niri's order, as Refresh's
+// are, preferred where any of its modes is.
+function sizes(output, words) {
+    const now = modeOf(output);
+    const found = [];
+    for (const mode of output.modes ?? []) {
+        const at = found.find(each => each.mode.width === mode.width
+            && each.mode.height === mode.height);
+        if (at === undefined) {
+            found.push({ mode, preferred: mode.is_preferred === true });
+        } else if (mode.is_preferred === true) {
+            at.preferred = true;
+        }
+    }
+    return found.map(({ mode, preferred }) => {
+        const chosen = now !== null && mode.width === now.width && mode.height === now.height;
+        return {
+            mode,
+            value: size(mode.width, mode.height),
+            note: noted(preferred, chosen && output.is_custom_mode === true, words),
+            chosen
+        };
+    });
+}
+
 // Its facts, each { label, value }, in the drawer's order (VKCF3Z,
 // 2026-11-07): what it runs first, then where it sits, then what it
 // offers and is. `words` names each (`named(id)`, displays:<id>), says the
@@ -136,10 +198,9 @@ function facts(output, words, settings) {
             output.is_custom_mode ? words.said("modes", "custom") : ""]
             .filter(part => part !== "").join(APART));
         add("refresh", now.refresh_rate % MILLIHERTZ === 0 ? "" : hertz(now.refresh_rate));
-        add("variable", output.vrr_supported
-            ? [words.said("variable", "supported"),
-                words.said("variable", output.vrr_enabled ? "on" : "off")].join(APART)
-            : words.said("variable", "unsupported"));
+        // Where it's supported, Variable Refresh is a switch of its own,
+        // whose part says it; only a screen without one says so here.
+        add("variable", output.vrr_supported ? "" : words.said("variable", "unsupported"));
         add("logical", size(logical.width, logical.height));
         add("position", `${logical.x}, ${logical.y}`);
         add("rotation", words.turned(logical.transform));

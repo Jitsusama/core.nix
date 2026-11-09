@@ -1611,6 +1611,38 @@ def the_screens_plate_says_what_sets_it(desktop: Desktop, scale: str) -> None:
         follows = drawer["values"][facts.index("Follows")]
         assert follows == "the room \u00b7 on its way to 95%", f"at {scale}: {drawer}"
         desktop.shoot(f"launcher-plate-screen-following-at-{at}")
+        # Its settings' choices, each by its value alone: Rotation's four
+        # turns then four mirrored, and Scale's multiples (VKCF3Z, 2026-11-09).
+        desktop.follow()
+        for setting, choices in [
+            (
+                "Rotation",
+                [
+                    "upright",
+                    "a quarter turn left",
+                    "upside down",
+                    "a quarter turn right",
+                    "mirrored",
+                    "mirrored, a quarter turn left",
+                    "mirrored, upside down",
+                    "mirrored, a quarter turn right",
+                ],
+            ),
+            ("Scale", ["1\u00d7", "1.25\u00d7", "1.5\u00d7"]),
+        ]:
+            desktop.down_to(setting)
+            desktop.step_in("ret")
+
+            def offered(shown: Json, choices: list[str] = choices) -> bool:  # As called.
+                """Say whether the setting offers these choices in order, Return saying set."""
+                told = (shown["selected"] or {}).get("told", [])
+                return [row for row in shown["rows"] if row in choices] == choices and (
+                    "\u21b5 set" in told
+                )
+
+            desktop.launcher_until(offered)
+            desktop.shoot(f"launcher-screen-{setting.lower()}-at-{at}")
+            desktop.step_out()
         desktop.close_launcher()
     finally:
         desktop.as_account(f"rm -f {now} {learned}")
