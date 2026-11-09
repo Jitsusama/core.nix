@@ -13,6 +13,12 @@
 //! answered here once. 1Password's prompt only ever answers what he just
 //! did.
 //!
+//! Whatever op fails at while 1Password's Integrate with 1Password CLI is
+//! off, the manager says it's refused, by the setting to turn on, since op
+//! can't ask the app anything then and no prompt would ever come: as it
+//! starts, and with every answer, the app's settings read each time, so
+//! it's let in again the moment Joel turns it on.
+//!
 //! An audit (`audit`, asked by Joel alone) gives every login's password at
 //! once, `{"passwords": [{"entry", "value"}]}`, from the cheapest op can
 //! give them: its list of logins and passwords piped to one `op item get -
@@ -22,11 +28,19 @@ use std::io::{BufRead, Write};
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use onepassword_manager::{account, entry, in_account, passwords, period, reason, value};
+use onepassword_manager::{
+    account, entry, in_account, lets_its_command_in, passwords, period, reason, settings_file,
+    value,
+};
 use serde_json::{Value, json};
 
 /// What Joel reads while 1Password hasn't let the launcher in.
 const LET_IN: &str = "1Password asks you to let the launcher in";
+
+/// What Joel reads while 1Password keeps its command out, by the setting's
+/// own name and where the app has it, so he can find it there.
+const KEPT_OUT: &str =
+    "1Password needs Integrate with 1Password CLI on, in Settings \u{203a} Developer";
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -38,13 +52,21 @@ fn main() {
             op = path;
         }
     }
+    let config_home = std::env::var("XDG_CONFIG_HOME").ok();
+    let home = std::env::var("HOME").ok();
     let mut manager = Manager {
         op,
         let_in: false,
         account: None,
+        settings: settings_file(config_home.as_deref(), home.as_deref()),
     };
     let mut out = std::io::stdout().lock();
-    let _ = writeln!(out, "{}", json!({"state": "signed-out", "reason": LET_IN}));
+    let starting = if manager.kept_out() {
+        json!({"state": "refused", "reason": KEPT_OUT})
+    } else {
+        json!({"state": "signed-out", "reason": LET_IN})
+    };
+    let _ = writeln!(out, "{starting}");
     let _ = out.flush();
     for line in std::io::stdin().lock().lines() {
         let Ok(line) = line else { break };
@@ -63,6 +85,8 @@ struct Manager {
     let_in: bool,
     /// The account's id, once op has said it, for each entry's link.
     account: Option<String>,
+    /// 1Password's settings file, read for whether it lets op in.
+    settings: Option<String>,
 }
 
 /// How op failed: signed out for a leave not given or lapsed, refused
@@ -98,6 +122,16 @@ impl Manager {
                 wrapped.insert("answer".to_owned(), other);
                 wrapped
             }
+            Err(_) if self.kept_out() => {
+                let mut answer = serde_json::Map::new();
+                answer.insert(
+                    "error".to_owned(),
+                    json!({"code": "refused", "message": KEPT_OUT}),
+                );
+                answer.insert("state".to_owned(), json!("refused"));
+                answer.insert("reason".to_owned(), json!(KEPT_OUT));
+                answer
+            }
             Err(failed) => {
                 let code = if failed.signed_out {
                     "signed-out"
@@ -121,6 +155,17 @@ impl Manager {
         }
         answer.insert("id".to_owned(), id);
         Value::Object(answer)
+    }
+
+    /// Whether 1Password's settings say its command is kept out, read
+    /// afresh, so the answer after Joel turns it on says he may unlock.
+    /// A file not read says nothing, and op's own words stand.
+    fn kept_out(&self) -> bool {
+        self.settings
+            .as_deref()
+            .and_then(|file| std::fs::read_to_string(file).ok())
+            .and_then(|settings| lets_its_command_in(&settings))
+            == Some(false)
     }
 
     /// Whether op may run for this ask: Joel's own, or once op has let

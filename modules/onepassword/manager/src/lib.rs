@@ -319,6 +319,35 @@ pub fn period(item: &Value) -> u64 {
         .unwrap_or(30)
 }
 
+/// Whether 1Password's app lets its command ask it, by the app's own
+/// settings file: Settings › Developer › Integrate with 1Password CLI,
+/// which it writes as `developers.cliSharedLockState.enabled` once it's
+/// turned on and leaves out while it's off, as it is on a new machine.
+/// While it's off op can't ask the app to unlock, so it says it isn't
+/// signed in at once, and no prompt ever comes. `None` when the file
+/// isn't read as 1Password writes it, so nothing is said of a setting
+/// not seen.
+pub fn lets_its_command_in(settings: &str) -> Option<bool> {
+    let said: Value = serde_json::from_str(settings).ok()?;
+    let held = said.as_object()?;
+    Some(
+        held.get("developers.cliSharedLockState.enabled")
+            .and_then(Value::as_bool)
+            == Some(true),
+    )
+}
+
+/// Where 1Password keeps its settings: under `XDG_CONFIG_HOME`, else
+/// the home's `.config`, as the app finds its own folder.
+pub fn settings_file(config_home: Option<&str>, home: Option<&str>) -> Option<String> {
+    let config = match (config_home, home) {
+        (Some(config), _) if !config.is_empty() => config.to_owned(),
+        (_, Some(home)) if !home.is_empty() => format!("{home}/.config"),
+        _ => return None,
+    };
+    Some(format!("{config}/1Password/settings/settings.json"))
+}
+
 /// The reason op gives for not answering, said for Joel: what op printed
 /// last, less its "[ERROR] date time" prefix.
 pub fn reason(said: &str) -> String {
@@ -474,6 +503,51 @@ mod tests {
             "account is not signed in"
         );
         assert_eq!(reason("plain words"), "plain words");
+    }
+
+    #[test]
+    fn the_command_is_let_in_only_once_its_setting_is_on() {
+        let on = r#"{"version": 1, "developers.cliSharedLockState.enabled": true}"#;
+        assert_eq!(
+            lets_its_command_in(on),
+            Some(true),
+            "turned on, it's let in"
+        );
+        // As a new machine's app writes it, with the setting never turned on.
+        let new = r#"{"version": 1, "security.authenticatedUnlock.enabled": true}"#;
+        assert_eq!(lets_its_command_in(new), Some(false), "left out, it's off");
+        let off = r#"{"developers.cliSharedLockState.enabled": false}"#;
+        assert_eq!(
+            lets_its_command_in(off),
+            Some(false),
+            "turned off, it's off"
+        );
+        assert_eq!(
+            lets_its_command_in("not json"),
+            None,
+            "unread, nothing is said"
+        );
+        assert_eq!(
+            lets_its_command_in("[]"),
+            None,
+            "not its shape, nothing is said"
+        );
+    }
+
+    #[test]
+    fn its_settings_are_found_where_the_app_keeps_them() {
+        let file = "1Password/settings/settings.json";
+        assert_eq!(
+            settings_file(Some("/c"), Some("/h")),
+            Some(format!("/c/{file}")),
+            "XDG_CONFIG_HOME leads"
+        );
+        assert_eq!(
+            settings_file(Some(""), Some("/h")),
+            Some(format!("/h/.config/{file}")),
+            "else the home's .config"
+        );
+        assert_eq!(settings_file(None, None), None, "no home, no file");
     }
 
     #[test]

@@ -3,13 +3,16 @@
 # for tests/passwords-on-niri-test.py: it never runs op, and the only secret it
 # knows is a stand-in's. It starts signed out, as 1Password's does, and refuses
 # anything asked before it's let in, as op does when Joel dismisses
-# 1Password's prompt; once let in, it knows GitHub and a bank card. Each ask is
-# logged to the file it's given, so the test can say what was asked and when.
+# 1Password's prompt. The first let-in is refused too, as a dismissed prompt's
+# is, so the test can say the launcher tells why; the second lets it in, and it
+# knows GitHub and a bank card. Each ask is logged to the file it's given, so
+# the test can say what was asked and when.
 #
 # usage: passwords-stand-in.sh LOG
 
 log=$1
 let_in=false
+asked_in=0
 locked='"1Password asks you to let the launcher in"'
 github='{"id":"gh","title":"GitHub","category":"login","version":3,"username":"ada",'
 github+='"favourite":true,"tags":["work"],"collection":{"id":"v1","name":"Private"},'
@@ -31,6 +34,11 @@ while read -r line; do
   [[ $line =~ \"ask\":\"([a-z-]+)\" ]] && ask=${BASH_REMATCH[1]}
   entry=
   [[ $line =~ \"entry\":\"([a-z]+)\" ]] && entry=${BASH_REMATCH[1]}
+  if [[ $ask == let-in ]] && ((asked_in++ == 0)); then
+    refused="{\"id\":$id,\"error\":{\"code\":\"signed-out\",\"message\":$locked},"
+    echo "$refused\"state\":\"signed-out\",\"reason\":$locked}"
+    continue
+  fi
   if [[ $ask == let-in ]]; then
     let_in=true
     echo "{\"id\":$id,\"state\":\"answering\"}"

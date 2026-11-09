@@ -1287,8 +1287,10 @@
     1Password's manager for Passwords says an item op gives as an entry with no hidden detail's
     value and no password's history, reads a secret only for the one detail asked, says
     1Password's categories and kinds in Passwords' own words, names each entry's account from
-    op's own, for 1Password's link to it, and reads each login's password alone from op's many
-    items for an audit
+    op's own, for 1Password's link to it, reads each login's password alone from op's many
+    items for an audit, and, run against a stand-in op, says it's refused by Integrate with
+    1Password CLI while 1Password's settings have it off, and only that 1Password asks to let it
+    in the moment it's turned on
   '';
   onepassword-offers-its-quick-acts = ''
     the account's 1Password entry offers Quick Access and then Lock 1Password, through switches the
@@ -2421,7 +2423,8 @@
   '';
   the-passwords-place-copies-through-its-daemon-on-niri = ''
     on a nested niri, the Passwords place asks the passwords daemon nothing until Joel steps in,
-    then lists once as his, leads with the locked manager's row, whose Return unlocks it, copies
+    then lists once as his, leads with the locked manager's row, whose Return unlocks it, one
+    refused saying why the next time the launcher opens, copies
     an entry's password on Return through the daemon to the clipboard as the launcher goes, the
     margin wearing the clipboard's mark and the foot, opened again, counting to its clearing,
     nothing on screen saying it, reads an entry in full as the selection rests on it, never as

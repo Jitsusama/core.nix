@@ -92,8 +92,9 @@ onLinux {
 
   # 1Password's manager for Passwords tests itself as it builds, against
   # op's own JSON: an entry carries no secret op gives, a password's
-  # history included, a secret is read only for the detail asked, and
-  # 1Password's words become Passwords' own.
+  # history included, a secret is read only for the detail asked,
+  # 1Password's words become Passwords' own, and, run against a stand-in
+  # op, it says the setting to turn on while 1Password keeps op out.
   onepassword-manager-passes-no-secret-on = pkgs.callPackage ./manager/package.nix { };
   # clippy finds nothing in 1Password's manager, its tests included.
   onepassword-manager-passes-clippy = passesClippy "onepassword-manager-passes-clippy" (
