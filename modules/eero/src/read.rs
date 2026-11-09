@@ -13,9 +13,9 @@ use std::collections::BTreeMap;
 use serde_json::Value;
 
 use crate::model::{
-    Backhaul, BackhaulKind, Cloud, Device, DeviceHistory, DevicePort, Dns, Event, Filters,
-    Firmware, Guest, HomeNetwork, Hour, Internet, InternetHistory, Lease, Light, Member, Node,
-    NodeCounts, NodeDevices, NodeHistory, Packets, Port, Profile, Radio, RadioHistory, Rate,
+    Backhaul, BackhaulKind, Cloud, Device, DeviceHistory, DeviceOff, DevicePort, Dns, Event,
+    Filters, Firmware, Guest, HomeNetwork, Hour, Internet, InternetHistory, Lease, Light, Member,
+    Node, NodeCounts, NodeDevices, NodeHistory, Packets, Port, Profile, Radio, RadioHistory, Rate,
     Series, Speed, SpeedTest, Thread, Usage,
 };
 use crate::time;
@@ -65,6 +65,7 @@ pub fn home_network(answers: &Answers, read: &str, cloud: Cloud) -> Option<HomeN
         internet: internet(answers),
         nodes: nodes(answers),
         devices: devices(&answers.devices),
+        devices_off: devices_off(&answers.devices),
         profiles: profiles(&answers.profiles, &answers.profile_usage),
         events: events(&answers.events),
         joins_and_leaves: Vec::new(),
@@ -401,9 +402,44 @@ fn devices(answer: &Value) -> Vec<Device> {
     devices
 }
 
+/// The devices eero knows that aren't on now, the last on first.
+fn devices_off(answer: &Value) -> Vec<DeviceOff> {
+    let mut off: Vec<DeviceOff> = list(answer, "")
+        .filter(|record| flag(record, "/connected") != Some(true))
+        .filter_map(device)
+        .map(|device| DeviceOff {
+            mac: device.mac,
+            name: device.name,
+            nickname: device.nickname,
+            hostname: device.hostname,
+            kind: device.kind,
+            make: device.make,
+            model: device.model,
+            manufacturer: device.manufacturer,
+            private: device.private,
+            first_seen: device.first_seen,
+            last_active: device.last_active,
+            node: device.node,
+            ethernet: device.ethernet,
+            band: device.band,
+            profile: device.profile,
+        })
+        .collect();
+    // eero's times are all written one way, so they sort as text, and one
+    // it gave no time comes last.
+    off.sort_by(|a, b| {
+        b.last_active
+            .cmp(&a.last_active)
+            .then_with(|| a.mac.cmp(&b.mac))
+    });
+    off
+}
+
 fn device(record: &Value) -> Option<Device> {
     let link = record.get("connectivity").unwrap_or(&Value::Null);
-    let frequency_mhz = number(link, "/frequency");
+    // eero says 0 for a device on Ethernet, which has no radio, rather
+    // than leaving it out, and 0 would read as 2.4 GHz.
+    let frequency_mhz = number(link, "/frequency").filter(|mhz| *mhz > 0);
     Some(Device {
         mac: text(record, "/mac")?,
         this_machine: false,

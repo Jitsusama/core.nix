@@ -3100,6 +3100,11 @@
       "name": "Joined and Left in the Last Day"
     },
     {
+      "id": "eero:internet:devices-off",
+      "in": "eero:internet",
+      "name": "Not on Now"
+    },
+    {
       "id": "eero:node:model",
       "in": "eero:node",
       "name": "Model",

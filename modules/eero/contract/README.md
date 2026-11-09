@@ -98,10 +98,10 @@ nodes' urls, so the mesh is joined by name.
 | `device_type`, `manufacturer`, `inferred_make`, `inferred_model` | what it is | place (its mark), device, `devices` |
 | `mac`, `is_private`, `eui64` | its hardware address, and whether that's a private one; this machine is the device with one of its own | device, `device`; this machine first in the place and `status` |
 | `ip`, `ips`, `ipv4`, `ipv6_addresses` | its addresses | place, device, `device` |
-| `connected`, `last_active`, `first_active`, `first_seen` | on now, since when, first ever | place, device, `devices`; a notice when a device first seen since eero's last answer joins |
+| `connected`, `last_active`, `first_active`, `first_seen` | on now, since when, first ever; for one not on now, when it last was | place, device, `devices`; a notice when a device first seen since eero's last answer joins; each not on now in `devices` and the internet's drawer |
 | `connection_type`, `wireless`, `source.{location,model,is_gateway}` | Ethernet or Wi-Fi, and through which node | place (under its node), device |
 | `ssid`, `auth`, `subnet_kind`, `vlan_name`, `is_guest` | which network it joined, how | device, `device` |
-| `channel`, `connectivity.frequency`, `interface.frequency`, `connectivity.bssid` | its radio: band, channel, which BSSID | place (band), device, `devices` |
+| `channel`, `connectivity.frequency`, `interface.frequency`, `connectivity.bssid` | its radio: band, channel, which BSSID; `frequency` is 0 on Ethernet, read as none | place (band), device, `devices` |
 | `connectivity.signal`, `snr`, `score`, `score_bars` | how well it hears and is heard | place (signal), device (sparked), `devices` |
 | `connectivity.rx_bitrate`, `rx_rate_info` and `tx_rate_info` `{rate_bps,mcs,nss,channel_width,guard_interval,phy_type}` | each direction's rate and how it's had: MCS, streams, width, guard interval, Wi-Fi generation | place (rate), device (each figure), `device` |
 | `connectivity.tx_retry_pct`, `inactive_time_ms`, `packet_stats.*` | retries, drops and failures per million | device, `device` |

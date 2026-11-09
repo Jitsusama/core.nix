@@ -1,16 +1,18 @@
-//! `eero devices`, every device on now under the node it's on, and `eero
-//! device`, one device with every figure eero has for it.
+//! `eero devices`, every device on now under the node it's on and then
+//! each eero knows that isn't, and `eero device`, one device with every
+//! figure eero has for it.
 
 use super::clock::Clock;
 use super::figures::{count, figure, maybe, rate, said, signed, unknown, words, yes};
 use super::marks::marks;
 use super::text::{Align, Line, Page, Table, muted, plain, strong};
 use super::{counted, device_name, facts, head, labelled, location, on_node, titled, when};
-use crate::model::{Device, HomeNetwork, Rate};
+use crate::model::{Device, DeviceOff, HomeNetwork, Rate};
 
 #[derive(serde::Serialize)]
 struct Every<'a> {
     devices: &'a [Device],
+    devices_off: &'a [DeviceOff],
 }
 
 #[derive(serde::Serialize)]
@@ -23,6 +25,7 @@ pub fn all_json(model: &HomeNetwork) -> Result<String, String> {
         model,
         Every {
             devices: &model.devices,
+            devices_off: &model.devices_off,
         },
     )
 }
@@ -73,7 +76,70 @@ pub fn all(model: &HomeNetwork, clock: &Clock) -> Page {
         }
     }
     page.extend(table.lines(0));
+    off(&mut page, model, clock);
     page
+}
+
+/// The devices eero knows that aren't on now, the last on first: when each
+/// was, and where and how it was on then. Their link's figures are of a
+/// link that's gone, so the model doesn't keep them.
+fn off(page: &mut Page, model: &HomeNetwork, clock: &Clock) {
+    if model.devices_off.is_empty() {
+        return;
+    }
+    page.blank();
+    page.line(vec![strong(format!(
+        "{} not on now",
+        counted(model.devices_off.len(), "device")
+    ))]);
+    page.blank();
+    let mut table = Table::new(&[Align::Left; 7]);
+    table.header(&[
+        "device", "kind", "last on", "node", "band", "profile", "made by",
+    ]);
+    for device in &model.devices_off {
+        let band = if device.ethernet {
+            vec![plain("Ethernet")]
+        } else {
+            said(device.band.as_deref())
+        };
+        let profile = device.profile.as_deref().map(|id| profile_named(model, id));
+        table.row(vec![
+            vec![plain(off_name(device))],
+            maybe(device.kind.as_deref(), |kind| vec![plain(words(kind))]),
+            maybe(
+                device.last_active.as_deref().and_then(super::clock::parse),
+                |at| vec![plain(clock.ago(at))],
+            ),
+            maybe(device.node.as_deref(), |id| {
+                vec![plain(location(model, Some(id)))]
+            }),
+            band,
+            said(profile),
+            said(device.manufacturer.as_deref()),
+        ]);
+    }
+    page.extend(table.lines(0));
+}
+
+/// The name of the profile with an id, or the id where eero names none.
+fn profile_named<'a>(model: &'a HomeNetwork, id: &'a str) -> &'a str {
+    model
+        .profiles
+        .iter()
+        .find(|profile| profile.id == id)
+        .and_then(|profile| profile.name.as_deref())
+        .unwrap_or(id)
+}
+
+/// What a device not on now is called, as `device_name` says one on now.
+fn off_name(device: &DeviceOff) -> &str {
+    device
+        .name
+        .as_deref()
+        .or(device.nickname.as_deref())
+        .or(device.hostname.as_deref())
+        .unwrap_or(&device.mac)
 }
 
 /// The devices' table: a row each, its link's figures and its speed now,
@@ -316,14 +382,7 @@ fn carried(model: &HomeNetwork, device: &Device) -> Vec<(&'static str, Line)> {
     let ppm = |label: &str, value: Option<u32>| {
         labelled(label, maybe(value, |n| vec![plain(count(n.into()))]))
     };
-    let profile = device.profile.as_deref().map(|id| {
-        model
-            .profiles
-            .iter()
-            .find(|profile| profile.id == id)
-            .and_then(|profile| profile.name.clone())
-            .unwrap_or_else(|| id.to_owned())
-    });
+    let profile = device.profile.as_deref().map(|id| profile_named(model, id));
     vec![
         (
             "packets",
@@ -356,7 +415,7 @@ fn carried(model: &HomeNetwork, device: &Device) -> Vec<(&'static str, Line)> {
         (
             "profile",
             facts(vec![
-                said(profile.as_deref()),
+                said(profile),
                 labelled("paused", yes(device.paused)),
                 labelled("blocked", yes(device.blocked)),
             ]),
