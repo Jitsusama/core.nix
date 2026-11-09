@@ -11,10 +11,11 @@
 //! launcher lists them. `displays.json` is keyed by the connector's name as
 //! niri gives it ("DP-4", "eDP-1"), with what the display's EDID says of
 //! itself: who made it and when, its size, native mode, refresh range, colour
-//! depth and connection, its colours against sRGB's, and whether it takes
-//! HDR. The one external display, when exactly one Type-C partner shows
-//! DisplayPort, also gets its cable's facts: the USB mode beside the
-//! picture, the power the machine charges at, and the supplies the monitor
+//! depth and connection, its colours against sRGB's, its white point and
+//! primaries, and whether it takes HDR. The one external display, when
+//! exactly one Type-C partner shows DisplayPort, also gets its cable's
+//! facts: the USB mode beside the picture, the power the machine charges
+//! at, and the supplies the monitor
 //! offers. After those come what a monitor says of itself over DDC/CI, its
 //! brightness, contrast, colour preset, panel, controller, hot-plug
 //! detection, firmware level and MCCS version, which the backlight daemon
@@ -247,6 +248,70 @@ fn gamut(edid: &[u8]) -> String {
     format!("{:.2} \u{d7} sRGB's area", area(primaries) / area(SRGB))
 }
 
+/// An xy point as the EDID gives it, each coordinate named so nobody has to
+/// remember the order (VKCF3Z, 2026-11-09), to three places: ten bits a
+/// coordinate hold it to about a thousandth, so "0.060" says all it knows.
+fn point((x, y): (f64, f64)) -> String {
+    format!("x {x:.3} y {y:.3}")
+}
+
+/// McCamy's cubic for a white's correlated colour temperature from its xy,
+/// within a few kelvin of the daylight whites a display is set to: its
+/// epicentre, then the cubic's terms, highest first.
+const EPICENTRE: (f64, f64) = (0.3320, 0.1858);
+const MCCAMY: [f64; 4] = [449.0, 3525.0, 6823.3, 5520.33];
+
+/// A whole number grouped by thousands, as a measure is said: "6,460".
+fn grouped(whole: &str) -> String {
+    let digits: Vec<char> = whole.chars().collect();
+    let mut said = String::new();
+    for (at, digit) in digits.iter().enumerate() {
+        if at > 0 && (digits.len() - at) % 3 == 0 {
+            said.push(',');
+        }
+        said.push(*digit);
+    }
+    said
+}
+
+/// The white an EDID gives, as its colour temperature to three significant
+/// digits grouped as a measure is, "6,460 K", then its point, "x 0.313 y
+/// 0.329", a dot apart; nothing where it gives none.
+fn white_point(edid: &[u8]) -> String {
+    let [.., white] = chromaticity(edid);
+    let (x, y) = white;
+    if y <= 0.0 {
+        return String::new();
+    }
+    let n = (x - EPICENTRE.0) / (EPICENTRE.1 - y);
+    let [cubed, squared, linear, constant] = MCCAMY;
+    let kelvin = n.mul_add(n.mul_add(n.mul_add(cubed, squared), linear), constant);
+    if !kelvin.is_finite() || kelvin <= 0.0 {
+        return String::new();
+    }
+    let step = 10f64.powf(kelvin.log10().floor() - 2.0);
+    let rounded = (kelvin / step).round() * step;
+    format!(
+        "{} K \u{b7} {}",
+        grouped(&format!("{rounded:.0}")),
+        point(white)
+    )
+}
+
+/// The red, green and blue an EDID gives, each named and its point, "red
+/// x 0.640 y 0.330", a dot apart; nothing where it gives none.
+fn primaries(edid: &[u8]) -> String {
+    let [red, green, blue, _] = chromaticity(edid);
+    if [red, green, blue].iter().all(|(x, y)| *x <= 0.0 && *y <= 0.0) {
+        return String::new();
+    }
+    [("red", red), ("green", green), ("blue", blue)]
+        .iter()
+        .map(|(name, each)| format!("{name} {}", point(*each)))
+        .collect::<Vec<_>>()
+        .join(" \u{b7} ")
+}
+
 /// Its native mode, from the first detailed timing.
 fn native(timing: &[u8]) -> Option<String> {
     let clock = u32::from(u16::from_le_bytes([timing[0], timing[1]])) * 10_000;
@@ -399,6 +464,8 @@ fn display(edid: &[u8]) -> Option<Facts> {
     fact(&mut facts, "depth", depth);
     fact(&mut facts, "input", link);
     fact(&mut facts, "colours", gamut(block));
+    fact(&mut facts, "white", white_point(block));
+    fact(&mut facts, "primaries", primaries(block));
     if let Some(extension) = edid.get(128..256) {
         fact(&mut facts, "HDR", hdr(extension).unwrap_or_default());
     }
@@ -2487,6 +2554,14 @@ mod tests {
         assert_eq!(named(&facts, "depth"), Some("10 bit"));
         assert_eq!(named(&facts, "input"), Some("DisplayPort"));
         assert_eq!(named(&facts, "colours"), Some("sRGB's primaries"));
+        assert_eq!(
+            named(&facts, "white"),
+            Some("6,460 K \u{b7} x 0.313 y 0.329")
+        );
+        assert_eq!(
+            named(&facts, "primaries"),
+            Some("red x 0.640 y 0.330 \u{b7} green x 0.300 y 0.600 \u{b7} blue x 0.150 y 0.060")
+        );
         assert_eq!(named(&facts, "HDR"), Some("none"));
         assert_eq!(named(&facts, "EDID"), Some("1.4"));
     }
@@ -2518,6 +2593,21 @@ mod tests {
         let said = gamut(&edid);
         assert!(said.ends_with("sRGB's area"), "{said}");
         assert!(said.starts_with("1.3"), "{said}");
+    }
+
+    #[test]
+    fn an_edid_without_its_colours_says_no_white_nor_primaries() {
+        let mut edid = bytes(Z27K_G3);
+        edid[25..35].fill(0);
+        assert_eq!(white_point(&edid), "");
+        assert_eq!(primaries(&edid), "");
+    }
+
+    #[test]
+    fn a_measure_is_grouped_by_thousands() {
+        assert_eq!(grouped("950"), "950");
+        assert_eq!(grouped("6460"), "6,460");
+        assert_eq!(grouped("12300"), "12,300");
     }
 
     #[test]

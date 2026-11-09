@@ -7818,6 +7818,19 @@
       ]
     },
     {
+      "id": "displays:white",
+      "in": "displays",
+      "name": "White Point",
+      "answers": [
+        "white point"
+      ]
+    },
+    {
+      "id": "displays:primaries",
+      "in": "displays",
+      "name": "Primaries"
+    },
+    {
       "id": "displays:hdr",
       "in": "displays",
       "name": "HDR",

@@ -11,7 +11,8 @@
 // opens or the workspaces change, as they do when a display comes or goes,
 // since niri sends no event for a display itself. What a display's EDID
 // says of itself, who made it and when, its size, native mode, refresh
-// range, colour depth, colours and HDR, desk-facts writes to a file
+// range, colour depth, colours, white point, primaries and HDR, desk-facts
+// writes to a file
 // (modules/desk-facts), and the right arrow lists after the settings,
 // named first as parts are (Colour depth "10 bit"), Return copying one.
 //
@@ -781,8 +782,9 @@ Provider {
         return factParts("displays", output.name, said, askedFirst);
     }
 
-    // The facts asked of a display most, which lead the rest.
-    readonly property var askedFirst: ["depth", "colours", "hdr"]
+    // The facts asked of a display most, which lead the rest, its white
+    // point and primaries beside its colours (VKCF3Z, 2026-11-09).
+    readonly property var askedFirst: ["depth", "colours", "white", "primaries", "hdr"]
 
     // A part's name, as the vocabulary says it (Provider's partNamed).
     function partName(id) {
@@ -924,7 +926,7 @@ Provider {
     readonly property var partsAsked: {
         const out = {};
         for (const id of ["brightness", "warmth", "room", "scale", "refresh", "resolution",
-            "rotation", "depth", "colours", "hdr"])
+            "rotation", "depth", "colours", "white", "hdr"])
             for (const question of Words.answers(`displays:${id}`))
                 out[question] = id;
         return out;

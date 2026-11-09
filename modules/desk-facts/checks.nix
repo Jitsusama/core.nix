@@ -8,8 +8,9 @@
 onLinux {
   # desk-facts reads an HP Z27k G3's EDID as the monitor gave it, names a
   # panel by its product code when it names nothing else, says wider colours
-  # against sRGB's area and finds HDR in a CTA block, reads what a USB sound
-  # card offers and runs at from the kernel's stream file and hw_params,
+  # against sRGB's area, its white point and primaries, and finds HDR in a
+  # CTA block, reads what a USB sound card offers and runs at from the
+  # kernel's stream file and hw_params,
   # says a camera format's largest and fastest modes, finds a Brio's own
   # unit among its descriptors and keys a camera as its holders file is
   # named, writes the launcher's JSON escaped and in order, and reads again

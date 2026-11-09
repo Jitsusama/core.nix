@@ -789,9 +789,17 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
         return cast("float", next(iter(outputs.values()))["logical"]["scale"])
 
     # What desk-facts would say of the display, which this machine doesn't
-    # run: each fact reads by the vocabulary's name for it, the depth first.
+    # run: each fact reads by the vocabulary's name for it, the depth first,
+    # then the white point and primaries, as the colours would be.
     shown_as = next(iter(json.loads(desktop.as_account("niri msg --json outputs"))))
-    said = {shown_as: [{"name": "EDID", "value": "1.4"}, {"name": "depth", "value": "8 bit"}]}
+    said = {
+        shown_as: [
+            {"name": "EDID", "value": "1.4"},
+            {"name": "primaries", "value": "red x 0.640 y 0.330"},
+            {"name": "white", "value": "6,460 K \u00b7 x 0.313 y 0.329"},
+            {"name": "depth", "value": "8 bit"},
+        ]
+    }
     desktop.as_account(
         f"mkdir -p $XDG_RUNTIME_DIR/desk && echo '{json.dumps(said)}' > $XDG_RUNTIME_DIR/desk/.d"
         " && mv $XDG_RUNTIME_DIR/desk/.d $XDG_RUNTIME_DIR/desk/displays.json"
@@ -815,8 +823,17 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
         desktop.launcher_until(
             lambda shown: (
                 shown["rows"][:2] == ["Focus", "Brightness"]
-                and [row for row in shown["rows"] if row != "Room Light"][2:8]
-                == ["Scale", "Refresh", "Resolution", "Rotation", "Colour Depth", "EDID"]
+                and [row for row in shown["rows"] if row != "Room Light"][2:10]
+                == [
+                    "Scale",
+                    "Refresh",
+                    "Resolution",
+                    "Rotation",
+                    "Colour Depth",
+                    "White Point",
+                    "Primaries",
+                    "EDID",
+                ]
             )
         )
         desktop.shoot("launcher-displays")
