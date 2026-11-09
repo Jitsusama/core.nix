@@ -11,28 +11,22 @@ set -euo pipefail
 sound=$1
 want=$2
 
-fail() {
-  echo "$1"
-  exit 1
+# Reads sox's stat of a sound from its input and fails, saying what fell
+# short, unless the sound rings for at least the seconds given, peaks at
+# 0.8 or more, and sits under 500 Hz.
+rings_as_heard() {
+  awk -F: -v what="$1" -v long="$2" '
+    { gsub(/ /, "", $2) }
+    $1 ~ /^Length/ { seconds = $2 + 0 }
+    $1 ~ /^Maximum amplitude/ { peak = $2 + 0 }
+    $1 ~ /^Rough/ { pitch = $2 + 0 }
+    END {
+      if (seconds < long) { print "the " what " rings for " seconds " s"; exit 1 }
+      if (peak < 0.8) { print "the " what " peaks at " peak; exit 1 }
+      if (pitch == 0 || pitch >= 500) { print "the " what " sits at " pitch " Hz"; exit 1 }
+    }'
 }
 
-# A figure sox's stat reads off a file, by the words its line opens with.
-stat() {
-  sox "$1" -n stat 2>&1 | awk -F: -v label="^$2" '$1 ~ label { gsub(/ /, "", $2); print $2 }'
-}
-
-# Whether a figure is at least another, as awk compares decimals.
-at_least() {
-  awk -v a="$1" -v b="$2" 'BEGIN { exit !(a >= b) }'
-}
-
-ding=$(jq -er .ding "$sound")
-at_least "$(stat "$ding" Length)" 2 || fail "the ding rings for $(stat "$ding" Length) s"
-at_least "$(stat "$ding" 'Maximum amplitude')" 0.8 ||
-  fail "the ding peaks at $(stat "$ding" 'Maximum amplitude')"
-at_least 500 "$(stat "$ding" 'Rough')" || fail "the ding sits at $(stat "$ding" 'Rough') Hz"
-
-at_least "$(stat "$want" Length)" 1.5 || fail "the want rings for $(stat "$want" Length) s"
-at_least "$(stat "$want" 'Maximum amplitude')" 0.8 ||
-  fail "the want peaks at $(stat "$want" 'Maximum amplitude')"
-at_least 500 "$(stat "$want" 'Rough')" || fail "the want sits at $(stat "$want" 'Rough') Hz"
+ding=$(jq -er .ding "${sound}")
+sox "${ding}" -n stat 2>&1 | rings_as_heard ding 2
+sox "${want}" -n stat 2>&1 | rings_as_heard want 1.5

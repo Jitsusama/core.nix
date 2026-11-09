@@ -42,7 +42,6 @@
   "modules/pi/tests/pi-ask-answers-on-the-machines-plan.sh" = 1;
   "modules/pi/tests/pi-claude-keeps-to-the-plan.sh" = 1;
   "modules/pi/tests/pi-keeps-its-own-settings.sh" = 1;
-  "modules/pi/tests/pi-rings-low.sh" = 1;
   "modules/plymouth/tests/the-splash-prompt-is-the-locks.sh" = 1;
   "modules/programs/tests/daemon.rs" = 7;
   "modules/spend-watch/feeds/claude/tests/feed.rs" = 1;
