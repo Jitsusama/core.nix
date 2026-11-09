@@ -3312,7 +3312,12 @@ mod tests {
     use std::sync::mpsc;
     use std::time::Duration;
 
-    const AARCH64: &str = r#"Derive([("out","/nix/store/a-boot.bin","","")],[("/nix/store/b-m1n1.drv",["out"])],["/nix/store/c-builder.sh"],"aarch64-linux","/bin/sh",["-c","echo \"],\" > $out"],[("system","x86_64-linux")])"#;
+    const AARCH64: &str = concat!(
+        r#"Derive([("out","/nix/store/a-boot.bin","","")],"#,
+        r#"[("/nix/store/b-m1n1.drv",["out"])],["/nix/store/c-builder.sh"],"#,
+        r#""aarch64-linux","/bin/sh",["-c","echo \"],\" > $out"],"#,
+        r#"[("system","x86_64-linux")])"#,
+    );
 
     #[test]
     fn a_derivation_says_what_it_builds_for() {
