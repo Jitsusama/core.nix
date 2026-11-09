@@ -5427,12 +5427,14 @@
     {
       "id": "sound:stream",
       "in": "sound",
-      "name": "Stream"
+      "name": "Stream",
+      "term": "Machine/stream"
     },
     {
       "id": "sound:role",
       "in": "sound",
-      "name": "Role"
+      "name": "Role",
+      "term": "Machine/role"
     },
     {
       "id": "sound:plays-on",
@@ -5447,12 +5449,14 @@
     {
       "id": "sound:process",
       "in": "sound",
-      "name": "Process ID"
+      "name": "Process ID",
+      "term": "Machine/process ID"
     },
     {
       "id": "sound:client",
       "in": "sound",
-      "name": "Client ID"
+      "name": "Client ID",
+      "term": "Machine/client ID"
     },
     {
       "id": "sound:alsa-device",
