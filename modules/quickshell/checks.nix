@@ -1949,7 +1949,7 @@ onLinux {
       export PATH=${timedatectl}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
       echo '{"v":2,"latitude":12.3457,"longitude":-98.7654,"accuracy":26000,'\
-      '"when":1790000000,"place":"Lighthouse, Ontario","zone":"America/Toronto",'\
+      '"when":1790000000,"place":"Kelpwater, Ontario","zone":"America/Toronto",'\
       '"country":"Canada"}' \
         > $XDG_RUNTIME_DIR/whereabouts.json
       export FONTCONFIG_FILE=${noFonts}

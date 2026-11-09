@@ -1807,7 +1807,7 @@ def location_plate_shown(desktop: Desktop, scale: str) -> None:
         "longitude": -98.7654,
         "accuracy": 26000,
         "when": when,
-        "place": "Lighthouse, Ontario",
+        "place": "Kelpwater, Ontario",
         "zone": "America/Toronto",
         "country": "Canada",
     }
@@ -1817,7 +1817,7 @@ def location_plate_shown(desktop: Desktop, scale: str) -> None:
     desktop.launcher_ready()
     desktop.down_to("Location")
     desktop.launcher_until(
-        lambda shown: shown["drawer"]["out"] is True and shown["drawer"]["title"] == "Lighthouse"
+        lambda shown: shown["drawer"]["out"] is True and shown["drawer"]["title"] == "Kelpwater"
     )
     drawer = plate_shown(desktop, scale)
     assert drawer["eyebrow"] == "from Wi-Fi · location", f"at {scale} the plate: {drawer}"
