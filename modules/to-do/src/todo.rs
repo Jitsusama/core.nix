@@ -47,6 +47,9 @@ pub struct ToDo {
     /// What the harness says of its owner's sandbox, which decides whether
     /// its checks run here, outside any.
     pub sandbox: Sandbox,
+    /// The item whole, as its owner wrote it, naming its quest, for the
+    /// shell (stream.rs).
+    pub item: Value,
 }
 
 /// The sandbox a to-do's owner runs in, as `mesh_wait` writes it in
@@ -136,6 +139,8 @@ pub fn in_file(text: &str) -> Vec<ToDo> {
                 .or_else(|| item.get("title"))
                 .and_then(Value::as_str)?;
             let quest = item.get("quest").and_then(Value::as_str).unwrap_or(quest);
+            let mut whole = item.clone();
+            whole["quest"] = Value::String(quest.to_owned());
             Some(ToDo {
                 key: format!("{quest}:{id}"),
                 raised: item
@@ -146,6 +151,7 @@ pub fn in_file(text: &str) -> Vec<ToDo> {
                 done_when: item.get("doneWhen").and_then(knowing),
                 ready_when: item.get("readyWhen").and_then(knowing),
                 sandbox: Sandbox::of(item),
+                item: whole,
             })
         })
         .collect()
@@ -231,6 +237,15 @@ mod tests {
             found[1].ready_when,
             Some(Knowing::Signal(Signal::Switch(Some("abc".into()))))
         );
+        assert_eq!(
+            found[0].item["quest"], "QEST-1",
+            "an item held whole names its file's quest"
+        );
+        assert_eq!(
+            found[1].item["quest"], "QEST-2",
+            "an item naming its own quest keeps it"
+        );
+        assert_eq!(found[1].item["title"], "B", "the item is held whole");
         assert_eq!(found[2].key, "QEST-1:Only a title");
         assert_eq!(found[2].done_when, None);
     }

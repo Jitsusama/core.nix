@@ -7,8 +7,17 @@
 //! to-do found done and marks one found ready, and For You, through the
 //! mycelium node, says each as it stands.
 //!
+//! It holds what it found for the shell too, over a socket in the shell's
+//! daemon interface (serve.rs), beside each to-do as its owner wrote it,
+//! Joel's own word on it, the looks the agents left him, and what waits
+//! counted whole (stream.rs), so the bar's For You mark lights from one
+//! record rather than the shell watching three folders.
+//!
 //! Usage: `to-do WAITING VERDICTS SIGNINS CORE [--root DIR] [--follower
-//! UNIT] [--git GIT] [--journalctl JOURNALCTL] [--systemctl SYSTEMCTL]`.
+//! UNIT] [--git GIT] [--journalctl JOURNALCTL] [--systemctl SYSTEMCTL]
+//! [--socket SOCKET [--looks LOOKS] [--settled SETTLED]]`.
+//! SOCKET is where it answers, none served without it; LOOKS the
+//! harness's folder of looks, SETTLED the shell's file of Joel's word.
 //! WAITING is the folder of
 //! to-dos, SIGNINS the folder whose files each service's sign-in touches,
 //! CORE where core's bare clone is kept. ROOT, `/` by default, is where
@@ -28,23 +37,29 @@
 //! passed once isn't run again to be taken back.
 
 mod bounded;
+mod interface;
 mod judge;
 mod pace;
+mod serve;
 mod session;
 mod sources;
+mod stream;
 mod todo;
 mod verdicts;
 
 use std::collections::{BTreeMap, HashMap};
+use std::ffi::OsString;
 use std::fs;
 use std::io::{self, BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
+use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use inotify::{Inotify, WatchDescriptor, WatchMask, Watches};
+use serde_json::json;
 
 use judge::Facts;
 use pace::{Pace, Run};
@@ -60,9 +75,10 @@ const DEVICES_EVERY: i64 = 10;
 /// runs again; or a journal line, which is a signal when it says a
 /// switch. A file's folder can be as busy as the runtime folder, so its
 /// changes never hurry a check. A check's run, as it ends, is judged at
-/// once.
+/// once. A look or Joel's word changes only what the shell is told.
 enum Woken {
     Changed,
+    Said,
     Signal,
     Journal(String),
     Ran {
@@ -77,6 +93,9 @@ struct Paths {
     verdicts: PathBuf,
     signins: PathBuf,
     root: PathBuf,
+    /// The harness's looks and the shell's settled.json, for the shell.
+    looks: Option<PathBuf>,
+    settled: Option<PathBuf>,
 }
 
 struct Daemon {
@@ -106,6 +125,10 @@ struct Daemon {
     systemctl: Option<PathBuf>,
     /// Where each check's run is told as it ends.
     tell: Sender<Woken>,
+    /// The to-dos as last read, for the shell.
+    todos: Vec<ToDo>,
+    /// What the shell is told, where a socket is served.
+    shared: Option<Arc<serve::Shared>>,
 }
 
 fn now() -> i64 {
@@ -382,6 +405,9 @@ impl Daemon {
             }
         }
         self.found = found;
+        self.todos = todos;
+        self.tell_shell();
+        let todos = &self.todos;
         let found = &self.found;
         let checks = self
             .paces
@@ -399,6 +425,40 @@ impl Daemon {
             }))
         .then_some(at + DEVICES_EVERY);
         checks.chain(devices).chain(self.fetch_again).min()
+    }
+
+    /// Tells the shell every record as it stands, where a socket is
+    /// served; only those that changed reach a watch.
+    fn tell_shell(&self) {
+        let Some(shared) = &self.shared else {
+            return;
+        };
+        let looks = self.paths.looks.as_deref().map(stream::looks);
+        let settled = self
+            .paths
+            .settled
+            .as_deref()
+            .and_then(|path| fs::read_to_string(path).ok());
+        let standing = |known: bool| {
+            if known {
+                json!({"state": "answering"})
+            } else {
+                json!({"state": "absent"})
+            }
+        };
+        let sources = json!({
+            "waiting": standing(self.paths.waiting.is_dir()),
+            "looks": standing(self.paths.looks.as_deref().is_some_and(Path::is_dir)),
+            "settled": standing(settled.is_some()),
+        });
+        let settled = settled.as_deref().map(stream::settled).unwrap_or_default();
+        let records = stream::records(
+            &self.todos,
+            &self.found,
+            looks.as_deref().unwrap_or_default(),
+            &settled,
+        );
+        shared.change(records, sources);
     }
 
     /// A signal may change what a check finds, so each runs again.
@@ -446,26 +506,52 @@ fn follow_journal(journalctl: PathBuf, unit: String, woken: Sender<Woken>) {
     });
 }
 
+/// A folder whose changes only the shell is told of, all of them or only
+/// those to the file named.
+struct Told {
+    watch: WatchDescriptor,
+    only: Option<OsString>,
+}
+
 /// Hears every change inotify says, into `woken`: one in `signals`, the
-/// sign-ins' and the system profiles' folders, apart from every other.
-fn hear(mut inotify: Inotify, signals: Vec<WatchDescriptor>, woken: Sender<Woken>) {
+/// sign-ins' and the system profiles' folders, and one in `told`, the
+/// looks' folder and Joel's word, apart from every other.
+fn hear(
+    mut inotify: Inotify,
+    signals: Vec<WatchDescriptor>,
+    told: Vec<Told>,
+    woken: Sender<Woken>,
+) {
     thread::spawn(move || {
         let mut buffer = [0; 4096];
         while let Ok(events) = inotify.read_events_blocking(&mut buffer) {
             let mut signal = false;
+            let mut said = false;
             let mut changed = false;
             for event in events {
+                let for_the_shell = told.iter().any(|t| {
+                    t.watch == event.wd
+                        && t.only
+                            .as_deref()
+                            .is_none_or(|only| event.name == Some(only))
+                });
                 if signals.contains(&event.wd) {
                     signal = true;
+                } else if for_the_shell {
+                    said = true;
                 } else {
                     changed = true;
                 }
             }
-            let told = [(changed, Woken::Changed), (signal, Woken::Signal)]
-                .into_iter()
-                .filter(|(said, _)| *said)
-                .try_for_each(|(_, woke)| woken.send(woke));
-            if told.is_err() {
+            let sent = [
+                (changed, Woken::Changed),
+                (signal, Woken::Signal),
+                (said, Woken::Said),
+            ]
+            .into_iter()
+            .filter(|(heard, _)| *heard)
+            .try_for_each(|(_, woke)| woken.send(woke));
+            if sent.is_err() {
                 break;
             }
         }
@@ -479,7 +565,13 @@ struct Tools {
     systemctl: Option<PathBuf>,
 }
 
-fn run(paths: Paths, core: PathBuf, follower: Option<String>, tools: Tools) -> io::Result<()> {
+fn run(
+    paths: Paths,
+    core: PathBuf,
+    follower: Option<String>,
+    tools: Tools,
+    socket: Option<PathBuf>,
+) -> io::Result<()> {
     fs::create_dir_all(&paths.waiting)?;
     fs::create_dir_all(&paths.signins)?;
     let inotify = Inotify::init()?;
@@ -498,8 +590,18 @@ fn run(paths: Paths, core: PathBuf, follower: Option<String>, tools: Tools) -> i
     }
     let mut fixed = signals.clone();
     fixed.push(waiting);
+    let told = watch_for_the_shell(&paths, &mut watches, mask)?;
+    fixed.extend(told.iter().map(|t| t.watch.clone()));
+    let shared = match socket {
+        Some(socket) => {
+            let shared = serve::Shared::new();
+            serve::accept(Arc::clone(&shared), serve::listen(&socket)?);
+            Some(shared)
+        }
+        None => None,
+    };
     let (tell, woken): (Sender<Woken>, Receiver<Woken>) = mpsc::channel();
-    hear(inotify, signals, tell.clone());
+    hear(inotify, signals, told, tell.clone());
     if let Some(unit) = follower {
         follow_journal(tools.journalctl, unit, tell.clone());
     }
@@ -526,7 +628,42 @@ fn run(paths: Paths, core: PathBuf, follower: Option<String>, tools: Tools) -> i
         written: None,
         systemctl: tools.systemctl,
         tell,
+        todos: Vec::new(),
+        shared,
     };
+    wake(&mut daemon, &woken)
+}
+
+/// Watches what only the shell is told of: the looks' folder, and the
+/// folder of Joel's word, for its file alone.
+fn watch_for_the_shell(
+    paths: &Paths,
+    watches: &mut Watches,
+    mask: WatchMask,
+) -> io::Result<Vec<Told>> {
+    let mut told = Vec::new();
+    if let Some(looks) = &paths.looks {
+        fs::create_dir_all(looks)?;
+        told.push(Told {
+            watch: watches.add(looks, mask)?,
+            only: None,
+        });
+    }
+    if let Some(settled) = &paths.settled
+        && let (Some(folder), Some(name)) = (settled.parent(), settled.file_name())
+    {
+        fs::create_dir_all(folder)?;
+        told.push(Told {
+            watch: watches.add(folder, mask)?,
+            only: Some(name.to_owned()),
+        });
+    }
+    Ok(told)
+}
+
+/// Judges, then waits for what's heard or a check falling due, and judges
+/// again, for as long as anything can be heard.
+fn wake(daemon: &mut Daemon, woken: &Receiver<Woken>) -> io::Result<()> {
     let mut next = daemon.tick();
     loop {
         let wait = next.map(|at| Duration::from_secs(u64::try_from(at - now()).unwrap_or(0)));
@@ -541,13 +678,16 @@ fn run(paths: Paths, core: PathBuf, follower: Option<String>, tools: Tools) -> i
                 return Err(io::Error::other("nothing is heard any more"));
             }
         };
+        let due = first.is_none();
         // Everything already said is taken in before judging once.
         let mut signalled = false;
+        let mut judge = false;
         for woke in first.into_iter().chain(woken.try_iter()) {
+            judge |= !matches!(woke, Woken::Said);
             signalled |= match woke {
                 Woken::Journal(line) => daemon.follower.read(&line),
                 Woken::Signal => true,
-                Woken::Changed => false,
+                Woken::Changed | Woken::Said => false,
                 Woken::Ran { key, check, run } => {
                     daemon.took(&key, &check, run);
                     false
@@ -557,7 +697,13 @@ fn run(paths: Paths, core: PathBuf, follower: Option<String>, tools: Tools) -> i
         if signalled {
             daemon.hurry();
         }
-        next = daemon.tick();
+        // A look or Joel's word alone is told the shell, judging nothing;
+        // a check falling due wakes with nothing said, and is judged.
+        if judge || due {
+            next = daemon.tick();
+        } else {
+            daemon.tell_shell();
+        }
     }
 }
 
@@ -565,6 +711,9 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut positional = Vec::new();
     let mut root = PathBuf::from("/");
+    let mut socket = None;
+    let mut looks = None;
+    let mut settled = None;
     let mut follower = Some("update-to-main-follows".to_owned());
     let mut tools = Tools {
         git: PathBuf::from("git"),
@@ -585,13 +734,17 @@ fn main() -> ExitCode {
             "--follower" => {
                 follower = rest.next().filter(|u| *u != "none").cloned();
             }
+            "--socket" => socket = rest.next().map(PathBuf::from),
+            "--looks" => looks = rest.next().map(PathBuf::from),
+            "--settled" => settled = rest.next().map(PathBuf::from),
             _ => positional.push(PathBuf::from(arg)),
         }
     }
     let [waiting, verdicts, signins, core] = positional.as_slice() else {
         eprintln!(
             "usage: to-do WAITING VERDICTS SIGNINS CORE [--root DIR] [--follower UNIT|none] \
-             [--git GIT] [--journalctl JOURNALCTL] [--systemctl SYSTEMCTL|none]"
+             [--git GIT] [--journalctl JOURNALCTL] [--systemctl SYSTEMCTL|none] \
+             [--socket SOCKET [--looks LOOKS] [--settled SETTLED]]"
         );
         return ExitCode::from(64);
     };
@@ -600,8 +753,11 @@ fn main() -> ExitCode {
         verdicts: verdicts.clone(),
         signins: signins.clone(),
         root,
+        // What only the shell is told of is read only where it's served.
+        looks: looks.filter(|_| socket.is_some()),
+        settled: settled.filter(|_| socket.is_some()),
     };
-    match run(paths, core.clone(), follower, tools) {
+    match run(paths, core.clone(), follower, tools, socket) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("<3>{error}");

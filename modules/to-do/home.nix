@@ -19,6 +19,12 @@
 # to-do waits on a commit it lacks. A switch restarts it, so it runs the
 # daemon it was switched to; what it found done stays done.
 #
+# It holds what waits on Joel for the shell too, over
+# $XDG_RUNTIME_DIR/daemons/to-do.sock in the shell's daemon interface:
+# each to-do with what it found and Joel's word on it from the shell's
+# mission/settled.json, each look the agents left him in the harness's
+# looks folder, and all of it counted, for the bar's For You mark.
+#
 # It reads Linux's inotify, /proc and sysfs, so it runs only there.
 {
   config,
@@ -37,6 +43,9 @@ lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
     Unit = {
       Description = "Runs each to-do's check and hears its signals";
       X-SwitchMethod = "restart";
+      # Its socket is systemd's, handed to it as it starts.
+      Requires = [ "to-do.socket" ];
+      After = [ "to-do.socket" ];
     };
     Service = {
       ExecStart = lib.escapeShellArgs [
@@ -51,11 +60,30 @@ lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
         "${pkgs.systemd}/bin/journalctl"
         "--systemctl"
         "${pkgs.systemd}/bin/systemctl"
+        "--socket"
+        "%t/daemons/to-do.sock"
+        "--looks"
+        "${config.xdg.stateHome}/pi/agentic-harness.pi/looks"
+        "--settled"
+        "${mission}/settled.json"
       ];
       Restart = "always";
       RestartSec = 5;
       Slice = "background.slice";
     };
     Install.WantedBy = [ "default.target" ];
+  };
+
+  # Its socket, held by systemd whether or not the daemon runs, so the
+  # shell asking while it starts, or starts again, waits on it rather than
+  # finding no socket.
+  systemd.user.sockets.to-do = {
+    Unit.Description = "Where the shell asks what waits on Joel";
+    Socket = {
+      ListenStream = "%t/daemons/to-do.sock";
+      SocketMode = "0600";
+      DirectoryMode = "0700";
+    };
+    Install.WantedBy = [ "sockets.target" ];
   };
 }

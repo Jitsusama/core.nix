@@ -2750,15 +2750,17 @@
     a run each ten minutes at most, stops a check that hangs with all it started and leaves
     nothing a check started once it ends, runs a check only for an owner the harness says is
     outside every sandbox and with the session's environment as it is then, keeps a to-do done
-    through a failing check and a restart, says every figure it found, and writes its verdicts
-    only as they change
+    through a failing check and a restart, says every figure it found, writes its verdicts only
+    as they change, and over its socket tells a watch each to-do with its verdict and Joel's word,
+    in the list For You puts it in, each look the agents left, and their counts, as they change
   '';
   to-do-passes-clippy = ''
     clippy finds nothing in the to-do daemon or its tests
   '';
   to-do-runs-in-each-account = ''
     the to-do daemon runs in each account with its own git, journalctl and systemctl named, its
-    checks on the user manager's environment as it is when each runs, and a switch restarts it
+    checks on the user manager's environment as it is when each runs, its socket systemd's and
+    the harness's looks and Joel's word read beside it, and a switch restarts it
   '';
   tuple-call-holds-the-call = ''
     tuple-call follows Tuple's stream only while Tuple's daemon answers, at once when its log says
