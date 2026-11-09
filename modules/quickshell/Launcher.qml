@@ -4487,7 +4487,7 @@ Scope {
         if (!remade(steps, held.length))
             return;
         held = steps;
-        reshow(steps.length);
+        reshow(steps.length, true);
     }
 
     // A row a condition holds back now, dimmed, saying why in the place's
@@ -4797,16 +4797,21 @@ Scope {
             reshow(held.length);
     }
 
-    function reshow(count) {
+    // Given `ordered`, a place's rows take its own order rather than the
+    // order they were shown in, as a place still being made does
+    // (placesRead); the selection stays on its row either way.
+    function reshow(count, ordered) {
         const was = current >= 0 && selected ? pairedId(selected) : "";
         const at = current;
         // A provider that throws mid-search mustn't leave every later search
         // keeping its rows as a refresh does.
         steadying = true;
+        ordering = ordered === true;
         try {
             search(typed);
         } finally {
             steadying = false;
+            ordering = false;
         }
         // What's typed asked something whole, out at the top, now it can.
         if (held.length !== count)
@@ -4829,6 +4834,8 @@ Scope {
     // Whether the search under way only says again what's there, as a
     // refresh does (reshow).
     property bool steadying: false
+    // Whether a place said again takes its own order (reshow).
+    property bool ordering: false
 
     // What a row is, to hold it in place as it changes: what it says it
     // is, or for a part with no key, as an answer's figures have none, its
@@ -5122,7 +5129,7 @@ Scope {
             // Searched again only to say what's there now, it keeps the
             // order it's shown in, and the selection where it is (reshow).
             if (steadying) {
-                matches = live(steadied(found));
+                matches = live(ordering ? found : steadied(found));
                 if (current === -1 && !lined)
                     current = 0;
                 return;
