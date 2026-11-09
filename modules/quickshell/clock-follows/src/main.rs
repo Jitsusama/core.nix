@@ -176,16 +176,18 @@ impl Decided {
         Decided { path, last }
     }
 
-    /// Whether `fix` is one to decide, kept as the last if it is.
-    fn fresh(&mut self, fix: &Fix) -> bool {
-        if self.last.as_ref() == Some(fix) {
-            return false;
-        }
-        self.last = Some(fix.clone());
-        if let Err(why) = write(&self.path, fix) {
+    /// Whether `fix` differs from the last decided, so is one to decide.
+    fn differs(&self, fix: &Fix) -> bool {
+        self.last.as_ref() != Some(fix)
+    }
+
+    /// Keeps `fix` as the last decided, once deciding it went through, so
+    /// one timedated refused is decided again on the next connection.
+    fn keep(&mut self, fix: Fix) {
+        if let Err(why) = write(&self.path, &fix) {
             eprintln!("<4>the fix decided couldn't be kept: {why}");
         }
-        true
+        self.last = Some(fix);
     }
 }
 
@@ -220,15 +222,18 @@ fn watched(socket: &Path, state: &Path, timedatectl: &str, kept: &mut Decided) -
     )?;
     for line in BufReader::new(stream).lines() {
         for fix in fixes(&line?) {
-            if !kept.fresh(&fix) {
+            if !kept.differs(&fix) {
                 continue;
             }
             // A move that fails, as when timedated refuses, is said and
-            // the next change decided anew.
+            // isn't kept, so the same fix is decided anew as it comes again.
             match decided(&fix, state, timedatectl) {
                 // Said each time, never where, so what was heard can be
                 // counted without the journal keeping where Joel is.
-                Ok(()) => eprintln!("<7>where the laptop is was decided"),
+                Ok(()) => {
+                    eprintln!("<7>where the laptop is was decided");
+                    kept.keep(fix);
+                }
                 Err(why) => eprintln!("<3>{why}"),
             }
         }
@@ -364,18 +369,27 @@ mod tests {
         fs::create_dir_all(&state).unwrap();
         let here = fix(300.0, Some("America/Edmonton"));
         let mut decided = Decided::in_state(&state);
-        assert!(decided.fresh(&here), "the first is decided");
+        assert!(decided.differs(&here), "the first is decided");
+        // One whose deciding failed isn't kept, so is decided again.
+        assert!(
+            Decided::in_state(&state).differs(&here),
+            "one not kept is decided again"
+        );
+        decided.keep(here.clone());
         // A change only to the clock's zone, as Joel setting it by hand
         // makes, says the same fix.
-        assert!(!decided.fresh(&here.clone()), "the same is not");
+        assert!(!decided.differs(&here), "the same is not");
         // Nor is it after a connection again or a restart.
-        assert!(!Decided::in_state(&state).fresh(&here), "nor after a start");
+        assert!(
+            !Decided::in_state(&state).differs(&here),
+            "nor after a start"
+        );
         let later = Fix {
             at_s: Some(1_790_000_600),
             ..here
         };
         assert!(
-            Decided::in_state(&state).fresh(&later),
+            Decided::in_state(&state).differs(&later),
             "one found later is"
         );
         fs::remove_dir_all(&state).unwrap();
