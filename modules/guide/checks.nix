@@ -52,6 +52,44 @@ onLinux {
       "The stick doesn't remap these built-in keyboards: ${lib.concatStringsSep ", " missed}."
       (missed == [ ]);
 
+  # A stick asked to carry Apple's restore image lays it as a partition of
+  # its own after the system's, named for the zip `guide revive` reads,
+  # with the usbmuxd a revive starts; core's own stick carries none, so
+  # nothing else pays for tens of gigabytes.
+  a-stick-carries-apples-macos-apart =
+    let
+      restore = pkgs.callPackage ./apple-restore.nix { } {
+        url = "https://updates.cdn-apple.com/2026FallFCS/0/UniversalMac_27.2_26B123_Restore.ipsw";
+        hash = lib.fakeHash;
+      };
+      stick =
+        restores:
+        (bareNixos [
+          self.nixosModules.guide-stick
+          { jitsusama.stick.appleRestores = restores; }
+        ]).config;
+      carrying = stick [ restore ];
+      plain = stick [ ];
+      partition = carrying.image.repart.partitions."90-apple-restore-0".repartConfig or { };
+      named = lib.attrNames carrying.image.repart.partitions;
+      wrong =
+        lib.optional (restore.name != "UniversalMac_27.2_26B123_Restore.erofs") "its image's name"
+        ++ lib.optional (partition.Label or null != "UniversalMac_27.2_26B123") "its partition's name"
+        ++ lib.optional (partition.CopyBlocks or null != "${restore}") "what fills it"
+        ++ lib.optional (lib.last named != "90-apple-restore-0") "its place after the system"
+        ++ lib.optional (!carrying.systemd.services ? guide-usbmuxd) "its usbmuxd"
+        ++ lib.optional (
+          !lib.hasInfix "guide revive" carrying.environment.loginShellInit
+        ) "its console's word"
+        ++ lib.optional (
+          lib.any (lib.hasPrefix "90-apple-restore") (lib.attrNames plain.image.repart.partitions)
+          || plain.systemd.services ? guide-usbmuxd
+        ) "core's own stick carrying none";
+    in
+    holds "a-stick-carries-apples-macos-apart"
+      "A stick carrying Apple's restore image gets these wrong: ${lib.concatStringsSep ", " wrong}."
+      (wrong == [ ]);
+
   # The keys an account's modules name in the TPM reach what the installed
   # guide reads, each with its account and a comment saying whose and
   # where: tpm-signing's two and ssh-tpm-agent's login key, which

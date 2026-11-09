@@ -110,6 +110,7 @@ pub mod process;
 pub mod progress;
 pub mod recover;
 pub mod rescue;
+pub mod revive;
 pub mod screen;
 pub mod sign;
 pub mod stand_in;

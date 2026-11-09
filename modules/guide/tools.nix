@@ -52,6 +52,10 @@ in
   GUIDE_FIDO2_ASSERT = lib.getExe' pkgs.libfido2 "fido2-assert";
   GUIDE_FIDO2_TOKEN = lib.getExe' pkgs.libfido2 "fido2-token";
   GUIDE_GH = lib.getExe pkgs.gh;
+  # What revives a Mac with Apple silicon: irecovery finds one waiting in
+  # DFU mode, and idevicerestore puts macOS back on it.
+  GUIDE_IDEVICERESTORE = lib.getExe pkgs.idevicerestore;
+  GUIDE_IRECOVERY = lib.getExe' pkgs.libirecovery "irecovery";
   GUIDE_LOSETUP = lib.getExe' pkgs.util-linux "losetup";
   GUIDE_LSBLK = lib.getExe' pkgs.util-linux "lsblk";
   GUIDE_MKDIR = lib.getExe' pkgs.coreutils "mkdir";
@@ -86,6 +90,8 @@ in
   GUIDE_TPM2_NVUNDEFINE = lib.getExe' pkgs.tpm2-tools "tpm2_nvundefine";
   GUIDE_UDEVADM = lib.getExe' systemd "udevadm";
   GUIDE_UMOUNT = lib.getExe' pkgs.util-linux "umount";
+  # How the guide asks wifid, on the stick, to join a network.
+  GUIDE_VARLINKCTL = lib.getExe' systemd "varlinkctl";
   GUIDE_VERITYSETUP = lib.getExe' pkgs.cryptsetup "veritysetup";
   GUIDE_WIPEFS = lib.getExe' pkgs.util-linux "wipefs";
   GUIDE_ZSTD = lib.getExe pkgs.zstd;

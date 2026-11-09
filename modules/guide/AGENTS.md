@@ -197,6 +197,30 @@ driven on; the installed machine's steps come later.
   already holds a machine and the install hasn't been confirmed onto it
   this boot, whether to recover it or install over it, so one stick does
   both. The other repairs the plan lists are still to come.
+- **Reviving a Mac** (`src/revive.rs`, `tests/revive.rs`). A stick a machine repository asks
+  to, through `lib.guide`'s `appleRestores`, carries Apple's restore image
+  for its Macs with Apple silicon: the zip whole in an erofs of its own
+  (`apple-restore.nix`), fetched by its hash and laid as the image's last
+  partition, named for the zip less `_Restore.ipsw`, so the writer copies
+  and hashes it like the system's. FAT's 4 GB limit keeps it out of the
+  vault, and Apple's zips store the 11 GB filesystem uncompressed, which
+  idevicerestore reads in place, so the partition is only read. Core's own
+  stick carries none, since each is tens of gigabytes. `guide revive`, as
+  root from such a stick on any laptop it boots, mounts the image, joins a
+  network through wifid (its password on varlinkctl's standard input),
+  finds the Mac waiting in DFU mode with irecovery, saying Apple's steps
+  to put it there, and asks Apple's signing server for this Mac's restore
+  with `idevicerestore -t`, which changes nothing and is all a practice
+  run needs. Only then, once confirmed, it updates the Mac, never `-e`, so
+  the data on its disk is kept, through a usbmuxd of the stick's own that skips the
+  pairing check that fails M2 to M4 Macs. A Mac's ECID and the image go in
+  the journal at each step, so every step stays done once the revived Mac
+  starts up into macOS. Erasing one is left to the root shell. The VM
+  tests' stick carries a stand-in image of a few bytes, and
+  `vm-guide-recovers` shows a written stick holding it whole.
+  `guide vault-list DIRECTORY` reads back every file of a vault copied
+  there and prints its SHA-256, so a stick's vault is shown whole before
+  it's written over and after.
 - **Choosing.** A choice is a list the arrows move through and Return
   takes, the cursor mark in the accent on the one the keys are on.
 - **The installed machine.** Once it boots its own disk, the guide runs

@@ -532,6 +532,17 @@ impl<'s, S: Store + ?Sized> Vault<'s, S> {
         &self.files
     }
 
+    /// Every file it holds, each read back whole and proven to be what
+    /// was packed, as `guide vault-list` shows them before a stick is
+    /// written over and after: the bytes are thrown away as they're read.
+    pub fn read_back(&mut self) -> Result<Vec<File>, Fault> {
+        let files = self.files.clone();
+        for file in &files {
+            self.extract(&file.path, io::sink())?;
+        }
+        Ok(files)
+    }
+
     /// Writes a file's bytes out, refusing it if any of them changed since
     /// it was packed. What was written before a refusal mustn't be used.
     pub fn extract(&mut self, path: &str, out: impl Write) -> Result<(), Fault> {
@@ -862,6 +873,36 @@ mod tests {
             vault.extract("state", &mut vec![]),
             Err(Fault::Unopened { .. })
         ));
+        assert!(
+            matches!(vault.read_back(), Err(Fault::Unopened { .. })),
+            "reading the vault back took a changed object"
+        );
+    }
+
+    #[test]
+    fn reading_a_vault_back_names_each_file_by_its_hash() {
+        let directory = crate::Scratch::new("vault-read-back");
+        let mut store = Directory::new(&directory);
+        let key = VaultKey::generate();
+        let mut packer = Packer::new(&mut store, &key);
+        packer.add("sbctl/db.key", &b"a key"[..]).unwrap();
+        packer.add("empty", &b""[..]).unwrap();
+        packer.finish(&manifest()).unwrap();
+
+        let listed: Vec<(String, String)> = Vault::open(&mut store, key)
+            .unwrap()
+            .read_back()
+            .unwrap()
+            .into_iter()
+            .map(|file| (file.sha256, file.path))
+            .collect();
+        assert_eq!(
+            listed,
+            [
+                (hex(&Sha256::digest(b"a key")), "sbctl/db.key".to_string()),
+                (hex(&Sha256::digest(b"")), "empty".to_string()),
+            ]
+        );
     }
 
     #[test]

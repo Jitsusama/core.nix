@@ -4,7 +4,8 @@
 # with a YubiKey's PIN, mounts every subvolume and the boot partition,
 # copies the home folders onto a USB drive, sets which generation boots
 # next, replaces a lost YubiKey, and hands over a root shell inside the
-# installed system. The machine's disk is one disko's
+# installed system. The stick carries a stand-in for Apple's restore image,
+# which the written stick holds whole in a partition of its own. The machine's disk is one disko's
 # image builder laid out and installed, as vm-secure-boot-installs builds
 # its own; its two YubiKeys are enrolled from the stick before the guide
 # starts, as a machine's own install leaves them. The tests are
@@ -120,6 +121,9 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
           stick = "${written}/stick.raw";
           drive = "${drive}";
           keys = "${keys}";
+          # The zip the stick's restore partition was built from, to compare
+          # with what the written stick holds.
+          restore = "${(builtins.head nodes.stick.jitsusama.stick.appleRestores).zip}";
           inherit pin recovery;
         }
       );

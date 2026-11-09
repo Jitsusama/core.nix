@@ -149,6 +149,10 @@
     the XPS 14's kernel drives an MST hub whose first branch didn't answer its link address as a
     single stream until the sink goes away, so the monitor behind it still lights
   '';
+  a-stick-carries-apples-macos-apart = ''
+    a stick given Apple's restore image lays it last, as a partition of its own named for its zip,
+    with a usbmuxd that skips pairing and a line saying `guide revive`; core's own stick has none
+  '';
   a-theme-changes-everything = ''
     another theme leaves none of the first's colours behind, but in the web kit's other look
   '';
@@ -3154,7 +3158,9 @@
     a repair stick finds a machine's disk, opens it with a YubiKey's PIN, checks its filesystem
     without changing it, mounts it whole, copies its home folders onto a USB drive without their
     caches, sets which generation boots next, replaces a lost key, reinstalls a boot loader gone
-    from the boot partition, and gives a root shell inside
+    from the boot partition, and gives a root shell inside; and the stick carries Apple's restore
+    image whole in a partition of its own, which mounts only for reading, beside the usbmuxd that
+    `guide revive` starts
   '';
   vm-guide-signs-a-stick-for-two-machines = ''
     a repair stick the guide signed with two machines' db keys boots with Secure Boot enforcing under

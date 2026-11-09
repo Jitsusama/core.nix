@@ -447,6 +447,11 @@
           # the machine's own system either way, so a Mac takes them from a
           # cache or a Linux builder (docs/recovering.md says why not its own).
           host ? "x86_64-linux",
+          # Apple's restore images for the stick to carry, each `{ url,
+          # hash }` from Apple's list of them, so it can put macOS back on a
+          # Mac with Apple silicon (`guide revive`). Each is tens of
+          # gigabytes, built where the stick is and written with it.
+          appleRestores ? [ ],
         }:
         let
           system = config.nixpkgs.hostPlatform.system;
@@ -456,7 +461,20 @@
           payload = linux.callPackage ./modules/guide/payload.nix { } {
             inherit config yubikeys account;
           };
-          stick' = sticks.${system} or (throw "core.nix has no stick for ${system}");
+          plain = sticks.${system} or (throw "core.nix has no stick for ${system}");
+          stick' =
+            if appleRestores == [ ] then
+              plain
+            else
+              plain.extendModules {
+                modules = [
+                  {
+                    jitsusama.stick.appleRestores = map (linux.callPackage ./modules/guide/apple-restore.nix
+                      { }
+                    ) appleRestores;
+                  }
+                ];
+              };
           image = "${stick'.config.system.build.image}/${stick'.config.image.filePath}";
         in
         pkgs.runCommand "guide-${config.networking.hostName}"

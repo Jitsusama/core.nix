@@ -3,8 +3,8 @@
 What to do on a bad day, for a laptop [installed][1] with Secure Boot on Joel's
 own keys and a disk the TPM opens. Each section starts from what happened:
 the disk won't open, the TPM or the firmware's keys were cleared, a new
-generation won't start, nothing boots, a YubiKey is lost, the disk dies, the
-laptop is gone, or 1Password won't open. A machine's own repository adds
+generation won't start, nothing boots, a Mac won't start at all, a YubiKey is
+lost, the disk dies, the laptop is gone, or 1Password won't open. A machine's own repository adds
 what's particular to it, such as anything an employer manages.
 
 ## What Makes It Recoverable
@@ -112,6 +112,34 @@ filesystem can lose more of it. Then it offers, coming back after each:
 - which generation boots next;
 - the boot loader installed again, signed with the machine's keys;
 - a lost YubiKey replaced (below).
+
+## A Mac Won't Start at All
+
+A Mac with Apple silicon whose own firmware or macOS is broken, so neither
+macOS, its recovery nor the boot picker comes up, takes them back from
+another computer while it waits in DFU mode. A stick the guide wrote does
+that from any x86-64 laptop, when its machine repository gives `lib.guide`
+Apple's restore image in `appleRestores`: it carries the image whole in a
+partition of its own, beside its system.
+
+1. Start the laptop from the stick, leave the guide it starts with, and
+   type `guide revive` at the shell.
+2. Join a network: Apple signs each restore for the one Mac it's for, at
+   the time, so the laptop has to reach Apple.
+3. Put the Mac in DFU mode as the guide says, Apple's own steps, with a
+   data USB-C cable from the laptop into the Mac's DFU port, the one beside
+   MagSafe on a MacBook.
+4. The guide asks Apple to sign the restore for that Mac before anything
+   changes. Apple stops signing a macOS soon after a newer one comes out,
+   so if it no longer signs the stick's, write the stick again with the
+   newest.
+5. Say yes, and leave both plugged in for about half an hour, until the
+   Mac starts up again by itself.
+
+It puts back the firmware and macOS as an update, which keeps the data on
+the Mac's disk rather than erasing it. Whether NixOS's partitions beside
+macOS come through untouched is shown only on a Mac, which hasn't been done
+yet. Erasing the Mac is never offered; it's left to the stick's root shell.
 
 ## Copying the Home Folders Off
 

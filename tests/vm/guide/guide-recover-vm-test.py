@@ -13,6 +13,7 @@ given as the `values` fixture.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -32,6 +33,11 @@ if TYPE_CHECKING:
     from test_driver.machine import QemuMachine
 
 VOLUME = "/dev/disk/by-partlabel/system"
+# The stand-in for Apple's restore image the stick carries (apple-restore.nix), by the
+# partition's name and the file in it, and where `guide revive` mounts it.
+RESTORE = "/dev/disk/by-partlabel/UniversalMac_27.2_26B123"
+RESTORE_FILE = "UniversalMac_27.2_26B123_Restore.ipsw"
+RESTORED = "/run/guide/restore"
 PLUGIN = "LD_LIBRARY_PATH=$(dirname $(readlink -f $(which systemd-cryptsetup)))/../lib/cryptsetup"
 # How long a screen of the guide may take to come, a key to come or go, and a step that
 # writes to the disk.
@@ -242,6 +248,25 @@ def test_disk_opens_with_two_yubikeys(enrolled: QemuMachine) -> None:
 def test_repair_stick_boots_into_recovery(recovering: QemuMachine) -> None:
     """A repair stick boots into the guide's recovery."""
     assert "named system" in screen(recovering), screen(recovering)
+
+
+def test_a_written_stick_carries_apples_restore_whole(
+    enrolled: QemuMachine, values: dict[str, Any]
+) -> None:
+    """Apple's restore image is written onto the stick whole, for `guide revive` to read.
+
+    Its partition mounts only for reading where the guide mounts it, and holds the zip byte
+    for byte, and the usbmuxd the revive starts listens on its own socket.
+    """
+    enrolled.succeed(f"mount -o ro,X-mount.mkdir {RESTORE} {RESTORED}")
+    assert "ro" in enrolled.succeed(f"findmnt -no OPTIONS {RESTORED}").split(",")
+    held = enrolled.succeed(f"sha256sum {RESTORED}/{RESTORE_FILE}").split()[0]
+    given = hashlib.sha256(Path(values["restore"]).read_bytes()).hexdigest()
+    assert held == given, (held, given)
+    enrolled.succeed(f"umount {RESTORED}")
+    enrolled.succeed("mkdir -p /run/guide && systemctl start guide-usbmuxd.service")
+    enrolled.wait_until_succeeds("test -S /run/guide/usbmuxd.sock", timeout=KEY)
+    enrolled.succeed("systemctl stop guide-usbmuxd.service")
 
 
 def test_everything_the_machine_mounts_is_under_mnt(opened: QemuMachine) -> None:
