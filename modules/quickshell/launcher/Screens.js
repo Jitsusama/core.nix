@@ -462,8 +462,10 @@ function typedSaid(setting, typed) {
 // named as its row is, offers instead, in the foot's form: "1.3\u00d7 not
 // set \u00b7 HP offers 1\u00d7 to 3\u00d7" (VKCF3Z, 2026-11-09). A
 // setting of figures says its first to its last; Rotation, whose eight
-// have no order between, says each.
-function lineSet(output, setting, typed, words, named) {
+// have no order between, says each. `asked` is what the line gave, as
+// { setting, typed }.
+function lineSet(output, asked, words, named) {
+    const { setting, typed } = asked;
     const values = lineValues(output, setting, words);
     const found = lineFound(values, setting, typed);
     if (found !== null) {

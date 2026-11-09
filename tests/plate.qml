@@ -223,8 +223,8 @@ QtObject {
         monitor.logical.transform = "Flipped90";
         const values = setting => Screens.lineValues(monitor, setting, lineWords)
             .map(each => `${each.value} (${each.note})`).join(", ");
-        const set = (setting, given) => JSON.stringify(Screens.lineSet(monitor, setting, given,
-            lineWords, "HP"));
+        const set = (setting, given) => JSON.stringify(Screens.lineSet(monitor,
+            { setting: setting, typed: given }, lineWords, "HP"));
         check("the settings a running mode has",
             Screens.lineSettings(monitor).join(" ") === "scale refresh resolution rotation",
             Screens.lineSettings(monitor).join(" "));

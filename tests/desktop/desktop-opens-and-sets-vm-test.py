@@ -979,9 +979,11 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
         retry(scaled_by_line, timeout=timedelta(seconds=15))
     machine.send_chars(":setl scale=1.3\n", delay=KEY_PACE)
     desktop.launcher_until(
-        lambda shown: shown["command"] is None
-        and str(shown["commandSaid"]).startswith("1.3\u00d7 not set \u00b7 ")
-        and str(shown["commandSaid"]).endswith(" offers 1\u00d7 to 3\u00d7")
+        lambda shown: (
+            shown["command"] is None
+            and str(shown["commandSaid"]).startswith("1.3\u00d7 not set \u00b7 ")
+            and str(shown["commandSaid"]).endswith(" offers 1\u00d7 to 3\u00d7")
+        )
     )
     assert scale() == was, f"a scale not offered was set: {scale()}"
     desktop.close_launcher()
