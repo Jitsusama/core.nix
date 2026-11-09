@@ -211,6 +211,13 @@ Scope {
 
             onPointedChanged: later()
 
+            // What each lit mark stands for, which its report says, so a test
+            // reads it as it is now: For You's count changes with the tray lit.
+            // Followed only while the shell reports, so nothing else pays for it.
+            readonly property string states: Options.reports
+                ? root.on.map(thing => thing.piece.value).join("\n") : ""
+            onStatesChanged: later()
+
             // A recording waits for its mark to be drawn, so its first frame
             // holds it (Recorder.qml). A frame begun before the mark came may
             // still be shown after, without it, so only a frame begun since

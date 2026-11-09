@@ -401,22 +401,16 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     stays_showing_it_gone(desktop, "Do Not Disturb")
 
 
-def test_a_critical_notice_unread_lights_for_yous_tray_and_now_shows_the_notices(
+def test_now_shows_the_notices_and_a_critical_one_unread_lights_for_yous_tray(
     desktop: Desktop,
 ) -> None:
-    """A critical notice unread lights For You's tray, Now shows the notices, and u undoes dd."""
+    """Now shows the notices, u undoes dd there, and a critical one unread lights the tray."""
     machine = desktop.machine
-    # A critical notice stays on screen until it's put away; on screen its
-    # card says it. Put away unread, it waits in For You's Desktop, whose
-    # tray is then the margin's one mark, and it wants Joel, so it's strong.
+    # Missed, a notice is what came lately, lighting nothing; it stays
+    # open to its sender, so d forgets it.
     with desktop.told("shows card Peter"):
-        desktop.as_account("notify-send --urgency=critical 'Peter' 'are you there?'")
-    since = desktop.mark()
-    with desktop.told("drawn margin"):
-        desktop.as_account("qs ipc call notices putAway")
+        desktop.as_account("notify-send --expire-time=1000 'Peter' 'are you there?'")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
-    desktop.reported("sets margin ", margin_sets(("forYou", "wants", "strong")), since)
-    desktop.shoot("margin-for-you")
     # Now opens on For You, its first row, however much the notices
     # want Joel. The time and the date are among Now's own rows, each its
     # own answer as it's placed anywhere; the VM has no forecast and no
@@ -459,9 +453,14 @@ def test_a_critical_notice_unread_lights_for_yous_tray_and_now_shows_the_notices
     desktop.shoot("launcher-from-margin")
     forgets_then_brings_back(desktop)
     desktop.close_launcher()
-    # Unread still, Peter's notice keeps the tray lit until it's read.
     reads_them_all(desktop)
-    machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
+    # A critical notice put away unread waits in For You's Desktop, whose tray
+    # is then the margin's one mark, strong, since it wants Joel; read, it goes.
+    since = desktop.mark()
+    for_you_lit(desktop, "Paula")
+    desktop.reported("sets margin ", margin_sets(("forYou", "wants", "strong")), since)
+    desktop.shoot("margin-for-you")
+    for_you_read(desktop)
 
 
 def says_each_thing_once(desktop: Desktop) -> None:
