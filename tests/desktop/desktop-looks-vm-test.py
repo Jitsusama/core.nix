@@ -1427,19 +1427,20 @@ def a_programs_plate_lies_on_the_lines(desktop: Desktop, scale: str, keeping: li
     """Hold the plate of the program playing through the speakers to the lines.
 
     pw-cat plays them silence, so its stream runs in their cycle and says how it keeps time as
-    theirs does, and what identifies it ends its plate (VKCF3Z, 2026-11-09).
+    theirs does, and what identifies it ends its plate. It's named as it names itself, and its
+    eyebrow says where it plays and that it's a stream (VKCF3Z, 2026-11-09).
     """
     desktop.follow()
     desktop.down_to("Playing")
     desktop.follow()
-    desktop.down_to("Pw-cat")
+    desktop.down_to("pw-cat")
 
     def plated(shown: Json) -> bool:  # As launcher_until calls it.
         """Say whether pw-cat's plate is out, its timing heard, laid on the pitch."""
         drawer = shown["drawer"]
         return (
             drawer["out"] is True
-            and drawer["title"] == "Pw-cat"
+            and drawer["title"] == "pw-cat"
             and all(fact in drawer["facts"] for fact in keeping)
             and things_apart(drawer["lines"]["facts"], drawer["factsWrapped"] > 0)
             and drawer["labelsWhole"] is True
@@ -1448,7 +1449,9 @@ def a_programs_plate_lies_on_the_lines(desktop: Desktop, scale: str, keeping: li
 
     desktop.launcher_until(plated)
     drawer = plate_shown(desktop, scale)
-    assert str(drawer["eyebrow"]).lower() == "playing", f"at {scale}: {drawer}"
+    eyebrow = str(drawer["eyebrow"])
+    assert eyebrow.startswith("on "), f"at {scale} it doesn't say where it plays: {drawer}"
+    assert eyebrow.endswith(" \u00b7 stream"), f"at {scale} it doesn't say it's a stream: {drawer}"
     kept = [fact for fact in drawer["facts"] if fact in keeping]
     assert kept == keeping, f"at {scale} pw-cat's timing is out of order: {drawer}"
     assert "Graph ID" in drawer["facts"], f"at {scale} pw-cat isn't identified: {drawer}"

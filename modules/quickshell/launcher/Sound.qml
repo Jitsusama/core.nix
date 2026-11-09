@@ -441,6 +441,15 @@ Provider {
             : factParts("sound", key, facts[key], ["lighting", "playing", "recording"]);
     }
 
+    // The facts a device's or a stream's drawer knows, each by its word and
+    // only where it has a value, marked as identifiers where they are:
+    // pairs of the word's id under sound: and its value.
+    function known(ids, identifies) {
+        return ids.filter(([, value]) => value !== "").map(([id, value]) => ({
+            label: Words.name(`sound:${id}`), value: value, identifies: identifies
+        }));
+    }
+
     // A device's drawer (Plate.js): where it is and which way it goes over
     // its name, then its parts as facts, what moves most first (VKCF3Z,
     // 2026-11-07): its State as pipewire says it, its Volume in decibels,
@@ -507,13 +516,13 @@ Provider {
         // How it keeps time moves each second, so it goes ahead of Format
         // (VKCF3Z, 2026-11-08).
         const keeping = keepingOf(node);
-        const known = (ids, identifies) => ids.filter(([, value]) => value !== "")
-            .map(([id, value]) => ({
-                label: Words.name(`sound:${id}`), value: value, identifies: identifies
-            }));
         const identified = fact => Object.assign({}, fact, { identifies: true });
         return {
-            eyebrow: Plate.runs([joinedBy(node), said(node.isSink ? "plate-out" : "plate-in")]),
+            // Where it is and what it is, in our own words, so in Label's
+            // capitals (VKCF3Z, 2026-11-09): one the machine makes, joined
+            // by nothing, is on this machine.
+            eyebrow: Plate.runs([joinedBy(node) || said("joined-here"),
+                said(node.isSink ? "plate-out" : "plate-in")]),
             title: named(node),
             facts: doing.concat(facts, keeping, format,
                 known([["priority", String(properties["priority.session"] ?? "")]], false),
@@ -830,7 +839,9 @@ Provider {
         if (!(given in entries)) {
             const entry = given === "" ? null : DesktopEntries.heuristicLookup(given);
             entries[given] = {
-                name: entry ? entry.name : given.charAt(0).toUpperCase() + given.slice(1),
+                // Named as it names itself, "pw-cat" as "pw-cat": nothing
+                // capitalises a name (VKCF3Z, 2026-11-09).
+                name: entry ? entry.name : given,
                 id: entry ? entry.id : given
             };
         }
@@ -946,17 +957,21 @@ Provider {
 
     // A program's drawer, playing through a device or recording from one
     // (VKCF3Z, 2026-11-08): each of its streams, loudest then newest
-    // first, a group headed by what it plays where it has more than one,
+    // first (by its graph ID, which pipewire gives out rising but reuses,
+    // so newest only roughly), a group headed by what it plays where it has more than one,
     // or that said as its Stream where it has one. Under it, how it keeps
     // time, which moves most; its Format; its Sample Rate and Delay, its
     // parts, the rate only where its Format doesn't open with it; its
-    // Role, in pipewire's word as given; the device it plays on or
-    // records from; and what identifies it, ending its group: its
-    // Process ID, Graph ID and Client ID. Its name is the row's, and so is
-    // whether it's paused or muted, so neither is said again. It's read
-    // as it's drawn, its streams as the device has them now; a program
-    // gone has none, its old streams' nodes perhaps gone with it, so its
-    // drawer shuts.
+    // Role, in pipewire's word as given; the filter it plays through or
+    // records from, where one stands in front of the device; and what
+    // identifies it, ending its group: its Process ID, Graph ID and Client
+    // ID. Its name is the row's, and so is whether it's paused or muted,
+    // so neither is said again; its eyebrow says where it plays and that
+    // it's a stream, in Note since it names the device, as Media's "on
+    // Spotify \u00b7 track" does (VKCF3Z, 2026-11-09). It's read as it's
+    // drawn, its streams as the device has them now; a program gone has
+    // none, its old streams' nodes perhaps gone with it, so its drawer
+    // shuts.
     function programDrawn(node, program) {
         return programPlate(node, programsOf(node).find(each => each.name === program.name)
             ?? { name: program.name, streams: [] });
@@ -969,16 +984,27 @@ Provider {
             (a, b) => loudness(b) - loudness(a) || b.id - a.id);
         const headed = streams.length > 1;
         return {
-            eyebrow: Words.name(node.isSink ? "sound:programs" : "sound:recorders"),
+            eyebrow: Plate.runs([said(node.isSink ? "stream-on" : "stream-from",
+                { device: named(node) }), said("plate-stream")]),
+            eyebrowNames: true,
             title: live.name,
             facts: [].concat(...streams.map(stream => provider.streamFacts(node, key, stream,
-                headed)))
+                headed, live.name)))
         };
     }
 
-    function streamFacts(node, key, stream, headed) {
+    // What a stream plays says something only where it isn't empty, "-"
+    // (pw-cat's, playing what it's given), or the program's own name
+    // again (VKCF3Z, 2026-11-09); a group goes by the stream's own name
+    // then. Its end is said only where it's a filter in front of the
+    // device, since the eyebrow names the device.
+    function streamFacts(node, key, stream, headed, program) {
         const properties = stream.properties;
-        const plays = String(properties["media.name"] ?? "");
+        const given = String(properties["media.name"] ?? "").trim();
+        const programNames = [program, String(properties["application.name"] ?? "")]
+            .map(name => name.toLowerCase());
+        const plays = given === "-" || programNames.includes(given.toLowerCase()) ? ""
+            : given;
         // One of several is headed by what it plays, else its own name, and
         // goes unheaded where it has neither; one alone says it as Stream.
         const called = plays || String(stream.name ?? "");
@@ -989,12 +1015,7 @@ Provider {
             head = [{ label: Words.name("sound:stream"), value: plays }];
         const format = Sounds.graphFormat(stream.audio?.format);
         const rate = Sounds.rate(properties["node.rate"]);
-        const opensWithRate = format !== ""
-            && (format === rate || format.startsWith(`${rate} \u00b7`));
-        const known = (ids, identifies) => ids.filter(([, value]) => value !== "")
-            .map(([id, value]) => ({
-                label: Words.name(`sound:${id}`), value: value, identifies: identifies
-            }));
+        const opensWithRate = format !== "" && Sounds.sameFormat(rate, format);
         return head.concat(keepingOf(stream),
             format === "" ? [] : [{ label: Words.name("sound:format"), value: format }],
             Plate.facts(streamFigures(key, stream)
@@ -1006,10 +1027,11 @@ Provider {
                 ["client", String(properties["client.id"] ?? "")]], true));
     }
 
-    // What a stream is linked to: the device, by its name, or the filter
-    // in front of it, by the filter's; "" while it's linked to neither.
+    // The filter in front of the device a stream is linked to, by the
+    // filter's name; "" while it's linked to the device itself, which the
+    // eyebrow names, or to neither.
     function endOf(stream, node) {
-        const ends = [node].concat(filtersOf(node));
+        const ends = filtersOf(node);
         for (const group of Pipewire.linkGroups.values) {
             const from = node.isSink ? group.source : group.target;
             const end = node.isSink ? group.target : group.source;
@@ -1171,10 +1193,14 @@ Provider {
     // recording from it, by the device's node's name, or "". pw-top runs
     // only while one shows, since it asks the graph for its timing every
     // cycle while it runs.
-    readonly property string timedDevice: {
-        const key = launcher !== null && launcher.open && launcher.drawerOut
-            ? String(launcher.selected?.key ?? "") : "";
-        const device = devices.find(node => key === `sound:${node.name}`
+    readonly property string timedDevice: timedBy(launcher !== null && launcher.open
+        && launcher.drawerOut ? String(launcher.selected?.key ?? "") : "", devices)
+
+    // Which of the devices the row by this key times, by its node's name,
+    // or "": the device's own, or a program's through it, never its
+    // Playing list's.
+    function timedBy(key, among) {
+        const device = among.find(node => key === `sound:${node.name}`
             || key.startsWith(`sound:${node.name}:program:`));
         return device === undefined ? "" : device.name;
     }

@@ -138,8 +138,13 @@ ShellRoot {
         sound.facts = { "PCH,1:out": [{ name: "playing", value: "48 kHz \u00b7 32 bit" }] };
         const plate = sound.drawerOf(card);
         const volume = plate.facts.find(fact => fact.label === "Volume");
-        expect("a built-in output says so over its name",
-            plate.eyebrow === "built in \u00b7 output", plate.eyebrow);
+        expect("a built-in output says so over its name, as it's written",
+            plate.eyebrow === "built in \u00b7 output" && plate.eyebrowNames !== true,
+            plate.eyebrow);
+        const made = device("stand-in-speakers", true, {});
+        expect("one the machine makes is on this machine",
+            sound.drawerOf(made).eyebrow === "on this machine \u00b7 output",
+            sound.drawerOf(made).eyebrow);
         const said = plate.facts.map(fact => `${fact.label}=${fact.value}`).join("; ");
         const labels = plate.facts.map(fact => fact.label).join(", ");
         // The kernel's fact is named by the launcher's vocabulary, which
@@ -281,7 +286,8 @@ ShellRoot {
             errors: 0 } };
         const one = sound.programPlate(speakers,
             { name: "Firefox", streams: [stream(90, "Big Buck Bunny - YouTube", 0.8)] });
-        expect("a program's one stream", one.eyebrow === "Playing" && one.title === "Firefox"
+        expect("a program's one stream", one.eyebrow === "on alsa_output.pci.speakers \u00b7 stream"
+            && one.eyebrowNames === true && one.title === "Firefox"
             && said(one) === "Stream=Big Buck Bunny - YouTube; Dropouts=none; "
             + "Load=9.80% of each cycle; Cycle=1,024 frames \u00b7 21.3 ms; "
             + "Format=48 kHz \u00b7 32 bit float; Delay=21.3 ms; Role=Movie; "
@@ -311,6 +317,29 @@ ShellRoot {
         const gone = sound.programDrawn(speakers,
             { name: "Firefox", streams: [stream(90, "Big Buck Bunny - YouTube", 0.8)] });
         expect("a program gone has nothing to draw", gone.facts.length === 0, said(gone));
+        // What a stream plays goes where it says nothing the title doesn't.
+        for (const plays of ["", "-", "firefox", "Firefox"]) {
+            const bare = sound.programPlate(speakers,
+                { name: "Firefox", streams: [stream(90, plays, 0.8)] });
+            expect(`a stream playing "${plays}" says no Stream`,
+                !bare.facts.some(fact => fact.label === "Stream"), said(bare));
+        }
+        expect("a program with no entry is named as it names itself",
+            sound.programOf({ name: "pw-cat", properties: { "application.name": "pw-cat" } })
+                .name === "pw-cat", "capitalised");
+        // A stream that says no format, rate or what it plays still has a
+        // drawer, of what it does say.
+        const scant = sound.programPlate(speakers,
+            { name: "Firefox", streams: [{ id: 93, name: "firefox", properties: {} }] });
+        expect("a stream that says little says what it does",
+            said(scant) === "Graph ID=93*", said(scant));
+        // pw-top times a device's drawer and its programs', never its list's.
+        const among = [speakers, headphones];
+        for (const [key, timed] of [["sound:alsa_output.pci.speakers", speakers.name],
+            ["sound:alsa_output.pci.speakers:program:Firefox", speakers.name],
+            ["sound:alsa_output.pci.speakers:programs", ""], ["sound:elsewhere", ""]])
+            expect(`${key} times ${timed || "nothing"}`, sound.timedBy(key, among) === timed,
+                sound.timedBy(key, among));
         sound.timings = {};
     }
 
