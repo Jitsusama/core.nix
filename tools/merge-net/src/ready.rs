@@ -249,11 +249,8 @@ mod tests {
             checked_before(&candidates, &files, "", &record_rechecked, &on_main, &moved),
             Before::Rechecked("old".to_owned(), vec!["b.md".to_owned()])
         );
-        let moved_again = |commit: &str| match commit {
-            "old" => Some(vec!["b.md".to_owned()]),
-            "rebased" => Some(vec!["b.md".to_owned()]),
-            _ => None,
-        };
+        let moved_again =
+            |commit: &str| matches!(commit, "old" | "rebased").then(|| vec!["b.md".to_owned()]);
         assert_eq!(
             checked_before(
                 &candidates,
