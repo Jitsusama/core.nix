@@ -7,7 +7,8 @@
 // extension is linted as it is (treefmt.nix), running in Chrome with its
 // `chrome` object, and so is the web kit's CSS (modules/theme/web), which
 // keeps every colour in theme.css's roles. Node's JavaScript, the .mjs tests
-// and pi's TypeScript extensions, is formatted too, by `nix fmt`.
+// and pi's TypeScript extensions, is formatted too, by `nix fmt`, and so is
+// JSON, which every rule for it reads.
 {
   "formatter": { "enabled": false },
   "assist": { "enabled": false },
@@ -64,6 +65,11 @@
           }
         }
       }
+    },
+    {
+      // JSON, at core's line width.
+      "includes": ["**/*.json", "**/*.jsonc"],
+      "formatter": { "enabled": true, "indentStyle": "space", "lineWidth": 100 }
     },
     {
       // Node's JavaScript, at core's line width, with what Qt's engine
