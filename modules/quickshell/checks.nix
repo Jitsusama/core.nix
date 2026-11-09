@@ -2242,6 +2242,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Sounds.js} launcher/Sounds.js
+      cp ${./launcher/Targets.js} launcher/Targets.js
       cp ${./launcher/Plate.js} launcher/Plate.js
       cp ${./launcher/Sound.qml} launcher/Sound.qml
       cp ${./launcher/Order.js} launcher/Order.js

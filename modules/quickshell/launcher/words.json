@@ -5183,6 +5183,9 @@
         "over": "over {share}",
         "cycle": "{frames} frames \u00b7 {ms} ms",
         "chosen": "chosen",
+        "the-default": "the default",
+        "sent-to": "{program} plays on {device}",
+        "sent-from": "{program} records from {device}",
         "muted": "muted",
         "none": "none",
         "on": "on",
@@ -5553,6 +5556,12 @@
       "in": "sound",
       "name": "Use {port}",
       "verb": "use"
+    },
+    {
+      "id": "verb:sound-sent",
+      "in": "sound",
+      "name": "{device}",
+      "verb": "set"
     },
     {
       "id": "keyboard",

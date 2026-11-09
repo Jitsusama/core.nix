@@ -10,7 +10,8 @@
 // - an output: its Level going out, live while it shows; its Volume, in
 //   percent and in decibels, with Louder, Quieter and levels to set a step
 //   in; whether it's Muted, Mute and Unmute a step in; the programs
-//   Playing through it, each muted or turned a step in; its Tuning, when a
+//   Playing through it, each muted or turned a step in, or sent to play
+//   on another device or the default (Targets.js); its Tuning, when a
 //   filter puts itself in front of it; its Port, when its card offers it
 //   several; its Channels; its Profile, over Bluetooth; its Hardware; and
 //   what the kernel says of its card.
@@ -49,6 +50,7 @@ import "Numbers.js" as Numbers
 import "Order.js" as Order
 import "Plate.js" as Plate
 import "Sounds.js" as Sounds
+import "Targets.js" as Targets
 
 Provider {
     id: provider
@@ -925,6 +927,9 @@ Provider {
                         stream.audio.muted = muting;
                 }), act("verb:program:louder", "", stepping(step)),
             act("verb:program:quieter", "", stepping(-step))];
+            const sent = provider.sentPart(node, program, key);
+            if (sent !== null)
+                rows.push(sent);
             return rows.concat(provider.streamFigures(key, first));
         });
     }
@@ -1268,6 +1273,142 @@ Provider {
         id: portMover
         property var moving: null
         onExited: provider.readPorts(portMover.moving)
+    }
+
+    // Which device each stream is sent to, by its id, as WirePlumber keeps
+    // it in the default metadata: heard while the launcher's open, which
+    // costs the graph nothing, since pw-metadata only listens.
+    property var targets: ({})
+
+    Process {
+        running: provider.launcher !== null && provider.launcher.open
+        command: [provider.settings.pwMetadata ?? "pw-metadata", "-n", "default", "-m"]
+        onRunningChanged: {
+            if (!running)
+                provider.targets = ({});
+        }
+        stdout: SplitParser {
+            onRead: line => {
+                // Only a target's change is news: the rest of the default
+                // metadata, as the default's own, refreshes nothing.
+                const heard = Targets.heard(provider.targets, line);
+                if (heard !== provider.targets)
+                    provider.targets = heard;
+            }
+        }
+    }
+
+    // A program's Plays On, or Records From for one recording: the device
+    // it's on, stepping in to the default and each device it could go to
+    // instead (VKCF3Z, 2026-11-09), where there's another to go to.
+    function sentPart(node, program, key) {
+        const among = ordered(node.isSink ? outputs : inputs);
+        if (among.length < 2)
+            return null;
+        const id = node.isSink ? "plays-on" : "records-from";
+        const usual = node.isSink ? Pipewire.defaultAudioSink : Pipewire.defaultAudioSource;
+        const choices = () => Targets.choices(among,
+            Targets.sentTo(program.streams, provider.targets));
+        // What's chosen: the device it's sent to, or the default and the
+        // device that is, so a stream sent somewhere is told from one
+        // following the default (VKCF3Z, 2026-11-09).
+        const pinned = choices().find(choice => choice.chosen && choice.device !== null);
+        return holderRow({
+            key: `${key}:${id}`,
+            name: Words.name(`sound:${id}`),
+            side: pinned ? named(pinned.device)
+                : Plate.runs([said("the-default"), usual ? named(usual) : ""]),
+            glyph: glyph(kind(node)),
+            offers: true
+        }, () => choices().map(choice => {
+            // Each said by its value alone, wearing its own row's mark,
+            // the default its device's, as a choice is (design.md).
+            const device = choice.device ?? usual;
+            // One choice's words for both ways, a device's name being the
+            // same word whether sound goes to it or comes from it.
+            return provider.act("verb:sound-sent", "", {
+                key: `verb:sound-${id}:${choice.device?.name ?? ""}`,
+                fill: { device: choice.device ? provider.named(choice.device)
+                    : provider.said("the-default") },
+                glyph: device ? provider.glyph(provider.kind(device)) : provider.glyph(""),
+                side: choice.chosen ? provider.said("chosen") : "",
+                note: choice.device === null && usual ? provider.named(usual) : "",
+                run: () => provider.send(node, program, choice.device)
+            });
+        }));
+    }
+
+    // Sends each of a program's streams to a device, or back to the
+    // default, given none, which it then follows wherever it moves, one
+    // pw-metadata at a time; then, once the program's heard there, goes to
+    // it on its new device's path.
+    Process {
+        id: sender
+        property var left: []
+        onExited: Qt.callLater(provider.sendNext)
+    }
+
+    function send(node, program, device) {
+        const to = device ?? (node.isSink ? Pipewire.defaultAudioSink
+            : Pipewire.defaultAudioSource);
+        sender.left = sender.left.concat(Targets.sending(settings.pwMetadata ?? "pw-metadata",
+            program.streams, device ? device.name : ""));
+        // Held as sent, so the part it lands on says so before pw-metadata
+        // tells it back; refreshing the launcher when it does would redraw
+        // it under the walk to the program's new place.
+        targets = Targets.sentAs(targets, program.streams, device ? device.name : "");
+        sendNext();
+        if (to && to !== node) {
+            following = { program: program.name, to: to, sink: node.isSink };
+            followFor.restart();
+        }
+    }
+
+    function sendNext() {
+        if (sender.running || sender.left.length === 0)
+            return;
+        sender.command = sender.left[0];
+        sender.left = sender.left.slice(1);
+        sender.running = true;
+    }
+
+    // The program just sent, until it's heard on the device it went to;
+    // WirePlumber links it there a moment later, or never, as when the
+    // device went first, and then it's let go.
+    property var following: null
+
+    Timer {
+        id: followFor
+        interval: 3000
+        onTriggered: provider.following = null
+    }
+
+    Connections {
+        target: Pipewire.linkGroups
+        enabled: provider.following !== null
+
+        function onValuesChanged() {
+            provider.arrived();
+        }
+    }
+
+    function arrived() {
+        const went = following;
+        if (!programsOf(went.to).some(program => program.name === went.program))
+            return;
+        following = null;
+        followFor.stop();
+        const device = `sound:${went.to.name}`;
+        const program = `${device}:program:${went.program}`;
+        const id = went.sink ? "plays-on" : "records-from";
+        launcher?.goTo({
+            // From the top, through Machine, which holds Sound.
+            trail: ["category:computer", "collection:sound", device, `${device}:${went.sink ? "programs" : "recorders"}`,
+                program],
+            spot: `${program}:${id}`
+        });
+        launcher?.operatorTells(said(went.sink ? "sent-to" : "sent-from",
+            { program: went.program, device: named(went.to) }));
     }
 
     function movePort(node, port) {
