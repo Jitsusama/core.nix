@@ -472,6 +472,19 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
         )
     )
     desktop.shoot("launcher-home-now-waiting")
+    # At Joel's scales too, for the plate beside the row that says what waits, which says it
+    # no more (VKCF3Z, 2026-11-09). Only the gallery shoots them.
+    if desktop.values["shots"]:
+        for scale in JOELS_SCALES:
+            desktop.as_account(f"niri msg output winit scale {scale}")
+            desktop.launcher_until(
+                lambda shown: any(
+                    thing["reads"] == "Now \u00b7 Answer the ask \u00b7 2 min"
+                    for thing in shown["things"]
+                )
+            )
+            desktop.shoot(f"launcher-home-now-waiting-at-{scale.replace('.', '-')}")
+        desktop.as_account("niri msg output winit scale 1")
     # It counts only what Joel can do now: the session's two aren't ready.
     desktop.type_in("for you", selecting="For You")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "1")
