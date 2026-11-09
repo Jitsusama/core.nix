@@ -97,7 +97,7 @@ function facts(here, now, said, told) {
 // beside it, never says a thing twice (VKCF3Z, 2026-11-09): how near it
 // is goes from the plate while the note says it, and stays while the note
 // says the zone instead. A note is a run of items, each its own.
-function besideNote(facts, note) {
+function besideNote(plate, note) {
     const items = note.split(" \u00b7 ");
-    return facts.filter(fact => !items.includes(fact.value));
+    return plate.filter(fact => !items.includes(fact.value));
 }
