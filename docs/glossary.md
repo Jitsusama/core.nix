@@ -300,6 +300,7 @@ off.
 | processor | what runs every program | CPU | |
 | model | a device's maker's name for what it is, such as a processor's, a disk's, a battery's or a keyboard's | | |
 | version | which release of a device's firmware is in it, or which Bluetooth its radio speaks, as its maker numbers them | | fwupd's `version` |
+| Linux name | the name Linux gives a part of the machine, such as a sensor's chip or a battery | kernel name | hwmon's `name`, power_supply's name |
 | graphics | the processor's part that draws what the screens show | | the GPU, Xe |
 | NPU | the processor's part that runs models on the machine | | the `intel_vpu` driver |
 | media engine | the processor's part that encodes and decodes video | | |
@@ -374,6 +375,10 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | ---- | ----- | --- | ------- |
 | connection | the network link out of the machine | line, uplink | |
 | speed | how fast the connection, or a device on the home network, carries data now, each way | network speed, connection speed, bandwidth | `traffic` |
+| in | of data at this machine's own links, coming to it, as its traffic and a link's speed count it; the internet's speed says down | | `traffic:in`, `wifi:in` |
+| out | of data at this machine's own links, leaving it, as its traffic and a link's speed count it; the internet's speed says up | | `traffic:out`, `wifi:out` |
+| down | of the internet's speed, what it carries to the home network, as a speed test measures it; this machine's links say in | | `eero:internet:down` |
+| up | of the internet's speed, what it carries out of the home network, as a speed test measures it; this machine's links say out | | `eero:internet:up` |
 | address | an address the machine has on a network | network address, IP | `networks` |
 | lease | an address a network's server lends for a while, to the machine or to the gateway node, with the name servers and domain that come with it | | DHCP, `leases` |
 | subnet | the run of addresses one of the home network's networks hands out, the main one or the guest one, as its address and prefix | | `subnets_config`, `Subnet` |
