@@ -31,6 +31,9 @@
 //! every list and gives it back, and leaves a builder beside out of every
 //! list until it passes again. `beside` is there only in a folder whose
 //! lender names builders beside.
+//!
+//! Long because its tests, a third of it, stay beside the private pieces
+//! they prove, the proof's clock and what it keeps of a builder's builds.
 
 use serde_json::{Value, json};
 use std::fs;
