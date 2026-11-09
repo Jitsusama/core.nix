@@ -107,8 +107,10 @@ ShellRoot {
             recent: `${root.home}/data/recently-used.xbel`,
             list: [Quickshell.env("DRAWINGS_LIST")],
             paste: Quickshell.env("PASTE"),
-            border: "#101010",
-            desk: "#202020"
+            // Stand-ins for the theme's edge and sunken roles, which the
+            // provider only passes on into the drawing.
+            border: "the-edge",
+            desk: "the-sunken"
         })
         onDrawingsChanged: root.ready()
     }
@@ -399,7 +401,7 @@ ShellRoot {
         const svg = read(given);
         expect("a drawing the picture's size, its desk in the theme's colours", svg.includes(
             "width=\"4\" height=\"2\" viewBox=\"0 0 4 2\"") && svg.includes(
-            "bordercolor=\"#101010\" inkscape:deskcolor=\"#202020\""), svg);
+            "bordercolor=\"the-edge\" inkscape:deskcolor=\"the-sunken\""), svg);
         expect("the picture in it whole", svg.includes(
             "<image width=\"4\" height=\"2\" href=\"data:image/png;base64,UE5H\" />"), svg);
         Copied.types = [];

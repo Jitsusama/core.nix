@@ -63,6 +63,8 @@ onLinux {
         "Ago.js"
         "words.json"
       ];
+      # Kept in Nix because it's a stand-in's few properties, as each
+      # program's check in the launcher writes its niri.
       niri = singleton "Niri.qml" ''
         property int revision: 0
         property var windows: ({})
@@ -107,6 +109,9 @@ onLinux {
       # Inkscape, saying what it was given.
       inkscape = pkgs.writeShellScript "inkscape" ''printf '%s\n' "$@" > "$HOME/given"'';
     in
+    # Kept in Nix because each line copies, or names in a variable, a file
+    # Nix gives it, and the drawings it reads are made by a script of their
+    # own (tests/drawings-lately.sh).
     pkgs.runCommandLocal "the-launcher-lists-inkscapes-drawings-lately" { } ''
       mkdir -p launcher share/applications
       cp ${entry} share/applications/org.inkscape.Inkscape.desktop
@@ -141,26 +146,8 @@ onLinux {
       install -m 644 ${settings.template} $TEMPLATE
       export INKSCAPE=${inkscape} PASTE=${paste} RECENT_FILES=${recent-files}
       export DRAWINGS_LIST=${lib.head settings.list}
-      # Each drawing, its root where an SVG's is, over lines and after a
-      # comment, a compressed one, an export and one nvim alone opened;
-      # gone.svg is on the list but not here.
-      mkdir -p $HOME/Drawings $XDG_DATA_HOME
-      cd $HOME/Drawings
-      printf '%s\n' '<?xml version="1.0"?>' '<!-- <svg> -->' '<svg' '  width="210mm"' \
-        '  height="297mm">' '</svg>' > logo.svg
-      echo '<svg width="100%" height="100%" viewBox="0 0 1920 1080"></svg>' > 'Tom & Jerry.svg'
-      echo '<svg viewBox="0,0,48,32"></svg>' | gzip > icon.svgz
-      echo '<svg width="8.5in" height="280mm"></svg>' > new.svg
-      echo '<svg viewBox="0 0 1 1"></svg>' > poster.svg
-      printf PNG > export.png
-      cd -
-      at() { date -u -d @$((NOW - $1)) +%Y-%m-%dT%H:%M:%S.$2Z; }
-      sed -e "s|@HOME@|$HOME|g" -e "s|@LOGO@|$(at 750 250000)|g" -e "s|@TOM@|$(at 3000 500000)|g" \
-        -e "s|@LATER@|$(at 60 000001)|g" -e "s|@ICON@|$(at 172800 750000)|g" \
-        -e "s|@GONE@|$(at 100 100000)|g" -e "s|@EXPORT@|$(at 1000 125000)|g" \
-        ${../../tests/inkscape-recent.xbel} > $XDG_DATA_HOME/recently-used.xbel
-      # A program adding to it, as Inkscape does, which GLib writes whole.
-      ${recent-files} add org.inkscape.Inkscape $HOME/Drawings/new.svg
+      ${pkgs.bash}/bin/bash ${./tests/drawings-lately.sh} ${../../tests/inkscape-recent.xbel} \
+        ${recent-files}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
       touch $out
