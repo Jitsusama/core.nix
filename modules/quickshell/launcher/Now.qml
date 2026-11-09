@@ -377,7 +377,12 @@ Provider {
             title: Words.name("on"),
             // How the seconds are said after the time, "and 12 s".
             seconds: said("seconds"),
-            say: provider.waitsNow > 0 ? provider.first : Words.of("on:waiting").empty ?? "",
+            // What waits on Joel first goes from the plate while home's
+            // row says it at its right (homeItems), since no drawer
+            // repeats its row (VKCF3Z, 2026-11-09); calm, the plate says
+            // that nothing waits, where the row says nothing.
+            say: provider.homeItems().length > 0 ? ""
+                : provider.waitsNow > 0 ? provider.first : Words.of("on:waiting").empty ?? "",
             groups: [
                 [fact("weather", degrees ?? "", weatherRest.join(" \u00b7 ")),
                     fact("on:plate:next", meeting?.name ?? "", starts ? starts[0] : ""),
