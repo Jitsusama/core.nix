@@ -556,7 +556,6 @@ def refresh_and_hold_are_traced(desktop: Desktop, heard: str) -> None:
     assert "doubleValue" in said["tookMs"] or "intValue" in said["tookMs"], said
 
 
-@pytest.mark.usefixtures("google")
 def selects_from_the_top(name: str, program: str) -> Callable[[Json], bool]:
     """Whether the launcher selects the program's act by its name, saying where it lives."""
     return lambda shown: (
@@ -565,6 +564,7 @@ def selects_from_the_top(name: str, program: str) -> Callable[[Json], bool]:
     )
 
 
+@pytest.mark.usefixtures("google")
 def test_a_programs_acts_are_found_from_the_top_by_their_names_below_the_program(
     desktop: Desktop,
 ) -> None:
