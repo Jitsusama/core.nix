@@ -1437,6 +1437,12 @@ Provider {
             return;
         if (done) {
             targets = Targets.sentAs(targets, [{ id: was.id }], was.target);
+            // Followed, it's drawn where it lands, once it's there; sent
+            // where it already plays, its part says so now.
+            if (following === was.moving)
+                arrived();
+            else if (!stillSending(was.moving))
+                changed();
             Qt.callLater(sendNext);
             return;
         }
@@ -1479,9 +1485,17 @@ Provider {
 
     // Whether a stream it sent is linked there now, by its id, so one of the
     // program's already there doesn't stand for it.
+    // Whether any of a move's sends is still to be done, so its part isn't
+    // drawn naming where it was.
+    function stillSending(moving) {
+        return sender.sending?.moving === moving
+            || sender.left.some(each => each.moving === moving);
+    }
+
     function arrived() {
         const went = following;
-        if (!linkedTo(went.to).some(stream => went.ids.includes(String(stream.id))))
+        if (went === null || stillSending(went)
+            || !linkedTo(went.to).some(stream => went.ids.includes(String(stream.id))))
             return;
         following = null;
         followFor.stop();
