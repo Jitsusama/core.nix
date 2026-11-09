@@ -141,11 +141,20 @@ QtObject {
         expect("a note becomes the drawer's sentence",
             Showing.noted(keyboard, "the layer lock key lets it go").body,
             "The layer lock key lets it go.");
-        expect("its own words, or a note its facts or title say, stay as they are", [
-            Showing.noted({ title: "Disks", body: "Filling fast." }, "nearly full").body,
-            Showing.noted(keyboard, "none \u00b7 ergodox").body,
+        expect("its own words come first, the note after them, never unsaid",
+            Showing.noted({ title: "Disks", body: "Filling fast." }, "full in 3 days").body,
+            "Filling fast. Full in 3 days.");
+        const sharing = { title: "Sharing", facts: [{ label: "Window", value: "Firefox" },
+            { label: "Screen", value: "desktop \u00b7 2880x1800" }] };
+        expect("a note its title or facts say, part by whole part, stays out", [
+            Showing.noted(keyboard, "none \u00b7 ergodox ez").body,
+            Showing.noted(sharing, "Firefox, desktop").body,
             Showing.noted(keyboard, "").body
-        ], ["Filling fast.", undefined, undefined]);
+        ], [undefined, undefined, undefined]);
+        expect("a part found only inside a word is said",
+            Showing.noted(keyboard, "on").body, "On.");
+        expect("an address is said as written",
+            Showing.noted(sharing, "portal.example/sign-in").body, "portal.example/sign-in");
         expect("a note ending as a sentence keeps its end, and none stays none", [
             Showing.noted({ title: "Lag" }, "waiting on memory!").body,
             Showing.noted(null, "on")

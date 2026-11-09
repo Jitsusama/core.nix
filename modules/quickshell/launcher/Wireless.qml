@@ -382,10 +382,6 @@ Provider {
             // The one connected says all wifid and iw read of it, under the
             // row, while it's selected (`looking`).
             drawer: network.connected ? () => provider.drawerOf(network) : null,
-            // Its bars and protection are the drawer's, in dBm and by
-            // standard, so with it out the row says only how it stands, as
-            // its neighbours' "saved" does (VKCF3Z, 2026-11-09).
-            noteInDrawer: network.connected,
             // Joining or leaving keeps the launcher, which says how it went;
             // signing in opens the page, so it closes.
             stays: !signing,
@@ -759,7 +755,7 @@ Provider {
             channel: [channel !== null ? `${channel}` : "",
                 frequency !== null ? `${number(frequency)} MHz` : ""]
                 .filter(part => part !== "").join(" \u00b7 "),
-            heard: heardRow(name).side,
+            heard: heardOf(detail),
             // How hard it is to break, as who may join is the row's note.
             protection: protection ? WifiLink.strength(protection.standard) : "none",
             standard: protection?.standard ?? "",
@@ -1004,11 +1000,16 @@ Provider {
 
     // How many access points are heard, and in which bands; stepped into,
     // each of them, the fastest first.
+    // The access points heard, by band: "2 on 2.4 \u00b7 1 on 5 GHz". Read
+    // alone, it makes no row, so the drawer can say it as it's drawn.
+    function heardOf(detail) {
+        return detail.bands.map(count => `${count.points} on ${ghz[count.band]}`)
+            .join(" \u00b7 ").replace(/ GHz(?= \u00b7)/g, "");
+    }
+
     function heardRow(name) {
         const detail = detailOf(name);
-        const bands = detail.bands.map(count => `${count.points} on ${ghz[count.band]}`);
-        return holds("wifi:heard", "heard",
-            bands.join(" \u00b7 ").replace(/ GHz(?= \u00b7)/g, ""), {
+        return holds("wifi:heard", "heard", heardOf(detail), {
                 glyph: Theme.glyph.accessPoint
             }, () => {
                 const now = provider.detailOf(name);

@@ -22,8 +22,13 @@ const LEEWAY = 3;
 
 // Where a dotted run's parts meet, and whether words already end as a
 // sentence does.
-const DOTTED = / \u00b7 /;
+// The parts a note or a value is said in: dotted, or listed by commas.
+const PARTED = / \u00b7 |, /;
 const ENDED = /[.!?]$/;
+// A note opening with an address or a path, "portal.example/sign-in", is
+// said as written, never made a sentence of.
+const WRITTEN = /^\S*[/:.]\S/;
+const FIRST = /^./;
 
 // The row a step names among `rows`: the one whose steady id it is
 // (`idOf`), else whose name it is, else the only one whose name starts
@@ -248,23 +253,32 @@ function besides(plate, row) {
 // A row's note said once, in its drawer, where the row leaves it out while
 // the drawer is out so its side reads as its neighbours' do (VKCF3Z,
 // 2026-11-09): the note as the drawer's one sentence, "the layer lock key
-// lets it go" written "The layer lock key lets it go." A drawer with words
-// of its own keeps them, and one whose title, facts or words already say
-// each dotted part of the note gains none, since it says it already. None
-// stays none.
+// lets it go" written "The layer lock key lets it go." Words of the
+// drawer's own come first, the note after them, so the row leaving it out
+// never leaves it unsaid. A drawer whose title or facts say each part of
+// the note, whole, gains none: Sharing's "Firefox, desktop" over its two
+// facts. An address is said as written. None stays none.
 function noted(plate, note) {
     const said = String(note ?? "").trim();
-    if (!plate || said === "" || String(plate.body ?? "").trim() !== "") {
+    if (!plate || said === "") {
         return plate ?? null;
     }
-    const told = [plate.title].concat((plate.facts ?? []).map(one => one?.value))
-        .map(each => String(each ?? "").toLowerCase());
-    const parts = said.split(DOTTED).map(part => part.trim().toLowerCase());
-    if (parts.every(part => part === "" || told.some(each => each.includes(part)))) {
+    const told = new Set();
+    for (const each of [plate.title].concat((plate.facts ?? []).map(one => one?.value))) {
+        const whole = String(each ?? "").trim().toLowerCase();
+        told.add(whole);
+        for (const part of whole.split(PARTED)) {
+            told.add(part.trim());
+        }
+    }
+    const parts = said.split(PARTED).map(part => part.trim().toLowerCase());
+    if (parts.every(part => part === "" || told.has(part))) {
         return plate;
     }
-    const ended = ENDED.test(said) ? said : `${said}.`;
-    return Object.assign({}, plate, { body: ended.charAt(0).toUpperCase() + ended.slice(1) });
+    const sentence = WRITTEN.test(said) ? said
+        : (ENDED.test(said) ? said : `${said}.`).replace(FIRST, first => first.toUpperCase());
+    const own = String(plate.body ?? "").trim();
+    return Object.assign({}, plate, { body: own === "" ? sentence : `${own} ${sentence}` });
 }
 
 // One fact: a heading, or a label and its value, with its qualifier where
