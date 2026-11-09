@@ -19,15 +19,19 @@ QtObject {
         }
     }
 
-    // The words, as words.json's for-you:kinds and for-you:sources say them.
-    readonly property var said: ({
-            kinds: { do: "To Do", look: "To Look At", try: "To Try" },
-            sources: {
-                mail: "Mail",
-                slack: "Slack",
-                calendar: "Calendar"
-            }
+    // The vocabulary's names, by id, as words.json names its for-you:kind
+    // and for-you:source entries, beside one of another place's.
+    readonly property var names: ({
+            "for-you:kind:do": "To-Dos",
+            "for-you:kind:look": "Looks",
+            "for-you:kind:try": "To Try",
+            "for-you:source:mail": "Mail",
+            "for-you:source:slack": "Slack",
+            "for-you:source:calendar": "Calendar",
+            "mail": "Mail"
         })
+    // The words a filter's head says, as Now.qml reads them.
+    readonly property var said: Filter.saidFrom(Object.keys(names), id => names[id])
 
     // For You's rows, "key:kind:source" each, in the order it lists them,
     // each saying both under its forYou as Now.qml's do; then Later, which
@@ -59,20 +63,20 @@ QtObject {
         const failures = [];
         // [what, what :filter was given, the items kept, what the head says]
         const filters = [
-            ["a kind keeps its band", "look", "b c e j", "To Look At"],
-            ["a source of one kind alone answers as its kind", "needs-you", "a", "To Do"],
-            ["as the looks do", "looks", "b c e j", "To Look At"],
-            ["and so narrows beside a source", "looks mail", "b e", "Mail \u00b7 To Look At"],
-            ["the kind said twice is the one kind", "look looks", "b c e j", "To Look At"],
+            ["a kind keeps its band", "look", "b c e j", "Looks"],
+            ["a source of one kind alone answers as its kind", "needs-you", "a", "To-Dos"],
+            ["as the looks do", "looks", "b c e j", "Looks"],
+            ["and so narrows beside a source", "looks mail", "b e", "Mail \u00b7 Looks"],
+            ["the kind said twice is the one kind", "look looks", "b c e j", "Looks"],
             ["a source keeps both bands, notices too", "slack", "c f", "Slack"],
-            ["two words narrow to both", "mail look", "b e", "Mail · To Look At"],
-            ["in either order, the source said first", "look mail", "b e", "Mail · To Look At"],
-            ["typed in capitals", "Mail LOOK", "b e", "Mail · To Look At"],
+            ["two words narrow to both", "mail look", "b e", "Mail · Looks"],
+            ["in either order, the source said first", "look mail", "b e", "Mail · Looks"],
+            ["typed in capitals", "Mail LOOK", "b e", "Mail · Looks"],
             ["a source the words don't know, by its id", "sessions", "d", "Sessions"],
             ["and an id of parts, each begun in capitals", "home-network", "i", "Home Network"],
             ["a source the words know, with nothing now, is an empty step", "calendar", "",
                 "Calendar"],
-            ["as are two words that keep nothing", "slack do", "", "Slack · To Do"],
+            ["as are two words that keep nothing", "slack do", "", "Slack · To-Dos"],
         ];
         for (const [what, arg, kept, head] of filters) {
             const filter = Filter.asked(arg, items, said);
@@ -87,7 +91,7 @@ QtObject {
         const narrowed = Filter.asked("mail", items, said, looking);
         check(failures, "a filter inside a filter narrows to both",
             `${keys(Filter.filtered(items, narrowed))} / ${Filter.heading(narrowed, said)}`,
-            "b e / Mail \u00b7 To Look At");
+            "b e / Mail \u00b7 Looks");
         check(failures, "and its key is the filter's, whichever way it was reached",
             Filter.keyOf(narrowed), Filter.keyOf(Filter.asked("look mail", items, said)));
         check(failures, "a second kind inside a filter is refused",

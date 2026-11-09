@@ -6535,8 +6535,7 @@
         "today": "today",
         "yesterday": "yesterday",
         "tomorrow": "tomorrow",
-        "moment": "{day} {time}",
-        "filter": "Show Only a Kind or Source"
+        "moment": "{day} {time}"
       }
     },
     {
@@ -6625,25 +6624,44 @@
       "name": "Item"
     },
     {
-      "id": "for-you:kinds",
+      "id": "for-you:kind:do",
       "in": "on:waiting",
-      "said": {
-        "do": "To Do",
-        "look": "To Look At",
-        "try": "To Try"
-      }
+      "name": "To-Dos"
     },
     {
-      "id": "for-you:sources",
+      "id": "for-you:kind:look",
       "in": "on:waiting",
-      "said": {
-        "sessions": "Sessions",
-        "mail": "Mail",
-        "slack": "Slack",
-        "calendar": "Calendar",
-        "desktop": "Desktop",
-        "reef": "Reef"
-      }
+      "name": "Looks"
+    },
+    {
+      "id": "for-you:kind:try",
+      "in": "on:waiting",
+      "name": "To Try"
+    },
+    {
+      "id": "for-you:source:sessions",
+      "in": "on:waiting",
+      "name": "Sessions"
+    },
+    {
+      "id": "for-you:source:mail",
+      "in": "on:waiting",
+      "name": "Mail"
+    },
+    {
+      "id": "for-you:source:slack",
+      "in": "on:waiting",
+      "name": "Slack"
+    },
+    {
+      "id": "for-you:source:calendar",
+      "in": "on:waiting",
+      "name": "Calendar"
+    },
+    {
+      "id": "for-you:source:desktop",
+      "in": "on:waiting",
+      "name": "Desktop"
     },
     {
       "id": "on:waiting:history",
@@ -11696,6 +11714,7 @@
       "set": "Set an Option",
       "setlocal": "Set an Option of This",
       "history": "List Earlier Lines",
+      "filter": "Show Only a Kind or Source",
       "row": "Go to a Row",
       "on": "on {things}",
       "onSome": "on {some} of {all}",

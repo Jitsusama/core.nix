@@ -2,9 +2,11 @@
 // (2026-11-08): a filter is a step in, never a state, so `-` comes back
 // out to everything and nothing carries across launches. Its words are a
 // kind (do, look or try) and a source, by its id in lowercase; two words
-// narrow to both, and the head joins their names, "Mail · To Look At". A
+// narrow to both, and the head joins their names, "Mail · Looks". A
 // row says both under its `forYou` (Now.qml), and the sources are read
-// from the rows, never a fixed table, since more come. Apart from the
+// from the rows, never a fixed table, since more come. Later's members and
+// History say neither, so any filter leaves them out: `:filter do` shows
+// only what can be done now, and `-` brings the rest back. Apart from the
 // launcher, so tests/for-you-filter.qml can hold it in Qt's own engine.
 .pragma library
 .import "Order.js" as Order
@@ -22,6 +24,25 @@ const ENDS_IN_SPACE = /\s$/;
 // What the head puts between a filter's names, as it does between a
 // place's parts.
 const JOINED = " · ";
+
+// Where the vocabulary names a filter's words (words.json): each kind as
+// for-you:kind:<kind>, and each source it knows as for-you:source:<id>.
+const KIND_ID = "for-you:kind:";
+const SOURCE_ID = "for-you:source:";
+
+// The names a filter's head says, from the vocabulary's ids and how it
+// names each: { kinds, sources }, each by its word.
+function saidFrom(ids, nameOf) {
+    const sources = {};
+    for (const id of ids.filter(one => one.startsWith(SOURCE_ID))) {
+        sources[id.slice(SOURCE_ID.length)] = nameOf(id);
+    }
+    const kinds = {};
+    for (const kind of KINDS) {
+        kinds[kind] = nameOf(`${KIND_ID}${kind}`);
+    }
+    return { kinds, sources };
+}
 
 // What a row says of a field for For You, or "" for a row that isn't one
 // of its items, as Later and History aren't.

@@ -1055,25 +1055,27 @@ Provider {
     })
 
     // The words a filter's kinds and sources are said in, for its head.
-    readonly property var filterSaid: ({
-            kinds: Words.of("for-you:kinds").said ?? {},
-            sources: Words.of("for-you:sources").said ?? {}
-        })
+    readonly property var filterSaid: Filter.saidFrom(Object.keys(Words.things),
+        id => Words.name(id))
 
     // For You's :filter, from For You or from a filter inside it, `from`:
     // a step into the rows of a kind, a source or both (ForYouFilter.js),
     // as VKCF3Z ruled it (2026-11-08). From inside a filter it narrows that
     // one and takes its place, so `-` is always one step back out to
     // everything. Tab offers the kinds and sources there, with how many.
+    // The rows are read once, as the line opens, so a key typed after it
+    // weighs none of them again, as :set's options are (Launcher.qml's
+    // standingOptions).
     function filterCommands(from) {
+        const rows = waitingRows();
         return [{
                 command: "filter",
                 short: "filt",
-                title: waitingSaid("filter", {}),
+                title: (Words.field.command ?? {}).filter ?? "",
                 bang: false,
-                args: arg => Filter.offered(waitingRows(), arg, filterSaid, from),
+                args: arg => Filter.offered(rows, arg, filterSaid, from),
                 run: call => {
-                    const filter = Filter.asked(call.arg, waitingRows(), filterSaid, from);
+                    const filter = Filter.asked(call.arg, rows, filterSaid, from);
                     if (filter.error !== undefined) {
                         provider.launcher?.commandSay(filter.error, true);
                         return;

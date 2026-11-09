@@ -1153,7 +1153,7 @@ def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desk
             desktop.machine.send_chars("look\n")
             desktop.launcher_until(
                 lambda shown: (
-                    shown["path"][-2:] == ["For You", "To Look At"]
+                    shown["path"][-2:] == ["For You", "Looks"]
                     and shown["rows"] == ["Read the plan"]
                 )
             )

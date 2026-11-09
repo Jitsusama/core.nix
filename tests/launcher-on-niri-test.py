@@ -517,7 +517,7 @@ def test_for_yous_filter_steps_into_a_kind_and_minus_comes_back_out(shell: Shell
         shell.send_key("ret")
         shell.launcher_until(
             lambda shown: (
-                shown["path"][-2:] == ["For You", "To Look At"]
+                shown["path"][-2:] == ["For You", "Looks"]
                 and shown["rows"] == ["Filtered Look"]
             )
         )
