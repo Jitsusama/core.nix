@@ -166,7 +166,7 @@ def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> No
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Meet")
     desktop.into_program()
     first_in_recent(desktop, "Retro", rf"Ada Lovelace and Grace Hopper \u00b7 {day}")
-    machine.send_key("ret")
+    desktop.step_in("ret")
     desktop.launcher_until(
         lambda shown: (
             shown["held"][-1:] == ["Retro"]
