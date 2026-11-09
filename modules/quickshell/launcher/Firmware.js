@@ -128,9 +128,9 @@ function hostOf(records) {
         fwupd: host.fwupd ?? null };
 }
 
-// What holds back an update that's offered, by fwupd's name for it, or
-// "": the first problem fwupd says, once nothing waits for the restart,
-// since an update waiting there is no update held back.
+// What blocks an update that's offered, by fwupd's name for it, or "":
+// the first problem fwupd says, once nothing waits for the restart,
+// since an update waiting there is blocked by nothing.
 function heldBy(device) {
     if (device.offered === null || device.waits !== null) {
         return "";

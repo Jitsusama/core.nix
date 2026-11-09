@@ -45,7 +45,11 @@ def entries(words: dict[str, list[dict[str, object]]]) -> list[tuple[bool, dict[
 def says(text: str, word: str) -> bool:
     """Say whether text is the word, in any case, singular or plural."""
     said = plainly(text)
-    return said in (word, f"{word}s", f"{word}es")
+    plurals = [f"{word}s", f"{word}es"]
+    # A word ending in a consonant and y takes ies, as an entry's Entries.
+    if len(word) > 1 and word.endswith("y") and word[-2] not in "aeiou":
+        plurals.append(f"{word[:-1]}ies")
+    return said in (word, *plurals)
 
 
 def called(entry: dict[str, object], word: str, names: dict[str, str]) -> bool:
@@ -106,6 +110,7 @@ GLOSSARY = (
     "## Machine\n\n| Word | Means | Not | In code |\n| --- | --- | --- | --- |\n"
     "| battery | what the machine runs on unplugged | | |\n"
     "| battery health | how much a battery holds against new | | |\n"
+    "| entry | one thing a log keeps | | |\n"
 )
 
 # A stand-in vocabulary for each rule, breaking it once.
@@ -151,8 +156,8 @@ REFUSED: list[tuple[str, dict[str, list[dict[str, object]]]]] = [
     ),
 ]
 
-# What sits beside each rule's edge and isn't refused: a term's plural and
-# its capital, a term of two words, a collection whose noun and what name
+# What sits beside each rule's edge and isn't refused: a term's plural, an
+# ies one included, and its capital, a term of two words, a collection whose noun and what name
 # what it holds, a place named for its context, a part named short inside
 # its thing, and a row naming no glossary thing.
 ALLOWED: dict[str, list[dict[str, object]]] = {
@@ -173,6 +178,7 @@ ALLOWED: dict[str, list[dict[str, object]]] = {
         },
         {"id": "window", "name": "This window", "term": "Agents/This window"},
         {"id": "battery", "name": "Battery", "term": "Machine/battery"},
+        {"id": "entries", "name": "Entries", "term": "Machine/entry"},
         {
             "id": "battery:health",
             "in": "battery",

@@ -118,7 +118,7 @@ units, or named here as left out with the reason.
 | `firmware:<id>` | name, vendor, version                        | Firmware, each device                     |
 |                 | lowest and bootloader versions, branch       | each device's drawer                      |
 |                 | the hidden, needs-reboot and require-ac flags | which are listed, Install's note         |
-|                 | problems, in fwupd's words                   | the row's note, Install, Held Back        |
+|                 | problems, as fwupd keys them                 | the row's note, Install, Blocked By       |
 |                 | the update: version, urgency, size, date, time to install, summary, notes | Offered and its drawer |
 |                 | fwupd's words for offering none              | the drawer's Nothing Offered              |
 |                 | the last update's state, version, error      | at the restart, Last Install              |
