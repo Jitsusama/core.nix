@@ -7451,6 +7451,7 @@
       "said": {
         "count": "{count} to read",
         "read": "read here",
+        "readInSlack": "read in Slack",
         "withdrawn": "withdrawn",
         "earlier": "read"
       },

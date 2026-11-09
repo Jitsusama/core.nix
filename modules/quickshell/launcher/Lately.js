@@ -134,10 +134,15 @@ function members(things, nameOf) {
 }
 
 // How a notice read was done with: withdrawn, by its sender or the shell;
+// read elsewhere, as one of Slack's whose message was read in Slack
+// (Notices.qml's readHow), "read in Slack 14:02" (VKCF3Z, 2026-11-09);
 // read, here, when the history says when; or read before it kept when.
 function readHow(notice) {
     if (notice.withdrawn === true || notice.left === "withdrawn") {
         return "withdrawn";
+    }
+    if (typeof notice.readHow === "string" && notice.readHow !== "") {
+        return notice.readHow;
     }
     return when(notice.readAt) === null ? "earlier" : "read";
 }

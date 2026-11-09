@@ -41,11 +41,12 @@ Singleton {
     readonly property int keep: 1000
 
     // { id, at, app, entry, summary, body, styled, links, picture, glyph,
-    // hue, urgency, category, low, urgent, held, missed, read, waits, left,
-    // leftAt }: `body` is its words plain and `styled` with the markup a
-    // card draws, `links` each { text, href }, `urgency` what its sender
-    // asked (low, normal or critical) and `urgent` whether it stays, and
-    // `left` how it left the screen once it has (expired, dismissed or
+    // hue, urgency, category, low, urgent, held, missed, read, readHow,
+    // waits, left, leftAt }: `body` is its words plain and `styled` with
+    // the markup a card draws, `links` each { text, href }, `urgency` what
+    // its sender asked (low, normal or critical) and `urgent` whether it
+    // stays, `readHow` how it was read where that wasn't here (markRead),
+    // and `left` how it left the screen once it has (expired, dismissed or
     // withdrawn), and when.
     property var history: []
     readonly property int missed: history.filter(notice => notice.missed).length
@@ -282,7 +283,7 @@ Singleton {
     // the same card rather than another.
     function raise(id) {
         history = history.map(notice => notice.id !== id ? notice
-            : Object.assign({}, notice, { read: false }));
+            : Object.assign({}, notice, { read: false, readHow: null }));
         raised = { id: id, at: Date.now() };
     }
 
@@ -310,7 +311,7 @@ Singleton {
         history = history.map(notice => notice.id !== id ? notice
             : Object.assign({}, notice, { left: how, leftAt: at },
                 how === "expired" ? {} : { missed: false },
-                how === "withdrawn" ? { read: true } : {}));
+                how === "withdrawn" ? { read: true, readHow: null } : {}));
         const still = Object.assign({}, live);
         delete still[id];
         live = still;
@@ -364,17 +365,20 @@ Singleton {
     function mark(id, read, how) {
         const now = read ? { missed: false, readAt: Date.now() } : { readAt: null };
         history = history.map(notice => notice.id !== id ? notice
-            : Object.assign({}, notice, { read: read, withdrawn: read && how === "withdrawn" },
-                now));
+            : Object.assign({}, notice, { read: read, withdrawn: read && how === "withdrawn",
+                readHow: null }, now));
     }
 
     // Marks read every notice of `ids` at once, as For You's Desktop row's
-    // Mark Them Read does (launcher/Now.qml).
-    function markRead(ids) {
+    // Mark Them Read does (launcher/Now.qml), in one change. `how` says it
+    // was read elsewhere, as "readInSlack" for Slack's own notices of what
+    // its daemon says was read there (SlackUnreads.qml), so History says
+    // where rather than "read here"; one already read keeps how it was.
+    function markRead(ids, how) {
         if (history.some(notice => ids.includes(notice.id) && !notice.read))
             history = history.map(notice => !ids.includes(notice.id) ? notice
-                : Object.assign({}, notice, { read: true, missed: false,
-                    readAt: notice.read ? notice.readAt ?? null : Date.now() }));
+                : Object.assign({}, notice, notice.read ? { missed: false }
+                    : { read: true, missed: false, readAt: Date.now(), readHow: how ?? null }));
     }
 
     // Marks read every notice of a to-do that no longer stands, so
@@ -385,7 +389,8 @@ Singleton {
             && (notice.missed || !notice.read);
         if (history.some(stale))
             history = history.map(notice => stale(notice)
-                ? Object.assign({}, notice, { read: true, missed: false }) : notice);
+                ? Object.assign({}, notice, { read: true, missed: false, readHow: null })
+                : notice);
     }
 
     // Everything kept has been seen, though not necessarily read.
