@@ -54,10 +54,14 @@ Item {
     property string hint: value
     property string title: settings.label ?? ""
     property string context: ""
-    // What it holds, by name, for a piece standing for several things,
-    // as Timers does its timers: Now says them after its title, as a
-    // place says what it holds, giving way by whole names from the end.
+    // What a thing's piece says after its title, by whole names giving
+    // way from the end, as a call names who's in it: a thing's detail
+    // follows its name.
     property var parts: []
+    // What a piece that's a place holds, by name, as Timers does its
+    // timers, for the drawer every place's wears; it says nothing after
+    // its title (VKCF3Z, 5fa2cbda). Null for any other.
+    property var heldNames: null
     // What its notice says beneath its hint, when it arrives: its context,
     // unless it says more there.
     property string message: context

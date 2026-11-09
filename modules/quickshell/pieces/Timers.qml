@@ -1,14 +1,14 @@
 // Joel's timers and the stopwatch (HeldTimers.qml), in Now and the margin:
 // true while a timer runs, is paused or has rung, so none is left
 // forgotten, or while the stopwatch runs (VKCF3Z, 2026-11-08). One rung
-// wants Joel now, leading Now in the alert; the rest are left on. Its side
-// says only how the timer Timers lists first stands, as Timers says it,
-// "9:50", "paused · 9:50" or "rang 03:27", or the stopwatch's count where
-// it alone runs; its parts name them in that order, the stopwatch last,
-// after its title as a place's row says what it holds, giving way by
-// whole names from the end (VKCF3Z, 2026-11-08). Return goes into
-// Timers, where each is the row it is there. The daemon says a rung one's
-// notice itself, so the mark waits while that card shows.
+// wants Joel now, leading Now in the alert; the rest are left on. It's a
+// place, stepped into for rows of its own, so it says nothing after its
+// name: at its right, the one on as its own row in Timers says it, or of
+// several how many run and the first's (Timing.nowItems), and in its
+// drawer each by name in Timers' order, the stopwatch last (VKCF3Z,
+// 5fa2cbda). Return goes into Timers, where each is the row it is there.
+// The daemon says a rung one's notice itself, so the mark waits while
+// that card shows.
 import qs
 import Quickshell
 import QtQuick
@@ -47,8 +47,10 @@ Piece {
     wants: standing.rung
     now: standing.rung
     title: Words.name("timers")
-    value: standing.first !== null ? Timing.side(standing.first, moment, said)
-        : Timing.tenths(Timing.counted(watch, moment))
+    readonly property var items: Timing.nowItems(standing, watch, moment, said,
+        Words.of("timers").said?.several ?? "")
+    value: items.map(item => item.said).join(" \u00b7 ")
+    valueItems: items
     // The stopwatch alone counts to the tenth, drawn afresh by the
     // launcher (Launcher.qml's counts), as its row in Timers is.
     counts: watchAlone ? at => Timing.tenths(Timing.counted(watch, at)) : null
@@ -56,8 +58,8 @@ Piece {
     // When the stopwatch's count last grew a figure, so its room is said
     // again then (Timing.grows).
     property real grown: 0
-    parts: standing.named.map(record => piece.named(record))
-    hint: `${title} ${value}, ${parts.join(", ")}`
+    heldNames: standing.named.map(record => piece.named(record))
+    hint: `${title} ${value}, ${heldNames.join(", ")}`
     // The daemon signs its notices with the place's name (home.nix's
     // timerWords).
     app: title

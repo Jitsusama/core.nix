@@ -1587,10 +1587,11 @@ Provider {
             side: piece.value,
             sideItems: piece.valueItems ?? [],
             counts: piece.counts ?? undefined,
-            // What it holds, after its name, as a place's row says what
-            // it holds, while its side says only how it stands (VKCF3Z,
-            // 2026-11-08).
+            // A thing's detail after its name, as a call names who's in
+            // it; a piece that's a place says nothing there, naming what
+            // it holds in its drawer instead (VKCF3Z, 5fa2cbda).
             count: parted(piece),
+            heldNames: piece.heldNames ?? undefined,
             sideWidest: piece.widest,
             note: piece.context,
             glyph: Theme.glyph[piece.markGlyph || fact.entry.mark],

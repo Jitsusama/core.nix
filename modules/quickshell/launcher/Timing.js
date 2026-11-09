@@ -253,6 +253,22 @@ function onNow(timers, watch, now) {
     };
 }
 
+// What Now's Timers row says at its right, as items, how it stands
+// first and then its figure (VKCF3Z, 5fa2cbda): with one on, what that
+// one's own row in Timers says, "3:12" or "paused \u00b7 9:50"; with
+// several, how many run and the first's, "2 running \u00b7 3:12", as
+// Agents says "3 running". The count gives way; the figure never does.
+function nowItems(standing, watch, now, said, several) {
+    const figure = {
+        said: standing.first !== null ? side(standing.first, now, said)
+            : tenths(counted(watch, now)),
+        stays: true
+    };
+    const running = standing.named.filter(record => record.state === "running").length;
+    return standing.named.length > 1 && running > 0
+        ? [{ said: several.replace("{count}", String(running)) }, figure] : [figure];
+}
+
 // Whether Now's row must be told the time each second: only while the
 // launcher is open, where its side is drawn, and a timer counts down then.
 // The margin wears only the mark, which says how things stand and not
