@@ -982,6 +982,17 @@ gather (
         waiting = import ./tests/every-long-file-says-why-waiting.nix;
       };
 
+      # A program past five lines lives in a file of its own language rather
+      # than a Nix string, since no linter, type checker or editor reads a
+      # string and the values spliced into one are where quoting breaks. Those
+      # in strings before the rule wait, counted by file, in
+      # tests/programs-live-in-their-own-files-waiting.nix, and a count may
+      # only fall.
+      programs-live-in-their-own-files = self.lib.programsLiveInTheirOwnFiles pkgs {
+        src = ./.;
+        waiting = import ./tests/programs-live-in-their-own-files-waiting.nix;
+      };
+
       # A doc names only what's there, so a move or a rename that leaves a guide
       # pointing at nothing fails here rather than misleading the next reader:
       # every relative link, and every backticked path from a top folder. Those

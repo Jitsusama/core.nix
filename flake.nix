@@ -485,6 +485,14 @@
       # whole, and on a waiting one that's split, says why or is gone.
       lib.everyLongFileSaysWhy = pkgs: pkgs.callPackage ./tests/every-long-file-says-why.nix { };
 
+      # How a repository built on core keeps its programs out of Nix strings, as
+      # core does: `core.lib.programsLiveInTheirOwnFiles pkgs { src = ./.;
+      # waiting = { ... }; }` is a check that fails on a file holding more shell,
+      # QML, Python or JavaScript past five lines in its strings than it waits
+      # with, and on one holding fewer until its count is lowered.
+      lib.programsLiveInTheirOwnFiles =
+        pkgs: pkgs.callPackage ./tests/programs-live-in-their-own-files.nix { };
+
       # How a repository built on core holds its names to core's glossary:
       # `core.lib.namesSayTheGlossary pkgs { names = ...; otherSenses = ...;
       # waiting = ...; }` is a check that no name says a name the glossary

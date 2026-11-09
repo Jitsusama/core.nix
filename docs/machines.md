@@ -322,6 +322,21 @@ entries in its README.md or AGENTS.md, in one beginning "Many entries
 because", as [conventions.md][5] says. A waiting one that's
 split, says why or is gone fails too.
 
+Its programs live in files of their own language, as core's do, through a
+third:
+
+```nix
+programs-live-in-their-own-files = core.lib.programsLiveInTheirOwnFiles pkgs {
+  src = ./.;
+  # How many programs in strings each file holds while they move out.
+  waiting = { };
+};
+```
+
+A Nix string of more than five lines that runs as shell, or opens as QML,
+Python or JavaScript, moves into a file of its language, unless it's a
+short splice of values or says why it's kept, as [conventions.md][6] says.
+
 Its names say the glossary's words, as core's do, through a check that reads
 the glossary of the core it locks:
 
@@ -350,3 +365,4 @@ nix flake update core
 [3]: testing.md
 [4]: glossary.md
 [5]: conventions.md#long-files-say-why
+[6]: conventions.md#scripts-stay-files

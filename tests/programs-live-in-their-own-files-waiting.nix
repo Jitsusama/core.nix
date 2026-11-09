@@ -1,0 +1,69 @@
+# The files holding programs past five lines in Nix strings before
+# programs-live-in-their-own-files, each with how many, waiting while they move
+# into files of their own language. The check fails on a file holding more, and
+# on one holding fewer until its count here is lowered, so the list only
+# shrinks.
+{
+  "checks.nix" = 4;
+  "hardware/dell-xps-14-da14260/camera/camera.nix" = 1;
+  "hardware/dell-xps-14-da14260/checks.nix" = 10;
+  "hardware/microsoft-surface-laptop-4-1958/checks.nix" = 1;
+  "modules/bluetooth-disk-prompt/checks.nix" = 1;
+  "modules/btop/checks.nix" = 3;
+  "modules/camera/checks.nix" = 2;
+  "modules/cargo/checks.nix" = 1;
+  "modules/chrome/checks.nix" = 1;
+  "modules/chrome/nixos.nix" = 1;
+  "modules/device-check/checks.nix" = 1;
+  "modules/dictation/checks.nix" = 5;
+  "modules/disko/checks.nix" = 1;
+  "modules/disko/nixos.nix" = 1;
+  "modules/fonts/checks.nix" = 3;
+  "modules/gimp/checks.nix" = 3;
+  "modules/git-engine/checks.nix" = 1;
+  "modules/google/checks.nix" = 1;
+  "modules/greetd/nixos.nix" = 1;
+  "modules/inkscape/checks.nix" = 1;
+  "modules/inlyne/checks.nix" = 3;
+  "modules/keys/checks.nix" = 1;
+  "modules/kitty/checks.nix" = 3;
+  "modules/libvirt/checks.nix" = 1;
+  "modules/linux-builder/darwin.nix" = 1;
+  "modules/mpv/checks.nix" = 8;
+  "modules/neovim/checks.nix" = 2;
+  "modules/neovim/home.nix" = 1;
+  "modules/niri/checks.nix" = 3;
+  "modules/noise-cancelled/model.nix" = 1;
+  "modules/onepassword/checks.nix" = 1;
+  "modules/open-with/checks.nix" = 1;
+  "modules/open-with/package.nix" = 1;
+  "modules/passwords/checks.nix" = 2;
+  "modules/pi-packages/home.nix" = 2;
+  "modules/plymouth/checks.nix" = 2;
+  "modules/plymouth/nixos.nix" = 5;
+  "modules/pnpm/checks.nix" = 1;
+  "modules/prompt/checks.nix" = 1;
+  "modules/quickshell/checks.nix" = 72;
+  "modules/quickshell/home.nix" = 6;
+  "modules/reader/checks.nix" = 4;
+  "modules/sccache/checks.nix" = 2;
+  "modules/spotify/checks.nix" = 4;
+  "modules/swayimg/checks.nix" = 3;
+  "modules/theme/checks.nix" = 1;
+  "modules/treefmt/checks.nix" = 1;
+  "modules/tuple/checks.nix" = 2;
+  "modules/tuple/home.nix" = 1;
+  "modules/unlisted/checks.nix" = 1;
+  "modules/zathura/checks.nix" = 4;
+  "modules/zoxide/checks.nix" = 2;
+  "tests/call-transcripts.nix" = 1;
+  "tests/desktop.nix" = 4;
+  "tests/dictation-chord.nix" = 1;
+  "tests/ir-camera.nix" = 1;
+  "tests/lib/qemu-after-its-sockets.nix" = 1;
+  "tests/vm-first.nix" = 1;
+  "tests/vm/guide/canokeys.nix" = 1;
+  "tests/vm/guide/guide-one-stick.nix" = 1;
+  "tests/vm/guide/guide-writer.nix" = 2;
+  "tests/wifi.nix" = 2;
+}

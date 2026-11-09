@@ -1442,6 +1442,10 @@
     the entries of virt-manager, the NixOS manual and umpv are masked as hidden where the launcher
     reads them, while the programs stay installed
   '';
+  programs-live-in-their-own-files = ''
+    no shell, QML, Python or JavaScript past five lines is written as a Nix string, but a short
+    splice of values, one that says why it's kept in Nix, and those still waiting to move out
+  '';
   qemu-starts-after-its-sockets = ''
     the qemu VM tests run starts once the sockets it connects to are there, and fails naming one
     that never comes, ending what its script started
