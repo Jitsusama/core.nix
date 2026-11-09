@@ -225,9 +225,9 @@ Provider {
     // same, as everyone's are, so a change remakes only those it changed;
     // and they're made only while they're wanted (Provider.qml's wanted),
     // or as they're asked for, so a change nobody sees makes none and
-    // refreshes nothing. Listing them writes keptListed, a plain object
-    // this binding never reads as a property, so it can't loop
-    // (Provider.qml's keeper).
+    // refreshes nothing. Listing them writes into keptListed, a plain
+    // object that's never reassigned, so writing it notifies nothing and
+    // can't loop (Provider.qml's keeper).
     readonly property var all: provider.wanted ? listedNow() : []
     onAllChanged: {
         if (provider.wanted)

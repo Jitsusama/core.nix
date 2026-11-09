@@ -66,8 +66,9 @@ TAIL = 0.95
 # This and taking no change on a key's path held on main too once #2495 landed, so they guard
 # against a return rather than prove this change.
 REFRESHES = 4.0
-# The rows the walk of where rows live may make in a turn: one laying out of every session, a
-# row and its Return each, as it makes once the list is quiet. Making each session's acts and
+# The rows the walk of where rows live may make for each turn things changed in, frozen turns
+# aside: one laying out of every session, a row and its Return each, as it makes once the list
+# is quiet. Making each session's acts and
 # facts too, it made 6,733 in two turns at home (2026-11-09).
 WALKED_MOST = 2 * SESSIONS
 # Each place an arrow is held in, and the sources it doesn't show: home names People but says
@@ -287,9 +288,9 @@ class Turns:
         assert not any(self.keys_made.values()), (
             f"{at}, arrows that only move made {self.keys_made} rows"
         )
-        walked = sum(self.walked.values())
-        assert walked <= WALKED_MOST * TURNS, (
-            f"{at}, the walk of where rows live made {self.walked} rows in {TURNS} turns"
+        walked, changed = sum(self.walked.values()), len(self.agents_made)
+        assert walked <= WALKED_MOST * changed, (
+            f"{at}, the walk of where rows live made {self.walked} rows in {changed} changing turns"
         )
         assert self.keyed == 0, f"{at}, {self.keyed} refreshes were taken on a key's path"
         assert rate <= REFRESHES, f"{at}, the list refreshed {rate:.1f} a second"

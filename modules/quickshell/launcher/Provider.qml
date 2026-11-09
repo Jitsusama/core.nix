@@ -236,10 +236,11 @@ Scope {
     // same, `from` being all of that as text, or else made anew by `make`.
     // So a change remakes only the rows it changed, as Quests keeps its
     // own, rather than every row at every change. A keeper is a plain
-    // object, `{ rows: {}, next: null }` (keeper()), so keeping notifies
-    // nothing, and a binding that keeps its rows in one never depends on
-    // it and can't loop. Between keepingBegun and keptOnly, each row asked
-    // for is kept in `next` too, and keptOnly lets the rest go.
+    // object, `{ rows: {}, next: null }` (keeper()), held by a property
+    // that's never reassigned, so writing into it notifies nothing and a
+    // binding that keeps its rows there can't loop. Between keepingBegun
+    // and keptOnly, each row asked for is kept in `next` too, and
+    // keptOnly lets the rest go.
     function keeper() {
         return { rows: {}, next: null };
     }

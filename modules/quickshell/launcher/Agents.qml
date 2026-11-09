@@ -64,8 +64,8 @@ Provider {
     // which change every few seconds; Home's count reads Sessions itself.
     // A row is kept while all it's made from reads the same (made), so a
     // change remakes only the sessions it changed. Laying them out writes
-    // `keeping`, a plain object this binding never reads as a property, so
-    // it can't loop (Provider.qml's keeper).
+    // into `keeping`, a plain object that's never reassigned, so writing
+    // it notifies nothing and can't loop (Provider.qml's keeper).
     readonly property var all: opened() && provider.wanted ? laidOut() : []
 
     function opened() {
@@ -927,8 +927,8 @@ Provider {
     // session anew as any one changes, and a new Recent each time was a
     // change to Agents' things, which has the launcher walk again where
     // every row lives (Launcher.qml's stale). What it lists is kept beside
-    // it in recentListed, a plain object whose field this binding writes
-    // and never reads, so writing it notifies nothing and can't loop;
+    // it in recentListed, a plain object that's never reassigned, so
+    // writing its field notifies nothing and can't loop;
     // recent reads the field only once this string has said it changed.
     readonly property string recentFrom: {
         const closed = Sessions.closed;
