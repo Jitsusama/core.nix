@@ -122,8 +122,9 @@ switch restarted whoever asked. While one runs, its latest line is in
 `running.json` beside it on NixOS and `/var/run/update-to-main.running.json`
 on a Mac, gone once it ends. An asker can end one still fetching or
 building with `update-to-main stop`, and a switch under way runs on. The
-follower stops one itself once it has built for 30 minutes heads main has
-since moved past, so the next ask builds the new ones:
+follower stops one itself once it has fetched for 30 minutes heads main
+has since moved past, so the next ask fetches the new ones; a build it
+lets finish and switch, however far main moves, and follows main after:
 
 ```nix
 jitsusama.update-to-main = {
