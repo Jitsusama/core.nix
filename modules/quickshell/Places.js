@@ -270,10 +270,22 @@ function rebootList(text, boot, bootedAt) {
     const whole = one => one !== null && typeof one === "object"
         && safeId.test(String(one.id ?? "")) && typeof one.cwd === "string"
         && one.cwd.startsWith("/");
-    const at = one => Number.isInteger(one.workspace) && Number.isInteger(one.column)
-        && typeof one.output === "string" && one.output !== ""
-        ? { output: one.output, workspace: one.workspace, column: one.column, tile: 1 }
-        : null;
+    // Each in its tile: the one the list says, else the next free in its
+    // column in the order listed, so two stacked in one column never both
+    // go after one place and move each other back and forth (25 times
+    // after the 21:24 boot on 2026-11-08).
+    const stacked = {};
+    const at = one => {
+        if (!Number.isInteger(one.workspace) || !Number.isInteger(one.column)
+            || typeof one.output !== "string" || one.output === "") {
+            return null;
+        }
+        const column = `${one.output} ${one.workspace} ${one.column}`;
+        const tile = Number.isInteger(one.tile) && one.tile > 0 ? one.tile
+            : (stacked[column] ?? 0) + 1;
+        stacked[column] = Math.max(stacked[column] ?? 0, tile);
+        return { output: one.output, workspace: one.workspace, column: one.column, tile };
+    };
     return {
         boot: read.boot,
         taken: read.taken,
@@ -310,6 +322,17 @@ const queueHeard = 120;
 // each part in the order it came, so the sessions an orchestrator leads
 // have it back to answer to as they return. Where each goes doesn't hang on
 // the order begun, since each is placed by the kept places of those back.
+// Where a session handed over sat, by its id: this boot's place while it
+// has one, else where the reboot's list says, else the restored boot's.
+// An orchestrator bringing its own sessions back after a reboot hands them
+// over before Reopen Them All reaches them, and without the list's place
+// each went to its orchestrator's workspace wherever niri put it (40 of
+// them after the 21:24 boot on 2026-11-08). `kept` holds `now`, `reboot`
+// and `restored`, each places by id.
+function keptFor(id, kept) {
+    return kept.now?.[id] ?? kept.reboot?.[id] ?? kept.restored?.[id] ?? null;
+}
+
 function leadersFirst(queue) {
     const leads = entry => String(entry.one?.orchestrates ?? "") !== "";
     return queue.filter(leads).concat(queue.filter(entry => !leads(entry)));
