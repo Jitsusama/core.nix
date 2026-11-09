@@ -307,6 +307,19 @@ QtObject {
         check("its parts give way reused first", Checked.todoSideItems(found, todo),
             [{ said: "3 breached", keep: 2 }, { said: "1,204 reused", keep: 1 }]);
         check("a count of none says nothing", Checked.counted(0), "");
+        // Why it's there, both counts whole, the logins named on the first.
+        const why = Object.assign({}, todo, { why: "The check at {at} found {found}.",
+            and: " and ", breachedLogin: "{count} breached login",
+            breachedLogins: "{count} breached logins", reusedLogin: "{count} reused login",
+            reusedLogins: "{count} reused logins" });
+        check("why, both counts", Checked.todoWhy(found, why, "05:10"),
+            "The check at 05:10 found 3 breached logins and 1,204 reused.");
+        check("why, one breached", Checked.todoWhy(Object.assign({}, found,
+            { breached: 1, reused: 0 }), why, "05:10"), "The check at 05:10 found 1 breached login.");
+        check("why, reused alone named", Checked.todoWhy(Object.assign({}, found,
+            { breached: 0 }), why, "05:10"), "The check at 05:10 found 1,204 reused logins.");
+        check("why, nothing found", Checked.todoWhy(Object.assign({}, found,
+            { breached: 0, reused: 0 }), why, "05:10"), "");
         check("what For You weighs", Checked.todoThing(found), { kind: "todo",
             since: now - 3 * hour, takes: 1205 * 3, ready: true });
         // Each changed since the check took leaves the counts, and with

@@ -1081,10 +1081,12 @@ def walk_passwords_for_you(desktop: Desktop) -> None:
             "Waiting Since",
             "Last Checked",
             "Clears When",
-            "Breached",
-            "Reused",
         ], facts
-        assert (facts["Breached"], facts["Reused"]) == ("1", "2"), facts
+        # Its words open with why it's there, the counts whole where the side gave way.
+        why = drawer["body"].split("\n")[0]
+        assert (
+            why == f"The check at {facts['Last Checked']} found 1 breached login and 2 reused."
+        ), drawer["body"]
         desktop.shoot("launcher-for-you-passwords-todo-drawer")
         machine.send_key("ctrl-w")
         machine.send_key("h")

@@ -8590,22 +8590,18 @@
       "said": {
         "breached": "{count} breached",
         "reused": "{count} reused",
+        "why": "The check at {at} found {found}.",
+        "and": " and ",
+        "breachedLogin": "{count} breached login",
+        "breachedLogins": "{count} breached logins",
+        "reusedLogin": "{count} reused login",
+        "reusedLogins": "{count} reused logins",
         "how": "checked clear",
         "clears": "a later check finds none breached or reused"
       },
       "tells": {
         "steps": "Step in for each login the check found breached or reused. Change each one's password where you sign in, and save it in its password manager. Then check every password again, and this clears once none is breached or reused."
       }
-    },
-    {
-      "id": "passwords:todo:breached",
-      "in": "passwords:todo",
-      "name": "Breached"
-    },
-    {
-      "id": "passwords:todo:reused",
-      "in": "passwords:todo",
-      "name": "Reused"
     },
     {
       "id": "passwords:vault",

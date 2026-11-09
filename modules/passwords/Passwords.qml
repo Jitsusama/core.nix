@@ -314,8 +314,9 @@ Provider {
     // The to-do's drawer, in the facts every For You drawer gives
     // (Now.qml's drawerOf): where it's from and that it's a thing to do,
     // what it weighs, how long it takes, since when it has waited, when the
-    // last check ran and what clears it; then its own, how many are
-    // breached and how many reused. Done, how it went stands in place of
+    // last check ran and what clears it. Its words open with why it's
+    // there, the counts whole, which the side gives way by (VKCF3Z,
+    // 4e0fcf16), then what to do. Done, how it went stands in place of
     // what it weighed and what clears it, as a done item's does.
     function todoDrawer(found, done) {
         const now = Date.now();
@@ -329,16 +330,16 @@ Provider {
             fact("on:waiting:since", found.since === null ? "" : clocked(found.since)),
             fact("on:waiting:resolved", done ? clearedSide(found) : ""),
             fact("on:waiting:checked", clocked(found.at)),
-            fact("on:waiting:clears", done ? "" : todoSaid.clears ?? ""),
-            fact("passwords:todo:breached", Checked.counted(found.breached)),
-            fact("passwords:todo:reused", Checked.counted(found.reused))
+            fact("on:waiting:clears", done ? "" : todoSaid.clears ?? "")
         ].filter(one => one.value !== "");
+        const why = done ? "" : Checked.todoWhy(found, todoSaid, clocked(found.at));
+        const steps = done ? "" : (Words.of("passwords:todo").tells ?? {}).steps ?? "";
         return {
             eyebrow: ForYou.filled(say.from, { from: Words.name("passwords"), kind: say.todo }),
             eyebrowNames: true,
             title: Words.name("passwords:todo"),
             facts: facts,
-            body: done ? "" : (Words.of("passwords:todo").tells ?? {}).steps ?? ""
+            body: [why, steps].filter(one => one !== "").join("\n\n")
         };
     }
 
