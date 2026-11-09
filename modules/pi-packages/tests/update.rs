@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, SystemTime};
 
-use pi_packages::config::Config;
-use pi_packages::run::{self, Done};
+use pi_packages::config::{Config, Package};
+use pi_packages::run::{self, Done, Pace, SPACING};
 use pi_packages::version::Place;
 use serde_json::json;
 
@@ -164,8 +164,61 @@ impl Fixture {
     }
 
     fn update(&self) -> run::Outcome {
-        run::update_one(&self.config, &self.config.packages[0], SystemTime::now())
-            .expect("an update")
+        run::update_one(
+            &self.config,
+            &self.config.packages[0],
+            SystemTime::now(),
+            None,
+        )
+        .expect("an update")
+    }
+
+    /// The package alone, with no neighbour an update would try to fetch.
+    fn alone(&self) -> Config {
+        let mut config = self.config.clone();
+        config.packages.truncate(1);
+        config
+    }
+
+    /// The package twice: once as itself and once through a link to its
+    /// repository, so it has two folders and two `current`s, as two
+    /// packages would.
+    fn twice(&self) -> Config {
+        let twin = self.upstream.with_file_name("upstream-twin");
+        std::os::unix::fs::symlink(&self.upstream, &twin).expect("a second name");
+        let mut config = self.alone();
+        config.packages.push(
+            Package::new(&format!("file://{}", twin.display()), "main").expect("a package"),
+        );
+        config
+    }
+
+    /// Every package's update, as the timer or a hand run makes it at `now`.
+    fn update_all(config: &Config, now: SystemTime, pace: Pace) -> Vec<Done> {
+        run::update(config, now, pace)
+            .into_iter()
+            .map(|(_, outcome)| outcome.expect("an update").done)
+            .collect()
+    }
+
+    /// Commit a change, so the branch moves on.
+    fn change(&self, message: &str) {
+        fs::write(
+            self.upstream.join("extension.ts"),
+            format!("// {message}\n"),
+        )
+        .expect("a change");
+        self.commit(message);
+    }
+
+    /// The commit the branch is at.
+    fn head(&self) -> String {
+        let out = Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(&self.upstream)
+            .output()
+            .expect("git runs");
+        String::from_utf8(out.stdout).expect("a commit").trim().to_owned()
     }
 
     /// Commit a change and update to it, so `current` moves on.
