@@ -311,6 +311,7 @@
       "id": "agents:address",
       "in": "agents",
       "name": "Address",
+      "term": "Agents/address",
       "states": {
         "several": {
           "name": "Addresses"
@@ -1113,7 +1114,8 @@
     {
       "id": "machine:cpu:clock",
       "in": "machine:cpu",
-      "name": "Clock",
+      "name": "Clock Speed",
+      "term": "Machine/clock speed",
       "answers": [
         "clock speed"
       ]
@@ -1533,6 +1535,7 @@
       "id": "machine:disk:speed",
       "in": "machine:disk",
       "name": "Speed",
+      "term": "Machine/speed",
       "answers": [
         "disk speed"
       ],
@@ -3694,7 +3697,8 @@
     {
       "id": "eero:node:address",
       "in": "eero:node",
-      "name": "Address"
+      "name": "Address",
+      "term": "Network/address"
     },
     {
       "id": "eero:node:ipv6",
@@ -3704,7 +3708,8 @@
     {
       "id": "eero:node:mac",
       "in": "eero:node",
-      "name": "Hardware Address"
+      "name": "Hardware Address",
+      "term": "Network/hardware address"
     },
     {
       "id": "eero:node:light",
@@ -3825,7 +3830,8 @@
     {
       "id": "eero:device:address",
       "in": "eero:device",
-      "name": "Address"
+      "name": "Address",
+      "term": "Network/address"
     },
     {
       "id": "eero:device:reserved",
@@ -3841,7 +3847,8 @@
     {
       "id": "eero:device:mac",
       "in": "eero:device",
-      "name": "Hardware Address"
+      "name": "Hardware Address",
+      "term": "Network/hardware address"
     },
     {
       "id": "eero:device:hostname",
@@ -4019,7 +4026,8 @@
     {
       "id": "networks:hardware",
       "in": "networks",
-      "name": "Hardware Address"
+      "name": "Hardware Address",
+      "term": "Network/hardware address"
     },
     {
       "id": "networks:mtu",
@@ -5111,7 +5119,8 @@
     {
       "id": "time:server:address",
       "in": "time:server",
-      "name": "Address"
+      "name": "Address",
+      "term": "Network/address"
     },
     {
       "id": "time:server:reference",
@@ -6840,7 +6849,8 @@
     {
       "id": "on:waiting:address",
       "in": "on:waiting",
-      "name": "Address"
+      "name": "Address",
+      "term": "Agents/address"
     },
     {
       "id": "on:waiting:check",
@@ -8166,6 +8176,7 @@
       "id": "media:speed",
       "in": "media",
       "name": "Speed",
+      "term": "Programs/speed",
       "glyph": "playSpeed"
     },
     {
@@ -9588,7 +9599,8 @@
     {
       "id": "wifi:bssid",
       "in": "wifi:point",
-      "name": "Hardware Address"
+      "name": "Hardware Address",
+      "term": "Network/hardware address"
     },
     {
       "id": "bluetooth:radio",
@@ -9682,7 +9694,8 @@
     {
       "id": "bluetooth:address",
       "in": "bluetooth",
-      "name": "Address"
+      "name": "Hardware Address",
+      "term": "Network/hardware address"
     },
     {
       "id": "bluetooth:nearby",
@@ -10889,7 +10902,8 @@
     {
       "id": "kitty:machine:address",
       "in": "kitty:machine",
-      "name": "Address"
+      "name": "Address",
+      "term": "Network/address"
     },
     {
       "id": "kitty:machine:also",

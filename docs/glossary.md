@@ -300,6 +300,7 @@ off.
 | firmware | the program in a chip that runs it: the machine's, which starts it and keeps its settings, or a device's, such as a keyboard's or a sound card's | BIOS, UEFI | |
 | revive | sending a Mac that won't start Apple's firmware again from another machine over USB-C, keeping its files; a restore does the same and erases it | DFU restore | `idevicerestore`, without and with `--erase` |
 | processor | what runs every program | CPU | |
+| clock speed | how many cycles a second the processor runs at now, which it raises and lowers with its work | | `scaling_cur_freq` |
 | cache | memory inside the processor holding what it used last, nearer to it than the machine's memory, in levels one to three | | `L{level}` caches |
 | model | a device's maker's name for what it is, such as a processor's, a disk's, a battery's or a keyboard's | | |
 | version | which release of Linux or of a device's firmware is in it, or which Bluetooth or TLS a link speaks, as its makers number them | | fwupd's `version` |
@@ -327,6 +328,7 @@ off.
 | kind of work | what a job is, which says how much the machine favours it: what Joel waits on at a terminal, timed work or agents' work | job class | the slices `jobs-awaited`, `jobs-timed` and `jobs-work` |
 | shared work | a job other sessions wait on, such as a push holding one of a repository's walk slots, run beside jobs at the sessions' own disk target | | `shared.slice`, `SHARED_SLICE` |
 | backlog | the requests waiting on a disk at once, on average and at most, apart from the machine's queue | | the disk's queue depth |
+| speed | how fast a disk reads and writes now, in data and in requests a second, as the network's speed is for the connection | | the disk's `stat` |
 | queue | heavy work, such as builds and VM tests, waiting its turn on the machine | machine queue | |
 | warm | of an offload builder for VM tests, holding what they need, having built it as it stood; a fresh one is cold | primed | `there::warm`, `--warm` |
 | offload builder | a builder elsewhere lent to the machine while its queue has builds one could take, and given back once idle | remote builder | `nix-offload` |
@@ -389,7 +391,8 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | out | of data at this machine's own links, leaving it, as its traffic and a link's speed count it; the internet's speed says up | | `traffic:out`, `wifi:out` |
 | down | of the internet's speed, what it carries to the home network, as a speed test measures it; this machine's links say in | | `eero:internet:down` |
 | up | of the internet's speed, what it carries out of the home network, as a speed test measures it; this machine's links say out | | `eero:internet:up` |
-| address | an address the machine has on a network | network address, IP | `networks` |
+| address | an address on a network: one the machine has, or the one a node, a device, a server or another machine is reached at | network address, IP | `networks` |
+| hardware address | the fixed address a network card or radio carries from where it was made, apart from the addresses a network gives it | | MAC addresses, a BSSID |
 | lease | an address a network's server lends for a while, to the machine or to the gateway node, with the name servers and domain that come with it | | DHCP, `leases` |
 | subnet | the run of addresses one of the home network's networks hands out, the main one or the guest one, as its address and prefix | | `subnets_config`, `Subnet` |
 | reserved address | an address the home network keeps for one device, so it has the same one each time it joins | static IP | `reservations`, `Reservation` |
