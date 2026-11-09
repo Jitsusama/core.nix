@@ -8760,7 +8760,9 @@
         "searching": "searching Slack",
         "you": "you",
         "where": "in {place} \u00b7 message",
-        "direct": "direct message"
+        "direct": "direct message",
+        "readInSlack": "read in Slack",
+        "goneFromSlack": "gone from Slack"
       },
       "tells": {
         "none": "Nothing in Slack says {words}.",

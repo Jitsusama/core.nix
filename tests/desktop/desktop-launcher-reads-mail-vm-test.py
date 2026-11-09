@@ -207,22 +207,19 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
 
 
 def slack_says(
-    desktop: Desktop,
-    state: str,
-    conversations: list[Json],
-    *,
-    recent: list[Json] | None = None,
-    messages: list[Json] | None = None,
+    desktop: Desktop, state: str, conversations: list[Json], *, recent: list[Json] | None = None
 ) -> None:
-    """Have the stand-in Slack daemon say this, as a round of asking Slack would.
+    """Have the stand-in Slack daemon say this, as a round of asking Slack would."""
+    slack_tells(desktop, {"state": state, "conversations": conversations, "recent": recent or []})
+
+
+def slack_tells(desktop: Desktop, said: Json) -> None:
+    """Have the stand-in Slack daemon say all of `said`, slack-says.json's whole.
 
     The stand-in reads it from slack-says.json, as it starts or once told by SIGHUP that it
     changed; a stand-in only just started is never sent one, as it may not hear it yet. With
     messages, it holds every message wanting Joel, as the daemon does once Slack gave them all.
     """
-    said: Json = {"state": state, "conversations": conversations, "recent": recent or []}
-    if messages is not None:
-        said["messages"] = messages
     told = json.dumps(said)
     desktop.as_account(
         f"printf '%s' {shlex.quote(told)} > $XDG_RUNTIME_DIR/slack-says.new"
@@ -255,8 +252,17 @@ def slack_holds_each_message(desktop: Desktop, conversations: list[Json]) -> Non
         ada | {"ts": "1730000001.000100", "first": "lunch at noon?", "minutes": 3},
         grace,
     ]
-    slack_says(desktop, "ok", conversations, messages=held)
+    said: Json = {"state": "ok", "conversations": conversations, "recent": []}
+    slack_tells(desktop, said | {"messages": held})
     for_you_rows(desktop)
+    # Its side counts what it lists: Ada's two, Grace's and Threads' three
+    # replies, never the conversations the messages are in.
+    desktop.launcher_until(
+        lambda shown: any(
+            thing["name"] == "Slack" and re.fullmatch(r"6\sto\sread", thing["side"])
+            for thing in shown["things"]
+        )
+    )
     desktop.down_to("Slack")
     machine.send_key("ret")
     desktop.launcher_until(
@@ -271,17 +277,23 @@ def slack_holds_each_message(desktop: Desktop, conversations: list[Json]) -> Non
     desktop.shoot("launcher-for-you-slack-messages")
     desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Open in Slack", "Copy the Link"])
-    desktop.close_launcher()
-    # Each message row is made by its one component, as a conversation's is.
-    said = cast("Json", json.loads(desktop.as_account("qs ipc call launcher actless")))
-    assert said["uncomposed"] == [], "\n".join(said["uncomposed"])
-    # Read in Slack, Grace's message leaves For You by itself, for its History.
-    slack_says(
-        desktop,
-        "ok",
-        conversations,
-        messages=[*held[:2], grace | {"done": {"how": "read in Slack", "minutes": 0}}],
+    # The link copied is the message's own, where Slack shows it, and
+    # copying closes the launcher, as everywhere.
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    desktop.down_to("Copy the Link")
+    machine.send_key("ret")
+    link = "https://slack.example/archives/D1/p1730000002000100"
+    machine.wait_until_succeeds(
+        desktop.in_session(f'[ "$(wl-paste --no-newline)" = "{link}" ]'),
+        timeout=dt.timedelta(seconds=30),
     )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Each message row is made by its one component, as a conversation's is.
+    actless = cast("Json", json.loads(desktop.as_account("qs ipc call launcher actless")))
+    assert actless["uncomposed"] == [], "\n".join(actless["uncomposed"])
+    # Read in Slack, Grace's message leaves For You by itself, for its History.
+    done = {"how": "readInSlack", "minutes": 0}
+    slack_tells(desktop, said | {"messages": [*held[:2], grace | {"done": done}]})
     for_you_rows(desktop)
     desktop.down_to("Slack")
     machine.send_key("ret")
@@ -1247,26 +1259,28 @@ def test_search_slack_ends_a_search_and_asks_slack_once_on_return_lighting_in_pl
     assert machine.succeed(f"cat {searched}") == "launcher\n"
     desktop.as_account(f"touch {slack}/slack-answers")
     # The first lights where the stand-in stood, selected, and the rest
-    # follow it: where each is beside it, who said it and when below.
+    # follow it, each a Slack message's one row, as For You's are: named by
+    # who said it, Joel's own as You, its note its first line, its side
+    # when, and where it is in its drawer's eyebrow.
     desktop.launcher_until(
         lambda shown: (
-            shown["rows"] == ["The launcher is fast", "Launcher notes for Friday"]
+            shown["rows"] == ["ada", "You"]
             and not shown["things"][0]["gone"]
-            and (shown["selected"] or {}).get("name") == "The launcher is fast"
+            and (shown["selected"] or {}).get("name") == "ada"
         )
     )
     selected = desktop.showing()["selected"]
-    assert selected["side"] == "#launcher", selected
-    assert selected["note"].startswith("ada \u00b7 "), selected["note"]
+    assert selected["note"] == "The launcher is fast", selected
+    # An hour ago is said by its clock, or yesterday just past midnight.
+    assert re.fullmatch(r"\d\d:\d\d|yesterday", selected["side"]) is not None, selected
+    assert selected["drawer"]["eyebrow"] == "in #launcher \u00b7 message", selected
     assert selected["drawer"]["body"] == "The launcher is fast\nand never waits", selected
     desktop.next_row()
     desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("note", "").startswith("You \u00b7 ")
+        lambda shown: (shown["selected"] or {}).get("note") == "Launcher notes for Friday"
     )
     desktop.previous_row()
-    desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("name") == "The launcher is fast"
-    )
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "ada")
     # Inside, Open in Slack, whose drawer holds the messages around it once
     # asked, only Joel's named, then the link to copy last.
     desktop.follow()
@@ -1283,7 +1297,7 @@ def test_search_slack_ends_a_search_and_asks_slack_once_on_return_lighting_in_pl
     desktop.launcher_until(lambda shown: shown["rows"][-1:] == [search])
     desktop.down_to(search)
     desktop.step_in("ret")
-    desktop.launcher_until(lambda shown: shown["rows"][:1] == ["The launcher is fast"])
+    desktop.launcher_until(lambda shown: shown["rows"][:1] == ["ada"])
     assert machine.succeed(f"cat {searched}") == "launcher\n"
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))

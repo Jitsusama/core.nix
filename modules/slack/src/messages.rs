@@ -40,11 +40,12 @@ const PAGES: usize = 5;
 /// How long a message done is still said, in milliseconds.
 pub const KEPT: u64 = 24 * 60 * 60 * 1000;
 
-/// How a message read in Slack is said done.
-pub const READ_IN_SLACK: &str = "read in Slack";
+/// How a message read in Slack is said done, by an id the shell words
+/// (words.json's slack:message), as Google's daemon says how mail went.
+pub const READ_IN_SLACK: &str = "readInSlack";
 
 /// How a message is said done whose conversation Slack no longer lists.
-pub const GONE_FROM_SLACK: &str = "gone from Slack";
+pub const GONE_FROM_SLACK: &str = "goneFromSlack";
 
 /// Who said a message when Slack can't say, or nobody did.
 const SLACK: &str = "Slack";
@@ -646,7 +647,7 @@ mod tests {
         assert_eq!(
             done("slack-message:D1:1730300001.000100"),
             Some(Done {
-                how: "read in Slack",
+                how: "readInSlack",
                 at: "2024-10-31T18:40:00Z".to_owned(),
                 millis: now,
             })
@@ -685,7 +686,7 @@ mod tests {
                 .done
                 .as_ref()
                 .map(|done| done.how),
-            Some("gone from Slack")
+            Some("goneFromSlack")
         );
     }
 
@@ -722,7 +723,7 @@ mod tests {
         });
         assert_eq!(
             serde_json::to_value(&one).unwrap()["done"],
-            json!({"how": "read in Slack", "at": "2024-10-31T18:40:00Z"})
+            json!({"how": "readInSlack", "at": "2024-10-31T18:40:00Z"})
         );
     }
 }

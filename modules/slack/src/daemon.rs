@@ -669,7 +669,7 @@ mod tests {
         }];
         daemon.say(Some(&said), 10);
         let done = Done {
-            how: "read in Slack",
+            how: "readInSlack",
             at: "2024-10-31T18:40:00Z".to_owned(),
             millis: 1_730_400_000_000,
         };
@@ -696,7 +696,7 @@ mod tests {
         assert_eq!(keys(&lines[3]), [message, "slack-read:D1"]);
         assert_eq!(
             lines[3]["changed"][0]["slack-message"]["done"],
-            json!({"how": "read in Slack", "at": "2024-10-31T18:40:00Z"})
+            json!({"how": "readInSlack", "at": "2024-10-31T18:40:00Z"})
         );
         assert_eq!(lines[3]["gone"], json!([]));
     }

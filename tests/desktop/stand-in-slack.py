@@ -161,6 +161,11 @@ def saying() -> tuple[str, dict[str, dict[str, object]]]:
     return state, things
 
 
+def link(channel: str, ts: str) -> str:
+    """Give where Slack shows a message on the web, as the daemon makes it (src/messages.rs)."""
+    return f"https://slack.example/archives/{channel}/p{ts.replace('.', '')}"
+
+
 def messages(listed: list[dict[str, object]]) -> dict[str, dict[str, object]]:
     """Hold each message wanting Joel as the daemon does (src/messages.rs), by its key.
 
@@ -175,7 +180,7 @@ def messages(listed: list[dict[str, object]]) -> dict[str, dict[str, object]]:
             "mine": False,
             "text": one.get("text", one["first"]),
             "at": now - int(cast("int", one["minutes"])) * MINUTE,
-            "link": one.get("link", f"https://slack.example/archives/{one['channel']}"),
+            "link": one.get("link", link(str(one["channel"]), str(one["ts"]))),
             "team": one.get("team", "T1"),
         }
         done = cast("dict[str, object] | None", one.get("done"))

@@ -80,6 +80,21 @@ onLinux {
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml slack.qml
       touch $out
     '';
+  # A Slack message's one row, held or found, SlackMessage.js's, run in
+  # Qt's own engine (tests/slack-message.qml).
+  slack-message-is-one-row =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "slack-message-is-one-row" { } ''
+      cp ${./tests/slack-message.qml} slack-message.qml
+      cp ${./SlackMessage.js} SlackMessage.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml slack-message.qml
+      touch $out
+    '';
   # Now's Slack piece shows a count only while Slack's daemon answers and
   # Slack answered it, says why there's none when not, and names who and where,
   # SlackUnreads.js's, run in Qt's own engine (tests/slack-unreads.qml).

@@ -1154,7 +1154,7 @@ fn each_message_wanting_joel_is_held_until_he_reads_it_in_slack() {
         )
     );
     let done = &changed["changed"][0]["slack-message"]["done"];
-    assert_eq!(done["how"], "read in Slack");
+    assert_eq!(done["how"], "readInSlack");
     let at = done["at"].as_str().unwrap();
     assert!(
         at.len() == 20 && at.ends_with('Z') && at.as_bytes()[10] == b'T',

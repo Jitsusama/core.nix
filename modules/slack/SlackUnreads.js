@@ -121,8 +121,16 @@ function standing(told) {
     return told.state === "ok" ? "ok" : "unknown";
 }
 
+// How many to read: while the daemon holds every message, each still to
+// read and Threads' replies, as For You's Slack row lists them; else
+// what the conversations count.
 function count(told) {
-    return wanting(told).reduce((all, one) => all + one.count, 0);
+    const counted = (all, one) => all + one.count;
+    if (told.whole) {
+        return told.messages.filter(one => !done(one)).length
+            + unheld(told).reduce(counted, 0);
+    }
+    return wanting(told).reduce(counted, 0);
 }
 
 // Whether Now lists it: only with something to read, which wants Joel.

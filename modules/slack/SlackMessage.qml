@@ -1,66 +1,76 @@
 pragma Singleton
-// A Slack message wanting Joel, as For You's Slack row lists each
-// (NewSlack.qml), held by Slack's daemon (src/messages.rs): named by who
-// said it, its note its first words, so two from one person tell
-// themselves apart, and its side only when, "14:02" (VKCF3Z, 2026-11-08).
-// Its drawer's eyebrow says where, "in #deploys · message", or "direct
-// message", and its body says it all. `row` gives its whole row, made
-// with the launcher's `thing` of the surface showing it, so For You's list
-// and its History show the same one. Return opens its conversation in
-// Slack; inside are Open in Slack, then Copy the Link, Copy last as
-// everywhere.
+// A Slack message's one row, wherever it's listed: For You's Slack row
+// (NewSlack.qml), its History, and what Search Slack finds
+// (SlackSearch.qml), since a message is one thing (VKCF3Z, 2026-11-08).
+// A message has no title, so it's named by who said it, its note its
+// first line, so two from one person tell themselves apart, and its side
+// only when. Its drawer's eyebrow says where, "in #deploys · message", or
+// "direct message", and its body says it all. `row` gives its whole row,
+// made with the launcher's `thing` of the surface showing it. Return
+// opens the message where Slack shows it; inside are Open in Slack, then
+// Copy the Link, Copy last as everywhere. What it works out is
+// SlackMessage.js's.
 import qs
 import Quickshell
 import QtQuick
 import "FileFacts.js" as FileFacts
 import "When.js" as When
+import "SlackMessage.js" as Message
 
 Singleton {
     // How the launcher says when, in its words (FileFacts.js's wordsOf).
     readonly property var whenWords: FileFacts.wordsOf(id => Words.of(id),
         (at, format) => Qt.formatDate(at, format))
 
-    // `one` is a message as the daemon says it: { channel, ts, place, who,
-    // first, text, at, link, team }.
-    function row(one, thing) {
+    // Joel, as a row of his own is named: "You".
+    function you(said) {
+        const word = String(said.you ?? "");
+        return word.charAt(0).toUpperCase() + word.slice(1);
+    }
+
+    // `one` is a message as the daemon says it (SlackMessage.js). `found`
+    // is what Search Slack gives: the `words` it was found by, the `key`
+    // it lights under, and `around(one)`, Open in Slack's drawer, the
+    // messages around it.
+    function row(one, thing, found) {
         const said = Words.of("slack:message").said ?? {};
-        const open = () => Niri.spawn(["xdg-open",
-            `slack://channel?team=${one.team ?? ""}&id=${one.channel}`]);
+        const open = () => Niri.spawn(["xdg-open", Message.opens(one)]);
         const now = Date.now();
-        // A direct message's conversation starts D, as Slack names them.
-        const direct = one.channel.startsWith("D");
         const day = When.day(one.at, now, whenWords.days);
         const clock = FileFacts.clock(new Date(one.at));
+        const name = Message.who(one, you(said));
         return thing({
-            key: `slack:message:${one.channel}:${one.ts}`,
+            key: found?.key ?? Message.key(one),
             what: "slack message",
             // Made here, which the launcher's walk holds every message
-            // row of For You's to (Launcher.qml's components).
+            // row to (Launcher.qml's components).
             component: "slackMessage",
             thing: true,
             of: "program:slack",
-            part: one.who,
-            name: one.who,
+            part: name,
+            name: name,
             verb: Words.verb("verb:slack:message:open"),
             glyph: Words.glyph("slack:message"),
             hue: "program",
             side: FileFacts.when(one.at, now, whenWords),
-            note: one.first ?? "",
+            note: Message.note(one, found?.words ?? ""),
             drawer: {
-                eyebrow: direct ? said.direct ?? ""
-                    : String(said.where ?? "").replace("{place}", one.place ?? ""),
-                eyebrowNames: !direct,
-                title: one.who,
-                facts: [{ label: Words.name("slack:message:sent"), value: day === "" ? clock : `${day} ${clock}` }],
+                eyebrow: Message.eyebrow(one, said),
+                eyebrowNames: !Message.direct(one),
+                title: name,
+                facts: [{
+                    label: Words.name("slack:message:sent"),
+                    value: day === "" ? clock : `${day} ${clock}`
+                }],
                 body: one.text ?? ""
             },
             later: true,
             run: open,
-            verbs: () => acts(one, open, thing)
+            verbs: () => acts(one, open, thing, found)
         });
     }
 
-    function acts(one, open, thing) {
+    function acts(one, open, thing, found) {
         const act = (key, more) => thing(Object.assign({
             key: key,
             name: Words.name(key),
@@ -68,7 +78,10 @@ Singleton {
             glyph: Words.glyph(key),
             hue: "action"
         }, more));
-        const listed = [act("verb:slack:message:open", { later: true, run: open })];
+        const opening = { later: true, run: open };
+        if (found?.around)
+            opening.drawer = found.around(one);
+        const listed = [act("verb:slack:message:open", opening)];
         if (one.link)
             listed.push(act("verb:slack:message:link", {
                 now: true,

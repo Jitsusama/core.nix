@@ -72,6 +72,7 @@ let
       cp ${../slack/Slack.js} qs/launcher/people/Slack.js
       cp ${../slack/SlackConversation.qml} qs/SlackConversation.qml
       cp ${../slack/SlackMessage.qml} qs/SlackMessage.qml
+      cp ${../slack/SlackMessage.js} qs/SlackMessage.js
       cp ${../slack/SlackUnreads.qml} qs/SlackUnreads.qml
       cp ${../slack/SlackUnreads.js} qs/SlackUnreads.js
       cp ${../slack/NewSlack.qml} qs/pieces/slack.qml

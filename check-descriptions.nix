@@ -1644,6 +1644,12 @@
     where it is, who said it and its first words, the messages around one oldest first, and
     Slack too busy apart from signed out or out of reach
   '';
+  slack-message-is-one-row = ''
+    a Slack message is one row whether For You holds it or Search Slack found it: one key, named
+    by who said it, Joel's own as You, its note its first line or, found past it, the message
+    from the matched word on, its eyebrow where it is or that it's a direct message, and Return
+    opening the message itself, else its conversation
+  '';
   slack-passes-clippy = ''
     clippy finds nothing in slack-people or its tests
   '';

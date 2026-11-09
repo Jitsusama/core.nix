@@ -163,7 +163,7 @@ QtObject {
             at: 1730000002000 });
         const mention = { channel: "C1", ts: "1730000003.000100", place: "#deploys",
             who: "Grace Hopper", first: "@joel ship it", at: 1730000003000,
-            done: { how: "read in Slack", at: 1730000004000 } };
+            done: { how: "readInSlack", at: 1730000004000 } };
         const nameless = { channel: "C1", ts: "1730000005.000100", at: 1730000005000 };
         const whole = Unreads.gathered(held("ok", [ada, deploys, threads], [],
             [second, nameless, first, mention], true), true);
@@ -182,6 +182,11 @@ QtObject {
         check("none held", Unreads.gathered(held("ok", [ada]), true).messages, []);
         // Threads, whose replies the daemon never holds, stay beside them.
         check("unheld", Unreads.unheld(whole).map(one => one.id), ["threads"]);
+        // What's counted is what's listed: each message still to read and
+        // Threads' replies, never the conversations the messages are in.
+        check("whole counts what it lists", Unreads.value(whole, "ok"), "5 to read");
+        check("some counts conversations", Unreads.value(Unreads.gathered(
+            held("ok", [ada, deploys, threads], [], [first]), true), "ok"), "6 to read");
 
         for (const failure of failures)
             console.warn(failure);
