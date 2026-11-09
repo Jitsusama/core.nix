@@ -89,6 +89,15 @@ off. Its tests are a file of their own that a check runs, as
 `tools/run-subtests/run-subtests-test.py` is. A build phase of a line or two stays
 inline, since it reads as part of the derivation.
 
+`programs-live-in-their-own-files` holds it: a Nix string of more than five
+lines that runs as shell, or opens as QML, Python or polkit's JavaScript,
+fails it. A splice of values may stay, a shell string of at most ten lines
+with at most one branch, loop, pipe or `$(...)`, such as a check that copies
+its files in and runs a program on them. So may a string whose comment
+above says why, in a sentence beginning "Kept in Nix because". Those in
+strings before the rule wait, counted by file, in
+`tests/programs-live-in-their-own-files-waiting.nix`, and a count only falls.
+
 ## Long Files Say Why
 
 A code file past 800 lines, or a folder of more than 40 entries, is split by

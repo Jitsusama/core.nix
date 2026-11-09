@@ -519,6 +519,10 @@
   docs-name-what-exists = ''
     every doc's links and paths name what's there, but the exemptions named
   '';
+  every-fixed-wait-says-why = ''
+    every sleep in a test polls, or says what passes while it waits in a comment or by a named
+    constant, but those still waiting to become waits on their events
+  '';
   every-folder-says-what-it-holds = ''
     every folder says what goes in it, but those still waiting for their note
   '';
@@ -1441,6 +1445,10 @@
   programs-nobody-starts-stay-unlisted = ''
     the entries of virt-manager, the NixOS manual and umpv are masked as hidden where the launcher
     reads them, while the programs stay installed
+  '';
+  programs-live-in-their-own-files = ''
+    no shell, QML, Python or JavaScript past five lines is written as a Nix string, but a short
+    splice of values, one that says why it's kept in Nix, and those still waiting to move out
   '';
   qemu-starts-after-its-sockets = ''
     the qemu VM tests run starts once the sockets it connects to are there, and fails naming one

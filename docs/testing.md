@@ -374,7 +374,11 @@ in the journal, a file, the compositor's event stream. A fixed sleep only
 guesses how long a loaded machine takes, and fails or wastes time when it's
 wrong. Showing that something didn't happen takes an event too: wait until
 what would have made it happen is done, such as systemd's job queue
-emptying, and then look.
+emptying, and then look. `every-fixed-wait-says-why` holds it: a sleep in
+a test polls, inside a loop that looks again, or says what passes while it
+waits, in a comment on its line or just above, or by sleeping for a named
+constant such as `UNHEARD`. Those before the rule wait, counted by file, in
+`tests/every-fixed-wait-says-why-waiting.nix`, and a count only falls.
 
 The install test builds a disk image with disko and boots it with a software
 TPM, then follows [the install guide][3] step by step: the keys are made and
