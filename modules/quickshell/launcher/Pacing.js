@@ -35,6 +35,15 @@ function took(now) {
     return { at: now, due: null };
 }
 
+// Whether a change heard `ago` ms after the last key is that key's own,
+// refreshed at once on its frame: only after a key that acted, within
+// `within`. A key that only `moved` changed nothing, so a change beside it,
+// as Now's each second, waits on the pace like any other (Joel,
+// 2026-11-08: "weird lag can happen").
+function keyed(ago, moved, within) {
+    return !moved && ago < within;
+}
+
 // The timer rang: the refresh it waited for is taken.
 function rang(pace) {
     return { at: pace.at, due: null };

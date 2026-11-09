@@ -155,6 +155,11 @@ pub struct Collection {
     /// launcher's Agents to say beside it. While the screen is shared the
     /// shell shows none of it.
     pub sessions: BTreeMap<String, String>,
+    /// How today stands on AI spend's own row, wherever it's listed: its
+    /// dollars with their period, as All AI Spend says them, and how that
+    /// is against usual, "$412 today" (VKCF3Z, 2026-11-08). While the
+    /// screen is shared the shell says the first quiet line's instead.
+    pub today: String,
     /// What every pi session together spent today, said as each of
     /// `sessions` is and empty when nothing was, for the launcher's Agents
     /// to say on its home row. While the screen is shared the shell shows
@@ -771,9 +776,9 @@ fn budget_line(picture: &Picture, budget: &crate::standing::Budget) -> Line {
     };
     // A note gives way from its end, so it's written most needed first:
     // whether it's the default, what Joel acts on, and when its one
-    // window resets, before whose money it is, which its drawer's eyebrow
-    // says too (VKCF3Z, 2026-11-08).
-    made.note = joined(&[default, &resets, &budget.words]);
+    // window resets. Whose money it is is its drawer's eyebrow, so the
+    // note doesn't say it again (VKCF3Z, 2026-11-08).
+    made.note = joined(&[default, &resets]);
     AGENT.clone_into(&mut made.mark);
     let nearest = budget
         .allowances
@@ -1026,6 +1031,7 @@ pub fn collection(
             .map(|(id, (_, shown))| (id, shown))
             .collect(),
         sessions: report::by_session(picture, Period::Today),
+        today: today_said(picture),
         agents_today: report::by_sessions(picture, Period::Today),
         sessions_today: report::today_by_session(picture),
         helpers: report::helpers_by_session(picture, Period::Today),
@@ -1054,6 +1060,14 @@ pub fn collection(
         .map(str::to_owned)
         .to_vec(),
     }
+}
+
+/// Today's dollars with their period and how they stand against usual,
+/// for AI spend's own row: "$412 today", or "$412 today \u{b7} above
+/// usual".
+fn today_said(picture: &Picture) -> String {
+    let (today, _) = figure_of(picture, Period::Today);
+    joined(&[&format!("{today} today"), &picture.standing.word])
 }
 
 /// The first screen's rows, since nothing is behind a quiet one: today's
@@ -1127,6 +1141,7 @@ pub fn held(shape: i64) -> Collection {
         quiet: vec![made],
         reports: BTreeMap::from([("summary".to_owned(), summary)]),
         sessions: BTreeMap::new(),
+        today: String::new(),
         agents_today: String::new(),
         sessions_today: BTreeMap::new(),
         helpers: BTreeMap::new(),
@@ -1456,6 +1471,14 @@ mod tests {
         );
         // Every session's together, from the same sum, so it agrees.
         assert_eq!(collected.agents_today, crate::money::dollars(15.75));
+        // AI spend's own row says today's dollars with their period.
+        assert!(
+            collected
+                .today
+                .starts_with(&format!("{} today", crate::money::dollars(15.75))),
+            "{}",
+            collected.today
+        );
     }
 
     // A day no session has spent on says nothing, rather than "$0.00".
@@ -1824,7 +1847,9 @@ mod tests {
         assert_eq!(budgets.role, "warning");
         let plan = &budgets.rows[1];
         assert_eq!(plan.role, "warning");
-        assert_eq!(plan.note, "your own plan");
+        // Whose money it is is said by its drawer's eyebrow, not again
+        // beside its standing.
+        assert_eq!(plan.note, "");
         let windows: Vec<(&str, &str)> = plan
             .rows
             .iter()

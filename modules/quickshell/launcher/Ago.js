@@ -10,7 +10,7 @@ const DAY = 86_400;
 
 // How long from `at` to `now`, both in milliseconds, in the largest unit
 // it's whole in: "12 min", "15 h", "3 d", never less than a minute, as
-// Needs You says how long an item has waited.
+// For You says how long a to-do has waited.
 function span(at, now) {
     const seconds = Math.max(0, (now - at) / SECOND);
     if (seconds < HOUR) {

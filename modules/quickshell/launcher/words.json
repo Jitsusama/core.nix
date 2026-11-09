@@ -123,7 +123,8 @@
         "quests",
         "jobs",
         "runs",
-        "spend"
+        "spend",
+        "agents:budgets"
       ],
       "ask": "which session?",
       "empty": "No sessions running.",
@@ -151,8 +152,8 @@
         "tree": "worktree",
         "folder": "folder",
         "and": "and",
-        "needItem": "{count} Needs You item",
-        "needItems": "{count} Needs You items",
+        "toDo": "{count} to-do",
+        "toDos": "{count} to-dos",
         "full": "{share}% full",
         "contextOf": "{used} of {limit}",
         "turnTook": "{took} \u00b7 {out} out",
@@ -1247,6 +1248,7 @@
       "id": "machine:cpu:caches",
       "in": "machine:cpu:model",
       "name": "Caches",
+      "term": "Machine/cache",
       "said": {
         "note": "all of them together"
       }
@@ -1384,7 +1386,8 @@
     {
       "id": "machine:uptime:release",
       "in": "machine:uptime:kernel",
-      "name": "Release"
+      "name": "Version",
+      "term": "Machine/version"
     },
     {
       "id": "machine:uptime:build",
@@ -1431,11 +1434,6 @@
         "clearingAll": "clearing all it can",
         "cleared": "nothing left to clear"
       }
-    },
-    {
-      "id": "machine:disk:free",
-      "in": "machine:disk:space",
-      "name": "Free"
     },
     {
       "id": "machine:disk:size",
@@ -1605,7 +1603,8 @@
     {
       "id": "machine:disk:queue",
       "in": "machine:disk",
-      "name": "Queue",
+      "name": "Backlog",
+      "term": "Machine/backlog",
       "said": {
         "queued": "{queued} on average",
         "depth": "{depth} at most"
@@ -1775,7 +1774,7 @@
     {
       "id": "machine:disk:link",
       "in": "machine:disk:model",
-      "name": "Link",
+      "name": "PCIe",
       "said": {
         "full": "as fast as it goes",
         "slower": "of {most} at most"
@@ -1835,12 +1834,14 @@
     {
       "id": "traffic:in",
       "in": "traffic",
-      "name": "In"
+      "name": "In",
+      "term": "Network/in"
     },
     {
       "id": "traffic:out",
       "in": "traffic",
-      "name": "Out"
+      "name": "Out",
+      "term": "Network/out"
     },
     {
       "id": "traffic:line",
@@ -1896,6 +1897,24 @@
         "hosts": "{count} hosts",
         "network": "{count} network",
         "networks": "{count} networks",
+        "address": "{count} address",
+        "addresses": "{count} addresses",
+        "domain": "{count} domain",
+        "domains": "{count} domains",
+        "firewallOpens": "opens its firewall for {minutes}",
+        "left": "{minutes} left",
+        "prefix": "/{size}",
+        "emergency": "every device disconnected",
+        "eyebrow": "via WARP \u00b7 tunnel",
+        "range": "{low} to {high}",
+        "steady": "{figure} \u00b7 steady",
+        "reads": "{count} over {span}",
+        "seconds": "{figure} s",
+        "holds": "{organisation} holds the switch",
+        "theOrganisation": "the organisation",
+        "comesBack": "comes back by itself in {minutes}",
+        "comesBackNow": "comes back by itself at once",
+        "couldntSwitch": "warp couldn't switch it",
         "answered": "{success} of {total} answered",
         "proxyOff": "proxy off",
         "by": "set by {who}",
@@ -1930,7 +1949,8 @@
     {
       "id": "warp:settings:mode",
       "in": "warp:settings",
-      "name": "Mode"
+      "name": "Tunnel Mode",
+      "term": "Network/tunnel mode"
     },
     {
       "id": "warp:settings:always-on",
@@ -1966,6 +1986,97 @@
       "id": "warp:settings:post-quantum",
       "in": "warp:settings",
       "name": "Post-Quantum"
+    },
+    {
+      "id": "warp:settings:doh",
+      "in": "warp:settings",
+      "name": "DoH Server"
+    },
+    {
+      "id": "warp:settings:local-domains",
+      "in": "warp:settings",
+      "name": "Local Domains"
+    },
+    {
+      "id": "warp:settings:sign-in-pages",
+      "in": "warp:settings",
+      "name": "Sign-In Pages",
+      "term": "Network/sign-in page"
+    },
+    {
+      "id": "warp:settings:path-mtu",
+      "in": "warp:settings",
+      "name": "Path MTU Discovery"
+    },
+    {
+      "id": "warp:settings:mode-switch",
+      "in": "warp:settings",
+      "name": "Mode Switch Allowed"
+    },
+    {
+      "id": "warp:settings:may-leave",
+      "in": "warp:settings",
+      "name": "Leaving Allowed"
+    },
+    {
+      "id": "warp:settings:support",
+      "in": "warp:settings",
+      "name": "Support"
+    },
+    {
+      "id": "warp:settings:local-network",
+      "in": "warp:settings",
+      "name": "Local Network Reach"
+    },
+    {
+      "id": "warp:settings:override",
+      "in": "warp:settings",
+      "name": "Override"
+    },
+    {
+      "id": "warp:emergency",
+      "in": "warp",
+      "name": "Emergency Disconnect"
+    },
+    {
+      "id": "warp:range",
+      "in": "warp",
+      "name": "Range"
+    },
+    {
+      "id": "warp:reads",
+      "in": "warp",
+      "name": "Reads"
+    },
+    {
+      "id": "warp:in",
+      "in": "warp:traffic",
+      "name": "In",
+      "term": "Network/in"
+    },
+    {
+      "id": "warp:out",
+      "in": "warp:traffic",
+      "name": "Out",
+      "term": "Network/out"
+    },
+    {
+      "id": "warp:power",
+      "command": "disconnect",
+      "in": "warp",
+      "name": "Disconnect WARP",
+      "verb": "disconnect",
+      "glyph": "tunnelOff",
+      "act": "ending",
+      "ends": "disconnect",
+      "states": {
+        "off": {
+          "command": "connect",
+          "name": "Connect WARP",
+          "verb": "connect",
+          "glyph": "tunnelOn"
+        }
+      }
     },
     {
       "id": "warp:tunnel",
@@ -2015,7 +2126,8 @@
     {
       "id": "warp:tls:version",
       "in": "warp:tls",
-      "name": "Version"
+      "name": "Version",
+      "term": "Machine/version"
     },
     {
       "id": "warp:tls:curve",
@@ -2384,7 +2496,7 @@
     {
       "id": "heat:lately",
       "in": "heat",
-      "name": "Lately"
+      "name": "Last Reads"
     },
     {
       "id": "heat:high",
@@ -2545,16 +2657,19 @@
         "machines:kind:machine"
       ]
     },
-    { "id": "machines:pressure:cpu", "in": "machines", "name": "Processor Pressure" },
-    { "id": "machines:pressure:memory", "in": "machines", "name": "Memory Pressure" },
-    { "id": "machines:pressure:io", "in": "machines", "name": "Disk Pressure" },
+    { "id": "machines:pressure:cpu", "in": "machines", "name": "Processor Pressure",
+      "term": "Machine/processor pressure" },
+    { "id": "machines:pressure:memory", "in": "machines", "name": "Memory Pressure",
+      "term": "Machine/memory pressure" },
+    { "id": "machines:pressure:io", "in": "machines", "name": "Disk Pressure",
+      "term": "Machine/disk pressure" },
     { "id": "machines:memory", "in": "machines", "name": "Memory" },
     { "id": "machines:charge", "in": "machines", "name": "Charge" },
     { "id": "machines:takes", "in": "machines", "name": "Takes" },
     { "id": "machines:disk", "in": "machines", "name": "Disk" },
     { "id": "machines:commit", "in": "machines", "name": "Commit" },
-    { "id": "machines:core", "in": "machines", "name": "Core" },
-    { "id": "machines:step", "in": "machines", "name": "Step" },
+    { "id": "machines:core", "in": "machines", "name": "Core", "term": "The Library/core" },
+    { "id": "machines:step", "in": "machines", "name": "Last Update" },
     { "id": "machines:reboot", "in": "machines", "name": "Reboot" },
     { "id": "machines:measured", "in": "machines", "name": "Measured" },
     { "id": "machines:processor", "in": "machines", "name": "Processor" },
@@ -3312,12 +3427,14 @@
     {
       "id": "eero:internet:down",
       "in": "eero:internet",
-      "name": "Down"
+      "name": "Down",
+      "term": "Network/down"
     },
     {
       "id": "eero:internet:up",
       "in": "eero:internet",
-      "name": "Up"
+      "name": "Up",
+      "term": "Network/up"
     },
     {
       "id": "eero:internet:kept",
@@ -3938,7 +4055,8 @@
     {
       "id": "networks:errors-in",
       "in": "networks:errors",
-      "name": "In"
+      "name": "In",
+      "term": "Network/in"
     },
     {
       "id": "networks:damaged",
@@ -3973,7 +4091,8 @@
     {
       "id": "networks:errors-out",
       "in": "networks:errors",
-      "name": "Out"
+      "name": "Out",
+      "term": "Network/out"
     },
     {
       "id": "networks:aborted",
@@ -5132,7 +5251,8 @@
     {
       "id": "sound:channels",
       "in": "sound",
-      "name": "Channels"
+      "name": "Channels",
+      "term": "Machine/channel"
     },
     {
       "id": "sound:hardware",
@@ -5291,7 +5411,8 @@
     {
       "id": "sound:format",
       "in": "sound",
-      "name": "Format"
+      "name": "Format",
+      "term": "Machine/format"
     },
     {
       "id": "sound:graph-format",
@@ -5636,7 +5757,7 @@
     {
       "id": "shortcuts:desktop:windows:place",
       "in": "shortcuts",
-      "name": "Place",
+      "name": "Move",
       "glyph": "floating"
     },
     {
@@ -5660,7 +5781,7 @@
     {
       "id": "shortcuts:desktop:columns:place",
       "in": "shortcuts",
-      "name": "Place",
+      "name": "Move",
       "glyph": "columns"
     },
     {
@@ -6628,7 +6749,7 @@
       "term": "Desktop/For You",
       "verb": "go to",
       "glyph": "forYou",
-      "empty": "Nothing needs you.",
+      "empty": "Nothing waits on you.",
       "tells": {
         "known": "Known done {how}.",
         "person": "Only you can say it's done.",
@@ -6669,7 +6790,6 @@
         "doneByYou": "done by you",
         "clearsLook": "you open or clear it",
         "clearsPr": "it merges or closes",
-        "today": "today",
         "yesterday": "yesterday",
         "tomorrow": "tomorrow",
         "moment": "{day} {time}"
@@ -6736,19 +6856,16 @@
       "name": "Resolved"
     },
     {
-      "id": "on:waiting:quest",
-      "in": "on:waiting",
-      "name": "Quest"
-    },
-    {
       "id": "on:waiting:session",
       "in": "on:waiting",
-      "name": "Session"
+      "name": "Session",
+      "term": "Agents/session"
     },
     {
       "id": "on:waiting:look",
       "in": "on:waiting",
-      "name": "Look"
+      "name": "Look",
+      "term": "Desktop/look"
     },
     {
       "id": "on:waiting:target",
@@ -7500,6 +7617,7 @@
       "argument": "nonightlight",
       "in": "displays:warmth",
       "name": "Night Light",
+      "term": "Desktop/night light",
       "verb": "turn off",
       "glyph": "nightLight",
       "states": {
@@ -7709,7 +7827,8 @@
     {
       "id": "displays:mode",
       "in": "displays",
-      "name": "Mode"
+      "name": "Screen Mode",
+      "term": "Desktop/screen mode"
     },
     {
       "id": "displays:variable",
@@ -7735,7 +7854,8 @@
     {
       "id": "displays:modes",
       "in": "displays",
-      "name": "Modes",
+      "name": "Screen Modes",
+      "term": "Desktop/screen mode",
       "said": {
         "preferred": "preferred",
         "custom": "custom",
@@ -7839,6 +7959,7 @@
     {
       "id": "media",
       "name": "Media",
+      "term": "Programs/Media",
       "noun": "players",
       "what": "player",
       "glyph": "playing",
@@ -8133,7 +8254,8 @@
     {
       "id": "cameras:modes",
       "in": "cameras",
-      "name": "Modes"
+      "name": "Formats",
+      "term": "Machine/format"
     },
     {
       "id": "cameras:usb",
@@ -8673,7 +8795,6 @@
         "vm:autostart",
         "vm:persistent",
         "vm:managed-save",
-        "vm:os-type",
         "vm:id",
         "vm:uuid",
         "vm:security-model",
@@ -8693,8 +8814,8 @@
         "reading": "\u2026",
         "count": "{count} {state}",
         "system": "system",
-        "session": "your VM",
-        "inSystem": "the system's VM",
+        "session": "on this machine \u00b7 VM",
+        "inSystem": "on the system \u00b7 VM",
         "password": "asks for your password",
         "yes": "yes",
         "no": "no",
@@ -8741,11 +8862,6 @@
       "id": "vm:managed-save",
       "in": "vm",
       "name": "Saved State"
-    },
-    {
-      "id": "vm:os-type",
-      "in": "vm",
-      "name": "OS Type"
     },
     {
       "id": "vm:id",
@@ -9265,12 +9381,14 @@
     {
       "id": "wifi:in",
       "in": "wifi:speed",
-      "name": "In"
+      "name": "In",
+      "term": "Network/in"
     },
     {
       "id": "wifi:out",
       "in": "wifi:speed",
-      "name": "Out"
+      "name": "Out",
+      "term": "Network/out"
     },
     {
       "id": "wifi:expected",
@@ -9290,7 +9408,8 @@
     {
       "id": "wifi:streams",
       "in": "wifi:speed",
-      "name": "Streams"
+      "name": "Streams",
+      "term": "Network/stream"
     },
     {
       "id": "wifi:guard",
@@ -9342,12 +9461,14 @@
     {
       "id": "wifi:received",
       "in": "wifi:carried",
-      "name": "Received"
+      "name": "In",
+      "term": "Network/in"
     },
     {
       "id": "wifi:sent",
       "in": "wifi:carried",
-      "name": "Sent"
+      "name": "Out",
+      "term": "Network/out"
     },
     {
       "id": "wifi:idle",
@@ -9495,7 +9616,8 @@
     {
       "id": "bluetooth:channels",
       "in": "bluetooth",
-      "name": "Channels"
+      "name": "Channels",
+      "term": "Network/channel"
     },
     {
       "id": "bluetooth:battery",
@@ -10203,7 +10325,8 @@
       },
       "said": {
         "in": "in {place}",
-        "onDrive": "{drive} (shared drive)"
+        "onDrive": "{drive} (shared drive)",
+        "opened": "opened {when}"
       }
     },
     {
@@ -10435,7 +10558,8 @@
     {
       "id": "program:media:link",
       "in": "program:media",
-      "name": "Link"
+      "name": "Link",
+      "term": "Programs/link"
     },
     {
       "id": "program:media:bus-name",
@@ -10505,7 +10629,7 @@
     {
       "id": "tuple:calls-lately",
       "in": "applications",
-      "name": "Calls Lately"
+      "name": "Recent Calls"
     },
     {
       "id": "mpv:to-finish",
@@ -10700,7 +10824,10 @@
       "name": "New Window in a Repository",
       "verb": "open",
       "glyph": "folder",
-      "ask": "which repository?"
+      "ask": "which repository?",
+      "said": {
+        "never": "never opened"
+      }
     },
     {
       "id": "verb:kitty:ssh",
@@ -10723,6 +10850,7 @@
         "now": "connected now",
         "once": "once",
         "times": "{count} times",
+        "never": "never",
         "config": "~/.ssh/config",
         "known": "~/.ssh/known_hosts",
         "eyebrow": "in {file} \u00b7 machine"
@@ -10739,9 +10867,9 @@
       "name": "Times Connected"
     },
     {
-      "id": "kitty:machine:port",
+      "id": "kitty:machine:address",
       "in": "kitty:machine",
-      "name": "Port"
+      "name": "Address"
     },
     {
       "id": "kitty:machine:also",
@@ -11584,6 +11712,7 @@
       "id": "meet:call",
       "in": "on",
       "name": "Call",
+      "term": "Programs/call",
       "glyph": "call",
       "said": {
         "eyebrow": "on Meet \u00b7 call",
@@ -11605,7 +11734,8 @@
     {
       "id": "meet:call:microphone",
       "in": "meet:call",
-      "name": "Microphone"
+      "name": "Microphone",
+      "term": "Machine/microphone"
     },
     {
       "id": "meet:call:people",
@@ -11620,7 +11750,8 @@
     {
       "id": "meet:call:meeting",
       "in": "meet:call",
-      "name": "Meeting"
+      "name": "Meeting",
+      "term": "Programs/meeting"
     },
     {
       "id": "meet:call:code",
@@ -11920,6 +12051,7 @@
         "recording": "Recording"
       },
       "did": {
+        "connect": "connected",
         "disconnect": "disconnected",
         "distrust": "untrusted",
         "forget": "forgotten",
@@ -12035,12 +12167,12 @@
       "why": "Focus goes to a window, a column, a workspace or a screen alike, and each group says what holds it beside it."
     },
     {
-      "word": "place",
+      "word": "move",
       "things": [
         "shortcuts:desktop:windows:place",
         "shortcuts:desktop:columns:place"
       ],
-      "why": "A window and a column are each moved in place, and each group says what holds it beside it."
+      "why": "A window and a column each move where they sit, and each group says what holds it beside it."
     },
     {
       "word": "the column",

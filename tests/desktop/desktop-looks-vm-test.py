@@ -1629,8 +1629,17 @@ def warp_answers(desktop: Desktop, *answers: tuple[str, str]) -> None:
     )
 
 
+def warp_opened_again(desktop: Desktop, state: str) -> None:
+    """Step out of WARP to Network, wait until its row says this state, and step in again."""
+    desktop.step_out()
+    desktop.launcher_until(lambda shown: reading(shown, "WARP ").startswith(f"WARP \u00b7 {state}"))
+    desktop.down_to("WARP")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "State" in shown["rows"])
+
+
 def warp_stands_in_network(desktop: Desktop, scale: str) -> None:
-    """Shoot WARP in Network and a step in, then degraded and not answering, at this scale.
+    """Shoot WARP in Network, a step in with a drawer open, held, down, degraded and silent.
 
     The shell runs the real warp against the stand-in warp-cli, answering with the contract's
     made-up files (modules/warp/contract), which warp's own tests read too. What each part says
@@ -1652,6 +1661,41 @@ def warp_stands_in_network(desktop: Desktop, scale: str) -> None:
         desktop.step_in()
         desktop.launcher_until(lambda shown: "Round Trip" in shown["rows"])
         desktop.shoot(f"launcher-warp-at-{at}")
+        # Read again while shown, Round Trip sparks, its drawer saying once whose
+        # figures they are.
+        desktop.down_to("Round Trip")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["drawer"]["out"] is True
+                and shown["drawer"]["title"] == "Round Trip"
+                and shown["drawer"]["eyebrow"] == "via WARP \u00b7 tunnel"
+            )
+        )
+        desktop.shoot(f"launcher-warp-round-trip-at-{at}")
+        # Held by the organisation, its switch says who holds it, selected.
+        desktop.as_account(
+            'sed -i \'s/"switch_locked": false/"switch_locked": true/\' ~/warp-cli/settings.json'
+        )
+        desktop.down_to("Disconnect WARP")
+        desktop.launcher_until(lambda shown: "holds the switch" in shown["footer"])
+        desktop.shoot(f"launcher-warp-switch-held-at-{at}")
+        # Taken down, as the stand-in says it after a disconnect, its switch brings
+        # it up, and the tunnel it no longer has says nothing.
+        warp_answers(desktop, ("settings.json", "settings.json"))
+        desktop.as_account(
+            'rm -f ~/warp-cli/tunnel-stats.json && echo \'{"status": "Disconnected",'
+            ' "reason": "ManualDisconnection"}\' > ~/warp-cli/.next'
+            " && mv -f ~/warp-cli/.next ~/warp-cli/status.json"
+        )
+        desktop.launcher_until(lambda shown: "Connect WARP" in shown["rows"])
+        # Rows WARP no longer gives stay while the place is shown, so it's opened
+        # again to show only what WARP says once down.
+        warp_opened_again(desktop, "disconnected")
+        desktop.launcher_until(lambda shown: "Round Trip" not in shown["rows"])
+        desktop.shoot(f"launcher-warp-disconnected-at-{at}")
+        warp_answers(desktop, *connected)
+        warp_opened_again(desktop, "connected")
+        desktop.launcher_until(lambda shown: "Round Trip" in shown["rows"])
         # WARP finds the network degraded, which its Health says a step in, and its
         # row in Network, in the warning colour.
         warp_answers(desktop, ("status.degraded.json", "status.json"))
@@ -1763,7 +1807,7 @@ def location_plate_shown(desktop: Desktop, scale: str) -> None:
         "longitude": -98.7654,
         "accuracy": 26000,
         "when": when,
-        "place": "Lighthouse, Ontario",
+        "place": "Kelpwater, Ontario",
         "zone": "America/Toronto",
         "country": "Canada",
     }
@@ -1773,7 +1817,7 @@ def location_plate_shown(desktop: Desktop, scale: str) -> None:
     desktop.launcher_ready()
     desktop.down_to("Location")
     desktop.launcher_until(
-        lambda shown: shown["drawer"]["out"] is True and shown["drawer"]["title"] == "Lighthouse"
+        lambda shown: shown["drawer"]["out"] is True and shown["drawer"]["title"] == "Kelpwater"
     )
     drawer = plate_shown(desktop, scale)
     assert drawer["eyebrow"] == "from Wi-Fi · location", f"at {scale} the plate: {drawer}"
@@ -2867,6 +2911,7 @@ def marked(line: Json, mark: str, rows: list[Json] | None = None) -> Json:
 # its allowance first, the plan stepping into its two windows.
 BUDGETED = {
     "v": 2,
+    "today": "$412 today",
     "sessions": {},
     "helpers": {},
     "families": {},
@@ -2910,9 +2955,7 @@ BUDGETED = {
                     "agent",
                 ),
                 marked(
-                    spend_line(
-                        "budget:claude", "Claude Pro", "85% of 5 h", "your own plan", "warning"
-                    ),
+                    spend_line("budget:claude", "Claude Pro", "85% of 5 h", role="warning"),
                     "agent",
                     rows=[
                         marked(
@@ -2934,8 +2977,8 @@ BUDGETED = {
                     spend_line(
                         "budget:proxy",
                         "Your AI proxy token",
-                        "$250 of $300",
-                        "the default \u00b7 the employer's money",
+                        "$250 of $300 today",
+                        "the default",
                         "warning",
                     ),
                     "agent",
@@ -2956,9 +2999,7 @@ BUDGETED = {
                     ],
                 ),
                 marked(
-                    spend_line(
-                        "budget:delta", "Delta team token", "$310 this month", "a team's token"
-                    ),
+                    spend_line("budget:delta", "Delta team token", "$310 this month"),
                     "agent",
                 ),
             ],
@@ -2975,7 +3016,7 @@ def allowance(
     unit = "dollars" if standing.startswith("$") else "share"
     window: Json = {"name": name, "label": label, "unit": unit, "warn": warn}
     window |= {"standing": standing, "nearest": nearest}
-    keys = ("window", "warns", "resets", "ends", "changed", "read", "state")
+    keys = ("brief", "window", "warns", "resets", "ends", "changed", "read", "state")
     return window | {"said": {key: said.get(key, "") for key in keys}}
 
 
@@ -3000,6 +3041,7 @@ BUDGETS = {
                     "85% of 5 h",
                     0.85,
                     warn=0.8,
+                    brief="85% \u00b7 resets 16:20",
                     window="5 hours",
                     warns="at 80%",
                     resets="16:20",
@@ -3011,6 +3053,7 @@ BUDGETS = {
                     "40% of the week",
                     0.4,
                     warn=0.8,
+                    brief="40% \u00b7 resets Mon 09:00",
                     window="a week",
                     warns="at 80%",
                     resets="Mon 09:00",
@@ -3018,6 +3061,7 @@ BUDGETS = {
                 ),
             ],
             "said": {
+                "what": "your own \u00b7 plan",
                 "spent": "",
                 "worth": "$84 today \u00b7 $1,120 this month",
                 "reading": "reading fine",
@@ -3028,7 +3072,7 @@ BUDGETS = {
             "label": "Your AI proxy token",
             "words": "the employer's money",
             "providers": [],
-            "standing": "$250 of $300",
+            "standing": "$250 of $300 today",
             "allowances": [
                 allowance(
                     "premium",
@@ -3053,6 +3097,7 @@ BUDGETS = {
                 ),
             ],
             "said": {
+                "what": "the employer's \u00b7 money",
                 "spent": "$402 today \u00b7 $3,060 in 7 days \u00b7 $20,144 this month",
                 "worth": "",
                 "reading": "reading fine",
@@ -3065,7 +3110,12 @@ BUDGETS = {
             "providers": [],
             "standing": "$310 this month",
             "allowances": [],
-            "said": {"spent": "$10 today \u00b7 $310 this month", "worth": "", "reading": ""},
+            "said": {
+                "what": "a team's \u00b7 token",
+                "spent": "$10 today \u00b7 $310 this month",
+                "worth": "",
+                "reading": "",
+            },
         },
     ],
 }
@@ -3091,10 +3141,18 @@ def drawer_shot(desktop: Desktop, title: str, picture: str) -> list[str]:
 
 
 def budgets_stand_in_agents(desktop: Desktop, named: str) -> None:
-    """Shoot Agents' Budgets row, which is AI spend's: its rows, their order and drawers."""
+    """Shoot Agents' Budgets row, which is AI spend's: its rows, their order and drawers.
+
+    It's the last of Agents' rows, beside AI Spend, which says today's dollars with their
+    period, as All AI Spend does (VKCF3Z, 2026-11-08).
+    """
     desktop.as_account("qs ipc call launcher collection agents")
     desktop.launcher_ready()
     desktop.launcher_until(lambda shown: "Budgets" in shown["rows"])
+    rows = desktop.showing()["rows"]
+    assert rows[-2:] == ["AI Spend", "Budgets"], rows
+    desktop.down_to("AI Spend")
+    assert desktop.showing()["selected"]["side"] == "$412 today"
     desktop.down_to("Budgets")
     assert desktop.showing()["selected"]["side"] == "$21,564 this month"
     desktop.shoot(f"launcher-agents-budgets-at-{named}")
@@ -3118,7 +3176,7 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
     window's say what budgets.json holds of each (VKCF3Z, 2026-11-07): a plan's, the employer's
     money's, a share window's and a dollar window past where it warns. A running period's
     drawer says its days and what its cuts went to most, and a cap's is its window's. Agents
-    shows the same Budgets row after its sessions. Each is kept for the design's look at
+    shows the same Budgets row last, beside AI Spend. Each is kept for the design's look at
     Joel's scales.
     """
     written(desktop, "budgets.json", BUDGETS)
@@ -3580,7 +3638,8 @@ def now_drawer(desktop: Desktop, row: str, eyebrow: str, shot: str) -> None:
 # 2026-11-07: "every integration has an insanely high bar of nerdiness and integration"), where
 # the thing is and what it is above, and each is photographed at each of Joel's scales for the
 # design's look: mpv's program row and its Media, playing and paused, the ErgoDox and the
-# laptop's own board, a picture Capture took, and Now's Disks and Lag.
+# laptop's own board, a picture Capture took, and Now's Disks and Lag, and its Keyboard Layer,
+# which draws the ErgoDox's own drawer.
 def media_drawer(desktop: Desktop, shot: str, side: str, program: str = "") -> None:
     """Open mpv's Media, its side saying how it stands, and photograph its drawer.
 
@@ -3672,12 +3731,15 @@ def drawers_at(desktop: Desktop, scale: str) -> None:
     now_drawer(desktop, "Disks", "on this machine \u00b7 disk", f"launcher-disk-drawer-at-{at}")
     lag_lasting(desktop)
     now_drawer(desktop, "Lag", "on this machine \u00b7 lag", f"launcher-lag-drawer-at-{at}")
+    now_drawer(
+        desktop, "Keyboard Layer", "on USB \u00b7 keyboard", f"launcher-layer-drawer-at-{at}"
+    )
 
 
 # Called from the unplugged ErgoDox subtest once the board is back, so it's plugged in here and
 # that subtest's own finally unplugs it.
 def each_drawer_drawn(desktop: Desktop, scales: list[str]) -> None:
-    """Photograph a program's, its Media's, each keyboard's, a capture's, Disks' and Lag's."""
+    """Photograph a program's, its Media's, each keyboard's, a capture's, and Now's pieces'."""
     machine = desktop.machine
     desktop.as_account(
         "systemd-run --user --unit=player mpv --ao=null --no-video --loop"

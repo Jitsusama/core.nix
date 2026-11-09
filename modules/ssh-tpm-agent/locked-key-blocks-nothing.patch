@@ -1,0 +1,705 @@
+agent: Let a key waiting on its PIN hold up nothing else
+
+The agent held its one lock for the whole of a signature, and
+go-tpm-keyfiles holds another, shared by every signature, while it asks
+for the PIN. So a PIN prompt nobody answered held up every request to the
+agent, for every key: one program using a key whose PIN wasn't typed this
+session froze every SSH login and signed commit until someone came to the
+screen, 21 minutes one night.
+
+Ask for the PIN, and the confirmation, before taking either lock, and hand
+the signer what came back. The agent's lock is held only to find the key.
+
+Stop an askpass nobody answers after a minute, with a TERM it can take
+its prompt down on, and count it as unanswered. Ask for one key's PIN one
+prompt at a time, and refuse a key whose prompt went unanswered for ten
+minutes without another, saying which key and until when, so a program
+trying it all night puts up one prompt rather than one a minute. The
+journal names the key each prompt is for.
+
+diff -ruN a/agent/agent.go b/agent/agent.go
+--- a/agent/agent.go	2026-11-09 00:35:25.888004806 -0500
++++ b/agent/agent.go	2026-11-09 00:50:01.121051579 -0500
+@@ -167,15 +167,67 @@
+ 	return a.signWithFlags(key, data, flags, "")
+ }
+ 
+-func (a *Agent) signWithFlags(key ssh.PublicKey, data []byte, flags agent.SignatureFlags, peer string) (*ssh.Signature, error) {
++func (a *Agent) signWithFlags(pub ssh.PublicKey, data []byte, flags agent.SignatureFlags, peer string) (*ssh.Signature, error) {
+ 	slog.Debug("called signwithflags")
+-	a.mu.Lock()
+-	defer a.mu.Unlock()
+-	signers, err := a.signers()
++	wantKey, alg, err := wantedKey(pub, flags)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+ 
++	// Find the key while holding the lock, then let it go before asking
++	// for a PIN or a confirmation, so a prompt nobody answers holds up
++	// only the request that needs it, never the other keys, a listing
++	// or an added key.
++	a.mu.Lock()
++	var found, confirming key.SSHTPMKeys
++	for _, k := range a.keys {
++		if !bytes.Equal(unwrappedKey(k), wantKey) {
++			continue
++		}
++		if found == nil {
++			found = k
++		}
++		// A key added both plain and as a certificate is confirmed if
++		// either entry asks for it.
++		if confirming == nil && k.GetConfirmBeforeUse() {
++			confirming = k
++		}
++	}
++	a.mu.Unlock()
++
++	if found != nil {
++		// go-tpm-keyfiles asks for the PIN inside a lock every signature
++		// shares, so it is asked for here, before any lock, and the
++		// signer is handed what came back.
++		if confirming != nil {
++			if err := confirmKeyUse(confirming, peer); err != nil {
++				return nil, err
++			}
++		}
++		var pin []byte
++		if tk := found.GetTPMKey(); tk != nil && tk.HasAuth() {
++			if pin, err = a.pin(found); err != nil {
++				return nil, err
++			}
++		}
++		s, err := ssh.NewSignerFromSigner(found.Signer(
++			a.keyring(), a.op, a.tpm,
++			func(_ *keyfile.TPMKey) ([]byte, error) { return pin, nil }),
++		)
++		if err != nil {
++			return nil, fmt.Errorf("failed to prepare signer: %w", err)
++		}
++		return s.(ssh.AlgorithmSigner).SignWithAlgorithm(rand.Reader, data, alg)
++	}
++
++	a.mu.Lock()
++	defer a.mu.Unlock()
++	return a.signWithProxies(wantKey, data, alg)
++}
++
++// wantedKey is the marshalled public key a request names, with any
++// certificate unwrapped, and the algorithm to sign with.
++func wantedKey(key ssh.PublicKey, flags agent.SignatureFlags) ([]byte, string, error) {
+ 	var wantKey []byte
+ 	wantKey = key.Marshal()
+ 	alg := key.Type()
+@@ -184,7 +236,7 @@
+ 	if strings.Contains(alg, "cert") {
+ 		parsedCert, err := ssh.ParsePublicKey(wantKey)
+ 		if err != nil {
+-			return nil, err
++			return nil, "", err
+ 		}
+ 		cert, ok := parsedCert.(*ssh.Certificate)
+ 		if ok {
+@@ -199,17 +251,23 @@
+ 	case alg == ssh.KeyAlgoRSA && flags&agent.SignatureFlagRsaSha512 != 0:
+ 		alg = ssh.KeyAlgoRSASHA512
+ 	}
++	return wantKey, alg, nil
++}
+ 
+-	for _, s := range signers {
+-		if !bytes.Equal(s.PublicKey().Marshal(), wantKey) {
+-			continue
+-		}
+-		if err := a.confirmKeyUse(wantKey, peer); err != nil {
+-			return nil, err
++// unwrappedKey is a key's marshalled public key, with any certificate
++// unwrapped, so a key added both plain and as a certificate matches
++// either.
++func unwrappedKey(k key.SSHTPMKeys) []byte {
++	blob := k.AgentKey().Marshal()
++	if pub, err := ssh.ParsePublicKey(blob); err == nil {
++		if cert, ok := pub.(*ssh.Certificate); ok {
++			blob = cert.Key.Marshal()
+ 		}
+-		return s.(ssh.AlgorithmSigner).SignWithAlgorithm(rand.Reader, data, alg)
+ 	}
++	return blob
++}
+ 
++func (a *Agent) signWithProxies(wantKey, data []byte, alg string) (*ssh.Signature, error) {
+ 	slog.Debug("trying to sign as proxy...")
+ 	for _, agent := range a.agents {
+ 		signers, err := agent.Signers()
+@@ -233,42 +291,23 @@
+ 	return a.SignWithFlags(key, data, 0)
+ }
+ 
+-// confirmKeyUse prompts the user via SSH_ASKPASS when a key was added with
+-// the confirm constraint (ssh-tpm-add -c). Mirrors ssh-agent(1) behaviour.
+-// wantKey must be the marshalled public key with any certificate wrapper
+-// already stripped, matching the comparison done in SignWithFlags.
+-// peer (from peerChain) is appended to the prompt when non-empty.
+-func (a *Agent) confirmKeyUse(wantKey []byte, peer string) error {
+-	for _, k := range a.keys {
+-		// AgentKey() may return a certificate; unwrap it so that a key
+-		// added both plain and as a cert is covered by either entry's
+-		// confirm constraint.
+-		blob := k.AgentKey().Marshal()
+-		if pub, err := ssh.ParsePublicKey(blob); err == nil {
+-			if cert, ok := pub.(*ssh.Certificate); ok {
+-				blob = cert.Key.Marshal()
+-			}
+-		}
+-		if !bytes.Equal(blob, wantKey) {
+-			continue
+-		}
+-		if !k.GetConfirmBeforeUse() {
+-			continue
+-		}
+-		prompt := fmt.Sprintf("Allow use of key %s?\nKey fingerprint %s.",
+-			k.GetDescription(), k.Fingerprint())
+-		if peer != "" {
+-			prompt += "\nRequested by " + peer
+-		}
+-		ok, err := askpass.AskPermission(prompt)
+-		if err != nil {
+-			slog.Info("askpass confirmation failed", slog.String("error", err.Error()))
+-			return ErrUserDeniedConfirm
+-		}
+-		if !ok {
+-			return ErrUserDeniedConfirm
+-		}
+-		return nil
++// confirmKeyUse prompts the user via SSH_ASKPASS for a key added with the
++// confirm constraint (ssh-tpm-add -c). Mirrors ssh-agent(1) behaviour.
++// peer (from peerChain) is appended to the prompt when non-empty. It is
++// called without the agent's lock, so a prompt holds up no other request.
++func confirmKeyUse(k key.SSHTPMKeys, peer string) error {
++	prompt := fmt.Sprintf("Allow use of key %s?\nKey fingerprint %s.",
++		k.GetDescription(), k.Fingerprint())
++	if peer != "" {
++		prompt += "\nRequested by " + peer
++	}
++	ok, err := askpass.AskPermission(prompt)
++	if err != nil {
++		slog.Info("askpass confirmation failed", slog.String("error", err.Error()))
++		return ErrUserDeniedConfirm
++	}
++	if !ok {
++		return ErrUserDeniedConfirm
+ 	}
+ 	return nil
+ }
+diff -ruN a/agent/locked_key_test.go b/agent/locked_key_test.go
+--- a/agent/locked_key_test.go	1969-12-31 19:00:00.000000000 -0500
++++ b/agent/locked_key_test.go	2026-11-09 00:47:31.041186188 -0500
+@@ -0,0 +1,96 @@
++package agent_test
++
++import (
++	"net"
++	"path"
++	"testing"
++	"time"
++
++	"github.com/foxboron/ssh-tpm-agent/agent"
++	"github.com/foxboron/ssh-tpm-agent/internal/keyring"
++	"github.com/foxboron/ssh-tpm-agent/internal/keytest"
++	"github.com/foxboron/ssh-tpm-agent/key"
++	"github.com/google/go-tpm/tpm2"
++	"github.com/google/go-tpm/tpm2/transport"
++	"github.com/google/go-tpm/tpm2/transport/simulator"
++	sshagent "golang.org/x/crypto/ssh/agent"
++)
++
++// A key whose PIN prompt nobody answers holds up only the request that
++// needs it: the other keys still sign, and the keys can still be listed.
++func TestAPromptHoldsUpOnlyItsOwnKey(t *testing.T) {
++	tpm, err := simulator.OpenSimulator()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer tpm.Close()
++
++	locked, err := keytest.MkKey(t, tpm, tpm2.TPMAlgECC, 256, []byte("1234"), "locked")
++	if err != nil {
++		t.Fatalf("making the key with a PIN: %v", err)
++	}
++	open, err := keytest.MkKey(t, tpm, tpm2.TPMAlgECC, 256, []byte(""), "open")
++	if err != nil {
++		t.Fatalf("making the key without one: %v", err)
++	}
++
++	asked := make(chan struct{})
++	answer := make(chan struct{})
++	unixList, err := net.ListenUnix("unix", &net.UnixAddr{Net: "unix", Name: path.Join(t.TempDir(), "socket")})
++	if err != nil {
++		t.Fatalf("failed listening: %v", err)
++	}
++	ag := agent.NewAgent(unixList,
++		[]sshagent.ExtendedAgent{},
++		func() *keyring.ThreadKeyring { return &keyring.ThreadKeyring{} },
++		func() transport.TPMCloser { return tpm },
++		func() ([]byte, error) { return []byte(""), nil },
++		// The PIN prompt: it waits until the test answers it.
++		func(k key.SSHTPMKeys) ([]byte, error) {
++			close(asked)
++			<-answer
++			return []byte("1234"), nil
++		},
++		locked, open,
++	)
++	defer ag.Stop()
++
++	waiting := make(chan error, 1)
++	go func() {
++		_, err := ag.Sign(*locked.PublicKey, []byte("waits for its PIN"))
++		waiting <- err
++	}()
++	select {
++	case <-asked:
++	case <-time.After(10 * time.Second):
++		t.Fatal("signing with the key that has a PIN never asked for it")
++	}
++
++	done := make(chan error, 1)
++	go func() {
++		if _, err := ag.List(); err != nil {
++			done <- err
++			return
++		}
++		_, err := ag.Sign(*open.PublicKey, []byte("needs no PIN"))
++		done <- err
++	}()
++	select {
++	case err := <-done:
++		if err != nil {
++			t.Fatalf("the key with no PIN failed to sign while another waited: %v", err)
++		}
++	case <-time.After(10 * time.Second):
++		t.Fatal("listing and signing with another key waited on the unanswered PIN prompt")
++	}
++
++	close(answer)
++	select {
++	case err := <-waiting:
++		if err != nil {
++			t.Fatalf("the key signed with the PIN it was given: %v", err)
++		}
++	case <-time.After(10 * time.Second):
++		t.Fatal("the answered prompt's signature never finished")
++	}
++}
+diff -ruN a/askpass/askpass.go b/askpass/askpass.go
+--- a/askpass/askpass.go	2026-11-09 00:35:25.872782404 -0500
++++ b/askpass/askpass.go	2026-11-09 00:41:41.736172024 -0500
+@@ -3,6 +3,7 @@
+ import (
+ 	"bufio"
+ 	"bytes"
++	"context"
+ 	"errors"
+ 	"fmt"
+ 	"log/slog"
+@@ -10,6 +11,7 @@
+ 	"os/exec"
+ 	"strings"
+ 	"syscall"
++	"time"
+ 
+ 	"golang.org/x/sys/unix"
+ 	"golang.org/x/term"
+@@ -36,7 +38,13 @@
+ 	RPP_STDIN                     /* Read from stdin, not /dev/tty */
+ )
+ 
++// Timeout is how long an askpass prompt may wait for an answer before it
++// is stopped and counts as refused; zero waits for ever. Nobody may be
++// at the screen, and a prompt left up overnight answers nothing.
++var Timeout time.Duration
++
+ var (
++	ErrNoAnswer  = errors.New("nobody answered the askpass prompt")
+ 	ErrNoAskpass = errors.New("system does not have an askpass program")
+ 
+ 	// Default ASKPASS programs
+@@ -144,7 +152,16 @@
+ 		}
+ 	}
+ 
+-	cmd := exec.Command(askpass, prompt)
++	ctx, cancel := context.Background(), context.CancelFunc(func() {})
++	if Timeout > 0 {
++		ctx, cancel = context.WithTimeout(ctx, Timeout)
++	}
++	defer cancel()
++	cmd := exec.CommandContext(ctx, askpass, prompt)
++	// Stopped gently, so an askpass that put a prompt on the screen can
++	// take it back down; killed if it hasn't gone a few seconds later.
++	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
++	cmd.WaitDelay = 5 * time.Second
+ 	if hint != "" {
+ 		// Set SSH_ASKPASS_PROMPT only on the subprocess. os.Setenv() would
+ 		// leak into subsequent passphrase prompts from the same agent
+@@ -152,6 +169,9 @@
+ 		cmd.Env = append(os.Environ(), "SSH_ASKPASS_PROMPT="+hint)
+ 	}
+ 	out, err := cmd.Output()
++	if ctx.Err() != nil {
++		return nil, fmt.Errorf("%w within %s", ErrNoAnswer, Timeout)
++	}
+ 	switch hint {
+ 	case "confirm":
+ 		// TODO: Ugly and needs a rework
+diff -ruN a/askpass/timeout_test.go b/askpass/timeout_test.go
+--- a/askpass/timeout_test.go	1969-12-31 19:00:00.000000000 -0500
++++ b/askpass/timeout_test.go	2026-11-09 00:47:31.041186188 -0500
+@@ -0,0 +1,51 @@
++package askpass
++
++import (
++	"errors"
++	"os"
++	"path/filepath"
++	"testing"
++	"time"
++)
++
++// An askpass nobody answers is stopped once Timeout passes, with a TERM it
++// can take its prompt down on, and counts as unanswered.
++func TestAnUnansweredAskpassIsStopped(t *testing.T) {
++	dir := t.TempDir()
++	taken := filepath.Join(dir, "taken-down")
++	script := filepath.Join(dir, "askpass")
++	body := "#!/bin/sh\ntrap 'touch " + taken + "; exit 1' TERM\nsleep 60 &\nwait\n"
++	if err := os.WriteFile(script, []byte(body), 0o700); err != nil {
++		t.Fatal(err)
++	}
++	t.Setenv("SSH_ASKPASS", script)
++	defer func(was time.Duration) { Timeout = was }(Timeout)
++	Timeout = 200 * time.Millisecond
++
++	start := time.Now()
++	_, err := SshAskPass("Enter passphrase for (gce): ", "")
++	if !errors.Is(err, ErrNoAnswer) {
++		t.Fatalf("an askpass left unanswered wasn't counted so: %v", err)
++	}
++	if waited := time.Since(start); waited > 10*time.Second {
++		t.Fatalf("the askpass ran %s, long past its limit", waited)
++	}
++	if _, err := os.Stat(taken); err != nil {
++		t.Fatal("the askpass wasn't stopped with a TERM it could take its prompt down on")
++	}
++}
++
++func TestAnAnsweredAskpassGivesItsAnswer(t *testing.T) {
++	script := filepath.Join(t.TempDir(), "askpass")
++	if err := os.WriteFile(script, []byte("#!/bin/sh\necho 1234\n"), 0o700); err != nil {
++		t.Fatal(err)
++	}
++	t.Setenv("SSH_ASKPASS", script)
++	defer func(was time.Duration) { Timeout = was }(Timeout)
++	Timeout = 10 * time.Second
++
++	pin, err := SshAskPass("Enter passphrase for (gce): ", "")
++	if err != nil || string(pin) != "1234" {
++		t.Fatalf("an answered askpass gave %q, %v", pin, err)
++	}
++}
+diff -ruN a/cmd/ssh-tpm-agent/main.go b/cmd/ssh-tpm-agent/main.go
+--- a/cmd/ssh-tpm-agent/main.go	2026-11-09 00:35:25.895004846 -0500
++++ b/cmd/ssh-tpm-agent/main.go	2026-11-09 00:49:12.104768942 -0500
+@@ -13,6 +13,7 @@
+ 	"path/filepath"
+ 	"slices"
+ 	"syscall"
++	"time"
+ 
+ 	"github.com/foxboron/ssh-tpm-agent/agent"
+ 	"github.com/foxboron/ssh-tpm-agent/askpass"
+@@ -136,6 +137,9 @@
+ 	flag.StringVar(&hierarchy, "hierarchy", "", "hierarchy for the created key")
+ 	flag.Parse()
+ 
++	askpass.Timeout = promptTimeout
++	pinPrompts := newPrompts(quietAfterUnanswered, time.Now)
++
+ 	opts := &slog.HandlerOptions{
+ 		Level: slog.LevelInfo,
+ 	}
+@@ -253,34 +257,41 @@
+ 		// PIN Callback with caching
+ 		// SSHKeySigner in signer/signer.go resets this value if
+ 		// we get a TPMRCAuthFail
++		//
++		// One prompt per key at a time, each stopped after a minute, and
++		// a key whose prompt went unanswered is refused without another
++		// for a while (prompts.go).
+ 		func(key key.SSHTPMKeys) ([]byte, error) {
+-			auth, err := agentkeyring.ReadKey(key.Fingerprint())
+-			switch {
+-			case errors.Is(err, syscall.ENOENT):
+-				slog.Warn("kernel is missing the keyctl executable helpers. Please install the keyutils package to use the agent with caching.")
+-				fallthrough
+-			case errors.Is(err, syscall.ENOKEY) || errors.Is(err, syscall.EACCES):
+-				keyInfo := fmt.Sprintf("Enter passphrase for (%s): ", key.GetDescription())
+-				// TODO: askpass should box the byte slice
+-				userauth, err := askpass.ReadPassphrase(keyInfo, askpass.RP_USE_ASKPASS)
+-				fmt.Println(err)
+-				if !noCache && err == nil {
+-					slog.Debug("caching userauth for key in keyring", slog.String("fp", key.Fingerprint()))
+-					if err := agentkeyring.AddKey(key.Fingerprint(), userauth); err != nil {
+-						return nil, err
++			return pinPrompts.ask(key.Fingerprint(), key.GetDescription(), func() ([]byte, error) {
++				auth, err := agentkeyring.ReadKey(key.Fingerprint())
++				switch {
++				case errors.Is(err, syscall.ENOENT):
++					slog.Warn("kernel is missing the keyctl executable helpers. Please install the keyutils package to use the agent with caching.")
++					fallthrough
++				case errors.Is(err, syscall.ENOKEY) || errors.Is(err, syscall.EACCES):
++					slog.Info("asking for a key's PIN", slog.String("key", key.GetDescription()), slog.String("fp", key.Fingerprint()))
++					keyInfo := fmt.Sprintf("Enter passphrase for (%s): ", key.GetDescription())
++					// TODO: askpass should box the byte slice
++					userauth, err := askpass.ReadPassphrase(keyInfo, askpass.RP_USE_ASKPASS)
++					fmt.Println(err)
++					if !noCache && err == nil {
++						slog.Debug("caching userauth for key in keyring", slog.String("fp", key.Fingerprint()))
++						if err := agentkeyring.AddKey(key.Fingerprint(), userauth); err != nil {
++							return nil, err
++						}
+ 					}
++					return userauth, err
++				case err == nil:
++					slog.Debug("providing cached userauth for key", slog.String("fp", key.Fingerprint()))
++					// TODO: This is not great, but easier for now
++					pin := slices.Clone(auth.Read())
++					if err := auth.Free(); err != nil {
++						slog.Warn("freeing the cached userauth's buffer", slog.Any("err", err))
++					}
++					return pin, nil
+ 				}
+-				return userauth, err
+-			case err == nil:
+-				slog.Debug("providing cached userauth for key", slog.String("fp", key.Fingerprint()))
+-				// TODO: This is not great, but easier for now
+-				pin := slices.Clone(auth.Read())
+-				if err := auth.Free(); err != nil {
+-					slog.Warn("freeing the cached userauth's buffer", slog.Any("err", err))
+-				}
+-				return pin, nil
+-			}
+-			return nil, fmt.Errorf("failed getting pin for key: %w", err)
++				return nil, fmt.Errorf("failed getting pin for key: %w", err)
++			})
+ 		},
+ 
+ 		// Keys, in place before the agent serves the connection that
+diff -ruN a/cmd/ssh-tpm-agent/prompts.go b/cmd/ssh-tpm-agent/prompts.go
+--- a/cmd/ssh-tpm-agent/prompts.go	1969-12-31 19:00:00.000000000 -0500
++++ b/cmd/ssh-tpm-agent/prompts.go	2026-11-09 00:45:31.523497025 -0500
+@@ -0,0 +1,74 @@
++package main
++
++import (
++	"errors"
++	"fmt"
++	"log/slog"
++	"sync"
++	"time"
++
++	"github.com/foxboron/ssh-tpm-agent/askpass"
++)
++
++// promptTimeout is how long a PIN prompt waits for an answer. Typing a PIN
++// takes seconds; a prompt still up after a minute has nobody in front of it.
++const promptTimeout = time.Minute
++
++// quietAfterUnanswered is how long a key whose prompt went unanswered is
++// refused without another, so a program trying it again and again overnight
++// puts up one prompt rather than one a minute.
++const quietAfterUnanswered = 10 * time.Minute
++
++// errNotAsked is a refusal made without a prompt.
++var errNotAsked = errors.New("not asked")
++
++// prompts asks for each key's PIN one prompt at a time, and remembers when a
++// key's prompt went unanswered.
++type prompts struct {
++	mu    sync.Mutex
++	keys  map[string]*keyPrompts
++	quiet time.Duration
++	now   func() time.Time
++}
++
++type keyPrompts struct {
++	mu         sync.Mutex
++	unanswered time.Time
++}
++
++func newPrompts(quiet time.Duration, now func() time.Time) *prompts {
++	return &prompts{keys: map[string]*keyPrompts{}, quiet: quiet, now: now}
++}
++
++// ask runs read, which may put up a prompt, for the key with this
++// fingerprint. A request arriving while one for the same key is asking
++// waits for it, and so finds the PIN it cached or the refusal it left. A
++// key whose prompt went unanswered within the quiet spell is refused at
++// once, saying which key and until when.
++func (p *prompts) ask(fingerprint, description string, read func() ([]byte, error)) ([]byte, error) {
++	p.mu.Lock()
++	k, ok := p.keys[fingerprint]
++	if !ok {
++		k = &keyPrompts{}
++		p.keys[fingerprint] = k
++	}
++	p.mu.Unlock()
++
++	k.mu.Lock()
++	defer k.mu.Unlock()
++	if !k.unanswered.IsZero() && p.now().Sub(k.unanswered) < p.quiet {
++		err := fmt.Errorf("%w: nobody answered the PIN prompt for %s at %s, so it isn't asked for again until %s",
++			errNotAsked, description, k.unanswered.Format("15:04"), k.unanswered.Add(p.quiet).Format("15:04"))
++		slog.Warn("refused a key without a prompt", slog.String("key", description), slog.String("error", err.Error()))
++		return nil, err
++	}
++	pin, err := read()
++	switch {
++	case errors.Is(err, askpass.ErrNoAnswer):
++		k.unanswered = p.now()
++		slog.Warn("nobody answered a key's PIN prompt", slog.String("key", description), slog.String("error", err.Error()))
++	case err == nil:
++		k.unanswered = time.Time{}
++	}
++	return pin, err
++}
+diff -ruN a/cmd/ssh-tpm-agent/prompts_test.go b/cmd/ssh-tpm-agent/prompts_test.go
+--- a/cmd/ssh-tpm-agent/prompts_test.go	1969-12-31 19:00:00.000000000 -0500
++++ b/cmd/ssh-tpm-agent/prompts_test.go	2026-11-09 00:47:31.041186188 -0500
+@@ -0,0 +1,125 @@
++package main
++
++import (
++	"errors"
++	"fmt"
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/foxboron/ssh-tpm-agent/askpass"
++)
++
++type clock struct {
++	mu sync.Mutex
++	at time.Time
++}
++
++func (c *clock) now() time.Time {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	return c.at
++}
++
++func (c *clock) pass(d time.Duration) {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	c.at = c.at.Add(d)
++}
++
++func unanswered() ([]byte, error) {
++	return nil, fmt.Errorf("%w within 1m0s", askpass.ErrNoAnswer)
++}
++
++func TestAnUnansweredKeyIsRefusedWithoutAnotherPrompt(t *testing.T) {
++	c := &clock{at: time.Date(2026, 11, 8, 23, 30, 0, 0, time.UTC)}
++	p := newPrompts(10*time.Minute, c.now)
++
++	if _, err := p.ask("gce", "gce (tpm)", unanswered); !errors.Is(err, askpass.ErrNoAnswer) {
++		t.Fatalf("the first prompt went unanswered, but ask said: %v", err)
++	}
++	c.pass(9 * time.Minute)
++	prompted := false
++	_, err := p.ask("gce", "gce (tpm)", func() ([]byte, error) { prompted = true; return []byte("1234"), nil })
++	if prompted {
++		t.Fatal("a key whose prompt went unanswered nine minutes ago was prompted for again")
++	}
++	if !errors.Is(err, errNotAsked) {
++		t.Fatalf("the refusal wasn't one made without a prompt: %v", err)
++	}
++	want := "nobody answered the PIN prompt for gce (tpm) at 23:30, so it isn't asked for again until 23:40"
++	if got := err.Error(); got != "not asked: "+want {
++		t.Fatalf("the refusal says %q, not which key and until when (%q)", got, want)
++	}
++
++	c.pass(time.Minute)
++	pin, err := p.ask("gce", "gce (tpm)", func() ([]byte, error) { return []byte("1234"), nil })
++	if err != nil || string(pin) != "1234" {
++		t.Fatalf("after the quiet spell the key wasn't asked for again: %q, %v", pin, err)
++	}
++}
++
++func TestAnotherKeyIsStillAskedFor(t *testing.T) {
++	c := &clock{at: time.Date(2026, 11, 8, 23, 30, 0, 0, time.UTC)}
++	p := newPrompts(10*time.Minute, c.now)
++	if _, err := p.ask("gce", "gce (tpm)", unanswered); !errors.Is(err, askpass.ErrNoAnswer) {
++		t.Fatalf("the first prompt went unanswered, but ask said: %v", err)
++	}
++	pin, err := p.ask("login", "login", func() ([]byte, error) { return []byte("5678"), nil })
++	if err != nil || string(pin) != "5678" {
++		t.Fatalf("one key's unanswered prompt kept another from being asked for: %q, %v", pin, err)
++	}
++}
++
++func TestARefusalOtherThanSilenceAsksAgainNextTime(t *testing.T) {
++	c := &clock{at: time.Date(2026, 11, 8, 23, 30, 0, 0, time.UTC)}
++	p := newPrompts(10*time.Minute, c.now)
++	if _, err := p.ask("gce", "gce (tpm)", func() ([]byte, error) { return nil, errors.New("cancelled") }); err == nil {
++		t.Fatal("a cancelled prompt gave a PIN")
++	}
++	prompted := false
++	if _, err := p.ask("gce", "gce (tpm)", func() ([]byte, error) { prompted = true; return []byte("1234"), nil }); err != nil || !prompted {
++		t.Fatalf("a key whose prompt was cancelled, not left unanswered, wasn't asked for again: %v", err)
++	}
++}
++
++func TestOnePromptPerKeyAtATime(t *testing.T) {
++	c := &clock{at: time.Date(2026, 11, 8, 23, 30, 0, 0, time.UTC)}
++	p := newPrompts(10*time.Minute, c.now)
++	started := make(chan struct{})
++	release := make(chan struct{})
++	var mu sync.Mutex
++	reads := 0
++	read := func() ([]byte, error) {
++		mu.Lock()
++		reads++
++		first := reads == 1
++		mu.Unlock()
++		if first {
++			close(started)
++			<-release
++		}
++		return unanswered()
++	}
++
++	results := make(chan error, 2)
++	go func() { _, err := p.ask("gce", "gce (tpm)", read); results <- err }()
++	<-started
++	go func() { _, err := p.ask("gce", "gce (tpm)", read); results <- err }()
++	close(release)
++	var errs []error
++	for range 2 {
++		select {
++		case err := <-results:
++			errs = append(errs, err)
++		case <-time.After(10 * time.Second):
++			t.Fatal("a request for the key never finished")
++		}
++	}
++	if reads != 1 {
++		t.Fatalf("two requests for one key put up %d prompts", reads)
++	}
++	if !errors.Is(errs[0], askpass.ErrNoAnswer) || !errors.Is(errs[1], errNotAsked) {
++		t.Fatalf("the waiting request wasn't refused with the first's silence: %v", errs)
++	}
++}

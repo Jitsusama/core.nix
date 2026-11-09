@@ -866,6 +866,17 @@ changes = true
 guarded = true
 range = true
 
+# WARP connected, as its Connect It: its one link comes up, and Disconnect
+# It takes it down, each undone by the other. Wi-Fi and Bluetooth connect
+# with :set, since each chooses a network or a device; WARP has one link,
+# so it's named by its act. Its short form clears Vim's :con and :conf.
+[acts.connect]
+command = "connect"
+short = "conn"
+kinds = ["list"]
+changes = true
+undoable = true
+
 [acts.disconnect]
 ends = true
 command = "disconnect"

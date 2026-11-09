@@ -357,7 +357,7 @@ Provider {
         // What it landed last, newest by when, with its ref and its time.
         const last = Order.sorted(presence.landings,
             Order.stream(one => String(one.at ?? "")))[0];
-        // What its quest waits on Joel for, in the order Needs You says it.
+        // What its quest waits on Joel for, in the order For You says it.
         const needs = (presence.quest ?? "") === "" ? []
             : WaitingOnYou.items.filter(item => item.quest === presence.quest);
         return SessionDrawer.drawer(session.title, presence, {
@@ -403,7 +403,7 @@ Provider {
 
     // What Close leaves of a session: its worktree, where it works in a
     // folder under a trees folder, as the harness's and World's trees both
-    // are cut, else its folder, and its quest's Needs You items, which stay
+    // are cut, else its folder, and its quest's to-dos, which stay
     // until each is done.
     function leaves(session) {
         const presence = session.presence ?? {};
@@ -910,7 +910,11 @@ Provider {
         });
     }
 
-    // What each budget the sessions draw on stands at, after the tree:
+    // What each budget the sessions draw on stands at, the last of its
+    // parts, beside AI Spend, wherever the tree is and however many
+    // sessions it holds, since a place's rows keep their places (VKCF3Z,
+    // 2026-11-08): a thing of Agents the vocabulary names as its part
+    // after AI spend (words.json), so the launcher lists it there. It is
     // AI spend's own Budgets row (Spend.qml), so its order, its words and
     // its drawers are the ones AI spend shows, never worked out twice. A
     // step in, All AI Spend in billed dollars first, then each budget
@@ -938,11 +942,10 @@ Provider {
         });
     }
 
-    things: [toReopen, landed].filter(row => row !== null).concat([recent, start])
+    things: [toReopen, landed, budgets].filter(row => row !== null).concat([recent, start])
 
     function everything() {
-        return all.concat(budgets === null ? [] : [budgets],
-            [toReopen, landed].filter(row => row !== null), [recent, start]);
+        return all.concat([toReopen, landed].filter(row => row !== null), [recent, start]);
     }
 
     // How every session stands, running and parked, read from Sessions

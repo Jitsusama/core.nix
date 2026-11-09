@@ -255,6 +255,8 @@ let
     "launcher/Firmware.js"
     "launcher/Warp.js"
     "launcher/RealmMachines.js"
+    "launcher/WarpSeen.js"
+    "launcher/WarpSwitch.js"
     "launcher/Interfaces.js"
     "launcher/Networkd.js"
     "launcher/WifiLink.js"

@@ -7,6 +7,7 @@ what the model has and lacks.
 | Here           | Holds                                                         |
 | -------------- | ------------------------------------------------------------- |
 | `package.nix`  | the kernel: Aurora's commit, and its settings as core's own   |
+| `bindgen.nix`  | the bindgen it's built with, with the tree's layout repairs   |
 | `nixos.nix`    | what the machine sets beside it                               |
 | `asahi.config` | Aurora's shared Apple fragment, as it is at that commit       |
 
@@ -38,13 +39,26 @@ merges the source's own copy over the defconfig, and each line of this
 copy becomes a structured setting, above nixpkgs' common ones, so
 `kernel-settings-hold-apple-macbook-pro-m4-pro-a3401` holds every one.
 When the commit moves, this copy is taken again from it.
-The kernel is built with nixpkgs' GCC, as Fedora's and Arch Linux
-ARM's builds of Aurora's kernel are, rather than nixos-aurora's Clang.
+
+## The Compiler
+
+The kernel is compiled with Clang 22 and `LLVM=1`, as Aurora's NixOS
+and Arch Linux ARM builds are. Its Rust drivers reach C through
+bindings bindgen writes, and the kernel checks every binding's size,
+alignment and offsets as it compiles them. Stock bindgen gets some
+wrong: built with it, the build stops at `efi_signature_data_t`'s
+alignment. The tree carries the fix in tools/aurora-bindgen, two
+patches to bindgen 0.73.2 and a test of each case they fix.
+`bindgen.nix` builds that bindgen from those patches, runs that
+test, and puts it where the kernel's Makefile looks for it.
 
 ## Licences
 
 The kernel and its device trees are the Linux kernel's: GPL-2.0, with
-Aurora's Apple device trees GPL-2.0+ OR MIT. nixos-aurora, whose pin
-this follows, is MIT.
+Aurora's Apple device trees GPL-2.0+ OR MIT. bindgen is BSD-3-Clause,
+and the tree's tools/aurora-bindgen, its patches among them, is
+GPL-2.0-only; both are taken from their sources as they are, never
+copied here. nixos-aurora, whose pin this follows and whose bindgen
+package `bindgen.nix` is shaped like, is MIT.
 
 [hardware]: ../../../docs/hardware.md

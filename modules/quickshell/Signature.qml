@@ -33,6 +33,15 @@ Item {
 
     implicitHeight: capital.height
 
+    // Where a signature stands, on a whole device pixel, for whoever places
+    // one. Its parts' baselines sit on the capitals' foot, measured in
+    // device pixels, so a signature at a fractional one leaves each Qt to
+    // round its text as it sees fit: Qt 6.12 drew the line's ink a device
+    // pixel lower than 6.11 did at 1.5 (notices-stand-on-the-cards-columns).
+    function onPixel(at: real): real {
+        return Math.round(at * ratio) / ratio;
+    }
+
     // The face, and where each part's ink starts and ends in it. Each is a
     // TextMetrics, whose bounds follow the face, where a call on FontMetrics
     // measures once, before the face has loaded, and a binding never asks

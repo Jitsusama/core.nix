@@ -246,6 +246,7 @@
         wifid = ./modules/wifid/home.nix;
         yq = ./modules/yq/home.nix;
         zathura = ./modules/zathura/home.nix;
+        zoom = ./modules/zoom/home.nix;
         zoxide = ./modules/zoxide/home.nix;
         zsh = ./modules/zsh/home.nix;
 
@@ -391,7 +392,7 @@
         guide-stick-apple-silicon = ./modules/guide/stick-apple-silicon.nix;
 
         apple-macbook-air-m2-a2681 = moduleFrom ./hardware/apple-macbook-air-m2-a2681/nixos.nix {
-          inherit (self.nixosModules) hibernate;
+          inherit (self.nixosModules) bluetooth-disk-prompt hibernate;
         };
         apple-macbook-pro-m4-pro-a3401 = moduleFrom ./hardware/apple-macbook-pro-m4-pro-a3401/nixos.nix {
           inherit (self.nixosModules) hibernate;

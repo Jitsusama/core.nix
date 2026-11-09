@@ -36,7 +36,7 @@ onLinux {
   slack-passes-clippy = passesClippy "slack-passes-clippy" (pkgs.callPackage ./package.nix { });
   # slack-unreads starts once pi has signed in to Slack, comes back as the
   # new one after a switch, is restarted once its watchdog hears nothing,
-  # and takes its ask in Needs You with it however it stops, so Needs You
+  # and takes its ask in For You with it however it stops, so For You
   # never shows what nothing is keeping current.
   # Its socket is systemd's, held only once pi has signed in, so it stays
   # when the daemon stops and a machine with no sign-in starts nothing.

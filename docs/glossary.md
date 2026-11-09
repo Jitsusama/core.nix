@@ -76,8 +76,8 @@ own, are never places.
 
 The models working for Joel, what they work on, and what they cost. Its
 sessions stand in one tree, each under its orchestrator, the orchestrators
-closed at its end, then Budgets, how each budget stands. Its places are
-Quests, Orchestrators, the Queue, Runs and AI spend. A
+closed at its end. Its places are Quests, Orchestrators, the Queue, Runs
+and AI spend, then Budgets, how each budget stands, always last. A
 session can be talked to, gone to, paused and stopped, and a closed
 orchestrator reopened; a quest can start a session, orchestrate, go first in
 the queue and conclude.
@@ -134,7 +134,7 @@ the queue and conclude.
 | snapshot | a tree pinned at a commit, read only and shareable | | |
 | checkout | a repository's clone, which trees are cut from | | |
 | cut | making a tree | scaffold | `work tree` |
-| release | giving back a tree one holds | prune, reap | `work release`; `quest tree-prune`, to be renamed |
+| release | giving back a tree one holds | prune, reap | `work release`; `quest tree-release` |
 | tidy | reporting which trees on the machine are spent, removing nothing | | `work tidy` |
 | reclaim | taking back the trees nobody owns | | `work reclaim` |
 | scratch folder | a quest's folder for clones, data and builds, its tmp/ cleared when it concludes | | the quest workspace |
@@ -200,6 +200,7 @@ be read, marked unread and archived.
 | Media | the place holding every player and what each is playing, beside Sound, which holds the devices it plays through | | `program:media` |
 | player | a program playing sound or video that the desktop can pause, skip and go to, such as Spotify or a browser's tab | | MPRIS, `Playing.qml` |
 | track | what a player is playing: one song, episode or video, with its artist and album | | MPRIS's `xesam` metadata |
+| link | the web address a track, a page or a message opens at, which Copy the Link copies | | MPRIS's `xesam:url` |
 | podcast | a series of spoken episodes a player plays, such as one on Spotify | | Spotify's `show` |
 | episode | one part of a podcast | | Spotify's `episode` |
 | speed | how fast a player plays its track against the track's own pace, such as one and a half times | | MPRIS's `Rate` |
@@ -226,6 +227,7 @@ or a copy, can be opened, copied or forgotten.
 | ---- | ----- | --- | ------- |
 | desktop | the screen and everything on it around the windows: the launcher, notices, the margin and niri's workspaces | | niri, Quickshell |
 | screen | a monitor, built in or plugged in | display, monitor | niri's outputs |
+| screen mode | a size and refresh rate a screen can run at: the one it runs at now, and the ones it offers | | niri's `modes` |
 | brightness | how bright a screen is, which follows the room's light | | the `backlight` program |
 | warmth | how warm a light's white is, in kelvin: a screen's, which follows the room's light or the night light, or the desk light's | | the `backlight` program's colour temperature |
 | night light | a screen warmed to a set white from sunset to sunrise, wherever the machine is, whatever the room's light | | the `backlight` program's night |
@@ -264,10 +266,11 @@ or a copy, can be opened, copied or forgotten.
 | forget | the action taking an item out of its list, such as a notice, a copy or what's waiting | let it go | |
 | foot | the status line at the bottom of the launcher and held notices: the mode, the position and what the keys do | | `foot` |
 | Now | the launcher's view of what's on and waiting, on Super+O | What's on | `Now.qml` |
-| For You | Now's first row: what wants Joel, weighed, the most pressing first | | `ForYou.js` |
+| For You | the one place for what needs Joel and what came for him, with where each came from: Now's first row, weighed, the most pressing first | | `ForYou.js` |
 | to-do | what only Joel can do, raised by the session that needs him and listed in For You | Needs You item, waiting on you | `WaitingOnYou.qml` |
 | look | something a session points Joel at to see, a pull request, a page, a file, a diff or a terminal, kept in For You until he opens or clears it | | `on:waiting:look`, the looks folder |
 | to try | a landing whose line asks Joel to try something, kept in For You until he opens or clears it | | |
+| Lately | For You's band for what came for Joel, one row for each place it came from | | |
 | clipboard | what was copied last, and what was copied before it | | |
 | timer | a span Joel sets counting down, which rings as a notice when it ends, kept by its daemon so it rings with the launcher closed; Timers is the place holding them | countdown, alarm | `HeldTimers.qml`, the `timers` program |
 | stopwatch | the one count up from when Joel starts it, which keeps its laps; it's listed last in Timers | | `HeldTimers.qml`, the `timers` program |
@@ -297,8 +300,10 @@ off.
 | firmware | the program in a chip that runs it: the machine's, which starts it and keeps its settings, or a device's, such as a keyboard's or a sound card's | BIOS, UEFI | |
 | revive | sending a Mac that won't start Apple's firmware again from another machine over USB-C, keeping its files; a restore does the same and erases it | DFU restore | `idevicerestore`, without and with `--erase` |
 | processor | what runs every program | CPU | |
+| cache | memory inside the processor holding what it used last, nearer to it than the machine's memory, in levels one to three | | `L{level}` caches |
 | model | a device's maker's name for what it is, such as a processor's, a disk's, a battery's or a keyboard's | | |
-| version | which release of a device's firmware is in it, or which Bluetooth its radio speaks, as its maker numbers them | | fwupd's `version` |
+| version | which release of Linux or of a device's firmware is in it, or which Bluetooth or TLS a link speaks, as its makers number them | | fwupd's `version` |
+| Linux name | the name Linux gives a part of the machine, such as a sensor's chip or a battery | kernel name | hwmon's `name`, power_supply's name |
 | graphics | the processor's part that draws what the screens show | | the GPU, Xe |
 | NPU | the processor's part that runs models on the machine | | the `intel_vpu` driver |
 | media engine | the processor's part that encodes and decodes video | | |
@@ -311,6 +316,8 @@ off.
 | memory | what programs run in while the machine is on | RAM | |
 | swap | memory set aside out of the way, compressed first, then in the swap file | swapfile | zswap |
 | memory pressure | how long programs are waiting for memory | | PSI |
+| processor pressure | how long programs are waiting for the processor | | PSI's `cpu` |
+| disk pressure | how long programs are waiting for the disk, not how full it is | | PSI's `io` |
 | lag | how long the desktop takes to answer a key or a click, and what made it wait | slow, jank, stutter | `lag-watch` |
 | trace | one thing a program did, followed through its steps, each a span with a start and an end | | OpenTelemetry's traces |
 | collector | the program keeping the machine's traces, to read any moment back | observability backend | `collector` |
@@ -319,6 +326,7 @@ off.
 | job | work Joel or an agent starts, run below the desktop so it gives way to it | | `jobs.slice` |
 | kind of work | what a job is, which says how much the machine favours it: what Joel waits on at a terminal, timed work or agents' work | job class | the slices `jobs-awaited`, `jobs-timed` and `jobs-work` |
 | shared work | a job other sessions wait on, such as a push holding one of a repository's walk slots, run beside jobs at the sessions' own disk target | | `shared.slice`, `SHARED_SLICE` |
+| backlog | the requests waiting on a disk at once, on average and at most, apart from the machine's queue | | the disk's queue depth |
 | queue | heavy work, such as builds and VM tests, waiting its turn on the machine | machine queue | |
 | warm | of an offload builder for VM tests, holding what they need, having built it as it stood; a fresh one is cold | primed | `there::warm`, `--warm` |
 | offload builder | a builder elsewhere lent to the machine while its queue has builds one could take, and given back once idle | remote builder | `nix-offload` |
@@ -348,7 +356,13 @@ off.
 | card | the chip a sound device plays through or hears with, as the kernel lists it | | ALSA's card |
 | profile | what a headset carries now: music one way, or both ways for a call | | Bluetooth's A2DP and HFP |
 | level | how loud a sound device plays or hears at this moment, as its meter draws it, apart from its volume | | `sound:level` |
+| channel | one of the separate signals a sound device carries at once, such as left and right | | `sound:channels` |
 | graph | how the machine's sound joins each device to each program playing or recording, where a device's Graph ID says which it is and its Graph Format the audio it moves | | PipeWire's graph, its node id |
+| format | how a device lays out the sound or picture it carries: a stream's rate and sample type, or a camera's encoding, such as MJPEG | | PipeWire's format, V4L2's pixel formats |
+| stream | what one program plays through a sound device or records from one, each with a panel of its own in Sound | | a PipeWire stream node |
+| role | what a stream is for, as its program says: music, a film, a call and the like | | PipeWire's `media.role` |
+| process ID | the number Linux gives a running program, which says whose a stream is | | `application.process.id` |
+| client ID | the number the machine's sound gives a program joined to it, one however many streams it plays | | PipeWire's `client.id` |
 | camera board | the part in the lid holding the built-in camera, which Dell fits in more than one kind | camera module | `jitsusama.dellXps14.cameraBoard` |
 | image processor | the part turning the built-in camera's raw picture into an image | ISP, IPU | |
 | IR camera | the infrared camera beside the built-in camera, for signing in by face | | `ir-camera`, Howdy |
@@ -371,6 +385,10 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | ---- | ----- | --- | ------- |
 | connection | the network link out of the machine | line, uplink | |
 | speed | how fast the connection, or a device on the home network, carries data now, each way | network speed, connection speed, bandwidth | `traffic` |
+| in | of data at this machine's own links, coming to it, as its traffic and a link's speed count it; the internet's speed says down | | `traffic:in`, `wifi:in` |
+| out | of data at this machine's own links, leaving it, as its traffic and a link's speed count it; the internet's speed says up | | `traffic:out`, `wifi:out` |
+| down | of the internet's speed, what it carries to the home network, as a speed test measures it; this machine's links say in | | `eero:internet:down` |
+| up | of the internet's speed, what it carries out of the home network, as a speed test measures it; this machine's links say out | | `eero:internet:up` |
 | address | an address the machine has on a network | network address, IP | `networks` |
 | lease | an address a network's server lends for a while, to the machine or to the gateway node, with the name servers and domain that come with it | | DHCP, `leases` |
 | subnet | the run of addresses one of the home network's networks hands out, the main one or the guest one, as its address and prefix | | `subnets_config`, `Subnet` |
@@ -381,6 +399,7 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | tethering | reaching out through a phone's connection, over its cable | | |
 | sign-in page | the page a network shows before it lets the machine out, as a hotel's does | captive portal, network sign-in page | `wifid-sign-in` |
 | VPN | a private link to another network, carried through this one | tunnel | `jitsusama.shaper.vpns` |
+| tunnel mode | how WARP carries the machine's traffic, as warp-cli names it: all of it through WARP, DNS alone, or as a proxy | | warp-cli's `mode`, `warp:settings:mode` |
 | WARP | the VPN warp-cli runs, and the place in Network saying how its link stands | | `warp`, `warp-cli` |
 | firewall | what keeps others' connections out | | nftables |
 | shaper | the program that keeps the network's queue on the machine, sorted by slice, so a call stays quick | | `shaper`, CAKE |
@@ -394,7 +413,8 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | outage | a time the internet was down | downtime | |
 | radio | a Wi-Fi transmitter on one band: the machine's card's, or one of a node's | | |
 | band | the frequencies a radio uses: 2.4, 5 or 6 GHz | frequency band | |
-| channel | the slice of a band a radio uses, with its width | | |
+| channel | the slice of a band a radio uses, with its width, such as Wi-Fi's or the ones Bluetooth hops between | | `bluetooth:channels` |
+| stream | one of the signals a Wi-Fi link carries side by side at once, each adding to its speed | | `wifi:streams`, MIMO's spatial streams |
 | signal | how strongly one radio hears another, in dBm | RSSI, signal strength | |
 | rate | how fast a radio link can carry data each way as it's set now, and how it's made: MCS, streams, width and guard interval | link speed, PHY rate, bitrate | `rate_bps` |
 | speed test | eero measuring the most the internet carries each way, from the gateway node | speedtest | `speedtest` |
@@ -501,6 +521,7 @@ The words core.nix is built from. Never a launcher place.
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
+| core | core.nix, the library every machine is built from, and the commit of it a machine runs | | the `core` input |
 | machine repository | a repository of machines built on core.nix, adding its own modules | | any flake with core.nix as an input |
 | module | one program or subsystem, configured | | `modules/bat/` becomes `homeModules.bat` |
 | kernel module | a part of the kernel loaded on its own, always written whole | | `boot.kernelModules` |

@@ -51,7 +51,7 @@ Singleton {
     }
 
     // What's said of the clock's move while it keeps the zone it moved to,
-    // or "": "clock moved to Edmonton time, as the laptop is in Lighthouse".
+    // or "": "clock moved to Edmonton time, as the laptop is in Kelpwater".
     readonly property string movedSaid: !clockMoved ? ""
         : `clock moved to ${city(moved.to)} time`
             + (moved.place ? `, as the laptop is in ${moved.place.split(",")[0]}` : "")

@@ -365,7 +365,7 @@ impl Account {
             "sessions": root.join("sessions"),
             "ledger": root.join("state/sent.jsonl"),
             "folder": FOLDER,
-            "host": "laptop",
+            "machine": "laptop",
             "recipients": [identity.to_public().to_string()],
             "credentials": credentials,
             // A machine without the second key skips it.
@@ -738,11 +738,11 @@ fn says_how_to_sign_in_for_a_folder_of_its_own() {
 #[test]
 fn settings_name_one_folder() {
     let both = Config::from_json(&json!({
-        "sessions": "/s", "ledger": "/l", "host": "laptop", "credentials": "/c",
+        "sessions": "/s", "ledger": "/l", "machine": "laptop", "credentials": "/c",
         "recipients": ["age1someone"], "folder": FOLDER, "ownFolder": "pi sessions",
     }));
     let neither = Config::from_json(&json!({
-        "sessions": "/s", "ledger": "/l", "host": "laptop", "credentials": "/c",
+        "sessions": "/s", "ledger": "/l", "machine": "laptop", "credentials": "/c",
         "recipients": ["age1someone"],
     }));
 
@@ -829,7 +829,7 @@ fn keeps_every_log_when_the_settings_say_no_keep() {
 fn reads_keep_days_from_the_settings() {
     let settings = |keep: Value| {
         Config::from_json(&json!({
-            "sessions": "/s", "ledger": "/l", "folder": "f", "host": "h",
+            "sessions": "/s", "ledger": "/l", "folder": "f", "machine": "h",
             "recipients": ["age1someone"], "credentials": "/c", "keepDays": keep,
         }))
         .unwrap()
@@ -1284,7 +1284,7 @@ fn reads_nothing_back_when_the_settings_name_no_key() {
 #[test]
 fn reads_where_the_index_and_the_records_are_from_the_settings() {
     let settings = Config::from_json(&json!({
-        "sessions": "/s", "ledger": "/l", "folder": "f", "host": "h",
+        "sessions": "/s", "ledger": "/l", "folder": "f", "machine": "h",
         "recipients": ["age1someone"], "credentials": "/c",
         "index": "/i.jsonl", "records": "/r", "backfillPerRun": 7,
     }))

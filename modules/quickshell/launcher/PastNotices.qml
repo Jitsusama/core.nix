@@ -65,20 +65,30 @@ Provider {
         // rows, which Return's own act never leads (Catalogue.js's leading).
         const nowhere = !opened && !from.window && !from.entry;
         const verbs = () => provider.verbs(notice, said);
+        // Named by its title, the same in every list, its note the line of
+        // its body that holds what was typed (VKCF3Z, 2026-11-08), as
+        // search says it each time; the whole of what it said is what a
+        // search looks through.
+        const named = Notice.named(notice.summary, notice.body, [], provider.holds);
+        let whole = null;
         const row = member({
             thing: true,
             key: `notice:${notice.app}:${notice.summary}`,
             verb: nowhere ? "more" : opened || !from.window ? "open" : "go to",
-            name: notice.body === "" ? notice.summary
-                : `${notice.summary} · ${notice.body.replace(/\s+/g, " ")}`,
+            name: named.name,
+            count: named.note,
+            // Its note gives way by whole words, never an ellipsis (Choice.qml).
+            countWords: true,
+            // Its body, which its note is a line of as each search says it
+            // (lined).
+            wrote: notice.body,
             // Stepped into, the head says its title alone, its words being
             // the drawer's (VKCF3Z, 2026-11-08).
             title: notice.summary,
             // The whole of what it said, each part once: the summary as
-            // the drawer's title, then the body, rather than the row's
-            // name, which already holds both, over both again (VKCF3Z,
-            // 2026-11-02). With no body it would only repeat the name, so
-            // there's no drawer (Showing.js's adds). Over them,
+            // the drawer's title, then the body, of which the row says only
+            // a line (VKCF3Z, 2026-11-02). With no body it would only repeat
+            // the name, so there's no drawer (Showing.js's adds). Over them,
             // who sent it and what kind it is. Its words read in the face its card
             // reads them in, so they don't change face between the two
             // (VKCF3Z, 2026-11-03). Its sender is a name from the world,
@@ -128,6 +138,10 @@ Provider {
                 else
                     provider.go(notice.app);
             }
+        });
+        Object.defineProperty(row, "also", {
+            enumerable: true,
+            get: () => whole ?? (whole = Fuzzy.kept(said.replace(/\s+/g, " ")))
         });
         // Where Ctrl+] goes from it, as Vim follows a tag: its sender's own
         // row, among Programs (Applications.qml), or nowhere for a sender
@@ -400,19 +414,38 @@ Provider {
     // own row (Applications.qml) holds them and Return on one does what it
     // does here. `sent` says whether a sender's name is the program.
     function sentBy(sent) {
-        return aged(all.filter((row, index) => sent(Notices.history[index]?.app ?? "")));
+        return lined(aged(all.filter((row, index) => sent(Notices.history[index]?.app ?? ""))),
+            []);
     }
 
+    // Whether a text holds a word typed, as search finds it.
+    function holds(text, word) {
+        return Fuzzy.match(Fuzzy.prepare(text), [word], false).score >= 0;
+    }
+
+    // Each row's note, the line of its body that holds the words typed,
+    // or its first line with none. Not `noted`, which is Provider's own,
+    // what a collection's row says below it. Each is a copy, so a search
+    // or a program's row never changes the note of a row shown elsewhere.
+    function lined(rows, words) {
+        return rows.map(row => Object.assign({}, row, {
+            count: Notice.named(row.title, row.wrote, words, provider.holds).note
+        }));
+    }
+
+    // Found by its title, which names it and shows where, else by
+    // anything else it said, which its note shows the line of.
     function search(typed) {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
         const found = [];
         for (const row of poolFor(all, typed)) {
-            if ((row.prepared.mask & need) !== need)
+            if ((row.also.mask & need) !== need)
                 continue;
-            const m = Fuzzy.match(row.prepared, words, false);
+            const byName = Fuzzy.match(row.prepared, words, false);
+            const m = byName.score >= 0 ? byName : Fuzzy.match(row.also, words, false);
             if (m.score >= 0)
-                found.push({ item: row.prepared, score: m.score, grade: m.grade, row: row });
+                found.push({ score: m.score, grade: m.grade, row: row });
         }
         matchedIn(all, typed, found.map(f => f.row));
         // Newest first among equals, since a notice is wanted by when it came.
@@ -421,11 +454,11 @@ Provider {
             finest = Math.min(finest, f.grade);
         const kept = Order.sorted(found.filter(f => f.grade === finest),
             (a, b) => b.score - a.score || b.row.at - a.row.at);
-        return { rows: aged(kept.map(f => f.row)), grade: finest };
+        return { rows: lined(aged(kept.map(f => f.row)), words), grade: finest };
     }
 
     function everything() {
-        return aged(all.slice());
+        return lined(aged(all.slice()), []);
     }
 
     function counted() {

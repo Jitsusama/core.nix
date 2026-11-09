@@ -30,7 +30,8 @@
     folder's entries order by name, change or size, folders first, 2 before 10; a save's name puts
     the caret before its extension; and one kept elsewhere, as in Google Drive, says the same on
     its row and plate from what its place listed, its place's facts after, leaving out what isn't
-    given
+    given; a file in the Nix store goes by its own name past its hash, kept whole where the store's
+    own listing holds it
   '';
   a-firmware-update-frees-pcr-0-only-for-fwupds-entry = ''
     the shutdown step takes PCR 0 out of the TPM's policy only when BootNext names fwupd's
@@ -119,13 +120,13 @@
   '';
   a-session-behind-the-lock-waits-for-its-kin = ''
     a session handed over while the screen is locked, beside its sender in the sessions' kitty,
-    waits once the lock is gone until kitty says which window is the sender's, then goes to the
-    sender's workspace without the focus
+    waits once the lock is gone until the node says which window is the sender's, by the app id it
+    opened with, then goes to the sender's workspace without the focus
   '';
   a-session-is-known-by-its-own-record = ''
     pi's sessions are those whose records name a process running on this boot since when they
-    say, never found by a window's title, each with its window found through the kitty it runs
-    in, and gone once its record or its process is; and those to reopen are the last boot's until
+    say, never found by a window's title, each with its window found by the app id it opened with,
+    or else through the kitty it runs in, and gone once its record or its process is; and those to reopen are the last boot's until
     put off, then those another machine carried here, newest first, never put off
   '';
   a-silent-hub-is-driven-as-one-stream = ''
@@ -1007,8 +1008,8 @@
     realm it doesn't join are refused
   '';
   needs-you-is-true = ''
-    over the agents' own files as the node serves them, Needs You holds now only what Joel can do
-    now, a timed one first
+    over the agents' own files as the node serves them, For You's to-dos hold now only what Joel
+    can do now, a timed one first
     and then the quickest, puts what he can't yet or has put off under Later, saying what each
     waits for, keeps gone what he or the to do daemon found done, says when nothing watches one,
     keeps nothing of a quest gone from the index and drops nothing by its age, and counts a
@@ -1626,7 +1627,7 @@
   '';
   slack-unreads-go-with-the-service = ''
     slack-unreads starts once pi has signed in to Slack, restarts as the new one after a switch,
-    is restarted when its watchdog hears nothing, and takes its ask in Needs You with it however
+    is restarted when its watchdog hears nothing, and takes its ask in For You with it however
     it stops,
     while its socket, systemd's and held only once pi has signed in, stays
   '';
@@ -1891,7 +1892,9 @@
     figures and its parts' heat answer, and WARP says how its link stands from the record warp
     prints, connected, degraded, down, not answering or unreadable, and nothing with no warp-cli,
     every figure of the record a part in its own unit and in words.json's words, its settings
-    saying who set each, its TLS and DNS a step in
+    saying who set each, its TLS and DNS a step in; what it read while shown sparks Round Trip,
+    Loss and Traffic, each with a drawer over the tunnel, one read sparking nothing; and its
+    switch says who holds it, when WARP always on comes back, and a switch held or refused
   '';
   the-screens-go-off-on-niri = ''
     on niri, Turn Every Screen Off closes the launcher and then asks niri to power its monitors
@@ -1924,7 +1927,8 @@
     parts its places hold and adds one meant below what the letters found, saying where it lives,
     and warns of nothing it drew;
     WARP, read by the real warp from a stand-in warp-cli, says how its link stands in Network
-    after Speed, and its service not answering;
+    after Speed, and its service not answering, and its :disconnect runs warp disconnect and
+    says when WARP comes back, or, its switch held, leaves it and says who holds it;
     and the notices it holds, taken as Super+N takes them, turn, forget and step into their cards
     by vi's keys
   '';
@@ -1944,10 +1948,12 @@
   the-launcher-chooses-files-as-asked = ''
     the launcher chooses the files a program opens or saves in the folder it asks for, the files
     opened lately first, then its folders and files, then its filters, and answers what was picked;
-    a place kept elsewhere, as Google's Drive, is listed after home's files, and its files are
-    fetched before they're answered; saving, the line holds the name, kept from folder to folder,
-    each folder leading with it unnarrowed, a name already there asking once, no saving nothing;
-    saving there, its folders take the name, ask once before replacing one, and answer the path
+    a file in the Nix store opened lately goes by its own name past its hash, and keeps the hash
+    where the store lists it; a place kept elsewhere, as Google's Drive, is listed after home's
+    files, and its files are fetched before they're answered; saving, the line holds the name,
+    kept from folder to folder, each folder leading with it unnarrowed, a name already there
+    asking once, no saving nothing; saving there, its folders take the name, ask once before
+    replacing one, and answer the path
     the place stages it at once its folder is made, marked beside it with the program that asked;
     the files selected in one ask are previewed by one file-preview; where several may be opened,
     :arga gathers the cursor row's file or a range's, each once, Return answers what's gathered,
@@ -2610,7 +2616,9 @@
     elsewhere sends only the heavy pieces away, to the builders named when some are, builds nothing
     here without a builder, sends a kept piece only to its own builders, and none at all when it
     has none, unless pieces may be built here, small, which keeps a piece's builders but a kept
-    one's none and waits under load, and builds what's built from a kept one here with no builders
+    one's none and waits under load, and builds what's built from a kept one here with no builders;
+    and a big piece goes to the builders with what needs nothing of it beside it, what's built from
+    it after, and what was beside it stopped when it fails
   '';
   usb-camera-holders-follow-the-stream = ''
     a USB camera's watch names its holders only while a streaming interface has a nonzero alternate
@@ -2803,8 +2811,8 @@
     Slack ends a search, asking Slack once on Return
   '';
   vm-desktop-launcher-waits-on-joel = ''
-    Now leads with what waits on Joel and Needs You holds only what's true, a session wanting him
-    waits as the session, its notice going to it and going read once it stops waiting; the agents
+    Now leads with what waits on Joel and For You's to-dos hold only what's true, a session wanting
+    him waits as the session, its notice going to it and going read once it stops waiting; the agents
     list every session from the shell's start and hold still as one changes, and pi's runs are
     found
   '';
@@ -3137,7 +3145,9 @@
     reason's own figures, an endpoint given as no address as none and a figure left out as unknown;
     tells no warp-cli, a service not answering or hanging, and a status refused or garbled apart,
     each said in a line with a code of its own and with --json as a record; still reads the rest
-    when a part besides the status isn't given; and draws each page as its golden one
+    when a part besides the status isn't given; draws each page as its golden one; and connects
+    and disconnects only where the organisation doesn't hold the switch, saying when WARP always
+    on comes back and warp-cli refusing in its words
   '';
   what-vm-tests-share-does-what-it-says = ''
     the helpers VM tests share run a command as the account asked, with its runtime folder and
@@ -3222,6 +3232,14 @@
   zathura-says-the-files-it-opens = ''
     zathura says each document it's started with to the desktop's list of files opened lately, then
     runs
+  '';
+  zoom-is-installed-or-opened-on-the-web = ''
+    an account with zoom has Zoom's own client on x86_64 Linux, and on ARM Linux, where nixpkgs
+    builds none, Zoom's web client as a program that opens Zoom's own links instead
+  '';
+  zoom-opens-its-links = ''
+    each of Zoom's own links joins its meeting in the web client, with its passcode only when the
+    passcode is plain, and a link naming no meeting, or nothing, opens the web client's home
   '';
   zoxide-lists-the-folder-visited-last-first = ''
     the account's zoxide lists the folder visited last first when asked, though another was visited

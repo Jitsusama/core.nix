@@ -74,7 +74,12 @@ fault "stretched and grotesque" names.
   scroll container is reachable; nothing traps focus; Escape closes only a
   popup and returns focus, never a drawer or work. On an interface, j, k, /,
   :, ?, Space ? and Ctrl+K (Cmd+K on a Mac) do what the skill says on every
-  page, and single letters do nothing in a text field.
+  page, and single letters do nothing in a text field. On every page, j, k, g
+  and G step through its parts, ? opens and closes the Keys list, Escape
+  closes it and gives focus back, and the head says so in its one key line.
+- **The switch, as omni-ref's.** Light, Match System and Dark sit in the
+  head; a choice holds across a reload with no flash of the other look, and
+  Match System follows the system when it changes.
 - **A screen reader pass** on the landmarks, headings and one fold, a figure
   and a table: each says what it is.
 - **Forced colours and more contrast**: every control keeps an edge, focus

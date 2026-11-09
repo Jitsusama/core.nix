@@ -164,19 +164,19 @@ QtObject {
         }
 
         // What Close's ask says stays: its worktree or its folder, and its
-        // quest's Needs You items by their count.
+        // quest's to-dos by their count.
         const leaving = {
             stays: "its {kept} stays.",
             stay: "its {kept} stay.",
             tree: "worktree",
             folder: "folder",
             and: "and",
-            needItem: "{count} Needs You item",
-            needItems: "{count} Needs You items"
+            toDo: "{count} to-do",
+            toDos: "{count} to-dos"
         };
         for (const [tree, needs, want] of [[true, 0, "its worktree stays."],
-            [true, 1, "its worktree and 1 Needs You item stay."],
-            [false, 2, "its folder and 2 Needs You items stay."],
+            [true, 1, "its worktree and 1 to-do stay."],
+            [false, 2, "its folder and 2 to-dos stay."],
             [false, 0, "its folder stays."]]) {
             const got = SessionRow.leaves(tree, needs, leaving);
             if (got !== want)

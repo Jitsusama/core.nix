@@ -979,8 +979,8 @@ onLinux {
   # A file in the launcher's chooser of files says its size and when it
   # changed as VKCF3Z set them, and its plate its kind, preview and facts,
   # one kept elsewhere, as in Google Drive, alike from what its place
-  # listed, as tests/file-facts.qml holds FileFacts.js to it in Qt's own
-  # engine.
+  # listed, and a file in the Nix store goes by its own name past its hash,
+  # as tests/file-facts.qml holds FileFacts.js to it in Qt's own engine.
   a-file-says-its-size-and-when-it-changed =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -1389,6 +1389,8 @@ onLinux {
       cp ${./launcher/Cameras.js} Cameras.js
       cp ${./launcher/Firmware.js} Firmware.js
       cp ${./launcher/Warp.js} Warp.js
+      cp ${./launcher/WarpSeen.js} WarpSeen.js
+      cp ${./launcher/WarpSwitch.js} WarpSwitch.js
       cp ${./launcher/HomeNetwork.js} HomeNetwork.js
       cp ${./launcher/Ago.js} Ago.js
       cp ${./launcher/words.json} words.json
@@ -1935,6 +1937,7 @@ onLinux {
       cp ${./launcher/NeedsYou.js} launcher/NeedsYou.js
       cp ${./launcher/Moment.js} launcher/Moment.js
       cp ${./launcher/NowGroups.js} launcher/NowGroups.js
+      cp ${./launcher/Showing.js} launcher/Showing.js
       cp ${./launcher/Order.js} launcher/Order.js
       cp ${./launcher/ForYou.js} launcher/ForYou.js
       cp ${./launcher/ForYouFilter.js} launcher/ForYouFilter.js
@@ -1953,7 +1956,7 @@ onLinux {
       export PATH=${timedatectl}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
       echo '{"v":2,"latitude":12.3457,"longitude":-98.7654,"accuracy":26000,'\
-      '"when":1790000000,"place":"Lighthouse, Ontario","zone":"America/Toronto",'\
+      '"when":1790000000,"place":"Kelpwater, Ontario","zone":"America/Toronto",'\
       '"country":"Canada"}' \
         > $XDG_RUNTIME_DIR/whereabouts.json
       export FONTCONFIG_FILE=${noFonts}
@@ -2884,17 +2887,20 @@ onLinux {
     '';
 
   # pi's sessions are known by their own records as the machine's node
-  # holds them, never by a window's title, and each one's window through
-  # the kitty it runs in (tests/sessions.qml), with the node, niri and
-  # kitten stood in over what tests/sessions-state.sh lays out.
+  # holds them, never by a window's title, and each one's window by the app
+  # id it opened with, or for one opened without, through the kitty it runs
+  # in (tests/sessions.qml), with the node, niri and kitten stood in over
+  # what tests/sessions-state.sh lays out.
   a-session-is-known-by-its-own-record =
     let
-      # Three windows of the same title, one of kitty 500's and two of 600's.
+      # Three windows of the same title, one of kitty 500's and two of 600's,
+      # the second opened as pi-session.7, each with the app id it opened
+      # with kept, as Niri.qml keeps it.
       niri = singleton "Niri.qml" ''
         property var windows: ({
-          "10": { id: 10, pid: 500, title: "\u03c0 - Lighthouse" },
-          "20": { id: 20, pid: 600, title: "\u03c0 - Lighthouse" },
-          "21": { id: 21, pid: 600, title: "\u03c0 - Lighthouse" }
+          "10": { id: 10, pid: 500, title: "\u03c0 - Lighthouse", opened: "kitty" },
+          "20": { id: 20, pid: 600, title: "\u03c0 - Lighthouse", opened: "kitty" },
+          "21": { id: 21, pid: 600, title: "\u03c0 - Lighthouse", opened: "pi-session.7" }
         })
         property int revision: 0
         property var current: null
@@ -2953,16 +2959,18 @@ onLinux {
     '';
 
   # A session handed over while the screen is locked, beside its sender in
-  # the sessions' kitty, waits once the lock is gone until kitty has said
-  # which window is the sender's, then goes to the sender's workspace
-  # (tests/sessions-behind-the-lock.qml), with niri and kitten stood in.
+  # the sessions' kitty, waits once the lock is gone until the node has
+  # said which window is the sender's, then goes to the sender's workspace
+  # (tests/sessions-behind-the-lock.qml), with niri stood in.
   a-session-behind-the-lock-waits-for-its-kin =
     let
-      # The sender's kitty's two windows, on the second workspace.
+      # The sender's kitty's two windows, on the second workspace, the
+      # second opened as pi-session.3, each with the app id it opened with
+      # kept, as Niri.qml keeps it.
       niri = singleton "Niri.qml" ''
         property var windows: ({
-          "20": { id: 20, pid: 600, workspace_id: 2 },
-          "21": { id: 21, pid: 600, workspace_id: 2 }
+          "20": { id: 20, pid: 600, workspace_id: 2, opened: "kitty" },
+          "21": { id: 21, pid: 600, workspace_id: 2, opened: "pi-session.3" }
         })
         property int revision: 0
         property var current: null
@@ -2996,7 +3004,6 @@ onLinux {
     pkgs.runCommandLocal "a-session-behind-the-lock-waits-for-its-kin" { } ''
       export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
       ${lib.getExe pkgs.bash} ${../../tests/sessions-behind-the-lock-state.sh} $XDG_STATE_HOME
-      export PATH=$XDG_STATE_HOME/bin:$PATH
       cp ${./Sessions.qml} Sessions.qml
       cp ${./PiSource.qml} PiSource.qml
       cp ${./PiSource.js} PiSource.js
@@ -3748,7 +3755,7 @@ onLinux {
       touch $out
     '';
 
-  # Needs You holds only what Joel can do, now or later, in the order he
+  # For You's to-dos hold only what Joel can do, now or later, in the order he
   # does them, and a session's want is his only while it's true, as
   # tests/waiting-on-you.qml holds Waiting.js to the agents' own files, as
   # the mycelium node serves them.
@@ -4110,6 +4117,8 @@ onLinux {
       cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./Words.qml} Words.qml
       cp ${./Files.qml} Files.qml
+      cp ${./FileFacts.js} FileFacts.js
+      cp ${./When.js} When.js
       cp ${./Copied.qml} Copied.qml
       cp ${./Copied.js} Copied.js
       cp ${niri} Niri.qml

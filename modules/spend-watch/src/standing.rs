@@ -106,9 +106,16 @@ pub struct Allowance {
 /// An allowance's facts in words, each empty where it isn't known: how
 /// long its window is, where it warns in its own unit, when it resets,
 /// when an override of it ends and how it last changed, whose reading it
-/// is and when that was taken, and what its feed says of it.
+/// is and when that was taken, and what its feed says of it. `brief` is
+/// how a share stands as its budget's drawer lists it beside its name,
+/// where the window is already named: its figure alone and when it
+/// resets, "85% \u{b7} resets 16:40", so it says what the budget's row
+/// doesn't (VKCF3Z, 2026-11-08). A window in dollars has none: its
+/// standing is too long to carry a reset and keep its meter beside it,
+/// so its reset is said a step in, in its own drawer.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct AllowanceSaid {
+    pub brief: String,
     pub window: String,
     pub warns: String,
     pub resets: String,
@@ -148,10 +155,13 @@ pub struct Budget {
 }
 
 /// A budget's facts in words, each empty where there's nothing to say:
-/// what it spent over each period, what a plan's turns were worth at list
-/// over each, and how its feeds read.
+/// what it is, as its drawer's eyebrow says it, whose money and what kind
+/// after a dot as every eyebrow's where and kind are ("your own \u{b7}
+/// plan"); what it spent over each period, what a plan's turns were worth
+/// at list over each, and how its feeds read.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct BudgetSaid {
+    pub what: String,
     pub spent: String,
     pub worth: String,
     pub reading: String,
@@ -305,7 +315,7 @@ fn budget(picture: &Picture, config: &Config, spans: &Spans, name: &str) -> Budg
         .iter()
         .find(|allowance| allowance.nearest.is_some());
     let standing = match (read, &value) {
-        (Some(allowance), _) => allowance.standing.clone(),
+        (Some(allowance), _) => with_window(allowance),
         (None, Some(value)) => format!("{} at list this month", value["this month"].shown),
         (None, None) => format!("{} this month", spent["this month"].shown),
     };
@@ -314,6 +324,7 @@ fn budget(picture: &Picture, config: &Config, spans: &Spans, name: &str) -> Budg
     // A plan's turns are billed nothing but its price, so what they were
     // worth at list says its use and its spend says nothing.
     let said = BudgetSaid {
+        what: what(declared),
         spent: if value.is_some() {
             String::new()
         } else {
@@ -391,15 +402,46 @@ fn reading(health: &str) -> String {
     .into()
 }
 
+/// A budget's standing, its nearest window's, with that window said
+/// where it counts dollars, since a budget's row isn't named for its
+/// window as a window's own row is: "$250 of $300 today" (VKCF3Z,
+/// 2026-11-08). A share's standing already says its window ("85% of
+/// 5 h").
+fn with_window(allowance: &Allowance) -> String {
+    if allowance.unit == Unit::Share.name() {
+        return allowance.standing.clone();
+    }
+    let over = match allowance.window_hours {
+        24 => "today".to_owned(),
+        168 => "this week".to_owned(),
+        hours => format!("in {}", window_length(hours)),
+    };
+    format!("{} {over}", allowance.standing)
+}
+
 /// What a budget is, in a few words: whose money and what kind. An
 /// employer's cap says only who pays, since its label already names the
 /// credential, and the kind's code name never reaches a row (VKCF3Z,
 /// 2026-11-07).
 fn words(declared: Option<&BudgetConfig>) -> String {
+    whose_and_kind(declared).map_or_else(
+        || "not declared".into(),
+        |(whose, kind)| format!("{whose} {kind}"),
+    )
+}
+
+/// The same as its drawer's eyebrow says it, whose and what kind after
+/// a dot, as every eyebrow's where and kind are (VKCF3Z, 2026-11-08).
+fn what(declared: Option<&BudgetConfig>) -> String {
+    whose_and_kind(declared).map_or_else(
+        || "not declared".into(),
+        |(whose, kind)| format!("{whose} \u{b7} {kind}"),
+    )
+}
+
+fn whose_and_kind(declared: Option<&BudgetConfig>) -> Option<(&'static str, &'static str)> {
     use crate::config::{BudgetKind, Whose};
-    let Some(budget) = declared else {
-        return "not declared".into();
-    };
+    let budget = declared?;
     let whose = match budget.whose {
         Whose::Own => "your own",
         Whose::Employer => "the employer's",
@@ -411,7 +453,7 @@ fn words(declared: Option<&BudgetConfig>) -> String {
         BudgetKind::Cap => "money",
         BudgetKind::Team => "token",
     };
-    format!("{whose} {kind}")
+    Some((whose, kind))
 }
 
 /// A budget's allowances: each one read or counted, and each declared
@@ -483,7 +525,15 @@ fn allowance(picture: &Picture, config: &Config, view: &CapView) -> Allowance {
         .map_or_else(|| cap.feed.clone(), |feed| feed.label.clone());
     let share = cap.unit == Unit::Share;
     let clock = |at: f64| picture.zone.clock(at, picture.now);
+    let brief = match (cap.unit, view.used) {
+        (Unit::Share, Some(used)) => view.resets.map_or_else(
+            || percent(used),
+            |at| format!("{} \u{b7} resets {}", percent(used), clock(at)),
+        ),
+        _ => String::new(),
+    };
     let said = AllowanceSaid {
+        brief,
         window: window_length(cap.window_hours),
         warns: warns(cap.unit, cap.allowance, cap.warn),
         resets: view.resets.map_or_else(String::new, clock),
@@ -778,7 +828,9 @@ mod tests {
             order,
             [
                 ("claude", "62% of 5 h"),
-                ("proxy", "$18,400 of $40,000"),
+                // A budget's row isn't named for its window, so a
+                // standing in dollars says it.
+                ("proxy", "$18,400 of $40,000 this week"),
                 ("delta", "$310 this month"),
                 ("probe", "$1 this month"),
             ]
@@ -835,6 +887,7 @@ mod tests {
         assert_eq!(
             five["said"],
             serde_json::json!({
+                "brief": "62% \u{b7} resets 16:20",
                 "window": "5 hours", "warns": "at 80%", "resets": "16:20",
                 "ends": "", "changed": "", "read": "Claude at 14:20", "state": ""
             })
@@ -850,12 +903,18 @@ mod tests {
             "$84 today \u{b7} $84 in 7 days \u{b7} $84 this month"
         );
         assert_eq!(claude["said"]["spent"], "");
+        assert_eq!(claude["said"]["what"], "your own \u{b7} plan");
+        assert_eq!(claude["words"], "your own plan");
         assert_eq!(claude["said"]["reading"], "");
         // The watch counts the proxy's week itself, so nobody read it.
         let proxy = &json["budgets"][1];
         assert_eq!(proxy["words"], "the employer's money");
         assert_eq!(proxy["allowances"][0]["said"]["warns"], "at $36,000");
         assert_eq!(proxy["allowances"][0]["said"]["read"], "");
+        // A window in dollars has no brief: its budget's drawer says its
+        // standing, with its meter, and its reset a step in.
+        assert_eq!(proxy["allowances"][0]["said"]["brief"], "");
+        assert_eq!(proxy["said"]["what"], "the employer's \u{b7} money");
         assert_eq!(
             proxy["said"]["spent"],
             "$18,400 today \u{b7} $18,400 in 7 days \u{b7} $18,400 this month"

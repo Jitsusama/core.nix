@@ -1,6 +1,6 @@
 pragma Singleton
 pragma ComponentBehavior: Bound
-// What only Joel can do (Needs You). Each quest keeps a file of what it
+// What only Joel can do (For You). Each quest keeps a file of what it
 // needs him for, ~/.local/state/mission/waiting/<quest>.json, written by
 // the session that needs him through mesh_wait and replaced whole as it
 // changes: each item's title, why only he can, how many minutes it takes,
@@ -40,7 +40,7 @@ Singleton {
     readonly property string state: Quickshell.env("XDG_STATE_HOME") || `${home}/.local/state`
     readonly property string settledAt: `${state}/mission/settled.json`
 
-    // The node's records of each kind Needs You reads (mycelium's
+    // The node's records of each kind For You reads (mycelium's
     // PROTOCOL.md, The Daemon Interface): each quest's items, the to do
     // daemon's verdicts and the quests still open, each watched whole and
     // then told each change as only what differs. What was held stays
@@ -126,6 +126,17 @@ Singleton {
     // The quest an item is from, by its title in the index, else its id.
     function questOf(item) {
         return owners[item.quest]?.title || item.quest;
+    }
+
+    // Any quest's status and title as the index says, by its id, as a look
+    // names the quest that pointed at it: null where the index doesn't
+    // hold it, and absent until the node has answered. Read as a drawer
+    // is shown, so the index needn't be weighed for each look. The index
+    // changes in place, so its revision is read first, as owners does, and
+    // a drawer held open follows a quest's new title or status.
+    function ownerOf(quest) {
+        questKind?.revision;
+        return Waiting.owners(questKind?.answered ? questKind.held : null, [quest])[quest];
     }
 
     // Joel's word on an item, "done" or "notNow", kept at once.

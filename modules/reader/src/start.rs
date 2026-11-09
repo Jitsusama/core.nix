@@ -137,7 +137,7 @@ fn written(lately: &[PathBuf], around: &[PathBuf], home: Option<&Path>) -> Strin
         "Press g x and a link's letters to read it here, Ctrl+O to come back, \
          and / to find one by its name.\n",
     );
-    for (heading, files) in [("Lately", lately), ("In Your Folders", around)] {
+    for (heading, files) in [("Recent", lately), ("In Your Folders", around)] {
         if files.is_empty() {
             continue;
         }
@@ -260,7 +260,7 @@ mod tests {
         assert!(text.starts_with("# What to Read\n"), "{text}");
         assert!(
             text.contains(
-                "## Lately\n\n- [notes \\[old\\].md](</home/someone/notes [old].md>), in ~\n"
+                "## Recent\n\n- [notes \\[old\\].md](</home/someone/notes [old].md>), in ~\n"
             ),
             "{text}"
         );

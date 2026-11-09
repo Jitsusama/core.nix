@@ -66,7 +66,7 @@ let
       inherit (cfg)
         folder
         ownFolder
-        host
+        machine
         keepDays
         recipients
         settledHours
@@ -84,6 +84,15 @@ let
   '';
 in
 {
+  # The option said host, which the glossary calls a machine; a machine
+  # that still sets the old name reaches the new one, warned.
+  imports = [
+    (lib.mkRenamedOptionModule
+      [ "jitsusama" "session-backup" "host" ]
+      [ "jitsusama" "session-backup" "machine" ]
+    )
+  ];
+
   options.jitsusama.session-backup = {
     folder = lib.mkOption {
       description = ''
@@ -133,7 +142,7 @@ in
       default = [ ];
       example = lib.literalExpression ''[ "''${config.xdg.configHome}/age/tpm.txt" ]'';
     };
-    host = lib.mkOption {
+    machine = lib.mkOption {
       description = "The machine, as each copy's name begins.";
       type = lib.types.str;
     };

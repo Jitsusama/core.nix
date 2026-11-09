@@ -179,16 +179,15 @@ def test_an_entrys_return_copies_its_password_and_the_foot_says_when_it_clears(
     shell.launcher_until(lambda shown: not shown["open"])
     shell.reported("holds margin ", lambda marks: "clipboard" in marks.split(), since)
     shell.launcher_until(lambda _: shell.copied() == STAND_IN)
-    # Opened again, the foot says when it clears; nothing on screen says the password: not
-    # the row, nor its drawer, nor the foot.
+    # Opened again, the margin's mark says it's on the clipboard, so the row and the foot say
+    # no copy of it, the row its username alone (VKCF3Z, 2026-11-08); nothing on screen says
+    # the password: not the row, nor its drawer, nor the foot.
     opened(shell)
-    shell.launcher_until(
-        lambda shown: (
-            (shown["selected"] or {}).get("name") == "GitHub"
-            and str(shown["footer"]).startswith("copied GitHub's password \u00b7 clears in ")
-        )
-    )
-    assert STAND_IN not in json.dumps(shell.showing())
+    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "GitHub")
+    shown = shell.showing()
+    assert "copied" not in str(shown["footer"]), shown["footer"]
+    assert cast("Json", shown["selected"])["side"] == "ada", shown["selected"]
+    assert STAND_IN not in json.dumps(shown)
 
 
 def test_resting_on_an_entry_reads_it_in_full_and_it_holds_its_acts_in_order(

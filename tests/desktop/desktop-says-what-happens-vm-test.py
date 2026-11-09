@@ -99,7 +99,9 @@ def test_a_notice_that_came_and_went_is_found_again_in_the_launcher(desktop: Des
     desktop.launcher_ready()
     # Home's Now says one was missed earlier, since it left by itself.
     desktop.shoot("launcher-home-missed")
-    desktop.type_in("build fin", selecting="the laptop is ready")
+    # Its row is named by its title alone (VKCF3Z, 2026-11-08); the drawer
+    # below shows it's the one kept, not the newer one sent as transient.
+    desktop.type_in("build fin", selecting="Build finished")
     # Its drawer says each part once: the summary as its title, then the
     # body, not the row's name over both again (VKCF3Z, 2026-11-02).
     desktop.launcher_until(lambda shown: shown["drawer"]["out"])

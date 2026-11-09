@@ -133,6 +133,29 @@ QtObject {
             [{ label: "Arrived", value: "10:51" },
                 { label: "Left", value: "still on the screen" }]);
 
+        // Its row's name and note: its title, then the line of its body
+        // that holds what was typed, its first line while nothing typed is
+        // only in the body, and with no title its first line alone. A word
+        // is held where it starts one of the text's words, as the search
+        // finds it.
+        const holds = (text, word) => text.toLowerCase().split(/\W+/)
+            .some(one => one.startsWith(word));
+        const log = "line 1 of the deploy went by\n\nline 7 of the deploy went by\n";
+        expect("nothing typed", Notice.named("Deploy log", log, [], holds),
+            { name: "Deploy log", note: "line 1 of the deploy went by" });
+        expect("typed only in its title",
+            Notice.named("Deploy log", log, ["deploy", "log"], holds),
+            { name: "Deploy log", note: "line 1 of the deploy went by" });
+        expect("typed in its body", Notice.named("Deploy log", log, ["log", "7"], holds),
+            { name: "Deploy log", note: "line 7 of the deploy went by" });
+        expect("the line holding most of it",
+            Notice.named("Build", "it went by\nthe deploy failed", ["deploy", "fail"], holds),
+            { name: "Build", note: "the deploy failed" });
+        expect("no title", Notice.named("", "  first line\nsecond", ["sec"], holds),
+            { name: "first line", note: "" });
+        expect("no body", Notice.named("Battery low", "", ["low"], holds),
+            { name: "Battery low", note: "" });
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);

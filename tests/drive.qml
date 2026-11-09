@@ -74,16 +74,18 @@ QtObject {
             "verb:drive:link");
 
         // What its row says beside the title: only when he opened it, as a
-        // stream's rows say only when, whose it is being the drawer's.
-        check("when, today", Drive.beside(plan, now, said), "14:02");
+        // stream's rows say only when, whose it is being the drawer's, and
+        // that it's when he opened it, the drawer saying when it changed.
+        const opened = "opened {when}";
+        check("when, today", Drive.beside(plan, now, said, opened), "opened 14:02");
         check("minutes ago",
-            Drive.beside(Object.assign({}, plan, { viewed: at(28, 15, 5) }), now, said),
-            "15 min ago");
+            Drive.beside(Object.assign({}, plan, { viewed: at(28, 15, 5) }), now, said, opened),
+            "opened 15 min ago");
         check("yesterday",
-            Drive.beside(Object.assign({}, plan, { viewed: at(27, 9, 0) }), now, said),
-            "yesterday");
+            Drive.beside(Object.assign({}, plan, { viewed: at(27, 9, 0) }), now, said, opened),
+            "opened yesterday");
         check("one never opened says nothing",
-            Drive.beside(Object.assign({}, plan, { viewed: null }), now, said), "");
+            Drive.beside(Object.assign({}, plan, { viewed: null }), now, said, opened), "");
 
         // What the drawer says: when it changed, said as the launcher says
         // when with its time, then whose it is, and never when he opened it,

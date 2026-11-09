@@ -48,7 +48,7 @@ struct Fix {
 
 /// The move the launcher says: from which zone to which, and where the
 /// laptop was found, so Now can say "Clock moved to Edmonton time, from
-/// Calgary".
+/// Kelpwater".
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 struct Moved {
     from: String,
@@ -220,7 +220,7 @@ mod tests {
         Fix {
             v: NAMED,
             accuracy,
-            place: Some("Lighthouse, Alberta".into()),
+            place: Some("Kelpwater, Alberta".into()),
             zone: zone.map(Into::into),
         }
     }

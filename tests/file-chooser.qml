@@ -7,7 +7,9 @@
 // elsewhere first, then its folders, then the files the filter passes, by
 // name, then the program's filters, each group apart; a file is one row,
 // though it was opened lately too, and the hidden ones show once a "." is
-// typed; a file in the folder shown says its size and when it changed
+// typed; a file kept in the Nix store goes by its own name past its hash
+// when opened lately elsewhere, and keeps the hash where the store lists
+// it; a file in the folder shown says its size and when it changed
 // rather than its folder, and its plate where it is before it's previewed,
 // it and those selected after it asked of the one file-preview kept for
 // the ask (the check's script reads which); a kind the filter names passes
@@ -512,6 +514,7 @@ ShellRoot {
             plate.title === "a.md" && plate.preview === undefined
             && plate.eyebrow === "in ~/notes" && facts === "",
             `${plate.eyebrow}: ${plate.title}: ${facts}`);
+        storeNames();
         expect("each file is drawn as every file is", rows.every(row => row.component
             || row.key.startsWith("file-chooser:")), rows.map(row => row.key).join(" "));
         const typed = theLauncher.held[theLauncher.held.length - 1].row.typed(".");
@@ -533,6 +536,25 @@ ShellRoot {
         // Picked once a.md's plate, drawn above, is previewed.
         picking = a;
         previewing = "a.md";
+    }
+
+    // A file kept in the Nix store goes by its own name past its hash when
+    // it's opened lately elsewhere, but where the store's own listing holds
+    // it, it keeps the hash, or every row there would read alike (VKCF3Z
+    // and X0G8U9, 2026-11-08). Its plate isn't asked for here, since asking
+    // one asks file-preview, whose asks the check's script counts.
+    function storeNames() {
+        const whole = "bdmylmvw562fyhfd39fkn89zcw7qn66w-track.mp3";
+        const path = `/nix/store/${whole}`;
+        const away = chooser.fileRow(path, true);
+        expect("a store file opened lately elsewhere goes by its own name",
+            away.name === "track.mp3" && away.side === "/nix/store", `${away.name} ${away.side}`);
+        expect("one the store's listing holds keeps its hash",
+            chooser.fileRow(path).name === whole, chooser.fileRow(path).name);
+        expect("a store folder listed there keeps its hash too",
+            chooser.folderRow("/nix/store/bdmylmvw562fyhfd39fkn89zcw7qn66w-pkg").name
+                === "bdmylmvw562fyhfd39fkn89zcw7qn66w-pkg",
+            chooser.folderRow("/nix/store/bdmylmvw562fyhfd39fkn89zcw7qn66w-pkg").name);
     }
 
     // ]b and [b go to the folder beside this one, as the folder holding it

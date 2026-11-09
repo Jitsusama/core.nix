@@ -44,7 +44,7 @@ ShellRoot {
             return {
                 headline: sky,
                 rows: [{ name: "Now", side: sky, glyph: "sky" }],
-                note: "Lighthouse \u00b7 Open-Meteo"
+                note: "Kelpwater \u00b7 Open-Meteo"
             };
         }
     }
@@ -182,7 +182,7 @@ ShellRoot {
         // The location says its town, and that the place keeps another zone
         // than the clock, in the colour of what wants a look.
         const location = rows[2];
-        expect("the location says its town", location.side === "Lighthouse, Ontario",
+        expect("the location says its town", location.side === "Kelpwater, Ontario",
             location.side);
         expect("and that the place keeps another zone",
             location.note === "keeps America/Toronto \u00b7 not following"
@@ -203,7 +203,7 @@ ShellRoot {
         // zone last as the identifier it is (VKCF3Z, 2026-11-08).
         const plate = location.thing === true ? location.drawer() : null;
         expect("its plate says it was found from Wi-Fi, titled by its town",
-            plate?.eyebrow === "from Wi-Fi \u00b7 location" && plate?.title === "Lighthouse",
+            plate?.eyebrow === "from Wi-Fi \u00b7 location" && plate?.title === "Kelpwater",
             JSON.stringify(plate));
         expect("its plate's facts, from what moves most, the zone an identifier",
             JSON.stringify(plate.facts.map(fact => [fact.label, fact.identifies]))

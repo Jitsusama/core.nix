@@ -28,6 +28,7 @@ import "Ago.js" as Ago
 import "ForYou.js" as ForYou
 import "ForYouFilter.js" as Filter
 import "NowGroups.js" as Groups
+import "Showing.js" as Showing
 import "Order.js" as Order
 import "Moment.js" as Moment
 import "NeedsYou.js" as NeedsYou
@@ -80,7 +81,11 @@ Provider {
             rows.push({ group: "wants", name: landed.name, row: landed });
         return [waiting].concat(moment, Groups.ordered(rows).map(each => each.row));
     }
-    onAllChanged: changed()
+    // Said only when what the rows show has changed (Provider's
+    // changedTo), since `all` is made again whenever any fact moves, and
+    // each change said makes the launcher refresh (Joel, 2026-11-08: "weird
+    // lag can happen").
+    onAllChanged: changedTo(all)
 
     // This moment, Now's own rows, right after what waits on Joel and
     // before what else is on: the
@@ -419,7 +424,7 @@ Provider {
 
     // Its drawer: where it's from and that it's a thing to do, its title,
     // then its facts, what it weighs and why, since when it has waited, how
-    // it'll be known done, its quest and session, and who it is last; then
+    // it'll be known done, its session, and who it is last; then
     // its steps, numbered, and why only Joel can do it (VKCF3Z, 2026-10-31
     // and 2026-11-08), each only when it says it. How it's known done is a
     // fact now, so the words don't say it again.
@@ -461,8 +466,8 @@ Provider {
             Object.assign(fact("clears", knownSaid(each)), { words: true }),
             fact("machine", owner.machine),
             fact("where", owner.where),
-            fact("quest", quest),
-            fact("session", session?.title ?? ""),
+            fact("session", ForYou.sessionSaid(session?.title ?? "",
+                WaitingOnYou.owners[each.quest]?.status)),
             identifier("address", owner.address, false),
             identifier("check", owner.check, true),
             Object.assign(fact("item", WaitingOnYou.identity(each)), { identifies: true })
@@ -793,24 +798,25 @@ Provider {
         return { kind: "look", since: one.since };
     }
 
-    // A look's drawer: where it's from and that it's to look at, its title,
-    // what it weighs while it waits, since when, what clears it, how it
-    // went once it has, its quest and session, then who it is and what it
-    // points at; and why, whole.
+    // A look's drawer: its quest, by its title in the index, and that it's
+    // to look at, its title, what it weighs while it waits, since when,
+    // what clears it, how it went once it has, its session, then who it is
+    // and what it points at; and why, whole.
     function lookDrawer(one) {
         const now = Date.now();
         const say = forYouSaid(now);
         const waits = one.state === "waiting";
         const session = lookSession(one);
-        const from = session?.title || one.quest || one.session || "";
+        const quest = one.quest ? WaitingOnYou.ownerOf(one.quest) : null;
+        const from = quest?.title || one.quest || session?.title || one.session || "";
         const identified = (id, value) => Object.assign(fact(id, value), { identifies: true });
         const facts = [
             fact("weight", waits ? ForYou.weightSaid(lookThing(one), now, say) : ""),
             fact("since", one.since === null ? "" : say.clock(one.since)),
             fact("clears", !waits ? "" : one.kind === "pr" ? say.clearsPr : say.clearsLook),
             fact("resolved", waits ? "" : ForYou.historySide(one, say)),
-            fact("quest", one.quest ?? ""),
-            fact("session", session?.title ?? one.session ?? ""),
+            fact("session", ForYou.sessionSaid(session?.title ?? one.session ?? "",
+                quest?.status)),
             identified("look", one.id),
             identified("target", ["pr", "page", "diff"].includes(one.kind) ? one.target : "")
         ].filter(each => each.value !== "");
@@ -867,7 +873,7 @@ Provider {
         });
     }
 
-    // Needs You's items Joel said were done, while their quest's file
+    // The to-dos Joel said were done, while their quest's file
     // still tells of them (ForYou.js's settledItems).
     readonly property var doneItems: ForYou.settledItems(WaitingOnYou.asked,
         WaitingOnYou.settled, each => WaitingOnYou.identity(each))
@@ -1139,10 +1145,12 @@ Provider {
     // drawnBy), as that place draws it, or none while it doesn't list it:
     // a place keeps its rows in `all` where it works them out, as Sound
     // does, else in a provider's `things`, as Cameras does.
-    function borrowed(drawnBy) {
+    // The drawer of the row a piece stands for, without what the piece's
+    // own row says (Showing.besides), as `by` gives it.
+    function borrowed(drawnBy, by) {
         const place = source(drawnBy.place);
         const row = (place?.all ?? place?.things ?? []).find(each => each.key === drawnBy.key);
-        return row?.drawer?.() ?? null;
+        return Showing.besides(row?.drawer?.() ?? null, by ?? {});
     }
 
     function made(fact) {
@@ -1181,7 +1189,10 @@ Provider {
             }
         } : piece.drawnBy ? {
             thing: true,
-            drawer: () => provider.borrowed(piece.drawnBy)
+            drawer: () => provider.borrowed(piece.drawnBy, {
+                side: piece.value,
+                note: piece.context
+            })
         } : {};
         return member(Object.assign({
             key: `on:${fact.entry.mark}`,

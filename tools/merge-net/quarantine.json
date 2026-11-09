@@ -12,5 +12,12 @@
     "owner_pr": null,
     "reason": "failed, then passed, at 85a12fcab559",
     "test": "vm-desktop-starts-clean"
+  },
+  {
+    "at": 1794208934,
+    "commit": "ee3830be19023ef620013bc7796d353255b82663",
+    "owner_pr": null,
+    "reason": "known broken on main since 73351b75b04a and owned by the launcher's session, which fixes it forward and takes it off this list",
+    "test": "vm-desktop-launcher-finds-by-name"
   }
 ]

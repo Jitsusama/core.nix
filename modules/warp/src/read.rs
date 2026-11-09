@@ -1,5 +1,5 @@
 //! WARP drawn from what warp-cli says: its status, the tunnel's stats, the
-//! settings and the DNS proxy's counts, asked at once, made into the
+//! settings, the DNS proxy's counts and any override, asked at once, made into the
 //! record (model.rs). The status is what says whether WARP is there at
 //! all, so a status warp-cli can't give fails the read and says why; any
 //! other part it can't give is left out of the record, unknown, as the
@@ -12,7 +12,10 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::ask::{Ask, Said, Unasked};
-use crate::model::{Dns, Edge, Settings, SplitTunnel, Status, Tls, Tunnel, Warp};
+use crate::model::{
+    CaptivePortal, Dns, Edge, FallbackDomain, Listed, Override, Settings, SplitTunnel, Status, Tls,
+    Tunnel, Warp,
+};
 
 /// Why WARP couldn't be read, each its own exit code (main.rs).
 #[derive(Debug, PartialEq)]
@@ -29,16 +32,17 @@ pub enum Failure {
 const NOT_ANSWERING: &str = "FailedToConnectToDaemon";
 
 /// The questions, asked at once: each is a round trip to WARP's service,
-/// about 20 ms apiece on a laptop, so asked in turn they'd take four times
+/// about 20 ms apiece on a laptop, so asked in turn they'd take five times
 /// as long for nothing.
 const STATUS: &[&str] = &["status"];
 const TUNNEL: &[&str] = &["tunnel", "stats"];
 const SETTINGS: &[&str] = &["settings"];
 const DNS: &[&str] = &["dns", "stats"];
+const OVERRIDE: &[&str] = &["override", "show"];
 
 pub fn read(cli: &impl Ask) -> Result<Warp, Failure> {
-    let [status, tunnel, settings, dns] = thread::scope(|scope| {
-        [STATUS, TUNNEL, SETTINGS, DNS]
+    let [status, tunnel, settings, dns, held_open] = thread::scope(|scope| {
+        [STATUS, TUNNEL, SETTINGS, DNS, OVERRIDE]
             .map(|question| scope.spawn(move || cli.ask(question)))
             .map(|asked| asked.join().expect("asking warp-cli doesn't panic"))
     });
@@ -48,7 +52,17 @@ pub fn read(cli: &impl Ask) -> Result<Warp, Failure> {
         tunnel: part(TUNNEL, tunnel).map(tunnel_of),
         settings: part(SETTINGS, settings).and_then(settings_of),
         dns: part(DNS, dns).map(dns_of),
+        r#override: part(OVERRIDE, held_open).map(|said: SaidOverride| Override {
+            set: said.set,
+            ends_in_secs: said.ends_in_secs,
+        }),
     })
+}
+
+#[derive(Deserialize)]
+struct SaidOverride {
+    set: Option<bool>,
+    ends_in_secs: Option<u64>,
 }
 
 /// What warp-cli answered a question as JSON, or why there's no answer.
@@ -188,6 +202,61 @@ struct SaidSetting {
     split_tunnel_mode: Option<String>,
     split_tunnel_hosts: Option<Vec<Value>>,
     split_tunnel_ips: Option<Vec<Value>>,
+    doh_hostname: Option<String>,
+    doh_resolver_ips: Option<Vec<String>>,
+    // Lists and parts read loosely, as values, so one entry warp-cli
+    // shapes otherwise loses only itself rather than every setting.
+    fallback_domains: Option<Vec<Value>>,
+    captive_portal_detection_enabled: Option<bool>,
+    captive_portal_firewall_off_secs: Option<u64>,
+    enable_pmtud: Option<bool>,
+    allow_mode_switch: Option<bool>,
+    allowed_to_leave: Option<bool>,
+    support_url: Option<String>,
+    lan_subnet_size: Option<u64>,
+    emergency_disconnect: Option<Value>,
+}
+
+/// Text warp-cli gives, none where it gives none or an empty string.
+fn given(text: Option<&str>) -> Option<String> {
+    text.filter(|text| !text.is_empty()).map(str::to_string)
+}
+
+/// Each domain or network a split lists, as `{ value, description }`.
+fn listed(entries: Option<&[Value]>) -> Vec<Listed> {
+    entries
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|entry| {
+            Some(Listed {
+                value: entry["value"].as_str()?.to_string(),
+                description: given(entry["description"].as_str()),
+            })
+        })
+        .collect()
+}
+
+/// Each domain looked up on the network's own servers, with them.
+fn fallbacks(entries: Option<&[Value]>) -> Vec<FallbackDomain> {
+    entries
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|entry| {
+            Some(FallbackDomain {
+                domain: entry["domain"].as_str()?.to_string(),
+                description: given(entry["description"].as_str()),
+                dns_servers: entry["dns_servers"]
+                    .as_array()
+                    .map(|servers| {
+                        servers
+                            .iter()
+                            .filter_map(|server| server.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            })
+        })
+        .collect()
 }
 
 /// Each setting's key here, and warp-cli's for it, whose source says who
@@ -208,6 +277,8 @@ fn settings_of(said: SaidSettings) -> Option<Settings> {
     let split_tunnel = setting.split_tunnel_mode.is_some()
         || setting.split_tunnel_hosts.is_some()
         || setting.split_tunnel_ips.is_some();
+    let portal = setting.captive_portal_detection_enabled.is_some()
+        || setting.captive_portal_firewall_off_secs.is_some();
     let settings = Settings {
         mode: setting.operation_mode,
         always_on: setting.always_on,
@@ -216,10 +287,28 @@ fn settings_of(said: SaidSettings) -> Option<Settings> {
         organisation: setting.organization,
         tunnel_protocol: setting.warp_tunnel_protocol,
         post_quantum: setting.post_quantum_config,
+        doh_hostname: given(setting.doh_hostname.as_deref()),
+        doh_resolver_ips: setting.doh_resolver_ips.unwrap_or_default(),
+        fallback_domains: fallbacks(setting.fallback_domains.as_deref()),
+        captive_portal: portal.then_some(CaptivePortal {
+            detection: setting.captive_portal_detection_enabled,
+            firewall_off_s: setting.captive_portal_firewall_off_secs,
+        }),
+        enable_pmtud: setting.enable_pmtud,
+        allow_mode_switch: setting.allow_mode_switch,
+        allowed_to_leave: setting.allowed_to_leave,
+        support_url: given(setting.support_url.as_deref()),
+        lan_subnet_size: setting.lan_subnet_size,
+        emergency_disconnect: setting
+            .emergency_disconnect
+            .as_ref()
+            .and_then(|emergency| emergency["disconnect"].as_bool()),
         split_tunnel: split_tunnel.then(|| SplitTunnel {
             mode: setting.split_tunnel_mode,
-            hosts: setting.split_tunnel_hosts.map_or(0, |hosts| hosts.len()),
-            ips: setting.split_tunnel_ips.map_or(0, |ips| ips.len()),
+            hosts: setting.split_tunnel_hosts.as_ref().map_or(0, Vec::len),
+            ips: setting.split_tunnel_ips.as_ref().map_or(0, Vec::len),
+            host_list: listed(setting.split_tunnel_hosts.as_deref()),
+            ip_list: listed(setting.split_tunnel_ips.as_deref()),
         }),
         set_by: SOURCES
             .iter()
@@ -236,6 +325,16 @@ fn settings_of(said: SaidSettings) -> Option<Settings> {
         organisation: None,
         tunnel_protocol: None,
         post_quantum: None,
+        doh_hostname: None,
+        doh_resolver_ips: Vec::new(),
+        fallback_domains: Vec::new(),
+        captive_portal: None,
+        enable_pmtud: None,
+        allow_mode_switch: None,
+        allowed_to_leave: None,
+        support_url: None,
+        lan_subnet_size: None,
+        emergency_disconnect: None,
         split_tunnel: None,
         set_by: BTreeMap::new(),
     };
@@ -412,5 +511,46 @@ mod tests {
         assert_eq!(tunnel.latency_ms, None);
         assert_eq!(tunnel.sent_bytes, None);
         assert_eq!(tunnel.tls, None);
+    }
+
+    #[test]
+    fn an_override_in_force_says_how_long_it_has_left() {
+        let cli = Contract::whole().with(
+            "override show",
+            Ok(Said {
+                ok: true,
+                text: r#"{"set": true, "ends_in_secs": 1500}"#.into(),
+            }),
+        );
+        let held = read(&cli)
+            .expect("it reads")
+            .r#override
+            .expect("it said one");
+        assert_eq!((held.set, held.ends_in_secs), (Some(true), Some(1500)));
+    }
+
+    #[test]
+    fn an_override_warp_cli_wont_say_is_unknown() {
+        let cli = Contract::whole().with("override show", said(false, "refused.json"));
+        assert_eq!(read(&cli).expect("it reads").r#override, None);
+    }
+
+    #[test]
+    fn an_emergency_disconnect_is_read_from_its_own_switch() {
+        let mut said: Value =
+            serde_json::from_str(&crate::contract::file("settings.json")).expect("it's JSON");
+        said["settings"]["emergency_disconnect"]["disconnect"] = Value::Bool(true);
+        let cli = Contract::whole().with(
+            "settings",
+            Ok(Said {
+                ok: true,
+                text: said.to_string(),
+            }),
+        );
+        let settings = read(&cli)
+            .expect("it reads")
+            .settings
+            .expect("it has settings");
+        assert_eq!(settings.emergency_disconnect, Some(true));
     }
 }

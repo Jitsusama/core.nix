@@ -41,6 +41,7 @@ import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Passwords.js" as Passwords
+import "Managers.js" as Managers
 
 Provider {
     id: provider
@@ -222,8 +223,9 @@ Provider {
             note: note,
             favourite: record.favourite === true,
             verbs: () => provider.inside(key),
-            // The foot says how a copy of it stands, else its note.
-            state: () => provider.footFor(key, note),
+            // The foot says how a copy of it stands, else its note, which
+            // the drawer's Website says while it's out, so it's said once.
+            state: () => provider.footFor(key, provider.launcher?.drawerOut ? "" : note),
             // What y takes: its username, which is no secret.
             operands: () => named === "" ? [] : [copyOperand("fact:passwords:username", named)]
         });
@@ -358,11 +360,12 @@ Provider {
         });
     }
 
-    // What the foot says for a row of this entry: how its copy stands,
-    // else `otherwise`.
+    // What the foot says for a row of this entry: how its copy stands while
+    // there's something to say of it (Passwords.js's speaks), else
+    // `otherwise`.
     function footFor(key, otherwise) {
         const copy = Clearing.copied?.key === key ? Clearing.copied : null;
-        return copy ? Passwords.told(copy, Clearing.now, said) : otherwise;
+        return Passwords.speaks(copy) ? Passwords.told(copy, Clearing.now, said) : otherwise;
     }
 
     // The row leading the place while a manager can't read: a thing, the
@@ -564,7 +567,7 @@ Provider {
         const byKey = {};
         for (const row of everyone)
             byKey[row.key] = row;
-        return Passwords.vaults(records.filter(record => record.manager === manager.name))
+        return Managers.vaults(records.filter(record => record.manager === manager.name))
             .map(vault => {
                 const rows = () => vault.records.map(record => byKey[record.key])
                     .filter(Boolean);

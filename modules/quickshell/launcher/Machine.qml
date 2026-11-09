@@ -1138,7 +1138,9 @@ Provider {
     // room and, while it's short, what the guard is doing about it, so
     // that's seen without selecting it; in the drawer, while it's short,
     // its figures and the guard's own sentence, and its name alone while
-    // it's healthy, as the sentence then only says the room again.
+    // it's healthy, as the sentence then only says the room again. Its
+    // room is beside it, so the drawer doesn't say Free again, as Now's
+    // disk drawer doesn't (VKCF3Z, 2026-11-08); its Size and Full In stay.
     function disked(guard, disk, fields) {
         const free = `${guard.shown(disk.free)} free`;
         if (disk.band === "healthy")
@@ -1149,7 +1151,6 @@ Provider {
             : disk.band === "pressure" ? said.clearing : said.clearingAll;
         const full = typeof disk.full_at === "number" ? disk.full_at - Date.now() / 1000 : 0;
         const facts = [
-            { label: named("disk:free"), value: guard.shown(disk.free) },
             { label: named("disk:size"), value: guard.shown(disk.total) },
             full > 0 ? { label: named("disk:full-in"), value: guard.duration(full) } : null
         ];

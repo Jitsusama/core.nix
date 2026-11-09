@@ -18,6 +18,11 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const SECONDS_IN_A_MINUTE = 60;
 const SECONDS_IN_AN_HOUR = 3600;
+// The Nix store, whose every entry is named by a hash of what built it, in
+// Nix's own 32 letters and digits (no e, o, u or t), then a dash and its
+// own name.
+const STORE = "/nix/store/";
+const HASHED = /^[0-9a-df-np-sv-z]{32}-(.+)$/;
 // SI's steps, largest first, each a thousand of the one after it.
 const THOUSAND = 1000;
 const UNITS = [[THOUSAND ** 4, "TB"], [THOUSAND ** 3, "GB"], [THOUSAND ** 2, "MB"],
@@ -88,6 +93,19 @@ function weighed(bytes) {
         return `${(scaled / THOUSAND).toPrecision(FIGURES)}${KEPT}${next[1]}`;
     }
     return `${scaled.toPrecision(FIGURES)}${KEPT}${unit[1]}`;
+}
+
+// A file's name, the last part of its path as Joel reads it (`said`, from
+// home as ~): "~/src/core.nix" is core.nix, and / and ~ are themselves.
+// One kept straight in the Nix store goes by its own name, past the hash
+// its path begins with, as "track.mp3", since the hash says nothing to
+// him (VKCF3Z, 2026-11-08). One `listed` among the store's own entries
+// keeps the hash, or the store's listing would read as rows of one name.
+function named(said, listed) {
+    const cut = said.lastIndexOf("/");
+    const last = cut < 0 || said === "/" ? said : said.slice(cut + 1);
+    const own = HASHED.exec(last);
+    return own !== null && !listed && said === `${STORE}${last}` ? own[1] : last;
 }
 
 // Where a name's own part ends, before its extension, as the caret starts

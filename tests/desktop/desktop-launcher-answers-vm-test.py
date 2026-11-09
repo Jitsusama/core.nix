@@ -170,9 +170,10 @@ def test_heat_copies_the_hottest_part_and_each_part_steps_into_its_history(
     assert re.search("^-?\\d+ \\u00b0C$", desktop.showing()["selected"]["side"])
 
     def in_battery(shown: Json) -> bool:
-        """Say whether the launcher holds the battery's heat, its history selected."""
+        """Say whether the launcher holds the battery's heat, its Last Reads selected."""
         return bool(
-            shown["held"][-1:] == ["Battery"] and (shown["selected"] or {}).get("name") == "Lately"
+            shown["held"][-1:] == ["Battery"]
+            and (shown["selected"] or {}).get("name") == "Last Reads"
         )
 
     desktop.follow()
@@ -429,15 +430,16 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(
     )
     # A step further, each disk the guard watches, the headline's first.
     # A disk is a thing, so the drawer is out for it: one that's short
-    # says beside it what the guard is doing, and in the drawer its
-    # figures and the guard's own words (docs/design.md, the drawer).
+    # says beside it its room and what the guard is doing, and in the
+    # drawer its size and the guard's own words, its room not again
+    # (docs/design.md, the drawer).
     desktop.follow()
     desktop.launcher_until(
         lambda shown: (
             shown["rows"][:1] == ["/nix"]
             and shown["selected"]["side"] == "21.5\u00a0GB free \u00b7 clearing old builds"
             and (shown.get("drawer") or {}).get("out") is True
-            and shown["drawer"]["facts"] == ["Free", "Size"]
+            and shown["drawer"]["facts"] == ["Size"]
             and shown["drawer"]["body"] == "The disk is filling, with 20.0 GiB free."
         )
     )
@@ -935,12 +937,12 @@ def test_the_clock_follows_the_laptop_into_another_zone_and_is_put_back(desktop:
     try:
         # Found by Wi-Fi, to within 300 m, in another zone: the clock moves,
         # and the time here says so, the zone being the clock's.
-        found("America/Edmonton", 300, "Lighthouse, Alberta")
+        found("America/Edmonton", 300, "Kelpwater, Alberta")
         keeps("America/Edmonton")
         desktop.answer("time")
         desktop.launcher_until(
             lambda shown: (
-                shown["footer"] == "clock moved to Edmonton time, as the laptop is in Lighthouse"
+                shown["footer"] == "clock moved to Edmonton time, as the laptop is in Kelpwater"
             )
         )
         desktop.follow()
@@ -955,7 +957,7 @@ def test_the_clock_follows_the_laptop_into_another_zone_and_is_put_back(desktop:
         machine.send_key("ret")
         keeps(began)
         desktop.close_launcher()
-        found("America/Edmonton", 300, "Lighthouse, Alberta")
+        found("America/Edmonton", 300, "Kelpwater, Alberta")
         assert machine.succeed(zone).strip() == began
         # Somewhere else lets it go, and the clock follows again.
         found("America/Vancouver", 300, "Harbour, British Columbia")
@@ -1014,7 +1016,7 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
         # A pin, as setting it writes one, is here from then on, whatever
         # GeoClue says, and the clock follows it as it would any fix.
         said = {"v": 2, "latitude": 52.34, "longitude": -115.67, "accuracy": 1000,
-                "when": int(time.time()), "place": "Lighthouse, Alberta",
+                "when": int(time.time()), "place": "Kelpwater, Alberta",
                 "zone": "America/Edmonton", "country": "Canada", "hand": True}  # fmt: skip
         desktop.as_account(
             f"mkdir -p ~/.local/state/whereabouts && echo '{json.dumps(said)}' > {pin}"
@@ -1027,7 +1029,7 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
             "test $(timedatectl show --property=Timezone --value) = America/Edmonton",
             timeout=dt.timedelta(seconds=30),
         )
-        location(lambda row: row["side"] == "Lighthouse, Alberta")
+        location(lambda row: row["side"] == "Kelpwater, Alberta")
         desktop.follow()
         # Inside, in the design's order, saying it was set by hand, and in which country.
         inside = [

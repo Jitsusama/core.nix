@@ -16,7 +16,7 @@
 //! desktop notices (notices.rs, desktop.rs): the internet out and back, a
 //! node offline and back, a device new to the home network, firmware, and
 //! eero's own events. When eero's session ages out, it asks Joel to sign
-//! in again in Needs You (waiting.rs).
+//! in again in For You (waiting.rs).
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -166,7 +166,7 @@ impl Daemon {
             watch: Watch::default(),
             notifier: Notifier::default(),
             waiting: waiting::file()
-                .inspect_err(|reason| eprintln!("eero: Needs You can't be asked: {reason}"))
+                .inspect_err(|reason| eprintln!("eero: For You can't be asked: {reason}"))
                 .ok(),
         }
     }

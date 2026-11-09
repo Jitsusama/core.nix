@@ -457,6 +457,15 @@ function told(copy, now, said) {
     return fill(said.copied, Object.assign(values, { seconds }));
 }
 
+// Whether a copy is still for its row and the foot to say: while it's
+// asked, and once refused, why. Once it's on the clipboard the launcher has
+// gone and the margin's clipboard mark says it till it clears, so the row
+// opened again says its username alone, rather than its title again in a
+// copy's words cut short (VKCF3Z, 2026-11-08).
+function speaks(copy) {
+    return Boolean(copy) && (!copy.clears || (copy.why ?? "") !== "");
+}
+
 // A copy as the daemon answered it, heard at `now`: when it clears, and
 // for a one-time code when it lapses and its period; or why it wasn't,
 // `away` when the daemon wasn't there to ask.
@@ -473,25 +482,4 @@ function answered(copy, answer, now, away) {
         lapses: Number.isFinite(left) && left > 0 ? now + left * SECOND : 0,
         period: Number(answer.period) || 0
     });
-}
-
-// Its entries grouped by vault, as Programs holds a manager's: each
-// { id, name, records } by the vault's name, its records by title.
-function vaults(records) {
-    const by = {};
-    const order = [];
-    for (const record of records) {
-        const id = String(record.collection?.id ?? "");
-        if (!(id in by)) {
-            by[id] = { id, name: String(record.collection?.name ?? ""), records: [] };
-            order.push(id);
-        }
-        by[id].records.push(record);
-    }
-    const title = record => String(record.title ?? "");
-    return order.map(id => by[id])
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .map(vault => Object.assign(vault, {
-            records: vault.records.sort((a, b) => title(a).localeCompare(title(b)))
-        }));
 }

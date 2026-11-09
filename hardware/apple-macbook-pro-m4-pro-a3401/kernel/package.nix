@@ -6,11 +6,16 @@
 # defconfig with Aurora's shared Apple fragment, asahi.config, merged over
 # it, then nixpkgs' common settings and the fragment again, taken in whole
 # as structured settings so core's settings check holds every one of them. A NixOS machine's
-# boot.kernelPatches reach it through buildLinux's own kernelPatches.
+# boot.kernelPatches reach it through buildLinux's own kernelPatches. Unlike
+# the M2's, it is compiled with Clang and the bindgen its tree carries, as
+# every build of Aurora's kernel is: stock bindgen gives its Rust some C
+# types' alignment wrong, and the kernel's layout checks refuse them.
 {
   lib,
   fetchurl,
   buildLinux,
+  buildPackages,
+  llvmPackages_22,
   ...
 }@args:
 let
@@ -54,10 +59,34 @@ let
   aurora = lib.mapAttrs (_option: lib.mkOverride 90) (
     lib.listToAttrs (lib.concatMap setting (lib.splitString "\n" (builtins.readFile ./asahi.config)))
   );
+
+  # integration/aurora at d4d267839caa (2026-11-08), as nixos-aurora's
+  # sources.json pins it. It carries the J614s's board file, and the
+  # external display chain both 14- and 16-inch M4 Pros share
+  # (README.md).
+  src = fetchurl {
+    name = "linux-aurora-d4d267839caa.tar.gz";
+    url = "https://codeload.github.com/aurora-silicon/linux/tar.gz/d4d267839caa0aa9cbcd98a792351a52bd856b84";
+    hash = "sha256-P9JNVztZcQL3SeWtAQw9u2hNmmla8hvTHJno+nxwX+s=";
+  };
+
+  # The tree's tools/aurora-bindgen, whose patches and test bindgen.nix
+  # takes, so they move with the commit.
+  bindgenTools = buildPackages.runCommand "aurora-bindgen-tools" { } ''
+    mkdir $out
+    tar -xzf ${src} -C $out --strip-components=3 --wildcards '*/tools/aurora-bindgen/*'
+  '';
+
+  # Built for the machine that builds the kernel, as its tools are.
+  bindgen = buildPackages.callPackage ./bindgen.nix {
+    tools = bindgenTools;
+    llvmPackages = buildPackages.llvmPackages_22;
+  };
 in
-buildLinux (
+((buildLinux.override { rust-bindgen-unwrapped = bindgen; }) (
   args
   // rec {
+    inherit src;
     pname = "linux-aurora";
     version = "7.3.0";
     modDirVersion = version;
@@ -69,15 +98,15 @@ buildLinux (
     # fragment builds in, no way to be built in.
     defconfig = "defconfig asahi.config";
 
-    # integration/aurora at d4d267839caa (2026-11-08), as nixos-aurora's
-    # sources.json pins it. It carries the J614s's board file, and the
-    # external display chain both 14- and 16-inch M4 Pros share
-    # (README.md).
-    src = fetchurl {
-      name = "linux-aurora-d4d267839caa.tar.gz";
-      url = "https://codeload.github.com/aurora-silicon/linux/tar.gz/d4d267839caa0aa9cbcd98a792351a52bd856b84";
-      hash = "sha256-P9JNVztZcQL3SeWtAQw9u2hNmmla8hvTHJno+nxwX+s=";
-    };
+    # Clang 22, the compiler Aurora's bindgen was qualified with, and the
+    # LLVM tools beside it, as Aurora's builds give make. The tools the
+    # build runs on its own machine are nixpkgs' GCC's, which links with
+    # bfd; the tree's Makefile otherwise asks them for lld under LLVM=1.
+    inherit (llvmPackages_22) stdenv;
+    extraMakeFlags = [
+      "LLVM=1"
+      "HOSTLDFLAGS=-fuse-ld=bfd"
+    ];
 
     # Apple's drivers here are written in Rust, as on the M2. A machine's
     # own features, which NixOS passes through an override, are kept beside
@@ -106,4 +135,13 @@ buildLinux (
 
     kernelPatches = args.kernelPatches or [ ];
   }
-)
+)).overrideAttrs
+  (old: {
+    # The kernel's Makefile runs the bindgen at this path when it's there,
+    # as its tools/aurora-bindgen/README.rst says a packager may place it,
+    # and the one on the path otherwise.
+    postPatch = (old.postPatch or "") + ''
+      mkdir -p tools/aurora-bindgen/build/bin
+      ln -s ${lib.getExe bindgen} tools/aurora-bindgen/build/bin/bindgen
+    '';
+  })

@@ -16,10 +16,13 @@ pragma Singleton
 // awareness that isn't so fragile"). Each reader here goes through
 // `running` and the functions beside it, so neither way shows past them.
 //
-// A session's window is found through its terminal, as its record names it
-// (`terminal`, or the kitty its process was started in): kitty says which
-// of its windows the session is in, and niri lists each of kitty's windows
-// by kitty's process. Its quest's whole title and its folder are as its
+// A session's window is the one niri lists by the app id it was opened
+// with, which the node's record says with the window (`window.app_id`,
+// told it by whoever opened the window), or for a window opened without
+// one, through the kitty its record names (`terminal`, or the kitty its
+// process was started in), which says which of its windows the session is
+// in, while niri lists kitty's windows by its process (windowOf). Its
+// quest's whole title and its folder are as its
 // record says them (`questInfo` and `cwd`, which the harness publishes),
 // or for a record from before it did, as its window's label cuts them;
 // no README is read for them. Nothing is asked of pi;
@@ -85,7 +88,7 @@ Singleton {
         const address = (presence.addresses ?? [])[0];
         const name = named(presence);
         return {
-            window: windowOf(record.kitty, kitties),
+            window: windowOf(record, kitties),
             address: address,
             title: name.title || address,
             folder: name.folder,
@@ -141,7 +144,7 @@ Singleton {
     // 2026-10-28).
     function start(quest, folder, orchestrates) {
         const told = orchestrates ? ["QUEST_WORKFLOW_ORCHESTRATE=1"] : [];
-        root.inSessions("kitty", ["--directory", folder,
+        root.inSessions("pi-session", ["--directory", folder,
             "env", `QUEST_WORKFLOW_AUTOLOAD_ID=${quest}`].concat(told,
             ["zsh", "-lic", held("pi")]));
         Report.say(`started a session ${orchestrates ? "orchestrating" : "on"} ${quest}`);
@@ -152,28 +155,45 @@ Singleton {
     // through a login shell for the same reason. The words go as the
     // shell's $0, so nothing in them is read as the shell's own.
     function tell(words, folder, program) {
-        root.inSessions("kitty", ["--directory", folder,
+        root.inSessions("pi-session", ["--directory", folder,
             "zsh", "-lic", held(`${program ?? "pi"} -- "$0"`), words]);
     }
 
-    // Opens a window of the sessions' own kitty, running `rest`, classed
-    // `classed`: kitty for one Joel starts, pi-spawned for one another
-    // session started, which niri opens without the focus
-    // (modules/niri/config.kdl), and pi-session for one Reopen Them All
-    // opens (Niri.qml's heard); either with .<n> after it for one opened
-    // where it goes (openingOn). Every window of that kitty opens here, so
-    // how it's started is said once. It starts in agents.slice
-    // (modules/slices), weighed beside Joel's programs rather than among
-    // them; kitty puts each window's scope in the slice it runs in, so
-    // every session goes with it. One opened aside, or where it goes, goes
-    // without the activation token niri hands what it spawns, which kitty
-    // would spend on taking the focus once its window shows.
-    function inSessions(classed, rest) {
-        const untold = classed.startsWith("pi-spawned") || /^pi-session\.[0-9]+$/.test(classed)
+    // Opens a window of the sessions' own kitty, running `rest`, and
+    // answers the app id it opens with: `kind` and a number of its own,
+    // pi-spawned for one another session started, which niri opens
+    // without the focus (modules/niri/config.kdl), and pi-session for the
+    // rest (Niri.qml's heard). Its process is told the same app id, in
+    // MYCELIUM_APP_ID, so a session held in it says it with its window,
+    // and its record names that window as niri lists it (windowOf):
+    // one kitty draws every window opened here, so its own ids mean
+    // nothing to niri, and ranking its windows against niri's by order
+    // went wrong as windows came and went. One opened `into` a workspace
+    // and column ({ workspace, column }) has niri told to open it there.
+    // Every window of that kitty opens here, so how it's started is said
+    // once. It starts in agents.slice (modules/slices), weighed beside
+    // Joel's programs rather than among them; kitty puts each window's
+    // scope in the slice it runs in, so every session goes with it. One
+    // opened aside, or where it goes, goes without the activation token
+    // niri hands what it spawns, which kitty would spend on taking the
+    // focus once its window shows.
+    property int openings: 0
+    function inSessions(kind, rest, into) {
+        openings++;
+        const classed = `${kind}.${openings}`;
+        const placed = into !== null && into !== undefined;
+        if (placed) {
+            const asked = { app_id: classed, reference: { Id: into.workspace } };
+            if (into.column !== null)
+                asked.column = into.column;
+            Niri.act({ OpenNextWindowOn: asked });
+        }
+        const untold = kind === "pi-spawned" || placed
             ? ["env", "-u", "XDG_ACTIVATION_TOKEN", "-u", "DESKTOP_STARTUP_ID"] : [];
         Niri.spawn(untold.concat(["systemd-run", "--user", "--scope", "--collect", "--quiet",
-            "--slice=agents.slice", "--", "kitty", "-1", "--instance-group", "pi-sessions",
-            "--class", classed], rest));
+            "--slice=agents.slice", "--", "env", `MYCELIUM_APP_ID=${classed}`, "kitty", "-1",
+            "--instance-group", "pi-sessions", "--class", classed], rest));
+        return classed;
     }
 
     // What a launcher start's login shell runs: `command`, kept by the
@@ -188,8 +208,12 @@ Singleton {
             console.log(`sessions: the realm file says "${realm}", which names no realm, `
                 + "so sessions start unheld");
     }
+    // One run unheld isn't told its window's app id, which every program
+    // it starts would inherit, as a session it spawns would, and say as
+    // its own window's; the holder keeps it from its program likewise.
     function held(command) {
-        return holds ? `exec mycelium --realm ${realm} hold -- ${command}` : `exec ${command}`;
+        return holds ? `exec mycelium --realm ${realm} hold -- ${command}`
+            : `exec env -u MYCELIUM_APP_ID ${command}`;
     }
 
     // Reopens a session that closed, where it left off: pi told the
@@ -340,10 +364,10 @@ Singleton {
         // meanwhile isn't taken for it; one another session started opens
         // aside.
         const kind = one.quiet === true ? "pi-spawned" : "pi-session";
-        root.inSessions(into !== null && into !== undefined ? root.openingOn(kind, into) : kind,
-            ["--directory", cwd].concat(quest,
-                ["zsh", "-lic", held(telling ? `${pi} -- "$0"` : pi)], telling ? [told] : []));
+        const classed = root.inSessions(kind, ["--directory", cwd].concat(quest,
+            ["zsh", "-lic", held(telling ? `${pi} -- "$0"` : pi)], telling ? [told] : []), into);
         Report.say(`${fresh ? "started unsaved" : "resumed"} session ${one.id}`);
+        return classed;
     }
 
     // The sessions the last boot's end took away, to reopen after a cold
@@ -525,7 +549,8 @@ Singleton {
             return;
         attaching = Object.assign({}, attaching, { [joining]: Date.now() });
         const open = there => {
-            root.inSessions("kitty", (there ? ["--directory", lost.cwd] : []).concat(lost.attach));
+            root.inSessions("pi-session",
+                (there ? ["--directory", lost.cwd] : []).concat(lost.attach));
             Report.say(`joined session ${lost.address} on ${lost.machine} again`);
         };
         if (lost.cwd === "")
@@ -734,22 +759,19 @@ Singleton {
                 root.putBack(window);
         }
     }
-    // Whose a new window is. kitty opens them in the order they were
-    // asked for, so one that comes after its session was given up on is
-    // that session's, the oldest given up on first, and goes to its own
-    // workspace; only a window none of those is waiting for is the
-    // session being reopened now's. A slow first kitty after a cold boot
-    // would otherwise be taken for the next one's, and both misplaced.
+    // Whose a new window is: the session's opened with its app id
+    // (inSessions), the one being reopened now or one given up on before
+    // its window came, which goes to its own workspace. Any other, a
+    // start or a terminal of Joel's meanwhile, is none of theirs. A slow
+    // first kitty after a cold boot once had its window taken for the next
+    // one's, by the order they came in, and both misplaced.
     function reopenedWindow(id) {
         const going = reopening;
-        const key = String(id);
-        if (going.taken.includes(key))
-            return;
-        const late = going.late[0];
-        if (late && !late.known.includes(key)) {
-            console.info(`sessions: window ${key} came late, taken as ${late.id}'s`);
-            going.taken.push(key);
-            going.late = going.late.slice(1);
+        const opened = Niri.windows[id]?.opened ?? "";
+        const late = going.late.find(one => one.classed === opened);
+        if (opened !== "" && late) {
+            console.info(`sessions: window ${id} came late, ${late.id}'s by its app id`);
+            going.late = going.late.filter(one => one !== late);
             root.besideKept(id, late.kept);
             if (!root.placeable()) {
                 going.behind.push({ entry: { id, at: late.at, away: late.away,
@@ -778,10 +800,8 @@ Singleton {
             return;
         }
         const waiting = going.waiting;
-        if (waiting && waiting.opened === null && !waiting.known.includes(key)) {
-            going.taken.push(key);
+        if (waiting && waiting.opened === null && opened !== "" && waiting.classed === opened)
             waiting.opened = id;
-        }
     }
     // The session being reopened, once its window is laid out: put where
     // it was kept, beside the sessions back before it, and the next begun.
@@ -876,32 +896,18 @@ Singleton {
         return kin?.window && Niri.workspace(kin.window.workspace_id)
             ? { workspace: kin.window.workspace_id, column: null } : null;
     }
-    // The class a window opened where opensOn says is given, `kind` and a
-    // number of its own, and niri told to open the next window of it there.
-    // kitty opens each of its windows with the class it's asked for, so no
-    // two sessions opening at once share one; the IPC socket keeps the
-    // order the two are asked in.
-    property int openings: 0
-    function openingOn(kind, into) {
-        openings++;
-        const classed = `${kind}.${openings}`;
-        const asked = { app_id: classed, reference: { Id: into.workspace } };
-        if (into.column !== null)
-            asked.column = into.column;
-        Niri.act({ OpenNextWindowOn: asked });
-        return classed;
-    }
     function placeQuietly(id, waiting) {
         const window = Niri.windows[id];
         if (!window || !Niri.workspace(window.workspace_id))
             return "waiting";
         // Its kin among the sessions here with a window, or in a kitty whose
-        // windows aren't told apart yet: a kitty holding several says which
-        // is whose only once asked again, and this one's window opening in
-        // it has just made what it said stale. That kin's window is waited
-        // for (running, below), rather than the session left where it
-        // opened, on whatever workspace Joel is on (P9R1KI, 2026-11-03:
-        // nine of ten builder sessions landed there).
+        // window isn't known yet: one whose node hasn't said its window,
+        // or one with no app id in a kitty that says which window is whose
+        // only once asked again, which this one's window opening in it has
+        // just made stale. That kin's window is waited for (running, below),
+        // rather than the session left where it opened, on whatever
+        // workspace Joel is on (P9R1KI, 2026-11-03: nine of ten builder
+        // sessions landed there).
         const others = root.running.filter(session => session.here
             && (session.window !== null || session.kitty !== null)
             && session.window?.id !== id && session.presence.session !== waiting.id);
@@ -1233,7 +1239,6 @@ Singleton {
             waiting: null,
             looking: false,
             late: [],
-            taken: [],
             placed: [],
             behind: [],
             settling: false,
@@ -1344,12 +1349,13 @@ Singleton {
             } else if (focuses && reopening.back !== null) {
                 Niri.act({ FocusWindow: { id: reopening.back } });
             }
-            reopening.waiting = { known: Object.keys(Niri.windows), at, opened: null, said: false,
+            reopening.waiting = { classed: null, at, opened: null, said: false,
                 away: next.at?.away ?? null, kept: next.kept ?? null, quiet,
                 quest: next.one.quest ?? "", from: next.one.from ?? "", id: next.one.id };
             // The pace is counted from once it's begun and said, so the next
             // is said two seconds after however long this one took to start.
-            reopened(next.one, next.one.cwd, next.told, into);
+            // Its window's app id, which niri says as it opens, after this.
+            reopening.waiting.classed = reopened(next.one, next.one.cwd, next.told, into);
             reopenStartedAt = Date.now();
             reopenPatience.restart();
         });
@@ -1645,7 +1651,7 @@ Singleton {
             return;
         attaching = Object.assign({}, attaching, { [joining]: Date.now() });
         const command = Array.isArray(words) ? words.map(String) : ["zsh", "-lic", String(words)];
-        root.inSessions("kitty", command);
+        root.inSessions("pi-session", command);
         Report.say(`joined session ${session.address} on ${session.machine}`);
     }
 
@@ -1658,8 +1664,8 @@ Singleton {
         if (!holds || Date.now() - (attaching[id] ?? 0) < attachPatience)
             return;
         attaching = Object.assign({}, attaching, { [id]: Date.now() });
-        root.inSessions("kitty", ["zsh", "-lic", 'exec mycelium --realm "$0" attach "$1"', realm,
-            id]);
+        root.inSessions("pi-session", ["zsh", "-lic", 'exec mycelium --realm "$0" attach "$1"',
+            realm, id]);
         Report.say(`attached session ${id}`);
     }
 
@@ -1774,7 +1780,7 @@ Singleton {
             Report.say(`couldn't start a session${questNamed(asked.quest)}: ${why}`);
             return;
         }
-        root.inSessions("kitty", begun.attach);
+        root.inSessions("pi-session", begun.attach);
         Report.say(`started a session${questNamed(asked.quest)} on ${begun.machine}`);
     }
 
@@ -1851,7 +1857,7 @@ Singleton {
     // file replaced by rename leaves its folder for a moment, which would
     // otherwise make a want that never ended look new. Its notice carries
     // that key, and is withdrawn once the want ends or its session goes.
-    // An action is Needs You's to say (Waiting.saidByNeedsYou), so it
+    // An action is For You's to say (Waiting.saidByNeedsYou), so it
     // only sounds here.
     readonly property real began: Date.now()
     property var told: ({})
@@ -1992,10 +1998,11 @@ Singleton {
             ? { socket: terminal.scope, window: Number(terminal.value) } : null;
     }
 
-    // Each running session's record, { file, presence, kitty, held }, as
-    // pi's source sorts the node's (PiSource.js). A held session is in the
-    // window the node says joined its holder last, or none, since its
-    // process has lost its own. Made again when the source sorts them
+    // Each running session's record, { file, presence, kitty, opened, held },
+    // as pi's source sorts the node's (PiSource.js), `opened` the app id its
+    // window was opened with, where the node says it was (inSessions), or
+    // "". A held session is in the window the node says joined its holder
+    // last, or none, since its process has lost its own. Made again when the source sorts them
     // again or a window comes or goes, and kept as it was when nothing in
     // it did, so what reads it isn't told for nothing.
     property var live: []
@@ -2010,7 +2017,9 @@ Singleton {
         const kitted = record => {
             const kitty = kittyOfWindow(record.window);
             const kept = Object.assign({}, record, {
-                kitty: record.here === false || record.held ? kitty : kitty ?? kittyOf(record.presence)
+                kitty: record.here === false || record.held
+                    ? kitty : kitty ?? kittyOf(record.presence),
+                opened: String(record.window?.app_id ?? "")
             });
             delete kept.window;
             return kept;
@@ -2046,11 +2055,20 @@ Singleton {
         return by;
     }
 
-    // A kitty window's niri window. A kitty with one window has it. One
-    // with several numbers them as niri does, each newer than the last, so
-    // the nth of kitty's is niri's nth of that kitty's, once kitty has said
-    // which of its windows holds the session and has as many as niri shows.
-    function windowOf(kitty, kitties) {
+    // A session's niri window: the one niri lists by the app id its window
+    // was opened with (`opened`), since kitty's own ids mean nothing to
+    // niri. A window opened without one, before the shell named them or by
+    // Joel by hand, is the one window of the kitty it runs in, or of a
+    // kitty drawing several, the nth of kitty's as niri's nth of that
+    // kitty's, each newer than the last, once kitty has said which of its
+    // windows holds the session and has as many as niri shows. That ranking
+    // goes wrong as windows come and go, so it's only for windows with no
+    // app id, and goes once every session's window has one.
+    function windowOf(record, kitties) {
+        if (record.opened !== "")
+            return Object.values(Niri.windows).find(window => window.opened === record.opened)
+                ?? null;
+        const kitty = record.kitty;
         const pid = kitty ? (kittySocket.exec(kitty.socket) ?? [])[1] : undefined;
         const windows = pid ? kitties[pid] ?? [] : [];
         if (windows.length === 1)
@@ -2061,9 +2079,10 @@ Singleton {
         return windows[listed.of[kitty.window]];
     }
 
-    // What each kitty with several windows says of them: how many, and in
-    // which of them each of its windows sits. Asked again only when niri's
-    // windows of that kitty change, one kitty at a time.
+    // What each kitty with several windows, one of them a session's with no
+    // app id, says of them: how many, and in which of them each of its
+    // windows sits. Asked again only when niri's windows of that kitty
+    // change, one kitty at a time.
     property var ranks: ({})
     property var asked: ({})
     property var asking: []
@@ -2071,7 +2090,7 @@ Singleton {
         const kitties = kittyWindows();
         const sockets = {};
         for (const record of live) {
-            if (record.kitty)
+            if (record.kitty && record.opened === "")
                 sockets[record.kitty.socket] = true;
         }
         for (const socket in sockets) {

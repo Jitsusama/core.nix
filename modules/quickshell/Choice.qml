@@ -117,10 +117,14 @@ Rectangle {
     // `file` giving way from its middle once it's the last (Reading.js's
     // keptItems), so the note never ends in an ellipsis either.
     property var countItems: []
-    // The note as it fits beside the whole side, the name taking its
-    // letters first.
+    // Whether its note gives way by whole words from its end, never with an
+    // ellipsis, its name taking its letters first: a notice's line reads
+    // "line 7 of the", never "line 7 of the de\u2026" (VKCF3Z, 2026-11-08).
+    property bool countWords: false
+    // The note as it fits beside the whole side, or by whole words, the
+    // name taking its letters first.
     readonly property string noted: {
-        if (!sideWhole || countItems.length === 0) {
+        if (!countWords && (!sideWhole || countItems.length === 0)) {
             return count;
         }
         void wordsFace.font;
@@ -130,7 +134,8 @@ Rectangle {
             .reduce((sum, words) => sum + (words === "" ? 0 : width(words)), 0);
         const room = row.ends - Theme.space.rung.groups - nameBox.x - nameBox.implicitWidth
             - Theme.space.rung.apart - around;
-        return Reading.keptItems(countItems, room, width).join(" \u00b7 ");
+        return countWords ? Reading.wordsFromEnd(count, room, width)
+            : Reading.keptItems(countItems, room, width).join(" \u00b7 ");
     }
     // Whether its count is a run of names, as a home row's is, which gives
     // way by whole names rather than by items.

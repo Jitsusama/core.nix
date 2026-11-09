@@ -71,8 +71,10 @@ function hidden(allowance, words) {
 // when; and where it warns. A share's row already says how much, so it
 // has no Standing and no meter at all: one beside Resets would only say
 // the row's share again (VKCF3Z, 2026-11-08). Dollars go while the
-// screen is shared, their meter with them.
-function windowFacts(allowance, words, standing) {
+// screen is shared, their meter with them. Its reset is left to its
+// caller where `resets` is false, as a budget's drawer says it beside
+// the window's name.
+function windowFacts(allowance, words, standing, resets) {
     const told = allowance.said ?? {};
     const quiet = hidden(allowance, words);
     const stands = standing && allowance.unit !== "share" && !quiet
@@ -80,7 +82,7 @@ function windowFacts(allowance, words, standing) {
     return [
         ["state", told.state, null, true],
         ["standing", allowance.standing, stands ? stroke(allowance) : null, stands],
-        ["resets", told.resets, null, true],
+        ["resets", told.resets, null, resets],
         ["override", told.ends, null, true],
         ["changed", told.changed, null, !quiet],
         ["read", told.read, null, true],
@@ -89,19 +91,26 @@ function windowFacts(allowance, words, standing) {
         .map(([id, value, shape]) => fact(words.name(id), value, shape));
 }
 
-// A budget's drawer: what it is over its name; then each window by its
-// feed's name, standing in its own unit with how near it is; a budget of
-// one window says that window's other facts too, since it has no row of
-// its own to step into; then what it spent and what a plan's turns were
-// worth at list, how its feeds read, and the providers it always draws
-// for, last as identifiers are.
+// A budget's drawer: whose and what kind of money it is over its name,
+// "your own \u00b7 plan", in the Note every where and kind is set in
+// rather than in capitals, which the row no longer says (VKCF3Z,
+// 2026-11-08); then each window by its feed's name, its figure and when
+// it resets with how near it is, since its standing in full is the row's
+// side; a budget of one window says that window's other facts too, since
+// it has no row of its own to step into; then what it spent and what a
+// plan's turns were worth at list, how its feeds read, and the providers
+// it always draws for, last as identifiers are.
 function budgetDrawer(budget, words) {
     const allowances = budget.allowances ?? [];
     const shown = allowances.filter(one => !hidden(one, words));
     const windows = shown.map(one => fact(one.label,
-        said(one.standing) ? one.standing : words.unread, stroke(one)));
+        said(one.said?.brief) ? one.said.brief
+            : said(one.standing) ? one.standing : words.unread, stroke(one)));
+    // One window's reset is said once: beside its name while it's shown,
+    // among its facts while its dollars are hidden.
+    const briefed = one => shown.includes(one) && said(one.said?.brief);
     const only = allowances.length === 1
-        ? windowFacts(allowances[0], words, false) : [];
+        ? windowFacts(allowances[0], words, false, !briefed(allowances[0])) : [];
     const told = budget.said ?? {};
     const amounts = words.sharing !== true;
     const more = [
@@ -111,8 +120,8 @@ function budgetDrawer(budget, words) {
         ["providers", (budget.providers ?? []).join(DOT)]
     ].filter(([, value]) => said(value))
         .map(([id, value]) => fact(words.name(id), value));
-    return { eyebrow: budget.words ?? "", title: budget.label,
-        facts: windows.concat(only, more), body: "" };
+    return { eyebrow: said(told.what) ? told.what : budget.words ?? "", eyebrowNames: true,
+        title: budget.label, facts: windows.concat(only, more), body: "" };
 }
 
 // A window's drawer: where it is and what it is over its name, "in Your

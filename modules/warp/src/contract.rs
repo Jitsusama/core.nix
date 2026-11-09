@@ -43,6 +43,7 @@ impl Contract {
             .with("tunnel stats", said(true, "tunnel-stats.json"))
             .with("settings", said(true, "settings.json"))
             .with("dns stats", said(true, "dns-stats.json"))
+            .with("override show", said(true, "override-show.json"))
     }
 
     /// The same, but answering this question so.

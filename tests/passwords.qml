@@ -4,12 +4,15 @@
 // link in its manager's program, what its drawer says and that it never
 // says a secret, its health once every password is checked, those
 // needing attention, and what the foot says of a copy as its time runs
-// out, run in Qt's own JavaScript engine, the one the shell runs it in.
-// The `the-passwords-show-every-figure-but-the-secret` check copies
-// Passwords.js, and the launcher's Ago.js and Numbers.js it reads, beside
-// this file and runs `qml -platform offscreen passwords.qml`.
+// out, and a manager's entries by vault, run in Qt's own JavaScript
+// engine, the one the shell runs it in. The
+// `the-passwords-show-every-figure-but-the-secret` check copies
+// Passwords.js, Managers.js, and the launcher's Ago.js and Numbers.js
+// Passwords.js reads, beside this file and runs
+// `qml -platform offscreen passwords.qml`.
 import QtQuick
 import "Passwords.js" as Passwords
+import "Managers.js" as Managers
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -268,9 +271,16 @@ QtObject {
             "the passwords daemon isn't answering"), now, said),
         "GitHub's password not copied \u00b7 the passwords daemon isn't answering");
         check("nothing copied says nothing", Passwords.told(null, now, said), "");
+        // The row and the foot say a copy only while it's asked, or why it
+        // was refused; once on the clipboard, the margin's mark says it.
+        check("a copy asked is the row's to say", Passwords.speaks(asking), true);
+        check("one on the clipboard is the margin's", Passwords.speaks(copied), false);
+        check("one refused is the row's", Passwords.speaks(Passwords.answered(asking, null, now,
+            "away")), true);
+        check("nothing copied isn't", Passwords.speaks(null), false);
 
         // By vault, as Programs › 1Password holds them, each by title.
-        check("by vault", Passwords.vaults([gitHub, bank, door]).map(vault =>
+        check("by vault", Managers.vaults([gitHub, bank, door]).map(vault =>
             [vault.name, vault.records.map(record => record.id)]),
         [["Private", ["door", "gh"]], ["Shared", ["bank"]]]);
 

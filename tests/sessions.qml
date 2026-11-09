@@ -7,10 +7,11 @@ pragma ComponentBehavior: Bound
 // when a switch restarts it, is said as not answering, with no session
 // guessed in its place, and is watched once it listens. Every window niri
 // shows carries the same title, so nothing can be found by one. A
-// session's window is found through the kitty its record's terminal names,
-// and among a kitty's several windows by kitty's own list; Go To focuses
-// that window, or asks kitty when niri's isn't known. One the node says has
-// ended, parked, is held apart from those running while its marker stands,
+// session's window is the one niri lists by the app id the node says its
+// window was opened with, or for one opened without, through the kitty its
+// record's terminal names, by kitty's own list of its several windows. Go
+// To focuses that window, or asks kitty when niri's isn't known. One the
+// node says has ended, parked, is held apart from those running while its marker stands,
 // and only then, however its record reads, and never once its boot is over; Wake, or talking to it, writes
 // the file its marker names. What an earlier boot's end took away is
 // offered whole, reopened held in its own folder, until put off, one pi
@@ -122,8 +123,8 @@ ShellRoot {
         node.active = true;
     }
 
-    // Waits until every running session is listed and the kitty with two
-    // windows has said which holds its session.
+    // Waits until every running session is listed, the one in a kitty
+    // drawing two windows found by its window's app id.
     function listed() {
         const other = find("OTHER2");
         if (addresses() !== "FARAWY LIVE01 NOWIN6 OTHER2 OUTRCH" || !other || !other.window)
@@ -140,8 +141,8 @@ ShellRoot {
         expect("its quest's title and its folder as its record says them, not its label",
             other.title === "Lighthouse - Keep It Lit" && other.folder === "lamp",
             `${other.title} ${other.folder}`);
-        expect("the second of kitty's windows is niri's second", other.window.id === 21,
-            other.window.id);
+        expect("of a kitty's several windows, the one opened with its app id",
+            other.window.id === 21, other.window.id);
         expect("its kitty from its record's terminal",
             JSON.stringify(other.kitty) === '{"socket":"unix:@kitty-600","window":4}',
             JSON.stringify(other.kitty));
@@ -304,19 +305,30 @@ ShellRoot {
 
     readonly property string kitty: "kitty -1 --instance-group pi-sessions --directory"
     // The sessions' kitty as the shell asks for it, past the scope that
-    // starts it in agents.slice and without its class, or "" for anything
-    // not started there.
+    // starts it in agents.slice and without its class or the app id its
+    // process is told, or "" for anything not started there.
     readonly property string scope: "systemd-run --user --scope --collect --quiet "
         + "--slice=agents.slice -- "
     function inSessions(command) {
         const at = command.indexOf(scope);
-        return at < 0 ? "" : command.slice(at + scope.length).replace(/ --class \S+/, "");
+        return at < 0 ? "" : command.slice(at + scope.length).replace(/ --class \S+/, "")
+            .replace(/^env MYCELIUM_APP_ID=\S+ /, "");
     }
     function reopening() {
         const kitties = Niri.spawns.map(command => inSessions(command))
             .filter(command => command.startsWith("kitty ") && !command.includes("attach r-far"));
         if (kitties.length < 6 || unopened.length < 3 || !steered || !talked())
             return;
+        // Each window is opened with an app id of its own, which its process
+        // is told, so the node's record of what it holds names it as niri
+        // lists it.
+        const named = Niri.spawns.filter(command => command.includes(scope))
+            .map(command => [(/MYCELIUM_APP_ID=(\S+)/.exec(command) ?? [])[1],
+                (/ --class (\S+)/.exec(command) ?? [])[1]]);
+        expect("each window opened is told the app id it opens with, its own",
+            named.every(([told, classed]) => /^pi-(session|spawned)\.\d+$/.test(told ?? "")
+                && told === classed) && new Set(named.map(([told]) => told)).size === named.length,
+            JSON.stringify(named));
         // Held as every start is, by the realm's node where there is one.
         const opened = command => kitties.some(one => one.startsWith(command[0])
             && one.endsWith(command[1]));
@@ -374,24 +386,29 @@ ShellRoot {
         if (addresses() !== "FARAWY NOWIN6 OTHER2 OUTRCH")
             return;
         // Told only that it's working now, it keeps the rest of what the
-        // node said of it: running here, in kitty 700's window.
+        // node said of it: running here, now in kitty 600's first window,
+        // which nothing named.
         stage = "differing";
         tell({
             changed: [{
                 key: "session:s-NOWIN6",
                 presence: { session: "s-NOWIN6", addresses: ["NOWIN6"], busy: true,
-                    terminal: root.terminal("unix:@kitty-700", "2") }
+                    terminal: root.terminal("unix:@kitty-600", "1") }
             }]
         });
     }
 
     function differing() {
         const unseen = find("NOWIN6");
-        if (!unseen || !unseen.presence.busy)
+        if (!unseen || !unseen.presence.busy || !unseen.window)
             return;
         expect("a change saying only what differs keeps the rest", unseen.here
-            && JSON.stringify(unseen.kitty) === '{"socket":"unix:@kitty-700","window":2}',
+            && JSON.stringify(unseen.kitty) === '{"socket":"unix:@kitty-600","window":1}',
             JSON.stringify(unseen));
+        // A window opened with no app id, as every one was before the shell
+        // named them, is found by kitty's list: its first is niri's first.
+        expect("of a kitty's several windows, one unnamed by kitty's own list",
+            unseen.window.id === 20, unseen.window.id);
         stage = "ended";
         tell({ changed: [{ key: "session:s-OTHER2", state: "ended" }] });
     }
@@ -528,12 +545,16 @@ ShellRoot {
         return [
             here("LIVE01", "busy", { busy: true, title: "\u03c0 - Live One - core.nix",
                 terminal: terminal("unix:@kitty-500", "3") }),
-            here("OTHER2", "idle", {
+            // In the second of kitty 600's two windows, which the node
+            // says was opened as pi-session.7.
+            Object.assign(here("OTHER2", "idle", {
                 title: "\u03c0 - Lighth\u2026 - wrong",
                 questInfo: { id: "QEST-20261106-OTHER2", title: "Lighthouse - Keep It Lit",
                     short: "OTHER2", status: "active" },
                 cwd: "/home/me/lamp/", terminal: terminal("unix:@kitty-600", "4")
-            }),
+            }), { window: { terminal: "kitty", id: "4", within: "unix:@kitty-600",
+                app_id: "pi-session.7" } }),
+            // In a kitty niri shows no window of.
             here("NOWIN6", "idle", { terminal: terminal("unix:@kitty-700", "2") }),
             here("ENDED3", "ended", {}),
             // Parked, as the node tells of one: ended, its record saying

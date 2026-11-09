@@ -352,7 +352,7 @@ impl Slack {
     }
 }
 
-/// What Slack refusing the sign-in asks of Joel, as Needs You reads it
+/// What Slack refusing the sign-in asks of Joel, as For You reads it
 /// (VKCF3Z, 347abdb7), in the shape `mesh_wait` writes each quest's file of
 /// what waits on him: one item he can do now, known done by the signal
 /// `signin:slack`. slack-unreads takes the file away once Slack answers

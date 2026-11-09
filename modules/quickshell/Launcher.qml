@@ -4335,7 +4335,9 @@ Scope {
         // saying it changed marks it stale even when its things are the
         // same.
         choicesStale = true;
-        const byKey = open && KeyTimes.now() - keyHeardAt < keyedWithin;
+        // Only a key that acted owns a change beside it (Pacing.keyed).
+        const byKey = open && Pacing.keyed(KeyTimes.now() - keyHeardAt, prompt.keyMoved,
+            keyedWithin);
         if (byKey && !keyedActs.some(one => one.source === source && one.heard === keyHeardAt)) {
             const act = { source: source, heard: keyHeardAt, done: Infinity };
             keyedActs = keyedActs.filter(one => one.heard === keyHeardAt).concat([act]);
@@ -8450,6 +8452,7 @@ Scope {
                                     countItems: entry.modelData.countItems ?? []
                                     sideWhole: !!entry.modelData.sideWhole
                                     names: entry.modelData.names === true
+                                    countWords: !!entry.modelData.countWords
                                     kind: root.held.length === 0 ? root.kindOf(entry.modelData) : ""
                                     landed: selected && root.landedOn(entry.modelData)
                                         ? `\u21b5 ${root.verbOf(entry.modelData)}` : ""

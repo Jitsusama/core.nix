@@ -1218,7 +1218,7 @@ fn a_refused_sign_in_is_held_as_signed_out_with_nothing_counted() {
     assert_eq!(hello["sources"]["slack"], "signed-out");
     program.kill().unwrap();
     program.wait().unwrap();
-    // As Needs You reads it, once, done when he signs in again.
+    // As For You reads it, once, done when he signs in again.
     let asked = kept(&waiting(&run)).unwrap();
     assert_eq!(
         (

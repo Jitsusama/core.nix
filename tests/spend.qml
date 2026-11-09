@@ -348,16 +348,18 @@ ShellRoot {
             allowances: [{
                 name: "five-hours", label: "Five Hours", unit: "share",
                 standing: "85% of 5 h", nearest: 0.85, warn: 0.8,
-                said: { window: "5 hours", warns: "at 80%", resets: "16:20",
+                said: { brief: "85% \u00b7 resets 16:20", window: "5 hours",
+                    warns: "at 80%", resets: "16:20",
                     read: "Claude at 14:20", state: "" }
             }, {
                 name: "week", label: "Week", unit: "share", warn: 0.8,
                 said: { window: "a week", warns: "at 80%", resets: "", read: "", state: "" }
             }],
-            said: { spent: "", worth: "$84 today", reading: "reading fine" }
+            said: { what: "your own \u00b7 plan", spent: "", worth: "$84 today",
+                reading: "reading fine" }
         }, {
             name: "proxy", label: "Your AI proxy token", words: "the employer's money",
-            providers: [], standing: "$37,000 of $40,000",
+            providers: [], standing: "$37,000 of $40,000 this week",
             allowances: [{
                 name: "weekly", label: "Week", unit: "dollars",
                 standing: "$37,000 of $40,000", nearest: 0.925, warn: 0.9,
@@ -371,17 +373,18 @@ ShellRoot {
                 said: { window: "a day", warns: "at $150", resets: "05:00 tomorrow",
                     read: "the AI proxy at 21:35", state: "refusing requests" }
             }],
-            said: { spent: "$3,075 today", worth: "", reading: "signed out" }
+            said: { what: "the employer's \u00b7 money", spent: "$3,075 today", worth: "",
+                reading: "signed out" }
         }, {
             name: "delta", label: "Delta team token", words: "a team's token",
-            providers: [], standing: "$40 of $50",
+            providers: [], standing: "$40 of $50 today",
             allowances: [{
                 name: "day", label: "Day", unit: "dollars", standing: "$40 of $50",
                 nearest: 0.8, warn: 0.9,
                 said: { window: "a day", warns: "at $45", resets: "05:00 tomorrow",
                     read: "the AI proxy at 21:35", state: "" }
             }],
-            said: { spent: "$40 today", worth: "", reading: "" }
+            said: { what: "a team's \u00b7 token", spent: "$40 today", worth: "", reading: "" }
         }]
     })
 
@@ -453,13 +456,19 @@ ShellRoot {
             + "Resets=05:00 tomorrow; Read By=the AI proxy at 21:35; Warns=at $150",
             said("budget:proxy:premium"));
         const plan = drawn("budget:claude");
-        expect("a plan's drawer", plan?.eyebrow === "your own plan"
-            && plan.title === "Claude Pro" && factsOf(plan) === "Five Hours=85% of 5 h:stroke!; "
+        // Whose and what kind, in the Note every where and kind is in;
+        // each window its figure and when it resets, since the row's side
+        // is its standing in full.
+        expect("a plan's drawer", plan?.eyebrow === "your own \u00b7 plan" && plan.eyebrowNames
+            && plan.title === "Claude Pro"
+            && factsOf(plan) === "Five Hours=85% \u00b7 resets 16:20:stroke!; "
             + "Week=not read yet; Worth at List=$84 today; Feed=reading fine; "
             + "Providers=claude-code", plan ? factsOf(plan) : "none");
         expect("the employer's money's drawer", said("budget:proxy")
             === "Week=$37,000 of $40,000:stroke!; Premium Day=$0 of $300:stroke; "
             + "Spent=$3,075 today; Feed=signed out", said("budget:proxy"));
+        // A window in dollars has no brief, so its one window's reset is
+        // among its facts.
         expect("a budget of one window says its facts", said("budget:delta")
             === "Day=$40 of $50:stroke; Resets=05:00 tomorrow; Read By=the AI proxy at 21:35; "
             + "Warns=at $45; Spent=$40 today", said("budget:delta"));
@@ -472,12 +481,13 @@ ShellRoot {
         expect("quiet drawers", quiet.join(" | ") === "Resets=16:20; "
             + "Read By=Claude at 14:20; Warns=at 80% | Override Ends=Wed 2 Dec \u00b7 a guess; "
             + "Read By=the AI proxy at 21:35 | "
-            + "Five Hours=85% of 5 h:stroke!; Week=not read yet; Feed=reading fine; "
-            + "Providers=claude-code | Feed=signed out | Resets=05:00 tomorrow; "
-            + "Read By=the AI proxy at 21:35", quiet.join(" | "));
+            + "Five Hours=85% \u00b7 resets 16:20:stroke!; Week=not read yet; "
+            + "Feed=reading fine; Providers=claude-code | Feed=signed out | "
+            + "Resets=05:00 tomorrow; Read By=the AI proxy at 21:35", quiet.join(" | "));
         expect("the Budgets row's own drawer", !budgets.drawer, "drawn");
         expect("a session's budget", SpendDrawer.sessionBudget(SpendWatch.budgets,
-            SpendWatch.budgetOf, "s-running") === "Your AI proxy token \u00b7 $37,000 of $40,000"
+            SpendWatch.budgetOf, "s-running")
+            === "Your AI proxy token \u00b7 $37,000 of $40,000 this week"
             && SpendDrawer.sessionBudget(SpendWatch.budgets, SpendWatch.budgetOf, "s-none") === "",
             SpendDrawer.sessionBudget(SpendWatch.budgets, SpendWatch.budgetOf, "s-running"));
     }
@@ -509,7 +519,10 @@ ShellRoot {
             expect("everything", all.length >= 2 && all[0].name === "Today"
                 && all.every(row => row.side.length <= 32),
                 all.map(row => `${row.name}: ${row.side}`).join(", "));
-            expect("how today stands, at home", spend.counted() === all[0].side,
+            // At home and in Agents, today's dollars with their period,
+            // as All AI Spend says them.
+            expect("how today stands, at home", spend.counted() === SpendWatch.said.today
+                && spend.counted().startsWith(`${all[0].side.split(" \u00b7 ")[0]} today`),
                 spend.counted());
 
             // A period steps into its cuts, and a cut into its rows, each

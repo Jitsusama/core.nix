@@ -244,7 +244,7 @@ Singleton {
             missed: counted && !low && !from.answers
                 && notification.hints?.["x-answers"] === undefined,
             read: false,
-            // The Needs You item it says, if it's one (WaitingOnYou.qml), so
+            // The to-do it says, if it's one (WaitingOnYou.qml), so
             // it's settled with the item even once gone from the screen.
             waits: String((notification.hints ?? {})["x-waiting"] ?? "")
         };
@@ -364,7 +364,7 @@ Singleton {
             : Object.assign({}, notice, { read: read }, read ? { missed: false } : {}));
     }
 
-    // Marks read every notice of a Needs You item that no longer stands, so
+    // Marks read every notice of a to-do that no longer stands, so
     // one that came and went unseen isn't missed once its item is done or
     // gone: `standing` holds the items Joel can still do now.
     function settleWaiting(standing) {

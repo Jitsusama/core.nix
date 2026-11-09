@@ -58,6 +58,21 @@ ShellRoot {
             expect("a time as the settings group and point it", machine.ms(1234.5) === "1.230 ms"
                 && machine.ms(5.2) === "5,20 ms", `${machine.ms(1234.5)} ${machine.ms(5.2)}`);
             machine.settings = {};
+            // A short disk's drawer doesn't say its room again, since it's
+            // beside it, and says its size and how long it has; a healthy
+            // one, its room beside it alone, has no drawer.
+            const guard = { shown: bytes => `${bytes} B`, duration: () => "1 h",
+                banded: band => band };
+            const short = machine.disked(guard, { path: "/nix", band: "pressure", free: 7,
+                total: 9, full_at: Date.now() / 1000 + 3600, says: "" }, { name: "/nix" });
+            const facts = (short.drawer?.facts ?? []).map(fact => `${fact.label}=${fact.value}`);
+            expect("a short disk's drawer says its size and time, its room beside it",
+                short.side === "7 B free \u00b7 clearing old builds"
+                && facts.join("; ") === "Size=9 B; Full In=1 h", `${short.side}; ${facts}`);
+            const healthy = machine.disked(guard, { path: "/", band: "healthy", free: 7,
+                total: 9 }, { name: "/" });
+            expect("a healthy disk says its room beside it, with no drawer",
+                healthy.side === "7 B free" && !healthy.drawer, JSON.stringify(healthy.drawer));
             theLauncher.placed = ["energy", "machine:cpu", "machine:memory", "heat"];
             expect("Machine's place asks the daemon", machine.shown, "it didn't");
             waiting.start();

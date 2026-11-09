@@ -30,7 +30,7 @@ onLinux {
             imports = [ self.homeModules.session-backup ];
             jitsusama.session-backup = {
               folder = "a-folder";
-              host = "a-machine";
+              machine = "a-machine";
               recipients = [ "age1someone" ];
             };
           };
@@ -43,7 +43,7 @@ onLinux {
             imports = [ self.homeModules.session-backup ];
             jitsusama.session-backup = {
               ownFolder = "pi sessions";
-              host = "a-machine";
+              machine = "a-machine";
               recipients = [ "age1someone" ];
             };
           };

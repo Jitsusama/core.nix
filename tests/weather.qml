@@ -355,10 +355,10 @@ ShellRoot {
         expect("the place set", set.note === "Lima, from the place you set \u00b7 Open-Meteo",
             set.note);
         // Once its town is known, the laptop's here is said by it.
-        travelling.laptop = Object.assign({}, travelling.laptop, { place: "Lighthouse, Ontario" });
+        travelling.laptop = Object.assign({}, travelling.laptop, { place: "Kelpwater, Ontario" });
         expect("the laptop's town",
             travelling.answer("weather").note
-                === "Lighthouse, Ontario, from where the laptop is \u00b7 Open-Meteo",
+                === "Kelpwater, Ontario, from where the laptop is \u00b7 Open-Meteo",
             travelling.answer("weather").note);
     }
 }
