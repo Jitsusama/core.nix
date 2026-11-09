@@ -167,8 +167,7 @@ def test_passwords_asks_nothing_until_stepped_into_and_leads_with_letting_it_in(
     shell.down_to("Passwords")
     shell.launcher_until(
         lambda shown: (
-            (shown.get("drawer") or {}).get("out") is True
-            and shown["drawer"].get("body") == LOCKED
+            (shown.get("drawer") or {}).get("out") is True and shown["drawer"].get("body") == LOCKED
         )
     )
     shell.close_launcher()

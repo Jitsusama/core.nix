@@ -41,12 +41,16 @@ QtObject {
         check(failures, "a place that only groups others says nothing",
             PlaceRow.side(null, ""), "");
 
-        // Its drawer names what it holds, in its own order, under its name.
-        const machine = ["Power", "Bluetooth", "Sound"];
-        const drawn = PlaceRow.drawer("Machine", machine);
+        // Its drawer names what it holds, in its own order, under its name,
+        // as a run of dots that breaks only after a dot, between members.
+        const machine = ["Power", "Desk Light", "Sound"];
+        const drawn = PlaceRow.drawer("Machine", machine, "place");
         check(failures, "its drawer is titled with its name", drawn.title, "Machine");
+        check(failures, "and its eyebrow says it's a place", drawn.eyebrow, "place");
         check(failures, "and names its members in their order", drawn.body,
-            "Power, Bluetooth, Sound");
+            "Power\u00a0\u00b7 Desk\u00a0Light\u00a0\u00b7 Sound");
+        check(failures, "holding one kind, it says what they are instead",
+            PlaceRow.drawer("Keyboard", ["A", "B"], "place", "Every key.").body, "Every key.");
         check(failures, "holding nothing to name, no drawer", PlaceRow.drawer("Media", []),
             null);
 

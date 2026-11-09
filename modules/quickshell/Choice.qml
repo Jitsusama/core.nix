@@ -332,10 +332,12 @@ Rectangle {
         // short name's detail (what a category holds) says all it can.
         readonly property real room: Math.max(row.width * 0.3,
             row.ends - x - Theme.space.rung.groups)
-        // What a home row holds gives way by whole names from its end,
-        // ending on the last that fits, never an ellipsis (VKCF3Z,
-        // 2026-11-08); any other row's words give way by whole items, so
-        // a side such as "370 Mb/s down, 20 up" is never cut at its comma.
+        // A row naming what it holds (`names`, as a home network's rows
+        // do) gives way by whole names from its end, ending on the last
+        // that fits, never an ellipsis (VKCF3Z, 2026-11-08); a place's row
+        // names nothing after its name (dae7fb67); any other row's words
+        // give way by whole items, so a side such as "370 Mb/s down, 20 up"
+        // is never cut at its comma.
         // The elision below is only a last guard.
         readonly property string whole: row.names
             ? Reading.wholeNamesFromEnd(row.detail, room, words => row.heldWidth(words))

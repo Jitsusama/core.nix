@@ -127,11 +127,14 @@ def test_the_launcher_sets_the_volume_to_a_number_and_says_how_loud_it_is(deskto
 
 
 def test_the_drawer_goes_by_the_selected_rows_kind(desktop: Desktop) -> None:
-    """The drawer stays in for a place, a thing with nothing more to say, and an act."""
+    """The drawer goes by the selected row's kind: Now's plate, a program's facts, none for an act.
+
+    A place's own drawer, naming what it holds, is shot with Machine in the home gallery.
+    """
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    # Home opens on Now, whose drawer is the moment's plate (look 3), and a place's
-    # drawer only names what it holds, never the moment's (VKCF3Z, dae7fb67).
+    # Home opens on Now, whose drawer is the moment's plate (look 3); the place below
+    # it never shows the moment's (VKCF3Z, dae7fb67).
     desktop.launcher_until(lambda shown: (shown.get("drawer") or {}).get("moment") is not None)
     desktop.next_row()
     desktop.launcher_until(
@@ -927,14 +930,20 @@ def home_holds_still_as_the_queue_changes(desktop: Desktop) -> None:
     assert "asked again by jobs" not in said, f"the queue asked home again: {said}"
 
 
-def holds(shown: Json, name: str, first: str) -> bool:
-    """Say whether the place named is selected, its drawer out naming what it holds."""
+def holds(shown: Json, name: str, first: list[str]) -> bool:
+    """Say whether the place named is selected, its drawer out naming what it holds.
+
+    Its members are a run of dots, each name and the space before each dot unbroken, so a
+    line breaks only between members (VKCF3Z, 00ca9231).
+    """
     drawer = shown.get("drawer") or {}
+    run = "\u00a0\u00b7 ".join(each.replace(" ", "\u00a0") for each in first)
     return bool(
         (shown["selected"] or {}).get("name") == name
         and drawer.get("out") is True
         and drawer.get("title") == name
-        and str(drawer.get("body", "")).startswith(first)
+        and drawer.get("eyebrow") == "place"
+        and str(drawer.get("body", "")).startswith(f"{run}\u00a0\u00b7 ")
     )
 
 
@@ -976,7 +985,7 @@ def shoot_home_at_joels_scales(desktop: Desktop, home: list[str]) -> None:
     desktop.launcher_ready()
     desktop.launcher_until(lambda shown: shown["rows"] == home)
     desktop.down_to("Machine")
-    desktop.launcher_until(lambda shown: holds(shown, "Machine", "Power, "))
+    desktop.launcher_until(lambda shown: holds(shown, "Machine", ["Power"]))
     desktop.shoot("launcher-home-machine-drawn")
     desktop.close_launcher()
 
@@ -1026,9 +1035,9 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     # it. A place names the places it holds by their names, never the words its typed
     # commands start with: Network once read "ip, is, split, mac".
     desktop.down_to("Machine")
-    desktop.launcher_until(lambda shown: holds(shown, "Machine", "Power, Bluetooth, "))
+    desktop.launcher_until(lambda shown: holds(shown, "Machine", ["Power", "Bluetooth"]))
     desktop.down_to("Network")
-    desktop.launcher_until(lambda shown: holds(shown, "Network", "Wi-Fi, "))
+    desktop.launcher_until(lambda shown: holds(shown, "Network", ["Wi-Fi"]))
     home_holds_still_as_the_queue_changes(desktop)
     # After the journal's read, so a gallery run and a plain one read the same.
     shoot_home_at_joels_scales(desktop, home)

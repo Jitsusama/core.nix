@@ -273,8 +273,8 @@ def test_the_launchers_home_says_how_its_sessions_stand_rather_than_naming_them(
 ) -> None:
     """The launcher's home says how its sessions stand together, never their names.
 
-    "1 working", as "1 needs you \u00b7 3 working \u00b7 $214 today" would, however long a
-    quest's name is (VKCF3Z, 2026-11-07).
+    "1 working" at its right and nothing after its name, as "1 needs you \u00b7 3 working \u00b7
+    $214 today" would, however long a quest's name is (VKCF3Z, 2026-11-07, dae7fb67).
     """
     desktop.pi_session()
     # A session whose quest's name is longer than home's row has room for,
@@ -287,13 +287,10 @@ def test_the_launchers_home_says_how_its_sessions_stand_rather_than_naming_them(
     desktop.launcher_until(
         lambda shown: any(
             thing["is"] == "collection:agents"
-            and re.match(r"Agents \u00b7 \d+ working", thing["reads"])
+            and re.fullmatch(r"Agents \u00b7 \d+ working(?: \u00b7 \S+ today)?", thing["reads"])
             for thing in shown["things"]
         )
     )
-    reads = {thing["is"]: thing["reads"] for thing in desktop.showing()["things"]}
-    assert "No sessions" not in reads["collection:agents"], reads
-    assert "Bootstrap" not in reads["collection:agents"], reads
     desktop.shoot("launcher-home-agents")
     desktop.close_launcher()
     desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(long)['id']}")
@@ -469,6 +466,7 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
             thing["reads"] == "Now \u00b7 Answer the ask \u00b7 2 min" for thing in shown["things"]
         )
     )
+    desktop.shoot("launcher-home-now-waiting")
     # It counts only what Joel can do now: the session's two aren't ready.
     desktop.type_in("for you", selecting="For You")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "1")

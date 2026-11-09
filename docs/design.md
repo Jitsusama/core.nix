@@ -1262,8 +1262,9 @@ works the same way everywhere.
   ellipsis while its source first answers, after its name the names it
   holds, newest first, as many whole as fit and never how many more,
   which its right already says ("Wikipedia, Kayak" after Recent and 9
-  at its right; VKCF3Z, 2026-11-07), and "Nothing yet." stepped into empty. Every row
-  holding things reads that way, Unread too: names after its name, how
+  at its right; VKCF3Z, 2026-11-07), and "Nothing yet." stepped into empty. Every part
+  inside a thing that holds things reads that way, Unread too, while a
+  place's row names nothing after its name (below): names after its name, how
   many at its right, nothing in the foot. What waits on Joel is
   never Recent: a person's unread mail is their Unread, before it,
   standing only while there's any.
@@ -1409,21 +1410,28 @@ works the same way everywhere.
   and list opens on its first row, Now and For You included, so the same
   keys land on the same row every time: what's pressing earns the top by
   order, never by the selection travelling to it (Joel, 2026-10-29:
-  "when opening the launcher it selects seemingly random things"). Each
-  place says what it holds
-  after its name, muted, by its members' own names in the place's own
-  order (Desktop: "This Window, Windows, Screens, Notices"), as many whole
-  as fit, so a glance reminds Joel what there is. Its members are what it
-  holds, never what it does: Passwords says "1Password", not Check Every
-  Password. The run ends on the
-  last name that fits, never an ellipsis, which no note wears (VKCF3Z,
-  2026-11-08). A note is a lowercase run, never a sentence: a place
-  holding none says "none running" or "nobody lately", and the sentence
-  stays inside it. At its right, in Note, it says how it stands, as that
-  row reads inside its parent (Processor's "99% busy", Disk's "nearly
-  full · 19.3 GB free", Power's charge, how Agents' sessions stand), or
-  else how many it holds; Now says there what For You's own row says. A
-  place's row is the same row at home and inside its parent, made by one
+  "when opening the launcher it selects seemingly random things"). A
+  place's row says nothing after its name, not even "none", as no other
+  row does there (Joel, 2026-11-09: "they still have a lot more text
+  right beside the title than most do"; VKCF3Z, dae7fb67). What it holds
+  is in its drawer, which comes out as it's selected, so one key shows
+  it: its eyebrow "place", then its members by their own names in its
+  own order, a run of middle dots that breaks only between members
+  ("Power · Bluetooth · Sound"). Its members are what it holds, never
+  what it does: Passwords holds "1Password", not Check Every Password. A
+  place holding things of one kind says what they are in a sentence
+  instead: Keyboard's "Every key on the keyboards plugged in, by its
+  names, and its layout" (VKCF3Z, 00ca9231). At its right, in Note, it
+  says how it stands, as that row reads inside its parent (Processor's
+  "99% busy", Passwords' "locked", how Agents' sessions stand, "none
+  running" with none), else "none" or "nobody lately" while it holds
+  nothing, a lowercase run and never the sentence that stays inside it,
+  else how many it holds ("78 keys"); a place that only groups others
+  (Machine, Network, Desktop) says nothing there. Now's right names the
+  first thing waiting on Joel, its minutes and how many more wait
+  ("Answer the ask · 2 min · 2 more"); short of room its title gives way
+  by whole words, and calm it says nothing (VKCF3Z, bd5cb965). A place's
+  row is the same row at home and inside its parent, made by one
   function (Joel, 2026-11-08: "i don't like how the title and values on
   the home screen differ from every other sub-menu"; VKCF3Z, 2a429f67),
   and home's head is a place's: its mark, then "Home" in Title where

@@ -37,9 +37,24 @@ function side(stands, counted, none = "") {
     return none !== "" ? none : counted;
 }
 
-// A place's drawer: what it holds by its members' own names, in its own
-// order, so one key shows what's inside without stepping in, or null where
-// it holds nothing to name (VKCF3Z, dae7fb67).
-function drawer(name, names) {
-    return names.length === 0 ? null : { title: name, body: names.join(", ") };
+// A place's members as the run they are, joined by middle dots (VKCF3Z,
+// 00ca9231: "Power · Bluetooth · Sound"). Each name's own spaces don't
+// break and the space before each dot doesn't either, so a line breaks
+// only between members, after a dot, as Desk Light stays whole.
+const within = / /g;
+function run(names) {
+    return names.map(name => String(name).replace(within, "\u00a0")).join("\u00a0\u00b7 ");
+}
+
+// A place's drawer: its eyebrow saying it's a place, as Programs' says
+// "program", and what it holds by its members' own names, in its own
+// order, so one key shows what's inside without stepping in (VKCF3Z,
+// dae7fb67, 00ca9231). A place holding things of one kind, Keyboard's
+// keys or Programs' programs, says what they are in a sentence, `holding`,
+// rather than naming each. Null where it holds nothing to name.
+function drawer(name, names, eyebrow, holding = "") {
+    if (holding !== "") {
+        return { eyebrow, title: name, body: holding };
+    }
+    return names.length === 0 ? null : { eyebrow, title: name, body: run(names) };
 }

@@ -1641,15 +1641,20 @@ Provider {
     // The same, as items: short of room its title gives way from its end
     // by whole words, behind an ellipsis, and its minutes and how many more
     // never give way (Reading.js's keptItems).
+    // It leads with what's counted as waiting now, never a later item as
+    // `first` falls back to, so "N more" counts the rest of waitsNow.
     function homeItems() {
-        if (waitsNow === 0 || first === "") {
+        const lead = sessions.length === 0 ? WaitingOnYou.now[0] ?? null : null;
+        const title = sessions.length > 0 ? first : lead ? lead.title
+            : looks.waiting.length > 0 ? looks.waiting[0].title
+            : given.waiting.length > 0 ? given.waiting[0].row.name : "";
+        if (waitsNow === 0 || title === "") {
             return [];
         }
-        const foremost = sessions.length === 0 ? WaitingOnYou.foremost : null;
-        const minutes = typeof foremost?.minutes === "number"
-            ? waitingSaid("minutes", { minutes: foremost.minutes }) : "";
+        const minutes = typeof lead?.minutes === "number"
+            ? waitingSaid("minutes", { minutes: lead.minutes }) : "";
         const more = waitsNow - 1;
-        return [{ said: foremost ? foremost.title : first, keep: 1, words: true, stays: true },
+        return [{ said: title, keep: 1, words: true, stays: true },
             { said: minutes, keep: 2, stays: true },
             { said: more > 0 ? waitingSaid("more", { count: more }) : "", keep: 3, stays: true }]
             .filter(item => item.said !== "");

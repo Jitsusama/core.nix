@@ -5964,7 +5964,13 @@
       "name": "Keyboard",
       "term": "Keyboards/keyboard",
       "noun": "keys",
-      "said": { "one": "{count} key", "many": "{count} keys" },
+      "said": {
+        "one": "{count} key",
+        "many": "{count} keys"
+      },
+      "tells": {
+        "holding": "Every key on the keyboards plugged in, by its names, and its layout."
+      },
       "lead": "parts",
       "glyph": "keyboard",
       "parts": [
@@ -9916,6 +9922,9 @@
         "workspaces": "on {count} workspaces",
         "program": "program",
         "more": "{count} more"
+      },
+      "tells": {
+        "holding": "Every program on this machine, and what each has open."
       }
     },
     {
@@ -12998,7 +13007,8 @@
     "home": "Home",
     "drawer": {
       "back": "back",
-      "keys": "keys"
+      "keys": "keys",
+      "place": "place"
     },
     "hints": {
       "up": "up",

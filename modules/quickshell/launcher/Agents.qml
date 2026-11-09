@@ -1091,8 +1091,11 @@ Provider {
     // changed (Y2YBTS, 2026-11-07).
     readonly property string standing: summary()
     onStandingChanged: changed()
+    // With no session to say, its right says so, "none running", rather
+    // than standing bare, since Agents holds sessions (VKCF3Z, 00ca9231).
     function homeSays() {
-        return summary();
+        const said = summary();
+        return said !== "" ? said : collection.none ?? "";
     }
     saysAtHome: true
 }
