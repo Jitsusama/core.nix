@@ -36,21 +36,34 @@ function short(said) {
     return [...said].length <= SHORT_TOKEN;
 }
 
-// Words cut after each of `marks`, each piece keeping its mark at its end:
-// "mode=pseudo-gui" at "=" is "mode=" and "pseudo-gui". Marks leading a
-// piece stay with what follows them, so "--player-" is one.
-function cutAfter(words, marks) {
+// Every mark a line may end on, and so none may open with.
+const MARKS = `${STRONG_MARKS}${WEAK_MARKS}`;
+
+// Whether the letter at `at` is a figure's dot, between two digits.
+function figureDot(letters, at) {
+    return letters[at] === "." && DIGIT.test(letters[at - 1] ?? "")
+        && DIGIT.test(letters[at + 1] ?? "");
+}
+
+// Words cut after each letter `breaksAfter` says, each piece keeping its
+// marks at its end, a run of them together: "mode=pseudo-gui" at "=" is
+// "mode=" and "pseudo-gui", "fe80::8a2e" at ":" is "fe80::" and "8a2e",
+// so no piece but the first opens with a mark (Y2YBTS, 2026-11-09). Marks
+// opening the words stay with what follows them, so "--player-" is one.
+function cutWhere(words, breaksAfter) {
     const pieces = [""];
     const letters = [...words];
     let worded = false;
+    let broke = false;
     for (const [at, letter] of letters.entries()) {
-        pieces[pieces.length - 1] += letter;
-        const figure = letter === "." && DIGIT.test(letters[at - 1] ?? "")
-            && DIGIT.test(letters[at + 1] ?? "");
-        const mark = marks.includes(letter) && !figure;
-        if (mark && worded) {
+        const mark = breaksAfter(letters, at);
+        if (!mark && broke) {
             pieces.push("");
-            worded = false;
+            broke = false;
+        }
+        pieces[pieces.length - 1] += letter;
+        if (mark && worded) {
+            broke = true;
         } else if (!mark) {
             worded = true;
         }
@@ -58,15 +71,42 @@ function cutAfter(words, marks) {
     return pieces.filter(piece => piece !== "");
 }
 
+// Words cut after each of `marks`, a figure's dot never among them.
+function cutAfter(words, marks) {
+    return cutWhere(words, (letters, at) => marks.includes(letters[at])
+        && !figureDot(letters, at));
+}
+
+// Words cut after their figures' dots, "192." and "168.", so a number
+// too long for a line breaks between its figures before inside one
+// (Y2YBTS, 2026-11-09).
+function cutAtFigures(words) {
+    return cutWhere(words, figureDot);
+}
+
+// Words cut to their letters, each mark kept with the letter before it, so
+// a line broken anywhere still opens with no mark.
+function markedLetters(words) {
+    return [...words].reduce((all, letter) => all.length > 0 && MARKS.includes(letter)
+        ? all.slice(0, -1).concat([`${all[all.length - 1]}${letter}`])
+        : all.concat([letter]), []);
+}
+
+// Whether a line laid opens with a mark, which only the identifier's
+// own first may.
+function opensOnMark(line) {
+    return MARKS.includes([...line][0] ?? "");
+}
+
 // The pieces an identifier breaks into to fit `room`: at its strong marks,
-// a piece still too wide at its hyphens, one still too wide by its
-// characters, so nothing of it is ever left out. Each is cut in turn,
+// a piece still too wide at its hyphens, then its figures' dots, then by
+// its letters, so nothing of it is ever left out. Each is cut in turn,
 // gathered by concat, since Qt's engine has no flatMap.
 function piecesOf(words, room, width) {
     const finer = (pieces, cutting) => pieces.reduce((all, piece) => all.concat(
         width(piece) <= room ? [piece] : cutting(piece)), []);
-    return finer(finer(cutAfter(words, STRONG_MARKS), piece => cutAfter(piece, WEAK_MARKS)),
-        piece => [...piece]);
+    return [piece => cutAfter(piece, WEAK_MARKS), cutAtFigures, markedLetters]
+        .reduce(finer, cutAfter(words, STRONG_MARKS));
 }
 
 // An identifier too wide for a line, whole on as many lines as it needs:

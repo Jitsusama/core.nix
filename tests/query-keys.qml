@@ -1095,7 +1095,18 @@ QtObject {
             ["a run of them wraps between its items, the dot going with the break",
                 "usb-1d50:6122 \u00b7 ABC123", 150, ["usb-1d50:6122", "ABC123"]],
             ["one with spaces breaks at them, ending on none", "Ploopy Adept Trackball", 130,
-                ["Ploopy Adept", "Trackball"]]
+                ["Ploopy Adept", "Trackball"]],
+            // No line after the first opens with a mark (Y2YBTS, 2026-11-09).
+            ["a run of marks stays with the piece before", "fe80::8a2e:370:7334", 60,
+                ["fe80::", "8a2e:", "370:", "7334"]],
+            ["a doubled slash too", "/srv//bar", 60, ["/srv//", "bar"]],
+            ["and a doubled space, which goes", "Ploopy  Adept", 70, ["Ploopy", "Adept"]],
+            ["a version too long breaks at its figures' dots, never opening on one",
+                "v1.2.3.4.5-rc1", 60, ["v1.2.", "3.4.5-", "rc1"]],
+            ["an address breaks between its numbers, never inside one", "192.168.100.200", 60,
+                ["192.", "168.", "100.", "200"]],
+            ["one broken by its letters keeps each mark with the letter before",
+                "abcdefgh.ij", 50, ["abcde", "fgh.", "ij"]]
         ];
         for (const [what, said, wide, want] of identifiers)
             holds(`a drawer's identifier: ${what}`, Page.identifierLines(said, wide, width), want);
@@ -1108,6 +1119,7 @@ QtObject {
             ["a desktop entry's are between its dots", desktop,
                 ["com.", "onepassword.", "OnePassword"]],
             ["a figure's dot is inside its word", "6.12", ["6.12"]],
+            ["a run of marks ends the word before", "fe80::8a2e", ["fe80::", "8a2e"]],
             ["spaces end words, kept by none", "Ploopy Adept", ["Ploopy", "Adept"]],
             // A hash has no words, so it may break at any letter (VKCF3Z,
             // 2026-11-09), its mark kept with its last.

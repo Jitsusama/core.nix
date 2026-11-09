@@ -50,6 +50,7 @@ import QtQuick.Effects
 import "launcher/Moment.js" as Moment
 import "DrawerFigure.js" as Figure
 import "DrawerPage.js" as Page
+import "Identifier.js" as Identifier
 import "Pictures.js" as Pictures
 import "Search.js" as Search
 import "Reading.js" as Reading
@@ -1224,13 +1225,21 @@ Floating {
     // own marks, its hyphens among them, since it breaks there as a
     // typesetter breaks a path (DrawerPage.identifierWords), so a UUID
     // broken at its hyphens keeps each of its words whole; a hash's are
-    // its letters, since it has no words of its own.
+    // its letters, since it has no words of its own. An identifier's
+    // lines are read as it's laid on them too: each fits, and none after
+    // its first opens with a mark (Y2YBTS, 2026-11-09). A drawer with no
+    // value known yet has nothing to say this of, so it says no.
     function valuesWhole() {
         const fits = row => word => faceOf(row.modelData).advanceWidth(word) <= row.valueWide;
-        return drawnRows().every(row => !row.known || (row.modelData.identifies === true
+        const known = drawnRows().filter(row => row.known);
+        const laid = row => identifierKept(row.modelData.value, faceOf(row.modelData),
+            row.valueWide).split("\n");
+        return known.length > 0 && known.every(row => row.modelData.identifies === true
             ? Page.identifierWords(row.modelData.value).every(fits(row))
+                && laid(row).every((line, at) => fits(row)(line.replace(/\u00a0/g, " "))
+                    && (at === 0 || !Identifier.opensOnMark(line)))
             : unbroken(row.modelData.value).split(" ")
-                .every(word => fits(row)(word) && !breaksAtItsHyphen.test(word))));
+                .every(word => fits(row)(word) && !breaksAtItsHyphen.test(word)));
     }
     // A hyphen inside a word, "Wi-Fi" or "v7.17.4-5", that a line may still
     // break after, leaving "Wi-" at a line's end and "Fi" alone on the next.
