@@ -71,6 +71,12 @@ pub fn show(qs: &str, steps: &[String], drawers: bool) -> Result<Answer, String>
     call(qs, if drawers { "drawers" } else { "show" }, &path(steps))
 }
 
+/// Asks the shell what the steps hold for their names alone, as completion
+/// wants them, so nothing is read for figures a Tab never shows.
+pub fn names(qs: &str, steps: &[String]) -> Result<Answer, String> {
+    call(qs, "names", &path(steps))
+}
+
 /// Asks the shell through `qs` to do what the steps name, with the words
 /// an act asks for, and past its question once the terminal's sure. It
 /// answers with what it asks first (`asks`, with the steady ids of the
@@ -212,6 +218,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_place_still_reading_is_asked_again_only_until_its_time_is_up() {
+        let began = Instant::now();
+        let answer = settled(&stand_in::qs("reading"), &[], false).expect("the stand-in answers");
+        let took = began.elapsed();
+        assert!(matches!(&answer, Answer::Shown(shown) if still_reading(shown)));
+        assert!(took >= SETTLING, "it gave up after {took:?}");
+        assert!(took < SETTLING + PATIENCE, "it asked for {took:?}");
+    }
+
+    #[test]
+    fn a_place_read_is_said_from_its_first_answer() {
+        let began = Instant::now();
+        let answer = settled(&stand_in::qs("read"), &[], false).expect("the stand-in answers");
+        assert!(matches!(&answer, Answer::Shown(shown) if !still_reading(shown)));
+        assert!(
+            began.elapsed() < SETTLING,
+            "it waited {:?}",
+            began.elapsed()
+        );
+    }
+
+    #[test]
     fn a_place_is_still_reading_only_where_the_shell_says_so() {
         let read = serde_json::json!({"reading": false,
             "rows": [{"name": "Disk", "side": null}]});
@@ -286,5 +314,67 @@ mod tests {
             plain("\u{1b}[31mERROR\u{1b}[0m:  no\n running"),
             "ERROR: no running"
         );
+    }
+}
+
+/// Stand-ins for qs, each a script giving one answer whatever it's asked,
+/// so what the program does with an answer is tested without a shell.
+#[cfg(test)]
+pub mod stand_in {
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::{Path, PathBuf};
+    use std::sync::OnceLock;
+    use std::{env, fs, process};
+
+    /// Each stand-in's name and the answer it prints.
+    const ANSWERS: [(&str, &str); 3] = [
+        (
+            "reading",
+            r#"{"reading":true,"in":[],"path":[],"row":null,"rows":[]}"#,
+        ),
+        (
+            "read",
+            r#"{"reading":false,"in":[],"path":[],"row":null,"rows":[]}"#,
+        ),
+        ("failed", r#"{"failed":true}"#),
+    ];
+
+    /// The stand-in giving the answer `name` names, to run as qs.
+    pub fn qs(name: &str) -> String {
+        written().join(name).to_string_lossy().into_owned()
+    }
+
+    /// Where the stand-ins are, every one written and closed before the
+    /// first runs: a script still open for writing in one test while
+    /// another starts a process can't be run (ETXTBSY).
+    fn written() -> &'static Path {
+        static FOLDER: OnceLock<PathBuf> = OnceLock::new();
+        FOLDER.get_or_init(|| {
+            let folder = env::temp_dir().join(format!("launcher-qs-{}", process::id()));
+            fs::create_dir_all(&folder).expect("a folder for the stand-ins");
+            let shell = shell();
+            for (name, answer) in ANSWERS {
+                let script = folder.join(name);
+                fs::write(&script, format!("#!{shell}\necho '{answer}'\n"))
+                    .expect("a stand-in written");
+                fs::set_permissions(&script, fs::Permissions::from_mode(0o755))
+                    .expect("a stand-in made runnable");
+            }
+            folder
+        })
+    }
+
+    /// The shell running the tests, as the build sandbox has no /bin/sh.
+    fn shell() -> String {
+        env::var("SHELL")
+            .ok()
+            .filter(|shell| Path::new(shell).is_file())
+            .or_else(|| {
+                env::split_paths(&env::var_os("PATH")?)
+                    .map(|folder| folder.join("sh"))
+                    .find(|sh| sh.is_file())
+                    .map(|sh| sh.to_string_lossy().into_owned())
+            })
+            .expect("a shell to run the stand-ins")
     }
 }

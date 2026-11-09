@@ -32,6 +32,9 @@ if TYPE_CHECKING:
 
 # How long a place asked cold may take to be read: a daemon's first answer, well under one.
 READ = timedelta(seconds=5)
+# How long a terminal's show counts as seeing its rows (Launcher.qml's terminalSeeing), and a
+# second past it. Nothing says the window closed, so the case waits it out.
+SEEING_ENDS = timedelta(seconds=4)
 
 
 @pytest.fixture(scope="module")
@@ -109,23 +112,31 @@ def test_a_place_asked_cold_from_a_terminal_is_read_for_it(shell: Shell) -> None
     Machine asks its daemon only while its rows are seen (launcher/Machine.qml's shown), and
     a terminal's walk counts as seeing them for a few seconds (Launcher.qml's terminalSees),
     so the answer says `reading` until the daemon's first answer comes and the next ask has
-    the figures. It runs first, before anything opens Machine, since a record read once
-    stays held.
+    the figures. It runs first, before anything opens Machine, so the first ask meets the
+    placeholder. Once the window ends, Machine stops watching, so a second cold ask is read
+    afresh rather than said from what the first left, which may be hours old.
     """
 
     def processor(answer: Json) -> object:
         return next(row.get("side") for row in answer["rows"] if row["name"] == "Processor")
 
+    def read_after(first: Json) -> Json:
+        answer = first
+        deadline = time.monotonic() + READ.total_seconds()
+        while answer["reading"] and time.monotonic() < deadline:
+            time.sleep(launcher_on_niri.POLL)
+            answer = shown_to_terminal(shell, "machine")
+        assert not answer["reading"], answer
+        return answer
+
     first = shown_to_terminal(shell, "machine")
     assert first["reading"], first
     assert processor(first) == "\u2026", first["rows"]
-    answer = first
-    deadline = time.monotonic() + READ.total_seconds()
-    while answer["reading"] and time.monotonic() < deadline:
-        time.sleep(launcher_on_niri.POLL)
-        answer = shown_to_terminal(shell, "machine")
-    assert not answer["reading"], answer
-    assert processor(answer) not in {None, "\u2026"}, answer["rows"]
+    assert processor(read_after(first)) not in {None, "\u2026"}
+    time.sleep(SEEING_ENDS.total_seconds())
+    again = shown_to_terminal(shell, "machine")
+    assert again["reading"], "the window never ended, or the watch kept its first answer"
+    assert processor(read_after(again)) not in {None, "\u2026"}
     assert not shell.showing()["open"]
 
 

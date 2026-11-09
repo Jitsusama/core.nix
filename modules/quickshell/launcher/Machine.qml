@@ -1521,10 +1521,17 @@ Provider {
     readonly property var terminalWalked: launcher?.terminalSees.walked ?? []
     readonly property var terminalListed: launcher?.terminalSees.listed ?? []
 
-    // Whether a daemon it watches hasn't yet said its kind once, so what
-    // it shows is the placeholder still being read (Provider.stillReading).
-    stillReading: [daemon, diskWatch, users].some(watch => watch.live && !watch.answered
-        && watch.state !== "not answering")
+    // Whether a daemon it watches hasn't yet answered this watch whole, so
+    // what it shows is the placeholder, or what an earlier watch left,
+    // still being read (Provider.stillReading).
+    stillReading: [daemon, diskWatch, users].some(watch => watch.live
+        && !watch.answeredThisWatch && watch.state !== "not answering")
+
+    // What the open launcher holds, answers and lists is left as it was
+    // once it closes, and set afresh only as it opens, so with it closed
+    // only a terminal's rows count (Y2YBTS's review of #2433: Processor
+    // left held would read every process each second for a terminal).
+    readonly property bool launcherOpen: launcher?.open === true
 
     // Whether a Using row can be seen, so the daemon is asked for the
     // programs: the processor's or the memory's parts stepped into, or
@@ -1532,20 +1539,20 @@ Provider {
     // them, asks for nothing, since every process's file is read for it
     // each second (Y2YBTS's review of #2276).
     readonly property var usingNames: [named("cpu:using"), named("memory:using")]
-    readonly property bool usingWanted: shown && (launcher.held.some(step =>
+    readonly property bool usingWanted: shown && (launcherOpen && (launcher.held.some(step =>
         step.row?.live === provider
             && (step.row.about === kinds.cpu || step.row.about === kinds.memory))
-        || launcher.answer?.live === provider && usingNames.includes(launcher.answer.title)
+        || launcher.answer?.live === provider && usingNames.includes(launcher.answer.title))
         || terminalWalked.some(row => row?.live === provider
             && (row.about === kinds.cpu || row.about === kinds.memory)))
 
     // Whether a Disk answer or row is shown, listed or stepped into, so the
     // daemon reads the disks: each read asks an NVMe disk its temperature,
     // a command to the drive, which nothing else Machine shows needs.
-    readonly property bool disksWanted: shown && ([launcher.answer,
+    readonly property bool disksWanted: shown && (launcherOpen && ([launcher.answer,
         ...launcher.held.map(step => step.row), ...launcher.matches]
         .some(row => row?.live === provider && row.about === kinds.disks)
-        || launcher.placed.includes("machine:disk")
+        || launcher.placed.includes("machine:disk"))
         || terminalWalked.concat(terminalListed)
             .some(row => row?.live === provider && row.about === kinds.disks))
 
@@ -1556,7 +1563,7 @@ Provider {
     // Power does on battery: what the place holds now is the launcher's
     // `placed`, read from its words and the battery alone, so reading it
     // here can't loop back through an answer.
-    readonly property bool watched: shown && ([launcher.answer,
+    readonly property bool watched: shown && launcherOpen && ([launcher.answer,
         ...launcher.held.map(step => step.row), ...launcher.matches]
         .some(row => row?.live === provider && row.about === kinds.cpu)
         || launcher.placed.includes("machine:cpu:kept-from-resting"))
@@ -1572,9 +1579,10 @@ Provider {
 
     // The machine daemon: the processor, memory and boot while one of
     // Machine's answers is shown, the disks while a Disk answer or row is,
-    // and the programs while a Using row can be. Nothing is read while the launcher is open for anything
-    // else; a first look holds the placeholder for the few milliseconds
-    // the daemon's first read takes.
+    // and the programs while a Using row can be, in the open launcher or
+    // a terminal's show. Nothing is read while neither sees them; a first
+    // look holds the placeholder for the few milliseconds the daemon's
+    // first read takes.
     Daemon {
         id: daemon
 

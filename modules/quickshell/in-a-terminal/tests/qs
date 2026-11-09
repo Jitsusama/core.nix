@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# A stand-in for Quickshell's qs, answering `qs ipc call -- launcher show
-# <path>` as a running shell would for a home of three rows and a Machine
+# A stand-in for Quickshell's qs, answering `qs ipc call -- launcher names
+# <path>` (or show) as a running shell would for a home of three rows and a Machine
 # of two, so launcher's completion is typed against what a shell says
 # without one running. Any other path names nothing, as the shell says.
 # The step's mark is matched by its bytes, since $'\u203a' is only the

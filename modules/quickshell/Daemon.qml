@@ -46,6 +46,9 @@ Scope {
     // it, and true watches it again, answered whole at once.
     property bool live: true
     onLiveChanged: {
+        // What's held from an earlier watch may be hours old, so the next
+        // watch is unanswered until its own whole answer comes.
+        answeredThisWatch = false;
         if (wire === null)
             return;
         if (live)
@@ -74,6 +77,10 @@ Scope {
     // Whether the watch of its kind has been answered once, so a kind with
     // no records is known to hold none, rather than not yet said.
     property bool answered: false
+    // Whether the watch now running has had its whole answer, so what's
+    // held is this watch's rather than one before an unwatch, as a place
+    // asked cold a second time is read afresh (Y2YBTS's review of #2433).
+    property bool answeredThisWatch: false
 
     // Every record held, by key: plain fields, read beside `revision`.
     readonly property var held: ({})
@@ -233,8 +240,10 @@ Scope {
             took(answer.records, Object.keys(held).filter(key => !holds.has(key)), false);
         } else
             took(answer.records ?? answer.changed, answer.gone, answer.records === undefined);
-        if (whole)
+        if (whole) {
             answered = true;
+            answeredThisWatch = live;
+        }
         const then = awaited[answer.id];
         if (then) {
             delete awaited[answer.id];
