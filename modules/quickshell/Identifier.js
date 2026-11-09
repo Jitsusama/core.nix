@@ -108,6 +108,20 @@ function fitting(said, room, width) {
     return width(said.replace(TRAILING, "")) <= room;
 }
 
+// The marks inside a title's word it may break after, as a server's dots
+// or a path's slashes, where the word is too wide for a line alone.
+const TITLE_BREAKS = /([./_])(?=\S)/gu;
+
+// A drawer's title with its break chances: its spaces, and a zero-width
+// space after a mark only in a word too wide for `room` alone, so a name
+// with spaces breaks at them, "Drawing 2026-11-09" over "10.12.03.svg"
+// rather than inside its time (RTOIMQ, 2026-11-09), and one with none
+// still breaks at its marks rather than mid-word.
+function titleBreaks(title, room, width) {
+    return title.split(" ").map(word => fitting(word, room, width) ? word
+        : word.replace(TITLE_BREAKS, "$1\u200b")).join(" ");
+}
+
 // Whether a line laid opens with a mark, which only the identifier's
 // own first may.
 function opensOnMark(line) {
