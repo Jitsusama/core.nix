@@ -3975,29 +3975,21 @@ def nearby_heard(desktop: Desktop, at_each_scale: list[str], values: dict[str, A
         radios_seen(desktop, seen=True)
         desktop.launcher_until(lambda shown: False in buds(shown), timeout=timedelta(seconds=60))
         desktop.close_launcher()
-        # Asked for by a terminal with the launcher closed, Nearby looks too, and says Buds: both
-        # at once, since the radio looks only for a few seconds after each show. A device heard
-        # is one of Nearby's verbs that holds more, so it's said as a row, in words.
-        desktop.launcher_left_closed()
-        shown = desktop.in_session("launcher show machine bluetooth nearby | grep -q Buds")
-        try:
-            machine.wait_until_succeeds(
-                f"{shown} && ( "
-                + " || ".join(f"{discovering(adapter)} | grep -qx 'b true'" for adapter in ADAPTERS)
-                + " )",
-                timeout=timedelta(seconds=60),
-            )
-        except Exception:
-            # What the terminal was shown, and whether either radio looked, to say why.
-            said = machine.execute(
-                desktop.in_session("launcher show --json machine bluetooth nearby 2>&1")
-            )
-            radios = [machine.execute(discovering(adapter))[1].strip() for adapter in ADAPTERS]
-            heard = machine.execute("busctl tree org.bluez --list")[1]
-            print("nearby for a terminal:", said, radios, heard)
-            raise
+        nearby_shown_to_a_terminal(desktop)
     finally:
         machine.succeed("systemctl stop bluetooth.service btvirt || true")
+
+
+def nearby_shown_to_a_terminal(desktop: Desktop) -> None:
+    """Have a terminal's show of Nearby, with the launcher closed, look and say Buds.
+
+    Both at once, since the radio looks only for a few seconds after each show. A device heard
+    is one of Nearby's verbs that holds more, so it's said as a row, in words.
+    """
+    desktop.launcher_left_closed()
+    shown = desktop.in_session("launcher show machine bluetooth nearby | grep -q Buds")
+    looked = " || ".join(f"{discovering(adapter)} | grep -qx 'b true'" for adapter in ADAPTERS)
+    desktop.machine.wait_until_succeeds(f"{shown} && ( {looked} )", timeout=timedelta(seconds=60))
 
 
 # What's around the machine, on its network and in the air, as the places that list it lay it
