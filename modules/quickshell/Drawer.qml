@@ -972,11 +972,6 @@ Floating {
     }
     // A value's face, measured and drawn: a key list's at Note, a script's
     // in its cut beside the mono, and the rest at Figure.
-    // The words' own face, a run among them measured by it.
-    FontMetrics {
-        id: bodyFace
-        font: bodyText.font
-    }
     FontMetrics {
         id: valueFace
         font.family: drawer.listsKeys ? Theme.level.note.family
@@ -984,6 +979,11 @@ Floating {
         font.pointSize: drawer.listsKeys ? Theme.level.note.pointSize
             : Theme.level.figure.pointSize * drawer.scriptGrown
         font.features: drawer.listsKeys ? ({}) : Theme.level.figure.features
+    }
+    // The words' own face, a run among them measured by it.
+    FontMetrics {
+        id: bodyFace
+        font: bodyText.font
     }
     // A fact's figure (the fact rows', below): Graph's ten braille cells at
     // Figure, which Meter's stroke is as wide as so the two read as kin, and
