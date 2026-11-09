@@ -387,8 +387,13 @@ Rectangle {
         : graphed ? drawing.x - Theme.space.rung.groups
         : atRight.inked === 0 ? atRight.x + atRight.width
         : atRight.x + atRight.width - atRight.inked - Theme.space.rung.groups
+    // None where the name, or what the row holds, gave way: those are cut
+    // at the column, and the note gives way first, so it never takes the
+    // room past it that they were refused (Y2YBTS, 2026-11-09).
+    readonly property bool detailCut: row.detailed
+        && (countText.whole !== row.detailUncut || countText.truncated)
     readonly property string noteWhole: {
-        if (row.note === "")
+        if (row.note === "" || row.nameCut || row.detailCut)
             return "";
         void wordsFace.font;
         const width = words => Math.ceil(wordsFace.advanceWidth(words)) + 1;

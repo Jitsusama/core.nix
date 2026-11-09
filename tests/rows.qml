@@ -320,6 +320,11 @@ ShellRoot {
             // a say would, not to the column's edge (VKCF3Z, 2026-11-09).
             Choice { id: noting; width: root.panel; name: "WARP"; side: "not answering"
                 sides: 60; note: root.sentence; glyph: "$"; selected: true }
+            // And beside a name cut at that column, none: the note gives way
+            // first, so it never takes the room the name was refused.
+            Choice { id: notingLong; width: root.panel; name: root.long + root.long
+                side: "not answering"; sides: 60; note: "a password"; glyph: "$"
+                selected: true }
             // An agent's side of items, on the cursor row and off it: its
             // words in the row's ink, the dots between them muted.
             Choice { id: itemsChosen; width: root.panel; name: "A Quest"; glyph: "$"
@@ -769,6 +774,11 @@ ShellRoot {
                 && !note.truncated && !note.text.endsWith("\u2026")
                 && note.to <= end + 1 && note.to + wordsProbe.advanceWidth > end - 1,
             `${said(texts)}, ending by ${end}`);
+        const longTexts = drawn(notingLong, []);
+        expect("a name cut at the column has no note beside it",
+            notingLong.nameCut && notingLong.noteWhole === ""
+                && longTexts.every(t => !t.text.includes("a password")),
+            said(longTexts));
     }
 
     function sayHolds() {
