@@ -2066,10 +2066,10 @@ fn asked(world: &World) -> usize {
 }
 
 #[test]
-fn someone_who_never_leaves_holds_the_switch_only_as_long_as_they_may() {
+fn someone_who_stays_holds_the_switch_only_as_long_as_they_may() {
     let mut world = World::new();
     world.config.refuse_while = vec![
-        waits_on(&world, "someone is at the machine", "asked", 1000, Some(2)),
+        waits_on(&world, "someone is at the machine", "asked", 8, Some(2)),
         waits_on(&world, "the launcher is open", "launcher", 4, None),
     ];
     let head = world.signed("one");
@@ -2080,7 +2080,10 @@ fn someone_who_never_leaves_holds_the_switch_only_as_long_as_they_may() {
         began.elapsed() >= Duration::from_secs(2),
         "it switched before someone's two seconds were up"
     );
-    assert!(asked(&world) < 1000, "it waited for someone who never left");
+    assert!(
+        asked(&world) < 8,
+        "it waited past someone's two seconds until they left"
+    );
     let launcher: usize = world.read("launcher").trim().parse().unwrap_or(0);
     assert_eq!(launcher, 5, "it switched while the launcher was open");
 }
