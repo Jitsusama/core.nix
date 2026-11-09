@@ -421,7 +421,9 @@ impl World for Real {
             self.checkout().display(),
             self.system
         );
-        run(Command::new("nix").args(["eval", "--raw", &attribute]))
+        kept_drv(&self.state.join("drv"), commit, check, || {
+            run(Command::new("nix").args(["eval", "--raw", &attribute]))
+        })
     }
 
     fn build(&self, commit: &str, check: &str, log: &Path) -> Option<i32> {
@@ -705,6 +707,34 @@ fn file(path: &Path) -> Result<fs::File, String> {
         .map_err(|error| format!("opening {}: {error}", path.display()))
 }
 
+/// The derivation a check builds at a commit, kept in `dir` once known.
+/// A commit's derivation never changes, but a search asks it of the same
+/// merge again and again, and each ask evaluated the flake here afresh:
+/// seen in the CPU alarms of 8 November, at 1.5 to 3 GB an evaluation.
+/// Only a full commit hash is kept, since a name like a branch moves.
+fn kept_drv(
+    dir: &Path,
+    commit: &str,
+    check: &str,
+    evaluate: impl FnOnce() -> Result<String, String>,
+) -> Result<String, String> {
+    let fixed = commit.len() == 40 && commit.bytes().all(|byte| byte.is_ascii_hexdigit());
+    let kept = dir.join(format!("{commit}-{check}"));
+    if fixed
+        && let Ok(drv) = fs::read_to_string(&kept)
+        && drv.starts_with("/nix/store/")
+    {
+        return Ok(drv);
+    }
+    let drv = evaluate()?;
+    // A memo not written costs only the next evaluation, so it never fails
+    // the ask.
+    if fixed && drv.starts_with("/nix/store/") {
+        let _ = fs::create_dir_all(dir).and_then(|()| fs::write(&kept, &drv));
+    }
+    Ok(drv)
+}
+
 /// Run a command, giving what it printed, trimmed, or what it said wrong.
 fn run(command: &mut Command) -> Result<String, String> {
     let ran = command
@@ -724,6 +754,32 @@ fn run(command: &mut Command) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_commits_check_is_evaluated_once_and_a_moving_name_every_time() {
+        let dir = std::env::temp_dir().join(format!("merge-net-drv-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let commit = "df45383375c37fbbfb1cee0afa8943ff123e4ac6";
+        let drv = "/nix/store/aaaa-vm-a.drv";
+        let asked = std::cell::Cell::new(0);
+        let evaluate = || {
+            asked.set(asked.get() + 1);
+            Ok(drv.to_owned())
+        };
+        assert_eq!(kept_drv(&dir, commit, "vm-a", evaluate), Ok(drv.to_owned()));
+        assert_eq!(kept_drv(&dir, commit, "vm-a", evaluate), Ok(drv.to_owned()));
+        assert_eq!(asked.get(), 1, "a commit's derivation is kept once known");
+        kept_drv(&dir, "origin/main", "vm-a", evaluate).expect("evaluated");
+        kept_drv(&dir, "origin/main", "vm-a", evaluate).expect("evaluated");
+        assert_eq!(asked.get(), 3, "a name that moves is evaluated each time");
+        let failed = kept_drv(&dir, commit, "vm-b", || Err("nix failed".to_owned()));
+        assert!(failed.is_err());
+        assert!(
+            !dir.join(format!("{commit}-vm-b")).exists(),
+            "a failure isn't kept"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn a_source_the_builder_couldnt_fetch_is_no_failure() {
