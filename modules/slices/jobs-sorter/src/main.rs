@@ -1114,17 +1114,23 @@ fn watch_door(doorway: &mut Doorway, root: &Path, cgroup: Option<&str>, uptime: 
         .collect();
     let coming: Vec<door::Coming> = read
         .iter()
-        .map(|(pid, start, words, scope)| door::Coming {
-            pid: *pid,
-            start: *start,
-            words: words.split_whitespace().collect(),
-            scope: scope.clone(),
-            // Only heavy work is weighed by what its scope holds.
-            memory: if door::heavy(&words.split_whitespace().collect::<Vec<_>>()) {
-                door::memory(scope)
-            } else {
-                0
-            },
+        .map(|(pid, start, words, scope)| {
+            let heavy = door::heavy(&words.split_whitespace().collect::<Vec<_>>());
+            door::Coming {
+                pid: *pid,
+                start: *start,
+                words: words.split_whitespace().collect(),
+                scope: scope.clone(),
+                // Only heavy work is weighed by what its scope holds, and
+                // asked whether it lands a switch.
+                memory: if heavy { door::memory(scope) } else { 0 },
+                first: heavy
+                    && fs::read(format!("/proc/{pid}/environ"))
+                        .is_ok_and(|environ| door::marked_first(&environ)),
+                frozen: heavy
+                    && fs::read(scope.join("cgroup.freeze"))
+                        .is_ok_and(|state| state.starts_with(b"1")),
+            }
         })
         .collect();
     for done in doorway
