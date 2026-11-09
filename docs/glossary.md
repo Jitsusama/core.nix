@@ -134,7 +134,7 @@ the queue and conclude.
 | snapshot | a tree pinned at a commit, read only and shareable | | |
 | checkout | a repository's clone, which trees are cut from | | |
 | cut | making a tree | scaffold | `work tree` |
-| release | giving back a tree one holds | prune, reap | `work release`; `quest tree-prune`, to be renamed |
+| release | giving back a tree one holds | prune, reap | `work release`; `quest tree-release` |
 | tidy | reporting which trees on the machine are spent, removing nothing | | `work tidy` |
 | reclaim | taking back the trees nobody owns | | `work reclaim` |
 | scratch folder | a quest's folder for clones, data and builds, its tmp/ cleared when it concludes | | the quest workspace |
