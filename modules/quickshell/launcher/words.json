@@ -9086,8 +9086,18 @@
       "glyph": "vault",
       "said": { "entry": "{count} entry", "entries": "{count} entries" }
     },
-    { "id": "passwords:entries", "in": "applications", "name": "Entries" },
-    { "id": "passwords:favourites", "in": "applications", "name": "Favourites" },
+    {
+      "id": "passwords:entries",
+      "in": "applications",
+      "name": "Entries",
+      "term": "Security/entry"
+    },
+    {
+      "id": "passwords:favourites",
+      "in": "applications",
+      "name": "Favourites",
+      "term": "Security/favourite"
+    },
     { "id": "passwords:username", "in": "passwords", "name": "Username" },
     {
       "id": "passwords:websites",
@@ -11129,6 +11139,7 @@
       "id": "drive:kept",
       "in": "applications",
       "name": "Kept Here",
+      "term": "Programs/kept here",
       "said": {
         "of": "{held} of {most}"
       }

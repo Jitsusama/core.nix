@@ -208,6 +208,7 @@ be read, marked unread and archived.
 | episode | one part of a podcast | | Spotify's `episode` |
 | speed | how fast a player plays its track against the track's own pace, such as one and a half times | | MPRIS's `Rate` |
 | download | a file the browser saved from the web, listed in its Recent while it's still where it was saved | | Chrome's `downloads` table, `chrome-recent-sites downloads` |
+| kept here | the copies of Drive's files on this machine, to open, and how much of the room set aside for them they take | | the cache home's `google/drive`, Google's `kept` |
 
 ## People
 
@@ -218,7 +219,7 @@ written to, called, met with and made a favourite.
 | ---- | ----- | --- | ------- |
 | person | someone Joel deals with, the same one by their email across mail, meetings, calls and chat | | |
 | source | a program people are known from, such as Google, Tuple or Slack, each one an option | | the people daemon's sources |
-| favourite | a person Joel starred, listed first in People | | `star`, `unstar` |
+| favourite | a person Joel starred, listed first in People, apart from a password manager's favourite | | `star`, `unstar` |
 
 ## Desktop
 
@@ -528,6 +529,7 @@ entry can be copied from, opened at its site and filled in.
 | Passwords | the place holding Joel's entries from every password manager | | |
 | password manager | a program keeping Joel's entries, such as 1Password, each one an option | | |
 | entry | one thing a password manager keeps, called by its kind: a login, a card, a note, an identity or a key | | 1Password's items |
+| favourite | an entry Joel starred in his password manager, apart from People's favourite | | 1Password's favourites |
 | detail | one part of an entry, as its username, its password or its one-time code | | 1Password's fields |
 | one-time code | the code an entry gives for signing in, new every half-minute | OTP, TOTP | |
 | hidden | of a part of an entry, shown only when asked, as a password is | concealed | 1Password's `CONCEALED` |
