@@ -1248,6 +1248,7 @@
       "id": "machine:cpu:caches",
       "in": "machine:cpu:model",
       "name": "Caches",
+      "term": "Machine/cache",
       "said": {
         "note": "all of them together"
       }
@@ -1385,7 +1386,8 @@
     {
       "id": "machine:uptime:release",
       "in": "machine:uptime:kernel",
-      "name": "Release"
+      "name": "Version",
+      "term": "Machine/version"
     },
     {
       "id": "machine:uptime:build",
@@ -1601,7 +1603,8 @@
     {
       "id": "machine:disk:queue",
       "in": "machine:disk",
-      "name": "Queue",
+      "name": "Backlog",
+      "term": "Machine/backlog",
       "said": {
         "queued": "{queued} on average",
         "depth": "{depth} at most"
@@ -1771,7 +1774,7 @@
     {
       "id": "machine:disk:link",
       "in": "machine:disk:model",
-      "name": "Link",
+      "name": "PCIe",
       "said": {
         "full": "as fast as it goes",
         "slower": "of {most} at most"
@@ -2123,7 +2126,8 @@
     {
       "id": "warp:tls:version",
       "in": "warp:tls",
-      "name": "Version"
+      "name": "Version",
+      "term": "Machine/version"
     },
     {
       "id": "warp:tls:curve",
@@ -5247,7 +5251,8 @@
     {
       "id": "sound:channels",
       "in": "sound",
-      "name": "Channels"
+      "name": "Channels",
+      "term": "Machine/channel"
     },
     {
       "id": "sound:hardware",
@@ -5406,7 +5411,8 @@
     {
       "id": "sound:format",
       "in": "sound",
-      "name": "Format"
+      "name": "Format",
+      "term": "Machine/format"
     },
     {
       "id": "sound:graph-format",
@@ -5751,7 +5757,7 @@
     {
       "id": "shortcuts:desktop:windows:place",
       "in": "shortcuts",
-      "name": "Place",
+      "name": "Move",
       "glyph": "floating"
     },
     {
@@ -5775,7 +5781,7 @@
     {
       "id": "shortcuts:desktop:columns:place",
       "in": "shortcuts",
-      "name": "Place",
+      "name": "Move",
       "glyph": "columns"
     },
     {
@@ -7821,7 +7827,8 @@
     {
       "id": "displays:mode",
       "in": "displays",
-      "name": "Mode"
+      "name": "Screen Mode",
+      "term": "Desktop/screen mode"
     },
     {
       "id": "displays:variable",
@@ -7847,7 +7854,8 @@
     {
       "id": "displays:modes",
       "in": "displays",
-      "name": "Modes",
+      "name": "Screen Modes",
+      "term": "Desktop/screen mode",
       "said": {
         "preferred": "preferred",
         "custom": "custom",
@@ -8246,7 +8254,8 @@
     {
       "id": "cameras:modes",
       "in": "cameras",
-      "name": "Modes"
+      "name": "Formats",
+      "term": "Machine/format"
     },
     {
       "id": "cameras:usb",
@@ -9399,7 +9408,8 @@
     {
       "id": "wifi:streams",
       "in": "wifi:speed",
-      "name": "Streams"
+      "name": "Streams",
+      "term": "Network/stream"
     },
     {
       "id": "wifi:guard",
@@ -9606,7 +9616,8 @@
     {
       "id": "bluetooth:channels",
       "in": "bluetooth",
-      "name": "Channels"
+      "name": "Channels",
+      "term": "Network/channel"
     },
     {
       "id": "bluetooth:battery",
@@ -10547,7 +10558,8 @@
     {
       "id": "program:media:link",
       "in": "program:media",
-      "name": "Link"
+      "name": "Link",
+      "term": "Programs/link"
     },
     {
       "id": "program:media:bus-name",
@@ -12155,12 +12167,12 @@
       "why": "Focus goes to a window, a column, a workspace or a screen alike, and each group says what holds it beside it."
     },
     {
-      "word": "place",
+      "word": "move",
       "things": [
         "shortcuts:desktop:windows:place",
         "shortcuts:desktop:columns:place"
       ],
-      "why": "A window and a column are each moved in place, and each group says what holds it beside it."
+      "why": "A window and a column each move where they sit, and each group says what holds it beside it."
     },
     {
       "word": "the column",
