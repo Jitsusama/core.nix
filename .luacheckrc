@@ -14,6 +14,9 @@ files['modules/neovim'] = { std = 'luajit', globals = { 'vim' }, read_globals = 
 -- each line by its width, and trimming them would skew the picture.
 files['modules/neovim/plugins/snacks.lua'] = { ignore = { '613' } }
 
+-- open-now sends these whole to a running Neovim, whatever its config.
+files['modules/open-with'] = { std = 'luajit', read_globals = { 'vim' } }
+
 -- Neovim runs the key language's lookup of its commands with no config.
 files['modules/keys'] = { std = 'luajit', read_globals = { 'vim' } }
 

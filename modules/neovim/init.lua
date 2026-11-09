@@ -108,15 +108,17 @@ vim.opt.foldenable = true
 -- on the fold's shade, rather than a count and a row of dots.
 vim.opt.foldtext = ''
 
--- Session options
+-- What a session keeps, which the folder's session written on leaving
+-- holds (sessions.lua).
 vim.opt.sessionoptions =
   { 'buffers', 'curdir', 'tabpages', 'winsize', 'help', 'globals', 'skiprtp', 'folds' }
+require('sessions').setup()
 
 -- The status line, which holds the window's facts (status.lua).
 require('status').setup()
 
--- The file open here, said to the kitty window for the launcher's Recent
--- (showing.lua).
+-- Where this Neovim's own server listens, said to its kitty window, so the
+-- launcher can ask it what it has open (showing.lua).
 require('showing').setup()
 
 -- How problems look, set as vim.diagnostic first loads, since nothing

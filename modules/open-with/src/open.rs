@@ -4,9 +4,11 @@
 //! `filename` is the document it has open, empty while it has none, with
 //! the page it's on, `pagenumber`, counted from nought, and how many the
 //! document has, `numberofpages`, so its row says how far through it is. A
-//! Neovim runs in a kitty window, many to one kitty process, so it says its
-//! file to that window instead (../../neovim/showing.lua), and kitty's
-//! remote control gives it back with niri's window it's in.
+//! Neovim runs in a kitty window, many to one kitty process, so it tells
+//! that window where its own server listens instead
+//! (../../neovim/showing.lua), kitty's remote control gives that back with
+//! niri's window it's in, and the Neovim is asked there what it holds
+//! (neovim.rs).
 
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::os::linux::net::SocketAddrExt;
@@ -102,20 +104,23 @@ pub async fn zathura(connection: &Connection) -> zbus::Result<Vec<InZathura>> {
     Ok(open)
 }
 
-/// The kitty user variable a Neovim says its file in.
-pub const NEOVIM_FILE: &str = "neovim_file";
+/// The kitty user variable a Neovim says where its server listens in.
+pub const NEOVIM_SERVER: &str = "neovim_server";
 
 /// How long kitty or niri may take to answer before what it holds is passed
 /// over, so a stuck one never holds the launcher.
 const ANSWER: Duration = Duration::from_secs(2);
 
-/// A file a Neovim has open: niri's window it shows in, its whole path, and
-/// what Go To is given to bring it forward inside kitty (`go`).
+/// A Neovim in a kitty window: niri's window it shows in, where its server
+/// listens, what Go To is given to bring it forward inside kitty (`go`),
+/// and the processes running Neovim in front there, one of which answers
+/// at its server unless what it said is stale.
 #[derive(Debug, PartialEq, Eq)]
 pub struct InKitty {
     pub window: u64,
-    pub path: String,
+    pub server: String,
     pub go: String,
+    pub pids: Vec<u64>,
 }
 
 /// Where a kitty listens for its remote control: the `--listen-on` its
@@ -182,12 +187,13 @@ pub fn kitty_pids(niri: &[Value]) -> Vec<u32> {
     pids
 }
 
-/// Every file a Neovim has open in a kitty window, from niri's windows and
-/// each kitty's `ls`, by its process. A kitty window is niri's by its
-/// process and the title of its active tab, which kitty titles the window
-/// by; a title two of one kitty's windows share names neither. A file is
-/// counted only while a Neovim runs in front in its window, so one said by
-/// a Neovim that died without clearing it is passed over.
+/// Every Neovim in a kitty window that said where its server listens, from
+/// niri's windows and each kitty's `ls`, by its process. A kitty window is
+/// niri's by its process and the title of its active tab, which kitty
+/// titles the window by; a title two of one kitty's windows share names
+/// neither. One is counted only while a Neovim runs in front in its
+/// window, so what a Neovim that died without clearing it said is passed
+/// over.
 #[must_use]
 pub fn neovims(niri: &[Value], kitties: &[(u32, Value)]) -> Vec<InKitty> {
     let mut open = Vec::new();
@@ -217,14 +223,16 @@ pub fn neovims(niri: &[Value], kitties: &[(u32, Value)]) -> Vec<InKitty> {
                 .iter()
                 .flat_map(|tab| tab["windows"].as_array().into_iter().flatten())
             {
-                let Some(path) = inside["user_vars"][NEOVIM_FILE].as_str() else {
+                let Some(server) = inside["user_vars"][NEOVIM_SERVER].as_str() else {
                     continue;
                 };
-                if path.starts_with('/') && runs_neovim(inside) {
+                let pids = neovim_pids(inside);
+                if server.starts_with('/') && !pids.is_empty() {
                     open.push(InKitty {
                         window,
-                        path: path.to_owned(),
+                        server: server.to_owned(),
                         go: format!("{pid}:{}", inside["id"]),
+                        pids,
                     });
                 }
             }
@@ -233,18 +241,21 @@ pub fn neovims(niri: &[Value], kitties: &[(u32, Value)]) -> Vec<InKitty> {
     open
 }
 
-/// Whether a Neovim is among what runs in front in a kitty window.
-fn runs_neovim(window: &Value) -> bool {
+/// The Neovims among what runs in front in a kitty window, by process.
+fn neovim_pids(window: &Value) -> Vec<u64> {
     window["foreground_processes"]
         .as_array()
         .into_iter()
         .flatten()
-        .filter_map(|process| process["cmdline"][0].as_str())
-        .any(|program| {
-            Path::new(program)
-                .file_name()
-                .is_some_and(|name| name == "nvim")
+        .filter(|process| {
+            process["cmdline"][0].as_str().is_some_and(|program| {
+                Path::new(program)
+                    .file_name()
+                    .is_some_and(|name| name == "nvim")
+            })
         })
+        .filter_map(|process| process["pid"].as_u64())
+        .collect()
 }
 
 /// niri's windows, asked of its socket.
@@ -317,12 +328,17 @@ mod tests {
         })
     }
 
-    fn inside(id: u64, file: Option<&str>, program: &str) -> Value {
-        let vars = file.map_or_else(|| json!({}), |file| json!({ NEOVIM_FILE: file }));
+    /// A kitty window whose program in front is `program`, its process
+    /// a hundred past the window's id, its server said where it's given.
+    fn inside(id: u64, server: Option<&str>, program: &str) -> Value {
+        let vars = server.map_or_else(|| json!({}), |server| json!({ NEOVIM_SERVER: server }));
         json!({
             "id": id,
             "user_vars": vars,
-            "foreground_processes": [{ "cmdline": [program, "--flag"] }]
+            "foreground_processes": [
+                { "pid": id + 100, "cmdline": [program, "--flag"] },
+                { "pid": id + 200, "cmdline": ["lua-language-server"] }
+            ]
         })
     }
 
@@ -375,7 +391,7 @@ mod tests {
     }
 
     #[test]
-    fn each_neovim_file_is_in_niris_window_by_its_kittys_title() {
+    fn each_neovim_is_in_niris_window_by_its_kittys_title() {
         let niri = [
             json!({ "id": 31, "pid": 10, "title": "notes" }),
             json!({ "id": 32, "pid": 10, "title": "plan" }),
@@ -388,14 +404,14 @@ mod tests {
                     (
                         false,
                         "shell",
-                        json!([inside(5, Some("/home/one/back.md"), "/bin/nvim")])
+                        json!([inside(5, Some("/run/user/1/nvim.105.0"), "/bin/nvim")])
                     ),
                     (
                         true,
                         "notes",
                         json!([inside(
                             6,
-                            Some("/home/one/notes.md"),
+                            Some("/run/user/1/nvim.106.0"),
                             "/nix/store/x/bin/nvim"
                         )])
                     ),
@@ -407,7 +423,7 @@ mod tests {
                     true,
                     "plan",
                     json!([
-                        inside(7, Some("/home/one/plan.md"), "nvim"),
+                        inside(7, Some("/run/user/1/nvim.107.0"), "nvim"),
                         inside(8, None, "nvim"),
                     ])
                 )]
@@ -418,25 +434,28 @@ mod tests {
             [
                 InKitty {
                     window: 31,
-                    path: "/home/one/back.md".into(),
-                    go: "10:5".into()
+                    server: "/run/user/1/nvim.105.0".into(),
+                    go: "10:5".into(),
+                    pids: vec![105]
                 },
                 InKitty {
                     window: 31,
-                    path: "/home/one/notes.md".into(),
-                    go: "10:6".into()
+                    server: "/run/user/1/nvim.106.0".into(),
+                    go: "10:6".into(),
+                    pids: vec![106]
                 },
                 InKitty {
                     window: 32,
-                    path: "/home/one/plan.md".into(),
-                    go: "10:7".into()
+                    server: "/run/user/1/nvim.107.0".into(),
+                    go: "10:7".into(),
+                    pids: vec![107]
                 },
             ]
         );
     }
 
     #[test]
-    fn a_file_said_where_no_neovim_runs_or_by_a_shared_title_is_passed_over() {
+    fn a_server_said_where_no_neovim_runs_or_by_a_shared_title_is_passed_over() {
         let niri = [
             json!({ "id": 31, "pid": 10, "title": "twin" }),
             json!({ "id": 32, "pid": 10, "title": "twin" }),
@@ -448,7 +467,7 @@ mod tests {
                 &[(
                     true,
                     "twin",
-                    json!([inside(5, Some("/home/one/a.md"), "nvim")])
+                    json!([inside(5, Some("/run/user/1/nvim.105.0"), "nvim")])
                 )]
             ),
             kitty_window(
@@ -457,8 +476,8 @@ mod tests {
                     true,
                     "shell",
                     json!([
-                        inside(6, Some("/home/one/b.md"), "/bin/zsh"),
-                        inside(7, Some("relative.md"), "nvim"),
+                        inside(6, Some("/run/user/1/nvim.106.0"), "/bin/zsh"),
+                        inside(7, Some("nvim.107.0"), "nvim"),
                     ])
                 )]
             ),

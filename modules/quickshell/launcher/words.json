@@ -9708,6 +9708,50 @@
       "glyph": "path"
     },
     {
+      "id": "nvim:files",
+      "in": "applications",
+      "name": "Files",
+      "said": {
+        "modified": "modified",
+        "tab": "tab {index}",
+        "tabs": "tabs {indices}",
+        "shown": "shown",
+        "hidden": "hidden",
+        "windows": "in {count} windows",
+        "inWindow": "{count} in 1 window",
+        "inWindows": "{count} in {windows} windows"
+      }
+    },
+    {
+      "id": "nvim:modified",
+      "in": "applications",
+      "name": "Modified"
+    },
+    {
+      "id": "nvim:sessions",
+      "in": "applications",
+      "name": "Sessions",
+      "term": "Programs/session"
+    },
+    {
+      "id": "verb:nvim:session:open",
+      "command": "open",
+      "in": "path:folder",
+      "name": "Open the Session",
+      "verb": "open",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:nvim:session:forget",
+      "command": "forget",
+      "in": "path:folder",
+      "name": "Forget It",
+      "verb": "forget",
+      "glyph": "dismiss",
+      "act": "ending",
+      "ends": "forget"
+    },
+    {
       "id": "verb:chrome:repository",
       "command": "open",
       "argument": "github",

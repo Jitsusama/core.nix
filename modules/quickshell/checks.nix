@@ -87,6 +87,7 @@ let
       # here as if one had.
       cp ${../neovim/NeovimProgram.qml} qs/launcher/neovim.qml
       cp ${../neovim/NeovimOpening.js} qs/launcher/NeovimOpening.js
+      cp ${../neovim/Neovim.js} qs/launcher/Neovim.js
       cp ${../chrome/ChromeProgram.qml} qs/launcher/chrome.qml
       cp ${../chrome/ChromeDownloads.js} qs/launcher/ChromeDownloads.js
       # The greeter runs beside the account's files, as greetd's module lays
@@ -4149,15 +4150,18 @@ onLinux {
   # A program's act on a copy or on the repositories under ~/src shows only
   # while it can act, and opens what it says: what decides it, in Qt's own
   # engine (tests/quick-acts.qml, over Copied.js, launcher/Repositories.js
-  # and Neovim's NeovimOpening.js), then each program's provider with the
-  # shell's one watcher of the clipboard, through Quickshell itself, over
-  # repositories made here and read once for both programs by the real fd,
-  # stat and grep (launcher/Repositories.qml), with niri and the
-  # clipboard's history stood in (tests/program-acts.qml), and Chrome's
-  # downloads, read from Chrome's ChromeDownloads.js in Qt's engine and
-  # through its provider from a stand-in for chrome-recent-sites once
-  # Chrome is stepped into: file rows in its Recent, and Open the Latest
-  # Download only while there's one.
+  # and Neovim's NeovimOpening.js and Neovim.js), then each program's
+  # provider with the shell's one watcher of the clipboard, through
+  # Quickshell itself, over repositories made here and read once for both
+  # programs by the real fd, stat and grep (launcher/Repositories.qml),
+  # with niri and the clipboard's history stood in (tests/program-acts.qml).
+  # Chrome's downloads are read from Chrome's ChromeDownloads.js in Qt's
+  # engine and through its provider from a stand-in for chrome-recent-sites
+  # once Chrome is stepped into: file rows in its Recent, and Open the
+  # Latest Download only while there's one. Neovim's files open now come
+  # from a stand-in open-now, whose reading of a real Neovim is open-with's
+  # own tests', and its sessions from a folder made here, listed by the
+  # real find and forgotten by the real rm.
   the-launcher-acts-only-on-what-it-can =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -4168,7 +4172,26 @@ onLinux {
           "5": { id: 5, app_id: "kitty", pid: 41, focus_timestamp: { secs: 20, nanos: 0 } }
         })
         property var spawned: []
+        property var acted: []
         function spawn(command) { spawned = command; }
+        function act(action) { acted = acted.concat([action]); }
+      '';
+      # What open-now says two Neovims in one kitty hold, as open-with's
+      # neovim-held.lua has them say it: the first with two tabs, a file
+      # modified and one hidden, the second with one tab and a file the
+      # first holds too, modified there.
+      openNow = pkgs.writeShellScript "open-now" ''
+        [ "$1" = neovim ] || exit 1
+        file() { printf '{"buffer":%s,"path":"%s","modified":%s,"tabs":[%s],"at":%s}' "$@"; }
+        printf '@5\t41:7\t/run/n1\t{"pid":101,"folder":"%s","tab":2,"tabs":2,"current":2,' \
+          "$HOME/src/alpha"
+        printf '"files":[%s,%s,%s]}\n' "$(file 1 "$HOME/src/alpha/main.rs" false 1 100)" \
+          "$(file 2 "$HOME/src/alpha/docs/notes.md" true 2 200)" \
+          "$(file 3 "$HOME/src/alpha/.env" false "" 50)"
+        printf '@6\t41:8\t/run/n2\t{"pid":102,"folder":"%s","tab":1,"tabs":1,"current":4,' \
+          "$HOME/src/beta"
+        printf '"files":[%s,%s]}\n' "$(file 4 "$HOME/src/beta/README.md" false 1 300)" \
+          "$(file 1 "$HOME/src/alpha/main.rs" true 1 10)"
       '';
       paste = pkgs.writeShellScriptBin "wl-paste" "exec sleep 300";
       # Three repositories a folder deep, alpha's git written last, alpha's
@@ -4208,6 +4231,8 @@ onLinux {
       cp ${./launcher/Repositories.js} Repositories.js
       cp ${../neovim/NeovimOpening.js} NeovimOpening.js
       cp ${../chrome/ChromeDownloads.js} ChromeDownloads.js
+      cp ${../neovim/Neovim.js} Neovim.js
+      cp ${./launcher/Ago.js} Ago.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -4233,6 +4258,7 @@ onLinux {
       cp ${./launcher/Repositories.js} launcher/Repositories.js
       cp ${../neovim/NeovimProgram.qml} launcher/NeovimProgram.qml
       cp ${../neovim/NeovimOpening.js} launcher/NeovimOpening.js
+      cp ${../neovim/Neovim.js} launcher/Neovim.js
       cp ${../chrome/ChromeProgram.qml} launcher/ChromeProgram.qml
       cp ${../chrome/ChromeDownloads.js} launcher/ChromeDownloads.js
       cp ${../reader/ReaderProgram.qml} launcher/ReaderProgram.qml
@@ -4248,8 +4274,10 @@ onLinux {
           pkgs.fd
           pkgs.coreutils
           pkgs.gnugrep
+          pkgs.findutils
         ]
       }:$PATH
+      export OPEN_NOW=${openNow}
       mkdir -m 700 $XDG_RUNTIME_DIR
       ${repositories}
       # Chrome's downloads, as chrome-recent-sites prints them: one from a
@@ -4259,6 +4287,19 @@ onLinux {
         printf '%s\t%s\t%s\t%s\n' "$HOME/Downloads/report.pdf" 2048 1800000100 \
           'https://docs.example.com/q3?x=1' "$HOME/Downloads/undated.zip" 10 "" ""
       ''}
+      # Two sessions, alpha's kept ten and a half minutes ago and beta's two
+      # hours ago, each named as sessions.lua names one, and a file that
+      # isn't one. Their folders hold nothing but letters and /, the one
+      # byte the name escapes here.
+      mkdir $HOME/sessions
+      session() {
+        name=$(printf %s "$HOME/src/$1" | sed 's|/|=2F|g')
+        echo "cd $HOME/src/$1" > "$HOME/sessions/$name.vim"
+        touch -d "@$(( $(date +%s) - $2 ))" "$HOME/sessions/$name.vim"
+      }
+      session alpha 630
+      session beta 7230
+      touch $HOME/sessions/notes.txt
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
       touch $out
