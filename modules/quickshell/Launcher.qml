@@ -717,17 +717,16 @@ Scope {
     // Super+N goes, whether or not For You lists it now, and never by the
     // name it leads to, which that row answers, so there's never two
     // (VKCF3Z, 2026-11-09: a rename never loses a row). It's the leading
-    // source's own row, its key and drawer, said where it is, and Return
-    // steps in as `into` does.
+    // source's own row, its key and drawer, said where it is, and Return,
+    // Tab and Ctrl+] step in as `into` does (`ledBy`, read by `steppedAsLed`).
     function ledFound(source) {
         const name = source.settings.name;
-        const leading = sources.find(one => typeof one.leadsTo === "function"
-            && one.leadsTo(name) !== null) ?? null;
-        const rows = leading === null ? [] : leading.leadsTo(name);
+        const { leading, rows } = leadingTo(name) ?? { leading: null, rows: [] };
         const row = rows[rows.length - 1];
         if (row === undefined)
             return null;
         const found = Object.assign({}, row, {
+            ledBy: name,
             side: [leading.collection?.title ?? leading.settings.name]
                 .concat(rows.slice(0, -1).map(one => one.name)).join(" \u203a "),
             verb: "go to",
@@ -739,6 +738,28 @@ Scope {
         });
         found.run = () => root.into(name);
         return found;
+    }
+
+    // A row found for a place that lives deeper, as "notices" finds For
+    // You's Desktop, steps in through the rows above it, by Return, Tab or
+    // Ctrl+], so - climbs back out the way it went in. It's asked before
+    // the row's own ways in, which it carries from the row it copies.
+    function steppedAsLed(row) {
+        if (held.length > 0 || row.ledBy === undefined)
+            return false;
+        root.into(row.ledBy);
+        return true;
+    }
+
+    // The source that leads a name deeper (`leadsTo`) and the rows it
+    // leads through, asked once, or null when none does.
+    function leadingTo(name) {
+        for (const one of sources) {
+            const rows = typeof one.leadsTo === "function" ? one.leadsTo(name) : null;
+            if (rows !== null)
+                return { leading: one, rows: rows };
+        }
+        return null;
     }
     readonly property var collections: sources.filter(source => source.collection)
 
@@ -3352,6 +3373,8 @@ Scope {
     // that opens to where it leads. A command, which only fills the line,
     // has no place, nor a notice, whose acts are commands.
     function followed(row) {
+        if (steppedAsLed(row))
+            return true;
         if (row.lands) {
             row.run();
             return true;
@@ -4316,6 +4339,8 @@ Scope {
             intoCategory(row.category, typed);
             return true;
         }
+        if (steppedAsLed(row))
+            return true;
         const things = asThing(row, held.length === 0 || collecting);
         const into = inside(row, things);
         // A collection with nothing in it still holds the places its
@@ -7103,10 +7128,8 @@ Scope {
         // to For You's Desktop (`leadsTo`), opens on its place and steps
         // through those rows as Joel would, so - climbs back out the same
         // way and Escape at rest closes there.
-        const leading = sources.find(one => typeof one.leadsTo === "function"
-            && one.leadsTo(name) !== null) ?? null;
+        const { leading, rows } = leadingTo(name) ?? { leading: null, rows: [] };
         if (leading !== null && leading.settings.name !== name) {
-            const rows = leading.leadsTo(name);
             into(leading.settings.name);
             for (const row of rows) {
                 if (!enter(row))

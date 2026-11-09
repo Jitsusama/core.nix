@@ -1172,9 +1172,9 @@ def test_a_plates_title_eyebrow_and_words_lie_on_the_cards_lines(
         under = lines["words"] - facts[-1]
         apart = under >= 2 * PITCH - NEAR if wrapped else abs(under - 2 * PITCH) <= NEAR
         assert apart, f"at {scale} the notice's words aren't a line under its facts: {drawer}"
-        # Signed as its card signs it, from its sender, and never a time, which a fact says
-        # (VKCF3Z, 2026-11-08); notify-send files no kind to follow it.
-        assert drawer["eyebrow"] == "from Desktop", drawer
+        # From the program it came through, the desktop's own being what For You's path
+        # names, and a notice, filing no kind; never a time, which a fact says (VKCF3Z).
+        assert drawer["eyebrow"] == "from notify-send \u00b7 notice", drawer
         desktop.shoot(f"launcher-plate-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
 

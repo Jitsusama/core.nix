@@ -429,18 +429,40 @@ def test_a_missed_notice_shows_its_glyph_and_now_shows_the_notices(desktop: Desk
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: "Desktop" in shown["rows"])
     desktop.down_to("Desktop")
+    # A place's row: who sent them follow its name, and nothing below it (VKCF3Z, 2026-11-09).
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("count", "") != "" and shown["selected"].get("note") == ""
+        )
+    )
     # For You's Lately band, Desktop's row on, for the design's look.
     desktop.shoot("launcher-for-you-lately")
     machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: shown["keys"] and shown["held"] == ["now", "For You", "Desktop"]
     )
+    says_each_thing_once(desktop)
     desktop.shoot("launcher-from-margin")
     forgets_then_brings_back(desktop)
     desktop.close_launcher()
     # Opening them counted them seen, so nothing's waiting.
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
     reads_them_all(desktop)
+
+
+def says_each_thing_once(desktop: Desktop) -> None:
+    """Say Peter's sender once, in the drawer's eyebrow, and History's nothing as "none".
+
+    The cursor row adds nothing to its age, as a Slack message's adds nothing, and History,
+    keeping nothing yet, says "none" as every place holding nothing does (VKCF3Z, 2026-11-09).
+    """
+    desktop.launcher_until(lambda shown: shown["drawer"]["out"] and shown["footer"] == "")
+    things = desktop.showing()["things"]
+    kept = [
+        thing["reads"].split(" \u00b7 ") for thing in things if thing["reads"].startswith("History")
+    ]
+    assert kept, things
+    assert kept[0][1] == "none", things
 
 
 def reads_them_all(desktop: Desktop) -> None:
@@ -464,6 +486,8 @@ def reads_them_all(desktop: Desktop) -> None:
             and shown["nothing"] == "Nothing unread from the desktop."
             and shown["rows"] == ["History"]
             and (shown["selected"] or {}).get("name") == "History"
+            # Its side says what it counts (VKCF3Z, 2026-11-09).
+            and re.fullmatch(r"\d+ kept", shown["selected"].get("side", "")) is not None
         )
     )
     desktop.shoot("launcher-desktop-none-unread")

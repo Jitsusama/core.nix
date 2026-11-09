@@ -337,9 +337,9 @@ def test_a_notices_drawer_says_who_sent_it_and_its_keys_scroll_it(desktop: Deskt
     """
     page = InTheDrawer(desktop)
     drawer = page.drawer()
-    # Signed as a card signs it: a program known by no other name by its own, in title case.
-    # It carries no time, which is an Arrived fact, and this one files no kind to follow it.
-    assert drawer["eyebrow"] == "from Desktop", drawer
+    # From the program it came through, since the desktop's own is what For You's path names,
+    # and a notice, filing no kind of its own; never a time, which is an Arrived fact.
+    assert drawer["eyebrow"] == "from notify-send \u00b7 notice", drawer
     assert drawer["more"], f"forty lines fit the drawer: {drawer}"
     # Its foot counts each of the log's lines it hides as one, the drawer showing no more of
     # them than its pitch fits in its height.
@@ -593,7 +593,8 @@ def test_in_a_drawer_the_keys_move_its_cursor_as_vims_do(desktop: Desktop) -> No
     page.until("h", lambda drawer: drawer["cursor"]["letter"] == 1)
     last = page.until("G", lambda drawer: drawer["cursor"]["line"] == drawer["cursor"]["lines"] - 1)
     assert last["scrolled"] > 0, last
-    assert held(last), last
+    # Said whole, a string pytest never shortens, so a failure shows where the view stood.
+    assert held(last), f"G left the cursor outside the view or its top cut: {last}"
     # The words' last line, or its end where a narrow drawer wraps it, as at 1 here.
     assert last["cursor"]["says"], last
     assert page.LAST.endswith(last["cursor"]["says"]), last

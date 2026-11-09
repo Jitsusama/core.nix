@@ -114,6 +114,10 @@ Provider {
             glyph: String.fromCodePoint(notice.glyph),
             hue: notice.low ? "muted" : notice.hue,
             note: notice.app,
+            // Said once, in its drawer's eyebrow, while the drawer is out,
+            // so the cursor row's side is its age alone, as a Slack
+            // message's is (VKCF3Z, 2026-11-09).
+            noteInDrawer: true,
             // Who sent it, which ends a paragraph of rows (Launcher.qml's
             // runOf), so dip takes away what one sender sent.
             sender: notice.app,
@@ -180,9 +184,11 @@ Provider {
             { label: Words.name("notices:left"),
                 said: how === "" ? "" : Words.of("notices:left", how).said ?? "",
                 at: notice.leftAt ? clock(notice.leftAt) : "" },
+            // Urgency only where it isn't normal, the urgency nearly
+            // every notice is sent at (VKCF3Z, 2026-11-09).
             { label: Words.name("notices:urgency"),
-                said: notice.urgency ? Words.of("notices:urgency", notice.urgency).said ?? ""
-                    : "" });
+                said: notice.urgency && notice.urgency !== "normal"
+                    ? Words.of("notices:urgency", notice.urgency).said ?? "" : "" });
     }
 
     // A time as its drawer writes it: alone today, with its day before.
@@ -197,15 +203,20 @@ Provider {
     // Who sent a notice and what kind it is, as its drawer's eyebrow says
     // it: the sender by the name its card signs it with (Notices.qml), so
     // the two never differ (VKCF3Z, 2026-11-03), and the kind its category
-    // names, never a time, which Arrived says (VKCF3Z, 2026-11-08).
+    // names, never a time, which Arrived says (VKCF3Z, 2026-11-08). One the
+    // card signs as the desktop's, which For You's path already names, is
+    // from the program it came through, "from notify-send", and one whose
+    // category names no kind is a notice (VKCF3Z, 2026-11-09).
     function fromAndKind(notice) {
         const said = Words.of("notices").said;
         const kinds = {};
         for (const [type, state] of Object.entries(Words.of("notices:kind").states ?? {}))
             kinds[type] = state.said;
-        const who = notice.app === "" ? "" : Notices.sender(notice.app).name;
+        const signed = notice.app === "" ? "" : Notices.sender(notice.app).name;
+        const who = signed === Words.name("for-you:source:desktop") ? notice.app : signed;
         return Notice.eyebrow(who, Notice.kind(notice.category,
-            { kinds: kinds, failed: said.failed, bounced: said.bounced }), said.from);
+            { kinds: kinds, failed: said.failed, bounced: said.bounced }) || said.notice,
+            said.from);
     }
 
     // What can be done to a notice, the acts its card lists too, in the
@@ -422,27 +433,45 @@ Provider {
         return all();
     }
 
-    function aged(rows) {
+    // Each row's age at its side, after how it stands where `standing`
+    // says it, as items, so the side gives way by whole items, its age
+    // first, never an ellipsis (VKCF3Z, 2026-11-09).
+    function aged(rows, standing) {
         const now = Date.now();
-        for (const row of rows)
-            row.side = row.unread ? `unread · ${Ago.ago(row.at, now)}` : Ago.ago(row.at, now);
+        for (const row of rows) {
+            row.sideItems = [{ said: standing(row), keep: 2 },
+                { said: Ago.ago(row.at, now), keep: 1 }].filter(item => item.said !== "");
+            row.side = row.sideItems.map(item => item.said).join(" \u00b7 ");
+        }
         return rows;
+    }
+
+    // How a notice stands, in its words: "unread" or "read".
+    function stood(read) {
+        return (Words.of("notices").said ?? {})[read ? "read" : "unread"] ?? "";
+    }
+
+    // Where read and unread are listed together, the unread say so.
+    function unreadOnes(row) {
+        return row.unread ? stood(false) : "";
     }
 
     // Those a program sent, newest first, each as it is here, so a program's
     // own row (Applications.qml) holds them and Return on one does what it
     // does here. `sent` says whether a sender's name is the program.
     function sentBy(sent) {
-        return lined(aged(all().filter((row, index) => sent(Notices.history[index]?.app ?? ""))),
-            []);
+        return lined(aged(all().filter((row, index) => sent(Notices.history[index]?.app ?? "")),
+            unreadOnes), []);
     }
 
     // The notices of `ids`, newest first, each as it is here, so For You's
     // Desktop row (Now.qml) holds the unread ones, and its History the
-    // read, as they're listed here.
+    // read, as they're listed here. Every one Desktop holds is unread, which
+    // its head says once, so a row says only that it's read, as one read
+    // while Joel looks stays where it was (VKCF3Z, 2026-11-09).
     function rowsOf(ids) {
-        return lined(aged(all().filter((row, index) => ids.includes(Notices.history[index]?.id))),
-            []);
+        return lined(aged(all().filter((row, index) => ids.includes(Notices.history[index]?.id)),
+            row => row.unread ? "" : stood(true)), []);
     }
 
     // Whether a text holds a word typed, as search finds it.
@@ -481,11 +510,11 @@ Provider {
             finest = Math.min(finest, f.grade);
         const kept = Order.sorted(found.filter(f => f.grade === finest),
             (a, b) => b.score - a.score || b.row.at - a.row.at);
-        return { rows: lined(aged(kept.map(f => f.row)), words), grade: finest };
+        return { rows: lined(aged(kept.map(f => f.row), unreadOnes), words), grade: finest };
     }
 
     function everything() {
-        return lined(aged(all().slice()), []);
+        return lined(aged(all().slice(), unreadOnes), []);
     }
 
     function counted() {
