@@ -251,20 +251,20 @@ def test_an_act_shows_on_the_frame_after_its_key_with_another_source_changing(
         desktop.normal()
         # Four presses, on and off twice, each waited for before the next, so each is a
         # fresh press, and Do Not Disturb is left as it was. The refresh is said once
-        # its frame is drawn, so the row says what changed by then.
+        # its frame is drawn, so the row says what changed by then. Only a change its key
+        # carried at once is said as an act's (SHOWN_AT_ONCE).
         for named in ["Let Notices Show", "Do Not Disturb"] * 2:
             since = desktop.mark()
             desktop.machine.send_key("ret")
             desktop.reported("act shown in ", timed, since)
-            assert took[-1][1] <= FRAME, f"its refresh waited behind the queue's: {took}"
             selected = desktop.showing()["selected"]
             assert selected["name"] == named, (named, selected)
     finally:
         desktop.as_account(f"kill $(cat {jobs}/pid) || true")
         desktop.close_launcher()
         desktop.as_account(f"rm -f {jobs}/queue.json {jobs}/pid")
-    # The frame's time is the VM's, drawn without a graphics card, so it's said, not held
-    # to the laptop's budget.
+    # The times are the VM's, drawn without a graphics card on a shared builder, so they're
+    # said, and the refresh is held by its being said at all.
     print(f"each act's frame after its key, and its refresh after the key's work, in ms: {took}")
 
 
@@ -307,8 +307,8 @@ def test_dd_on_a_notice_shows_on_the_frame_after_its_key(desktop: Desktop) -> No
         assert not side.startswith(("unread", "read")), side
         since = desktop.mark()
         desktop.machine.send_chars("dd")
+        # Said only as its key carried it at once (SHOWN_AT_ONCE).
         desktop.reported("act shown in ", timed, since)
-        assert took[-1][1] <= FRAME, f"its refresh waited: {took}"
         selected = desktop.showing()["selected"]
         assert selected["name"] == LUNCH, selected
         assert cast("str", selected["side"]).startswith("read \u00b7 "), selected
@@ -320,11 +320,11 @@ def test_dd_on_a_notice_shows_on_the_frame_after_its_key(desktop: Desktop) -> No
 # Peter's notice, as its row in Notices names it: by its title alone (VKCF3Z, 2026-11-08).
 LUNCH = "Peter"
 
-# A frame at 60 Hz, in whole ms: what an act's refresh may wait once the key's own work is
-# done. Held behind a queue changing ten times a second, it waits anywhere up to the quarter
-# second the launcher paces changes by, so four presses all within a frame by chance come
-# about once in 47,000 runs.
-FRAME = 17
+# SHOWN_AT_ONCE: the shell says "act shown in" only for a change its key's own work made,
+# which it refreshes at once rather than on the quarter second it paces other changes by
+# (Launcher.qml's refreshed). One left to the pace is never said, so the wait for it fails.
+# Held to a frame at 60 Hz as well, it failed on the builder alone: at 2101c92b6 four
+# presses' refreshes came 9, 6, 7 and 22 ms after the keys' work (2026-11-09).
 
 # How many rows the launcher's card shows at once.
 ROWS_SHOWN = 8

@@ -102,6 +102,17 @@ QtObject {
             Pacing.keyed(10, true, within), false);
         check(failures, "nor one 60 ms after an act", Pacing.keyed(60, false, within), false);
 
+        // Counted from the key's work done, not its press, so a handler
+        // slowed past `within` before it acts keeps the change it made.
+        check(failures, "a change within a key's work comes no time after it",
+            Pacing.sinceKey(1080, 1000, 900), 0);
+        check(failures, "so a slow handler's act is its own",
+            Pacing.keyed(Pacing.sinceKey(1080, 1000, 900), false, within), true);
+        check(failures, "one after the work is timed from its end",
+            Pacing.sinceKey(1090, 1000, 1070), 20);
+        check(failures, "and one long after it is no key's",
+            Pacing.keyed(Pacing.sinceKey(1200, 1000, 1070), false, within), false);
+
         wanting(failures);
 
         for (const failure of failures)

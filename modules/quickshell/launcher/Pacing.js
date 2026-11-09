@@ -44,6 +44,16 @@ function keyed(ago, moved, within) {
     return !moved && ago < within;
 }
 
+// How long after the last key's work, taken at `taken` and done at `done`,
+// a change came at `now`: none while the work is under way, as the act it
+// does changes a source from within it. Counted from the key's press
+// instead, a handler a loaded machine slowed past `within` before its act
+// left the change it made to the pace, and dd on a notice never said it was
+// shown (draws-still at 550a45788, cd92d7660 and 2101c92b6, 2026-11-09).
+function sinceKey(now, taken, done) {
+    return done < taken ? 0 : now - done;
+}
+
 // The timer rang: the refresh it waited for is taken.
 function rang(pace) {
     return { at: pace.at, due: null };

@@ -4395,9 +4395,14 @@ Scope {
         // saying it changed marks it stale even when its things are the
         // same.
         choicesStale = true;
-        // Only a key that acted owns a change beside it (Pacing.keyed).
-        const byKey = open && Pacing.keyed(KeyTimes.now() - keyHeardAt, prompt.keyMoved,
-            keyedWithin);
+        // Only a key that acted owns a change beside it (Pacing.keyed),
+        // timed from when its work was done (Pacing.sinceKey).
+        const ago = Pacing.sinceKey(KeyTimes.now(), keyHeardAt, keyDoneAt);
+        const byKey = open && Pacing.keyed(ago, prompt.keyMoved, keyedWithin);
+        // One just past it is said, so a key's change left to the pace is
+        // seen for what it was.
+        if (open && !byKey && !prompt.keyMoved && ago < 1000)
+            Report.say(`heard ${source.settings.name} ${Math.round(ago)} ms after a key's work`);
         if (byKey && !keyedActs.some(one => one.source === source && one.heard === keyHeardAt)) {
             const act = { source: source, heard: keyHeardAt, done: Infinity };
             keyedActs = keyedActs.filter(one => one.heard === keyHeardAt).concat([act]);
@@ -4465,6 +4470,7 @@ Scope {
     // the refresh that shows it is drawn.
     readonly property int keyedWithin: 50
     property real keyHeardAt: -Infinity
+    property real keyDoneAt: -Infinity
     property var keyedActs: []
     property var actsDrawing: []
     property bool actsBegun: false
@@ -4476,8 +4482,15 @@ Scope {
         // changing beside one is left to the pacing, as Slack's answers
         // arriving while Joel types are.
         function onKeysTakenChanged() {
-            if (!prompt.typingNow || prompt.keyTaken.length !== 1)
-                root.keyHeardAt = KeyTimes.now();
+            if (prompt.typingNow && prompt.keyTaken.length === 1)
+                return;
+            const heard = KeyTimes.now();
+            root.keyHeardAt = heard;
+            // Its work is done once its handler has returned.
+            Qt.callLater(() => {
+                if (root.keyHeardAt === heard)
+                    root.keyDoneAt = KeyTimes.now();
+            });
         }
     }
 
