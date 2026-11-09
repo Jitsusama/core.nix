@@ -55,6 +55,11 @@ pub struct Config {
     /// one budget, the implicit default.
     #[serde(default)]
     budgets: Vec<BudgetConfig>,
+    /// What each of pi's providers is called as it names itself, by its
+    /// id: "Claude Code" for `claude-code`. One not named is said by its
+    /// id.
+    #[serde(default)]
+    pub provider_names: BTreeMap<String, String>,
     /// Whether a report is written each Monday morning.
     #[serde(default = "yes")]
     pub weekly_report: bool,

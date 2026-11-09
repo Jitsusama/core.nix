@@ -356,7 +356,7 @@ ShellRoot {
                 said: { window: "a week", warns: "at 80%", resets: "", read: "", state: "" }
             }],
             said: { what: "your own \u00b7 plan", spent: "", worth: "$84 today",
-                reading: "reading fine" }
+                reading: "reading fine", providers: "Claude Code" }
         }, {
             name: "proxy", label: "Your AI proxy token", words: "the employer's money",
             providers: [], standing: "$37,000 of $40,000 this week",
@@ -365,7 +365,7 @@ ShellRoot {
                 standing: "$37,000 of $40,000", nearest: 0.925, warn: 0.9,
                 said: { window: "a week", warns: "at $36,000", resets: "",
                     ends: "Wed 2 Dec \u00b7 a guess",
-                    changed: "raised $30,000 to $40,000 \u00b7 Thu 11:31",
+                    changed: "raised $30,000 to $40,000 \u00b7 Thursday 11:31",
                     read: "the AI proxy at 21:35", state: "" }
             }, {
                 name: "premium", label: "Premium Day", unit: "dollars",
@@ -449,21 +449,21 @@ ShellRoot {
         // feed says comes first, while it says anything.
         expect("a dollar window past where it warns", said("budget:proxy:weekly")
             === "Standing=$37,000 of $40,000:stroke!; Override Ends=Wed 2 Dec \u00b7 a guess; "
-            + "Last Changed=raised $30,000 to $40,000 \u00b7 Thu 11:31; "
+            + "Last Changed=raised $30,000 to $40,000 \u00b7 Thursday 11:31; "
             + "Read By=the AI proxy at 21:35; Warns=at $36,000", said("budget:proxy:weekly"));
         expect("a window its feed refuses", said("budget:proxy:premium")
             === "Feed Says=refusing requests; Standing=$0 of $300:stroke; "
             + "Resets=05:00 tomorrow; Read By=the AI proxy at 21:35; Warns=at $150",
             said("budget:proxy:premium"));
         const plan = drawn("budget:claude");
-        // Whose and what kind, in the Note every where and kind is in;
-        // each window its figure and when it resets, since the row's side
-        // is its standing in full.
-        expect("a plan's drawer", plan?.eyebrow === "your own \u00b7 plan" && plan.eyebrowNames
+        // Whose and what kind, our own words, so in Label's capitals; each
+        // window its figure and when it resets, since the row's side is its
+        // standing in full; its providers as each names itself.
+        expect("a plan's drawer", plan?.eyebrow === "your own \u00b7 plan" && !plan.eyebrowNames
             && plan.title === "Claude Pro"
             && factsOf(plan) === "Five Hours=85% \u00b7 resets 16:20:stroke!; "
             + "Week=not read yet; Worth at List=$84 today; Feed=reading fine; "
-            + "Providers=claude-code", plan ? factsOf(plan) : "none");
+            + "Providers=Claude Code", plan ? factsOf(plan) : "none");
         expect("the employer's money's drawer", said("budget:proxy")
             === "Week=$37,000 of $40,000:stroke!; Premium Day=$0 of $300:stroke; "
             + "Spent=$3,075 today; Feed=signed out", said("budget:proxy"));
@@ -482,7 +482,7 @@ ShellRoot {
             + "Read By=Claude at 14:20; Warns=at 80% | Override Ends=Wed 2 Dec \u00b7 a guess; "
             + "Read By=the AI proxy at 21:35 | "
             + "Five Hours=85% \u00b7 resets 16:20:stroke!; Week=not read yet; "
-            + "Feed=reading fine; Providers=claude-code | Feed=signed out | "
+            + "Feed=reading fine; Providers=Claude Code | Feed=signed out | "
             + "Resets=05:00 tomorrow; Read By=the AI proxy at 21:35", quiet.join(" | "));
         expect("the Budgets row's own drawer", !budgets.drawer, "drawn");
         expect("a session's budget", SpendDrawer.sessionBudget(SpendWatch.budgets,

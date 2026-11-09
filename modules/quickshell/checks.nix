@@ -3966,7 +3966,7 @@ onLinux {
   # sequences, and where the caret goes, which Typing.js says; ListedKeys.js
   # to the keys Space ? lists; the drawer as a window, Space and the arrows
   # into it and back, with DrawerPage.js to where its keys take its cursor
-  # and view; Operators.js to what d and y do to the rows they take; and
+  # and view and DrawerFigure.js to where a fact's figure stands; Operators.js to what d and y do to the rows they take; and
   # Confirm.js to how the launcher asks once, as Vim's ask_yesno does.
   the-query-field-takes-vi-modes =
     let
@@ -3984,6 +3984,7 @@ onLinux {
       cp ${./Finding.js} Finding.js
       cp ${./Confirm.js} Confirm.js
       cp ${./DrawerPage.js} DrawerPage.js
+      cp ${./DrawerFigure.js} DrawerFigure.js
       cp ${./Identifier.js} Identifier.js
       cp ${./Search.js} Search.js
       cp ${./Reading.js} Reading.js

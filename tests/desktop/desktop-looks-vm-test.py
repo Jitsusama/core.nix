@@ -3091,10 +3091,10 @@ BUDGETS = {
                     "40% of the week",
                     0.4,
                     warn=0.8,
-                    brief="40% \u00b7 resets Mon 09:00",
+                    brief="40% \u00b7 resets Monday 09:00",
                     window="a week",
                     warns="at 80%",
-                    resets="Mon 09:00",
+                    resets="Monday 09:00",
                     read="Claude at 14:20",
                 ),
             ],
@@ -3103,6 +3103,7 @@ BUDGETS = {
                 "spent": "",
                 "worth": "$84 today \u00b7 $1,120 this month",
                 "reading": "reading fine",
+                "providers": "Claude Code",
             },
         },
         {
@@ -3264,6 +3265,12 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
             desktop.down_to("Claude Pro")
             facts = drawer_shot(desktop, "Claude Pro", f"launcher-budgets-each-at-{named}")
             assert facts == ["Five Hours", "Week", "Worth at List", "Feed", "Providers"], facts
+            # Each window keeps its meter, under its value where it won't fit beside it, and
+            # its eyebrow is our own words, in Label's capitals (VKCF3Z, 2026-11-09).
+            drawer = desktop.showing()["drawer"]
+            drawn = dict(zip(drawer["drawnFacts"], drawer["figures"], strict=True))
+            assert drawn["Five Hours"] == drawn["Week"] == "stroke", f"at {scale}: {drawer}"
+            assert drawer["eyebrowNames"] is False, f"at {scale}: {drawer}"
             desktop.step_in()
             rows = desktop.showing()["rows"]
             assert rows[:2] == ["Five Hours", "Week"], rows

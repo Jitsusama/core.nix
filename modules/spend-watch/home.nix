@@ -109,6 +109,7 @@ let
       overrideLead
       weeklyReport
       refusals
+      providerNames
       ;
   }
   // lib.optionalAttrs (cfg.zone != null) { inherit (cfg) zone; }
@@ -285,6 +286,19 @@ in
           };
         }
       );
+    };
+
+    providerNames = lib.mkOption {
+      description = ''
+        What each of pi's providers is called as it names itself, by its id, for
+        where a budget lists the providers it always draws for. One not named
+        here is said by its id.
+      '';
+      type = lib.types.attrsOf lib.types.str;
+      default = { };
+      example = {
+        anthropic = "Anthropic";
+      };
     };
 
     claudePlanFeed = lib.mkOption {
@@ -464,6 +478,10 @@ in
 
   config = {
     home.packages = [ package ];
+
+    # The claude-code provider drives Claude Code, whose plan this module's
+    # own feed reads (claudePlanFeed).
+    jitsusama.spend-watch.providerNames.claude-code = lib.mkDefault "Claude Code";
 
     xdg.configFile."spend-watch/config.json".source = configFile;
 

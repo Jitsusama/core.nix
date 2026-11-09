@@ -2,7 +2,7 @@
 // table in Qt's own JavaScript engine, the one the shell runs it in, and
 // what its operators do to the rows. The `the-query-field-takes-vi-modes`
 // check copies modules/quickshell/QueryKeys.js, Editing.js, Typing.js,
-// ListedKeys.js, DrawerPage.js, Search.js, Reading.js, LineEditing.js,
+// ListedKeys.js, DrawerPage.js, DrawerFigure.js, Search.js, Reading.js, LineEditing.js,
 // Operators.js, Finding.js and Confirm.js beside this file and runs
 // `qml -platform offscreen query-keys.qml`.
 import QtQuick
@@ -16,6 +16,7 @@ import "Operators.js" as Operators
 import "Finding.js" as Finding
 import "Confirm.js" as Confirm
 import "DrawerPage.js" as Page
+import "DrawerFigure.js" as Figure
 
 QtObject {
     // What failed, said as the test ends, or as it throws.
@@ -1096,6 +1097,33 @@ QtObject {
             Page.besideText(opens, 200, width), "PDF \u00b7 HTML \u00b7 2 more");
         holds("any other value is measured whole", Page.besideText({ value: 42,
             valueItems: kinds, between: " " }, 60, width), "42");
+        // Where a fact's figure stands: a stroke of 100 that reads down to
+        // 30, a spark of 100 that reads only whole (VKCF3Z, 2026-11-09).
+        const stroke = { shape: "stroke", usual: 100, least: 30 };
+        const spark = { shape: "spark", usual: 100, least: 100 };
+        const places = [
+            ["a stroke with its room beside a one-line value", stroke, 1, 140, 260,
+                { place: "beside", wide: 100 }],
+            ["a stroke takes what room the line leaves", stroke, 1, 60, 260,
+                { place: "beside", wide: 60 }],
+            ["a stroke short of reading beside its value goes under it, as wide as ever",
+                stroke, 1, 20, 260, { place: "under", wide: 100 }],
+            ["a stroke under a value of two lines", stroke, 2, 140, 260,
+                { place: "under", wide: 100 }],
+            ["a stroke under its value no wider than the value runs", stroke, 1, 10, 80,
+                { place: "under", wide: 80 }],
+            ["a spark whole beside its value", spark, 1, 100, 260,
+                { place: "beside", wide: 100 }],
+            ["a spark that won't fit beside goes under", spark, 1, 99, 260,
+                { place: "under", wide: 100 }],
+            ["a spark that won't fit under either is the only one that goes", spark, 1, 20, 90,
+                { place: "none", wide: 0 }],
+            ["no figure, nothing", null, 1, 140, 260, { place: "none", wide: 0 }]
+        ];
+        for (const [what, figure, lines, room, under, want] of places)
+            holds(`a figure's place: ${what}`,
+                JSON.stringify(Figure.place(figure, lines, room, under)),
+                JSON.stringify(want));
     }
 
     // How tall a drawer's preview stands, on a pitch of 24, two beats of

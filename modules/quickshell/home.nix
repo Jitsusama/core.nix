@@ -130,6 +130,7 @@ let
     "StatusLine.qml"
     "StatusLine.js"
     "Drawer.qml"
+    "DrawerFigure.js"
     "DrawerPage.js"
     "Identifier.js"
     "Pictures.js"

@@ -92,14 +92,15 @@ function windowFacts(allowance, words, standing, resets) {
 }
 
 // A budget's drawer: whose and what kind of money it is over its name,
-// "your own \u00b7 plan", in the Note every where and kind is set in
-// rather than in capitals, which the row no longer says (VKCF3Z,
-// 2026-11-08); then each window by its feed's name, its figure and when
+// "your own \u00b7 plan", in Label's capitals as our own words are, Note
+// being only for an eyebrow that carries a name from the world (VKCF3Z,
+// 2026-11-09), and which the row no longer says; then each window by its feed's name, its figure and when
 // it resets with how near it is, since its standing in full is the row's
 // side; a budget of one window says that window's other facts too, since
 // it has no row of its own to step into; then what it spent and what a
 // plan's turns were worth at list, how its feeds read, and the providers
-// it always draws for, last as identifiers are.
+// it always draws for, each as it names itself (VKCF3Z, 2026-11-09), by
+// its id only from a daemon that doesn't say.
 function budgetDrawer(budget, words) {
     const allowances = budget.allowances ?? [];
     const shown = allowances.filter(one => !hidden(one, words));
@@ -117,10 +118,10 @@ function budgetDrawer(budget, words) {
         ["spent", amounts ? told.spent : ""],
         ["worth", amounts ? told.worth : ""],
         ["reading", told.reading],
-        ["providers", (budget.providers ?? []).join(DOT)]
+        ["providers", said(told.providers) ? told.providers : (budget.providers ?? []).join(DOT)]
     ].filter(([, value]) => said(value))
         .map(([id, value]) => fact(words.name(id), value));
-    return { eyebrow: said(told.what) ? told.what : budget.words ?? "", eyebrowNames: true,
+    return { eyebrow: said(told.what) ? told.what : budget.words ?? "",
         title: budget.label, facts: windows.concat(only, more), body: "" };
 }
 
