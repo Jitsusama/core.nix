@@ -1242,7 +1242,7 @@ changes = true
 undoable = true
 
 # A firmware security setting fwupd changes to what the next level needs:
-# Fix It. Named secure, since Neovim's :fixdel takes :fix; it asks once,
+# Secure It. Not :fix, since Neovim's :fixdel takes it; it asks once,
 # since only fwupd's undo takes it back.
 [acts.secure]
 command = "secure"

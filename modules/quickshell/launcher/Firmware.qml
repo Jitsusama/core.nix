@@ -158,7 +158,9 @@ Provider {
     // what it rated and which fwupd, its words saying the level once as a
     // sentence, under an eyebrow saying where and what kind it is. A step
     // in lists every attribute the level is made of (attributeRow), each
-    // failing one first, then the rating, which Return copies.
+    // failing one first, then the rating, which Return copies, wearing
+    // Security Level's mark so it doesn't read as a heading (VKCF3Z,
+    // 2026-11-09).
     function securityRow(host) {
         const id = "firmware:security";
         const rating = Fwupd.ratingOf(host.security);
@@ -199,7 +201,7 @@ Provider {
             side: rating.code,
             copy: rating.code,
             hue: "machine",
-            glyph: ""
+            glyph: Words.glyph("firmware")
         })]));
     }
 
@@ -210,11 +212,12 @@ Provider {
         return attribute.missing ? `${found} \u00b7 ${results.missing}` : found;
     }
 
-    // One attribute of the security level, as fwupd names it: its note its
-    // group, the level it counts at or what's running, its side what was
-    // found, warning where it fails; its mark the theme's for a pass, or
+    // One attribute of the security level, as fwupd names it: its side
+    // its group, the level it counts at or what's running, muted on every
+    // row, then what was found, warning where it fails; its mark the theme's for a pass, or
     // its warning mark in warning ink for a shortfall (VKCF3Z,
-    // 2026-11-09). Its drawer says what passing would find, what fixes it,
+    // 2026-11-09). Its drawer, under an eyebrow saying its group and that
+    // it's a check, "level 2 \u00b7 check", says what passing would find, what fixes it,
     // the firmware setting or the kernel's it reads, what that's set to
     // and what passing needs, and fwupd's description in its words, the
     // setting, plugin and attribute laid out as identifiers, at their
@@ -243,24 +246,27 @@ Provider {
         fact("firmware:attribute", attribute.id, true);
         const group = attribute.level === null ? groups.running
             : String(groups.level ?? "").replace("{level}", attribute.level);
+        const result = resultOf(attribute, results);
         // A thing, so its drawer shows as it's selected, as a port's does.
         return thingRow({
             thing: true,
             key: `firmware:security:${attribute.id}`,
             name: attribute.name,
-            side: resultOf(attribute, results),
-            note: group,
+            side: `${group} \u00b7 ${result}`,
+            sideItems: [{ said: group, keep: 1, hue: "muted" }, { said: result, keep: 2 }],
+            note: "",
             warns: !attribute.passed,
             hue: attribute.passed ? "machine" : "warning",
             glyph: attribute.passed ? Theme.glyph.complete : Theme.glyph.caution,
             live: provider,
-            drawer: () => ({ eyebrow: group, title: attribute.name, facts: facts,
+            drawer: () => ({ eyebrow: [group, groups.kind].filter(Boolean).join(" \u00b7 "),
+                title: attribute.name, facts: facts,
                 body: attribute.about })
         }, () => provider.actsOn(attribute));
     }
 
-    // What an attribute holds a step in: Fix It where it fails and fwupd
-    // can change it itself, Undo the Fix where it passes and fwupd can put
+    // What an attribute holds a step in: Secure It where it fails and fwupd
+    // can change it itself, Undo It where it passes and fwupd can put
     // it back, Reboot Into Firmware Setup where it fails and a firmware
     // setting fixes it, then fwupd's id for it, which Return copies and
     // its documentation goes by.

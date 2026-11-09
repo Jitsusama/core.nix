@@ -3154,7 +3154,8 @@
       "name": "Group",
       "said": {
         "level": "level {level}",
-        "running": "running"
+        "running": "running",
+        "kind": "check"
       }
     },
     {
@@ -3234,16 +3235,16 @@
       "id": "verb:firmware:fix",
       "command": "secure",
       "in": "firmware",
-      "name": "Fix It",
+      "name": "Secure It",
       "verb": "fix",
       "glyph": "firmware",
-      "sure": "Fix {attribute} Now",
+      "sure": "Secure {attribute} Now",
       "said": {
         "what": "fwupd changes the setting",
         "final": "fwupd changes the setting, and may need a restart",
-        "changing": "fixing",
-        "changed": "fixed",
-        "failed": "didn't fix",
+        "changing": "securing",
+        "changed": "secured",
+        "failed": "didn't secure",
         "stopped": "stopped waiting after {count} min"
       }
     },
@@ -3251,7 +3252,7 @@
       "id": "verb:firmware:undo",
       "command": "undo",
       "in": "firmware",
-      "name": "Undo the Fix",
+      "name": "Undo It",
       "verb": "undo",
       "glyph": "firmware",
       "sure": "Undo the Fix to {attribute} Now",

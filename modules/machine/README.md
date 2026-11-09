@@ -130,7 +130,7 @@ units, or named here as left out with the reason.
 |                 | each attribute's name, level and result      | a step in, Needed for Level, Lowered By   |
 |                 | its description, fix flags, plugin and id    | each attribute's drawer                   |
 |                 | the setting it reads, and what passing needs | each attribute's drawer                   |
-|                 | can fix, can undo                            | Fix It, Undo the Fix, a step in           |
+|                 | can fix, can undo                            | Secure It, Undo It, a step in             |
 
 ## Left Out, and Why
 
