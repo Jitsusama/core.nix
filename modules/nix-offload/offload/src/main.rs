@@ -19,6 +19,9 @@
 //! listens, beside any other relay on that port, and told to leave
 //! (SIGUSR1) it takes no new connection and ends once its last closes.
 //!
+//! `nix-offload progress HOST` says how far the builds on a lent builder
+//! have got, as src/progress.rs says.
+//!
 //! A builder that lives `--longest` is deleted at its end whatever it's
 //! building, and can't be given longer once it runs. So an hour before
 //! that, while a build uses it or wants one, a successor is asked for;
@@ -148,6 +151,7 @@ mod held;
 mod journal;
 mod machines;
 mod passed;
+mod progress;
 mod proof;
 mod queue;
 mod relay;
@@ -229,6 +233,7 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     | nix-offload stand [--standing PATH] [--beside PATH] \
                     | nix-offload relay --listen ADDRESS --to ADDRESS \
                     | nix-offload report --rate DOLLARS \
+                    | nix-offload progress HOST \
                     | nix-offload there [--never-ask] [-L] [--keep-going] [--apply FUNCTION] \
                     [--out DIR] [--print-out-paths] [--here] [--here-when-idle] [--outlive] \
                     [--bulk] [--first] \
@@ -382,6 +387,11 @@ fn main() -> ExitCode {
     };
     if arguments.first().map(String::as_str) == Some("there") {
         return there(&arguments[1..]);
+    }
+    if let [command, host] = arguments.as_slice()
+        && command == "progress"
+    {
+        return progress(host);
     }
     if arguments.first().map(String::as_str) == Some("relay") {
         let (Some(listen), Some(to)) = (given("--listen"), given("--to")) else {
@@ -631,6 +641,48 @@ fn vm_apart_from(
     let vm_dirs = vm_dirs(vm_dir);
     let vm_parts = overflowed(vm, &vm_dirs);
     (vm_dirs, vm_parts, left)
+}
+
+/// How far the builds on the lent builder ssh calls `host` have got, as
+/// src/progress.rs says, asked of the first lender whose store names it.
+fn progress(host: &str) -> ExitCode {
+    let vm_dir =
+        env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
+    let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
+    let lent = [dir, more_dir()]
+        .into_iter()
+        .chain(vm_dirs(&vm_dir))
+        .filter_map(|dir| standing(&dir))
+        .filter_map(|store| there::builder(store.lines().next()?.trim()))
+        .find(|lent| lent.host == host);
+    let Some(lent) = lent else {
+        eprintln!("nix-offload: no lender lends a builder called {host}");
+        return ExitCode::from(75);
+    };
+    let scratch = env::var_os("XDG_RUNTIME_DIR")
+        .map_or_else(env::temp_dir, PathBuf::from)
+        .join("nix-offload-progress");
+    let answer = there::reach(&lent, &scratch, "ssh").and_then(|(mut command, known, said)| {
+        command
+            .args(["-o", "ConnectTimeout=10"])
+            .arg(&lent.host)
+            .arg(progress::ASKED);
+        let answer = command.output().map_err(|error| error.to_string());
+        for file in [&known, &said] {
+            let _ = fs::remove_file(file);
+        }
+        answer
+    });
+    let read = answer
+        .ok()
+        .filter(|answer| answer.status.success())
+        .and_then(|answer| progress::read(&String::from_utf8_lossy(&answer.stdout)));
+    let Some(figures) = read else {
+        eprintln!("nix-offload: ssh couldn't reach {host} for its progress");
+        return ExitCode::from(255);
+    };
+    println!("{}", progress::line(host, figures, now()));
+    ExitCode::SUCCESS
 }
 
 /// The folders of every VM lender, the first's `vm_dir` first, then the
