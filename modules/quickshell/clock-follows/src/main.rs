@@ -2,8 +2,11 @@
 //! 2026-10-28: "i really want my timezone to automatically change if
 //! possible"), and puts it back when he asks.
 //!
-//! It runs once each time whereabouts writes where the laptop is (a path
-//! unit watches the file), so nothing here waits or asks on a clock. A fix
+//! It watches where the laptop is, `here:laptop`, over whereabouts' socket
+//! in the shell's daemon interface, and decides each time it's told, so
+//! nothing here asks on a clock. Should whereabouts stop, the socket
+//! systemd holds takes the next connection, asked again two seconds on,
+//! and the watch's first answer is decided as any change is. A fix
 //! moves the clock only when it names a zone and GeoClue found it to within
 //! ten kilometres, as the Wi-Fi networks in reach find it. A position read
 //! from the network's address alone, which WARP's exit sends anywhere, is
@@ -15,31 +18,37 @@
 //! found in some other zone, so the clock isn't moved again while Joel is
 //! still where he said no.
 //!
-//!     clock-follows follow <whereabouts.json> <state folder> <timedatectl>
+//!     clock-follows follow <whereabouts' socket> <state folder> <timedatectl>
 //!     clock-follows put-back <state folder> <timedatectl>
 
 use std::env;
 use std::fs;
-use std::io;
+use std::io::{self, BufRead, BufReader, Write};
+use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::process::{Command, ExitCode};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+/// The key whereabouts says where the laptop is by.
+const HERE: &str = "here:laptop";
+
+/// How long a socket that refused, or a whereabouts that stopped, waits
+/// before it's asked again.
+const AGAIN: Duration = Duration::from_secs(2);
 
 /// How near, in metres, GeoClue has to say the laptop is before its zone
 /// moves the clock. Wi-Fi finds a laptop to within a few hundred metres;
 /// an address alone, to a city's or a country's width.
 const TRUSTED: f64 = 10_000.0;
 
-/// The version of whereabouts' file that names a zone.
-const NAMED: u32 = 2;
-
-/// What of whereabouts' file the clock needs.
+/// What of whereabouts' record the clock needs, each null while unknown.
 #[derive(Debug, Deserialize)]
 struct Fix {
-    v: u32,
-    accuracy: f64,
+    #[serde(default)]
+    accuracy_m: Option<f64>,
     #[serde(default)]
     place: Option<String>,
     #[serde(default)]
@@ -76,7 +85,9 @@ enum Decision {
 
 /// What a fix asks, given the clock's zone and the one held, if any.
 fn decide(fix: &Fix, clock: &str, held: Option<&str>) -> Decision {
-    let trusted = fix.v == NAMED && fix.accuracy.is_finite() && fix.accuracy <= TRUSTED;
+    let trusted = fix
+        .accuracy_m
+        .is_some_and(|metres| metres.is_finite() && metres <= TRUSTED);
     let Some(zone) = fix
         .zone
         .as_deref()
@@ -143,14 +154,57 @@ fn write<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
     fs::rename(fresh, path)
 }
 
-fn follow(fix: &Path, state: &Path, timedatectl: &str) -> io::Result<()> {
-    let Some(fix) = read::<Fix>(fix) else {
-        return Ok(());
+/// Watches where the laptop is for as long as the program runs, deciding
+/// each time it's told, and connecting again whenever whereabouts stops.
+fn follow(socket: &Path, state: &Path, timedatectl: &str) -> io::Result<()> {
+    loop {
+        if let Err(why) = watched(socket, state, timedatectl) {
+            eprintln!("<4>where the laptop is couldn't be watched: {why}");
+        }
+        std::thread::sleep(AGAIN);
+    }
+}
+
+/// One connection's watch, until whereabouts hangs up.
+fn watched(socket: &Path, state: &Path, timedatectl: &str) -> io::Result<()> {
+    let mut stream = UnixStream::connect(socket)?;
+    writeln!(
+        stream,
+        r#"{{"id":"here","ask":"watch","kind":"here","keys":["{HERE}"]}}"#
+    )?;
+    for line in BufReader::new(stream).lines() {
+        for fix in fixes(&line?) {
+            // A move that fails, as when timedated refuses, is said and
+            // the next change decided anew.
+            if let Err(why) = decided(&fix, state, timedatectl) {
+                eprintln!("<3>{why}");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The laptop's fixes one line of whereabouts' says: its watch's first
+/// answer, or a change.
+fn fixes(line: &str) -> Vec<Fix> {
+    let Ok(said) = serde_json::from_str::<Value>(line) else {
+        return Vec::new();
     };
+    said.get("records")
+        .or_else(|| said.get("changed"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|record| record.get("key").and_then(Value::as_str) == Some(HERE))
+        .filter_map(|record| serde_json::from_value(record.clone()).ok())
+        .collect()
+}
+
+fn decided(fix: &Fix, state: &Path, timedatectl: &str) -> io::Result<()> {
     let held_path = state.join("held.json");
     let held = read::<Held>(&held_path).unwrap_or_default();
     let from = clock(timedatectl)?;
-    match decide(&fix, &from, held.refused.as_deref()) {
+    match decide(fix, &from, held.refused.as_deref()) {
         Decision::Stay => Ok(()),
         Decision::Unhold => write(&held_path, &Held::default()),
         Decision::Move(to) => {
@@ -162,7 +216,7 @@ fn follow(fix: &Path, state: &Path, timedatectl: &str) -> io::Result<()> {
                 &Moved {
                     from,
                     to,
-                    place: fix.place,
+                    place: fix.place.clone(),
                     when: now(),
                 },
             )
@@ -194,11 +248,11 @@ fn main() -> ExitCode {
         .collect::<Vec<_>>()
         .as_slice()
     {
-        ["follow", fix, state, timedatectl] => fs::create_dir_all(state)
-            .and_then(|()| follow(Path::new(fix), Path::new(state), timedatectl)),
+        ["follow", socket, state, timedatectl] => fs::create_dir_all(state)
+            .and_then(|()| follow(Path::new(socket), Path::new(state), timedatectl)),
         ["put-back", state, timedatectl] => put_back(Path::new(state), timedatectl),
         _ => {
-            eprintln!("usage: clock-follows follow <whereabouts.json> <state> <timedatectl>");
+            eprintln!("usage: clock-follows follow <whereabouts' socket> <state> <timedatectl>");
             eprintln!("       clock-follows put-back <state> <timedatectl>");
             return ExitCode::from(64);
         }
@@ -218,11 +272,27 @@ mod tests {
 
     fn fix(accuracy: f64, zone: Option<&str>) -> Fix {
         Fix {
-            v: NAMED,
-            accuracy,
+            accuracy_m: Some(accuracy),
             place: Some("Kelpwater, Highreach".into()),
             zone: zone.map(Into::into),
         }
+    }
+
+    #[test]
+    fn the_laptops_record_is_read_from_an_answer_or_a_change() {
+        let answer = r#"{"id":"here","records":[{"key":"here:laptop","kind":"here",
+            "accuracy_m":300.0,"zone":"America/Edmonton","place":null}]}"#;
+        let said = fixes(answer);
+        assert_eq!(said.len(), 1);
+        assert_eq!(said[0].zone.as_deref(), Some("America/Edmonton"));
+        let change = r#"{"id":"here","changed":[{"key":"here:laptop","accuracy_m":null}]}"#;
+        assert_eq!(
+            decide(&fixes(change)[0], "America/Toronto", None),
+            Decision::Stay,
+            "nowhere moves nothing"
+        );
+        assert!(fixes(r#"{"id":"here","unwatched":true}"#).is_empty());
+        assert!(fixes("not a line").is_empty());
     }
 
     #[test]
@@ -262,7 +332,7 @@ mod tests {
     }
 
     #[test]
-    fn a_fix_without_a_zone_or_of_another_version_changes_nothing() {
+    fn a_fix_without_a_zone_or_an_accuracy_changes_nothing() {
         assert_eq!(
             decide(&fix(300.0, None), "America/Toronto", None),
             Decision::Stay
@@ -271,11 +341,11 @@ mod tests {
             decide(&fix(300.0, Some("UTC")), "America/Toronto", None),
             Decision::Stay
         );
-        let older = Fix {
-            v: 1,
+        let unsure = Fix {
+            accuracy_m: None,
             ..fix(300.0, Some("America/Edmonton"))
         };
-        assert_eq!(decide(&older, "America/Toronto", None), Decision::Stay);
+        assert_eq!(decide(&unsure, "America/Toronto", None), Decision::Stay);
     }
 
     #[test]

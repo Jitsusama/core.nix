@@ -49,6 +49,16 @@ pub struct Fix {
     /// finding it. Left out of the file when it didn't.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hand: bool,
+    /// How high it is, in metres above the sea, how fast it's moving, in
+    /// metres a second, and which way, in degrees east of north, where
+    /// GeoClue knows them; Wi-Fi and an address never do, so each is left
+    /// out of the file while unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub altitude: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speed: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heading: Option<f64>,
 }
 
 impl Fix {
@@ -65,6 +75,9 @@ impl Fix {
             zone: None,
             country: None,
             hand: false,
+            altitude: None,
+            speed: None,
+            heading: None,
         };
         fix.holds().then_some(fix)
     }
@@ -88,6 +101,19 @@ impl Fix {
     /// couldn't say.
     pub fn countried(mut self, country: Option<String>) -> Fix {
         self.country = country.or(self.country);
+        self
+    }
+
+    /// The fix with its altitude, speed and heading, each one GeoClue knows.
+    pub fn measured(
+        mut self,
+        altitude: Option<f64>,
+        speed: Option<f64>,
+        heading: Option<f64>,
+    ) -> Fix {
+        self.altitude = altitude.filter(|metres| metres.is_finite());
+        self.speed = speed.filter(|speed| speed.is_finite() && *speed >= 0.0);
+        self.heading = heading.filter(|degrees| (0.0..360.0).contains(degrees));
         self
     }
 

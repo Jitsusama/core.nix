@@ -2,13 +2,16 @@ pragma Singleton
 // Where the laptop is, the one place the shell learns it from: what
 // whereabouts last found through GeoClue (whereabouts/), its town and the
 // zone it keeps, the time zone the clock keeps now, and the clock's last
-// move to follow the laptop (clock-follows/). The weather's here
-// and Now's Location read it, and nothing else asks where the laptop is.
+// move to follow the laptop (clock-follows/), all in the one record,
+// `here:laptop`, whereabouts holds over its socket in the shell's daemon
+// interface. The weather's here and Now's Location read it, and nothing
+// else asks where the laptop is.
 //
-// Each is read as the shell starts and again as it changes, never assumed:
-// with no file yet, here is unknown, and Now says so (Joel, 2026-10-28: "i
-// never want it to assume anything"). The clock's zone is asked of
-// systemd as the shell starts and each time /etc/localtime is replaced.
+// It's watched from the start, since it changes only as the laptop moves
+// or the clock does, and costs nothing between. Nothing is assumed: until
+// whereabouts has answered, or while it isn't answering, here is unknown,
+// and Now says so (Joel, 2026-10-28: "i never want it to assume
+// anything").
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -16,24 +19,29 @@ import QtQuick
 Singleton {
     id: root
 
-    // The position whereabouts writes, replaced whole each time here
-    // moves or is named. A test points it at a file of its own. It's
-    // never removed, only written as `{}` for nowhere: a file removed is
-    // one this can't see come back, so here would stay unknown.
-    property string file: `${Quickshell.env("XDG_RUNTIME_DIR")}/whereabouts.json`
+    Daemon {
+        id: daemon
 
-    // Here, as the file says it: { latitude, longitude, accuracy, when,
-    // place, zone, country }, place and zone null while they couldn't be
-    // asked and country left out; or null with no file, or one of another
-    // version.
-    property var here: null
-    // Whether the file has been read once, so "unknown" is said only once
-    // it's known to be.
-    property bool read: false
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/location.sock`
+        kind: "here"
+    }
 
-    // The zone the clock keeps, "America/Toronto", or "" until systemd has
-    // said.
-    property string clockZone: ""
+    readonly property var record: daemon.revision >= 0 ? daemon.held["here:laptop"] ?? null
+        : null
+
+    // Here, as the daemon says it, in the shape the weather and Now read:
+    // { latitude, longitude, accuracy in metres, when in seconds, place,
+    // zone, country, hand, and altitude, speed and heading where GeoClue
+    // knows them }, place and zone null while they couldn't be asked; or
+    // null where it isn't known.
+    readonly property var here: hereOf(record)
+    // Whether whereabouts has said once, or is known not to answer, so
+    // "unknown" is said only once it's known to be.
+    readonly property bool read: daemon.answered || daemon.state === "not answering"
+
+    // The zone the clock keeps, "America/Toronto", or "" until whereabouts
+    // has said.
+    readonly property string clockZone: record?.clock_zone ?? ""
 
     // Whether the place keeps another zone than the clock does.
     readonly property bool zoneDiffers: here !== null && (here.zone ?? "") !== ""
@@ -42,8 +50,12 @@ Singleton {
     // The clock's last move to where the laptop is (clock-follows/), {
     // from, to, place, when }, kept until it's put back or moves again, or
     // null; said only while the clock still keeps the zone it moved to.
-    property var moved: null
+    readonly property var moved: movedOf(record?.moved)
     readonly property bool clockMoved: moved !== null && moved.to === clockZone
+
+    // How each of whereabouts' sources stands, by name: the clock, GeoClue
+    // and the naming of places, each with the daemon's word.
+    readonly property var sources: daemon.sources
 
     // A zone by its city, as people say a zone's time: "Edmonton".
     function city(zone) {
@@ -56,21 +68,35 @@ Singleton {
         : `clock moved to ${city(moved.to)} time`
             + (moved.place ? `, as the laptop is in ${moved.place.split(",")[0]}` : "")
 
-    readonly property string kept: `${Quickshell.env("XDG_STATE_HOME")
-        || `${Quickshell.env("HOME")}/.local/state`}/clock-follows`
-
-    function movedOf(text) {
-        let said;
-        try {
-            said = JSON.parse(text);
-        } catch (error) {
+    // Here from the daemon's record, or null for nowhere or a record that
+    // names no place on the Earth.
+    function hereOf(said) {
+        if (!Number.isFinite(said?.latitude) || !Number.isFinite(said.longitude))
             return null;
-        }
-        return typeof said?.from === "string" && typeof said.to === "string" ? said : null;
+        const known = value => Number.isFinite(value) ? value : null;
+        return {
+            latitude: said.latitude,
+            longitude: said.longitude,
+            accuracy: known(said.accuracy_m),
+            when: known(said.at_s),
+            place: said.place ?? null,
+            zone: said.zone ?? null,
+            country: said.country ?? null,
+            hand: said.hand === true,
+            altitude: known(said.altitude_m),
+            speed: known(said.speed_m_s),
+            heading: known(said.heading_deg)
+        };
+    }
+
+    function movedOf(said) {
+        return typeof said?.from === "string" && typeof said.to === "string"
+            ? { from: said.from, to: said.to, place: said.place ?? null, when: said.at_s ?? null }
+            : null;
     }
 
     // Where Joel's own place is pinned (whereabouts' state folder), which
-    // whereabouts writes as here in place of GeoClue's while it's there.
+    // whereabouts says as here in place of GeoClue's while it's there.
     readonly property string pin: `${Quickshell.env("XDG_STATE_HOME")
         || `${Quickshell.env("HOME")}/.local/state`}/whereabouts/pin.json`
 
@@ -84,11 +110,12 @@ Singleton {
             return;
         told = `finding ${words}\u2026`;
         setter.asked = words;
-        setter.command = ["whereabouts", "set", root.file, root.pin, words];
+        setter.command = ["whereabouts", "set", root.pin, words];
         setter.running = true;
     }
 
-    // Takes Joel's place away, so GeoClue finds the laptop again.
+    // Takes Joel's place away, so GeoClue finds the laptop again, which
+    // whereabouts hears at once.
     function findAgain() {
         told = "";
         findingAgain.running = true;
@@ -96,9 +123,7 @@ Singleton {
 
     Process {
         id: findingAgain
-        command: ["sh", "-c",
-            'whereabouts again "$0" "$1" && systemctl --user restart whereabouts.service',
-            root.file, root.pin]
+        command: ["whereabouts", "again", root.pin]
     }
 
     Process {
@@ -125,60 +150,5 @@ Singleton {
     Process {
         id: puttingBack
         command: ["systemctl", "--user", "start", "--no-block", "clock-put-back.service"]
-    }
-
-    FileView {
-        path: `${root.kept}/moved.json`
-        watchChanges: true
-        printErrors: false
-        onFileChanged: reload()
-        onLoaded: root.moved = root.movedOf(text())
-        onLoadFailed: root.moved = null
-    }
-
-    function hereOf(text) {
-        let said;
-        try {
-            said = JSON.parse(text);
-        } catch (error) {
-            return null;
-        }
-        return said?.v === 2 && Number.isFinite(said.latitude) && Number.isFinite(said.longitude)
-            ? said : null;
-    }
-
-    FileView {
-        path: root.file
-        watchChanges: true
-        printErrors: false
-        onFileChanged: reload()
-        onLoaded: {
-            root.here = root.hereOf(text());
-            root.read = true;
-        }
-        onLoadFailed: {
-            root.here = null;
-            root.read = true;
-        }
-    }
-
-    // The clock's zone is the link /etc/localtime makes, which a file read
-    // can't say, so systemd is asked, once at the start and whenever the
-    // link is replaced.
-    FileView {
-        path: "/etc/localtime"
-        watchChanges: true
-        printErrors: false
-        blockLoading: false
-        onFileChanged: zoneAsked.running = true
-    }
-
-    Process {
-        id: zoneAsked
-        command: ["timedatectl", "show", "--property=Timezone", "--value"]
-        running: true
-        stdout: StdioCollector {
-            onStreamFinished: root.clockZone = text.trim()
-        }
     }
 }

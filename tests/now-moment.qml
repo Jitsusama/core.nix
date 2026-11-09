@@ -1,7 +1,8 @@
 // Drives Now's own rows (modules/quickshell/launcher/Now.qml) through
 // Quickshell itself, with the margin's pieces, the agents' waiting list,
 // the launcher, the weather and the calendar stood in, and Location.qml's
-// own, reading a file beside the shell and a stand-in timedatectl. After
+// own, reading whereabouts itself over its socket, with no GeoClue to ask
+// and a link for the clock's zone (the check says how). After
 // what's on come the time, the date, the location, the weather and the
 // next meeting, with no Today to step into. The time, the date and the
 // weather are each the row the launcher places for that thing (its
@@ -132,8 +133,8 @@ ShellRoot {
         settings: ({ name: "on" })
     }
 
-    // The cases run once Location has read its file and heard the clock's
-    // zone, each of which it does apart from the shell's start.
+    // The cases run once whereabouts has answered, with here and the
+    // clock's zone, which it does apart from the shell's start.
     readonly property bool ready: Location.read && Location.clockZone !== ""
     property bool started: false
     onReadyChanged: begin()
@@ -257,10 +258,17 @@ ShellRoot {
         expect("it's found by its name too, Now being its home",
             now.things.some(row => row.key === "on:location"),
             JSON.stringify(now.things.map(row => row.key)));
-        expect("a file of another version, or no JSON, is no location",
-            Location.hereOf('{"v":1,"latitude":1,"longitude":2}') === null
-                && Location.hereOf('{"v":2,"latitude":"1","longitude":2}') === null
-                && Location.hereOf("{\"v\":2,") === null, "it was read");
+        expect("nowhere, or a position that isn't one, is no location",
+            Location.hereOf({ key: "here:laptop", latitude: null, longitude: null }) === null
+                && Location.hereOf({ latitude: "1", longitude: 2 }) === null
+                && Location.hereOf(null) === null, "it was read");
+        expect("the daemon's record is here in the units the weather reads",
+            Location.here?.accuracy === 26000 && Location.here?.when === 1790000000
+                && Location.here?.altitude === null && Location.here?.hand === false,
+            JSON.stringify(Location.here));
+        expect("the clock's zone is the one its link names",
+            Location.clockZone === "America/Halifax" && Location.zoneDiffers,
+            Location.clockZone);
 
         expect("a piece borrows its place's row's drawer, and none the place doesn't list",
             now.borrowed({ place: "cameras", key: "camera:front" })?.eyebrow
