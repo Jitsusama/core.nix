@@ -2,11 +2,12 @@
 // holds: each kind's mark, who's listed with nothing typed and in what
 // order, what a row says, which acts an entry holds and in what order, its
 // link in its manager's program, what its drawer says and that it never
-// says a secret, and what the foot says of a copy as its time runs out,
-// run in Qt's own JavaScript engine, the one the shell runs it in. The
-// `the-passwords-show-every-figure-but-the-secret` check copies
-// Passwords.js, and the launcher's Ago.js it reads, beside this file and
-// runs `qml -platform offscreen passwords.qml`.
+// says a secret, its health once every password is checked, those
+// needing attention, and what the foot says of a copy as its time runs
+// out, run in Qt's own JavaScript engine, the one the shell runs it in.
+// The `the-passwords-show-every-figure-but-the-secret` check copies
+// Passwords.js, and the launcher's Ago.js and Numbers.js it reads, beside
+// this file and runs `qml -platform offscreen passwords.qml`.
 import QtQuick
 import "Passwords.js" as Passwords
 
@@ -146,6 +147,8 @@ QtObject {
             cleared: "{title}'s {detail} is cleared from the clipboard",
             unfinished: "{title}'s {detail} not copied \u00b7 {why}",
             hidden: "hidden", set: "set up", none: "none", unsecured: "unsecured website",
+            reused: "reused password", reusedIn: "reused in {count} other entries",
+            breached: "breached password", breaches: "seen in {count} breaches",
             within: "in {vault} \u00b7 {kind}"
         };
         const wording = manager => ({ name: name, said: said, now: now, manager: manager });
@@ -189,6 +192,37 @@ QtObject {
         check("its health and its strength warn", Passwords.details(weak, wording("")).facts
             .slice(0, 2), [{ label: "Health", value: "unsecured website", warns: true },
             { label: "Strength", value: "weak", warns: true }]);
+        // Once every password is checked: shared and breached, in words,
+        // the figures grouped; before, or found well, nothing more.
+        const checked = health => Passwords.details(Object.assign({}, gitHub, { health }),
+            wording("")).facts.find(fact => fact.label === "Health") ?? null;
+        check("shared with one other", checked({ reused: 1, breached: 0 }),
+            { label: "Health", value: "reused password", warns: true });
+        check("shared with three others and often breached",
+            checked({ reused: 3, breached: 1204 }).value,
+            "reused in 3 other entries, seen in 1,204 breaches");
+        check("breached once", checked({ reused: 0, breached: 1 }).value, "breached password");
+        check("found well, it says nothing", checked({ reused: 0, breached: 0 }), null);
+        check("breaches unasked, it says reuse alone", checked({ reused: 2 }).value,
+            "reused in 2 other entries");
+        check("before any check, nothing", checked(undefined), null);
+        check("a breach beside a website in the clear", Passwords.details(Object.assign({},
+            weak, { health: { reused: 0, breached: 1 } }), wording("")).facts[0].value,
+        "breached password, unsecured website");
+        check("a summary says what the check found", Passwords.details(Object.assign({},
+            listedGitHub, { health: { reused: 1, breached: 0 } }), wording("")).facts[0],
+        { label: "Health", value: "reused password", warns: true });
+        check("no secret is said once checked", JSON.stringify(Passwords.details(
+            Object.assign({}, gitHub, { health: { reused: 3, breached: 9 } }), wording("")))
+            .includes(secret), false);
+        // Needing Attention: those the check found a problem with, by title.
+        const shared = Object.assign({}, bank, { health: { reused: 1, breached: 0 } });
+        const breached = Object.assign({}, gitHub, { health: { reused: 0, breached: 4 } });
+        const well = Object.assign({}, door, { health: { reused: 0, breached: 0 } });
+        check("needing attention, by title", Passwords.needing([breached, well, shared,
+            listedGitHub]).map(record => record.id), ["bank", "gh"]);
+        check("none needing attention before a check", Passwords.needing([gitHub, bank]), []);
+
         const summary = Passwords.details(listedGitHub, wording("")).facts
             .map(fact => fact.label);
         check("a summary can't say what's read in full", summary.includes("Strength")

@@ -8,11 +8,15 @@
 // An entry is a record as the daemon gives it: { key, manager, id, title,
 // category, username, websites: [{ address, label, primary }],
 // collection: { id, name }, favourite, tags, created, changed, version,
-// details, own }, with `details` only once it was read in full and no
-// hidden detail carrying its value, so nothing here could show a secret
-// if it tried.
+// details, own, health }, with `details` only once it was read in full and
+// no hidden detail carrying its value, so nothing here could show a secret
+// if it tried, and `health` only once Joel has had every password
+// checked: { reused, breached }, how many other entries share its
+// password and how many times Have I Been Pwned has seen it in a breach,
+// breached left out where the service couldn't be asked.
 .pragma library
 .import "Ago.js" as Ago
+.import "Numbers.js" as Numbers
 
 // Each kind's mark, by the kind's word as the managers say it: Passwords'
 // own word where every password manager has the kind, else 1Password's
@@ -244,13 +248,52 @@ function when(at, now) {
     return Ago.ago(at, now);
 }
 
+// Its health as the last check of every password found it, or null where
+// none has been run since it last changed, so nothing is guessed.
+function audited(record) {
+    const found = record.health;
+    return found !== null && typeof found === "object" ? found : null;
+}
+
+// Whether the last check found its password shared or breached.
+function troubled(record) {
+    const found = audited(record);
+    return found !== null && (Number(found.reused) > 0 || Number(found.breached) > 0);
+}
+
+// Those the last check found a problem with, by title, as Needing
+// Attention lists them.
+function needing(records) {
+    const title = record => String(record.title ?? "");
+    return records.filter(troubled).sort((a, b) => title(a).localeCompare(title(b)));
+}
+
 // What's wrong with it that its Strength doesn't say, in the words `said`
-// gives it, or "": a website sent in the clear. A weak password is its
-// Strength's to say, drawn in the warning's role, so Health never says it
-// again (VKCF3Z's ruling); with nothing wrong it says nothing.
+// gives it, or "": its password shared with other entries, "reused
+// password" with one and "reused in 3 other entries" with more; seen in a
+// breach, "breached password" once and "seen in 1,204 breaches" more
+// often, the figure grouped as the launcher's numbers are; and a website
+// sent in the clear. The first two only once Joel has had every password
+// checked. A weak password is its Strength's to say, drawn in the
+// warning's role, so Health never says it again (VKCF3Z's ruling); with
+// nothing wrong it says nothing.
 function health(record, said) {
-    return websites(record).some(address => UNSECURED.test(address)) ? said.unsecured ?? ""
-        : "";
+    const found = audited(record) ?? {};
+    const reused = Number(found.reused) || 0;
+    const breached = Number(found.breached) || 0;
+    const counted = (one, many, count) => count === 1 ? said[one] ?? ""
+        : fill(said[many], { count: Numbers.format(count, 0) });
+    const wrong = [];
+    if (reused > 0) {
+        wrong.push(counted("reused", "reusedIn", reused));
+    }
+    if (breached > 0) {
+        wrong.push(counted("breached", "breaches", breached));
+    }
+    if (websites(record).some(address => UNSECURED.test(address))) {
+        wrong.push(said.unsecured ?? "");
+    }
+    return wrong.filter(part => part !== "").join(", ");
 }
 
 // A password's strength in words, as 1Password rates it: "very good" of
@@ -321,8 +364,10 @@ function eyebrow(record, said) {
 // Website; its Tags; and when it was Created. Then the password manager,
 // where rows name it, how many Files it holds, and each other detail, a
 // hidden one reading "hidden", never dots and never a count of them.
-// Health, Strength, the code and the other details come only once it's
-// read in full, since a summary can't say them. Its notes are its words.
+// Strength, the code and the other details come only once it's read in
+// full, since a summary can't say them; Health reads only its websites
+// and the last check of every password, which a summary has. Its notes
+// are its words.
 // Left out: its username, which its row's side says; its vault and its
 // kind, which the eyebrow says; whether it's a favourite, which its row's
 // place says; the account's id, which only makes its link; who last
@@ -341,10 +386,10 @@ function details(record, wording) {
     const addresses = websites(record);
     const own = record.own ?? {};
     const read = Array.isArray(record.details);
+    fact("health", health(record, said), "", true);
     if (read) {
         const rated = strength(password(record)?.strength
             ?? record.details.find(one => (one.strength ?? "") !== "")?.strength ?? "");
-        fact("health", health(record, said), "", true);
         fact("strength", rated, "", weak(rated));
         fact("code", code(record) === null ? said.none : said.set);
     }

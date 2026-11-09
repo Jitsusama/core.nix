@@ -7514,6 +7514,11 @@
         "set": "set up",
         "none": "none",
         "unsecured": "unsecured website",
+        "reused": "reused password",
+        "reusedIn": "reused in {count} other entries",
+        "breached": "breached password",
+        "breaches": "seen in {count} breaches",
+        "checking": "checking every password\u2026",
         "locked": "locked",
         "within": "in {vault} \u00b7 {kind}"
       }
@@ -7577,6 +7582,21 @@
       "name": "Copy the Link",
       "verb": "copy",
       "glyph": "link"
+    },
+    {
+      "id": "verb:passwords:audit",
+      "command": "retry",
+      "in": "passwords",
+      "name": "Check Every Password",
+      "verb": "check",
+      "glyph": "retry"
+    },
+    {
+      "id": "passwords:attention",
+      "in": "passwords",
+      "name": "Needing Attention",
+      "verb": "more",
+      "glyph": "caution"
     },
     {
       "id": "passwords:vault",

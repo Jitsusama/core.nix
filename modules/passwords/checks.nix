@@ -20,8 +20,13 @@ onLinux {
   # it, or to the clipboard marked sensitive, cleared when its time is up;
   # a one-time code says its period, and its detail gives the code, never
   # its seed; a manager signed out is said so and
-  # gives no secret; a watch hears entries arrive; and an ask or kind it
-  # doesn't know is refused. The command's tests run too: each answer set
+  # gives no secret; a watch hears entries arrive; an ask or kind it
+  # doesn't know is refused; and an audit, asked by Joel alone and refused
+  # otherwise or by a manager signed out, counts the entries sharing a
+  # password and matches each hash's suffix against a stand-in Have I Been
+  # Pwned's range, padding counting nothing, sending it five characters
+  # alone and saying no secret in an answer or a log. The command's tests
+  # run too: each answer set
   # in columns under a header for a person and tab-separated for a
   # program, its --json the daemon's answer with no secret but show's, a
   # title and a detail's label naming what they name, each exit status the
@@ -115,9 +120,11 @@ onLinux {
   # what a row says, an entry's acts and their order, its link in its
   # manager's program, its drawer's eyebrow, and its facts saying every
   # figure and never a secret, its health and a weak strength warning,
-  # and the foot counting a copy down are
-  # Passwords.js's, run in Qt's own engine (tests/passwords.qml), beside
-  # the launcher's own wording of how long ago (Ago.js).
+  # its password reused and breached once every password is checked and
+  # nothing before, those needing attention, and the foot counting a copy
+  # down are Passwords.js's, run in Qt's own engine (tests/passwords.qml),
+  # beside the launcher's own wording of how long ago (Ago.js) and of a
+  # figure (Numbers.js).
   the-passwords-show-every-figure-but-the-secret =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -126,6 +133,7 @@ onLinux {
       cp ${../../tests/passwords.qml} passwords.qml
       cp ${./Passwords.js} Passwords.js
       cp ${../quickshell/launcher/Ago.js} Ago.js
+      cp ${../quickshell/launcher/Numbers.js} Numbers.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       ${shellFolderLint}

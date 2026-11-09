@@ -30,6 +30,7 @@ The entries every password manager keeps, as the passwords daemon holds them:
   code ENTRY           its one-time code now, and the seconds left of its period
   let-in MANAGER       ask a password manager to let passwords in, as 1Password asks you
   health               how each password manager stands, and how fast the daemon answers
+  audit                every password checked for reuse and breaches; each with a problem
   keys                 the keys 1Password's SSH agent holds, which ssh and git don't use
   help                 this
 
@@ -37,6 +38,10 @@ ENTRY is an entry's key, its title, or words that find it alone; DETAIL is a
 detail's label or its id. A terminal is shown columns under a header, and a
 program the same columns tab-separated without one. --json gives what the
 daemon answers as it is, which holds no secret but the one show asks for.
+
+audit reads every password from its manager, so 1Password may ask you first;
+each is hashed on this machine, and only the first five characters of its
+hash go to Have I Been Pwned, whose answer is matched here.
 
 Exit status:
   0   done
@@ -83,6 +88,7 @@ pub enum Command {
     Code(String),
     LetIn(String),
     Health,
+    Audit,
     Keys,
     Help,
     /// What zsh's completion offers of a kind.
@@ -172,6 +178,7 @@ pub fn parse(args: &[String]) -> Result<Typed, String> {
             _ => return Err("let-in needs one MANAGER".to_owned()),
         },
         "health" => none(Command::Health)?,
+        "audit" => none(Command::Audit)?,
         "keys" => none(Command::Keys)?,
         "help" => Command::Help,
         "names" => Command::Names(match rest {
@@ -633,6 +640,97 @@ pub fn health(answer: &Value, terminal: bool) -> String {
     out + &table(&COLUMNS, &rows, true)
 }
 
+/// A count grouped in threes as a person reads it: 1204 as "1,204".
+pub fn grouped(count: u64) -> String {
+    let digits = count.to_string();
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+    for (at, digit) in digits.chars().enumerate() {
+        if at > 0 && (digits.len() - at).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+    out
+}
+
+/// What an audit found, each entry with a problem: for a person, a head
+/// of how many passwords were audited and how many entries are reused and
+/// breached, how each manager stands, then a row each of its title, how
+/// many other entries share its password, how many times it was seen in
+/// a breach, and its key; for a program, those rows, every count a
+/// figure, breached empty where Have I Been Pwned couldn't be asked.
+pub fn audit(answer: &Value, terminal: bool) -> String {
+    const COLUMNS: [Column; 4] = [
+        left("title"),
+        right("reused with"),
+        right("breached"),
+        left("key"),
+    ];
+    let records = answer["records"].as_array().map_or(&[][..], Vec::as_slice);
+    let rows: Vec<Vec<String>> = records
+        .iter()
+        .map(|record| {
+            let health = &record["health"];
+            let reused = health["reused"].as_u64().unwrap_or(0);
+            let breached = health["breached"].as_u64();
+            let (reused, breached) = if terminal {
+                (
+                    if reused == 0 {
+                        String::new()
+                    } else {
+                        counted(
+                            usize::try_from(reused).unwrap_or(usize::MAX),
+                            "other",
+                            "others",
+                        )
+                    },
+                    breached
+                        .filter(|times| *times > 0)
+                        .map(grouped)
+                        .unwrap_or_default(),
+                )
+            } else {
+                (
+                    reused.to_string(),
+                    breached.map(|times| times.to_string()).unwrap_or_default(),
+                )
+            };
+            vec![
+                text(record, "title").to_owned(),
+                reused,
+                breached,
+                text(record, "key").to_owned(),
+            ]
+        })
+        .collect();
+    if !terminal {
+        return table(&COLUMNS, &rows, false);
+    }
+    let audited = usize::try_from(answer["audited"].as_u64().unwrap_or(0)).unwrap_or(0);
+    let reused = usize::try_from(answer["reused"].as_u64().unwrap_or(0)).unwrap_or(0);
+    let mut parts = vec![
+        counted(audited, "password audited", "passwords audited"),
+        format!("{} reused", counted(reused, "entry", "entries")),
+    ];
+    parts.push(match answer["breached"].as_u64() {
+        Some(breached) => format!(
+            "{} breached",
+            counted(usize::try_from(breached).unwrap_or(0), "entry", "entries")
+        ),
+        None => "breaches not checked".to_owned(),
+    });
+    let mut out = parts.join(" · ") + "\n";
+    for said in standings(&answer["sources"]) {
+        out += &said;
+        out += "\n";
+    }
+    if !rows.is_empty() {
+        out += "\n";
+        out += &table(&COLUMNS, &rows, true);
+    }
+    out
+}
+
 /// A one-time code: for a person, the code and the seconds left of its
 /// period; for a program, the code, the seconds left and the period.
 pub fn code(answer: &Value, terminal: bool) -> String {
@@ -987,6 +1085,7 @@ mod tests {
             Command::LetIn("1password".to_owned())
         );
         assert_eq!(command("health"), Command::Health);
+        assert_eq!(command("audit"), Command::Audit);
         assert_eq!(command("keys"), Command::Keys);
         assert_eq!(command("help"), Command::Help);
         assert_eq!(command("--help"), Command::Help);
@@ -1046,8 +1145,8 @@ mod tests {
     #[test]
     fn the_usage_says_every_command_and_exit_status() {
         for word in [
-            "find", "list", "details", "show", "copy", "code", "let-in", "health", "keys", "help",
-            "--json",
+            "find", "list", "details", "show", "copy", "code", "let-in", "health", "audit", "keys",
+            "help", "--json",
         ] {
             assert!(USAGE.contains(word), "the usage leaves out {word}");
         }
@@ -1191,6 +1290,38 @@ mod tests {
              1password  signed out  Let it in\n"
         );
         assert_eq!(health(&answer, false), "1password\tsigned-out\tLet it in\n");
+    }
+
+    #[test]
+    fn an_audit_lists_each_entry_with_a_problem() {
+        let mut github = record("gh", "GitHub");
+        github["health"] = json!({"reused": 2, "breached": 1204});
+        let mut bank = record("bank", "Bank");
+        bank["health"] = json!({"reused": 0, "breached": 1});
+        let answer = json!({
+            "audited": 3, "reused": 1, "breached": 2, "records": [github, bank],
+            "sources": {"1password": {"state": "answering"}},
+        });
+        assert_eq!(
+            audit(&answer, true),
+            "3 passwords audited \u{b7} 1 entry reused \u{b7} 2 entries breached\n\
+             \n\
+             title   reused with  breached  key\n\
+             GitHub     2 others     1,204  entry:1password:gh\n\
+             Bank              \u{2013}         1  entry:1password:bank\n"
+        );
+        assert_eq!(
+            audit(&answer, false),
+            "GitHub\t2\t1204\tentry:1password:gh\nBank\t0\t1\tentry:1password:bank\n"
+        );
+        let unreached = json!({"audited": 1, "reused": 0, "breached": null, "records": []});
+        assert_eq!(
+            audit(&unreached, true),
+            "1 password audited \u{b7} 0 entries reused \u{b7} breaches not checked\n"
+        );
+        assert_eq!(grouped(0), "0");
+        assert_eq!(grouped(999), "999");
+        assert_eq!(grouped(1_234_567), "1,234,567");
     }
 
     #[test]
