@@ -210,6 +210,7 @@ QtObject {
             named: id => id,
             said: (id, key) => key.startsWith("typed-") ? typed[key.slice("typed-".length)]
                 : ({ "not-offered": "{value} not set \u00b7 {screen} offers {offers}",
+                    "none-given": "no {setting} given \u00b7 {screen} offers {offers}",
                     "offers-range": "{first} to {last}" })[key] ?? key,
             turned: transform => transform === "Normal" ? "upright" : transform
         };
@@ -263,6 +264,27 @@ QtObject {
         check("a turn it doesn't know says each", set("rotation", "sideways").includes(
             "sideways not set \u00b7 HP offers upright, left, upside-down, right, mirrored, "),
             set("rotation", "sideways"));
+        check("nothing after = says none was given", set("scale", " ")
+            === '{"refused":"no scale given \u00b7 HP offers 1\u00d7 to 3\u00d7"}',
+            set("scale", " "));
+        // niri lists the preferred mode first, so the ends are found by
+        // size, never by place, and two modes alike complete once.
+        monitor.modes = [
+            { width: 1920, height: 1080, refresh_rate: 60000, is_preferred: true },
+            { width: 1920, height: 1080, refresh_rate: 144000, is_preferred: false },
+            { width: 1920, height: 1080, refresh_rate: 144000, is_preferred: false },
+            { width: 1920, height: 1080, refresh_rate: 59940, is_preferred: false },
+            { width: 2560, height: 1440, refresh_rate: 60000, is_preferred: false },
+            { width: 1280, height: 720, refresh_rate: 60000, is_preferred: false }
+        ];
+        check("a rate's ends are its least and its most", set("refresh", "100")
+            === '{"refused":"100 Hz not set \u00b7 HP offers 59.94 Hz to 144 Hz"}',
+            set("refresh", "100"));
+        check("a size's ends are its least and its most", set("resolution", "800x600")
+            === '{"refused":"800 \u00d7 600 not set \u00b7 HP offers 1280 \u00d7 720 to 2560 '
+            + '\u00d7 1440"}', set("resolution", "800x600"));
+        check("two modes alike complete once", Screens.lineValues(monitor, "refresh", lineWords)
+            .map(each => each.value).join(" ") === "60 144 59.94", values("refresh"));
         monitor.current_mode = null;
         check("a screen running no mode takes only its scale and turn",
             Screens.lineSettings(monitor).join(" ") === "scale rotation",

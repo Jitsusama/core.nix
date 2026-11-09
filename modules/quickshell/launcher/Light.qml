@@ -298,23 +298,32 @@ Provider {
         };
     }
 
+    // What setting the desk light does, said and run: on or off where a
+    // power is given, else a share, else a warmth.
+    function deskDone(share, kelvin, power) {
+        if (power !== undefined)
+            return {
+                headline: said(power === "on" ? "turnOn" : "turnOff"),
+                run: () => provider.turn(power === "on")
+            };
+        if (share !== undefined)
+            return {
+                headline: said("setTo").replace("{to}", `${Math.min(100, Number(share))}%`),
+                run: () => provider.brighten(Number(share))
+            };
+        return {
+            headline: said("setTo").replace("{to}", kelvins(Number(kelvin))),
+            run: () => provider.warm(Number(kelvin))
+        };
+    }
+
     // Setting the desk light to a share, a warmth, or on or off, Return
     // doing it.
     function setDesk(share, kelvin, power) {
         const shown = deskTold();
         if (shown === null)
             return null;
-        const done = power !== undefined ? {
-            headline: said(power === "on" ? "turnOn" : "turnOff"),
-            run: () => provider.turn(power === "on")
-        } : share !== undefined ? {
-            headline: said("setTo").replace("{to}", `${Math.min(100, Number(share))}%`),
-            run: () => provider.brighten(Number(share))
-        } : {
-            headline: said("setTo").replace("{to}", kelvins(Number(kelvin))),
-            run: () => provider.warm(Number(kelvin))
-        };
-        return Object.assign(done, {
+        return Object.assign(deskDone(share, kelvin, power), {
             verb: Words.command("command:desk").verb,
             stays: true,
             rows: shown.rows,

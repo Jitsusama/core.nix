@@ -577,6 +577,16 @@ Provider {
         return workspace ? workspace.output : "";
     }
 
+    // How a screen stands, beside its name: dark, off, or focused where
+    // more than one is lit.
+    function sideOf(stands, focused) {
+        if (stands === "dark")
+            return screenSaid.dark;
+        if (stands === "off")
+            return partSaid("", "off");
+        return focused ? partSaid("", "focused") : "";
+    }
+
     // A screen dark by name is still in niri's outputs, so it's turned on
     // by name, and says only that its hub is on, "dark" beside it saying
     // the rest.
@@ -597,8 +607,7 @@ Provider {
             // 2026-11-08: one mark, one meaning).
             glyph: Theme.glyph.display,
             hue: "machine",
-            side: stands === "dark" ? screenSaid.dark
-                : stands === "off" ? partSaid("", "off") : focused ? partSaid("", "focused") : "",
+            side: sideOf(stands, focused),
             note: stands === "dark" ? screenSaid.hubOn : described(output),
             run: stands === "lit" ? () => Niri.act({ FocusMonitor: { output: output.name } })
                 : turnsOn,

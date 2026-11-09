@@ -8111,6 +8111,7 @@
         "notOff": "{name} not turned off \u00b7 the last lit screen",
         "not-offered": "{value} not set \u00b7 {screen} offers {offers}",
         "offers-range": "{first} to {last}",
+        "none-given": "no {setting} given \u00b7 {screen} offers {offers}",
         "off": "off",
         "focused": "focused",
         "focus": "focus",

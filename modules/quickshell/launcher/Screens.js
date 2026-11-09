@@ -367,8 +367,10 @@ function lineSettings(output) {
 // typed-Normal is "upright"), never niri's names, since nothing shows
 // those. Each notes its choice's words, so completing says what it is,
 // and asks niri what its choice's row does.
+// Two modes of one size and rate are one value, said once.
 function lineValues(output, setting, words) {
     const dotted = (value, note) => [value, note].filter(part => part !== "").join(APART);
+    const once = (each, at, all) => all.findIndex(other => other.value === each.value) === at;
     if (setting === "scale") {
         return SCALES.map(multiple => ({
             value: String(Number(multiple.toFixed(2))),
@@ -382,7 +384,7 @@ function lineValues(output, setting, words) {
             note: dotted(each.value, each.note),
             asks: { Mode: { mode: { Specific: { width: each.mode.width,
                 height: each.mode.height, refresh: each.mode.refresh_rate / MILLIHERTZ } } } }
-        }));
+        })).filter(once);
     }
     if (setting === "resolution") {
         return sizes(output, words).map(each => ({
@@ -390,7 +392,7 @@ function lineValues(output, setting, words) {
             note: dotted(each.value, each.note),
             asks: { Mode: { mode: { Specific: { width: each.mode.width,
                 height: each.mode.height, refresh: null } } } }
-        }));
+        })).filter(once);
     }
     return TRANSFORMS.map(transform => ({
         value: words.said("rotation", `typed-${transform}`),
@@ -461,9 +463,10 @@ function typedSaid(setting, typed) {
 // or { refused }, the words saying it wasn't set and what the screen,
 // named as its row is, offers instead, in the foot's form: "1.3\u00d7 not
 // set \u00b7 HP offers 1\u00d7 to 3\u00d7" (VKCF3Z, 2026-11-09). A
-// setting of figures says its first to its last; Rotation, whose eight
-// have no order between, says each. `asked` is what the line gave, as
-// { setting, typed }.
+// setting of figures says its least to its most, whatever order niri
+// lists its modes in; Rotation, whose eight have no order between, says
+// each; and nothing after = says none was given. `asked` is what the line
+// gave, as { setting, typed }.
 function lineSet(output, asked, words, named) {
     const { setting, typed } = asked;
     const values = lineValues(output, setting, words);
@@ -471,13 +474,19 @@ function lineSet(output, asked, words, named) {
     if (found !== null) {
         return { asks: found.asks };
     }
-    const said = values.map(each => setting === "rotation" ? each.value
-        : each.note.split(APART)[0]);
+    // A figure's size: a multiple's or a rate's own, a resolution's area.
+    const sized = each => each.value.split("x")
+        .reduce((product, side) => product * Number(side), 1);
+    const said = (setting === "rotation" ? values
+        : values.slice().sort((one, other) => sized(one) - sized(other)))
+        .map(each => setting === "rotation" ? each.value : each.note.split(APART)[0]);
     const offers = setting === "rotation" || said.length < 2 ? said.join(", ")
         : words.said("", "offers-range").replace("{first}", said[0])
             .replace("{last}", said[said.length - 1]);
+    const refusal = typed.trim() === "" ? words.said("", "none-given")
+        : words.said("", "not-offered").replace("{value}", typedSaid(setting, typed));
     return {
-        refused: words.said("", "not-offered").replace("{value}", typedSaid(setting, typed))
-            .replace("{screen}", named).replace("{offers}", offers)
+        refused: refusal.replace("{setting}", setting).replace("{screen}", named)
+            .replace("{offers}", offers)
     };
 }
