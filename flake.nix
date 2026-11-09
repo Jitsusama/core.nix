@@ -246,6 +246,7 @@
         wifid = ./modules/wifid/home.nix;
         yq = ./modules/yq/home.nix;
         zathura = ./modules/zathura/home.nix;
+        zoom = ./modules/zoom/home.nix;
         zoxide = ./modules/zoxide/home.nix;
         zsh = ./modules/zsh/home.nix;
 

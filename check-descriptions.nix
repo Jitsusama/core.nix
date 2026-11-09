@@ -3229,6 +3229,14 @@
     zathura says each document it's started with to the desktop's list of files opened lately, then
     runs
   '';
+  zoom-is-installed-or-opened-on-the-web = ''
+    an account with zoom has Zoom's own client on x86_64 Linux, and on ARM Linux, where nixpkgs
+    builds none, Zoom's web client as a program that opens Zoom's own links instead
+  '';
+  zoom-opens-its-links = ''
+    each of Zoom's own links joins its meeting in the web client, with its passcode only when the
+    passcode is plain, and a link naming no meeting, or nothing, opens the web client's home
+  '';
   zoxide-lists-the-folder-visited-last-first = ''
     the account's zoxide lists the folder visited last first when asked, though another was visited
     more often, without writing its database

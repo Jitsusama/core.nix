@@ -91,7 +91,8 @@ sleeps instead. Its battery charges to full, as the other laptops' do:
 Asahi's driver offers a limit, but below full it also drains the battery
 down to it on the charger. Spotify's own client isn't built for
 aarch64-linux, so its module leaves it out there and spotify-player and
-the web player stay.
+the web player stay. Nor is Zoom's, so the zoom module gives Zoom's web
+client there, and Zoom's own links join their meetings in it.
 
 ### What's Left
 
