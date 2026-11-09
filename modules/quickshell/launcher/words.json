@@ -7304,6 +7304,11 @@
       "name": "Weight"
     },
     {
+      "id": "on:waiting:heaviest",
+      "in": "on:waiting",
+      "name": "Heaviest"
+    },
+    {
       "id": "on:waiting:since",
       "in": "on:waiting",
       "name": "Waiting Since"
@@ -7392,14 +7397,16 @@
     {
       "id": "for-you:kind:look",
       "in": "on:waiting",
-      "name": "Looks",
-      "term": "Desktop/look"
+      "name": "To Look At",
+      "term": "Desktop/to look at",
+      "glyph": "look"
     },
     {
       "id": "for-you:kind:try",
       "in": "on:waiting",
       "name": "To Try",
-      "term": "Desktop/to try"
+      "term": "Desktop/to try",
+      "glyph": "toTry"
     },
     {
       "id": "for-you:source:sessions",

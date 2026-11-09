@@ -1,9 +1,10 @@
 // For You, Now's first row (Now.qml): what needs Joel in one list, weighed
 // so the most pressing leads (VKCF3Z, 2026-11-08; Joel: "should somehow
 // weight ordering so the most critical stuff bubbles up"). What a row
-// weighs is worked out here from its parts, each { id, points }, and so is
-// what its side says and how the looks folder's files are read, apart from
-// the launcher, so tests/for-you.qml holds them in Qt's own engine.
+// weighs is worked out here from its parts, each { id, points }, and so
+// is which band it stands in, what its side says and how the looks
+// folder's files are read, apart from the launcher, so tests/for-you.qml
+// holds them in Qt's own engine.
 .pragma library
 .import "Order.js" as Order
 
@@ -112,6 +113,66 @@ function ordered(rows) {
     return Order.sorted(rows, (one, other) => other.weight - one.weight);
 }
 
+// The kinds For You gives a row of their own after what needs Joel now,
+// in the order the design lists them (VKCF3Z, 2026-11-09; Joel: "there is
+// no to look at section"): To Look At, then To Try.
+const OWN_ROWS = ["look", "try"];
+
+// Whether a thing needs Joel now, whatever its kind, as a critical notice
+// is lifted over the rest: it blocks a session, or its deadline has
+// passed or comes within the day, as its weight counts one.
+function pressing(thing, now) {
+    return Number(thing.blocks ?? 0) > 0 || dueing(when(thing.due), now) > 0;
+}
+
+// The band a thing of a kind stands in: a to-do, or anything pressing,
+// among what needs Joel now, `now`; a look or a thing to try otherwise in
+// its kind's own row, `look` or `try`.
+function bandOf(kind, thing, now) {
+    return OWN_ROWS.includes(kind) && !pressing(thing, now) ? kind : "now";
+}
+
+// For You's items in their bands, { now, look, try }, each item
+// { kind, thing } with whatever else its caller keeps, and given its
+// `weight`. Each band is heaviest first, those alike the oldest first,
+// then in the order they came (VKCF3Z, 2026-11-09).
+function banded(items, now) {
+    const bands = { now: [], look: [], try: [] };
+    for (const item of items ?? []) {
+        bands[bandOf(item.kind, item.thing, now)].push(Object.assign({}, item,
+            { weight: weigh(item.thing, now).weight }));
+    }
+    const order = Order.then((one, other) => other.weight - one.weight,
+        Order.smaller(one => when(one.thing.since)));
+    return { now: Order.sorted(bands.now, order), look: Order.sorted(bands.look, order),
+        try: Order.sorted(bands.try, order) };
+}
+
+// Whether a look was left by a session, by the session or the address the
+// look names, matched against the session's address, its presence's
+// session or any address its presence answers to.
+function leftBy(one, session) {
+    const names = [one.session, one.address].filter(name => typeof name === "string"
+        && name !== "");
+    return names.some(name => name === session.address
+        || name === session.presence?.session
+        || (session.presence?.addresses ?? []).includes(name));
+}
+
+// A look as it's weighed and banded: a thing to look at, waiting since it
+// was left, due by its deadline where its file says one, and blocking the
+// session that left it while that session is among those `wanting` Joel,
+// since nothing says what else it waits on, so such a look stands among
+// what needs him now (VKCF3Z, 2026-11-09).
+function lookThing(one, wanting) {
+    return {
+        kind: "look",
+        blocks: (wanting ?? []).filter(session => leftBy(one, session)).length,
+        due: one.due ?? null,
+        since: one.since
+    };
+}
+
 // How many sessions an item blocks: those whose want is an action of the
 // item's quest or its file's address, since a session's presence mirrors
 // what its quest has waiting on Joel (Waiting.js's asksJoel).
@@ -158,8 +219,14 @@ function reason(thing, now, say) {
     if (due !== null) {
         return dueSaid(due, now, say);
     }
+    // How long ago within the day, and before it the day, as When says one
+    // ("yesterday"), never a count of days (VKCF3Z, 2026-11-09).
     const since = when(thing.since);
-    return since === null ? "" : say.ago(since);
+    if (since === null) {
+        return "";
+    }
+    const day = say.day(since, now);
+    return day === "" ? say.ago(since) : day;
 }
 
 // A span waited, in its largest whole unit: "12 min", "2 h", "3 d".

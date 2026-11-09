@@ -508,8 +508,9 @@ def test_for_yous_filter_steps_into_a_kind_and_minus_comes_back_out(shell: Shell
         shell.as_account(shell.ipc("toggle"))
         shell.launcher_ready()
         typed_at_once(shell, "'for you' -k Return")
+        # The look blocks nothing and isn't due, so For You holds it in To Look At.
         shell.launcher_until(
-            lambda shown: shown["path"][-1:] == ["For You"] and "Filtered Look" in shown["rows"]
+            lambda shown: shown["path"][-1:] == ["For You"] and "To Look At" in shown["rows"]
         )
         shell.normal()
         shell.send_chars(":filter look")
@@ -517,7 +518,8 @@ def test_for_yous_filter_steps_into_a_kind_and_minus_comes_back_out(shell: Shell
         shell.send_key("ret")
         shell.launcher_until(
             lambda shown: (
-                shown["path"][-2:] == ["For You", "Looks"] and shown["rows"] == ["Filtered Look"]
+                shown["path"][-2:] == ["For You", "To Look At"]
+                and shown["rows"] == ["Filtered Look"]
             )
         )
         shell.send_chars("-")

@@ -1447,18 +1447,25 @@ works the same way everywhere.
   item for each thing that happened, never one for each thing it found,
   so nothing floods it: a password check finding fifteen logins is one
   to-do, "Change the Passwords the Check Found", its side "3 breached ·
-  12 reused", Return opening Passwords' list of them. What waits on him
-  leads, in one list by weight, heaviest first, so "the most critical
+  12 reused", Return opening Passwords' list of them. What needs him now
+  leads, one by one, by weight, heaviest first, so "the most critical
   stuff bubbles up": to-dos, what only he can do, each raised by the
-  session that needs him through the one tool every session uses; looks,
-  what a session points him at, never opened for him; and landings
-  whose line asks him to try something. Weight comes from what it holds
-  up (a session parked on him counts most), a deadline near, its
-  source's urgency and, slowly, how long it's waited; the order is
+  session that needs him through the one tool every session uses, and
+  any look or landing that blocks a session or is due within the day.
+  Then each other kind is one row holding the rest, shown only while it
+  holds something, a place's row: nothing beside its name, its side a
+  bare count, its drawer naming the heaviest (VKCF3Z, 2026-11-09; Joel:
+  "there is no to look at section"). To Look At holds what a session
+  points him at, never opened for him; To Try, landings whose line asks
+  him to try something. Inside each, by weight, ties oldest first.
+  Weight comes from what it holds up (a session parked on him counts
+  most), a deadline near, its source's urgency and, slowly, how long
+  it's waited; the order is
   worked out as the place opens and holds still while it's open. A row's
   mark and eyebrow say its kind ("from Reef Quest · look"), and its side
   the strongest reason it's there, state first ("session ended · 12 min
-  ago", "blocks 2 sessions", "due 15:00", else "12 min ago"). For You
+  ago", "blocks 2 sessions", "due 15:00", else "12 min ago", and before
+  today its day, "yesterday"). For You
   wears an in-tray, full while it holds something and empty when it
   doesn't; a look wears an eye, a landing to try a flask, a to-do and
   History the person and clock, and a source with no mark of its own
@@ -1490,7 +1497,7 @@ works the same way everywhere.
   and `/` finds any. A kind or a source is a step-in, never a mode:
   `:filter look` or `:filter slack` goes in, Tab completing the kinds and
   sources present, each with its mark, its name and its count, the head
-  names the kind by its noun ("For You › Looks", "› To-Dos", "› To
+  names the kind by its name ("For You › To Look At", "› To-Dos", "› To
   Try"), and - comes back out. Every row has a drawer, "nerdy and
   useful" (Joel, 2026-11-08): its why whole in the serif; Weight, as a
   figure and its parts ("82 · blocks 2 sessions · waiting 2 h · due

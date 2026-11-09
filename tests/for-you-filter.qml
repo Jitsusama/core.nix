@@ -23,7 +23,7 @@ QtObject {
     // and for-you:source entries, beside one of another place's.
     readonly property var names: ({
             "for-you:kind:do": "To-Dos",
-            "for-you:kind:look": "Looks",
+            "for-you:kind:look": "To Look At",
             "for-you:kind:try": "To Try",
             "for-you:source:mail": "Mail",
             "for-you:source:slack": "Slack",
@@ -63,15 +63,15 @@ QtObject {
         const failures = [];
         // [what, what :filter was given, the items kept, what the head says]
         const filters = [
-            ["a kind keeps its band", "look", "b c e j", "Looks"],
+            ["a kind keeps its band", "look", "b c e j", "To Look At"],
             ["a source of one kind alone answers as its kind", "needs-you", "a", "To-Dos"],
-            ["as the looks do", "looks", "b c e j", "Looks"],
-            ["and so narrows beside a source", "looks mail", "b e", "Mail \u00b7 Looks"],
-            ["the kind said twice is the one kind", "look looks", "b c e j", "Looks"],
+            ["as the looks do", "looks", "b c e j", "To Look At"],
+            ["and so narrows beside a source", "looks mail", "b e", "Mail \u00b7 To Look At"],
+            ["the kind said twice is the one kind", "look looks", "b c e j", "To Look At"],
             ["a source keeps both bands, notices too", "slack", "c f", "Slack"],
-            ["two words narrow to both", "mail look", "b e", "Mail · Looks"],
-            ["in either order, the source said first", "look mail", "b e", "Mail · Looks"],
-            ["typed in capitals", "Mail LOOK", "b e", "Mail · Looks"],
+            ["two words narrow to both", "mail look", "b e", "Mail · To Look At"],
+            ["in either order, the source said first", "look mail", "b e", "Mail · To Look At"],
+            ["typed in capitals", "Mail LOOK", "b e", "Mail · To Look At"],
             ["a source the words don't know, by its id", "sessions", "d", "Sessions"],
             ["and an id of parts, each begun in capitals", "home-network", "i", "Home Network"],
             ["a source the words know, with nothing now, is an empty step", "calendar", "",
@@ -91,7 +91,7 @@ QtObject {
         const narrowed = Filter.asked("mail", items, said, looking);
         check(failures, "a filter inside a filter narrows to both",
             `${keys(Filter.filtered(items, narrowed))} / ${Filter.heading(narrowed, said)}`,
-            "b e / Mail \u00b7 Looks");
+            "b e / Mail \u00b7 To Look At");
         check(failures, "and its key is the filter's, whichever way it was reached",
             Filter.keyOf(narrowed), Filter.keyOf(Filter.asked("look mail", items, said)));
         check(failures, "a second kind inside a filter is refused",
@@ -128,7 +128,7 @@ QtObject {
             check(failures, what, offers(Filter.offered(items, arg, said)), offered);
         check(failures, "each offer is named as the head names it, with the field it fills",
             Filter.offered(items, "", said).map(one => `${one.value}:${one.field}:${one.note}`)
-                .join(", "), "do:kind:To-Dos, look:kind:Looks, try:kind:To Try, "
+                .join(", "), "do:kind:To-Dos, look:kind:To Look At, try:kind:To Try, "
                 + "desktop:source:Desktop, home-network:source:Home Network, "
                 + "mail:source:Mail, sessions:source:Sessions, slack:source:Slack");
         // Every offer wears a mark: a kind its own, a source its own or its

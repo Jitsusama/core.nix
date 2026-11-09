@@ -2,7 +2,7 @@
 // (2026-11-08): a filter is a step in, never a state, so `-` comes back
 // out to everything and nothing carries across launches. Its words are a
 // kind (do, look or try) and a source, by its id in lowercase; two words
-// narrow to both, and the head joins their names, "Mail · Looks". A
+// narrow to both, and the head joins their names, "Mail · To Look At". A
 // row says both under its `forYou` (Now.qml), and the sources are read
 // from the rows, never a fixed table, since more come. Later's members and
 // History say neither, so any filter leaves them out: `:filter do` shows
