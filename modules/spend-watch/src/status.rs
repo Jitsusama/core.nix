@@ -44,6 +44,10 @@ pub struct Said {
     pub hint: String,
     /// The margin's footer: one short phrase, so it never runs out of room.
     pub context: String,
+    /// The key of the row the spend collection lists for what it says,
+    /// so the launcher's AI Spend piece opens that row's drawer rather
+    /// than having none (X0G8U9, 2026-11-09).
+    pub row: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -165,6 +169,10 @@ pub fn status(picture: &Picture, findings: &[Finding]) -> Status {
             badge: top.map_or_else(String::new, |finding| finding.badge.clone()),
             hint,
             context,
+            row: top.map_or_else(
+                || "period:today".to_owned(),
+                |finding| format!("finding:{}", finding.key),
+            ),
         },
         quiet: Said {
             value: quiet_value,
@@ -175,6 +183,10 @@ pub fn status(picture: &Picture, findings: &[Finding]) -> Status {
                 .unwrap_or_default(),
             hint: quiet_hint,
             context: quiet_context,
+            row: top.map_or_else(
+                || "quiet:today".to_owned(),
+                |finding| format!("quiet:finding:{}", finding.key),
+            ),
         },
         actions,
         tokens: None,
@@ -239,6 +251,7 @@ pub fn held(now: f64) -> Status {
         badge: String::new(),
         hint: "A newer spend-watch keeps the history".into(),
         context: "run the newer spend-watch".into(),
+        row: "held".into(),
     };
     Status {
         v: VERSION,
@@ -445,6 +458,43 @@ mod tests {
             assert!(!said.contains('$'), "{said}");
         }
         assert!(!quiet.hint.is_empty());
+    }
+
+    // The margin's AI Spend piece had no drawer, though the collection's
+    // rows each draw one, so the status names the row it speaks for: its
+    // top finding's, else today's, and while the screen is shared, the
+    // quiet list's of the same.
+    #[test]
+    fn the_status_names_the_collection_row_it_speaks_for() {
+        let history = History::memory();
+        let now = crate::time::parse("2026-10-14T12:00:00Z").unwrap();
+        let config = config();
+        let lists = |lines: &[crate::collection::Line], row: &str| {
+            let keys: Vec<&str> = lines.iter().map(|line| line.key.as_str()).collect();
+            assert!(keys.contains(&row), "{row} in {keys:?}");
+        };
+        let picture = Picture::read(&history, &config, now).unwrap();
+        let calm = status(&picture, &[]);
+        let listed = crate::collection::collection(&picture, &[], &config);
+        assert_eq!(calm.open.row, "period:today");
+        lists(&listed.now, &calm.open.row);
+        lists(&listed.quiet, &calm.quiet.row);
+
+        let line = serde_json::json!({
+            "v": 1, "kind": "cap", "name": "weekly", "label": "Week",
+            "allowance": 4000, "windowHours": 168, "spent": 4100, "warn": 0.9,
+            "state": "refused", "at": "2026-10-14T11:55:00Z",
+        });
+        let record = crate::feed::parse(&line.to_string()).unwrap();
+        crate::feed::store(&history, "proxy", &record, now).unwrap();
+        let picture = Picture::read(&history, &config, now).unwrap();
+        let mut found = crate::detect::all(&picture, &history, &config).unwrap();
+        crate::findings::sort(&mut found);
+        let pressed = status(&picture, &found);
+        let listed = crate::collection::collection(&picture, &found, &config);
+        assert!(pressed.open.row.starts_with("finding:"));
+        lists(&listed.findings, &pressed.open.row);
+        lists(&listed.quiet, &pressed.quiet.row);
     }
 
     // Held, nothing is watched: the margin shows it as it shows a cap
