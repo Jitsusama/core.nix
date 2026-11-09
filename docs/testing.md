@@ -194,7 +194,12 @@ each shared file is one, the run at the head is that list's own check
 (`every-check-says-what-it-proves` for `check-descriptions.nix`, the check
 a `tests/<check>-waiting.nix` is named for) with
 `nix-offload there . checks.x86_64-linux.<check>`, and the quarantine list
-needs only to read as a list of tests, each once. A machine switches only
+needs only to read as a list of tests, each once. Nor is there ever a third
+run: once the same change passed whole at two commits, a clean rebase onto
+any newer main merges with none, whatever main moved, and the net tests it
+after, unless a file either side moved names a path the other renamed or
+deleted since the newest of the two. Main moves faster than a run, and one
+branch ran six times in a day, every run passing. A machine switches only
 to merged main, and a bad switch is undone by switching back to the
 generation before it.
 

@@ -277,78 +277,120 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
     }
     let on_main = |base: &str| holds(base, &main);
     if !ready::built_there(&ready::record(&commit), &on_main) {
-        let files = lines(&git(&["diff", "--name-only", &main, &commit])?);
-        let renamed = gone(&main, &commit)?;
-        let at =
-            |rev: &str, file: &str| git(&["show", &format!("{rev}:{file}")]).unwrap_or_default();
-        let at_head = |file: &str| at(&commit, file);
-        let at_main = |file: &str| at(&main, file);
-        let change = patch_id(Path::new("."), &main, &commit);
-        let same = |candidate: &str| {
-            if candidate == commit || change.is_none() {
-                return None;
-            }
-            let base = git(&["merge-base", candidate, &main]).ok()?;
-            if patch_id(Path::new("."), &base, candidate) != change {
-                return None;
-            }
-            let since = lines(&git(&["diff", "--name-only", &base, &main]).ok()?);
-            let taken_away = gone(&base, &main).ok()?;
-            let branch = ready::Side {
-                changed: &files,
-                gone: &renamed,
-                text: &at_head,
-            };
-            let main_side = ready::Side {
-                changed: &since,
-                gone: &taken_away,
-                text: &at_main,
-            };
-            let mut shared = ready::shared(&branch, &main_side);
-            let (at_base, checked) = (|f: &str| at(&base, f), |f: &str| at(candidate, f));
-            shared
-                .retain(|file| !ready::stands_apart(file, &branch, &main_side, &at_base, &checked));
-            Some(shared)
-        };
-        let before =
-            ready::checked_before(&ready::recent_records(), &ready::record, &on_main, &same);
-        match before {
-            ready::Before::Clean(checked) => {
-                println!(
-                    "ready: {} sits on origin's main, and changed-checks built what it named at \
-                     {}, the same change, whose files main hasn't moved since",
-                    short(&commit),
-                    short(&checked)
-                );
-                return Ok(ExitCode::SUCCESS);
-            }
-            ready::Before::Shares(checked, shared) => {
-                if let Some(said) = lists_say(&commit, &shared) {
-                    return Ok(said);
-                }
-                eprintln!(
-                    "merge-net: the same change passed at {}, but main has since moved {}; run \
-                     changed-checks at {}, committed so it's sent, which builds only what the \
-                     rebase moved, and merge again",
-                    short(&checked),
-                    shared.join(", "),
-                    short(&commit)
-                );
-            }
-            ready::Before::Unchecked => eprintln!(
-                "merge-net: no changed-checks run that built what it named passed at {}, or at \
-                 an earlier commit of the same change; run changed-checks there, committed so \
-                 it's sent, and merge again",
-                short(&commit)
-            ),
-        }
-        return Ok(ExitCode::FAILURE);
+        return by_change(&commit, &main, &on_main);
     }
     println!(
         "ready: {} sits on origin's main and changed-checks built what it named there",
         short(&commit)
     );
     Ok(ExitCode::SUCCESS)
+}
+
+/// Whether `commit`, a head on `main` with no run of its own, is ready by
+/// an earlier commit of the same change, saying what to do when it isn't.
+fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result<ExitCode, String> {
+    let files = lines(&git(&["diff", "--name-only", main, commit])?);
+    let renamed = gone(main, commit)?;
+    let at = |rev: &str, file: &str| git(&["show", &format!("{rev}:{file}")]).unwrap_or_default();
+    let at_head = |file: &str| at(commit, file);
+    let at_main = |file: &str| at(main, file);
+    let change = patch_id(Path::new("."), main, commit);
+    // What main did since the base `candidate` was checked from: its
+    // base, the files main changed and the paths it took away.
+    let since_base = |candidate: &str| {
+        let base = git(&["merge-base", candidate, main]).ok()?;
+        let since = lines(&git(&["diff", "--name-only", &base, main]).ok()?);
+        let taken_away = gone(&base, main).ok()?;
+        Some((base, since, taken_away))
+    };
+    let same = |candidate: &str| {
+        if candidate == commit || change.is_none() {
+            return None;
+        }
+        let (base, since, taken_away) = since_base(candidate)?;
+        if patch_id(Path::new("."), &base, candidate) != change {
+            return None;
+        }
+        let branch = ready::Side {
+            changed: &files,
+            gone: &renamed,
+            text: &at_head,
+        };
+        let main_side = ready::Side {
+            changed: &since,
+            gone: &taken_away,
+            text: &at_main,
+        };
+        let mut shared = ready::shared(&branch, &main_side);
+        let (at_base, checked) = (|f: &str| at(&base, f), |f: &str| at(candidate, f));
+        shared.retain(|file| !ready::stands_apart(file, &branch, &main_side, &at_base, &checked));
+        Some(shared)
+    };
+    let names_gone = |candidate: &str| {
+        let (_, since, taken_away) = since_base(candidate)?;
+        let branch = ready::Side {
+            changed: &files,
+            gone: &renamed,
+            text: &at_head,
+        };
+        let main_side = ready::Side {
+            changed: &since,
+            gone: &taken_away,
+            text: &at_main,
+        };
+        Some(ready::names_gone(&branch, &main_side))
+    };
+    let mut before =
+        ready::checked_before(&ready::recent_records(), &ready::record, on_main, &same);
+    if let ready::Before::Twice(newest, earlier, shared) = before {
+        if names_gone(&newest).is_some_and(|naming| naming.is_empty()) {
+            println!(
+                "ready: {} sits on origin's main, and changed-checks built what it named at \
+                 {} and {}, the same change, so a clean rebase needs no third run though main \
+                 has since moved {}; the net tests it after it merges",
+                short(commit),
+                short(&newest),
+                short(&earlier),
+                shared.join(", ")
+            );
+            return Ok(ExitCode::SUCCESS);
+        }
+        // Main renamed or deleted a path one side names, which neither
+        // run saw, so it runs again as a change checked once would.
+        before = ready::Before::Shares(newest, shared);
+    }
+    match before {
+        ready::Before::Clean(checked) => {
+            println!(
+                "ready: {} sits on origin's main, and changed-checks built what it named at \
+                 {}, the same change, whose files main hasn't moved since",
+                short(commit),
+                short(&checked)
+            );
+            return Ok(ExitCode::SUCCESS);
+        }
+        ready::Before::Shares(checked, shared) => {
+            if let Some(said) = lists_say(commit, &shared) {
+                return Ok(said);
+            }
+            eprintln!(
+                "merge-net: the same change passed at {}, but main has since moved {}; run \
+                 changed-checks at {}, committed so it's sent, which builds only what the \
+                 rebase moved, and merge again",
+                short(&checked),
+                shared.join(", "),
+                short(commit)
+            );
+        }
+        ready::Before::Twice(..) => unreachable!("a change checked twice was judged above"),
+        ready::Before::Unchecked => eprintln!(
+            "merge-net: no changed-checks run that built what it named passed at {}, or at \
+             an earlier commit of the same change; run changed-checks there, committed so \
+             it's sent, and merge again",
+            short(commit)
+        ),
+    }
+    Ok(ExitCode::FAILURE)
 }
 
 /// What `changed-checks --name-only` says moved between `base` and the

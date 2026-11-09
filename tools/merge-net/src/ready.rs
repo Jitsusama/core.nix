@@ -48,6 +48,11 @@ pub enum Before {
     /// The same change passed at this commit, but main has since moved
     /// these of its files, so changed-checks runs again at the head.
     Shares(String, Vec<String>),
+    /// The same change passed whole at two commits, the newest first, and
+    /// main has since moved these of its files: it has been checked twice,
+    /// so a clean rebase needs no third run unless main renamed or deleted
+    /// a path it names, which [`names_gone`] says.
+    Twice(String, String, Vec<String>),
     /// No commit of the same change passed.
     Unchecked,
 }
@@ -65,14 +70,18 @@ pub enum Before {
 /// derivations: on 9 November #2504 merged with words.json's checks rerun
 /// at its head after main moved two other of its files, which no check
 /// that ran read. Nix builds only what the rebase moved, and takes the
-/// rest from the builders.
+/// rest from the builders. But main moves faster than a run: on 9
+/// November #2571 ran six times and #2576, #2603 and #2600 four or five
+/// each, every run passing, so a change that passed at two commits is
+/// `Twice` and the net tests it after it merges.
 pub fn checked_before(
     candidates: &[String],
     record: &dyn Fn(&str) -> String,
     on_main: &dyn Fn(&str) -> bool,
     same: &dyn Fn(&str) -> Option<Vec<String>>,
 ) -> Before {
-    let mut first_shared = None;
+    let mut first_shared: Option<(String, Vec<String>)> = None;
+    let mut passes = 0;
     for candidate in candidates {
         if !built_there(&record(candidate), on_main) {
             continue;
@@ -83,9 +92,18 @@ pub fn checked_before(
         if shared.is_empty() {
             return Before::Clean(candidate.clone());
         }
-        first_shared.get_or_insert(Before::Shares(candidate.clone(), shared));
+        passes += 1;
+        match &first_shared {
+            None => first_shared = Some((candidate.clone(), shared)),
+            Some((newest, shared)) if passes == 2 => {
+                return Before::Twice(newest.clone(), candidate.clone(), shared.clone());
+            }
+            Some(_) => {}
+        }
     }
-    first_shared.unwrap_or(Before::Unchecked)
+    first_shared.map_or(Before::Unchecked, |(newest, shared)| {
+        Before::Shares(newest, shared)
+    })
 }
 
 /// One side of a rebase: the files it changed, the paths it renamed or
@@ -108,15 +126,28 @@ pub fn shared(branch: &Side, main: &Side) -> Vec<String> {
         .filter(|file| branch.changed.contains(file))
         .cloned()
         .collect();
-    for (side, other) in [(main, branch), (branch, main)] {
-        for file in side.changed {
-            let text = (side.text)(file);
-            if !shared.contains(file) && other.gone.iter().any(|path| names(&text, file, path)) {
-                shared.push(file.clone());
-            }
+    for file in names_gone(branch, main) {
+        if !shared.contains(&file) {
+            shared.push(file);
         }
     }
     shared
+}
+
+/// The files either side changed that name a path the other renamed or
+/// deleted, which no number of earlier runs speaks for, since the run
+/// that reads the old path never saw it gone.
+pub fn names_gone(branch: &Side, main: &Side) -> Vec<String> {
+    let mut naming: Vec<String> = Vec::new();
+    for (side, other) in [(main, branch), (branch, main)] {
+        for file in side.changed {
+            let text = (side.text)(file);
+            if !naming.contains(file) && other.gone.iter().any(|path| names(&text, file, path)) {
+                naming.push(file.clone());
+            }
+        }
+    }
+    naming
 }
 
 /// Whether `text`, the file at `file`, names `path`: whole, from the
@@ -723,6 +754,70 @@ mod tests {
             )),
             Before::Unchecked
         );
+    }
+
+    #[test]
+    fn the_same_change_passed_at_two_commits_needs_no_third_run() {
+        let passed = "{\"dir\":null,\"printed\":\"\",\"run\":[\"--system\",\"x86_64-linux\"]}\n";
+        let files = vec!["a.rs".to_owned(), "b.md".to_owned()];
+        let candidates = vec!["rebased".to_owned(), "old".to_owned(), "other".to_owned()];
+        let moved = |commit: &str| match commit {
+            "rebased" => Some(vec!["b.md".to_owned()]),
+            "old" => Some(vec!["a.rs".to_owned(), "b.md".to_owned()]),
+            _ => None,
+        };
+        let both = |commit: &str| match commit {
+            "rebased" | "old" | "other" => passed.to_owned(),
+            _ => String::new(),
+        };
+        assert_eq!(
+            checked_before(&candidates, &both, &on_main, &|at: &str| sharing(
+                &files,
+                moved(at)
+            )),
+            Before::Twice(
+                "rebased".to_owned(),
+                "old".to_owned(),
+                vec!["b.md".to_owned()]
+            ),
+            "passed whole at two commits of the same change, so a third rebase needs no run"
+        );
+        // Passed once, and another change passed: one run still asks.
+        let once = |commit: &str| match commit {
+            "rebased" | "other" => passed.to_owned(),
+            _ => String::new(),
+        };
+        assert_eq!(
+            checked_before(&candidates, &once, &on_main, &|at: &str| sharing(
+                &files,
+                moved(at)
+            )),
+            Before::Shares("rebased".to_owned(), vec!["b.md".to_owned()])
+        );
+    }
+
+    #[test]
+    fn a_file_naming_what_main_took_away_is_named_whatever_ran() {
+        let files = vec!["tests/list.nix".to_owned()];
+        let moved = vec!["tests/old.sh".to_owned()];
+        let names_old = |_: &str| "[ ./old.sh ]".to_owned();
+        let branch = Side {
+            changed: &files,
+            gone: &[],
+            text: &names_old,
+        };
+        let main = Side {
+            changed: &moved,
+            gone: &moved,
+            text: &nothing,
+        };
+        assert_eq!(names_gone(&branch, &main), files);
+        let branch = Side {
+            changed: &files,
+            gone: &[],
+            text: &nothing,
+        };
+        assert_eq!(names_gone(&branch, &main), Vec::<String>::new());
     }
 
     #[test]
