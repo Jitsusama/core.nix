@@ -704,15 +704,21 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
     """For You steps into one with nowhere to go, whose drawer gives its steps and why."""
     machine = desktop.machine
     asked = f"{MISSION}/waiting/GONEQA.json"
-    # Its quest by its title, in the eyebrow (VKCF3Z, 2026-11-08). The
-    # index goes first, so the node has told its title before the item
-    # can be stepped into, whose drawer is the one it was entered with.
+    # Its quest by its title, in the eyebrow (VKCF3Z, 2026-11-08), which
+    # the index gives only a quest's own id (Waiting.js). The index goes
+    # first, so the node has told its title before the item can be
+    # stepped into, whose drawer is the one it was entered with.
     kept(
         desktop,
         INDEX,
         {
             "quests": [
-                {"id": "GONEQA", "address": "GONEQA", "title": "Reef Quest", "status": "active"}
+                {
+                    "id": "QEST-20261027-GONEQA",
+                    "address": "GONEQA",
+                    "title": "Reef Quest",
+                    "status": "active",
+                }
             ]
         },
     )
@@ -721,7 +727,7 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
         desktop,
         asked,
         {
-            "quest": "GONEQA",
+            "quest": "QEST-20261027-GONEQA",
             "items": [
                 {
                     "id": "form",
