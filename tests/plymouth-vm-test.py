@@ -436,9 +436,7 @@ def test_a_console_kmscon_cant_draw_still_asks_in_the_themes_face(opened: Boot) 
     # The getty is queued only once kmscon has failed, so for a moment
     # it's inactive with nothing pending, which wait_for_unit takes as
     # a failure.
-    machine.wait_until_succeeds(
-        "systemctl is-active getty@tty4.service", timeout=READING
-    )
+    machine.wait_until_succeeds("systemctl is-active getty@tty4.service", timeout=READING)
     machine.fail("systemctl is-active kmsconvt@tty4.service")
     machine.wait_until_tty_matches("4", "login: ")
     machine.wait_until_tty_matches("4", f"Hello, {opened.account}")
