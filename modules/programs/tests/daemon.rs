@@ -3,7 +3,8 @@
 //! said whole, what it opens with each kind's globs and description; an
 //! entry changed while watched is said again and one removed said gone;
 //! a program's list is read as its watch begins and again as its file
-//! changes, and not while nobody watches; what a program has open is
+//! changes, and not while nobody watches, and one whose command fails
+//! is heard empty, saying why; what a program has open is
 //! read as it's asked; and an ask or kind it doesn't know is refused.
 
 use std::io::{BufRead, BufReader, Write};
@@ -79,6 +80,8 @@ fn fixture(folder: &Path) -> PathBuf {
             "list": ["sh", "-c", folders],
         },
         {"app": "mpv", "kind": "file", "opened": ["cat", at("lists/playing")]},
+        // A list whose command fails, as one whose program isn't set up.
+        {"app": "broken", "kind": "file", "list": ["false"]},
         {
             "app": "browser",
             "kind": "site",
@@ -305,6 +308,16 @@ fn a_list_is_read_as_its_watch_begins_and_as_its_file_changes() {
         client.changed("recent:kitty")["paths"],
         json!([{"path": "/tmp", "used_at_s": null}])
     );
+}
+
+#[test]
+fn a_list_whose_command_fails_is_heard_empty_saying_why() {
+    let running = Running::new("broken");
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "watch", "keys": ["recent:broken"]}));
+    let recent = client.changed("recent:broken");
+    assert_eq!(recent["paths"], json!([]));
+    assert!(recent["refused"].is_string(), "{recent}");
 }
 
 #[test]

@@ -57,8 +57,15 @@ pub fn dated(line: &str, is_dated: bool) -> (&str, Option<u64>) {
     if !is_dated {
         return (line, None);
     }
+    // A last field that's empty is a time not known; one that isn't a
+    // time is the line's own, as a site's title where its time is left
+    // off, and is kept rather than lost.
     match line.rsplit_once('\t') {
-        Some((rest, seconds)) => (rest, seconds.parse().ok()),
+        Some((rest, "")) => (rest, None),
+        Some((rest, seconds)) => match seconds.parse() {
+            Ok(seconds) => (rest, Some(seconds)),
+            Err(_) => (line, None),
+        },
         None => (line, None),
     }
 }
@@ -147,8 +154,10 @@ pub fn opened(source: &Source, printed: &str) -> Option<Value> {
                         "go": go,
                     }));
                 }
+                // A line that names no process is no file, rather than
+                // one whose process is unknown.
                 Some(json!({
-                    "pid": first.parse::<u32>().ok(),
+                    "pid": first.parse::<u32>().ok()?,
                     "window": null,
                     "path": rest,
                     "go": null,
@@ -172,6 +181,7 @@ mod tests {
     fn a_dated_lines_time_is_kept_apart() {
         assert_eq!(dated("/a\t1793000000", true), ("/a", Some(1_793_000_000)));
         assert_eq!(dated("/a\t", true), ("/a", None));
+        assert_eq!(dated("site\tIts Title", true), ("site\tIts Title", None));
         assert_eq!(dated("/a\tb", false), ("/a\tb", None));
     }
 

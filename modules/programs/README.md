@@ -16,14 +16,14 @@ thread of its own, and is stopped past ten seconds.
 
 | Kind                 | Figures                                        | Where                         |
 | -------------------- | ---------------------------------------------- | ----------------------------- |
-| `program:<entry id>` | name, generic name, comment                    | Programs' rows, the drawer's body |
+| `program:<entry id>` | name, generic name                             | Programs' rows, the row's note |
+|                      | comment                                        | the drawer's body             |
 |                      | categories, keywords                           | the drawer's Categories, Keywords |
-|                      | exec as its arguments, terminal, starts in     | the drawer's Command, Starts In |
-|                      | window class, entry path                       | the drawer's identifiers      |
-|                      | actions, each its name and exec                | the program's rows            |
-|                      | what it opens: each type, its globs, its description | the drawer's Opens      |
+|                      | exec as its arguments, starts in               | the drawer's Command, Starts In |
+|                      | window class, where it isn't its entry's id    | the drawer's Window Class     |
+|                      | what it opens: each type, named from its globs | the drawer's Opens            |
 |                      | the links it handles, by scheme                | the drawer's Handles          |
-|                      | its package: name, version, store path         | the drawer's Version, Package |
+|                      | its package: name, version, store path         | the drawer's Package, Version, Store Path |
 | `recent:<entry id>`  | each path or site, when it was last used       | the program's Recent          |
 | `recent:shared`      | each program's path, when, from the shared list | each program's Recent        |
 | `opened:<entry id>`  | each file's process or window, path, Go To's id | the program's open rows      |
@@ -40,5 +40,10 @@ holding one wins, and one saying `Hidden` is none.
   NotShowIn and every `X-` key.** They say how and where a program is
   started, not what it is.
 - **Localized keys.** Joel reads English.
+- **Held, but not shown yet:** the entry's path, which the Desktop ID
+  names already; Terminal, which says only that its Command runs in
+  one; its actions, which the program's rows don't offer yet; and a
+  type's description, since Opens names each type by its globs, in
+  fewer words. Each is in the record for the drawer to take up.
 - **A package's size and when it was installed.** Only the Nix daemon
   knows them, asked through a command for each package.

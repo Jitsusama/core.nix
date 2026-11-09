@@ -3,7 +3,7 @@
 //! its file's path under `applications`, `/` made `-`, without `.desktop`.
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 /// The data folders, nearest first: `XDG_DATA_HOME` (or
 /// `~/.local/share`), then each of `XDG_DATA_DIRS` (or `/usr/local/share`
@@ -86,9 +86,97 @@ pub fn id_of(base: &Path, path: &Path) -> Option<String> {
     (!id.is_empty()).then_some(id)
 }
 
+/// The most links a data folder is followed through, so a loop of them
+/// ends.
+const LINKS_FOLLOWED: usize = 32;
+
+/// The links a data folder resolves through, each as the folder holding
+/// it and its name, as `/run` and `current-system`: a switch or an
+/// upgrade replaces one of them, which inotify on the folder itself never
+/// says, since what it resolves to is a store path that never changes.
+/// A link inside the store is left out, for the same reason.
+pub fn links_toward(folder: &Path) -> Vec<(PathBuf, String)> {
+    let store = Path::new("/nix/store");
+    let mut links = Vec::new();
+    let mut toward = vec![folder.to_path_buf()];
+    while let Some(path) = toward.pop() {
+        if links.len() >= LINKS_FOLLOWED {
+            break;
+        }
+        for at in path.ancestors() {
+            if at.starts_with(store) {
+                break;
+            }
+            let is_link = std::fs::symlink_metadata(at).is_ok_and(|it| it.is_symlink());
+            let (Some(parent), Some(name)) = (at.parent(), at.file_name()) else {
+                continue;
+            };
+            if !is_link {
+                continue;
+            }
+            let link = (parent.to_path_buf(), name.to_string_lossy().into_owned());
+            if links.contains(&link) {
+                continue;
+            }
+            links.push(link);
+            if let Ok(target) = std::fs::read_link(at) {
+                toward.push(lexical(&parent.join(target)));
+            }
+        }
+    }
+    links
+}
+
+/// A path with its `.` and `..` taken out by their words alone, so a
+/// link's relative target reads as the folder it names.
+fn lexical(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for part in path.components() {
+        match part {
+            Component::ParentDir => {
+                out.pop();
+            }
+            Component::CurDir => {}
+            other => out.push(other),
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_data_folder_is_followed_through_each_link_a_switch_replaces() {
+        let root = std::env::temp_dir().join(format!("programs-links-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let built = root.join("system-2/sw/share");
+        std::fs::create_dir_all(&built).unwrap();
+        std::fs::create_dir_all(root.join("profiles")).unwrap();
+        std::os::unix::fs::symlink("system-2", root.join("profiles/system")).unwrap();
+        std::os::unix::fs::symlink("../profiles/system", root.join("current")).unwrap();
+        // Only those under the test's own folder, since the temporary
+        // folder may itself be reached through a link.
+        let mut links: Vec<_> = links_toward(&root.join("current/sw/share"))
+            .into_iter()
+            .filter(|(folder, _)| folder.starts_with(&root))
+            .collect();
+        links.sort();
+        assert_eq!(
+            links,
+            [
+                (root.clone(), "current".to_owned()),
+                (root.join("profiles"), "system".to_owned()),
+            ]
+        );
+        assert!(
+            links_toward(&built)
+                .iter()
+                .all(|(folder, _)| !folder.starts_with(&root))
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 
     #[test]
     fn the_data_folders_are_nearest_first_each_once() {

@@ -9,7 +9,8 @@
 //!
 //! Nothing is read while nobody watches, and nothing on a timer. An entry
 //! is read as its key is first asked, and again when inotify says a
-//! folder of entries or of file kinds changed while it's watched. A
+//! folder of entries or of file kinds changed while it's watched, or a
+//! profile's link a data folder is reached through was replaced. A
 //! source's list is read as a watch of its key begins if its file
 //! changed since, or every time for a source that's `asked`, and on each
 //! change of its file while it's watched; what a program has open, as a
@@ -420,6 +421,15 @@ fn read_source(shared: &Shared, at: usize, what: Run) {
             keep(&mut daemon, record.into_iter().collect(), &[]);
         }
         Err(why) => {
+            // A list never read says it's empty and why, so a watch
+            // waiting to hear every list once hears this one too and lets
+            // go as the launcher closes; one read before keeps what it
+            // last said, as the old reader kept its lines.
+            if what == Run::List && !daemon.held.contains_key(&key) {
+                let mut record = source::recent(source, "");
+                record["refused"] = json!(why);
+                keep(&mut daemon, vec![record], &[]);
+            }
             daemon
                 .commands
                 .insert(key, json!({"state": "refused", "reason": why}));
@@ -518,12 +528,17 @@ fn fresh(shared: &Shared, kinds: &[String], keys: Option<&[String]>) {
     }
 }
 
-/// What a watched folder is to this daemon.
-enum Heard {
-    /// A folder of entries or of file kinds.
-    Entries,
-    /// A folder holding a source's file, by the file's name.
-    Files(Vec<(String, usize)>),
+/// What a watched folder is to this daemon; one can be more than one.
+#[derive(Default)]
+struct Heard {
+    /// Whether it's a folder of entries or of file kinds, whose every
+    /// change counts.
+    entries: bool,
+    /// The links in it that a data folder resolves through, by name, as
+    /// `current-system` in `/run`: replaced, the entries changed.
+    links: Vec<String>,
+    /// The sources' files in it, by name.
+    files: Vec<(String, usize)>,
 }
 
 /// Watches every folder of entries and of file kinds, and the folder of
@@ -534,7 +549,23 @@ fn heard(shared: &Shared, notify: &Notify) -> HashMap<i32, Heard> {
     let kinds = shared.folders.iter().map(|folder| folder.join("mime"));
     for folder in looked.into_iter().chain(kinds) {
         if let Some(watch) = notify.watch(&folder) {
-            folders.insert(watch, Heard::Entries);
+            folders.entry(watch).or_default().entries = true;
+        }
+    }
+    // On NixOS each data folder is a store path reached through a
+    // profile's links, so an upgrade says nothing in the folder itself:
+    // the link it replaces is heard instead, and every watched entry is
+    // read again, its version and store path with it.
+    for (folder, name) in shared
+        .folders
+        .iter()
+        .flat_map(|folder| xdg::links_toward(folder))
+    {
+        if let Some(watch) = notify.watch(&folder) {
+            let links = &mut folders.entry(watch).or_default().links;
+            if !links.contains(&name) {
+                links.push(name);
+            }
         }
     }
     for (at, source) in shared.sources.iter().enumerate() {
@@ -553,13 +584,7 @@ fn heard(shared: &Shared, notify: &Notify) -> HashMap<i32, Heard> {
             continue;
         };
         let name = name.to_string_lossy().into_owned();
-        match folders
-            .entry(watch)
-            .or_insert_with(|| Heard::Files(Vec::new()))
-        {
-            Heard::Files(files) => files.push((name, at)),
-            Heard::Entries => {}
-        }
+        folders.entry(watch).or_default().files.push((name, at));
     }
     folders
 }
@@ -573,18 +598,17 @@ fn notice(shared: &Arc<Shared>, notify: &Notify, folders: &HashMap<i32, Heard>) 
         let mut entries = false;
         let mut lists = HashSet::new();
         for (watch, name) in changes {
-            match folders.get(&watch) {
-                Some(Heard::Entries) => entries = true,
-                Some(Heard::Files(files)) => {
-                    lists.extend(
-                        files
-                            .iter()
-                            .filter(|(file, _)| *file == name)
-                            .map(|(_, at)| *at),
-                    );
-                }
-                None => {}
-            }
+            let Some(heard) = folders.get(&watch) else {
+                continue;
+            };
+            entries |= heard.entries || heard.links.contains(&name);
+            lists.extend(
+                heard
+                    .files
+                    .iter()
+                    .filter(|(file, _)| *file == name)
+                    .map(|(_, at)| *at),
+            );
         }
         if entries {
             entries_changed(shared);

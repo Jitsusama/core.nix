@@ -52,9 +52,12 @@ impl Mime {
     /// What shared-mime-info calls a type, in English, or null.
     pub fn comment(&mut self, kind: &str) -> Value {
         if !self.comments.contains_key(kind) {
+            // An entry's MimeType is its writer's words, so only a type's
+            // own shape is read as a file's name, never `../..`.
             let said = self
                 .folders
                 .iter()
+                .filter(|_| well_formed(kind))
                 .find_map(|folder| {
                     std::fs::read_to_string(folder.join(format!("mime/{kind}.xml"))).ok()
                 })
@@ -99,6 +102,22 @@ pub fn glob_line(line: &str) -> Option<(u32, String, String)> {
     (!kind.is_empty() && !glob.is_empty()).then_some((weight, kind, glob))
 }
 
+/// Whether a type reads as a type does, `application/pdf`: two parts
+/// of letters, digits and `+-._`, neither a `.` or `..` of its own, so
+/// it names a file in the mime folder and nothing outside it.
+pub fn well_formed(kind: &str) -> bool {
+    let part = |part: &str| {
+        !part.is_empty()
+            && part != "."
+            && part != ".."
+            && part
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "+-._".contains(c))
+    };
+    kind.split_once('/')
+        .is_some_and(|(group, name)| part(group) && part(name))
+}
+
 /// A type's `<comment>` with no language, its XML escapes read.
 pub fn comment_in(xml: &str) -> Option<String> {
     let start = xml.find("<comment>")? + "<comment>".len();
@@ -115,6 +134,22 @@ pub fn comment_in(xml: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_types_own_shape_names_its_file() {
+        assert!(well_formed("application/vnd.oasis.opendocument.text"));
+        assert!(well_formed("image/svg+xml"));
+        for bad in [
+            "../../etc/passwd",
+            "text/..",
+            "text",
+            "a/b/c",
+            "/pdf",
+            "text/x y",
+        ] {
+            assert!(!well_formed(bad), "{bad}");
+        }
+    }
 
     #[test]
     fn a_glob_line_says_its_weight_type_and_glob() {

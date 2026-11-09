@@ -181,7 +181,10 @@ function facts(known, named, said) {
         own("version")(pack?.version ?? ""),
         own("package")(pack?.name ?? ""),
         commandFact(known.command ?? [], named),
-        Object.assign(own("window-class")(record?.window_class ?? ""), { identifies: true }),
+        // Its window class, where it isn't the entry's id, as it most
+        // often is: the same word twice says nothing.
+        Object.assign(own("window-class")(record?.window_class === known.id ? ""
+            : record?.window_class ?? ""), { identifies: true }),
         Object.assign(own("desktop-id")(known.id ?? ""), { identifies: true }),
         Object.assign(own("store-path")(pack?.store_path ?? ""), { identifies: true,
             valueItems: [{ said: pack?.store_path ?? "", whole: true }] })

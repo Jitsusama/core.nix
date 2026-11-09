@@ -156,6 +156,10 @@ QtObject {
         expect("a closed program says only what describes it",
             [closed.eyebrow].concat(closed.facts.map(fact => fact.label)),
             ["program", "[command]", "[desktop-id]"]);
+        const classed = Program.drawer({ name: "GIMP", places: [], usage: null, id: "gimp",
+            command: ["gimp"], record: { window_class: "gimp" } }, named, said);
+        expect("a window class that's its entry's id is said once, as the id",
+            classed.facts.map(fact => fact.label), ["[command]", "[desktop-id]"]);
         const asking = Program.drawer({ name: "GIMP", places: [2], usage: null, asking: true,
             id: "gimp", command: ["gimp"] }, named, said);
         expect("while its figures are asked, they hold their places",

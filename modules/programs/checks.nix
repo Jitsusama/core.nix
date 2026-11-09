@@ -11,23 +11,30 @@
   self,
   ...
 }:
+let
+  daemon = pkgs.callPackage ./package.nix { };
+in
 # It reads Linux's inotify, and builds only there.
 onLinux {
   # Its tests run as it builds, over data folders and sources of its own:
   # hello on the socket systemd hands it, an entry whole from the nearest
   # folder, an entry changed said again and one removed said gone, a list
   # read as its watch begins and as its file changes and not while nobody
-  # watches, what a program has open read as it's asked, and an ask or
-  # kind it doesn't know refused.
-  programs-holds-whats-installed = pkgs.callPackage ./package.nix { };
+  # watches, one whose command fails heard empty, what a program has open
+  # read as it's asked, a data folder followed through each link a switch
+  # replaces, and an ask or kind it doesn't know refused.
+  programs-holds-whats-installed = daemon;
   # clippy finds nothing in the programs daemon, its tests included.
-  programs-passes-clippy = passesClippy "programs-passes-clippy" (pkgs.callPackage ./package.nix { });
+  programs-passes-clippy = passesClippy "programs-passes-clippy" daemon;
   # The shell brings the daemon, on the socket the shell's daemons share,
   # held by systemd whether or not the daemon runs, given every source a
   # program's module lists.
   programs-runs-beside-the-shell =
     let
-      home = account (bareNixos [ { home-manager.sharedModules = [ self.homeModules.quickshell ]; } ]);
+      shell = {
+        home-manager.sharedModules = [ self.homeModules.quickshell ];
+      };
+      home = account (bareNixos [ shell ]);
       service = home.systemd.user.services.programs;
       started = lib.concatStringsSep " " (lib.toList service.Service.ExecStart);
     in

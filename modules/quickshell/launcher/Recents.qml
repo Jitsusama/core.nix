@@ -104,10 +104,12 @@ Scope {
         return openNow[app] ?? [];
     }
 
-    // The launcher closed, so the next opening reads them again.
+    // The launcher closed, so the next opening reads them again, and no
+    // program is stepped into until one is.
     function forget() {
         recents.asked = {};
         recents.closed = {};
+        recents.stepped = [];
     }
 
     // A page a program had open, closed from the launcher.
