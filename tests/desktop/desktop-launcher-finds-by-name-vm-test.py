@@ -1591,6 +1591,7 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
     warp-cli. The gallery keeps it in kitty at Joel's scales.
     """
     machine = desktop.machine
+    reads_cold_for_a_terminal(desktop)
     shown = json.loads(desktop.as_account("launcher show machine --json"))
     assert shown["in"] == ["Machine"], shown
     assert "Disk" in [row["name"] for row in shown["rows"]], shown
@@ -1680,6 +1681,32 @@ def a_terminal_is_shown_warp(desktop: Desktop) -> None:
     assert trip["row"]["drawer"]["eyebrow"] == "via WARP \u00b7 tunnel", trip["row"]
     said = desktop.as_account("launcher show network warp round-trip")
     assert "via WARP \u00b7 tunnel" in said, said
+
+
+def reads_cold_for_a_terminal(desktop: Desktop) -> None:
+    """With the launcher closed, a terminal is shown what's read only once it's asked for.
+
+    Wi-Fi looks for networks, Firmware asks fwupd, and a keyboard's and a camera's drawers
+    read their files, each only while something sees them: here a terminal's show does.
+    A look for networks takes as long as the cards do, so it's asked until it's heard.
+    """
+    desktop.launcher_left_closed()
+
+    def rows(*steps: str) -> dict[str, Json]:
+        words = " ".join(shlex.quote(step) for step in steps)
+        shown = json.loads(desktop.as_account(f"launcher show --json --drawers {words}"))
+        return {row["name"]: row for row in shown["rows"]}
+
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session("launcher show network wi-fi | grep -q Office"),
+        timeout=dt.timedelta(seconds=30),
+    )
+    firmware = rows("machine", "firmware")
+    assert "System Firmware" in firmware, firmware
+    keyboards = rows("keyboard", "keyboards")
+    assert keyboards["The Laptop's Keyboard"].get("drawer"), keyboards
+    cameras = rows("machine", "cameras")
+    assert cameras["Built-In Camera"].get("drawer"), cameras
 
 
 def test_no_answer_raised_an_error(desktop: Desktop) -> None:
