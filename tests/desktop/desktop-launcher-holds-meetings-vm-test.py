@@ -174,6 +174,8 @@ def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> No
         )
     )
     machine.succeed(f"! grep -qxF https://meet.google.com/rtr-ospe-ctv {opened}")
+    # Joining starts something, so Return writes :meet, and a fresh Return joins.
+    desktop.line("meet")
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"grep -qxF https://meet.google.com/rtr-ospe-ctv {opened}",
