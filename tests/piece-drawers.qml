@@ -69,14 +69,13 @@ QtObject {
         ];
         const cleared = [{ at: 900, path: "/home/joel/.cache/nix", bytes: 70 }];
         const drawer = Drawers.disk({ worst, holders, cleared }, told);
-        expect("a disk is named by its path, and says what moves first, its room after",
+        expect("a disk is named by its path, says what moves first, its room left to the row",
             [drawer.title, drawer.eyebrow].concat(said(drawer), drawer.body), [
                 "/home", "on this machine \u00b7 disk",
                 "[machine:disk:full-in] 3600 s",
                 "[on:disk:filling] 12 B an hour",
                 "[on:disk:growing] ~/.cache/nix +90 B \u00b7 ~/.local/share +30 B \u00b7 "
                     + "~/src +5 B",
-                "[machine:disk:free] 40 B",
                 "[machine:disk:size] 500 B",
                 "[on:disk:cleared] 70 B from ~/.cache/nix at @900",
                 "Nix's cache is filling it."
@@ -91,7 +90,7 @@ QtObject {
             holders: [{ path: "/nix", grew: { bytes: 0 } }]
         }, told);
         expect("a disk emptying, full in the past or growing nowhere says none of it",
-            said(steady), ["[machine:disk:free] 7 B", "[machine:disk:size] 9 B"]);
+            said(steady), ["[machine:disk:size] 9 B"]);
         expect("no disk the guards name, no drawer", Drawers.disk({ worst: null }, told), null);
     }
 
@@ -112,10 +111,14 @@ QtObject {
             named,
             said: {
                 eyebrow: "on this machine \u00b7 lag",
-                over: "{what} \u00b7 over the last {seconds} s",
+                over: "{share} of the last {seconds} s",
                 "stall:cpu": "processor",
                 "stall:memory": "memory",
                 "stall:io": "disk"
+            },
+            tells: {
+                desktop: "The desktop waited on {what}.",
+                programs: "Programs waited on {what}."
             }
         };
         const window = {
@@ -127,20 +130,23 @@ QtObject {
             },
             memory: { session: { swap_mib: 1024 }, app: { swap_mib: 120 } },
             worst: "memory",
-            trouble: ["Memory kept programs waiting.", "Swap is in use."]
+            who: "apps",
+            trouble: ["apps stalled on memory 0.20% of the time"]
         };
         const drawer = Drawers.lag(window, "memory", told);
-        expect("lag says what waits, the most it stalled any slice, over what window, each"
-            + " slice's stalls to three figures, too little to say giving way, then the swap"
-            + " and its words",
+        expect("lag says how long the most any slice waited, of what window, each slice's"
+            + " stalls to three figures, too little to say giving way, the swap, then who"
+            + " waited on what in our own sentence",
             [drawer.eyebrow].concat(said(drawer), drawer.body), [
                 "on this machine \u00b7 lag",
-                "[on:lag:waiting] memory 12.3% \u00b7 over the last 10 s",
+                "[on:lag:waited] 12.3% of the last 10 s",
                 "[on:lag:session] memory 12.3% \u00b7 disk 3.00%",
                 "[on:lag:app] processor 41.1% \u00b7 memory 0.500% \u00b7 disk 100%",
                 "[on:lag:swap] 1.20\u00a0GB",
-                "Memory kept programs waiting. Swap is in use."
+                "Programs waited on memory."
             ]);
+        expect("the desktop waiting says so", Drawers.lag(Object.assign({}, window,
+            { who: "desktop" }), "memory", told).body, "The desktop waited on memory.");
         const days = { day: "a day", days: "{count} days" };
         expect("how long is said in its two largest units to the minute, never as a clock",
             [21_420, 2_400, 7_200, 30, 86_400, 3 * 86_400].map(seconds => Drawers.span(seconds,

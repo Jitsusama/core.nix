@@ -125,19 +125,20 @@ function notices(missed, said) {
     };
 }
 
-// What lag-watch said of its last window: what has kept them waiting, with
-// the most any slice stalled on it, over how long a window, which every
-// share is of, as Lag's row says only what (VKCF3Z, 2026-11-08); how long
-// each slice stalled on each kind, as a share of it; the swap held; and
-// its own sentences of what counted as waiting.
+// What lag-watch said of its last window: the most any slice waited on
+// what keeps them waiting, of how long a window, which every share is of;
+// how long each slice stalled on each kind, as a share of it; the swap
+// held; and, last, who waited on what, in our own sentence. The row's
+// side says what, so the fact says only how long (VKCF3Z, 2026-11-08).
 function lag(window, what, told) {
-    const { named, said } = told;
+    const { named, said, tells } = told;
     const most = Math.max(0, ...SLICES
         .map(slice => Number(window.stalls?.[slice]?.[`${window.worst}_some`]) || 0));
-    const waiting = what === "" ? "" : filled(said.over, {
-        what: most >= LEAST ? `${what} ${percent(most)}` : what,
+    const waited = what === "" || most < LEAST ? "" : filled(said.over, {
+        share: percent(most),
         seconds: Math.round(Number(window.seconds) || 0)
     });
+    const who = window.who === "desktop" ? tells.desktop : tells.programs;
     const stalled = SLICES.filter(slice => window.stalls?.[slice])
         .map(slice => fact(named, `on:lag:${slice}`, STALLS
             .map(kind => [said[`stall:${kind}`] ?? kind,
@@ -148,10 +149,10 @@ function lag(window, what, told) {
         .reduce((sum, group) => sum + (Number(group.swap_mib) || 0), 0);
     return {
         eyebrow: said.eyebrow,
-        facts: drawn([fact(named, "on:lag:waiting", waiting)].concat(stalled,
+        facts: drawn([fact(named, "on:lag:waited", waited)].concat(stalled,
             [fact(named, "on:lag:swap",
                 swapped > 0 ? FileFacts.weighed(swapped * MEBIBYTE) : "")])),
-        body: (window.trouble ?? []).join(" ")
+        body: what === "" ? "" : filled(who, { what })
     };
 }
 
