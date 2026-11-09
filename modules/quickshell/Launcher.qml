@@ -1698,7 +1698,8 @@ Scope {
             const side = PlaceRow.side(standsOf(place.category), "");
             return Object.assign({}, place, {
                 side: side,
-                count: PlaceRow.holds(holding(place.category), place.name, side, rowRoom(), ""),
+                count: PlaceRow.holds(holding(place.category),
+                    { name: place.name, says: side, room: rowRoom() }),
                 names: true
             });
         }
@@ -3100,8 +3101,8 @@ Scope {
             // What it holds by name, given way by whole names; holding
             // none, it says so as a run, never the sentence an empty place
             // says inside (VKCF3Z, 2026-11-08).
-            count: read ? PlaceRow.holds(source.memberNames(), title, side, rowRoom(),
-                collection.none ?? "") : "",
+            count: read ? PlaceRow.holds(source.memberNames(),
+                { name: title, says: side, room: rowRoom(), none: collection.none ?? "" }) : "",
             names: read,
             gap: gap,
             opens: name,

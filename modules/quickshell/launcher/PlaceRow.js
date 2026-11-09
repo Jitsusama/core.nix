@@ -28,15 +28,16 @@ function listed(cased, room) {
 }
 
 // What a place's row says after its name: its members' names in the room
-// its name and its side leave in a row of `room` characters, or `none`
-// where it holds nothing. A row whose first name doesn't fit says nothing
-// there, since its side already says how many it holds.
-function holds(names, name, side, room, none) {
+// its `name` and what it `says` at its right leave in a row of `room`
+// characters, or `none` where it holds nothing. A row whose first name
+// doesn't fit says nothing there, since its right already says how many
+// it holds.
+function holds(names, row) {
     if (names.length === 0) {
-        return none ?? "";
+        return row.none ?? "";
     }
-    const beside = name.length + (side === "" ? 0 : side.length + BETWEEN);
-    return listed(names, room - beside);
+    const beside = row.name.length + (row.says === "" ? 0 : row.says.length + BETWEEN);
+    return listed(names, row.room - beside);
 }
 
 // What a place's row says at its right: how it stands, where it says

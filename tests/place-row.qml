@@ -43,12 +43,15 @@ QtObject {
                 "Agents", "2 working", 25, ""],
             ["holding none, it says so as a run", [], "Agents", "0", 40, "none yet"]
         ];
-        for (const [what, names, name, side, room, want] of holding)
-            check(failures, what, PlaceRow.holds(names, name, side, room, "none yet"), want);
+        for (const [what, names, name, says, room, want] of holding)
+            check(failures, what,
+                PlaceRow.holds(names, { name: name, says: says, room: room, none: "none yet" }),
+                want);
         check(failures, "never an ellipsis, however short the room",
-            PlaceRow.holds(machine, "Machine", "", 12).includes("\u2026"), false);
+            PlaceRow.holds(machine, { name: "Machine", says: "", room: 12 }).includes("\u2026"),
+            false);
         check(failures, "holding none with no word for it says nothing",
-            PlaceRow.holds([], "Machine", "", 40), "");
+            PlaceRow.holds([], { name: "Machine", says: "", room: 40 }), "");
 
         // At its right: how it stands where it says, else how many it holds.
         check(failures, "how it stands where it says", PlaceRow.side("99% busy", "4"),
