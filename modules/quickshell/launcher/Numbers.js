@@ -118,6 +118,13 @@ function significant(value, group, point) {
     return `${whole}${point ?? "."}${(fraction ?? "").padEnd(places, "0")}`;
 }
 
+// A whole reading, as a signal's dBm is, grouped, with the real minus:
+// -14 as "\u221214". A reading that is whole by nature keeps no decimals
+// three digits would give it.
+function wholeReading(value, group, point) {
+    return format(Math.round(Number(value)), 0, group, point).replace("-", MINUS);
+}
+
 // How many a collection holds, as its words say one and many, the figure
 // grouped in threes: "1 key", "1,204 keys", or the bare figure where they
 // say it so (Provider.qml's countedAs). Holding none, it's "empty".

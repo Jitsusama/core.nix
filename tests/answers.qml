@@ -1593,6 +1593,55 @@ QtObject {
         machine("idle for seconds", WifiLink.idle(2430, tenths), "2.4 s");
         machine("idle for tens of seconds", WifiLink.idle(42000, tenths), "42 s");
         machine("idle for minutes", WifiLink.idle(3 * 60000, tenths), "3 min");
+        const retriesSaid = value => String(value);
+        machine("nothing sent again", WifiLink.retried(0, null, retriesSaid), "none");
+        machine("what was sent again and never sent, dotted",
+            WifiLink.retried(12, 1, retriesSaid),
+            "12 sent again \u00b7 1 never sent");
+        machine("protection's strength by its standard",
+            ["WPA3-SAE", "WPA2-PSK", "WEP", "WPA-PSK"].map(WifiLink.strength),
+            ["strong", "good", "broken", "weak"]);
+        // The connected network's drawer: where then what, what moves first, the
+        // access point's hardware address last.
+        const drawerSaid = { eyebrow: "on {band} \u00b7 network",
+            kind: "on Wi-Fi \u00b7 network",
+            over: "{margin} dB over the noise", since: "since {time}" };
+        const drawerNamed = id => id;
+        const linkKnown = { name: "Home", band: "5 GHz", signal: "-43 dBm", margin: 52,
+            speed: "1081 Mb/s in \u00b7 1134 Mb/s out", expected: "720 Mb/s",
+            carried: "23.7 GB in \u00b7 1.20 GB out", retries: "none", generation: "Wi-Fi 6",
+            coding: "MCS 10 in \u00b7 MCS 11 out", streams: "2", width: "80 MHz",
+            channel: "149 \u00b7 5745 MHz", heard: "2 on 2.4 \u00b7 3 on 5 GHz",
+            protection: "strong", standard: "WPA3-SAE", connected: "3 h 15 min",
+            since: "21:10", bssid: "aa:bb:cc:dd:ee:ff" };
+        const linkDrawer = WifiLink.drawer(linkKnown, drawerNamed, drawerSaid);
+        machine("a network's drawer says its band, then what it is",
+            [linkDrawer.eyebrow, linkDrawer.title], ["on 5 GHz \u00b7 network", "Home"]);
+        machine("what moves first, its identifier last", linkDrawer.facts.map(one => one.label),
+            ["signal", "speed", "expected", "carried", "retries", "generation", "coding",
+                "streams", "width", "channel", "heard", "protection", "standard",
+                "connected", "bssid"]);
+        machine("its signal over the noise and since when, dotted",
+            [linkDrawer.facts[0].value, linkDrawer.facts[13].value],
+            ["-43 dBm \u00b7 52 dB over the noise", "3 h 15 min \u00b7 since 21:10"]);
+        machine("its hardware address an identifier", linkDrawer.facts[14].identifies, true);
+        const earlyDrawer = WifiLink.drawer(Object.assign({}, linkKnown, { band: "",
+            margin: null, retries: "", connected: "", since: "", bssid: null }),
+        drawerNamed, drawerSaid);
+        machine("before iw reads, what it hasn't read left out, never said as unknown",
+            [earlyDrawer.eyebrow, earlyDrawer.facts[0].value,
+                earlyDrawer.facts.map(one => one.label).filter(label =>
+                    ["retries", "connected", "bssid"].includes(label))],
+            ["on Wi-Fi \u00b7 network", "-43 dBm", []]);
+        machine("its eyebrow set as written, the unit never re-cased",
+            linkDrawer.eyebrowNames, true);
+        machine("a width said as ours, a radio before Wi-Fi 4 told apart",
+            ["20 MHz (no HT)", "80 MHz", "80+80 MHz", ""].map(WifiLink.widthOf),
+            [{ width: "20 MHz", legacy: true }, { width: "80 MHz", legacy: false },
+                { width: "80+80 MHz", legacy: false }, { width: "", legacy: false }]);
+        machine("a whole reading takes the real minus and no decimals",
+            [Numbers.wholeReading(-14), Numbers.wholeReading(-60.4), Numbers.wholeReading(3)],
+            ["\u221214", "\u221260", "3"]);
 
         // How each Bluetooth link is doing, from what bluetooth-links writes.
         const btMap = `${"1".repeat(22)}${"0".repeat(18)}${"1".repeat(39)}`;

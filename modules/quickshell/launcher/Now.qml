@@ -1386,19 +1386,27 @@ Provider {
         const holding = piece.rows ? () => piece.rows(thing, listedAfter).concat(actions) : null;
         // Everything its source says, under the row, where the piece gives
         // it (Piece.qml's drawer), as the network allows, read again as the
-        // drawn clock turns.
+        // drawn clock turns. Its note is said there, once, while the drawer
+        // is out, so its side reads on the row as its neighbours' do
+        // (Showing.noted; VKCF3Z, 2026-11-09).
         const drawn = typeof piece.drawer === "function" ? {
             thing: true,
+            noteInDrawer: true,
             drawer: () => {
                 void drawnClock.date;
-                return piece.drawer({ lookups: settings.lookups !== false });
+                return Showing.noted(piece.drawer({ lookups: settings.lookups !== false }),
+                    piece.context);
             }
         } : piece.drawnBy ? {
             thing: true,
-            drawer: () => provider.borrowed(piece.drawnBy, {
+            noteInDrawer: true,
+            // Which row it draws, so a place reading more of a thing
+            // while it's selected, as Wi-Fi does, reads it here too.
+            borrows: piece.drawnBy,
+            drawer: () => Showing.noted(provider.borrowed(piece.drawnBy, {
                 side: piece.value,
                 note: piece.context
-            })
+            }), piece.context)
         } : {};
         return member(Object.assign({
             key: `on:${fact.entry.mark}`,

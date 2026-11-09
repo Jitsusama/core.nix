@@ -137,6 +137,30 @@ QtObject {
             false);
         expect("a row that's none of the thing's verbs is a row",
             act({ key: "part", name: "Model" }, ["copy"]), false);
+        // A row's note is said in its drawer, once, as a sentence.
+        expect("a note becomes the drawer's sentence",
+            Showing.noted(keyboard, "the layer lock key lets it go").body,
+            "The layer lock key lets it go.");
+        expect("its own words come first, the note after them, never unsaid",
+            Showing.noted({ title: "Disks", body: "Filling fast." }, "full in 3 days").body,
+            "Filling fast. Full in 3 days.");
+        const sharing = { title: "Sharing", facts: [{ label: "Window", value: "Firefox" },
+            { label: "Screen", value: "desktop \u00b7 2880x1800" }] };
+        expect("a note its title or facts say, part by whole part, stays out", [
+            Showing.noted(keyboard, "none \u00b7 ergodox ez").body,
+            Showing.noted(sharing, "Firefox, desktop").body,
+            Showing.noted(keyboard, "").body
+        ], [undefined, undefined, undefined]);
+        expect("a part found only inside a word is said",
+            Showing.noted(keyboard, "on").body, "On.");
+        expect("an address alone is said as written, and a path opening a sentence ends it", [
+            Showing.noted(sharing, "portal.example/sign-in").body,
+            Showing.noted(sharing, "/nix full in 6 h").body
+        ], ["portal.example/sign-in", "/nix full in 6 h."]);
+        expect("a note ending as a sentence keeps its end, and none stays none", [
+            Showing.noted({ title: "Lag" }, "waiting on memory!").body,
+            Showing.noted(null, "on")
+        ], ["Waiting on memory!", null]);
         if (failed > 0) {
             console.warn(`${failed} failed`);
             Qt.exit(1);

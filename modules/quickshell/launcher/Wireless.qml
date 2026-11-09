@@ -379,6 +379,9 @@ Provider {
                 }
             } : undefined,
             state: () => provider.said(network, note),
+            // The one connected says all wifid and iw read of it, under the
+            // row, while it's selected (`looking`).
+            drawer: network.connected ? () => provider.drawerOf(network) : null,
             // Joining or leaving keeps the launcher, which says how it went;
             // signing in opens the page, so it closes.
             stays: !signing,
@@ -412,7 +415,16 @@ Provider {
         const network = row => row?.key === `wifi:${row?.network}`;
         const step = launcher.open ? launcher.held.find(step => network(step.row)) : undefined;
         const walked = step?.row ?? (launcher.terminalSees?.walked ?? []).find(network);
-        return walked ? walked.network : "";
+        if (walked)
+            return walked.network;
+        // The network connected while its row is selected, for its drawer,
+        // or a row elsewhere drawing that row's drawer as its own, as Now's
+        // Wi-Fi does (Now.qml's borrows).
+        const selected = launcher.open ? launcher.selected : null;
+        const borrowed = selected?.borrows?.place === settings.name
+            ? all.find(row => row.key === selected.borrows.key) : undefined;
+        const chosen = network(selected) ? selected : borrowed;
+        return chosen && Wifi.isJoined(chosen.network) ? chosen.network : "";
     }
     onLookingChanged: {
         order = [];
@@ -700,6 +712,60 @@ Provider {
         })];
     }
 
+    // The network connected's drawer (WifiLink.drawer), from wifid's detail
+    // of it and iw's last read of the card on it, each figure as its part
+    // says it: none until wifid has answered.
+    function drawerOf(network) {
+        const name = network.name;
+        const detail = detailOf(name);
+        const card = (Wifi.cards.find(each => each.network === name) ?? { name: "" }).name;
+        const link = detail === null ? null : linkOf(name, card);
+        if (link === null)
+            return null;
+        const read = readOfCard(card);
+        const ways = waysOf(link, read);
+        const each = (figure, say) => WifiLink.eachWay(ways.in[figure], ways.out[figure], say);
+        const point = detail.points.find(one => one.joined) ?? null;
+        const frequency = link.frequency ?? read?.frequency ?? null;
+        const channel = read?.channel ?? point?.channel ?? null;
+        const signal = read?.signal ?? link.signal;
+        const protection = protectionOf(name);
+        const lasted = read && read.connected !== null ? read.connected : null;
+        // The width as ours, and a radio older than Wi-Fi 4 said by its
+        // generation rather than iw's "(no HT)" (VKCF3Z, 2026-11-09).
+        const widthTold = WifiLink.widthOf(link.width);
+        const drawerWords = Words.of("wifi:drawer").said;
+        return WifiLink.drawer({
+            name: name,
+            band: frequency !== null ? bandOf(frequency) : point ? ghz[point.band] ?? "" : "",
+            signal: signal !== null
+                ? `${Numbers.wholeReading(signal, settings.group, settings.point)} dBm` : "",
+            margin: link.margin,
+            speed: speeds(link, read).side,
+            expected: link.expected !== null ? `${link.expected} Mb/s` : "",
+            carried: WifiLink.eachWay(ways.in.bytes, ways.out.bytes, FileFacts.weighed),
+            retries: read && read.retries !== null
+                ? WifiLink.retried(read.retries, read.failed, number) : "",
+            generation: each("generation", value => `Wi-Fi ${value}`)
+                || (widthTold.legacy ? drawerWords.legacy : ""),
+            coding: each("mcs", value => `MCS ${value}`),
+            streams: each("streams", value => `${value}`),
+            width: ways.in.width !== null || ways.out.width !== null
+                ? each("width", value => `${value} MHz`) : widthTold.width,
+            channel: [channel !== null ? `${channel}` : "",
+                frequency !== null ? `${number(frequency)} MHz` : ""]
+                .filter(part => part !== "").join(" \u00b7 "),
+            heard: heardOf(detail),
+            // How hard it is to break, as who may join is the row's note.
+            protection: protection ? WifiLink.strength(protection.standard) : "none",
+            standard: protection?.standard ?? "",
+            connected: lasted !== null ? Interfaces.lasted(lasted) : "",
+            since: lasted !== null
+                ? Qt.formatDateTime(new Date(Date.now() - lasted * 1000), "HH:mm") : "",
+            bssid: link.bssid ?? point?.bssid ?? ""
+        }, id => named(id), drawerWords);
+    }
+
     // The rates each way, as wifid reads them or else as iw does, in Mb/s,
     // and what's said of them at a glance: the generation, the width and
     // what the link's expected to carry.
@@ -714,7 +780,8 @@ Provider {
             // Each way said as the network's speed says it.
             side: rx === null ? "" : tx !== null && tx !== rx
                 ? `${rx} Mb/s in \u00b7 ${tx} Mb/s out` : `${rx} Mb/s`,
-            note: fitting([generation ? `Wi-Fi ${generation}` : "", link.width ?? "",
+            note: fitting([generation ? `Wi-Fi ${generation}` : "",
+                WifiLink.widthOf(link.width).width,
                 link.expected !== null ? `${link.expected} Mb/s expected` : ""])
         };
     }
@@ -855,9 +922,8 @@ Provider {
     // What had to be sent again or never was, the beacons missed and what
     // was dropped coming in, since the card joined.
     function retriesRow(name, card, read) {
-        const trouble = read.retries + (read.failed ?? 0);
-        return holds(`wifi:link:${card}:speed:retries`, "retries", trouble === 0 ? "none"
-            : `${number(read.retries)} sent again, ${number(read.failed ?? 0)} never sent`, {
+        return holds(`wifi:link:${card}:speed:retries`, "retries",
+            WifiLink.retried(read.retries, read.failed, number), {
                 note: "since it connected"
             }, () => provider.retryParts(card));
     }
@@ -893,10 +959,8 @@ Provider {
             });
         const account = protection.ways.some(way => /eap|8021x/i.test(way));
         const standard = protection.standard;
-        const strength = /WPA3/.test(standard) ? "strong" : /WPA2/.test(standard) ? "good"
-            : /WEP/.test(standard) ? "broken" : "weak";
         return holds("wifi:protection", "protection",
-            `${account ? "an account" : "a password"}, ${strength}`, {
+            `${account ? "an account" : "a password"}, ${WifiLink.strength(standard)}`, {
                 keywords: standard,
                 note: standard
             }, () => provider.guardParts(name));
@@ -936,11 +1000,16 @@ Provider {
 
     // How many access points are heard, and in which bands; stepped into,
     // each of them, the fastest first.
+    // The access points heard, by band: "2 on 2.4 \u00b7 1 on 5 GHz". Read
+    // alone, it makes no row, so the drawer can say it as it's drawn.
+    function heardOf(detail) {
+        return detail.bands.map(count => `${count.points} on ${ghz[count.band]}`)
+            .join(" \u00b7 ").replace(/ GHz(?= \u00b7)/g, "");
+    }
+
     function heardRow(name) {
         const detail = detailOf(name);
-        const bands = detail.bands.map(count => `${count.points} on ${ghz[count.band]}`);
-        return holds("wifi:heard", "heard",
-            bands.join(" \u00b7 ").replace(/ GHz(?= \u00b7)/g, ""), {
+        return holds("wifi:heard", "heard", heardOf(detail), {
                 glyph: Theme.glyph.accessPoint
             }, () => {
                 const now = provider.detailOf(name);

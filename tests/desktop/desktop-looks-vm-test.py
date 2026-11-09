@@ -3578,7 +3578,7 @@ def keyboards_listed(desktop: Desktop, scale: str, plugged: str) -> list[str]:
 # open layout to the laptop's own in place, the margin lets its layer's mark go, and the
 # launcher neither finds its keys nor lists it among the keyboards; Super+K then shows the
 # laptop's, and plugging it back in turns the open card to the board's again (VKCF3Z,
-# 2026-11-07). With it back, its drawer and every other new drawer are photographed
+# 2026-11-07). With it back, its drawer and every other new drawer are shot
 # (each_drawer_drawn), here rather than in a subtest of their own, since the board is
 # already plugged in and the file keeps to twenty.
 
@@ -3709,7 +3709,7 @@ def lasting_window(now: int) -> Json:
 
 
 def now_drawer(desktop: Desktop, row: str, eyebrow: str, shot: str) -> None:
-    """Open Now by Super+O, move down to a piece's row, and photograph its drawer."""
+    """Open Now by Super+O, move down to a piece's row, and shoot its drawer."""
     desktop.machine.send_key("meta_l-o")
     desktop.in_now("For You")
     desktop.launcher_until(lambda shown: row in shown["rows"])
@@ -3723,14 +3723,14 @@ def now_drawer(desktop: Desktop, row: str, eyebrow: str, shot: str) -> None:
 
 # Each drawer this desktop's integrations gained says everything its source holds (Joel,
 # 2026-11-07: "every integration has an insanely high bar of nerdiness and integration"), where
-# the thing is and what it is above, and each is photographed at each of Joel's scales for the
-# design's look: mpv's program row and its Media, playing and paused, the ErgoDox and the
-# laptop's own board, a picture Capture took, and Now's Disks and Lag, and its Keyboard Layer,
-# which draws the ErgoDox's own drawer.
+# the thing is and what it is above, and each is shot at each of Joel's scales for the design's
+# look: mpv's program row and its Media, playing and paused, the ErgoDox and the laptop's own
+# board, a picture Capture took, Now's Disks and Lag, and its Keyboard Layer, which draws the
+# ErgoDox's own drawer, and the Wi-Fi network connected.
 def media_drawer(desktop: Desktop, shot: str, side: str, program: str = "") -> None:
-    """Open mpv's Media, its side saying how it stands, and photograph its drawer.
+    """Open mpv's Media, its side saying how it stands, and shoot its drawer.
 
-    On the way, mpv's own row's drawer is photographed too, where a shot is named for it.
+    On the way, mpv's own row's drawer is shot too, where a shot is named for it.
     """
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
@@ -3764,7 +3764,7 @@ def media_drawer(desktop: Desktop, shot: str, side: str, program: str = "") -> N
 
 
 def board_drawer(desktop: Desktop, name: str, eyebrow: str, shot: str) -> None:
-    """Open the keyboards on one, and photograph its drawer."""
+    """Open the keyboards on one, and shoot its drawer."""
     desktop.answer("keyboards")
     desktop.step_in()
     desktop.launcher_until(lambda shown: name in shown["rows"])
@@ -3779,7 +3779,7 @@ def board_drawer(desktop: Desktop, name: str, eyebrow: str, shot: str) -> None:
 
 
 def recent_drawer(desktop: Desktop, shot: str) -> None:
-    """Open what Capture took lately on the newest, and photograph its drawer."""
+    """Open what Capture took lately on the newest, and shoot its drawer."""
     desktop.capture()
     desktop.type_in("recent", selecting="Recent")
     desktop.follow()
@@ -3794,8 +3794,62 @@ def recent_drawer(desktop: Desktop, shot: str) -> None:
     desktop.close_launcher()
 
 
+# wifid, as varlinkctl reaches it, and Lantern, the stand-in network every desktop machine hears
+# (tests/desktop.nix), with the password its access point is given.
+WIFID = "/run/wifid/io.jitsusama.Wifi io.jitsusama.Wifi"
+LANTERN = '{"name":"Lantern","password":"glowing in the dark"}'
+# Signing in at Lantern's front desk, which signs in whatever is posted to it (front-desk.py),
+# over bash's own connection, since the machine has no curl.
+SIGN_IN = (
+    "bash -c 'exec 3<>/dev/tcp/10.42.0.1/80"
+    ' && printf "POST /sign-in HTTP/1.0\\r\\nContent-Length: 0\\r\\n\\r\\n" >&3'
+    " && cat <&3' | grep -q ' 200 '"
+)
+
+
+def lantern_joined(desktop: Desktop) -> None:
+    """Join Lantern through wifid, and sign in at its desk, so it's online with no notice."""
+    machine = desktop.machine
+    machine.wait_until_succeeds(
+        f"varlinkctl call {WIFID}.Scan '{{}}'"
+        f" && varlinkctl call {WIFID}.Describe '{{}}' | grep -q '\"Lantern\"'",
+        timeout=timedelta(seconds=60),
+    )
+    machine.succeed(f"varlinkctl call --more {WIFID}.Join '{LANTERN}'")
+    machine.wait_until_succeeds(
+        "ip -4 address show wlan1 | grep -q 'inet 10.42.0.'", timeout=timedelta(seconds=60)
+    )
+    machine.succeed(SIGN_IN)
+    machine.succeed(f"varlinkctl call {WIFID}.Check '{{}}'")
+    machine.wait_until_succeeds(
+        f"varlinkctl --json=short call {WIFID}.Describe '{{}}' | grep -qF '\"reach\":\"online\"'",
+        timeout=timedelta(seconds=60),
+    )
+
+
+def wifi_drawer(desktop: Desktop, shot: str) -> None:
+    """Open Wi-Fi on Lantern, connected, and shoot its drawer.
+
+    Its band says where it is, what moves leads, and its access point's hardware address is
+    last (WifiLink.drawer).
+    """
+    desktop.as_account("qs ipc call launcher collection wifi")
+    desktop.launcher_ready()
+    desktop.type_in("lant", selecting="Lantern")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["drawer"]["out"] is True
+            and shown["drawer"]["eyebrow"] == "on 2.4 GHz \u00b7 network"
+            and shown["drawer"]["facts"][:1] == ["Signal"]
+            and shown["drawer"]["facts"][-1:] == ["Hardware Address"]
+        )
+    )
+    desktop.shoot(shot)
+    desktop.close_launcher()
+
+
 def drawers_at(desktop: Desktop, scale: str) -> None:
-    """Photograph each drawer at one of Joel's scales."""
+    """Shoot each drawer at one of Joel's scales."""
     at_scale(desktop, scale)
     at = scale.replace(".", "-")
     media_drawer(
@@ -3826,7 +3880,7 @@ def drawers_at(desktop: Desktop, scale: str) -> None:
 # Called from the unplugged ErgoDox subtest once the board is back, so it's plugged in here and
 # that subtest's own finally unplugs it.
 def each_drawer_drawn(desktop: Desktop, scales: list[str]) -> None:
-    """Photograph a program's, its Media's, each keyboard's, a capture's, and Now's pieces'."""
+    """Shoot a program's, its Media's, each keyboard's, a capture's, Now's pieces' and Wi-Fi's."""
     machine = desktop.machine
     desktop.as_account(
         "systemd-run --user --unit=player mpv --ao=null --no-video --loop"
@@ -3843,7 +3897,13 @@ def each_drawer_drawn(desktop: Desktop, scales: list[str]) -> None:
         disk_filling(desktop)
         for scale in scales:
             drawers_at(desktop, scale)
+        # Joined last, and left after, so no other drawer is shot on Lantern.
+        lantern_joined(desktop)
+        for scale in scales:
+            at_scale(desktop, scale)
+            wifi_drawer(desktop, f"launcher-wifi-drawer-at-{scale.replace('.', '-')}")
     finally:
+        machine.succeed(f'varlinkctl call {WIFID}.Leave \'{{"name":"Lantern"}}\' || true')
         desktop.as_account("systemctl --user stop player || true")
         machine.succeed("rm -f /run/disk-guard/status.json")
         desktop.as_account(

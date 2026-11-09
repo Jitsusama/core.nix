@@ -9777,6 +9777,17 @@
       "term": "Network/hardware address"
     },
     {
+      "id": "wifi:drawer",
+      "in": "wifi",
+      "said": {
+        "eyebrow": "on {band} \u00b7 network",
+        "kind": "on Wi-Fi \u00b7 network",
+        "legacy": "before Wi-Fi 4",
+        "over": "{margin} dB over the noise",
+        "since": "since {time}"
+      }
+    },
+    {
       "id": "bluetooth:radio",
       "command": "set",
       "argument": "nobluetooth",
