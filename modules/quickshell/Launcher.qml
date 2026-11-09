@@ -4369,6 +4369,8 @@ Scope {
         // pacing below, so it's in the key's own frame or the next; and so
         // is a daemon's word on what an act asked it, whenever it comes.
         if (byKey || Object.values(becoming).some(one => one.from === source)) {
+            if (byKey)
+                refreshesKeyed += 1;
             if (!refreshing.includes(source))
                 refreshing = refreshing.concat([source]);
             Qt.callLater(refreshDue);
@@ -4390,8 +4392,11 @@ Scope {
     }
     readonly property int refreshPace: 250
     // How many refreshes the open launcher has made, for the check that
-    // it makes at most four a second however fast its sources change.
+    // it makes at most four a second however fast its sources change, and
+    // how many changes were taken at once as a key's own, for the check
+    // that an arrow takes none.
     property int refreshesDone: 0
+    property int refreshesKeyed: 0
     property var pace: Pacing.rested()
     // The timer rings when the pace says a refresh is due, and is stopped
     // once none waits.
@@ -6249,10 +6254,12 @@ Scope {
 
         // How many rows each source has made since the shell started, by
         // its name, and how many times the open launcher has refreshed,
-        // for the check that a source nobody sees makes none and the list
-        // refreshes at most four times a second.
+        // and how many changes it took as a key's own, for the check that a
+        // source nobody sees makes none, the list refreshes at most four
+        // times a second, and an arrow takes no change as its own.
         function made(): string {
-            return JSON.stringify({ rows: root.tallies(), refreshes: root.refreshesDone });
+            return JSON.stringify({ rows: root.tallies(), refreshes: root.refreshesDone,
+                keyed: root.refreshesKeyed });
         }
 
         // How many frames the card has drawn since this was first asked,
