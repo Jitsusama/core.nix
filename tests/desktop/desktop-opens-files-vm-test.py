@@ -1,7 +1,8 @@
 """The desktop test's opens files area.
 
 Here the desktop opens files: from the launcher's home and its Recent, through the portal's
-chooser, Google Drive's included, and in swayimg, zathura and the reader.
+chooser, Google Drive's included, and in swayimg, zathura and the reader; and goes to one a
+Neovim in kitty holds, from Neovim's page.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
@@ -1314,8 +1315,15 @@ def test_kitty_typed_lists_the_folders_it_visited_under_it(desktop: Desktop) -> 
         desktop.as_account(f"zoxide remove {folder} && rmdir {folder}")
 
 
-def test_kittys_recent_opens_a_window_in_a_folder_it_visited(desktop: Desktop) -> None:
-    """Recent in kitty lists a folder zoxide learned, and Return opens a window there."""
+def test_kittys_recent_opens_a_window_in_a_folder_and_neovims_page_goes_to_a_buffer(
+    desktop: Desktop,
+) -> None:
+    """Recent in kitty opens a window in a folder, and Neovim's page goes to a buffer in one.
+
+    Both reach a kitty already open through its remote control: kitty's Recent lists a folder
+    zoxide learned, and Return opens a window there. Neovim's walk follows
+    (neovims_open_files_are_gone_to).
+    """
     machine = desktop.machine
     folder = f"/home/{desktop.account}/src/tide"
     desktop.as_account(f"mkdir -p {folder} && zoxide add {folder}")
@@ -1349,6 +1357,130 @@ def test_kittys_recent_opens_a_window_in_a_folder_it_visited(desktop: Desktop) -
     assert set(kittys()) == set(before), "it started another kitty"
     desktop.as_account("pkill -f 'kitty --title recent-from'")
     machine.wait_until_fails(desktop.in_session(there), timeout=timedelta(seconds=30))
+    neovims_open_files_are_gone_to(desktop)
+
+
+# Neovim's page in Programs lists every file each Neovim in a kitty window
+# holds, asked over the server each told its window of as its screen came
+# up (modules/neovim/showing.lua), and Return goes to that very buffer in
+# its own window. The walk only reads each Neovim from outside, so the
+# account's own configuration is what runs.
+
+
+def neovim_in_kitty(desktop: Desktop, folder: str, *given: str) -> tuple[int, str]:
+    """Open a kitty running Neovim on these, and give niri's window and Neovim's server.
+
+    The server is the one Neovim told its kitty window, read back through kitty's remote
+    control as open-now reads it, so a Neovim that never said it is never given.
+    """
+    before = {window["id"] for window in desktop.windows()}
+    command = ["niri", "msg", "action", "spawn", "--", "kitty", "--directory", folder, "nvim"]
+    desktop.as_account(shlex.join([*command, *given]))
+    told: list[tuple[int, str]] = []
+
+    def said_its_server(_: bool) -> bool:
+        """Say whether the new kitty window's Neovim has told kitty where it listens."""
+        new = [
+            window
+            for window in desktop.windows()
+            if window["app_id"] == "kitty" and window["id"] not in before
+        ]
+        if not new:
+            return False
+        status, listed = desktop.machine.execute(
+            desktop.in_session(f"kitty @ --to unix:@kitty-{new[0]['pid']} ls")
+        )
+        if status != 0:
+            return False
+        servers = [
+            inside["user_vars"]["neovim_server"]
+            for kitty_window in json.loads(listed)
+            for tab in kitty_window["tabs"]
+            for inside in tab["windows"]
+            if "neovim_server" in inside["user_vars"]
+        ]
+        told.extend((new[0]["id"], server) for server in servers)
+        return bool(servers)
+
+    retry(said_its_server, timeout=STARTING)
+    return told[0]
+
+
+def asked_of(desktop: Desktop, server: str, *remote: str) -> str:
+    """Ask the Neovim at this server from outside, through a client reading no configuration.
+
+    It's headless and reads nothing, since a client given the console started a screen of its
+    own there, drawing the answer on the console and writing its terminal's queries in its place.
+    """
+    client = ["nvim", "--clean", "--headless", "--server", server, *remote]
+    return desktop.as_account(f"{shlex.join(client)} < /dev/null")
+
+
+def neovims_open_files_are_gone_to(desktop: Desktop) -> None:
+    """Neovim's page lists each file two Neovims hold, and Return goes to one's buffer.
+
+    One Neovim holds two files in two tabs, the first changed and unsaved, and the other one
+    file. Each row says whether it's modified and which tab shows it, as the page's offscreen
+    cases do (tests/program-acts.qml), and Return on the file in the first Neovim's second tab,
+    in the window not looked at last, brings that window forward with that buffer current in
+    it, opening no other.
+    """
+    machine = desktop.machine
+    folder = f"/home/{desktop.account}/soundings"
+    tides, currents, reefs = (f"{folder}/{name}.txt" for name in ("tides", "currents", "reefs"))
+    desktop.as_account(
+        f"mkdir -p {folder} && printf '%s\\n' depths | tee {tides} {currents} {reefs}"
+    )
+    neovims: list[tuple[int, str]] = []
+    try:
+        neovims.append(
+            neovim_in_kitty(desktop, folder, "-p", tides, currents, "+call setline(1, 'shoals')")
+        )
+        neovims.append(neovim_in_kitty(desktop, folder, reefs))
+        (tabbed, server), _ = neovims
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("neovim")
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:nvim")
+        desktop.into_program()
+        # Each file a row, said modified and by its tab before its folder,
+        # as the page's offscreen cases say it.
+        held = {
+            f"file:{tides}": "tides.txt \u00b7 modified \u00b7 tab 1 \u00b7 ~/soundings",
+            f"file:{currents}": "currents.txt \u00b7 tab 2 \u00b7 ~/soundings",
+            f"file:{reefs}": "reefs.txt \u00b7 shown \u00b7 ~/soundings",
+        }
+
+        def lists_each(shown: Json) -> bool:
+            """Say whether every file the Neovims hold is a row, saying how it stands."""
+            reads = {thing["is"]: thing["reads"] for thing in shown["things"]}
+            return all(reads.get(key, "").startswith(said) for key, said in held.items())
+
+        desktop.launcher_until(lists_each)
+        desktop.shoot("launcher-neovim-page")
+        windows = {window["id"] for window in desktop.windows()}
+        desktop.type_in("currents", selecting="currents.txt")
+        machine.send_key("ret")
+
+        def went_to_its_buffer(_: bool) -> bool:
+            """Say whether the first Neovim's window is focused, its buffer current in it."""
+            focused = json.loads(desktop.as_account("niri msg --json focused-window")) or {}
+            current = asked_of(desktop, server, "--remote-expr", "expand('%:p')")
+            return focused.get("id") == tabbed and current.strip() == currents
+
+        retry(went_to_its_buffer, timeout=timedelta(seconds=30))
+        assert {window["id"] for window in desktop.windows()} == windows, "it opened a window"
+    finally:
+        desktop.close_launcher()
+        # Each quits unsaved, so the change made here is never written.
+        for _, each in neovims:
+            asked_of(desktop, each, "--remote-send", "<C-\\><C-N>:qa!<CR>")
+        gone = {window for window, _ in neovims}
+        retry(
+            lambda _: not gone & {window["id"] for window in desktop.windows()},
+            timeout=timedelta(seconds=30),
+        )
+        desktop.as_account(f"rm -r {folder}")
 
 
 def test_mpvs_recent_says_where_a_file_stopped(desktop: Desktop) -> None:

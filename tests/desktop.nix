@@ -15,7 +15,8 @@
 # its call, the clipboard takes and gives text, a picture opens floating in
 # swayimg and a key takes it to GIMP, a new drawing opens in Inkscape from
 # the template and leads its Recent, a document opens in zathura beside
-# the rest, a VM virsh lists is in Programs and starts from its acts,
+# the rest, a file a Neovim in kitty holds is gone to from Neovim's page,
+# a VM virsh lists is in Programs and starts from its acts,
 # and GTK programs and monospaced text are in the theme. niri says which surfaces it drew,
 # shots show their colours, to the test and to a person looking, and
 # the portal and fontconfig answer for the settings. Quickshell has to
@@ -59,6 +60,11 @@ let
   # and its two lists read from files the test writes, in chrome-recent-sites'
   # form, since no browser runs here.
   bringsChrome = area == "opens-files";
+  # The area whose machine brings Neovim, as a workstation does, so
+  # Programs › Neovim lists the files each Neovim in a kitty window holds
+  # and goes to one. Only there, since its plugins and grammars are much
+  # of the account's build, and no other area reads what it holds.
+  bringsNeovim = area == "opens-files";
   # The areas whose launcher lists VMs, as a workstation's does
   # (modules/libvirt/home.nix): what the machine has to open and set, and
   # looks-programs, which shoots them.
@@ -802,6 +808,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # an area reads it.
         imports =
           lib.optional bringsSlack self.homeModules.slack
+          ++ lib.optional bringsNeovim self.homeModules.neovim
           ++ lib.optional listsMachines self.homeModules.libvirt
           ++ lib.optional clearsToDos self.homeModules.to-do
           ++ lib.optionals runsTheNode [
