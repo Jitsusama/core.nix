@@ -7406,6 +7406,7 @@
     {
       "id": "for-you:source:desktop",
       "in": "on:waiting",
+      "once": ["Notices", "Notifications"],
       "name": "Desktop",
       "term": "Desktop/desktop",
       "verb": "more",
@@ -7416,9 +7417,7 @@
         "withdrawn": "withdrawn",
         "earlier": "read"
       },
-      "tells": {
-        "none": "Nothing unread from the desktop."
-      }
+      "empty": "Nothing unread from the desktop."
     },
     {
       "id": "for-you:source:passwords",
@@ -7839,7 +7838,6 @@
     {
       "id": "notices",
       "in": "for-you:source:desktop",
-      "once": ["Notifications"],
       "name": "Notices",
       "term": "Desktop/notice",
       "noun": "notices",

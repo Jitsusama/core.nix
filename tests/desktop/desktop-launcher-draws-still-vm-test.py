@@ -294,6 +294,11 @@ def test_dd_on_a_notice_shows_on_the_frame_after_its_key(desktop: Desktop) -> No
         # Where Super+N goes with no cards, as the margin's Show Them does.
         desktop.as_account("qs ipc call launcher collection notices")
         desktop.launcher_until(lunch)
+        # Its card steps aside while Desktop lists it, so it's in one place.
+        desktop.machine.wait_until_fails(
+            desktop.in_session("niri msg layers | grep -q notifications"),
+            timeout=dt.timedelta(seconds=10),
+        )
         desktop.down_to(LUNCH)
         desktop.normal()
         side = cast("str", desktop.showing()["selected"]["side"])

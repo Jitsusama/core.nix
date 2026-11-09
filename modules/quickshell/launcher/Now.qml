@@ -1219,7 +1219,7 @@ Provider {
             glyph: Words.glyph(words),
             hue: "action"
         }, more));
-        const none = (words.tells ?? {}).none ?? "";
+        const none = words.empty ?? "";
         const listed = () => (ids.length > 0
             ? (source("notices")?.rowsOf(ids) ?? []).concat([
                 act(`verb:on:waiting:${from}:read`, "verb:on:waiting:desktop:read", {
@@ -1233,6 +1233,10 @@ Provider {
             verb: "more",
             stays: true,
             name: Words.name(`for-you:source:${from}`),
+            // The names the notices' place had, which find where they went,
+            // Desktop, as one row whether or not For You lists it
+            // (Launcher.qml's ledFound), since a rename never loses a row.
+            ledBy: Words.of(`for-you:source:${from}`).once ?? [],
             glyph: Words.glyph(`for-you:source:${from}`),
             hue: "muted",
             side: ForYou.filled(said.count ?? "{count}", { count: ids.length }),
@@ -1248,6 +1252,9 @@ Provider {
             verbs: listed,
             targets: listed,
             stepped: () => Qt.callLater(() => Notices.seen()),
+            // Held, it lists the notices the screen shows, so the cards step
+            // aside while it's open (PastNotices.qml), each in one place.
+            gathers: true,
             run: () => provider.launcher?.enter(row)
         });
         return row;

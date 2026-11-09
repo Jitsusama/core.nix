@@ -309,6 +309,24 @@ def test_a_collection_or_half_a_word_is_asked_and_the_fields_keys_edit_it(deskto
             )
         )
         desktop.close_launcher()
+    # The names the notices' place had find where they went, For You's Desktop, said where
+    # it is, and Return steps in as Super+N does, unread or not (VKCF3Z, 2026-11-09).
+    for typed in ["notices", "notifications"]:
+        desktop.answer(typed)
+        desktop.launcher_until(lambda shown: "Desktop" in shown["rows"])
+        desktop.down_to("Desktop")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("side") == "Now \u203a For You"
+        )
+        if typed == "notices":
+            desktop.close_launcher()
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["held"] == ["now", "For You", "Desktop"])
+    # And - climbs back out the way it stepped in, through For You.
+    desktop.normal()
+    machine.send_key("minus")
+    desktop.launcher_until(lambda shown: shown["held"] == ["now", "For You"])
+    desktop.close_launcher()
     # Half a word asks its question too: "batt" is the battery, and
     # Ctrl+Y finishes the word, the field saying so at its right edge.
     # A copy kept from before saying "battery", a later word, never takes

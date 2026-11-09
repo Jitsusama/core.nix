@@ -21,8 +21,8 @@ pragma Singleton
 // actions done, marked read, or withdrawn by its program. A click only puts
 // it away, so one clicked by accident still waits, unread, in the list.
 //
-// The notices on screen and the collection are one home: while the
-// collection is open the screen's step aside (`gathered`), still there to
+// The notices on screen and For You's Desktop are one home: while the
+// launcher holds it the screen's step aside (`gathered`), still there to
 // be answered from the launcher, and come back if it closes before they go.
 import Quickshell
 import Quickshell.Io
