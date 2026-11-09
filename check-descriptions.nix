@@ -112,6 +112,11 @@
     Quickshell's FileView, told not to print errors, says nothing of a file that opens and refuses
     every read, as one not told still warns
   '';
+  a-realms-link-key-in-a-file-stays-apart = ''
+    where there's no TPM, a realm's link key is a file in a private folder outside the one the
+    account's own agent loads, served on its own socket by an agent holding only it, and an account
+    naming no realm has none
+  '';
   a-realms-link-key-stays-apart = ''
     a realm's link key is served on its own socket by an agent holding only it, kept outside the
     folder the account's own agent loads, made with no PIN, and an account naming no realm has none
@@ -473,8 +478,10 @@
     keeps rows alike in the order they came where Qt's own sort shuffles them
   '';
   each-machine-signs-with-its-hardware = ''
-    a Linux workstation signs through its TPM and a Mac through its Secure Enclave, both with one
-    program and Joel's key by default, and signing alone, with no hardware, signs nothing
+    a Linux workstation signs through its TPM, one with no TPM with Joel's key on his YubiKey and
+    the agents' key in a file served where the TPM's would be, and a Mac through its Secure
+    Enclave, all with one program and Joel's key by default, and signing alone, with no hardware,
+    signs nothing
   '';
   each-mark-means-one-thing = ''
     no two of the theme's marks share a glyph unless they are named as meaning one thing, as heat
@@ -3372,6 +3379,9 @@
   xdg-open-opens-each-kind-in-its-program = ''
     xdg-open opens markdown in the editor declared for text, in the terminal named for it, and a
     picture in its viewer
+  '';
+  yubikey-keys-builds = ''
+    the key maker for a Linux machine with no TPM builds, shellcheck and all
   '';
   yubikey-on-every-workstation = ''
     Linux and Mac workstations both have the YubiKey's tools

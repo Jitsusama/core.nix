@@ -37,7 +37,7 @@ let
     ) (config.home-manager.users or { })
   );
   # The accounts that keep their login key's spare on each YubiKey
-  # (modules/ssh-tpm-agent/home.nix's jitsusama.yubikeySpare).
+  # (modules/yubikey-spare/home.nix's jitsusama.yubikeySpare).
   spares =
     lib.mapAttrsToList
       (account: home: {

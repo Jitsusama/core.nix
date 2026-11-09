@@ -66,6 +66,7 @@ isn't set.
 | NVRAM    | asahi-bless to start macOS next; asahi-btsync for macOS's pairings     |
 | Stick    | how to start one from U-Boot, for the guide to say                     |
 | Guide    | no Secure Boot or TPM steps, since the model has neither               |
+| Keys     | Joel's on his YubiKey, the agents' and link keys as files, no passkey  |
 
 A machine on it sets `jitsusama.disk.shared`, which the hardware module
 can't, since the disk module is a machine's own choice: the guide then puts
@@ -94,13 +95,24 @@ aarch64-linux, so its module leaves it out there and spotify-player and
 the web player stay. Nor is Zoom's, so the zoom module gives Zoom's web
 client there, and Zoom's own links join their meetings in it.
 
+With no TPM, the hardware module sets `jitsusama.firmware.tpm` false, and
+the workstation role's account-keys then keeps each account's keys
+elsewhere: Joel's signing key a resident key on his YubiKey that asks for
+its PIN and a touch, and the agents' key and each realm's link key files
+on the encrypted disk, served on the sockets the TPM's agent would use.
+The spares on his YubiKeys are the login keys, and `yubikey-keys` makes
+the signing keys after the install. The hardware module leaves the TPM's
+module and linux-id's passkey out, so the YubiKeys are the web's keys too,
+and gnome-keyring's password is sealed with the install's own credential
+key alone.
+
 ### What's Left
 
 | Part     | Why it isn't here yet                                                  |
 | -------- | ---------------------------------------------------------------------- |
 | Keyboard | its ID, 05ac:0351 from Asahi's kernel, is confirmed on its first boot  |
 | Devices  | where each driver binds, for device-check, is read on the machine too  |
-| Keys     | the TPM's SSH, signing and link keys need a YubiKey or another home    |
+| Keys     | the Secure Enclave, which Asahi's tree leaves off, is tried on the Mac |
 | Install  | the guide's install beside macOS, proven in a VM, then on the Mac      |
 
 ## Apple MacBook Pro 14-inch M4 Pro (A3401)

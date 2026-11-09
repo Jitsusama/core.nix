@@ -164,6 +164,7 @@
         eero = ./modules/eero/home.nix;
         ergodox = moduleFrom ./modules/ergodox/home.nix { inherit qmk lufa printf; };
         fd = ./modules/fd/home.nix;
+        file-link-keys = ./modules/file-link-keys/home.nix;
         firmware-notice = ./modules/firmware-notice/home.nix;
         fontconfig = ./modules/fontconfig/home.nix;
         fzf = ./modules/fzf/home.nix;
@@ -248,6 +249,8 @@
         wezterm = moduleFrom ./modules/wezterm/home.nix { inherit wallpapers; };
         wifid = ./modules/wifid/home.nix;
         yq = ./modules/yq/home.nix;
+        yubikey-signing = ./modules/yubikey-signing/home.nix;
+        yubikey-spare = ./modules/yubikey-spare/home.nix;
         zathura = ./modules/zathura/home.nix;
         zoom = ./modules/zoom/home.nix;
         zoxide = ./modules/zoxide/home.nix;
@@ -282,6 +285,7 @@
       };
 
       nixosModules = {
+        account-keys = ./modules/account-keys/nixos.nix;
         asahi-audio = ./modules/asahi-audio/nixos.nix;
         asahi-firmware = ./modules/asahi-firmware/nixos.nix;
         asahi-nvram = ./modules/asahi-nvram/nixos.nix;
