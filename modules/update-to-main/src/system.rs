@@ -4,6 +4,7 @@
 //! and nix-darwin's activate, after the profile points at it, as
 //! nixos-rebuild and darwin-rebuild do.
 
+use crate::batches;
 use crate::config::{Config, Kind};
 use crate::line::Applied;
 use crate::run::{self, Failure};
@@ -38,6 +39,8 @@ pub struct Switched {
 pub fn build(config: &Config, flake: &str, overrides: &[String]) -> Result<PathBuf, Failure> {
     if config.elsewhere {
         build_elsewhere(config, flake, overrides)?;
+    } else if let Some(batches) = &config.batches {
+        batches::build(config, batches, flake, overrides)?;
     }
     let mut nix = nix(config);
     nix.args(["build", "--print-out-paths", "--out-link"])
@@ -70,7 +73,7 @@ pub fn build(config: &Config, flake: &str, overrides: &[String]) -> Result<PathB
 /// Nix, with the commands and flakes it's asked for, and root's git first
 /// on its path: Nix runs git to fetch a `git+file` input, as main and what
 /// it follows are, and the system's own path may hold none.
-fn nix(config: &Config) -> std::process::Command {
+pub(crate) fn nix(config: &Config) -> std::process::Command {
     let mut nix = run::command(&config.tools.nix, &config.state);
     if let Some(git) = config.tools.git.parent() {
         let rest = std::env::split_paths(run::PATH);
@@ -94,13 +97,7 @@ fn nix(config: &Config) -> std::process::Command {
 /// where the kept one now is: such pieces are a system's links, units and
 /// wrappers, not what compiles.
 fn build_elsewhere(config: &Config, flake: &str, overrides: &[String]) -> Result<(), Failure> {
-    let mut listing = nix(config);
-    listing
-        .args(["build", "--dry-run", "--no-link"])
-        .args(overrides);
-    // Nix says what it would build on its error stream.
-    let said = run::said(listing, "listing what the system needs", [flake])?;
-    let needed = to_build(&said);
+    let needed = needed(config, flake, overrides)?;
     if needed.is_empty() {
         return Ok(());
     }
@@ -152,6 +149,22 @@ fn build_elsewhere(config: &Config, flake: &str, overrides: &[String]) -> Result
         }
     }
     Ok(())
+}
+
+/// The derivations the system needs built, by their paths, as a dry run
+/// lists them.
+pub(crate) fn needed(
+    config: &Config,
+    flake: &str,
+    overrides: &[String],
+) -> Result<Vec<String>, Failure> {
+    let mut listing = nix(config);
+    listing
+        .args(["build", "--dry-run", "--no-link"])
+        .args(overrides);
+    // Nix says what it would build on its error stream.
+    let said = run::said(listing, "listing what the system needs", [flake])?;
+    Ok(to_build(&said))
 }
 
 /// Builds the big pieces on the builders and, beside them, the small ones
@@ -260,7 +273,7 @@ fn away(
 /// `silent_for`, so an update waiting on a builder that doesn't answer
 /// goes on to build here or fails saying why within five minutes, rather
 /// than wait as one did for 20 minutes on 8 November.
-fn told(
+pub(crate) fn told(
     config: &Config,
     mut build: std::process::Command,
     what: &str,
@@ -458,20 +471,20 @@ fn to_build(said: &str) -> Vec<String> {
 }
 
 /// What `nix derivation show` says of one derivation.
-struct Piece {
+pub(crate) struct Piece {
     names: Vec<String>,
     light: bool,
     /// Whether it asks for `big-parallel`, as nixpkgs' kernel does.
     big: bool,
     /// The derivations it's built from, by their paths.
-    inputs: Vec<String>,
+    pub(crate) inputs: Vec<String>,
 }
 
 /// The derivations `nix derivation show` gave, by their paths. Newer Nix
 /// keys them by name under `derivations` and lists what each is built from
 /// under `inputs.drvs`; older keys them by path at the top, under
 /// `inputDrvs`.
-fn pieces(shown: &str) -> Result<BTreeMap<String, Piece>, Failure> {
+pub(crate) fn pieces(shown: &str) -> Result<BTreeMap<String, Piece>, Failure> {
     let shown: serde_json::Value = serde_json::from_str(shown)
         .map_err(|e| Failure::new(format!("reading what the system needs: {e}")))?;
     let derivations = shown.get("derivations").unwrap_or(&shown);

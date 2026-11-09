@@ -181,6 +181,46 @@ in
         '';
       };
     };
+    batches = mkOption {
+      type = types.nullOr (
+        types.submodule {
+          options = {
+            pieces = mkOption {
+              type = types.ints.positive;
+              default = 100;
+              description = "How many pieces one build is given at most.";
+            };
+            roomMiB = mkOption {
+              type = types.ints.positive;
+              default = 6144;
+              description = ''
+                How much memory available and swap free together, in MiB,
+                Linux has to say there is before a batch, or the build
+                after them, starts.
+              '';
+            };
+            within = mkOption {
+              type = types.ints.positive;
+              default = 1800;
+              description = ''
+                How many seconds an update waits for that room before it
+                fails, leaving the machine as it is.
+              '';
+            };
+          };
+        }
+      );
+      default = null;
+      example = { };
+      description = ''
+        When set, a system built here, on NixOS, that needs more pieces
+        built than a batch holds is built a batch at a time, the pieces
+        built from none of the others first, each batch once the machine
+        has the room for it. The Nix daemon's worker serving one build
+        grows with what it's given, so a small machine's one big build can
+        run out of memory where its batches don't.
+      '';
+    };
     refuseWhile = mkOption {
       type = types.listOf (
         types.submodule {
@@ -398,6 +438,10 @@ in
         assertion = (cfg.builders == null && cfg.here == null) || cfg.elsewhere;
         message = "jitsusama.update-to-main.builders and here are for building elsewhere.";
       }
+      {
+        assertion = cfg.batches == null || (!cfg.elsewhere && cfg.system.kind == "nixos");
+        message = "jitsusama.update-to-main.batches are for building here, on NixOS.";
+      }
     ]
     ++ lib.mapAttrsToList (name: follow: {
       assertion = follow.signers.ssh != [ ] || follow.signers.openpgp != [ ];
@@ -443,6 +487,14 @@ in
                   max_jobs = cfg.here.maxJobs;
                   inherit (cfg.here) cores;
                   busy_at = cfg.here.busyAt;
+                };
+            batches =
+              if cfg.batches == null then
+                null
+              else
+                {
+                  inherit (cfg.batches) pieces within;
+                  room_mib = cfg.batches.roomMiB;
                 };
             refuse_while = cfg.refuseWhile;
             holds =
