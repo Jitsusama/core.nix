@@ -95,7 +95,7 @@ units, or named here as left out with the reason.
 | `sensor:<chip>` | each temperature, low, high, critical, emergency, alarm | Heat, each part by what it measures |
 |                 | each fan's speed, least, most, aim, power, mode | Heat's fans                            |
 |                 | each voltage, current and power, with limits | Heat's part's drawer, each figure         |
-|                 | the chip's name                              | Heat's part's drawer, Device              |
+|                 | the chip's name                              | Heat's part's drawer, Linux Name          |
 | `zone:<type>`   | temperature, policy, mode, each trip point   | Heat, for a part no chip gives; drawer's trips and Zone |
 | `cooling:<type>`| how many, each one's state, the most         | Heat's Processor's drawer, Cooling Step   |
 | `supply:<name>` | capacity, its level                          | Power's Charge                            |

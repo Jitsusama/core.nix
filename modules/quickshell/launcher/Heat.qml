@@ -300,8 +300,8 @@ Provider {
     // kernel device; then the limits its side counts down to, High and
     // Critical; where the firmware acts on its heat, how far it's stepping
     // the processor's cooling, and what its chip says of electricity; and
-    // last, in the Name face, the Device it's read on and the Zones beside
-    // it (VKCF3Z, 2026-11-08). None where it has none of these.
+    // last, in the Name face, the Linux Name of the chip reading it and the
+    // Zones beside it (VKCF3Z, 2026-11-08). None where it has none of these.
     function tempDrawer(part, said) {
         const facts = [];
         if (part.high !== null)
