@@ -130,15 +130,14 @@ def test_the_drawer_goes_by_the_selected_rows_kind(desktop: Desktop) -> None:
     """The drawer stays in for a place, a thing with nothing more to say, and an act."""
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    # Home opens on Now, whose drawer is the moment's plate (look 3), and the
-    # place below it has no details, so the drawer goes in there (docs/design.md,
-    # the drawer: it goes by kind, not by what a row happens to hold).
+    # Home opens on Now, whose drawer is the moment's plate (look 3), and a place's
+    # drawer only names what it holds, never the moment's (VKCF3Z, dae7fb67).
     desktop.launcher_until(lambda shown: (shown.get("drawer") or {}).get("moment") is not None)
     desktop.next_row()
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("is") != "collection:on"
-            and (shown.get("drawer") or {}).get("out") is False
+            and (shown.get("drawer") or {}).get("moment") is None
         )
     )
     # A program found by a search is a thing whose drawer says more than its
@@ -928,6 +927,17 @@ def home_holds_still_as_the_queue_changes(desktop: Desktop) -> None:
     assert "asked again by jobs" not in said, f"the queue asked home again: {said}"
 
 
+def holds(shown: Json, name: str, first: str) -> bool:
+    """Say whether the place named is selected, its drawer out naming what it holds."""
+    drawer = shown.get("drawer") or {}
+    return bool(
+        (shown["selected"] or {}).get("name") == name
+        and drawer.get("out") is True
+        and drawer.get("title") == name
+        and str(drawer.get("body", "")).startswith(first)
+    )
+
+
 def shoot_home_at_joels_scales(desktop: Desktop, home: list[str]) -> None:
     """Shoot home and Machine at 1.5 and 2, where each place's own mark is judged, for the gallery.
 
@@ -949,6 +959,11 @@ def shoot_home_at_joels_scales(desktop: Desktop, home: list[str]) -> None:
             lambda shown: (shown["selected"] or {}).get("is") == "collection:keyboard"
         )
         desktop.shoot(f"launcher-home-categories-at-{scale.replace('.', '-')}")
+        # Machine with its drawer out, naming what it holds (VKCF3Z, dae7fb67).
+        desktop.previous_row()
+        desktop.previous_row()
+        desktop.launcher_until(lambda shown: holds(shown, "Machine", "Power, "))
+        desktop.shoot(f"launcher-home-machine-drawn-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
@@ -996,22 +1011,19 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
         feet[selected_is()] = foot(desktop, before)
     assert selected_is() == "collection:keyboard"
     assert len(set(feet.values())) == 1, f"the foot moved as the arrows went: {feet}"
-    # Each says what it holds after its name, in its own order, from the
-    # vocabulary; Now says what's on, or that nothing is.
+    # Each says nothing after its name, and a place that only groups others nothing at its
+    # right either, since a count of menus tells Joel nothing (VKCF3Z, dae7fb67).
     reads = {thing["is"]: thing["reads"] for thing in desktop.showing()["things"]}
-    assert reads["category:desktop"].startswith("Desktop \u00b7 This Window, Windows, Screens, "), (
-        f"desktop reads {reads['category:desktop']!r}"
-    )
-    assert reads["category:computer"].startswith("Machine \u00b7 Power, Bluetooth, "), (
-        f"machine reads {reads['category:computer']!r}"
-    )
-    # A place names the places it holds, by their names, never the words
-    # its typed commands start with: Network once read "ip, is, split, mac".
-    # It ends on the last name that fits, with no ellipsis after it.
-    held = reads["category:network"].split(" \u00b7 ", 1)[1].split(", ")
-    assert all(name[:1].isupper() for name in held), f"network reads {reads['category:network']!r}"
-    assert reads["collection:on"].startswith("Now \u00b7 "), f"now reads {reads['collection:on']!r}"
-    assert reads["collection:applications"].startswith("Programs \u00b7 "), reads
+    for category, name in [("desktop", "Desktop"), ("computer", "Machine"), ("network", "Network")]:
+        assert reads[f"category:{category}"] == name, reads
+    assert reads["collection:applications"].startswith("Programs"), reads
+    # What a place holds is named in its drawer, in its own order, so one key onto it shows
+    # it. A place names the places it holds by their names, never the words its typed
+    # commands start with: Network once read "ip, is, split, mac".
+    desktop.down_to("Machine")
+    desktop.launcher_until(lambda shown: holds(shown, "Machine", "Power, Bluetooth, "))
+    desktop.down_to("Network")
+    desktop.launcher_until(lambda shown: holds(shown, "Network", "Wi-Fi, "))
     home_holds_still_as_the_queue_changes(desktop)
     # After the journal's read, so a gallery run and a plain one read the same.
     shoot_home_at_joels_scales(desktop, home)

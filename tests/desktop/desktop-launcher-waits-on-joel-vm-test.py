@@ -462,11 +462,11 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     desktop.opened("Elsewhere")
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    # Home's Now names the first Joel can do now, with its minutes.
+    # Home's Now names the first Joel can do now at its right, with its minutes, and
+    # nothing more, since it's the only one ready (VKCF3Z, bd5cb965).
     desktop.launcher_until(
         lambda shown: any(
-            thing["reads"].startswith("Now \u00b7 For You: Answer the ask \u00b7 2 min")
-            for thing in shown["things"]
+            thing["reads"] == "Now \u00b7 Answer the ask \u00b7 2 min" for thing in shown["things"]
         )
     )
     # It counts only what Joel can do now: the session's two aren't ready.

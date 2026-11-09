@@ -76,11 +76,14 @@ function rightSays(landed, kind, stands) {
 }
 
 // The items `wholeItems` keeps, each as it's said, in their own order.
+// An item that `stays` is never given way whole, as Now's minutes and how
+// many more wait never are (VKCF3Z, bd5cb965).
 function keptItems(items, room, width) {
     const kept = items.filter(item => item.said !== "");
     const joined = () => kept.map(item => item.said).join(ITEMS_APART);
-    while (kept.length > 1 && width(joined()) > room) {
-        const least = kept.reduce((low, item) => (item.keep < low.keep ? item : low));
+    const losable = () => kept.filter(item => item.stays !== true);
+    while (kept.length > 1 && losable().length > 0 && width(joined()) > room) {
+        const least = losable().reduce((low, item) => (item.keep < low.keep ? item : low));
         kept.splice(kept.indexOf(least), 1);
     }
     return pathsFitted(kept, room, width);
@@ -168,6 +171,11 @@ function itemWays(item) {
     }
     if (item.file) {
         return fileTries(item.file).map(way => item.said.replace(item.file, way));
+    }
+    // A title gives way from its end by whole words, behind an ellipsis as
+    // a cut sentence does (VKCF3Z, bd5cb965: Now's first thing waiting).
+    if (item.words === true) {
+        return [item.said].concat(wordCuts(item.said));
     }
     return [item.said];
 }

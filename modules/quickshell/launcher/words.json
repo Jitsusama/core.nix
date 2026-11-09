@@ -7262,6 +7262,7 @@
         "first": "{title} \u00b7 {minutes} min",
         "minutes": "{minutes} min",
         "later": "nothing now, {count} later",
+        "more": "{count} more",
         "none": "nothing now",
         "nobody": "nobody's watching this",
         "boot": "after the next boot",

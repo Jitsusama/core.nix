@@ -3,9 +3,9 @@
 // modules/quickshell/launcher/PlaceRow.js beside this file and runs it
 // offscreen. Home's rows are made by the same function a place's row is
 // everywhere else (Launcher.qml's homeRow returns resolved), so each case
-// holds a row at home and inside its parent alike: its members by name
-// after its name, as many whole as fit, never an ellipsis, and how it
-// stands at its right, or how many it holds.
+// holds a row at home and inside its parent alike: nothing after its
+// name; at its right how it stands, else that it holds none, else how
+// many it holds; and its members by name in its drawer (VKCF3Z, dae7fb67).
 import QtQuick
 import "PlaceRow.js" as PlaceRow
 
@@ -27,46 +27,30 @@ QtObject {
 
     function run() {
         const failures = [];
-        const machine = ["Processor", "Memory", "Disk", "Power"];
-        // [what, its members, its name, its side, the row's room, what it says
-        // after its name]
-        const holding = [
-            ["every member fits, by name", machine, "Machine", "", 60,
-                "Processor, Memory, Disk, Power"],
-            ["as many whole as fit, nothing after the last", machine, "Machine", "", 28,
-                "Processor, Memory"],
-            ["what it says at its right takes its room first", machine, "Machine", "99% busy",
-                38, "Processor, Memory"],
-            ["a name just fits beside its side", ["Wi-Fi"], "Network", "1", 15, "Wi-Fi"],
-            ["and not without the two spaces between", ["Wi-Fi"], "Network", "1", 14, ""],
-            ["a first name too long for the room says nothing there", ["A Very Long Quest"],
-                "Agents", "2 working", 25, ""],
-            ["holding none, it says so as a run", [], "Agents", "0", 40, "none yet"]
-        ];
-        for (const [what, names, name, says, room, want] of holding)
-            check(failures, what,
-                PlaceRow.holds(names, { name: name, says: says, room: room, none: "none yet" }),
-                want);
-        check(failures, "never an ellipsis, however short the room",
-            PlaceRow.holds(machine, { name: "Machine", says: "", room: 12 }).includes("\u2026"),
-            false);
-        check(failures, "a row made before the list has a width names them all",
-            PlaceRow.holds(machine, { name: "Machine", says: "99% busy", room: 0 }),
-            machine.join(", "));
-        check(failures, "holding none with no word for it says nothing",
-            PlaceRow.holds([], { name: "Machine", says: "", room: 40 }), "");
 
-        // At its right: how it stands where it says, else how many it holds.
+        // At its right: how it stands where it says, else its word for
+        // none while it holds nothing, else how many it holds.
         check(failures, "how it stands where it says", PlaceRow.side("99% busy", "4"),
             "99% busy");
+        check(failures, "how it stands over holding none", PlaceRow.side("locked", "", "none"),
+            "locked");
         check(failures, "how many where it says nothing", PlaceRow.side(null, "12"), "12");
         check(failures, "and where what it says is empty", PlaceRow.side("", "12"), "12");
-        check(failures, "no count where its name is followed by none",
-            PlaceRow.side(null, "empty", true), "");
-        check(failures, "but how it stands still", PlaceRow.side("0 working", "empty", true),
-            "0 working");
+        check(failures, "holding nothing, its word for none, as Media's",
+            PlaceRow.side(null, "0", "none"), "none");
+        check(failures, "a place that only groups others says nothing",
+            PlaceRow.side(null, ""), "");
 
-        // Now's parts give way the same way (Now.qml's listedAfter).
+        // Its drawer names what it holds, in its own order, under its name.
+        const machine = ["Power", "Bluetooth", "Sound"];
+        const drawn = PlaceRow.drawer("Machine", machine);
+        check(failures, "its drawer is titled with its name", drawn.title, "Machine");
+        check(failures, "and names its members in their order", drawn.body,
+            "Power, Bluetooth, Sound");
+        check(failures, "holding nothing to name, no drawer", PlaceRow.drawer("Media", []),
+            null);
+
+        // Now's parts give way by whole names (Launcher.qml's listed).
         check(failures, "names listed in their room", PlaceRow.listed(["a", "bb", "ccc"], 6),
             "a, bb");
         check(failures, "none in no room", PlaceRow.listed(["a"], 0), "");

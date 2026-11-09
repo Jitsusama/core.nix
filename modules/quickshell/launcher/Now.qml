@@ -1623,15 +1623,40 @@ Provider {
         return all.slice();
     }
 
-    // Now's row says at its right what For You's own row says there, how
-    // many wait on Joel (VKCF3Z, 2a429f67), since that's the one thing in
-    // it only he can move.
+    // Now's row says at its right how Now stands, what waits on Joel first:
+    // the thing For You's own row leads with and its minutes, then how many
+    // more wait, "Answer the ask \u00b7 2 min \u00b7 2 more"; with nothing
+    // waiting, nothing, since a calm home says nothing (VKCF3Z, bd5cb965).
+    // For You is his one place for attention, so home leads with it.
     function homeSays() {
-        return waiting.side;
+        return homeItems().map(item => item.said).join(" \u00b7 ");
     }
 
-    // So its row names what else is on after its name, and never For You,
-    // whose count it already says at its right.
+    // Never how many rows it holds, which tells Joel nothing: calm, its
+    // right is empty (VKCF3Z, bd5cb965).
+    function counted() {
+        return "";
+    }
+
+    // The same, as items: short of room its title gives way from its end
+    // by whole words, behind an ellipsis, and its minutes and how many more
+    // never give way (Reading.js's keptItems).
+    function homeItems() {
+        if (waitsNow === 0 || first === "") {
+            return [];
+        }
+        const foremost = sessions.length === 0 ? WaitingOnYou.foremost : null;
+        const minutes = typeof foremost?.minutes === "number"
+            ? waitingSaid("minutes", { minutes: foremost.minutes }) : "";
+        const more = waitsNow - 1;
+        return [{ said: foremost ? foremost.title : first, keep: 1, words: true, stays: true },
+            { said: minutes, keep: 2, stays: true },
+            { said: more > 0 ? waitingSaid("more", { count: more }) : "", keep: 3, stays: true }]
+            .filter(item => item.said !== "");
+    }
+
+    // What its drawer names, the rest of what's on, never For You, whose
+    // first thing it already says at its right.
     function memberNames(held = all) {
         return held.filter(one => one.key !== waiting.key && one.folded !== true)
             .map(one => one.name);
