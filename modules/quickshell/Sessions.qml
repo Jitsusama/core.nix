@@ -790,7 +790,7 @@ Singleton {
             // Placed now while the rest are still being reopened, and by
             // the check after them; once that's done, by its own check.
             if (running && entry.at !== null)
-                root.placeSession(entry, root.besideOf(going.placed));
+                entry.landed = root.placeSession(entry, root.besideOf(going.placed)) === "held";
             if (entry.at !== null)
                 going.placed.push(entry);
             if (going.settling)
@@ -835,8 +835,13 @@ Singleton {
                 + root.sitsSaid(entry.id));
         }
         if (entry.at !== null) {
-            if (root.placeSession(entry, root.besideOf(reopening.placed)) === "waiting")
+            const placed = root.placeSession(entry, root.besideOf(reopening.placed));
+            if (placed === "waiting")
                 return;
+            // One that opened where it goes has landed, and settling never
+            // moves it again (settleNextReopened). The entry is the list's
+            // own, never bound, so marking it is no binding's write.
+            entry.landed = placed === "held";
             reopening.placed.push(entry);
         } else if (entry.quiet && root.placeQuietly(entry.id, waiting) === "waiting") {
             return;
@@ -900,9 +905,12 @@ Singleton {
             const where = Places.whereBack(at, beside);
             if (!where.make)
                 return { workspace: where.join, column: Places.opensAt(where, beside) };
+            // The screen's empty workspace, niri's last, so a workspace kept
+            // is never taken for one of Joel's by a number it had last boot.
             const its = Object.values(Niri.workspaces).filter(one => one.output === at.output)
                 .sort((a, b) => a.idx - b.idx);
-            const there = its.find(one => one.idx === at.workspace) ?? its[its.length - 1];
+            const empty = root.lastOn(at.output);
+            const there = (empty !== null ? Niri.workspace(empty) : null) ?? its[its.length - 1];
             if (!there)
                 return null;
             const columns = Object.values(Niri.windows)
@@ -1114,8 +1122,16 @@ Singleton {
             .sort((a, b) => root.keptOrder(a.at, b.at));
         if (going.rounds < ordered.length + 3) {
             for (let at = 0; at < ordered.length; at += 1) {
+                // A window that has landed stays wherever it is now, so a
+                // move Joel or a session makes after it lands sticks (Joel,
+                // 2026-11-09: one placer, "and his own moves stick"). It
+                // still counts beside the ones after it, by its id.
+                if (ordered[at].landed)
+                    continue;
                 const beside = root.besideOf(ordered.slice(0, at));
-                if (root.placeSession(ordered[at], beside) === "moved") {
+                const placed = root.placeSession(ordered[at], beside);
+                ordered[at].landed = placed === "held";
+                if (placed === "moved") {
                     going.rounds += 1;
                     // Sooner once niri says what moved (settleReopenedSoon).
                     reopenSettling.interval = 1000;
