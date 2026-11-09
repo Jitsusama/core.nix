@@ -1105,9 +1105,22 @@ def test_a_terminal_does_an_act_unasked_and_an_ending_one_once_sure(shell: Shell
             assert time.monotonic() < deadline, f"the window was never {what}: {listed()}"
             time.sleep(launcher_on_niri.POLL)
 
+    def windows_listed() -> list[str]:
+        """Give the names Desktop's Windows lists, as a terminal's show walks them."""
+        path = shlex.quote("\u203adesktop\u203awindows")
+        asked = f"qs -p {shell.folder} ipc call -- launcher show {path}"
+        return [row["name"] for row in json.loads(shell.as_account(asked)).get("rows", [])]
+
     window = shell.opened("Kestrel Notes")
+    # Windows lists every window but the focused one, Desktop's This Window, so another takes
+    # the focus from it.
+    other = shell.opened("Plover Notes")
     steps = ("desktop", "windows", "kestrel notes")
     try:
+        deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+        while "Kestrel Notes" not in windows_listed():
+            assert time.monotonic() < deadline, f"Windows never listed it: {windows_listed()}"
+            time.sleep(launcher_on_niri.POLL)
         floated = done(*steps, "float")
         assert floated == {"done": True, "in": ["Desktop", "Windows", "Kestrel Notes", "Float"]}
         until(lambda one: one is not None and one["is_floating"], "floated")
@@ -1118,6 +1131,7 @@ def test_a_terminal_does_an_act_unasked_and_an_ending_one_once_sure(shell: Shell
         assert closed == {"done": True, "in": ["Desktop", "Windows", "Kestrel Notes", "Close"]}
         until(lambda one: one is None, "closed")
     finally:
+        shell.close(other)
         if listed() is not None:
             shell.close(window)
 
