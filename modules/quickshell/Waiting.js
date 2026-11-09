@@ -1,4 +1,4 @@
-// What only Joel can do, for WaitingOnYou.qml and Sessions.qml (Needs You,
+// What only Joel can do, for WaitingOnYou.qml and Sessions.qml (For You,
 // VKCF3Z's, 2026-10-30), out of what the mycelium node serves of the files
 // the agents keep: each quest's waiting/<address>.json, written by the
 // session that needs him through mesh_wait, as `waiting` records; what the
@@ -270,9 +270,9 @@ function asksJoel(presence, by) {
     return true;
 }
 
-// Whether a want of Joel's is said by Needs You's notice rather than its
-// session's. An action stands only while Needs You holds something of its
-// quest he can do now, and Needs You says each such item once, with how
+// Whether a want of Joel's is said by For You's notice rather than its
+// session's. An action stands only while For You holds something of its
+// quest he can do now, and For You says each such to-do once, with how
 // long it takes and where it's done, so a session saying it as well put
 // two notices up for one thing to do: at 18:25 and 19:28 on 2026-11-06,
 // each of two items came twice in the same second. A question, a yes or a

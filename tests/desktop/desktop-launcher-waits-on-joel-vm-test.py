@@ -219,7 +219,7 @@ def test_super_tab_finds_a_pi_window_by_its_work_and_puts_one_waiting_next(
         "said": "Which way?",
     }
     # The shell hears it from the node, a moment after pi writes it, so the
-    # windows are opened once it has: as its Needs You notice shows.
+    # windows are opened once it has: as its For You notice shows.
     with desktop.told("shows card A quest of its own & whole needs you"):
         desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
     tabbed()
@@ -924,7 +924,7 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
 def test_a_sessions_action_is_in_needs_you_once_as_its_item(desktop: Desktop) -> None:
     """A session wanting Joel to do one of its items is in For You once, as the item.
 
-    And it's said once, by Needs You's notice: the session's own notice for the same thing
+    And it's said once, by For You's notice: the session's own notice for the same thing
     put two up in the same second (2026-11-06).
     """
     desktop.pi_session()

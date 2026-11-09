@@ -1,12 +1,12 @@
-//! Asking Joel to sign in to eero again, in the launcher's Needs You.
+//! Asking Joel to sign in to eero again, in the launcher's For You.
 //!
 //! eero's session ages out, and then the daemon can only keep the last
 //! model, its cloud saying it's signed out. Signing in again takes Joel's
 //! phone or email, so the daemon asks him where his other asks wait: a
 //! file of its own in the account's `mission/waiting` folder, which the
-//! shell's Needs You (WaitingOnYou.qml) lists beside each quest's. It's
+//! shell's For You (WaitingOnYou.qml) lists beside each quest's. It's
 //! written once as eero refuses the session and taken away as eero answers
-//! again, or as the daemon stops (home.nix), so Needs You never holds an
+//! again, or as the daemon stops (home.nix), so For You never holds an
 //! ask nothing keeps current.
 
 use std::fs;
@@ -23,7 +23,7 @@ pub fn file() -> io::Result<PathBuf> {
     Ok(session::state()?.join("mission/waiting/eero.json"))
 }
 
-/// The ask, as Needs You reads it, written at `at`, seconds since 1970.
+/// The ask, as For You reads it, written at `at`, seconds since 1970.
 pub fn sign_in(at: i64) -> Value {
     json!({
         "v": 2,

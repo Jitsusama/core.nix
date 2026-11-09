@@ -1007,8 +1007,8 @@
     realm it doesn't join are refused
   '';
   needs-you-is-true = ''
-    over the agents' own files as the node serves them, Needs You holds now only what Joel can do
-    now, a timed one first
+    over the agents' own files as the node serves them, For You's to-dos hold now only what Joel
+    can do now, a timed one first
     and then the quickest, puts what he can't yet or has put off under Later, saying what each
     waits for, keeps gone what he or the to do daemon found done, says when nothing watches one,
     keeps nothing of a quest gone from the index and drops nothing by its age, and counts a
@@ -1626,7 +1626,7 @@
   '';
   slack-unreads-go-with-the-service = ''
     slack-unreads starts once pi has signed in to Slack, restarts as the new one after a switch,
-    is restarted when its watchdog hears nothing, and takes its ask in Needs You with it however
+    is restarted when its watchdog hears nothing, and takes its ask in For You with it however
     it stops,
     while its socket, systemd's and held only once pi has signed in, stays
   '';
@@ -2806,8 +2806,8 @@
     Slack ends a search, asking Slack once on Return
   '';
   vm-desktop-launcher-waits-on-joel = ''
-    Now leads with what waits on Joel and Needs You holds only what's true, a session wanting him
-    waits as the session, its notice going to it and going read once it stops waiting; the agents
+    Now leads with what waits on Joel and For You's to-dos hold only what's true, a session wanting
+    him waits as the session, its notice going to it and going read once it stops waiting; the agents
     list every session from the shell's start and hold still as one changes, and pi's runs are
     found
   '';

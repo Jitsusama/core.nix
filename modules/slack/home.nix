@@ -18,7 +18,7 @@ let
   # what in Slack wants Joel (slack-unreads).
   lookUp = pkgs.callPackage ./package.nix { };
   credentials = "${config.xdg.configHome}/agentic-harness/slack/credentials.json";
-  # Where Slack's ask of Joel waits, beside each quest's in Needs You
+  # Where Slack's ask of Joel waits, beside each quest's in For You
   # (WaitingOnYou.qml), named so no quest's address is it.
   waiting = "${config.xdg.stateHome}/mission/waiting/slack.json";
 in
@@ -86,7 +86,7 @@ in
   # mentions in threads and channels merely unread; and the conversations
   # he read last, for Slack's Recent. Read only, and started once pi has
   # signed in to Slack. While Slack refuses that sign-in, signing in again
-  # waits in Needs You, in the file of what waits on Joel that's Slack's
+  # waits in For You, in the file of what waits on Joel that's Slack's
   # own beside each quest's.
   systemd.user.paths.slack-unreads = {
     Unit.Description = "Starts keeping Slack's unreads once pi has signed in";
@@ -138,7 +138,7 @@ in
       # that hangs is killed and started again.
       WatchdogSec = 180;
       NotifyAccess = "main";
-      # What it asked of Joel goes with it, however it stops, so Needs You
+      # What it asked of Joel goes with it, however it stops, so For You
       # never shows an ask nothing is keeping current; what it counted
       # goes from the shell as its socket stops answering.
       ExecStopPost = lib.concatStringsSep " " [

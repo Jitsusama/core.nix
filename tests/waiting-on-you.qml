@@ -288,8 +288,8 @@ QtObject {
             true);
         expect("no want is none", Waiting.asksJoel({ wants: null }, by), false);
 
-        // One ask, one notice: Needs You says an action's item itself.
-        expect("an action is Needs You's to say",
+        // One ask, one notice: For You says an action's to-do itself.
+        expect("an action is For You's to say",
             Waiting.saidByNeedsYou({ kind: "action" }), true);
         expect("a question, a yes and a stuck run are the session's",
             ["question", "approval", "blocked"].map(kind =>

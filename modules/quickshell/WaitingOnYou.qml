@@ -1,6 +1,6 @@
 pragma Singleton
 pragma ComponentBehavior: Bound
-// What only Joel can do (Needs You). Each quest keeps a file of what it
+// What only Joel can do (For You). Each quest keeps a file of what it
 // needs him for, ~/.local/state/mission/waiting/<quest>.json, written by
 // the session that needs him through mesh_wait and replaced whole as it
 // changes: each item's title, why only he can, how many minutes it takes,
@@ -40,7 +40,7 @@ Singleton {
     readonly property string state: Quickshell.env("XDG_STATE_HOME") || `${home}/.local/state`
     readonly property string settledAt: `${state}/mission/settled.json`
 
-    // The node's records of each kind Needs You reads (mycelium's
+    // The node's records of each kind For You reads (mycelium's
     // PROTOCOL.md, The Daemon Interface): each quest's items, the to do
     // daemon's verdicts and the quests still open, each watched whole and
     // then told each change as only what differs. What was held stays

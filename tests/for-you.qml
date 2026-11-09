@@ -181,7 +181,7 @@ QtObject {
             [1, "B", "opened", "opened", "2026-11-08T14:00:00.000Z", "Review the change",
                 "https://github.com/o/r/pull/1", undefined, undefined]);
 
-        // Needs You's items Joel said were done, newest first, and none
+        // The to-dos Joel said were done, newest first, and none
         // he put off or that still waits.
         const identity = each => `${each.quest}:${each.id}`;
         const asked = [{ quest: "Q", id: "1" }, { quest: "Q", id: "2" }, { quest: "Q", id: "3" },

@@ -1857,7 +1857,7 @@ Singleton {
     // file replaced by rename leaves its folder for a moment, which would
     // otherwise make a want that never ended look new. Its notice carries
     // that key, and is withdrawn once the want ends or its session goes.
-    // An action is Needs You's to say (Waiting.saidByNeedsYou), so it
+    // An action is For You's to say (Waiting.saidByNeedsYou), so it
     // only sounds here.
     readonly property real began: Date.now()
     property var told: ({})
