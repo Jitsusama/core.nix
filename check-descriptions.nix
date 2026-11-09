@@ -174,7 +174,10 @@
     left, and the stopwatch's count runs while it runs, reads to the tenth rounded down, and lists
     its laps newest first, each its own stretch; a timer's side says its time left, paused or
     when it rang, and Now holds timers while any runs, is paused or has rung, or the stopwatch
-    runs, told by the one listed first and naming them in that order, the stopwatch last
+    runs, told by the one listed first and naming them in that order, the stopwatch last; Now's
+    row says the one on, or of several how many run before the first's, "2 running", and after
+    it where the first rang or is held, "rang 03:27 · 1 running", the count only while any
+    runs, and the stopwatch alone gives no items, counted live from its side
   '';
   a-trusted-cable-finds-machines = ''
     a trusted cable's network is a stranger's cable with mDNS on, matched by its card and picked
@@ -2155,7 +2158,8 @@
   recent-means-one-thing = ''
     Recent lists at most nine things, newest first across its sources, each once where it's
     newest, none already shown above it, an undated source after the dated in its own order, and
-    its row says how many and the first one's name, none while empty and an ellipsis while waiting,
+    its row says how many and holds their names for its drawer, none while empty and an ellipsis
+    while waiting,
     and a source's lines are read with their times apart, the shared list's by each program
   '';
   for-you-narrows-by-kind-and-source = ''

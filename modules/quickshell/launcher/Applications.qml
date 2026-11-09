@@ -838,7 +838,8 @@ Provider {
     // (`keepsRecentOf(program)`), saying "none" while it holds nothing, and
     // an ellipsis until a source read only as it's stepped into first
     // answers, so it never comes late at the bottom of a step already
-    // drawn. Its side says how many, its note their names, as many as fit.
+    // drawn. Its side says how many, and its drawer their names, as a
+    // place's does (VKCF3Z, dafc2199).
     function recent(entry) {
         if (!provider.keepsRecent(entry))
             return [];
@@ -852,7 +853,7 @@ Provider {
         return [said("program:recent", "", {
             hue: "program",
             side: stands.side,
-            count: stands.note,
+            heldNames: stands.held,
             ask: "which?",
             nested: true,
             empty: waiting ? "\u2026" : words.empty,

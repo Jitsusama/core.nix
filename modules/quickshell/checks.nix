@@ -1168,8 +1168,8 @@ onLinux {
 
   # A timer's span and name are read from what's typed after "timer", its
   # time left told as a clock and its span in its largest units, and timers
-  # listed rung first, as tests/timing.qml holds launcher/Timing.js to it in
-  # Qt's own engine.
+  # listed rung first, and what Now's Timers row says, as tests/timing.qml
+  # holds launcher/Timing.js to it in Qt's own engine.
   a-timer-is-read-from-what-is-typed =
     let
       qt = pkgs.qt6.qtdeclarative;

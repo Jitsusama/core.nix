@@ -253,6 +253,36 @@ function onNow(timers, watch, now) {
     };
 }
 
+// What Now's Timers row says at its right, as items (VKCF3Z, 5fa2cbda):
+// with one on, what that one's own row in Timers says, "3:12" or
+// "paused \u00b7 9:50"; with several, how many run and the first's,
+// "2 running \u00b7 3:12", as Agents says "3 running". A first that rang
+// or is held leads, since its state is the news, and how many still run
+// follows: "rang 21:20 \u00b7 1 running", or "rang 21:20" alone with none
+// running (VKCF3Z, 158ac71f). The count gives way; the figure never does.
+// `words` are the timer's, `several` among them.
+function nowItems(standing, watch, now, words) {
+    const first = standing.first;
+    const figure = {
+        said: first !== null ? side(first, now, words) : tenths(counted(watch, now)),
+        stays: true
+    };
+    const running = standing.named.filter(record => record.state === "running").length;
+    const count = { said: String(words.several ?? "").replace("{count}", String(running)) };
+    if (first !== null && first.state !== "running") {
+        return running > 0 ? [figure, count] : [figure];
+    }
+    return standing.named.length > 1 && running > 0 ? [count, figure] : [figure];
+}
+
+// Whether the stopwatch alone runs, with no timer on: then Now's row
+// counts it to the tenth, drawn afresh by the launcher from its side
+// (Launcher.qml's counts), so it gives no items, which would stand in
+// for that side and stop the count (Y2YBTS, 89588a65).
+function watchAlone(standing, watch) {
+    return standing.first === null && watch?.state === "running";
+}
+
 // Whether Now's row must be told the time each second: only while the
 // launcher is open, where its side is drawn, and a timer counts down then.
 // The margin wears only the mark, which says how things stand and not

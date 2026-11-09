@@ -2057,7 +2057,7 @@ def test_ethernet_in_network_holds_each_cable_its_lease_and_its_neighbour(
 def shoot_now_through_the_timers(desktop: Desktop) -> None:
     """Shoot Now with one timer rung, then with that one ended, then with only paused ones."""
     machine = desktop.machine
-    shoot_now_holding_timers(desktop, "rung")
+    shoot_now_holding_timers(desktop, "rung", "Eggs \u00b7 Bread \u00b7 Tea \u00b7 Stopwatch")
     # Eggs ended, by the keys that carry End, leaves them running. End can't be undone, so it
     # asks once, and takes y only once the ask is ready.
     pick_a_timer(desktop, "Eggs")
@@ -2068,7 +2068,7 @@ def shoot_now_through_the_timers(desktop: Desktop) -> None:
     # An ended row stays, drawn as gone, until the launcher closes.
     desktop.launcher_until(lambda shown: all(thing.get("gone") for thing in shown["things"]))
     desktop.close_launcher()
-    shoot_now_holding_timers(desktop, "running")
+    shoot_now_holding_timers(desktop, "running", "Bread \u00b7 Tea \u00b7 Stopwatch")
     # Bread and the stopwatch paused leave only what's paused.
     pick_a_timer(desktop, "Bread")
     machine.send_key("ret")
@@ -2082,7 +2082,8 @@ def shoot_now_through_the_timers(desktop: Desktop) -> None:
         lambda shown: str((shown["selected"] or {}).get("note")).startswith("paused")
     )
     desktop.close_launcher()
-    shoot_now_holding_timers(desktop, "paused")
+    # The stopwatch paused is named no more, and Tea, with less left, comes first.
+    shoot_now_holding_timers(desktop, "paused", "Tea \u00b7 Bread")
 
 
 def pick_a_timer(desktop: Desktop, name: str) -> None:
@@ -2093,8 +2094,11 @@ def pick_a_timer(desktop: Desktop, name: str) -> None:
     desktop.normal()
 
 
-def shoot_now_holding_timers(desktop: Desktop, standing: str) -> None:
-    """Shoot Now with its Timers row, and the margin with its mark, at Joel's two scales."""
+def shoot_now_holding_timers(desktop: Desktop, standing: str, held: str) -> None:
+    """Shoot Now with its Timers row, and the margin with its mark, at Joel's two scales.
+
+    Its drawer names what it holds, `held`, in Timers' order, the stopwatch last.
+    """
     machine = desktop.machine
     for scale in ("1.5", "2"):
         # Each scale is set with the launcher closed, so it opens laid out for it, as
@@ -2112,7 +2116,19 @@ def shoot_now_holding_timers(desktop: Desktop, standing: str) -> None:
         desktop.held_still()
         before = desktop.screen_now()
         machine.send_chars("G")
-        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Timers")
+        # A place, it says nothing after its name, its timers in its drawer (VKCF3Z, 5fa2cbda).
+        desktop.launcher_until(
+            lambda shown: (
+                (shown["selected"] or {}).get("name") == "Timers"
+                and not shown["selected"].get("count")
+            )
+        )
+        desktop.launcher_until(
+            lambda shown: (
+                (shown["drawer"]["title"], shown["drawer"]["eyebrow"], shown["drawer"]["body"])
+                == ("Timers", "place", held)
+            )
+        )
 
         def moved(_: bool, before: Image.Image = before) -> bool:
             return ImageChops.difference(before, desktop.screen_now()).getbbox() is not None

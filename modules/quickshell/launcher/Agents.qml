@@ -959,7 +959,7 @@ Provider {
     // end, one of Sessions to Reopen or one running again
     // (SessionRow.js's shownElsewhere). The last boot's are Sessions to
     // Reopen's alone. It always stands, after Landed and before Start, its
-    // names after its own and how many at its right, and Return on one
+    // names in its drawer and how many at its right, and Return on one
     // reopens it where it left off, by its id (VKCF3Z, 2026-11-08).
     // Made again only when what it lists reads otherwise, said as a string,
     // which tells its readers only when it changes: Sessions makes every
@@ -1018,7 +1018,7 @@ Provider {
             glyph: Words.glyph("agents:recent"),
             hue: "program",
             side: stands.side,
-            count: stands.note,
+            heldNames: stands.held,
             ask: "which?",
             empty: words.empty
         }, () => listed.map(one => row(one.row))), {
@@ -1083,8 +1083,8 @@ Provider {
     }
 
     // How its sessions stand together, at its row's right wherever it
-    // stands, home included, while its sessions are named after its name
-    // as every place's are (VKCF3Z, 2a429f67). Found by its name,
+    // stands, home included, while its sessions are named in its drawer
+    // as every place's are (VKCF3Z, 2a429f67, dae7fb67). Found by its name,
     // "agents", its row is the answer, as
     // Processor's is for "cpu", and Return still opens it, since that's
     // what Joel types its name for.

@@ -7763,7 +7763,7 @@
       "argument": "Timers",
       "in": "on",
       "name": "Show in Timers",
-      "verb": "show",
+      "verb": "open",
       "glyph": "timer"
     },
     {
@@ -7854,7 +7854,8 @@
       "noun": "timers",
       "glyph": "timer",
       "ask": "which timer?",
-      "empty": "No timers running."
+      "empty": "No timers running.",
+      "said": { "several": "{count} running" }
     },
     {
       "id": "timer",

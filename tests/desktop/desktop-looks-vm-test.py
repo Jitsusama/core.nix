@@ -1498,7 +1498,7 @@ def a_programs_plate_lies_on_the_lines(desktop: Desktop, scale: str, keeping: li
 def test_a_persons_page_names_what_its_rows_hold_at_each_scale(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """A person's Unread and Recent say their names after theirs, how many at their right.
+    """A person's Unread and Recent say nothing after their names, how many at their right.
 
     Ada wrote the stand-in Google's Lunch on Friday, so her page holds it in Unread, shot at
     both of Joel's scales for a person to judge.
@@ -1513,7 +1513,15 @@ def test_a_persons_page_names_what_its_rows_hold_at_each_scale(
         desktop.launcher_until(lambda shown: "Unread" in shown["rows"])
         desktop.down_to("Unread")
         unread = desktop.showing()["selected"]
-        assert (unread["count"], unread["side"]) == ("Lunch on Friday", "1"), unread
+        # What it holds is named in its drawer, a place's, as on the nested niri's Agents'
+        # Recent (VKCF3Z, dafc2199).
+        assert (unread["count"], unread["side"]) == ("", "1"), unread
+        desktop.launcher_until(
+            lambda shown: (
+                (shown["drawer"]["title"], shown["drawer"]["eyebrow"], shown["drawer"]["body"])
+                == ("Unread", "place", "Lunch on Friday")
+            )
+        )
         desktop.shoot(f"launcher-person-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
 

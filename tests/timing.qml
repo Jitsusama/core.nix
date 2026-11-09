@@ -175,6 +175,35 @@ QtObject {
             [true, false, null, ["stopwatch"]]);
         check(failures, "and is named last", onNow([tea], running),
             [true, false, "timer:1", ["timer:1", "stopwatch"]]);
+        // Now's Timers row says the one on as its own row does, and of
+        // several how many run and the first's figure, which stays.
+        const nowSaid = (timers, watch) => Timing.nowItems(Timing.onNow(timers, watch, 0), watch,
+            0, { pausedSide: "paused \u00b7 {left}", rung: "rang {clock}",
+                several: "{count} running" });
+        const rang = { key: "timer:5", state: "rung", rang: rangAt, set: 5 };
+        check(failures, "one on says its own side", nowSaid([tea], null),
+            [{ said: "10:00", stays: true }]);
+        check(failures, "a paused one alone says so", nowSaid([held], null),
+            [{ said: "paused \u00b7 1:00", stays: true }]);
+        check(failures, "several say how many run, then the first's",
+            nowSaid([bread, tea], running),
+            [{ said: "3 running" }, { said: "10:00", stays: true }]);
+        check(failures, "counting only those running", nowSaid([held, bread], null),
+            [{ said: "1 running" }, { said: "25:00", stays: true }]);
+        check(failures, "the stopwatch alone says its count", nowSaid([], running),
+            [{ said: "0:00.0", stays: true }]);
+        check(failures, "what rang leads, then how many still run", nowSaid([rang, tea], null),
+            [{ said: "rang 03:27", stays: true }, { said: "1 running" }]);
+        check(failures, "and alone with none running", nowSaid([rang, held], null),
+            [{ said: "rang 03:27", stays: true }]);
+        check(failures, "a held one leads the stopwatch running", nowSaid([held], running),
+            [{ said: "paused \u00b7 1:00", stays: true }, { said: "1 running" }]);
+        check(failures, "the stopwatch alone is counted live, from the side",
+            Timing.watchAlone(Timing.onNow([], running, 0), running), true);
+        check(failures, "and never beside a timer",
+            Timing.watchAlone(Timing.onNow([tea], running, 0), running), false);
+        check(failures, "nor stopped", Timing.watchAlone(Timing.onNow([], stopped, 0), stopped),
+            false);
         check(failures, "a running timer ticks Now's row while it's open",
             Timing.ticks([tea], true), true);
         check(failures, "and never while the launcher is closed", Timing.ticks([tea], false),
