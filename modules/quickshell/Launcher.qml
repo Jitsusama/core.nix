@@ -718,7 +718,7 @@ Scope {
     // name it leads to, which that row answers, so there's never two
     // (VKCF3Z, 2026-11-09: a rename never loses a row). It's the leading
     // source's own row, its key and drawer, said where it is, and Return,
-    // Tab and Ctrl+] step in as `into` does (`ledBy`, read by `enter`).
+    // Tab and Ctrl+] step in as `into` does (`ledBy`, read by `steppedAsLed`).
     function ledFound(source) {
         const name = source.settings.name;
         const { leading, rows } = leadingTo(name) ?? { leading: null, rows: [] };
@@ -738,6 +738,17 @@ Scope {
         });
         found.run = () => root.into(name);
         return found;
+    }
+
+    // A row found for a place that lives deeper, as "notices" finds For
+    // You's Desktop, steps in through the rows above it, by Return, Tab or
+    // Ctrl+], so - climbs back out the way it went in. It's asked before
+    // the row's own ways in, which it carries from the row it copies.
+    function steppedAsLed(row) {
+        if (held.length > 0 || row.ledBy === undefined)
+            return false;
+        root.into(row.ledBy);
+        return true;
     }
 
     // The source that leads a name deeper (`leadsTo`) and the rows it
@@ -3362,6 +3373,8 @@ Scope {
     // that opens to where it leads. A command, which only fills the line,
     // has no place, nor a notice, whose acts are commands.
     function followed(row) {
+        if (steppedAsLed(row))
+            return true;
         if (row.lands) {
             row.run();
             return true;
@@ -4326,13 +4339,8 @@ Scope {
             intoCategory(row.category, typed);
             return true;
         }
-        // A row found for a place that lives deeper, as "notices" finds
-        // For You's Desktop, steps in through the rows above it, so - climbs
-        // back out the way Return went (ledFound).
-        if (held.length === 0 && row.ledBy !== undefined) {
-            into(row.ledBy);
+        if (steppedAsLed(row))
             return true;
-        }
         const things = asThing(row, held.length === 0 || collecting);
         const into = inside(row, things);
         // A collection with nothing in it still holds the places its
