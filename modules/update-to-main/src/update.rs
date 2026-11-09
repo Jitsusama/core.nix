@@ -7,8 +7,9 @@
 //! the switch's start fails. Busy is asked again before the switch, since a
 //! call may start while the build runs. A switch that would restart a
 //! daemon the config holds, restart an account's unit it holds, or change a
-//! path it holds such as the kernel, is refused unless an asker granted it. Each step
-//! is told as it starts.
+//! path it holds such as the kernel, is refused unless an asker granted it. A
+//! switch the follower asked for waits, once built, while someone is at the
+//! machine. Each step is told as it starts.
 
 use crate::config::{Busy, Config, Kind};
 use crate::follows;
@@ -34,19 +35,26 @@ const BUSY_WITHIN: Duration = Duration::from_secs(30);
 /// How often a busy command is looked at while it runs.
 const BUSY_EVERY: Duration = Duration::from_millis(100);
 
+/// How often a built switch the follower asked for asks again whether
+/// what it waits on is over, and the longest it waits before it ends with
+/// nothing switched, what it built kept in the store for the next ask.
+const WAITS_EVERY: Duration = Duration::from_secs(1);
+const WAITS_AT_MOST: Duration = Duration::from_hours(1);
+
 /// Runs one update, telling `tell` each step as it starts, and gives its
-/// ending.
+/// ending. `following` says whether only the follower asked for it, which
+/// may turn false as it runs, once a person asks too.
 ///
 /// A grant made before it starts is its own, and no grant outlives it,
 /// however it ends: one left by an ask refused as busy, or by a build that
 /// held nothing, would otherwise let a later switch restart a held daemon
 /// after the work it was held for went on.
-pub fn update(config: &Config, tell: &mut dyn FnMut(&Line)) -> Line {
+pub fn update(config: &Config, following: &dyn Fn() -> bool, tell: &mut dyn FnMut(&Line)) -> Line {
     let granted = take_grant(config);
     if granted {
         run::granted();
     }
-    let ending = run(config, granted, tell);
+    let ending = run(config, granted, following, tell);
     take_grant(config);
     if matches!(ending, Line::Done { .. } | Line::Unchanged { .. }) {
         let _ = fs::remove_file(config.behind_file());
@@ -71,7 +79,12 @@ fn take_grant(config: &Config) -> bool {
         .is_some_and(|holds| fs::remove_file(&holds.given).is_ok())
 }
 
-fn run(config: &Config, granted: bool, tell: &mut dyn FnMut(&Line)) -> Line {
+fn run(
+    config: &Config,
+    granted: bool,
+    following: &dyn Fn() -> bool,
+    tell: &mut dyn FnMut(&Line),
+) -> Line {
     let last = last(config);
     if let Some(why) = too_low(config).or_else(|| busy(config)) {
         return Line::Refused { commit: last, why };
@@ -165,6 +178,9 @@ fn run(config: &Config, granted: bool, tell: &mut dyn FnMut(&Line)) -> Line {
             commit: head,
             followed,
         };
+    }
+    if let Some(why) = quiet(config, following).or_else(|| busy(config)) {
+        return Line::Refused { commit: last, why };
     }
 
     tell(&Line::Switching {
@@ -357,8 +373,42 @@ fn held(config: &Config, built: &std::path::Path, granted: bool) -> Option<Strin
 }
 
 /// What the machine is busy with, when any of its busy commands says so.
+/// Those a follower waits on refuse nothing.
 fn busy(config: &Config) -> Option<String> {
-    config.refuse_while.iter().find_map(is_busy)
+    config
+        .refuse_while
+        .iter()
+        .filter(|busy| !busy.follower_waits)
+        .find_map(is_busy)
+}
+
+/// Waits, for a switch only the follower asked for, while any command a
+/// follower waits on says someone is at the machine, and gives why it
+/// switches nothing once it has waited an hour. On 9 November a launcher
+/// stopped taking keys after five switches the follower asked for in half
+/// an hour, each restarting the desktop's shell under Joel's hands. A
+/// person asking meanwhile, or a stop, ends the wait at once.
+fn quiet(config: &Config, following: &dyn Fn() -> bool) -> Option<String> {
+    let until = Instant::now() + WAITS_AT_MOST;
+    let mut said = None;
+    while following() && !run::stopping() {
+        let why = config
+            .refuse_while
+            .iter()
+            .filter(|busy| busy.follower_waits)
+            .find_map(is_busy)?;
+        if Instant::now() >= until {
+            return Some(format!(
+                "{why} for an hour, so what was built waits in the store for the next ask"
+            ));
+        }
+        if said.as_ref() != Some(&why) {
+            eprintln!("the switch waits while {why}");
+            said = Some(why);
+        }
+        thread::sleep(WAITS_EVERY);
+    }
+    None
 }
 
 fn is_busy(busy: &Busy) -> Option<String> {

@@ -80,6 +80,23 @@ in
         ];
         why = "the machine is shutting down";
       }
+      # A switch restarts the desktop's shell, and on 9 November a launcher
+      # stopped taking keys after five switches the follower asked for in
+      # half an hour. So one it asked for waits, once built, until nobody
+      # has touched a key or the pointer for two minutes, which swayidle
+      # marks (../swayidle/home.nix). A machine without the mark never waits.
+      {
+        command = [
+          "${pkgs.writeShellScript "update-to-main-someone-is-here" ''
+            for mark in /run/user/*/someone-at-the-machine; do
+              test -e "$mark" && exit 0
+            done
+            exit 1
+          ''}"
+        ];
+        why = "someone is at the machine";
+        followerWaits = true;
+      }
     ];
 
     users.groups.update-ask.members = cfg.askers;

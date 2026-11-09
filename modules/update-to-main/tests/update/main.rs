@@ -363,8 +363,14 @@ impl World {
     }
 
     fn update(&self) -> (Vec<Line>, Line) {
+        self.asked_by(&|| false)
+    }
+
+    /// Updates as the follower asks, `following` saying whether only it
+    /// has asked still.
+    fn asked_by(&self, following: &dyn Fn() -> bool) -> (Vec<Line>, Line) {
         let mut told = Vec::new();
-        let ending = update::update(&self.config, &mut |l| told.push(l.clone()));
+        let ending = update::update(&self.config, following, &mut |l| told.push(l.clone()));
         (told, ending)
     }
 }
@@ -1965,6 +1971,7 @@ fn refuse_during_calls(world: &mut World) {
             ),
         ],
         why: "a call is on".to_owned(),
+        follower_waits: false,
     }];
 }
 
@@ -2019,6 +2026,67 @@ fn a_busy_check_that_cant_tell_counts_as_busy() {
     );
     assert!(why.contains("exit status: 3"), "{why}");
     assert_eq!(world.builds(), 0);
+}
+
+/// Says someone is at the machine the first `times` it's asked, and nobody
+/// after, counting each ask in the world's `asked` file.
+fn someone_at_the_machine(world: &mut World, times: usize) {
+    let asked = world.root.join("asked");
+    world.config.refuse_while = vec![Busy {
+        command: vec![
+            shell(),
+            "-c".to_owned(),
+            format!(
+                "n=$(cat {0} 2>/dev/null || echo 0); echo $((n + 1)) > {0}; test $n -lt {times}",
+                asked.display()
+            ),
+        ],
+        why: "someone is at the machine".to_owned(),
+        follower_waits: true,
+    }];
+}
+
+fn asked(world: &World) -> usize {
+    world.read("asked").trim().parse().unwrap_or(0)
+}
+
+#[test]
+fn a_switch_the_follower_asked_for_waits_while_someone_is_at_the_machine() {
+    let mut world = World::new();
+    someone_at_the_machine(&mut world, 2);
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(world.asked_by(&|| true).1, done(&head));
+    assert_eq!(
+        asked(&world),
+        3,
+        "it switched before nobody was at the machine"
+    );
+    assert_eq!(world.builds(), 1);
+}
+
+#[test]
+fn a_persons_ask_waits_for_nobody_and_ends_the_followers_wait() {
+    let mut world = World::new();
+    someone_at_the_machine(&mut world, 1000);
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    assert_eq!(
+        asked(&world),
+        0,
+        "a person's ask asked who was at the machine"
+    );
+    // A person joins the follower's update while its switch waits.
+    let head = world.signed("two");
+    world.system(&head);
+    let looks = std::cell::Cell::new(0);
+    let following = || {
+        looks.set(looks.get() + 1);
+        looks.get() < 3
+    };
+    assert_eq!(world.asked_by(&following).1, done(&head));
+    assert_eq!(asked(&world), 2);
 }
 
 #[test]

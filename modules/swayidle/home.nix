@@ -51,6 +51,9 @@ let
   screensOn = "${lib.getExe niri} msg action power-on-monitors";
   # Seconds from the last key or touch to the screens going off.
   screensOff = 600;
+  # The mark that someone is at the machine, which swayidle's commands run
+  # through a shell expand.
+  here = "\"$XDG_RUNTIME_DIR/someone-at-the-machine\"";
 in
 {
   home.packages = [
@@ -82,6 +85,21 @@ in
         timeout = screensOff;
         command = "${lib.getExe niri} msg action power-off-monitors";
       }
+      # A switch the follower asked for waits while this mark says someone
+      # touched a key or the pointer in the last two minutes
+      # (../update-to-main/nixos.nix), since a switch restarts the shell
+      # under their hands.
+      {
+        timeout = 120;
+        command = "${lib.getExe' pkgs.coreutils "rm"} -f ${here}";
+        resumeCommand = "${lib.getExe' pkgs.coreutils "touch"} ${here}";
+      }
     ];
+  };
+
+  # A session just started has someone at it, and one ended has nobody.
+  systemd.user.services.swayidle.Service = {
+    ExecStartPre = "${lib.getExe' pkgs.coreutils "touch"} %t/someone-at-the-machine";
+    ExecStopPost = "${lib.getExe' pkgs.coreutils "rm"} -f %t/someone-at-the-machine";
   };
 }

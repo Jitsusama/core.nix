@@ -170,7 +170,7 @@ fn heard(config: &Config, heads: &Followed) -> std::io::Result<Line> {
     let (told, lines) = mpsc::channel::<Line>();
     let socket = config.socket.clone();
     let asking = thread::spawn(move || {
-        ask::ask(&socket, &mut |line| {
+        ask::follow(&socket, &mut |line| {
             println!("{}", line.json());
             let _ = told.send(line.clone());
         })

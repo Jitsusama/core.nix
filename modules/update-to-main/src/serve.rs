@@ -31,8 +31,13 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::Duration;
 
-/// The one ask.
+/// A person's ask.
 pub const ASK: &str = "update";
+
+/// The follower's ask: an update like any other, except that once built
+/// its switch waits while someone is at the machine. A person asking
+/// meanwhile joins it and ends the wait.
+pub const FOLLOW: &str = "follow";
 
 /// What stops an update still fetching or building, as when main has moved
 /// past the head it builds: on 8 November one built a kernel two hours
@@ -63,6 +68,8 @@ struct Said {
     lines: Vec<String>,
     ended: Option<Line>,
     hearing: usize,
+    /// Whether only the follower has asked for it.
+    following: bool,
     /// The thread running the update, whose commands a stop ends.
     worker: Option<thread::ThreadId>,
 }
@@ -174,18 +181,19 @@ fn answer(
         };
         return writeln!(out, "{}", stopped.json());
     }
-    if ask.trim() != ASK {
+    let following = ask.trim() == FOLLOW;
+    if ask.trim() != ASK && !following {
         eprintln!("refused an ask from uid {asker}: {:?}", ask.trim());
         let refused = Line::Refused {
             commit: update::last(config),
-            why: format!("the only asks are `{ASK}` and `{STOP}`"),
+            why: format!("the only asks are `{ASK}`, `{FOLLOW}` and `{STOP}`"),
         };
         return writeln!(out, "{}", refused.json());
     }
     eprintln!("uid {asker} asks for an update");
     // An asker that stops reading is let go rather than kept waiting on.
     stream.set_write_timeout(Some(HEARD_WITHIN))?;
-    let heard = join(config, current);
+    let heard = join(config, current, following);
     heard.state.lock().expect("the answer's lock").hearing += 1;
     let result = hear(&heard, &mut out);
     heard.state.lock().expect("the answer's lock").hearing -= 1;
@@ -247,19 +255,21 @@ fn stop(current: &Mutex<Option<Arc<Answer>>>) -> String {
     }
 }
 
-fn join(config: &Arc<Config>, current: &Arc<Mutex<Option<Arc<Answer>>>>) -> Arc<Answer> {
+fn join(
+    config: &Arc<Config>,
+    current: &Arc<Mutex<Option<Arc<Answer>>>>,
+    following: bool,
+) -> Arc<Answer> {
     let mut current = current.lock().expect("the current update's lock");
-    if let Some(running) = current.as_ref()
-        && running
-            .state
-            .lock()
-            .expect("the answer's lock")
-            .ended
-            .is_none()
-    {
-        return Arc::clone(running);
+    if let Some(running) = current.as_ref() {
+        let mut said = running.state.lock().expect("the answer's lock");
+        if said.ended.is_none() {
+            said.following &= following;
+            return Arc::clone(running);
+        }
     }
     let heard = Arc::new(Answer::default());
+    heard.state.lock().expect("the answer's lock").following = following;
     *current = Some(Arc::clone(&heard));
     let config = Arc::clone(config);
     let growing = Arc::clone(&heard);
@@ -278,7 +288,8 @@ fn run(config: &Config, heard: &Answer) {
         said.lines.push(line.json());
         heard.grew.notify_all();
     };
-    let ending = update::update(config, &mut |line| push(line));
+    let following = || heard.state.lock().expect("the answer's lock").following;
+    let ending = update::update(config, &following, &mut |line| push(line));
     run::ended();
     eprintln!("{}", ending.json());
     let _ = fs::remove_file(&config.running);
