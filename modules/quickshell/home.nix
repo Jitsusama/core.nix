@@ -283,6 +283,7 @@ let
     "launcher/Catalogue.js"
     "launcher/Rank.js"
     "launcher/Showing.js"
+    "launcher/Seen.js"
     "launcher/Pacing.js"
     "launcher/Wanted.js"
     "launcher/Standing.js"
