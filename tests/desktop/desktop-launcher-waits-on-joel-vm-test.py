@@ -418,13 +418,14 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
 
 
 def shoots_now_at_joels_scales(desktop: Desktop, reads: str) -> None:
-    """Shoot home at Joel's scales, its Now row reading as given, for the plate beside it.
+    """Shoot home at 1 and Joel's scales, its Now row reading as given, and the plate beside it.
 
     The plate says what waits no more, where the row says it (VKCF3Z, 2026-11-09).
     """
     # The to-do's card away first, which would stand over the row and the plate.
     with desktop.told("gone notifications"):
         desktop.as_account("qs ipc call notices putAway")
+    desktop.shoot("launcher-home-now-waiting")
     for scale in JOELS_SCALES:
         desktop.as_account(f"niri msg output winit scale {scale}")
         desktop.launcher_until(
@@ -488,8 +489,7 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
             thing["reads"] == "Now \u00b7 Answer the ask \u00b7 2 min" for thing in shown["things"]
         )
     )
-    desktop.shoot("launcher-home-now-waiting")
-    # At Joel's scales too, which only the gallery shoots.
+    # Shot with its card put away, which only the gallery does.
     if desktop.values["shots"]:
         shoots_now_at_joels_scales(desktop, "Now \u00b7 Answer the ask \u00b7 2 min")
     # It counts only what Joel can do now: the session's two aren't ready.
