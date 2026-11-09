@@ -99,7 +99,7 @@ def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> No
     desktop.shoot("launcher-calendar-typed")
     desktop.close_launcher()
     # In Programs, where nothing is listed under it, it names its next, the time and the name
-    # apart.
+    # apart, after its Recent's count.
     desktop.answer("programs")
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("is") == "collection:applications"
@@ -109,7 +109,8 @@ def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> No
     desktop.launcher_until(
         lambda shown: (
             re.fullmatch(
-                r"next in \d+ min \u00b7 Design Review", str(shown["selected"].get("note", ""))
+                r"1 recent \u00b7 next in \d+ min \u00b7 Design Review",
+                str(shown["selected"].get("note", "")),
             )
             is not None
         )
@@ -131,8 +132,10 @@ def test_calendars_and_mails_own_recent_hold_what_joel_had_lately(desktop: Deskt
     desktop.into_program()
     desktop.type_in("recent", selecting="Recent")
     desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("count") == "Retro"
-        and shown["selected"].get("side") == "1"
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Recent"
+            and shown["selected"].get("side") == "1"
+        )
     )
     desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Retro"])
@@ -150,8 +153,10 @@ def test_calendars_and_mails_own_recent_hold_what_joel_had_lately(desktop: Deskt
     desktop.into_program()
     desktop.type_in("recent", selecting="Recent")
     desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("count") == "Notes on the Plan"
-        and shown["selected"].get("side") == "1"
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Recent"
+            and shown["selected"].get("side") == "1"
+        )
     )
     desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Notes on the Plan"])
