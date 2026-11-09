@@ -1710,17 +1710,18 @@ def reads_cold_for_a_terminal(desktop: Desktop) -> None:
 def each_read_cold(desktop: Desktop) -> None:
     """Ask each place read only once it's asked for, once, with the shell just started."""
     machine = desktop.machine
-    machine.succeed(
+    # Flushed until wifid says nothing is nearby, since a look still going when the cards
+    # forget can bring Office back; its nearby alone, since a network saved or joined is named
+    # elsewhere in what it says, and only once wifid has answered, so a wifid that won't isn't
+    # taken for one hearing none.
+    wifi = "varlinkctl --json=short call /run/wifid/io.jitsusama.Wifi io.jitsusama.Wifi"
+    machine.wait_until_succeeds(
         "for card in $(busctl tree --list fi.w1.wpa_supplicant1"
         " | grep -E '/Interfaces/[0-9]+$'); do busctl call fi.w1.wpa_supplicant1"
         ' "$card" fi.w1.wpa_supplicant1.Interface FlushBSS u 0; done'
-    )
-    # Its nearby alone, since a network saved or joined is named elsewhere in what it says,
-    # and only once wifid has answered, so a wifid that won't isn't taken for one hearing none.
-    wifi = "varlinkctl --json=short call /run/wifid/io.jitsusama.Wifi io.jitsusama.Wifi"
-    machine.wait_until_succeeds(
-        f"said=$({wifi}.Describe '{{}}')"
-        ' && ! printf %s "$said" | grep -qE \'"nearby":\\[[^]]*"Office"\'',
+        f" && said=$({wifi}.Describe '{{}}')"
+        ' && printf %s "$said" | grep -q \'"nearby":\''
+        ' && ! printf %s "$said" | grep -qE \'"nearby":\\[[^]]\'',
         timeout=dt.timedelta(seconds=30),
     )
 

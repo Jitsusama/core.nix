@@ -362,14 +362,28 @@ Provider {
     function drawerOf(name, builtIn) {
         const parts = readings[name];
         if (parts === undefined) {
-            Qt.callLater(() => provider.readFor(name));
+            Qt.callLater(() => provider.readOnce(name));
             return null;
         }
+        // One whose read threw has no drawer until it's read again.
+        if (parts === null)
+            return null;
         return Cameras.drawer(parts, {
             name: called(name),
             builtIn: builtIn,
             said: Words.of("cameras:drawer").said
         });
+    }
+
+    // Reads a camera's drawer, and one that throws is kept as unreadable
+    // until it's read again, so no show waits on it.
+    function readOnce(name) {
+        try {
+            readFor(name);
+        } catch (error) {
+            console.warn(`a camera's drawer wasn't read: ${error}`);
+            readings = Object.assign({}, readings, { [name]: null });
+        }
     }
 
     function readFor(name) {
