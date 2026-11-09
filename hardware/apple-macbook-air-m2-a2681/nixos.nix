@@ -37,6 +37,12 @@
     # controllers too, and this one is on PCIe, with firmware the initrd
     # doesn't carry. The built-in keyboard types at the prompt instead.
     bluetooth-disk-prompt
+
+    # The workstation role keeps the web's passkey in the TPM, which this
+    # Mac lacks; the YubiKeys are the web's keys here. tpm2-tools and the
+    # tss group go with it.
+    ../../modules/linux-id/nixos.nix
+    ../../modules/tpm/nixos.nix
   ];
 
   nixpkgs.hostPlatform = "aarch64-linux";

@@ -14,6 +14,8 @@
   ...
 }:
 {
+  imports = [ ../yubikey-spare/home.nix ];
+
   options.jitsusama.tpmKeys = lib.mkOption {
     type = lib.types.listOf (
       lib.types.submodule {
@@ -50,17 +52,6 @@
       The SSH keys this account keeps in the TPM, each named by the module
       that uses it. The guide makes each one missing on a machine it
       installed, as the account, with one PIN for every key that has one.
-    '';
-  };
-
-  options.jitsusama.yubikeySpare = lib.mkOption {
-    type = lib.types.bool;
-    default = true;
-    description = ''
-      Whether the account keeps a spare of its login key on each of its
-      YubiKeys, resident so `ssh-keygen -K` brings it back on any machine.
-      The guide keeps one on each YubiKey a machine it installed names,
-      downloading one that's there rather than making it again.
     '';
   };
 

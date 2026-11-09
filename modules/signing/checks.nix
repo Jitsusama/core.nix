@@ -1,4 +1,4 @@
-# The checks of signing and the two kinds of hardware it signs with, which
+# The checks of signing and the kinds of hardware it signs with, which
 # checks.nix gathers with every other folder's; its opening comment says
 # what each kind of check proves. vm-commits-are-signed signs with a TPM's
 # keys in a machine; a Mac's Secure Enclave can only be reached on a Mac, so
@@ -28,12 +28,20 @@ in
   # Each machine signs with its own hardware through the same program: a
   # Linux workstation through the TPM's agent, a Mac through its Secure
   # Enclave with the Mac's own ssh-keygen, and with no TPM agent or systemd
-  # unit of Linux's. Both sign every commit and tag with Joel's key by
-  # default, and a Mac has se-keys to make its keys.
+  # unit of Linux's, and a Linux workstation with no TPM with Joel's key on
+  # his YubiKey and the agents' key in a file, served on the socket the
+  # TPM's would be. All sign every commit and tag with Joel's key by
+  # default, and the two with no TPM have a program to make their keys.
   each-machine-signs-with-its-hardware =
     let
       linux = account workstation;
       mac = account macWorkstation;
+      noTpm = account (bareNixos [
+        self.nixosModules.workstation
+        { jitsusama.firmware.tpm = false; }
+      ]);
+      onNoTpm = signing noTpm;
+      noTpmPackages = map (package: package.name or "") noTpm.home.packages;
       # What a machine repository's own modules that only list the signers
       # are given, with no hardware's module to say how to sign.
       listing = account (bareNixos [
@@ -49,7 +57,7 @@ in
       macPackages = map (package: package.name or "") mac.home.packages;
     in
     holds "each-machine-signs-with-its-hardware"
-      "A machine signs without its hardware's program or key, a Mac is given Linux's TPM agent, a Mac has no se-keys to make its keys, or signing alone, with no hardware, signs or fails."
+      "A machine signs without its hardware's program or key, a Mac or a Linux machine with no TPM is given the TPM's agent, either has nothing to make its keys, the agents' key isn't served where there's no TPM, or signing alone, with no hardware, signs or fails."
       (
         lib.hasSuffix "/bin/tpm-sign" onLinux.gpg.ssh.program
         && onLinux.user.signingKey == "/home/someone/.local/share/signing/joel-signing.pub"
@@ -61,11 +69,19 @@ in
         && !(mac.services.ssh-tpm-agent.enable or false)
         && !(mac.systemd.user.services ? signing-key)
         && builtins.elem "se-keys" macPackages
+        && lib.hasSuffix "/bin/yubikey-sign" onNoTpm.gpg.ssh.program
+        && onNoTpm.user.signingKey == "/home/someone/.local/share/signing/joel-signing"
+        && !(noTpm.services.ssh-tpm-agent.enable or false)
+        && !(noTpm.systemd.user.services ? signing-key)
+        && noTpm.systemd.user.sockets.agent-signing.Socket.ListenStream == "%t/agent-signing.sock"
+        && builtins.elem "yubikey-keys" noTpmPackages
+        && noTpm.jitsusama.yubikeySpare
         && signing listing == { }
         && !(listing.xdg.configFile ? "git/allowed_signers")
         && builtins.all (on: on.commit.gpgSign && on.tag.gpgSign && on.gpg.format == "ssh") [
           onLinux
           onMac
+          onNoTpm
         ]
       );
 }
@@ -85,6 +101,13 @@ in
       ]);
     in
     lib.findFirst (package: (package.name or "") == "se-keys") (throw "no se-keys") mac.home.packages;
+
+  # yubikey-keys, the key maker where there's no TPM, builds, shellcheck and
+  # all.
+  yubikey-keys-builds =
+    lib.findFirst (package: (package.name or "") == "yubikey-keys") (throw "no yubikey-keys")
+      (account (bareNixos [ { home-manager.sharedModules = [ self.homeModules.yubikey-signing ]; } ]))
+      .home.packages;
 
   # The program picks whose key signs and takes back a signature that
   # doesn't verify, run against a stand-in ssh-keygen
