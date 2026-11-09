@@ -2550,6 +2550,8 @@ QtObject {
         machine("WARP's switch ends the link while up, unless the organisation holds it",
             [WarpSwitch.ends(warp, true), WarpSwitch.ends(locked, true),
                 WarpSwitch.ends(warp, false)], [true, false, false]);
+        machine("WARP's switch names who holds it, so it ends nothing, or nobody",
+            [WarpSwitch.holder(locked), WarpSwitch.holder(warp)], ["example", ""]);
         machine("WARP up or on its way, so its switch takes it down",
             ["Connected", "Connecting", "Disconnected"].map(state =>
                 WarpSwitch.up({ status: { state } })), [true, true, false]);

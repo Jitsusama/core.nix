@@ -171,6 +171,8 @@ Provider {
             wordState: wordState,
             hue: "action",
             note: note,
+            // Held, it ends nothing: Return runs it and is refused with why.
+            heldBy: WarpSwitch.holder(said),
             stays: true,
             state: () => provider.switchSaid !== "" ? provider.switchSaid : note,
             run: () => provider.turn(!up),

@@ -17,6 +17,13 @@ function held(record) {
     return record?.settings?.switch_locked === true;
 }
 
+// Who holds WARP's switch, by name, or "" while nobody does: a row
+// someone holds ends nothing (Catalogue.js's endsSomething).
+function holder(record) {
+    const named = record?.settings?.organisation;
+    return !held(record) ? "" : Warp.text(named) ? named : "the organisation";
+}
+
 // Whether the switch, drawn as up or not, ends the link: while up, unless
 // the organisation holds it, since a held switch draws no chord and the
 // foot teaches only what works (VKCF3Z, 2026-11-08). Return stays and is

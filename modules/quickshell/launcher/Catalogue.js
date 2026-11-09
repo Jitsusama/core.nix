@@ -170,8 +170,13 @@ function startsItself(row, command = {}) {
 // on Return as ever, its ending d's among its acts, so a meeting still
 // joins its call from ten minutes before it starts, though :meet starts
 // something (startsItself).
+// A row whose act someone else holds (its heldBy, as an organisation
+// holding WARP's switch) ends nothing, since it's refused before it's
+// asked: Return runs it and says why, and no d is taught (VKCF3Z,
+// 2026-11-08).
 function endsSomething(row, command = {}, off = false) {
-    if (!row || row.gone || row.figure === true || typeof row.given === "function") {
+    if (!row || row.gone || row.figure === true || typeof row.given === "function"
+        || !!row.heldBy) {
         return false;
     }
     if (row.verbs || row.targets || row.nested || row.category) {

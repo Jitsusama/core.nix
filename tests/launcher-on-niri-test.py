@@ -1331,8 +1331,8 @@ def asked(said: Path) -> list[str]:
 def disconnect_from_its_switch(shell: Shell, *, held: bool = False) -> None:
     """Step into WARP and run :disconnect on its switch, as Joel types it.
 
-    Held by the organisation, the switch teaches no d, since the foot teaches only what
-    works, and says who holds it (VKCF3Z, 2026-11-08).
+    Held by the organisation, the switch teaches no d and writes no line, since the foot
+    teaches only what works and it ends nothing, and says who holds it (VKCF3Z, 2026-11-08).
     """
     shell.answer("warp")
     shell.launcher_until(
@@ -1345,7 +1345,9 @@ def disconnect_from_its_switch(shell: Shell, *, held: bool = False) -> None:
     if held:
         shell.launcher_until(
             lambda shown: (
-                "holds the switch" in shown["footer"] and "d disconnect" not in shown["footer"]
+                "holds the switch" in shown["footer"]
+                and "d disconnect" not in shown["footer"]
+                and ":disconnect" not in shown["footer"]
             )
         )
     shell.send_chars(":disconnect")
