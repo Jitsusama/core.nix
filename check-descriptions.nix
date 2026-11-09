@@ -180,6 +180,10 @@
     a trusted cable's network is a stranger's cable with mDNS on, matched by its card and picked
     first, and a machine naming none gets no such network
   '';
+  a-want-rings-low = ''
+    a machine with pi plays pi's low bell struck twice when a session wants Joel, not the theme's
+    high message
+  '';
   a-watched-file-comes-back = ''
     the shell's status file hears a status once its folder is made, after the shell starts and again
     after it's removed, and says nothing while it's gone
@@ -1443,11 +1447,12 @@
     commits waits for the host to end or continue it, once, across recovery
   '';
   pi-rings-low = ''
-    the account's ding rings loud for seconds, as the harness's done chime plays it
+    the account's ding rings loud for seconds, as the harness's done chime plays it, and the
+    shell's want sound rings loud, both under the theme message's pitch
   '';
   pi-rings-when-a-run-is-done = ''
-    pi's done chime is told a ding and the store's pw-play, and no voice, on Linux, and a Mac is
-    told nothing, ringing with its own
+    pi's done chime is told a ding and the store's pw-play, and no voice or want sound, on Linux,
+    and a Mac is told nothing, ringing with its own
   '';
   pi-runs-on-the-machines-plan = ''
     a machine on the Claude plan has one pi, starting on the claude-code provider and Sonnet with

@@ -2,10 +2,12 @@
 # its opening comment says what each kind of check proves.
 {
   account,
+  bareNixos,
   holds,
   lib,
   macWorkstation,
   pkgs,
+  self,
   workstation,
   ...
 }:
@@ -164,10 +166,26 @@
         lib.hasPrefix builtins.storeDir sound.ding
         && sound.player == store (lib.getExe' pkgs.pipewire "pw-play")
         && !(sound ? voice)
+        && !(sound ? want)
         && !(mac.xdg.configFile ? ${file})
       );
 
-  # The account's ding rings for seconds, loud, as the harness plays it.
+  # A session wanting Joel rings pi's low bell, struck twice, in the shell
+  # of a machine with pi, rather than the theme's high message. pi comes
+  # with a workstation and the shell with a screen, so the machine is both.
+  a-want-rings-low =
+    let
+      home = account (bareNixos [
+        self.nixosModules.workstation
+        self.nixosModules.graphical
+      ]);
+    in
+    holds "a-want-rings-low"
+      "The shell of a machine with pi plays something other than pi's want sound when a session wants Joel."
+      (toString home.jitsusama.quickshell.sounds.wants == home.jitsusama.pi.chime.want);
+
+  # The account's ding rings for seconds, loud, as the harness plays it,
+  # and the shell's want sound rings loud, both low.
   pi-rings-low =
     let
       home = account workstation;
@@ -183,7 +201,7 @@
         ];
       }
       ''
-        ${lib.getExe pkgs.bash} ${./tests/pi-rings-low.sh} ${sound}
+        ${lib.getExe pkgs.bash} ${./tests/pi-rings-low.sh} ${sound} ${home.jitsusama.pi.chime.want}
         touch $out
       '';
 

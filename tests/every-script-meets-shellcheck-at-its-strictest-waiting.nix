@@ -60,7 +60,6 @@
   "modules/pi/settings.sh" = 3;
   "modules/pi/tests/pi-ask-answers-on-the-machines-plan.sh" = 3;
   "modules/pi/tests/pi-keeps-its-own-settings.sh" = 5;
-  "modules/pi/tests/pi-rings-low.sh" = 8;
   "modules/plymouth/tests/the-splash-prompt-is-the-locks.sh" = 3;
   "modules/power-profiles-daemon/follow.sh" = 8;
   "modules/quickshell/askpass.sh" = 3;
