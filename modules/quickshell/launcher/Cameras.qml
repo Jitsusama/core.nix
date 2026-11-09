@@ -66,8 +66,11 @@ Provider {
             hue: "machine",
             plain: false,
             side: programs.length > 0 ? `in use by ${programs.join(", ")}` : "",
-            // Everything its parts say, under the row (Cameras.js's drawer).
-            drawer: () => provider.drawerOf(name, known)
+            // Everything its parts say, under the row (Cameras.js's drawer),
+            // null until the read its first ask starts lands, a turn later,
+            // so a terminal asks again (Launcher.qml's drawerOf).
+            drawer: () => provider.drawerOf(name, known),
+            drawerUnread: () => provider.readings[name] === undefined
         };
         if (name !== viewfound)
             return thingRow(fields, () => provider.partRows(name));
@@ -359,14 +362,28 @@ Provider {
     function drawerOf(name, builtIn) {
         const parts = readings[name];
         if (parts === undefined) {
-            Qt.callLater(() => provider.readFor(name));
+            Qt.callLater(() => provider.readOnce(name));
             return null;
         }
+        // One whose read threw has no drawer until it's read again.
+        if (parts === null)
+            return null;
         return Cameras.drawer(parts, {
             name: called(name),
             builtIn: builtIn,
             said: Words.of("cameras:drawer").said
         });
+    }
+
+    // Reads a camera's drawer, and one that throws is kept as unreadable
+    // until it's read again, so no show waits on it.
+    function readOnce(name) {
+        try {
+            readFor(name);
+        } catch (error) {
+            console.warn(`a camera's drawer wasn't read: ${error}`);
+            readings = Object.assign({}, readings, { [name]: null });
+        }
     }
 
     function readFor(name) {
@@ -400,6 +417,19 @@ Provider {
                 });
         }
         onTriggered: provider.readFor(provider.drawing)
+    }
+
+    // Read for a terminal's `launcher show` with the launcher closed, when
+    // the Timer above never runs, what was read is let go once the show
+    // stops seeing anything (Launcher.qml's terminalSees), so the next ask
+    // reads afresh rather than being told the first read for good.
+    readonly property bool terminalSeeing: (launcher?.terminalSees.walked ?? []).length > 0
+        || (launcher?.terminalSees.listed ?? []).length > 0
+    onTerminalSeeingChanged: {
+        if (!terminalSeeing && !(launcher?.open ?? false) && !reading.running) {
+            readings = ({});
+            drawing = "";
+        }
     }
 
     // What a file in /sys says, or "" when it says nothing.

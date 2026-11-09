@@ -1591,6 +1591,7 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
     warp-cli. The gallery keeps it in kitty at Joel's scales.
     """
     machine = desktop.machine
+    reads_cold_for_a_terminal(desktop)
     shown = json.loads(desktop.as_account("launcher show machine --json"))
     assert shown["in"] == ["Machine"], shown
     assert "Disk" in [row["name"] for row in shown["rows"]], shown
@@ -1680,6 +1681,70 @@ def a_terminal_is_shown_warp(desktop: Desktop) -> None:
     assert trip["row"]["drawer"]["eyebrow"] == "via WARP \u00b7 tunnel", trip["row"]
     said = desktop.as_account("launcher show network warp round-trip")
     assert "via WARP \u00b7 tunnel" in said, said
+
+
+def reads_cold_for_a_terminal(desktop: Desktop) -> None:
+    """With the launcher closed, a terminal is shown what's read only once it's asked for.
+
+    Wi-Fi looks for networks, Firmware asks fwupd, and a keyboard's, a camera's and a
+    screen's drawers read their files, each only while something sees them: here a
+    terminal's show does.
+    Each is asked once, so it's said within the terminal's own wait or not at all, and from
+    nothing read: the shell starts again, with the backlight's daemon stopped, whose word
+    of each step would have the screen's light read anyway, and the cards forget what
+    earlier looks heard until wifid says none nearby.
+    """
+    desktop.launcher_left_closed()
+    machine = desktop.machine
+    desktop.as_account("systemctl --user stop backlight")
+    try:
+        desktop.as_account("systemctl --user restart quickshell")
+        machine.wait_until_succeeds(
+            desktop.in_session("qs ipc show | grep -q launcher"), timeout=STARTING
+        )
+        each_read_cold(desktop)
+    finally:
+        desktop.as_account("systemctl --user start backlight")
+
+
+def each_read_cold(desktop: Desktop) -> None:
+    """Ask each place read only once it's asked for, once, with the shell just started."""
+    machine = desktop.machine
+    # Flushed until wifid says nothing is nearby, since a look still going when the cards
+    # forget can bring Office back; its nearby alone, since a network saved or joined is named
+    # elsewhere in what it says, and only once wifid has answered, so a wifid that won't isn't
+    # taken for one hearing none.
+    wifi = "varlinkctl --json=short call /run/wifid/io.jitsusama.Wifi io.jitsusama.Wifi"
+    machine.wait_until_succeeds(
+        "for card in $(busctl tree --list fi.w1.wpa_supplicant1"
+        " | grep -E '/Interfaces/[0-9]+$'); do busctl call fi.w1.wpa_supplicant1"
+        ' "$card" fi.w1.wpa_supplicant1.Interface FlushBSS u 0; done'
+        f" && said=$({wifi}.Describe '{{}}')"
+        ' && printf %s "$said" | grep -q \'"nearby":\''
+        ' && ! printf %s "$said" | grep -qE \'"nearby":\\[[^]]\'',
+        timeout=dt.timedelta(seconds=30),
+    )
+
+    def rows(*steps: str) -> dict[str, Json]:
+        words = " ".join(shlex.quote(step) for step in steps)
+        shown = json.loads(desktop.as_account(f"launcher show --json --drawers {words}"))
+        return {row["name"]: row for row in shown["rows"]}
+
+    networks = rows("network", "wi-fi")
+    if "Office" not in networks:
+        # What wifid said of the look, to say why.
+        print(machine.execute("journalctl -b --unit=wifid --lines=15 --no-pager")[1])
+        print(machine.execute(f"{wifi}.Describe '{{}}'")[1])
+    assert "Office" in networks, networks
+    firmware = rows("machine", "firmware")
+    assert "System Firmware" in firmware, firmware
+    cameras = rows("machine", "cameras")
+    assert cameras["Built-In Camera"].get("drawer"), cameras
+    keyboards = rows("keyboard", "keyboards")
+    assert keyboards["The Laptop's Keyboard"].get("drawer"), keyboards
+    screens = rows("desktop", "screens")
+    lit = screens["Smithay Winit"].get("drawer") or {}
+    assert "Brightness" in {fact.get("label") for fact in lit.get("facts", [])}, lit
 
 
 def test_no_answer_raised_an_error(desktop: Desktop) -> None:

@@ -57,8 +57,23 @@ Provider {
 
     readonly property string fwupdmgr: settings.fwupdmgr ?? ""
     // Whether anyone can see what it says: fwupd is asked only then, so a
-    // version is never remembered from an earlier opening.
-    readonly property bool shown: launcher !== null && (launcher.open || launcher.cataloguing)
+    // version is never remembered from an earlier opening. A terminal's
+    // `launcher show` sees it for a while after, with the launcher closed,
+    // while what it walked through or listed is Firmware's answer
+    // (Launcher.qml's terminalSees), so what fwupd says once the show has
+    // returned is kept for the terminal's next ask rather than let go.
+    readonly property bool shown: launcher !== null
+        && (launcher.open || launcher.cataloguing || terminalSeen)
+    readonly property bool terminalSeen: (launcher?.terminalSees.walked ?? [])
+        .concat(launcher?.terminalSees.listed ?? []).some(row => row?.live === provider)
+    onShownChanged: {
+        if (!shown)
+            said = null;
+    }
+
+    // fwupd being asked with nothing yet said, so its answer is the
+    // placeholder (Provider.stillReading).
+    stillReading: said === null && waiting > 0
 
     function answer(typed) {
         if (fwupdmgr === "" || asks(typed) === "")
@@ -79,6 +94,7 @@ Provider {
             rows: [],
             asking: true,
             glyph: Words.glyph("firmware"),
+            live: provider,
             note: ""
         };
     }
@@ -92,6 +108,7 @@ Provider {
             warns: devices.some(device => device.offered !== null),
             glyph: Words.glyph("firmware"),
             rows: devices.map(device => provider.deviceRow(device)),
+            live: provider,
             note: ""
         };
     }

@@ -22,6 +22,9 @@ Singleton {
     property bool radio: true
     property bool wired: false
     property bool described: false
+    // How many looks for networks the cards have finished, which moves
+    // once a look asked for is done, whatever it heard.
+    property int looks: 0
 
     // The card on a network, and one whose network wants a sign-in.
     readonly property var joined: cards.find(card => card.network) ?? null
@@ -143,6 +146,7 @@ Singleton {
         nearby = described.nearby;
         radio = described.radio;
         wired = described.wired;
+        looks = described.looks ?? 0;
         root.described = true;
     }
 
