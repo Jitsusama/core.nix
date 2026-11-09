@@ -15,11 +15,15 @@ function isOf(row, provider, ids) {
 
 // Whether `provider`'s rows show in the open launcher: its answer, a row
 // of it stepped into or found, or a place shown holding one of `ids`, as
-// Machine holds Heat. A terminal's `launcher show` counts the rows it
+// Machine holds Heat, or about to: what's typed asks it, by `asks`, a
+// function of the words typed, since its answer is made only from what
+// its daemon says. A place's holdings count before their conditions
+// hold them back, since a row whose condition is what the daemon says,
+// as Heat's is, would otherwise never be read to show. A terminal's `launcher show` counts the rows it
 // walked and listed as seen for a few seconds after it asks, where the
 // launcher keeps them (its `terminalSees`), so the terminal reads what
 // the open launcher would.
-function seen(launcher, provider, ids) {
+function seen(launcher, provider, ids, asks) {
     if (!launcher) {
         return false;
     }
@@ -34,5 +38,7 @@ function seen(launcher, provider, ids) {
     return mine(launcher.answer)
         || launcher.held.some(step => mine(step.row))
         || launcher.matches.some(mine)
-        || launcher.placed.some(id => ids.includes(id));
+        || launcher.placed.some(id => ids.includes(id))
+        || (launcher.category?.holds ?? []).some(id => ids.includes(id))
+        || (typeof asks === "function" && asks(launcher.typed ?? ""));
 }

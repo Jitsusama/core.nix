@@ -108,10 +108,12 @@ Provider {
     questions: Words.started("power").concat(Object.keys(partsAsked),
         Words.olds(Words.of("power:charger")))
 
-    // Whether Power's rows can be seen: its answer, a row of it, its own
-    // place, or Machine's holding the Power row that says how it stands,
-    // so the daemon reads the supplies only then.
-    readonly property bool seen: Seen.seen(launcher, provider, ["energy", "power"])
+    // Whether Power's rows can be seen: its answer, or words typed that
+    // ask it, a row of it, its own place, or Machine's holding the Power
+    // row that says how it stands, so the daemon reads the supplies only
+    // then.
+    readonly property bool seen: Seen.seen(launcher, provider, ["energy", "power"],
+        typed => asks(typed) !== "")
 
     // Whether the daemon hasn't yet answered this watch whole, so a
     // terminal's show asks again for the figures rather than printing

@@ -66,10 +66,11 @@ Provider {
         return part ? alone(part) : told();
     }
 
-    // Whether Heat's rows can be seen: its answer, a row of it, or
-    // Machine's place holding its row, so the daemon reads the sensors
-    // only then.
-    readonly property bool seen: Seen.seen(launcher, provider, ["heat"])
+    // Whether Heat's rows can be seen: its answer, or words typed that
+    // ask it or a part, a row of it, or Machine's place holding its row, so
+    // the daemon reads the sensors only then.
+    readonly property bool seen: Seen.seen(launcher, provider, ["heat"],
+        typed => asks(typed) !== "" || partsAsked[plainly(typed)] !== undefined)
 
     // Whether the daemon hasn't yet answered this watch whole, so a
     // terminal's show asks again for the figures rather than printing

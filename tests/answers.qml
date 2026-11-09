@@ -2147,6 +2147,20 @@ QtObject {
             Seen.seen(Object.assign({}, closed, { terminalSees: { walked: [], listed: [its] } }),
                 watcher, []), true);
         machine("no launcher sees nothing", Seen.seen(null, watcher, ["heat"]), false);
+        // Its answer is made from what the daemon says, so words that ask
+        // it watch it first, and a row a condition holds back until the
+        // daemon says is still watched where its place holds it.
+        const asking = typed => typed === "heat";
+        machine("seen as what's typed asks it",
+            Seen.seen(opened({ typed: "heat" }), watcher, [], asking), true);
+        machine("unseen as what's typed asks another",
+            Seen.seen(opened({ typed: "battery" }), watcher, [], asking), false);
+        machine("unseen as words ask it with the launcher closed",
+            Seen.seen(Object.assign({}, closed, { answer: null, typed: "heat" }), watcher, [],
+                asking), false);
+        machine("seen in a place holding it before its condition holds it back",
+            Seen.seen(opened({ category: { holds: ["energy", "heat"] } }), watcher, ["heat"]),
+            true);
         machine("firmware flashed at the restart waits no more",
             waiting("pending", "1.13.0").waits, null);
         machine("why an install didn't go in", Firmware.reason(

@@ -47,10 +47,12 @@ Provider {
     property var installs: ({})
 
     readonly property string fwupdmgr: settings.fwupdmgr ?? ""
-    // Whether Firmware's rows can be seen: its answer, a row of it, or
-    // Machine's place holding its row, so the daemon asks fwupd only then
-    // and a change fwupd says is answered at once.
-    readonly property bool seen: Seen.seen(launcher, provider, ["firmware"])
+    // Whether Firmware's rows can be seen: its answer, or words typed that
+    // ask it, a row of it, or Machine's place holding its row, so the
+    // daemon asks fwupd only then and a change fwupd says is answered at
+    // once.
+    readonly property bool seen: Seen.seen(launcher, provider, ["firmware"],
+        typed => fwupdmgr !== "" && asks(typed) !== "")
 
     // Whether the daemon hasn't yet answered this watch whole, so a
     // terminal's show asks again for the figures rather than printing
