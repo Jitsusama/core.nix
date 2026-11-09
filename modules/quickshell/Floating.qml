@@ -44,10 +44,30 @@ Item {
         bottomLeftRadius: floating.footRadius
         bottomRightRadius: floating.footRadius
     }
-    // The frame its window gathers: its own area, which follows it only as
-    // it moves itself, or one its window places where it stands, which
-    // follows what holds it too, as a stack of notices does.
-    property Region framed: area
+    // Where its window stands it, in the window's points, when what holds it
+    // moves too, as a stack of notices does; null while its own area does.
+    property var standsAt: null
+    // Its area placed where its window stands it, on the whole points it
+    // covers. Its own area is given the panel alone, and Quickshell's Region
+    // listens to its item and nothing above it, so a card gliding with the
+    // stack left its blur where it had been, a shadow where nothing is (Joel,
+    // 2026-11-09). The sums of where it and what holds it stand follow every
+    // move of either by themselves.
+    readonly property Region stood: Region {
+        readonly property point at: floating.standsAt ?? Qt.point(0, 0)
+
+        x: Math.floor(at.x)
+        y: Math.floor(at.y)
+        width: Math.ceil(at.x + floating.width) - x
+        height: Math.ceil(at.y + floating.height) - y
+        radius: Theme.radius
+        topLeftRadius: floating.topRadius
+        topRightRadius: floating.topRadius
+        bottomLeftRadius: floating.footRadius
+        bottomRightRadius: floating.footRadius
+    }
+    // The frame its window gathers, for niri's blur and the pointer.
+    readonly property Region framed: standsAt === null ? area : stood
 
     implicitHeight: body.implicitHeight + 2 * Theme.border
 

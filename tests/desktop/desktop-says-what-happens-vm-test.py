@@ -1068,6 +1068,14 @@ def test_a_notice_is_signed_by_the_name_joel_knows_what_sent_it_by(desktop: Desk
     finally:
         desktop.as_account("systemctl --user stop player || true")
         desktop.as_account("qs ipc call notices putAway")
+        # Those resting off the screen outlive putting away, which takes only what's shown, so
+        # each is closed as its sender would close it, by the number it was given.
+        desktop.as_account(
+            "for id in $(cat /tmp/rested 2>/dev/null); do busctl --user call"
+            " org.freedesktop.Notifications /org/freedesktop/Notifications"
+            " org.freedesktop.Notifications CloseNotification u $id || true; done;"
+            " rm -f /tmp/rested"
+        )
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
     desktop.as_account("qs ipc call notices seen")
     desktop.as_account("niri msg output winit scale 1")
@@ -1086,7 +1094,10 @@ def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
     # frame, never drawn, mustn't be blurred under the next card (Joel, 2026-11-09: "shadows
     # where things don't exist").
     with desktop.told("shows card Rested Off the Screen"):
-        desktop.as_account("notify-send --expire-time=1000 'Rested Off the Screen' 'by itself'")
+        desktop.as_account(
+            "notify-send --print-id --expire-time=1000 'Rested Off the Screen' 'by itself'"
+            " >> /tmp/rested"
+        )
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
     with desktop.told("shows card Tokens Run Out in About an Hour"):
         desktop.as_account(
@@ -1209,7 +1220,8 @@ def blurs_only_what_is_drawn(desktop: Desktop, when: str) -> None:
     """
     desktop.held_still()
     front = json.loads(desktop.as_account("qs ipc call notices front"))
-    blurred, drawn = front["blurred"], front["drawn"]
+    # Gathered in the order they're tracked, meant in the order they stand, so held as sets.
+    blurred, drawn = sorted(front["blurred"]), sorted(front["drawn"])
     assert blurred == drawn, f"{when}, niri blurs {blurred} where {drawn} are drawn"
 
 

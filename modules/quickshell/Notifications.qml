@@ -293,6 +293,21 @@ Scope {
             notification.dismiss();
     }
 
+    // What the stack means to draw, by rank, read from what it shows rather
+    // than from what's visible, for the IPC to hold the gathered frames to.
+    function meant() {
+        const found = root.playing ? [track] : [];
+        if (root.holding)
+            return found.concat([held]);
+        const front = root.shown.slice(0, root.behind + 1);
+        const tracked = server.trackedNotifications.values;
+        for (let i = 0; i < tracked.length; i++) {
+            if (front.includes(tracked[i].id))
+                found.push(cards.itemAt(i));
+        }
+        return found;
+    }
+
     // One whose time is up leaves the screen but stays open, resting, so
     // its program still answers its actions from the launcher; one its
     // sender asked not to be kept closes. Past `rests` of them, the oldest
@@ -388,10 +403,14 @@ Scope {
                 // Where the stack ends, below its last edge.
                 foot: (pileAt.y + pile.height) / screen.height,
                 // What niri blurs and the pointer reaches, a frame each,
-                // beside where each thing drawn stands in the window, in
-                // the window's points, which those frames must match.
+                // beside where each thing meant to be drawn stands in the
+                // window, in the window's points, which those frames must
+                // match. What's meant is read from the stack itself, not
+                // from what gathers the frames, so a frame gathered by
+                // mistake shows: what's playing, the held list, or the
+                // shown cards from the front to the last edge.
                 blurred: window.areas.map(area => [area.x, area.y, area.width, area.height]),
-                drawn: window.drawn().map(one => {
+                drawn: meant().map(one => {
                     const where = one.mapToItem(null, 0, 0);
                     const x = Math.floor(where.x);
                     const y = Math.floor(where.y);
@@ -502,30 +521,6 @@ Scope {
         }
     }
 
-    // A frame where its window draws a surface, for niri's blur and where
-    // the pointer reaches, on the whole points it covers. It's placed by
-    // the sums of where the surface and what holds it stand, so it follows
-    // every move of either by itself: a frame given the surface alone, as
-    // its own area is, follows only the surface's own moves (Quickshell's
-    // Region listens to its item and nothing above it), so a card gliding
-    // with the stack left its blur where it had been until told, a shadow
-    // where nothing is (Joel, 2026-11-09).
-    component Frame: Region {
-        required property Floating of
-        required property real left
-        required property real top
-
-        x: Math.floor(left)
-        y: Math.floor(top)
-        width: Math.ceil(left + of.width) - x
-        height: Math.ceil(top + of.height) - y
-        radius: Theme.radius
-        topLeftRadius: of.topRadius
-        topRightRadius: of.topRadius
-        bottomLeftRadius: of.footRadius
-        bottomRightRadius: of.footRadius
-    }
-
     PanelWindow {
         id: window
 
@@ -632,11 +627,7 @@ Scope {
 
                 width: noticeColumn.width
                 visible: root.playing
-                framed: Frame {
-                    of: track
-                    left: noticeColumn.x + track.x
-                    top: noticeColumn.y + track.y
-                }
+                standsAt: Qt.point(noticeColumn.x + track.x, noticeColumn.y + track.y)
                 onVisibleChanged: Qt.callLater(window.gather)
 
                 // A notice's three groups and room, as its neighbours'
@@ -762,11 +753,7 @@ Scope {
                 visible: root.holding
                 screenHeight: window.screen ? window.screen.height : 768
                 // It moves as what's playing comes and goes above it.
-                framed: Frame {
-                    of: held
-                    left: noticeColumn.x + held.x
-                    top: noticeColumn.y + held.y
-                }
+                standsAt: Qt.point(noticeColumn.x + held.x, noticeColumn.y + held.y)
                 onVisibleChanged: Qt.callLater(window.gather)
             }
 
@@ -815,11 +802,8 @@ Scope {
                     onImplicitHeightChanged: if (front) root.frontHeight = implicitHeight
                     // It moves with the stack as it turns, and with what's
                     // above it as that comes and goes.
-                    framed: Frame {
-                        of: card
-                        left: noticeColumn.x + pile.x + card.x
-                        top: noticeColumn.y + pile.y + card.y
-                    }
+                    standsAt: Qt.point(noticeColumn.x + pile.x + card.x,
+                        noticeColumn.y + pile.y + card.y)
                     // Drawn or not as it comes to the stack, goes past its
                     // last edge, rests or the stack is held.
                     onVisibleChanged: Qt.callLater(window.gather)
