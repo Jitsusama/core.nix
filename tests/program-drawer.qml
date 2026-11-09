@@ -1,9 +1,9 @@
 // What a program's drawer says, run in Qt's own JavaScript engine, the one
 // the shell runs it in. The `a-program-says-all-it-knows` check copies
 // launcher/Program.js beside this file and runs `qml -platform offscreen
-// program-drawer.qml` over what the machine daemon says of its processes,
-// a desktop entry and shared-mime-info's globs made up here, shaped as
-// the daemon and the files write them.
+// program-drawer.qml` over what the machine daemon says of its processes
+// and the programs daemon of its desktop entry, made up here, shaped as
+// the daemons write them.
 import QtQuick
 import "launcher/Program.js" as Program
 
@@ -72,24 +72,35 @@ QtObject {
         expect("with no window, what it is", Program.eyebrow([], "web browser", said),
             "web browser");
 
-        const entry = "[Desktop Entry]\nName=Google Chrome\n"
-            + "MimeType=application/pdf;text/html;image/png;application/xhtml+xml;"
-            + "application/x-ext-weird;x-scheme-handler/http;x-scheme-handler/https;\n"
-            + "[Desktop Action new-window]\nMimeType=text/plain;\n";
-        const types = Program.mimeTypes(entry);
-        expect("its kinds, from its own group", types.length, 7);
-        const globs = "# generated\n80:text/html:*.html\n80:text/html:*.htm\n"
-            + "50:application/pdf:*.pdf\n50:image/png:*.png\n"
-            + "50:application/xhtml+xml:*.xhtml\n10:image/png:*.PNG.bak\n";
-        const endings = Program.endings(globs);
-        expect("each kind's ending", [endings["text/html"], endings["image/png"]],
-            ["HTML", "PNG"]);
-        expect("what it opens and handles", Program.opens(types, endings),
+        // The programs daemon's record of its entry (modules/programs):
+        // each kind it opens with its globs, heaviest first, and the links
+        // it handles.
+        const record = {
+            opens: [
+                { type: "application/pdf", globs: ["*.pdf"] },
+                { type: "text/html", globs: ["*.html", "*.htm"] },
+                { type: "image/png", globs: ["*.png", "*.PNG.bak"] },
+                { type: "application/xhtml+xml", globs: ["*.xhtml"] },
+                { type: "application/x-ext-weird", globs: [] }
+            ],
+            handles: ["http", "https"],
+            keywords: ["web", "internet"],
+            starts_in: "/srv/web",
+            window_class: "Google-chrome",
+            package: { name: "google-chrome", version: "142.0.7444.59",
+                store_path: "/nix/store/abc-google-chrome-142.0.7444.59" }
+        };
+        expect("what it opens and handles", Program.opens(record),
             { kinds: ["PDF", "HTML", "PNG", "XHTML", "ext-weird"], schemes: ["http", "https"] });
-        expect("a kind with no ending known", Program.kindName("application/x-ext-weird", {}),
+        expect("a kind's first plain glob names it", Program.kindName("image/x-thing",
+            ["*.thing.gz", "*.thg"]), "THG");
+        expect("a kind with no ending known", Program.kindName("application/x-ext-weird", []),
             "ext-weird");
-        expect("each kind once", Program.opens(["text/html", "text/html"], endings).kinds,
-            ["HTML"]);
+        expect("each kind once", Program.opens({ opens: [
+            { type: "text/html", globs: ["*.html"] }, { type: "text/html", globs: ["*.htm"] }] })
+            .kinds, ["HTML"]);
+        expect("nothing while the daemon says nothing", Program.opens(null),
+            { kinds: [], schemes: [] });
         expect("categories as words, a dot apart", Program.categories(["Network",
             "WebBrowser", "X-Vendor", "Network"]), "Network \u00b7 Web Browser");
 
@@ -99,8 +110,7 @@ QtObject {
             usage: { processor: 0.25, memory: 741376000, count: 4 },
             playing: "Song of the test \u00b7 The Tester",
             given: [{ label: "Profiles", value: "2" }],
-            types: types,
-            endings: endings,
+            record: record,
             categories: ["Network", "WebBrowser"],
             command: ["google-chrome-stable", "%U"],
             id: "google-chrome",
@@ -121,11 +131,22 @@ QtObject {
                         .map(kind => ({ said: kind })), tail: "{count} more" },
                 { label: "[handles]", value: "http \u00b7 https" },
                 { label: "[categories]", value: "Network \u00b7 Web Browser" },
+                { label: "[keywords]", value: "web \u00b7 internet",
+                    valueItems: [{ said: "web" }, { said: "internet" }] },
+                { label: "[starts-in]", value: "/srv/web",
+                    valueItems: [{ said: "/srv/web", path: "/srv/web" }] },
+                { label: "[version]", value: "142.0.7444.59" },
+                { label: "[package]", value: "google-chrome" },
                 { label: "[command]", value: "google-chrome-stable %U",
                     valueItems: [{ said: "google-chrome-stable", whole: true },
                         { said: "%U", whole: true }],
                     between: " ", identifies: true },
-                { label: "[desktop-id]", value: "google-chrome", identifies: true }
+                { label: "[window-class]", value: "Google-chrome", identifies: true },
+                { label: "[desktop-id]", value: "google-chrome", identifies: true },
+                { label: "[store-path]", value: "/nix/store/abc-google-chrome-142.0.7444.59",
+                    identifies: true, valueItems: [{
+                        said: "/nix/store/abc-google-chrome-142.0.7444.59",
+                        path: "/nix/store/abc-google-chrome-142.0.7444.59" }] }
             ]);
         expect("a command's arguments are shown whole, a path's too",
             Program.drawer({ name: "Firefox", command: ["/run/wrappers/bin/firefox", "-P"] },

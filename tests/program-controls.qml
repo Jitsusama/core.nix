@@ -580,9 +580,37 @@ ShellRoot {
             same("where it is leading", `${drawn.facts[0].label} ${drawn.facts[0].value}`,
                 "Position 1:38 of 6:43");
 
-            // A program's drawer, its desktop file read once it's asked
-            // (Program.js), where its windows are leading.
-            applications.readDesktop("tester");
+            // A program's drawer, its entry the programs daemon's once it's
+            // asked (Program.js), where its windows are leading.
+            program("tester").drawer();
+            root.kept = { told, media, sound, player };
+            root.waiting = "the tester's entry";
+            entryAsked.start();
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+
+    // Each tenth of a second until the daemon has said the tester's entry.
+    Timer {
+        id: entryAsked
+
+        interval: 100
+        repeat: true
+        onTriggered: {
+            if (applications.entryOf("tester") === null)
+                return;
+            entryAsked.stop();
+            root.described();
+        }
+    }
+
+    // The tester's rows the cases go on with once its entry is said.
+    property var kept: ({})
+
+    function described() {
+        try {
+            const { told, media, sound, player } = root.kept;
             const described = program("tester").drawer();
             same("a program's drawer says where and what it is",
                 `${described.eyebrow}: ${described.title}`,

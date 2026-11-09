@@ -2,9 +2,11 @@
 // what it is above its name; what moves first, the share of the processors
 // its processes use, the memory they hold and how many there are, and what
 // it plays; then what other providers say of it; then what describes it,
-// the kinds of file it opens, the links it handles and its categories; and
-// what identifies it last, its command and its desktop entry's id (VKCF3Z,
-// 2026-11-07). Its desktop entry's comment is its words. Plain JavaScript,
+// the kinds of file it opens, the links it handles, its categories and
+// keywords, where it starts, and its version and package; and what
+// identifies it last, its command, window class, desktop entry's id and
+// store path (VKCF3Z, 2026-11-07 and 08). Its desktop entry's comment is
+// its words. What its entry says is the programs daemon's record of it. Plain JavaScript,
 // so tests/program-drawer.qml holds it in Qt's own engine.
 .pragma library
 .import "../FileFacts.js" as FileFacts
@@ -14,11 +16,6 @@
 const DOT = " \u00b7 ";
 // A file's kind by the name its files end in, a glob as `*.pdf`.
 const ENDING = /^\*\.([a-z0-9]+)$/i;
-// A link's scheme a program handles, as its desktop entry lists it.
-const SCHEME = "x-scheme-handler/";
-// A desktop entry's group's heading, and the field listing its kinds.
-const GROUP = /^\[(.*)\]$/;
-const MIME_TYPE = /^MimeType\s*=\s*(.*)$/;
 // A category's words, as its name runs them together: WebBrowser.
 const WORDS = /([a-z])([A-Z])/g;
 // A template's field, {count}.
@@ -80,59 +77,29 @@ function usage(trees) {
     };
 }
 
-// The kinds of file a desktop entry says it opens, from its file's text:
-// its own group's MimeType, in its order.
-function mimeTypes(text) {
-    let group = "";
-    for (const line of String(text ?? "").split("\n")) {
-        const heading = GROUP.exec(line.trim());
-        const field = MIME_TYPE.exec(line.trim());
-        if (heading !== null) {
-            group = heading[1];
-        } else if (field !== null && group === "Desktop Entry") {
-            return field[1].split(";").map(type => type.trim()).filter(type => type !== "");
+// A kind by the ending its files have, PDF, from its globs heaviest first
+// as the programs daemon gives them, the first plain ending; or where it
+// has none by its own name, without the x- an unregistered one carries.
+function kindName(type, globs) {
+    for (const glob of Array.from(globs ?? [])) {
+        const ending = ENDING.exec(glob);
+        if (ending !== null) {
+            return ending[1].toUpperCase();
         }
-    }
-    return [];
-}
-
-// Each kind's ending, by its MIME type, from shared-mime-info's globs2,
-// its lines `50:application/pdf:*.pdf`: the weightiest plain ending each
-// has, the first of equal weight.
-function endings(text) {
-    const best = {};
-    for (const line of String(text ?? "").split("\n")) {
-        const [weight, type, glob] = line.split(":");
-        const ending = ENDING.exec(glob ?? "");
-        if (ending !== null && (best[type] === undefined || Number(weight) > best[type].weight)) {
-            best[type] = { weight: Number(weight), name: ending[1].toUpperCase() };
-        }
-    }
-    const names = {};
-    for (const type of Object.keys(best)) {
-        names[type] = best[type].name;
-    }
-    return names;
-}
-
-// A kind by the ending its files have, PDF, or where none is known by its
-// own name, without the x- an unregistered one carries.
-function kindName(type, named) {
-    if (named[type] !== undefined) {
-        return named[type];
     }
     const own = String(type.split("/")[1] ?? "").replace(UNREGISTERED, "").split("+")[0];
     return own.length <= 4 ? own.toUpperCase() : own;
 }
 
 // The kinds of file a program opens, ["PDF", "HTML", "PNG"], each once, and
-// the links it handles, ["http", "https"].
-function opens(types, named) {
+// the links it handles, ["http", "https"], from the programs daemon's
+// record of its entry (modules/programs): `opens`, each { type, globs },
+// and `handles`, in its entry's order.
+function opens(record) {
     return {
-        kinds: Array.from(new Set(types.filter(type => !type.startsWith(SCHEME))
-            .map(type => kindName(type, named)).filter(name => name !== ""))),
-        schemes: types.filter(type => type.startsWith(SCHEME))
-            .map(type => type.slice(SCHEME.length))
+        kinds: Array.from(new Set(Array.from(record?.opens ?? [])
+            .map(kind => kindName(kind.type, kind.globs)).filter(name => name !== ""))),
+        schemes: Array.from(record?.handles ?? [])
     };
 }
 
@@ -171,15 +138,27 @@ function commandFact(command, named) {
     };
 }
 
+// A list alone in a value, as its keywords: a dotted run, each whole.
+function runFact(label, items) {
+    const each = Array.from(items ?? []).filter(item => item !== "");
+    return { label, value: each.join(DOT), valueItems: each.map(item => ({ said: item })) };
+}
+
 // A program's facts, as { label, value }, in the drawer's order, what it
-// doesn't say left out. Its usage, { processor, memory, count }, is what
+// doesn't say left out: what moves most first and identifiers last
+// (VKCF3Z, 2026-11-08), the entry's own from the programs daemon's
+// record of it (`record`), its package from the store path its command
+// runs from, its version with every digit. Its usage, { processor, memory, count }, is what
 // its windows' processes and all they started use, which the machine
 // daemon says. While it's `asking`, those three hold their places with no
 // value yet, so they don't push in above the rest once it answers; with
 // no window to ask of, they're left out.
 function facts(known, named, said) {
     const used = known.usage ?? null;
-    const opened = opens(known.types ?? [], known.endings ?? {});
+    const record = known.record ?? null;
+    const opened = opens(record);
+    const pack = record?.package ?? null;
+    const startsIn = String(record?.starts_in ?? "");
     const own = id => value => ({ label: named(id), value: String(value ?? "") });
     const figure = (id, say) => (used ? own(id)(say(used))
         : { label: named(id), value: known.asking ? null : "" });
@@ -193,8 +172,16 @@ function facts(known, named, said) {
         opensFact(opened.kinds, named, said),
         own("handles")(opened.schemes.join(DOT)),
         own("categories")(categories(known.categories)),
+        runFact(named("keywords"), record?.keywords),
+        Object.assign(own("starts-in")(startsIn),
+            startsIn === "" ? {} : { valueItems: [{ said: startsIn, path: startsIn }] }),
+        own("version")(pack?.version ?? ""),
+        own("package")(pack?.name ?? ""),
         commandFact(known.command ?? [], named),
-        Object.assign(own("desktop-id")(known.id ?? ""), { identifies: true })
+        Object.assign(own("window-class")(record?.window_class ?? ""), { identifies: true }),
+        Object.assign(own("desktop-id")(known.id ?? ""), { identifies: true }),
+        Object.assign(own("store-path")(pack?.store_path ?? ""), { identifies: true,
+            valueItems: [{ said: pack?.store_path ?? "", path: pack?.store_path ?? "" }] })
     ]).filter(fact => fact.value !== "");
 }
 

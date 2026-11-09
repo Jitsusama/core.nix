@@ -95,8 +95,9 @@
   '';
   a-program-says-all-it-knows = ''
     a program's drawer says where its windows are and what it is, then what it plays and what
-    others say of it, the kinds of file and links it opens and its categories, and its command
-    and desktop id last, leaving out what it can't say
+    others say of it, the kinds of file and links it opens, its categories and keywords, where it
+    starts, its version and package, and its command, window class, desktop id and store path
+    last, from the programs daemon's record of its entry, leaving out what it can't say
   '';
   a-browser-window-deeper-in-is-its-programs = ''
     a browser's window of its own opened deeper than its program's own page is that program's, by the

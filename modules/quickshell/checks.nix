@@ -3612,8 +3612,8 @@ onLinux {
 
   # A program's drawer says what it is, where its windows are, what it
   # opens and how it starts, in the order every drawer keeps, as
-  # tests/program-drawer.qml holds launcher/Program.js to a desktop file
-  # and shared-mime-info's globs made up there.
+  # tests/program-drawer.qml holds launcher/Program.js to the programs
+  # daemon's record of a desktop entry made up there.
   a-program-says-all-it-knows =
     let
       qt = pkgs.qt6.qtdeclarative;
