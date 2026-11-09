@@ -12,7 +12,9 @@ stand-ins, without booting a machine.
 | `vm-helpers.nix`                 | both Python files, as a package the driver's Python takes     |
 | `qemu-after-its-sockets.nix`     | the qemu tests run, which waits for the sockets it connects to |
 | `qemu-after-its-sockets.sh`      | the wait itself, run before each qemu-system program          |
+| `Expect.js`                      | what a QML test says of its cases, as `expect` and `fail`     |
 | `*-test.py`                      | the tests of the files above, by the name of what they test   |
 
-What belongs here is shared by more than one VM test. A helper one test
+What belongs here is shared by more than one VM test, or, as `Expect.js`,
+by more than one QML test. A helper one test
 needs stays in that test's own files.

@@ -22,7 +22,14 @@
 # Its drawing window opens across the screen's whole width, with the gaps
 # every window has, rather than over the whole screen as it asks to; its
 # splash and dialogs still float.
-{ niri }:
+#
+# Programs › Inkscape in the launcher holds New Drawing, a fresh copy of
+# the template in the drawings folder, opened in Inkscape, and, while the
+# clipboard holds an SVG or a picture, New Drawing From the Copied
+# Picture; and its Recent is the drawings Inkscape opened lately, each
+# saying its size, from the desktop's list of files opened lately, which
+# Inkscape adds to itself (InkscapeProgram.qml).
+{ niri, quickshell }:
 {
   config,
   lib,
@@ -37,6 +44,16 @@ let
     title
     ;
   profile = "${config.xdg.configHome}/inkscape";
+
+  # Where a new drawing from the launcher is written, beside the camera's
+  # photos and the screenshots, so saving it in Inkscape keeps it.
+  drawings = "${config.home.homeDirectory}/Pictures/Drawings";
+
+  # The desk around the page and the page's outline, which a new drawing
+  # has from the template or, made from a copied picture, from the
+  # launcher.
+  border = colours.edge;
+  desk = colours.sunken;
 
   # Inkscape names its highlights gray, blue, yellow, red, green, orange,
   # cyan and purple, and the terminal's colours are the theme's hues.
@@ -74,17 +91,18 @@ let
   # outline in the theme. The page stays white, since its colour is the
   # drawing's and not the desktop's, and anything else in the file, even a
   # comment, lands in every new drawing.
-  template =
+  template = pkgs.writeText "default.svg" (
     lib.replaceStrings
       [
         "@border@"
         "@desk@"
       ]
       [
-        colours.edge
-        colours.sunken
+        border
+        desk
       ]
-      (builtins.readFile ./default.svg);
+      (builtins.readFile ./default.svg)
+  );
 
   grouped = group: map (key: key // { inherit group; });
 
@@ -282,6 +300,7 @@ in
     ../keys/home.nix
     ../theme/home.nix
     niri
+    quickshell
   ];
 
   home.packages = [ inkscape ];
@@ -300,8 +319,25 @@ in
   '';
 
   home.file."${profile}/ui/user.css".text = stylesheet;
-  home.file."${profile}/templates/default.svg".text = template;
+  home.file."${profile}/templates/default.svg".source = template;
   home.file."${profile}/palettes/${title}.gpl".text = import ../theme/palette-file.nix {
     inherit lib;
   } config.jitsusama.theme;
+
+  # What Inkscape's provider works out, beside it, where its import finds
+  # it.
+  xdg.configFile."quickshell/launcher/Inkscape.js".source = ./Inkscape.js;
+
+  # New Drawing and its drawings lately, in Programs › Inkscape, after
+  # every other provider, as it adds no rows of its own.
+  jitsusama.quickshell.launcher.providers.inkscape = {
+    order = 52;
+    source = ./InkscapeProgram.qml;
+    inkscape = lib.getExe' inkscape "inkscape";
+    template = "${template}";
+    inherit drawings border desk;
+    recent = "${config.xdg.dataHome}/recently-used.xbel";
+    list = [ (lib.getExe (pkgs.callPackage ./drawings.nix { })) ];
+    paste = lib.getExe' pkgs.wl-clipboard "wl-paste";
+  };
 }

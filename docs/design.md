@@ -2898,7 +2898,7 @@ by them isn't done.
 | The lock screen, polkit and PIN prompts   | Quickshell               | both           |        |        |           |         |          |
 | GTK and Qt apps, file and print dialogs   | gtk, qt                  | proportional   |        |        |           |         |          |
 | The browser                               | chrome                   | proportional   |        |        |           |         |          |
-| Images and drawings                       | swayimg, gimp, inkscape, Quickshell | proportional | nothing | nothing | nothing | the launcher's rows, in Capture after what it captures: edit the newest screenshot in GIMP; look through the screenshots in swayimg's gallery; Programs › swayimg leading with that gallery while there are screenshots, else its Recent's newest folder's, then a gallery of each folder its Recent's pictures are in, newest first, each saying how many pictures and where and opening on Recent's newest there, each found from the top by its name, and its drawer saying when the newest screenshot was taken and how many there are; in swayimg, e edits, y copies, Delete trashes, ZZ closes | swayimg's name and place go two seconds after each picture opens |
+| Images and drawings                       | swayimg, gimp, inkscape, Quickshell | proportional | nothing | nothing | nothing | the launcher's rows, in Capture after what it captures: edit the newest screenshot in GIMP; look through the screenshots in swayimg's gallery; Programs › swayimg leading with that gallery while there are screenshots, else its Recent's newest folder's, then a gallery of each folder its Recent's pictures are in, newest first, each saying how many pictures and where and opening on Recent's newest there, each found from the top by its name, and its drawer saying when the newest screenshot was taken and how many there are; in swayimg, e edits, y copies, Delete trashes, ZZ closes; in Programs › Inkscape, New Drawing, New Drawing From the Copied Picture while an SVG or a picture is copied, and Recent, its drawings lately, each saying when and its drawer its size | swayimg's name and place go two seconds after each picture opens |
 | Documents                                 | zathura                  | proportional   | nothing | nothing | nothing | zathura's own keys | its bar and command line show only while they're asked for |
 | Music                                     | spotify, Quickshell      | both           | nothing | a note in the margin while any player plays; for a moment, the track as a notice | What's on: the track, artist, album and player; pause, next, previous, the player's window, and pausing a second player | Play or pause the music, Play the next track, Play the previous track, on the media keys | the mark carries no words; a title wraps to two lines, then gives way |
 | Pairing                                   | tuple, Quickshell, niri  | both           | nothing | a phone in the margin while in a call, and wanting Joel while one rings; for a moment, who joined or left, and that he's the only one left; a ring, and a missed call kept | What's on: how long, and who with or who's sharing; leave, share the screen, mute him in Tuple, copy the room's link; while ringing, show the call | the launcher's rows: show a ringing call, first at home; open the room and copy its link; join a copied call's link, first at home once copied; leave, share, mute; Tuple's Recent in Programs › Tuple, the last nine calls ended or missed, newest first, each by who, how long or missed, and when, a missed one's mark in the alert, its drawer saying each thing once (who rang whom where tuple-call saw it, with for two or more, then their addresses), Return going in and Call Them Again first inside; a tuple: link from the browser joins its room | the mark carries no words; What's on says how long and who with |
@@ -3351,6 +3351,17 @@ What each studio round settled, newest first, with the reason.
   and Inkscape no longer covers the screen edge to edge as it asks to.
   Super+R still narrows them. Each main window is matched by the title it
   opens with, so its splash and dialogs keep floating.
+
+- **A drawing begun from the launcher** (2026-11-09). Inkscape's page in
+  Programs holds New Drawing, a fresh copy of the account's template opened
+  in Inkscape, and New Drawing From the Copied Picture while the clipboard
+  holds an SVG, or a picture whose size its history keeps, which it's made
+  the size of. Each is a file in ~/Pictures/Drawings, beside the camera's
+  photos and the screenshots, rather than in the runtime folder as GIMP's
+  copied picture is: a drawing is saved where it was opened, and one in the
+  runtime folder would go at the next boot. Its Recent is the drawings
+  Inkscape opened lately, from the list GTK keeps for it, each saying when
+  and its drawer its size as its SVG says it, in its own units.
 
 - **Who's in a call, and a call that rings** (2026-10-12). Tuple on Linux
   leaves unfinished the notices its Mac app gives: someone joining,

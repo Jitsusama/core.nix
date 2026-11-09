@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The desktop's list of files opened lately, as GLib writes it, for
+  the-launcher-lists-inkscapes-drawings-lately (modules/inkscape/checks.nix),
+  which fills in each name between at signs: the home folder, and when each
+  program last opened each file.
+-->
+<xbel version="1.0"
+      xmlns:bookmark="http://www.freedesktop.org/standards/desktop-bookmarks"
+      xmlns:mime="http://www.freedesktop.org/standards/shared-mime-info"
+>
+  <bookmark href="file://@HOME@/Drawings/logo.svg"
+            added="@LOGO@" modified="@LOGO@" visited="@LOGO@">
+    <info>
+      <metadata owner="http://freedesktop.org">
+        <mime:mime-type type="image/svg+xml"/>
+        <bookmark:applications>
+          <bookmark:application name="org.inkscape.Inkscape"
+              exec="&apos;org.inkscape.Inkscape %u&apos;"
+              modified="@LOGO@" count="3"/>
+        </bookmark:applications>
+      </metadata>
+    </info>
+  </bookmark>
+  <bookmark href="file://@HOME@/Drawings/Tom%20&amp;%20Jerry.svg"
+            added="@TOM@" modified="@LATER@" visited="@LATER@">
+    <info>
+      <metadata owner="http://freedesktop.org">
+        <mime:mime-type type="image/svg+xml"/>
+        <bookmark:applications>
+          <bookmark:application name="org.inkscape.Inkscape"
+              exec="&apos;org.inkscape.Inkscape %u&apos;"
+              modified="@TOM@" count="1"/>
+          <bookmark:application name="nvim"
+              exec="&apos;nvim %u&apos;"
+              modified="@LATER@" count="1"/>
+        </bookmark:applications>
+      </metadata>
+    </info>
+  </bookmark>
+  <bookmark href="file://@HOME@/Drawings/icon.svgz"
+            added="@ICON@" modified="@ICON@" visited="@ICON@">
+    <info>
+      <metadata owner="http://freedesktop.org">
+        <mime:mime-type type="image/svg+xml-compressed"/>
+        <bookmark:applications>
+          <bookmark:application name="inkscape"
+              exec="&apos;inkscape %u&apos;"
+              modified="@ICON@" count="2"/>
+        </bookmark:applications>
+      </metadata>
+    </info>
+  </bookmark>
+  <bookmark href="file://@HOME@/Drawings/gone.svg"
+            added="@GONE@" modified="@GONE@" visited="@GONE@">
+    <info>
+      <metadata owner="http://freedesktop.org">
+        <mime:mime-type type="image/svg+xml"/>
+        <bookmark:applications>
+          <bookmark:application name="org.inkscape.Inkscape"
+              exec="&apos;org.inkscape.Inkscape %u&apos;"
+              modified="@GONE@" count="1"/>
+        </bookmark:applications>
+      </metadata>
+    </info>
+  </bookmark>
+  <bookmark href="file://@HOME@/Drawings/export.png"
+            added="@EXPORT@" modified="@EXPORT@" visited="@EXPORT@">
+    <info>
+      <metadata owner="http://freedesktop.org">
+        <mime:mime-type type="image/png"/>
+        <bookmark:applications>
+          <bookmark:application name="org.inkscape.Inkscape"
+              exec="&apos;org.inkscape.Inkscape %u&apos;"
+              modified="@EXPORT@" count="1"/>
+        </bookmark:applications>
+      </metadata>
+    </info>
+  </bookmark>
+  <bookmark href="file://@HOME@/Drawings/poster.svg"
+            added="@LATER@" modified="@LATER@" visited="@LATER@">
+    <info>
+      <metadata owner="http://freedesktop.org">
+        <mime:mime-type type="image/svg+xml"/>
+        <bookmark:applications>
+          <bookmark:application name="nvim"
+              exec="&apos;nvim %u&apos;"
+              modified="@LATER@" count="1"/>
+        </bookmark:applications>
+      </metadata>
+    </info>
+  </bookmark>
+</xbel>

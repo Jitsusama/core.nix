@@ -9637,6 +9637,58 @@
       "glyph": "picture"
     },
     {
+      "id": "verb:inkscape:drawing",
+      "command": "new",
+      "argument": "drawing",
+      "in": "applications",
+      "name": "New Drawing",
+      "verb": "start",
+      "glyph": "vector",
+      "said": {
+        "eyebrow": "in {folder} \u00b7 {kind}",
+        "drawing": "drawing",
+        "svg": "SVG",
+        "now": "just now",
+        "minutes": "{minutes} min ago",
+        "yesterday": "yesterday",
+        "tomorrow": "tomorrow"
+      }
+    },
+    {
+      "id": "verb:inkscape:copied",
+      "command": "new",
+      "argument": "copied",
+      "in": "applications",
+      "name": "New Drawing From the Copied Picture",
+      "verb": "start",
+      "glyph": "picture"
+    },
+    {
+      "id": "inkscape:dimensions",
+      "in": "verb:inkscape:drawing",
+      "name": "Dimensions"
+    },
+    {
+      "id": "inkscape:size",
+      "in": "verb:inkscape:drawing",
+      "name": "Size"
+    },
+    {
+      "id": "inkscape:path",
+      "in": "verb:inkscape:drawing",
+      "name": "Path"
+    },
+    {
+      "id": "inkscape:last",
+      "in": "applications",
+      "name": "Last Drawing"
+    },
+    {
+      "id": "inkscape:lately",
+      "in": "applications",
+      "name": "Recent Drawings"
+    },
+    {
       "id": "verb:nvim:find",
       "command": "edit",
       "in": "applications",
