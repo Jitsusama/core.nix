@@ -382,6 +382,10 @@ Provider {
             // The one connected says all wifid and iw read of it, under the
             // row, while it's selected (`looking`).
             drawer: network.connected ? () => provider.drawerOf(network) : null,
+            // Its bars and protection are the drawer's, in dBm and by
+            // standard, so with it out the row says only how it stands, as
+            // its neighbours' "saved" does (VKCF3Z, 2026-11-09).
+            noteInDrawer: network.connected,
             // Joining or leaving keeps the launcher, which says how it went;
             // signing in opens the page, so it closes.
             stays: !signing,
@@ -731,21 +735,27 @@ Provider {
         const signal = read?.signal ?? link.signal;
         const protection = protectionOf(name);
         const lasted = read && read.connected !== null ? read.connected : null;
+        // The width as ours, and a radio older than Wi-Fi 4 said by its
+        // generation rather than iw's "(no HT)" (VKCF3Z, 2026-11-09).
+        const widthTold = WifiLink.widthOf(link.width);
+        const drawerWords = Words.of("wifi:drawer").said;
         return WifiLink.drawer({
             name: name,
             band: frequency !== null ? bandOf(frequency) : point ? ghz[point.band] ?? "" : "",
-            signal: signal !== null ? `${signal} dBm` : "",
+            signal: signal !== null
+                ? `${Numbers.wholeReading(signal, settings.group, settings.point)} dBm` : "",
             margin: link.margin,
             speed: speeds(link, read).side,
             expected: link.expected !== null ? `${link.expected} Mb/s` : "",
             carried: WifiLink.eachWay(ways.in.bytes, ways.out.bytes, FileFacts.weighed),
             retries: read && read.retries !== null
                 ? WifiLink.retried(read.retries, read.failed, number) : "",
-            generation: each("generation", value => `Wi-Fi ${value}`),
+            generation: each("generation", value => `Wi-Fi ${value}`)
+                || (widthTold.legacy ? drawerWords.legacy : ""),
             coding: each("mcs", value => `MCS ${value}`),
             streams: each("streams", value => `${value}`),
             width: ways.in.width !== null || ways.out.width !== null
-                ? each("width", value => `${value} MHz`) : link.width ?? "",
+                ? each("width", value => `${value} MHz`) : widthTold.width,
             channel: [channel !== null ? `${channel}` : "",
                 frequency !== null ? `${number(frequency)} MHz` : ""]
                 .filter(part => part !== "").join(" \u00b7 "),
@@ -757,7 +767,7 @@ Provider {
             since: lasted !== null
                 ? Qt.formatDateTime(new Date(Date.now() - lasted * 1000), "HH:mm") : "",
             bssid: link.bssid ?? point?.bssid ?? ""
-        }, id => named(id), Words.of("wifi:drawer").said);
+        }, id => named(id), drawerWords);
     }
 
     // The rates each way, as wifid reads them or else as iw does, in Mb/s,
@@ -774,7 +784,8 @@ Provider {
             // Each way said as the network's speed says it.
             side: rx === null ? "" : tx !== null && tx !== rx
                 ? `${rx} Mb/s in \u00b7 ${tx} Mb/s out` : `${rx} Mb/s`,
-            note: fitting([generation ? `Wi-Fi ${generation}` : "", link.width ?? "",
+            note: fitting([generation ? `Wi-Fi ${generation}` : "",
+                WifiLink.widthOf(link.width).width,
                 link.expected !== null ? `${link.expected} Mb/s expected` : ""])
         };
     }

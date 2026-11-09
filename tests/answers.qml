@@ -1633,6 +1633,15 @@ QtObject {
                 earlyDrawer.facts.map(one => one.label).filter(label =>
                     ["retries", "connected", "bssid"].includes(label))],
             ["on Wi-Fi \u00b7 network", "-43 dBm", []]);
+        machine("its eyebrow set as written, the unit never re-cased",
+            linkDrawer.eyebrowNames, true);
+        machine("a width said as ours, a radio before Wi-Fi 4 told apart",
+            ["20 MHz (no HT)", "80 MHz", "80+80 MHz", ""].map(WifiLink.widthOf),
+            [{ width: "20 MHz", legacy: true }, { width: "80 MHz", legacy: false },
+                { width: "80+80 MHz", legacy: false }, { width: "", legacy: false }]);
+        machine("a whole reading takes the real minus and no decimals",
+            [Numbers.wholeReading(-14), Numbers.wholeReading(-60.4), Numbers.wholeReading(3)],
+            ["\u221214", "\u221260", "3"]);
 
         // How each Bluetooth link is doing, from what bluetooth-links writes.
         const btMap = `${"1".repeat(22)}${"0".repeat(18)}${"1".repeat(39)}`;

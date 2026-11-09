@@ -17,6 +17,11 @@ const CHANNEL = /channel (\d+) \((\d+) MHz\)/;
 const WPA3 = /WPA3/;
 const WPA2 = /WPA2/;
 const WEP = /WEP/;
+// A width as wpa_supplicant says it, "20 MHz (no HT)" or "80+80 MHz": the
+// width, and what it says after it, of which "no HT" is a radio older than
+// Wi-Fi 4.
+const WIDTH_SAID = /^\s*(\d+(?:\+\d+)?)\s*MHz(.*)$/;
+const NO_HT = /no HT/;
 // Milliseconds in a second, seconds in a minute, and the seconds under
 // which one keeps a decimal.
 const SECOND = 1000;
@@ -269,7 +274,21 @@ function drawer(known, named, said) {
     ].filter((one) => one.value.trim() !== "");
     return {
         eyebrow: known.band ? said.eyebrow.replace("{band}", known.band) : said.kind,
+        // Set as written, since a unit is never re-cased: "on 2.4 GHz"
+        // (VKCF3Z, 2026-11-09).
+        eyebrowNames: true,
         title: known.name,
         facts,
     };
+}
+
+// A width as wpa_supplicant says it, said as ours: "20 MHz (no HT)" is
+// { width: "20 MHz", legacy: true }, the radio older than Wi-Fi 4 its
+// generation's to say; what isn't a width stays as it was said.
+function widthOf(said) {
+    const found = WIDTH_SAID.exec(String(said ?? ""));
+    if (!found) {
+        return { width: String(said ?? "").trim(), legacy: false };
+    }
+    return { width: `${found[1]} MHz`, legacy: NO_HT.test(found[2]) };
 }
