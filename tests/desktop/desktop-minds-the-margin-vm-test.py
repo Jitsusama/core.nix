@@ -429,10 +429,14 @@ def test_a_missed_notice_shows_its_glyph_and_now_shows_the_notices(desktop: Desk
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: "Desktop" in shown["rows"])
     desktop.down_to("Desktop")
-    # A place's row: who sent them follow its name, and nothing below it (VKCF3Z, 2026-11-09).
+    # A place's row: nothing after its name or below it, how many to read
+    # at its right, and who sent them in its drawer (VKCF3Z, 2026-11-09).
     desktop.launcher_until(
         lambda shown: (
-            (shown["selected"] or {}).get("count", "") != "" and shown["selected"].get("note") == ""
+            (shown["selected"] or {}).get("count") == ""
+            and shown["selected"].get("note") == ""
+            and re.fullmatch(r"\d+\sto read", shown["selected"].get("side", "")) is not None
+            and shown["drawer"]["out"]
         )
     )
     # For You's Lately band, Desktop's row on, for the design's look.
