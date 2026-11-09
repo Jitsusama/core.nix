@@ -6,8 +6,8 @@
 //! machine is whole, and go back to the system it left if anything after
 //! the switch's start fails. Busy is asked again before the switch, since a
 //! call may start while the build runs. A switch that would restart a
-//! daemon the config holds, or change a path it holds such as the kernel,
-//! is refused unless an asker granted it. Each step
+//! daemon the config holds, restart an account's unit it holds, or change a
+//! path it holds such as the kernel, is refused unless an asker granted it. Each step
 //! is told as it starts.
 
 use crate::config::{Busy, Config, Kind};
@@ -338,7 +338,13 @@ fn held(config: &Config, built: &std::path::Path, granted: bool) -> Option<Strin
         .paths
         .iter()
         .filter(|p| system::path_changed(&current, built, p));
-    let changes: Vec<&str> = units.chain(paths).map(String::as_str).collect();
+    let accounts = holds.account_units.iter().flat_map(|(account, units)| {
+        units
+            .iter()
+            .filter(|u| system::account_unit_restarts(&current, built, account, u))
+            .map(move |u| format!("{account}'s {u}"))
+    });
+    let changes: Vec<String> = units.chain(paths).cloned().chain(accounts).collect();
     if changes.is_empty() || granted {
         return None;
     }

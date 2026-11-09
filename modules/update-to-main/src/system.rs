@@ -788,6 +788,43 @@ pub fn daemon_changed(kind: Kind, old: &Path, new: &Path, name: &str) -> bool {
     }
 }
 
+/// Whether switching from `old` to `new` restarts an account's unit:
+/// home-manager restarts one whose file or drop-ins changed, or that only
+/// one system has, unless the new file says `X-RestartIfChanged=false`.
+/// Each system's `home-manager-<account>.service` names the generation
+/// whose home holds the unit's file.
+pub fn account_unit_restarts(old: &Path, new: &Path, account: &str, name: &str) -> bool {
+    let unit = |system: &Path| {
+        let Some(generation) = home_generation(system, account) else {
+            return (None, BTreeMap::new());
+        };
+        let units = generation.join("home-files/.config/systemd/user");
+        (
+            fs::read_to_string(units.join(name)).ok(),
+            folder(&units.join(format!("{name}.d"))),
+        )
+    };
+    let (before, after) = (unit(old), unit(new));
+    let kept = after
+        .0
+        .as_deref()
+        .is_some_and(|file| file.lines().any(|l| l.trim() == "X-RestartIfChanged=false"));
+    before != after && !kept
+}
+
+/// The home-manager generation a NixOS system activates for an account, as
+/// its `home-manager-<account>.service` gives it to the last word it runs.
+fn home_generation(system: &Path, account: &str) -> Option<PathBuf> {
+    let unit = system.join(format!("etc/systemd/system/home-manager-{account}.service"));
+    fs::read_to_string(unit)
+        .ok()?
+        .lines()
+        .find_map(|l| l.strip_prefix("ExecStart="))?
+        .split_whitespace()
+        .last()
+        .map(PathBuf::from)
+}
+
 /// Whether a path in a system leads somewhere else in another, or only one
 /// has it, as a NixOS system's `kernel` does when it boots another kernel.
 pub fn path_changed(old: &Path, new: &Path, path: &str) -> bool {

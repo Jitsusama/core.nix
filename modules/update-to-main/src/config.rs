@@ -142,6 +142,12 @@ pub struct Holds {
     /// grant as a held daemon's restart does.
     #[serde(default)]
     pub paths: Vec<String>,
+    /// Units of an account's own systemd, by the account, that a switch
+    /// mustn't restart through home-manager unless granted, such as one a
+    /// person's windows run under: on 9 November a switch restarted the
+    /// unit holding every session's window, and they all closed.
+    #[serde(default)]
+    pub account_units: BTreeMap<String, Vec<String>>,
     /// The file an asker makes to grant the next switch their restarts,
     /// which that switch takes away.
     pub given: PathBuf,
