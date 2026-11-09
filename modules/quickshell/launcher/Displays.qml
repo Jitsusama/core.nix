@@ -503,7 +503,7 @@ Provider {
     // A terminal's look waits for a fresh read of each, as the launcher
     // shows them once it opens (Provider.stillReading).
     stillReading: terminalLooks && !(launcher?.open ?? false)
-        && (!lightAsked || !roomHeard && !roomless)
+        && (!lightAsked || (!roomHeard && !roomless))
 
     FolderListModel {
         id: backlights

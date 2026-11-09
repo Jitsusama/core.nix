@@ -272,7 +272,7 @@ mod tests {
         let answer = settled(&stand_in::qs("missed"), &[], false).expect("the stand-in answers");
         assert!(matches!(answer, Answer::Missing { reading: false, .. }));
         assert!(
-            began.elapsed() < SETTLING,
+            began.elapsed() < ASK_AGAIN + LEEWAY,
             "it waited {:?}",
             began.elapsed()
         );
@@ -284,7 +284,7 @@ mod tests {
         let answer = settled(&stand_in::qs("read"), &[], false).expect("the stand-in answers");
         assert!(matches!(&answer, Answer::Shown(shown) if !still_reading(shown)));
         assert!(
-            began.elapsed() < SETTLING,
+            began.elapsed() < ASK_AGAIN + LEEWAY,
             "it waited {:?}",
             began.elapsed()
         );
