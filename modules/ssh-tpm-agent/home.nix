@@ -94,6 +94,13 @@
     # until it restarted. The second patch frees it; upstream's own fix (pull
     # request 135) isn't in a release yet, so take it out once one carries it.
     #
+    # A PIN prompt nobody answered also held up every request to the agent, for
+    # every key, since the PIN was asked for inside locks every signature
+    # shares: one program using a key whose PIN wasn't typed this session froze
+    # every SSH login and signed commit for 21 minutes one night. The third
+    # patch asks for it outside them, stops a prompt nobody answers after a
+    # minute, and refuses that key for ten minutes without another, naming it.
+    #
     # Patched, it builds here rather than coming from the cache, and four of its
     # tests check which error the kernel's keyring gives for a missing key. That
     # depends on the kernel: nixpkgs rewrites them to expect ENOENT, and some
@@ -105,6 +112,7 @@
       patches = (old.patches or [ ]) ++ [
         ./keys-before-serving.patch
         ./free-cached-pin.patch
+        ./locked-key-blocks-nothing.patch
       ];
       checkFlags = (old.checkFlags or [ ]) ++ [
         "-skip=^TestNoKey$|^TestRemoveKey$|^TestNoKeyThreaded$|^TestRemoveKeyThreaded$"
