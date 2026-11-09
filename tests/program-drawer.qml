@@ -43,7 +43,8 @@ QtObject {
 
     function run() {
 
-        expect("a share, to three significant figures", [0.045, 0.37, 1].map(Program.percent),
+        expect("a share, to three significant figures",
+            [0.045, 0.37, 1].map(share => Program.percent(share)),
             ["4.50%", "37.0%", "100%"]);
         expect("none at all, as the machine says it", Program.percent(0), "0%");
         expect("a share, pointed as the launcher's marks say",
