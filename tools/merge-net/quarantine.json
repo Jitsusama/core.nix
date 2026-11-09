@@ -33,5 +33,12 @@
     "owner_pr": 2497,
     "reason": "failed, then passed, at 06483ebf3aea",
     "test": "the-desktop-reads-the-spend-watch"
+  },
+  {
+    "at": 1794226185,
+    "commit": "06483ebf3aeabbe56e49f2c96bb3cd53e1a8f4b0",
+    "owner_pr": 2497,
+    "reason": "failed, then passed, at 06483ebf3aea",
+    "test": "vm-desktop-launcher-goes-places"
   }
 ]
