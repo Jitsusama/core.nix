@@ -47,6 +47,11 @@
 // a later check finds none breached or reused (`forYou`, which Now.qml
 // gathers). Stepping into it is stepping into Passwords' list, so it asks
 // for the list as stepping in here does.
+//
+// Long because it's one provider whose rows, acts and notes all read the
+// one daemon's standing as it changes; what works on plain values already
+// lives apart, in Passwords.js, Managers.js and Checked.js, where cases
+// reach it.
 import qs
 import Quickshell
 import QtQuick
