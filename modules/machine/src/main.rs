@@ -801,11 +801,15 @@ fn fwupd(connection: &zbus::blocking::Connection) -> Vec<Value> {
     let as_json = |dict: &HashMap<String, zbus::zvariant::OwnedValue>| {
         Value::Object(dict.iter().map(|(k, v)| (k.clone(), plain(v))).collect())
     };
-    // What the level is made of; an fwupd that can't say has none.
-    let attributes: Vec<Value> = proxy
-        .call::<_, _, Dicts>("GetHostSecurityAttrs", &())
-        .map(|all| all.iter().map(as_json).collect())
-        .unwrap_or_default();
+    // What the level is made of; an fwupd that can't say has none, and
+    // the journal says why.
+    let attributes: Vec<Value> = match proxy.call::<_, _, Dicts>("GetHostSecurityAttrs", &()) {
+        Ok(all) => all.iter().map(as_json).collect(),
+        Err(why) => {
+            eprintln!("<4>fwupd couldn't say its security attributes: {why}");
+            vec![]
+        }
+    };
     let mut records = vec![firmware::host(
         text("HostSecurityId").as_deref(),
         &attributes,

@@ -129,6 +129,8 @@ units, or named here as left out with the reason.
 |                 | product, fwupd's version                     | Security Level's drawer                   |
 |                 | each attribute: name, level, result, passes as | a step in, Needed for Level, Lowered By |
 |                 | an attribute's description, fix flags, setting, plugin, id | each attribute's drawer     |
+|                 | a firmware or kernel setting, as set and as passing needs | each attribute's drawer      |
+|                 | can fix, can undo                            | Fix It, Undo the Fix, a step in           |
 
 ## Left Out, and Why
 
@@ -190,6 +192,9 @@ units, or named here as left out with the reason.
   the attribute, which its description already says, and the time is
   when fwupd read it, on each start; the flags that say what fixes it,
   or that it couldn't read what it needed, show as what they mean.
+- **A security attribute's fallback result.** The daemon serves it, but
+  fwupd says it may be the state before a fix or one counted the same,
+  without saying which, so the launcher can't say what it means.
 - **An update's vendor, protocol and download.** The device names its
   vendor and protocols, and fwupd fetches the download itself.
 - **The last sleep before the daemon started.** logind says a sleep as

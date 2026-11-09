@@ -95,6 +95,7 @@ SECURITY = [
         "Flags": ("t", CONFIG_FW),
         "BiosSettingId": ("s", "AllowBiosDowngrade"),
         "BiosSettingCurrentValue": ("s", "Enabled"),
+        "BiosSettingTargetValue": ("s", "Disabled"),
         "Created": ("t", 1_700_000_000),
     },
     {
@@ -106,6 +107,8 @@ SECURITY = [
         "HsiResult": ("u", NOT_ENABLED),
         "HsiResultSuccess": ("u", ENABLED),
         "Flags": ("t", RUNTIME_ISSUE | CONFIG_OS),
+        "KernelCurrentValue": ("s", "none"),
+        "KernelTargetValue": ("s", "integrity"),
         "Created": ("t", 1_700_000_000),
     },
 ]

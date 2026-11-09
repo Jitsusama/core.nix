@@ -2101,7 +2101,8 @@ QtObject {
         machine("a rating's level and what lowers it",
             [Firmware.ratingOf("HSI:1! (v2.1.9)"), Firmware.ratingOf("HSI:4"),
                 Firmware.ratingOf("HSI:INVALID:missing-data"), Firmware.ratingOf(null)],
-            [{ code: "HSI:1!", level: 1, lowered: true }, { code: "HSI:4", level: 4, lowered: false },
+            [{ code: "HSI:1!", level: 1, lowered: true },
+                { code: "HSI:4", level: 4, lowered: false },
                 { code: "HSI:INVALID:missing-data", level: null, lowered: false }, null]);
         const attribute = (id, level, passed, fields) => Object.assign({ id: id, name: id,
             summary: `${id} summary`, level: level, result: passed ? "enabled" : "not-enabled",
@@ -2134,6 +2135,19 @@ QtObject {
             [Firmware.neededFor(attributes, 5), Firmware.neededFor(attributes, null)], [[], []]);
         machine("what's running that lowers the level",
             Firmware.loweredBy(attributes).map(one => one.id), ["lockdown"]);
+        // fwupd adds its "!" only for a runtime issue, so one with no
+        // level about updates or attestation lowers nothing.
+        machine("only a runtime issue lowers the level", Firmware.loweredBy(Firmware.attributesOf([
+            attribute("updates", null, false, { flags: ["runtime-updates"] }),
+            attribute("attestation", null, false, { flags: ["runtime-attestation"] })
+        ])), []);
+        const changeable = Firmware.attributesOf([attribute("swap", null, false, {
+            flags: ["runtime-issue", "can-fix", "can-undo"],
+            kernel: { current: "none", target: "integrity" } })])[0];
+        machine("what fwupd can change itself, and the kernel's setting",
+            [changeable.runtimeIssue, changeable.canFix, changeable.canUndo, changeable.kernel,
+                attributes[0].canFix, attributes[0].kernel],
+            [true, true, true, { current: "none", target: "integrity" }, false, null]);
         machine("failing attributes first, each part by level, what's running last",
             Firmware.listed(attributes).map(one => one.id),
             ["rollback", "mtd", "smap", "lockdown", "tpm", "iommu", "cet"]);

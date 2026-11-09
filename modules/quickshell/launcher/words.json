@@ -3106,8 +3106,8 @@
         "0": "none of the basic protections",
         "1": "only the most basic protections",
         "2": "the basic and important protections",
-        "3": "the basic, important and theoretical protections",
-        "4": "those below and out-of-band protection",
+        "3": "those below and out-of-band protection",
+        "4": "those below and encryption and execution protection",
         "5": "those below and out-of-band attestation",
         "eyebrow": "on this machine \u00b7 rating",
         "lowered": "lowered by what's running",
@@ -3183,6 +3183,21 @@
       "name": "Set To"
     },
     {
+      "id": "firmware:should-be",
+      "in": "firmware",
+      "name": "Should Be"
+    },
+    {
+      "id": "firmware:kernel-set-to",
+      "in": "firmware",
+      "name": "Kernel Set To"
+    },
+    {
+      "id": "firmware:kernel-should-be",
+      "in": "firmware",
+      "name": "Kernel Should Be"
+    },
+    {
       "id": "firmware:attribute",
       "in": "firmware",
       "name": "Attribute"
@@ -3212,6 +3227,52 @@
         "waits": "restart to finish",
         "installed": "installed",
         "failed": "didn't install"
+      }
+    },
+    {
+      "id": "verb:firmware:fix",
+      "command": "fix",
+      "in": "firmware",
+      "name": "Fix It",
+      "verb": "fix",
+      "glyph": "firmware",
+      "sure": "Fix {attribute} Now",
+      "said": {
+        "what": "fwupd changes the setting itself",
+        "final": "fwupd changes the setting, and may ask for a restart",
+        "changing": "fixing",
+        "changed": "fixed",
+        "failed": "didn't fix"
+      }
+    },
+    {
+      "id": "verb:firmware:undo",
+      "command": "undo",
+      "in": "firmware",
+      "name": "Undo the Fix",
+      "verb": "undo",
+      "glyph": "firmware",
+      "sure": "Undo the Fix to {attribute} Now",
+      "said": {
+        "what": "fwupd puts the setting back as it was",
+        "final": "it lowers the level, and may ask for a restart",
+        "changing": "undoing",
+        "changed": "undone",
+        "failed": "didn't undo"
+      }
+    },
+    {
+      "id": "verb:firmware:setup",
+      "command": "setup",
+      "in": "firmware",
+      "name": "Restart Into Firmware Setup",
+      "verb": "reboot",
+      "glyph": "firmware",
+      "sure": "Restart Into Firmware Setup Now",
+      "said": {
+        "set": "set {setting} to {target} there",
+        "find": "set it there",
+        "final": "it closes every window"
       }
     },
     {

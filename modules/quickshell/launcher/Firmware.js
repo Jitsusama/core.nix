@@ -156,9 +156,13 @@ const FIXES = [["action-config-fw", "setup"], ["action-config-os", "system"],
 
 // Each attribute the level is made of, one another obsoletes left out as
 // fwupd's own count leaves it: { id, name, about, level, result,
-// passesAs, passed, missing, fix, setting, plugin }, named by fwupd's
-// summary, `level` null for one about what's running, `fix` a FIXES name
-// or "", and `setting` the firmware setting it reads, { id, current }.
+// passesAs, passed, missing, runtimeIssue, canFix, canUndo, fix, setting,
+// kernel, plugin }, named by fwupd's summary, `level` null for one about
+// what's running, `runtimeIssue` where failing it lowers the level (the
+// "!"), `canFix` and `canUndo` where fwupd can change it itself and put
+// it back, `fix` a FIXES name or "", `setting` the firmware setting it
+// reads and `kernel` the kernel's, each { current, target }, the
+// setting's with its `id`.
 function attributesOf(said) {
     return (said ?? [])
         .filter(one => !(one.flags ?? []).includes("obsoleted"))
@@ -173,8 +177,12 @@ function attributesOf(said) {
                 passesAs: one.passes_as ?? null,
                 passed: one.passed === true,
                 missing: flags.includes("missing-data"),
+                runtimeIssue: flags.includes("runtime-issue"),
+                canFix: flags.includes("can-fix"),
+                canUndo: flags.includes("can-undo"),
                 fix: FIXES.find(([flag]) => flags.includes(flag))?.[1] ?? "",
                 setting: one.bios_setting ?? null,
+                kernel: one.kernel ?? null,
                 plugin: one.plugin ?? ""
             };
         });
@@ -190,10 +198,12 @@ function neededFor(attributes, level) {
     return attributes.filter(one => one.level === level + 1 && !one.passed);
 }
 
-// What's running that lowers the level, the "!": each attribute about
-// what's running that hasn't passed.
+// What's running that lowers the level, the "!": each attribute fwupd
+// says is a runtime issue that hasn't passed, as fwupd adds its "!"
+// (fu_security_attrs_calculate_hsi), not one only about updates or
+// attestation.
 function loweredBy(attributes) {
-    return attributes.filter(one => one.level === null && !one.passed);
+    return attributes.filter(one => one.runtimeIssue && !one.passed);
 }
 
 // Every attribute as a step in lists them: each failing one first, so
