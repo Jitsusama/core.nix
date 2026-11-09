@@ -118,6 +118,20 @@ QtObject {
             Showing.besides(keyboard, {}).eyebrow
         ], [4, "on USB \u00b7 keyboard"]);
         expect("none borrowed stays none", Showing.besides(null, { side: "on" }), null);
+        // Which of a thing's rows are its acts, said apart for `launcher do`.
+        const sure = () => [{ key: "sure", name: "Clear" }];
+        const act = (one, verbs) => Showing.isAct(one, verbs, one.key);
+        expect("Return's act and a plain verb are acts", [
+            act({ key: "return:copy", name: "Copy" }, []),
+            act({ key: "copy", name: "Copy" }, ["copy"])
+        ], [true, true]);
+        expect("a verb that asks first stays an act",
+            act({ key: "clear", name: "Clear", verbs: sure, targets: sure }, ["clear"]), true);
+        expect("a verb that's a thing, a device heard, is a row",
+            act({ key: "bluetooth:buds", name: "Buds", verbs: () => [] }, ["bluetooth:buds"]),
+            false);
+        expect("a row that's none of the thing's verbs is a row",
+            act({ key: "part", name: "Model" }, ["copy"]), false);
         if (failed > 0) {
             console.warn(`${failed} failed`);
             Qt.exit(1);

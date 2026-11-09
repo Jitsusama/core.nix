@@ -115,6 +115,21 @@ function kindOf(row, kind) {
     return row.figure === true || row.answered === true ? "figure" : kind;
 }
 
+// Whether a row a thing lists is one of its own acts, said apart from its
+// rows for `launcher do` (VKCF3Z, 2026-11-08): Return's act (an emoji's
+// Copy), and a verb of the thing's (`verbs`, the steady ids of what it
+// holds) that isn't a thing itself. A verb that's a thing, with verbs of
+// its own and no targets as Launcher.qml's asThing has it, steps into its
+// own insides, as a device Nearby heard does, so it's a row, as stepping in
+// shows it (VKCF3Z, 2026-11-09); one that asks first holds only its
+// question, its verbs its targets, and stays an act.
+function isAct(one, verbs, id) {
+    if (String(one.key ?? "").startsWith("return:")) {
+        return true;
+    }
+    return verbs.includes(id) && !(!!one.verbs && !one.targets);
+}
+
 // One row as plain JSON, every key a word words.json uses for it: its id
 // (its path's steady ids joined as the catalogue's are), its key, name,
 // glyph and hue, the count after its name, its side and its note, what
