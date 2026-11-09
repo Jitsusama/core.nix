@@ -937,7 +937,7 @@ def test_the_clock_follows_the_laptop_into_another_zone_and_is_put_back(desktop:
     try:
         # Found by Wi-Fi, to within 300 m, in another zone: the clock moves,
         # and the time here says so, the zone being the clock's.
-        found("America/Edmonton", 300, "Kelpwater, Alberta")
+        found("America/Edmonton", 300, "Kelpwater, Highreach")
         keeps("America/Edmonton")
         desktop.answer("time")
         desktop.launcher_until(
@@ -957,10 +957,10 @@ def test_the_clock_follows_the_laptop_into_another_zone_and_is_put_back(desktop:
         machine.send_key("ret")
         keeps(began)
         desktop.close_launcher()
-        found("America/Edmonton", 300, "Kelpwater, Alberta")
+        found("America/Edmonton", 300, "Kelpwater, Highreach")
         assert machine.succeed(zone).strip() == began
         # Somewhere else lets it go, and the clock follows again.
-        found("America/Vancouver", 300, "Harbour, British Columbia")
+        found("America/Vancouver", 300, "Harbour, Farshore")
         keeps("America/Vancouver")
         # Found only from the network's address, tens of kilometres wide,
         # as through WARP, it never moves the clock.
@@ -1016,7 +1016,7 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
         # A pin, as setting it writes one, is here from then on, whatever
         # GeoClue says, and the clock follows it as it would any fix.
         said = {"v": 2, "latitude": 52.34, "longitude": -115.67, "accuracy": 1000,
-                "when": int(time.time()), "place": "Kelpwater, Alberta",
+                "when": int(time.time()), "place": "Kelpwater, Highreach",
                 "zone": "America/Edmonton", "country": "Canada", "hand": True}  # fmt: skip
         desktop.as_account(
             f"mkdir -p ~/.local/state/whereabouts && echo '{json.dumps(said)}' > {pin}"
@@ -1029,7 +1029,7 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
             "test $(timedatectl show --property=Timezone --value) = America/Edmonton",
             timeout=dt.timedelta(seconds=30),
         )
-        location(lambda row: row["side"] == "Kelpwater, Alberta")
+        location(lambda row: row["side"] == "Kelpwater, Highreach")
         desktop.follow()
         # Inside, in the design's order, saying it was set by hand, and in which country.
         inside = [

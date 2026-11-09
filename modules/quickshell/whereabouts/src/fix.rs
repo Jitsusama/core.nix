@@ -160,11 +160,11 @@ mod tests {
         );
         assert_eq!(Fix::read(&text), Some(fix));
         let named = at(10.5, -20.25, 3000.0).named(
-            Some("Kelpwater, Ontario".into()),
+            Some("Kelpwater, Westmark".into()),
             Some("America/Toronto".into()),
         );
         let text = serde_json::to_string(&named).unwrap();
-        assert!(text.ends_with(r#""place":"Kelpwater, Ontario","zone":"America/Toronto"}"#));
+        assert!(text.ends_with(r#""place":"Kelpwater, Westmark","zone":"America/Toronto"}"#));
         assert_eq!(Fix::read(&text), Some(named));
     }
 

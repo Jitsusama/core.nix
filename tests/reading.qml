@@ -74,9 +74,10 @@ QtObject {
         expect("two words short", cut(missed, 170) === "Open-Meteo\u2026", cut(missed, 170));
         expect("not even a word", cut(missed, 100) === "", cut(missed, 100));
         // A separator left at the end goes before the ellipsis.
-        const where = "Tokyo, Japan \u00b7 Open-Meteo";
-        expect("no separator dangling", cut(where, 200) === "Tokyo, Japan\u2026", cut(where, 200));
-        expect("no comma dangling", cut(where, 120) === "Tokyo\u2026", cut(where, 120));
+        const where = "Gullhaven, Velmora \u00b7 Open-Meteo";
+        expect("no separator dangling", cut(where, 200) === "Gullhaven, Velmora\u2026",
+            cut(where, 200));
+        expect("no comma dangling", cut(where, 120) === "Gullhaven\u2026", cut(where, 120));
         // A note gives way by whole words from its end with no ellipsis,
         // a separator left at its end going too.
         const line = "line 7 of the deploy, went by";

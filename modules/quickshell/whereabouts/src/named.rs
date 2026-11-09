@@ -200,14 +200,14 @@ mod tests {
     #[test]
     fn a_place_is_its_town_and_its_province() {
         let said =
-            json!({"address": {"city": "Kelpwater", "state": "Ontario", "country": "Canada"}});
-        assert_eq!(place(&said).as_deref(), Some("Kelpwater, Ontario"));
+            json!({"address": {"city": "Kelpwater", "state": "Westmark", "country": "Canada"}});
+        assert_eq!(place(&said).as_deref(), Some("Kelpwater, Westmark"));
     }
 
     #[test]
     fn a_place_with_no_city_is_its_town_or_village() {
-        let said = json!({"address": {"village": "Fjord", "state": "Nova Scotia"}});
-        assert_eq!(place(&said).as_deref(), Some("Fjord, Nova Scotia"));
+        let said = json!({"address": {"village": "Fjord", "state": "Lowmark"}});
+        assert_eq!(place(&said).as_deref(), Some("Fjord, Lowmark"));
         let said = json!({"address": {"town": "Cove"}});
         assert_eq!(place(&said).as_deref(), Some("Cove"));
     }
@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn a_place_is_in_the_country_nominatim_says() {
         let said =
-            json!({"address": {"city": "Kelpwater", "state": "Ontario", "country": "Canada"}});
+            json!({"address": {"city": "Kelpwater", "state": "Westmark", "country": "Canada"}});
         assert_eq!(country(&said).as_deref(), Some("Canada"));
         assert_eq!(country(&json!({"address": {"city": "Cove"}})), None);
         assert_eq!(country(&json!({"address": {"country": ""}})), None);
@@ -249,7 +249,7 @@ mod tests {
     fn a_place_named_is_its_first_answer() {
         let said = json!({"results": [
             {"name": "Kelpwater", "latitude": 52.34, "longitude": -115.67,
-             "admin1": "Alberta", "country": "Canada", "timezone": "America/Edmonton"},
+             "admin1": "Highreach", "country": "Canada", "timezone": "America/Edmonton"},
             {"name": "Kelpwater", "latitude": 1.0, "longitude": 2.0, "admin1": "Elsewhere"}
         ]});
         assert_eq!(
@@ -257,7 +257,7 @@ mod tests {
             Some(Found {
                 latitude: 52.34,
                 longitude: -115.67,
-                place: "Kelpwater, Alberta".into(),
+                place: "Kelpwater, Highreach".into(),
                 country: Some("Canada".into()),
                 zone: Some("America/Edmonton".into()),
             })
