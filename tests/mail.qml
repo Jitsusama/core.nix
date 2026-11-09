@@ -42,6 +42,7 @@ QtObject {
             to: "to {who}",
             toTwo: "{one} and {other}",
             toMore: "{who} and {count} more",
+            toPeople: "{count} people",
             date: (date, format) => Qt.formatDate(date, format)
         };
         const standup = {
@@ -224,13 +225,14 @@ QtObject {
         // (VKCF3Z, 635ac574).
         const wentItems = went => Mail.besideItems({ from: "Sam Rivers", sent: true, went: went,
             at: lunch.at }, now, said);
-        check("its side's names give way by whole names to one and how many more",
+        check("its side's names give way by whole names, then to how many in all",
             wentItems(["Ada Lovelace", "Grace Hopper", "Alan Turing", "Hedy Lamarr",
                 "Edsger Dijkstra"])[0].ways,
-            ["to Ada Lovelace, Grace Hopper and 3 more", "to Ada Lovelace and 4 more"]);
+            ["to Ada Lovelace, Grace Hopper and 3 more", "to Ada Lovelace and 4 more",
+                "to 5 people"]);
         check("its side's two names give way to one and 1 more",
             wentItems(["Ada Lovelace", "Grace Hopper"])[0].ways,
-            ["to Ada Lovelace and Grace Hopper", "to Ada Lovelace and 1 more"]);
+            ["to Ada Lovelace and Grace Hopper", "to Ada Lovelace and 1 more", "to 2 people"]);
         check("its side's one name has no other way", wentItems(["Ada Lovelace"])[0].ways,
             ["to Ada Lovelace"]);
         check("its side's names and time never give way whole",

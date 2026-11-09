@@ -11051,6 +11051,7 @@
         "to": "to {who}",
         "toTwo": "{one} and {other}",
         "toMore": "{who} and {count} more",
+        "toPeople": "{count} people",
         "readInGmail": "read in Gmail",
         "archivedInGmail": "archived in Gmail",
         "unimportant": "no longer important",

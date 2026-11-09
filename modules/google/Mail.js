@@ -83,13 +83,16 @@ function besideItems(mail, now, said) {
 }
 
 // Every way a sent mail's row may say who it went to, most names first:
-// two by name, then one and how many more, or nothing for nobody named.
+// two by name, then one and how many more, then how many in all, "to 3
+// people", since the row's name is what the row is and gives way last
+// (VKCF3Z, e5cd79af); or nothing for nobody named.
 function wentWays(went, said) {
-    const to = most => String(said.to).replace("{who}", wentTo(went, said, most));
+    const to = who => String(said.to).replace("{who}", who);
     if (went.length === 0) {
         return [""];
     }
-    return went.length === 1 ? [to(1)] : [to(NAMED), to(1)];
+    return went.length === 1 ? [to(went[0])] : [to(wentTo(went, said, NAMED)),
+        to(wentTo(went, said, 1)), to(String(said.toPeople).replace("{count}", went.length))];
 }
 
 // Its side as one line, its items between dots, as surfaces that draw no

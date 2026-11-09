@@ -1269,7 +1269,8 @@ works the same way everywhere.
   Mail's what he sent or read, a conversation once by its newest and
   none still waiting on him, one he sent naming who it went to but
   him, two at most and then how many more, giving way by whole names
-  to one and how many more while its time never gives way. A meeting
+  to one and how many more, then to how many in all, "to 3 people",
+  before its name gives way, while its time never does. A meeting
   over says when it was, "yesterday 15:00", and notes nothing (VKCF3Z,
   2026-11-09). What a program holds now,
   its open rows or today's meetings, comes before its Recent, in its
