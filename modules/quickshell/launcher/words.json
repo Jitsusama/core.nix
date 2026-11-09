@@ -1946,7 +1946,8 @@
     {
       "id": "warp:settings:mode",
       "in": "warp:settings",
-      "name": "Tunnel Mode"
+      "name": "Tunnel Mode",
+      "term": "Network/tunnel mode"
     },
     {
       "id": "warp:settings:always-on",
@@ -2047,12 +2048,14 @@
     {
       "id": "warp:in",
       "in": "warp:traffic",
-      "name": "In"
+      "name": "In",
+      "term": "Network/in"
     },
     {
       "id": "warp:out",
       "in": "warp:traffic",
-      "name": "Out"
+      "name": "Out",
+      "term": "Network/out"
     },
     {
       "id": "warp:power",
