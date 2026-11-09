@@ -394,8 +394,9 @@ def washes_what_it_finds(desktop: Desktop, scale: str) -> None:
 def counts_with_its_chord_in_the_foot(desktop: Desktop, scale: str) -> None:
     """Step into Desktop, whose collections each open by a chord, and shoot their counts.
 
-    A collection's row reads in Desktop as it does at home: how many it holds at its right,
-    and its chord taught in the foot as the next time's way, never drawn on the row (VKCF3Z,
+    A collection's row reads in Desktop as it does at home: what it holds, by name after its
+    name or by how many at its right, or its word for none once where it holds nothing, and
+    its chord taught in the foot as the next time's way, never drawn on the row (VKCF3Z,
     2a429f67). A find's rows say no count, which would read all of each at every key.
     """
     desktop.launcher_until(lambda shown: not shown["open"])
@@ -405,7 +406,9 @@ def counts_with_its_chord_in_the_foot(desktop: Desktop, scale: str) -> None:
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: shown["held"] == ["desktop"])
     selected = desktop.showing()["selected"]
-    assert selected["side"], f"at {scale} Desktop's first has no count: {selected}"
+    assert selected["side"] or selected["count"], (
+        f"at {scale} Desktop's first says nothing of what it holds: {selected}"
+    )
     assert selected["chord"] == "", f"at {scale} Desktop's first draws its chord: {selected}"
     taught = " ".join(desktop.showing()["wanted"])
     assert "next time" in taught, f"at {scale} the foot doesn't teach its chord: {taught}"
