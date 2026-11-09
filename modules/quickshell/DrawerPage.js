@@ -356,34 +356,117 @@ const DOTTED = " \u00b7 ";
 // than going a beat on, as Drawer.qml's onBeat does.
 const BEAT_ROUNDING = 0.001;
 
-// A value given as items, each `{ said, path }`, as lines no wider than
-// `wide` by `width(text)`: as many items to a line as fit, `between` them
-// (a command's arguments a space apart, a list's a dot), the dot ending
-// the line it leaves, and never one broken across two. Every item but the
-// last is measured with that dot, since any of them may end a line. An
-// item too wide for a line of its own that names its `path` gives way
-// from the path's middle, "/nix/\u2026/firefox", its last part whole, as a
-// folder does (Reading.pathTries); one still too wide, or naming none,
-// gives way from its own middle. Nothing draws past its frame (VKCF3Z,
-// 2026-11-08).
+// The marks an identifier too long for a line breaks after: these first,
+// then a hyphen's, then anywhere, so "--player-operation-mode=pseudo-gui"
+// breaks at its "=" before its words (VKCF3Z, 2026-11-08).
+const STRONG_MARKS = "=/,:";
+const WEAK_MARKS = "-";
+// A last item this short never stands alone on its line: "--".
+const SHORT_TOKEN = 2;
+
+// A value given as items, each `{ said, path, whole }`, as lines no wider
+// than `wide` by `width(text)`: as many items to a line as fit, `between`
+// them (a command's arguments a space apart, a list's a dot), the dot
+// ending the line it leaves, and never one broken across two while it
+// fits a line alone. Every item but the last is measured with that dot,
+// since any of them may end a line. An item too wide for a line of its
+// own that's `whole`, an identifier, is shown whole on as many lines as
+// it needs, broken at its own marks (wholeLines), and a short last one
+// joins the line before rather than stand alone. Any other that names its
+// `path` gives way from the path's middle, "/nix/\u2026/firefox", its last
+// part whole, as a folder does (Reading.pathTries); one still too wide, or
+// naming none, gives way from its own middle. Nothing draws past its frame
+// (VKCF3Z, 2026-11-08).
 function valueLines(items, between, wide, width) {
     const ends = between.replace(TRAILING, "");
     const saying = items.filter(item => item.said !== "");
     const lines = [];
     saying.forEach((item, at) => {
         const closing = at === saying.length - 1 ? "" : ends;
-        const said = fitted(item, wide - width(closing), width);
+        const room = wide - width(closing);
         const last = lines.length - 1;
+        const said = item.whole ? item.said : fitted(item, room, width);
         if (last >= 0 && width(`${lines[last]}${between}${said}${closing}`) <= wide) {
             lines[last] = `${lines[last]}${between}${said}`;
-        } else {
-            if (last >= 0) {
-                lines[last] = `${lines[last]}${ends}`;
-            }
-            lines.push(said);
+            return;
         }
+        if (last >= 0) {
+            lines[last] = `${lines[last]}${ends}`;
+        }
+        lines.push(...(item.whole && width(said) > room ? wholeLines(said, room, width)
+            : [said]));
     });
-    return lines;
+    const short = saying[saying.length - 1];
+    return short?.whole && lines.length > 1 && lines[lines.length - 1] === short.said
+        && [...short.said].length <= SHORT_TOKEN
+        ? joinedDown(lines, between, wide, width) : lines;
+}
+
+// Words cut after each of `marks`, each piece keeping its mark at its end:
+// "mode=pseudo-gui" at "=" is "mode=" and "pseudo-gui". Marks leading a
+// piece stay with what follows them, so "--player-" is one.
+function cutAfter(words, marks) {
+    const pieces = [""];
+    let worded = false;
+    for (const letter of words) {
+        pieces[pieces.length - 1] += letter;
+        const mark = marks.includes(letter);
+        if (mark && worded) {
+            pieces.push("");
+            worded = false;
+        } else if (!mark) {
+            worded = true;
+        }
+    }
+    return pieces.filter(piece => piece !== "");
+}
+
+// The pieces an identifier breaks into to fit `room`: at its strong marks,
+// a piece still too wide at its hyphens, one still too wide by its
+// characters, so nothing of it is ever left out. Each is cut by `cutAfter`
+// in turn, gathered by concat, since Qt's engine has no flatMap.
+function piecesOf(words, room, width) {
+    const finer = (pieces, cut) => pieces.reduce((all, piece) => all.concat(
+        width(piece) <= room ? [piece] : cut(piece)), []);
+    return finer(finer(cutAfter(words, STRONG_MARKS), piece => cutAfter(piece, WEAK_MARKS)),
+        piece => [...piece]);
+}
+
+// An identifier too wide for a line, whole on as many lines as it needs:
+// as many of its pieces to a line as fit.
+function wholeLines(words, room, width) {
+    return piecesOf(words, room, width).reduce((lines, piece) => {
+        const last = lines.length - 1;
+        if (last >= 0 && width(`${lines[last]}${piece}`) <= room) {
+            lines[last] = `${lines[last]}${piece}`;
+        } else {
+            lines.push(piece);
+        }
+        return lines;
+    }, []);
+}
+
+// Lines whose last is a short token alone, with the end of the line before
+// brought down to join it: the item that ended it, else its words after
+// their last strong mark, else after a hyphen, the longest that fits.
+// They stay as they were where nothing fits beside it.
+function joinedDown(lines, between, wide, width) {
+    const short = lines[lines.length - 1];
+    const before = lines[lines.length - 2];
+    const fits = tail => tail !== "" && tail !== before
+        && width(`${tail}${between}${short}`) <= wide;
+    const spaced = before.lastIndexOf(between);
+    const strong = cutAfter(before, STRONG_MARKS);
+    const weak = cutAfter(before, WEAK_MARKS);
+    const tails = [spaced > 0 ? before.slice(spaced + between.length) : "",
+        strong.length > 1 ? strong[strong.length - 1] : ""]
+        .concat(weak.slice(1).map((_piece, at) => weak.slice(at + 1).join("")));
+    const tail = tails.find(fits);
+    if (tail === undefined) {
+        return lines;
+    }
+    const kept = before.slice(0, before.length - tail.length).replace(TRAILING, "");
+    return lines.slice(0, -2).concat([kept, `${tail}${between}${short}`]);
 }
 
 // A list alone in a value, as its one line no wider than `wide`: every

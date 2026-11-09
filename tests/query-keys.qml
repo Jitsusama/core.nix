@@ -1032,6 +1032,8 @@ QtObject {
         ];
         const firefox = "/run/current-system/sw/bin/firefox";
         const command = [{ said: firefox, path: firefox }, { said: "--private-window" }];
+        const mpv = ["mpv", "--player-operation-mode=pseudo-gui", "--"]
+            .map(said => ({ said, whole: true }));
         const store = "/nix/store/abc/def";
         const cases = [
             ["items that fit share a line", disk, " \u00b7 ", 400,
@@ -1052,6 +1054,23 @@ QtObject {
             ["a path still too wide in its shortest form gives way from its middle too",
                 [{ said: firefox, path: firefox }], " ", 80, ["\u2026/fi\u2026fox"]],
             ["an empty item is left out", [{ said: "" }, { said: "on" }], " ", 100, ["on"]],
+            ["an identifier wraps at its spaces first, shown whole", mpv, " ", 400,
+                ["mpv", "--player-operation-mode=pseudo-gui --"]],
+            ["a short last argument never stands alone", mpv, " ", 340,
+                ["mpv", "--player-operation-mode=", "pseudo-gui --"]],
+            ["one too long alone breaks at its = before its hyphens", mpv, " ", 240,
+                ["mpv", "--player-operation-mode=", "pseudo-gui --"]],
+            ["and at its hyphens where a piece is still too long", mpv, " ", 160,
+                ["mpv", "--player-", "operation-mode=", "pseudo-gui --"]],
+            ["a short last argument brings the one before it down",
+                ["mpv", "-v", "--"].map(said => ({ said, whole: true })), " ", 60,
+                ["mpv", "-v --"]],
+            ["one never breaks at the marks it opens with to keep it company",
+                ["mpv", "--x", "--"].map(said => ({ said, whole: true })), " ", 40,
+                ["mpv", "--x", "--"]],
+            ["a whole path breaks after its slashes, nothing left out",
+                [{ said: firefox, whole: true }], " ", 200,
+                ["/run/current-system/", "sw/bin/firefox"]],
             ["an emoji in its middle is kept whole or left out, never split",
                 [{ said: "ab\ud83c\udf89cdefgh" }], " ", 60, ["ab\u2026gh"]]
         ];
