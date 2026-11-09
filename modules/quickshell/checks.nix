@@ -4110,6 +4110,8 @@ onLinux {
       cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./Words.qml} Words.qml
       cp ${./Files.qml} Files.qml
+      cp ${./FileFacts.js} FileFacts.js
+      cp ${./When.js} When.js
       cp ${./Copied.qml} Copied.qml
       cp ${./Copied.js} Copied.js
       cp ${niri} Niri.qml
