@@ -592,6 +592,18 @@
             rust-overlay
             ;
           formatting = (treefmt pkgs).config.build.check self;
+          # What core's linters are told to leave unread, apart from what
+          # treefmt-nix leaves for every repository: every-pattern-names-a-file
+          # holds each to naming a file.
+          formatterExcludes =
+            let
+              inherit ((treefmt pkgs).config) settings;
+              everyRepository = (treefmt-nix.lib.evalModule pkgs { }).config.settings.excludes;
+            in
+            nixpkgs.lib.subtractLists everyRepository settings.excludes
+            ++ nixpkgs.lib.concatMap (formatter: formatter.excludes or [ ]) (
+              builtins.attrValues settings.formatter
+            );
         }
       );
     };
