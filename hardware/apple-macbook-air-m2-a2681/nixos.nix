@@ -10,7 +10,7 @@
 # Linux system can use. docs/hardware.md says what works and what's left.
 # What kernel/ and boot/ take from nixos-apple-silicon comes under its MIT
 # notice, LICENSE.nixos-apple-silicon.
-{ hibernate }:
+{ bluetooth-disk-prompt, hibernate }:
 { pkgs, ... }:
 {
   imports = [
@@ -29,6 +29,13 @@
     # one has yet resumed from disk on Apple silicon. The kernel is built
     # without hibernation too, so nothing offers it.
     hibernate
+
+    # The laptop role lets a paired Bluetooth keyboard type at the disk
+    # prompt, with its pairings sealed to the TPM, which this Mac lacks, so
+    # its sealing would fail at every run. Its initrd Bluetooth is for USB
+    # controllers too, and this one is on PCIe, with firmware the initrd
+    # doesn't carry. The built-in keyboard types at the prompt instead.
+    bluetooth-disk-prompt
   ];
 
   nixpkgs.hostPlatform = "aarch64-linux";
