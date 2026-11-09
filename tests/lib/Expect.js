@@ -11,6 +11,13 @@ function expect(what, holds, said) {
     }
 }
 
+// A case whose answer is a value: it holds where the value said is the
+// one meant, as JSON says each.
+function same(what, said, meant) {
+    const was = JSON.stringify(said);
+    expect(what, was === JSON.stringify(meant), `said ${was}, meant ${JSON.stringify(meant)}`);
+}
+
 function fail(message) {
     // biome-ignore lint/suspicious/noConsole: a QML test's failure is said on its log.
     console.warn(`FAIL ${message}`);
