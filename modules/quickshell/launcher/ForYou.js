@@ -169,8 +169,8 @@ function bandsRun(counts, said) {
 // by `look`, its name. Holding only things to try, it names none, and
 // For You's row has no drawer.
 function heaviest(lead, look) {
-    const said = (lead ?? []).filter(item => item.keep < 3).map(item => item.said);
-    return said.length > 0 ? said.join(" \u00b7 ") : look ?? "";
+    const first = (lead ?? []).filter(item => item.keep < 3).map(item => item.said);
+    return first.length > 0 ? first.join(" \u00b7 ") : look ?? "";
 }
 
 // Whether a look was left by a session, by the session or the address the
