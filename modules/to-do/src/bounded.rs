@@ -99,11 +99,12 @@ pub fn run(mut command: Command, bound: Duration, grace: Duration) -> io::Result
         waited.map(|()| true)
     } else {
         tell_group(leader, libc::SIGTERM);
-        if ended_rx.recv_timeout(grace).is_err() {
+        // The waiter says once, so what it says within the grace is kept.
+        let waited = ended_rx.recv_timeout(grace).or_else(|_| {
             tell_group(leader, libc::SIGKILL);
-        }
-        ended_rx
-            .recv()
+            ended_rx.recv()
+        });
+        waited
             .map_err(io::Error::other)
             .and_then(|waited| waited.map(|()| false))
     };
