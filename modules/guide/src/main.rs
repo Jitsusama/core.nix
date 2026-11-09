@@ -18,6 +18,10 @@
 //! its payload's target.json. `guide install` is what the stick runs on
 //! its console, as root, and `guide installed` finishes the machine once
 //! it boots its own disk, as root on its first console at every boot.
+//! `guide revive` puts macOS back on a Mac with Apple silicon, from a
+//! stick carrying Apple's restore image, and `guide vault-list DIRECTORY`
+//! reads back every file of a vault copied there, its passphrase on
+//! standard input, and prints each one's SHA-256 as sha256sum does.
 
 use std::cell::RefCell;
 use std::fs::{File, OpenOptions};
@@ -42,6 +46,7 @@ use guide::writer::{self, GatherBundles, Payload, WriteStick};
 use guide::{Fault, Journal, Journey, Machine, Place, Secret, Step, Tool};
 
 const USAGE: &str = "usage: guide observe | guide tools | guide install | guide installed | guide recover | guide finish
+       guide revive | guide vault-list DIRECTORY
        guide host IMAGE [--sign-with DIRECTORY]... [--every-machine] [--install PAYLOAD [--rescue-bundle BUNDLE | --no-rescue-bundle]]
        guide write-stick IMAGE FILE [--sign-with DIRECTORY]... [--install PAYLOAD [--rescue-bundle BUNDLE]]
        guide seal-keys TARGET BUNDLE";
@@ -84,6 +89,11 @@ fn main() -> ExitCode {
             let _awake = guide::awake::hold("recovering this machine");
             reported(recover())
         }
+        ["revive"] => {
+            let _awake = guide::awake::hold("reviving a Mac");
+            reported(revive())
+        }
+        ["vault-list", directory] => reported(vault_list(directory)),
         ["seal-keys", target, bundle] => reported(seal_keys(target, bundle)),
         ["finish"] => reported(finish()),
         ["host", image, ref options @ ..] => {
@@ -557,6 +567,62 @@ fn signed_by_others<'a>(
         signers.push(keys.signer()?);
     }
     Ok(signers)
+}
+
+/// macOS put back on a Mac with Apple silicon from the stick, as root, in a
+/// walk of its own (src/revive.rs).
+fn revive() -> Result<(), Fault> {
+    // SAFETY: getuid can't fail and touches no memory.
+    if unsafe { libc::getuid() } != 0 {
+        return Err(Fault::Blocked {
+            step: "revive",
+            why: "reviving a Mac runs as root, on the stick".into(),
+        });
+    }
+    let journal = Journal::open(Path::new(JOURNAL))?;
+    let log = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(LOG)
+        .map_err(|why| Fault::Unkept {
+            path: LOG.into(),
+            why: why.to_string(),
+        })?;
+    let mut machine = System::new(journal, Some(log));
+    let theme = Theme::built(Terminal::is_console());
+    let journey = Journey::new(guide::revive::steps())
+        .map_err(|why| Fault::unreadable("the revive's steps", why))?;
+    let mut terminal = Terminal::open()?;
+    let walk = Walk {
+        journey: &journey,
+        here: Place::Stick,
+        name: "Revive a Mac",
+        theme: &theme,
+        log: Some(Path::new(LOG)),
+        whole: true,
+        done: RefCell::default(),
+    };
+    walk.walk(&mut machine, &mut terminal)?;
+    Ok(())
+}
+
+/// Every file of a vault copied into a directory, read back whole and
+/// proven, with its SHA-256, so a stick's vault can be shown to hold the
+/// same files before it's written over and after.
+fn vault_list(directory: &str) -> Result<(), Fault> {
+    let passphrase = passphrase()?;
+    let mut store = Directory::new(directory);
+    let sealed = {
+        let mut sealed = vec![];
+        std::io::Read::read_to_end(&mut store.open(vault::KEY_PASSPHRASE)?, &mut sealed)
+            .map_err(|why| Fault::unreadable(vault::KEY_PASSPHRASE, why))?;
+        sealed
+    };
+    let key = vault::VaultKey::open_with_passphrase(&sealed, &passphrase)?;
+    for file in vault::Vault::open(&mut store, key)?.read_back()? {
+        println!("{}  {}", file.sha256, file.path);
+    }
+    Ok(())
 }
 
 /// A machine's rescue bundle, made on that machine from its payload's

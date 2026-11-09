@@ -47,6 +47,8 @@ tools! {
     Fido2Assert => "fido2-assert", "GUIDE_FIDO2_ASSERT";
     Fido2Token => "fido2-token", "GUIDE_FIDO2_TOKEN";
     Gh => "gh", "GUIDE_GH";
+    Idevicerestore => "idevicerestore", "GUIDE_IDEVICERESTORE";
+    Irecovery => "irecovery", "GUIDE_IRECOVERY";
     Losetup => "losetup", "GUIDE_LOSETUP";
     Lsblk => "lsblk", "GUIDE_LSBLK";
     Mkdir => "mkdir", "GUIDE_MKDIR";
@@ -75,6 +77,7 @@ tools! {
     Tpm2Nvundefine => "tpm2_nvundefine", "GUIDE_TPM2_NVUNDEFINE";
     Udevadm => "udevadm", "GUIDE_UDEVADM";
     Umount => "umount", "GUIDE_UMOUNT";
+    Varlinkctl => "varlinkctl", "GUIDE_VARLINKCTL";
     Veritysetup => "veritysetup", "GUIDE_VERITYSETUP";
     Wipefs => "wipefs", "GUIDE_WIPEFS";
     Zstd => "zstd", "GUIDE_ZSTD";

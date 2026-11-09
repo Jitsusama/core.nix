@@ -17,6 +17,7 @@ guide][agents] says which test proves what.
 | `secure-boot-machine.nix`          | that test's machine, which tests of an installed laptop share  |
 | `canokeys.nix`, `set-pin.py`       | the security keys these tests plug in, made before QEMU starts |
 | `stick.nix`                        | the stick every guide test boots, so its image is built once   |
+| `apple-restore.nix`                | that stick's stand-in for Apple's restore image                |
 | `make-recipient.py`                | a key's age recipient, made as a person makes one              |
 
 The guide's Rust tests, which need no VM, are in
