@@ -1457,7 +1457,11 @@ works the same way everywhere.
   or from the first word a find matched, its side its time, its eyebrow
   where it came ("in #deploys · message", "direct message").
   Then Later, what was put off or can't be done yet, each
-  saying what for; then History.
+  saying what for; then History. A source may raise one to-do of its own
+  for what one of its checks found, never one a finding, so a check can't
+  flood For You: Passwords' Change the Passwords the Check Found, "3
+  breached · 12 reused", stands until a later check finds none (VKCF3Z,
+  WCJQSG).
 - **For You keeps itself true, and forgets nothing.** Nothing in it times
   out. An item leaves the moment its source says it no longer needs him:
   a check passes, a sign comes (a boot, a switch, a sign-in, a device
