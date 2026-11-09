@@ -127,6 +127,8 @@ struct Daemon {
     tell: Sender<Woken>,
     /// The to-dos as last read, for the shell.
     todos: Vec<ToDo>,
+    /// The looks and Joel's word as last read, for the shell.
+    beside: stream::Beside,
     /// What the shell is told, where a socket is served.
     shared: Option<Arc<serve::Shared>>,
 }
@@ -427,36 +429,28 @@ impl Daemon {
         checks.chain(devices).chain(self.fetch_again).min()
     }
 
+    /// Reads the looks and Joel's word again, as inotify says they changed.
+    fn read_beside(&mut self) {
+        self.beside
+            .read(self.paths.looks.as_deref(), self.paths.settled.as_deref());
+    }
+
     /// Tells the shell every record as it stands, where a socket is
     /// served; only those that changed reach a watch.
     fn tell_shell(&self) {
         let Some(shared) = &self.shared else {
             return;
         };
-        let looks = self.paths.looks.as_deref().map(stream::looks);
-        let settled = self
-            .paths
-            .settled
-            .as_deref()
-            .and_then(|path| fs::read_to_string(path).ok());
-        let standing = |known: bool| {
-            if known {
-                json!({"state": "answering"})
-            } else {
-                json!({"state": "absent"})
-            }
-        };
         let sources = json!({
-            "waiting": standing(self.paths.waiting.is_dir()),
-            "looks": standing(self.paths.looks.as_deref().is_some_and(Path::is_dir)),
-            "settled": standing(settled.is_some()),
+            "waiting": stream::standing(self.paths.waiting.is_dir()),
+            "looks": self.beside.looks_standing,
+            "settled": self.beside.settled_standing,
         });
-        let settled = settled.as_deref().map(stream::settled).unwrap_or_default();
         let records = stream::records(
             &self.todos,
             &self.found,
-            looks.as_deref().unwrap_or_default(),
-            &settled,
+            &self.beside.looks,
+            &self.beside.settled,
         );
         shared.change(records, sources);
     }
@@ -529,16 +523,17 @@ fn hear(
             let mut said = false;
             let mut changed = false;
             for event in events {
-                let for_the_shell = told.iter().any(|t| {
-                    t.watch == event.wd
-                        && t.only
-                            .as_deref()
-                            .is_none_or(|only| event.name == Some(only))
-                });
+                // A folder watched for one file alone, as Joel's word's,
+                // is heard only of that file, so the daemon's own
+                // verdicts beside it never wake it.
+                let for_the_shell = told.iter().find(|t| t.watch == event.wd);
                 if signals.contains(&event.wd) {
                     signal = true;
-                } else if for_the_shell {
-                    said = true;
+                } else if let Some(told) = for_the_shell {
+                    said |= told
+                        .only
+                        .as_deref()
+                        .is_none_or(|only| event.name == Some(only));
                 } else {
                     changed = true;
                 }
@@ -629,8 +624,10 @@ fn run(
         systemctl: tools.systemctl,
         tell,
         todos: Vec::new(),
+        beside: stream::Beside::default(),
         shared,
     };
+    daemon.read_beside();
     wake(&mut daemon, &woken)
 }
 
@@ -682,8 +679,10 @@ fn wake(daemon: &mut Daemon, woken: &Receiver<Woken>) -> io::Result<()> {
         // Everything already said is taken in before judging once.
         let mut signalled = false;
         let mut judge = false;
+        let mut said = false;
         for woke in first.into_iter().chain(woken.try_iter()) {
             judge |= !matches!(woke, Woken::Said);
+            said |= matches!(woke, Woken::Said);
             signalled |= match woke {
                 Woken::Journal(line) => daemon.follower.read(&line),
                 Woken::Signal => true,
@@ -696,6 +695,9 @@ fn wake(daemon: &mut Daemon, woken: &Receiver<Woken>) -> io::Result<()> {
         }
         if signalled {
             daemon.hurry();
+        }
+        if said {
+            daemon.read_beside();
         }
         // A look or Joel's word alone is told the shell, judging nothing;
         // a check falling due wakes with nothing said, and is judged.

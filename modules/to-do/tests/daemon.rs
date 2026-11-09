@@ -420,6 +420,23 @@ fn a_watch_is_told_each_to_do_look_and_word_of_joels_as_it_changes() {
     told(&mut client, &mut held, |held| {
         state(held, "to-do:QEST-9:now") == Some(json!("done"))
     });
+    written(&daemon.folder().join("settled.json"), r#"{"done":"#);
+    let standing = loop {
+        let line = client.heard();
+        take(&mut held, &line);
+        if line["sources"]["settled"]["state"] == "failing" {
+            break line;
+        }
+    };
+    assert_eq!(
+        standing["sources"]["waiting"]["state"], "answering",
+        "a watch is told how every source stands: {standing}"
+    );
+    assert_eq!(
+        state(&held, "to-do:QEST-9:now"),
+        Some(json!("done")),
+        "Joel's word that can't be read keeps the last he said"
+    );
     to_dos(
         daemon.folder(),
         "QEST-9",

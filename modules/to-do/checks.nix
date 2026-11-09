@@ -52,7 +52,7 @@ onLinux {
       started = lib.concatStringsSep " " (lib.toList service.Service.ExecStart);
     in
     holds "to-do-runs-in-each-account"
-      "The to-do daemon doesn't run with its own git, journalctl and systemctl and its socket, or a switch doesn't restart it."
+      "The to-do daemon lacks its git, journalctl, systemctl or socket, or outlives a switch."
       (
         lib.hasInfix "--git /nix/store/" started
         && lib.hasInfix "--journalctl /nix/store/" started

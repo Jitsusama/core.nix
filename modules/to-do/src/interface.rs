@@ -177,7 +177,7 @@ mod tests {
             "a list of a kind kept elsewhere"
         );
         assert_eq!(
-            ask(r#"{"id":3,"ask":"get","keys":["look:a1","person:ada@example.com"]}"#),
+            ask(r#"{"id":3,"ask":"get","keys":["look:a1","person:someone"]}"#),
             Ask::Get {
                 id: json!(3),
                 keys: vec!["look:a1".into()]

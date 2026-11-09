@@ -94,11 +94,14 @@ impl Shared {
     }
 
     /// Holds `records` as every record there is, and tells each watch
-    /// those that changed and the keys that went. A connection whose lines
-    /// aren't being read is hung up on, and its watches dropped, rather
-    /// than told less than it asked for.
+    /// those that changed and the keys that went, and, on a line of its
+    /// own as the shell's Daemon.qml reads it, how the sources stand once
+    /// that changes. A connection whose lines aren't being read is hung up
+    /// on, and its watches dropped, rather than told less than it asked
+    /// for.
     pub fn change(&self, records: Vec<Value>, sources: Value) {
         let mut held = lock(self);
+        let standing = (held.sources != sources).then(|| sources.clone());
         held.sources = sources;
         let mut now = BTreeMap::new();
         for record in records {
@@ -117,7 +120,7 @@ impl Shared {
             .filter(|(key, record)| held.records.get(*key) != Some(record))
             .map(|(_, record)| record)
             .collect();
-        if changed.is_empty() && gone.is_empty() {
+        if changed.is_empty() && gone.is_empty() && standing.is_none() {
             return;
         }
         let mut stuck = Vec::new();
@@ -127,14 +130,23 @@ impl Shared {
                 .filter(|record| record["key"].as_str().is_some_and(|key| watch.wants(key)))
                 .collect();
             let went: Vec<&String> = gone.iter().filter(|key| watch.wants(key)).collect();
-            if records.is_empty() && went.is_empty() {
-                continue;
+            // The records first, so a watch told how the sources stand
+            // already holds what the same reading changed.
+            let mut lines = Vec::new();
+            if !records.is_empty() || !went.is_empty() {
+                let mut told = json!({"id": watch.id, "changed": records});
+                if !went.is_empty() {
+                    told["gone"] = json!(went);
+                }
+                lines.push(told);
             }
-            let mut told = json!({"id": watch.id, "changed": records});
-            if !went.is_empty() {
-                told["gone"] = json!(went);
+            if let Some(sources) = &standing {
+                lines.push(json!({"id": watch.id, "sources": sources}));
             }
-            if watch.told.try_send(told.to_string()).is_err() {
+            if lines
+                .iter()
+                .any(|line| watch.told.try_send(line.to_string()).is_err())
+            {
                 stuck.push(watch.connection);
                 let _ = watch.stream.shutdown(Shutdown::Both);
             }

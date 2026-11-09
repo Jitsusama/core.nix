@@ -6,9 +6,11 @@
 //! A to-do's record is `to-do:<quest>:<id>`: `item`, the item whole as
 //! `mesh_wait` wrote it; `verdict`, what this daemon found, as
 //! `mission/verdicts.json` says it; `joel`, his word from the shell's
-//! `mission/settled.json`, done or not now; and `state`, For You's list
+//! `mission/settled.json`, done or not now; `state`, For You's list
 //! for it, worked out as Waiting.js does: `done` once found done or Joel
-//! says so, `now` once ready and not put off, `later` otherwise. A look's
+//! says so, `now` once ready and not put off, `later` otherwise; and
+//! `order`, its place in that list, as Waiting.js's `before` puts it. An
+//! item with no title is left out, as For You says nothing of one. A look's
 //! record is `look:<id>`, its file whole as the harness wrote it, under
 //! `look`. `waiting:summary` counts the to-dos in each state and the looks
 //! in each of theirs.
@@ -18,19 +20,24 @@
 //! whose quest has ended, so a record of it still counts here until its
 //! owner takes it out of its file, as a quest's ending does.
 
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fs;
+use std::io;
 use std::path::Path;
 
 use serde_json::{Map, Value, json};
 
 use crate::interface::SUMMARY;
-use crate::todo::ToDo;
+use crate::todo::{ToDo, as_javascript};
 use crate::verdicts::{State, Verdict, iso};
 
 /// What an item says, so one Joel put off comes back once its owner says
 /// something new of it: the fields Waiting.js's `said` names, in its
-/// order, written as `JSON.stringify` writes them.
+/// order, written as `JSON.stringify` writes them. Its numbers are
+/// written as JavaScript writes them (`as_javascript`); an object among
+/// them would have its keys sorted, where `JSON.stringify` keeps them as
+/// written, but `mesh_wait` writes none there.
 const SAID: [&str; 10] = [
     "title", "why", "detail", "when", "ready", "minutes", "window", "steps", "at", "deadline",
 ];
@@ -44,15 +51,89 @@ pub struct Settled {
     not_now: Map<String, Value>,
 }
 
-/// Joel's word, from settled.json's text; none where it can't be read.
-pub fn settled(text: &str) -> Settled {
-    let Ok(said) = serde_json::from_str::<Value>(text) else {
-        return Settled::default();
-    };
-    let field = |name: &str| said.get(name).and_then(Value::as_object).cloned();
-    Settled {
-        done: field("done").unwrap_or_default(),
-        not_now: field("notNow").unwrap_or_default(),
+/// Joel's word, from settled.json's text; none where it isn't an object,
+/// as a file cut short.
+pub fn settled(text: &str) -> Option<Settled> {
+    let said = serde_json::from_str::<Value>(text).ok()?;
+    said.is_object().then(|| {
+        let field = |name: &str| said.get(name).and_then(Value::as_object).cloned();
+        Settled {
+            done: field("done").unwrap_or_default(),
+            not_now: field("notNow").unwrap_or_default(),
+        }
+    })
+}
+
+/// What the shell is told beside the to-dos, read once at the start and
+/// again only as inotify says their files changed: the looks, Joel's
+/// word, and how each of their sources stands.
+#[derive(Debug)]
+pub struct Beside {
+    pub looks: Vec<Value>,
+    pub settled: Settled,
+    pub looks_standing: Value,
+    pub settled_standing: Value,
+}
+
+impl Default for Beside {
+    fn default() -> Self {
+        Beside {
+            looks: Vec::new(),
+            settled: Settled::default(),
+            looks_standing: json!({"state": "absent"}),
+            settled_standing: json!({"state": "absent"}),
+        }
+    }
+}
+
+impl Beside {
+    /// Reads the looks in `looks` and Joel's word in `settled` again.
+    /// A look that can't be read as one is named on the journal and left
+    /// out. Joel's word that can't be read keeps the last he said, rather
+    /// than bringing back all he marked done or put off, and says its
+    /// source is failing; one gone is none.
+    pub fn read(&mut self, looks: Option<&Path>, settled: Option<&Path>) {
+        if let Some(folder) = looks {
+            let (read, unread) = looks_in(folder);
+            for name in unread {
+                eprintln!("<4>{name} couldn't be read as a look, so it's left out");
+            }
+            self.looks = read;
+            self.looks_standing = standing(folder.is_dir());
+        }
+        let Some(path) = settled else {
+            return;
+        };
+        match fs::read_to_string(path) {
+            Ok(text) => {
+                if let Some(word) = self::settled(&text) {
+                    self.settled = word;
+                    self.settled_standing = standing(true);
+                } else {
+                    eprintln!("<4>Joel's word can't be read, so the last he said is kept");
+                    self.settled_standing = json!({"state": "failing",
+                        "reason": "settled.json isn't an object"});
+                }
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                self.settled = Settled::default();
+                self.settled_standing = standing(false);
+            }
+            Err(error) => {
+                eprintln!("<4>Joel's word can't be read, so the last he said is kept: {error}");
+                self.settled_standing = json!({"state": "failing",
+                    "reason": error.to_string()});
+            }
+        }
+    }
+}
+
+/// A source that answers, or isn't there.
+pub fn standing(there: bool) -> Value {
+    if there {
+        json!({"state": "answering"})
+    } else {
+        json!({"state": "absent"})
     }
 }
 
@@ -60,16 +141,17 @@ pub fn settled(text: &str) -> Settled {
 pub fn said(item: &Value) -> String {
     let fields: Vec<Value> = SAID
         .iter()
-        .map(|name| item.get(*name).cloned().unwrap_or(Value::Null))
+        .map(|name| item.get(*name).map_or(Value::Null, as_javascript))
         .collect();
     Value::Array(fields).to_string()
 }
 
 /// Every look in `folder`, each its file whole, in the order of their
-/// names; a file that can't be read, as one being replaced, is none.
-pub fn looks(folder: &Path) -> Vec<Value> {
+/// names, and the names of those that aren't a look with an id. A file
+/// gone between listing and reading, as one replaced, is neither.
+fn looks_in(folder: &Path) -> (Vec<Value>, Vec<String>) {
     let Ok(entries) = fs::read_dir(folder) else {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     };
     let mut files: Vec<_> = entries
         .filter_map(Result::ok)
@@ -77,16 +159,75 @@ pub fn looks(folder: &Path) -> Vec<Value> {
         .filter(|path| path.extension().is_some_and(|e| e == "json"))
         .collect();
     files.sort();
-    files
-        .iter()
-        .filter_map(|path| fs::read_to_string(path).ok())
-        .filter_map(|text| serde_json::from_str::<Value>(&text).ok())
-        .filter(|look| {
+    let mut looks = Vec::new();
+    let mut unread = Vec::new();
+    for path in files {
+        let Ok(text) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let look = serde_json::from_str::<Value>(&text).ok().filter(|look| {
             look.get("id")
                 .and_then(Value::as_str)
                 .is_some_and(|id| !id.is_empty())
-        })
-        .collect()
+        });
+        match look {
+            Some(look) => looks.push(look),
+            None => unread.push(path.display().to_string()),
+        }
+    }
+    (looks, unread)
+}
+
+/// When an item is for, in milliseconds, as Waiting.js's `timeOf` reads
+/// it; none for one for no time in particular.
+fn time_of(item: &Value) -> Option<i64> {
+    item.get("at")
+        .and_then(Value::as_str)
+        .and_then(|at| at.parse::<jiff::Timestamp>().ok())
+        .map(jiff::Timestamp::as_millisecond)
+}
+
+/// Waiting.js's `before`: anything for a time first, soonest first, then
+/// the quickest, then as their files list them.
+fn before(one: (&Value, usize), other: (&Value, usize)) -> Ordering {
+    let time = |item: &Value| time_of(item).unwrap_or(i64::MAX);
+    let minutes = |item: &Value| {
+        item.get("minutes")
+            .and_then(Value::as_f64)
+            .unwrap_or(f64::INFINITY)
+    };
+    time(one.0)
+        .cmp(&time(other.0))
+        .then(minutes(one.0).total_cmp(&minutes(other.0)))
+        .then(one.1.cmp(&other.1))
+}
+
+/// Each to-do's place among `todos`, as For You lists them: by file, then
+/// when raised, then as the file lists them (Waiting.js's `served`), and
+/// then by `before`.
+fn places(todos: &[&ToDo]) -> Vec<usize> {
+    let raised = |todo: &ToDo| {
+        todo.item
+            .get("raisedAt")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned()
+    };
+    let mut listed: Vec<usize> = (0..todos.len()).collect();
+    listed.sort_by(|a, b| {
+        let (one, other) = (todos[*a], todos[*b]);
+        one.file
+            .cmp(&other.file)
+            .then_with(|| raised(one).cmp(&raised(other)))
+            .then(a.cmp(b))
+    });
+    let mut at = vec![0; todos.len()];
+    for (place, index) in listed.iter().enumerate() {
+        at[*index] = place;
+    }
+    let mut ordered: Vec<usize> = (0..todos.len()).collect();
+    ordered.sort_by(|a, b| before((&todos[*a].item, at[*a]), (&todos[*b].item, at[*b])));
+    ordered
 }
 
 /// Whether Joel can do `item` now, as Waiting.js's `readyOf` says: once
@@ -131,7 +272,17 @@ pub fn records(
 ) -> Vec<Value> {
     let mut records = Vec::new();
     let mut states: BTreeMap<&str, u64> = [("now", 0), ("later", 0), ("done", 0)].into();
-    for todo in todos {
+    let titled: Vec<&ToDo> = todos
+        .iter()
+        .filter(|todo| {
+            todo.item
+                .get("title")
+                .and_then(Value::as_str)
+                .is_some_and(|title| !title.is_empty())
+        })
+        .collect();
+    for index in places(&titled) {
+        let todo = titled[index];
         let verdict = found.get(&todo.key);
         let (word, put_off) = joel(todo, settled);
         let done = verdict.is_some_and(|v| v.state == State::Done)
@@ -144,11 +295,12 @@ pub fn records(
         } else {
             "later"
         };
-        *states.entry(state).or_default() += 1;
+        let order = states.entry(state).or_default();
         let mut record = json!({
             "key": format!("to-do:{}", todo.key), "kind": "to-do",
-            "state": state, "ready": ready && !done, "item": todo.item,
+            "state": state, "order": *order, "ready": ready && !done, "item": todo.item,
         });
+        *order += 1;
         if let Some(verdict) = verdict {
             record["verdict"] = json!({
                 "state": verdict.state.name(), "at": iso(verdict.at), "how": verdict.how,
@@ -263,7 +415,8 @@ mod tests {
                 "notNow": {"Q:a": {"said": now, "at": 1_794_000_000_001_u64},
                     "Q:b": {"said": before, "at": 1_794_000_000_002_u64}}})
             .to_string(),
-        );
+        )
+        .expect("Joel's word reads");
         let records = records(&todos, &BTreeMap::new(), &[], &settled);
         let states: Vec<&str> = records[..3]
             .iter()
@@ -311,8 +464,110 @@ mod tests {
     }
 
     #[test]
+    fn each_list_is_in_the_order_joel_does_them_and_an_untitled_one_is_left_out() {
+        let todos = in_file(
+            r#"{"quest":"Q","items":[
+            {"id":"slow","title":"Slow","ready":true,"minutes":30},
+            {"id":"later","title":"Later","ready":true,"at":"2026-11-10T15:00:00Z"},
+            {"id":"soon","title":"Soon","ready":true,"at":"2026-11-10T09:00:00Z"},
+            {"id":"quick","title":"Quick","ready":true,"minutes":2},
+            {"id":"untitled","ready":true},
+            {"id":"waits","title":"Waits","ready":false,"minutes":1}]}"#,
+        );
+        let records = records(&todos, &BTreeMap::new(), &[], &Settled::default());
+        let listed: Vec<(&str, &str, u64)> = records
+            .iter()
+            .filter(|r| r["kind"] == "to-do")
+            .map(|r| {
+                (
+                    r["item"]["id"].as_str().unwrap_or_default(),
+                    r["state"].as_str().unwrap_or_default(),
+                    r["order"].as_u64().unwrap_or(u64::MAX),
+                )
+            })
+            .collect();
+        assert_eq!(
+            listed,
+            [
+                ("soon", "now", 0),
+                ("later", "now", 1),
+                ("waits", "later", 0),
+                ("quick", "now", 2),
+                ("slow", "now", 3),
+            ],
+            "for a time first, soonest first, then the quickest, each list counted apart"
+        );
+    }
+
+    #[test]
+    fn a_number_is_said_as_javascript_says_it() {
+        assert_eq!(
+            said(&json!({"title": "T", "minutes": 5.0})),
+            said(&json!({"title": "T", "minutes": 5})),
+            "5.0 is written 5, as JSON.stringify writes it"
+        );
+        assert!(
+            said(&json!({"title": "T", "minutes": 2.5})).contains("2.5"),
+            "a fraction is kept"
+        );
+    }
+
+    #[test]
+    fn joels_word_unread_keeps_the_last_he_said() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let path = dir.path().join("settled.json");
+        let mut beside = Beside::default();
+        fs::write(&path, r#"{"done":{"Q:a":1},"notNow":{}}"#).expect("written");
+        beside.read(None, Some(&path));
+        assert_eq!(
+            beside.settled_standing,
+            json!({"state": "answering"}),
+            "his word read"
+        );
+        fs::write(&path, r#"{"done":"#).expect("written");
+        beside.read(None, Some(&path));
+        assert_eq!(
+            beside.settled_standing["state"], "failing",
+            "a word that can't be read fails"
+        );
+        assert!(
+            beside.settled.done.contains_key("Q:a"),
+            "and the last he said is kept"
+        );
+        fs::remove_file(&path).expect("removed");
+        beside.read(None, Some(&path));
+        assert_eq!(
+            (
+                beside.settled_standing["state"].clone(),
+                beside.settled.done.len()
+            ),
+            (json!("absent"), 0),
+            "his word gone is none"
+        );
+    }
+
+    #[test]
+    fn a_look_that_cant_be_read_is_named() {
+        let dir = tempfile::tempdir().expect("a folder");
+        fs::write(
+            dir.path().join("a1.json"),
+            r#"{"id":"a1","state":"waiting"}"#,
+        )
+        .expect("written");
+        fs::write(dir.path().join("b2.json"), r#"{"id":"#).expect("written");
+        fs::write(dir.path().join("c3.json"), r#"{"state":"waiting"}"#).expect("written");
+        let (looks, unread) = looks_in(dir.path());
+        assert_eq!(looks.len(), 1, "only a look with an id is held: {looks:?}");
+        let names: Vec<bool> = ["b2.json", "c3.json"]
+            .iter()
+            .map(|name| unread.iter().any(|path| path.ends_with(name)))
+            .collect();
+        assert_eq!(names, [true, true], "each other is named: {unread:?}");
+    }
+
+    #[test]
     fn nothing_waiting_still_counts_none() {
-        let records = records(&[], &BTreeMap::new(), &[], &settled("{\"done\":"));
+        let records = records(&[], &BTreeMap::new(), &[], &Settled::default());
         assert_eq!(
             records,
             [json!({"key": SUMMARY, "kind": "waiting",
