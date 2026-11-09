@@ -38,13 +38,13 @@ pub fn build(
             .into_iter()
             .map(|(drv, piece)| (drv, piece.inputs))
             .collect();
-        let batched = in_batches(&needed, &inputs, batches.pieces);
-        let count = batched.len();
+        let planned = in_batches(&needed, &inputs, batches.pieces);
+        let count = planned.len();
         eprintln!(
             "the system needs {} pieces built, so they build here in {count} batches",
             needed.len()
         );
-        for (at, batch) in batched.iter().enumerate() {
+        for (at, batch) in planned.iter().enumerate() {
             room(config, batches)?;
             let mut build = system::nix(config);
             build.args(["build", "--no-link"]);
