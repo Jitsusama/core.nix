@@ -95,11 +95,12 @@ Provider {
         .some(row => row?.key === "bluetooth:nearby")
 
     // A terminal walked into Nearby waits while nothing's heard yet, as
-    // before the radio's first look, for the first few seconds it listens:
-    // BlueZ says what it hears as it hears it, never that a look is done,
-    // and a device near enough to pair says itself within a second or two,
-    // so with nothing in range a show waits that long and no longer
-    // (Provider.stillReading), within the program's own longer wait
+    // before the radio's first look, for the first seconds it listens:
+    // BlueZ says what it hears as it hears it, never that a look is done.
+    // A radio that can't listen both ways at once listens for LE devices
+    // for 5.12 s before it asks for classic ones, and a device in btvirt
+    // was heard 4.3 s in, so a show waits 8 s while nothing's heard and no
+    // longer (Provider.stillReading), within the program's own longer wait
     // (in-a-terminal's SETTLING, 10 s, for a Wi-Fi look).
     stillReading: terminalLooks && on && !listened
         && nearby.length === 0 && nameless.length === 0
@@ -110,7 +111,7 @@ Provider {
     Timer {
         id: listening
 
-        interval: 4000
+        interval: 8000
         onTriggered: provider.listened = true
     }
     onTerminalLooksChanged: {
