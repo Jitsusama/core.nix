@@ -23,8 +23,8 @@ QtObject {
     // by its id, so a fact's order is read off.
     readonly property var said: ({
         in: "in {folder}",
-        screenshot: "screenshot",
-        recording: "recording"
+        picture: "picture",
+        video: "video"
     })
     readonly property var days: ({
         yesterday: "yesterday",
@@ -66,17 +66,16 @@ QtObject {
             path: shot,
             name: "Screenshot from 2026-11-08 04-39-15.png",
             where: "~/Pictures/Screenshots",
-            kind: "screenshot",
             at: new Date(2026, 10, 8, 4, 39, 15).getTime(),
             size: 2412345
         };
         const before = Captured.drawer(file, null, told);
-        expect("before file-preview says, it's where, what, the picture and what Taken read",
-            before, {
-                eyebrow: "in ~/Pictures/Screenshots \u00b7 screenshot",
+        expect("before file-preview says, it's where, its kind of file, the picture and what"
+            + " Taken read", before, {
+                eyebrow: "in ~/Pictures/Screenshots \u00b7 picture",
                 eyebrowItems: [
                     { said: "in ~/Pictures/Screenshots", keep: 2, path: "~/Pictures/Screenshots" },
-                    { said: "screenshot", keep: 1 }
+                    { said: "picture", keep: 1 }
                 ],
                 eyebrowNames: true,
                 title: "Screenshot from 2026-11-08 04-39-15.png",
@@ -102,7 +101,6 @@ QtObject {
             path: video,
             name: "2026-11-07 22-10-04.mp4",
             where: "~/Videos/Recordings",
-            kind: "recording",
             at: new Date(2026, 10, 7, 22, 10, 4).getTime(),
             size: 48e6
         }, { size: 48e6, kind: "MP4", seconds: 221.4, picture: frame, across: 1040, down: 650 },
@@ -110,14 +108,14 @@ QtObject {
         expect("a recording says its length, its frame previewed, never the frame's sides",
             [recording.eyebrow, recording.preview?.picture]
                 .concat(recording.facts.map(fact => `${fact.label} ${fact.value}`)),
-            ["in ~/Videos/Recordings \u00b7 recording", frame, "[taken] yesterday \u00b7 22:10",
+            ["in ~/Videos/Recordings \u00b7 video", frame, "[taken] yesterday \u00b7 22:10",
                 "[size] 48.0\u00a0MB", "[length] 3:41"]);
         expect("a recording says nothing of a picture before file-preview has",
-            Captured.drawer({ path: video, name: "v.mp4", where: "~/Videos/Recordings",
-                kind: "recording" }, null, told).preview, null);
-        expect("a folder with no kind of its own says where alone",
-            Captured.drawer(Object.assign({}, file, { kind: "other" }), null, told).eyebrow,
-            "in ~/Pictures/Screenshots");
+            Captured.drawer({ path: video, name: "v.mp4", where: "~/Videos/Recordings" },
+                null, told).preview, null);
+        expect("a file neither a picture nor a video says where alone",
+            Captured.drawer(Object.assign({}, file, { path: "/home/joel/notes.txt" }), null,
+                told).eyebrow, "in ~/Pictures/Screenshots");
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)

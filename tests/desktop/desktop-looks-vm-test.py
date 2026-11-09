@@ -3612,7 +3612,7 @@ def recent_drawer(desktop: Desktop, shot: str) -> None:
     desktop.launcher_until(
         lambda shown: (
             shown["drawer"]["out"] is True
-            and shown["drawer"]["eyebrow"] == "in ~/Pictures/Screenshots \u00b7 screenshot"
+            and shown["drawer"]["eyebrow"] == "in ~/Pictures/Screenshots \u00b7 picture"
             and "Dimensions" in shown["drawer"]["facts"]
         )
     )

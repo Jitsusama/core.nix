@@ -7702,9 +7702,7 @@
       "said": {
         "none": "none",
         "in": "in {folder}",
-        "screenshot": "screenshot",
-        "recording": "recording",
-        "photo": "photo",
+        "picture": "picture",
         "video": "video"
       }
     },

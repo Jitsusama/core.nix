@@ -92,8 +92,8 @@ function takenSide(when, folder, usual) {
 }
 
 // The eyebrow over a picture taken, as its drawer takes it: the folder
-// it's in, as its row no longer says, then what it is, a screenshot or a
-// photo (`kind`), "in ~/Pictures/Screenshots \u00b7 screenshot". `words`
+// it's in, as its row no longer says, then what kind of file it is, a
+// picture or a video (`kind`), "in ~/Pictures/Screenshots \u00b7 picture". `words`
 // gives how the folder is said, its `in`. It's set as written, since a
 // folder is a name never re-cased (VKCF3Z, 2026-11-06). Short of room,
 // what it is goes first, since the folder says it too, then the folder

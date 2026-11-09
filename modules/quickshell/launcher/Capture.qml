@@ -444,15 +444,6 @@ Provider {
         return row;
     }
 
-    // What each folder's captures are, by the folder, for the drawer's
-    // eyebrow.
-    readonly property var kinds: ({
-            [`${home}/Pictures/Screenshots`]: "screenshot",
-            [`${home}/Videos/Recordings`]: "recording",
-            [`${home}/Pictures/Camera`]: "photo",
-            [`${home}/Videos/Camera`]: "video"
-        })
-
     // The drawer under one thing taken (Captured.js): where and what it is,
     // the picture, when it was taken and its size, as Taken read them, then
     // its dimensions or length once file-preview has said, which is asked
@@ -460,7 +451,6 @@ Provider {
     // would change what it reads.
     function takenDrawer(path, name) {
         const read = Taken.files.find(file => file.path === path) ?? { path };
-        const folder = path.slice(0, path.lastIndexOf("/"));
         const shown = provider.previews[path];
         if (shown === undefined && provider.canPreview && !provider.previewAsked[path]) {
             provider.previewAsked[path] = true;
@@ -470,7 +460,6 @@ Provider {
             path,
             name,
             where: Files.within(path),
-            kind: provider.kinds[folder] ?? "",
             at: read.at,
             size: read.size
         }, shown ?? null, {
