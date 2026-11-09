@@ -118,9 +118,9 @@ QtObject {
         check("whether it's persistent", web.persistent, true);
         check("whether it starts by itself", web.autostart, false);
         check("whether it has a managed save", web.managedSave, false);
-        check("its security", [web.securityModel, web.securityDoi, web.securityLabel],
-            ["apparmor", "0",
-                "libvirt-3e8f0a52-1b7d-4c4e-9a7f-2c1f4f6b9d10 (enforcing)"]);
+        check("its security", [web.securityModel, web.securityLabel],
+            ["apparmor", "libvirt-3e8f0a52-1b7d-4c4e-9a7f-2c1f4f6b9d10 (enforcing)"]);
+        check("its security DOI, which is machinery, is left out", web.securityDoi, undefined);
         check("its messages, a colon in each", web.messages,
             ["tainted: custom-monitor", "tainted: host-cpu"]);
 
@@ -203,7 +203,6 @@ QtObject {
             { id: "autostart", value: said.no },
             { id: "persistent", value: said.yes },
             { id: "security-model", value: "apparmor" },
-            { id: "security-doi", value: "0" },
             { id: "security-label", value: web.securityLabel },
             { id: "messages", value: "tainted: custom-monitor; tainted: host-cpu" },
             { id: "id", value: "3" },
@@ -213,10 +212,10 @@ QtObject {
             Machines.leftOut(web, said), { stopped: [], unsaid: [] });
         // dominfo gives a Used memory while it's off, which is only what
         // it would start with, so memory in use is said only while it's on.
-        check("one off leaves out what it gave none of, and memory in use",
+        // Its model is none, which says nothing, as an unsaved state does.
+        check("one off leaves out what it gave none of, memory in use and a model of none",
             Machines.figures(box, said).map(one => one.id),
-            ["processors", "most-memory", "autostart", "persistent",
-                "security-model", "security-doi", "uuid"]);
+            ["processors", "most-memory", "autostart", "persistent", "uuid"]);
         check("no limit said", Machines.figures(box, said)[1].value, said.noLimit);
         // Its model is none, so it has no label to lack; what libvirt
         // couldn't tell is named apart from what only a running one has.
