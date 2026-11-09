@@ -32,6 +32,14 @@ in
     startLimitBurst = 3;
   };
 
+  # A switch stops a changed unit before systemd reads the new units and
+  # starts it after, and fwupd starts on D-Bus whenever anything asks it
+  # something. A question in that gap, from the shell or the firmware
+  # notice, starts the old daemon from the old unit, and a new client then
+  # refuses it as another version until the next restart. Restarting it
+  # once the new units are read leaves no gap.
+  systemd.services.fwupd.stopIfChanged = false;
+
   # fwupd reads its quirks from its package's folder, which this one
   # replaces with the package's quirks and the machine's own side by side;
   # the file says why it's there. Its other folder, in /var/lib/fwupd,
