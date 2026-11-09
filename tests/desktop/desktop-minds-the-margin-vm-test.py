@@ -24,6 +24,8 @@ from desktop_session import (
     MARGIN,
     NOTICES,
     changed_at_the_top,
+    for_you_lit,
+    for_you_read,
     margin_points,
     margin_sets,
 )
@@ -399,14 +401,14 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     stays_showing_it_gone(desktop, "Do Not Disturb")
 
 
-def test_a_critical_notice_missed_lights_for_yous_tray_and_now_shows_the_notices(
+def test_a_critical_notice_unread_lights_for_yous_tray_and_now_shows_the_notices(
     desktop: Desktop,
 ) -> None:
-    """A critical notice missed lights For You's tray, Now shows the notices, and u undoes dd."""
+    """A critical notice unread lights For You's tray, Now shows the notices, and u undoes dd."""
     machine = desktop.machine
-    # A critical notice stays on screen until it's put away; on screen it
-    # isn't waiting yet. Put away unseen, it waits in For You, whose tray
-    # is then the margin's one mark, and it wants Joel, so it's strong.
+    # A critical notice stays on screen until it's put away; on screen its
+    # card says it. Put away unread, it waits in For You's Desktop, whose
+    # tray is then the margin's one mark, and it wants Joel, so it's strong.
     with desktop.told("shows card Peter"):
         desktop.as_account("notify-send --urgency=critical 'Peter' 'are you there?'")
     since = desktop.mark()
@@ -457,9 +459,9 @@ def test_a_critical_notice_missed_lights_for_yous_tray_and_now_shows_the_notices
     desktop.shoot("launcher-from-margin")
     forgets_then_brings_back(desktop)
     desktop.close_launcher()
-    # Opening them counted them seen, so nothing's waiting.
-    machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
+    # Unread still, Peter's notice keeps the tray lit until it's read.
     reads_them_all(desktop)
+    machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
 
 
 def says_each_thing_once(desktop: Desktop) -> None:
@@ -720,68 +722,6 @@ def test_whats_playing_shows_in_the_margin_and_a_media_key_shows_what_it_is(
 TIMERS_KEPT = "~/.local/state/timers/held.json"
 
 
-def tray_lit(desktop: Desktop, said: str) -> None:
-    """Light For You's tray with a critical notice put away unseen, then wait for its mark."""
-    with desktop.told(f"shows card {said}"):
-        desktop.as_account(f"notify-send --urgency=critical {shlex.quote(said)} 'are you there?'")
-    since = desktop.mark()
-    desktop.as_account("qs ipc call notices putAway")
-    desktop.reported("holds margin ", lambda rest: "forYou" in rest.split(), since)
-
-
-def tray_out(desktop: Desktop, *rest: str) -> None:
-    """See the notices, which puts For You's tray out, and wait for the margin to hold the rest."""
-    since = desktop.mark()
-    desktop.as_account("qs ipc call notices seen")
-    # The prefix holds no space, since a margin holding nothing says none after it.
-    desktop.reported("holds margin", lambda held: sorted(held.split()) == sorted(rest), since)
-
-
-# How long the shell is watched with For You's tray lit and the launcher closed, in seconds, and
-# the launcher's closed budget it's held to: under a hundredth of a core, no frame, and under five
-# wakeups a second of its main thread (WCJQSG, 2026-11-09).
-LIT_WATCHED = 20
-CORE_SHARE = 0.01
-WAKEUPS_A_SECOND = 5
-
-
-def spent(desktop: Desktop, pid: str) -> tuple[float, int]:
-    """Give the shell's processor time so far, in seconds, and its main thread's wakeups."""
-    ticks, woke, hertz = desktop.as_account(
-        f"awk '{{ print $14 + $15 }}' /proc/{pid}/stat;"
-        f" awk '/ctxt_switches/ {{ n += $2 }} END {{ print n }}' /proc/{pid}/task/{pid}/status;"
-        " getconf CLK_TCK"
-    ).split()
-    return int(ticks) / int(hertz), int(woke)
-
-
-def test_for_yous_tray_lit_keeps_the_shell_within_its_closed_budget(desktop: Desktop) -> None:
-    """For You's tray lit, the shell draws nothing and barely wakes while the launcher's closed.
-
-    The tray is lit by what the shell already hears, with no watcher or clock of its own, so
-    lit it costs what the margin at rest does.
-    """
-    machine = desktop.machine
-    machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
-    tray_lit(desktop, "Budget")
-    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
-    pid = desktop.as_account("systemctl --user show quickshell -p MainPID --value").strip()
-    desktop.as_account("qs ipc call frames start")
-    began, woke = spent(desktop, pid)
-    # The span measured, not a wait for something to happen: what's counted is what the
-    # shell does while the tray stands lit.
-    machine.sleep(duration=timedelta(seconds=LIT_WATCHED))
-    ended, woken = spent(desktop, pid)
-    frames = json.loads(desktop.as_account("qs ipc call frames said"))
-    share, rate = (ended - began) / LIT_WATCHED, (woken - woke) / LIT_WATCHED
-    print(f"the tray lit, in {LIT_WATCHED} s: {share:.2%} of a core, {rate:.1f} wakeups a second")
-    print(f"the tray lit, frames: {frames}")
-    assert frames == {}, f"windows drew while the tray stood lit: {frames}"
-    assert share < CORE_SHARE, f"the shell took {share:.2%} of a core with the tray lit"
-    assert rate < WAKEUPS_A_SECOND, f"the main thread woke {rate:.1f} times a second"
-    tray_out(desktop)
-
-
 def test_for_yous_tray_is_shot_alone_calm_and_beside_a_timer_and_music(desktop: Desktop) -> None:
     """For You's tray is shot alone, then out and lit beside a running timer and music.
 
@@ -794,9 +734,9 @@ def test_for_yous_tray_is_shot_alone_calm_and_beside_a_timer_and_music(desktop: 
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
     for scale in JOELS_SCALES:
         desktop.as_account(f"niri msg output winit scale {scale}")
-        tray_lit(desktop, f"Alone at {scale}")
+        for_you_lit(desktop, f"Alone at {scale}")
         desktop.shoot(f"margin-for-you-at-{scale.replace('.', '-')}")
-        tray_out(desktop)
+        for_you_read(desktop)
     desktop.as_account("niri msg output winit scale 1")
     with desktop.told("drawn notifications"):
         desktop.as_account(
@@ -815,11 +755,10 @@ def test_for_yous_tray_is_shot_alone_calm_and_beside_a_timer_and_music(desktop: 
         for scale in JOELS_SCALES:
             at = scale.replace(".", "-")
             desktop.as_account(f"niri msg output winit scale {scale}")
-            tray_out(desktop, "timer", "playing")
             desktop.shoot(f"margin-calm-beside-a-timer-at-{at}")
-            tray_lit(desktop, f"Beside at {scale}")
+            for_you_lit(desktop, f"Beside at {scale}")
             desktop.shoot(f"margin-for-you-beside-a-timer-at-{at}")
-            tray_out(desktop, "timer", "playing")
+            for_you_read(desktop, "timer", "playing")
     finally:
         desktop.as_account("niri msg output winit scale 1")
         desktop.as_account("systemctl --user stop player timers.service")

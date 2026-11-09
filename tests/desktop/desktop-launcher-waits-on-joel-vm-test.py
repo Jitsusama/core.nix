@@ -1117,32 +1117,35 @@ def test_a_session_wants_joel_only_while_it_is_true(desktop: Desktop) -> None:
             }
         )
 
-    def marked() -> bool:
-        """Say whether the margin last held For You's tray, lit while a session wants Joel."""
-        held = desktop.as_account(
+    def counted() -> int:
+        """Say how many For You's tray last counted waiting on Joel, none while it was out."""
+        sets = desktop.as_account(
             "journalctl --user --unit=quickshell --no-pager --output=cat"
-            " | grep -o 'report\\[holds margin [^]]*' | tail -n 1"
+            " | grep -o 'report\\[sets margin .*\\]$' | tail -n 1"
         )
-        return "forYou" in held.split()[2:]
+        said = sets.strip().removeprefix("report[sets margin ").removesuffix("]")
+        drawn = json.loads(said or "[]")
+        return next((int(glyph["state"]) for glyph in drawn if glyph["mark"] == "forYou"), 0)
 
     # An action its quest's file holds only for later isn't Joel's yet.
     later = {"quest": "TESTQA", "items": [{"id": "later", "title": "Later", "ready": False}]}
     desktop.as_account(f"printf %s {shlex.quote(json.dumps(later))} > {waiting}")
     wants("action", "WCJQSG")
     time.sleep(2)
-    assert not marked(), "an action held only for later marked Joel"
-    # It is once the file says he can do it now.
+    assert counted() == 0, "an action held only for later marked Joel"
+    # It is once the file says he can do it now, beside the to-do itself.
     now = {"quest": "TESTQA", "items": [{"id": "now", "title": "Now", "ready": True}]}
     desktop.as_account(
         f"printf %s {shlex.quote(json.dumps(now))} > {waiting}.q && mv {waiting}.q {waiting}"
     )
-    retry(lambda _: marked(), timeout=dt.timedelta(seconds=20))
+    both, the_to_do = 2, 1
+    retry(lambda _: counted() == both, timeout=dt.timedelta(seconds=20))
     # A question an orchestrated session asks is its orchestrator's; a yes
     # it waits for is always his.
     wants("question", "WCJQSG")
-    retry(lambda _: not marked(), timeout=dt.timedelta(seconds=20))
+    retry(lambda _: counted() == the_to_do, timeout=dt.timedelta(seconds=20))
     wants("approval", "WCJQSG")
-    retry(lambda _: marked(), timeout=dt.timedelta(seconds=20))
+    retry(lambda _: counted() == both, timeout=dt.timedelta(seconds=20))
     desktop.as_account(f"rm {waiting}")
     desktop.pi_session()
     for title in ["Elsewhere"]:

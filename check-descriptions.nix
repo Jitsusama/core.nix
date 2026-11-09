@@ -2373,7 +2373,7 @@
     waits for its card, and a wait shows once the same one lasts; each stands in a square cell the
     gap's size with the same room all round, and Now points at the row the keys are on; For You's
     tray is lit by what For You holds that waits on Joel, a want, a to-do he can do now, a look,
-    a landing to try or a critical notice missed, and by nothing else
+    a landing to try or a critical notice unread, and by nothing else
   '';
   the-margins-marks-are-drawn-level = ''
     every mark the margin can show, a device's kind and Slack's among them, is the theme's
@@ -3085,8 +3085,8 @@
   '';
   vm-desktop-minds-the-margin = ''
     the margin shows keeping awake, lid shut too, a camera opened, tokens running out, do not
-    disturb, a missed notice, waiting, the muted microphone, dictation, what's playing and caps
-    lock, and Now says each and answers the keys
+    disturb, For You's tray lit by a critical notice unread, waiting, the muted microphone,
+    dictation, what's playing and caps lock, and Now says each and answers the keys
   '';
   vm-desktop-opens-and-sets = ''
     the launcher sets sound and opens its outputs' and microphones' parts, works a program's media,
@@ -3119,8 +3119,8 @@
   '';
   vm-desktop-shows-then-rests = ''
     the meters answer the keys and go, a notice shows and goes, the overview draws nothing of the
-    shell's, and once nothing shows the shell draws nothing and barely wakes, behind the lock too
-    as its files are written
+    shell's, and once nothing shows the shell draws nothing and barely wakes, with For You's
+    tray lit too, under a hundredth of a core, and behind the lock as its files are written
   '';
   vm-desktop-starts-clean = ''
     the desktop boots without an ordering cycle and its shell without an error, niri alone keeps

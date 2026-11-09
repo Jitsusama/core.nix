@@ -22,6 +22,8 @@ from desktop_session import (
     FOLLOWED_THE_ROOM,
     LAUNCHER_OPEN,
     NOTICES,
+    for_you_lit,
+    for_you_read,
     retry,
 )
 
@@ -323,6 +325,48 @@ def test_the_shell_draws_nothing_and_barely_wakes_while_nothing_shows(desktop: D
     desktop.close_launcher()
     opening = json.loads(desktop.as_account("qs ipc call frames said"))
     assert opening.get("launcher", 0) > 0, f"the launcher opened without a frame: {opening}"
+
+
+# The launcher's closed budget For You's tray is held to, lit: under a hundredth of a core
+# (WCJQSG, 2026-11-09), besides no frame and the wakeups above.
+CORE_SHARE = 0.01
+
+
+def spent(desktop: Desktop, pid: str) -> float:
+    """Give the processor time the shell has taken so far, in seconds."""
+    ticks, hertz = desktop.as_account(
+        f"awk '{{ print $14 + $15 }}' /proc/{pid}/stat; getconf CLK_TCK"
+    ).split()
+    return int(ticks) / int(hertz)
+
+
+def test_for_yous_tray_lit_costs_no_more_than_the_shell_at_rest(desktop: Desktop) -> None:
+    """For You's tray lit, the shell draws nothing, barely wakes, and takes under 1% of a core.
+
+    The tray is lit by what the shell already hears, with no watcher or clock of its own, so
+    lit it costs what the margin at rest does. It's watched from just after a minute turns, as
+    the shell at rest is, so the margin's clock has nothing to draw.
+    """
+    machine = desktop.machine
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=GOING)
+    for_you_lit(desktop, "Budget")
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=GOING)
+    pid = desktop.as_account("systemctl --user show quickshell -p MainPID --value").strip()
+    machine.wait_until_succeeds("test $(date +%S) -lt 5", timeout=timedelta(seconds=70))
+    desktop.as_account("qs ipc call frames start")
+    before, began = woken(desktop, pid), spent(desktop, pid)
+    # The span measured, not a wait for something to happen: what's counted is what the
+    # shell does while the tray stands lit.
+    machine.sleep(duration=timedelta(seconds=QUIET))
+    after, share = woken(desktop, pid), (spent(desktop, pid) - began) / QUIET
+    frames = json.loads(desktop.as_account("qs ipc call frames said"))
+    main = next(thread for thread in after if thread.endswith(f" {pid}"))
+    rate = (after[main] - before.get(main, 0)) / QUIET
+    print(f"the tray lit, in {QUIET} s: {share:.2%} of a core, {rate:.1f} wakeups a second")
+    assert frames == {}, f"windows drew while the tray stood lit: {frames}"
+    assert share < CORE_SHARE, f"the shell took {share:.2%} of a core with the tray lit"
+    assert rate < WAKEUPS_A_SECOND, f"the main thread woke {rate:.1f} times a second"
+    for_you_read(desktop)
 
 
 def test_the_shell_draws_nothing_behind_the_lock(desktop: Desktop) -> None:

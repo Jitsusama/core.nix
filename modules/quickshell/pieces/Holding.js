@@ -10,17 +10,23 @@
 // list and any left out holding nothing: `wanting`, the sessions that
 // want Joel, and `toDo`, what the agents wait on him for that he can do
 // now, are to-dos; `looks`, what they left him to look at, counts while
-// it waits; `tries`, what's landed for him to try; and `notices`, a
-// notice he missed, counts only when its sender said it's critical,
-// since For You takes only those, the rest being what came lately.
+// it waits; `tries`, what's landed for him to try; and `notices`, the
+// notices kept, of which one counts while it's critical, unread and off
+// the screen, its id not among `onScreen`'s. For You's Desktop holds a
+// notice until it's read, and of those only a critical one waits on Joel,
+// the rest being what came lately; on screen its card says it, as a card
+// or a mark, never both; and one saying a to-do (`waits`) is that to-do,
+// counted once among them.
 function held(sources) {
     const given = sources ?? {};
     const each = name => Array.isArray(given[name]) ? given[name] : [];
+    const shown = each("onScreen").map(String);
     return {
         do: each("wanting").length + each("toDo").length,
         look: each("looks").filter(one => one?.state === "waiting").length,
         try: each("tries").length,
-        notice: each("notices").filter(one => one?.urgency === "critical").length
+        notice: each("notices").filter(one => one?.urgency === "critical" && one.read !== true
+            && !one.waits && !shown.includes(String(one.id))).length
     };
 }
 

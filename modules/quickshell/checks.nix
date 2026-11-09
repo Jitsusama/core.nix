@@ -447,6 +447,7 @@ onLinux {
           "spend"
           "pi"
           "notices"
+          "forYou"
           "google"
           "meeting"
           "quiet"

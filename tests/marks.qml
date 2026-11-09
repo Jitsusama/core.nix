@@ -155,7 +155,7 @@ QtObject {
         // For You's tray is lit by what For You holds, of every kind, and
         // nothing else (Joel's pick, VKCF3Z, 2026-11-09).
         const session = { title: "pi" };
-        const critical = { urgency: "critical" };
+        const critical = { id: 7, urgency: "critical", read: false };
         const holds = [
             ["nothing held, nothing lit", {}, { do: 0, look: 0, try: 0, notice: 0 }],
             ["a session's want and a to-do are each a to-do",
@@ -166,9 +166,18 @@ QtObject {
                 { do: 0, look: 1, try: 0, notice: 0 }],
             ["a landing to try counts", { tries: [{ title: "Try the tray" }] },
                 { do: 0, look: 0, try: 1, notice: 0 }],
-            ["only a critical notice missed counts, the rest came lately",
-                { notices: [critical, { urgency: "normal" }, { urgency: "low" }] },
+            ["only a critical notice unread counts, the rest came lately",
+                { notices: [critical, { id: 8, urgency: "normal" }, { id: 9, urgency: "low" }] },
                 { do: 0, look: 0, try: 0, notice: 1 }],
+            ["a critical notice read counts no more",
+                { notices: [Object.assign({}, critical, { read: true })] },
+                { do: 0, look: 0, try: 0, notice: 0 }],
+            ["nor while its card is up, which says it, by its id as a key",
+                { notices: [critical], onScreen: ["7"] },
+                { do: 0, look: 0, try: 0, notice: 0 }],
+            ["nor one saying a to-do, which is that to-do",
+                { notices: [Object.assign({}, critical, { waits: "QUEST1:ask" })] },
+                { do: 0, look: 0, try: 0, notice: 0 }],
             ["a source that isn't a list holds nothing", { wanting: null, notices: "x" },
                 { do: 0, look: 0, try: 0, notice: 0 }]
         ];
