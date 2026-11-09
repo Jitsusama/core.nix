@@ -92,6 +92,10 @@ Scope {
 
     // Said with the keys a change touched, once a change.
     signal heard(var keys)
+    // Said with every line the daemon says, once it's taken, so a domain
+    // hears what a daemon tells beyond its records, as the passwords
+    // daemon tells a watch what its last check found.
+    signal told(var answer)
 
     // The answers still awaited, by id, each a function given the answer.
     property var awaited: ({})
@@ -225,6 +229,7 @@ Scope {
         if (answer.id === "hello") {
             state = String(answer.state ?? "answering");
             sources = answer.sources ?? {};
+            told(answer);
             return;
         }
         // How its sources stand, as a watch is told once that changes,
@@ -249,6 +254,7 @@ Scope {
             delete awaited[answer.id];
             then(answer);
         }
+        told(answer);
     }
 
     // A fresh connection each time, since one refused or dropped doesn't
