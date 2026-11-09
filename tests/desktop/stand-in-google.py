@@ -304,6 +304,8 @@ class Account:
                 "cc": "",
                 "others": ["ada@example.com"],
                 "subject": "Notes on the Plan",
+                # Sent by Joel, as Gmail's SENT label tells the daemon.
+                "sent": True,
                 "at": now - 60 * MINUTE,
                 "page": "https://mail.google.com/mail/u/0/#inbox/notes",
                 "body": "A few thoughts on the plan.",

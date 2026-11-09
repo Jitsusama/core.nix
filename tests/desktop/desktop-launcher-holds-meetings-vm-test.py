@@ -80,26 +80,30 @@ def test_a_meeting_about_to_start_is_found_by_its_name_and_return_joins_it(
 
 @pytest.mark.usefixtures("google")
 def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> None:
-    """Calendar typed lists its next meetings under it, Calendar first, so Return opens it."""
+    """Calendar typed lists its next meetings under it, then its Recent, so Return opens it.
+
+    Today's meetings are what Calendar holds now, as open windows are for a program, so they
+    come first and the Retro he held follows (VKCF3Z, c7d9e2bd).
+    """
 
     def under_calendar(shown: Json) -> bool:
-        """Say whether Calendar is selected with Design Review among the rows just under it."""
+        """Say whether Calendar is selected with today's meetings just under it, then Retro."""
         rows = cast("list[str]", shown["rows"])
         if "Calendar" not in rows or (shown["selected"] or {}).get("name") != "Calendar":
             return False
         at = rows.index("Calendar")
         # And Calendar counts today's, never naming a meeting listed just under it,
-        # after how many its Recent holds: the Retro he held, once.
+        # before how many its Recent holds: the Retro he held, once.
         said = str(shown["selected"].get("note", ""))
-        listed = "Design Review" in rows[at + 1 : at + 4]
-        return listed and re.fullmatch(r"1 recent \u00b7 \d+ today", said) is not None
+        listed = rows[at + 1 : at + 5] == ["Design Review", "Standup", "Planning", "Retro"]
+        return listed and re.fullmatch(r"\d+ today \u00b7 1 recent", said) is not None
 
     desktop.answer("calendar")
     desktop.launcher_until(under_calendar)
     desktop.shoot("launcher-calendar-typed")
     desktop.close_launcher()
     # In Programs, where nothing is listed under it, it names its next, the time and the name
-    # apart, after its Recent's count.
+    # apart, before its Recent's count.
     desktop.answer("programs")
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("is") == "collection:applications"
@@ -109,7 +113,7 @@ def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> No
     desktop.launcher_until(
         lambda shown: (
             re.fullmatch(
-                r"1 recent \u00b7 next in \d+ min \u00b7 Design Review",
+                r"next in \d+ min \u00b7 Design Review \u00b7 1 recent",
                 str(shown["selected"].get("note", "")),
             )
             is not None
@@ -127,29 +131,40 @@ def test_calendars_and_mails_own_recent_hold_what_joel_had_lately(desktop: Deskt
     documents are, each its thing's own row. How they're laid out is held in Qt's engine
     (tests/mail.qml, tests/calendar.qml); this holds that they reach the launcher.
     """
-    desktop.answer("calendar")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Calendar")
-    desktop.into_program()
-    desktop.type_in("recent", selecting="Recent")
-    desktop.launcher_until(
-        lambda shown: (
-            (shown["selected"] or {}).get("name") == "Recent"
-            and shown["selected"].get("side") == "1"
-        )
-    )
-    desktop.follow()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Retro"])
-    retro = desktop.showing()["selected"]
+    retro = into_recent(desktop, "Calendar", "Retro")
     assert str(retro["is"]).startswith("calendar:meeting:retro_"), retro
-    # Its side says when it was, and its drawer that the other one came before it.
+    # Its side says when it was, its note nothing, being over, and its drawer that the other
+    # one came before it (VKCF3Z, c7d9e2bd).
     assert str(retro["side"]).startswith("yesterday "), retro
+    assert not retro.get("note"), retro
     facts = (retro.get("drawer") or {}).get("facts") or []
     assert {"label": "Earlier", "value": "1 this month"} in facts, retro
     desktop.shoot("launcher-calendar-recent")
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.answer("mail")
-    desktop.launcher_until(lambda shown: "Mail" in shown["rows"])
-    desktop.down_to("Mail")
+    desktop.close_launcher()
+    notes = into_recent(desktop, "Mail", "Notes on the Plan")
+    assert notes["is"] == "mail:notes", notes
+    # One he sent names who it went to, as Gmail's SENT label tells (VKCF3Z, c7d9e2bd).
+    assert re.fullmatch(r"to Ada Lovelace \u00b7 \d\d:\d\d", str(notes["side"])), notes
+    desktop.shoot("launcher-mail-recent")
+    desktop.close_launcher()
+    # At Joel's scales, for the gallery: the launcher opens afresh at each, as an open one
+    # keeps the size it opened at. Their drawers are shot at 1 above, since this screen at
+    # 1.5 or 2 has no room beside the card, where the drawer waits for the keys.
+    if desktop.values["shots"]:
+        for scale in ("1.5", "2"):
+            desktop.as_account(f"niri msg output winit scale {scale}")
+            for program, first in (("Calendar", "Retro"), ("Mail", "Notes on the Plan")):
+                into_recent(desktop, program, first)
+                desktop.shoot(f"launcher-{program.lower()}-recent-at-{scale.replace('.', '-')}")
+                desktop.close_launcher()
+        desktop.as_account("niri msg output winit scale 1")
+
+
+def into_recent(desktop: Desktop, program: str, first: str) -> Json:
+    """Open the program's Recent from the find, as Joel does, and give its row selected."""
+    desktop.answer(program.lower())
+    desktop.launcher_until(lambda shown: program in shown["rows"])
+    desktop.down_to(program)
     desktop.into_program()
     desktop.type_in("recent", selecting="Recent")
     desktop.launcher_until(
@@ -159,11 +174,8 @@ def test_calendars_and_mails_own_recent_hold_what_joel_had_lately(desktop: Deskt
         )
     )
     desktop.follow()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Notes on the Plan"])
-    notes = desktop.showing()["selected"]
-    assert notes["is"] == "mail:notes", notes
-    desktop.shoot("launcher-mail-recent")
-    desktop.close_launcher()
+    desktop.launcher_until(lambda shown: shown["rows"] == [first])
+    return cast("Json", desktop.showing()["selected"])
 
 
 @pytest.mark.usefixtures("google")

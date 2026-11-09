@@ -10792,6 +10792,7 @@
         "minutes": "{minutes} min ago",
         "yesterday": "yesterday",
         "tomorrow": "tomorrow",
+        "to": "to {who}",
         "readInGmail": "read in Gmail",
         "archivedInGmail": "archived in Gmail",
         "unimportant": "no longer important",

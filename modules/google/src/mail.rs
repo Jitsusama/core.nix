@@ -71,6 +71,10 @@ pub struct Mail {
     /// its sender, whom the reply goes to, aren't among them.
     pub others: Vec<String>,
     pub subject: String,
+    /// Whether Joel sent it, as Gmail's own label says, so what names it
+    /// names who it went to rather than him.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub sent: bool,
     /// When it came, in milliseconds since the epoch.
     pub at: i64,
     /// Its conversation in Gmail.
@@ -209,6 +213,10 @@ pub fn read(answer: &Value) -> Option<Mail> {
             &[header("Delivered-To"), header("From")],
         ),
         subject: header("Subject").trim().to_owned(),
+        sent: answer
+            .get("labelIds")
+            .and_then(Value::as_array)
+            .is_some_and(|labels| labels.iter().any(|label| label.as_str() == Some("SENT"))),
         // Gmail writes when it came as a string of milliseconds.
         at: answer
             .get("internalDate")
@@ -474,6 +482,7 @@ mod tests {
                 cc: String::new(),
                 others: Vec::new(),
                 subject: "Lunch?".into(),
+                sent: false,
                 at: 1_793_044_800_000,
                 page: "https://mail.google.com/mail/u/0/#inbox/t1".into(),
                 body: String::new(),
@@ -497,6 +506,17 @@ mod tests {
             }
         }
         out
+    }
+
+    #[test]
+    fn mail_says_joel_sent_it_by_gmails_label() {
+        let mail = |labels: Value| {
+            read(&json!({"id": "m", "threadId": "t", "labelIds": labels, "payload": {}}))
+                .unwrap()
+                .sent
+        };
+        assert!(mail(json!(["SENT", "IMPORTANT"])), "mail Joel sent isn't his");
+        assert!(!mail(json!(["INBOX", "UNREAD"])), "mail that came is said to be his");
     }
 
     #[test]

@@ -131,10 +131,13 @@ Provider {
     // switches at once): what it has open, then its Recent, as Chrome's
     // open tabs and then the sites it visited, kitty's folders or Docs'
     // documents, of which the launcher shows the first few. The same rows
-    // its step holds, so Return does there what it does inside.
+    // its step holds, so Return does there what it does inside. Given
+    // apart, { open, recent }, since what it holds now, its parts as
+    // Calendar's today's meetings among it, comes before its Recent
+    // (VKCF3Z, c7d9e2bd).
     function under(entry) {
         const held = recent(entry)[0];
-        return openRows(entry).concat(held ? held.targets() : []);
+        return { open: openRows(entry), recent: held ? held.targets() : [] };
     }
 
     // The desktop's actions that run exactly this command.
@@ -1016,12 +1019,14 @@ Provider {
     }
     // What a program holds, said by its row on the cursor where no other
     // provider says its note, so what's inside shows without a key
-    // (VKCF3Z, 2026-11-07): how many it has open, Chrome's as tabs, how
-    // many its Recent keeps, and its next meeting or how much of its mail
-    // is new, as "3 tabs \u00b7 9 recent" or "next in 5 min Design
-    // Review". A part that's no news, as Slack's theme, isn't counted. Read only from what's already kept, so reading
-    // it asks no program anything: Chrome's tabs are counted once its
-    // Recent was asked for, as typing its name does.
+    // (VKCF3Z, 2026-11-07): what it holds now, how many it has open,
+    // Chrome's as tabs, and its next meeting, today's or how much of its
+    // mail is new, then how many its Recent keeps, as "3 tabs \u00b7 9
+    // recent" or "3 today \u00b7 1 recent", in the order its rows are
+    // listed under it (VKCF3Z, c7d9e2bd). A part that's no news, as
+    // Slack's theme, isn't counted. Read only from what's already kept,
+    // so reading it asks no program anything: Chrome's tabs are counted
+    // once its Recent was asked for, as typing its name does.
     function holding(entry) {
         const words = Words.of("program:recent").said ?? {};
         const fill = (said, count) => (said ?? "").replace("{count}", String(count));
@@ -1051,8 +1056,8 @@ Provider {
                     .replace("{name}", meetings[0].name)
             : mail > 0 ? fill(words.parts, mail) : "";
         const tabs = opened === 1 ? words.tab : words.tabs;
-        return [opened > 0 ? fill(site ? tabs : words.open, opened) : "",
-            kept > 0 ? fill(words.recent, kept) : "", next]
+        return [opened > 0 ? fill(site ? tabs : words.open, opened) : "", next,
+            kept > 0 ? fill(words.recent, kept) : ""]
             .filter(said => said !== "").join(" \u00b7 ");
     }
 

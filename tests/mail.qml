@@ -38,6 +38,7 @@ QtObject {
             minutes: "{minutes} min ago",
             yesterday: "yesterday",
             tomorrow: "tomorrow",
+            to: "to {who}",
             date: (date, format) => Qt.formatDate(date, format)
         };
         const standup = {
@@ -194,6 +195,14 @@ QtObject {
         ];
         for (const [what, start, end, allDay, meant] of wases)
             check(`a meeting ${what} was`, Mail.was({ start, end, allDay }, now, said), meant);
+        // A meeting's row notes its times and answer until it's over, then nothing.
+        const invited = { start: at(9, 26, 16, 0), end: at(9, 26, 16, 30), allDay: false,
+            answer: "maybe" };
+        check("a meeting to come notes its times and answer", Mail.noted(invited, now),
+            "16:00 to 16:30, maybe");
+        check("a meeting that's over notes nothing",
+            Mail.noted(Object.assign({}, invited, { start: at(9, 25, 16, 0),
+                end: at(9, 25, 16, 30) }), now), "");
 
         check("the line marking it read", Mail.tidy(mail, "read"), '{"read":{"id":"m_1"}}\n');
         check("the line archiving it", Mail.tidy(mail, "archive"),
@@ -215,17 +224,23 @@ QtObject {
             "Ada Lovelace \u00b7 14:02");
         check("its side, when alone, with no name",
             Mail.beside({ from: "", at: at(9, 26, 9, 0) }, now, said), "09:00");
-        check("when it came, in full", Mail.dated(lunch.at, now, said),
-            "Monday 26 October \u00b7 14:02");
+        check("its side, when Joel sent it, who it went to",
+            Mail.beside(Object.assign({}, lunch, { from: "Joel Gerber", sent: true }), now,
+                said), "to Joel Gerber, Grace Hopper \u00b7 14:02");
+        check("its side, when Joel sent it to nobody named, him",
+            Mail.beside({ from: "Joel Gerber", to: "", sent: true, at: lunch.at }, now, said),
+            "Joel Gerber \u00b7 14:02");
+        check("when it came, in full, as a meeting's day is", Mail.dated(lunch.at, now, said),
+            "Monday 26 October, 14:02");
         check("when it came last year, in full",
             Mail.dated(new Date(2025, 9, 28, 9, 0).getTime(), now, said),
-            "Tuesday 28 October 2025 \u00b7 09:00");
+            "Tuesday 28 October 2025, 09:00");
         check("its details", Mail.details(lunch, "No Subject", now, said), {
             title: "Lunch & a walk?",
             facts: [
                 { label: "From", value: "Ada Lovelace <ada@example.com>" },
                 { label: "To", value: "Joel Gerber, Grace Hopper" },
-                { label: "Date", value: "Monday 26 October \u00b7 14:02" }
+                { label: "Date", value: "Monday 26 October, 14:02" }
             ],
             body: "Friday?\n\nAda"
         });
@@ -286,7 +301,7 @@ QtObject {
             title: "No Subject",
             facts: [
                 { label: "From", value: "ada@example.com" },
-                { label: "Date", value: "Monday 26 October \u00b7 14:02" }
+                { label: "Date", value: "Monday 26 October, 14:02" }
             ],
             body: ""
         });

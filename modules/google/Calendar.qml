@@ -213,7 +213,9 @@ Singleton {
             // Whether it's today's, so Calendar's row counts today's
             // meetings while they're listed under it (Applications.qml).
             today: Said.dayOf(meeting.start, root.now) === "",
-            note: root.about(meeting),
+            // Its times and his answer, or nothing once it's over, where
+            // its right says when it was (Mail.js's noted).
+            note: Written.noted(meeting, root.now),
             drawer: Said.details(meeting, Words.name("calendar:meeting", "untitled"),
                 root.dates),
             later: joins,
