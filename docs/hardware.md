@@ -78,8 +78,11 @@ which needs systemd there.
 
 What the model lacks next to the x86 laptops, by [Asahi's table for the
 M2][33]: a TPM and a Secure Boot Linux can use, so the disk can't be sealed
-to the boot and the TPM's keys have to come from elsewhere; a second screen,
-and one on the rear port, which wait on Asahi's DisplayPort work, since
+to the boot and the TPM's keys have to come from elsewhere, and a paired
+Bluetooth keyboard can't type at the disk prompt, since its pairings would
+sit on the ESP unsealed, so the hardware module leaves the laptop role's
+Bluetooth disk prompt out and the built-in keyboard types there; a second
+screen, and one on the rear port, which wait on Asahi's DisplayPort work, since
 fairydust drives the front-left port alone; Touch ID; the video encoder;
 and hibernation, since systemd keeps where the image went in an EFI
 variable, which U-Boot doesn't keep, so the hardware module leaves the
