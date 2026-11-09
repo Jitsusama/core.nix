@@ -131,6 +131,16 @@ in
       ARMV8_DEPRECATED = lib.mkForce (option no);
       CP15_BARRIER_EMULATION = lib.mkForce (option no);
       COMPAT_ALIGNMENT_FIXUPS = lib.mkForce (option no);
+
+      # Rust drivers nixpkgs builds only because it takes every module it's
+      # offered, and Aurora's own builds leave out. The tree reworks the
+      # Rust interfaces beneath them for its Apple drivers, so these go
+      # untried against it: Tyr, for Arm's Mali GPUs, no longer compiles at
+      # this commit. None has hardware here: rnull is a test
+      # device, and Apple's cpufreq driver is in C.
+      DRM_TYR = no;
+      BLK_DEV_RUST_NULL = no;
+      CPUFREQ_DT_RUST = no;
     };
 
     kernelPatches = args.kernelPatches or [ ];

@@ -114,9 +114,10 @@ of Asahi's work for the newer chips, does, and core builds Aurora's kernel
 itself ([its kernel folder][37]). The module holds only that kernel so far,
 so a machine can't be built on it yet.
 
-| Part   | What the module does                                                   |
-| ------ | ---------------------------------------------------------------------- |
-| Kernel | Aurora's at a commit, core's own build, with Aurora's Apple settings   |
+| Part        | What the module does                                                |
+| ----------- | ------------------------------------------------------------------- |
+| Kernel      | Aurora's at a commit, built by core, with Aurora's Apple settings   |
+| Disk prompt | leaves the laptop role's Bluetooth one out: no TPM to seal it to    |
 
 ### What's Left
 

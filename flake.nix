@@ -395,7 +395,7 @@
           inherit (self.nixosModules) bluetooth-disk-prompt hibernate;
         };
         apple-macbook-pro-m4-pro-a3401 = moduleFrom ./hardware/apple-macbook-pro-m4-pro-a3401/nixos.nix {
-          inherit (self.nixosModules) hibernate;
+          inherit (self.nixosModules) bluetooth-disk-prompt hibernate;
         };
         dell-xps-14-da14260 = ./hardware/dell-xps-14-da14260/nixos.nix;
         microsoft-surface-laptop-4-1958 = ./hardware/microsoft-surface-laptop-4-1958/nixos.nix;
