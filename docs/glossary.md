@@ -279,6 +279,7 @@ or a copy, can be opened, copied or forgotten.
 | to-do | what only Joel can do, raised by the session that needs him and listed in For You | Needs You item, waiting on you | `WaitingOnYou.qml` |
 | check | the command that settles a to-do, which succeeds once it's done, apart from the checks core.nix holds | | `doneWhen.check` |
 | look | something a session points Joel at to see, a pull request, a page, a file, a diff or a terminal, kept in For You until he opens or clears it | | `on:waiting:look`, the looks folder |
+| to look at | a look For You holds in its row of them, one that neither blocks a session nor is due | | `for-you:kind:look` |
 | to try | a landing whose line asks Joel to try something, kept in For You until he opens or clears it | | |
 | Lately | For You's band for what came for Joel, one row for each place it came from | | |
 | clipboard | what was copied last, and what was copied before it | | |
