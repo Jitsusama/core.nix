@@ -347,8 +347,12 @@ Provider {
         // an account, for the account first.
         const met = !joined && !network.known;
         const asks = met && locked.password === true && !locked.account;
-        const signal = network.strength > 0 ? `${network.strength} of 4 bars · ` : "";
-        const note = `${signal}${locked.words}`;
+        // How it stands, then its bars, are the side's; what guards it
+        // follows its name (VKCF3Z, 2026-11-09: "connected · 4 of 4 bars"
+        // at the right of "Lantern  a password").
+        const standing = joined ? "connected" : network.known ? "saved" : "";
+        const bars = network.strength > 0 ? `${network.strength} of 4 bars` : "";
+        const note = locked.words;
         const opening = met && locked.account ? provider.accountFor(network, "peap") : null;
         // Joined but wanting a sign-in, Return signs in, as it's all that's
         // left to do there; otherwise it leaves a network joined or joins one.
@@ -362,7 +366,7 @@ Provider {
             hue: "machine",
             // Connected, as Return connects it and its access point says it
             // is; join is a call's word (docs/glossary.md).
-            side: joined ? "connected" : network.known ? "saved" : "",
+            side: [standing, bars].filter(part => part !== "").join(" \u00b7 "),
             note: note,
             network: network.name,
             // Its own option, which :setl sets as Vim's :setlocal sets a
