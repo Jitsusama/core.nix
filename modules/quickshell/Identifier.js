@@ -17,6 +17,14 @@ const STRONG_MARKS = " =/,:.";
 // mark to break after.
 const DIGIT = /\d/u;
 const WEAK_MARKS = "-";
+// A hash, as a store path's or a commit's: a run of 20 or more lower-case
+// letters and digits, a digit among them, with no mark to break at. It has
+// no words to keep whole, so it's read letter by letter and may break at
+// any of them, once the marks around it can't make it fit
+// (VKCF3Z, 2026-11-09). No name in the launcher runs that long unbroken.
+const HASH = /^(?=[0-9a-z]*\d)[0-9a-z]{20,}$/u;
+// The mark a piece ends on, which stays with its last letter.
+const ENDING_MARK = /[-=/,:.]$/u;
 // A last item this short never stands alone on its line: "--".
 const SHORT_TOKEN = 2;
 // The space a line's joiner leaves at a line's end, which goes, since Qt's
@@ -81,7 +89,20 @@ function wholeLines(words, room, width) {
 function wordsOf(said) {
     return cutAfter(String(said), STRONG_MARKS)
         .reduce((all, piece) => all.concat(cutAfter(piece, WEAK_MARKS)), [])
-        .map(piece => piece.replace(TRAILING, ""));
+        .map(piece => piece.replace(TRAILING, ""))
+        .reduce((all, piece) => all.concat(lettersOf(piece)), []);
+}
+
+// A piece as the words it's read as: a hash's letters, the mark it ends on
+// kept with the last, or the piece whole.
+function lettersOf(piece) {
+    const mark = ENDING_MARK.test(piece) ? piece.slice(-1) : "";
+    const letters = [...piece.slice(0, piece.length - mark.length)];
+    if (!HASH.test(letters.join(""))) {
+        return [piece];
+    }
+    letters[letters.length - 1] += mark;
+    return letters;
 }
 
 // Lines whose last is a short token alone, with the end of the line before

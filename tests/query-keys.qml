@@ -1101,13 +1101,22 @@ QtObject {
             holds(`a drawer's identifier: ${what}`, Page.identifierLines(said, wide, width), want);
         // The words an identifier is read as, each to stand whole, so a
         // UUID broken at its hyphens reads as whole (RTOIMQ, 2026-11-09).
+        const hash = "0c8vy4kd2hxq7rm5ppa6f3jz1nbsw9li";
         const read = [
             ["a UUID's are between its hyphens", "0f8fad5b-d9cb-469f-a165-70867728950e",
                 ["0f8fad5b-", "d9cb-", "469f-", "a165-", "70867728950e"]],
             ["a desktop entry's are between its dots", desktop,
                 ["com.", "onepassword.", "OnePassword"]],
             ["a figure's dot is inside its word", "6.12", ["6.12"]],
-            ["spaces end words, kept by none", "Ploopy Adept", ["Ploopy", "Adept"]]
+            ["spaces end words, kept by none", "Ploopy Adept", ["Ploopy", "Adept"]],
+            // A hash has no words, so it may break at any letter (VKCF3Z,
+            // 2026-11-09), its mark kept with its last.
+            ["a hash's are its letters", `/nix/store/${hash}-mpv`,
+                ["/nix/", "store/"].concat([...hash.slice(0, -1)], ["i-", "mpv"])],
+            ["a long word of letters alone is still a word",
+                "org.fwupd.RollbackProtectionEnabled",
+                ["org.", "fwupd.", "RollbackProtectionEnabled"]],
+            ["a short run with digits is still a word", "usb-1d50abc", ["usb-", "1d50abc"]]
         ];
         for (const [what, said, want] of read)
             holds(`an identifier's words: ${what}`, Page.identifierWords(said), want);
