@@ -37,7 +37,8 @@ Piece {
         // A tenth of a watt is the least it says, so it never shows 0.0.
         if (battery.changeRate >= 0.05)
             parts.push(battery.changeRate.toFixed(1) + " W");
-        return parts.join(", ");
+        // A run of parts, read by dots as Power's is in the launcher.
+        return parts.join(" \u00b7 ");
     }
 
     title: "Battery"
