@@ -191,6 +191,13 @@ ShellRoot {
         expect("done looking once Nearby closes", !air.discovering, "the radio's still looking");
 
         expect("none heard, none listed", Nearby.heard([unheard]).length === 0, "one listed");
+        // Alike in signal, by name as it's read, then in the order heard.
+        const alike = (name, address) => ({ name, deviceName: name, address, rssi: -60 });
+        const tied = Nearby.heard([alike("Buds 10", "1"), alike("Buds 9", "2"),
+            alike("Buds 9", "3"), alike("Buds 9", "4"), alike("Buds 9", "5")])
+            .map(device => `${device.name}@${device.address}`).join(",");
+        expect("alike in signal, A to Z as read, then as heard",
+            tied === "Buds 9@2,Buds 9@3,Buds 9@4,Buds 9@5,Buds 10@1", tied);
         expect("no signal unheard", Nearby.strength(unheard) === null, "a signal unheard");
         const failures = [
             ["org.bluez.Error.AuthenticationFailed", "Authentication Failed", "passkey"],
