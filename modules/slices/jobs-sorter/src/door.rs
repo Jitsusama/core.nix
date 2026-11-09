@@ -2,6 +2,9 @@
 //! short of memory, so heavy work comes in as there's room for it rather
 //! than all at once.
 //!
+//! Long because its cases, half of it, stay beside the door's private
+//! pieces as every module in this crate keeps them.
+//!
 //! On the evening of 8 November agents' evaluations here, a few at a time,
 //! took swap from 1 to 29 GiB and available memory down to 12 GiB within
 //! 40 minutes of a boot: a whole-zone derivation's evaluation at 11 GB,
@@ -28,17 +31,30 @@
 //! memory others keep, and those that waited that long come in
 //! [`SPACED`] apart.
 //!
+//! A start whose environment carries [`FIRST`] lands a switch, which
+//! every merged fix waits on: it waits behind other switches alone, and
+//! with no call on needs room only for its own growth. On 9 November a
+//! switch's evaluation waited 30 minutes with 13 GB free, most of the rest
+//! held by idle sessions that no waiting would free.
+//!
 //! Only a scope of its own is frozen, a `work-` scope the sorter split it
 //! into, never a service's cgroup that holds other work too, and never a
-//! scope already let in, so a run's own later evaluations aren't held
-//! halfway through it. A sorter started again freezes nothing already
-//! running.
+//! scope already let in or whose run began over [`YOUNG`] before the
+//! start, so a run is never held halfway through it: freezing a scope
+//! freezes all of it, and on 9 November a stamp check's own timeout went
+//! on counting through the freeze and killed it. A sorter started again
+//! freezes nothing already running.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+
+/// What a start's environment carries when it lands a switch, which every
+/// merged fix waits on: exported by whatever builds and switches the
+/// machine, and inherited by the Nix work it starts.
+pub const FIRST: &str = "JOBS_DOOR_FIRST=1";
 
 /// How long a start is counted to be growing.
 pub const RAMP: Duration = Duration::from_mins(2);
@@ -53,9 +69,12 @@ pub const SPACED: Duration = Duration::from_secs(30);
 /// ticks.
 pub const YOUNG: u64 = 500;
 
+/// How long a clock tick is, in milliseconds.
+const MS_PER_TICK: u64 = 10;
+
 /// Whether a command line, its words, is Nix work that grows: an
 /// evaluation, a `nix flake check`, a build, a shell or a run, and
-/// `nix-offload there`, which evaluates here before it sends.
+/// `nix-offload there` told to run here.
 pub fn heavy(words: &[&str]) -> bool {
     let Some(program) = words.first() else {
         return false;
@@ -67,7 +86,14 @@ pub fn heavy(words: &[&str]) -> bool {
         "nix-store" => words[1..]
             .iter()
             .any(|word| *word == "-r" || *word == "--realise"),
-        "nix-offload" => verbs.next() == Some(&"there"),
+        // `there` evaluates and builds on builders, never here unasked, so
+        // it grows this machine only when told to run here.
+        "nix-offload" => {
+            verbs.next() == Some(&"there")
+                && words[1..]
+                    .iter()
+                    .any(|word| matches!(*word, "--here" | "--here-when-idle"))
+        }
         "nix" => match verbs.next() {
             Some(&("eval" | "build" | "develop" | "shell" | "run")) => true,
             Some(&"flake") => verbs.next() == Some(&"check"),
@@ -106,6 +132,8 @@ struct Held {
     pid: u32,
     scope: PathBuf,
     since: Instant,
+    /// Whether it lands a switch, and so waits ahead of the rest.
+    first: bool,
 }
 
 /// What the door has seen, holds and has let in.
@@ -119,6 +147,7 @@ pub struct Door {
 }
 
 /// One process under the door, as the sorter reads it.
+#[derive(Clone)]
 pub struct Coming<'a> {
     pub pid: u32,
     /// When it started, in clock ticks since boot.
@@ -128,6 +157,10 @@ pub struct Coming<'a> {
     pub scope: PathBuf,
     /// What its cgroup holds, in bytes.
     pub memory: u64,
+    /// Whether it lands a switch, its environment carrying [`FIRST`].
+    pub first: bool,
+    /// Whether its cgroup is frozen.
+    pub frozen: bool,
 }
 
 /// What the machine has, as the door weighs it.
@@ -200,9 +233,22 @@ impl Door {
             .map(|(scope, _)| grows.saturating_sub(memory[scope.as_path()]))
             .sum();
         let mut room = machine.free.saturating_sub(growing);
-        let fits = |room: u64| room >= need + grows;
-        // The oldest held come in first while there's room.
-        while fits(room) && !self.held.is_empty() {
+        // A switch lands every merged fix, so with no call on it needs
+        // room only for its own growth: what the rest keep is mostly held
+        // by sessions that no waiting frees.
+        let fits = |room: u64, first: bool| {
+            room >= grows + if first && !machine.calling { 0 } else { need }
+        };
+        // When each scope's oldest process started, so a run already going
+        // is known by it.
+        let mut oldest: HashMap<&Path, u64> = HashMap::new();
+        for it in coming {
+            let start = oldest.entry(it.scope.as_path()).or_insert(it.start);
+            *start = (*start).min(it.start);
+        }
+        self.take_over(coming, now, uptime);
+        // Switches, then the oldest held, come in while there's room.
+        while self.held.first().is_some_and(|held| fits(room, held.first)) {
             let first = self.held.remove(0);
             if freeze(&first.scope, false) {
                 done.push(Done::LetIn(first.pid));
@@ -228,15 +274,35 @@ impl Door {
             if !weighed || known {
                 continue;
             }
-            if fits(room) && self.held.is_empty() {
+            // A scope whose run began well before this start is that run's
+            // later step, and freezing the scope would freeze the whole run,
+            // its own clocks counting on.
+            let midway = oldest
+                .get(it.scope.as_path())
+                .is_some_and(|began| began.saturating_add(YOUNG) < it.start);
+            let switches_ahead = self.held.iter().filter(|held| held.first).count();
+            let ahead = if it.first {
+                switches_ahead > 0
+            } else {
+                !self.held.is_empty()
+            };
+            if midway || (fits(room, it.first) && !ahead) {
                 self.admitted.insert(it.scope.clone(), now);
-                room -= grows;
+                room = room.saturating_sub(grows);
             } else if freeze(&it.scope, true) {
-                self.held.push(Held {
+                let held = Held {
                     pid: it.pid,
                     scope: it.scope.clone(),
                     since: now,
-                });
+                    first: it.first,
+                };
+                // A switch waits behind switches alone.
+                let place = if it.first {
+                    switches_ahead
+                } else {
+                    self.held.len()
+                };
+                self.held.insert(place, held);
                 done.push(Done::Held(it.pid));
             }
         }
@@ -260,6 +326,34 @@ impl Door {
             }
         }
         done
+    }
+
+    /// Holds again each scope frozen with heavy work in it that the door
+    /// doesn't hold: a sorter that stopped held it, or a thaw failed, and no
+    /// sorter would ever let it in. Its wait counts from its start, and the
+    /// held keep their order. On 9 November a restarted sorter left ten such
+    /// scopes frozen for over half an hour.
+    fn take_over(&mut self, coming: &[Coming], now: Instant, uptime: u64) {
+        for it in coming {
+            let left = it.frozen
+                && heavy(&it.words)
+                && own_scope(&it.scope)
+                && !self.admitted.contains_key(&it.scope)
+                && !self.held.iter().any(|held| held.scope == it.scope);
+            if left {
+                let waited = Duration::from_millis(
+                    uptime.saturating_sub(it.start).saturating_mul(MS_PER_TICK),
+                );
+                self.seen.insert((it.pid, it.start));
+                self.held.push(Held {
+                    pid: it.pid,
+                    scope: it.scope.clone(),
+                    since: now.checked_sub(waited).unwrap_or(now),
+                    first: it.first,
+                });
+            }
+        }
+        self.held.sort_by_key(|held| (!held.first, held.since));
     }
 }
 
@@ -290,6 +384,14 @@ pub fn memory(scope: &Path) -> u64 {
         .unwrap_or(0)
 }
 
+/// Whether a process's environment, as /proc/<pid>/environ holds it, carries
+/// [`FIRST`].
+pub fn marked_first(environ: &[u8]) -> bool {
+    environ
+        .split(|byte| *byte == 0)
+        .any(|pair| pair == FIRST.as_bytes())
+}
+
 /// Tells the process `pid`, on its standard error, that it waits at the
 /// door on `machine`; a process with nowhere to say it hears nothing.
 pub fn tell(pid: u32, machine: Machine) {
@@ -304,7 +406,8 @@ pub fn tell(pid: u32, machine: Machine) {
         };
         let _ = writeln!(
             said,
-            "jobs-sorter: {why} {} GB of memory free, so this waits for room{}",
+            "jobs-sorter: {why} {} GB of memory free, less what the starts just let in will grow \
+             to, so this waits for room or its turn{}",
             machine.free / 1_000_000_000,
             if machine.calling {
                 ", until the call ends"
@@ -318,6 +421,22 @@ pub fn tell(pid: u32, machine: Machine) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_switch_is_known_by_its_environment() {
+        assert!(
+            marked_first(b"HOME=/home/a\0JOBS_DOOR_FIRST=1\0PATH=/bin\0"),
+            "the mark among others is a switch's"
+        );
+        assert!(
+            !marked_first(b"HOME=/home/a\0JOBS_DOOR_FIRST=0\0"),
+            "a mark set to 0 is no switch's"
+        );
+        assert!(
+            !marked_first(b"NOT_JOBS_DOOR_FIRST=1\0"),
+            "a longer name holding the mark is no switch's"
+        );
+    }
 
     #[test]
     fn nix_work_that_grows_is_known_by_its_words() {
@@ -334,7 +453,8 @@ mod tests {
             "nix-build -A x",
             "nix-store -r /nix/store/x.drv",
             "nix-store --realise /nix/store/x.drv",
-            "/nix/store/y-nix-offload/bin/nix-offload there -L . checks.x",
+            "/nix/store/y-nix-offload/bin/nix-offload there --here -L . checks.x",
+            "nix-offload there --here-when-idle . checks.x",
         ] {
             assert!(heavy(&words.split(' ').collect::<Vec<_>>()), "{words}");
         }
@@ -343,6 +463,10 @@ mod tests {
             "nix path-info .#x",
             "nix-store -q",
             "nix-offload progress host",
+            // Evaluated and built on builders, never here unasked: on 9
+            // November such runs held 30 to 370 MB here at most.
+            "/nix/store/y-nix-offload/bin/nix-offload there -L . checks.x",
+            "nix-offload there --changed",
             "cargo build",
             "",
         ] {
@@ -386,6 +510,66 @@ mod tests {
             words: words.split(' ').collect(),
             scope: PathBuf::from(scope),
             memory: 0,
+            first: false,
+            frozen: false,
+        }
+    }
+
+    /// A start already frozen when the door first sees it.
+    fn frozen(pid: u32, start: u64, words: &'static str, scope: &str) -> Coming<'static> {
+        Coming {
+            frozen: true,
+            ..coming(pid, start, words, scope)
+        }
+    }
+
+    #[test]
+    fn a_hold_left_by_a_sorter_that_stopped_is_taken_over() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        // Frozen 20 minutes before this door started, with room short.
+        let left = [frozen(60, 1000, "nix eval .#x", "/c/work-60-1.scope")];
+        let since = 1000 + 20 * 60 * 100;
+        assert_eq!(door.look(&left, free(1 << 30), at, since, |_, _| true), []);
+        assert_eq!(
+            door.look(&left, free(1 << 30), at + LONGEST / 6, since + 1, |_, _| {
+                true
+            }),
+            [],
+            "it waits on until its wait, counted from its start, passes the longest"
+        );
+        assert_eq!(
+            door.look(&left, free(1 << 30), at + LONGEST / 2, since + 2, |_, _| {
+                true
+            }),
+            [Done::LetIn(60)]
+        );
+    }
+
+    #[test]
+    fn a_left_hold_comes_in_as_soon_as_there_is_room() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let left = [frozen(60, 1000, "nix eval .#x", "/c/work-60-1.scope")];
+        assert_eq!(
+            door.look(&left, free(1 << 40), at, 2000, |_, _| true),
+            [Done::LetIn(60)]
+        );
+    }
+
+    #[test]
+    fn a_scope_frozen_with_no_heavy_start_in_it_is_left_alone() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let other = [frozen(60, 1000, "sleep 9", "/c/work-60-1.scope")];
+        assert_eq!(door.look(&other, free(1 << 40), at, 2000, |_, _| true), []);
+    }
+
+    /// A start that lands a switch, as its environment says.
+    fn first(pid: u32, start: u64, words: &'static str, scope: &str) -> Coming<'static> {
+        Coming {
+            first: true,
+            ..coming(pid, start, words, scope)
         }
     }
 
@@ -548,15 +732,10 @@ mod tests {
     fn a_runs_own_later_starts_are_never_held() {
         let mut door = Door::default();
         let at = Instant::now();
-        let first = [coming(
-            50,
-            1000,
-            "nix-offload there .#x",
-            "/c/work-50-1.scope",
-        )];
+        let first = [coming(50, 1000, "nix build .#x", "/c/work-50-1.scope")];
         assert_eq!(door.look(&first, free(1 << 40), at, 1000, |_, _| true), []);
         let both = [
-            coming(50, 1000, "nix-offload there .#x", "/c/work-50-1.scope"),
+            coming(50, 1000, "nix build .#x", "/c/work-50-1.scope"),
             coming(51, 1010, "nix eval .#x", "/c/work-50-1.scope"),
         ];
         assert!(
@@ -591,5 +770,86 @@ mod tests {
         door.look(&work, free(1 << 30), at, 1000, |_, _| true);
         door.look(&[], free(1 << 30), at, 1001, |_, _| true);
         assert_eq!(door.held.len(), 0, "nothing is held");
+    }
+
+    // On 9 November a switch's evaluation, carrying three merged fixes,
+    // waited 30 minutes at the door with 13 GB free, most of the rest held
+    // by idle sessions that no waiting would free.
+    #[test]
+    fn a_switch_needs_only_room_to_grow_and_comes_in_before_those_held_ahead() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let short = free(GROWS + (1 << 30));
+        let agents = [coming(40, 1000, "nix build .#a", "/c/work-40-1.scope")];
+        assert_eq!(
+            door.look(&agents, short, at, 1000, |_, _| true),
+            [Done::Held(40)]
+        );
+        let switch = [
+            agents[0].clone(),
+            first(41, 1001, "nix eval .#unit", "/c/work-41-1.scope"),
+        ];
+        assert!(
+            door.look(&switch, short, at, 1001, |_, _| true).is_empty(),
+            "a switch's start comes in with room only for its own growth"
+        );
+        assert_eq!(door.held.len(), 1, "the agent's start still waits");
+    }
+
+    #[test]
+    fn a_held_switch_comes_in_first_once_its_growth_fits() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let none = free(1 << 30);
+        let work = [
+            coming(50, 1000, "nix build .#a", "/c/work-50-1.scope"),
+            first(51, 1000, "nix eval .#unit", "/c/work-51-1.scope"),
+        ];
+        assert_eq!(held(&door.look(&work, none, at, 1000, |_, _| true)), 2);
+        assert_eq!(
+            door.look(&work, free(GROWS + (1 << 30)), at, 1001, |_, _| true),
+            [Done::LetIn(51)],
+            "the switch goes first, though the agent's start was held before it"
+        );
+    }
+
+    // On 9 November a stamp check ran for minutes before its first Nix
+    // start, and freezing its scope then froze the whole run, whose own
+    // timeout went on counting and killed it.
+    #[test]
+    fn a_run_already_going_is_never_frozen_for_its_first_heavy_start() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let running = [
+            coming(70, 1000, "node tools/check.mjs", "/c/work-70-1.scope"),
+            coming(
+                71,
+                1000 + YOUNG + 1,
+                "nix build .#stamp",
+                "/c/work-70-1.scope",
+            ),
+        ];
+        assert!(
+            door.look(&running, free(1 << 30), at, 1000 + YOUNG + 2, |_, _| true)
+                .is_empty(),
+            "a run's later start goes on, however short memory is"
+        );
+        assert!(door.held.is_empty(), "nothing is held");
+    }
+
+    #[test]
+    fn a_call_holds_a_switch_as_it_holds_the_rest() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let calling = Machine {
+            calling: true,
+            ..free(ROOM)
+        };
+        let switch = [first(60, 1000, "nix eval .#unit", "/c/work-60-1.scope")];
+        assert_eq!(
+            door.look(&switch, calling, at, 1000, |_, _| true),
+            [Done::Held(60)],
+            "a call keeps its room from a switch too"
+        );
     }
 }
