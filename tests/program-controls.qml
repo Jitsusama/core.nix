@@ -81,6 +81,7 @@ ShellRoot {
         // watch once it's off the program's row.
         property var selected: null
         property var held: []
+        property string typed: ""
         property var belowChord: []
         property var sources: [notices, keys, giver]
         property var entered: null
@@ -245,12 +246,13 @@ ShellRoot {
     // Once its file changes, Recent says what's in it now, nine at most.
     function changed() {
         const now = applications.recents.of("quiet");
-        if (now.length !== 9)
+        if (now[0] !== `${root.home}/folder 2`)
             return;
         try {
             const recent = program("quiet").verbs()[2];
             same("Recent follows its file, nine at most", `${recent.side} ${names(recent.targets())}`,
-                "9 folder 1, folder 2, folder 3, folder 4, folder 5, folder 6, folder 7, folder 8, folder 9");
+                "9 folder 2, folder 3, folder 4, folder 5, folder 6, folder 7, folder 8, folder 9, "
+                    + "folder 10");
             same("each in the folder it's in", recent.targets()[0].side, "~");
             // Read once every handler of the change has run.
             Qt.callLater(() => {
@@ -429,11 +431,17 @@ ShellRoot {
         Niri.revision += 1;
         root.waiting = "the viewer";
         program("org.example.viewer").verbs();
+        // What it has open was read as it was stepped into before, and
+        // the daemon says a list again only once it changes, so it may be
+        // here already rather than heard.
+        Qt.callLater(root.viewed);
     }
 
     function viewed() {
-        if (applications.recents.openIn("org.example.viewer").length === 0)
+        if (root.waiting !== "the viewer"
+                || applications.recents.openIn("org.example.viewer").length === 0)
             return;
+        root.waiting = "the viewer's files";
         try {
             const rows = program("org.example.viewer").verbs();
             same("what it has open comes before Recent, no window it stands for listed again",
@@ -578,9 +586,39 @@ ShellRoot {
             same("where it is leading", `${drawn.facts[0].label} ${drawn.facts[0].value}`,
                 "Position 1:38 of 6:43");
 
-            // A program's drawer, its desktop file read once it's asked
-            // (Program.js), where its windows are leading.
-            applications.readDesktop("tester");
+            // A program's drawer, its entry the programs daemon's once it's
+            // asked (Program.js), where its windows are leading. An entry is
+            // read only while the launcher is open, as a drawer is seen.
+            theLauncher.open = true;
+            program("tester").drawer();
+            root.kept = { told, media, sound, player };
+            root.waiting = "the tester's entry";
+            entryAsked.start();
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+
+    // Each tenth of a second until the daemon has said the tester's entry.
+    Timer {
+        id: entryAsked
+
+        interval: 100
+        repeat: true
+        onTriggered: {
+            if (applications.entryOf("tester") === null)
+                return;
+            entryAsked.stop();
+            root.described();
+        }
+    }
+
+    // The tester's rows the cases go on with once its entry is said.
+    property var kept: ({})
+
+    function described() {
+        try {
+            const { told, media, sound, player } = root.kept;
             const described = program("tester").drawer();
             same("a program's drawer says where and what it is",
                 `${described.eyebrow}: ${described.title}`,
@@ -591,6 +629,10 @@ ShellRoot {
             same("what it opens, from its desktop file", described.facts[1].value, "HTML");
             same("its categories, as words", described.facts[3].value,
                 "Office \u00b7 Text Editor");
+            // Closed again, as the cases after it began, which lets the
+            // entry go.
+            theLauncher.open = false;
+            same("closing lets the entry go", applications.entryWanted, "");
             // Its processes are watched only while a program's row is the
             // one selected (Applications.qml).
             applications.treesWanted = [5151];
@@ -823,7 +865,9 @@ ShellRoot {
             root.waiting = "the recents to change";
             theLauncher.held = [{ row: program("quiet"), rows: program("quiet").verbs() }];
             root.redrawn = 0;
-            writer.setText(Array.from({ length: 11 }, (_, n) => `${root.home}/folder ${n + 1}`)
+            // Its first nine move, so what Recent shows changes: a list
+            // whose nine stay as they were changes nothing it shows.
+            writer.setText(Array.from({ length: 11 }, (_, n) => `${root.home}/folder ${n + 2}`)
                 .join("\n") + "\n");
         } catch (error) {
             fail(error.message);

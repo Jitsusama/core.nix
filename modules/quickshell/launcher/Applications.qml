@@ -439,17 +439,12 @@ Provider {
     // and what it is, what it plays, what other providers say of it
     // (their programFacts), the kinds of file and links it opens, its
     // categories, and its command and id last; its comment is its words.
-    // The kinds of file are its desktop file's, which Quickshell's entry
-    // doesn't hold, read once just after the drawer first asks, so they
-    // follow a frame later rather than the reader moving under a binding.
+    // What its entry says that Quickshell's doesn't hold, the kinds of
+    // file it opens, its keywords and its package, is the programs
+    // daemon's record of it (`entryOf`).
     function programDrawer(entry) {
         if (entry.id === undefined || entry.name === undefined)
             return null;
-        const types = desktopTypes[entry.id];
-        if (types === undefined && !desktopAsked[entry.id]) {
-            desktopAsked[entry.id] = true;
-            Qt.callLater(() => provider.readDesktop(entry.id));
-        }
         const looked = {};
         const player = playerOf(given => provider.names(entry, given, looked));
         // Each process once, as two windows are often one process's.
@@ -464,8 +459,7 @@ Provider {
                 .filter(place => place !== undefined),
             playing: player && player.trackTitle !== "" ? nowPlaying(player) : "",
             given: hooked("programFacts", entry.id),
-            types: types ?? [],
-            endings: mimeEndings,
+            record: entryOf(entry.id),
             categories: entry.categories,
             command: entry.command,
             id: entry.id,
@@ -474,39 +468,33 @@ Provider {
         }, id => Words.name(`applications:${id}`), Words.of("applications").said);
     }
 
-    // The kinds each program's desktop file says it opens, by its id, and
-    // what each kind's files end in, from shared-mime-info's globs, read
-    // the first time any drawer asks. The first desktop file and globs
-    // found along the data folders are the ones the desktop reads.
-    property var desktopTypes: ({})
-    property var desktopAsked: ({})
-    property var mimeEndings: ({})
-    readonly property var dataFolders: [Quickshell.env("XDG_DATA_HOME")
-        || `${Quickshell.env("HOME")}/.local/share`]
-        .concat((Quickshell.env("XDG_DATA_DIRS") || "/usr/local/share:/usr/share").split(":"))
-        .filter(folder => folder !== "")
+    // A program's entry as the programs daemon holds it (modules/programs),
+    // by its desktop entry's id, or null until it says. The daemon reads an
+    // entry only while it's watched, so the drawer names its id just after
+    // it first asks, watched over a connection of its own only while the
+    // launcher is open, as its trees are.
+    property string entryWanted: ""
 
-    function firstRead(file) {
-        for (const folder of dataFolders) {
-            desktopProbe.path = `${folder}/${file}`;
-            const text = read(desktopProbe);
-            if (text !== "")
-                return text;
+    function entryOf(id) {
+        if (id !== entryWanted)
+            Qt.callLater(() => {
+                provider.entryWanted = id;
+            });
+        const watch = entries.item;
+        return watch && watch.revision >= 0 ? watch.held[`program:${id}`] ?? null : null;
+    }
+
+    LazyLoader {
+        id: entries
+
+        active: provider.entryWanted !== "" && (provider.launcher?.open ?? false)
+
+        Daemon {
+            socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/programs.sock`
+            kind: "program"
+            live: false
+            ahead: [`program:${provider.entryWanted}`]
         }
-        return "";
-    }
-
-    function readDesktop(id) {
-        if (Object.keys(mimeEndings).length === 0)
-            mimeEndings = Program.endings(firstRead("mime/globs2"));
-        desktopTypes = Object.assign({}, desktopTypes,
-            { [id]: Program.mimeTypes(firstRead(`applications/${id}.desktop`)) });
-    }
-
-    FileView {
-        id: desktopProbe
-        blockLoading: true
-        printErrors: false
     }
 
     // Its streams open to play sound through, by the name each gives, as
@@ -771,6 +759,7 @@ Provider {
             if (!provider.launcher.open) {
                 provider.recents.forget();
                 provider.treesWanted = [];
+                provider.entryWanted = "";
             }
         }
 

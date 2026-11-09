@@ -30,6 +30,7 @@ let
   qs = lib.getExe' graphical.pkgs.quickshell "qs";
   # The daemon Machine's answers come from, run over a check's own /proc.
   machine = pkgs.callPackage ../machine/package.nix { };
+  programs = pkgs.callPackage ../programs/package.nix { };
   # Every QML file the shell and the modules beside it draw, by its path
   # under modules/, its tests left out: a module's surface is drawn in the
   # theme as the shell's own are.
@@ -2624,6 +2625,16 @@ onLinux {
         printf '%s\t%s\t%s\n' @35 "$HOME/notes.md" 10:7 @34 "$HOME/notes.md" 10:6 \
           @36 "$HOME/gone.md" 10:8
       ''}
+      # The programs daemon runs each list, given the sources shell.qml's
+      # Applications is, as recents.nix gives both.
+      cat > sources.json <<EOF
+      [{"app": "quiet", "kind": "folder", "watch": "$HOME/recent", "list": ["$RECENT_LIST"]},
+       {"watch": "$HOME/shared", "list": ["$SHARED_LIST"], "dated": true},
+       {"app": "browser", "kind": "site", "asked": true, "list": ["$SITES_LIST"],
+        "opened": ["$OPENED_LIST"]},
+       {"app": "org.example.viewer", "kind": "file", "opened": ["$VIEWING_LIST"]}]
+      EOF
+      ${lib.getExe programs} "$XDG_RUNTIME_DIR/daemons/programs.sock" sources.json &
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
       touch $out
@@ -3601,8 +3612,8 @@ onLinux {
 
   # A program's drawer says what it is, where its windows are, what it
   # opens and how it starts, in the order every drawer keeps, as
-  # tests/program-drawer.qml holds launcher/Program.js to a desktop file
-  # and shared-mime-info's globs made up there.
+  # tests/program-drawer.qml holds launcher/Program.js to the programs
+  # daemon's record of a desktop entry made up there.
   a-program-says-all-it-knows =
     let
       qt = pkgs.qt6.qtdeclarative;

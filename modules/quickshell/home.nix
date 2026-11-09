@@ -1040,6 +1040,9 @@ in
     )
     # Machine's answers are what the machine daemon holds.
     ../machine/home.nix
+    # Programs, each program's drawer and its Recent are what the
+    # programs daemon holds.
+    ../programs/home.nix
   ];
 
   options.jitsusama.quickshell.margin.pieces = lib.mkOption {

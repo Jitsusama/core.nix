@@ -1,0 +1,17 @@
+# What's installed and what each program had open, held ready for the
+# shell: one resident program that reads the desktop entries and runs
+# each program's own lists only while someone watches, and answers over a
+# socket in the shell's daemon interface (src/main.rs says how).
+[package]
+name = "programs"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# inotify, which says when an entry, a list's file or a type changes, and
+# which std doesn't name.
+libc = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

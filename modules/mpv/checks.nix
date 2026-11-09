@@ -39,6 +39,8 @@ onLinux {
     let
       home = account graphical;
       qs = lib.getExe' graphical.pkgs.quickshell "qs";
+      # What each program had open lately is the programs daemon's.
+      programs = pkgs.callPackage ../programs/package.nix { };
       # The launcher's own files the step is made from, each by itself so
       # no other change there builds this again.
       launcher = ../quickshell/launcher;
@@ -144,6 +146,13 @@ onLinux {
           "$HOME/Videos/song.mkv" 2469.7 2470.2 $((NOW - 172800)) 940000 audio volume=50.000000
         printf '%s\t%s\t%s\t%s\t%s\t%s\n' "Videos/half.mkv" 1 2 3 4 video
       ''}
+      # The programs daemon runs the shared list and what mpv plays, given
+      # the sources shell.qml's Applications is, as recents.nix gives both.
+      cat > sources.json <<EOF
+      [{"watch": "$HOME/shared", "list": ["$SHARED_LIST"]},
+       {"app": "mpv", "kind": "file", "opened": ["$PLAYING_LIST"]}]
+      EOF
+      ${lib.getExe programs} "$XDG_RUNTIME_DIR/daemons/programs.sock" sources.json &
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
       touch $out

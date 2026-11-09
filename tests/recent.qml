@@ -147,6 +147,29 @@ QtObject {
             JSON.stringify(Lines.sharedAtFrom(shared, appOf, times)),
             JSON.stringify({ "org.pwmt.zathura": { "/b.pdf": 9000, "/a.pdf": 4000 } }));
 
+        // The programs daemon's records, as the lines their sources print:
+        // a path, a site's address and title, the shared list's program
+        // and path, each with when in milliseconds; and what's open, a
+        // tab's six fields, a file's process or window.
+        const lined = record => JSON.stringify(Lines.recentLines(record));
+        check(failures, "a folder's paths, one undated", lined({ app: "kitty", paths: [
+            { path: "/src", used_at_s: 17 }, { path: "/home", used_at_s: null }] }),
+        JSON.stringify([{ line: "/src", at: 17000 }, { line: "/home" }]));
+        check(failures, "a site's address and title", lined({ app: "chrome", sites: [
+            { address: "https://a.example", title: "A", used_at_s: 2 }] }),
+        JSON.stringify([{ line: "https://a.example\tA", at: 2000 }]));
+        check(failures, "the shared list's program and path", lined({ app: null, paths: [
+            { program: "zathura", path: "/a.pdf", used_at_s: null }] }),
+        JSON.stringify([{ line: "zathura\t/a.pdf" }]));
+        check(failures, "a tab open", JSON.stringify(Lines.openedLines({ sites: [
+            { id: "7", window: "3", front: true, looked_at_ms: 12, address: "https://a",
+                title: "A" }] })), JSON.stringify(["7\t3\ttrue\t12\thttps://a\tA"]));
+        check(failures, "a file by its process, and one by its window",
+            JSON.stringify(Lines.openedLines({ files: [
+                { pid: 412, window: null, path: "/a.md", go: null },
+                { pid: null, window: 9, path: "/b.md", go: "2" }] })),
+            JSON.stringify(["412\t/a.md", "@9\t/b.md\t2"]));
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);

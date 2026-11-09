@@ -95,8 +95,9 @@
   '';
   a-program-says-all-it-knows = ''
     a program's drawer says where its windows are and what it is, then what it plays and what
-    others say of it, the kinds of file and links it opens and its categories, and its command
-    and desktop id last, leaving out what it can't say
+    others say of it, the kinds of file and links it opens, its categories and keywords, where it
+    starts, its version and package, and its command, window class, desktop id and store path
+    last, from the programs daemon's record of its entry, leaving out what it can't say
   '';
   a-browser-window-deeper-in-is-its-programs = ''
     a browser's window of its own opened deeper than its program's own page is that program's, by the
@@ -1453,6 +1454,21 @@
   '';
   processor-telemetry-passes-clippy = ''
     clippy finds nothing in the processor telemetry reader or its tests
+  '';
+  programs-holds-whats-installed = ''
+    the programs daemon says hello on the socket systemd hands it, says an entry whole from the
+    nearest data folder with each file kind's globs and description, says an entry changed again
+    and one removed as gone, reads a program's list as its watch begins and as its file changes and
+    not while nobody watches, says a list whose command fails as empty and why, reads what a
+    program has open as it's asked, follows a data folder through each link a switch replaces, and
+    refuses an ask or a kind it doesn't know
+  '';
+  programs-passes-clippy = ''
+    clippy finds nothing in the programs daemon or its tests
+  '';
+  programs-runs-beside-the-shell = ''
+    the shell brings the programs daemon, on the daemons' socket, which systemd holds whether or not
+    it runs, given the sources each program's module lists, restarted by a switch
   '';
   programs-nobody-starts-stay-unlisted = ''
     the entries of virt-manager, the NixOS manual and umpv are masked as hidden where the launcher

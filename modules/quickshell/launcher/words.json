@@ -11489,6 +11489,36 @@
       "name": "Desktop ID"
     },
     {
+      "id": "applications:keywords",
+      "in": "applications",
+      "name": "Keywords"
+    },
+    {
+      "id": "applications:starts-in",
+      "in": "applications",
+      "name": "Starts In"
+    },
+    {
+      "id": "applications:version",
+      "in": "applications",
+      "name": "Version"
+    },
+    {
+      "id": "applications:package",
+      "in": "applications",
+      "name": "Package"
+    },
+    {
+      "id": "applications:window-class",
+      "in": "applications",
+      "name": "Window Class"
+    },
+    {
+      "id": "applications:store-path",
+      "in": "applications",
+      "name": "Store Path"
+    },
+    {
       "id": "kitty:repositories",
       "in": "applications",
       "name": "Repositories"
