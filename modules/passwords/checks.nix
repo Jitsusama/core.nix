@@ -127,11 +127,12 @@ onLinux {
   # figure and never a secret, its health and a weak strength warning,
   # its password reused and breached once every password is checked and
   # nothing before, those needing attention and the foot counting a copy
-  # down are Passwords.js's, a manager's entries by vault Managers.js's,
-  # and For You's one to-do for what the last check found, whether it
-  # stands or is done, its side and its weight, Checked.js's, run in Qt's
-  # own engine (tests/passwords.qml), beside the launcher's own wording of
-  # how long ago (Ago.js) and of a figure (Numbers.js).
+  # down are Passwords.js's, a manager's entries by vault and what its
+  # drawer says it holds Managers.js's, and For You's one to-do for what
+  # the last check found, whether it stands or is done, its side and its
+  # weight, Checked.js's, run in Qt's own engine (tests/passwords.qml),
+  # beside the launcher's own wording of how long ago (Ago.js) and of a
+  # figure (Numbers.js).
   the-passwords-show-every-figure-but-the-secret =
     let
       qt = pkgs.qt6.qtdeclarative;

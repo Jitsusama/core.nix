@@ -4,7 +4,7 @@
 // places, which it lists and what each counts, run in Qt's own
 // JavaScript engine, the one the shell runs it in. The
 // `the-desktop-reads-the-documents` check copies Drive.js, DrivePlaces.js,
-// Mail.js, When.js, Calendar.js, Google.js and Saves.js beside this file
+// FileFacts.js, Mail.js, When.js, Calendar.js, Google.js and Saves.js beside this file
 // and runs `qml
 // -platform offscreen drive.qml`. Times are made on the local clock, so
 // the cases hold in whatever zone the check runs in.
@@ -261,12 +261,26 @@ QtObject {
             recent: [], starred: { files: [], more: false }, shared: { files: [], more: false },
             drives: { files: [], more: false }
         };
+        const unkept = { held: 0, most: 0 };
         check("a folder listed and the downloads, read", Google.stateOf({
             account: "ready", meetings: [], drive
-        }).drive, Object.assign({}, drive, { uploads: [], places: nowhere }));
+        }).drive, Object.assign({}, drive, { uploads: [], places: nowhere, kept: unkept }));
         check("no Drive said, none held", Google.stateOf({
             account: "ready", meetings: []
-        }).drive, { listings: [], downloads: [], uploads: [], places: nowhere });
+        }).drive, { listings: [], downloads: [], uploads: [], places: nowhere, kept: unkept });
+
+        // What Drive's copies here take, as Google Drive's drawer says it.
+        const kept = { held: 412_000_000, most: 2_000_000_000 };
+        check("what the copies take, read", Google.stateOf({
+            account: "ready", meetings: [], drive: { kept }
+        }).drive.kept, kept);
+        check("a figure not a number is none", Google.stateOf({
+            account: "ready", meetings: [], drive: { kept: { held: "lots", most: -1 } }
+        }).drive.kept, unkept);
+        const keptSaid = { of: "{held} of {most}" };
+        check("kept here", Places.kept(kept, keptSaid), "412\u00a0MB of 2.00\u00a0GB");
+        check("none kept, nothing said", Places.kept(unkept, keptSaid), "");
+        check("from a program before it, nothing said", Places.kept(undefined, keptSaid), "");
         check("each folder asked together is found, none asked before", [
             Google.listing(drive, "drives", now),
             Google.listing(drive, "root", now),

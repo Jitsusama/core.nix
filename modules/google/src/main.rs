@@ -97,22 +97,9 @@ fn main() -> ExitCode {
     if let Err(error) = saves::watch(staged.clone(), asks) {
         eprintln!("<4>couldn't watch Drive saves: {error}");
     }
-    let places = Places {
-        kept: env::var_os("XDG_RUNTIME_DIR")
-            .map_or_else(env::temp_dir, PathBuf::from)
-            .join("google-files"),
-        drive: env::var_os("XDG_CACHE_HOME")
-            .map(PathBuf::from)
-            .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
-            .unwrap_or_else(env::temp_dir)
-            .join("google")
-            .join("drive"),
-        saves: env::var_os("XDG_DOWNLOAD_DIR").map_or_else(
-            || PathBuf::from(env::var_os("HOME").unwrap_or_default()).join("Downloads"),
-            PathBuf::from,
-        ),
-    };
+    let places = places();
     let mut watch = Watch::new(Google::new(Origins::default()), credentials, None);
+    watch.weigh(&places);
     let mut wait = EVERY;
     let mut failures: u32 = 0;
     let mut last: Option<SystemTime> = None;
@@ -182,6 +169,27 @@ fn main() -> ExitCode {
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => thread::sleep(TICK),
         }
+    }
+}
+
+/// Where the files it fetches go: those handed to a program for now in the
+/// runtime folder, Drive's copies kept to open in the cache home, and what
+/// Joel saves in his downloads.
+fn places() -> Places {
+    Places {
+        kept: env::var_os("XDG_RUNTIME_DIR")
+            .map_or_else(env::temp_dir, PathBuf::from)
+            .join("google-files"),
+        drive: env::var_os("XDG_CACHE_HOME")
+            .map(PathBuf::from)
+            .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
+            .unwrap_or_else(env::temp_dir)
+            .join("google")
+            .join("drive"),
+        saves: env::var_os("XDG_DOWNLOAD_DIR").map_or_else(
+            || PathBuf::from(env::var_os("HOME").unwrap_or_default()).join("Downloads"),
+            PathBuf::from,
+        ),
     }
 }
 

@@ -712,6 +712,17 @@ Provider {
         return { rows: kept.map(each => each.row), grade: grade };
     }
 
+    // What its drawer in Programs says it holds (Applications.qml asks
+    // every provider's programFacts), from the entries already held, and
+    // nothing while the manager can't read.
+    function programFacts(asked) {
+        const manager = managerOf(asked);
+        if (manager === null || signedOut(manager))
+            return [];
+        return Managers.held(records.filter(record => record.manager === manager.name), said)
+            .map(fact => ({ label: Words.name(fact.id), value: fact.value }));
+    }
+
     function programNote(asked) {
         const manager = managerOf(asked);
         return manager && signedOut(manager)

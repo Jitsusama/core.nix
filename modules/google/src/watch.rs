@@ -18,7 +18,7 @@ use crate::api::{Google, MAKES_MEETINGS, Put, READS_MEETINGS, Refused};
 use crate::calendar::{self, Answer};
 use crate::done::{self, Done, Went};
 use crate::drive::{
-    self, Document, Downloaded, Folder, Kind, Listed, Place, Unlisted, Unsaved, Uploaded,
+    self, Document, Downloaded, Folder, Kept, Kind, Listed, Place, Unlisted, Unsaved, Uploaded,
 };
 use crate::files::{self, Failed, Fetched, Heard, How, Places};
 use crate::mail::{self, Bytes, Mail, Tidy};
@@ -777,6 +777,16 @@ impl Watch {
     /// office program's file. One to open or hand on is fetched only when
     /// Drive has changed it since the copy kept, which Drive is asked
     /// first.
+    /// Weighs the copies of Drive's files already kept, as the program
+    /// starts, so Google Drive's drawer says what they take before any is
+    /// handed out again.
+    pub fn weigh(&mut self, places: &Places) {
+        self.state.drive.kept = Kept {
+            held: files::held(&places.drive),
+            most: files::CACHED_MOST,
+        };
+    }
+
     pub fn download(&mut self, places: &Places, now: &Zoned) -> &State {
         let Some(asked) = self.state.drive.downloads.first().cloned() else {
             return &self.state;
@@ -829,7 +839,11 @@ impl Watch {
         match asked.how {
             How::Open | How::Pick => {
                 let path = files::cached(&places.drive, &file.id, &name, file.changed, &mut heard);
-                files::pruned(&places.drive, files::CACHED_MOST, &file.id);
+                let held = files::pruned(&places.drive, files::CACHED_MOST, &file.id);
+                self.state.drive.kept = Kept {
+                    held,
+                    most: files::CACHED_MOST,
+                };
                 path
             }
             How::Save => match &asked.to {

@@ -100,6 +100,7 @@ onLinux {
       cp ${../../tests/drive.qml} drive.qml
       cp ${./Drive.js} Drive.js
       cp ${./DrivePlaces.js} DrivePlaces.js
+      cp ${../quickshell/FileFacts.js} FileFacts.js
       cp ${./Mail.js} Mail.js
       cp ${../quickshell/When.js} When.js
       cp ${./Calendar.js} Calendar.js

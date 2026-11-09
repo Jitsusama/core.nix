@@ -41,6 +41,8 @@ Singleton {
     // Drive's own places: { recent, starred, shared, drives }, Recent its
     // files newest first and each other { files, more }.
     readonly property var places: Google.drive.places
+    // How much its copies kept here to open take and may: { held, most }.
+    readonly property var kept: Google.drive.kept
 
     // Drive's folders, for the picker and Files: what each folder asked
     // lately holds, newest first, { folder, asked, files, more, failed },
@@ -178,11 +180,13 @@ Singleton {
     // What Google Drive's drawer in Programs says it holds: each of its
     // places holding anything, by its name, and how many, as its row says
     // beside it (VKCF3Z, 2026-11-08: a place's row is another row, so it
-    // isn't said twice).
+    // isn't said twice), then what its copies kept here take, Kept Here.
     function placeFacts() {
         const over = key => Words.of(key).said?.more ?? "{count}";
+        const kept = Places.kept(root.kept, Words.of("drive:kept").said);
         return Places.listed(root.places, over)
-            .map(place => ({ label: Words.name(place.key), value: place.count }));
+            .map(place => ({ label: Words.name(place.key), value: place.count }))
+            .concat(kept === "" ? [] : [{ label: Words.name("drive:kept"), value: kept }]);
     }
 
     function open(document) {

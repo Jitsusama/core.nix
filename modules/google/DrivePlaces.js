@@ -14,6 +14,7 @@
 // (tests/drive.qml).
 .pragma library
 .import "Mail.js" as Mail
+.import "FileFacts.js" as FileFacts
 
 // The places Google Drive holds after its own acts, in Drive's own order,
 // each by its words and the part of the program's places it shows. Its
@@ -37,6 +38,19 @@ function listed(places, over) {
             : String(files.length);
         return { key: place.key, files, count };
     }).filter(place => place.files.length > 0);
+}
+
+// What the copies of Drive's files kept here to open take, as Google
+// Drive's drawer says it, "412 MB of 2.00 GB" by `said.of`, or "" while
+// none is kept (Google.js's kept). It warns of nothing near the most,
+// since those handed out longest ago go by themselves (src/files.rs's
+// pruned), so a full one asks nothing of Joel.
+function kept(copies, said) {
+    if (!(copies?.held > 0) || !(copies?.most > 0)) {
+        return "";
+    }
+    return String(said?.of ?? "").replace("{held}", FileFacts.weighed(copies.held))
+        .replace("{most}", FileFacts.weighed(copies.most));
 }
 
 // Its kind, as the drawer's eyebrow says it after where it is, each part
