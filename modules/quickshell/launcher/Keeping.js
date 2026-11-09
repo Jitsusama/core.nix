@@ -10,8 +10,12 @@
 .import "Numbers.js" as Numbers
 
 const MINUS = "\u2212";
-// The standings whose own words say why chronyd took the server or not.
-const STANDINGS_SAYING_WHY = ["chosen", "tooVariable", "disagrees"];
+// The standings whose own words say why chronyd took the server or not,
+// each with the reason it says. A reason beyond it, a server disagreeing
+// with the trusted ones rather than the others, still adds something
+// (Y2YBTS's review of #2489).
+const WHY_EACH_STANDING_SAYS = { chosen: "chosen", tooVariable: "tooVariable",
+    disagrees: "disagrees" };
 
 const NANOSECONDS = 1e9;
 const MICROSECONDS = 1e6;
@@ -168,13 +172,14 @@ function why(server, said) {
 }
 
 // Whether a server's standing already says why chronyd chose it or set it
-// aside: chosen, too variable, disagreeing, or set aside with its reason
-// after it.
+// aside: chosen, too variable or disagreeing for that reason, or set aside
+// with its reason after it.
 function standingSaysWhy(server) {
     if (server.standing === "unusable") {
         return answered(server.reach) > 0;
     }
-    return STANDINGS_SAYING_WHY.includes(server.standing);
+    const reason = server.chosen?.why;
+    return reason !== undefined && reason === WHY_EACH_STANDING_SAYS[server.standing];
 }
 
 // Why, as a server's drawer says it: only where its note doesn't, so no

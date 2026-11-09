@@ -584,6 +584,7 @@ QtObject {
                 "standing:chosen": "chosen", "standing:tooVariable": "set aside: too variable",
                 "standing:disagrees": "set aside: disagrees",
                 "why:tooVariable": "too variable", "why:disagrees": "disagrees with the others",
+                "why:untrusted": "disagrees with the trusted servers",
                 "why:tooFewSamples": "too few samples yet",
                 "why:chosen": "the clock is kept by it",
                 "why:combined": "combined with the chosen one",
@@ -635,6 +636,11 @@ QtObject {
             ["Unix time", Moment.unix(evening), 1793829600],
             ["TAI", Moment.tai(evening), "22:00:37"],
             ["GPS time", quoted(Moment.gps(evening)), quoted({ week: 2443, seconds: 338418 })],
+            // As Time says it, in the launcher's own marks (Y2YBTS's review of #2489).
+            ["GPS time said", Moment.gpsSaid(evening, "week {week} \u00b7 {seconds} s",
+                { group: "\u202f", point: "," }), "week 2443 \u00b7 338\u202f418 s"],
+            ["a longitude said", Moment.longitudeSaid(-79.42, ","), "79,42\u00b0 W"],
+            ["a longitude east said", Moment.longitudeSaid(10.5, "."), "10.5\u00b0 E"],
             ["Greenwich sidereal time", Moment.sidereal(evening, 0), "00:56:37"],
             ["a date this year, without its year", Moment.day(day, evening),
                 "Wednesday 4 November"],
@@ -718,6 +724,9 @@ QtObject {
             ["a disagreeing server's why, which its note says", Keeping.whyUnsaid({
                 standing: "disagrees", reach: 255, chosen: { why: "disagrees" } },
                 KeepingCases.servers), ""],
+            ["an untrusted server's why, which says more than its note", Keeping.whyUnsaid({
+                standing: "disagrees", reach: 255, chosen: { why: "untrusted" } },
+                KeepingCases.servers), "disagrees with the trusted servers"],
             ["a server set aside and out of reach keeps its why", Keeping.whyUnsaid({
                 standing: "unusable", reach: 0, chosen: { why: "tooFewSamples" } },
                 KeepingCases.servers), "too few samples yet"],

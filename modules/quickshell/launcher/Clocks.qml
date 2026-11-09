@@ -215,22 +215,18 @@ Provider {
             note: note ?? "",
             glyph: ""
         });
-        const gps = Moment.gps(now);
         const longitude = Location.here?.longitude;
         const known = typeof longitude === "number";
-        const degrees = known
-            ? `${Numbers.format(Math.abs(longitude), 2, "", settings.point ?? ".")}\u00b0 `
-            + (longitude < 0 ? "W" : "E") : "";
+        const marks = { group: settings.group ?? ",", point: settings.point ?? "." };
         return [
             figure("utc", Moment.utcClock(now)),
             figure("unix", String(Moment.unix(now)), timeWord("time:unix", "since")),
             figure("tai", Moment.tai(now), timeWord("time:tai", "ahead")),
-            figure("gps", timeWord("time:gps", "week").replace("{week}", String(gps.week))
-                .replace("{seconds}", Numbers.format(gps.seconds, 0, settings.group ?? ",",
-                    settings.point ?? ".")),
+            figure("gps", Moment.gpsSaid(now, timeWord("time:gps", "week"), marks),
                 timeWord("time:gps", "ahead")),
             figure("sidereal", Moment.sidereal(now, known ? longitude : 0),
-                known ? timeWord("time:sidereal", "local").replace("{longitude}", degrees)
+                known ? timeWord("time:sidereal", "local")
+                    .replace("{longitude}", Moment.longitudeSaid(longitude, marks.point))
                     : timeWord("time:sidereal", "greenwich"))
         ];
     }
@@ -414,8 +410,7 @@ Provider {
                 // server, a peer or a reference clock (VKCF3Z, 2026-11-08).
                 eyebrow: Keeping.mode(server, serversSaid) || Words.name("time:server"),
                 title: name,
-                // Offset, which the row's side already says, tells only
-                // its note.
+                // Offset tells only its note, the row's side being the offset.
                 facts: Keeping.besideSide(parts, "offset").map(each => Object.assign({
                     label: Words.name(`time:server:${each.id}`),
                     value: Keeping.told(each)

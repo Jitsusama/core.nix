@@ -11,6 +11,7 @@
 // chapters 27, 47 and 49), to within minutes, as near as a date needs.
 // Plain JavaScript, so tests/answers.qml holds it in Qt's own engine.
 .pragma library
+.import "Numbers.js" as Numbers
 
 // A second, a minute and a day, in milliseconds.
 const SECOND = 1000;
@@ -102,6 +103,22 @@ function tai(ms) {
 function gps(ms) {
     const seconds = unix(ms) - GPS_EPOCH + GPS_AHEAD;
     return { week: Math.floor(seconds / WEEK_SECONDS), seconds: seconds % WEEK_SECONDS };
+}
+
+// GPS time as Time says it, in the vocabulary's words, `template`
+// ("week {week} \u00b7 {seconds} s"), its seconds grouped and pointed in
+// the launcher's own number marks (Y2YBTS's review of #2489).
+function gpsSaid(ms, template, marks) {
+    const reckoned = gps(ms);
+    return template.replace("{week}", String(reckoned.week))
+        .replace("{seconds}", Numbers.format(reckoned.seconds, 0, marks.group, marks.point));
+}
+
+// A longitude as sidereal time names it, "79.42\u00b0 W", in the
+// launcher's decimal mark.
+function longitudeSaid(longitude, point) {
+    return `${Numbers.format(Math.abs(longitude), 2, "", point)}\u00b0 `
+        + (longitude < 0 ? "W" : "E");
 }
 
 // The Julian day of a moment, with its fraction.
