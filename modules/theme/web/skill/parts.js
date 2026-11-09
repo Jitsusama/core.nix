@@ -86,7 +86,8 @@
       const part = heading.closest("section") ?? heading.parentElement;
       const why = part.closest("[data-figure]")?.dataset.figure?.trim() ?? "";
       if (part.querySelector(pictures) === null && why === "") {
-        const name = heading.innerText.trim().replaceAll("\n", " ");
+        const lines = heading.textContent.split("\n").map((line) => line.trim());
+        const name = lines.filter((line) => line !== "").join(" ");
         missing.push(`a figure for "${name}", or data-figure="why" on its section`);
       }
     }
