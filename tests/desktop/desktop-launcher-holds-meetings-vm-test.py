@@ -32,7 +32,7 @@ from desktop_session import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
@@ -157,9 +157,22 @@ def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> No
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["held"][-1:] == ["Retro"])
     desktop.close_launcher()
+    mails_recent_opens(desktop, opened, day)
+    meets_recent_joins(desktop, opened, day)
+    shoot_recents_at_joels_scales(desktop, day)
+
+
+def selected_named(name: str) -> Callable[[Json], bool]:
+    """Give a wait for the row named being selected."""
+    return lambda shown: (shown["selected"] or {}).get("name") == name
+
+
+def mails_recent_opens(desktop: Desktop, opened: str, day: str) -> None:
+    """Mail's Recent holds what Joel read and what he sent, and Return opens one."""
+    machine = desktop.machine
     # Mail's holds Trip Notes, which Joel read, saying who it's from and when; Return opens it.
     desktop.answer("mail")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Mail")
+    desktop.launcher_until(selected_named("Mail"))
     desktop.into_program()
     first_in_recent(desktop, "Trip Notes", rf"Grace Hopper \u00b7 (\d\d:\d\d|{day})")
     # What he sent names who it went to, never him (VKCF3Z, c7d9e2bd).
@@ -181,10 +194,15 @@ def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> No
         timeout=dt.timedelta(seconds=30),
     )
     desktop.launcher_until(lambda shown: not shown["open"])
+
+
+def meets_recent_joins(desktop: Desktop, opened: str, day: str) -> None:
+    """Meet's Recent holds a call Joel was on, and Return twice joins it again."""
+    machine = desktop.machine
     # Meet's holds Retro's call, saying who it was with and when; Return steps in to Join the
     # Meeting, so Return twice joins it again.
     desktop.answer("meet")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Meet")
+    desktop.launcher_until(selected_named("Meet"))
     desktop.into_program()
     first_in_recent(desktop, "Retro", rf"Ada Lovelace and Grace Hopper \u00b7 {day}")
     desktop.step_in("ret")
@@ -203,7 +221,6 @@ def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> No
         timeout=dt.timedelta(seconds=30),
     )
     desktop.launcher_until(lambda shown: not shown["open"])
-    shoot_recents_at_joels_scales(desktop, day)
 
 
 def shoot_recents_at_joels_scales(desktop: Desktop, day: str) -> None:
@@ -221,9 +238,7 @@ def shoot_recents_at_joels_scales(desktop: Desktop, day: str) -> None:
             ("Mail", "Trip Notes", rf"Grace Hopper \u00b7 (\d\d:\d\d|{day})"),
         ):
             desktop.answer(program.lower())
-            desktop.launcher_until(
-                lambda shown, program=program: (shown["selected"] or {}).get("name") == program
-            )
+            desktop.launcher_until(selected_named(program))
             desktop.into_program()
             first_in_recent(desktop, first, side)
             desktop.shoot(f"launcher-{program.lower()}-recent-at-{scale.replace('.', '-')}")
