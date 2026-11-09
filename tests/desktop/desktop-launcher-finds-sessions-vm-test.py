@@ -40,8 +40,10 @@ if TYPE_CHECKING:
     from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
 
-# How late, in seconds, the journal may stamp a line of the shell's on a busy machine.
-JOURNAL_LAG = 0.1
+# How late, in seconds, the journal may stamp a line of the shell's on a busy machine: a
+# quarter of a second, since a builder running other VM tests beside it once stamped one
+# 0.11 s late (9 November), while starts the shell didn't pace would come together.
+JOURNAL_LAG = 0.25
 # Pi's session's row, its quest's title, which Lighthouse's is while it runs.
 LIGHTHOUSE = "A quest of its own & whole"
 
@@ -1241,9 +1243,9 @@ def test_agents_reopens_each_session_where_it_sat(desktop: Desktop) -> None:
         desktop.launcher_until(lambda shown: not shown["open"])
         # Each began two seconds or more after the one before, so they don't
         # all start at once. The shell paces them by its own clock, and the
-        # journal stamps each line as it reads it, up to a tenth of a second
-        # late on a busy machine: one read late once made a gap of 1.94 s
-        # between two the shell began 2 s apart.
+        # journal stamps each line as it reads it, late on a busy machine: one
+        # read late once made a gap of 1.89 s between two the shell began 2 s
+        # apart.
         began = started_apart(desktop, since, "report[resumed session 01c3-")
         assert len(began) == len(where), began
         assert all(gap >= 2 - JOURNAL_LAG for gap in began[1:]), began
