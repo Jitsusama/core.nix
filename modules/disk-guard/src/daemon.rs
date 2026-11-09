@@ -1906,7 +1906,14 @@ impl Guard {
             let scan = Scan::new(&self.processes, Path::new("/proc/locks"), me, FRESH);
             (scan, self.garbage_offers(tick))
         } else {
-            self.offers(tick, None)?
+            let (scan, offers) = self.offers(tick, None)?;
+            // Kept for a plan to read; one that can't be kept only means
+            // the next plan surveys for itself.
+            let surveyed = crate::surveyed::Surveyed::new(tick.wall, &offers);
+            if let Err(error) = crate::surveyed::save(self.state(), &surveyed) {
+                eprintln!("disk-guard: keeping the survey: {error}");
+            }
+            (scan, offers)
         };
         for &(device, decision, thresholds) in due {
             if !self.watched.contains_key(&device) {
@@ -2205,15 +2212,41 @@ impl Guard {
     /// itself against a disk that frees what learning predicts, so it
     /// shows the order a pass goes in and where it would stop; whether
     /// each would be found in use is only known when it's tried.
+    ///
+    /// Unless `fresh`, it reads the survey the daemon's last pass kept,
+    /// answering when that was, since a survey walks every source and on
+    /// a full machine takes minutes.
     pub fn preview(
         &mut self,
         tick: &Tick,
         band: Option<Band>,
         free: Option<Size>,
-    ) -> io::Result<Vec<Preview>> {
+        fresh: bool,
+    ) -> io::Result<(Option<f64>, Vec<Preview>)> {
         self.memory.awake.observe(tick);
         self.watch();
-        let (_, offers) = self.offers(tick, None)?;
+        let kept = if fresh {
+            None
+        } else {
+            crate::surveyed::load(self.state())
+        };
+        let (surveyed, offers): (_, Vec<(u64, Candidate)>) = match kept {
+            Some(kept) => (
+                Some(kept.at),
+                kept.offered
+                    .into_iter()
+                    .map(|offered| (offered.device, offered.candidate))
+                    .collect(),
+            ),
+            None => (
+                None,
+                self.offers(tick, None)?
+                    .1
+                    .into_iter()
+                    .map(|offer| (offer.device, offer.candidate))
+                    .collect(),
+            ),
+        };
         let mut previews = Vec::new();
         for (&device, watched) in &self.watched {
             let Ok(space) = crate::sys::space(&watched.path) else {
@@ -2245,8 +2278,8 @@ impl Guard {
             };
             let candidates: Vec<_> = offers
                 .iter()
-                .filter(|offer| offer.device == device)
-                .map(|offer| offer.candidate.clone())
+                .filter(|(on, _)| *on == device)
+                .map(|(_, candidate)| candidate.clone())
                 .collect();
             let freed = Rc::new(Cell::new(space.free));
             let mut learned = self.memory.learned.clone();
@@ -2281,7 +2314,7 @@ impl Guard {
                 taken,
             });
         }
-        Ok(previews)
+        Ok((surveyed, previews))
     }
 
     pub fn status(&self, now: f64) -> Status {

@@ -2,6 +2,7 @@
 
 use crate::band::Band;
 use crate::units::{float, whole};
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// The groups a pass takes from, cheapest loss first.
@@ -18,7 +19,7 @@ pub enum Group {
 }
 
 /// What a candidate is.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Class {
     Target,
     Install,
@@ -111,7 +112,7 @@ impl Class {
 
 /// Something a pass may reclaim. `idle` is the awake time since it was last
 /// used, or since it was kept for what it was kept for; `size` is logical.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Candidate {
     pub path: PathBuf,
     pub class: Class,
