@@ -203,7 +203,10 @@ says nothing for four minutes, its pieces' logs included, is taken for
 one waiting on a builder that doesn't answer: it's stopped, and what it
 held goes here or fails saying why. Once a piece has begun to build, or
 to copy back from a builder, it may say nothing for twelve, since a
-compile can work quietly for minutes.
+compile can work quietly for minutes. Past its limit it's stopped only
+if its pieces did no work either, read as CPU time and bytes written
+from their cgroups here and from each builder's `health.json`, and
+never after an hour of quiet.
 
 A switch that would restart what a hold covers is built, then waits. The
 ask that brings the hold's grant switches to what was built, though main
