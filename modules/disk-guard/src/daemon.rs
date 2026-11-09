@@ -214,7 +214,10 @@ const HELD_ENDED_GAP: f64 = 120.0;
 /// spent to free kilobytes. A filling disk rests the same short of
 /// urgent: on 8 November one at 75% listed back to back, five to six
 /// minutes of a core each with the machine's processors 45 to 55% stalled,
-/// and each pass found nothing more to clear. Urgent and past, none.
+/// and each pass found nothing more to clear. Urgent and past, none. A
+/// listing that failed rests the same before it's tried again: on 9
+/// November one failing on Nix's own temporary paths, five minutes of a
+/// core each time, was tried again six times in two hours.
 const LISTING_REST: f64 = 9.0;
 
 /// How often the guard looks for an owner that has ended: a tree's last
@@ -1348,7 +1351,8 @@ impl Guard {
                 }
                 self.listing = Some(listing);
             }
-            // Tried again in an hour; until then the listing before stands.
+            // Tried again once it has rested, an hour on at most short of
+            // pressure; until then the listing before stands.
             Err(why) => eprintln!("disk-guard: listing Nix's garbage: {why}"),
         }
         Ok(())
@@ -1473,13 +1477,12 @@ impl Guard {
         }
     }
 
-    /// Begins listing Nix's garbage on its own thread when it's due: soon
-    /// after a root leaves or a process holding paths ends, once the last
-    /// listing has rested its own length nine times over on a healthy disk
-    /// and at once on a filling one, six hours on
-    /// at a spare moment, or a day on whenever there's power, at idle
-    /// priority; and at once when the store's filesystem is filling
-    /// and the listing is an hour old. While the machine is overloaded only
+    /// Begins listing Nix's garbage on its own thread when it's due, once
+    /// the last listing, kept or failed, has rested its own length nine
+    /// times over short of urgent: soon after a root leaves or a process
+    /// holding paths ends on a filling disk, six hours on at a spare moment,
+    /// or a day on whenever there's power, at idle priority; and when the
+    /// store's filesystem is filling and the listing is an hour old. While the machine is overloaded only
     /// a filling store's listing begins, at idle priority short of urgent;
     /// one asked for meanwhile waits.
     fn list_garbage(&mut self, now: f64, spare: bool, overloaded: bool) {
@@ -1516,13 +1519,15 @@ impl Guard {
                 .is_none_or(|(ended, took)| now - ended >= LISTING_REST * took);
         let let_go =
             self.root_left && since >= ROOT_LEFT_GAP || self.held_ended && since >= HELD_ENDED_GAP;
-        let due = rested && (self.relist || pressed && let_go)
-            || since >= retry
-                && if pressed {
-                    listed >= LISTING_PRESSED
-                } else {
-                    spare && listed >= LISTING_FRESH
-                };
+        let due = rested
+            && (self.relist
+                || pressed && let_go
+                || since >= retry
+                    && if pressed {
+                        listed >= LISTING_PRESSED
+                    } else {
+                        spare && listed >= LISTING_FRESH
+                    });
         if !due {
             return;
         }

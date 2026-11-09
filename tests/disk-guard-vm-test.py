@@ -185,7 +185,12 @@ def running_away(on_test_bands: Account) -> Iterator[Callable[[str], None]]:
     for name in started:
         # Thawed first, since a frozen process can't take the signal that ends it.
         on_test_bands.run(f"systemctl --user thaw {name}.scope disk-guard-freeze-*.scope || true")
-        on_test_bands.run(f"systemctl --user stop {name}.scope 'disk-guard-freeze-*' || true")
+        # Apart, since systemctl starts none of a stop's jobs when one of its units
+        # isn't there, and a frozen writer's own scope is gone once its process moved:
+        # on 9 November the writer thawed by hand kept writing through the next test,
+        # out-writing the one it meant to freeze.
+        on_test_bands.run("systemctl --user stop 'disk-guard-freeze-*' || true")
+        on_test_bands.run(f"systemctl --user stop {name}.scope || true")
         on_test_bands.run(f"rm -f ~/{name}")
 
 

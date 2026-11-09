@@ -749,11 +749,41 @@ fn a_listing_that_failed_under_pressure_is_tried_again_within_minutes() {
     fs::write(store.root.join("listing-broken"), "").unwrap();
     let mut guard = store.guard(store.config("100%", "0%"));
     step_later_until(&store, &mut guard, 0.0, &CALM, |store, _| lists(store) == 1);
+    // Heard failing at once, so it took a moment and rests no longer.
+    step_later(&mut guard, 0.0, &CALM);
     fs::remove_file(store.root.join("listing-broken")).unwrap();
     step_later(&mut guard, 60.0, &CALM);
     assert_eq!(lists(&store), 1, "not at once: a listing costs the disk");
     // Kept, so this one listed, and listed six minutes on, not one.
     listed_later(&store, &mut guard, 6.0 * 60.0, &CALM);
+    assert_eq!(lists(&store), 2, "{:?}", store.log());
+}
+
+#[test]
+fn a_listing_that_failed_slowly_rests_before_it_is_tried_again() {
+    // On 9 November a store under pressure was listed six times in two
+    // hours, five minutes of a core each, every one failing on a temporary
+    // path Nix made and took away again meanwhile.
+    let store = Store::new();
+    store.dead("aaa-old", 10.0 * DAY, 4096);
+    fs::write(store.root.join("listing-broken"), "").unwrap();
+    fs::write(store.root.join("listed"), "").unwrap();
+    fs::write(store.root.join("listing-slow"), "").unwrap();
+    let mut guard = store.guard(store.config("100%", "0%"));
+    step_later_until(&store, &mut guard, 0.0, &CALM, |store, _| lists(store) == 1);
+    // It fails five minutes after it began.
+    fs::remove_file(store.root.join("listing-slow")).unwrap();
+    step_later(&mut guard, 300.0, &CALM);
+    fs::remove_file(store.root.join("listing-broken")).unwrap();
+    step_later(&mut guard, 300.0 + 6.0 * 60.0, &CALM);
+    assert_eq!(
+        lists(&store),
+        1,
+        "tried again before it rested: {:?}",
+        store.log()
+    );
+    // Nine times its length on, it's tried again.
+    listed_later(&store, &mut guard, 300.0 + 9.0 * 300.0 + 60.0, &CALM);
     assert_eq!(lists(&store), 2, "{:?}", store.log());
 }
 
