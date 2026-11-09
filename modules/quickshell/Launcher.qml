@@ -7185,7 +7185,58 @@ Scope {
     // stepping out to a home it never showed.
     property int homeDepth: 0
 
+    // Whether the open launcher has had the keys since it opened: niri
+    // hands them over a frame after it asks, so until then a window still
+    // has them and that says nothing (keysMoved).
+    property bool keysHeld: false
+
+    // A click or a touch on a window takes the keys from the open launcher
+    // (modules/niri/on-demand-when-asked.patch), and one left open that
+    // hears nothing reads as broken: a phantom touch on a cracked screen
+    // left Joel's keys going nowhere he could see, and Super+Space then
+    // closed it rather than giving them back (2026-11-09). So once it has
+    // held them, a window taking them closes it, as a click outside a menu
+    // puts it away. A notice held over it takes them and gives them back
+    // with no window focused, so the launcher stays open under it. Called
+    // as the keys or niri's focused window change, in either order.
+    function keysMoved(): void {
+        if (!open)
+            return;
+        if (prompt.Window.active) {
+            keysHeld = true;
+        } else if (keysHeld && Niri.focused !== null) {
+            console.info("launcher: closed, since a window took the keys");
+            open = false;
+        }
+    }
+
+    // Says whether the launcher is open, in $XDG_RUNTIME_DIR/quickshell-launcher,
+    // so what can't ask the shell, as a switch run by root waiting until
+    // Joel isn't in it, can read it: "open" or "closed", written as it
+    // changes and once as the shell starts, since one a shell that died left
+    // says nothing of this one; the unit removes it as the shell stops.
+    FileView {
+        id: openMark
+        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/quickshell-launcher`
+        printErrors: false
+        // A word into memory, so it's said by the time the shell says it
+        // opened or closed.
+        blockWrites: true
+        Component.onCompleted: setText(root.open ? "open\n" : "closed\n")
+    }
+
+    Connections {
+        target: Niri
+        enabled: root.open
+
+        function onFocusedChanged() {
+            root.keysMoved();
+        }
+    }
+
     onOpenChanged: {
+        openMark.setText(open ? "open\n" : "closed\n");
+        keysHeld = false;
         // A viewer's line is over once the launcher closes (viewerCommandLine),
         // and gv has nothing to bring back in the rows it opens on; nor is a
         // line Return wrote and Joel left, which would hold the next
@@ -7514,9 +7565,18 @@ Scope {
         WlrLayershell.layer: WlrLayer.Overlay
         // Asked for on demand once niri gives them so (Niri.asksForKeys), so
         // the newest surface Joel opened has the keys and a click on a
-        // window takes them, the launcher left open without them.
+        // window takes them, closing the launcher (keysMoved).
         WlrLayershell.keyboardFocus: root.open ? Niri.asksForKeys : WlrKeyboardFocus.None
         WlrLayershell.namespace: "launcher"
+
+        Connections {
+            target: card.Window.window
+            enabled: root.open
+
+            function onActiveChanged() {
+                root.keysMoved();
+            }
+        }
 
         Connections {
             target: card.Window.window
