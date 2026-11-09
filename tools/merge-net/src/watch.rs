@@ -11,7 +11,10 @@
 //! the same input. One that fails and then passes is flaky: it goes on the
 //! quarantine list with the PR of the newest merge that moved it, and not
 //! the whole system with it, as its owner, and nothing is reverted for
-//! it, nor for a quarantined test that fails. A run the builder never took
+//! it, nor for a quarantined test that fails, listed at the round's head
+//! or at main's newest. A test whose breaking merge is found but won't
+//! revert goes on the list too, with that merge's PR as its owner, and the
+//! hold is cleared. A run the builder never took
 //! (`nix-offload` exits 75), or whose builder couldn't fetch the commit's
 //! source, is tried again later, and is no failure, and so is one stopped
 //! before it ended, for running too long or going silent: twice at a commit, and the test is left there with a
@@ -839,16 +842,24 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
     let quarantined = world.quarantined(&head);
     let on_hold = |test: &str| hold.as_ref().is_some_and(|hold| hold["test"] == test);
     let owner_in = |test: &str| owner_of(world, &base, &head, test, &tests);
-    let left_be = |test: &str| quarantined.iter().any(|kept| kept == test) || on_hold(test);
+    let left_be = |test: &str| {
+        quarantined.iter().any(|kept| kept == test)
+            || on_hold(test)
+            || listed_on_main(world, &head, test)
+    };
     let breaking = Breaking::new(world, state, &base, &head, left_be);
     let outcomes = attempt_all(world, state, &head, &tests, &|test, ran| {
         breaking.heard(test, ran);
     });
     breaking.done()?;
+    let listed = world
+        .head()
+        .map(|newest| world.quarantined(&newest))
+        .unwrap_or_default();
     let mut failed = false;
     let mut unfinished = false;
     for (test, outcome) in tests.iter().zip(outcomes) {
-        let kept_out = quarantined.contains(test);
+        let kept_out = quarantined.contains(test) || listed.contains(test);
         match outcome {
             Outcome::Passed => {
                 if on_hold(test) {
@@ -860,19 +871,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
                 }
             }
             Outcome::Flaky if !kept_out && !state.found("flaky", test, &head) => {
-                let reason = format!("failed, then passed, at {}", short(&head));
-                let owner = owner_in(test);
-                let made = world.quarantine(test, owner, &head, &reason);
-                state.find(&json!({
-                    "kind": "flaky",
-                    "test": test,
-                    "commit": head,
-                    "owner_pr": owner,
-                    "log": state.log(&head, test, 1).display().to_string(),
-                    "quarantine_pr": made.as_ref().ok().map(|merged| merged.pr),
-                    "quarantine_error": made.err(),
-                    "at": now(),
-                }))?;
+                list_flaky(world, state, &head, test, owner_in(test))?;
             }
             Outcome::Flaky => {}
             Outcome::Failed if kept_out => {
@@ -1069,6 +1068,41 @@ fn clear_if_fixed_forward(
     Ok(None)
 }
 
+/// Whether main's newest head, other than the round's `head`, lists `test`
+/// as quarantined. A round reads the list at its own head, but runs for
+/// hours: on 9 November the round at f18ef97a began at 02:35, its owner
+/// listed vm-desktop-launcher-moves-windows at 04:13, and the round went on
+/// evaluating the test at 139 merges to search for one it would revert.
+fn listed_on_main(world: &dyn World, head: &str, test: &str) -> bool {
+    world.head().is_ok_and(|newest| {
+        newest != head && world.quarantined(&newest).iter().any(|kept| kept == test)
+    })
+}
+
+/// List `test`, which failed and then passed at `head`, as quarantined
+/// with its owner, and tell the owner.
+fn list_flaky(
+    world: &dyn World,
+    state: &State,
+    head: &str,
+    test: &str,
+    owner: Option<u64>,
+) -> Result<(), String> {
+    let reason = format!("failed, then passed, at {}", short(head));
+    let made = world.quarantine(test, owner, head, &reason);
+    state.find(&json!({
+        "kind": "flaky",
+        "test": test,
+        "commit": head,
+        "owner_pr": owner,
+        "log": state.log(head, test, 1).display().to_string(),
+        "quarantine_pr": made.as_ref().ok().map(|merged| merged.pr),
+        "quarantine_error": made.err(),
+        "at": now(),
+    }))?;
+    Ok(())
+}
+
 /// Tell `test`'s owner that it stalled twice at `head`.
 fn stalled(state: &State, head: &str, test: &str, owner: Option<u64>) -> Result<(), String> {
     state.find(&json!({
@@ -1172,24 +1206,55 @@ fn broke(
         test: test.to_owned(),
         log: log.clone(),
     };
+    // A search can take hours, and the owner may have listed the test
+    // meanwhile, so the list as main has it now is read again.
+    if listed_on_main(world, head, test) {
+        state.find(&json!({
+            "kind": "failed-in-quarantine", "test": test, "commit": commit,
+            "owner_pr": found.pr, "log": log, "at": now(),
+        }))?;
+        state.say(&format!(
+            "{test} broke at {}, but main lists it as quarantined now: nothing is reverted or held",
+            short(&commit)
+        ));
+        return Ok(());
+    }
+    revert_and_tell(world, state, &found, head)
+}
+
+/// Hold switching on `found`, revert it, and tell its owner, listing its
+/// test as quarantined when the revert won't apply.
+fn revert_and_tell(
+    world: &dyn World,
+    state: &State,
+    found: &Bad,
+    head: &str,
+) -> Result<(), String> {
+    let (commit, test, log) = (&found.commit, &found.test, &found.log);
     let mut hold = json!({
         "test": test, "bad": commit, "bad_pr": found.pr, "revert_pr": Value::Null,
         "revert_commit": Value::Null, "at": now(),
     });
     state.set_hold(&hold)?;
-    let reverted = world.revert(&found);
+    let reverted = world.revert(found);
     keep_revert(state, &mut hold, &reverted)?;
+    let listed: Option<Result<Merged, String>> = match &reverted {
+        Err(why) if !why.starts_with(UNCHECKED) => Some(list_broken(world, state, found, head)),
+        _ => None,
+    };
     state.find(&json!({
         "kind": "failed", "test": test, "commit": commit, "owner_pr": found.pr, "log": log,
         "revert_pr": reverted.as_ref().ok().map(|merged| merged.pr),
         "revert_error": reverted.as_ref().err(),
+        "quarantine_pr": listed.as_ref().and_then(|made| made.as_ref().ok().map(|it| it.pr)),
+        "quarantine_error": listed.as_ref().and_then(|made| made.as_ref().err()),
         "at": now(),
     }))?;
     match reverted {
         Ok(landed) => {
             state.say(&format!(
                 "reverted {} for {test} in #{}",
-                short(&commit),
+                short(commit),
                 landed.pr
             ));
             clear_if_reverted(world, state)
@@ -1197,11 +1262,39 @@ fn broke(
         Err(why) => {
             state.say(&format!(
                 "couldn't revert {} for {test}: {why}",
-                short(&commit)
+                short(commit)
             ));
             Ok(())
         }
     }
+}
+
+/// A merge pinned for breaking a test whose revert won't apply has its test
+/// listed as quarantined, with the merge's PR as its owner, and the hold
+/// cleared, so the net goes on to main's head and switches go on while the
+/// owner fixes it forward. On 9 November the revert of #2363 conflicted
+/// with the 138 merges since, and main stayed held until a fix forward
+/// landed by hand 23 minutes later; the owner is told in the finding.
+fn list_broken(
+    world: &dyn World,
+    state: &State,
+    found: &Bad,
+    head: &str,
+) -> Result<Merged, String> {
+    let what = found
+        .pr
+        .map_or_else(|| short(&found.commit).to_owned(), |pr| format!("#{pr}"));
+    let reason = format!(
+        "broken since {what}, whose revert won't apply; its owner fixes it forward and takes \
+         it off this list"
+    );
+    let made = world.quarantine(&found.test, found.pr, head, &reason)?;
+    state.clear_hold()?;
+    state.say(&format!(
+        "listed {} as quarantined in #{}, owned by {what}, so the hold is cleared",
+        found.test, made.pr
+    ));
+    Ok(made)
 }
 
 #[cfg(test)]
@@ -1231,6 +1324,10 @@ mod tests {
         /// Merges that leave the one check named with them unchanged.
         still: Vec<(String, String)>,
         quarantined: Vec<String>,
+        /// Tests main's newest head lists as quarantined besides those.
+        listed_since: Vec<String>,
+        /// Whether every revert conflicts with main.
+        reverts_conflict: bool,
         reverted: Mutex<Vec<String>>,
         /// Checks whose runs end only once a merge is reverted, or after a
         /// while without one, when they're put in `waited_out`.
@@ -1394,10 +1491,17 @@ mod tests {
             };
             (exit != STALL).then_some(exit)
         }
-        fn quarantined(&self, _: &str) -> Vec<String> {
-            self.quarantined.clone()
+        fn quarantined(&self, commit: &str) -> Vec<String> {
+            let mut listed = self.quarantined.clone();
+            if commit == self.head {
+                listed.extend(self.listed_since.iter().cloned());
+            }
+            listed
         }
         fn revert(&self, bad: &Bad) -> Result<Merged, String> {
+            if self.reverts_conflict {
+                return Err("the revert doesn't apply to main".to_owned());
+            }
             let mut unchecked = self.unchecked_reverts.lock().unwrap();
             if *unchecked > 0 {
                 *unchecked -= 1;
@@ -1947,6 +2051,57 @@ mod tests {
         );
         assert!(world.reverted.lock().unwrap().is_empty());
         assert_eq!(findings(&state)[0]["kind"], "failed-in-quarantine");
+    }
+
+    #[test]
+    fn a_test_main_lists_since_its_round_began_reverts_nothing() {
+        let state = state("listed-since");
+        state.set_heads("s", "s").unwrap();
+        state.begin("h").unwrap();
+        let world = Stand {
+            head: "n".into(),
+            merges: names("a b h"),
+            changed: changed("vm-a"),
+            listed_since: names("vm-a"),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1])
+        .exits("n", "vm-a", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Passed("h".into())
+        );
+        assert!(world.reverted.lock().unwrap().is_empty());
+        assert_eq!(state.hold(), None);
+        assert!(
+            world.built().iter().all(|(at, _)| at == "h"),
+            "nothing is searched: {:?}",
+            world.built()
+        );
+        assert_eq!(findings(&state)[0]["kind"], "failed-in-quarantine");
+    }
+
+    #[test]
+    fn a_pinned_test_whose_revert_conflicts_is_listed_with_its_owner() {
+        let state = state("listed-on-conflict");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            reverts_conflict: true,
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert_eq!(*world.put_in_quarantine.lock().unwrap(), names("vm-a"));
+        assert_eq!(state.hold(), None, "switches go on");
+        let found = findings(&state);
+        assert_eq!(found[0]["kind"], "failed");
+        assert_eq!(found[0]["owner_pr"], 1);
+        assert_eq!(found[0]["quarantine_pr"], 8);
     }
 
     #[test]

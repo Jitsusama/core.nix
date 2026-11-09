@@ -185,7 +185,11 @@ the hold as that PR merges, or as a test ends once it's on main, and writes a
 finding for its owner in `~/.local/state/net/findings`. A check
 that fails before the revert too doesn't stop it, or one break on main
 would keep another in place. A revert whose checks no builder took is
-tried again as each round begins, until one does. A test that failed before that merge too, or
+tried again as each round begins, until one does. A revert that won't
+apply, as when later merges built on the broken one, puts the test on the
+quarantine list below with the broken merge's PR as its owner and clears
+the hold, so the owner fixes it forward while switches go on. A test that
+failed before that merge too, or
 that didn't exist before it, as when a split moves a failing case under a
 new name, is a finding for its owner, and nothing is reverted or held. So is one
 that fails after a merge that didn't change it, since something outside the
@@ -199,6 +203,8 @@ reverts nothing for it until the owner makes it steady and takes it off.
 Before a merge, `changed-checks`, `run-subtests` and `merge-net needs` read
 that list from origin's main, so a branch can't quarantine its own failure:
 a quarantined test still runs, but its failure is said and blocks nothing.
+The net reads the list at its round's head and at main's newest head, so a
+test listed while a round runs is searched for and reverted no more.
 A run the net stops, past two hours on a builder or silent there for
 thirty minutes, is a stall, not a failure (the wait for a builder counts
 for neither): one stalling twice at a commit is a finding, and no
