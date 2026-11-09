@@ -459,7 +459,8 @@ Provider {
             categories: entry.categories,
             command: entry.command,
             id: entry.id,
-            comment: entry.comment
+            comment: entry.comment,
+            marks: { group: settings.group, point: settings.point }
         }, id => Words.name(`applications:${id}`), Words.of("applications").said);
     }
 
