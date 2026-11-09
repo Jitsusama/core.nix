@@ -153,6 +153,18 @@ def test_passwords_asks_nothing_until_stepped_into_and_leads_with_letting_it_in(
     # leads with the row that lets the launcher in.
     shell.launcher_until(lambda shown: shown["rows"][:1] == [LOCKED])
     shell.close_launcher()
+    # Home's row names what Passwords holds after its name, the manager, never Check Every
+    # Password, its act, and says it's locked at its right (VKCF3Z, db2d4ed6).
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.launcher_until(
+        lambda shown: any(
+            thing["is"] == "collection:passwords"
+            and thing["reads"].split(" \u00b7 ")[1:3] == [LOCKED, "locked"]
+            for thing in shown["things"]
+        )
+    )
+    shell.close_launcher()
     let_in(shell)
 
 

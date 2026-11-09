@@ -1539,7 +1539,7 @@ Provider {
         return holderRow({
             key: `sound:${node.name}:port`,
             name: Words.name("sound:port"),
-            side: now.available === "no" ? `${now.name}, ${said("unplugged")}` : now.name,
+            side: now.available === "no" ? `${now.name} \u00b7 ${said("unplugged")}` : now.name,
             glyph: mark,
             offers: true
         }, () => choosable.map(port => provider.act("verb:sound-port", "", {
@@ -1675,8 +1675,9 @@ Provider {
         return all.slice();
     }
 
+    // A run, its parts a middle dot apart (VKCF3Z, 2026-11-09).
     function counted() {
-        return `${outputs.length} out, ${inputs.length} in`;
+        return `${outputs.length} out \u00b7 ${inputs.length} in`;
     }
 
     examples: ["volume", "volume 40"]

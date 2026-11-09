@@ -70,6 +70,7 @@
     {
       "id": "energy",
       "name": "Power",
+      "glyph": "power",
       "stands": "power",
       "holds": [
         "power",
@@ -2881,8 +2882,8 @@
         "memory": "memory",
         "cpu": "processors",
         "battery": "on battery {charge}%",
-        "charging:battery": "{charge}%, on battery",
-        "charging:charger": "{charge}%, on the charger",
+        "charging:battery": "{charge}% \u00b7 on battery",
+        "charging:charger": "{charge}% \u00b7 on the charger",
         "build": "{count} build",
         "builds": "{count} builds",
         "vmTest": "{count} VM test",

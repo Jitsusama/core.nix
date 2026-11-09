@@ -339,13 +339,13 @@ ShellRoot {
             .every(row => !row.key.startsWith("link:")), "rows came from no file");
 
         const one = bluetooth.linksAnswer([headphones]);
-        expect("one link answered", one.headline === "in range, 61 of 79 clear"
+        expect("one link answered", one.headline === "in range \u00b7 61 of 79 clear"
             && said(one.rows) === "Signal=in range,Channels=61 of 79 clear"
             && one.note === "the link to Headphones" && one.graph.shape === "spark",
             JSON.stringify(one.headline));
         const both = bluetooth.linksAnswer([headphones, mouse]);
         expect("two links answered", both.headline === "2 connected"
-            && said(both.rows) === "Headphones=in range, 61 of 79 clear,Mouse=-58 dBm",
+            && said(both.rows) === "Headphones=in range \u00b7 61 of 79 clear,Mouse=-58 dBm",
             said(both.rows));
         expect("each a step in", said(both.rows[0].verbs())
             === "Signal=in range,Channels=61 of 79 clear", said(both.rows[0].verbs()));
@@ -359,7 +359,7 @@ ShellRoot {
     // Now lists it too.
     function lowHolds() {
         const low = bluetooth.made(headphones);
-        expect("one running low says so at its side", low.side === "15%, running low"
+        expect("one running low says so at its side", low.side === "15% \u00b7 running low"
             && low.note === "connected", `${low.side}; ${low.note}`);
         expect("one running low warns", low.warns === true, String(low.warns));
         const fine = bluetooth.made(mouse);

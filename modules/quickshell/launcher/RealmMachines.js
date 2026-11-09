@@ -184,7 +184,8 @@ function pressures(room, named) {
         each("pressure:memory", "memory"), each("pressure:io", "io")];
 }
 
-// What it charges from and how full, "62%, on battery".
+// How full and what it charges from, "62% · on battery", a run of parts read by dots as
+// Power's is.
 function charge(power, said) {
     if (!power || typeof power.charge !== "number") {
         return "";

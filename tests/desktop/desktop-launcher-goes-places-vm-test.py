@@ -685,7 +685,8 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     desktop.step_in("ret")
     # Power comes first, saying how it stands at its right, the charge and
     # what it's doing, as Processor says how busy it is, and what it holds
-    # after its name, as at home (VKCF3Z, 2a429f67). Memory is a row of its
+    # after its name, as at home (VKCF3Z, 2a429f67), its parts run by dots
+    # (VKCF3Z, 15a4a36a). Memory is a row of its
     # own, before Heat, as the processor is,
     # Disk after it and Lag last, since what it points at is the
     # processor, the memory and the disk.

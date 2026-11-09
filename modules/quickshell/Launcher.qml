@@ -331,7 +331,7 @@ Scope {
         // An answer only started gives way to a name that starts the same,
         // its first word: "pow" is still Power Off. A later word starting
         // so is no name Joel was typing, and gave "batt" to a copy that
-        // said "50%, on battery", above the battery's own answer.
+        // said "50% · on battery", above the battery's own answer.
         const meant = answer && !(answer.question && below.length > 0
             && String(below[0].name).toLowerCase().startsWith(Fuzzy.plainly(typed)));
         if (fresh || (current === -1 && !answer))

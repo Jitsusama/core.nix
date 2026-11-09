@@ -260,7 +260,7 @@ Provider {
             name: device.name,
             glyph: kind(device),
             hue: "machine",
-            side: warns ? `${charge}%, running low` : stood,
+            side: warns ? `${charge}% \u00b7 running low` : stood,
             warns: warns,
             note: note,
             device: device,
@@ -744,7 +744,7 @@ Provider {
         if (told.length === 0)
             return null;
         const said = each => [each.signal ? each.signal.side : "",
-            each.channels ? each.channels.side : ""].filter(part => part !== "").join(", ");
+            each.channels ? each.channels.side : ""].filter(part => part !== "").join(" \u00b7 ");
         const graph = each => each.signal ? spark(Links.signals(each.link)) : undefined;
         const glyph = Words.glyph("bluetooth");
         if (told.length === 1)
