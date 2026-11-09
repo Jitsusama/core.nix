@@ -213,9 +213,11 @@ Provider {
     // followed it is Time's (Clocks.qml), since the zone is the clock's.
     //
     // GeoClue's altitude, speed and heading are left out: found from the
-    // Wi-Fi networks in reach, as it is here, it gives none of them, only
-    // its "unknown" values. The plate says so, as design.md has what's
-    // left out named on screen with its reason.
+    // Wi-Fi networks in reach or the network's address, as it is here, it
+    // gives none of them, only its "unknown" values. The plate says so, as
+    // design.md has what's left out named on screen with its reason. Which
+    // of the two found it isn't in the record, so the row says only that
+    // it was found (VKCF3Z, 2026-11-09).
     readonly property var location: {
         const here = Location.here;
         const position = here ? `${here.latitude.toFixed(2)}, ${here.longitude.toFixed(2)}` : "";
@@ -229,8 +231,11 @@ Provider {
         // gives way by whole items: the zone it keeps, then that the
         // clock isn't following it.
         const elsewhere = differs ? said.elsewhere.replace("{zone}", here.zone) : "";
-        const note = !here ? (Location.read ? said.unfound : "")
-            : differs ? elsewhere : byHand ? within : said.found.replace("{within}", within);
+        // How near it is, its source being the plate's eyebrow, and the
+        // machinery that found it named nowhere (VKCF3Z, 2026-11-09).
+        const unfound = Location.read ? said.notFound : "";
+        const placed = differs ? elsewhere : within;
+        const note = here ? placed : unfound;
         const now = clock.date.getTime();
         const inside = () => {
             const figure = (id, value) => copyRow({
@@ -291,12 +296,13 @@ Provider {
             // Its town, the place's first part, as the plate names the
             // thing it's about.
             title: (here.place ?? "").split(",")[0] || Words.name("location"),
-            facts: Here.facts(here, now, hereSaid, hereTold).map(fact => ({
-                label: Words.name(`location:${fact.id}`),
-                value: fact.value,
-                identifies: fact.identifies === true
-            })),
-            // What GeoClue can't say of a place found by Wi-Fi, and why.
+            facts: Here.besideNote(Here.facts(here, now, hereSaid, hereTold), !differs)
+                .map(fact => ({
+                    label: Words.name(`location:${fact.id}`),
+                    value: fact.value,
+                    identifies: fact.identifies === true
+                })),
+            // What GeoClue can't say of a place found from a network, and why.
             body: byHand ? "" : Words.of("location").tells?.leftOut ?? ""
         });
         return thingRow(Object.assign({

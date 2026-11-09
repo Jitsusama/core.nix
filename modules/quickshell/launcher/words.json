@@ -4679,7 +4679,7 @@
       "name": "Location",
       "term": "Desktop/location",
       "said": {
-        "via": "from Wi-Fi \u00b7 location",
+        "via": "found \u00b7 location",
         "viaHand": "set by hand \u00b7 location",
         "hand": "set by hand",
         "metres": "within {n} m",
@@ -4692,13 +4692,11 @@
         "unknown": "unknown",
         "unnamed": "not named yet",
         "notFound": "not found yet",
-        "unfound": "not found by GeoClue yet",
-        "found": "{within}, found through GeoClue",
-        "knows": "through GeoClue, {within}",
+        "knows": "found, {within}",
         "elsewhere": "keeps {zone} \u00b7 not following"
       },
       "tells": {
-        "leftOut": "Wi-Fi gives no altitude, speed or heading."
+        "leftOut": "Neither Wi-Fi nor a network's address gives altitude, speed or heading."
       }
     },
     {
