@@ -3009,6 +3009,12 @@
     name, and :q there closes it, a document in zathura, markdown in the reader, and a folder from
     kitty's Recent, while the launcher's home keeps its shape
   '';
+  vm-desktop-reopens-under-orchestrators = ''
+    sessions come back, or start, on their orchestrator's workspace by themselves: a reboot's list
+    of two orchestrations puts each window where it sat, two stacked in one column and those an
+    one its orchestrator hands over again begun once, and one started for another's tree opens with it,
+    in title order after its orchestrator, with Joel's window keeping the keys
+  '';
   vm-desktop-says-what-happens = ''
     notices come, go and are found again, are signed by the name Joel knows, are acted on by the
     keys and the pointer, bring what they're about forward, and sit inside the window under them,
