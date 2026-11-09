@@ -58,13 +58,13 @@ function wordsOf(arg) {
 // words name, so a source with nothing in it now is still a step into an
 // empty place rather than an error.
 function sourcesOf(rows, said) {
-    const named = Object.keys(said?.sources ?? {});
-    return named.concat(rows.map(row => fieldOf(row, "source"))).filter(source => source !== "");
+    const known = Object.keys(said?.sources ?? {});
+    return known.concat(rows.map(row => fieldOf(row, "source"))).filter(source => source !== "");
 }
 
 // What a word names, as [field, value], or null for neither: a source of
 // one kind alone names its kind, before any source of its name.
-function named(word, sources) {
+function meaning(word, sources) {
     if (KINDS.includes(word)) {
         return ["kind", word];
     }
@@ -77,13 +77,13 @@ function named(word, sources) {
 // What the words narrow `from` to (a filter, or none for everything), as
 // { kind, source }, each "" where nothing names one; or { error } for a
 // word that's neither a kind nor a source, or a second of one other than
-// the first, which could only narrow to nothing. Vim's own E475 says it, as Ex.js says what Vim
-// says.
+// the first, which could only narrow to nothing. Vim's own E475 says it,
+// as Ex.js says what Vim says.
 function read(arg, rows, said, from) {
     const sources = sourcesOf(rows, said);
     const filter = { kind: from?.kind ?? "", source: from?.source ?? "" };
     for (const word of wordsOf(arg)) {
-        const [field, value] = named(word, sources) ?? ["", ""];
+        const [field, value] = meaning(word, sources) ?? ["", ""];
         if (field === "" || (filter[field] !== "" && filter[field] !== value)) {
             return { error: `E475: Invalid argument: ${word}` };
         }
@@ -114,9 +114,9 @@ function filtered(rows, filter) {
 // A source's name as the head says it: the words' own, or its id with each
 // part begun in capitals, for a source the words don't know yet.
 function sourceName(source, said) {
-    const named = said?.sources?.[source];
-    if (named) {
-        return named;
+    const own = said?.sources?.[source];
+    if (own) {
+        return own;
     }
     return source.split("-").map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
 }
