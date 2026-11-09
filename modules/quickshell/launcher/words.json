@@ -2336,7 +2336,8 @@
     {
       "id": "power:device",
       "in": "power:energy",
-      "name": "Linux Name"
+      "name": "Linux Name",
+      "term": "Machine/Linux name"
     },
     {
       "id": "power:energy:charge",
@@ -2732,6 +2733,7 @@
       "id": "heat:chip",
       "in": "heat",
       "name": "Linux Name",
+      "term": "Machine/Linux name",
       "said": {
         "sensor": "on this machine \u00b7 sensor",
         "zone": "on this machine \u00b7 zone"
