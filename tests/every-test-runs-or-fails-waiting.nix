@@ -5,9 +5,7 @@
 # only shrinks.
 {
   "modules/disk-guard/tests/guard/anchor.rs" = 3;
-  "modules/disk-guard/tests/guard/collecting.rs" = 1;
   "modules/disk-guard/tests/guard/daemon.rs" = 1;
-  "modules/disk-guard/tests/guard/opens.rs" = 4;
   "modules/disk-guard/tests/guard/pool.rs" = 1;
   "modules/disk-guard/tests/guard/reclaim.rs" = 2;
 }

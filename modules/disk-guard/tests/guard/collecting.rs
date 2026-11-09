@@ -891,10 +891,11 @@ fn a_filling_disk_takes_young_generations_too_but_never_one_that_boots_or_runs()
 fn an_unreadable_boot_partition_keeps_every_system_generation() {
     use std::os::unix::fs::PermissionsExt;
     // SAFETY: geteuid only reads the process's own credentials.
-    if unsafe { libc::geteuid() } == 0 {
-        eprintln!("skipped: root reads any directory");
-        return;
-    }
+    let as_root = unsafe { libc::geteuid() } == 0;
+    assert!(
+        !as_root,
+        "root reads any directory, so this runs only as another account"
+    );
     let store = Store::new();
     generations(&store);
     let root = store.profile(
