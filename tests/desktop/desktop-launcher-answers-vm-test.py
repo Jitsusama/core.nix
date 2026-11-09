@@ -1296,19 +1296,27 @@ def firmware_reads(shown: Json) -> str:
 
 
 def last_place(shown: Json) -> str:
-    """Give the last row the launcher lists that isn't a command, or nothing."""
+    """Give the last of this machine's own places the launcher lists, or nothing.
+
+    Its commands come after, and Machines, the realm's others, after its own.
+    """
     places = [str(thing["is"]) for thing in shown["things"]]
-    held = [place for place in places if not place.startswith("command:")]
+    held = [
+        place
+        for place in places
+        if not place.startswith("command:") and place != "collection:machines"
+    ]
     return held[-1] if held else ""
 
 
 def test_firmware_says_whats_offered_and_holds_each_devices_version(desktop: Desktop) -> None:
-    """Firmware says whether an update is offered, last in Machine, and each device's version."""
+    """Firmware says whether an update is offered, last of Machine's own, and each version."""
     machine = desktop.machine
     said = "$XDG_RUNTIME_DIR/fwupd"
     # With nothing offered, as the laptop's fwupd says, it's up to date,
-    # Machine's last place, after Lag where Lag is shown (only once
-    # something has lagged), and before its commands.
+    # the last of this machine's own places, after Lag where Lag is shown
+    # (only once something has lagged), and before Machines and its
+    # commands.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     machine.send_chars("machine ", delay=KEY_PACE)
