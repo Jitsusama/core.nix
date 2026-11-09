@@ -189,6 +189,11 @@ pub struct Busy {
     pub command: Vec<String>,
     /// What it's busy with, as the refusal says it, such as `a call is on`.
     pub why: String,
+    /// Whether it refuses nothing, and only a switch the follower asked
+    /// for waits on it once built: someone at the machine is no reason to
+    /// refuse an ask they made themselves, nor to build nothing ahead.
+    #[serde(default)]
+    pub follower_waits: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]

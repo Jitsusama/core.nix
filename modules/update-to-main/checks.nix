@@ -80,5 +80,8 @@ in
         && lib.all (refusal: lib.all builtins.isString refusal.command) (
           nixos.jitsusama.update-to-main.refuseWhile ++ darwin.jitsusama.update-to-main.refuseWhile
         )
+        && lib.any (
+          refusal: refusal.followerWaits && refusal.why == "someone is at the machine"
+        ) nixos.jitsusama.update-to-main.refuseWhile
       );
 }

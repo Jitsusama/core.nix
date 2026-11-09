@@ -238,6 +238,16 @@ in
               example = "a call is on";
               description = "What the machine is busy with, as the refusal says it.";
             };
+            followerWaits = mkOption {
+              type = types.bool;
+              default = false;
+              description = ''
+                Whether it refuses nothing, and only a switch the follower
+                asked for waits on it once built, for an hour at most, such
+                as someone at the machine: that's no reason to refuse an ask
+                they made themselves, nor to build nothing ahead.
+              '';
+            };
           };
         }
       );
@@ -496,7 +506,10 @@ in
                   inherit (cfg.batches) pieces within;
                   room_mib = cfg.batches.roomMiB;
                 };
-            refuse_while = cfg.refuseWhile;
+            refuse_while = map (busy: {
+              inherit (busy) command why;
+              follower_waits = busy.followerWaits;
+            }) cfg.refuseWhile;
             holds =
               if cfg.holdRestarts ++ cfg.holdChanges == [ ] && cfg.holdAccountRestarts == { } then
                 null

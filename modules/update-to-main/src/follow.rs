@@ -37,6 +37,12 @@ const BUSY_AGAIN: Duration = Duration::from_secs(60);
 /// again, in case what failed was the builders and not the commit.
 const FAILED_AGAIN: Duration = Duration::from_mins(30);
 
+/// The least time between two switches it asks for. A home switch restarts
+/// the desktop's shell: on 9 November a launcher stopped taking keys after
+/// five switches the follower asked for in half an hour, one at each core
+/// merge, so main's newest head waits for the next.
+const SWITCH_EVERY: Duration = Duration::from_mins(30);
+
 /// How soon heads whose build lost its builders are asked for again, and
 /// how many times in a row before they wait `FAILED_AGAIN` like any other
 /// failure. On 8 November a lent builder's tunnel dropped and its service
@@ -103,6 +109,8 @@ pub struct Follower {
     dropped: u32,
     /// Whether the last ask was refused for being busy.
     busy: bool,
+    /// When an ask of its own last switched the machine.
+    switched: Option<Instant>,
     /// The machine's last ending when an ask was refused for a held
     /// daemon, so it waits until that changes.
     held: Option<String>,
@@ -123,6 +131,12 @@ impl Follower {
                 return false;
             }
             self.held = None;
+        }
+        if self
+            .switched
+            .is_some_and(|switched| now.duration_since(switched) < SWITCH_EVERY)
+        {
+            return false;
         }
         let Some(asked) = self.asked else {
             return true;
@@ -149,6 +163,9 @@ impl Follower {
         self.asked = Some(now);
         self.busy = false;
         self.last = Some(heads.clone());
+        if matches!(ending, Line::Done { .. }) {
+            self.switched = Some(now);
+        }
         match ending {
             Line::Done { .. } | Line::Unchanged { .. } => {
                 self.failed = None;
@@ -391,6 +408,44 @@ mod tests {
             assert_eq!(folder_head(&hosted, Some(&was)).as_deref(), Some(COMMIT));
             assert_eq!(folder_head(&hosted, None), None, "{script} names no commit");
         }
+    }
+
+    #[test]
+    fn a_switch_it_asked_for_waits_half_an_hour_for_the_next() {
+        let mut f = Follower::default();
+        let t = Instant::now();
+        let switched = Line::Done {
+            commit: "c".to_owned(),
+            applied: crate::line::Applied::Now,
+            restart: None,
+            restarted: Vec::new(),
+            followed: Followed::new(),
+        };
+        f.asked(at("a"), &switched, "", t);
+        assert!(
+            !f.should_ask(&at("b"), "", t + LOOK_EVERY, EVERY),
+            "main moved a minute after a switch, which waits"
+        );
+        assert!(
+            !f.should_ask(
+                &at("b"),
+                "",
+                t + SWITCH_EVERY.saturating_sub(LOOK_EVERY),
+                EVERY
+            ),
+            "it asked again within half an hour of a switch"
+        );
+        assert!(
+            f.should_ask(&at("b"), "", t + SWITCH_EVERY, EVERY),
+            "half an hour after a switch, it still didn't ask"
+        );
+        // An ask that changed nothing leaves the next switch free to come.
+        let mut f = Follower::default();
+        f.asked(at("a"), &done(), "", t);
+        assert!(
+            f.should_ask(&at("b"), "", t + LOOK_EVERY, EVERY),
+            "an ask that switched nothing held the next"
+        );
     }
 
     #[test]

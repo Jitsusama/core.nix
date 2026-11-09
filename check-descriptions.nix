@@ -2516,6 +2516,10 @@
   the-session-goes-idle-as-the-screens-go-off = ''
     swayidle tells logind the session is idle at the same moment it turns the screens off
   '';
+  someone-at-the-machine-is-marked = ''
+    swayidle marks someone at the machine from the session's start and from any key or touch, and
+    takes the mark away after two minutes without one, for a followed switch to wait on
+  '';
   the-desktop-follows-dictation = ''
     the shell follows each dictation state, watches again a service its socket restarts, and tries a
     socket nothing listens on once, never looping

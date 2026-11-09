@@ -54,6 +54,26 @@
       "swayidle doesn't tell logind the session is idle as the screens go off."
       (off != null && hint != null && idleAt == toString off.timeout);
 
+  # A switch the follower asked for waits while someone is at the machine
+  # (../update-to-main/nixos.nix), which this marks from the session's start
+  # and from any key or touch until two minutes pass without one.
+  someone-at-the-machine-is-marked =
+    let
+      swayidle = (account graphical).services.swayidle;
+      service = (account graphical).systemd.user.services.swayidle.Service;
+      marks = lib.hasInfix "someone-at-the-machine";
+      mark = lib.findFirst (timeout: marks timeout.command) null swayidle.timeouts;
+    in
+    holds "someone-at-the-machine-is-marked"
+      "swayidle doesn't mark someone at the machine for a followed switch to wait on."
+      (
+        mark != null
+        && mark.timeout == 120
+        && marks mark.resumeCommand
+        && marks service.ExecStartPre
+        && marks service.ExecStopPost
+      );
+
   # The screens go off through the machine's own niri, the one with core's
   # patches, so the account doesn't carry a second one just to ask.
   one-niri =
