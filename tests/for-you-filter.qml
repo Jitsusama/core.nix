@@ -30,14 +30,17 @@ QtObject {
             }
         })
 
-    // For You's items, "key:kind:source" each, in the order it lists them.
+    // For You's rows, "key:kind:source" each, in the order it lists them,
+    // each saying both under its forYou as Now.qml's do; then Later, which
+    // is no item of For You's, and says neither. Each row's own kind is the
+    // launcher's, never the filter's.
     readonly property var items: [
         "a:do:needs-you", "b:look:mail", "c:look:slack", "d:try:sessions", "e:look:mail",
         "f:notice:slack", "g:notice:mail", "h:notice:desktop", "i:notice:home-network"
     ].map(one => {
         const [key, kind, source] = one.split(":");
-        return { key, kind, source, title: key, at: 0, weight: 0 };
-    })
+        return { key, kind: "thing", forYou: { kind, source } };
+    }).concat([{ key: "later", kind: "thing" }])
 
     function keys(listed) {
         return listed.map(item => item.key).join(" ");
@@ -66,24 +69,38 @@ QtObject {
             ["a source the words know, with nothing now, is an empty step", "calendar", "",
                 "Calendar"],
             ["as are two words that keep nothing", "slack do", "", "Slack · To Do"],
-            ["nothing given keeps everything", "", "a b c d e f g h i", ""]
         ];
         for (const [what, arg, kept, head] of filters) {
-            const filter = Filter.read(arg, items, said);
+            const filter = Filter.asked(arg, items, said);
             check(failures, `${what} (error)`, filter.error ?? "", "");
             check(failures, `${what} (kept)`, keys(Filter.filtered(items, filter)), kept);
             check(failures, `${what} (head)`, Filter.heading(filter, said), head);
         }
+
+        // Inside a filter, :filter narrows it further, so `-` still comes
+        // back out to everything in one step.
+        const looking = Filter.asked("look", items, said);
+        const narrowed = Filter.asked("mail", items, said, looking);
+        check(failures, "a filter inside a filter narrows to both",
+            `${keys(Filter.filtered(items, narrowed))} / ${Filter.heading(narrowed, said)}`,
+            "b e / Mail \u00b7 To Look At");
+        check(failures, "and its key is the filter's, whichever way it was reached",
+            Filter.keyOf(narrowed), Filter.keyOf(Filter.asked("look mail", items, said)));
+        check(failures, "a second kind inside a filter is refused",
+            Filter.asked("do", items, said, looking).error ?? "", "E475: Invalid argument: do");
+        check(failures, "Tab inside a filter offers only what narrows it",
+            offers(Filter.offered(items, "", said, looking)), "mail 2, slack 1");
 
         // [what, what :filter was given, Vim's error]
         const refused = [
             ["a word that's neither", "mial", "E475: Invalid argument: mial"],
             ["a notice is no kind to filter by", "notice", "E475: Invalid argument: notice"],
             ["a second kind", "look do", "E475: Invalid argument: do"],
-            ["a second source", "mail slack", "E475: Invalid argument: slack"]
+            ["a second source", "mail slack", "E475: Invalid argument: slack"],
+            ["nothing at all, since - goes back to everything", " ", "E471: Argument required"]
         ];
         for (const [what, arg, error] of refused)
-            check(failures, what, Filter.read(arg, items, said).error ?? "", error);
+            check(failures, what, Filter.asked(arg, items, said).error ?? "", error);
 
         // Only sources present are offered, so never the calendar here.
         const everything = "do 1, look 3, try 1, desktop 1, home-network 1, mail 3, needs-you 1, "
@@ -103,7 +120,8 @@ QtObject {
 
         // Two sources alike by name keep the order they came, and A to Z
         // reads numbers as numbers, so a tenth session follows the ninth.
-        const sessions = ["s10", "s9"].map(source => ({ key: source, kind: "do", source }));
+        const sessions = ["s10", "s9"].map(source => ({ key: source,
+                forYou: { kind: "do", source } }));
         check(failures, "sources by name, numbers as numbers",
             offers(Filter.offered(sessions, "do ", said)), "s9 1, s10 1");
 

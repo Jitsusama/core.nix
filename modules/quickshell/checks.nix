@@ -1889,6 +1889,7 @@ onLinux {
       cp ${./launcher/NowGroups.js} launcher/NowGroups.js
       cp ${./launcher/Order.js} launcher/Order.js
       cp ${./launcher/ForYou.js} launcher/ForYou.js
+      cp ${./launcher/ForYouFilter.js} launcher/ForYouFilter.js
       cp ${./launcher/Ago.js} launcher/Ago.js
       cp ${./launcher/Here.js} launcher/Here.js
       cp ${./When.js} When.js

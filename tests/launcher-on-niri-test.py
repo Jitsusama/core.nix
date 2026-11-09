@@ -491,6 +491,38 @@ def test_return_typed_with_the_text_acts_on_what_it_found(shell: Shell) -> None:
     shell.close_launcher()
 
 
+def test_for_yous_filter_steps_into_a_kind_and_minus_comes_back_out(shell: Shell) -> None:
+    """In For You, :filter look steps into its looks, the head naming it, and - comes back out.
+
+    VKCF3Z ruled a filter a step in, never a state (2026-11-08), so what it keeps and the
+    words it takes are tests/for-you-filter.qml's; this is the one path through the launcher.
+    """
+    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+    looks = state / "pi/agentic-harness.pi/looks"
+    looks.mkdir(parents=True, exist_ok=True)
+    look = looks / "filtered.json"
+    said = {"v": 1, "id": "filtered", "title": "Filtered Look", "target": "/tmp/filtered",
+            "kind": "file", "state": "waiting", "at": "2026-11-08T12:00:00Z"}
+    look.write_text(json.dumps(said))
+    try:
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        typed_at_once(shell, "'for you' -k Return")
+        shell.launcher_until(lambda shown: shown["path"][-1:] == ["For You"]
+                             and "Filtered Look" in shown["rows"])
+        shell.normal()
+        shell.send_chars(":filter look")
+        shell.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "filter look")
+        shell.send_key("ret")
+        shell.launcher_until(lambda shown: shown["path"][-2:] == ["For You", "To Look At"]
+                             and shown["rows"] == ["Filtered Look"])
+        shell.send_chars("-")
+        shell.launcher_until(lambda shown: shown["path"][-1:] == ["For You"])
+        shell.close_launcher()
+    finally:
+        look.unlink()
+
+
 def test_the_head_holds_the_finds_mark_alone_and_no_bare_question(shell: Shell) -> None:
     """The head's / stands only on the find, it asks no bare which?, and a find says its count."""
     shell.as_account(shell.ipc("toggle"))

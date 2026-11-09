@@ -1915,7 +1915,8 @@
     and asks before they act, draws nothing closed as a minute turns though it says the new time
     as it opens, draws nothing left open and still, its caret steady, searches text a program
     types at once once for its newest letters, a Return among them acting on the row those
-    letters found, glides the selection to its row by the arrows only and draws it on its row as
+    letters found, steps into For You's looks by :filter look and back out by -, glides the
+    selection to its row by the arrows only and draws it on its row as
     rows above it change, reads on a long name while it's selected, tells the meaning daemon the
     parts its places hold and adds one meant below what the letters found, saying where it lives,
     and warns of nothing it drew;
@@ -2013,10 +2014,11 @@
     and a source's lines are read with their times apart, the shared list's by each program
   '';
   for-you-narrows-by-kind-and-source = ''
-    For You's :filter keeps the items of a kind (do, look or try) and of a source, by its id in any
-    case, both where two words are given, refuses a word that's neither or a second of one with
-    Vim's E475, names the source then the kind for the head, and Tab offers only the kinds and
-    sources that would keep something, each with how many
+    For You's :filter keeps the rows of a kind (do, look or try) and of a source, by its id in any
+    case, both where two words are given or one is given inside a filter, refuses a word that's
+    neither or a second of one with Vim's E475 and none at all with E471, names the source then
+    the kind for the head, and Tab offers only the kinds and sources that would keep something,
+    each with how many
   '';
   an-act-shows-before-its-daemon-answers = ''
     a row an act asked a daemon to change is drawn as it will be, keeping what the launcher made

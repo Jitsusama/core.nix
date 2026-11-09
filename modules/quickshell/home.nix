@@ -299,6 +299,7 @@ let
     "launcher/Media.js"
     "launcher/NowGroups.js"
     "launcher/ForYou.js"
+    "launcher/ForYouFilter.js"
     "launcher/Program.js"
     "launcher/Captured.js"
     "launcher/NeedsYou.js"
