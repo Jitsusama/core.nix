@@ -25,9 +25,10 @@ const LEEWAY = 3;
 // The parts a note or a value is said in: dotted, or listed by commas.
 const PARTED = / \u00b7 |, /;
 const ENDED = /[.!?]$/;
-// A note opening with an address or a path, "portal.example/sign-in", is
-// said as written, never made a sentence of.
-const WRITTEN = /^\S*[/:.]\S/;
+// A note that is an address or a path alone, "portal.example/sign-in", is
+// said as written, never made a sentence of; one opening with a path,
+// "/nix full in 6 h", is a sentence still.
+const WRITTEN = /^\S*[/:.]\S*$/;
 const FIRST = /^./;
 
 // The row a step names among `rows`: the one whose steady id it is

@@ -153,8 +153,10 @@ QtObject {
         ], [undefined, undefined, undefined]);
         expect("a part found only inside a word is said",
             Showing.noted(keyboard, "on").body, "On.");
-        expect("an address is said as written",
-            Showing.noted(sharing, "portal.example/sign-in").body, "portal.example/sign-in");
+        expect("an address alone is said as written, and a path opening a sentence ends it", [
+            Showing.noted(sharing, "portal.example/sign-in").body,
+            Showing.noted(sharing, "/nix full in 6 h").body
+        ], ["portal.example/sign-in", "/nix full in 6 h."]);
         expect("a note ending as a sentence keeps its end, and none stays none", [
             Showing.noted({ title: "Lag" }, "waiting on memory!").body,
             Showing.noted(null, "on")
