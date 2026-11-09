@@ -1615,9 +1615,19 @@ def the_screens_plate_says_what_sets_it(desktop: Desktop, scale: str) -> None:
         # turns then four mirrored, and Scale's multiples (VKCF3Z, 2026-11-09).
         desktop.follow()
         for setting, choices in [
-            ("Rotation", ["upright", "a quarter turn left", "upside down",
-                "a quarter turn right", "mirrored", "mirrored, a quarter turn left",
-                "mirrored, upside down", "mirrored, a quarter turn right"]),
+            (
+                "Rotation",
+                [
+                    "upright",
+                    "a quarter turn left",
+                    "upside down",
+                    "a quarter turn right",
+                    "mirrored",
+                    "mirrored, a quarter turn left",
+                    "mirrored, upside down",
+                    "mirrored, a quarter turn right",
+                ],
+            ),
             ("Scale", ["1\u00d7", "1.25\u00d7", "1.5\u00d7"]),
         ]:
             desktop.down_to(setting)
