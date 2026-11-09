@@ -19,6 +19,10 @@ const BARS = 5;
 const PERCENT = 100;
 const SECOND = 1000;
 const DOT = " \u00b7 ";
+// A name's words kept on one line, so "laptop computer 1" never leaves its
+// 1 alone on the next, as a figure keeps to its unit (FileFacts.js).
+const KEPT = "\u00a0";
+const SPACES = / /g;
 
 function known(value) {
     return value !== null && value !== undefined && value !== "";
@@ -263,12 +267,26 @@ function joinsAndLeaves(model, now) {
     }
     return [{ heading: "joins-and-leaves" }].concat(list.map((one) => {
         const where = known(one.node) ? ` ${nodeNamed(model, one.node)}` : "";
+        const did = one.kind === "joined" ? "joined" : "left";
         return {
             label: Home.when(one.at, now),
-            value: joined([`${one.name ?? one.mac} ${one.kind === "joined" ? "joined" : "left"}`
-                + where, one.band]),
+            value: joined([`${whole(one.name ?? one.mac)} ${did}${where}`, one.band]),
         };
     }));
+}
+
+// A name with its words kept on one line.
+function whole(name) {
+    return String(name).replace(SPACES, KEPT);
+}
+
+// A sentence with each device's name in it kept on one line, the longest
+// first, so a name inside another is kept as part of it.
+function namesKept(model, text) {
+    const names = (model?.devices ?? []).concat(model?.devices_off ?? [])
+        .map((one) => Home.nameOf(one)).filter((name) => known(name) && name.includes(" "))
+        .sort((a, b) => b.length - a.length);
+    return names.reduce((said, name) => said.split(name).join(whole(name)), String(text ?? ""));
 }
 
 // The devices eero knows that aren't on now, the last on first, each by

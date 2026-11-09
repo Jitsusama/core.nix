@@ -341,8 +341,8 @@ QtObject {
 
         // The devices that joined or left over the last day, newest first.
         expect("who joined and left", listed("joins-and-leaves"), [
-            { label: "22:49", value: "phone 1 left Den \u00b7 5 GHz" },
-            { label: "22:39", value: "laptop computer 1 joined Study \u00b7 5 GHz" }
+            { label: "22:49", value: "phone\u00a01 left Den \u00b7 5 GHz" },
+            { label: "22:39", value: "laptop\u00a0computer\u00a01 joined Study \u00b7 5 GHz" }
         ]);
         // The devices eero knows that aren't on now, the last on first,
         // each where and how it was last on.
@@ -545,9 +545,18 @@ QtObject {
         const events = Drawers.internet(model, now).facts;
         const timeline = events.slice(events.findIndex(fact => fact.heading === "events") + 1);
         expect("what happened, newest first", timeline.slice(0, 2), [
-            { label: "22:42", value: "tablet 1 connected to Den eero Pro 6 on 5.2GHz channel 52." },
-            { label: "22:42", value: "tablet 1 disconnected from Study eero Pro 6." }
+            { label: "22:42",
+                value: "tablet\u00a01 connected to Den eero Pro 6 on 5.2GHz channel 52." },
+            { label: "22:42", value: "tablet\u00a01 disconnected from Study eero Pro 6." }
         ]);
+        // A name in what eero said keeps its words on one line, a name
+        // inside a longer one kept as part of it.
+        const named = Drawers.internet(Object.assign({}, model, { told: [], events: [{
+            at: "2026-11-07T22:50:00Z", text: "laptop computer 1 joined, then phone 1." }] }),
+            now).facts;
+        expect("each name in an event kept whole",
+            named[named.findIndex(fact => fact.heading === "events") + 1].value,
+            "laptop\u00a0computer\u00a01 joined, then phone\u00a01.");
         expect("every event and every notice", timeline.length, 10);
         expect("a notice by when it was told, then what it said", timeline.slice(5, 7), [
             { label: "07:24", value: "The nodes updated to v7.17.4-5. From v7.17.3-9." },
@@ -566,8 +575,8 @@ QtObject {
         const tablet = Drawers.device(model, device("tablet 1"), now).facts;
         expect("a device's own events", tablet.slice(tablet.findIndex(fact =>
             fact.heading === "events") + 1).map(fact => fact.value), [
-            "tablet 1 connected to Den eero Pro 6 on 5.2GHz channel 52.",
-            "tablet 1 disconnected from Study eero Pro 6."
+            "tablet\u00a01 connected to Den eero Pro 6 on 5.2GHz channel 52.",
+            "tablet\u00a01 disconnected from Study eero Pro 6."
         ]);
         expect("none of another's", Drawers.device(model, device("generic 2"), now).facts
             .some(fact => fact.heading === "events"), false);
