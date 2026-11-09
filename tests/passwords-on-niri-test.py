@@ -126,12 +126,14 @@ def let_in(shell: Shell) -> None:
     """
     if asks().count("let-in") >= UNLOCKS:
         return
-    unlocked(shell)
-    shell.launcher_until(lambda _: asks()[-1:] == ["let-in"])
-    shell.as_account(shell.ipc("toggle"))
-    shell.launcher_ready()
-    shell.launcher_until(lambda shown: shown["footer"] == REFUSED)
-    shell.close_launcher()
+    if asks().count("let-in") == 0:
+        unlocked(shell)
+        shell.launcher_until(lambda _: "let-in" in asks())
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        # Told on opening, it's said where a key's word is, until the first key.
+        shell.launcher_until(lambda shown: shown["saying"] == [REFUSED])
+        shell.close_launcher()
     unlocked(shell)
     # Let in, the daemon reads the list afresh.
     shell.launcher_until(lambda _: asks()[-2:] == ["let-in", "list"])
