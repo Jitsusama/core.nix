@@ -168,7 +168,7 @@ fn days(n: f64) -> Option<f64> {
 /// takes now, but nothing a build or a shell is using and none of the
 /// store's garbage, which its own policy collects.
 pub fn clears(candidate: &Candidate) -> bool {
-    group(candidate, Band::Critical)
+    group(candidate, Band::CriticallyFull)
         .is_some_and(|group| !matches!(group, Group::Occupied | Group::Garbage))
 }
 
@@ -220,9 +220,9 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
                 Group::Caches,
                 [
                     from(Band::Healthy),
-                    from(Band::Pressure),
-                    from(Band::Urgent),
-                    from(Band::Critical),
+                    from(Band::Filling),
+                    from(Band::NearlyFull),
+                    from(Band::CriticallyFull),
                 ],
             )
         }
@@ -258,9 +258,9 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
                 Group::Producers,
                 [
                     window(Band::Healthy),
-                    window(Band::Pressure),
-                    window(Band::Urgent),
-                    window(Band::Critical),
+                    window(Band::Filling),
+                    window(Band::NearlyFull),
+                    window(Band::CriticallyFull),
                 ],
             )
         }

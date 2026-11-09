@@ -1,14 +1,14 @@
 # Runs the disk guard in a virtual machine, the machine's daemon and an
 # account's, and drives the disks through the bands. Both start on the configs
 # their modules render; then the test gives them bands it can reach by filling
-# a 4 GiB Btrfs /home, compressed as a workstation's is. At pressure an idle
-# target goes while a fresh one and a cache stay. At critical the cache and
-# the fresh target go, but a real cargo build, waiting in its build script
+# a 4 GiB Btrfs /home, compressed as a workstation's is. Once filling, an idle
+# target goes while a fresh one and a cache stay. Once critically full, the
+# cache and the fresh target go, but a real cargo build, waiting in its build script
 # with cargo's locks held, keeps its own until it ends. The account takes
 # nothing at all without the machine's guard vouching for the processes it
 # can't read. A target in a Btrfs subvolume is offered as one beside it is,
 # and one in a read-only snapshot isn't. A target on a disk too full to make
-# a trash in is deleted in place. With its store under pressure, the machine's guard expires all but
+# a trash in is deleted in place. With its store filling, the machine's guard expires all but
 # the newest five of a profile's generations and collects what that and
 # anything else left dead. The machine's guard says what an account's
 # compressed files take on the disk, and refuses what isn't the account's.
@@ -26,9 +26,9 @@ let
       status_file = true;
       notify = false;
       bands = {
-        pressure = "40%";
-        urgent = "25%";
-        critical = "10%";
+        filling = "40%";
+        nearly_full = "25%";
+        critically_full = "10%";
         target = "50%";
       };
       # Paced as a workstation's is, but resting a second rather than a
@@ -131,8 +131,8 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   values =
     { nodes, ... }:
     let
-      # The machine's guard as its module renders it, with its store under
-      # pressure from the start and only Nix's build directories beside it,
+      # The machine's guard as its module renders it, with its store
+      # filling from the start and only Nix's build directories beside it,
       # which it removes itself under the unit's own sandbox.
       systemConfig = pkgs.writeText "disk-guard-system-test.json" (
         builtins.toJSON (
@@ -144,9 +144,9 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
               inherit (nodes.machine.jitsusama.disk-guard.settings.sources) nix-builds;
             };
             bands = {
-              pressure = "100%";
-              urgent = "0%";
-              critical = "0%";
+              filling = "100%";
+              nearly_full = "0%";
+              critically_full = "0%";
               target = "100%";
             };
             pacing.rest = "1s";

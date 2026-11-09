@@ -53,7 +53,7 @@ pub fn change(before: &Status, after: &Status) -> Option<Change> {
     }
     if let Some(last) = &after.last
         && after.last != before.last
-        && last.band >= Band::Urgent
+        && last.band >= Band::NearlyFull
     {
         return Some(Change::Show(passed(last, after)));
     }
@@ -67,7 +67,9 @@ pub fn change(before: &Status, after: &Status) -> Option<Change> {
     let entered = after
         .filesystems
         .iter()
-        .filter(|filesystem| filesystem.band >= Band::Urgent && filesystem.band > was(filesystem))
+        .filter(|filesystem| {
+            filesystem.band >= Band::NearlyFull && filesystem.band > was(filesystem)
+        })
         .max_by_key(|filesystem| filesystem.band);
     if let Some(filesystem) = entered {
         return Some(Change::Show(full(filesystem)));
@@ -76,7 +78,7 @@ pub fn change(before: &Status, after: &Status) -> Option<Change> {
         status
             .filesystems
             .iter()
-            .any(|filesystem| filesystem.band >= Band::Urgent)
+            .any(|filesystem| filesystem.band >= Band::NearlyFull)
     };
     (pressed(before) && !pressed(after)).then_some(Change::Withdraw)
 }
@@ -108,7 +110,7 @@ pub fn standing(status: &Status) -> Option<Notice> {
     status
         .filesystems
         .iter()
-        .filter(|filesystem| filesystem.band >= Band::Urgent)
+        .filter(|filesystem| filesystem.band >= Band::NearlyFull)
         .max_by_key(|filesystem| filesystem.band)
         .map(full)
 }
@@ -136,7 +138,7 @@ fn froze(frozen: &Frozen, status: &Status) -> Notice {
 fn full(filesystem: &FilesystemStatus) -> Notice {
     let disk = disk(&filesystem.path);
     let free = shown(filesystem.free);
-    if filesystem.band == Band::Critical {
+    if filesystem.band == Band::CriticallyFull {
         Notice {
             summary: format!("{disk} is critically full"),
             body: format!(
@@ -166,7 +168,7 @@ fn passed(last: &LastPass, after: &Status) -> Notice {
         .iter()
         .find(|filesystem| filesystem.path == last.path)
         .map_or_else(|| "little".to_owned(), |filesystem| shown(filesystem.free));
-    let urgency = if last.band == Band::Critical {
+    let urgency = if last.band == Band::CriticallyFull {
         Urgency::Critical
     } else {
         Urgency::Normal
@@ -209,8 +211,8 @@ fn passed(last: &LastPass, after: &Status) -> Notice {
         None => what,
     };
     let still = match last.band {
-        Band::Critical => "still critically full",
-        Band::Urgent => "still nearly full",
+        Band::CriticallyFull => "still critically full",
+        Band::NearlyFull => "still nearly full",
         _ if last.end == "exhausted" => "filling, with nothing left to clear",
         _ => "still filling",
     };

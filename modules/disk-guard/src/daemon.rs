@@ -83,8 +83,8 @@ struct Rest {
 const FIRST_REST: f64 = 60.0;
 fn longest_rest(band: Band) -> f64 {
     match band {
-        Band::Critical => 60.0,
-        Band::Urgent => 300.0,
+        Band::CriticallyFull => 60.0,
+        Band::NearlyFull => 300.0,
         _ => 900.0,
     }
 }
@@ -133,7 +133,7 @@ fn thaw(
     };
     let mut still = Vec::new();
     for frozen in std::mem::take(&mut memory.frozen) {
-        let roomy = band_of(&frozen.path).is_none_or(|band| band < Band::Urgent);
+        let roomy = band_of(&frozen.path).is_none_or(|band| band < Band::NearlyFull);
         let (kept, outcome) = if roomy {
             match freeze.thaw(&frozen.unit) {
                 Ok(()) => (false, Outcome::Reclaimed),
@@ -212,10 +212,10 @@ const HELD_ENDED_GAP: f64 = 120.0;
 /// too. A store of 400 GiB took 108 s and 75 s of CPU to list on 31
 /// October, and roots left so often that one began as each ended, a core
 /// spent to free kilobytes. A filling disk rests the same short of
-/// urgent: on 8 November one at 75% listed back to back, five to six
+/// nearly full: on 8 November one at 75% listed back to back, five to six
 /// minutes of a core each with the machine's processors 45 to 55% stalled,
-/// and each pass found nothing more to clear. Urgent and past, none. A
-/// listing that failed rests the same before it's tried again: on 9
+/// and each pass found nothing more to clear. Nearly full and past, none.
+/// A listing that failed rests the same before it's tried again: on 9
 /// November one failing on Nix's own temporary paths, five minutes of a
 /// core each time, was tried again six times in two hours.
 const LISTING_REST: f64 = 9.0;
@@ -884,8 +884,10 @@ impl Guard {
             .watched
             .iter()
             .filter(|(_, watched)| {
-                watched.band == Band::Critical
-                    && watched.rest.is_some_and(|rest| rest.band == Band::Critical)
+                watched.band == Band::CriticallyFull
+                    && watched
+                        .rest
+                        .is_some_and(|rest| rest.band == Band::CriticallyFull)
             })
             .find(|(device, _)| writes_on(&self.processes, writer.pid, **device))
             .map(|(_, watched)| (watched.path.clone(), watched.band))
@@ -1479,11 +1481,12 @@ impl Guard {
 
     /// Begins listing Nix's garbage on its own thread when it's due, once
     /// the last listing, kept or failed, has rested its own length nine
-    /// times over short of urgent: soon after a root leaves or a process
-    /// holding paths ends on a filling disk, six hours on at a spare moment,
-    /// or a day on whenever there's power, at idle priority; and when the
-    /// store's filesystem is filling and the listing is an hour old. While the machine is overloaded only
-    /// a filling store's listing begins, at idle priority short of urgent;
+    /// times over short of nearly full: soon after a root leaves or a
+    /// process holding paths ends on a filling disk, six hours on at a spare
+    /// moment, or a day on whenever there's power, at idle priority; and
+    /// when the store's filesystem is filling and the listing is an hour
+    /// old. While the machine is overloaded only a filling store's listing
+    /// begins, at idle priority short of nearly full;
     /// one asked for meanwhile waits.
     fn list_garbage(&mut self, now: f64, spare: bool, overloaded: bool) {
         if self.listing_out.is_some() {
@@ -1504,7 +1507,7 @@ impl Guard {
         // what the rest leaves: on 8 November it took half a processor at
         // load 74. Near full it can't wait on that, since idle priority on
         // a busy machine may never finish.
-        let idle = !pressed || overloaded && band < Band::Urgent;
+        let idle = !pressed || overloaded && band < Band::NearlyFull;
         let age = |at: Option<f64>| at.map_or(f64::INFINITY, |at| now - at);
         let listed = age(self.listing.as_ref().map(|listing| listing.listed_at));
         let retry = if pressed {
@@ -1513,7 +1516,7 @@ impl Guard {
             LISTING_RETRY
         };
         let since = age(self.listing_begun);
-        let rested = band >= Band::Urgent
+        let rested = band >= Band::NearlyFull
             || self
                 .listing_ended
                 .is_none_or(|(ended, took)| now - ended >= LISTING_REST * took);
@@ -1731,7 +1734,7 @@ impl Guard {
                 path: named(store, GARBAGE),
                 class: Class::Producer {
                     every: None,
-                    from: Some(Band::Urgent),
+                    from: Some(Band::NearlyFull),
                 },
                 idle: ran,
                 size: 0,
@@ -2041,7 +2044,7 @@ impl Guard {
         };
         let candidates: Vec<_> = here.iter().map(|offer| offer.candidate.clone()).collect();
         let started = Instant::now();
-        let gentle = band < Band::Urgent;
+        let gentle = band < Band::NearlyFull;
         let pacer = Rc::new(RefCell::new(self.pacer(&path, band, thresholds)));
         let reclaimer = Reclaim::new(here, scan)
             .during(band)
@@ -2177,9 +2180,9 @@ impl Guard {
             // A band asked for alone is pretended by free space just short
             // of it, so a plan for nearly full shows what that band would take.
             let short_of = match band {
-                Some(Band::Pressure) => Some(thresholds.pressure),
-                Some(Band::Urgent) => Some(thresholds.urgent),
-                Some(Band::Critical) => Some(thresholds.critical),
+                Some(Band::Filling) => Some(thresholds.filling),
+                Some(Band::NearlyFull) => Some(thresholds.nearly_full),
+                Some(Band::CriticallyFull) => Some(thresholds.critically_full),
                 Some(Band::Healthy) | None => None,
             };
             let pretended = match (free, short_of) {
@@ -2248,10 +2251,10 @@ impl Guard {
                 let space = watched.space?;
                 let thresholds = Thresholds::new(bands, space.total);
                 let next = match watched.band {
-                    Band::Healthy => Some(thresholds.pressure),
-                    Band::Pressure => Some(thresholds.urgent),
-                    Band::Urgent => Some(thresholds.critical),
-                    Band::Critical => None,
+                    Band::Healthy => Some(thresholds.filling),
+                    Band::Filling => Some(thresholds.nearly_full),
+                    Band::NearlyFull => Some(thresholds.critically_full),
+                    Band::CriticallyFull => None,
                 };
                 // What a person is told comes from the trend, not the
                 // two-minute rate passes are planned by, which a churning
@@ -2341,13 +2344,13 @@ impl Guard {
     /// rests. Either keeps the status file's heartbeat.
     fn pacer(&self, path: &Path, band: Band, thresholds: Thresholds) -> Pacer {
         let clock = Box::new(Monotonic::new());
-        if band >= Band::Urgent {
+        if band >= Band::NearlyFull {
             return Pacer::hurried(clock, self.beating());
         }
         let watched = path.to_owned();
         let pressed = move || {
             crate::sys::space(&watched)
-                .is_ok_and(|space| thresholds.band(&space, band) >= Band::Urgent)
+                .is_ok_and(|space| thresholds.band(&space, band) >= Band::NearlyFull)
         };
         Pacer::paced(
             self.config.pacing,

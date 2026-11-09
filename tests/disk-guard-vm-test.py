@@ -291,10 +291,10 @@ def test_the_machines_guard_says_what_an_accounts_files_take_on_the_disk(account
         account.run("rm -rf ~/footprint ~/to-etc")
 
 
-def test_at_pressure_an_idle_target_goes_and_a_fresh_one_and_a_cache_stay(
+def test_once_filling_an_idle_target_goes_and_a_fresh_one_and_a_cache_stay(
     on_test_bands: Account, filling: Callable[[float], None]
 ) -> None:
-    """At pressure an idle target goes, and a fresh one and a cache stay.
+    """Once filling, an idle target goes, and a fresh one and a cache stay.
 
     The idle target alone leaves the pass short of its target, so only the fresh one's window
     keeps it.
@@ -307,10 +307,10 @@ def test_at_pressure_an_idle_target_goes_and_a_fresh_one_and_a_cache_stay(
     on_test_bands.there("/home/joel/src/idle/Cargo.toml")
 
 
-def test_at_critical_a_build_holding_its_locks_keeps_its_target_until_it_ends(
+def test_once_critically_full_a_build_holding_its_locks_keeps_its_target_until_it_ends(
     on_test_bands: Account, filling: Callable[[float], None], values: dict[str, Any]
 ) -> None:
-    """At critical a build holding its locks keeps its target until it ends."""
+    """Once critically full, a build holding its locks keeps its target until it ends."""
     joel = on_test_bands
     joel.run("cargo new -q --lib --vcs none ~/src/busy")
     joel.run(f"cp {values['waiting']} ~/src/busy/build.rs")
@@ -325,7 +325,7 @@ def test_at_critical_a_build_holding_its_locks_keeps_its_target_until_it_ends(
     joel.machine.succeed("pgrep -u joel -f build-script-build")
     joel.run("touch ~/release")
     joel.machine.wait_until_fails("pgrep -u joel -x cargo", timeout=STEPS)
-    # Built a moment ago, it waits for critical.
+    # Built a moment ago, it waits for critically full.
     filling(0.05)
     joel.gone("/home/joel/src/busy/target/debug/bulk")
 
@@ -354,12 +354,12 @@ def test_a_target_on_a_disk_too_full_for_a_trash_is_deleted_in_place(
     joel.run("! ls -a /srv/small/tiny | grep -q disk-guard-trash")
 
 
-def test_a_runaway_writer_at_critical_is_frozen_and_stays_thawed_once_thawed_by_hand(
+def test_a_runaway_writer_is_frozen_once_critically_full_and_stays_thawed_once_thawed_by_hand(
     on_test_bands: Account,
     filling: Callable[[float], None],
     running_away: Callable[[str], None],
 ) -> None:
-    """A runaway writer at critical is frozen, and stays thawed once thawed by hand.
+    """A runaway writer is frozen once critically full, and stays thawed once thawed by hand.
 
     The guard lets it go in the look that empties its list; a later one sees it running away
     again. Its scope is still there, so a second freeze would fail and leave it running: it's
@@ -397,7 +397,7 @@ def test_a_frozen_writer_thaws_by_itself_once_its_disk_has_room(
 
 @pytest.fixture
 def store_pressed(account: Account, values: dict[str, Any]) -> Iterator[BaseMachine]:
-    """Give the machine with its guard's store under pressure; its own config comes back after."""
+    """Give the machine with its guard's store filling; its own config comes back after."""
     machine = account.machine
     drop_in = "/run/systemd/system/disk-guard.service.d/test.conf"
     machine.succeed(

@@ -159,7 +159,7 @@ pub fn pass(
         };
         let windows = match goal {
             Goal::Upkeep | Goal::Produce => Band::Healthy,
-            Goal::Clear => Band::Critical,
+            Goal::Clear => Band::CriticallyFull,
             Goal::Reach => report.band,
         };
         let left: Vec<usize> = (0..candidates.len()).filter(|&i| !taken[i]).collect();

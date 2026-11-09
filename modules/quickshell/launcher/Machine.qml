@@ -1148,7 +1148,7 @@ Provider {
                 side: free }, fields));
         const said = Words.of("machine:disk:space").said ?? {};
         const doing = disk.exhausted ? said.cleared
-            : disk.band === "pressure" ? said.clearing : said.clearingAll;
+            : disk.band === "filling" ? said.clearing : said.clearingAll;
         const full = typeof disk.full_at === "number" ? disk.full_at - Date.now() / 1000 : 0;
         const facts = [
             { label: named("disk:size"), value: guard.shown(disk.total) },

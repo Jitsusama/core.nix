@@ -71,7 +71,7 @@ fn a_desktop_that_never_answers_is_given_up_on() {
     let started = std::time::Instant::now();
     assert!(!saver(&silent), "no answer saves nothing");
     let mut notifier = Notifier::new(silent);
-    assert!(notifier.tell(&show("pressure", Urgency::Normal)).is_err());
+    assert!(notifier.tell(&show("filling", Urgency::Normal)).is_err());
     assert!(
         started.elapsed() < std::time::Duration::from_secs(10),
         "{:?}",
@@ -154,7 +154,7 @@ fn one_notice_is_replaced_in_place_and_withdrawn() {
             .unwrap()
     }));
     notifier.tell(&Change::Withdraw).unwrap();
-    notifier.tell(&show("pressure", Urgency::Normal)).unwrap();
+    notifier.tell(&show("filling", Urgency::Normal)).unwrap();
     notifier.tell(&show("critical", Urgency::Critical)).unwrap();
     notifier.tell(&Change::Withdraw).unwrap();
     notifier.tell(&Change::Withdraw).unwrap();
@@ -168,7 +168,7 @@ fn one_notice_is_replaced_in_place_and_withdrawn() {
     assert_eq!(
         *heard.lock().unwrap(),
         [
-            notify(0, "pressure", 1),
+            notify(0, "filling", 1),
             notify(41, "critical", 2),
             Heard::Close(41),
             notify(0, "again", 1),

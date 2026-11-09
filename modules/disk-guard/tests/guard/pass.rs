@@ -106,9 +106,9 @@ impl Disk for Shared<'_> {
 
 fn thresholds() -> Thresholds {
     Thresholds {
-        pressure: 15 * GIB,
-        urgent: 8 * GIB,
-        critical: 3 * GIB,
+        filling: 15 * GIB,
+        nearly_full: 8 * GIB,
+        critically_full: 3 * GIB,
         target: 20 * GIB,
         margin: GIB,
     }

@@ -9,9 +9,9 @@ const HOUR: f64 = 3600.0;
 
 fn thresholds() -> Thresholds {
     Thresholds {
-        pressure: 150 * GIB,
-        urgent: 80 * GIB,
-        critical: 30 * GIB,
+        filling: 150 * GIB,
+        nearly_full: 80 * GIB,
+        critically_full: 30 * GIB,
         target: 200 * GIB,
         margin: 10 * GIB,
     }
@@ -164,19 +164,19 @@ fn a_fill_is_forecast_to_reach_a_threshold() {
 #[test]
 fn a_band_is_answered_at_once_whatever_the_moment() {
     let fill = Fill::default();
-    let mut now = situation(Band::Urgent, 70 * GIB, &fill);
+    let mut now = situation(Band::NearlyFull, 70 * GIB, &fill);
     now.spare = false;
-    assert_eq!(decide(&now), Decision::Reach(Band::Urgent));
+    assert_eq!(decide(&now), Decision::Reach(Band::NearlyFull));
 }
 
 #[test]
 fn a_band_forecast_sooner_than_a_pass_takes_is_answered_ahead_of_it() {
-    // About 112 s from pressure at 1 GB a second, against a 60 s pass and
+    // About 112 s from filling at 1 GB a second, against a 60 s pass and
     // its margin.
     let (fill, free) = filling(310 * GIB, 1e9, 60);
     assert_eq!(
         decide(&situation(Band::Healthy, free, &fill)),
-        Decision::Reach(Band::Pressure)
+        Decision::Reach(Band::Filling)
     );
     // Hours away, nothing is due.
     let (slow, free) = filling(310 * GIB, 1e6, 600);
@@ -186,9 +186,9 @@ fn a_band_forecast_sooner_than_a_pass_takes_is_answered_ahead_of_it() {
     );
     // Already filling and heading for nearly full.
     let (fill, free) = filling(170 * GIB, 1e9, 60);
-    let mut now = situation(Band::Pressure, free, &fill);
+    let mut now = situation(Band::Filling, free, &fill);
     now.free = 90 * GIB;
-    assert_eq!(decide(&now), Decision::Reach(Band::Urgent));
+    assert_eq!(decide(&now), Decision::Reach(Band::NearlyFull));
 }
 
 #[test]

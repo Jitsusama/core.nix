@@ -104,6 +104,9 @@ const USAGE: &str = "usage: disk-guard user|system [--config FILE] [--state DIR]
        disk-guard footprint PATH...
        disk-guard thaw";
 
+/// The bands `--band` takes, as they're typed, said when it's given another.
+const BANDS: &str = "healthy, filling, nearly-full or critically-full";
+
 impl Env {
     /// The places the XDG base directories, the account and this platform
     /// give.
@@ -176,9 +179,8 @@ pub fn parse(args: &[OsString]) -> Result<Command, String> {
             band: options
                 .text("--band")?
                 .map(|band| {
-                    serde_json::from_value(Value::String(band.clone())).map_err(|_| {
-                        format!("{band:?} is not a band: healthy, pressure, urgent or critical")
-                    })
+                    serde_json::from_value(Value::String(band.clone()))
+                        .map_err(|_| format!("{band:?} is not a band: {BANDS}"))
                 })
                 .transpose()?,
             pretend_free: options
@@ -555,7 +557,7 @@ fn explain(env: &Env, path: &Path, config: Option<&Path>, out: &mut dyn Write) -
     .map_err(failed)?;
     writeln!(out, "  in use: {}", used_as(used)).map_err(failed)?;
     let (_, windows) = crate::plan::windows(&candidate);
-    for (band, window) in ["healthy", "pressure", "urgent", "critical"]
+    for (band, window) in ["healthy", "filling", "nearly-full", "critically-full"]
         .iter()
         .zip(windows)
     {
@@ -841,9 +843,9 @@ fn status(env: &Env, json: bool, out: &mut dyn Write) -> Done {
                 size(filesystem["total"].as_u64().unwrap_or(0)),
             );
             let next = match band {
-                "healthy" => Some("pressure"),
-                "pressure" => Some("urgent"),
-                "urgent" => Some("critical"),
+                "healthy" => Some("filling"),
+                "filling" => Some("nearly-full"),
+                "nearly-full" => Some("critically-full"),
                 _ => None,
             };
             if let (Some(next), Some(forecast)) = (next, filesystem["forecast"].as_f64()) {

@@ -32,27 +32,27 @@ pub fn filesystem(room: &Room, home: Option<&Path>) -> String {
     let free = shown(room.free);
     let mut said = match (room.band, room.cleared_all) {
         (Band::Healthy, _) => format!("{name} has {free} free."),
-        (Band::Pressure, true) => format!(
+        (Band::Filling, true) => format!(
             "{name} is filling, with {free} free. \
              The guard has cleared all it may; what's left is in use or kept."
         ),
-        (Band::Urgent, true) => format!(
+        (Band::NearlyFull, true) => format!(
             "{name} is nearly full, with {free} free. \
              The guard has cleared all it safely can; delete something you don't need."
         ),
-        (Band::Critical, true) => format!(
+        (Band::CriticallyFull, true) => format!(
             "{name} is critically full, with {free} free. Saves may fail; \
              the guard has cleared all it can and may freeze what is filling it."
         ),
-        (Band::Pressure, false) => format!(
+        (Band::Filling, false) => format!(
             "{name} is filling, with {free} free. \
              The guard is clearing builds and caches nobody has used lately."
         ),
-        (Band::Urgent, false) => format!(
+        (Band::NearlyFull, false) => format!(
             "{name} is nearly full, with {free} free. \
              The guard is clearing everything it safely can."
         ),
-        (Band::Critical, false) => format!(
+        (Band::CriticallyFull, false) => format!(
             "{name} is critically full, with {free} free. Saves may fail; \
              the guard is clearing everything it can and may freeze what is filling it."
         ),

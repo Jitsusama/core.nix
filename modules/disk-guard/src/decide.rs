@@ -150,10 +150,10 @@ pub(crate) const UPKEEP_EVERY: f64 = 6.0 * 3600.0;
 
 pub fn decide(situation: &Situation) -> Decision {
     let next = match situation.band {
-        Band::Healthy => Some((Band::Pressure, situation.thresholds.pressure)),
-        Band::Pressure => Some((Band::Urgent, situation.thresholds.urgent)),
-        Band::Urgent => Some((Band::Critical, situation.thresholds.critical)),
-        Band::Critical => None,
+        Band::Healthy => Some((Band::Filling, situation.thresholds.filling)),
+        Band::Filling => Some((Band::NearlyFull, situation.thresholds.nearly_full)),
+        Band::NearlyFull => Some((Band::CriticallyFull, situation.thresholds.critically_full)),
+        Band::CriticallyFull => None,
     };
     if let Some((band, start)) = next
         && situation

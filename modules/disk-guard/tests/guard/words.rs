@@ -46,17 +46,17 @@ fn a_disk_filling_fast_says_when_it_fills() {
 fn each_band_below_healthy_says_what_the_guard_is_doing() {
     let said = |band, free| filesystem(&room("/", band, free, None), None);
     assert_eq!(
-        said(Band::Pressure, 180 * GIB),
+        said(Band::Filling, 180 * GIB),
         "The disk is filling, with 180.0 GiB free. \
          The guard is clearing builds and caches nobody has used lately."
     );
     assert_eq!(
-        said(Band::Urgent, 60 * GIB),
+        said(Band::NearlyFull, 60 * GIB),
         "The disk is nearly full, with 60.0 GiB free. \
          The guard is clearing everything it safely can."
     );
     assert_eq!(
-        said(Band::Critical, 20 * GIB),
+        said(Band::CriticallyFull, 20 * GIB),
         "The disk is critically full, with 20.0 GiB free. Saves may fail; \
          the guard is clearing everything it can and may freeze what is filling it."
     );
@@ -74,17 +74,17 @@ fn a_band_whose_pass_left_nothing_to_clear_says_so_rather_than_clearing() {
         )
     };
     assert_eq!(
-        said(Band::Pressure, 180 * GIB),
+        said(Band::Filling, 180 * GIB),
         "The disk is filling, with 180.0 GiB free. \
          The guard has cleared all it may; what's left is in use or kept."
     );
     assert_eq!(
-        said(Band::Urgent, 60 * GIB),
+        said(Band::NearlyFull, 60 * GIB),
         "The disk is nearly full, with 60.0 GiB free. \
          The guard has cleared all it safely can; delete something you don't need."
     );
     assert_eq!(
-        said(Band::Critical, 20 * GIB),
+        said(Band::CriticallyFull, 20 * GIB),
         "The disk is critically full, with 20.0 GiB free. Saves may fail; \
          the guard has cleared all it can and may freeze what is filling it."
     );
@@ -109,7 +109,7 @@ fn a_disk_is_named_as_people_know_it() {
 fn the_machine_speaks_for_its_worst_disk() {
     let disks = [
         room("/", Band::Healthy, 400 * GIB, None),
-        room("/scratch", Band::Urgent, 60 * GIB, None),
+        room("/scratch", Band::NearlyFull, 60 * GIB, None),
     ];
     assert_eq!(machine(&disks, None), filesystem(&disks[1], None));
 }
