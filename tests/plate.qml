@@ -187,7 +187,8 @@ QtObject {
         check("a custom mode is noted where it's chosen",
             said(Screens.refreshes(monitor, words)) === "60 Hz, 59.94 Hz (custom)*"
             && said(Screens.sizes(monitor, words)) === "2560 \u00d7 1440 (preferred), "
-            + "1920 \u00d7 1080 (custom)*", said(Screens.sizes(monitor, words)));
+            + "1920 \u00d7 1080 (custom)*", `${said(Screens.refreshes(monitor, words))}; `
+            + said(Screens.sizes(monitor, words)));
         monitor.current_mode = null;
         check("a screen running no mode offers no rate",
             Screens.refreshes(monitor, words).length === 0

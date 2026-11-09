@@ -8080,6 +8080,7 @@
         "built-in": "built in",
         "screen": "screen",
         "chosen": "chosen",
+        "set": "set",
         "steps": "{now} of {most} steps",
         "the-room": "the room",
         "on-its-way": "on its way to {share}",

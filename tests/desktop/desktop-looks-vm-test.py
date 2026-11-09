@@ -1634,8 +1634,11 @@ def the_screens_plate_says_what_sets_it(desktop: Desktop, scale: str) -> None:
             desktop.step_in("ret")
 
             def offered(shown: Json, choices: list[str] = choices) -> bool:  # As called.
-                """Say whether the setting offers these choices, in this order."""
-                return [row for row in shown["rows"] if row in choices] == choices
+                """Say whether the setting offers these choices in order, Return saying set."""
+                told = (shown["selected"] or {}).get("told", [])
+                return [row for row in shown["rows"] if row in choices] == choices and (
+                    "\u21b5 set" in told
+                )
 
             desktop.launcher_until(offered)
             desktop.shoot(f"launcher-screen-{setting.lower()}-at-{at}")
