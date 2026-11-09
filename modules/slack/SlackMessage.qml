@@ -2,10 +2,12 @@ pragma Singleton
 // A Slack message's one row, wherever it's listed: For You's Slack row
 // (NewSlack.qml), its History, and what Search Slack finds
 // (SlackSearch.qml), since a message is one thing (VKCF3Z, 2026-11-08).
-// A message has no title, so it's named by who said it, its note its
-// first line, so two from one person tell themselves apart, and its side
-// only when. Its drawer's eyebrow says where, "in #deploys · message", or
-// "direct message", and its body says it all. `row` gives its whole row,
+// A message has no title, so it's named by who said it, its first line
+// after the name on every row, as a place's members say what they hold,
+// so two from one person tell themselves apart, and its side only when
+// (VKCF3Z, 2026-11-08). Its drawer's eyebrow says where, "in #deploys ·
+// message", or "direct message", and its body says it all, as prose.
+// `row` gives its whole row,
 // made with the launcher's `thing` of the surface showing it. Return
 // opens the message where Slack shows it; inside are Open in Slack, then
 // Copy the Link, Copy last as everywhere. What it works out is
@@ -53,7 +55,9 @@ Singleton {
             glyph: Words.glyph("slack:message"),
             hue: "program",
             side: FileFacts.when(one.at, now, whenWords),
-            note: Message.note(one, found?.words ?? ""),
+            // Given way by whole words, never an ellipsis (Choice.qml).
+            count: Message.note(one, found?.words ?? ""),
+            countWords: true,
             drawer: {
                 eyebrow: Message.eyebrow(one, said),
                 eyebrowNames: !Message.direct(one),
@@ -62,7 +66,10 @@ Singleton {
                     label: Words.name("slack:message:sent"),
                     value: day === "" ? clock : `${day} ${clock}`
                 }],
-                body: one.text ?? ""
+                // What was said is prose, set as every drawer's sentences
+                // are; when it was sent stays a fact.
+                body: one.text ?? "",
+                prose: true
             },
             later: true,
             run: open,

@@ -233,8 +233,9 @@ def slack_tells(desktop: Desktop, said: Json) -> None:
 def slack_holds_each_message(desktop: Desktop, conversations: list[Json]) -> None:
     """With every message held, For You's Slack row lists each; one read in Slack leaves.
 
-    Each is named by who said it, its note its first words and its side when, newest first,
-    then Threads, whose replies aren't held (VKCF3Z, 2026-11-08). One read in Slack leaves
+    Each is named by who said it, its first words after its name and its side when alone,
+    newest first, then Threads, whose replies aren't held (VKCF3Z, 2026-11-08). One read in
+    Slack leaves
     by itself and History says so, "read in Slack 14:02", with nothing marked here.
     """
     machine = desktop.machine
@@ -267,7 +268,7 @@ def slack_holds_each_message(desktop: Desktop, conversations: list[Json]) -> Non
             shown["held"][-1:] == ["Slack"]
             and shown["rows"]
             == ["Ada Lovelace", "Ada Lovelace", "Grace Hopper", "Threads", "Show Slack"]
-            and shown["selected"]["note"] == "or tea?"
+            and shown["selected"]["count"] == "or tea?"
             and re.fullmatch(r"\d+\smin\sago", shown["selected"]["side"]) is not None
         )
     )
