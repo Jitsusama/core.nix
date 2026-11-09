@@ -72,6 +72,7 @@ import "launcher/Standing.js" as Standing
 import "launcher/Steady.js" as Steady
 import "launcher/Becoming.js" as Becoming
 import "launcher/Pacing.js" as Pacing
+import "launcher/Wanted.js" as Wanted
 import "launcher/Order.js" as Order
 
 Scope {
@@ -3063,8 +3064,10 @@ Scope {
         const lead = source.foremost ?? "";
         // A row folded into a place, as Agents' Start a Session is, does
         // something there rather than being one of what it holds, so home
-        // never names it.
-        const names = source.everything()
+        // never names it. A place that says what it holds itself is never
+        // read for names it won't show, so its rows wait to be wanted.
+        const says = source.homeSays();
+        const names = says !== null ? [] : source.everything()
             .filter(one => one.key !== "on:waitingOnYou" && one.folded !== true)
             .map(one => one.name);
         const left = room > 0 ? room - row.name.length : Infinity;
@@ -3076,7 +3079,6 @@ Scope {
         // sessions when i super space right now").
         // A place whose things are better counted than named says so
         // instead, as Agents says how its sessions stand together.
-        const says = source.homeSays();
         const rest = says !== null ? says
             : names.length > 0 && fitted === "" ? source.counted() : fitted;
         const placed = Object.assign({}, row, {
@@ -3161,6 +3163,13 @@ Scope {
     }
 
     readonly property bool atHome: typed === "" && held.length === 0
+
+    // Whether a source's rows are wanted now (launcher/Wanted.js), which
+    // each source's own wanted asks.
+    function wants(source) {
+        return Wanted.wanted({ cataloguing: cataloguing, open: open, held: held,
+            becoming: Object.values(becoming), typed: typed }, source);
+    }
 
     // A collection's matches with those picked before for what's typed
     // first, most picked first, the rest in their order.

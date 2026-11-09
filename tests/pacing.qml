@@ -2,11 +2,13 @@
 // own JavaScript engine, the one the shell runs it in. The
 // `the-launcher-paces-its-refreshes` check copies
 // modules/quickshell/launcher/Pacing.js beside this file and runs
-// `qml -platform offscreen pacing.qml`. A burst of changes is taken a pace
-// apart, and never two refreshes closer than that, however the first was
-// asked for.
+// `qml -platform offscreen pacing.qml`, with launcher/Wanted.js. A burst of
+// changes is taken a pace apart, and never two refreshes closer than that,
+// however the first was asked for; and a source's rows are wanted only
+// where they're shown or searched, so a change nobody sees asks none.
 import QtQuick
 import "Pacing.js" as Pacing
+import "Wanted.js" as Wanted
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -22,6 +24,34 @@ QtObject {
     function check(failures, what, got, want) {
         if (got !== want)
             failures.push(`${what}: got ${got}, wanted ${want}`);
+    }
+
+    // Agents says how its sessions stand at home, and People is named
+    // there by who it lists (Joel, 2026-11-08: "weird lag can happen").
+    function wanting(failures) {
+        const agents = { saysAtHome: true };
+        const people = { saysAtHome: false };
+        const at = fields => Object.assign({ cataloguing: false, open: true, held: [],
+            becoming: [], typed: "" }, fields);
+        const wanted = (fields, source) => Wanted.wanted(at(fields), source);
+        check(failures, "closed, no source's rows are wanted", wanted({ open: false }, people),
+            false);
+        check(failures, "walked from outside, every source's are",
+            wanted({ open: false, cataloguing: true }, agents), true);
+        check(failures, "at home, a place home names is", wanted({}, people), true);
+        check(failures, "and one saying what it holds itself isn't", wanted({}, agents), false);
+        check(failures, "what's typed at home searches every place",
+            wanted({ typed: "ma" }, agents), true);
+        const inAgents = [{ row: { from: agents } }];
+        check(failures, "held, its own are", wanted({ held: inAgents }, agents), true);
+        check(failures, "and another place's aren't", wanted({ held: inAgents }, people), false);
+        check(failures, "nor with something typed there",
+            wanted({ held: inAgents, typed: "ma" }, people), false);
+        check(failures, "held deeper, in one of its rows, its own still are",
+            wanted({ held: inAgents.concat([{ row: { from: null } }]) }, agents), true);
+        check(failures, "an act of its own waiting to be agreed keeps them wanted elsewhere",
+            wanted({ held: [{ row: { from: people } }], becoming: [{ from: agents }] }, agents),
+            true);
     }
 
     function run() {
@@ -71,6 +101,8 @@ QtObject {
         check(failures, "a change 10 ms after an arrow is no key's",
             Pacing.keyed(10, true, within), false);
         check(failures, "nor one 60 ms after an act", Pacing.keyed(60, false, within), false);
+
+        wanting(failures);
 
         for (const failure of failures)
             console.warn(failure);

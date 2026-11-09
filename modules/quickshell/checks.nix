@@ -1112,8 +1112,10 @@ onLinux {
     '';
 
   # An open launcher takes a burst of its sources' changes a pace apart, and
-  # never two refreshes closer than that however the first was asked for, as
-  # tests/pacing.qml holds launcher/Pacing.js to it in Qt's own engine.
+  # never two refreshes closer than that however the first was asked for, and
+  # a source's rows are wanted only where they're shown or searched, as
+  # tests/pacing.qml holds launcher/Pacing.js and launcher/Wanted.js to it in
+  # Qt's own engine.
   the-launcher-paces-its-refreshes =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -1121,6 +1123,7 @@ onLinux {
     pkgs.runCommandLocal "the-launcher-paces-its-refreshes" { } ''
       cp ${../../tests/pacing.qml} pacing.qml
       cp ${./launcher/Pacing.js} Pacing.js
+      cp ${./launcher/Wanted.js} Wanted.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

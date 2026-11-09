@@ -218,6 +218,36 @@ Scope {
     function homeSays() {
         return null;
     }
+    // Whether homeSays says something, so home reads none of its rows: a
+    // property rather than asking it, since what it says may cost a walk
+    // of everything it holds.
+    property bool saysAtHome: false
+
+    // Whether its rows are wanted now: walked from outside, searched, held,
+    // named at home, or an act of theirs waiting to be agreed (Launcher.qml's
+    // wants). A source whose rows cost much builds them only then, so a
+    // change nobody sees builds none, and builds them once as they're
+    // wanted again (Joel, 2026-11-08: "weird lag can happen"). One with no
+    // launcher to ask, as a check's, always is.
+    readonly property bool wanted: typeof launcher?.wants !== "function"
+        || launcher.wants(provider)
+
+    // A row kept from the making before while what it's made from says the
+    // same, `from` being all of that as text, or else made anew by `make`;
+    // either is kept in `next` for the making after, which keepOnly makes
+    // the rows kept. So a change remakes only the rows it changed, as
+    // Quests keeps its own, rather than every row at every change.
+    function keptOr(kept, next, key, from, make) {
+        const before = kept[key];
+        next[key] = before && before.from === from ? before : { from: from, row: make() };
+        return next[key].row;
+    }
+    // `kept`, a plain object so keeping notifies nothing, made `next`.
+    function keepOnly(kept, next) {
+        for (const key of Object.keys(kept))
+            delete kept[key];
+        Object.assign(kept, next);
+    }
 
     // The one row a source ends every search at the top with, after
     // everything found, as Search Slack for what's typed is (VKCF3Z,

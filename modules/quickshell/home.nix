@@ -284,6 +284,7 @@ let
     "launcher/Rank.js"
     "launcher/Showing.js"
     "launcher/Pacing.js"
+    "launcher/Wanted.js"
     "launcher/Standing.js"
     "launcher/Steady.js"
     "launcher/Order.js"

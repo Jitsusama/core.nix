@@ -2059,7 +2059,8 @@
   the-launcher-paces-its-refreshes = ''
     an open launcher takes the first of its sources' changes at once and those after it a pace
     apart, together, and a refresh taken another way takes the one waiting with it, so no two
-    refreshes begin closer than the pace
+    refreshes begin closer than the pace; and a source's rows are wanted only while it's held,
+    searched, named at home or has an act waiting, so a change nobody sees builds none
   '';
   the-launcher-plays-from-spotify = ''
     Spotify's program in the launcher reads Spotify only as it's stepped into, once an opening,
