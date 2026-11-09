@@ -2834,11 +2834,11 @@
     open it in the reader, and Meet joins a call by its code
   '';
   vm-desktop-launcher-keeps-up = ''
-    an arrow held at 30 a second at home, in Agents and in People, at scales 2 and 1.5, while 300
-    sessions and 2,000 people change, makes no rows for the source the place doesn't show,
-    refreshes the list at most four times a second, finishes each key's handler within 4 ms, and
-    brings nineteen keys in twenty to their frames within 4 ms of their time with the changes
-    frozen
+    an arrow held at 30 a second at home, in Agents and in Programs, at scales 2 and 1.5, while
+    300 sessions and 2,000 people change, makes no rows for a source the place doesn't show and
+    none at all while they're frozen, refreshes the list at most four times a second and never on
+    a key's path, and takes nineteen handlers in twenty within 4 ms, and its middle key to its
+    frame within twice, of their times with the changes frozen
   '';
   vm-desktop-launcher-moves-windows = ''
     the launcher opens kitty and learns it was meant, frames the focused window, switches to and
