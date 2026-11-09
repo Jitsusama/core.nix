@@ -972,9 +972,11 @@ Provider {
     })
 
     // How many History keeps, said as what it counts, "1 kept", never a
-    // bare number (VKCF3Z, 2026-11-09).
+    // bare number, and "none" while it keeps nothing, as every place says
+    // (docs/design.md; VKCF3Z, 2026-11-09).
     function kept(count) {
-        return ForYou.filled((Words.of("on:waiting:history").said ?? {}).count ?? "{count}",
+        const said = Words.of("on:waiting:history").said ?? {};
+        return count === 0 ? said.none ?? "" : ForYou.filled(said.count ?? "{count}",
             { count: count });
     }
 

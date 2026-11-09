@@ -441,12 +441,28 @@ def test_a_missed_notice_shows_its_glyph_and_now_shows_the_notices(desktop: Desk
     desktop.launcher_until(
         lambda shown: shown["keys"] and shown["held"] == ["now", "For You", "Desktop"]
     )
+    says_each_thing_once(desktop)
     desktop.shoot("launcher-from-margin")
     forgets_then_brings_back(desktop)
     desktop.close_launcher()
     # Opening them counted them seen, so nothing's waiting.
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
     reads_them_all(desktop)
+
+
+def says_each_thing_once(desktop: Desktop) -> None:
+    """Say Peter's sender once, in the drawer's eyebrow, and History's nothing as "none".
+
+    The cursor row adds nothing to its age, as a Slack message's adds nothing, and History,
+    keeping nothing yet, says "none" as every place holding nothing does (VKCF3Z, 2026-11-09).
+    """
+    desktop.launcher_until(lambda shown: shown["drawer"]["out"] and shown["footer"] == "")
+    things = desktop.showing()["things"]
+    kept = [
+        thing["reads"].split(" \u00b7 ") for thing in things if thing["reads"].startswith("History")
+    ]
+    assert kept, things
+    assert kept[0][1] == "none", things
 
 
 def reads_them_all(desktop: Desktop) -> None:

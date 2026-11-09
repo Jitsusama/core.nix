@@ -114,6 +114,10 @@ Provider {
             glyph: String.fromCodePoint(notice.glyph),
             hue: notice.low ? "muted" : notice.hue,
             note: notice.app,
+            // Said once, in its drawer's eyebrow, while the drawer is out,
+            // so the cursor row's side is its age alone, as a Slack
+            // message's is (VKCF3Z, 2026-11-09).
+            noteInDrawer: true,
             // Who sent it, which ends a paragraph of rows (Launcher.qml's
             // runOf), so dip takes away what one sender sent.
             sender: notice.app,

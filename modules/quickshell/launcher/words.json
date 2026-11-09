@@ -7470,7 +7470,8 @@
       "empty": "Nothing resolved yet.",
       "said": {
         "note": "what no longer needs you",
-        "count": "{count} kept"
+        "count": "{count} kept",
+        "none": "none"
       }
     },
     {
