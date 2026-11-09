@@ -22,6 +22,8 @@ onLinux {
     let
       qt = pkgs.qt6.qtdeclarative;
     in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # cases, or sets what Qt's engine reads them with.
     pkgs.runCommandLocal "swayimg-leads-with-a-gallery" { } ''
       mkdir launcher
       cp ${../../tests/swayimg-galleries.qml} swayimg-galleries.qml
