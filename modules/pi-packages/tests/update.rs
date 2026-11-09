@@ -585,6 +585,55 @@ fn an_unbuilt_native_module_is_not_swapped_in() {
 }
 
 #[test]
+fn a_dependency_installed_here_is_the_one_installed_copy() {
+    // The neighbour is installed under the name the package depends on,
+    // as the harness is beside a package that pins it.
+    let fixture = Fixture::new();
+    let neighbour = fixture.neighbour();
+    let its_version = neighbour.versions().join("abc");
+    fs::create_dir_all(&its_version).expect("the neighbour's version");
+    fs::write(
+        its_version.join("package.json"),
+        r#"{"name":"dep","version":"2.0.0","main":"index.js"}"#,
+    )
+    .expect("its manifest");
+    fs::write(its_version.join("index.js"), "module.exports = 2;\n").expect("its code");
+    std::os::unix::fs::symlink(Path::new("versions/abc"), neighbour.current())
+        .expect("its current");
+
+    let outcome = fixture.update();
+
+    assert!(matches!(outcome.done, Done::Moved { .. }), "{outcome:?}");
+    let version = fixture.place().current();
+    let link = version.join("node_modules/dep");
+    assert_eq!(
+        fs::read_link(&link).ok(),
+        Some(neighbour.current()),
+        "dep is pnpm's copy, not the neighbour's current"
+    );
+    assert_eq!(
+        fs::read_to_string(link.join("index.js")).ok().as_deref(),
+        Some("module.exports = 2;\n"),
+        "dep does not read as the neighbour"
+    );
+}
+
+#[test]
+fn a_dependency_no_neighbour_names_stays_pnpms() {
+    let fixture = Fixture::new();
+
+    let outcome = fixture.update();
+
+    assert!(matches!(outcome.done, Done::Moved { .. }), "{outcome:?}");
+    let dep = fixture.place().current().join("node_modules/dep");
+    assert_eq!(
+        fs::read_to_string(dep.join("index.js")).ok().as_deref(),
+        Some("module.exports = 1;\n"),
+        "dep is not the copy pnpm installed"
+    );
+}
+
+#[test]
 fn a_package_naming_another_pnpm_installs_with_this_one() {
     // pnpm downloads the pnpm a manifest names and runs that instead, and
     // a prebuilt pnpm is one NixOS won't run without nix-ld, so a

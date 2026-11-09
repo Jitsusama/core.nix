@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::SystemTime;
 
+use serde_json::Value;
+
 use crate::check;
 use crate::config::{Config, Package};
 use crate::{inuse, loaded};
@@ -285,6 +287,7 @@ fn build_into(
     )?;
     if building.join("package.json").is_file() {
         run(&config.pnpm, &INSTALL, building, env)?;
+        share_neighbours(config, package, building)?;
     }
     let found = check::problems(building, &config.node, env)?;
     if found.is_empty() {
@@ -292,6 +295,57 @@ fn build_into(
     } else {
         Err(found.join("; "))
     }
+}
+
+/// Point each dependency that names another package installed here at
+/// that package's `current`, in place of the copy pnpm put in, so a
+/// session loads the one copy rather than two. One package pinned another
+/// at an older commit, and every session loaded 134 of its modules twice,
+/// the older beside the newer. A neighbour with no `current` yet leaves
+/// pnpm's copy, and so does a pi-packages from before this, so a package
+/// may depend on a neighbour whichever lands first.
+fn share_neighbours(config: &Config, package: &Package, building: &Path) -> Result<(), String> {
+    let Some(manifest) = manifest_of(building) else {
+        return Ok(());
+    };
+    let Some(dependencies) = manifest["dependencies"].as_object() else {
+        return Ok(());
+    };
+    for neighbour in config
+        .packages
+        .iter()
+        .filter(|other| other.key != package.key)
+    {
+        let current = Place::of(config, neighbour).current();
+        let Some(name) =
+            manifest_of(&current).and_then(|found| found["name"].as_str().map(str::to_owned))
+        else {
+            continue;
+        };
+        if !dependencies.contains_key(&name) {
+            continue;
+        }
+        let link = building.join("node_modules").join(&name);
+        let shown = |error: std::io::Error| format!("{}: {error}", link.display());
+        match fs::symlink_metadata(&link) {
+            Ok(found) if found.is_dir() => fs::remove_dir_all(&link).map_err(shown)?,
+            Ok(_) => fs::remove_file(&link).map_err(shown)?,
+            Err(_) => {
+                // Nothing there: a scoped name's folder may not exist yet.
+                if let Some(parent) = link.parent() {
+                    fs::create_dir_all(parent).map_err(shown)?;
+                }
+            }
+        }
+        symlink(&current, &link).map_err(shown)?;
+    }
+    Ok(())
+}
+
+/// A folder's package.json, when it has one that reads.
+fn manifest_of(dir: &Path) -> Option<Value> {
+    let text = fs::read_to_string(dir.join("package.json")).ok()?;
+    serde_json::from_str(&text).ok()
 }
 
 /// Point `current` at `commit`'s version by renaming a new link over it,
