@@ -40,14 +40,19 @@
 # daemon's going takes every connection with it; when it does go, it starts
 # again with the next connection.
 #
-# A build that brings free space under 24 GiB has the daemon collect garbage
-# until 64 GiB is free, so Nix never fills the disk by itself, whatever else
+# A build that brings free space under 10 GiB has the daemon collect garbage
+# until 24 GiB is free, so Nix never fills the disk by itself, whatever else
 # looks after it. The daemon checks every 5 s while it builds, and collects
 # only garbage, nothing a profile or a root still needs. Nix's default of 0
 # never collects: the XPS 14 made 238 GiB of garbage in its first three days,
-# most of it disk images of up to 9 GiB each. 24 GiB leaves room for two of
-# those to finish while the collection runs, and 40 GiB more keeps it from
-# running again with the next build.
+# most of it disk images of up to 9 GiB each. 10 GiB leaves room for one of
+# those to finish while the collection runs, and 14 GiB more keeps it from
+# running again with the next build. It's the last resort beneath the disk
+# guard, so it starts past the guard's urgent band, a tenth free, on a disk
+# as small as 120 GB. At 24 GiB, on such a disk the guard had cleared, every
+# path added began a collection for garbage that wasn't there, and on
+# 9 November one held the store's lock inside its add for half an hour, every
+# other add and the guard waiting behind it.
 #
 # Each build runs in a cgroup of its own, which Nix makes under the daemon's
 # as nix-build-uid-<its user>, having moved the daemon itself into a
@@ -138,8 +143,8 @@ in
   ];
   nix.settings.extra-system-features = [ "uid-range" ];
 
-  nix.settings.min-free = 24 * gib;
-  nix.settings.max-free = 64 * gib;
+  nix.settings.min-free = 10 * gib;
+  nix.settings.max-free = 24 * gib;
   # A garbage collection keeps what built anything still installed, not only
   # the result. Without it the disk guard, which deletes what
   # `nix-store --gc --print-dead` lists every few minutes, threw away the

@@ -1079,7 +1079,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       services.journald.settings.Journal.MaxLevelConsole = lib.mkIf (area == "keeps-pace") (
         lib.mkForce "warning"
       );
-      # The workstation's daemon collects garbage while under 24 GiB is free
+      # The workstation's daemon collects garbage while under 10 GiB is free
       # (modules/nix-daemon), and this machine's store is 2 GiB of tmpfs over
       # the builder's, where only the system's own closure is registered. So
       # the first store operation at boot collected every other path the tests
