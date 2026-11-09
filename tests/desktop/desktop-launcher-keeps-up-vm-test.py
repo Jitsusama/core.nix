@@ -66,11 +66,6 @@ TAIL = 0.95
 # This and taking no change on a key's path held on main too once #2495 landed, so they guard
 # against a return rather than prove this change.
 REFRESHES = 4.0
-# The rows the walk of where rows live may make for each turn things changed in, frozen turns
-# aside: one laying out of every session, a row and its Return each, as it makes once the list
-# is quiet. Making each session's acts and
-# facts too, it made 6,733 in two turns at home (2026-11-09).
-WALKED_MOST = 2 * SESSIONS
 # Each place an arrow is held in, and the sources it doesn't show: home names People but says
 # how the sessions stand itself, Agents shows only its own, and Programs neither.
 PLACES = {"home": ["agents"], "Agents": ["people"], "Programs": ["agents", "people"]}
@@ -241,9 +236,9 @@ class Turns:
             self.handled[self.frozen].append(done - heard)
             self.drawn[self.frozen].append(frame - down)
 
-        # Rows a source made in the turn, those made for the walk of where rows live aside, which
-        # lays out what it walks once the list is quiet, never on a key (Launcher.qml's
-        # livesMade), and is kept apart to say.
+        # Rows a source made in the turn, those Ctrl+]'s looks for where a row lives made aside
+        # (Launcher.qml's livesMade), kept apart to say: no arrow presses Ctrl+], so a look's row
+        # is one made with nobody asking.
         def walked_of(name: str) -> int:
             return int(after["walked"].get(name, 0) - before["walked"].get(name, 0))
 
@@ -275,7 +270,7 @@ class Turns:
         print(
             f"{at}: while things changed the unseen made {self.unseen_made} rows and Agents "
             f"{self.agents_made} a turn, and while frozen the keys made {self.keys_made}, "
-            f"and the walk of where rows live {self.walked}; "
+            f"and the look for where rows live {self.walked}; "
             f"{self.refreshes} refreshes in {self.seconds / 1000:.1f} s, {rate:.1f} a second, "
             f"{self.keyed} taken on a key's path; handlers 95% within {handled[False]:.1f} ms "
             f"changing against {handled[True]:.1f} ms frozen, the slowest "
@@ -288,9 +283,11 @@ class Turns:
         assert not any(self.keys_made.values()), (
             f"{at}, arrows that only move made {self.keys_made} rows"
         )
-        walked, changed = sum(self.walked.values()), len(self.agents_made)
-        assert walked <= WALKED_MOST * changed, (
-            f"{at}, the walk of where rows live made {self.walked} rows in {changed} changing turns"
+        # Where a row lives is looked for only on Ctrl+]'s press, which no turn makes, so none
+        # is: the walk that kept it for every row was made again on most openings and after each
+        # change, 18,693 of People's 19,461 rows at home in Joel's morning (2026-11-09).
+        assert not any(self.walked.values()), (
+            f"{at}, with no Ctrl+] pressed the look for where rows live made {self.walked} rows"
         )
         assert self.keyed == 0, f"{at}, {self.keyed} refreshes were taken on a key's path"
         assert rate <= REFRESHES, f"{at}, the list refreshed {rate:.1f} a second"

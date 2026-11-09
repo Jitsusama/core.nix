@@ -405,7 +405,8 @@ QtObject {
 
     // Where a row lives, which Ctrl+] goes to as Vim follows a tag: the
     // shallowest place from home holding a row that is it, never Now, which
-    // holds what lives elsewhere, nor inside a long list or a program.
+    // holds what lives elsewhere, nor inside a long list, a program or a
+    // person, looked for on the press and only as far as it's found.
     function lives() {
         const row = (key, fields) => Object.assign({ key: key, name: key }, fields);
         const emoji = row("collection:emoji", { opens: "emoji" });
@@ -415,28 +416,40 @@ QtObject {
         const kitty = row("program:kitty");
         const window = row("window:kitty");
         const cpu = row("machine:cpu", { parted: true });
+        const wifi = row("wifi:home");
+        const ada = row("person:ada", { parted: true });
         const inside = {
             "collection:on": [quiet, lock],
-            "category:desktop": [emoji, quiet, row("category:energy", { category: {} }), cpu],
+            "category:desktop": [emoji, quiet, row("category:energy", { category: {} }), cpu,
+                wifi],
             "machine:cpu": [row("machine:cpu:cores")],
             "category:energy": [lock],
             "collection:emoji": [smile],
             "collection:applications": [kitty],
-            "program:kitty": [window]
+            "program:kitty": [window],
+            "wifi:home": [row("wifi:home:forget")],
+            "collection:people": [ada],
+            "person:ada": [row("mail:1")]
         };
         const home = [row("collection:on", { opens: "on" }),
             row("collection:applications", { opens: "applications" }),
-            row("category:desktop", { category: {} })];
+            row("category:desktop", { category: {} }),
+            row("collection:people", { opens: "people" })];
         const asked = [];
         const ways = { idOf: one => one.key, holds: one => {
             asked.push(one.key);
             return inside[one.key] ?? [];
         } };
-        // Walked once, for every row, so each Ctrl+] after the first in an
-        // open only looks its row up, within a key's 4 ms.
-        const lived = Catalogue.lives(home, ways);
-        const at = key => lived[key] ?? null;
-        expect("one walk asks each place once", asked.length, new Set(asked).size);
+        const looked = (key, also) => {
+            asked.length = 0;
+            return Catalogue.livesOf(home, key, Object.assign({}, ways, also));
+        };
+        const at = key => looked(key).path;
+        // Each kind of row Ctrl+] looks for rather than entering or being
+        // told: a thing in a place (a Now row's, as Do Not Disturb), one
+        // found from home deep in places (Lock), and a notice's program
+        // (by its `follows`). A spot, a found act and a row with parts say
+        // where they go themselves (Launcher.qml's followedTo and followed).
         expect("a thing lives in the place holding it, Now passed over", at("session:quiet"),
             ["category:desktop", "session:quiet"]);
         expect("a place inside a place, as deep as it is", at("session:Lock"),
@@ -456,6 +469,39 @@ QtObject {
             ["category:desktop", "machine:cpu"]);
         expect("but what it measures isn't walked", at("machine:cpu:cores"), null);
         expect("nor made", asked.includes("machine:cpu"), false);
+        expect("nor what a person holds", at("mail:1"), null);
+        expect("nor are a person's insides made", asked.includes("person:ada"), false);
+        expect("a thing's own row is found by the look into things", at("wifi:home:forget"),
+            ["category:desktop", "wifi:home", "wifi:home:forget"]);
+        // The look is the key's own work, so it stops where it finds the
+        // row, and no place past it is asked.
+        expect("a look asks each place once", looked("none:here").listed > 0
+            && asked.length === new Set(asked).size, true);
+        const kittyLook = looked("program:kitty");
+        expect("the look stops where it's found", [kittyLook.path, asked],
+            [["collection:applications", "program:kitty"], ["collection:applications"]]);
+        expect("it says how many rows it listed, found", [kittyLook.listed, kittyLook.spent],
+            [4, false]);
+        expect("a row at home is found without asking a place",
+            [looked("category:desktop").path, asked], [["category:desktop"], []]);
+        // Through places alone, a place's own rows are found without a
+        // thing's insides made, which the launcher looks through first.
+        const places = { enters: one => Catalogue.isPlace(one) };
+        expect("through places, Lock is found deep in them", looked("session:Lock", places).path,
+            ["category:desktop", "category:energy", "session:Lock"]);
+        expect("through places, a thing's insides aren't found",
+            looked("wifi:home:forget", places).path, null);
+        expect("nor asked", asked.includes("wifi:home"), false);
+        expect("a place is a category or a collection",
+            [row("a", { category: {} }), emoji, wifi].map(Catalogue.isPlace), [true, true, false]);
+        // A look past its budget gives up, saying so, rather than holding
+        // the key: here once more than five rows are listed, the sixth
+        // being the first Desktop holds.
+        const spentLook = looked("wifi:home:forget", { spent: listed => listed > 5 });
+        expect("a look past its budget gives up, unfound", [spentLook.path, spentLook.spent],
+            [null, true]);
+        expect("as soon as it's listed past it", spentLook.listed, 6);
+        expect("a miss within it isn't given up", looked("none:here").spent, false);
         // Where Ctrl+] goes from where the launcher stands: the place that
         // holds it and the row there, or nowhere when it's held here.
         expect("found from home, it goes into its place, onto it",
@@ -470,18 +516,5 @@ QtObject {
         expect("a place at home, from home, goes nowhere",
             Catalogue.followed(["category:desktop"], []), null);
         expect("nor does what lives nowhere", Catalogue.followed(null, []), null);
-        // Walked in slices, so no key waits on the whole walk: a slice
-        // ends once its time is spent, here after each place it asks, and
-        // the slices together come to what one whole walk does.
-        asked.length = 0;
-        const sliced = Object.assign({ spent: () => asked.length > 0 }, ways);
-        const walk = Catalogue.livesBegun(home, sliced);
-        let slices = 0;
-        for (let done = false; !done && slices < 20; slices += 1) {
-            asked.length = 0;
-            done = Catalogue.livesOn(walk, sliced);
-        }
-        expect("a slice asks one place once its time is spent", slices > 3, true);
-        expect("the slices come to the whole walk", walk.at, lived);
     }
 }

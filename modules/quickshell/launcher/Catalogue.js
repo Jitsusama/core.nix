@@ -405,48 +405,61 @@ function followsInto(row, depth, above) {
     return !(above && WHOLE.has(above.opens));
 }
 
-// Where every row lives, which Ctrl+] goes to as Vim follows a tag: by
-// its steady id, the ids from one of home's `rows` down to the shallowest
-// row that is it, walked breadth first once for them all, so a press after
-// the first only looks its row up. `ways` says a row's steady id (`idOf`)
-// and the rows it holds inside the row above it (`holds`), as the launcher
-// makes them.
-function lives(rows, ways) {
-    const walk = livesBegun(rows, ways);
-    livesOn(walk, ways);
-    return walk.at;
+// Whether a row is a place, which the look for where a row lives goes
+// through first (livesOf): a category, or a collection it opens.
+function isPlace(row) {
+    return !!row.category || !!row.opens;
 }
 
-// The same walk in slices, so no key waits on the whole of it: begun here,
-// then carried on by livesOn until `ways.spent()` says the slice's time is
-// spent, which gives false, or until it's done, which gives true and
-// leaves every row's place in `at`. One queue keeps it breadth first.
-function livesBegun(rows, ways) {
+// Where the row `id` lives, which Ctrl+] goes to as Vim follows a tag:
+// `path`, the ids from one of home's `rows` down to the shallowest row
+// that is it, or null for one living nowhere. It's looked for on the press,
+// breadth first, and only as far as it's found, so nothing is walked while
+// Joel isn't asking: a walk of every row, kept until a provider changed,
+// ran again on most openings and made 96% of People's rows (2026-11-09,
+// `made`). `ways` says a row's steady id (`idOf`), the rows it holds inside
+// the row above it (`holds`), as the launcher makes them, and optionally
+// whether the look goes inside it (`enters`), as a look through places
+// alone does, and whether its budget is spent (`spent`, given the rows
+// listed so far). The look is a key's own work, so a spent budget ends it
+// unfound (`spent`) rather than holding the key (Y2YBTS, 2026-11-09).
+// `listed` says how many rows it listed.
+function livesOf(rows, id, ways) {
     const queue = rows.map(row => ({ row, path: [ways.idOf(row)], above: null, depth: 0 }));
-    return { at: Object.create(null), queue, next: 0 };
-}
-
-function livesOn(walk, ways) {
-    while (walk.next < walk.queue.length) {
-        if (ways.spent?.()) {
-            return false;
+    const said = (path, spent) => ({ path, listed: queue.length, spent });
+    const found = queue.find(one => one.path[0] === id);
+    if (found) {
+        return said(found.path, false);
+    }
+    const seen = new Set();
+    for (let next = 0; next < queue.length; next += 1) {
+        if (ways.spent?.(queue.length)) {
+            return said(null, true);
         }
-        const one = walk.queue[walk.next];
-        walk.next += 1;
+        const one = queue[next];
         const key = one.path[one.path.length - 1];
-        if (walk.at[key] !== undefined) {
+        if (seen.has(key)) {
             continue;
         }
-        walk.at[key] = one.path;
-        if (!followsInto(one.row, one.depth, one.above)) {
+        seen.add(key);
+        if (!followsInto(one.row, one.depth, one.above)
+            || (ways.enters && !ways.enters(one.row, one.above))) {
             continue;
         }
+        // Each row held is asked whether it's the one as it's listed, so
+        // the look stops there rather than listing the rest of its depth.
         for (const inside of ways.holds(one.row, one.above)) {
-            walk.queue.push({ row: inside, path: one.path.concat([ways.idOf(inside)]),
-                above: one.row, depth: one.depth + 1 });
+            const path = one.path.concat([ways.idOf(inside)]);
+            if (path[path.length - 1] === id) {
+                return said(path, false);
+            }
+            queue.push({ row: inside, path, above: one.row, depth: one.depth + 1 });
+            if (ways.spent?.(queue.length)) {
+                return said(null, true);
+            }
         }
     }
-    return true;
+    return said(null, false);
 }
 
 // Where Ctrl+] goes for a row living at `path`, by steady ids, from where
