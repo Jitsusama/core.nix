@@ -408,8 +408,11 @@ Provider {
     // Whether the network looked at waits on wifid's detail of it, or on
     // iw's first read of its card, so what it says is still "not read
     // yet" (Provider.stillReading). Each look is read afresh: Wifi.watch
-    // lets the last detail go, and a new look forgets iw's read.
-    stillReading: looking !== "" && (detailOf(looking) === null
+    // lets the last detail go, and a new look forgets iw's read. It asks
+    // whether wifid has answered at all rather than detailOf, which is
+    // null for an answer with no points too, as the joined network hiding
+    // its name gets, and which would hold every show of it for the wait.
+    stillReading: looking !== "" && (Wifi.detail?.name !== looking
         || looked !== "" && reader !== "" && !linkAnswered)
 
     // Its rows change as wifid hears more of it. Without iw to read the
