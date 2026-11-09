@@ -310,9 +310,12 @@ def walks_kittys_machines(desktop: Desktop) -> None:
             and shown["drawer"]["title"] == "ferry"
         )
     )
-    # Its own block's settings, and the kind of key known_hosts holds where they reach.
-    facts = desktop.showing()["drawer"]["facts"]
-    assert {"HostName", "User", "Port", "Known Keys"} <= set(facts), facts
+    # Its own block's settings, as ssh would be told them by hand, and the kind of key
+    # known_hosts holds where they reach.
+    drawer = desktop.showing()["drawer"]
+    facts = dict(zip(drawer["drawnFacts"], drawer["values"], strict=True))
+    assert facts.get("Address") == "deckhand@ferry.harbour.test:2200", facts
+    assert "Known Keys" in facts, facts
     desktop.shoot("launcher-kitty-ssh")
     desktop.step_out()
 
