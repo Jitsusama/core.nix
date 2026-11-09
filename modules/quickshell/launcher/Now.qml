@@ -1037,7 +1037,7 @@ Provider {
         // What its list says when it holds nothing (Launcher.qml).
         empty: Words.of("on:waiting").empty,
         name: Words.name("on:waiting"),
-        glyph: Theme.glyph.waitsOnJoel,
+        glyph: Theme.glyph[ForYou.markOf(provider.waitsNow, WaitingOnYou.later.length)],
         hue: provider.waitsNow > 0 ? "strong" : "muted",
         side: provider.waitsNow > 0 ? String(provider.waitsNow)
             : WaitingOnYou.later.length > 0
@@ -1098,7 +1098,8 @@ Provider {
             stays: true,
             empty: Words.of("on:waiting").empty,
             name: Filter.heading(filter, filterSaid),
-            glyph: Theme.glyph.waitsOnJoel,
+            // For You's own tray, as its head is For You's with a filter.
+            glyph: Theme.glyph[ForYou.markOf(provider.waitsNow, WaitingOnYou.later.length)],
             hue: "strong",
             nested: true,
             verbs: rows,

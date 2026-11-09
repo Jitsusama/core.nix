@@ -605,6 +605,22 @@ in
     console = "W";
     means = "what the agents have waiting on Joel, for him to do";
   };
+  # An in-tray with things in it: For You, the one place what's for Joel
+  # lands, apart from the to-dos in it, which keep the person with a clock,
+  # and from mail's envelope and notices' bell. A person with a star would
+  # read as a favourite, which people's starred contacts already wear
+  # (VKCF3Z, 2026-11-08).
+  forYou = {
+    glyph = nerd "f1296";
+    console = "Y";
+    means = "For You: what wants Joel, weighed, in one place, and the place holding it";
+  };
+  # The same tray emptied, for For You holding nothing.
+  forYouEmpty = {
+    glyph = nerd "f1294";
+    console = "Y";
+    means = "For You holding nothing, now or later";
+  };
   thinking = {
     glyph = nerd "f09d1";
     console = "t";
