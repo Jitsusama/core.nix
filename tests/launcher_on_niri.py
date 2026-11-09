@@ -382,8 +382,12 @@ class Shell:
         self.as_account(f"niri msg action close-window --id {window['id']}")
 
     def copied(self) -> str:
-        """Give what the clipboard holds."""
-        return self.as_account("wl-paste --no-newline")
+        """Give what the clipboard holds, and nothing while it holds nothing."""
+        # wl-paste exits 1 while nothing is copied, as it is the moment before
+        # a copy lands, so a wait for the copy reads that as not yet rather
+        # than failing on it (2026-11-09, Passwords' copy on a busy builder).
+        status, said = self.execute("wl-paste --no-newline")
+        return said if status == 0 else ""
 
     def held_still(self, span: float = 0.5, timeout: timedelta = timedelta(seconds=10)) -> bool:
         """Say whether the launcher's layout holds still for half a second before the time is up.
