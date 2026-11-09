@@ -183,8 +183,14 @@ of each kind of line it sets, and a row's pitch is its height.
   from bytes ("1.52 GB of 4.08 GB", "915 MB"), never a GiB beside a GB;
   thousands take a comma ("4,000 K", "2,400 rpm"); a scale reads "2×",
   never "200%"; and a pair says which is which ("12 kB/s in · 0 B/s
-  out"). A count says what it counts, never its source's name ("24 known ·
-  15 on Wi-Fi"), a part of it that's zero gives way, and one its row
+  out"), in and out at this machine's own links, down and up only for
+  the internet line's speed, as every speed test says it. A range reads
+  "118 ms to 136 ms", and one that holds still "127 ms · steady". A
+  moment reads as When writes it: today its bare time ("15:20"), then
+  "yesterday 23:40", a weekday within six days, "28 Oct", and forward
+  the same ("tomorrow 00:10"), with "at" only before a bare time. A
+  count says what it counts, never its source's name ("24 known · 15 on
+  Wi-Fi"), a part of it that's zero gives way, and one its row
   already says isn't said again ("all on Wi-Fi" under "9 devices"). A run
   of items joins with dots, never a comma beside a dot, and a qualifier
   follows its figure after a dot ("−60 dBm · strong", "Wed 2 Dec · a
@@ -485,7 +491,9 @@ an address, a repository, a folder or a file, is never re-cased, so an
 eyebrow carrying one is set in Note as written ("8IDU4E · core.nix ·
 since 21:52"). The eyebrows of one place share one shape, where the thing
 is and then its kind ("via Example ISP", "eero Pro 6 · node", "on Study
-· Wi-Fi"), and say no state, which its first fact says; short of room,
+· Wi-Fi"), and say no state, which its first fact says. Nothing the
+launcher shows names a daemon: it says where a thing came from ("from
+Wi-Fi · location"), never what told it, such as GeoClue. Short of room,
 an eyebrow gives way by whole items from its end, as a note does. Each
 surface says which levels it shows, in the surfaces table.
 
@@ -1435,11 +1443,19 @@ works the same way everywhere.
   worked out as the place opens and holds still while it's open. A row's
   mark and eyebrow say its kind ("from Reef Quest · look"), and its side
   the strongest reason it's there, state first ("session ended · 12 min
-  ago", "blocks 2 sessions", "due 15:00", else "12 min ago"). Lately
+  ago", "blocks 2 sessions", "due 15:00", else "12 min ago"). For You
+  wears an in-tray, full while it holds something and empty when it
+  doesn't; a look wears an eye, a landing to try a flask, a to-do and
+  History the person and clock, and a source with no mark of its own
+  the tray (VKCF3Z, 2026-11-08). Lately
   follows, what came: a row per source holding parts ("Mail", "Slack"),
   its side "12 to read", its note its senders newest first, ordered by
   its heaviest, and a notice its source calls critical lifts into the
-  first band. Then Later, what was put off or can't be done yet, each
+  first band. A message inside is one row wherever it shows, Search
+  Slack's hits included: named by its sender, its note its first line,
+  or from the first word a find matched, its side its time, its eyebrow
+  where it came ("in #deploys · message", "direct message").
+  Then Later, what was put off or can't be done yet, each
   saying what for; then History.
 - **For You keeps itself true, and forgets nothing.** Nothing in it times
   out. An item leaves the moment its source says it no longer needs him:
@@ -1447,8 +1463,11 @@ works the same way everywhere.
   seen, a file written), a pull request merges, a meeting ends, a
   message is read where it lives, or he clears it with dd; where nothing
   can tell, only Joel saying so, which its drawer says. History keeps
-  everything resolved for good, newest first, each side saying how and
-  when ("merged 14:02", "read in Slack 14:02", "cleared by you 13:10"),
+  everything resolved for good, no timer clearing it; a store short of
+  room lets its oldest read item go first, never an unread one, as the
+  desktop's notices keep their last 1,000. It reads newest first, each
+  side saying how and when ("merged 14:02", "read in Slack 14:02",
+  "cleared by you 13:10"),
   and `/` finds any. A kind or a source is a step-in, never a mode:
   `:filter look` or `:filter slack` goes in, Tab completing the kinds and
   sources present, each with its mark, its name and its count, the head
@@ -1735,7 +1754,8 @@ works the same way everywhere.
   draws in its text's ink on a muted track, in warning only past its
   limit's warn, as Context's past 80%. The facts run from what moves
   most, through what describes the thing, to its identifiers last in the
-  Name face (a node, a bus name, a model's code), so the first screen
+  Name face (a node, a bus name, a model's code, the name Linux gives a
+  part, "Linux Name coretemp"), so the first screen
   holds what he came for (VKCF3Z, 2026-11-07). A fact still being read a
   fixed placeholder, and none that only says again the name, or what the
   row's side or note already says: a speaker's row saying "volume 100%"
