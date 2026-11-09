@@ -8703,7 +8703,8 @@
       "in": "applications",
       "name": "{vault}",
       "verb": "more",
-      "glyph": "vault"
+      "glyph": "vault",
+      "said": { "entry": "{count} entry", "entries": "{count} entries" }
     },
     { "id": "passwords:entries", "in": "applications", "name": "Entries" },
     { "id": "passwords:favourites", "in": "applications", "name": "Favourites" },

@@ -344,6 +344,11 @@ QtObject {
         check("by vault", Managers.vaults([gitHub, bank, door]).map(vault =>
             [vault.name, vault.records.map(record => record.id)]),
         [["Private", ["door", "gh"]], ["Shared", ["bank"]]]);
+        // What a vault holds says what it counts, its thousands grouped.
+        const holds = { entry: "{count} entry", entries: "{count} entries" };
+        check("a vault of one", Managers.holding(1, holds), "1 entry");
+        check("a vault of many", Managers.holding(1201, holds), "1,201 entries");
+        check("an empty vault", Managers.holding(0, holds), "0 entries");
 
         // What 1Password's drawer in Programs says it holds.
         const holds = { inVault: "{count} in 1 vault", inVaults: "{count} in {vaults} vaults" };
