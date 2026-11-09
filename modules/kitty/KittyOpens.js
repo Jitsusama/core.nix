@@ -360,9 +360,11 @@ function fromHome(folder, home) {
 
 // What's said beside a repository: the folder holding it, said from ~,
 // where that isn't `places.src`, which every row would say again, then
-// when zoxide last saw it or a folder inside it, or `never` where it
-// never has, so the row isn't bare (VKCF3Z, 2026-11-08).
-function repositorySide(path, places, seen, now, never) {
+// when zoxide last saw it or a folder inside it, as of `when.now`, or
+// `when.never` where it never has, so the row isn't bare (VKCF3Z,
+// 2026-11-08).
+function repositorySide(path, places, seen, when) {
+    const { now, never } = when;
     const parent = path.slice(0, path.lastIndexOf("/"));
     const folder = parent === places.src ? "" : fromHome(parent, places.home);
     const last = Object.keys(seen ?? {})

@@ -427,16 +427,15 @@ QtObject {
         const seen = { "/h/src/a": 1700000000000, "/h/src/a/docs": 1700003600000 };
         const later = 1700003600000 + 2 * 3600000;
         const places = { src: "/h/src", home: "/h" };
-        check("a repository in ~/src", Opens.repositorySide("/h/src/a", places, seen, later),
-            "2 h ago");
-        const never = "never opened";
-        check("one deeper, never seen",
-            Opens.repositorySide("/h/src/work/b", places, seen, later, never),
+        check("a repository in ~/src",
+            Opens.repositorySide("/h/src/a", places, seen, { now: later }), "2 h ago");
+        const when = { now: later, never: "never opened" };
+        check("one deeper, never seen", Opens.repositorySide("/h/src/work/b", places, seen, when),
             "~/src/work \u00b7 never opened");
-        check("one outside home", Opens.repositorySide("/srv/c", places, seen, later, never),
+        check("one outside home", Opens.repositorySide("/srv/c", places, seen, when),
             "/srv \u00b7 never opened");
-        check("one in ~/src never seen",
-            Opens.repositorySide("/h/src/e", places, seen, later, never), "never opened");
+        check("one in ~/src never seen", Opens.repositorySide("/h/src/e", places, seen, when),
+            "never opened");
 
         for (const failure of failures)
             console.warn(failure);
