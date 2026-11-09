@@ -1263,13 +1263,14 @@ Floating {
             .replace(/([A-Za-z0-9])-(?=[A-Za-z0-9])/g, "$1-\u2060");
     }
     // A value made of items, "38 s \u00b7 4.1k out \u00b7 0.9 s first token",
-    // wraps between them, never inside one, the dot ending the line it
-    // leaves (VKCF3Z, 2026-11-07); an item wider than its room still wraps
-    // by its words, never running past the edge.
+    // wraps between them, never inside one, the dot going with the break
+    // (DrawerFigure.runLines); a line that fits is held whole, and an item
+    // wider than its room still wraps by its words, never running past the
+    // edge.
     function itemsKept(words, face, wide) {
-        const items = unbroken(words).split(" \u00b7 ");
-        return items.map(item => face.advanceWidth(item) <= wide ? item.replace(/ /g, "\u00a0")
-            : item).join("\u00a0\u00b7 ");
+        return Figure.runLines(unbroken(words), wide, text => face.advanceWidth(text))
+            .map(line => face.advanceWidth(line) <= wide ? line.replace(/ /g, "\u00a0") : line)
+            .join("\n");
     }
 
     // The time, read as it turns each second while the moment shows.
