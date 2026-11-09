@@ -18,6 +18,7 @@
     ../../modules/asahi-firmware/nixos.nix
     ../../modules/asahi-nvram/nixos.nix
     ../../modules/firmware-settings/nixos.nix
+    ../../modules/keyboard/nixos.nix
     ./boot/nixos.nix
     ./kernel/nixos.nix
   ];
