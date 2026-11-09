@@ -175,6 +175,9 @@ const ESTIMATE_DRIFT: f64 = 0.1;
 
 /// What the garbage's commands and candidates are named for.
 const GARBAGE: &str = "garbage";
+/// How often Nix's own `min-free` is read again, since a person changes
+/// their `nix.conf` seldom and asking costs a process.
+const MIN_FREE_EVERY: f64 = 3600.0;
 /// What linking the store's identical files is journaled and run as.
 const DEDUPE: &str = "dedupe";
 /// How long after a failed run linking the store's files the next waits.
@@ -375,6 +378,8 @@ pub struct Guard {
     /// marked what's built.
     opens: Option<Arc<crate::opens::Watch>>,
     marked_at: Option<f64>,
+    /// Nix's own `min-free`, and when it was read.
+    min_free: Option<(f64, Option<u64>)>,
     /// The account's home, which sentences write as `~`, for a guard run
     /// in one; the system's guard has none.
     home: Option<PathBuf>,
@@ -673,6 +678,7 @@ impl Guard {
             uses_path,
             opens: None,
             marked_at: None,
+            min_free: None,
             home,
             freeze: None,
             stop: Box::new(|| false),
@@ -1007,6 +1013,7 @@ impl Guard {
         self.memory.awake.observe(tick);
         self.watch();
         self.mark(tick);
+        self.read_min_free(tick.wall);
         self.heartbeat();
         self.heard_garbage(tick.wall)?;
         self.watch_owners(tick);
@@ -1720,10 +1727,36 @@ impl Guard {
             .collect()
     }
 
+    /// Reads Nix's own `min-free` once an hour.
+    fn read_min_free(&mut self, now: f64) {
+        if self
+            .min_free
+            .is_some_and(|(at, _)| (0.0..MIN_FREE_EVERY).contains(&(now - at)))
+        {
+            return;
+        }
+        self.min_free = Some((now, garbage::min_free(&self.config.nix.bin)));
+    }
+
+    /// Whether the store's free space is short of `ABOVE_MIN_FREE` over
+    /// Nix's own `min-free`, under which Nix soon collects by itself. A
+    /// `min-free` of nothing is Nix never collecting by itself.
+    fn near_min_free(&self) -> bool {
+        let Some((_, Some(min_free))) = self.min_free.filter(|&(_, min)| min > Some(0)) else {
+            return false;
+        };
+        crate::sys::space(&self.config.nix.store)
+            .is_ok_and(|space| space.free < min_free.saturating_add(garbage::ABOVE_MIN_FREE))
+    }
+
     /// Hourly steps of `nix store gc` once nearly full, which collects in
     /// no order of its own: for want of a listing, or of a system daemon.
+    /// Near Nix's own `min-free` they come every few minutes, in any band a
+    /// pass runs in, since an hour's step fell behind builds and Nix's own
+    /// collections then held every build up.
     fn gc_offer(&self, tick: &Tick, device: u64) -> Offer {
         let store = &self.config.nix.store;
+        let near = self.near_min_free();
         let ran = self.memory.ran.get(GARBAGE).map_or(f64::INFINITY, |&at| {
             self.memory.awake.since(at.min(tick.wall), tick.wall)
         });
@@ -1733,8 +1766,12 @@ impl Guard {
             candidate: Candidate {
                 path: named(store, GARBAGE),
                 class: Class::Producer {
-                    every: None,
-                    from: Some(Band::NearlyFull),
+                    every: near.then_some(garbage::NEAR_MIN_FREE_EVERY.as_secs_f64()),
+                    from: Some(if near {
+                        Band::Healthy
+                    } else {
+                        Band::NearlyFull
+                    }),
                 },
                 idle: ran,
                 size: 0,

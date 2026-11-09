@@ -150,9 +150,11 @@ impl Store {
                      echo \"error: Cannot delete path '$p' since it is still alive.\" >&2; exit 1\n\
                    done; rm -r \"$@\" ;;\n\
                  'store gc') shift 2; echo \"gc $* {policy}\" >> {log} ;;\n\
+                 'config show') [ \"$3\" = min-free ] || exit 9; cat {min_free} ;;\n\
                  *) exit 9 ;;\n\
                  esac\n",
                 log = log.display(),
+                min_free = root.join("min-free").display(),
             ),
         );
         script(
@@ -1345,6 +1347,63 @@ fn a_listings_rest_holds_for_the_next_guard() {
     );
     step_later_until(&store, &mut next, 1100.0, &CALM, |_, _| !later.exists());
     assert_eq!(lists(&store), 2, "{:?}", store.log());
+}
+
+/// Steps `guard` as `step_later` does, `seconds` on by the monotonic clock
+/// too, so a pass that fell short has rested for as long.
+fn step_awake_later(guard: &mut Guard, seconds: f64) {
+    let at = Tick {
+        wall: now() + seconds,
+        monotonic: tick().monotonic + seconds,
+        ..tick()
+    };
+    for _ in 0..10 {
+        guard.step(&at, &CALM).unwrap();
+        std::thread::sleep(Duration::from_millis(30));
+    }
+}
+
+/// How many steps of `nix store gc` a store's log shows.
+fn gc_steps(store: &Store) -> usize {
+    store
+        .log()
+        .iter()
+        .filter(|line| line.starts_with("gc "))
+        .count()
+}
+
+#[test]
+fn a_store_near_nixs_own_min_free_collects_every_few_minutes() {
+    // Under min-free, every Nix worker that adds a path starts a
+    // collection of its own, each waiting on the last, and every build
+    // and add waits behind them, so the guard keeps the store above it.
+    let store = Store::new();
+    fs::write(store.root.join("min-free"), format!("{}\n", 1_u64 << 60)).unwrap();
+    let mut guard = store.guard(user_config(&store, "100%"));
+    guard.step(&tick(), &CALM).unwrap();
+    step_awake_later(&mut guard, 6.0 * 60.0);
+    assert_eq!(
+        gc_steps(&store),
+        2,
+        "a step, and another six minutes on: {:?}",
+        store.log()
+    );
+}
+
+#[test]
+fn a_store_nix_never_collects_by_itself_collects_hourly_once_nearly_full() {
+    // A min-free of nothing turns Nix's own collections off.
+    let store = Store::new();
+    fs::write(store.root.join("min-free"), "0\n").unwrap();
+    let mut guard = store.guard(user_config(&store, "100%"));
+    guard.step(&tick(), &CALM).unwrap();
+    step_awake_later(&mut guard, 6.0 * 60.0);
+    assert_eq!(
+        gc_steps(&store),
+        1,
+        "one step in six minutes: {:?}",
+        store.log()
+    );
 }
 
 #[test]
