@@ -578,27 +578,42 @@ def a_quest_offers_to_orchestrate(desktop: Desktop) -> None:
 
 
 def wakes_parked_orchestrator(desktop: Desktop) -> None:
-    """Wake Lighthouse once it's parked, by the file its marker names, rather than resume it."""
+    """Wake Lighthouse once it's parked, by the file its marker names, rather than resume it.
+
+    Parked while it wants Joel, its want still holds For You's mark, and its row still
+    wakes it, since there's no process to go to.
+    """
     machine = desktop.machine
     # Parked as the harness parks one: its process ended this boot, its
-    # record saying so, and the marker naming the file that wakes it.
+    # record saying so, and the marker naming the file that wakes it. Its
+    # want stays in its record, as the harness keeps it when it parks.
     parked = f"{HARNESS}/park-workflow/parked"
     boot = desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip()
+    began = machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip()
     record = {
         "session": "s-testqa", "addresses": ["TESTQA"], "state": "parked", "busy": False,
         "title": "\u03c0 - Lighthouse", "owner": {"pid": 1, "bootId": boot, "startTicks": 1},
         "at": "2026-11-06T12:00:00Z",
     }  # fmt: skip
+    wanting = record | {"wants": {"kind": "question", "since": began, "said": "Which way?"}}
+    since = desktop.mark()
     desktop.as_account(
-        f"mkdir -p {parked} && echo '{json.dumps(record)}' > {PI_PRESENCE}/testqa.json"
+        f"mkdir -p {parked} && echo '{json.dumps(wanting)}' > {PI_PRESENCE}/testqa.json"
         ' && printf \'{"session":"s-testqa","wake":"%s/testqa.wake"}\' "$XDG_RUNTIME_DIR"'
         f" > {parked}/s-testqa.json"
     )
+    desktop.reported("holds margin ", lambda rest: "forYou" in rest.split(), since)
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
     # Its row is its parked session's, which Return wakes, where a closed
-    # one's Return resumes it.
+    # one's Return resumes it, wanting Joel or not.
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "wake")
+    # Answered, its want ends and the mark goes, though it stays parked.
+    since = desktop.mark()
+    desktop.as_account(f"echo '{json.dumps(record)}' > {PI_PRESENCE}/testqa.json.new")
+    desktop.as_account(f"mv {PI_PRESENCE}/testqa.json.new {PI_PRESENCE}/testqa.json")
+    desktop.reported("holds margin ", lambda rest: "forYou" not in rest.split(), since)
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "wake")
     desktop.land()
     assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 wake"], desktop.showing()

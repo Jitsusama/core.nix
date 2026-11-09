@@ -13,7 +13,8 @@ Piece {
     readonly property var wanting: Sessions.wanting
     readonly property var first: wanting.length > 0 ? wanting[0] : null
 
-    present: Sessions.running.length > 0
+    // A parked one wanting Joel is shown too, with none running.
+    present: Sessions.running.length > 0 || wanting.length > 0
     active: wanting.length > 0
     wants: active
     // The harness's own notices are pi's, so the mark waits while one of
@@ -48,7 +49,13 @@ Piece {
         name: Words.name("verb:agent:switch"),
         verb: Words.verb("verb:agent:switch"),
         side: session.title,
-        run: () => Sessions.goTo(session)
+        // One parked is woken first, as its row in For You wakes it.
+        run: () => {
+            const resting = Sessions.parkedAs(session.address);
+            if (resting)
+                Sessions.wake(resting);
+            Sessions.goTo(session);
+        }
     }))
     actions: every.slice(0, 3)
 }

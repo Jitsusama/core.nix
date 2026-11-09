@@ -18,19 +18,19 @@ const KIND = "session";
 // waiting on Joel.
 const STATES = ["needs", "working", "inLine", "listening", "paused", "parked"];
 
-// How a session stands, from its presence, whether its want is truly
-// Joel's (`asks`, Sessions.asks) and whether it waits its turn in the
-// machine's queue (`queued`): "off" with no presence at all. A want that
-// isn't his reads as what the session does meanwhile.
+// How a session stands, from its presence, whether its want is Joel's
+// (`asks`) and whether it waits in the queue (`queued`); "off" with none.
+// A want not his reads as what it does; one parked stays parked, its want
+// For You's (Sessions.wanting), since Wake is its only act.
 function state(presence, asks, queued) {
     if (!presence) {
         return "off";
     }
-    if (asks) {
-        return "needs";
-    }
     if (presence.state === "parked") {
         return "parked";
+    }
+    if (asks) {
+        return "needs";
     }
     if (presence.state === "paused") {
         return "paused";
