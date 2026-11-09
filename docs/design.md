@@ -1368,7 +1368,8 @@ works the same way everywhere.
   place in Machine, beside Processor, Memory and Heat, with Lag after it,
   since what slowed the desktop is one of them, and a disk filling
   fast shows in Now. Now's top never changes: For You first, always,
-  its side a bare count of what waits on Joel, or "nothing now";
+  its side a bare count of what waits on Joel, or "nothing now", and
+  its note the sources holding something unread ("Mail, Slack");
   then its own
   rows, always there in this order: the time, the date, the location,
   the weather and the next meeting, with no Today to step into, each the
@@ -1407,7 +1408,11 @@ works the same way everywhere.
   (Joel, 2026-11-08: "Why would we not just have a single place to grab
   my attention from that grabs data from various sources?"). Sources
   plug in as Passwords' do, each giving items of one shape, so a new
-  source adds rows, never a place for him to watch. What waits on him
+  source adds rows, never a place for him to watch. A source raises one
+  item for each thing that happened, never one for each thing it found,
+  so nothing floods it: a password check finding fifteen logins is one
+  to-do, "Change the Passwords the Check Found", its side "3 breached ·
+  12 reused", Return opening Passwords' list of them. What waits on him
   leads, in one list by weight, heaviest first, so "the most critical
   stuff bubbles up": to-dos, what only he can do, each raised by the
   session that needs him through the one tool every session uses; looks,
@@ -1434,14 +1439,17 @@ works the same way everywhere.
   when ("merged 14:02", "read in Slack 14:02", "cleared by you 13:10"),
   and `/` finds any. A kind or a source is a step-in, never a mode:
   `:filter look` or `:filter slack` goes in, Tab completing the kinds and
-  sources present with their counts, the head says it ("For You › To
-  Look At"), and - comes back out. Every row has a drawer, "nerdy and
+  sources present, each with its mark, its name and its count, the head
+  names the kind by its noun ("For You › Looks", "› To-Dos", "› To
+  Try"), and - comes back out. Every row has a drawer, "nerdy and
   useful" (Joel, 2026-11-08): its why whole in the serif; Weight, as a
   figure and its parts ("82 · blocks 2 sessions · waiting 2 h · due
   15:00"), so he sees why it's where it is; Takes, Waiting Since, Last
   Checked and Clears When; its source's own facts (a pull request's
-  checks and lines, a mail's sender and labels); its quest and session;
-  identifiers last. Return on a look opens it in its own program; on a
+  checks and lines, a mail's sender and labels); its session, the quest
+  being the eyebrow's; identifiers last. Every moment in it reads as
+  When writes it, forward as back ("tomorrow 15:00"), one moment one
+  way. Return on a look opens it in its own program; on a
   to-do it steps in, where the first act is where it's done: Go To its
   window when it names one, else Deal With It, bringing its session
   forward with a prompt filled in and never sent; then Mark It Done, Put
@@ -1594,10 +1602,18 @@ works the same way everywhere.
   (what the cards carry In and Out now, the Connection as the shaper last
   measured it and how full it is, the Round Trip while it's quiet, each
   server a step in, what's Dropped, and each of the Connections, VPNs
-  too) and "uptime". The queue is Agents', beside the sessions whose
-  heavy work it holds, and "queue" finds it: each job named in words,
-  its time against its last run or what it waits for, and its quest and
-  memory below. The devices hold as much: "heat"
+  too), "warp" or "vpn" (WARP's State and why, the network's Health as
+  WARP judges it, its state alone at the side and its note saying it's
+  "WARP's measure" before the figures, so whose gives way last, its
+  Settings a step in, the Mode, Always On and Split
+  Tunnel first, each saying who set it, the tunnel's Round Trip and Loss
+  as WARP estimates them, its Protocol, Data Centre, Endpoint and Last
+  Handshake, its Traffic each way ("1.52 GB in · 312 MB out"), its TLS a
+  step in, and what its DNS proxy answered, each count a step in, listed
+  in Network after Speed where the system runs WARP) and "uptime". The
+  queue is Agents', beside the sessions whose heavy work it holds, and
+  "queue" finds it: each job named in words, its time against its last
+  run or what it waits for, and its quest and memory below. The devices hold as much: "heat"
   (each part against its critical point, the processor's Cores, the fans
   against what they're rated for, and how often it Throttled), Bluetooth
   (each device's Battery, Signal and Link Quality, Codec and Connection,
@@ -1845,6 +1861,36 @@ works the same way everywhere.
   Ctrl+C let it go, and any other key, or one in its first 300 ms, does
   nothing. :w [name] and :x save from anywhere, asking the same, and :w!
   saves over a name already there without asking.
+- **Google Drive is a folder among his own** (Joel's Mac mounted it for
+  every dialog, 2026-10-29: "i've used the folder a little bit but not a
+  lot"; here it comes through the google program's own sign-in, never a
+  client of its own, a mount or a second sign-in, 2026-11-07). Home lists
+  Google Drive after its own files, apart, and typing finds it from any
+  folder: My Drive, Shared with Me (not when saving, since another's
+  folder takes nothing of his) and Shared Drives once he's on one. Each
+  folder there lists as one here does, folders first, a row saying its
+  size and when it changed as a file here says them, a folder only when,
+  since Drive counts no folder's items; its plate's eyebrow says where it
+  is then its kind, as Drive's own drawer does ("in My Drive/Trips ·
+  PDF"), then its name, Size, Changed and Drive's Owner, with no
+  preview, since nothing is fetched to be looked at, and nothing Drive
+  doesn't give. Google's own kinds are the one row each is everywhere,
+  noted "as .docx", ".xlsx" or ".pptx", the file a program is handed,
+  its side saying when it changed, as every row in a folder does, and
+  left out where the program takes none of those (VKCF3Z, 2026-11-08). Return
+  fetches it and hands its path, the foot saying "Fetching it."; gx opens
+  it the same way in its own program, one of Google's own kinds by its
+  link in its program's window, never one that runs. A file fetched is
+  kept in the cache home's google/drive/<id>/<name>, as Drive last
+  changed it, so one asked again while Drive's modifiedTime holds is
+  never fetched twice, and past 2 GB the copies handed out longest ago
+  go. It's readable only, since nothing written to it goes back to Drive:
+  a program opening it says so rather than losing a change. Saving into
+  Drive is the picker's own save, never the cached copy: a name in My
+  Drive or a shared drive's folder is staged in the state home's
+  google/drive-saves and sent up once written, a new version of a file
+  this program made, and a notice says if Drive wouldn't take it, since
+  Joel's sign-in grants replacing only those.
 - **Ctrl+C copies the selected row.** Any row with a Copy inside copies
   it with Ctrl+C from wherever it's listed, without stepping in, as
   Ctrl+C copies everywhere else on the desktop; while text is selected

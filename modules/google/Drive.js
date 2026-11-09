@@ -82,27 +82,31 @@ function pickedAs(file) {
         : { name: file.name, mime: file.mime ?? "" };
 }
 
-// A Drive file or folder's row in the picker, as QGB4ON's chooser draws it
-// (open-with's FileChooser.qml): its key, name, what it says beside it
-// and its details. Beside a file are its size and when it changed; beside
-// one of Google's own kinds, what it comes as.
-function placed(file, now, said) {
+// A Drive file or folder's row in the picker, drawn as a folder here
+// draws one (open-with's FileChooser.qml, by FileFacts.js): its key, its
+// name, what a folder's read would say of it (`entry`: whether it's a
+// folder, its size and when it changed), and what more Drive says of it
+// (`facts`), its owner, after the Size, Changed and Where every file's
+// plate says. Drive says a size only of a file it holds as it is, and
+// counts no folder's items, so neither is said where it isn't given. One
+// of Google's own kinds is the row it is everywhere instead (asDocument),
+// noting what it comes as, since that's the file a program is handed.
+function placed(file) {
     const exported = EXPORTED[file.kind];
     const folder = file.kind === "folder";
-    // Drive says a size only of a file it holds as it is.
-    const size = typeof file.size === "number" ? Mail.weighed(file.size) : "";
-    const noted = exported ? [`as ${exported.ending}`]
-        : [size, file.changed ? Mail.came(file.changed, now, said) : ""];
-    const facts = [
-        { label: "Owner", value: file.owner ?? "" },
-        { label: "Changed", value: file.changed ? Mail.dated(file.changed, now, said) : "" },
-        { label: "Size", value: size }
-    ];
+    const entry = { name: file.name, folder };
+    if (typeof file.size === "number") {
+        entry.size = file.size;
+    }
+    if (typeof file.changed === "number") {
+        entry.modified = file.changed;
+    }
     return {
         key: folder ? `drive:folder:${file.id}` : `drive:${file.id}`,
         name: file.name,
-        note: noted.filter(part => part !== "").join(" \u00b7 "),
-        drawer: { title: file.name, facts: facts.filter(fact => fact.value !== ""), body: "" }
+        note: exported ? `as ${exported.ending}` : "",
+        entry,
+        facts: file.owner ? [{ label: "Owner", value: file.owner }] : []
     };
 }
 

@@ -15,6 +15,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import time
 from datetime import timedelta
@@ -790,6 +791,44 @@ def test_the_selection_is_drawn_on_its_row_as_rows_above_it_change(shell: Shell)
     assert not drift, f"the selection was drawn off its row: {drift}"
 
 
+def test_a_refresh_at_home_moves_neither_the_selection_nor_the_list(shell: Shell) -> None:
+    """A collection changing while home is shown leaves the selection and the list still.
+
+    Each refresh at home was composed afresh: the selection went to the first row, the list
+    to the top, and both were put back, under any glide already running, so the highlight
+    went its own way and the list stopped short of its first row (Joel, 2026-11-08).
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shown = shell.showing()
+    for _ in range(len(shown["rows"]) - 1 - shown["rows"].index(shown["selected"]["name"])):
+        shell.send_key("down")
+    shell.launcher_until(
+        lambda shown: (
+            shown["selected"]["name"] == shown["rows"][-1] and shown["selected"]["settled"]
+        )
+    )
+    before = laid_out(shell)
+    selected = shell.showing()["selected"]["name"]
+    since = shell.mark()
+    window = shell.opened("Refresh Under Home")
+    shell.reported("refreshed ", lambda _: True, since)
+    after = laid_out(shell)
+    said, _ = shell.said_since(since)
+    now = shell.showing()["selected"]["name"]
+    shell.close_launcher()
+    shell.close(window)
+    glided = [report for report in said if report.startswith("glides ")]
+    assert not glided, f"the selection glided with no key: {glided}"
+    assert now == selected, f"the selection moved from {selected!r} to {now!r}"
+    assert after["selection"]["y"] == after["selection"]["row"], (
+        f"the selection was drawn off its row: {after['selection']}"
+    )
+    assert after["firstAt"] == before["firstAt"], (
+        f"the list moved from {before['firstAt']} to {after['firstAt']}"
+    )
+
+
 def test_a_name_too_long_for_its_row_reads_on_while_selected(shell: Shell) -> None:
     """A name too long for its row slides to show its end while selected, and only it moves."""
     title = (
@@ -1135,6 +1174,46 @@ def test_a_terminal_does_an_act_unasked_and_an_ending_one_once_sure(shell: Shell
         for window in (kestrel, plover):
             if listed(window["title"]) is not None:
                 shell.close(window)
+
+
+def reading(shown: Json, start: str) -> str:
+    """Give how the first row starting so reads whole, or nothing."""
+    reads = [str(thing["reads"]) for thing in shown["things"]]
+    return next((read for read in reads if read.startswith(start)), "")
+
+
+def test_warp_says_how_its_link_stands_in_network_and_when_it_isnt_answering(
+    shell: Shell,
+) -> None:
+    """WARP says how its link stands in Network after Speed, and a service down not answering.
+
+    The shell runs the real warp, given the check's stand-in for warp-cli, which answers with
+    the contract's files as they're written here (tests/warp-cli-stand-in.sh). What each
+    figure reads as, a step in, is tests/answers.qml's, over the record warp prints.
+    """
+    said = Path(os.environ["HOME"]) / "warp-cli"
+    contract = Path(os.environ["WARP_CONTRACT"])
+    said.mkdir()
+    for question in ("status", "tunnel-stats", "settings", "dns-stats"):
+        shutil.copyfile(contract / f"{question}.json", said / f"{question}.json")
+    try:
+        # Network holds it after Speed, saying how its link stands.
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        shell.send_chars("network ")
+        stands = "WARP \u00b7 connected \u00b7 127 ms \u00b7 answer"
+        shell.launcher_until(lambda shown: reading(shown, "WARP") == stands)
+        rows = shell.showing()["rows"]
+        assert rows.index("WARP") == rows.index("Speed") + 1, rows
+        shell.close_launcher()
+        # Its service gone, WARP says so in its place, as "vpn" asks it too.
+        (said / "status.json").unlink()
+        shutil.copyfile(contract / "daemon-down.json", said / "status.error.json")
+        shell.answer("vpn")
+        shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "not answering")
+        shell.close_launcher()
+    finally:
+        shutil.rmtree(said)
 
 
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:

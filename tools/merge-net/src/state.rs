@@ -13,6 +13,8 @@
 //! - `findings/`: a file for each failure, for a session to tell its owner.
 //! - `logs/`: each run's log, and the net's own in `net.log`.
 //! - `core/`: the net's own checkout of the repository it watches.
+//! - `drv/`: the derivation each check builds at a commit, named
+//!   `<commit>-<check>`, so a search evaluates each once.
 //! - `pause`: while it's there, the net starts nothing.
 
 use std::fs;

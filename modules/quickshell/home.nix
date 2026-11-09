@@ -251,6 +251,7 @@ let
     "launcher/HomeNetworkHistory.js"
     "launcher/Cameras.js"
     "launcher/Firmware.js"
+    "launcher/Warp.js"
     "launcher/Interfaces.js"
     "launcher/Networkd.js"
     "launcher/WifiLink.js"
@@ -300,6 +301,7 @@ let
     "launcher/Program.js"
     "launcher/Captured.js"
     "launcher/NeedsYou.js"
+    "launcher/Here.js"
     "launcher/Notice.js"
   ];
 
@@ -708,6 +710,7 @@ let
     traffic = ./launcher/Traffic.qml;
     waits = ./launcher/Waits.qml;
     firmware = ./launcher/Firmware.qml;
+    warp = ./launcher/Warp.qml;
     today = ./launcher/Today.qml;
     light = ./launcher/Light.qml;
     keyboards = ./launcher/Keyboards.qml;
@@ -720,6 +723,7 @@ let
     wifi = ./launcher/Wireless.qml;
     eero = ./launcher/HomeNetwork.qml;
     sound = ./launcher/Sound.qml;
+    media = ./launcher/Players.qml;
     bluetooth = ./launcher/Accessories.qml;
     displays = ./launcher/Displays.qml;
     capture = ./launcher/Capture.qml;
@@ -749,6 +753,12 @@ let
 
   # The program that hears every copy, for the clipboard collection.
   clipboardHistory = pkgs.callPackage ./clipboard/package.nix { };
+
+  # The package the system installs warp-cli by, WARP's own client, found by
+  # the program it says it is, or null where the system installs none.
+  systemWarpCli = lib.findFirst (
+    package: lib.isDerivation package && (package.meta.mainProgram or "") == "warp-cli"
+  ) null (osConfig.environment.systemPackages or [ ]);
   keepsCopies = launcher.providers.clipboard.enable or false;
 
   # The program that says where the laptop is, for the weather's here. It
@@ -1427,6 +1437,16 @@ in
           else
             "";
       };
+      # How WARP's link stands, from warp (modules/warp) asking the warp-cli
+      # the system installs, only where it installs one, so a machine without
+      # WARP has no WARP in Network.
+      warp = {
+        order = 89;
+        source = "warp";
+        enable = systemWarpCli != null;
+        warp = lib.getExe (pkgs.callPackage ../warp/package.nix { });
+        warpCli = if systemWarpCli != null then lib.getExe systemWarpCli else "";
+      };
       # The date's week, day of the year, UTC, zone and epoch.
       today = {
         order = 97;
@@ -1471,6 +1491,13 @@ in
         # What reads a card's ports, and what moves one onto another.
         pwDump = lib.getExe' pkgs.pipewire "pw-dump";
         wpctl = lib.getExe' pkgs.wireplumber "wpctl";
+      };
+      # Every media player and what it plays, beside Sound, which holds the
+      # devices it plays through.
+      media = {
+        order = 103;
+        source = "media";
+        weight = 0.9;
       };
       # The headphones, mice and keyboards paired or around, and turning
       # Bluetooth off as an action.

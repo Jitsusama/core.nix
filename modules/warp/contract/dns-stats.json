@@ -1,0 +1,9 @@
+{
+  "dns_proxy_enabled": true,
+  "avg_duration_millis": 134.08333333333334,
+  "timed_out": 0,
+  "no_records_found": 4,
+  "other_error": 0,
+  "success": 8,
+  "total": 12
+}

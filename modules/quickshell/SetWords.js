@@ -8,6 +8,11 @@
 
 const space = /\s/;
 const number = /^[0-9]+$/;
+// A place in time given as a clock, m:ss or h:mm:ss, as a track's position
+// is (`clock` options, the Media place's position=1:30).
+const clockTime = /^(?:([0-9]+):)?([0-9]+):([0-5][0-9])$/;
+const MINUTE = 60;
+const HOUR = 3600;
 
 // :set's words, split at spaces as Vim splits them, a backslash keeping
 // the letter after it, so :set wifi=Home\ 5G names one network.
@@ -77,13 +82,16 @@ function setValue(word, read) {
 // stepped (`stepsOnly`), as a board's lights that take no level.
 function setNumber(word, read, invalid) {
     const { name, how, value, option } = read;
-    if (!number.test(value)) {
+    const clock = option.clock === true ? clockTime.exec(value) : null;
+    if (!(number.test(value) || clock)) {
         return { error: `E521: Number required after =: ${word}` };
     }
     if (how === "=" && option.stepsOnly) {
         return invalid;
     }
-    const by = Number(value);
+    const by = clock
+        ? Number(clock[1] ?? 0) * HOUR + Number(clock[2]) * MINUTE + Number(clock[3])
+        : Number(value);
     if (how === "=" && (by < (option.least ?? 0) || by > (option.most ?? by))) {
         return invalid;
     }

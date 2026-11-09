@@ -35,9 +35,9 @@
   pkgs,
   area,
   gallery ? false,
-  # The screen's size in pixels. Every area but looks and looks-machine
-  # keeps the one its pictures were taken on; those two have the laptop's,
-  # so the launcher and its drawer fit at both of Joel's scales.
+  # The screen's size in pixels. Every area but looks, looks-machine and
+  # looks-programs keeps the one its pictures were taken on; those have the
+  # laptop's, so the launcher and its drawer fit at both of Joel's scales.
   screen ? {
     width = 1280;
     height = 800;
@@ -57,9 +57,13 @@ let
   # and its two lists read from files the test writes, in chrome-recent-sites'
   # form, since no browser runs here.
   bringsChrome = area == "opens-files";
-  # The area whose launcher lists VMs, as a workstation's does
-  # (modules/libvirt/home.nix): what the machine has to open and set.
-  listsMachines = area == "opens-and-sets";
+  # The areas whose launcher lists VMs, as a workstation's does
+  # (modules/libvirt/home.nix): what the machine has to open and set, and
+  # looks-programs, which shoots them.
+  listsMachines = builtins.elem area [
+    "opens-and-sets"
+    "looks-programs"
+  ];
   # The areas that show pi's sessions, whose machine runs the realm's
   # mycelium node, as a workstation does, since the shell knows sessions
   # from the node alone. It links nothing, so it needs no key.
@@ -200,10 +204,13 @@ let
     doCheck = false;
   } (builtins.readFile ./desktop/stand-in-slack.py);
 
-  # The area that walks Passwords, whose 1Password's manager asks a
-  # stand-in for 1Password's command, op, since no 1Password account signs
-  # in here (desktop/op-stand-in.sh).
-  walksPasswords = area == "launcher-goes-places";
+  # The areas that walk Passwords, and looks-programs, which shoots it,
+  # whose 1Password's manager asks a stand-in for 1Password's command, op,
+  # since no 1Password account signs in here (desktop/op-stand-in.sh).
+  walksPasswords = builtins.elem area [
+    "launcher-goes-places"
+    "looks-programs"
+  ];
   standInOp = pkgs.writeShellScript "op" ''
     PATH=${pkgs.coreutils}/bin exec ${pkgs.lib.getExe pkgs.bash} ${./desktop/op-stand-in.sh} "$@"
   '';
@@ -356,6 +363,17 @@ let
 
   # pi, as the launcher opens it, since the VM has no pi.
   piStandIn = import ./pi-stand-in.nix { inherit pkgs; };
+
+  # spotify-recent signed in, as the-launcher-plays-from-spotify stands it
+  # in (spotify-recent-stand-in.sh), for looks-programs to shoot Spotify's page;
+  # with a show kept, so Podcasts holds one.
+  spotifyStandIn = pkgs.writeShellScript "spotify-recent" ''
+    if [ "''${1:-}" = shows ]; then
+      printf 'spotify:show:s1\tshow\tThe Show\tA Publisher\t\t1212\n'
+      exit
+    fi
+    PATH=${pkgs.coreutils}/bin exec ${pkgs.lib.getExe pkgs.bash} ${./spotify-recent-stand-in.sh} well "$@"
+  '';
 in
 import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "desktop-${area}${pkgs.lib.optionalString gallery "-gallery"}";
@@ -857,6 +875,10 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         systemd.user.services.stand-in-collector = lib.mkIf (area == "launcher-goes-places") {
           Service.ExecStart = "${standInCollector}";
         };
+        # Spotify signed in where looks-programs shoots its page.
+        jitsusama.quickshell.launcher.providers.spotify-program.command = lib.mkIf (
+          area == "looks-programs"
+        ) (lib.mkForce [ "${spotifyStandIn}" ]);
         jitsusama.google.window = [
           "${googleWindow}"
           "%u"
@@ -926,6 +948,19 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         jitsusama.quickshell.launcher.providers.firmware = {
           enable = lib.mkForce true;
           fwupdmgr = lib.mkForce "${standInFwupdmgr}";
+        };
+        # WARP's warp-cli isn't in the VM, so where its looks are shot a
+        # stand-in answers with what the test writes, as the contract's files
+        # say it (warp-cli-stand-in.sh), the real warp reading it.
+        jitsusama.quickshell.launcher.providers.warp = lib.mkIf (area == "looks") {
+          enable = lib.mkForce true;
+          warpCli = lib.mkForce (
+            toString (
+              pkgs.writeShellScript "warp-cli" ''
+                PATH=${pkgs.coreutils}/bin exec ${lib.getExe pkgs.bash} ${./warp-cli-stand-in.sh} "$@"
+              ''
+            )
+          );
         };
         # The Ask row's model would need the network and an account.
         jitsusama.quickshell.launcher.providers.ask = {
@@ -1100,9 +1135,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           # BlueZ's emulator, for the looks area to hear a device in Nearby
           # by: two controllers of the machine's own, each seen as Buds, so
           # whichever the launcher looks from hears the other. Only there, so
-          # no other area's test moves with it.
+          # no other area's test moves with it. WARP's contract is there too,
+          # for the stand-in warp-cli to answer with.
           // pkgs.lib.optionalAttrs (area == "looks") {
             btvirt = "${import ./btvirt.nix { inherit pkgs; }}/bin/btvirt";
+            warp_contract = "${../modules/warp/contract}";
           }
         )
       );

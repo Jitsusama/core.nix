@@ -116,18 +116,23 @@ let
       root ? null,
       # What more the command runs, besides niri, the shell and a bus.
       inputs ? [ ],
+      # What more the account's shell is given, as a stand-in for a program.
+      shell ? { },
     }:
     let
       home = account (bareNixos [
         self.nixosModules.graphical
         {
-          home-manager.users.someone.jitsusama.quickshell = {
-            reports = true;
-            notices.away = away;
-            # A caret that holds still, as the desktop test's does, so a
-            # launcher left still draws nothing.
-            caret.fade = 0;
-          };
+          home-manager.users.someone.jitsusama.quickshell = lib.mkMerge [
+            {
+              reports = true;
+              notices.away = away;
+              # A caret that holds still, as the desktop test's does, so a
+              # launcher left still draws nothing.
+              caret.fade = 0;
+            }
+            shell
+          ];
         }
       ]);
       # The shell, niri's configuration, and the theme the shell reads its
@@ -227,6 +232,7 @@ let
       name,
       tests,
       given ? [ ],
+      shell ? { },
     }:
     let
       python = pkgs.python3.withPackages (python: [ python.pytest ]);
@@ -236,7 +242,7 @@ let
       '';
     in
     shellOnNiri {
-      inherit name;
+      inherit name shell;
       # Away only after an hour, since nobody types here but the check.
       away = 3600;
       # foot gives the launcher windows to find, drawn without a GPU, and
@@ -299,7 +305,9 @@ onLinux {
   # vi's keys, on the account's whole shell on niri, in seconds rather than
   # a machine's minutes (tests/launcher-on-niri-test.py). Its meanings come
   # from the meaning daemon's stand-in, which loads no model
-  # (tests/desktop/stand-in-meaning.py).
+  # (tests/desktop/stand-in-meaning.py). WARP stands in as warp-cli
+  # answering from the files a test writes, the real warp reading them
+  # (tests/warp-cli-stand-in.sh).
   the-launcher-answers-whats-typed-on-niri = launcherOnNiri {
     name = "the-launcher-answers-whats-typed-on-niri";
     tests = ../../tests/launcher-on-niri-test.py;
@@ -309,7 +317,16 @@ onLinux {
           doCheck = false;
         } (builtins.readFile ../../tests/desktop/stand-in-meaning.py)
       }"
+      "WARP_CONTRACT=${../warp/contract}"
     ];
+    shell.launcher.providers.warp = {
+      enable = true;
+      warpCli = toString (
+        pkgs.writeShellScript "warp-cli" ''
+          exec ${lib.getExe pkgs.bash} ${../../tests/warp-cli-stand-in.sh} "$@"
+        ''
+      );
+    };
   };
 
   # An agent's row does, on Return, the act its state makes harmless, its
@@ -959,7 +976,9 @@ onLinux {
 
   # A file in the launcher's chooser of files says its size and when it
   # changed as VKCF3Z set them, and its plate its kind, preview and facts,
-  # as tests/file-facts.qml holds FileFacts.js to it in Qt's own engine.
+  # one kept elsewhere, as in Google Drive, alike from what its place
+  # listed, as tests/file-facts.qml holds FileFacts.js to it in Qt's own
+  # engine.
   a-file-says-its-size-and-when-it-changed =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -1276,8 +1295,10 @@ onLinux {
   # the keyboards in the kernel's list of input devices, how each Bluetooth
   # link is doing from what bluetooth-links writes, what Sound makes of a
   # sound device's properties, the machine's connections from what ip, the
-  # routing tables, resolv.conf and iw say, as tests/answers.qml lists them,
-  # and leaves alone what isn't one, in Qt's own JavaScript engine.
+  # routing tables, resolv.conf and iw say, and how WARP's link stands from
+  # the record warp prints (modules/warp/warp.json), as tests/answers.qml
+  # lists them, and leaves alone what isn't one, in Qt's own JavaScript
+  # engine.
   the-launcher-answers-what-is-asked =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -1294,6 +1315,7 @@ onLinux {
       cp ${./launcher/Moment.js} Moment.js
       cp ${./launcher/Keeping.js} Keeping.js
       cp ${./launcher/Warmth.js} Warmth.js
+      cp ${./launcher/Here.js} Here.js
       cp ${./launcher/Colours.js} Colours.js
       cp ${./launcher/Asking.js} Asking.js
       cp ${./launcher/Machine.js} Machine.js
@@ -1308,6 +1330,11 @@ onLinux {
       cp ${./launcher/Sounds.js} Sounds.js
       cp ${./launcher/Cameras.js} Cameras.js
       cp ${./launcher/Firmware.js} Firmware.js
+      cp ${./launcher/Warp.js} Warp.js
+      cp ${./launcher/HomeNetwork.js} HomeNetwork.js
+      cp ${./launcher/Ago.js} Ago.js
+      cp ${./launcher/words.json} words.json
+      cp ${../warp/warp.json} warp.json
       cp ${./launcher/Keyboards.js} Keyboards.js
       cp ${./launcher/KeyCounts.js} KeyCounts.js
       cp ${./launcher/Order.js} Order.js
@@ -1851,6 +1878,8 @@ onLinux {
       cp ${./launcher/Order.js} launcher/Order.js
       cp ${./launcher/ForYou.js} launcher/ForYou.js
       cp ${./launcher/Ago.js} launcher/Ago.js
+      cp ${./launcher/Here.js} launcher/Here.js
+      cp ${./When.js} When.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/now-moment.qml} shell.qml
@@ -1862,8 +1891,9 @@ onLinux {
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export PATH=${timedatectl}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
-      echo '{"v":2,"latitude":43.6748,"longitude":-79.3794,"accuracy":26000,'\
-      '"when":1790000000,"place":"Lighthouse, Ontario","zone":"America/Toronto"}' \
+      echo '{"v":2,"latitude":12.3457,"longitude":-98.7654,"accuracy":26000,'\
+      '"when":1790000000,"place":"Lighthouse, Ontario","zone":"America/Toronto",'\
+      '"country":"Canada"}' \
         > $XDG_RUNTIME_DIR/whereabouts.json
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -3468,6 +3498,7 @@ onLinux {
       mkdir launcher
       cp ${../../tests/program-drawer.qml} program-drawer.qml
       cp ${./launcher/Program.js} launcher/Program.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./FileFacts.js} FileFacts.js
       cp ${./When.js} When.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

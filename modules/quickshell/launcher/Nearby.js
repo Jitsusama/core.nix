@@ -10,6 +10,7 @@
 // `name`, `deviceName`, the name it gave itself, and `rssi`, in dBm, 0 when
 // it hasn't been heard since discovery last stopped.
 .pragma library
+.import "Order.js" as Order
 
 // A device's signal in dBm, from one too faint to hold to one beside the
 // machine, for its bar: as Links.js draws a Low Energy link's.
@@ -55,33 +56,38 @@ const SPACED = /[-_]/g;
 const CAPITAL = /([A-Z])/g;
 const STOP = /\.$/;
 
+// Devices are live states (Order.live), and each heard stands alike here,
+// one Joel might pair, so the strongest heard comes first.
+const strongest = Order.live({
+    stands: () => 0,
+    // biome-ignore lint/suspicious/noThenProperty: Order.live's next measure, not a promise's.
+    then: (a, b) => b.rssi - a.rssi,
+    name: device => device.name
+});
+
 function isHeard(device) {
     return typeof device.rssi === "number" && device.rssi !== 0;
 }
 
 // The devices Nearby lists: every one heard since discovery began,
-// strongest first, then by name. The launcher keeps a list shown in the
-// order it was shown as they move (Steady.js), so this orders only its
-// first look and where a new one would go. A device that never said its
-// name is left out, as nothing could find it and Joel couldn't tell it
-// from the next.
+// strongest first, then A to Z, those alike in both in the order BlueZ
+// gave them. The launcher keeps a list shown in the order it was shown
+// as they move (Steady.js), so this orders only its first look and where
+// a new one would go. A device that never said its name is left out, as
+// nothing could find it and Joel couldn't tell it from the next.
 function heard(devices) {
-    return devices.filter(device => isHeard(device) && isNamed(device)).sort(strongest);
+    return Order.sorted(devices.filter(device => isHeard(device) && isNamed(device)), strongest);
 }
 
 // Those heard that never said their names, strongest first, which Nearby
 // counts after the rest rather than hiding, and lists by their addresses
 // only when asked, as BlueZ names them.
 function nameless(devices) {
-    return devices.filter(device => isHeard(device) && !isNamed(device)).sort(strongest);
+    return Order.sorted(devices.filter(device => isHeard(device) && !isNamed(device)), strongest);
 }
 
 function isNamed(device) {
     return (device.deviceName ?? "") !== "";
-}
-
-function strongest(a, b) {
-    return b.rssi - a.rssi || a.name.localeCompare(b.name);
 }
 
 // A device's signal as words say it, in dBm with a real minus.

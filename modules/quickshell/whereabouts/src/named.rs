@@ -22,11 +22,12 @@ const USER_AGENT: &str = "whereabouts (core.nix, the launcher's here)";
 /// How long either may take before here goes unnamed for now.
 const PATIENCE: Duration = Duration::from_secs(10);
 
-/// The name and the zone of a position, either missing when its service
-/// couldn't be reached or didn't know.
+/// The name, the country and the zone of a position, each missing when its
+/// service couldn't be reached or didn't know.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Named {
     pub place: Option<String>,
+    pub country: Option<String>,
     pub zone: Option<String>,
 }
 
@@ -36,8 +37,11 @@ pub async fn name(latitude: f64, longitude: f64) -> Named {
     let (latitude, longitude) = (hundredths(latitude), hundredths(longitude));
     tokio::task::spawn_blocking(move || {
         let agent = agent();
+        // The place and its country are one answer of Nominatim's.
+        let placed = asked(&agent, &place_url(latitude, longitude));
         Named {
-            place: asked(&agent, &place_url(latitude, longitude)).and_then(|said| place(&said)),
+            place: placed.as_ref().and_then(place),
+            country: placed.as_ref().and_then(country),
             zone: asked(&agent, &zone_url(latitude, longitude)).and_then(|said| zone(&said)),
         }
     })
@@ -51,6 +55,7 @@ pub struct Found {
     pub latitude: f64,
     pub longitude: f64,
     pub place: String,
+    pub country: Option<String>,
     pub zone: Option<String>,
 }
 
@@ -101,6 +106,7 @@ pub fn found(said: &Value) -> Option<Found> {
             Some(state) if state != town => format!("{town}, {state}"),
             _ => town.to_owned(),
         },
+        country: text("country").map(str::to_owned),
         zone: zone(first),
     })
 }
@@ -167,6 +173,16 @@ pub fn place(said: &Value) -> Option<String> {
     })
 }
 
+/// The country Nominatim says the position is in, "Canada", as English
+/// names it, since the place is asked in English.
+pub fn country(said: &Value) -> Option<String> {
+    said.get("address")?
+        .get("country")
+        .and_then(Value::as_str)
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned)
+}
+
 /// The zone Open-Meteo says the position keeps, "America/Toronto".
 pub fn zone(said: &Value) -> Option<String> {
     said.get("timezone")
@@ -203,6 +219,15 @@ mod tests {
     }
 
     #[test]
+    fn a_place_is_in_the_country_nominatim_says() {
+        let said =
+            json!({"address": {"city": "Lighthouse", "state": "Ontario", "country": "Canada"}});
+        assert_eq!(country(&said).as_deref(), Some("Canada"));
+        assert_eq!(country(&json!({"address": {"city": "Cove"}})), None);
+        assert_eq!(country(&json!({"address": {"country": ""}})), None);
+    }
+
+    #[test]
     fn nowhere_named_is_no_place() {
         assert_eq!(place(&json!({"error": "Unable to geocode"})), None);
         assert_eq!(place(&json!({"address": {"country": "Canada"}})), None);
@@ -223,16 +248,17 @@ mod tests {
     #[test]
     fn a_place_named_is_its_first_answer() {
         let said = json!({"results": [
-            {"name": "Lighthouse", "latitude": 51.05, "longitude": -114.07,
-             "admin1": "Alberta", "timezone": "America/Edmonton"},
+            {"name": "Lighthouse", "latitude": 52.34, "longitude": -115.67,
+             "admin1": "Alberta", "country": "Canada", "timezone": "America/Edmonton"},
             {"name": "Lighthouse", "latitude": 1.0, "longitude": 2.0, "admin1": "Elsewhere"}
         ]});
         assert_eq!(
             found(&said),
             Some(Found {
-                latitude: 51.05,
-                longitude: -114.07,
+                latitude: 52.34,
+                longitude: -115.67,
                 place: "Lighthouse, Alberta".into(),
+                country: Some("Canada".into()),
                 zone: Some("America/Edmonton".into()),
             })
         );

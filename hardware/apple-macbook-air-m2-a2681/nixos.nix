@@ -5,7 +5,8 @@
 # built by core: its kernel (kernel/), with a screen on the front-left port;
 # its boot chain (boot/); the firmware for Wi-Fi, Bluetooth and the camera,
 # which Asahi's installer takes from macOS (modules/asahi-firmware); and
-# its speakers (modules/asahi-audio). It has no TPM and no Secure Boot a
+# its speakers (modules/asahi-audio); and the tools that pick macOS as the
+# next start (modules/asahi-nvram). It has no TPM and no Secure Boot a
 # Linux system can use. docs/hardware.md says what works and what's left.
 # What kernel/ and boot/ take from nixos-apple-silicon comes under its MIT
 # notice, LICENSE.nixos-apple-silicon.
@@ -15,6 +16,7 @@
   imports = [
     ../../modules/asahi-audio/nixos.nix
     ../../modules/asahi-firmware/nixos.nix
+    ../../modules/asahi-nvram/nixos.nix
     ../../modules/firmware-settings/nixos.nix
     ./boot/nixos.nix
     ./kernel/nixos.nix

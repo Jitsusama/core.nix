@@ -206,6 +206,18 @@ QtObject {
             brow({ eyebrow: "", eyebrowItems: pathed }, 200) === "in ~/\u2026/Screenshots",
             brow({ eyebrow: "", eyebrowItems: pathed }, 200));
         expect("no eyebrow, nothing", brow(null, 300) === "", brow(null, 300));
+        // An item naming a file gives it way from its middle too, its start
+        // and its extension kept, a letter at a time (VKCF3Z, 2026-11-08).
+        const filed = [{ said: "Nightwish", keep: 1 },
+            { said: "second-take.mp3", keep: 2, file: "second-take.mp3" }];
+        const filedIn = room => Reading.wholeItems(filed, room, width);
+        expect("a file whole where it fits",
+            filedIn(270) === "Nightwish \u00b7 second-take.mp3", filedIn(270));
+        expect("the artist first", filedIn(200) === "second-take.mp3", filedIn(200));
+        expect("then the file from its middle", filedIn(120) === "seco\u2026ake.mp3",
+            filedIn(120));
+        expect("down to a letter and its extension", filedIn(30) === "s\u2026.mp3",
+            filedIn(30));
         // Styled, the kept items keep their words and take a dot in the
         // colour given between them, so a selected agent row reads
         // "working \u00b7 $4.20" with its dot muted (VKCF3Z, 2026-11-06), and

@@ -33,7 +33,8 @@
 // its own and its sessions'. Those closed stand at the tree's end,
 // dimmed, the one last live first, and Return reopens one where it left
 // off (VKCF3Z, 2026-11-07 [9a4b1dd0]), so the tree is the one place an
-// orchestrator is listed.
+// orchestrator is listed. After the tree, Budgets steps in to how each
+// budget the sessions draw on stands, as AI spend lists them.
 import qs
 import Quickshell
 import QtQuick
@@ -908,10 +909,39 @@ Provider {
         });
     }
 
+    // What each budget the sessions draw on stands at, after the tree:
+    // AI spend's own Budgets row (Spend.qml), so its order, its words and
+    // its drawers are the ones AI spend shows, never worked out twice. A
+    // step in, All AI Spend in billed dollars first, then each budget
+    // nearest its limit first, as spend-watch orders them, a budget with
+    // windows stepping in to a row for each, and every one opening the
+    // drawer AI spend's opens (SpendDrawer.js). Its glyph is AI spend's
+    // row's, wearing the nearest budget's warning, so it reads as the
+    // same thing rather than as a session. None where AI spend
+    // lists no budgets: with one budget, which its periods already say,
+    // with no spend-watch, or while the screen is shared, when AI spend
+    // lists only what holds no amount (KP0L6A, 2026-11-08 [f566a31a]).
+    readonly property var budgets: {
+        const spent = (source("spend")?.everything() ?? [])
+            .find(row => row.key === "spend:budgets") ?? null;
+        if (spent === null)
+            return null;
+        return Object.assign(thingRow({
+            key: "agents:budgets",
+            name: Words.name("agents:budgets"),
+            side: spent.side,
+            glyph: spent.glyph,
+            hue: spent.hue
+        }, spent.verbs), {
+            ask: "which?"
+        });
+    }
+
     things: [toReopen, landed].filter(row => row !== null).concat([recent, start])
 
     function everything() {
-        return all.concat([toReopen, landed].filter(row => row !== null), [recent, start]);
+        return all.concat(budgets === null ? [] : [budgets],
+            [toReopen, landed].filter(row => row !== null), [recent, start]);
     }
 
     // How every session stands, running and parked, read from Sessions

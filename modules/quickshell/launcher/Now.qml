@@ -29,6 +29,8 @@ import "NowGroups.js" as Groups
 import "Order.js" as Order
 import "Moment.js" as Moment
 import "NeedsYou.js" as NeedsYou
+import "Here.js" as Here
+import "../When.js" as When
 
 Provider {
     id: provider
@@ -189,35 +191,45 @@ Provider {
     // position, and how sure it is, saying so where the place keeps another
     // zone than the clock. Inside, in the design's order (VKCF3Z's design,
     // "Location. Inside: Town, How It Knows, Set It by Hand, Find It Again,
-    // Copy"): its town, how it knows, setting it by hand and finding it
-    // again, and Copy, of its position, last. Found by typing its name too,
-    // since Now is its home. The zone, and Put It Back after the clock
-    // followed it, are Time's (Clocks.qml), since the zone is the clock's.
+    // Copy"): its town and its country, how it knows and when it was
+    // located, setting it by hand and finding it again, and Copy, of its
+    // position, last. Its plate says when, how near, where on a map, its
+    // country and its zone (Here.js; VKCF3Z, 2026-11-08). Found by typing
+    // its name too, since Now is its home. Put It Back after the clock
+    // followed it is Time's (Clocks.qml), since the zone is the clock's.
+    //
+    // GeoClue's altitude, speed and heading are left out: found from the
+    // Wi-Fi networks in reach, as it is here, it gives none of them, only
+    // its "unknown" values. The plate says so, as design.md has what's
+    // left out named on screen with its reason.
     readonly property var location: {
         const here = Location.here;
         const position = here ? `${here.latitude.toFixed(2)}, ${here.longitude.toFixed(2)}` : "";
         // A place Joel set himself says so, since GeoClue no longer moves it.
         const byHand = here?.hand === true;
-        const within = !here ? "" : byHand ? "set by hand"
-            : `within ${Math.ceil(here.accuracy / 1000)} km`;
-        const side = here ? here.place ?? position : Location.read ? "unknown" : "\u2026";
+        const said = hereSaid;
+        const within = !here ? "" : byHand ? said.hand : Here.within(here.accuracy, said, hereTold);
+        const side = here ? here.place ?? position : Location.read ? said.unknown : "\u2026";
         const differs = Location.zoneDiffers;
-        // Said plainly where it's unknown, never guessed.
-        const elsewhere = differs ? `it keeps ${here.zone}, not the clock's ${Location.clockZone}`
-            : "";
-        const note = !here ? (Location.read ? "GeoClue hasn't found the laptop yet" : "")
-            : differs ? elsewhere : byHand ? within : `${within}, found through GeoClue`;
+        // Said plainly where it's unknown, never guessed, as a run that
+        // gives way by whole items: the zone it keeps, then that the
+        // clock isn't following it.
+        const elsewhere = differs ? said.elsewhere.replace("{zone}", here.zone) : "";
+        const note = !here ? (Location.read ? said.unfound : "")
+            : differs ? elsewhere : byHand ? within : said.found.replace("{within}", within);
+        const now = clock.date.getTime();
         const inside = () => {
-            const rows = [copyRow({
-                key: "location:town",
-                name: Words.name("location:town"),
-                side: !here ? side : here.place ?? "not named yet"
-            }), copyRow({
-                key: "location:knows",
-                name: Words.name("location:knows"),
-                side: !here ? "not found yet" : byHand ? "set by hand"
-                    : `GeoClue, ${within}`
-            })];
+            const figure = (id, value) => copyRow({
+                key: `location:${id}`,
+                name: Words.name(`location:${id}`),
+                side: value
+            });
+            const rows = [figure("town", !here ? side : here.place ?? said.unnamed)]
+                .concat(here?.country ? [figure("country", here.country)] : [])
+                .concat([figure("knows", !here ? said.notFound : byHand ? said.hand
+                    : said.knows.replace("{within}", within))])
+                .concat(here ? [figure("located", Here.located(here.when, now, hereTold))]
+                    : []);
             // Where GeoClue can't find the laptop, or finds it wrong, Joel
             // names its town, and asks GeoClue again once he's moved on.
             rows.push(thing({
@@ -256,15 +268,45 @@ Provider {
                 }));
             return rows;
         };
-        return thingRow({
+        // Its plate: how it was found, then its kind, as an eyebrow says
+        // where then what, and what of it the side doesn't say; with
+        // nothing found, none.
+        const plate = !here ? null : () => ({
+            eyebrow: byHand ? hereSaid.viaHand : hereSaid.via,
+            eyebrowNames: true,
+            // Its town, the place's first part, as the plate names the
+            // thing it's about.
+            title: (here.place ?? "").split(",")[0] || Words.name("location"),
+            facts: Here.facts(here, now, hereSaid, hereTold).map(fact => ({
+                label: Words.name(`location:${fact.id}`),
+                value: fact.value,
+                identifies: fact.identifies === true
+            })),
+            // What GeoClue can't say of a place found by Wi-Fi, and why.
+            body: byHand ? "" : Words.of("location").tells?.leftOut ?? ""
+        });
+        return thingRow(Object.assign({
             key: "on:location",
             name: Words.name("location"),
             side: side,
             note: note,
             hue: differs ? "strong" : "voice",
             glyph: Theme.glyph.location
-        }, inside);
+        }, plate ? { thing: true, drawer: plate } : {}), inside);
     }
+
+    // How Location says a time, a day and how long ago, as the launcher
+    // says them everywhere.
+    readonly property var hereSaid: Words.of("location").said ?? {}
+    readonly property var hereTold: ({
+        ago: (at, now) => Ago.ago(at, now),
+        day: (at, now) => When.day(at, now, {
+            yesterday: provider.hereSaid.yesterday ?? "",
+            date: (date, format) => Qt.formatDate(date, format)
+        }),
+        clock: at => Qt.formatDateTime(new Date(at), "HH:mm"),
+        number: (value, decimals) => Qt.locale().toString(value, "f", decimals)
+    })
 
     // Made again as the clock turns a minute, so the time says it.
     readonly property var moment: {
@@ -298,7 +340,7 @@ Provider {
         const starts = String(meeting?.side ?? "").match(/\d{1,2}:\d\d/);
         const here = Location.here;
         const how = !here ? "" : here.hand === true ? said("byHand")
-            : said("within").replace("{km}", String(Math.ceil(here.accuracy / 1000)));
+            : Here.within(here.accuracy, hereSaid, hereTold);
         // How the clock is kept, in Time's word for it (Clocks.qml), and
         // how far off it was at the last poll, signed, as Time says it.
         const time = source("time");

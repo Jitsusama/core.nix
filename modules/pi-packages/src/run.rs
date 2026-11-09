@@ -1,11 +1,33 @@
-//! One update of every package, each under its own lock.
+//! One update of every package, each under its own lock, swapping at
+//! most once an hour.
 
 use std::fs::{self, File, TryLockError};
-use std::time::SystemTime;
+use std::path::PathBuf;
+use std::time::{Duration, SystemTime};
 
 use crate::config::{Config, Package};
 use crate::loaded;
 use crate::version::{self, Place};
+
+/// The least time between two swaps on this machine, across every package.
+///
+/// Each swap moves `current` under every running pi, and each pi follows
+/// it at its next reload, which rewrites its whole prompt cache when the
+/// new version declares a tool differently. On 8 November five installs
+/// between 18:49 and 20:36 cost about $45 of rewritten cache in an hour,
+/// across some 70 sessions, so what merges within the hour is swapped in
+/// together.
+pub const SPACING: Duration = Duration::from_hours(1);
+
+/// Whether an update waits out [`SPACING`] before swapping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pace {
+    /// Swap only once an hour has passed since the last swap: the timer's
+    /// way, and a hand run's unless it says otherwise.
+    Spaced,
+    /// Swap at once, for a fix that unblocks work or one somebody waits on.
+    Now,
+}
 
 /// What an update did for one package.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,6 +38,9 @@ pub enum Done {
     Moved { from: Option<String>, to: String },
     /// Another update holds this package's lock, so this one left it.
     Busy,
+    /// The branch has moved, but the last swap was within [`SPACING`], so
+    /// `current` stays and nothing is built until `until`.
+    Held { commit: String, until: SystemTime },
     /// The new commit's build failed, so `current` was left where it was.
     Failed { commit: String, why: String },
 }
@@ -33,23 +58,68 @@ pub struct Outcome {
 }
 
 /// Update each package in turn; one failing never stops the next.
+///
+/// Whether the hour is up is decided once, before the first package, so
+/// every package that moved swaps in the same run, and one swapping
+/// doesn't hold the next.
 #[must_use]
-pub fn update(config: &Config, now: SystemTime) -> Vec<(Package, Result<Outcome, String>)> {
+pub fn update(
+    config: &Config,
+    now: SystemTime,
+    pace: Pace,
+) -> Vec<(Package, Result<Outcome, String>)> {
+    let held = match pace {
+        Pace::Spaced => held_until(config, now),
+        Pace::Now => None,
+    };
     config
         .packages
         .iter()
-        .map(|package| (package.clone(), update_one(config, package, now)))
+        .map(|package| (package.clone(), update_one(config, package, now, held)))
         .collect()
 }
 
+/// Where the time of the last swap on this machine is kept, as a file's
+/// modification time under the root every package lives in.
+#[must_use]
+pub fn last_swap(config: &Config) -> PathBuf {
+    config.root.join(".last-swap")
+}
+
+/// When the next swap may happen, if that is still to come.
+fn held_until(config: &Config, now: SystemTime) -> Option<SystemTime> {
+    let last = fs::metadata(last_swap(config))
+        .and_then(|marker| marker.modified())
+        .ok()?;
+    let until = last + SPACING;
+    (until > now).then_some(until)
+}
+
+fn mark_swap(config: &Config, now: SystemTime) -> Result<(), String> {
+    let marker = last_swap(config);
+    fs::create_dir_all(&config.root)
+        .map_err(|error| format!("{}: {error}", config.root.display()))?;
+    let file = File::create(&marker).map_err(|error| format!("{}: {error}", marker.display()))?;
+    file.set_modified(now)
+        .map_err(|error| format!("{}: {error}", marker.display()))
+}
+
 /// Update one package: fetch, build the branch's head when `current` is
-/// elsewhere, swap it in, and remove what nothing uses.
+/// elsewhere, swap it in, and remove what nothing uses. Given `held`, a
+/// package that already has a version keeps it and builds nothing; one
+/// with none is installed anyway, since pi can't load it at all until it
+/// is.
 ///
 /// # Errors
 ///
 /// Says why the package could not be updated at all, which leaves
 /// `current` where it was.
-pub fn update_one(config: &Config, package: &Package, now: SystemTime) -> Result<Outcome, String> {
+pub fn update_one(
+    config: &Config,
+    package: &Package,
+    now: SystemTime,
+    held: Option<SystemTime>,
+) -> Result<Outcome, String> {
     let place = Place::of(config, package);
     let Some(_held) = hold(&place)? else {
         return Ok(Outcome {
@@ -63,10 +133,13 @@ pub fn update_one(config: &Config, package: &Package, now: SystemTime) -> Result
     let from = place.current_commit();
     let done = if from.as_deref() == Some(commit.as_str()) {
         Done::Current { commit }
+    } else if let (Some(_), Some(until)) = (&from, held) {
+        Done::Held { commit, until }
     } else {
         match version::build(config, package, &place, &commit, &env) {
             Ok(_) => {
                 version::swap(&place, &commit, now)?;
+                mark_swap(config, now)?;
                 Done::Moved { from, to: commit }
             }
             Err(why) => Done::Failed { commit, why },

@@ -28,7 +28,9 @@
     its preview and its facts, each number kept to its unit, and only its facts before it's said;
     every word is the launcher's words', and text past what's counted says it's over its count; a
     folder's entries order by name, change or size, folders first, 2 before 10; a save's name puts
-    the caret before its extension
+    the caret before its extension; and one kept elsewhere, as in Google Drive, says the same on
+    its row and plate from what its place listed, its place's facts after, leaving out what isn't
+    given
   '';
   a-firmware-update-frees-pcr-0-only-for-fwupds-entry = ''
     the shutdown step takes PCR 0 out of the TPM's policy only when BootNext names fwupd's
@@ -623,7 +625,9 @@
     only once Joel's sign-in grants Meet's scope, lists a Drive folder only when asked, the last
     few asked each told, folders first, a shortcut as what it points at, leaving out what it
     can't show and never asking of a folder no id names, and downloads a Drive file to open, pick
-    or save, Google's own kinds as their office program's file, never opening one that runs, each
+    or save, Google's own kinds as their office program's file, never opening one that runs, one
+    to open or pick kept in the cache, readable only, and fetched again only once Drive changes
+    it, the copies handed out longest ago let go past their room, each
     download asked lately told, and a file cut short leaving nothing behind, and sends what Joel
     saves through the picker up to Drive once it's written and left a moment, a new file and then
     new versions of it, never a second file for one it may not replace, saying which program
@@ -722,6 +726,9 @@
   '';
   kernel-settings-hold-apple-macbook-air-m2-a2681 = ''
     the MacBook Air M2's own Asahi kernel applies its screen patches and holds every setting
+  '';
+  kernel-settings-hold-apple-macbook-pro-m4-pro-a3401 = ''
+    the 14-inch M4 Pro's own Aurora kernel holds every setting of Aurora's Apple fragment and core's
   '';
   kernel-settings-hold-dell-xps-14-da14260 = ''
     the XPS 14's own kernel applies its patches and holds every setting
@@ -853,6 +860,10 @@
     the boot step gives the loader an entry of its own on the ESP, never taking a past install's
     entry on another partition for it, makes it active and first in BootOrder, and writes nothing
     once it is
+  '';
+  m4-pro-kernel-describes-both-external-screens = ''
+    the 14-inch M4 Pro's device tree describes both external screens' coprocessors, their firmware
+    memory and their crossbars as its own ADT has them
   '';
   machine-holds-the-machine-ready = ''
     the machine daemon says hello on the socket systemd hands it, says every record of a watch's
@@ -1874,7 +1885,10 @@
   '';
   the-launcher-answers-what-is-asked = ''
     sums, bases and bits, addresses, subnets, characters, measures, zones, colours, the machine's
-    figures and its parts' heat answer
+    figures and its parts' heat answer, and WARP says how its link stands from the record warp
+    prints, connected, degraded, down, not answering or unreadable, and nothing with no warp-cli,
+    every figure of the record a part in its own unit and in words.json's words, its settings
+    saying who set each, its TLS and DNS a step in
   '';
   the-screens-go-off-on-niri = ''
     on niri, Turn Every Screen Off closes the launcher and then asks niri to power its monitors
@@ -1905,6 +1919,8 @@
     rows above it change, reads on a long name while it's selected, tells the meaning daemon the
     parts its places hold and adds one meant below what the letters found, saying where it lives,
     and warns of nothing it drew;
+    WARP, read by the real warp from a stand-in warp-cli, says how its link stands in Network
+    after Speed, and its service not answering;
     and the notices it holds, taken as Super+N takes them, turn, forget and step into their cards
     by vi's keys
   '';
@@ -2356,9 +2372,9 @@
     beside its title, with its details for the drawer; reads the Drive folders
     listed and the downloads, finding each folder asked together, writes the lines that list a
     folder and download a file, a save alone saying where, and says how the newest download asked
-    stands; and says a Drive file in the picker by its size and when it changed, or what Google's
-    own kind comes as, picked by that name and kind, adopting its document row, with why a file or
-    a folder couldn't be had; and reads the saves into Drive, writes the line that sends one again,
+    stands; and says a Drive file in the picker by what a folder's read would, its size and when
+    it changed, and its owner, or what Google's own kind comes as, picked by that name and kind,
+    adopting its document row, with why a file or a folder couldn't be had; and reads the saves into Drive, writes the line that sends one again,
     tells each settled since the shell started once, oldest first, by its folder's name, sent as an
     answer with Open in Drive and failed with why and what mends it, a copy that couldn't be read
     going back to the program that saved it while it's open, and finds a failure's notice by its
@@ -2776,11 +2792,19 @@
     up to 520, and every line of it lies on one of the card's to a hundredth of a pixel: its
     eyebrow on the field's centre, its title on the first row's baseline, and its facts and words
     a whole number of half rows below; and a row's words, home's lists and a found row's note,
-    are in the serif a step after its name and on its baseline to half a device pixel
+    are in the serif a step after its name and on its baseline to half a device pixel; and WARP,
+    from the real warp over a stand-in warp-cli, stands in Network connected, degraded and not
+    answering, for its gallery to shoot
   '';
   vm-desktop-looks-machine = ''
     on the laptop's screen at 1.5 and at 2, Machine's processor, memory, disk and uptime step
     into the parts the machine daemon reads from the guest, and those parts into their own
+  '';
+  vm-desktop-looks-programs = ''
+    on the laptop's screen at 1.5 and at 2, Drive's places and Recent, Spotify and its podcasts,
+    what mpv stopped, Tuple's Recent, the VMs, kitty's repositories and machines, Shortcuts over
+    Mail and a Docs tab, and Passwords, an entry and its copy in the margin, each drawn for a
+    person to judge
   '';
   vm-desktop-minds-the-margin = ''
     the margin shows keeping awake, lid shut too, a camera opened, tokens running out, do not
@@ -3079,6 +3103,16 @@
     said in decimal units from its bytes and in use only while it's on, each state is said in the
     launcher's own words rather than libvirt's, each state offers its own acts and tells virsh its
     own command, and the VMs are ordered and counted as Programs shows them
+  '';
+  warp-passes-clippy = ''
+    clippy finds nothing in warp or its tests
+  '';
+  warp-reads-what-warp-cli-says = ''
+    warp draws WARP from every answer in its contract exactly as warp.json holds it, keeping a
+    reason's own figures, an endpoint given as no address as none and a figure left out as unknown;
+    tells no warp-cli, a service not answering or hanging, and a status refused or garbled apart,
+    each said in a line with a code of its own and with --json as a record; still reads the rest
+    when a part besides the status isn't given; and draws each page as its golden one
   '';
   what-vm-tests-share-does-what-it-says = ''
     the helpers VM tests share run a command as the account asked, with its runtime folder and

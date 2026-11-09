@@ -61,22 +61,11 @@ function number(value, places, settings) {
     return Numbers.format(value, places, set.group, set.point);
 }
 
-// A figure to three significant digits, its zeros kept so each says as
-// much: 369.9 as "370", 11.94 as "11.9", 1.2 as "1.20". A whole figure
-// past three digits keeps them all.
+// A figure to three significant digits, by the launcher's one rule
+// (Numbers.significant), grouped and pointed as the settings say: 369.9
+// as "370", 11.94 as "11.9", 1.2 as "1.20".
 function significant(value, settings) {
-    const rounded = Number(Number(value).toPrecision(DIGITS));
-    if (rounded === 0) {
-        return "0";
-    }
-    const places = Math.max(0, DIGITS - 1 - Math.floor(Math.log10(Math.abs(rounded))));
-    const said = number(rounded, places, settings).replace("-", MINUS);
-    if (places === 0) {
-        return said;
-    }
-    const point = settings?.point ?? ".";
-    const [whole, fraction] = said.split(point);
-    return `${whole}${point}${(fraction ?? "").padEnd(places, "0")}`;
+    return Numbers.significant(value, settings?.group, settings?.point);
 }
 
 // A figure that may be under nothing, with the real minus: "\u221248".

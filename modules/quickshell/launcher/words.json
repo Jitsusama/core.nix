@@ -52,6 +52,7 @@
         "energy",
         "bluetooth",
         "sound",
+        "media",
         "cameras",
         "light",
         "machine:cpu",
@@ -98,7 +99,8 @@
         "ethernet",
         "eero",
         "networks",
-        "traffic"
+        "traffic",
+        "warp"
       ],
       "commands": [
         "command:ip",
@@ -244,6 +246,14 @@
       "said": {
         "none": "none"
       }
+    },
+    {
+      "id": "agents:budgets",
+      "in": "agents",
+      "name": "Budgets",
+      "term": "Agents/budget",
+      "verb": "more",
+      "glyph": "agent"
     },
     {
       "id": "verb:agents:landed:change",
@@ -1850,6 +1860,220 @@
       "id": "traffic:connections",
       "in": "traffic",
       "name": "Connections"
+    },
+    {
+      "id": "warp",
+      "name": "WARP",
+      "term": "Network/WARP",
+      "question": "warp",
+      "glyph": "tunnel",
+      "answers": [
+        "warp",
+        "vpn"
+      ],
+      "said": {
+        "notAnswering": "not answering",
+        "unreadable": "unreadable",
+        "printedNothing": "warp printed nothing it could read",
+        "measure": "WARP's measure",
+        "in": "{figure} in",
+        "out": "{figure} out",
+        "metal": "metal {metal}",
+        "rtt": "round trip",
+        "percent": "{figure}%",
+        "ms": "{figure} ms",
+        "minutes": "{figure} min",
+        "on": "on",
+        "off": "off",
+        "noIpv4": "no IPv4",
+        "noIpv6": "no IPv6",
+        "postQuantum": "post-quantum",
+        "alwaysOn": "always on",
+        "split": "split tunnel",
+        "host": "{count} host",
+        "hosts": "{count} hosts",
+        "network": "{count} network",
+        "networks": "{count} networks",
+        "answered": "{success} of {total} answered",
+        "proxyOff": "proxy off",
+        "by": "set by {who}",
+        "by:default": "the default",
+        "by:local_policy": "set by local policy",
+        "by:network_policy": "set by network policy",
+        "by:override": "set by an override",
+        "mode:warp": "the tunnel with DNS proxied over UDP",
+        "mode:doh": "DNS over HTTPS alone",
+        "mode:warp+doh": "the tunnel with DNS over HTTPS",
+        "mode:dot": "DNS over TLS alone",
+        "mode:warp+dot": "the tunnel with DNS over TLS",
+        "mode:proxy": "the tunnel as a SOCKS5 proxy",
+        "mode:tunnel_only": "the tunnel alone"
+      }
+    },
+    {
+      "id": "warp:state",
+      "in": "warp",
+      "name": "State"
+    },
+    {
+      "id": "warp:health",
+      "in": "warp",
+      "name": "Health"
+    },
+    {
+      "id": "warp:settings",
+      "in": "warp",
+      "name": "Settings"
+    },
+    {
+      "id": "warp:settings:mode",
+      "in": "warp:settings",
+      "name": "Mode"
+    },
+    {
+      "id": "warp:settings:always-on",
+      "in": "warp:settings",
+      "name": "Always On"
+    },
+    {
+      "id": "warp:settings:split-tunnel",
+      "in": "warp:settings",
+      "name": "Split Tunnel"
+    },
+    {
+      "id": "warp:settings:switch-locked",
+      "in": "warp:settings",
+      "name": "Switch Locked"
+    },
+    {
+      "id": "warp:settings:auto-connect",
+      "in": "warp:settings",
+      "name": "Auto-Connect After"
+    },
+    {
+      "id": "warp:settings:organisation",
+      "in": "warp:settings",
+      "name": "Organisation"
+    },
+    {
+      "id": "warp:settings:tunnel-protocol",
+      "in": "warp:settings",
+      "name": "Tunnel Protocol"
+    },
+    {
+      "id": "warp:settings:post-quantum",
+      "in": "warp:settings",
+      "name": "Post-Quantum"
+    },
+    {
+      "id": "warp:tunnel",
+      "in": "warp",
+      "name": "Tunnel"
+    },
+    {
+      "id": "warp:latency",
+      "in": "warp",
+      "name": "Round Trip"
+    },
+    {
+      "id": "warp:loss",
+      "in": "warp",
+      "name": "Loss"
+    },
+    {
+      "id": "warp:protocol",
+      "in": "warp",
+      "name": "Protocol"
+    },
+    {
+      "id": "warp:colo",
+      "in": "warp",
+      "name": "Data Centre"
+    },
+    {
+      "id": "warp:endpoint",
+      "in": "warp",
+      "name": "Endpoint"
+    },
+    {
+      "id": "warp:handshake",
+      "in": "warp",
+      "name": "Last Handshake"
+    },
+    {
+      "id": "warp:traffic",
+      "in": "warp",
+      "name": "Traffic"
+    },
+    {
+      "id": "warp:tls",
+      "in": "warp",
+      "name": "TLS"
+    },
+    {
+      "id": "warp:tls:version",
+      "in": "warp:tls",
+      "name": "Version"
+    },
+    {
+      "id": "warp:tls:curve",
+      "in": "warp:tls",
+      "name": "Curve"
+    },
+    {
+      "id": "warp:tls:cipher",
+      "in": "warp:tls",
+      "name": "Cipher"
+    },
+    {
+      "id": "warp:tls:post-quantum",
+      "in": "warp:tls",
+      "name": "Post-Quantum"
+    },
+    {
+      "id": "warp:tls:server-name",
+      "in": "warp:tls",
+      "name": "Server Name"
+    },
+    {
+      "id": "warp:dns",
+      "in": "warp",
+      "name": "DNS"
+    },
+    {
+      "id": "warp:dns:proxy",
+      "in": "warp:dns",
+      "name": "Proxy"
+    },
+    {
+      "id": "warp:dns:average",
+      "in": "warp:dns",
+      "name": "Average"
+    },
+    {
+      "id": "warp:dns:asked",
+      "in": "warp:dns",
+      "name": "Asked"
+    },
+    {
+      "id": "warp:dns:answered",
+      "in": "warp:dns",
+      "name": "Answered"
+    },
+    {
+      "id": "warp:dns:no-record",
+      "in": "warp:dns",
+      "name": "No Record"
+    },
+    {
+      "id": "warp:dns:timed-out",
+      "in": "warp:dns",
+      "name": "Timed Out"
+    },
+    {
+      "id": "warp:dns:failed",
+      "in": "warp:dns",
+      "name": "Failed"
     },
     {
       "id": "power:charger",
@@ -4159,7 +4383,29 @@
       "id": "location",
       "in": "on",
       "name": "Location",
-      "term": "Desktop/location"
+      "term": "Desktop/location",
+      "said": {
+        "via": "from Wi-Fi \u00b7 location",
+        "viaHand": "set by hand \u00b7 location",
+        "hand": "set by hand",
+        "metres": "within {n} m",
+        "kilometres": "within {n} km",
+        "yesterday": "yesterday",
+        "north": "N",
+        "south": "S",
+        "east": "E",
+        "west": "W",
+        "unknown": "unknown",
+        "unnamed": "not named yet",
+        "notFound": "not found yet",
+        "unfound": "not found by GeoClue yet",
+        "found": "{within}, found through GeoClue",
+        "knows": "through GeoClue, {within}",
+        "elsewhere": "keeps {zone} \u00b7 not following"
+      },
+      "tells": {
+        "leftOut": "Wi-Fi gives no altitude, speed or heading."
+      }
     },
     {
       "id": "location:town",
@@ -4167,9 +4413,34 @@
       "name": "Town"
     },
     {
+      "id": "location:country",
+      "in": "location",
+      "name": "Country"
+    },
+    {
       "id": "location:knows",
       "in": "location",
       "name": "How It Knows"
+    },
+    {
+      "id": "location:located",
+      "in": "location",
+      "name": "Located"
+    },
+    {
+      "id": "location:accuracy",
+      "in": "location",
+      "name": "Accuracy"
+    },
+    {
+      "id": "location:coordinates",
+      "in": "location",
+      "name": "Coordinates"
+    },
+    {
+      "id": "location:zone",
+      "in": "location",
+      "name": "Zone"
     },
     {
       "id": "verb:location:copy",
@@ -6064,7 +6335,8 @@
     {
       "id": "on:lag:swap",
       "in": "on",
-      "name": "Swap"
+      "name": "Swap",
+      "term": "Machine/swap"
     },
     {
       "id": "on:sharing",
@@ -6108,7 +6380,7 @@
     {
       "id": "on:recording:showing",
       "in": "on",
-      "name": "Showing"
+      "name": "Records"
     },
     {
       "id": "on:quiet",
@@ -6142,8 +6414,7 @@
         "unsynchronised": "not synchronised",
         "unkept": "nothing keeps the time",
         "day": "day {day}",
-        "byHand": "set by hand",
-        "within": "within {km} km"
+        "byHand": "set by hand"
       }
     },
     {
@@ -7236,7 +7507,7 @@
     {
       "id": "capture:camera-picture",
       "in": "capture",
-      "name": "A Picture From the Camera"
+      "name": "A Photo From the Camera"
     },
     {
       "id": "capture:camera-video",
@@ -7274,6 +7545,219 @@
       "id": "capture:length",
       "in": "capture",
       "name": "Length"
+    },
+    {
+      "id": "media",
+      "name": "Media",
+      "noun": "players",
+      "what": "player",
+      "glyph": "playing",
+      "ask": "which player?",
+      "empty": "Nothing is playing.",
+      "answers": [
+        "music",
+        "players"
+      ],
+      "said": {
+        "percent": "{n}%",
+        "on": "on",
+        "off": "off",
+        "chosen": "chosen",
+        "speeds": "{speed} · {least} to {most}",
+        "workspace": "workspace {n}",
+        "through": "{at} of {length}",
+        "paused": "paused \u00b7 {at}",
+        "refused": "{name} not {done} \u00b7 {why}",
+        "nothing": "nothing is playing",
+        "done:volume": "made louder or quieter",
+        "done:shuffle": "shuffled",
+        "done:order": "put back in order",
+        "done:loop": "set to loop",
+        "done:unloop": "stopped looping",
+        "done:seek": "moved through its track",
+        "done:place": "moved to {at}",
+        "done:speed": "sped up or slowed down",
+        "why:volume": "it keeps its own volume",
+        "why:shuffle": "it can't shuffle",
+        "why:order": "it can't shuffle",
+        "why:loop": "it can't loop",
+        "why:unloop": "it can't loop",
+        "why:seek": "it can't seek",
+        "why:place": "that isn't a time in a track",
+        "why:speed": "it plays at one speed"
+      }
+    },
+    {
+      "id": "verb:media:pause",
+      "command": "pause",
+      "in": "media",
+      "name": "Pause",
+      "verb": "pause",
+      "glyph": "pause",
+      "states": {
+        "paused": {
+          "command": "resume",
+          "name": "Play",
+          "verb": "play",
+          "glyph": "resume"
+        }
+      }
+    },
+    {
+      "id": "verb:media:next",
+      "command": "skip",
+      "in": "media",
+      "name": "Next",
+      "verb": "next",
+      "glyph": "next"
+    },
+    {
+      "id": "verb:media:previous",
+      "command": "skip",
+      "bang": true,
+      "in": "media",
+      "name": "Previous",
+      "verb": "previous",
+      "glyph": "previous"
+    },
+    {
+      "id": "media:position",
+      "in": "media",
+      "name": "Position",
+      "glyph": "position"
+    },
+    {
+      "id": "verb:media:back",
+      "command": "setlocal",
+      "argument": "position-=10",
+      "in": "media:position",
+      "name": "Back 10 Seconds",
+      "verb": "back"
+    },
+    {
+      "id": "verb:media:ahead",
+      "command": "setlocal",
+      "argument": "position+=10",
+      "in": "media:position",
+      "name": "Ahead 10 Seconds",
+      "verb": "ahead"
+    },
+    {
+      "id": "verb:media:further",
+      "command": "setlocal",
+      "argument": "position+=30",
+      "in": "media:position",
+      "name": "Ahead 30 Seconds",
+      "verb": "ahead"
+    },
+    {
+      "id": "verb:media:start",
+      "command": "setlocal",
+      "argument": "position=0",
+      "in": "media:position",
+      "name": "From the Start",
+      "verb": "rewind"
+    },
+    {
+      "id": "media:volume",
+      "in": "media",
+      "name": "Volume",
+      "glyph": "volume"
+    },
+    {
+      "id": "verb:media:louder",
+      "command": "setlocal",
+      "argument": "playervolume+=10",
+      "in": "media:volume",
+      "name": "Louder",
+      "verb": "louder"
+    },
+    {
+      "id": "verb:media:quieter",
+      "command": "setlocal",
+      "argument": "playervolume-=10",
+      "in": "media:volume",
+      "name": "Quieter",
+      "verb": "quieter"
+    },
+    {
+      "id": "media:volume:level",
+      "in": "media:volume",
+      "name": "Volume to {n}%",
+      "verb": "set"
+    },
+    {
+      "id": "media:shuffle",
+      "command": "setlocal",
+      "argument": "noshuffle",
+      "in": "media",
+      "name": "Shuffle",
+      "verb": "turn off",
+      "glyph": "shuffle",
+      "states": {
+        "off": {
+          "verb": "turn on",
+          "argument": "shuffle"
+        }
+      }
+    },
+    {
+      "id": "media:loop",
+      "in": "media",
+      "name": "Loop",
+      "glyph": "loop"
+    },
+    {
+      "id": "media:loop:off",
+      "command": "setlocal",
+      "argument": "loop=off",
+      "in": "media:loop",
+      "name": "Off",
+      "verb": "set"
+    },
+    {
+      "id": "media:loop:track",
+      "command": "setlocal",
+      "argument": "loop=track",
+      "in": "media:loop",
+      "name": "Track",
+      "verb": "set"
+    },
+    {
+      "id": "media:loop:playlist",
+      "command": "setlocal",
+      "argument": "loop=playlist",
+      "in": "media:loop",
+      "name": "Playlist",
+      "verb": "set"
+    },
+    {
+      "id": "media:speed",
+      "in": "media",
+      "name": "Speed",
+      "glyph": "playSpeed"
+    },
+    {
+      "id": "media:speed:choice",
+      "in": "media:speed",
+      "name": "Speed to {speed}",
+      "verb": "set"
+    },
+    {
+      "id": "verb:media:window",
+      "command": "buffer",
+      "in": "media",
+      "name": "Go To Its Window",
+      "verb": "go to",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:media:link",
+      "command": "yank",
+      "in": "media",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
     },
     {
       "id": "cameras",

@@ -302,6 +302,27 @@ in
     console = "s";
     means = "a show, its episodes, as a podcast";
   };
+  # How a player plays on, as the Media place sets it.
+  shuffle = {
+    glyph = nerd "f049d";
+    console = "x";
+    means = "a player choosing its tracks out of order";
+  };
+  loop = {
+    glyph = nerd "f0456";
+    console = "o";
+    means = "a player starting a track or its list again once it ends";
+  };
+  position = {
+    glyph = nerd "f0996";
+    console = "|";
+    means = "where a player is in its track";
+  };
+  playSpeed = {
+    glyph = nerd "f08ff";
+    console = "*";
+    means = "how fast a player plays its track";
+  };
   resume = {
     glyph = nerd "f040a";
     console = "P";

@@ -76,8 +76,8 @@ own, are never places.
 
 The models working for Joel, what they work on, and what they cost. Its
 sessions stand in one tree, each under its orchestrator, the orchestrators
-closed at its end, and its places are Quests, Orchestrators, the Queue, Runs
-and AI spend. A
+closed at its end, then Budgets, how each budget stands. Its places are
+Quests, Orchestrators, the Queue, Runs and AI spend. A
 session can be talked to, gone to, paused and stopped, and a closed
 orchestrator reopened; a quest can start a session, orchestrate, go first in
 the queue and conclude.
@@ -156,7 +156,7 @@ the queue and conclude.
 | rebuild | a session's context summed up and started afresh once it fills, its log kept whole | compaction | pi's compaction |
 | tokens | what a model is sent and writes, counted as OpenTelemetry's gen_ai names them, never money | | `gen_ai.usage.*` |
 | bill | what a provider charged for AI spend, as its feed reports it, rather than estimated from list prices | | |
-| budget | a named source of money a model call draws on: a Claude plan, an API key, the AI proxy, a team's token | | |
+| budget | a named source of money a model call draws on: a Claude plan, an API key, the AI proxy, a team's token | | `agents:budgets`, AI spend's Budgets |
 | AI proxy | the service a work machine's model calls go through, whose feed gives spend-watch its bill | model gateway, LLM gateway, LLM proxy | |
 | Claude plan | Joel's Claude subscription, whose allowances stop turns when spent | subscription | `claude-plan` |
 | allowance | how much of a budget one window allows: a share of a Claude plan's five hours or week, or dollars of the AI proxy's week | limit | `5h`, `wk` |
@@ -377,6 +377,7 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | tethering | reaching out through a phone's connection, over its cable | | |
 | sign-in page | the page a network shows before it lets the machine out, as a hotel's does | captive portal, network sign-in page | `wifid-sign-in` |
 | VPN | a private link to another network, carried through this one | tunnel | `jitsusama.shaper.vpns` |
+| WARP | the VPN warp-cli runs, and the place in Network saying how its link stands | | `warp`, `warp-cli` |
 | firewall | what keeps others' connections out | | nftables |
 | shaper | the program that keeps the network's queue on the machine, sorted by slice, so a call stays quick | | `shaper`, CAKE |
 | home network | the network at home, the eero's, its nodes and the devices on them, and its place in the launcher | eero network, mesh network | `eero` |

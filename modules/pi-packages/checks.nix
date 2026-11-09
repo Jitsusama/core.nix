@@ -18,7 +18,9 @@
   # Each of pi's git packages is updated at a switch, before pi's settings
   # name its link, and in the background every fifteen minutes: by a user
   # timer in background.slice on Linux, which a switch doesn't restart, and
-  # by a launchd agent on a Mac. Each change to what a pi says it loaded
+  # by a launchd agent on a Mac, each run swapping at most once an hour
+  # (src/run.rs), so a held commit lands within fifteen minutes of the
+  # hour. Each change to what a pi says it loaded
   # starts a sweep, on Linux by a path unit watching every package's
   # `loaded/` folder and on a Mac by a launchd agent watching the same; a
   # burst of them, as every pi reloading at once makes, never stops it.

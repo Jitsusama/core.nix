@@ -1,0 +1,9 @@
+{
+  "status": "Connected",
+  "reason": {
+    "NetworkDegraded": {
+      "loss_percent": 5.3708224,
+      "rtt_ms": 170
+    }
+  }
+}

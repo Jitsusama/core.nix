@@ -1,4 +1,5 @@
 .pragma library
+.import "Numbers.js" as Numbers
 // What a screen's drawer says of it from what niri says (`niri msg -j
 // outputs`), in plain JavaScript so a check runs it in Qt's own engine
 // (tests/plate.qml), as the shell does: whether the mode it runs is the
@@ -16,8 +17,6 @@ const APART = " \u00b7 ";
 const TIMES = " \u00d7 ";
 const MILLIMETRES_AN_INCH = 25.4;
 const MILLIHERTZ = 1000;
-// Measured figures keep three significant digits (VKCF3Z, 2026-11-07).
-const SIGNIFICANT = 3;
 const TRAILING_ZEROS = /0+$/;
 
 // A rate as niri gives it, in millihertz, said in hertz with every digit
@@ -40,17 +39,15 @@ function scale(multiple) {
     return `${Number(multiple.toFixed(2))}\u00d7`;
 }
 
-// A measured figure to three significant digits, as a whole number past
-// a thousand: 243.84 is "244", 96 "96", 12.345 "12.3".
-function significant(value) {
-    return String(Number(value.toPrecision(SIGNIFICANT)));
-}
-
 // How fine its pixels are, in pixels an inch across its width, or "" where
-// niri knows no size for it, as a projector's EDID says none.
-function density(pixels, millimetres) {
+// niri knows no size for it, as a projector's EDID says none. It's worked
+// out from the screen's measured size, so it's a measure, to three
+// significant digits with its zeros kept, grouped and pointed as the
+// launcher's settings say: "244 ppi", "96.0 ppi" (VKCF3Z, 2026-11-08).
+function density(pixels, millimetres, group, point) {
     return pixels > 0 && millimetres > 0
-        ? `${significant(pixels / (millimetres / MILLIMETRES_AN_INCH))} ppi` : "";
+        ? `${Numbers.significant(pixels / (millimetres / MILLIMETRES_AN_INCH), group, point)} ppi`
+        : "";
 }
 
 function modeOf(output) {
@@ -67,9 +64,10 @@ function preferredOf(output) {
 // 2026-11-07): what it runs first, then where it sits, then what it
 // offers and is. `words` names each (`named(id)`, displays:<id>), says the
 // vocabulary's words (`said(id, key)`) and how it's turned
-// (`turned(transform)`). A screen that's off runs nothing and sits
-// nowhere, so it says only what it offers and is.
-function facts(output, words) {
+// (`turned(transform)`); `settings` hold the launcher's `group` and
+// `point`, which its measures take. A screen that's off runs nothing and
+// sits nowhere, so it says only what it offers and is.
+function facts(output, words, settings) {
     const out = [];
     const add = (id, value) => {
         if (value !== "") {
@@ -100,7 +98,8 @@ function facts(output, words) {
         .filter(part => part !== "").join(APART));
     const [wide] = output.physical_size ?? [0, 0];
     const across = now ?? preferred;
-    add("density", across === null ? "" : density(across.width, wide));
+    add("density", across === null ? ""
+        : density(across.width, wide, settings?.group, settings?.point));
     add("serial", String(output.serial ?? ""));
     return out;
 }

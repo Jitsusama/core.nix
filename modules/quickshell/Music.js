@@ -65,6 +65,118 @@ function where(position, length, playing) {
     return length > 0 ? `${time(position)} of ${time(length)}` : time(position);
 }
 
+// How a player stands, as the Media place's row says it at its far end,
+// its state first as a timer's is (VKCF3Z, 2026-11-08): "1:38 of 6:43"
+// playing, and paused as `paused` says it, in words.json's media said
+// (`through`, "{at} of {length}", and `paused`, "paused \u00b7 {at}"), and a
+// stream with no length only how far it's come.
+function standing(position, length, playing, said) {
+    const at = length > 0
+        ? said.through.replace("{at}", time(position)).replace("{length}", time(length))
+        : time(position);
+    return playing ? at : said.paused.replace("{at}", at);
+}
+
+// Why a player didn't do what it was asked, as the launcher's other refused
+// acts read (VKCF3Z): "Spotify not shuffled \u00b7 it can't shuffle", from
+// words.json's media said, `act` naming its done:act and its why:act, and
+// `fill` what's in their braces. With no player (`who` empty), that
+// nothing plays.
+function refusal(said, who, act, fill) {
+    if (who === "") {
+        return said.nothing ?? "";
+    }
+    let text = (said.refused ?? "").replace("{name}", who)
+        .replace("{done}", said[`done:${act}`] ?? act)
+        .replace("{why}", said[`why:${act}`] ?? "");
+    for (const key of Object.keys(fill ?? {})) {
+        text = text.replace(`{${key}}`, fill[key]);
+    }
+    return text;
+}
+
+// A place in a track as typed: seconds, as 90, or m:ss or h:mm:ss, as
+// 1:30; null for anything else.
+const CLOCK = /^(?:(\d+):)?(\d+):([0-5]\d)$/;
+const SECONDS = /^\d+(?:\.\d+)?$/;
+function placeIn(typed) {
+    const text = String(typed ?? "").trim();
+    if (SECONDS.test(text)) {
+        return Number(text);
+    }
+    const clock = CLOCK.exec(text);
+    if (!clock) {
+        return null;
+    }
+    return Number(clock[1] ?? 0) * HOUR + Number(clock[2]) * 60 + Number(clock[3]);
+}
+
+// How a player loops, in Joel's words, by MPRIS's LoopStatus as Quickshell
+// numbers it (None, Track, Playlist): MPRIS's None is Off to him (VKCF3Z,
+// 2026-11-08).
+const LOOPS = ["off", "track", "playlist"];
+function loopOf(state) {
+    return LOOPS[state] ?? "off";
+}
+function loopState(word) {
+    return Math.max(0, LOOPS.indexOf(String(word ?? "").toLowerCase()));
+}
+
+// A speed as a player is asked it, "1\u00d7", in as few figures as say it.
+function speed(rate) {
+    return `${Number(rate.toFixed(2))}\u00d7`;
+}
+
+// The file a track's address names, as a person reads it, or "" where it's
+// no file. Read without a pattern: Qt's engine matched a top-level one
+// only the first time the shell asked, and "" ever after, so two players
+// on one track were never told apart. A file straight in the Nix store
+// is named without its hash and the dash after it, "track.mp3" (VKCF3Z,
+// 2026-11-08).
+const FILE = "file://";
+const STORE = "file:///nix/store/";
+const HASHED = 33;
+function fileOf(address) {
+    const given = String(address ?? "");
+    const folder = given.slice(0, given.lastIndexOf("/") + 1);
+    const whole = given.slice(folder.length);
+    const last = folder === STORE && whole.charAt(HASHED - 1) === "-"
+        ? whole.slice(HASHED) : whole;
+    if (!given.startsWith(FILE) || last === "") {
+        return "";
+    }
+    try {
+        return decodeURIComponent(last);
+    } catch (_malformed) {
+        return last;
+    }
+}
+
+// Each player's note in the Media place, as items a row gives way by
+// whole from its end (Choice.qml's countItems): its artist, and where two
+// players' rows would read alike, the first of its file's name or its
+// window's workspace that tells them apart, which is kept longest, a
+// file's name giving way from its middle (VKCF3Z, 2026-11-08). Each
+// player is `{ title, artist, file, workspace }`, and `onWorkspace` says
+// a workspace with `{n}`.
+function notes(players, onWorkspace) {
+    return players.map(player => {
+        const twins = players.filter(
+            other => other.title === player.title && other.artist === player.artist,
+        );
+        const apart = field =>
+            player[field] !== "" && new Set(twins.map(twin => twin[field])).size === twins.length;
+        let told = null;
+        if (twins.length > 1 && apart("file")) {
+            told = { said: player.file, keep: 2, file: player.file };
+        } else if (twins.length > 1 && apart("workspace")) {
+            told = { said: onWorkspace.replace("{n}", player.workspace), keep: 2 };
+        }
+        return [{ said: player.artist, keep: 1 }, told]
+            .filter(item => item !== null && item.said !== "");
+    });
+}
+
 // A player's mark where Nerd Fonts has one, by the desktop entry it names,
 // and a note otherwise.
 const marks = {

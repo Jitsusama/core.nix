@@ -5,15 +5,16 @@
 // pass that left it short but asks for nothing, an urgent one is a warning
 // that still asks for nothing, a critical one wants Joel with nothing slow
 // to run, the worse of the two guards' words wins for a disk both watch, a
-// disk only the
-// machine's guard watches counts, a writer frozen wants Joel with a way to let
-// it go on, a guard gone quiet whose unit says it's starting again shows
-// nothing, one whose heartbeat ages past silence with nothing written after
-// it and whose unit failed is a warning of its own saying why, with a way to
-// start it, and the machine's guard stopped says a restart starts it, with
-// no way of its own, what holds the disks is one list
-// from both guards, biggest first, and a guard that never wrote leaves no
-// piece. It exits 0 once every case holds, and otherwise 1, saying which
+// disk only the machine's guard watches counts, a disk full within a few
+// days says when and how fast whatever its band, and is a warning within a
+// day, with one forecast when it's the worst disk too, a writer frozen
+// wants Joel with a way to let it go on, a guard gone quiet whose unit
+// says it's starting again shows nothing, one whose heartbeat ages past
+// silence with nothing written after it and whose unit failed is a
+// warning of its own saying why, with a way to start it, and the machine's
+// guard stopped says a restart starts it, with no way of its own, what
+// holds the disks is one list from both guards, biggest first, and a guard
+// that never wrote leaves no piece. It exits 0 once every case holds, and otherwise 1, saying which
 // case didn't.
 import qs
 import Quickshell
@@ -31,6 +32,12 @@ ShellRoot {
     function disk(path, band, free, forecast) {
         return { path: path, band: band, free: free * gib, total: 950 * gib,
             forecast: forecast ?? null };
+    }
+
+    // A disk filling at `perHour` GiB an hour, full in `fullIn` seconds.
+    function filling(said, fullIn, perHour) {
+        return Object.assign(said, { full_at: root.now + fullIn,
+            fill_per_hour: perHour * gib });
     }
 
     function status(disks, last, heartbeat, frozen) {
@@ -77,7 +84,8 @@ ShellRoot {
                 === "/home/joel/trees/lamp /var/lib/containers /home/joel/.cache/karst"
             && piece.holders[0].bytes === 41 * root.gib && piece.holdersAt === root.now
             && piece.holding("/home/joel/trees/lamp").path === "/"
-            && piece.holding("/boot/efi").path === "/boot" && piece.holding("/bootstrap").path === "/"
+            && piece.holding("/boot/efi").path === "/boot"
+            && piece.holding("/bootstrap").path === "/"
     }, {
         what: "a disk filling slowly",
         // Nearly full in three days, or never: only the margin says so.
@@ -95,6 +103,36 @@ ShellRoot {
         holds: piece => piece.active && piece.role === "warning" && !piece.wants && !piece.now
             && piece.value === "filling \u00b7 129\u00a0GB free"
             && piece.context === "nearly full in 1 h 30 min; nothing more is safe to take"
+    }, {
+        what: "a healthy disk full within a day",
+        // cargo's builds on 7 November: healthy, 21 GiB free, full in 6.8
+        // hours, and nothing said.
+        account: status([disk("/", "healthy", 286),
+            filling(disk("/var/cache/cargo-builds", "healthy", 21), 24500, 3)]),
+        machine: status([disk("/", "healthy", 286)]),
+        holds: piece => piece.active && piece.role === "warning" && !piece.wants
+            && piece.value === "307\u00a0GB free"
+            && piece.context
+                === "/var/cache/cargo-builds full in 6 h 48 min at 3.22\u00a0GB an hour"
+    }, {
+        what: "a disk full in a few days",
+        account: status([filling(disk("/", "healthy", 286), 2 * 24 * 3600 + 600, 4.4)]),
+        machine: status([disk("/", "healthy", 286)]),
+        holds: piece => !piece.active && piece.role === "text"
+            && piece.context === "/ full in 2 days at 4.72\u00a0GB an hour"
+    }, {
+        what: "the worst disk filling",
+        // Its band's forecast and its full one would be two forecasts of
+        // one disk, so it says the nearer, with how fast it fills.
+        account: status([filling(disk("/", "pressure", 120.5, 5400), 20000, 4)]),
+        machine: status([disk("/", "healthy", 400)]),
+        holds: piece => piece.active && piece.role === "warning"
+            && piece.context === "nearly full in 1 h 30 min at 4.29\u00a0GB an hour"
+    }, {
+        what: "a disk full past a few days",
+        account: status([filling(disk("/", "healthy", 286), 5 * 24 * 3600, 2)]),
+        machine: status([disk("/", "healthy", 286)]),
+        holds: piece => !piece.active && piece.context === ""
     }, {
         what: "a critical disk",
         account: status([disk("/", "critical", 8.25)],

@@ -241,6 +241,7 @@
         };
         unlisted = ./modules/unlisted/home.nix;
         vivid = ./modules/vivid/home.nix;
+        warp = ./modules/warp/home.nix;
         wezterm = moduleFrom ./modules/wezterm/home.nix { inherit wallpapers; };
         wifid = ./modules/wifid/home.nix;
         yq = ./modules/yq/home.nix;
@@ -279,6 +280,7 @@
       nixosModules = {
         asahi-audio = ./modules/asahi-audio/nixos.nix;
         asahi-firmware = ./modules/asahi-firmware/nixos.nix;
+        asahi-nvram = ./modules/asahi-nvram/nixos.nix;
         backlight = ./modules/backlight/nixos.nix;
         bluetooth = ./modules/bluetooth/nixos.nix;
         bluetooth-disk-prompt = ./modules/bluetooth-disk-prompt/nixos.nix;
@@ -389,6 +391,9 @@
         guide-stick-apple-silicon = ./modules/guide/stick-apple-silicon.nix;
 
         apple-macbook-air-m2-a2681 = moduleFrom ./hardware/apple-macbook-air-m2-a2681/nixos.nix {
+          inherit (self.nixosModules) hibernate;
+        };
+        apple-macbook-pro-m4-pro-a3401 = moduleFrom ./hardware/apple-macbook-pro-m4-pro-a3401/nixos.nix {
           inherit (self.nixosModules) hibernate;
         };
         dell-xps-14-da14260 = ./hardware/dell-xps-14-da14260/nixos.nix;

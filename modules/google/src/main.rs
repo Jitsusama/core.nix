@@ -21,9 +21,11 @@
 //! or download a file in one, and to follow the Meet calls open in
 //! windows of their own, asking Meet who's in each every half minute while
 //! they're open, as acts on the same socket (ask.rs), which
-//! it does at once, telling every watch what changed. A file to open, or
-//! to hand a program through the picker, is kept in google-files, in the
-//! session's runtime folder; one to save goes where Joel
+//! it does at once, telling every watch what changed. A file mail carries
+//! to open is kept in google-files, in the session's runtime folder, and
+//! a Drive file to open, or to hand a program through the picker, in the
+//! cache home's google/drive, the version Drive holds kept until Drive
+//! changes it (`$XDG_CACHE_HOME`, or `~/.cache`); one to save goes where Joel
 //! picked, else to Downloads (`$XDG_DOWNLOAD_DIR`, or `~/Downloads`)
 //! (files.rs). One ask is done at a time, so a large download holds the
 //! next until it's written.
@@ -99,6 +101,12 @@ fn main() -> ExitCode {
         kept: env::var_os("XDG_RUNTIME_DIR")
             .map_or_else(env::temp_dir, PathBuf::from)
             .join("google-files"),
+        drive: env::var_os("XDG_CACHE_HOME")
+            .map(PathBuf::from)
+            .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
+            .unwrap_or_else(env::temp_dir)
+            .join("google")
+            .join("drive"),
         saves: env::var_os("XDG_DOWNLOAD_DIR").map_or_else(
             || PathBuf::from(env::var_os("HOME").unwrap_or_default()).join("Downloads"),
             PathBuf::from,

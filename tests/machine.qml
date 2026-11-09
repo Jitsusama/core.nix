@@ -48,6 +48,16 @@ ShellRoot {
             expect("before the daemon says, Processor waits with its parts to come",
                 before.parted === true && before.asking === true,
                 `${before.parted} ${before.asking}`);
+            // A time is a measure, by the launcher's one rule: three
+            // significant digits, zeros kept, grouped past three whole
+            // digits, in the machine's own grouping and point.
+            const times = [1234, 0.25, 12.34].map(value => machine.ms(value));
+            expect("a time in milliseconds", times.join("; ") === "1,230 ms; 0.250 ms; 12.3 ms",
+                times.join("; "));
+            machine.settings = { group: ".", point: "," };
+            expect("a time as the settings group and point it", machine.ms(1234.5) === "1.230 ms"
+                && machine.ms(5.2) === "5,20 ms", `${machine.ms(1234.5)} ${machine.ms(5.2)}`);
+            machine.settings = {};
             theLauncher.placed = ["energy", "machine:cpu", "machine:memory", "heat"];
             expect("Machine's place asks the daemon", machine.shown, "it didn't");
             waiting.start();

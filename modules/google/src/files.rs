@@ -1,17 +1,29 @@
 //! Where a file mail carries, or one of Drive's, goes once it's fetched:
-//! into a folder only Joel can read, under the session's runtime folder,
-//! to be opened from there, or handed to the program that asked the
-//! picker for it, and gone when he logs out; or, to keep, where he picked
+//! a mail's into a folder only Joel can read, under the session's runtime
+//! folder, to be opened from there and gone when he logs out, and a Drive
+//! file's into the cache, as below, to be opened or handed to the program
+//! that asked the picker for it; or, to keep, where he picked
 //! in the launcher's chooser, else into his Downloads. A name is the
 //! sender's, so it's made safe to be a file's name, and a copy saved into
 //! Downloads never writes over a file already there; one put where he
 //! picked does, since the chooser asked him first. Each is written as it
 //! comes, never held whole, and a file left half written is taken away.
+//!
+//! A Drive file to open or hand on is kept apart, in the cache home's
+//! google/drive, so a large one never sits in memory as the runtime
+//! folder's do, and a program handed its path still finds it after a
+//! logout. Each is the version Drive last changed, marked with that
+//! change as its own, so asking again while it's unchanged fetches
+//! nothing; it's readable only, so a program that opens it says it can't
+//! be written rather than letting a change be lost, since nothing written
+//! there goes back to Drive. Past `CACHED_MOST` together, the copies
+//! handed out longest ago are let go.
 
-use std::fs::{self, DirBuilder, File, OpenOptions};
+use std::fs::{self, DirBuilder, File, OpenOptions, Permissions};
 use std::io::{self, Read};
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
@@ -61,10 +73,18 @@ fn filled(mut file: File, path: &Path, from: &mut dyn Read) -> io::Result<()> {
         })
 }
 
-/// The two folders a file goes to.
+/// How much the copies of Drive's files kept to open or hand on may take
+/// together, in bytes, before those handed out longest ago are let go:
+/// room for a few videos, and far past the documents a week picks.
+pub const CACHED_MOST: u64 = 2_000_000_000;
+
+/// The folders a file goes to.
 pub struct Places {
     /// Where one to open is kept: the session's, which goes at logout.
     pub kept: PathBuf,
+    /// Where a Drive file to open or hand on is kept: the cache home's,
+    /// which outlasts the session.
+    pub drive: PathBuf,
     /// Where a copy to keep is saved: Downloads.
     pub saves: PathBuf,
 }
@@ -154,6 +174,119 @@ pub fn kept(folder: &Path, whose: &str, name: &str, from: &mut dyn Read) -> io::
         let _ = fs::remove_file(&new);
     })?;
     Ok(path)
+}
+
+/// A moment in milliseconds since the epoch as the file system keeps one.
+fn moment(at: i64) -> Option<SystemTime> {
+    let after = Duration::from_millis(u64::try_from(at).ok()?);
+    UNIX_EPOCH.checked_add(after)
+}
+
+/// The copy of Drive's file `whose`, named `name`, kept under `folder`,
+/// when it's the version Drive last changed at `changed`, in milliseconds
+/// since the epoch; none when there's no copy, an older or a newer one, or
+/// Drive gave no change to know it by. One found is marked handed out now.
+pub fn fresh(folder: &Path, whose: &str, name: &str, changed: Option<i64>) -> Option<PathBuf> {
+    let inside = folder.join(whose);
+    let path = inside.join(named(name));
+    let kept = fs::metadata(&path).ok()?.modified().ok()?;
+    if Some(kept) != moment(changed?) {
+        return None;
+    }
+    used(&inside);
+    Some(path)
+}
+
+/// Writes what `from` gives as `name` in a folder of `whose` own under
+/// `folder`, as `kept` does, but readable only and marked changed when
+/// Drive changed it, `changed`, so `fresh` knows it again; anything else
+/// in that folder, a copy under the name it had before, goes.
+pub fn cached(
+    folder: &Path,
+    whose: &str,
+    name: &str,
+    changed: Option<i64>,
+    from: &mut dyn Read,
+) -> io::Result<PathBuf> {
+    let inside = folder.join(whose);
+    DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&inside)?;
+    let path = inside.join(named(name));
+    let new = inside.join(".new");
+    let _ = fs::remove_file(&new);
+    let file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&new)?;
+    let marked = file.try_clone()?;
+    filled(file, &new, from)?;
+    let done = changed
+        .and_then(moment)
+        .map_or(Ok(()), |at| marked.set_modified(at))
+        .and_then(|()| marked.set_permissions(Permissions::from_mode(0o400)))
+        .and_then(|()| fs::rename(&new, &path));
+    done.inspect_err(|_| {
+        let _ = fs::remove_file(&new);
+    })?;
+    for other in fs::read_dir(&inside)?.flatten() {
+        if other.path() != path {
+            let _ = fs::remove_file(other.path());
+        }
+    }
+    used(&inside);
+    Ok(path)
+}
+
+/// Marks a copy's folder handed out now, so `pruned` lets it go last.
+fn used(inside: &Path) {
+    if let Err(error) = File::open(inside).and_then(|folder| folder.set_modified(SystemTime::now()))
+    {
+        eprintln!("<4>couldn't mark a Drive copy used: {error}");
+    }
+}
+
+/// Lets go of the copies under `folder` handed out longest ago until those
+/// left take at most `most` bytes together, never `whose`, the one just
+/// handed out, which a program may be opening.
+pub fn pruned(folder: &Path, most: u64, whose: &str) {
+    let Ok(read) = fs::read_dir(folder) else {
+        return;
+    };
+    let mut copies: Vec<(SystemTime, u64, PathBuf)> = read
+        .flatten()
+        .filter(|copy| copy.file_name() != whose)
+        .filter_map(|copy| {
+            let used = copy.metadata().ok()?.modified().ok()?;
+            let size = fs::read_dir(copy.path())
+                .ok()?
+                .flatten()
+                .filter_map(|file| file.metadata().ok())
+                .map(|file| file.len())
+                .sum();
+            Some((used, size, copy.path()))
+        })
+        .collect();
+    let held: u64 = fs::read_dir(folder.join(whose))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|file| file.metadata().ok())
+        .map(|file| file.len())
+        .sum();
+    let mut total = held + copies.iter().map(|(_, size, _)| size).sum::<u64>();
+    copies.sort();
+    for (_, size, path) in copies {
+        if total <= most {
+            break;
+        }
+        match fs::remove_dir_all(&path) {
+            Ok(()) => total -= size,
+            Err(error) => eprintln!("<4>couldn't let a Drive copy go: {error}"),
+        }
+    }
 }
 
 /// Writes what `from` gives as the file `path`, replacing one there, whole
@@ -330,6 +463,70 @@ mod tests {
         let mut heard = Heard::new(&b"whole"[..]);
         assert_eq!(put(&path, &mut heard).unwrap(), path);
         assert!(!heard.fell);
+        fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn a_drive_copy_is_found_again_only_while_drive_hasnt_changed_it_and_reads_only() {
+        let folder = folder("cached");
+        let at = 1_793_037_600_000;
+        assert_eq!(fresh(&folder, "f1", "plan.pdf", Some(at)), None);
+        let path = cached(&folder, "f1", "plan.pdf", Some(at), &mut &b"one"[..]).unwrap();
+        assert_eq!(path, folder.join("f1").join("plan.pdf"));
+        assert_eq!(
+            fresh(&folder, "f1", "plan.pdf", Some(at)),
+            Some(path.clone())
+        );
+        assert_eq!(fresh(&folder, "f1", "plan.pdf", Some(at + 1)), None);
+        assert_eq!(fresh(&folder, "f1", "plan.pdf", None), None);
+        assert_eq!(fresh(&folder, "f1", "renamed.pdf", Some(at)), None);
+        let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&path), 0o400);
+        assert_eq!(mode(&folder.join("f1")), 0o700);
+        // A newer version replaces it, and a copy under its old name goes.
+        let path = cached(&folder, "f1", "plan v2.pdf", Some(at + 1), &mut &b"two"[..]).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"two");
+        let names: Vec<_> = fs::read_dir(folder.join("f1"))
+            .unwrap()
+            .map(|file| file.unwrap().file_name())
+            .collect();
+        assert_eq!(names, ["plan v2.pdf"]);
+        // One cut short leaves the copy before it as it was.
+        let mut heard = Heard::new(Cut(false));
+        assert!(cached(&folder, "f1", "plan v2.pdf", Some(at + 2), &mut heard).is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"two");
+        assert_eq!(fs::read_dir(folder.join("f1")).unwrap().count(), 1);
+        fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn the_drive_copies_handed_out_longest_ago_go_first_never_the_one_just_handed_out() {
+        let folder = folder("pruned");
+        for whose in ["old", "mid", "new"] {
+            cached(&folder, whose, "f", None, &mut &[0; 10][..]).unwrap();
+            // Each handed out a moment after the last, as the file
+            // system tells moments apart.
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        // Handing out the oldest again makes it the newest.
+        assert!(fresh(&folder, "old", "f", None).is_none());
+        let at = 1_793_037_600_000;
+        cached(&folder, "old", "f", Some(at), &mut &[0; 10][..]).unwrap();
+        pruned(&folder, 30, "new");
+        assert_eq!(fs::read_dir(&folder).unwrap().count(), 3, "room was there");
+        pruned(&folder, 20, "mid");
+        let mut left: Vec<_> = fs::read_dir(&folder)
+            .unwrap()
+            .map(|copy| copy.unwrap().file_name())
+            .collect();
+        left.sort();
+        assert_eq!(left, ["mid", "old"]);
+        pruned(&folder, 0, "mid");
+        let left: Vec<_> = fs::read_dir(&folder)
+            .unwrap()
+            .map(|copy| copy.unwrap().file_name())
+            .collect();
+        assert_eq!(left, ["mid"]);
         fs::remove_dir_all(&folder).unwrap();
     }
 }

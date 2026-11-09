@@ -88,6 +88,8 @@ FLASH_SHOTS = 5
 FLASHED = 200
 CHANGED = 40
 NEVER_FLASHED = "no picture caught y's flash"
+# What warp asks warp-cli, each answered by the contract's file of the same name.
+WARP_QUESTIONS = ("status", "tunnel-stats", "settings", "dns-stats")
 
 
 @pytest.fixture(scope="module")
@@ -1275,7 +1277,8 @@ def home_network_laid_out(desktop: Desktop, at_each_scale: list[str]) -> None:
     The record the stand-in writes (tests/desktop.nix) reaches the place: the internet first,
     then the gateway node with its devices under it, and each node after the one it hangs from.
     A node's, a device's and a profile's plates lay their facts out one way, every name and value
-    whole, at both of Joel's scales.
+    whole, at both of Joel's scales. WARP, beside it in Network, is shot at each scale too, so the
+    looks test keeps to twenty subtests.
     """
     desktop.machine.wait_until_succeeds(
         desktop.in_session('test -s "$XDG_RUNTIME_DIR/eero/home-network.json"'),
@@ -1311,6 +1314,7 @@ def home_network_laid_out(desktop: Desktop, at_each_scale: list[str]) -> None:
         devices_plates_lie_on_the_lines(desktop, scale)
         the_desk_lights_plate_lies_on_the_lines(desktop, scale)
         the_screens_plate_says_what_sets_it(desktop, scale)
+        warp_stands_in_network(desktop, scale)
 
 
 def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
@@ -1581,6 +1585,86 @@ def clock_plate_shown(desktop: Desktop, scale: str) -> None:
     desktop.close_launcher()
 
 
+def reading(shown: Json, start: str) -> str:
+    """Give how the first row starting so reads whole, or nothing."""
+    reads = [str(thing["reads"]) for thing in shown["things"]]
+    return next((read for read in reads if read.startswith(start)), "")
+
+
+def warp_answers(desktop: Desktop, *answers: tuple[str, str]) -> None:
+    """Have the stand-in warp-cli answer as the contract's files say, each (file, question).
+
+    It answers from what's written in ~/warp-cli (tests/warp-cli-stand-in.sh); a question
+    named with .error is said as warp-cli says an error. Each lands whole, by a rename, so
+    warp never reads half of one, and writable, since mv and rm on a terminal ask before
+    replacing a file that isn't, as the store's are.
+    """
+    contract = desktop.values["warp_contract"]
+    desktop.as_account(
+        "mkdir -p ~/warp-cli && "
+        + " && ".join(
+            f"install -m 644 {contract}/{file} ~/warp-cli/.next"
+            f" && mv -f ~/warp-cli/.next ~/warp-cli/{asked}"
+            for file, asked in answers
+        )
+    )
+
+
+def warp_stands_in_network(desktop: Desktop, scale: str) -> None:
+    """Shoot WARP in Network and a step in, then degraded and not answering, at this scale.
+
+    The shell runs the real warp against the stand-in warp-cli, answering with the contract's
+    made-up files (modules/warp/contract), which warp's own tests read too. What each part says
+    is tests/answers.qml's to prove; these are for the design's look at Joel's scales (VKCF3Z,
+    2026-11-08).
+    """
+    at = scale.replace(".", "-")
+    connected = [(f"{asked}.json", f"{asked}.json") for asked in WARP_QUESTIONS]
+    try:
+        warp_answers(desktop, *connected)
+        desktop.answer("network")
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Network")
+        desktop.step_in()
+        desktop.launcher_until(
+            lambda shown: reading(shown, "WARP ").startswith("WARP \u00b7 connected")
+        )
+        desktop.down_to("WARP")
+        desktop.shoot(f"launcher-warp-in-network-at-{at}")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: "Round Trip" in shown["rows"])
+        desktop.shoot(f"launcher-warp-at-{at}")
+        # WARP finds the network degraded, which its Health says a step in, and its
+        # row in Network, in the warning colour.
+        warp_answers(desktop, ("status.degraded.json", "status.json"))
+        desktop.launcher_until(
+            lambda shown: reading(shown, "Health ").startswith("Health \u00b7 degraded")
+        )
+        # Selected, so its row says what WARP measured.
+        desktop.down_to("Health")
+        desktop.shoot(f"launcher-warp-degraded-at-{at}")
+        desktop.step_out()
+        desktop.launcher_until(
+            lambda shown: reading(shown, "WARP ").startswith("WARP \u00b7 degraded")
+        )
+        desktop.shoot(f"launcher-warp-degraded-in-network-at-{at}")
+        # Its service gone, WARP says so in its place, and why beside it.
+        desktop.as_account("rm -f ~/warp-cli/status.json")
+        warp_answers(desktop, ("daemon-down.json", "status.error.json"))
+        desktop.launcher_until(
+            lambda shown: reading(shown, "WARP ").startswith("WARP \u00b7 not answering")
+        )
+        desktop.shoot(f"launcher-warp-not-answering-in-network-at-{at}")
+        desktop.close_launcher()
+        desktop.answer("vpn")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("name") == "not answering"
+        )
+        desktop.shoot(f"launcher-warp-not-answering-at-{at}")
+        desktop.close_launcher()
+    finally:
+        desktop.as_account("rm -rf ~/warp-cli")
+
+
 def test_nows_plate_sets_its_head_and_groups_as_every_plate(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
@@ -1647,6 +1731,39 @@ def test_nows_plate_sets_its_head_and_groups_as_every_plate(
         )
         desktop.shoot(f"launcher-now-plate-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
+        location_plate_shown(desktop, scale)
+
+
+def location_plate_shown(desktop: Desktop, scale: str) -> None:
+    """See the Location's plate at a scale: how it was found, its town, and its figures."""
+    fix = "$XDG_RUNTIME_DIR/whereabouts.json"
+    when = int(desktop.machine.succeed("date +%s").strip()) - 720
+    here = {
+        "v": 2,
+        "latitude": 12.3457,
+        "longitude": -98.7654,
+        "accuracy": 26000,
+        "when": when,
+        "place": "Lighthouse, Ontario",
+        "zone": "America/Toronto",
+        "country": "Canada",
+    }
+    text = shlex.quote(json.dumps(here))
+    desktop.as_account(f"printf %s {text} > {fix}.q && mv {fix}.q {fix}")
+    desktop.as_account("qs ipc call launcher collection on")
+    desktop.launcher_ready()
+    desktop.down_to("Location")
+    desktop.launcher_until(
+        lambda shown: shown["drawer"]["out"] is True and shown["drawer"]["title"] == "Lighthouse"
+    )
+    drawer = plate_shown(desktop, scale)
+    assert drawer["eyebrow"] == "from Wi-Fi · location", f"at {scale} the plate: {drawer}"
+    assert drawer["facts"] == ["Located", "Accuracy", "Coordinates", "Country", "Zone"], drawer
+    assert drawer["valuesWhole"], f"at {scale} a fact's value breaks a word: {drawer}"
+    desktop.shoot(f"launcher-location-plate-at-{scale.replace('.', '-')}")
+    desktop.close_launcher()
+    # Nowhere again, as whereabouts writes it, for the tests after.
+    desktop.as_account(f"echo '{{}}' > {fix}.q && mv {fix}.q {fix}")
 
 
 # The file picker's plate, for each kind of file it previews and one it doesn't, at both of
@@ -2926,6 +3043,23 @@ def drawer_shot(desktop: Desktop, title: str, picture: str) -> list[str]:
     return cast("list[str]", desktop.showing()["drawer"]["facts"])
 
 
+def budgets_stand_in_agents(desktop: Desktop, named: str) -> None:
+    """Shoot Agents' Budgets row, which is AI spend's: its rows, their order and drawers."""
+    desktop.as_account("qs ipc call launcher collection agents")
+    desktop.launcher_ready()
+    desktop.launcher_until(lambda shown: "Budgets" in shown["rows"])
+    desktop.down_to("Budgets")
+    assert desktop.showing()["selected"]["side"] == "$21,564 this month"
+    desktop.shoot(f"launcher-agents-budgets-at-{named}")
+    desktop.step_in()
+    rows = desktop.showing()["rows"]
+    assert rows[:3] == ["All AI Spend", "Claude Pro", "Your AI proxy token"], rows
+    desktop.down_to("Claude Pro")
+    facts = drawer_shot(desktop, "Claude Pro", f"launcher-agents-budgets-each-at-{named}")
+    assert facts == ["Five Hours", "Week", "Worth at List", "Feed", "Providers"], facts
+    desktop.close_launcher()
+
+
 def test_the_budgets_stand_behind_one_row_at_each_scale(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
@@ -2936,8 +3070,9 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
     steps into its windows (docs/design.md; VKCF3Z, 2026-11-06). A budget's drawer and a
     window's say what budgets.json holds of each (VKCF3Z, 2026-11-07): a plan's, the employer's
     money's, a share window's and a dollar window past where it warns. A running period's
-    drawer says its days and what its cuts went to most, and a cap's is its window's. Each is
-    kept for the design's look at Joel's scales.
+    drawer says its days and what its cuts went to most, and a cap's is its window's. Agents
+    shows the same Budgets row after its sessions. Each is kept for the design's look at
+    Joel's scales.
     """
     written(desktop, "budgets.json", BUDGETS)
     written(desktop, "collection.json", BUDGETED)
@@ -2992,6 +3127,7 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
             facts = drawer_shot(desktop, "Five Hours", f"launcher-budgets-windows-at-{named}")
             assert facts == ["Resets", "Read By", "Warns"], facts
             desktop.close_launcher()
+            budgets_stand_in_agents(desktop, named)
     finally:
         desktop.as_account(
             "rm -f $XDG_RUNTIME_DIR/spend-watch/collection.json"

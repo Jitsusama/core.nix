@@ -944,6 +944,15 @@ impl Backlight<'_> {
 
     /// Sets the keyboard's light once the light has held (follow.rs).
     async fn keyboard_step(&mut self, now: Instant) {
+        // The level is read only when there's a change to make, since each
+        // read is a firmware call and this runs with every screen step.
+        if !self
+            .keyboard
+            .as_ref()
+            .is_some_and(|(keys, _)| keys.is_due(now))
+        {
+            return;
+        }
         // Unread, the level can't be known to be anybody's but Joel's, so
         // what the light asked for is let go.
         let Some(was) = self.keyboard_read() else {

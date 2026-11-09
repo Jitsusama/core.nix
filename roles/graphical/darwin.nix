@@ -1,7 +1,7 @@
 # A Mac with a screen in front of Joel: fonts, macOS' defaults and the apps
 # Homebrew installs, and inlyne, which reads markdown files as pages, as on
 # Linux. Ghostty and WezTerm are the Mac's terminals until kitty replaces
-# them.
+# them. Where WARP's app runs, warp says how its link stands, as on Linux.
 { darwinModules, homeModules }:
 {
   imports = [
@@ -14,6 +14,7 @@
     homeModules.homebrew
     homeModules.ghostty
     homeModules.inlyne
+    homeModules.warp
     homeModules.wezterm
   ];
 }

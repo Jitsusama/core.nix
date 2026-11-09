@@ -18,6 +18,7 @@ import "Zones.js" as Zones
 import "Moment.js" as Moment
 import "Keeping.js" as Keeping
 import "Warmth.js" as Warmth
+import "Here.js" as Here
 import "Colours.js" as Colours
 import "Asking.js" as Asking
 import "Machine.js" as Machine
@@ -31,6 +32,7 @@ import "Traffic.js" as Traffic
 import "Sounds.js" as Sounds
 import "Cameras.js" as Cameras
 import "Firmware.js" as Firmware
+import "Warp.js" as Warp
 import "Interfaces.js" as Interfaces
 import "Networkd.js" as Networkd
 import "WifiLink.js" as WifiLink
@@ -615,6 +617,12 @@ QtObject {
         const day = new Date(2026, 10, 4);
         const moon = Moment.moon(evening);
         const season = Moment.season(evening, 43.67);
+        // Location's words, as words.json says them, and its numbers in an
+        // English locale's marks.
+        const hereSaid = { metres: "within {n} m", kilometres: "within {n} km", north: "N",
+            south: "S", east: "E", west: "W" };
+        const hereTold = { number: (value, decimals) => Qt.locale("en_CA").toString(value, "f",
+            decimals) };
         const figures = [
             ["UTC", Moment.utcClock(evening + 7000), "22:00:07"],
             ["Unix time", Moment.unix(evening), 1793829600],
@@ -745,7 +753,42 @@ QtObject {
                 KeepingCases.servers).join(", "), ""],
             ["activity beyond the count", Keeping.activity({ online: 1, offline: 1,
                 burstOnline: 1, burstOffline: 1, unresolved: 1 }, KeepingCases.servers)
-                .join(", "), "1 offline, 2 in a burst, 1 unresolved"]
+                .join(", "), "1 offline, 2 in a burst, 1 unresolved"],
+            // Where the laptop is claims no more places than it knows, the
+            // nearest order of magnitude to its accuracy: four under 35 m,
+            // three under 350 m, two under 3.5 km, one under 35 km, else
+            // none; how near is said to three figures, rounded up; and when
+            // it was found is how long ago within a day, else its day and
+            // time (VKCF3Z, 2026-11-08).
+            ["a position to 5 m", Here.coordinates({ latitude: 12.345_678,
+                longitude: -98.765_4, accuracy: 5 }, hereSaid),
+                "12.3457\u00b0 N \u00b7 98.7654\u00b0 W"],
+            ["a position to 80 m", Here.coordinates({ latitude: 12.345_678,
+                longitude: -98.765_4, accuracy: 80 }, hereSaid),
+                "12.346\u00b0 N \u00b7 98.765\u00b0 W"],
+            ["a position to 100 m", Here.coordinates({ latitude: 12.345_678,
+                longitude: -98.765_4, accuracy: 100 }, hereSaid),
+                "12.346\u00b0 N \u00b7 98.765\u00b0 W"],
+            ["a position to 5 km, south and east", Here.coordinates({ latitude: -12.345_6,
+                longitude: 123.456_7, accuracy: 5000 }, hereSaid),
+                "12.3\u00b0 S \u00b7 123.5\u00b0 E"],
+            ["a position to 500 km, in whole degrees", Here.coordinates({ latitude: 12.35,
+                longitude: -98.76, accuracy: 500_000 }, hereSaid), "12\u00b0 N \u00b7 99\u00b0 W"],
+            ["no hemisphere at none", Here.coordinates({ latitude: -0.04, longitude: 0.04,
+                accuracy: 26_000 }, hereSaid), "0.0\u00b0 \u00b7 0.0\u00b0"],
+            ["near, in metres", Here.within(80, hereSaid, hereTold), "within 80 m"],
+            ["near, a metre short of a kilometre", Here.within(999.5, hereSaid, hereTold),
+                "within 1 km"],
+            ["near, a metre past one", Here.within(1001, hereSaid, hereTold), "within 1.01 km"],
+            ["near, in kilometres", Here.within(26_000, hereSaid, hereTold), "within 26 km"],
+            ["near, in metres to three figures", Here.within(100.2, hereSaid, hereTold),
+                "within 101 m"],
+            ["near, a thousand kilometres on, to three figures",
+                Here.within(1_234_000, hereSaid, hereTold), "within 1,240 km"],
+            ["located within the day", Here.located(1000, 1000 * 1000 + 720_000,
+                { ago: (at, now) => `${(now - at) / 60_000} min ago` }), "12 min ago"],
+            ["located days ago", Here.located(1000, 1000 * 1000 + 3 * 86_400_000,
+                { day: () => "Saturday", clock: () => "06:46" }), "Saturday 06:46"]
         ];
         for (const [what, got, expected] of figures) {
             asked++;
@@ -1010,8 +1053,15 @@ QtObject {
         machine("a rate", Machine.rate(12000), "12.0 kB/s");
         machine("a clock from kilohertz", [4700000, 400000].map(Machine.hertz),
             ["4.70 GHz", "400 MHz"]);
-        machine("three significant digits", [0.04, 1.234, 12.34, 123.4].map(Machine.digits),
-            ["0.0400", "1.23", "12.3", "123"]);
+        // Every measure takes the one rule: three significant digits, zeros
+        // kept, a carry into the next digit, grouped past three whole
+        // digits, and the real minus under nothing.
+        machine("three significant digits", [0.04, 1.234, 12.34, 123.4, 0.9997, 1234, -3.2]
+            .map(value => Numbers.significant(value)),
+            ["0.0400", "1.23", "12.3", "123", "1.00", "1,230", "\u22123.20"]);
+        machine("three significant digits, grouped and pointed as set",
+            Numbers.significant(1234.5, ".", ",") + " " + Numbers.significant(5.2, ".", ","),
+            "1.230 5,20");
         // Two rates say which is which, and none while both are still.
         machine("rates both ways", Machine.both(12000, 0), "12.0 kB/s in \u00b7 0 B/s out");
         machine("rates both still", Machine.both(0, 0), "none");
@@ -2188,6 +2238,163 @@ QtObject {
         machine("daylight", Power.roomLevel(10000), 1);
         machine("a room a hundredth of daylight", Math.round(Power.roomLevel(100) * 100) / 100,
             0.5);
+
+        // WARP, from the record warp prints (modules/warp/warp.json), the
+        // same one its own tests read warp-cli's answers into, in the
+        // words the launcher's vocabulary gives it (launcher/words.json).
+        const reading = file => {
+            const request = new XMLHttpRequest();
+            request.open("GET", Qt.resolvedUrl(file), false);
+            request.send();
+            return JSON.parse(request.responseText);
+        };
+        const warp = reading("warp.json");
+        const vocabulary = reading("words.json").things;
+        const warpSaid = vocabulary.find(thing => thing.id === "warp").said;
+        const warpTold = record => Warp.told(record, {}, warpSaid);
+        const figure = (id, side, note, copy) => ({ id, side, note, copy, warns: false });
+        const linked = warpTold(warp);
+        machine("WARP connected, as its row says it", linked && [linked.headline, linked.warns],
+            ["connected \u00b7 127 ms", false]);
+        machine("WARP's parts", linked && linked.parts, [
+            figure("state", "connected", "", "connected"),
+            figure("health", "healthy", "", "healthy"),
+            Object.assign(figure("settings", "warp+doh", "always on \u00b7 split tunnel",
+                "warp+doh"), { parts: [
+                figure("settings:mode", "warp+doh",
+                    "the tunnel with DNS over HTTPS \u00b7 set by local policy", "warp+doh"),
+                figure("settings:always-on", "on", "the default", "on"),
+                figure("settings:split-tunnel", "include",
+                    "2 hosts \u00b7 2 networks \u00b7 set by network policy", "include"),
+                figure("settings:switch-locked", "off", "set by an override", "off"),
+                figure("settings:auto-connect", "2 min", "set by local policy", "2"),
+                figure("settings:organisation", "example", "set by local policy", "example"),
+                figure("settings:tunnel-protocol", "masque", "set by network policy", "masque"),
+                figure("settings:post-quantum", "enabled with downgrades",
+                    "set by network policy", "enabled_with_downgrades")
+            ] }),
+            figure("latency", "127 ms", "", "127"),
+            figure("loss", "1.24%", "", "0.012355098"),
+            figure("protocol", "MASQUE", "HTTPS via UDP", "MASQUE (HTTPS via UDP)"),
+            figure("colo", "YYZ", "metal 0a1b2c", "YYZ"),
+            figure("endpoint", "198.51.100.2", "no IPv6", "198.51.100.2"),
+            figure("handshake", "2 h ago", "", "8751"),
+            figure("traffic", "10.2 GB in \u00b7 9.26 GB out", "",
+                "10.2 GB in \u00b7 9.26 GB out"),
+            Object.assign(figure("tls", "TLSv1.3", "post-quantum", "TLSv1.3"), { parts: [
+                figure("tls:version", "TLSv1.3", "", "TLSv1.3"),
+                figure("tls:curve", "P256Kyber768Draft00", "", "P256Kyber768Draft00"),
+                figure("tls:cipher", "TLS_AES_256_GCM_SHA384", "", "TLS_AES_256_GCM_SHA384"),
+                figure("tls:post-quantum", "on", "", "on"),
+                figure("tls:server-name", "masque.example.com", "", "masque.example.com")
+            ] }),
+            Object.assign(figure("dns", "134 ms", "8 of 12 answered", "134.08333333333334"),
+                { parts: [
+                    figure("dns:proxy", "on", "", "on"),
+                    figure("dns:average", "134 ms", "", "134.08333333333334"),
+                    figure("dns:asked", "12", "", "12"),
+                    figure("dns:answered", "8", "", "8"),
+                    figure("dns:no-record", "4", "", "4"),
+                    figure("dns:timed-out", "0", "", "0"),
+                    figure("dns:failed", "0", "", "0")
+                ] })
+        ]);
+        // Every part is named by the vocabulary, inside the part that holds
+        // it, so none reads as its id.
+        const nameless = [];
+        const partsNamed = (parts, within) => {
+            for (const part of parts ?? []) {
+                const word = vocabulary.find(thing => thing.id === `warp:${part.id}`);
+                if (!word || !word.name || word.in !== within)
+                    nameless.push(part.id);
+                partsNamed(part.parts, `warp:${part.id}`);
+            }
+        };
+        partsNamed(linked && linked.parts, "warp");
+        machine("every part of WARP named where it is", nameless, []);
+        // Named as Network names the same figures elsewhere, Traffic's
+        // Round Trip among them (VKCF3Z and YI77D3, 2026-11-08).
+        machine("WARP's figures named as Network names them",
+            ["latency", "colo", "traffic"].map(id =>
+                (vocabulary.find(thing => thing.id === `warp:${id}`) ?? {}).name),
+            ["Round Trip", "Data Centre", "Traffic"]);
+        // A run of items joins with dots, never commas (docs/design.md,
+        // Typesetting).
+        const commas = [];
+        const noCommas = parts => {
+            for (const part of parts ?? []) {
+                if (`${part.side}${part.note}`.includes(","))
+                    commas.push(part.id);
+                noCommas(part.parts);
+            }
+        };
+        noCommas(linked && linked.parts);
+        machine("no part of WARP joins its words with a comma", commas, []);
+        const slight = warpTold(Object.assign({}, warp, { tunnel: Object.assign({}, warp.tunnel,
+            { loss_fraction: 0.0053708, received_bytes: null }) }));
+        machine("a slight loss keeps three digits, and one way's traffic says only it",
+            slight && slight.parts.filter(part => ["loss", "traffic"].includes(part.id))
+                .map(part => part.side),
+            ["0.537%", "9.26 GB out"]);
+        const degraded = warpTold(Object.assign({}, warp, { status: { state: "Connected",
+            reason: "NetworkDegraded", reason_figures: { loss_percent: 5.3708224, rtt_ms: 170 } } }));
+        machine("WARP degraded, as its row says it", degraded && [degraded.headline, degraded.warns],
+            ["degraded \u00b7 127 ms", true]);
+        // Its state alone at the side, which never gives way; its figures in
+        // its note, whose they are first, since the note gives way from its
+        // end and Round Trip and Loss below are the tunnel's own (VKCF3Z).
+        machine("WARP's health degraded, saying whose measure first",
+            degraded && degraded.parts.find(part => part.id === "health"),
+            { id: "health", side: "degraded",
+                note: "WARP's measure \u00b7 5.37% loss \u00b7 170 ms round trip",
+                copy: "degraded", warns: true });
+        const down = warpTold({ status: { state: "Disconnected", reason: "Manual",
+            reason_figures: null }, tunnel: null, settings: null, dns: null });
+        machine("WARP disconnected, its tunnel unknown", down && [down.headline, down.parts], [
+            "disconnected",
+            [figure("state", "disconnected", "manual", "disconnected")]
+        ]);
+        const connecting = warpTold({ status: { state: "Connecting",
+            reason: "PerformingHappyEyeballs", reason_figures: null }, tunnel: null });
+        machine("WARP connecting, saying why", connecting && connecting.parts[0].note,
+            "performing happy eyeballs");
+        const thin = warpTold(Object.assign({}, warp, { tunnel: { on: true, latency_ms: null,
+            loss_fraction: null, protocol: "WireGuard", edge: null, sent_bytes: null,
+            received_bytes: null }, settings: null, dns: null }));
+        machine("a figure warp didn't give is left out",
+            thin && thin.parts.map(part => part.id), ["state", "health", "protocol"]);
+        const off = warpTold(Object.assign({}, warp, { tunnel: { on: false, v4_endpoint: null,
+            v6_endpoint: "2001:db8::2" } }));
+        machine("a tunnel that's off, its one endpoint IPv6",
+            off && off.parts.filter(part => ["tunnel", "endpoint"].includes(part.id)), [
+            figure("tunnel", "off", "", "off"),
+            figure("endpoint", "2001:db8::2", "no IPv4", "2001:db8::2")
+        ]);
+        const policed = warpTold(Object.assign({}, warp, { settings: { mode: "tunnel_only",
+            always_on: false, split_tunnel: { mode: "exclude", hosts: 1, ips: 0 },
+            set_by: { mode: "someone_else" } }, dns: { proxy_enabled: false, average_ms: null,
+            total: 0, success: 0, no_records_found: 0, timed_out: 0, other_error: 0 } }));
+        machine("settings warp gave some of, each said as it's set",
+            policed && policed.parts.find(part => part.id === "settings"),
+            Object.assign(figure("settings", "tunnel only", "split tunnel", "tunnel_only"),
+                { parts: [
+                    figure("settings:mode", "tunnel only",
+                        "the tunnel alone \u00b7 set by someone else", "tunnel_only"),
+                    figure("settings:always-on", "off", "", "off"),
+                    figure("settings:split-tunnel", "exclude", "1 host", "exclude")
+                ] }));
+        machine("a DNS proxy that's off says so in its place",
+            policed && (policed.parts.find(part => part.id === "dns") ?? {}).side, "proxy off");
+        machine("WARP's service not answering", Warp.failed({ error: "not-answering",
+            said: "No such file or directory (os error 2)" }, warpSaid), { headline: "not answering",
+            warns: true, note: "No such file or directory (os error 2)" });
+        machine("warp-cli saying what warp can't read", Warp.failed({ error: "unreadable",
+            said: "warp-cli status said InvalidAccountType: Invalid account type." }, warpSaid),
+        { headline: "unreadable", warns: true,
+            note: "warp-cli status said InvalidAccountType: Invalid account type." });
+        machine("no warp-cli, so no WARP", Warp.failed({ error: "not-installed", said: "warp-cli" },
+            warpSaid), null);
+        machine("warp-cli's words as said", Warp.spoken("NetworkHealthy"), "network healthy");
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)

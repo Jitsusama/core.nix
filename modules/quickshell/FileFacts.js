@@ -317,3 +317,40 @@ function plate(file, said, now, words) {
     }
     return shown;
 }
+
+// A file or a folder kept elsewhere, as Google's Drive keeps one, is
+// drawn as one here is, from what its place said as it listed it,
+// `entry` ({ name, folder, size, modified }), since nothing here can be
+// previewed before it's fetched. Its row says its size, or nothing for a
+// folder whose items its place doesn't count, and when it changed, each
+// where its place says it.
+function sideElsewhere(entry, now, words) {
+    const size = !entry.folder && typeof entry.size === "number" ? weighed(entry.size) : "";
+    const changed = typeof entry.modified === "number" ? when(entry.modified, now, words) : "";
+    return [size, changed].filter(part => part !== "").join(BETWEEN);
+}
+
+// Its plate, `file` its name, the folders it's in as its place names them
+// (where), where it is in its place's own words (within, "in My Drive"),
+// its entry and what more its place says of it (facts): the eyebrow where
+// it is then its kind, by its ending as file-preview says one here, or a
+// folder's, as the place's own drawer says them (VKCF3Z, 2026-11-08); its
+// name; then Size and Changed as a file's here, Where too for a place
+// that says no `within`, and its place's facts after them. A figure its
+// place doesn't give is left out, never awaited, since nothing more is
+// coming.
+function plateElsewhere(file, now, words) {
+    const entry = file.entry;
+    const shown = plate({ path: "", name: file.name, where: file.where ?? "", entry }, null, now,
+        words);
+    const ending = nameEnd(file.name);
+    const kind = entry.folder ? words.folder
+        : ending < file.name.length ? file.name.slice(ending + 1).toUpperCase() : words.file;
+    const within = file.within ?? "";
+    const said = shown.facts.filter(fact => fact.value !== null && fact.value !== ""
+        && (within === "" || fact.label !== words.where));
+    return Object.assign(shown, {
+        eyebrow: within === "" ? kind : `${within}${BETWEEN}${kind}`,
+        facts: said.concat(file.facts ?? [])
+    }, within === "" ? {} : { eyebrowNames: true });
+}
