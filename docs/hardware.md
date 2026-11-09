@@ -1462,6 +1462,15 @@ profiles still drew alike over the last minute: 21.7 to 22.3 W at 2.75 to
 bought 1.6% more clock. Idle, the chip drew 6.0 to 6.2 W in all three, as
 the GPU's driver reads it.
 
+Short bursts, the work a person waits on, differed as little. After 90 s
+idle on the charger, a fixed loop on one thread took 4.1 to 4.6 s in
+balanced and 4.2 to 4.7 s in performance, the core reaching 4.0 GHz in
+both. The same loop on all 12 threads at once took 10.3 to 10.9 s in
+balanced and 10.2 to 10.3 s in performance, about 4% faster, at 3.2 to
+3.3 GHz either way. The fan ran at 6,300 and 7,500 rpm. So performance on
+the charger buys a few percent under load on every thread, for a fan
+that runs faster.
+
 ### Wi-Fi's Country
 
 The AX200 learns its country from the access points it hears
@@ -1474,6 +1483,19 @@ and power for the whole session. Disconnected by hand, a scan gave the
 access point's country within 2 s, and it held after joining again. The
 module's kernel patch ([`kernel/iwlmvm-country-while-associated.patch`][25])
 takes a report while connected when the domain is still the world one.
+
+### Wi-Fi's Speed and Power Save
+
+On 5 GHz at 80 MHz, at -40 to -49 dBm, the AX200 linked at up to HE-MCS 11
+on two streams, 1200.9 Mbit/s. Over 10 s of iperf3 with a machine on the
+network's cable, it took in 286 Mbit/s and sent 94 Mbit/s, while its
+own sending rate sat at HE-MCS 3, 245 Mbit/s. A ping to the router under
+those loads averaged 14.5 ms and 5.8 ms, against 5.7 ms idle.
+
+The Wi-Fi module's `wifi-power-save` keeps the card awake on the charger
+and lets it doze on battery, set by udev as the card appears and as the
+charger comes and goes. Over 14 days the laptop's journal logged 57 changes,
+each at a boot, an unplugging or a plugging in.
 
 ### The Touchscreen and Pen
 
@@ -1565,6 +1587,8 @@ sealed to.
 | Touch, pen | taps, gestures and the pen aren't checked on screen yet, nor across hibernate  |
 | Touch      | what its heat maps under a shut lid cost on battery isn't read yet             |
 | Power      | the profiles are read on the charger only, not yet on battery                  |
+| Wi-Fi      | what dozing saves on battery, and roaming between access points, aren't read   |
+| Devices    | each watched device is named once its path goes; no driver is unbound yet      |
 
 [1]: kernel.md
 [2]: ../hardware/dell-xps-14-da14260/nixos.nix
