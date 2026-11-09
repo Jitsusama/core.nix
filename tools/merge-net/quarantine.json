@@ -54,5 +54,19 @@
     "owner_pr": 2539,
     "reason": "failed twice at 9ab4e1cf1799 and on a branch after 78264d4d4, with HomeNetwork.qml handed no drawer; owned by the shell's session, which fixes it forward and takes it off this list",
     "test": "vm-desktop-launcher-finds-by-name"
+  },
+  {
+    "at": 1794238758,
+    "commit": "e81e5e375e1b2c13890909fe24629df0514f6ed8",
+    "owner_pr": null,
+    "reason": "failed, then passed, at 550a45788 and f18ef97a1, and twice at cd92d7660, on a notice's frame after its key; the shell's session takes it off once it holds",
+    "test": "vm-desktop-launcher-draws-still"
+  },
+  {
+    "at": 1794238758,
+    "commit": "e81e5e375e1b2c13890909fe24629df0514f6ed8",
+    "owner_pr": null,
+    "reason": "failed, then passed, at 9ab4e1cf1799, and once on a branch, on a held arrow while rows change; the shell's session takes it off once it holds",
+    "test": "vm-desktop-launcher-keeps-up"
   }
 ]
