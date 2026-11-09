@@ -515,8 +515,14 @@ mod tests {
                 .unwrap()
                 .sent
         };
-        assert!(mail(json!(["SENT", "IMPORTANT"])), "mail Joel sent isn't his");
-        assert!(!mail(json!(["INBOX", "UNREAD"])), "mail that came is said to be his");
+        assert!(
+            mail(json!(["SENT", "IMPORTANT"])),
+            "mail Joel sent isn't his"
+        );
+        assert!(
+            !mail(json!(["INBOX", "UNREAD"])),
+            "mail that came is said to be his"
+        );
     }
 
     #[test]
