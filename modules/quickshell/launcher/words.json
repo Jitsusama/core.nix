@@ -3226,7 +3226,8 @@
         "installing": "installing",
         "waits": "restart to finish",
         "installed": "installed",
-        "failed": "didn't install"
+        "failed": "didn't install",
+        "stopped": "stopped waiting after {count} minutes"
       }
     },
     {
@@ -3239,10 +3240,11 @@
       "sure": "Fix {attribute} Now",
       "said": {
         "what": "fwupd changes the setting",
-        "final": "fwupd changes the setting, and may ask for a restart",
+        "final": "fwupd changes the setting, and may need a restart",
         "changing": "fixing",
         "changed": "fixed",
-        "failed": "didn't fix"
+        "failed": "didn't fix",
+        "stopped": "stopped waiting after {count} minutes"
       }
     },
     {
@@ -3255,10 +3257,11 @@
       "sure": "Undo the Fix to {attribute} Now",
       "said": {
         "what": "fwupd puts the setting back as it was",
-        "final": "it lowers the level, and may ask for a restart",
+        "final": "it lowers the level, and may need a restart",
         "changing": "undoing",
         "changed": "undone",
-        "failed": "didn't undo"
+        "failed": "didn't undo",
+        "stopped": "stopped waiting after {count} minutes"
       }
     },
     {
@@ -3272,7 +3275,8 @@
       "said": {
         "set": "set {setting} to {target} there",
         "find": "set it there",
-        "final": "it closes every window"
+        "final": "it closes every window",
+        "failed": "didn't restart"
       }
     },
     {

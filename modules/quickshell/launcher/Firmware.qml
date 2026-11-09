@@ -46,12 +46,22 @@ Provider {
     // { outcome, reason }, outcome "installed" or "failed", so its row
     // stays to say so until Firmware is opened again, by the Lists rule.
     property var installs: ({})
-    // The attribute fwupd is fixing or putting back, or "", and how each
-    // change since the launcher opened ended, by attribute, as installs.
+    // The change fwupd is making, "fix:" or "undo:" and the attribute,
+    // or "", and how each change since the launcher opened ended, keyed
+    // the same way, so a fix's end never reads as its undo's; a restart
+    // into firmware setup that didn't go is kept there too, as "setup:".
     property string changing: ""
     property var changes: ({})
+    // The attribute whose restart into firmware setup is being asked of
+    // logind, or "".
+    property string restarting: ""
+    // The minutes an install or a change was waited for before fwupdmgr
+    // was stopped, or 0 while it ended by itself.
+    property int installStopped: 0
+    property int changeStopped: 0
 
     readonly property string fwupdmgr: settings.fwupdmgr ?? ""
+    readonly property string systemctl: settings.systemctl ?? ""
     // Whether Firmware's rows can be seen: its answer, or words typed that
     // ask it, a row of it, or Machine's place holding its row, so the
     // daemon asks fwupd only then and a change fwupd says is answered at
@@ -280,7 +290,8 @@ Provider {
     function changeRow(attribute, how) {
         const id = `verb:firmware:${how}`;
         const notes = Words.of(id).said ?? {};
-        const ended = changes[attribute.id] ?? null;
+        const keyed = `${how}:${attribute.id}`;
+        const ended = changes[keyed] ?? null;
         const row = {
             key: `${id}:${attribute.id}`,
             name: Words.name(id),
@@ -289,12 +300,12 @@ Provider {
             hue: "action",
             stays: true
         };
-        const standing = note => changing === attribute.id ? notes.changing : note;
+        const standing = note => changing === keyed ? notes.changing : note;
         const noted = (fields, note) => thing(Object.assign(row, fields, {
             note: note,
             state: () => standing(note)
         }));
-        if (changing === attribute.id)
+        if (changing === keyed)
             return noted({ run: () => {} }, notes.changing);
         if (ended?.outcome === "changed")
             return noted({ gone: true }, notes.changed);
@@ -319,13 +330,18 @@ Provider {
     // Restarting into the firmware's own setup, where the setting that
     // fixes an attribute is changed, saying which and to what where fwupd
     // says: asked once, since it closes every window, then done with
-    // Joel's second Return, as Power's Reboot is.
+    // Joel's second Return, as Power's Reboot is. logind refuses it where
+    // the firmware can't be asked to open its setup, and the row then
+    // says logind's words for why.
     function setupRow(attribute) {
         const id = "verb:firmware:setup";
         const notes = Words.of(id).said ?? {};
         const setting = attribute.setting;
-        const note = setting?.target ? String(notes.set ?? "").replace("{setting}", setting.id)
+        const ended = changes[`setup:${attribute.id}`] ?? null;
+        const asked = setting?.target ? String(notes.set ?? "").replace("{setting}", setting.id)
             .replace("{target}", setting.target) : notes.find;
+        const note = ended?.outcome === "failed"
+            ? [notes.failed, ended.reason].filter(Boolean).join(": ") : asked;
         const sure = () => [thing({
             key: `${id}:sure:${attribute.id}`,
             // The step that asks Joel to be sure, so its Return does it (Launcher.lands).
@@ -335,7 +351,7 @@ Provider {
             verb: Words.verb(id),
             glyph: Words.glyph(id),
             hue: "alert",
-            run: () => Niri.spawn(["systemctl", "reboot", "--firmware-setup"])
+            run: () => provider.restart(attribute)
         })];
         return thing({
             key: `${id}:${attribute.id}`,
@@ -350,24 +366,59 @@ Provider {
         });
     }
 
+    // Has logind restart into the firmware's setup, unless it's already
+    // asked to.
+    function restart(attribute) {
+        if (restarting !== "" || systemctl === "")
+            return;
+        restarting = attribute.id;
+        restarter.command = [systemctl, "reboot", "--firmware-setup"];
+        restarter.running = true;
+    }
+
+    // logind refused the restart, or took it, in which case nothing here
+    // is left to see it.
+    function restartEnded(code) {
+        if (code !== 0) {
+            const ended = Object.assign({}, changes);
+            ended[`setup:${restarting}`] = { outcome: "failed",
+                reason: Fwupd.reason(restarterErr.text) };
+            changes = ended;
+        }
+        restarting = "";
+        answered();
+    }
+
     // Has fwupd fix an attribute itself, or put a fix back, unless a
-    // change is going in.
+    // change is going in. Neither asks anything in fwupd 2.1.9, but
+    // --no-reboot-check keeps a later fwupdmgr from answering a restart's
+    // question by itself, as Install does; the restart stays Joel's.
     function change(attribute, how) {
         if (changing !== "")
             return;
-        changing = attribute.id;
+        changing = `${how}:${attribute.id}`;
+        changeStopped = 0;
         changer.command = [fwupdmgr, how === "fix" ? "security-fix" : "security-undo",
-            attribute.id, "--assume-yes"];
+            attribute.id, "--assume-yes", "--no-reboot-check"];
         changer.running = true;
+        changeWait.interval = Fwupd.changePatience() * 60000;
+        changeWait.restart();
         answered();
     }
 
     // A change ended: fwupd says what changed, which the daemon reads at
-    // once, so the attribute says what it found now.
+    // once, so the attribute says what it found now. One stopped for
+    // taking too long says how long it was waited for.
     function changeEnded(code) {
+        changeWait.stop();
+        const how = changing.slice(0, changing.indexOf(":"));
+        const stopped = String(Words.of(`verb:firmware:${how}`).said?.stopped ?? "")
+            .replace("{count}", changeStopped);
         const ended = Object.assign({}, changes);
-        ended[changing] = code === 0 ? { outcome: "changed", reason: "" }
-            : { outcome: "failed", reason: Fwupd.reason(changerErr.text) };
+        ended[changing] = code === 0 && changeStopped === 0
+            ? { outcome: "changed", reason: "" }
+            : { outcome: "failed",
+                reason: changeStopped > 0 ? stopped : Fwupd.reason(changerErr.text) };
         changes = ended;
         changing = "";
         answered();
@@ -464,18 +515,27 @@ Provider {
         if (installing !== "" || device.offered === null)
             return;
         installing = device.id;
+        installStopped = 0;
         installer.command = [fwupdmgr, "update", device.id, "--assume-yes", "--no-reboot-check"];
         installer.running = true;
+        installWait.interval = Fwupd.installPatience(device) * 60000;
+        installWait.restart();
         answered();
     }
 
     // An install ended: fwupd says what changed, which the daemon reads
     // at once, so the row says whether it waits for the restart or has
-    // gone in.
+    // gone in. One stopped for taking too long says how long it was
+    // waited for, and the device says what fwupd went on to do.
     function installEnded(code) {
+        installWait.stop();
+        const stopped = String(Words.of("verb:firmware:install").said?.stopped ?? "")
+            .replace("{count}", installStopped);
         const ended = Object.assign({}, installs);
-        ended[installing] = code === 0 ? { outcome: "installed", reason: "" }
-            : { outcome: "failed", reason: Fwupd.reason(installerErr.text) };
+        ended[installing] = code === 0 && installStopped === 0
+            ? { outcome: "installed", reason: "" }
+            : { outcome: "failed",
+                reason: installStopped > 0 ? stopped : Fwupd.reason(installerErr.text) };
         installs = ended;
         installing = "";
         answered();
@@ -585,5 +645,35 @@ Provider {
             id: changerErr
         }
         onExited: code => provider.changeEnded(code)
+    }
+
+    Process {
+        id: restarter
+        stderr: StdioCollector {
+            id: restarterErr
+        }
+        onExited: code => provider.restartEnded(code)
+    }
+
+    // A stuck fwupdmgr, or a polkit prompt left unanswered, is stopped
+    // once it has been waited for long enough (Firmware.js), so one
+    // install or change can't hold every other until the launcher
+    // restarts.
+    Timer {
+        id: installWait
+
+        onTriggered: {
+            provider.installStopped = Math.round(interval / 60000);
+            installer.running = false;
+        }
+    }
+
+    Timer {
+        id: changeWait
+
+        onTriggered: {
+            provider.changeStopped = Math.round(interval / 60000);
+            changer.running = false;
+        }
     }
 }

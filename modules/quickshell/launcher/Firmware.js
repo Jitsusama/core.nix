@@ -273,6 +273,29 @@ function reason(text) {
     return lines.length === 0 ? "" : lines[lines.length - 1];
 }
 
+// The least an install is waited for, in minutes: long enough for a
+// polkit prompt Joel is answering and an update fwupd says nothing of
+// the length of.
+const INSTALL_PATIENCE = 30;
+// A security attribute's fix or undo is one call fwupd answers at once
+// (fu_util_security_fix in fwupd 2.1.9), so two minutes is a polkit
+// prompt left unanswered, not a change still going in.
+const CHANGE_PATIENCE = 2;
+
+// How many minutes an install of this device's update is waited for
+// before fwupdmgr is stopped: twice what fwupd says it takes, and never
+// under INSTALL_PATIENCE. Stopping fwupdmgr stops only the waiting; the
+// daemon carries on with what it was asked, and says what changed.
+function installPatience(device) {
+    const minutes = Number(device?.release?.minutes ?? 0);
+    return Math.max(INSTALL_PATIENCE, Number.isFinite(minutes) ? 2 * minutes : 0);
+}
+
+// How many minutes a fix or undo is waited for.
+function changePatience() {
+    return CHANGE_PATIENCE;
+}
+
 // Release notes as words: fwupd gives them as a little HTML, paragraphs
 // and lists, so each becomes a line of its own and nothing else is kept.
 function words(html) {

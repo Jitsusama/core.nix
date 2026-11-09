@@ -2232,6 +2232,12 @@ QtObject {
             "Decompressing\u2026\nSystem Firmware cannot be updated: on battery\n\n"),
             "System Firmware cannot be updated: on battery");
         machine("an install that said nothing", Firmware.reason(""), "");
+        machine("a long install is waited for twice what fwupd says it takes",
+            Firmware.installPatience({ release: { minutes: 25 } }), 50);
+        machine("a short install is waited for the least",
+            Firmware.installPatience({ release: { minutes: 3 } }), 30);
+        machine("an install fwupd gives no length is waited for the least",
+            Firmware.installPatience({ release: null }), 30);
         // What each camera says of itself, from sysfs and desk-facts.
         machine("a loopback's format at a fraction of frames",
             Cameras.loopback("NV12:1920x1080@300000/10000\n"), "NV12 1920 \u00d7 1080 at 30");

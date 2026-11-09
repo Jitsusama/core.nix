@@ -127,9 +127,9 @@ units, or named here as left out with the reason.
 |                 | plugin, serial                               | the drawer's last, in the Name face       |
 | `firmware:host` | security level                               | Security Level's side, note and drawer    |
 |                 | product, fwupd's version                     | Security Level's drawer                   |
-|                 | each attribute: name, level, result, passes as | a step in, Needed for Level, Lowered By |
-|                 | an attribute's description, fix flags, setting, plugin, id | each attribute's drawer     |
-|                 | a firmware or kernel setting, as set and as passing needs | each attribute's drawer      |
+|                 | each attribute's name, level and result      | a step in, Needed for Level, Lowered By   |
+|                 | its description, fix flags, plugin and id    | each attribute's drawer                   |
+|                 | the setting it reads, and what passing needs | each attribute's drawer                   |
 |                 | can fix, can undo                            | Fix It, Undo the Fix, a step in           |
 
 ## Left Out, and Why
