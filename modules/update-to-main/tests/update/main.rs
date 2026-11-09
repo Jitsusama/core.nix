@@ -1949,9 +1949,60 @@ fn hold_the_daemon(world: &mut World, first: &str) {
     world.config.holds = Some(Holds {
         units: vec!["nix-daemon.service".to_owned()],
         paths: vec!["kernel".to_owned()],
+        account_units: BTreeMap::from([("joel".to_owned(), vec!["windows.service".to_owned()])]),
         given: world.root.join("given"),
     });
     daemon_unit(&world.system("first"), first);
+}
+
+/// Gives a system a home-manager generation for the account `joel`, as
+/// NixOS's `home-manager-joel.service` names it, whose home has the unit
+/// `windows.service` saying `says`.
+fn account_unit(system: &Path, says: &str) {
+    let generation = system.join("home-manager-generation");
+    let units = generation.join("home-files/.config/systemd/user");
+    fs::create_dir_all(&units).unwrap();
+    fs::write(units.join("windows.service"), says).unwrap();
+    let system_units = system.join("etc/systemd/system");
+    fs::create_dir_all(&system_units).unwrap();
+    fs::write(
+        system_units.join("home-manager-joel.service"),
+        format!(
+            "[Service]\nExecStart=/hm-setup-env {}\n",
+            generation.display()
+        ),
+    )
+    .unwrap();
+}
+
+#[test]
+fn a_switch_that_would_restart_a_held_account_unit_waits_for_a_hold() {
+    let mut world = World::new();
+    hold_the_daemon(&mut world, "same");
+    account_unit(&world.system("first"), "old");
+    let head = world.signed("one");
+    let system = world.system(&head);
+    daemon_unit(&system, "same");
+    account_unit(&system, "new");
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("not refused")
+    };
+    assert!(why.starts_with(update::NEEDS_HOLD), "{why}");
+    assert!(why.contains("joel's windows.service"), "{why}");
+    fs::write(world.root.join("given"), "").unwrap();
+    assert_eq!(world.update().1, done(&head));
+}
+
+#[test]
+fn an_account_unit_home_manager_keeps_running_needs_no_hold() {
+    let mut world = World::new();
+    hold_the_daemon(&mut world, "same");
+    account_unit(&world.system("first"), "old");
+    let head = world.signed("one");
+    let system = world.system(&head);
+    daemon_unit(&system, "same");
+    account_unit(&system, "[Unit]\nX-RestartIfChanged=false\n");
+    assert_eq!(world.update().1, done(&head));
 }
 
 fn daemon_unit(system: &Path, says: &str) {

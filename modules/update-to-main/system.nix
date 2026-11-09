@@ -209,6 +209,20 @@ in
         ask is refused, and what was built stays for the next one.
       '';
     };
+    holdAccountRestarts = mkOption {
+      type = types.attrsOf (types.listOf types.str);
+      default = { };
+      example = {
+        joel = [ "sessions-kitty.service" ];
+      };
+      description = ''
+        Units of an account's own systemd, by the account, that a switch
+        mustn't restart through home-manager until an asker grants it, as
+        holdRestarts' daemons wait, such as one a person's windows run
+        under. A unit whose new file says `X-RestartIfChanged=false` isn't
+        restarted, so it needs no grant. NixOS only.
+      '';
+    };
     holdChanges = mkOption {
       type = types.listOf types.str;
       default = [ ];
@@ -375,7 +389,9 @@ in
         message = "jitsusama.update-to-main.kept needs elsewhere, or kept pieces build here.";
       }
       {
-        assertion = cfg.holdRestarts ++ cfg.holdChanges == [ ] || cfg.system ? hold_given;
+        assertion =
+          cfg.holdRestarts ++ cfg.holdChanges == [ ] && cfg.holdAccountRestarts == { }
+          || cfg.system ? hold_given;
         message = "jitsusama.update-to-main's holds are for NixOS, where an asker can grant one.";
       }
       {
@@ -430,12 +446,13 @@ in
                 };
             refuse_while = cfg.refuseWhile;
             holds =
-              if cfg.holdRestarts ++ cfg.holdChanges == [ ] then
+              if cfg.holdRestarts ++ cfg.holdChanges == [ ] && cfg.holdAccountRestarts == { } then
                 null
               else
                 {
                   units = cfg.holdRestarts;
                   paths = cfg.holdChanges;
+                  account_units = cfg.holdAccountRestarts;
                   given = cfg.system.hold_given;
                 };
             # The running system's path, so once it has switched the newest
