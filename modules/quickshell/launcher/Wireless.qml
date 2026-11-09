@@ -88,14 +88,19 @@ Provider {
     })
 
     // Looking for networks costs the radio's power, so the cards look only
-    // while the launcher is there to show what they hear.
+    // while the launcher is there to show what they hear, or while a
+    // terminal's `launcher show` walked into Wi-Fi (Launcher.qml's
+    // terminalSees), so a network asked for cold is in the list.
     Timer {
         interval: 10000
         repeat: true
         triggeredOnStart: true
-        running: provider.on && provider.launcher !== null && provider.launcher.open
+        running: provider.on && provider.launcher !== null
+            && (provider.launcher.open || provider.terminalLooks)
         onTriggered: Wifi.scan()
     }
+    readonly property bool terminalLooks: (launcher?.terminalSees.walked ?? [])
+        .some(row => row?.from === provider)
 
     readonly property var radio: radioRow(on)
 
@@ -412,8 +417,13 @@ Provider {
     // whether wifid has answered at all rather than detailOf, which is
     // null for an answer with no points too, as the joined network hiding
     // its name gets, and which would hold every show of it for the wait.
+    // A terminal walked into Wi-Fi waits too while the cards have heard no
+    // network yet, as they haven't before their first look: wifid says
+    // nothing when a look ends, only what it heard, so a list already
+    // heard is said at once and the look freshens it for the next ask.
     stillReading: looking !== "" && (Wifi.detail?.name !== looking
         || looked !== "" && reader !== "" && !linkAnswered)
+        || terminalLooks && on && Wifi.nearby.length === 0
 
     // Its rows change as wifid hears more of it. Without iw to read the
     // signal, wifid's own reading draws its spark.

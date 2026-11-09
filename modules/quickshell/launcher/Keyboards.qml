@@ -176,8 +176,11 @@ Provider {
             name: named(device),
             side: Keyboards.joined(device),
             glyph: Theme.glyph.keyboard,
-            // Everything it says, under the row (Keyboards.js's drawer).
-            drawer: () => provider.drawerOf(device, Keyboards.lightHolder(found))
+            // Everything it says, under the row (Keyboards.js's drawer),
+            // null only until the read its first ask starts lands, a turn
+            // later, so a terminal asks again (Launcher.qml's shownWalked).
+            drawer: () => provider.drawerOf(device, Keyboards.lightHolder(found)),
+            drawsOnAsk: true
         }, () => provider.parts(device, Keyboards.lightHolder(found))));
     }
 

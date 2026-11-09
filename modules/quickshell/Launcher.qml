@@ -1295,12 +1295,23 @@ Scope {
         // Only the row the path names says its drawer, since a listed row's
         // would be built for every row a long place holds, for one show;
         // `everyDrawer` (`launcher show --drawers`) asks for each row's too.
+        // A row whose drawer is read as it's first asked for, a turn later
+        // (`drawsOnAsk`, as a keyboard's), is still being read while its
+        // drawer is null, so the terminal asks again for it.
+        let unread = false;
+        const drawerFor = one => {
+            const plate = drawerOf(one);
+            if (one.drawsOnAsk === true && typeof one.drawer === "function"
+                && one.drawer() === null)
+                unread = true;
+            return plate;
+        };
         const entry = (one, at, drawn) => Showing.shaped(one, {
             id: at.concat([steadyId(one)]).join(catalogueStep),
             kind: Catalogue.kindOf(one),
             verb: verbOf(one),
             holds: showsMore(one),
-            drawer: drawn ? drawerOf(one) : null
+            drawer: drawn ? drawerFor(one) : null
         });
         const last = trail.length > 0 ? trail[trail.length - 1] : null;
         // A thing's own acts, Return's act (an emoji's Copy) and its verbs, are
@@ -1313,14 +1324,17 @@ Scope {
         const isAct = one => String(one.key ?? "").startsWith("return:")
             || verbs.includes(steadyId(one));
         const sayable = rows.filter(one => !!one && !one.gone && (one.name ?? "") !== "");
-        return {
-            reading: seenByTerminal(trail, sayable, namesOnly),
+        // Built before `reading` is reckoned, since building a drawer may
+        // start its read.
+        const shown = {
             in: trail.map(one => one.name),
             path: ids,
             row: last === null ? null : entry(last, ids.slice(0, -1), true),
             rows: sayable.filter(one => !isAct(one)).map(one => entry(one, ids, everyDrawer)),
             acts: sayable.filter(one => isAct(one)).map(one => entry(one, ids, false))
         };
+        const reading = seenByTerminal(trail, sayable, namesOnly) || unread;
+        return Object.assign({ reading: reading }, shown);
     }
 
     // Counts what a terminal's show walked through and listed as seen,

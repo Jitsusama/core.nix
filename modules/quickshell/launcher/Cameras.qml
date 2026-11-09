@@ -66,8 +66,11 @@ Provider {
             hue: "machine",
             plain: false,
             side: programs.length > 0 ? `in use by ${programs.join(", ")}` : "",
-            // Everything its parts say, under the row (Cameras.js's drawer).
-            drawer: () => provider.drawerOf(name, known)
+            // Everything its parts say, under the row (Cameras.js's drawer),
+            // null only until the read its first ask starts lands, a turn
+            // later, so a terminal asks again (Launcher.qml's shownWalked).
+            drawer: () => provider.drawerOf(name, known),
+            drawsOnAsk: true
         };
         if (name !== viewfound)
             return thingRow(fields, () => provider.partRows(name));
