@@ -556,6 +556,14 @@ def refresh_and_hold_are_traced(desktop: Desktop, heard: str) -> None:
     assert "doubleValue" in said["tookMs"] or "intValue" in said["tookMs"], said
 
 
+def selects_from_the_top(name: str, program: str) -> Callable[[Json], bool]:
+    """Whether the launcher selects the program's act by its name, saying where it lives."""
+    return lambda shown: (
+        (shown["selected"] or {}).get("name") == name
+        and shown["selected"]["note"] == f"Programs \u203a {program}"
+    )
+
+
 @pytest.mark.usefixtures("google")
 def test_a_programs_acts_are_found_from_the_top_by_their_names_below_the_program(
     desktop: Desktop,
@@ -600,6 +608,20 @@ def test_a_programs_acts_are_found_from_the_top_by_their_names_below_the_program
         f"grep -qxF https://meet.google.com/new {opened}", timeout=dt.timedelta(seconds=30)
     )
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Each Google program's own way of making something new, Mail's link
+    # reaching its window whole, its ? and & quoted in the entry.
+    for name, program, link in (
+        ("Write a Mail", "Mail", "https://mail.google.com/mail/u/0/?view=cm&fs=1"),
+        ("New Event", "Calendar", "https://calendar.google.com/calendar/r/eventedit"),
+        ("New Spreadsheet", "Sheets", "https://docs.google.com/spreadsheets/create"),
+    ):
+        desktop.answer(name.lower())
+        desktop.launcher_until(selects_from_the_top(name, program))
+        machine.send_key("ret")
+        machine.wait_until_succeeds(
+            f"grep -qxF '{link}' {opened}", timeout=dt.timedelta(seconds=30)
+        )
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # Meet's own acts it opts in: Join by Code asks for its code there.
     desktop.answer("join by code")
     desktop.launcher_until(
