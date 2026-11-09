@@ -210,7 +210,9 @@ Provider {
         fact("firmware:attribute", attribute.id);
         const group = attribute.level === null ? groups.running
             : String(groups.level ?? "").replace("{level}", attribute.level);
+        // A thing, so its drawer shows as it's selected, as a port's does.
         return copyRow({
+            thing: true,
             key: `firmware:security:${attribute.id}`,
             name: attribute.name,
             side: resultOf(attribute, results),
