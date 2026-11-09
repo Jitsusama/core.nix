@@ -1,17 +1,20 @@
 """Check that every path pattern a tool reads still names a file.
 
-    every-pattern-names-a-file MUST_RUN RUFF PATHS
+    every-pattern-names-a-file MUST_RUN RUFF UNREAD PATHS
 
 MUST_RUN is tools/merge-net/must-run.txt, whose lines each name an area, the
 path patterns that are it, and after `=>` the VM tests it runs. RUFF is
-ruff.toml, whose per-file ignores are keyed by path patterns. PATHS lists every
-file the repository holds, a path a line, relative to its root.
+ruff.toml, whose per-file ignores are keyed by path patterns. UNREAD lists the
+patterns treefmt.nix tells the linters to leave unread, a pattern a line.
+PATHS lists every file the repository holds, a path a line, relative to its
+root.
 
-Neither tool says when a pattern matches nothing. After a file moves, the net
-would quietly stop running a VM test before a merge, and ruff would quietly
-read a file at its strictest or not at all, so a pattern that names no file
-fails here, saying which and where. Every failure is printed before the check
-exits 1.
+None of the tools says when a pattern matches nothing. After a file moves, the
+net would quietly stop running a VM test before a merge, ruff would quietly
+read a file at its strictest or not at all, and the next file to take a name
+treefmt leaves unread would go unlinted, so a pattern that names no file fails
+here, saying which and where. Every failure is printed before the check exits
+1.
 """
 
 import sys
@@ -48,7 +51,7 @@ def names_one(pattern: str, paths: list[str], *, by_name: bool) -> bool:
     )
 
 
-def faults(must_run: list[str], ruff: list[str], paths: list[str]) -> list[str]:
+def faults(must_run: list[str], ruff: list[str], unread: list[str], paths: list[str]) -> list[str]:
     """Say each pattern that names no file, a sentence each."""
     said = [
         f"tools/merge-net/must-run.txt names {pattern}, which matches no file: "
@@ -63,14 +66,23 @@ def faults(must_run: list[str], ruff: list[str], paths: list[str]) -> list[str]:
         for pattern in ruff
         if not names_one(pattern, paths, by_name="/" not in pattern)
     )
+    # treefmt reads every pattern against the whole path, its * reaching
+    # across folders, as fnmatch's does.
+    said.extend(
+        f"treefmt.nix leaves {pattern} unread, which matches no file: "
+        "take it off, or the next file to take its name goes unlinted."
+        for pattern in unread
+        if not names_one(pattern, paths, by_name=False)
+    )
     return said
 
 
 def main() -> None:
     """Read each tool's patterns and the repository's files, and say each fault."""
-    must_run, ruff, listing = (Path(argument) for argument in sys.argv[1:4])
+    must_run, ruff, unread, listing = (Path(argument) for argument in sys.argv[1:5])
     paths = listing.read_text().splitlines()
-    said = faults(must_run_patterns(must_run), ruff_patterns(ruff), paths)
+    patterns = [line for line in unread.read_text().splitlines() if line]
+    said = faults(must_run_patterns(must_run), ruff_patterns(ruff), patterns, paths)
     for fault in said:
         print(fault, file=sys.stderr)
     if said:

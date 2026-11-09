@@ -527,8 +527,8 @@
     every program the launcher lists wears a mark of its own, its logo or the theme's mark for it
   '';
   every-pattern-names-a-file = ''
-    every path pattern merge-net's must-run.txt and ruff.toml's per-file ignores give matches a
-    file the repository holds
+    every path pattern merge-net's must-run.txt, ruff.toml's per-file ignores and treefmt's
+    unread kinds past treefmt-nix's own give matches a file the repository holds
   '';
   every-vm-test-keeps-to-the-pyramid = ''
     no VM test holds more than twenty subtests, but those past it today, each held to its count

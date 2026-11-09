@@ -16,6 +16,7 @@
   nix-darwin,
   rust-overlay,
   formatting,
+  formatterExcludes,
 }:
 let
   inherit (pkgs) lib;
@@ -1056,11 +1057,12 @@ gather (
           touch $out
         '';
 
-      # Every path pattern merge-net's must-run.txt and ruff.toml's per-file
-      # ignores give still names a file (tests/every-pattern-names-a-file.py),
-      # since neither tool says when one matches nothing, and a file moved
-      # from under one would quietly drop its VM tests from the net or its
-      # ignores from ruff. It's given the files' paths, not what they hold,
+      # Every path pattern merge-net's must-run.txt, ruff.toml's per-file
+      # ignores and what treefmt leaves unread give still names a file
+      # (tests/every-pattern-names-a-file.py), since none of the tools says
+      # when one matches nothing, and a file moved from under one would
+      # quietly drop its VM tests from the net or its ignores from ruff, and
+      # the next file to take its name would go unlinted. It's given the files' paths, not what they hold,
       # so only a file added, moved or removed runs it again.
       every-pattern-names-a-file =
         let
@@ -1069,6 +1071,7 @@ gather (
         pkgs.runCommandLocal "every-pattern-names-a-file" { } ''
           ${lib.getExe pkgs.python3} ${./tests/every-pattern-names-a-file.py} \
             ${./tools/merge-net/must-run.txt} ${./ruff.toml} \
+            ${pkgs.writeText "unread" (lib.concatLines formatterExcludes)} \
             ${pkgs.writeText "paths" (lib.concatLines paths)}
           touch $out
         '';
