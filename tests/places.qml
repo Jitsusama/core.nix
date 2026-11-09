@@ -188,9 +188,15 @@ QtObject {
         expect("one just left of the one it goes before holds",
             Places.holds({ join: 24, before: 4 }, now(3, 4, 2), beside), true);
         const made = { make: true, output: "DP-4", index: 5 };
+        // A workspace's number is where it stands now, never what it is: one
+        // emptied before it, or made, moves every number after it, so a
+        // window alone on its own holds whatever number it has (P9R1KI,
+        // 2026-11-09: 17 windows moved on screen at the 08:06 boot, chasing
+        // a number the workspace before them had taken away).
         expect("one on a workspace of its own holds at its index or after",
             Places.holds(made, now(6, 6, 1), beside), true);
-        expect("but not before it", Places.holds(made, now(6, 2, 1), beside), false);
+        expect("and before it, once a workspace before it has gone",
+            Places.holds(made, now(6, 2, 1), beside), true);
         expect("nor among the others", Places.holds(made, now(6, 5, 1), beside), false);
         expect("a window on the workspace it joins goes just right of the one it follows",
             [Places.columnTo(after4, 1, beside), Places.columnTo(after4, 5, beside)], [3, 4]);

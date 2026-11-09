@@ -196,15 +196,16 @@ function tileOf(at) {
 // `now` is the workspace it's on and its column there, and `beside` the
 // windows back before it, as whereBack had them. One given a workspace of
 // its own holds while it's alone there among them, on the screen named
-// (`output`, when one is), and no nearer the start than its index, since a
-// workspace of Joel's can sit before it. Checked for each window back, the
-// lowest kept first, after Reopen Them All, since a window can open
-// anywhere while Joel moves the focus or a screen comes and goes.
+// (`output`, when one is), whatever number that workspace has now: a
+// number is only where it stands, which a workspace emptied or made
+// before it moves, and chasing one moved 17 windows on screen at the
+// 08:06 boot on 2026-11-09. Checked for each window back, the lowest kept
+// first, after Reopen Them All, since a window can open anywhere while
+// Joel moves the focus or a screen comes and goes.
 function holds(where, now, beside) {
     if (where.make) {
         return !beside.some(one => one.workspace.id === now.workspace.id)
-            && (where.output === null || now.workspace.output === where.output)
-            && now.workspace.idx >= where.index;
+            && (where.output === null || now.workspace.output === where.output);
     }
     if (now.workspace.id !== where.join) {
         return false;

@@ -2,8 +2,10 @@
 
 Here sessions come back, or start, on their orchestrator's workspace by themselves: a reboot's
 list of two orchestrations puts each window where it sat, two stacked in one column included,
-and begins none again when its orchestrator hands it over too; and a session one starts for
-another's tree opens with that tree, in title order after its orchestrator. Joel, after the
+and begins none again when its orchestrator hands it over too; a list kept on workspaces whose
+numbers have since gone or been taken by Joel's own puts each orchestration alone on a
+workspace of its own, moving nothing on screen; and a session one starts for another's tree
+opens with that tree, wherever Joel moved it, in title order after its orchestrator. Joel, after the
 21:24 reboot on 2026-11-08 left 31 windows on the wrong workspaces: "i'm so confused, i don't
 like my operating system confusing me."
 
@@ -66,7 +68,7 @@ def handing(desktop: Desktop, sessions: list[dict[str, Any]]) -> None:
 def presents(desktop: Desktop, session: str, address: str, said: dict[str, Any]) -> None:
     """Say a reopened stand-in's record, as pi says its own once it starts.
 
-    The stand-in wrote its process and kitty window by its session (tests/pi-stand-in.nix).
+    The stand-in wrote its process and kitty window by its session (tests/pi-stand-in.sh).
     """
     # Its kitty's socket and window when kitty says them, else none: a session is known to
     # run here by its process alone.
@@ -159,7 +161,7 @@ def test_two_orchestrations_come_back_each_where_it_sat(desktop: Desktop) -> Non
         # over its own two, as an orchestrator restores its sessions before Reopen Them All
         # reaches them: at 21:24, 40 came back that way.
         # Which a hand-over joins, and where one handed over goes, are held in Qt's engine
-        # (tests/places.qml: Places.joined, Places.keptFor): a VM can't time a hand-over into
+        # (tests/places.qml: Places.queuedOnce, Places.keptFor): a VM can't time a hand-over into
         # Reopen Them All's queue. Here each says its record once it's begun, as pi does, and
         # LEADBB, once every window is back, hands its two over again, as an orchestrator
         # restoring its own does: neither is begun twice, since each runs here.
@@ -195,6 +197,120 @@ def test_two_orchestrations_come_back_each_where_it_sat(desktop: Desktop) -> Non
             "rm -f $XDG_RUNTIME_DIR/pi-stays ~/.local/state/pi/reboot-reopen.json"
             f" $XDG_RUNTIME_DIR/pi-owner-01d1-* {PI_PRESENCE}/leadaa.json {PI_PRESENCE}/leadbb.json"
             f" {PI_PRESENCE}/ro0*.json; pkill -f 'sleep 60[0]'; true"
+        )
+        desktop.as_account("rm -rf ~/reef")
+
+
+def test_a_list_kept_on_numbers_since_taken_comes_back_alone_moving_nothing(
+    desktop: Desktop,
+) -> None:
+    """Each orchestration kept comes back alone on a workspace of its own, and nothing moves.
+
+    At the 08:06 boot on 2026-11-09 the list said workspaces 2 and 4, and Joel's own windows
+    and workspaces emptied since had taken those numbers: an orchestrator opened alone while
+    another session landed beside Joel's, and 17 windows moved on screen chasing numbers. Joel:
+    "we still have bugs with window placement, also had my screen go funky with things moving
+    around at one point."
+    """
+    output = json.loads(desktop.as_account("niri msg --json focused-output"))["name"]
+    desktop.as_account("touch $XDG_RUNTIME_DIR/pi-stays && mkdir -p ~/reef")
+    # Joel's own two windows, on the workspaces the list will name by number.
+    notes = desktop.opened("Notes", "sh -c 'sleep 600'")
+    mail = desktop.opened("Mail", "sh -c 'sleep 600'")
+    spaces = json.loads(desktop.as_account("niri msg --json workspaces"))
+    notes_at = next(one["idx"] for one in spaces if one["id"] == notes["workspace_id"])
+    desktop.as_account(
+        f"niri msg action move-window-to-workspace --window-id {mail['id']}"
+        f" --focus false {notes_at + 1}"
+    )
+    desktop.as_account(f"niri msg action focus-window --id {notes['id']}")
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session(
+            "niri msg --json windows | jq -e '[.[] | select(.id =="
+            f" {mail['id']})][0].workspace_id != {notes['workspace_id']}'"
+        ),
+        timeout=dt.timedelta(seconds=30),
+    )
+    joels = {
+        window["id"]: (window["workspace_id"], window["layout"]["pos_in_scrolling_layout"])
+        for window in desktop.windows()
+        if window["id"] in (notes["id"], mail["id"])
+    }
+    spaces = json.loads(desktop.as_account("niri msg --json workspaces"))
+    empty = max(one["idx"] for one in spaces if one["output"] == output)
+
+    def at(workspace: int, column: int) -> dict[str, Any]:
+        """Give a place as the reboot's list says one."""
+        return {"output": output, "workspace": workspace, "column": column, "tile": 1}
+
+    # Kept on 2 and 4: 2 is Mail's now, and 3 is gone.
+    listed = {
+        "01d3-lead-a": {**at(2, 1), "orchestrates": "LEADAA"},
+        "01d3-a-one": at(2, 2),
+        "01d3-lead-b": {**at(4, 1), "orchestrates": "LEADBB"},
+        "01d3-b-one": at(4, 2),
+    }
+    wanted = {
+        "01d3-lead-a": (empty, 1, 1),
+        "01d3-a-one": (empty, 2, 1),
+        "01d3-lead-b": (empty + 1, 1, 1),
+        "01d3-b-one": (empty + 1, 2, 1),
+    }
+    now, up = desktop.machine.succeed("date +%s; cut -d. -f1 /proc/uptime").split()
+    taken = dt.datetime.fromtimestamp(int(now) - int(up) - 60, dt.UTC)
+    kept(
+        desktop,
+        "~/.local/state/pi/reboot-reopen.json",
+        {
+            "v": 1,
+            "boot": "a-boot-before",
+            "taken": taken.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "sessions": [
+                {"id": one, "cwd": "/home/jitsusama/reef", "title": one, **place}
+                for one, place in listed.items()
+            ],
+        },
+    )
+    reopen_all = "collection:agents\u203aagents:to-reopen\u203averb:agents:to-reopen:all"
+    try:
+        since = desktop.mark()
+        desktop.as_account("systemctl --user restart quickshell")
+        desktop.machine.wait_until_succeeds(
+            desktop.in_session(f"qs ipc call launcher list | grep -qF {shlex.quote(reopen_all)}"),
+            timeout=dt.timedelta(seconds=120),
+        )
+        ran = desktop.as_account(f"qs ipc call launcher run {shlex.quote(reopen_all)}")
+        assert '"error"' not in ran, ran
+        desktop.machine.wait_until_succeeds(
+            desktop.in_session(
+                "journalctl --user --unit=quickshell --no-pager --output=cat"
+                f" --after-cursor={shlex.quote(since)} | grep -qF 'sessions: reopening settled'"
+            ),
+            timeout=dt.timedelta(seconds=BACK),
+        )
+        # A window is placed once niri lays it out, and its stand-in titles it a moment after.
+        deadline = time.monotonic() + 60
+        while len(back := sitting(desktop, "01d3-")) < len(wanted):
+            assert time.monotonic() < deadline, f"not every one titled: {back}"
+            time.sleep(0.2)
+        assert back == wanted, back
+        said = desktop.as_account(
+            "journalctl --user --unit=quickshell --no-pager --output=cat"
+            f" --after-cursor={shlex.quote(since)}"
+        )
+        # Each opened where it goes, so none was moved on screen after.
+        assert " moved from " not in said, said
+        mine = {
+            window["id"]: (window["workspace_id"], window["layout"]["pos_in_scrolling_layout"])
+            for window in desktop.windows()
+            if window["id"] in joels
+        }
+        assert mine == joels, (mine, joels)
+    finally:
+        desktop.launcher_left_closed()
+        desktop.as_account(
+            "rm -f $XDG_RUNTIME_DIR/pi-stays ~/.local/state/pi/reboot-reopen.json"
+            " $XDG_RUNTIME_DIR/pi-owner-01d3-*; pkill -f 'sleep 60[0]'; true"
         )
         desktop.as_account("rm -rf ~/reef")
 
