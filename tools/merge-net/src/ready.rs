@@ -72,7 +72,7 @@ pub fn checked_before(
     on_main: &dyn Fn(&str) -> bool,
     same: &dyn Fn(&str) -> Option<Vec<String>>,
 ) -> Before {
-    let mut shares = None;
+    let mut first_shared = None;
     for candidate in candidates {
         if !built_there(&record(candidate), on_main) {
             continue;
@@ -90,9 +90,9 @@ pub fn checked_before(
         if rechecked(head_record) {
             return Before::Rechecked(candidate.clone(), shared);
         }
-        shares.get_or_insert(Before::Shares(candidate.clone(), shared));
+        first_shared.get_or_insert(Before::Shares(candidate.clone(), shared));
     }
-    shares.unwrap_or(Before::Unchecked)
+    first_shared.unwrap_or(Before::Unchecked)
 }
 
 /// Whether a record holds a check or subtests that passed, sent from the
@@ -111,7 +111,7 @@ pub fn recent_records() -> Vec<String> {
     let Some(folder) = record_of("") else {
         return Vec::new();
     };
-    let day_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(24 * 3600);
+    let day_ago = std::time::SystemTime::now() - std::time::Duration::from_hours(24);
     let mut kept: Vec<(std::time::SystemTime, String)> = fs::read_dir(folder)
         .into_iter()
         .flatten()
