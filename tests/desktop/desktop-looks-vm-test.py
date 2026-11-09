@@ -3990,6 +3990,9 @@ def nearby_shown_to_a_terminal(desktop: Desktop) -> None:
     """
     machine = desktop.machine
     desktop.launcher_left_closed()
+    # The step before's look is let end first, or it could hear Buds again once BlueZ forgets it.
+    rested = " && ".join(f"{discovering(adapter)} | grep -qx 'b false'" for adapter in ADAPTERS)
+    machine.wait_until_succeeds(rested, timeout=timedelta(seconds=10))
     for adapter in ADAPTERS:
         devices = f"grep -x '{adapter}/dev_[^/]*' || true"
         heard = machine.succeed(f"busctl tree org.bluez --list | {devices}")
@@ -3998,11 +4001,13 @@ def nearby_shown_to_a_terminal(desktop: Desktop) -> None:
                 f"busctl call org.bluez {adapter} org.bluez.Adapter1 RemoveDevice o {device}"
             )
     machine.succeed(desktop.in_session("launcher show machine bluetooth nearby | grep -q Buds"))
-    rested = " && ".join(f"{discovering(adapter)} | grep -qx 'b false'" for adapter in ADAPTERS)
-    machine.wait_until_succeeds(rested, timeout=timedelta(seconds=10))
+    # The look ends three seconds after the terminal's last ask, and the radio stops a moment
+    # after, so five seconds holds it to that.
+    machine.wait_until_succeeds(rested, timeout=timedelta(seconds=5))
     for adapter in ADAPTERS:
         bluez_set(desktop, adapter, "Powered", "b", "false")
-    machine.execute(desktop.in_session("launcher show machine bluetooth nearby"))
+    _, said = machine.execute(desktop.in_session("launcher show machine bluetooth nearby"))
+    assert HEARD not in said, said
     for adapter in ADAPTERS:
         powered = f"busctl get-property org.bluez {adapter} org.bluez.Adapter1 Powered"
         assert machine.succeed(powered).strip() == "b false", adapter
