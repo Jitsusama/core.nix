@@ -2986,10 +2986,10 @@
     Slack ends a search, asking Slack once on Return
   '';
   vm-desktop-launcher-waits-on-joel = ''
-    Now leads with what waits on Joel and For You's to-dos hold only what's true, a session wanting
-    him waits as the session, its notice going to it and going read once it stops waiting; the agents
-    list every session from the shell's start and hold still as one changes, and pi's runs are
-    found
+    Now leads with what waits on Joel and For You's to-dos hold only what's true, one waiting on a
+    file going by itself as the to-do daemon finds it done, a session wanting him waits as the
+    session, its notice going to it and going read once it stops waiting; the agents list every
+    session from the shell's start and hold still as one changes, and pi's runs are found
   '';
   vm-desktop-locks-and-asks = ''
     the lock screen takes only the right password, lets go when released or told to by logind,

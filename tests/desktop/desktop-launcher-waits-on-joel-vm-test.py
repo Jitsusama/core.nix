@@ -555,6 +555,9 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
     """For You drops what's found done and an ended quest's, and keeps Joel's word."""
     machine = desktop.machine
     state = "$HOME/.local/state"
+    # The verdicts here are written by hand, standing in for the to-do
+    # daemon, which would otherwise judge them as they are.
+    desktop.as_account("systemctl --user stop to-do")
     # The index holds the live quest, and not the concluded one.
     indexed(desktop, "QEST-20261026-LIVEQA")
     # A live quest's, as mesh_wait writes them: one ready, one the to do
@@ -702,6 +705,46 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
         f" {state}/mission/waiting/DONEQA.json {state}/mission/waiting/OLDQA.json"
         f" {state}/mission/settled.json {INDEX}"
     )
+    desktop.as_account("systemctl --user start to-do")
+
+
+def test_a_to_do_waiting_on_a_file_leaves_for_you_as_it_comes(desktop: Desktop) -> None:
+    """The to-do daemon finds one done by its signal, and For You lets it go by itself."""
+    asked = f"{MISSION}/waiting/FILEQA.json"
+    made = "/run/user/1000/to-do-made/here"
+    desktop.as_account("systemctl --user start to-do")
+    # Its quest names no quest of the index's, so nothing but the daemon
+    # can see it done.
+    kept(
+        desktop,
+        asked,
+        {
+            "v": 2,
+            "quest": "FILEQA",
+            "items": [
+                {
+                    "id": "made",
+                    "title": "Make the File",
+                    "ready": True,
+                    "doneWhen": {"signal": f"file:{made}"},
+                }
+            ],
+        },
+    )
+    try:
+        retry(
+            lambda _: "Make the File" in waiting_inside(desktop)[1],
+            timeout=dt.timedelta(seconds=30),
+        )
+        desktop.as_account(f"mkdir -p {made.rsplit('/', 1)[0]} && touch {made}")
+        retry(
+            lambda _: "Make the File" not in waiting_inside(desktop)[1],
+            timeout=dt.timedelta(seconds=30),
+        )
+        verdicts = json.loads(desktop.as_account(f"cat {MISSION}/verdicts.json"))
+        assert verdicts["items"]["FILEQA:made"]["state"] == "done", verdicts
+    finally:
+        desktop.as_account(f"rm -rf {asked} /run/user/1000/to-do-made")
 
 
 def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(

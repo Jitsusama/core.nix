@@ -44,11 +44,14 @@ use verdicts::{For, State, Verdict};
 /// How often the devices are read while a to-do waits on one, in seconds.
 const DEVICES_EVERY: i64 = 10;
 
-/// What wakes the daemon: a to-do file changing, which runs a new to-do's
-/// check and no other; a signal, which may change what every check finds;
-/// or a journal line, which is a signal when it says a switch.
+/// What wakes the daemon: a change to judge again, which runs only a new
+/// to-do's check, as a to-do file or a file waited on does; a signal, a
+/// sign-in or a switch, which may change what every check finds, so each
+/// runs again; or a journal line, which is a signal when it says a
+/// switch. A file's folder can be as busy as the runtime folder, so its
+/// changes never hurry a check.
 enum Woken {
-    ToDos,
+    Changed,
     Signal,
     Journal(String),
 }
@@ -317,22 +320,22 @@ fn follow_journal(unit: String, woken: Sender<Woken>) {
     });
 }
 
-/// Hears every change inotify says, into `woken`: one in `to_dos`, the
-/// folder of to-dos, apart from every other.
-fn hear(mut inotify: Inotify, to_dos: WatchDescriptor, woken: Sender<Woken>) {
+/// Hears every change inotify says, into `woken`: one in `signals`, the
+/// sign-ins' and the system profiles' folders, apart from every other.
+fn hear(mut inotify: Inotify, signals: Vec<WatchDescriptor>, woken: Sender<Woken>) {
     thread::spawn(move || {
         let mut buffer = [0; 4096];
         while let Ok(events) = inotify.read_events_blocking(&mut buffer) {
             let mut signal = false;
             let mut changed = false;
             for event in events {
-                if event.wd == to_dos {
-                    changed = true;
-                } else {
+                if signals.contains(&event.wd) {
                     signal = true;
+                } else {
+                    changed = true;
                 }
             }
-            let told = [(changed, Woken::ToDos), (signal, Woken::Signal)]
+            let told = [(changed, Woken::Changed), (signal, Woken::Signal)]
                 .into_iter()
                 .filter(|(said, _)| *said)
                 .try_for_each(|(_, woke)| woken.send(woke));
@@ -354,14 +357,14 @@ fn run(paths: Paths, core: PathBuf, follower: Option<String>) -> io::Result<()> 
         | WatchMask::DELETE
         | WatchMask::CREATE
         | WatchMask::ATTRIB;
-    let to_dos = watches.add(&paths.waiting, mask)?;
-    watches.add(&paths.signins, mask)?;
+    watches.add(&paths.waiting, mask)?;
+    let mut signals = vec![watches.add(&paths.signins, mask)?];
     let profiles = paths.root.join("nix/var/nix/profiles");
     if profiles.is_dir() {
-        watches.add(&profiles, WatchMask::CREATE | WatchMask::MOVED_TO)?;
+        signals.push(watches.add(&profiles, WatchMask::CREATE | WatchMask::MOVED_TO)?);
     }
     let (tell, woken): (Sender<Woken>, Receiver<Woken>) = mpsc::channel();
-    hear(inotify, to_dos, tell.clone());
+    hear(inotify, signals, tell.clone());
     if let Some(unit) = follower {
         follow_journal(unit, tell);
     } else {
@@ -398,7 +401,7 @@ fn run(paths: Paths, core: PathBuf, follower: Option<String>) -> io::Result<()> 
             signalled |= match woke {
                 Woken::Journal(line) => daemon.follower.read(&line),
                 Woken::Signal => true,
-                Woken::ToDos => false,
+                Woken::Changed => false,
             };
         }
         if signalled {
