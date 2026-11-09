@@ -305,7 +305,10 @@ where
 /// tunnel reset every 15 seconds, with the machine idle. The log's own
 /// lines, which nix starts with the piece's name and `> `, count as
 /// something said but are left out of what's given, which only needs
-/// nix's own.
+/// nix's own. While nix's newest line says it is copying a path back
+/// from a builder, it may stay quiet `COPYING` times as long, since a
+/// copy says nothing until it ends: on 8 November a switch was stopped
+/// four minutes into copying two pieces back.
 pub fn built<I, S>(
     mut command: Command,
     what: &str,
@@ -336,7 +339,7 @@ where
         child
     };
     let group = child.id().cast_signed();
-    let heard = Arc::new(Mutex::new((Instant::now(), String::new())));
+    let heard = Arc::new(Mutex::new((Instant::now(), String::new(), false)));
     let readers: Vec<_> = [
         child
             .stdout
@@ -356,6 +359,7 @@ where
                 let mut heard = heard.lock().unwrap_or_else(PoisonError::into_inner);
                 heard.0 = Instant::now();
                 if !is_log(&line) {
+                    heard.2 = is_copy_back(&line);
                     heard.1.push_str(&line);
                     heard.1.push('\n');
                 }
@@ -370,8 +374,12 @@ where
             Ok(None) => {}
             Err(e) => break Err(e),
         }
-        let last = heard.lock().unwrap_or_else(PoisonError::into_inner).0;
-        if quiet.is_none() && last.elapsed() >= silent {
+        let (last, copying) = {
+            let heard = heard.lock().unwrap_or_else(PoisonError::into_inner);
+            (heard.0, heard.2)
+        };
+        let limit = if copying { silent * COPYING } else { silent };
+        if quiet.is_none() && last.elapsed() >= limit {
             // SAFETY: kill only sends a signal; a group already gone is ESRCH.
             unsafe { libc::kill(-group, libc::SIGTERM) };
             quiet = Some(last.elapsed());
@@ -407,6 +415,16 @@ where
         why: format!("{what} failed ({status})"),
         lines: tail(&said),
     })
+}
+
+/// How many times as long a copy back from a builder may stay quiet as a
+/// build may.
+const COPYING: u32 = 3;
+
+/// Whether a line is nix starting to copy a path back from a builder,
+/// as in `copying path '/nix/store/...' from 'ssh-ng://...'...`.
+fn is_copy_back(line: &str) -> bool {
+    line.starts_with("copying path ") && line.contains(" from '")
 }
 
 /// Whether a line is a build's own log, as nix's `-L` gives it: the
@@ -475,6 +493,39 @@ mod tests {
             Duration::from_secs(1),
         );
         assert_eq!(said.unwrap(), "done");
+    }
+
+    #[test]
+    fn a_copy_back_may_stay_quiet_longer_but_not_for_ever() {
+        let copying = |then: &str| {
+            let mut sh = Command::new(std::env::var_os("BASH").unwrap_or_else(|| "sh".into()));
+            sh.args([
+                "-c",
+                &format!(
+                    "echo \"copying path '/nix/store/a-x' from 'ssh-ng://builder'...\"; {then}"
+                ),
+            ]);
+            built(
+                sh,
+                "building",
+                std::iter::empty::<&str>(),
+                Duration::from_secs(1),
+            )
+        };
+        assert_eq!(
+            copying("sleep 1.6; echo done").unwrap(),
+            "copying path '/nix/store/a-x' from 'ssh-ng://builder'...\ndone"
+        );
+        let started = Instant::now();
+        let failed = copying("sleep 30").unwrap_err();
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "it waited for the end"
+        );
+        assert!(failed.why.contains("said nothing"), "{}", failed.why);
+        assert!(!is_copy_back(
+            "copying path '/nix/store/a-x' to 'ssh-ng://builder'..."
+        ));
     }
 
     #[test]
