@@ -2,13 +2,13 @@ home · 5 events · 5 notices · read 1 min 7 s ago
 
   at        seen by       kind      what happened
 2026-11-07
-  17:42:35  eero          Device    tablet 1 connected to Den eero Pro 6 on 5.2GHz channel 52.
+  17:42:35  eero          Device    tablet 1 connected to Den eero Pro 6 on 5.2 GHz channel 52.
   17:42:35  eero          Device    tablet 1 disconnected from Study eero Pro 6.
-  17:31:41  eero          Device    phone 1 connected to Den eero Pro 6 on 5.8GHz channel 149.
+  17:31:41  eero          Device    phone 1 connected to Den eero Pro 6 on 5.8 GHz channel 149.
   17:31:41  eero          Device    phone 1 disconnected from Study eero Pro 6.
-  17:02:11  eero          Device    phone 1 connected to Hall eero Pro 6 on 5.8GHz channel 149.
+  17:02:11  eero          Device    phone 1 connected to Hall eero Pro 6 on 5.8 GHz channel 149.
   02:24:13  this machine  Firmware  The nodes updated to v7.17.4-5
-                                    From v7.17.3-9.
+                                    They were on v7.17.3-9.
 
 2026-11-06
   11:21:33  this machine  Firmware  A firmware update is waiting

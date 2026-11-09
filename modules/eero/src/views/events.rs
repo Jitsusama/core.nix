@@ -11,6 +11,7 @@ use std::cmp::Reverse;
 use jiff::Timestamp;
 
 use super::clock::{self, Clock};
+use super::figures::sentence;
 use super::text::{Align, Line, Page, Table, muted, plain};
 use super::{counted, head, titled};
 use crate::model::{Event, HomeNetwork, ToldChange};
@@ -113,7 +114,7 @@ pub fn page(model: &HomeNetwork, clock: &Clock) -> Page {
             ),
             vec![plain(happened.seen_by)],
             vec![plain(happened.kind)],
-            vec![plain(happened.words)],
+            vec![plain(sentence(happened.words))],
         ]);
         if let Some(body) = happened.body {
             let mut beneath: Vec<Line> = vec![Vec::new(); 4];

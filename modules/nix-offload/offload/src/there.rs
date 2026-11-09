@@ -614,6 +614,97 @@ enum Untaken {
 /// builder. It sent a run of 93 checks round three times on 3 November.
 pub const STAYS: i32 = 64;
 
+/// The system a derivation's file, as Nix writes one, builds for: the
+/// string after its outputs, its inputs' derivations and its sources.
+pub fn derivation_system(written: &str) -> Option<String> {
+    let fields = written.strip_prefix("Derive(")?;
+    let (mut depth, mut commas, mut quoted, mut escaped) = (0_usize, 0, false, false);
+    let mut system: Option<String> = None;
+    for character in fields.chars() {
+        if let Some(read) = system.as_mut() {
+            match (escaped, character) {
+                (false, '\\') => escaped = true,
+                (false, '"') => return system,
+                _ => {
+                    read.push(character);
+                    escaped = false;
+                }
+            }
+            continue;
+        }
+        match (quoted, escaped, character) {
+            (true, false, '\\') => escaped = true,
+            (true, false, '"') => quoted = false,
+            (true, ..) => escaped = false,
+            (false, _, '"') if depth == 0 && commas == 3 => system = Some(String::new()),
+            (false, _, '"') => quoted = true,
+            (false, _, '[' | '(') => depth += 1,
+            (false, _, ']' | ')') => depth = depth.checked_sub(1)?,
+            (false, _, ',') if depth == 0 => commas += 1,
+            _ => {}
+        }
+    }
+    None
+}
+
+/// What the lent builder `dir`'s lender lends builds for, as its machines
+/// line says, and on Linux this machine's own system where none is lent
+/// yet, since the builder asked for then is built as this one is.
+pub fn lent_systems(dir: &Path) -> Vec<String> {
+    let store = fs::read_to_string(dir.join("store")).unwrap_or_default();
+    let store = store.lines().next().unwrap_or_default().trim();
+    let machines = fs::read_to_string(dir.join("machines")).unwrap_or_default();
+    let named = machines
+        .lines()
+        .filter(|_| !store.is_empty())
+        .find_map(|line| {
+            let (uri, rest) = line.split_once(' ')?;
+            (uri == store).then(|| rest.split_whitespace().next().map(str::to_owned))?
+        })
+        .map(|systems| systems.split(',').map(str::to_owned).collect());
+    named.unwrap_or_else(|| {
+        if cfg!(target_os = "linux") {
+            vec![format!("{}-linux", std::env::consts::ARCH)]
+        } else {
+            Vec::new()
+        }
+    })
+}
+
+/// For a run of derivations, the first that no lent builder builds for,
+/// what it builds for and what they build for instead.
+pub fn foreign_derivation(asked: &Asked, dir: &Path) -> Option<(String, String, Vec<String>)> {
+    if !asked.derivations {
+        return None;
+    }
+    let systems = lent_systems(dir);
+    let names: Vec<&str> = systems.iter().map(String::as_str).collect();
+    let (path, system) = foreign(&asked.attributes, &names, |path| {
+        fs::read_to_string(path).ok()
+    })?;
+    Some((path, system, systems))
+}
+
+/// The first of the derivations at `paths` that builds for none of the
+/// lent builders' `systems`, and what it builds for, read by `read`: on
+/// 9 November an Arm build was sent to a lender that builds for Intel
+/// alone, and began copying its kernel up. None when the systems aren't
+/// known or each derivation's can't be read.
+pub fn foreign(
+    paths: &[String],
+    systems: &[&str],
+    read: impl Fn(&str) -> Option<String>,
+) -> Option<(String, String)> {
+    if systems.is_empty() {
+        return None;
+    }
+    paths.iter().find_map(|word| {
+        let path = word.split('^').next().unwrap_or(word);
+        let system = derivation_system(&read(path)?)?;
+        (!systems.contains(&system.as_str())).then(|| (path.to_owned(), system))
+    })
+}
+
 /// A build no builder can take, `why`: built here only when asked to with
 /// `--here`, and otherwise refused with the ways it could go.
 fn stays(asked: &Asked, nix: &str, why: &str) -> Ran {
@@ -2369,7 +2460,9 @@ pub const VM_ROOM: usize = 4;
 /// as where the folder can't be written, it goes at once. Runs waiting go
 /// in the order they came, each holding its place in the folder's
 /// `waiting`, since one past the room goes only once nothing else is
-/// sent, and smaller runs coming after it kept finding room first.
+/// sent, and smaller runs coming after it kept finding room first. One
+/// that fits may still pass one that doesn't, for [`PASSING_FOR`] after
+/// that one came, so room isn't left idle behind it ([`ahead`] says why).
 ///
 /// While it waits, a run goes to the first of `others`, the other VM
 /// builders, that has room and nothing waiting, and says which it went to:
@@ -2401,7 +2494,7 @@ pub fn admitted<'a>(
             return (dir, claim(dir, wants));
         }
         let busy = claimed(dir);
-        let before = ahead(dir, place.as_ref(), rank);
+        let before = ahead(dir, place.as_ref(), rank, busy, room);
         if before == 0 && (busy == 0 || busy + wants <= room) {
             // Claimed, and its place given up, before the lock is let go,
             // as dropping it does.
@@ -2461,7 +2554,7 @@ fn free(dir: &Path, wants: usize, room: usize, rank: Rank) -> Option<Claim> {
         return None;
     }
     let busy = claimed(dir);
-    if ahead(dir, None, rank) == 0 && (busy == 0 || busy + wants <= room) {
+    if ahead(dir, None, rank, busy, room) == 0 && (busy == 0 || busy + wants <= room) {
         claim(dir, wants)
     } else {
         None
@@ -2523,15 +2616,35 @@ const BULK: &str = ".bulk";
 /// What ends the place of a run sent first.
 const FIRST_PLACE: &str = ".first";
 
+/// How long a run waiting for room may be passed by ones behind it that
+/// fit where it doesn't, unless `NIX_OFFLOAD_PASSING_FOR` says otherwise
+/// in seconds: past it, nothing passes it, so the builder empties for it.
+const PASSING_FOR: std::time::Duration = std::time::Duration::from_mins(15);
+
+fn passing_for() -> std::time::Duration {
+    std::env::var("NIX_OFFLOAD_PASSING_FOR")
+        .ok()
+        .and_then(|seconds| seconds.parse().ok())
+        .map_or(PASSING_FOR, std::time::Duration::from_secs)
+}
+
 /// How many runs still going wait for room in `dir` ahead of the one at
-/// `place`, or at all for one with no place yet: every run of a rank
-/// ahead of its `rank`, and those of its own that came before it. A place
-/// whose run ended without giving it up is taken away here.
-fn ahead(dir: &Path, place: Option<&Claim>, rank: Rank) -> usize {
+/// `place`, or at all for one with no place yet, and hold it back: every
+/// run of a rank ahead of its `rank`, and those of its own that came
+/// before it, unless it doesn't fit beside the `busy` of the `room` yet
+/// and hasn't waited [`PASSING_FOR`]. On 8 November three places sat idle
+/// on two VM builders while nine parts waited, some for 70 minutes,
+/// behind a part of 4 that could go only once its builder was empty. A
+/// place whose run ended without giving it up is taken away here.
+fn ahead(dir: &Path, place: Option<&Claim>, rank: Rank, busy: usize, room: usize) -> usize {
     let Ok(entries) = fs::read_dir(dir.join("waiting")) else {
         return 0;
     };
     let mine = place.and_then(|place| place.0.file_name().map(std::ffi::OsStr::to_owned));
+    let passing = passing_for();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
     let mut before = 0;
     for entry in entries.filter_map(Result::ok) {
         let name = entry.file_name();
@@ -2546,11 +2659,37 @@ fn ahead(dir: &Path, place: Option<&Claim>, rank: Rank) -> usize {
         };
         if !pid.is_some_and(runs) {
             let _ = fs::remove_file(entry.path());
-        } else if theirs < rank || (theirs == rank && came_before) {
+        } else if (theirs < rank || (theirs == rank && came_before))
+            && holds_back(&entry.path(), name.to_str(), busy, room, now, passing)
+        {
             before += 1;
         }
     }
     before
+}
+
+/// Whether the run waiting at `place`, named `name`, holds back those
+/// behind it: it fits beside the `busy` of the `room`, so it goes next,
+/// or it has waited `passing` already, or what it wants can't be read.
+fn holds_back(
+    place: &Path,
+    name: Option<&str>,
+    busy: usize,
+    room: usize,
+    now: std::time::Duration,
+    passing: std::time::Duration,
+) -> bool {
+    let wants = fs::read_to_string(place)
+        .ok()
+        .and_then(|wants| wants.trim().parse::<usize>().ok());
+    let came = name
+        .and_then(|name| name.split('.').next()?.parse::<u128>().ok())
+        .and_then(|nanos| u64::try_from(nanos / 1_000_000_000).ok())
+        .map(std::time::Duration::from_secs);
+    let (Some(wants), Some(came)) = (wants, came) else {
+        return true;
+    };
+    busy == 0 || busy + wants <= room || now.saturating_sub(came) >= passing
 }
 
 /// How many VM tests runs still going have sent the builder `dir`'s
@@ -3172,6 +3311,48 @@ mod tests {
     use std::os::unix::process::CommandExt;
     use std::sync::mpsc;
     use std::time::Duration;
+
+    const AARCH64: &str = concat!(
+        r#"Derive([("out","/nix/store/a-boot.bin","","")],"#,
+        r#"[("/nix/store/b-m1n1.drv",["out"])],["/nix/store/c-builder.sh"],"#,
+        r#""aarch64-linux","/bin/sh",["-c","echo \"],\" > $out"],"#,
+        r#"[("system","x86_64-linux")])"#,
+    );
+
+    #[test]
+    fn a_derivation_says_what_it_builds_for() {
+        assert_eq!(derivation_system(AARCH64).as_deref(), Some("aarch64-linux"));
+        assert_eq!(derivation_system("not a derivation"), None);
+    }
+
+    // On 9 November an aarch64 build of a boot chain was sent to a lender
+    // that builds x86_64 alone, and began copying its kernel up.
+    #[test]
+    fn a_derivation_no_lent_builder_builds_for_is_named() {
+        let paths = [
+            "/nix/store/x-native.drv".to_owned(),
+            "/nix/store/a-boot.bin.drv^*".to_owned(),
+        ];
+        let read = |path: &str| {
+            Some(if path.ends_with("a-boot.bin.drv") {
+                AARCH64.to_owned()
+            } else {
+                AARCH64.replace("\"aarch64-linux\",\"/bin", "\"x86_64-linux\",\"/bin")
+            })
+        };
+        assert_eq!(
+            foreign(&paths, &["x86_64-linux"], read),
+            Some((
+                "/nix/store/a-boot.bin.drv".to_owned(),
+                "aarch64-linux".to_owned()
+            ))
+        );
+        assert_eq!(
+            foreign(&paths, &["x86_64-linux", "aarch64-linux"], read),
+            None
+        );
+        assert_eq!(foreign(&paths, &[], read), None, "systems not known");
+    }
 
     #[test]
     fn only_what_the_builder_says_it_fetched_counts_as_fetched() {

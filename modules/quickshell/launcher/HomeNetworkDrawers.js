@@ -32,6 +32,9 @@ const fact = History.fact;
 const kept = History.kept;
 const stroke = History.stroke;
 const onOff = History.onOff;
+// A state eero words as disabled or enabled, said off or on, as every
+// setting's state is.
+const STATES = { disabled: "off", enabled: "on" };
 
 // Readings as Graph's spark: the newest twenty, scaled to their most.
 function spark(values) {
@@ -74,7 +77,7 @@ function internet(model, now, settings) {
         title: "Internet",
         facts: kept([
             fact("speed-test", joined([Home.speedTestOf(net.speed_test, settings),
-                Home.when(net.speed_test?.at, now)])),
+                History.when(net.speed_test?.at, now)])),
             fact("nodes", Home.nodesSaid(net.nodes)),
             // eero's count is every device it knows, on now or not, so the
             // ones on now are counted beside it, by how each is on.
@@ -88,9 +91,9 @@ function internet(model, now, settings) {
                 ? `${firmware.next ?? "an update"} ready` : "up to date"])),
             fact("updates", joined([known(firmware.update_hour)
                 ? `at ${String(firmware.update_hour).padStart(2, "0")}:00` : "",
-                firmware.last_started ? `last ${Home.when(firmware.last_started, now)}` : ""])),
+                firmware.last_started ? `last ${History.when(firmware.last_started, now)}` : ""])),
             trafficFact(net.usage, settings),
-            fact("read", joined([Home.when(model?.read, now), model?.cloud?.state])),
+            fact("read", joined([History.when(model?.read, now), model?.cloud?.state])),
         ]).concat(History.probe(net, now, settings), History.outages(net, now),
             speedTests(net, now, settings), Addresses.addressing(model), switches(net), History.devicesOff(model, now), History.joinsAndLeaves(model, now),
             happened(model, History.timeline(model), now)),
@@ -119,8 +122,9 @@ function happened(model, events, now) {
         return [];
     }
     return [{ heading: "events" }].concat(events.map((event) => ({
-        label: Home.when(event.at, now),
-        value: History.namesKept(model, event.text),
+        label: History.when(event.at, now),
+        value: History.sentence(model, event.text),
+        words: true,
     })));
 }
 
@@ -185,13 +189,14 @@ function profile(model, one, settings) {
 function speedTests(net, now, settings) {
     const tests = (net.speed_tests ?? []).slice().reverse();
     const oldest = tests.length > 0 ? tests[0].at : null;
+    const counted = Home.counted(tests.length, "speed test");
     return kept([
         tests.length > 1 ? { heading: "speed-tests" } : null,
         tests.length > 1 ? fact("down", Home.rate(net.speed_test?.down_mbps, settings),
             { figure: spark(tests.map((test) => test.down_mbps)) }) : null,
         tests.length > 1 ? fact("up", Home.rate(net.speed_test?.up_mbps, settings),
             { figure: spark(tests.map((test) => test.up_mbps)) }) : null,
-        tests.length > 1 ? fact("kept", `${tests.length} since ${Home.when(oldest, now)}`) : null,
+        tests.length > 1 ? fact("kept", `${counted} since ${History.when(oldest, now)}`) : null,
     ]);
 }
 
@@ -213,7 +218,7 @@ function switches(net) {
         fact("wifi-mode", net.wireless_mode),
         fact("ac-compatibility", onOff(net.ac_compatibility)),
         fact("name-clash", Addresses.nameClash(net.name_clash)),
-        fact("mlo", net.mlo_mode),
+        fact("mlo", STATES[net.mlo_mode] ?? net.mlo_mode),
         fact("thread", joined([onOff(thread.on), thread.name,
             known(thread.channel) ? `channel ${thread.channel}` : ""])),
         fact("guest", joined([onOff(guest.on), guest.name])),
@@ -262,11 +267,11 @@ function node(model, one, now, settings) {
         ]).concat(radios(one), ports(one, settings), kept([
             { heading: "about" },
             fact("firmware", joined([one.firmware, updateWords(one.update_available)])),
-            fact("support", one.support_ends ? Home.when(one.support_ends, now) : null),
+            fact("support", one.support_ends ? History.when(one.support_ends, now) : null),
             fact("up", joined([known(one.up_s) ? Interfaces.lasted(one.up_s) : "",
-                one.last_reboot ? `since ${Home.when(one.last_reboot, now)}` : ""])),
+                one.last_reboot ? `since ${History.when(one.last_reboot, now)}` : ""])),
             fact("cloud", known(one.cloud_s) ? Interfaces.lasted(one.cloud_s) : null),
-            fact("added", one.joined ? Home.when(one.joined, now) : null),
+            fact("added", one.joined ? History.when(one.joined, now) : null),
             fact("address", one.address),
             fact("ipv6", (one.ipv6 ?? []).join(DOT)),
             fact("mac", one.mac),
@@ -457,9 +462,9 @@ function device(model, one, now, asked) {
             fact("mac", joined([one.mac, one.private ? "private" : ""])),
             fact("hostname", one.hostname !== Home.nameOf(one) ? one.hostname : null),
             fact("nickname", one.nickname),
-            fact("first-seen", Home.when(one.first_seen, now)),
-            fact("on-since", Home.when(one.first_active, now)),
-            fact("last-active", Home.when(one.last_active, now)),
+            fact("first-seen", History.when(one.first_seen, now)),
+            fact("on-since", History.when(one.first_active, now)),
+            fact("last-active", History.when(one.last_active, now)),
             fact("profile", group ? joined([group.name, group.paused ? "paused" : ""])
                 : null),
             fact("held", joined([one.paused ? "paused" : "", one.blocked ? "blocked" : ""])),

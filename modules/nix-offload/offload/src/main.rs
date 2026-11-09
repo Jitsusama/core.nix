@@ -465,6 +465,19 @@ fn marked(arguments: &[String]) -> Option<ExitCode> {
 
 /// `there`: builds a flake's attributes where src/there.rs says, each part
 /// journalled, exiting with the first status that failed.
+/// A run of derivations one of which no lent builder builds for, refused
+/// with 64 and what would build it.
+fn foreign(asked: &there::Asked, dir: &Path) -> Option<ExitCode> {
+    let (path, system, systems) = there::foreign_derivation(asked, dir)?;
+    eprintln!(
+        "nix-offload: {path} builds for {system}, and the lent builders build for {} \
+         alone, so none takes it; build it with nix build --builders naming a builder for \
+         {system}",
+        systems.join(", ")
+    );
+    Some(ExitCode::from(64))
+}
+
 fn there(arguments: &[String]) -> ExitCode {
     if let Some(code) = marked(arguments) {
         return code;
@@ -501,6 +514,9 @@ fn there(arguments: &[String]) -> ExitCode {
     }
     // A test names its own folder, as changed-checks lets one.
     let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
+    if let Some(refused) = foreign(&asked, &dir) {
+        return refused;
+    }
     let vm_dir =
         env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
     let nearby = fs::read_to_string(config().join("nix-offload/nearby"))

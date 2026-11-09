@@ -3146,10 +3146,40 @@ fn run_subtests_there_waits_for_the_vm_builders_room_too() {
 }
 
 // A run of 4 goes only once nothing else is sent, so while it waited,
-// runs of 1 that fit beside the rest kept going ahead of it: waiting runs
-// go in the order they came.
+// runs of 1 that fit beside the rest kept going ahead of it: once it has
+// waited long enough, nothing passes it.
 #[test]
-fn a_run_waiting_for_room_isnt_passed_by_one_that_came_after_it() {
+fn a_run_waiting_for_room_long_enough_isnt_passed_by_one_that_came_after_it() {
+    let tests = |name: &str, count: usize| -> Vec<String> {
+        ["-L", "github:o/r/abc"]
+            .into_iter()
+            .map(str::to_owned)
+            .chain((0..count).map(|test| format!("checks.x.vm-{name}{test}")))
+            .collect()
+    };
+    let (first, waits, later) = (tests("a", 3), tests("b", 4), tests("c", 1));
+    let (_, sent, said) = one_after_another_with(
+        &[&first, &waits, &later],
+        &[("NIX_OFFLOAD_PASSING_FOR", "0")],
+    );
+    let order: Vec<&str> = sent
+        .iter()
+        .map(|build| {
+            ["vm-a0", "vm-b0", "vm-c0"]
+                .into_iter()
+                .find(|test| build.contains(*test))
+                .unwrap_or(build)
+        })
+        .collect();
+    assert_eq!(order, ["vm-a0", "vm-b0", "vm-c0"], "{said}");
+    assert_eq!(said.matches("so this waits for room").count(), 2, "{said}");
+}
+
+// On 8 November three places sat idle on two VM builders while nine parts
+// waited, some for 70 minutes, behind parts that could go only once their
+// builder was empty, so one that fits passes one that doesn't yet.
+#[test]
+fn a_run_that_fits_passes_one_waiting_that_doesnt_yet() {
     let tests = |name: &str, count: usize| -> Vec<String> {
         ["-L", "github:o/r/abc"]
             .into_iter()
@@ -3168,8 +3198,8 @@ fn a_run_waiting_for_room_isnt_passed_by_one_that_came_after_it() {
                 .unwrap_or(build)
         })
         .collect();
-    assert_eq!(order, ["vm-a0", "vm-b0", "vm-c0"], "{said}");
-    assert_eq!(said.matches("so this waits for room").count(), 2, "{said}");
+    assert_eq!(order, ["vm-a0", "vm-c0", "vm-b0"], "{said}");
+    assert_eq!(said.matches("so this waits for room").count(), 1, "{said}");
 }
 
 // The after-merge net sends dozens of VM tests a round, so on 5 November a
@@ -3254,6 +3284,14 @@ fn side_by_side(runs: [&[String]; 2]) -> (Vec<String>, String) {
 /// it built at once as each began, the VM builds it was sent in the order
 /// they were, and what every run said.
 fn one_after_another(runs: &[&[String]]) -> (Vec<String>, Vec<String>, String) {
+    one_after_another_with(runs, &[])
+}
+
+/// `one_after_another`, each run told these variables besides.
+fn one_after_another_with(
+    runs: &[&[String]],
+    told: &[(&str, &str)],
+) -> (Vec<String>, Vec<String>, String) {
     let folder = tempfile::tempdir().unwrap();
     let bin = folder.path().join("bin");
     fs::create_dir(&bin).unwrap();
@@ -3283,6 +3321,7 @@ fn one_after_another(runs: &[&[String]]) -> (Vec<String>, Vec<String>, String) {
             .env("XDG_RUNTIME_DIR", folder.path())
             .env("XDG_STATE_HOME", folder.path())
             .env("XDG_CONFIG_HOME", folder.path())
+            .envs(told.iter().copied())
             .stdout(std::process::Stdio::null())
             .stderr(fs::File::create(said).unwrap())
             .spawn()

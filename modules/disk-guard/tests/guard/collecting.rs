@@ -1248,6 +1248,26 @@ fn a_healthy_store_spends_at_most_a_tenth_of_its_time_listing() {
 }
 
 #[test]
+fn a_filling_store_short_of_urgent_rests_between_listings_too() {
+    // On 8 November a store at 75% was listed back to back, five to six
+    // minutes of a core each while the machine's processors stalled half
+    // the time, and each pass found nothing more to clear.
+    let store = Store::new();
+    listed_stale(&store);
+    let mut guard = store.guard(store.config_as_given("100%", "0%"));
+    let later = listed_for_100_s(&store, &mut guard);
+    offered_at_200_s(&store, &mut guard);
+    assert_eq!(
+        lists(&store),
+        1,
+        "found stale 100 s after a listing of 100 s, on a filling disk"
+    );
+    assert!(later.exists());
+    step_later_until(&store, &mut guard, 1100.0, &CALM, |_, _| !later.exists());
+    assert_eq!(lists(&store), 2, "{:?}", store.log());
+}
+
+#[test]
 fn a_listings_rest_holds_for_the_next_guard() {
     // Each switch that changes the guard restarts it, four times on the
     // afternoon of 7 November, and a guard with new rules upkeeps at once,

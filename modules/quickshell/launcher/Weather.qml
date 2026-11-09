@@ -1,7 +1,8 @@
 // The weather, here or anywhere, answered in the field: "weather" for here,
 // "weather tokyo" or "tokyo weather" for anywhere, its parts a step in:
-// Now, Rain, then the seven days from today (Joel, 2026-11-04: "Weather,
-// nerdy, by the hour, stepping into a day"). Now is a thing holding every
+// Conditions, Rain, then the seven days from today (Joel, 2026-11-04:
+// "Weather, nerdy, by the hour, stepping into a day"), with elsewhere's
+// Local Time after Conditions. Conditions is a thing holding every
 // figure of what it's like this moment: the temperature, what it feels
 // like, the humidity, the dew point, the precipitation, the wind and its
 // gusts, the cloud cover, the UV index, the visibility and the pressure.
@@ -264,7 +265,7 @@ Provider {
     }
 
     // A thing's figures a step in, each copied, and its drawer saying them
-    // all: Now, a day, an hour.
+    // all: Conditions, a day, an hour.
     function figureRows(scope, figures) {
         return figures.map(figure => copyRow({
             name: Words.name(`${scope}:${figure.id}`),
@@ -491,7 +492,9 @@ Provider {
     }
 
     // The weather, what it's like now as the headline, and its parts in
-    // the same order every time, flat: Now, Rain, then each day from today.
+    // the same order every time, flat: Conditions, elsewhere its Local
+    // Time, Rain, then each day from today. Conditions is one noun
+    // wherever it's for, since the note says where (VKCF3Z, 2026-11-09).
     function weatherAnswer(forecast, hours, away, note) {
         const now = forecast.current;
         const daily = forecast.daily ?? {};
@@ -500,8 +503,7 @@ Provider {
         const [date, clock] = (now.time ?? "").split("T");
         const weekday = date => Qt.formatDate(dateOf(date), "dddd");
         const figures = instant(now, (forecast.current_units ?? {}).visibility ?? "m");
-        const named = Words.name("weather:now", away && clock ? "away" : "",
-            { clock: clock, weekday: clock ? weekday(date) : "" });
+        const named = Words.name("weather:now");
         const rows = [thingRow({
             name: named,
             side: headline,
@@ -509,6 +511,15 @@ Provider {
             thing: true,
             drawer: () => drawerOf(named, headline, "weather", figures)
         }, () => figureRows("weather", figures))];
+        if (away && clock) {
+            const there = `${clock} ${weekday(date)}`;
+            rows.push(copyRow({
+                name: Words.name("weather:local-time"),
+                side: there,
+                copy: there,
+                glyph: ""
+            }));
+        }
         // Rain holds its hours, a step in by the right arrow, and Return
         // copies when it next rains, as asked alone: a part holding more,
         // as any is. It's there only while rain is due, giving up its

@@ -10,6 +10,7 @@
 // takes them from here, so the two files read a figure one way. Plain
 // reading of the record, held in Qt's own engine (tests/home-network.qml).
 .pragma library
+.import "../When.js" as When
 .import "HomeNetwork.js" as Home
 .import "Interfaces.js" as Interfaces
 
@@ -28,6 +29,33 @@ const SPACES = / /g;
 // would bind "laptop computer 1 joined" into one run too wide for its
 // line, so a zero-width space after the number lets the line break there.
 const NUMBER_ENDS = /(\u00a0\d+) /g;
+// A figure eero's sentences run into its unit, "5.2GHz", kept to it with
+// a no-break space, as every figure the drawer sets is.
+const RUN_IN = /(\d)([GMk]Hz)\b/g;
+// How a drawer names a day beside When.js's rule: yesterday and tomorrow
+// in words, the rest as Qt's formatDate says them in the locale.
+const DAYS = {
+    yesterday: "yesterday",
+    tomorrow: "tomorrow",
+    date: (at, format) => Qt.formatDate(at, format),
+};
+
+// A moment as a drawer says it, its day as When.js says every day the
+// launcher shows (VKCF3Z, 2026-11-08): today its time, "22:54"; else
+// "yesterday 22:54", a weekday within six days, "Thursday 10:52", then
+// "24 Sep 09:53" this year and "13 Nov 2020" in another.
+function when(iso, now) {
+    const at = new Date(iso ?? "");
+    if (!iso || Number.isNaN(at.getTime())) {
+        return "";
+    }
+    const day = When.day(at.getTime(), now, DAYS);
+    const time = Qt.formatTime(at, "HH:mm");
+    if (day === "") {
+        return time;
+    }
+    return at.getFullYear() === new Date(now).getFullYear() ? `${day} ${time}` : day;
+}
 
 function known(value) {
     return value !== null && value !== undefined && value !== "";
@@ -161,7 +189,7 @@ function roams(model, one, now) {
         return [];
     }
     return [{ heading: "roams" }].concat(moves.map((move) => ({
-        label: Home.when(move.at, now),
+        label: when(move.at, now),
         value: joined([fromTo(nodeNamed(model, move.from_node), nodeNamed(model, move.node)),
             fromTo(move.from_band, move.band)]),
     })));
@@ -207,7 +235,7 @@ function probe(net, now, settings) {
     const ms = (value) => (known(value) ? `${Home.significant(value, settings)} ms` : null);
     return kept([
         { heading: "probe" },
-        fact("looked", joined([Home.when(last.at, now), last.home ? "from home" : "away from home",
+        fact("looked", joined([when(last.at, now), last.home ? "from home" : "away from home",
             last.reachable ? "" : "internet not reached"])),
         fact("to-gateway", ms(last.gateway_ms), { figure: historySpark(looks.gateway_ms) }),
         fact("to-internet", ms(last.internet_ms), { figure: historySpark(looks.internet_ms) }),
@@ -254,7 +282,7 @@ function outages(net, now) {
         return [];
     }
     return [{ heading: "outage-list" }].concat(list.map((outage) => ({
-        label: outage.start ? Home.when(outage.start, now) : "time not given",
+        label: outage.start ? when(outage.start, now) : "time not given",
         value: joined([outageLasted(outage, now),
             outage.seen_by === "probe" ? "seen by this machine" : "seen by eero"]),
     })));
@@ -274,7 +302,7 @@ function joinsAndLeaves(model, now) {
         const where = known(one.node) ? ` ${nodeNamed(model, one.node)}` : "";
         const did = one.kind === "joined" ? "joined" : "left";
         return {
-            label: Home.when(one.at, now),
+            label: when(one.at, now),
             value: joined([breakable(`${whole(one.name ?? one.mac)} ${did}${where}`), one.band]),
         };
     }));
@@ -285,14 +313,15 @@ function whole(name) {
     return String(name).replace(SPACES, KEPT);
 }
 
-// A sentence with each device's name in it kept on one line, the longest
-// first, so a name inside another is kept as part of it.
-function namesKept(model, text) {
+// A sentence as the drawer sets eero's: its words and names eero's, each
+// device's name in it kept on one line, the longest first so a name inside
+// another is kept as part of it, and its figures ours, "5.2\u00a0GHz".
+function sentence(model, text) {
     const names = (model?.devices ?? []).concat(model?.devices_off ?? [])
         .map((one) => Home.nameOf(one)).filter((name) => known(name) && name.includes(" "))
         .sort((a, b) => b.length - a.length);
     return breakable(names.reduce((said, name) => said.split(name).join(whole(name)),
-        String(text ?? "")));
+        String(text ?? "").replace(RUN_IN, `$1${KEPT}$2`)));
 }
 
 // Words a kept name's last number may break after, where a space follows it.
@@ -312,7 +341,7 @@ function devicesOff(model, now) {
     return [{ heading: "devices-off" }].concat(off.map((one) => ({
         label: Home.nameOf(one),
         value: joined([known(one.node) ? nodeNamed(model, one.node) : "",
-            one.ethernet ? "Ethernet" : one.band, Home.when(one.last_active, now)]),
+            one.ethernet ? "Ethernet" : one.band, when(one.last_active, now)]),
     })));
 }
 

@@ -268,6 +268,7 @@ or a copy, can be opened, copied or forgotten.
 | Now | the launcher's view of what's on and waiting, on Super+O | What's on | `Now.qml` |
 | For You | the one place for what needs Joel and what came for him, with where each came from: Now's first row, weighed, the most pressing first | | `ForYou.js` |
 | to-do | what only Joel can do, raised by the session that needs him and listed in For You | Needs You item, waiting on you | `WaitingOnYou.qml` |
+| check | the command that settles a to-do, which succeeds once it's done, apart from the checks core.nix holds | | `doneWhen.check` |
 | look | something a session points Joel at to see, a pull request, a page, a file, a diff or a terminal, kept in For You until he opens or clears it | | `on:waiting:look`, the looks folder |
 | to try | a landing whose line asks Joel to try something, kept in For You until he opens or clears it | | |
 | Lately | For You's band for what came for Joel, one row for each place it came from | | |
@@ -285,6 +286,8 @@ or a copy, can be opened, copied or forgotten.
 | time peer | a time server that sets its time by the machine's too, each keeping the other right | | chrony's `peer` mode |
 | reference clock | a clock wired to the machine that it sets its time by, such as a GPS receiver | | chrony's `refclock` |
 | here | where the weather is when no town is typed: the location, else the town set, else the clock's time zone's city | | the weather provider's `place` |
+| conditions | what the weather is like this moment where it's asked for: its sky and every figure of it | | Open-Meteo's `current` |
+| local time | the clock and weekday where the weather is asked for, when that isn't here | | the forecast's `current.time` |
 
 ## Machine
 
@@ -417,7 +420,8 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | internet | the home network's way out, through its gateway node | WAN, ISP connection | |
 | internet provider | who carries the internet to the home network, as eero names it | carrier | `isp` |
 | outage | a time the internet was down | downtime | |
-| radio | a Wi-Fi transmitter on one band: the machine's card's, or one of a node's | | |
+| update | the home network's firmware installing itself, at the hour it's set to, apart from the machine's update | | the eero's `update_hour` |
+| radio | a Wi-Fi or Bluetooth transmitter on one band: the machine's card's or adapter's, or one of a node's | | `bluetooth:powered` |
 | band | the frequencies a radio uses: 2.4, 5 or 6 GHz | frequency band | |
 | channel | the slice of a band a radio uses, with its width, such as Wi-Fi's or the ones Bluetooth hops between | | `bluetooth:channels` |
 | stream | one of the signals a Wi-Fi link carries side by side at once, each adding to its speed | | `wifi:streams`, MIMO's spatial streams |

@@ -1375,7 +1375,7 @@ mod tests {
             Kind::Updated,
             &["2001 v7.18.0-1", "2002 v7.18.0-1"],
             "The nodes updated to v7.18.0-1",
-            "From v7.17.4-5.",
+            "They were on v7.17.4-5.",
         );
         let event = notice(Kind::Event, &["e"], "Guest network turned on.", "eero's.");
 
@@ -1390,7 +1390,7 @@ mod tests {
         assert_eq!(
             told(&history, AT + 200),
             [
-                "60 updated The nodes updated to v7.18.0-1: From v7.17.4-5.",
+                "60 updated The nodes updated to v7.18.0-1: They were on v7.17.4-5.",
                 "0 internet-out The internet is out: Nothing.",
             ],
             "one notice of two changes is one, a change settled without a notice and an \

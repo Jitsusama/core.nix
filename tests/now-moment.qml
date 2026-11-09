@@ -43,7 +43,7 @@ ShellRoot {
                 return { headline: "\u2026", rows: [], note: "asking Open-Meteo", asking: true };
             return {
                 headline: sky,
-                rows: [{ name: "Now", side: sky, glyph: "sky" }],
+                rows: [{ name: "Conditions", side: sky, glyph: "sky" }],
                 note: "Kelpwater \u00b7 Open-Meteo"
             };
         }
@@ -281,7 +281,7 @@ ShellRoot {
         expect("a forecast heard says the new sky", moment()[3].side === "9\u00b0 \u00b7 rain",
             moment()[3].side);
         expect("the weather's row holds its own parts",
-            moment()[3].verbs().map(each => each.name).join() === "Now",
+            moment()[3].verbs().map(each => each.name).join() === "Conditions",
             JSON.stringify(moment()[3]));
 
         calendar.next = null;
