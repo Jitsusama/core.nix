@@ -11,7 +11,8 @@
 { config, pkgs, ... }:
 let
   touchscreen = config.boot.kernelPackages.callPackage ./package.nix { };
-  panel = "/sys/bus/spi/devices/spi-MSHW0231:00";
+  parameters = "/sys/module/sl4a_spi_hid/parameters";
+  trial = "/sys/bus/spi/devices/spi-MSHW0231:00/heat_scan ${parameters}/heat_rest_after ${parameters}/heat_rest_ms";
 in
 {
   boot.extraModulePackages = [ touchscreen ];
@@ -52,11 +53,12 @@ in
       Type = "oneshot";
       RemainAfterExit = true;
       ExecStart = "${pkgs.kmod}/bin/modprobe --all sl4a_spi_amd sl4a_spi_hid";
-      # For the trial heat_scan is for (package.nix): wheel may ask the panel
-      # to stop or start its heat maps without root.
+      # For the idle rest's trial (package.nix): wheel may stop or start the
+      # heat maps and set the rest without root. Taken out once the trial
+      # settles the rest's values.
       ExecStartPost = [
-        "${pkgs.coreutils}/bin/chgrp wheel ${panel}/heat_scan"
-        "${pkgs.coreutils}/bin/chmod g+w ${panel}/heat_scan"
+        "${pkgs.coreutils}/bin/chgrp wheel ${trial}"
+        "${pkgs.coreutils}/bin/chmod g+w ${trial}"
       ];
     };
   };

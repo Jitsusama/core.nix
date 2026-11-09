@@ -1,0 +1,230 @@
+diff --git a/mshw0231-raw.c b/mshw0231-raw.c
+index aee6dad..4a9aa31 100644
+--- a/mshw0231-raw.c
++++ b/mshw0231-raw.c
+@@ -2165,6 +2165,16 @@ static void mshw0231_raw_process_samples(struct spi_hid *shid, const u8 *data,
+ 		if (sorted_count || touched_count)
+ 			seq_dbg(shid, 2, "CALIB: blobs=%u cells_touched=%d\n",
+ 				 sorted_count, touched_count);
++		shid->stat_heat_frames++;
++		shid->heat_empty_frames = sorted_count ? 0 : shid->heat_empty_frames + 1;
++		if (sorted_count) {
++			shid->stat_heat_contact_frames++;
++			shid->stat_last_contacts = sorted_count;
++			for (i = 0; i < sorted_count; i++) {
++				shid->stat_last_gx[i] = sorted[i].gx;
++				shid->stat_last_gy[i] = sorted[i].gy;
++			}
++		}
+ 
+ 		/* ── Stage 6: Hungarian global assignment ── */
+ 		{
+diff --git a/spi-hid-core.c b/spi-hid-core.c
+index 54b0f39..ee6cdb0 100644
+--- a/spi-hid-core.c
++++ b/spi-hid-core.c
+@@ -2611,6 +2611,74 @@ static int spi_hid_seq_write_setfeat(struct spi_hid *shid)
+ 				       setfeat_speed_hz);
+ }
+ 
++/*
++ * The idle rest. The panel sends its heat maps about 95 times a second while
++ * the lid is open, touched or not, and each costs a core several
++ * milliseconds. After heat_rest_after heat maps in a row with no contact the
++ * panel is asked to stop them (SET_FEATURE 5 = 0), and heat_rest_ms later to
++ * start them again, so an untouched screen scans a few frames at a time
++ * rather than all the time. Anything else the panel sends while it rests
++ * starts them at once, in case it says so when touched. 0 leaves it off.
++ */
++static uint heat_rest_after;
++module_param(heat_rest_after, uint, 0644);
++MODULE_PARM_DESC(heat_rest_after,
++	"Heat maps in a row with no contact before the panel rests; 0 = never");
++
++static uint heat_rest_ms = 200;
++module_param(heat_rest_ms, uint, 0644);
++MODULE_PARM_DESC(heat_rest_ms,
++	"How long the panel rests before it scans again, in ms");
++
++enum { HEAT_SCANNING, HEAT_STOPPING, HEAT_RESTING };
++
++/* Called with seq_lock held: SET_FEATURE 5 with `on`, doubled framing only. */
++static int spi_hid_heat_scan(struct spi_hid *shid, bool on)
++{
++	u8 frame[] = { 0x02, 0x02, 0x00, 0x00, 0x03, 0x82, 0x00, 0x03,
++		       0x04, 0x00, 0x05, 0x01, 0x00, 0x00, 0x00 };
++
++	frame[11] = on;
++	shid->read_resp_type = SPI_HID_CONTENT_TYPE_SET_FEATURE;
++	shid->read_resp_content_id = 5;
++	return spi_hid_seq_write_speed(shid, frame, sizeof(frame), NULL, 0,
++				       setfeat_speed_hz);
++}
++
++static void spi_hid_heat_rest_work(struct work_struct *work)
++{
++	struct spi_hid *shid = container_of(to_delayed_work(work),
++					    struct spi_hid, heat_rest_work);
++	int ret;
++
++	mutex_lock(&shid->seq_lock);
++	if (READ_ONCE(shid->removing) || READ_ONCE(shid->suspended) ||
++	    shid->seq_state != SPI_HID_SEQ_DONE) {
++		shid->heat_rest_phase = HEAT_SCANNING;
++	} else if (shid->heat_rest_phase == HEAT_STOPPING) {
++		ret = spi_hid_heat_scan(shid, false);
++		shid->heat_rest_phase = ret ? HEAT_SCANNING : HEAT_RESTING;
++		if (!ret) {
++			shid->stat_heat_rests++;
++			schedule_delayed_work(&shid->heat_rest_work,
++				msecs_to_jiffies(READ_ONCE(heat_rest_ms)));
++		}
++	} else if (shid->heat_rest_phase == HEAT_RESTING) {
++		ret = spi_hid_heat_scan(shid, true);
++		if (ret) {
++			/* A panel left resting never sends a touch: try again. */
++			dev_warn_ratelimited(&shid->spi->dev,
++				"heat rest: restarting the heat maps failed: %d\n", ret);
++			schedule_delayed_work(&shid->heat_rest_work,
++				msecs_to_jiffies(READ_ONCE(heat_rest_ms)));
++		} else {
++			shid->heat_empty_frames = 0;
++			shid->heat_rest_phase = HEAT_SCANNING;
++		}
++	}
++	mutex_unlock(&shid->seq_lock);
++}
++
+ /* ── GET_FEATURE Report ID 6 (raw-mode configuration read) ──────────
+  *
+  * Windows reads report ID 6 between the report descriptor and the SET_FEATURE
+@@ -4055,8 +4123,20 @@ static void seq_handle_data(struct spi_hid *shid, int type, u16 blen)
+ 						cret, rblen);
+ 					shid->stat_frames_dropped++;
+ 				}
++				if (READ_ONCE(heat_rest_after) &&
++				    shid->heat_rest_phase == HEAT_SCANNING &&
++				    shid->heat_empty_frames >= READ_ONCE(heat_rest_after)) {
++					shid->heat_rest_phase = HEAT_STOPPING;
++					schedule_delayed_work(&shid->heat_rest_work, 0);
++				}
+ 			}
+ 		}
++		if (body[7] != 0x0C) {
++			shid->stat_other_frames++;
++			shid->stat_last_other_id = body[7];
++			if (shid->heat_rest_phase == HEAT_RESTING)
++				mod_delayed_work(system_wq, &shid->heat_rest_work, 0);
++		}
+ 
+ 		if (rl >= 3 && rl - 3 <= avail) {
+ 			if (shid->raw_mode_active && body[7] == 0x40 && rl - 2 >= 6) {
+@@ -4536,6 +4616,52 @@ static ssize_t lifecycle_status_show(struct device *dev,
+ }
+ static DEVICE_ATTR_RO(lifecycle_status);
+ 
++static ssize_t touch_stats_show(struct device *dev,
++		struct device_attribute *attr, char *buf)
++{
++	struct spi_hid *shid = dev_get_drvdata(dev);
++	u32 off, i;
++
++	mutex_lock(&shid->seq_lock);
++	off = sysfs_emit(buf,
++			 "heat_frames=%u\ncontact_frames=%u\nrests=%u\nresting=%u\nother_frames=%u\nlast_other_id=0x%02x\nlast_contacts=%u\n",
++			 shid->stat_heat_frames, shid->stat_heat_contact_frames,
++			 shid->stat_heat_rests,
++			 shid->heat_rest_phase == HEAT_RESTING,
++			 shid->stat_other_frames, shid->stat_last_other_id,
++			 shid->stat_last_contacts);
++	for (i = 0; i < shid->stat_last_contacts && i < HEATMAP_MAX_BLOBS; i++)
++		off += sysfs_emit_at(buf, off, "contact=%u.%02u,%u.%02u\n",
++				     shid->stat_last_gx[i] / 100, shid->stat_last_gx[i] % 100,
++				     shid->stat_last_gy[i] / 100, shid->stat_last_gy[i] % 100);
++	mutex_unlock(&shid->seq_lock);
++	return off;
++}
++static DEVICE_ATTR_RO(touch_stats);
++
++/*
++ * Sends SET_FEATURE report 5 with the value written, 1 to start the heat
++ * maps and 0 to ask the panel to stop them, to find out by hand whether it
++ * stops scanning and what it sends on a touch while stopped.
++ */
++static ssize_t heat_scan_store(struct device *dev,
++		struct device_attribute *attr, const char *buf, size_t count)
++{
++	struct spi_hid *shid = dev_get_drvdata(dev);
++	bool on;
++	int ret;
++
++	ret = kstrtobool(buf, &on);
++	if (ret)
++		return ret;
++	mutex_lock(&shid->seq_lock);
++	ret = spi_hid_heat_scan(shid, on);
++	mutex_unlock(&shid->seq_lock);
++	dev_info(dev, "heat_scan: SET_FEATURE(5)=%u sent: %d\n", on, ret);
++	return ret ? ret : count;
++}
++static DEVICE_ATTR_WO(heat_scan);
++
+ static const struct attribute *const spi_hid_attributes[] = {
+ 	&dev_attr_ready.attr,
+ 	&dev_attr_bus_error_count.attr,
+@@ -4547,6 +4673,8 @@ static const struct attribute *const spi_hid_attributes[] = {
+ 	&dev_attr_baseline_status.attr,
+ 	&dev_attr_build_info.attr,
+ 	&dev_attr_lifecycle_status.attr,
++	&dev_attr_touch_stats.attr,
++	&dev_attr_heat_scan.attr,
+ 	NULL	/* Terminator */
+ };
+ 
+@@ -4607,6 +4735,10 @@ static void spi_hid_cancel_workers(struct spi_hid *shid)
+ 	cancel_delayed_work_sync(&shid->feat_delay_work);
+ 	cancel_delayed_work_sync(&shid->stream_watchdog);
+ 	cancel_delayed_work_sync(&shid->wait_reset_watchdog);
++	cancel_delayed_work_sync(&shid->heat_rest_work);
++	/* The panel's next start sends its own SET_FEATURE 5. */
++	shid->heat_rest_phase = HEAT_SCANNING;
++	shid->heat_empty_frames = 0;
+ 	cancel_work_sync(&shid->create_device_work);
+ 	cancel_work_sync(&shid->error_work);
+ }
+@@ -5012,6 +5144,7 @@ static int spi_hid_probe(struct spi_device *spi)
+ 	shid->stream_watchdog_active = false;
+ 
+ 	INIT_DELAYED_WORK(&shid->poll_work, spi_hid_poll_work);
++	INIT_DELAYED_WORK(&shid->heat_rest_work, spi_hid_heat_rest_work);
+ 	INIT_DELAYED_WORK(&shid->wait_reset_watchdog, spi_hid_wait_reset_watchdog);
+ 	shid->poll_active = false;
+ 	shid->poll_interval_ms = 0;
+diff --git a/spi-hid-core.h b/spi-hid-core.h
+index 5a17f55..3b4ab83 100644
+--- a/spi-hid-core.h
++++ b/spi-hid-core.h
+@@ -406,6 +406,23 @@ struct spi_hid {
+ 	u32 stat_getfeat_resp;
+ 	u32 stat_frames_dropped;
+ 	u32 stat_irq_count;
++	/* Heat maps tracked, and those holding any contact, with where the
++	 * last contacts sat (grid x100): touch_stats reads them without root,
++	 * so a touch nobody made shows where it is. */
++	u32 stat_heat_frames;
++	u32 stat_heat_contact_frames;
++	/* The idle rest (heat_rest_after): heat maps in a row with no contact,
++	 * where the rest stands, how many rests there were, and what else the
++	 * panel sent, to learn what it says on a touch while it rests. */
++	u32 heat_empty_frames;
++	u8 heat_rest_phase;
++	struct delayed_work heat_rest_work;
++	u32 stat_heat_rests;
++	u32 stat_other_frames;
++	u8 stat_last_other_id;
++	u8 stat_last_contacts;
++	u32 stat_last_gx[HEATMAP_MAX_BLOBS];
++	u32 stat_last_gy[HEATMAP_MAX_BLOBS];
+ 	u32 stat_irq_edges;                       /* Hard-IRQ edges seen (top half) */
+ 	u32 stat_raw_observed; /* V0 0x0c heatmap bodies seen on any path
+ 				 * (envelope ce 10 0c, 4304B). Passive only:

@@ -26,11 +26,12 @@ stdenv.mkDerivation {
     # or not, and its controller's FIFO was read a byte at a time: 7.6 ms of
     # a core for each, about 70% of one while the lid is open.
     ./fifo-reads-four-bytes.patch
-    # For a trial: touch_stats says how many heat maps held a contact and
-    # where the last ones were, without root, and heat_scan asks the panel
-    # to stop or start its heat maps, to learn whether it can rest while
-    # nothing touches it.
-    ./heat-scan-trial.patch
+    # heat_rest_after rests the panel between short scans while nothing
+    # touches it, off until a trial shows it wakes on a touch. For that
+    # trial, touch_stats says without root how many heat maps held a
+    # contact, where the last ones were and what else the panel sent, and
+    # heat_scan stops or starts the heat maps by hand.
+    ./heat-rests-when-untouched.patch
   ];
 
   nativeBuildInputs = kernel.moduleBuildDependencies;
