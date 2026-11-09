@@ -2856,7 +2856,9 @@
   '';
   vm-desktop-looks-machine = ''
     on the laptop's screen at 1.5 and at 2, Machine's processor, memory, disk and uptime step
-    into the parts the machine daemon reads from the guest, and those parts into their own
+    into the parts the machine daemon reads from the guest, and those parts into their own, and
+    Machines holds this machine's row first, saying its model and system as its realm's node
+    measured them
   '';
   vm-desktop-looks-programs = ''
     on the laptop's screen at 1.5 and at 2, Drive's places and Recent, Spotify and its podcasts,

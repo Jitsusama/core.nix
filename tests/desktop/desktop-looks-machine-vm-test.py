@@ -1,9 +1,10 @@
-"""The desktop test's looks area for Machine.
+"""The desktop test's looks area for Machine and Machines.
 
 Here Machine's things are shot at Joel's two scales, on a screen as large as the laptop's, as the
 looks area shoots the launcher's own: 1.5, as the HP draws it, and 2, as the laptop does. Every
-figure is the machine daemon's (modules/machine), read from the guest's kernel, so this is where
-the design looks at what it gives. It's an area of its own, rather than more of looks, since the
+figure is the machine daemon's (modules/machine), read from the guest's kernel, or, for Machines,
+the realm's mycelium node's record of this machine, so this is where the design looks at what
+each gives. It's an area of its own, rather than more of looks, since the
 pyramid keeps a VM test to twenty subtests (docs/testing.md).
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
@@ -81,3 +82,29 @@ def test_machines_parts_are_shot_at_each_scale(desktop: Desktop, at_each_scale: 
                 held = part.lower().replace(" ", "-")
                 desktop.shoot(f"launcher-machine-{asked}-{held}-at-{named}")
             desktop.close_launcher()
+
+
+def test_machines_is_shot_at_each_scale(desktop: Desktop, at_each_scale: list[str]) -> None:
+    """Shoot Machines, this machine's row first, saying how it stands from its node's record.
+
+    The node here links no other machine, so this one is the realm's only row. It has no
+    drawer, since Return takes it to the Machine place, whose own places hold its figures;
+    another machine's drawer, and one out of reach dimmed, are tests/machines.qml's.
+    """
+    for scale in at_each_scale:
+        named = scale.replace(".", "-")
+        at_scale(desktop, scale)
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("machines", selecting="Machines")
+        desktop.step_in()
+        desktop.launcher_until(
+            lambda shown: (
+                shown["rows"][:1] == ["machine"]
+                and "NixOS" in shown["selected"]["note"]
+                and shown["selected"]["side"] == "this machine"
+                and shown["drawer"]["out"] is False
+            )
+        )
+        desktop.shoot(f"launcher-machines-at-{named}")
+        desktop.close_launcher()

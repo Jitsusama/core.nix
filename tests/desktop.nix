@@ -66,13 +66,16 @@ let
   ];
   # The areas that show pi's sessions, whose machine runs the realm's
   # mycelium node, as a workstation does, since the shell knows sessions
-  # from the node alone. It links nothing, so it needs no key.
+  # from the node alone, and looks-machine, which shoots Machines from
+  # the record the node measures of its own machine. It links nothing, so
+  # it needs no key.
   runsTheNode = builtins.elem area [
     "launcher-finds-sessions"
     "launcher-draws-still"
     "launcher-waits-on-joel"
     "launcher-goes-places"
     "looks"
+    "looks-machine"
   ];
   # The areas whose launcher has WARP, as a machine whose system installs
   # warp-cli does: where its looks are shot, and where a terminal is shown
