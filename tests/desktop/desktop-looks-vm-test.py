@@ -1323,32 +1323,47 @@ def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
     Each says which way it goes or what it is over its name, then its parts, what moves most
     first, laid one way, every name whole (VKCF3Z, 2026-11-07). A sound device's State, as
     pipewire says it, leads its level (VKCF3Z, 2026-11-08); the stand-in backlight lights the
-    one screen, so its Brightness leads.
+    one screen, so its Brightness leads. The speakers are played silence, so their node runs
+    and pw-top says how it keeps time: Dropouts, Load and Cycle, in that order (VKCF3Z,
+    2026-11-09).
     """
-    for collection, typed, kind, leading in [
-        ("sound", "speakers", "output", ["State", "Volume"]),
-        ("sound", "microphone", "input", ["State", "Gain"]),
-        ("displays", "", "screen", ["Brightness"]),
+    for collection, typed, kind, leading, keeping in [
+        ("sound", "speakers", "output", ["State", "Volume"], ["Dropouts", "Load", "Cycle"]),
+        ("sound", "microphone", "input", ["State", "Gain"], []),
+        ("displays", "", "screen", ["Brightness"], []),
     ]:
         first = leading[-1]
         desktop.launcher_until(lambda shown: not shown["open"])
+        if keeping:
+            # Silence, as fast as the node plays it, which pw-cat paces.
+            desktop.as_account(
+                "systemd-run --user --collect --quiet --unit=plays -- sh -c "
+                + shlex.quote(
+                    "pw-cat --playback --raw --format s16 --rate 48000 --channels 2"
+                    f" --target stand-in-{typed} - < /dev/zero"
+                )
+            )
         desktop.as_account(f"qs ipc call launcher collection {collection}")
         desktop.launcher_ready()
         if typed:
             desktop.type_in(typed, selecting=typed)
 
-        def plated(shown: Json, first: str = first) -> bool:  # As launcher_until calls it.
-            """Say whether the drawer is out, holding this plate's first fact, its facts laid.
+        def plated(  # As launcher_until calls it.
+            shown: Json, first: str = first, keeping: list[str] = keeping
+        ) -> bool:
+            """Say whether the drawer is out, holding this plate's facts, laid.
 
             A busy VM has reported a plate out before its facts were placed, all on one line,
             and a fact that arrives late, as Curve does when the backlight daemon writes its
             curve, lays them out again; so the plate is waited for laid, on the pitch, every
-            name whole and one way, rather than held to it in a later snapshot.
+            name whole and one way, rather than held to it in a later snapshot. A playing
+            device's timing comes a moment after it runs, with pw-top's first cycle.
             """
             drawer = shown["drawer"]
             return (
                 drawer["out"] is True
                 and first in drawer["facts"]
+                and all(fact in drawer["facts"] for fact in keeping)
                 and things_apart(drawer["lines"]["facts"], drawer["factsWrapped"] > 0)
                 and drawer["labelsWhole"] is True
                 and drawer["laidOneWay"] is True
@@ -1360,8 +1375,12 @@ def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
         assert drawer["facts"][: len(leading)] == leading, (
             f"at {scale} {typed or kind} leads wrong: {drawer}"
         )
+        kept = [fact for fact in drawer["facts"] if fact in keeping]
+        assert kept == keeping, f"at {scale} {typed}'s timing is out of order: {drawer}"
         desktop.shoot(f"launcher-plate-{typed or 'screen'}-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
+        if keeping:
+            desktop.as_account("systemctl --user stop plays")
 
 
 @pytest.mark.usefixtures("google")

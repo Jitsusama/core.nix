@@ -187,6 +187,60 @@ ShellRoot {
         card.audio.muted = true;
         expect("a muted one doesn't say so again, nor its level", !sound.drawerOf(card).facts
             .some(fact => fact.label === "Muted" || fact.label === "Level"), said);
+        // How it keeps time, while pw-top says it runs: ahead of its
+        // Format, its Dropouts warned only past none.
+        card.state = "running";
+        card.audio.format = { rate: 48000, channels: 2, sample: "F32LE" };
+        sound.timings = { 52: { id: 52, quantum: 1024, rate: 48000, ms: 21.333, busy: 0.0312,
+            errors: 0 } };
+        const keeping = node => sound.drawerOf(node).facts
+            .filter(fact => ["Dropouts", "Load", "Cycle", "Graph Format"].includes(fact.label));
+        expect("its timing, ahead of its format", keeping(card)
+            .map(fact => `${fact.label}=${fact.value}`).join("; ") === "Dropouts=none; "
+            + "Load=3.12% of each cycle; Cycle=1,024 frames \u00b7 21.3 ms; "
+            + "Graph Format=48 kHz \u00b7 32 bit float", JSON.stringify(keeping(card)));
+        expect("its load a stroke, its dropouts calm at none", keeping(card)[1].figure?.values[0]
+            === 0.0312 && keeping(card)[0].warns === false, JSON.stringify(keeping(card)));
+        sound.timings = { 52: Object.assign({}, sound.timings[52], { errors: 2 }) };
+        expect("a dropout warns", keeping(card)[0].value === "2" && keeping(card)[0].warns,
+            JSON.stringify(keeping(card)[0]));
+        const dropouts = errors => {
+            sound.timings = { 52: Object.assign({}, sound.timings[52], { errors }) };
+            return keeping(card)[0].value;
+        };
+        expect("dropouts counted whole", [5, 12, 1500].map(dropouts).join("; ")
+            === "5; 12; 1,500", [5, 12, 1500].map(dropouts).join("; "));
+        sound.timings = { 52: Object.assign({}, sound.timings[52], { busy: 0.000938 }) };
+        expect("a light load keeps its three significant digits",
+            keeping(card)[1].value === "0.0938% of each cycle", JSON.stringify(keeping(card)[1]));
+        sound.timings = { 52: Object.assign({}, sound.timings[52],
+            { busy: null, unfinished: true }) };
+        expect("one that ran past its cycle is over all of it, its stroke full, warned",
+            keeping(card)[1].value === "over 100% of each cycle" && keeping(card)[1].warns
+            && keeping(card)[1].figure?.values[0] === 1 && keeping(card)[1].figure?.warn,
+            JSON.stringify(keeping(card)[1]));
+        // A frame of pw-top as it comes: a driver, then its follower in
+        // the driver's cycle, whole once the next header opens.
+        const header = "S   ID  QUANT   RATE    WAIT    BUSY   W/Q   B/Q  ERR FORMAT  NAME ";
+        [header, "R  52  1024  48000  20.1us 665.6us  0.00  0.03  0  F32LE 2 48000 speakers",
+            "R  90  0  0  1.0us  2.1ms  0.00  0.10  0  F32LE 2 48000 + pw-cat", header]
+            .forEach(line => sound.heardTiming(line));
+        expect("a frame read whole, its follower in its driver's cycle",
+            sound.timings[52]?.quantum === 1024 && sound.timings[90]?.quantum === 1024
+            && keeping(card)[1]?.value === "3.12% of each cycle",
+            JSON.stringify(sound.timings));
+        // A driver that isn't running ends the one before, so the
+        // follower after it has no cycle rather than the last driver's.
+        ["R  52  1024  48000  20.1us 665.6us  0.00  0.03  0  F32LE 2 48000 speakers",
+            "S  53  0  0  ---  ---  ---  ---  0  headphones",
+            "R  91  0  0  1.0us  2.1ms  0.00  0.10  0  F32LE 2 48000 = player", header]
+            .forEach(line => sound.heardTiming(line));
+        expect("a follower of a driver not running has no cycle",
+            sound.timings[52]?.quantum === 1024 && sound.timings[91] === undefined,
+            JSON.stringify(sound.timings));
+        sound.timings = {};
+        expect("none while pw-top doesn't say it runs", keeping(card).length === 1,
+            JSON.stringify(keeping(card)));
         expect("a headset's microphone is over Bluetooth",
             sound.drawerOf(calling()).eyebrow === "Bluetooth \u00b7 input",
             sound.drawerOf(calling()).eyebrow);
