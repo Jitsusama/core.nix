@@ -16,7 +16,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
-use crate::{LEFT_OUT, host};
+use crate::{on_the_web, one_line};
 
 /// The session's commands this reads; Chrome's names, ids as it numbers them.
 const SET_TAB_WINDOW: u8 = 0;
@@ -42,6 +42,9 @@ const TO_UNIX: i64 = 11_644_473_600_000_000;
 /// A tab open now, as the launcher is told of it.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Open {
+    /// Chrome's id for it in this file, which orders two tabs looked at at
+    /// once; it's never printed (tabs.rs), since the file may be from a
+    /// Chrome before this one, whose ids a running Chrome gives again.
     pub id: i32,
     pub window: i32,
     pub front: bool,
@@ -210,9 +213,6 @@ impl Session {
                     return None;
                 }
                 let (_, address, title) = tab.pages.iter().find(|page| page.0 == tab.current)?;
-                let web = host(address)
-                    .map(str::to_ascii_lowercase)
-                    .is_some_and(|host| !LEFT_OUT.contains(&host.as_str()));
                 Some(Open {
                     id,
                     window,
@@ -223,9 +223,12 @@ impl Session {
                     } else {
                         (tab.active - TO_UNIX) / 1000
                     },
-                    address: if web { address.clone() } else { String::new() },
-                    // A line a tab, so nothing in a title may break one.
-                    title: title.split_whitespace().collect::<Vec<_>>().join(" "),
+                    address: if on_the_web(address) {
+                        address.clone()
+                    } else {
+                        String::new()
+                    },
+                    title: one_line(title),
                 })
             })
             .collect();
@@ -283,8 +286,14 @@ pub fn read(profile: &Path) -> Result<Vec<Open>, String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    /// A session file holding one tab in window 1, on one page, as tabs.rs
+    /// reads one.
+    pub(crate) fn one_tab(id: i32, address: &str) -> Vec<u8> {
+        session(&tab(1, id, 0, address, 1))
+    }
 
     /// A session file holding these commands, as Chrome writes them.
     fn session(commands: &[(u8, Vec<u8>)]) -> Vec<u8> {

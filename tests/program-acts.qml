@@ -20,8 +20,12 @@
 // there, by their owners and names, opening each one's page. A
 // repository's files are forgotten as the launcher closes, and as it
 // opens they're all read again, so a folder holding none takes both acts
-// away. It exits 0 once every case holds, and otherwise 1, saying which
-// didn't.
+// away. Chrome's downloads are read only once Chrome is stepped into, by
+// a stand-in for chrome-recent-sites: each is then a file's row in its
+// Recent, dated, its size and when beside it and its drawer saying where
+// it came from, and Open the Latest Download is listed and found from the
+// top, opening the newest as the desktop opens a file. It exits 0 once
+// every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -123,7 +127,8 @@ ShellRoot {
         id: chrome
 
         launcher: theLauncher
-        settings: ({ folder: root.src, command: ["chrome", "--new-window"] })
+        settings: ({ folder: root.src, command: ["chrome", "--new-window"],
+            downloads: [Quickshell.env("DOWNLOADS_LIST")] })
         onChanged: root.heard += 1
     }
 
@@ -365,6 +370,46 @@ ShellRoot {
                     .concat(chrome.programActs("google-chrome"))).join(", ") === ""
                     && neovim.foundActs.length === 0 && chrome.foundActs.length === 0,
                     JSON.stringify(neovim.foundActs.concat(chrome.foundActs)));
+                expect("no download read before Chrome is stepped into",
+                    chrome.downloads.length === 0 && chrome.recentOf("google-chrome").length === 0,
+                    JSON.stringify(chrome.downloads));
+                theLauncher.held = [{ row: { key: "program:google-chrome" } }];
+            }
+        }, {
+            what: "Chrome's downloads read as it's stepped into",
+            until: () => chrome.downloads.length > 0,
+            then: () => {
+                const report = `${root.home}/Downloads/report.pdf`;
+                const acts = chrome.programActs("google-chrome");
+                expect("Open the Latest Download last", keys(acts).join(", ")
+                    === "verb:chrome:download", keys(acts).join(", "));
+                expect("its name and the latest's", acts[0].name === "Open the Latest Download"
+                    && acts[0].side === "report.pdf", `${acts[0].name} ${acts[0].side}`);
+                expect("found from the top", JSON.stringify(chrome.foundActs.map(one => one.key))
+                    === JSON.stringify(["verb:chrome:download"]), JSON.stringify(chrome.foundActs));
+                acts[0].run();
+                expect("opened as the desktop opens it", spawned()
+                    === JSON.stringify(["xdg-open", report]), spawned());
+                const rows = chrome.recentOf("google-chrome");
+                expect("each a file's row, keyed by its path, newest first", keys(rows).join(", ")
+                    === `file:${report}, file:${root.home}/Downloads/undated.zip`,
+                    keys(rows).join(", "));
+                expect("dated as Chrome finished it, or undated", rows[0].at === 1800000100000
+                    && rows[1].at === null, `${rows[0].at} ${rows[1].at}`);
+                const sized = "2.05\u00a0kB \u00b7 ";
+                expect("its size and when beside it", rows[0].side.startsWith(sized)
+                    && rows[1].side === "10\u00a0B", `${rows[0].side} | ${rows[1].side}`);
+                const drawer = rows[0].drawer;
+                expect("its drawer where it is and where it came from",
+                    drawer.eyebrow === "in ~/Downloads" && drawer.title === "report.pdf"
+                    && JSON.stringify(drawer.facts)
+                        === JSON.stringify([{ label: "From", value: "docs.example.com" }]),
+                    JSON.stringify(drawer));
+                expect("none said for one from nowhere", rows[1].drawer.facts.length === 0,
+                    JSON.stringify(rows[1].drawer));
+                expect("Return opens it", rows[0].verb === "open"
+                    && names(rows[0].verbs()) === "Open, Copy the Path", names(rows[0].verbs()));
+                expect("no other program given them", chrome.recentOf("nvim").length === 0, "");
             }
         }];
     }

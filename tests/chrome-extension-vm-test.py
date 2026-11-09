@@ -79,9 +79,14 @@ def test_chromium_installs_the_extension_named_in_its_preferences_file(
     assert its.get("disable_reasons", []) == [], its
 
 
-def tabs(machine: QemuMachine) -> list[list[str]]:
-    """Give each tab chrome-open-tabs lists, as its fields."""
-    listed = as_account(machine, "chrome-open-tabs list")
+def command(asked: list[str], tab: str = "") -> str:
+    """Give a command of Chrome's source as the launcher runs it, given a tab's id."""
+    return " ".join(shlex.quote(part.replace("{id}", tab)) for part in asked)
+
+
+def tabs(machine: QemuMachine, source: dict[str, Any]) -> list[list[str]]:
+    """Give each tab Chrome's source says is open, as its fields, from the profile here."""
+    listed = as_account(machine, command([*source["opened"], f"{PROFILE}/Default"]))
     return [line.split("\t") for line in listed.splitlines()]
 
 
@@ -93,9 +98,14 @@ def titled(listed: list[list[str]], title: str) -> list[str]:
 def test_the_launcher_hears_the_open_tabs_and_goes_to_or_closes_one(
     machine: QemuMachine, values: dict[str, Any]
 ) -> None:
-    """chrome-open-tabs lists Chromium's two pages, brings one to the front, closes the other."""
+    """Chrome's source lists Chromium's two pages by the host, goes to one, closes the other."""
+    source = values["source"]
+    assert {"go", "close"} <= source.keys(), f"the source found no host to act through: {source}"
     minute = int(timedelta(minutes=1).total_seconds())
-    machine.succeed("pkill -u joel -f chromium; true")
+    # Run alone, nothing before it has waited for the machine to start, and
+    # there's no Chromium to stop, which pkill fails on.
+    machine.wait_for_unit("multi-user.target")
+    machine.succeed("pkill -u joel -f chromium || true")
     machine.wait_until_fails("pgrep -u joel -f chromium", timeout=minute)
     titles = ("One", "Two")
     pages = " ".join(shlex.quote(f"data:text/html,<title>{title}</title>") for title in titles)
@@ -114,17 +124,21 @@ def test_the_launcher_hears_the_open_tabs_and_goes_to_or_closes_one(
     except AssertionError as late:
         message = f"the host never listed both pages; {seen(machine, values['id'])}"
         raise AssertionError(message) from late
-    listed = tabs(machine)
+    hosted = sorted(
+        line.split("\t")[0] for line in as_account(machine, "chrome-open-tabs list").splitlines()
+    )
+    listed = tabs(machine, source)
+    assert sorted(tab[0] for tab in listed) == hosted, f"not the host's ids: {listed} {hosted}"
     one, two = titled(listed, "One"), titled(listed, "Two")
     assert one[1] == two[1], f"the two pages aren't in one window: {listed}"
 
-    as_account(machine, f"chrome-open-tabs go {one[0]}")
-    fronted = tabs(machine)
+    as_account(machine, command(source["go"], one[0]))
+    fronted = tabs(machine, source)
     assert titled(fronted, "One")[2] == "true", f"going to One left it behind: {fronted}"
     assert titled(fronted, "Two")[2] == "false", f"Two stayed in front: {fronted}"
 
-    as_account(machine, f"chrome-open-tabs close {two[0]}")
-    left = [tab[5] for tab in tabs(machine)]
+    as_account(machine, command(source["close"], two[0]))
+    left = [tab[5] for tab in tabs(machine, source)]
     assert left == ["One"], f"closing Two left {left}"
 
 
@@ -149,7 +163,7 @@ def written(machine: QemuMachine) -> str:
 def test_chrome_recent_sites_reads_every_tab_from_the_session_file(machine: QemuMachine) -> None:
     """chrome-recent-sites reads both pages Chromium opened, from the session file it writes."""
     minute = int(timedelta(minutes=1).total_seconds())
-    machine.succeed("pkill -u joel -f chromium; true")
+    machine.succeed("pkill -u joel -f chromium || true")
     machine.wait_until_fails("pgrep -u joel -f chromium", timeout=minute)
     machine.wait_for_open_port(80)
     pages = " ".join(f"http://pages.example.org/{name}.html" for name in ("one", "two"))

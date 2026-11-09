@@ -1912,7 +1912,10 @@
     under ~/src, read once for both as the shell starts and as the launcher opens, hold one they
     can open, listing the one whose git last wrote first, a repository's files the one changed
     last first, each beside its folder there, its hidden ones but not what git ignores, and only
-    those with a remote on GitHub, origin's first
+    those with a remote on GitHub, origin's first; and Chrome's downloads, read as Chrome is
+    stepped into, are file rows in its Recent, dated, their size and when beside them and where
+    each came from in its drawer, with Open the Latest Download listed and found from the top
+    only while there's one, opening it as the desktop opens a file
   '';
   the-launcher-answers-the-rain = ''
     the weather's parts and the rain by the hour come from one forecast, and "rain", "umbrella"
@@ -2766,8 +2769,9 @@
   vm-chrome-says-its-open-tabs = ''
     Chromium, standing in for Chrome, installs the open-tabs extension from the local file the
     Chrome module names, unasked, its tabs and nativeMessaging permissions granted and nothing
-    disabling it, and chrome-open-tabs lists two pages it opened, brings one to the front and
-    closes the other; and with no extension asked, chrome-recent-sites reads two pages it
+    disabling it, and the account's Chrome source, finding the host through the file the
+    module writes, lists two pages it opened by the host's ids, brings one to the front and
+    closes the other through it; and with no extension asked, chrome-recent-sites reads two pages it
     opened from the session file it writes, each with its address, in one window with one in
     front, looked at lately
   '';

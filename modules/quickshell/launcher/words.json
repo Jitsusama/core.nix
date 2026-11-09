@@ -9215,6 +9215,20 @@
       "glyph": "web"
     },
     {
+      "id": "verb:chrome:download",
+      "command": "open",
+      "argument": "download",
+      "in": "applications",
+      "name": "Open the Latest Download",
+      "verb": "open",
+      "glyph": "path"
+    },
+    {
+      "id": "chrome:download:from",
+      "in": "path:file",
+      "name": "From"
+    },
+    {
       "id": "verb:reader:markdown",
       "command": "open",
       "argument": "markdown",

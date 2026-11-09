@@ -13,18 +13,30 @@
 //! Drive and the documents) are left out, since their programs keep their
 //! own, as are sign-in pages and this machine's own addresses.
 //!
-//! `chrome-recent-sites open [PROFILE]` prints instead what Chrome has open
-//! now, a tab a line, from its session file (session.rs): its id, its
-//! window, whether it's in front there, when it was last looked at in
-//! milliseconds since 1970, its address and its title, tab-separated. A
-//! page left out above is told of by its title alone.
+//! `chrome-recent-sites open [--tabs-from PROGRAM] [PROFILE]` prints
+//! instead what Chrome has open now, a tab a line (tabs.rs): the id the
+//! extension's host gave it, its window, whether it's in front there, when
+//! it was last looked at in milliseconds since 1970, its address and its
+//! title, tab-separated. Given the host, chrome-open-tabs, it asks it
+//! first, and reads Chrome's session file (session.rs) only when the host
+//! lists nothing, as it does with Chrome closed or refusing the extension;
+//! a tab read from the file has no id, since no command can act on one by
+//! the file's. A page left out above is told of by its title alone.
+//!
+//! `chrome-recent-sites downloads [PROFILE]` prints the files Chrome
+//! downloaded that are still where it saved them, newest first, at most
+//! nine (downloads.rs): each one's path, its size in bytes, when it
+//! finished in seconds since 1970, or nothing where Chrome kept no time,
+//! and the address of the page it came from, tab-separated.
 
+mod downloads;
 mod session;
+mod tabs;
 
 use std::collections::HashSet;
 use std::env;
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -81,6 +93,20 @@ fn host(address: &str) -> Option<&str> {
     (!host.is_empty()).then_some(host)
 }
 
+/// Whether an address is a page of the web with no program of its own, so
+/// the launcher gives it a row (`LEFT_OUT`).
+fn on_the_web(address: &str) -> bool {
+    host(address)
+        .map(str::to_ascii_lowercase)
+        .is_some_and(|host| !LEFT_OUT.contains(&host.as_str()))
+}
+
+/// Text said whole on one line, its runs of space and line breaks one
+/// space, so nothing in a title may break the line it's printed on.
+fn one_line(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// The newest titled page of each site in a history, newest first.
 fn sites(history: &Connection) -> rusqlite::Result<Vec<Site>> {
     let mut asked = history.prepare(
@@ -101,11 +127,9 @@ fn sites(history: &Connection) -> rusqlite::Result<Vec<Site>> {
         if LEFT_OUT.contains(&host.as_str()) || !seen.insert(host) {
             continue;
         }
-        // A line a site, so nothing in a title may break one.
-        let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
         found.push(Site {
             address,
-            title,
+            title: one_line(&title),
             visited,
         });
         if found.len() == MOST {
@@ -118,6 +142,16 @@ fn sites(history: &Connection) -> rusqlite::Result<Vec<Site>> {
 /// Reads a profile's sites from a copy of its history, made in `scratch`
 /// and gone once read.
 fn read(profile: &Path, scratch: &Path) -> Result<Vec<Site>, String> {
+    from_history(profile, scratch, sites)
+}
+
+/// What `reading` finds in a copy of a profile's history, made in
+/// `scratch` and gone once read; nothing where Chrome kept no history.
+fn from_history<T>(
+    profile: &Path,
+    scratch: &Path,
+    reading: impl FnOnce(&Connection) -> rusqlite::Result<Vec<T>>,
+) -> Result<Vec<T>, String> {
     let history = profile.join("History");
     if !history.exists() {
         return Ok(Vec::new());
@@ -133,43 +167,50 @@ fn read(profile: &Path, scratch: &Path) -> Result<Vec<Site>, String> {
                 .map_err(|error| format!("{}: {error}", journal.display()))?;
         }
         let connection = Connection::open(&copy).map_err(|error| error.to_string())?;
-        sites(&connection).map_err(|error| error.to_string())
+        reading(&connection).map_err(|error| error.to_string())
     })();
     let _ = fs::remove_dir_all(&folder);
     read
 }
 
+/// Each line printed, or what stopped it.
+fn print(lines: impl IntoIterator<Item = String>) -> Result<(), String> {
+    let mut out = io::stdout().lock();
+    lines
+        .into_iter()
+        .try_for_each(|line| writeln!(out, "{line}"))
+        .map_err(|error| error.to_string())
+}
+
 fn main() -> ExitCode {
     let mut arguments = env::args_os().skip(1).peekable();
     let open = arguments.next_if(|first| first == "open").is_some();
+    let downloaded = !open && arguments.next_if(|first| first == "downloads").is_some();
+    let asking = if open && arguments.next_if(|next| next == "--tabs-from").is_some() {
+        arguments.next().map(PathBuf::from)
+    } else {
+        None
+    };
     let profile = match arguments.next() {
         Some(profile) => PathBuf::from(profile),
         None => PathBuf::from(env::var_os("HOME").unwrap_or_default())
             .join(".config/google-chrome/Default"),
     };
-    let mut out = io::stdout().lock();
+    let scratch = env::var_os("XDG_RUNTIME_DIR").map_or_else(env::temp_dir, PathBuf::from);
     let printed = if open {
-        session::read(&profile).and_then(|tabs| {
-            tabs.iter()
-                .try_for_each(|tab| {
-                    writeln!(
-                        out,
-                        "{}\t{}\t{}\t{}\t{}\t{}",
-                        tab.id, tab.window, tab.front, tab.last, tab.address, tab.title
-                    )
-                })
-                .map_err(|error| error.to_string())
+        tabs::open(&profile, asking.as_deref())
+            .and_then(|tabs| print(tabs.iter().map(tabs::Told::line)))
+    } else if downloaded {
+        from_history(&profile, &scratch, |history| {
+            downloads::downloads(history, downloads::on_disk)
         })
+        .and_then(|found| print(found.iter().map(downloads::Download::line)))
     } else {
-        let scratch = env::var_os("XDG_RUNTIME_DIR").map_or_else(env::temp_dir, PathBuf::from);
         read(&profile, &scratch).and_then(|found| {
-            found
-                .iter()
-                .try_for_each(|site| {
-                    let visited = site.visited.map(|at| at.to_string()).unwrap_or_default();
-                    writeln!(out, "{}\t{}\t{visited}", site.address, site.title)
-                })
-                .map_err(|error| error.to_string())
+            print(found.iter().map(|site| {
+                let visited = site.visited.map(|at| at.to_string()).unwrap_or_default();
+                format!("{}\t{}\t{visited}", site.address, site.title)
+            }))
         })
     };
     match printed {
