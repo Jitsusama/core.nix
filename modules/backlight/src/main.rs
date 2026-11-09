@@ -72,10 +72,6 @@ mod monitor;
 mod night;
 mod screen;
 mod steer;
-// The sun's reckoning the launcher's calendars use, one file for both, so
-// the night falls here when Date says the day ends.
-#[path = "../../quickshell/timekeeping/src/sun.rs"]
-mod sun;
 mod switch;
 mod uevent;
 mod warmth;

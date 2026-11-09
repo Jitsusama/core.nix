@@ -10,7 +10,7 @@
 //! sighting.
 //!
 //! The Hebrew and Islamic days begin at sunset, so where the day is asked
-//! from, it says when the sun sets there (sun.rs) and those calendars'
+//! from, it says when the sun sets there (modules/sun) and those calendars'
 //! dates from then, for the shell to say whichever is now's.
 
 use icu_calendar::cal::{ChineseTraditional, Hebrew, Hijri, Japanese};
@@ -22,7 +22,7 @@ use icu_locale::Locale;
 use serde::{Deserialize, Serialize};
 use zlink::introspect::CustomType;
 
-use crate::sun::{self, Crossing};
+use sun::Crossing;
 
 /// Which calendar a date is in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, CustomType)]

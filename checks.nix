@@ -1181,6 +1181,7 @@ gather (
     ./modules/sudo/checks.nix
     ./modules/spotify/checks.nix
     ./modules/ssh-tpm-agent/checks.nix
+    ./modules/sun/checks.nix
     ./modules/swayidle/checks.nix
     ./modules/swayimg/checks.nix
     ./modules/systemd/checks.nix
