@@ -134,7 +134,7 @@ QtObject {
                 { label: "[keywords]", value: "web \u00b7 internet",
                     valueItems: [{ said: "web" }, { said: "internet" }] },
                 { label: "[starts-in]", value: "/srv/web",
-                    valueItems: [{ said: "/srv/web", path: "/srv/web" }] },
+                    valueItems: [{ said: "/srv/web", whole: true }] },
                 { label: "[version]", value: "142.0.7444.59" },
                 { label: "[package]", value: "google-chrome" },
                 { label: "[command]", value: "google-chrome-stable %U",
@@ -145,8 +145,7 @@ QtObject {
                 { label: "[desktop-id]", value: "google-chrome", identifies: true },
                 { label: "[store-path]", value: "/nix/store/abc-google-chrome-142.0.7444.59",
                     identifies: true, valueItems: [{
-                        said: "/nix/store/abc-google-chrome-142.0.7444.59",
-                        path: "/nix/store/abc-google-chrome-142.0.7444.59" }] }
+                        said: "/nix/store/abc-google-chrome-142.0.7444.59", whole: true }] }
             ]);
         expect("a command's arguments are shown whole, a path's too",
             Program.drawer({ name: "Firefox", command: ["/run/wrappers/bin/firefox", "-P"] },

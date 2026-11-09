@@ -174,14 +174,14 @@ function facts(known, named, said) {
         own("categories")(categories(known.categories)),
         runFact(named("keywords"), record?.keywords),
         Object.assign(own("starts-in")(startsIn),
-            startsIn === "" ? {} : { valueItems: [{ said: startsIn, path: startsIn }] }),
+            startsIn === "" ? {} : { valueItems: [{ said: startsIn, whole: true }] }),
         own("version")(pack?.version ?? ""),
         own("package")(pack?.name ?? ""),
         commandFact(known.command ?? [], named),
         Object.assign(own("window-class")(record?.window_class ?? ""), { identifies: true }),
         Object.assign(own("desktop-id")(known.id ?? ""), { identifies: true }),
         Object.assign(own("store-path")(pack?.store_path ?? ""), { identifies: true,
-            valueItems: [{ said: pack?.store_path ?? "", path: pack?.store_path ?? "" }] })
+            valueItems: [{ said: pack?.store_path ?? "", whole: true }] })
     ]).filter(fact => fact.value !== "");
 }
 
