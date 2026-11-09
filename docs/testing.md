@@ -202,6 +202,8 @@ head that builds the test unchanged. One that
 fails and then passes at a commit is flaky, which is a defect in the test:
 it goes on `tools/merge-net/quarantine.json` with its owner, and the net
 reverts nothing for it until the owner makes it steady and takes it off.
+A failure that fails one of its two runs at main's newest head isn't fixed
+forward but flaky there, so it is listed at that head the same way.
 Before a merge, `changed-checks`, `run-subtests` and `merge-net needs` read
 that list from origin's main, so a branch can't quarantine its own failure:
 a quarantined test still runs, but its failure is said and blocks nothing.

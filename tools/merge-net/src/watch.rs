@@ -560,6 +560,12 @@ fn blames_none(
 /// the merge a fix sits on. A newest head that builds the test's very
 /// derivation fails it as `head` does, so it isn't run there: on 7 November
 /// two such runs took 28 minutes of a search.
+///
+/// A test that fails one of its runs at the newest head isn't fixed but
+/// flaky there, so it is listed, as a round lists one, and still nothing
+/// is searched for or reverted. On 9 November vm-desktop-captures failed
+/// both runs at 06483ebf3aea and one of two at the newest head, was taken
+/// as fixed forward, and went on failing 7 of 10 runs on sessions' branches.
 fn fixed_forward(
     world: &dyn World,
     state: &State,
@@ -568,20 +574,34 @@ fn fixed_forward(
     commit: Option<&str>,
 ) -> Result<bool, String> {
     let newest = world.head()?;
-    if newest == head
-        || same_drv(world, &newest, head, test)
-        || !matches!(
-            attempt_together(world, state, &newest, test),
-            Outcome::Passed | Outcome::Flaky
-        )
-    {
+    if newest == head || same_drv(world, &newest, head, test) {
         return Ok(false);
+    }
+    let outcome = attempt_together(world, state, &newest, test);
+    if !matches!(outcome, Outcome::Passed | Outcome::Flaky) {
+        return Ok(false);
+    }
+    let owner = commit.and_then(|commit| pr_of(&world.subject(commit)));
+    if outcome == Outcome::Flaky {
+        if !state.found("flaky", test, &newest)
+            && !world.quarantined(&newest).contains(&test.to_owned())
+        {
+            list_flaky(world, state, &newest, test, owner)?;
+        }
+        state.say(&format!(
+            "{test} {} at {}, and fails one of two runs at main's newest head {}, so it is \
+             listed there: nothing is searched for, reverted or held",
+            if commit.is_some() { "broke" } else { "fails" },
+            short(commit.unwrap_or(head)),
+            short(&newest)
+        ));
+        return Ok(true);
     }
     // Before a search no merge is known, so the finding names the head it
     // failed at and no owner.
     state.find(&json!({
         "kind": "fixed-forward", "test": test, "commit": commit.unwrap_or(head),
-        "owner_pr": commit.and_then(|commit| pr_of(&world.subject(commit))),
+        "owner_pr": owner,
         "fixed_at": newest, "at": now(),
     }))?;
     let what = if commit.is_some() { "broke" } else { "fails" };
@@ -1892,6 +1912,33 @@ mod tests {
             .map(|found| found["test"].clone())
             .collect();
         assert_eq!(fixed.len(), 2, "both tests are found fixed forward");
+    }
+
+    #[test]
+    fn a_test_failing_one_run_at_mains_newest_head_is_listed_there() {
+        let state = state("flaky-at-newest");
+        state.set_heads("s", "s").unwrap();
+        state.begin("h").unwrap();
+        let world = Stand {
+            head: "n".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1])
+        .exits("n", "vm-a", &[1, 0]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert_eq!(*world.put_in_quarantine.lock().unwrap(), names("vm-a"));
+        assert!(world.reverted.lock().unwrap().is_empty());
+        assert_eq!(state.hold(), None);
+        let found = findings(&state);
+        assert_eq!(
+            (&found[0]["kind"], &found[0]["commit"]),
+            (&json!("flaky"), &json!("n"))
+        );
     }
 
     #[test]
