@@ -8,9 +8,15 @@ use std::path::Path;
 use serde_json::{Value, json};
 
 /// The zone the link names, "America/Toronto", from whatever folder of
-/// zones it points into; none where it isn't a link, or names no zone.
+/// zones it points into; UTC where there's no link at all, as timedated
+/// and the C library take it; none where it isn't a link, or names no
+/// zone.
 pub fn zone(link: &Path) -> Option<String> {
-    let target = fs::read_link(link).ok()?;
+    let target = match fs::read_link(link) {
+        Ok(target) => target,
+        Err(why) if why.kind() == std::io::ErrorKind::NotFound => return Some("UTC".into()),
+        Err(_) => return None,
+    };
     let target = target.to_str()?;
     let (_, zone) = target.rsplit_once("zoneinfo/")?;
     (!zone.is_empty()).then(|| zone.to_owned())
@@ -55,7 +61,11 @@ mod tests {
         fs::remove_file(&link).unwrap();
         fs::write(&link, "TZif").unwrap();
         assert_eq!(zone(&link), None, "a copy says no zone");
-        assert_eq!(zone(&folder.join("nothing")), None);
+        assert_eq!(
+            zone(&folder.join("nothing")).as_deref(),
+            Some("UTC"),
+            "no link is UTC"
+        );
         fs::remove_dir_all(&folder).unwrap();
     }
 

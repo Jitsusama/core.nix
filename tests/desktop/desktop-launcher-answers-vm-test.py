@@ -911,6 +911,13 @@ def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
     desktop.close_launcher()
 
 
+# What clock-follows keeps of its last move and a zone put back, forgotten for the tests after;
+# named, since the account's shell refuses a pattern that matches nothing.
+FORGET_MOVES = (
+    "rm -f ~/.local/state/clock-follows/moved.json ~/.local/state/clock-follows/held.json"
+)
+
+
 def test_the_clock_follows_the_laptop_into_another_zone_and_is_put_back(desktop: Desktop) -> None:
     """The clock follows the laptop into another zone, says so in Time, and is put back."""
     machine = desktop.machine
@@ -969,7 +976,7 @@ def test_the_clock_follows_the_laptop_into_another_zone_and_is_put_back(desktop:
     finally:
         machine.succeed(f"timedatectl set-timezone {shlex.quote(began)}")
         desktop.found_at(None)
-        desktop.as_account("rm -f ~/.local/state/clock-follows/*.json")
+        desktop.as_account(FORGET_MOVES)
 
 
 def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desktop) -> None:
@@ -1054,7 +1061,7 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
         machine.succeed(f"timedatectl set-timezone {shlex.quote(began)}")
         desktop.as_account(f"rm -f {pin}")
         desktop.found_at(None)
-        desktop.as_account("rm -f ~/.local/state/clock-follows/*.json")
+        desktop.as_account(FORGET_MOVES)
 
 
 def kept_by_the_stand_in(desktop: Desktop) -> None:

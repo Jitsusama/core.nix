@@ -6,7 +6,10 @@
 //! in the shell's daemon interface, and decides each time it's told, so
 //! nothing here asks on a clock. Should whereabouts stop, the socket
 //! systemd holds takes the next connection, asked again two seconds on,
-//! and the watch's first answer is decided as any change is. A fix
+//! and the watch's first answer is decided as any change is. Only a fix
+//! that differs from the last one decided is: the same record also says
+//! the clock's zone, and a zone Joel sets by hand, or puts back, mustn't
+//! be taken as the laptop moving and undone a moment later. A fix
 //! moves the clock only when it names a zone and GeoClue found it to within
 //! ten kilometres, as the Wi-Fi networks in reach find it. A position read
 //! from the network's address alone, which WARP's exit sends anywhere, is
@@ -44,9 +47,12 @@ const AGAIN: Duration = Duration::from_secs(2);
 /// an address alone, to a city's or a country's width.
 const TRUSTED: f64 = 10_000.0;
 
-/// What of whereabouts' record the clock needs, each null while unknown.
-#[derive(Debug, Deserialize)]
+/// What of whereabouts' record the clock needs, each null while unknown,
+/// and when it was found, which tells a fix found again from the same.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
 struct Fix {
+    #[serde(default)]
+    at_s: Option<u64>,
     #[serde(default)]
     accuracy_m: Option<f64>,
     #[serde(default)]
@@ -172,8 +178,14 @@ fn watched(socket: &Path, state: &Path, timedatectl: &str) -> io::Result<()> {
         stream,
         r#"{{"id":"here","ask":"watch","kind":"here","keys":["{HERE}"]}}"#
     )?;
+    // A new connection's first answer is decided, as a start is.
+    let mut last: Option<Fix> = None;
     for line in BufReader::new(stream).lines() {
         for fix in fixes(&line?) {
+            if last.as_ref() == Some(&fix) {
+                continue;
+            }
+            last = Some(fix.clone());
             // A move that fails, as when timedated refuses, is said and
             // the next change decided anew.
             match decided(&fix, state, timedatectl) {
@@ -232,13 +244,20 @@ fn put_back(state: &Path, timedatectl: &str) -> io::Result<()> {
     let Some(moved) = read::<Moved>(&moved_path) else {
         return Ok(());
     };
-    set(timedatectl, &moved.from)?;
+    // Held before the clock moves, so a fix decided meanwhile is already
+    // told no, and let go again where timedated refuses the zone.
+    let held_path = state.join("held.json");
+    let was = read::<Held>(&held_path).unwrap_or_default();
     write(
-        &state.join("held.json"),
+        &held_path,
         &Held {
             refused: Some(moved.to),
         },
     )?;
+    if let Err(why) = set(timedatectl, &moved.from) {
+        write(&held_path, &was)?;
+        return Err(why);
+    }
     eprintln!("<6>the clock was put back");
     fs::remove_file(moved_path)
 }
@@ -275,6 +294,7 @@ mod tests {
 
     fn fix(accuracy: f64, zone: Option<&str>) -> Fix {
         Fix {
+            at_s: Some(1_790_000_000),
             accuracy_m: Some(accuracy),
             place: Some("Kelpwater, Highreach".into()),
             zone: zone.map(Into::into),
@@ -294,8 +314,11 @@ mod tests {
             Decision::Stay,
             "nowhere moves nothing"
         );
-        assert!(fixes(r#"{"id":"here","unwatched":true}"#).is_empty());
-        assert!(fixes("not a line").is_empty());
+        assert_eq!(
+            fixes(r#"{"id":"here","unwatched":true}"#),
+            Vec::<Fix>::new()
+        );
+        assert_eq!(fixes("not a line"), Vec::<Fix>::new());
     }
 
     #[test]
@@ -381,5 +404,35 @@ mod tests {
             ),
             Decision::Unhold
         );
+    }
+
+    #[test]
+    fn a_zone_put_back_is_held_only_once_timedated_takes_it() {
+        let state =
+            std::env::temp_dir().join(format!("clock-follows-put-back-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&state);
+        fs::create_dir_all(&state).unwrap();
+        let moved = Moved {
+            from: "America/Toronto".into(),
+            to: "America/Edmonton".into(),
+            place: None,
+            when: 1_790_000_000,
+        };
+        write(&state.join("moved.json"), &moved).unwrap();
+        assert!(put_back(&state, "false").is_err());
+        assert_eq!(
+            read::<Held>(&state.join("held.json")),
+            Some(Held::default())
+        );
+        assert_eq!(read::<Moved>(&state.join("moved.json")), Some(moved));
+        put_back(&state, "true").unwrap();
+        assert_eq!(
+            read::<Held>(&state.join("held.json")),
+            Some(Held {
+                refused: Some("America/Edmonton".into())
+            })
+        );
+        assert!(!state.join("moved.json").exists());
+        fs::remove_dir_all(&state).unwrap();
     }
 }
