@@ -478,7 +478,7 @@ Provider {
     // for its figures only while it can be seen: in the open launcher, or
     // among the rows a terminal's show walked or listed (Launcher.qml's
     // terminalSees), so a cold `launcher show` of Power has them.
-    function listed(key) {
+    function rowShown(key) {
         if (launcher === null)
             return false;
         const keyed = row => row?.key === key;
@@ -487,9 +487,9 @@ Provider {
             || terminal.listed.some(keyed);
     }
     // Sleep's row, in Power or found by name: how sleep stands.
-    readonly property bool sleepShown: listed("session:Suspend")
+    readonly property bool sleepShown: rowShown("session:Suspend")
     // Keep Awake's row, in Power, at home or found by name: logind's locks.
-    readonly property bool awakeShown: listed("session:awake")
+    readonly property bool awakeShown: rowShown("session:awake")
     // Whether a watch hasn't yet answered whole, so a terminal's show
     // asks again (Provider.stillReading).
     stillReading: [sleepWatch, awakeWatch].some(watch => watch.live
