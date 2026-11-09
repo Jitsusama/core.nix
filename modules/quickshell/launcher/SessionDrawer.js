@@ -46,7 +46,7 @@ function about(works, titles) {
 // 2026-11-06), and how it stands is its row's, on the same line, so none
 // is said again. Then, each as a name and a value: what it's doing, its
 // step alone, and nothing where it has none; what it needs Joel for (its
-// want, then its quest's Needs You items, `said.needs`); what it landed
+// want, then its quest's to-dos, `said.needs`); what it landed
 // last (`said.landed`); what it's spent today (an orchestrator's whole
 // orchestration, then its own and its sessions'); the budget it drew on
 // last and how that stands (`said.budget`, SpendDrawer.js), after the

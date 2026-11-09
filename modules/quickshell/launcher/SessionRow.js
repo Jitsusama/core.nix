@@ -177,9 +177,9 @@ function acts(standing, windowed, here) {
 }
 
 // What Close's ask says stays, so ending a session never reads as losing
-// its work (VKCF3Z, 2026-11-06: "Close 8IDU4E? Its worktree and 1 Needs
-// You item stay."): its worktree, or its folder where it works outside
-// one, and its quest's Needs You items, by their count, in the agents'
+// its work (VKCF3Z, 2026-11-06, in to-dos since 2026-11-08: "Close
+// 8IDU4E? Its worktree and 1 to-do stay."): its worktree, or its folder
+// where it works outside one, and its quest's to-dos, by their count, in the agents'
 // words (`said`).
 function leaves(inTree, needs, said) {
     const place = inTree ? said.tree : said.folder;

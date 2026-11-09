@@ -264,10 +264,11 @@ or a copy, can be opened, copied or forgotten.
 | forget | the action taking an item out of its list, such as a notice, a copy or what's waiting | let it go | |
 | foot | the status line at the bottom of the launcher and held notices: the mode, the position and what the keys do | | `foot` |
 | Now | the launcher's view of what's on and waiting, on Super+O | What's on | `Now.qml` |
-| For You | Now's first row: what wants Joel, weighed, the most pressing first | | `ForYou.js` |
+| For You | the one place for what needs Joel and what came for him, with where each came from: Now's first row, weighed, the most pressing first | | `ForYou.js` |
 | to-do | what only Joel can do, raised by the session that needs him and listed in For You | Needs You item, waiting on you | `WaitingOnYou.qml` |
 | look | something a session points Joel at to see, a pull request, a page, a file, a diff or a terminal, kept in For You until he opens or clears it | | `on:waiting:look`, the looks folder |
 | to try | a landing whose line asks Joel to try something, kept in For You until he opens or clears it | | |
+| Lately | For You's band for what came for Joel, one row for each place it came from | | |
 | clipboard | what was copied last, and what was copied before it | | |
 | timer | a span Joel sets counting down, which rings as a notice when it ends, kept by its daemon so it rings with the launcher closed; Timers is the place holding them | countdown, alarm | `HeldTimers.qml`, the `timers` program |
 | stopwatch | the one count up from when Joel starts it, which keeps its laps; it's listed last in Timers | | `HeldTimers.qml`, the `timers` program |

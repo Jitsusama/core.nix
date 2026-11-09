@@ -844,7 +844,7 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
                 shown["open"]
                 and shown["held"] == ["now", "For You"]
                 and shown["rows"] == []
-                and shown["nothing"] == "Nothing needs you."
+                and shown["nothing"] == "Nothing waits on you."
             )
         )
         desktop.close_launcher()

@@ -403,7 +403,7 @@ Provider {
 
     // What Close leaves of a session: its worktree, where it works in a
     // folder under a trees folder, as the harness's and World's trees both
-    // are cut, else its folder, and its quest's Needs You items, which stay
+    // are cut, else its folder, and its quest's to-dos, which stay
     // until each is done.
     function leaves(session) {
         const presence = session.presence ?? {};
