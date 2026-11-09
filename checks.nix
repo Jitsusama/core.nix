@@ -388,6 +388,10 @@ let
       inherit self pkgs;
       area = "says-what-happens";
     };
+    vm-desktop-sessions-outlive-a-switch = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "sessions-outlive-a-switch";
+    };
     vm-desktop-minds-the-margin = import ./tests/desktop.nix {
       inherit self pkgs;
       area = "minds-the-margin";

@@ -3036,6 +3036,11 @@
     keys and the pointer, bring what they're about forward, and sit inside the window under them,
     and the launcher's drawer of one takes the keys, which move through it as Vim's do
   '';
+  vm-desktop-sessions-outlive-a-switch = ''
+    a switch of the home from the sessions' kitty as it was, with no switch method, onto the one
+    kept through a switch, with a changed command line, leaves the same kitty running with the
+    same sessions' windows in it
+  '';
   vm-desktop-shows-then-rests = ''
     the meters answer the keys and go, a notice shows and goes, the overview draws nothing of the
     shell's, and once nothing shows the shell draws nothing and barely wakes, behind the lock too

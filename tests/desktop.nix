@@ -88,6 +88,11 @@ let
     "looks"
     "launcher-finds-by-name"
   ];
+  # The area that switches its home onto the sessions' kitty kept through
+  # a switch, from one that wasn't, as a machine first switching onto it
+  # does: it boots on the unit before, which says no switch method, and
+  # its specialisation is the one after.
+  switchesTheSessionsKitty = area == "sessions-outlive-a-switch";
 
   # A certificate authority the machine trusts, and the Office's server's
   # certificate from it, naming radius.office.test.
@@ -819,6 +824,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
               exec = "true %U";
             };
           };
+        # The sessions' kitty as it was before it was kept through a switch,
+        # with no switch method, so a change restarts it.
+        systemd.user.services.sessions-kitty.Unit.X-SwitchMethod = lib.mkIf switchesTheSessionsKitty (
+          lib.mkForce null
+        );
         # The launcher's VMs read the stand-in, the virsh on the account's
         # path, in the daemon's place.
         jitsusama.quickshell.launcher.providers.vms = lib.mkIf listsMachines {
@@ -1075,6 +1085,10 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         program = "${config.security.wrapperDir}/niri-compositor";
         environment.WLR_RENDERER = "pixman";
       };
+      # A switch starts tty1's getty, which Cage's unit conflicts with, so
+      # it stops Cage and the session in it; greetd, which a machine runs,
+      # keeps the getty off. Only where the area switches.
+      systemd.services."getty@tty1".enable = lib.mkIf switchesTheSessionsKitty false;
       # Stands in for niri's own unit, which starts the graphical session, and
       # with it the desktop portal.
       systemd.user.services.compositor = {
@@ -1103,6 +1117,16 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # now it waits for the collection to finish. The area loads the CPU,
       # not the disk, so the daemon here never collects.
       nix.settings.min-free = lib.mkIf (area == "keeps-pace") (lib.mkForce 0);
+      # The same machine with the sessions' kitty as modules/quickshell keeps
+      # it, kept through a switch, and a changed command line as a new kitty
+      # brings, so the switch onto it changes the unit in a way that would
+      # restart it. Over the boot's own unit, which forces the method away.
+      specialisation = lib.mkIf switchesTheSessionsKitty {
+        switched.configuration.home-manager.users.${account}.systemd.user.services.sessions-kitty = {
+          Unit.X-SwitchMethod = lib.mkOverride 40 "keep-old";
+          Service.Environment = [ "SESSIONS_KITTY_SWITCHED=1" ];
+        };
+      };
     };
 
   tests = ./desktop/desktop-${area}-vm-test.py;
