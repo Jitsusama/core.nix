@@ -40,7 +40,9 @@
 
   # The touchscreen's driver is installed with the panel's qualified settings,
   # and loaded by a unit once the system is up, never while it starts. Its
-  # axes are given the panel's size in millimetres.
+  # axes are given the panel's size in millimetres. The unit only loads the
+  # driver: a step after it that reads the driver's files fails a switch
+  # while the old driver is still loaded.
   the-surface-loads-its-touchscreen-once-up =
     let
       surface = bareNixos [
@@ -51,7 +53,7 @@
       touchscreen = systemd.services.surface-touchscreen;
     in
     holds "the-surface-loads-its-touchscreen-once-up"
-      "The Surface Laptop 4 lacks its touchscreen's driver or its panel's settings, loads the driver before the system is up, or leaves its axes the wrong size."
+      "The Surface Laptop 4 lacks its touchscreen's driver or its panel's settings, loads the driver before the system is up, runs a step after loading it, or leaves its axes the wrong size."
       (
         lib.any (package: lib.hasPrefix "sl4a-touchscreen-" package.name) boot.extraModulePackages
         && lib.hasInfix "options sl4a_spi_hid raw_mode=N" boot.extraModprobeConfig
@@ -59,6 +61,7 @@
         && !(lib.elem "sl4a_spi_hid" boot.kernelModules)
         && lib.elem "multi-user.target" touchscreen.after
         && lib.hasSuffix "sl4a_spi_amd sl4a_spi_hid" touchscreen.serviceConfig.ExecStart
+        && !(touchscreen.serviceConfig ? ExecStartPost)
         && lib.hasInfix "evdev:name:MSHW0231 Touchscreen:*" services.udev.extraHwdb
         && lib.hasInfix "EVDEV_ABS_36=::173" services.udev.extraHwdb
       );
