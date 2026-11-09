@@ -3190,12 +3190,12 @@
     {
       "id": "firmware:kernel-set-to",
       "in": "firmware",
-      "name": "Kernel Set To"
+      "name": "Linux Set To"
     },
     {
       "id": "firmware:kernel-should-be",
       "in": "firmware",
-      "name": "Kernel Should Be"
+      "name": "Linux Should Be"
     },
     {
       "id": "firmware:attribute",
@@ -3238,7 +3238,7 @@
       "glyph": "firmware",
       "sure": "Fix {attribute} Now",
       "said": {
-        "what": "fwupd changes the setting itself",
+        "what": "fwupd changes the setting",
         "final": "fwupd changes the setting, and may ask for a restart",
         "changing": "fixing",
         "changed": "fixed",
