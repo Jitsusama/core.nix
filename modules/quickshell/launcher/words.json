@@ -4692,9 +4692,7 @@
         "unknown": "unknown",
         "unnamed": "not named yet",
         "notFound": "not found yet",
-        "unfound": "not found by GeoClue yet",
-        "found": "{within}, found through GeoClue",
-        "knows": "through GeoClue, {within}",
+        "knows": "from Wi-Fi, {within}",
         "elsewhere": "keeps {zone} \u00b7 not following"
       },
       "tells": {

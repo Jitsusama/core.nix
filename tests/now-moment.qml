@@ -198,6 +198,8 @@ ShellRoot {
             JSON.stringify(inside.map(row => [row.name, row.side])));
         expect("its country is the one whereabouts named", inside[1].side === "Canada",
             inside[1].side);
+        expect("it knows where it is from Wi-Fi, naming no daemon",
+            inside[2].side === "from Wi-Fi, within 26 km", inside[2].side);
         // Its plate: how it was found, its town, then when, how near, where
         // on a map to no more places than it knows, its country and its
         // zone last as the identifier it is (VKCF3Z, 2026-11-08).

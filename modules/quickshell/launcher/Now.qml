@@ -229,8 +229,9 @@ Provider {
         // gives way by whole items: the zone it keeps, then that the
         // clock isn't following it.
         const elsewhere = differs ? said.elsewhere.replace("{zone}", here.zone) : "";
-        const note = !here ? (Location.read ? said.unfound : "")
-            : differs ? elsewhere : byHand ? within : said.found.replace("{within}", within);
+        // How near it is, its source being the plate's eyebrow, and the
+        // machinery that found it named nowhere (VKCF3Z, 2026-11-09).
+        const note = !here ? (Location.read ? said.notFound : "") : differs ? elsewhere : within;
         const now = clock.date.getTime();
         const inside = () => {
             const figure = (id, value) => copyRow({
@@ -291,7 +292,7 @@ Provider {
             // Its town, the place's first part, as the plate names the
             // thing it's about.
             title: (here.place ?? "").split(",")[0] || Words.name("location"),
-            facts: Here.facts(here, now, hereSaid, hereTold).map(fact => ({
+            facts: Here.besideNote(Here.facts(here, now, hereSaid, hereTold), note).map(fact => ({
                 label: Words.name(`location:${fact.id}`),
                 value: fact.value,
                 identifies: fact.identifies === true
