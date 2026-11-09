@@ -421,6 +421,62 @@ def test_the_shell_barely_wakes_behind_the_lock_as_its_files_are_written(
     assert reads == 0, f"the shell kept {reads} lines of its files' reads"
 
 
+DIAG_SOURCES = {
+    "nothing": "true",
+    "dbus-clients": (
+        "while :; do busctl --user call org.freedesktop.DBus /org/freedesktop/DBus"
+        " org.freedesktop.DBus GetId >/dev/null; sleep 0.3; done"
+    ),
+    "transient-scopes": "while :; do systemd-run --user --scope -q true; sleep 0.5; done",
+    "retitling-kitty": (
+        "niri msg action spawn -- kitty bash -c"
+        " 'while :; do echo -ne \"\\e]2;t$RANDOM\\a\"; sleep 0.3; done'; sleep infinity"
+    ),
+    "pi-state": (
+        "d=$HOME/.local/state/pi/agentic-harness.pi/quest-workflow; mkdir -p $d/sessions;"
+        ' while :; do echo "{\\"at\\": $RANDOM}" > $d/q.tmp && mv $d/q.tmp $d/quests.json;'
+        " echo '{}' > $HOME/.local/state/pi/r.tmp && mv $HOME/.local/state/pi/r.tmp"
+        " $HOME/.local/state/pi/restore.json; touch $d/sessions/s$RANDOM; sleep 0.3; done"
+    ),
+    "capture-stream": "pw-record --rate 48000 /dev/null",
+}
+
+
+def test_diag_wakes_by_source(desktop: Desktop) -> None:
+    """Diagnostic only: how often the closed shell wakes with each source running."""
+    machine = desktop.machine
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=GOING)
+    pid = desktop.as_account("systemctl --user show quickshell -p MainPID --value").strip()
+    for name, command in DIAG_SOURCES.items():
+        desktop.as_account(
+            f"systemd-run --user --collect --unit=diag-{name} bash -c {shlex.quote(command)}"
+        )
+        machine.sleep(duration=timedelta(seconds=3))
+        before = woken(desktop, pid)
+        machine.sleep(duration=timedelta(seconds=15))
+        after = woken(desktop, pid)
+        rates = {
+            thread: round((count - before.get(thread, 0)) / 15, 1)
+            for thread, count in after.items()
+            if count - before.get(thread, 0) > 0
+        }
+        top = dict(sorted(rates.items(), key=lambda r: -r[1])[:6])
+        print(f"DIAG {name}: {top}")
+        traced = machine.succeed(
+            f"timeout 8 strace -f -qq -p {pid} -o /tmp/st.{name} 2>/dev/null; "
+            f"awk '{{print $1, $2}}' /tmp/st.{name} | sed -E 's/\\(.*//' | sort | uniq -c"
+            " | sort -rn | head -25; true"
+        )
+        print(f"DIAG {name} strace by thread and call:\n{traced}")
+        main = machine.succeed(
+            f"grep '^{pid} ' /tmp/st.{name} | grep -v -E '^{pid} +(futex|clock_gettime)'"
+            " | cut -c1-200 | head -40; true"
+        )
+        print(f"DIAG {name} main thread:\n{main}")
+        desktop.as_account(f"systemctl --user stop diag-{name}; true")
+        desktop.as_account("pkill -f 'echo -ne' ; true")
+
+
 def test_quickshell_warned_of_nothing_it_drew_all_along(desktop: Desktop) -> None:
     """Quickshell warned of nothing it drew all along.
 

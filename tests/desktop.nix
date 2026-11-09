@@ -1067,6 +1067,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         reports
         rewrites
         piStandIn
+        pkgs.strace
         pkgs.libnotify
         # The disk guard's own program, without its daemons, so Disk's Keep
         # marks a folder kept in the status file the test writes in the
