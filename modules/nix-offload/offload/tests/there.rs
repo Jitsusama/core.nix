@@ -33,7 +33,12 @@ done
 printf '%s\n%s\n' "$1" "$2" > "$here/ssh-was-given"
 printf '%s\n' "$2" >> "$here/ssh-commands"
 printf '%s\n' "$1" >> "$here/ssh-hosts"
-printf '%s %s\n' "$1" "$2" >> "$here/ssh-sent"
+# Written whole, then appended in one write, since a run's parts call
+# this at once and a long command printed straight on took more than
+# one, so two lines could interleave and a host's go missing.
+printf '%s %s\n' "$1" "$2" > "$here/ssh-line-$$"
+cat "$here/ssh-line-$$" >> "$here/ssh-sent"
+rm -f "$here/ssh-line-$$"
 [ -f "$here/unreached-$1" ] && exit 255
 if [ -f "$here/busy-$1" ]; then
   case "$2" in *": NIX_OFFLOAD_MOVES=1; "*) exit 76 ;; esac
