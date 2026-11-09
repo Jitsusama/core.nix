@@ -224,7 +224,8 @@ const HAN_OR_HANGUL = /[\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff]/;
 // the symbols, arrows and dingbats after it, CJK's and the fullwidth
 // punctuation, emoji's variation selectors, and emoji themselves, each a
 // pair of halves past U+1F000 or a flag's tag.
-const PARTING = /[\u00a0-\u00bf\u00d7\u00f7\u2000-\u2bff\u3000-\u303f\ufe00-\ufe0f\ufe30-\ufe6f]/;
+const PARTING = /[\u00a0-\u00bf\u00d7\u00f7\u2000-\u2bff\u3000-\u303f\ufe30-\ufe6f]/;
+const VARIATIONS = [0xfe00, 0xfe0f];
 const EMOJI = /^(\ud83c|\ud83d|\ud83e|\udb40)[\udc00-\udfff]$/;
 const FULLWIDTH_SIGN = /[\uff01-\uff0f\uff1a-\uff20\uff3b-\uff40\uff5b-\uff65]/;
 // A notice's text Slack cut short ends so, maybe within a word.
@@ -283,8 +284,9 @@ function words(text) {
     const all = [];
     let word = "";
     for (const each of String(text ?? "").toLowerCase().replace(SHORTCODE, " ")) {
-        const parts = each.charCodeAt(0) < 0x80 || PARTING.test(each) || EMOJI.test(each)
-            || FULLWIDTH_SIGN.test(each);
+        const code = each.charCodeAt(0);
+        const parts = code < 0x80 || (code >= VARIATIONS[0] && code <= VARIATIONS[1])
+            || PARTING.test(each) || EMOJI.test(each) || FULLWIDTH_SIGN.test(each);
         if (each.toUpperCase() !== each || UNCASED.test(each) || HAN_OR_HANGUL.test(each)) {
             word += each;
         } else if (!parts) {
