@@ -6,9 +6,9 @@
 // own name; one web address alone, not one among words, two, or another
 // kind of link; a file's path from the root, home or a file URL, with a
 // line and a column after it as compilers and grep give them, and nothing
-// for a relative path, a folder's or two lines; a markdown file by its
-// extension; the repositories dated from what stat says of each .git, the
-// one written last first, a repository's files the same, and each one's
+// for a relative path, a folder's or two lines; a markdown file, and a
+// document zathura reads, by its extension; the repositories dated from
+// what stat says of each .git, the one written last first, a repository's files the same, and each one's
 // page on GitHub from its remotes, origin's first, however git names the
 // host, those listed that have one, and a file's folder said within its
 // repository (Repositories.js); and Neovim opened at a line and column, in the
@@ -133,6 +133,12 @@ QtObject {
             ["/a/md", false]];
         for (const [path, meant] of kinds)
             check(`${path} is markdown`, Copying.markdown(path), meant);
+        // [path, a document zathura reads]
+        const documents = [["/a/charts.pdf", true], ["/a/SCAN.DJVU", true], ["/a/b.epub", true],
+            ["/a/c.ps", true], ["/a/d.pdf.txt", false], ["/a/pdf", false], ["/a/e.png", false],
+            ["/a/README.md", false]];
+        for (const [path, meant] of documents)
+            check(`${path} is a document`, Copying.document(path), meant);
 
         // The repositories, the one whose git wrote last first, two alike by
         // their paths, and what isn't a .git left out.

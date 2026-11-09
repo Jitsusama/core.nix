@@ -1,16 +1,17 @@
 // Drives the programs' own acts on a copy and on the repositories under
 // ~/src through Quickshell itself (Copied.qml, launcher/Repositories.qml,
 // and each program's provider: Neovim's NeovimProgram.qml, Chrome's
-// ChromeProgram.qml, the reader's ReaderProgram.qml and GIMP's
-// CopiedPicture.qml), with niri and the clipboard's history stood in and
-// the copy set as the clipboard's watcher sets it. A path is acted on only
+// ChromeProgram.qml, the reader's ReaderProgram.qml, zathura's
+// ZathuraProgram.qml and GIMP's CopiedPicture.qml), with niri and the
+// clipboard's history stood in and the copy set as the clipboard's
+// watcher sets it. A path is acted on only
 // while its file is there, which its folder says, and goes as the file
 // does. Each act on a copy is listed in its program, and found from the
 // top, only while the clipboard holds what it takes, says what it takes
 // beside it, and opens it: Neovim in the kitty used last at the line and
 // column copied, the reader the markdown by the reader's own Return verb,
-// Chrome the link in a new window, and GIMP the picture in a file of its
-// own, copied from the history's or written by wl-paste where the history
+// zathura the document at the page copied after it, Chrome the link in a
+// new window, and GIMP the picture in a file of its own, copied from the history's or written by wl-paste where the history
 // has none. The repositories are read once for both acts that list them,
 // as the shell starts, and each is listed only while a read found one it
 // can open: Open a File by Name lists them, the one whose git last wrote
@@ -139,6 +140,13 @@ ShellRoot {
         settings: ({ reader: "reader" })
     }
 
+    Launcher.ZathuraProgram {
+        id: zathura
+
+        launcher: theLauncher
+        settings: ({ zathura: "zathura", opened: [] })
+    }
+
     Launcher.CopiedPicture {
         id: gimp
 
@@ -175,15 +183,16 @@ ShellRoot {
                 expect("read once for both", repositories.folder === root.src
                     && repositories.remoting, `${repositories.folder} ${repositories.remoting}`);
                 for (const [program, provider] of [["nvim", neovim], ["google-chrome", chrome],
-                    ["reader", reader], ["gimp", gimp]]) {
+                    ["reader", reader], ["org.pwmt.zathura", zathura], ["gimp", gimp]]) {
                     const acts = provider.programActs(program);
                     expect(`${program} offers nothing on an empty clipboard`, acts.every(act =>
                         !["verb:nvim:copied", "verb:chrome:link", "verb:reader:markdown",
-                            "verb:gimp:picture"].includes(act.key)), keys(acts).join(", "));
+                            "verb:zathura:copied", "verb:gimp:picture"].includes(act.key)),
+                        keys(acts).join(", "));
                 }
                 expect("only the acts on repositories found from the top",
                     JSON.stringify(neovim.foundActs.concat(chrome.foundActs, reader.foundActs,
-                        gimp.foundActs).map(one => one.key))
+                        zathura.foundActs, gimp.foundActs).map(one => one.key))
                         === JSON.stringify(["verb:nvim:find", "verb:chrome:repository"]),
                     JSON.stringify(neovim.foundActs.concat(chrome.foundActs)));
                 expect("and inside their programs", keys(neovim.programActs("nvim")
@@ -237,6 +246,9 @@ ShellRoot {
                 acts[0].run();
                 expect("read in the reader", spawned() === JSON.stringify(["reader", readme]),
                     spawned());
+                expect("no document, so zathura offers nothing",
+                    zathura.programActs("org.pwmt.zathura").length === 0
+                        && zathura.foundActs.length === 0, "");
                 expect("Neovim offers it too", neovim.programActs("nvim").length === 2, "");
                 // Neovim's opens in a new kitty while none runs.
                 Niri.windows = ({});
@@ -254,7 +266,36 @@ ShellRoot {
             until: () => Copied.place === null,
             then: () => {
                 expect("no reader act", reader.programActs("reader").length === 0, "");
+                // As pdfgrep says a page a match is on.
+                root.copy(["text/plain"], `${home}/report.pdf:12:`);
+            }
+        }, {
+            what: "the copied document's file found",
+            until: () => Copied.place?.name === "report.pdf",
+            then: () => {
+                const acts = zathura.programActs("org.pwmt.zathura");
+                expect("zathura's act", keys(acts).join(", ") === "verb:zathura:copied",
+                    keys(acts).join(", "));
+                expect("its name and verb", acts[0].name === "Read the Copied Document"
+                    && acts[0].verb === "open", `${acts[0].name} ${acts[0].verb}`);
+                expect("its path and page said", acts[0].side === "~/report.pdf:12", acts[0].side);
+                expect("found from the top", zathura.foundActs.length === 1, "");
+                expect("not offered elsewhere", zathura.programActs("reader").length === 0, "");
+                acts[0].run();
+                expect("read in zathura at its page", spawned() === JSON.stringify(["zathura",
+                    "--page=12", `${home}/report.pdf`]), spawned());
+                root.copy(["text/plain"], `file://${home}/report.pdf`);
+            }
+        }, {
+            what: "the copied document's file found with no page",
+            until: () => Copied.place?.name === "report.pdf" && Copied.place.line === 0,
+            then: () => {
+                zathura.programActs("org.pwmt.zathura")[0].run();
+                expect("read where it was left, with no page copied", spawned()
+                    === JSON.stringify(["zathura", `${home}/report.pdf`]), spawned());
                 root.copy(["text/plain"], "  https://github.com/Jitsusama/core.nix/pull/12 \n");
+                expect("a web address left alone",
+                    zathura.programActs("org.pwmt.zathura").length === 0, "");
             }
         }, {
             what: "the copied link",

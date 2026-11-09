@@ -8,12 +8,37 @@
   onLinux,
   passesClippy,
   pkgs,
+  shellFolderLint,
   ...
 }:
 onLinux {
+  # What zathura's provider says of what it has open, in Qt's own engine
+  # (../../tests/zathura-program.qml, over Zathura.js): open-now's lines
+  # read back, the page beside a document only one zathura has open, and
+  # its drawer's facts saying each one's page and how far through it is.
+  the-launcher-says-the-page-zathura-is-on =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-says-the-page-zathura-is-on" { } ''
+      cp ${../../tests/zathura-program.qml} zathura-program.qml
+      cp ${./Zathura.js} Zathura.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml zathura-program.qml
+      touch $out
+    '';
+
   # clippy finds nothing in ]b and [b's helper, its tests included.
   zathura-next-document-passes-clippy = passesClippy "zathura-next-document-passes-clippy" (
     pkgs.callPackage ./next-document/package.nix { }
+  );
+
+  # clippy finds nothing in what carries the launcher's command line to
+  # zathura, its tests included.
+  zathura-command-passes-clippy = passesClippy "zathura-command-passes-clippy" (
+    pkgs.callPackage ./command/package.nix { }
   );
 
   # Escape closes nothing in zathura, its contents included: zathura's own
@@ -77,8 +102,11 @@ onLinux {
 
   # Every key the launcher lists for zathura goes where it says, the page
   # each lands on read back from zathura itself over its bus and each
-  # scroll from its screen, and the document ]b and [b open from what it
-  # says it has open, in a compositor of its own (keys-test.sh). The
+  # scroll from its screen, the document ]b and [b open from what it
+  # says it has open, and : asking the launcher for its command line over
+  # the window, whose commands zathura-command carries back over the bus,
+  # a page and zathura's own alike, in a compositor of its own
+  # (keys-test.sh). The
   # account's settings are read as they are, but for the word zathura
   # draws on a page not drawn yet, which would tell a page being drawn
   # from one that's done.
@@ -107,6 +135,7 @@ onLinux {
         nativeBuildInputs = [
           home.programs.zathura.package
           launcher
+          (pkgs.callPackage ./command/package.nix { })
           pkgs.cage
           pkgs.dbus
           pkgs.glib
@@ -136,15 +165,16 @@ onLinux {
 
   # zathura says the document it has open, read over its bus by the command
   # its Recent in the launcher is led by, as its process and the whole
-  # path of a document given by name in the folder it was started in, and
-  # nothing once ZZ closes it (../../tests/says-what-it-has-open.sh), in a
+  # path of a document given by name in the folder it was started in, then
+  # the page it's on, counted from one, and how many it has, and nothing
+  # once ZZ closes it (../../tests/says-what-it-has-open.sh), in a
   # compositor of its own.
   zathura-says-the-document-it-has-open =
     let
       home = account graphical;
       pages = import ../../tests/page.nix {
         inherit lib pkgs;
-        pages = 1;
+        pages = 3;
       };
       source = lib.findFirst (
         each: each.app or "" == "org.pwmt.zathura"
@@ -169,7 +199,8 @@ onLinux {
         cp ${home.xdg.configFile."zathura/zathurarc".source} config/zathura/zathurarc
         cp ${pages} document.pdf
         dbus-run-session --config-file=${pkgs.dbus}/share/dbus-1/session.conf -- \
-          cage -- $BASH ${../../tests/says-what-it-has-open.sh} --closed-by ZZ document.pdf \
+          cage -- $BASH ${../../tests/says-what-it-has-open.sh} --closed-by ZZ \
+          --then "$(printf '\t\t1\t3')" document.pdf \
           zathura -- ${lib.escapeShellArgs source.opened} > ran 2>&1 || true
         if [ ! -e passed ]; then cat ran; exit 1; fi
         touch $out

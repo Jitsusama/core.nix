@@ -1,7 +1,9 @@
 //! What a program has open now, for its Recent in the launcher to lead with:
 //! each of its processes and the whole path of the file it shows. A zathura
 //! says it over the session bus, as `org.pwmt.zathura.PID-<pid>`, whose
-//! `filename` is the document it has open, empty while it has none. A
+//! `filename` is the document it has open, empty while it has none, with
+//! the page it's on, `pagenumber`, counted from nought, and how many the
+//! document has, `numberofpages`, so its row says how far through it is. A
 //! Neovim runs in a kitty window, many to one kitty process, so it says its
 //! file to that window instead (../../neovim/showing.lua), and kitty's
 //! remote control gives it back with niri's window it's in.
@@ -26,14 +28,48 @@ pub fn pid_of(name: &str, prefix: &str) -> Option<u32> {
     name.strip_prefix(prefix)?.parse().ok()
 }
 
-/// Every zathura on the bus with a document open, by its process and the
-/// document's path. One quitting as it's asked is passed over, so what's
-/// left is still said.
+/// A document a zathura has open: its process, the document's whole path,
+/// the page it's on, counted from one as zathura's own bar counts them, and
+/// how many pages it has. Either figure is 0 where zathura didn't say it.
+#[derive(Debug, PartialEq, Eq)]
+pub struct InZathura {
+    pub pid: u32,
+    pub file: String,
+    pub page: u32,
+    pub pages: u32,
+}
+
+impl InZathura {
+    /// Its line, as the launcher reads a file source's `opened`
+    /// (../../quickshell/recents.nix): the process, the path, an empty
+    /// third field, since Go To needs nothing more to reach its window,
+    /// then the page and how many pages, a tab between each.
+    #[must_use]
+    pub fn line(&self) -> String {
+        format!(
+            "{}\t{}\t\t{}\t{}",
+            self.pid, self.file, self.page, self.pages
+        )
+    }
+}
+
+/// The page zathura says it's on, counted from nought, as its bar counts
+/// it, from one; none where it didn't say.
+#[must_use]
+pub fn counted_from_one(page: Option<u32>) -> u32 {
+    page.map_or(0, |page| page.saturating_add(1))
+}
+
+/// Every zathura on the bus with a document open, by its process, the
+/// document's path, the page it's on and how many it has. One quitting as
+/// it's asked is passed over, so what's left is still said; one that says
+/// its document but not its pages, as one still opening it, is said with
+/// neither figure.
 ///
 /// # Errors
 ///
 /// When the bus can't list its names.
-pub async fn zathura(connection: &Connection) -> zbus::Result<Vec<(u32, String)>> {
+pub async fn zathura(connection: &Connection) -> zbus::Result<Vec<InZathura>> {
     let names = DBusProxy::new(connection).await?.list_names().await?;
     let mut open = Vec::new();
     for name in names {
@@ -53,7 +89,14 @@ pub async fn zathura(connection: &Connection) -> zbus::Result<Vec<(u32, String)>
         if let Ok(file) = asked.get_property::<String>("filename").await
             && !file.is_empty()
         {
-            open.push((pid, file));
+            let page = asked.get_property::<u32>("pagenumber").await.ok();
+            let pages = asked.get_property::<u32>("numberofpages").await.ok();
+            open.push(InZathura {
+                pid,
+                file,
+                page: counted_from_one(page),
+                pages: pages.unwrap_or(0),
+            });
         }
     }
     Ok(open)
@@ -426,6 +469,28 @@ mod tests {
     #[test]
     fn a_zathura_is_known_by_its_process() {
         assert_eq!(pid_of("org.pwmt.zathura.PID-4242", ZATHURA), Some(4242));
+    }
+
+    #[test]
+    fn a_zathura_says_its_page_from_one_as_its_bar_does() {
+        assert_eq!(counted_from_one(Some(0)), 1);
+        assert_eq!(counted_from_one(Some(40)), 41);
+        assert_eq!(counted_from_one(None), 0);
+        assert_eq!(counted_from_one(Some(u32::MAX)), u32::MAX);
+    }
+
+    #[test]
+    fn a_zathuras_line_leaves_go_empty_before_its_pages() {
+        let open = InZathura {
+            pid: 4242,
+            file: "/home/one/charts.pdf".into(),
+            page: 41,
+            pages: 212,
+        };
+        let line = open.line();
+        assert_eq!(line, "4242\t/home/one/charts.pdf\t\t41\t212");
+        let fields: Vec<&str> = line.split('\t').collect();
+        assert_eq!(fields, ["4242", "/home/one/charts.pdf", "", "41", "212"]);
     }
 
     #[test]

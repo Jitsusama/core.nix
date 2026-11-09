@@ -1,7 +1,9 @@
 //! What a program has open now (open.rs), for its Recent in the launcher.
 //!
 //! `open-now zathura` prints each zathura with a document open, a line
-//! each: its process id, a tab and the document's whole path.
+//! each: its process id, a tab, the document's whole path, two tabs, since
+//! the launcher needs nothing to reach it inside its window, the page it's
+//! on, counted from one, a tab and how many pages it has.
 //!
 //! `open-now neovim` prints each file a Neovim has open in a kitty window, a
 //! line each: `@` and niri's window id, a tab, the file's whole path, a tab,
@@ -60,7 +62,7 @@ async fn zathura() -> Result<(), String> {
         .map_err(|error| error.to_string())?;
     let mut out = io::stdout().lock();
     open.iter()
-        .try_for_each(|(pid, file)| writeln!(out, "{pid}\t{file}"))
+        .try_for_each(|one| writeln!(out, "{}", one.line()))
         .map_err(|error| error.to_string())
 }
 

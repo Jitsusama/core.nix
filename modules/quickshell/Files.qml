@@ -56,12 +56,29 @@ Singleton {
     // a side cut short loses the folder and never the state, which sits in
     // the same spot on every row that has one (VKCF3Z, 2026-10-30), and one
     // `gone` dimmed where it was, as the launcher keeps a row whose thing
-    // has gone.
+    // has gone. Where the program holding it says how far through it is
+    // (`through`), that's said in open's place, since it says open too.
     function held(path, thing, acts, now, gone) {
+        const far = gone === true ? "" : throughOf(path);
         return made("file", path, thing, acts, null, {
-            side: `${now} \u00b7 ${within(path)}`,
+            side: `${far !== "" ? far : now} \u00b7 ${within(path)}`,
             gone: gone === true
         });
+    }
+
+    // How far through each file it has open a program says it is, by the
+    // program and then the file's path, as zathura says "p. 41 of 212"
+    // (ZathuraProgram.qml), each program's said afresh with each reading
+    // of what it has open, so one closed since says nothing.
+    property var through: ({})
+
+    function saying(program, sides) {
+        through = Object.assign({}, through, { [program]: sides });
+    }
+
+    function throughOf(path) {
+        return Object.values(through).map(sides => sides[path] ?? "")
+            .find(side => side !== "") ?? "";
     }
 
     // A folder's row, the same, but given `inside`, what it holds, Return

@@ -3685,8 +3685,9 @@ Scope {
     // it (launcher-say command-line <viewer> <where> <name>): the viewer's own
     // commands (Options.commandLines, from its module), each carried to it
     // by its program, given where the viewer is, its process or its
-    // socket, the command's whole name and what was typed after it; :{n}
-    // and a time are its goto. It opens alone, aimed at what the viewer
+    // socket, the command's whole name and what was typed after it, a !
+    // after the name where the command says it takes one, as zathura's
+    // :write! does; :{n} and a time are its goto. It opens alone, aimed at what the viewer
     // shows, by its name, and :help opens the launcher's Shortcuts at the
     // viewer's own keys, as F1 does. A viewer with none opens nothing.
     function viewerCommandLine(viewer, where, name) {
@@ -3699,10 +3700,10 @@ Scope {
             short: Options.commands[own.command]?.short ?? own.command,
             title: own.title,
             key: own.key ?? "",
-            bang: false,
+            bang: own.bang === true,
             run: call => {
                 open = false;
-                carry(call.name, call.arg);
+                carry(call.bang ? `${call.name}!` : call.name, call.arg);
             }
         })).concat([{
             command: "help",

@@ -1909,9 +1909,10 @@
   '';
   the-launcher-acts-only-on-what-it-can = ''
     a program's act on a copy shows only while the clipboard holds what it takes, a picture, one
-    web address, or an existing file's path, markdown for the reader, with its line and column,
-    found from the top only while it shows, and opens it: Neovim in the kitty used last or a new
-    one, at the line and column, Chrome's page in a new window, the reader's file, and GIMP's
+    web address, or an existing file's path, markdown for the reader and a document for zathura,
+    with its line and column, found from the top only while it shows, and opens it: Neovim in
+    the kitty used last or a new one, at the line and column, Chrome's page in a new window, the
+    reader's file, zathura's document at the page copied after it, and GIMP's
     picture in a file of its own, copied from the clipboard's history or written by wl-paste;
     and Open a File by Name and Open a Repository on GitHub show only while the repositories
     under ~/src, read once for both as the shell starts and as the launcher opens, hold one they
@@ -2155,6 +2156,11 @@
     the launcher's windows list This Window, then the rest the one used last first, and when the
     focus moves make again only the rows of the windows it moved between, a renamed one too, as
     Capture's rows of the windows do
+  '';
+  the-launcher-says-the-page-zathura-is-on = ''
+    zathura's provider reads open-now's lines as each zathura's document, page and page count,
+    says the page beside a document only one zathura has open, and its drawer says each one's
+    page and how far through it is
   '';
   the-launcher-says-why-the-desktop-lags = ''
     the launcher's Lag leads with the worst of what waited, offers to see what's behind it from
@@ -3286,6 +3292,9 @@
     zathura opens a page with the account's settings and stays open without a warning, its bar in
     the monospaced face, and PDFs open in it
   '';
+  zathura-command-passes-clippy = ''
+    clippy finds nothing in what carries the launcher's command line to zathura, or its tests
+  '';
   zathura-escape-closes-no-contents = ''
     zathura's contents close on none of Escape, Ctrl+[ and Ctrl+C, which are unmapped there, and ZZ
     closes them as a window
@@ -3295,16 +3304,17 @@
     gg, G and a count before G go to that page, the arrows scroll as j, k, h and l do, Ctrl+D,
     Ctrl+U, Ctrl+F and Ctrl+B scroll, Tab, Ctrl+O and Ctrl+I go through the jumps, m and ' mark
     and go back, / and the question mark key find on and back and n and N again, Space and the
-    question mark key ask the launcher for the keys, ]b and [b open the next document in its folder
-    and the one before, with a count that many and coming round, q closes nothing, and ZZ and
-    Space w close it
+    question mark key ask the launcher for the keys, the colon asks it for its command line over
+    the window, whose pages and zathura's own commands come back over the bus, ]b and [b open the
+    next document in its folder and the one before, with a count that many and coming round, q
+    closes nothing, and ZZ and Space w close it
   '';
   zathura-next-document-passes-clippy = ''
     clippy finds nothing in zathura's ]b and [b, which open the document beside, or its tests
   '';
   zathura-says-the-document-it-has-open = ''
     zathura says the document it has open, read by its Recent's command as its process and whole
-    path, and nothing once ZZ closes it
+    path, the page it's on counted from one and how many it has, and nothing once ZZ closes it
   '';
   zathura-says-the-files-it-opens = ''
     zathura says each document it's started with to the desktop's list of files opened lately, then
