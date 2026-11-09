@@ -687,7 +687,7 @@ pub fn foreign_derivation(asked: &Asked, dir: &Path) -> Option<(String, String, 
 
 /// The first of the derivations at `paths` that builds for none of the
 /// lent builders' `systems`, and what it builds for, read by `read`: on
-/// 9 November an aarch64 build was sent to a lender that builds x86_64
+/// 9 November an Arm build was sent to a lender that builds for Intel
 /// alone, and began copying its kernel up. None when the systems aren't
 /// known or each derivation's can't be read.
 pub fn foreign(
