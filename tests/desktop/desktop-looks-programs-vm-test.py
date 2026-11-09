@@ -100,15 +100,25 @@ def named(name: str, shown: Json) -> bool:
 def test_drives_places_and_recent_are_shot_at_each_scale(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """Shoot Drive's program holding its places, and its Recent with a file's drawer.
+    """Shoot Drive's program's drawer, the program holding its places, and a file in Recent.
 
-    Typed, drive leads with the disk's room, so the selection goes down to the program.
+    Typed, drive leads with the disk's room, so the selection goes down to the program, whose
+    drawer says what its places hold and what its copies kept here take.
     """
     for scale in at_each_scale:
         at = at_scale(desktop, scale)
         desktop.answer("drive")
         desktop.launcher_until(lambda shown: "Drive" in shown["rows"])
         desktop.down_to("Drive")
+        # Each size keeps its unit beside it by a no-break space, as every figure does.
+        desktop.launcher_until(
+            lambda shown: (
+                shown["drawer"]["out"]
+                and "Kept Here" in shown["drawer"]["drawnFacts"]
+                and "412\u00a0MB of 2.00\u00a0GB" in shown["drawer"]["values"]
+            )
+        )
+        desktop.shoot(f"launcher-drive-at-{at}")
         desktop.into_program()
         desktop.launcher_until(lambda shown: "Starred" in shown["rows"])
         desktop.shoot(f"launcher-drive-places-at-{at}")
