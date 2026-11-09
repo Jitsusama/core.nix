@@ -1,6 +1,7 @@
 # A machine Joel writes code on: Neovim and coding agents, the broker that
 # hands their sandboxes GitHub tokens an hour each, mycelium to carry their
-# mesh to his other machines, and the ErgoDox he plugs into each one.
+# mesh to his other machines, the to-do daemon that clears what the agents
+# ask of him by itself, and the ErgoDox he plugs into each one.
 { homeModules }:
 {
   imports = [
@@ -11,6 +12,7 @@
     homeModules.pi
     homeModules.github-broker
     homeModules.mycelium
+    homeModules.to-do
     homeModules.ergodox
   ];
 }

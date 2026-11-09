@@ -2705,6 +2705,22 @@
   timers-passes-clippy = ''
     clippy finds nothing in the timers daemon or its tests
   '';
+  to-do-clears-each-to-do-by-itself = ''
+    the to-do daemon finds a to-do done or ready by its check or its signal, a boot or a switch
+    only after it was raised and a switch to a commit at it or past it, keeps a failing check to
+    a run each ten minutes at most, stops a check that hangs with all it started and leaves
+    nothing a check started once it ends, runs a check only for an owner the harness says is
+    outside every sandbox and with the session's environment as it is then, keeps a to-do done
+    through a failing check and a restart, says every figure it found, and writes its verdicts
+    only as they change
+  '';
+  to-do-passes-clippy = ''
+    clippy finds nothing in the to-do daemon or its tests
+  '';
+  to-do-runs-in-each-account = ''
+    the to-do daemon runs in each account with its own git, journalctl and systemctl named, its
+    checks on the user manager's environment as it is when each runs, and a switch restarts it
+  '';
   tuple-call-holds-the-call = ''
     tuple-call follows Tuple's stream only while Tuple's daemon answers, at once when its log says
     it started, and tells a watch of a call, a sign-in gone and a stream ended as they happen, of a
@@ -2977,10 +2993,10 @@
     Slack ends a search, asking Slack once on Return
   '';
   vm-desktop-launcher-waits-on-joel = ''
-    Now leads with what waits on Joel and For You's to-dos hold only what's true, a session wanting
-    him waits as the session, its notice going to it and going read once it stops waiting; the agents
-    list every session from the shell's start and hold still as one changes, and pi's runs are
-    found
+    Now leads with what waits on Joel and For You's to-dos hold only what's true, one waiting on a
+    file going by itself as the to-do daemon finds it done, a session wanting him waits as the
+    session, its notice going to it and going read once it stops waiting; the agents list every
+    session from the shell's start and hold still as one changes, and pi's runs are found
   '';
   vm-desktop-locks-and-asks = ''
     the lock screen takes only the right password, lets go when released or told to by logind,

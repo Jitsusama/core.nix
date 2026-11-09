@@ -66,6 +66,9 @@ let
     "opens-and-sets"
     "looks-programs"
   ];
+  # The area whose For You lets a to-do go by itself, so its machine runs
+  # the to-do daemon, as a workstation does (modules/to-do).
+  clearsToDos = area == "launcher-waits-on-joel";
   # The areas that show pi's sessions, whose machine runs the realm's
   # mycelium node, as a workstation does, since the shell knows sessions
   # from the node alone, and looks-machine, which shoots Machines from
@@ -800,6 +803,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         imports =
           lib.optional bringsSlack self.homeModules.slack
           ++ lib.optional listsMachines self.homeModules.libvirt
+          ++ lib.optional clearsToDos self.homeModules.to-do
           ++ lib.optionals runsTheNode [
             self.homeModules.mycelium
             { jitsusama.mycelium.realm = "harbour"; }

@@ -277,6 +277,7 @@ or a copy, can be opened, copied or forgotten.
 | Now | the launcher's view of what's on and waiting, on Super+O | What's on | `Now.qml` |
 | For You | the one place for what needs Joel and what came for him, with where each came from: Now's first row, weighed, the most pressing first | | `ForYou.js` |
 | to-do | what only Joel can do, raised by the session that needs him and listed in For You | Needs You item, waiting on you | `WaitingOnYou.qml` |
+| to-do daemon | what finds a to-do done or ready by itself, running its check and hearing its signal | the desktop's daemon | `modules/to-do`, `verdicts.json` |
 | check | the command that settles a to-do, which succeeds once it's done, apart from the checks core.nix holds | | `doneWhen.check` |
 | look | something a session points Joel at to see, a pull request, a page, a file, a diff or a terminal, kept in For You until he opens or clears it | | `on:waiting:look`, the looks folder |
 | to look at | a look For You holds in its row of them, one that neither blocks a session nor is due | | `for-you:kind:look` |
