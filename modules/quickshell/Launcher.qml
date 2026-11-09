@@ -8624,7 +8624,6 @@ Scope {
                                     kind: root.held.length === 0 ? root.kindOf(entry.modelData) : ""
                                     landed: selected && root.landedOn(entry.modelData)
                                         ? `\u21b5 ${root.verbOf(entry.modelData)}` : ""
-                                    carried: selected ? root.carriedBy(entry.modelData) : ""
                                     // What the cursor row has to say of how
                                     // it stands, on the row, where the head
                                     // said it before (VKCF3Z, 2026-11-06).

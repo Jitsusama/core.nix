@@ -796,7 +796,9 @@ session, a network, a device, a copy) says its kind at its right edge, muted:
 Its detail, a window count, a workspace or what the program is, follows its
 name, muted. How it stands goes at its right, the state first and then
 its figure ("paused · 9:50", "ready · short of memory", "this machine ·
-−75 dBm"), never after its name. A note is a run of items, lowercase
+−75 dBm"), never after its name. The key that carries an act ending
+something is the foot's alone, never the row's, so the cursor row says how
+it stands as its neighbours do (VKCF3Z, 2026-11-09). A note is a run of items, lowercase
 where the words are ours, never a sentence with a capital and a stop
 ("found by its meaning"), written most-needed first, so that short of
 room it gives way by whole items from its end, never to an ellipsis

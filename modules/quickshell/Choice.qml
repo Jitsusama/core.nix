@@ -91,13 +91,12 @@ Rectangle {
     // wholeItems). Empty, `side` is said as it is, cut to its share.
     property var sideItems: []
     // What a second Return does, said at its right in the accent in place
-    // of its kind or chord, once Return from the find landed on it rather
-    // than doing it ("\u21b5 turn off"), until the next key.
+    // of its side, kind or chord, once Return from the find landed on it
+    // rather than doing it ("\u21b5 turn off"), until the next key. The key
+    // that carries an act ending something is the foot's alone, never the
+    // row's, so the cursor row reads as its neighbours do (VKCF3Z,
+    // 2026-11-09: a key is taught once, in the foot).
     property string landed
-    // The key that carries an act ending something, said at its right in
-    // place of its kind or chord while it's the cursor row, since no
-    // Return does it: "d disconnect", or the line Return writes, ":lockscreen".
-    property string carried
     // What the cursor row says of how it stands, as a battery's "full in
     // 40 min", at the far end in Note, before what it says at its right,
     // so that keeps the inset and only this comes and goes; with nothing
@@ -400,13 +399,12 @@ Rectangle {
         anchors.rightMargin: Theme.space.rung.inset
         y: monoLine.y + monoLine.baselineOffset
             - (atRight.chorded ? keys.baselineOffset : sideText.baselineOffset)
-        readonly property bool chorded: row.landed === "" && row.carried === ""
-            && row.kind === "" && row.chord.length > 0
-        readonly property string said: row.landed !== "" ? row.landed
-            : row.carried !== "" ? row.carried
-            : row.kind !== "" ? row.kind
-            : itemised ? kept.join(" \u00b7 ")
-            : row.side
+        readonly property bool chorded: row.landed === "" && row.kind === ""
+            && row.chord.length > 0
+        // A landing while it shows, else a noun's kind, else how it stands;
+        // never the key an ending act is carried by (Reading.rightSays).
+        readonly property string stands: itemised ? kept.join(" \u00b7 ") : row.side
+        readonly property string said: Reading.rightSays(row.landed, row.kind, stands)
         // The items a side of them keeps in its room, the least needed
         // given way first (Reading.js's keptItems).
         readonly property var kept: itemised ? Reading.keptItems(row.sideItems, room,
@@ -424,8 +422,8 @@ Rectangle {
         readonly property bool dotted: itemised && kept.length > 1 && !row.flashed
             && (row.selected || row.warns || inks.some(ink => ink !== ""))
         readonly property bool sided: !chorded && said !== ""
-        readonly property bool itemised: row.landed === "" && row.carried === ""
-            && row.kind === "" && row.sideItems.length > 0
+        readonly property bool itemised: row.landed === "" && row.kind === ""
+            && row.sideItems.length > 0
         // The room the name leaves whole, its words after it too, which a
         // side of items is fitted to.
         readonly property real room: row.width - Theme.space.rung.inset - nameBox.x
