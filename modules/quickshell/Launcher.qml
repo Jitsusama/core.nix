@@ -320,12 +320,13 @@ Scope {
         const below = underFirst(Rank.keysHeld(Rank.once(Rank.placed(found.filter(once),
             gathered.filter(row => !whole.has(row.from.settings.name)), latch))));
         // Searched again only to say what's there now, it keeps the order
-        // it's shown in (reshow).
+        // it's shown in (reshow), unless a place still being made is said
+        // again in its own order (ordering).
         const placedAll = Date.now();
         // What ends a search at the top comes after it all, never counted as
         // found, so an answer given only when nothing is still shows.
         const ending = held.length === 0 && typed.trim() !== "" ? endings(typed) : [];
-        matches = live((steadying ? steadied(rows.concat(below)) : rows.concat(below))
+        matches = live((steadying && !ordering ? steadied(rows.concat(below)) : rows.concat(below))
             .concat(ending));
         // An answer only started gives way to a name that starts the same,
         // its first word: "pow" is still Power Off. A later word starting
