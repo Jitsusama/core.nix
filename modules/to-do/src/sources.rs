@@ -255,7 +255,7 @@ mod tests {
         let mut follower = Follower::default();
         assert!(follower.read(r#"5 x: {"step":"unchanged","followed":{"core":"ccc"}}"#));
         assert!(!follower.read(r#"6 x: {"step":"unchanged","followed":{"core":"ccc"}}"#));
-        assert!(follower.switches.is_empty());
+        assert_eq!(follower.switches, Vec::<Switch>::new());
         assert_eq!(follower.core.as_deref(), Some("ccc"));
     }
 

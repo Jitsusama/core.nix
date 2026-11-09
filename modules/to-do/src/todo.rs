@@ -217,7 +217,7 @@ mod tests {
 
     #[test]
     fn no_json_holds_no_to_dos() {
-        assert!(in_file("{\"v\":2,").is_empty());
-        assert!(in_file("[]").is_empty());
+        assert_eq!(in_file("{\"v\":2,"), Vec::<ToDo>::new());
+        assert_eq!(in_file("[]"), Vec::<ToDo>::new());
     }
 }
