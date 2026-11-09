@@ -253,11 +253,12 @@ mod tests {
         let began = Instant::now();
         let answer =
             settled(&stand_in::qs("missed-reading"), &[], false).expect("the stand-in answers");
+        let took = began.elapsed();
         assert!(matches!(answer, Answer::Missing { reading: true, .. }));
+        assert!(took >= SETTLING, "it gave up after {took:?}");
         assert!(
-            began.elapsed() >= SETTLING,
-            "it gave up after {:?}",
-            began.elapsed()
+            took < SETTLING + ASK_AGAIN + LEEWAY,
+            "it asked for {took:?}"
         );
     }
 
