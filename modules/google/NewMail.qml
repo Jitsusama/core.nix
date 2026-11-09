@@ -4,7 +4,9 @@
 // Mail.row's, the row every surface shows, with its details beside it,
 // and after them Show the Mail, which goes to Programs › Mail. It goes
 // once none want him. In Now it's For You's Mail row, among what came for
-// him (Now.qml's Lately), and the margin shows it as it is.
+// him (Now.qml's Lately), and the margin shows it as it is. Mail done
+// with, read or archived in Gmail or here, leaves it by itself, and For
+// You's History says how (Google.js's finished).
 import qs
 import QtQuick
 
@@ -23,6 +25,9 @@ Piece {
     rows: thing => Mail.mail.map(mail => Mail.row(mail, thing))
     lately: "mail"
     came: Mail.mail.map(mail => ({ who: mail.from, at: mail.at }))
+    finished: Google.finished.map(mail => Object.assign({}, mail, {
+        row: thing => Mail.row(mail, thing)
+    }))
     actions: [{
         glyph: Theme.glyph.mail,
         name: "Show the Mail",

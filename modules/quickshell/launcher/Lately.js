@@ -3,9 +3,10 @@
 // the desktop's other notices, each done once its source says so (Joel,
 // 2026-11-08: "i shouldn't be required to mark a notice as read if I
 // looked at the slack message in slack"). What's done goes to For You's
-// History, saying how. Mail says when it's done once Google's daemon
-// does, and Slack's messages once the shell reads Slack's daemon's, which
-// `done` is ready for; until then only notices are done here.
+// History, saying how: mail as Google's daemon says it went, and notices
+// as read here or withdrawn. Slack's messages are done once the shell
+// reads Slack's daemon's, which `done` is ready for; until then Slack's
+// notices stand for them.
 // Kept apart from the QML so Qt's own engine holds it (tests/lately.qml).
 .pragma library
 .import "Order.js" as Order

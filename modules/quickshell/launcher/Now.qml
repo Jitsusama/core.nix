@@ -1091,7 +1091,10 @@ Provider {
         }
     }
 
-    function latelyRows(now) {
+    // What each source holds, { holding, bands }: who each thing it holds
+    // is from and when it came, newest first, and Lately's rows, heaviest
+    // first (Lately.js's bands).
+    function latelyBands(now) {
         const holding = {};
         for (const source of Lately.SOURCES)
             holding[source] = (noticesOf[source] ?? []).map(notice => ({ who: notice.app,
@@ -1103,7 +1106,25 @@ Provider {
                 at: Lately.when(one.at) })), Order.stream(one => one.at));
         const weigh = one => ForYou.weigh({ kind: "look", ready: true, since: one.at }, now)
             .weight;
-        return Lately.bands(holding, weigh).map(band => {
+        return { holding, bands: Lately.bands(holding, weigh) };
+    }
+
+    // Each source's name as its row says it: its piece's title, or its
+    // notices' own.
+    function latelyName(source) {
+        const fact = latelyPieces.find(one => one.piece.lately === source);
+        return fact === undefined ? Words.name(`on:waiting:${source}`) : fact.piece.title;
+    }
+
+    // The sources Lately holds unread, in its order, as For You's own row
+    // names them after its name, so mail waiting alone is still on Now's
+    // top (VKCF3Z, 2026-11-08).
+    readonly property string latelyNames: latelyBands(Date.now()).bands
+        .map(band => latelyName(band.source)).join(", ")
+
+    function latelyRows(now) {
+        const { holding, bands } = latelyBands(now);
+        return bands.map(band => {
             const note = Lately.members(holding[band.source], one => one.who).join(", ");
             const forYou = { kind: "notice", source: band.source };
             const fact = latelyPieces.find(one => one.piece.lately === band.source);
@@ -1174,17 +1195,24 @@ Provider {
 
     // What came and is done with, each { title, how, at, source, of }, for
     // History (Lately.js's done): a notice read here, or withdrawn by its
-    // sender, as "read here 14:02" (VKCF3Z, 2026-11-08).
+    // sender, as "read here 14:02" (VKCF3Z, 2026-11-08), and mail read or
+    // archived in Gmail or here, as Google's daemon says (Piece.qml's
+    // finished). The mail piece is asked even with nothing to read, since
+    // what it finished outlasts its row.
     readonly property var cameDone: Lately.done({ notices: latelyNotices, messages: null,
-        finished: [] }, { mail: {}, slack: {}, notice: Words.of("on:waiting:desktop").said ?? {} })
+        finished: Facts.all.find(fact => fact.piece?.lately === "mail" && fact.piece.present)
+            ?.piece.finished ?? [] }, { mail: Words.of("mail:message").said ?? {}, slack: {},
+        notice: Words.of("on:waiting:desktop").said ?? {} })
 
-    // A done one's row in History: a notice is its row in Notices, with how
-    // and when it was done with at its side. `rows` are Notices' rows of
-    // every notice done with, by its id, asked for at once (historyRows).
+    // A done one's row in History: the row its piece gives it, as a piece
+    // of mail's, or a notice's row in Notices, with how and when it was
+    // done with at its side. `rows` are Notices' rows of every notice done
+    // with, by its id, asked for at once (historyRows).
     function cameDoneRow(one, rows) {
         const side = ForYou.historySide({ how: one.how, resolved: one.at, since: null },
             forYouSaid(Date.now()));
-        const row = rows[one.of.id] ?? member({
+        const given = typeof one.of.row === "function" ? one.of.row(thing) : null;
+        const row = given ?? (one.source === "mail" ? null : rows[one.of.id]) ?? member({
             key: `on:waiting:came:${one.source}:${one.at}`,
             name: one.title,
             glyph: Words.glyph("on:waiting:desktop"),
@@ -1210,8 +1238,13 @@ Provider {
                 : waitingSaid("none", {}),
         // The first thing waiting, in its words after its name, since
         // it's what the row holds; the head no longer says it (VKCF3Z,
-        // 2026-11-06, one calm head).
-        count: first,
+        // 2026-11-06, one calm head). With nothing waiting, the sources
+        // Lately holds unread stand there instead, "For You  Mail", and
+        // beside what waits they're its note, so what came is never lost
+        // from Now's top while the side counts only what waits on Joel
+        // (VKCF3Z, 2026-11-08).
+        count: first !== "" ? first : latelyNames,
+        note: first !== "" ? latelyNames : "",
         nested: true,
         verbs: () => provider.waitingRows(),
         targets: () => provider.waitingRows(),
