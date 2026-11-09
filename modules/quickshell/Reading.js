@@ -163,9 +163,15 @@ function pathTries(path, here) {
     return tries;
 }
 
-// Every way an item may be said, whole first: its path's ways, its
-// file's, or only as it is.
+// Every way an item may be said, whole first: the ways it gives itself,
+// its path's ways, its file's, or only as it is.
 function itemWays(item) {
+    // An item that knows how it gives way says so, as who a sent mail went
+    // to gives way by whole names, "to Ada Lovelace and 4 more" (VKCF3Z,
+    // 635ac574).
+    if (Array.isArray(item.ways) && item.ways.length > 0) {
+        return item.ways;
+    }
     if (item.path) {
         return pathTries(item.path, true).map(way => item.said.replace(item.path, way));
     }

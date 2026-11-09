@@ -263,6 +263,19 @@ QtObject {
             waiting(250) === "Answer\u2026 \u00b7 2 min \u00b7 2 more", waiting(250));
         expect("its minutes and the rest never give way",
             waiting(50) === "Answer\u2026 \u00b7 2 min \u00b7 2 more", waiting(50));
+        // An item giving its own ways is said by the longest that fits, as
+        // who a sent mail went to gives way by whole names while its time
+        // never does (VKCF3Z, 635ac574).
+        const many = "to Ada Lovelace, Grace Hopper and 3 more";
+        const sent = [{ said: many, ways: [many, "to Ada Lovelace and 4 more"], keep: 1,
+            stays: true }, { said: "14:02", keep: 2, stays: true }];
+        const sentIn = room => Reading.wholeItems(sent, room, width);
+        expect("who it went to whole where it fits",
+            sentIn(480) === `${many} \u00b7 14:02`, sentIn(480));
+        expect("who it went to by fewer names",
+            sentIn(400) === "to Ada Lovelace and 4 more \u00b7 14:02", sentIn(400));
+        expect("no fewer than its last way, and its time stays",
+            sentIn(100) === "to Ada Lovelace and 4 more \u00b7 14:02", sentIn(100));
         // Styled, the kept items keep their words and take a dot in the
         // colour given between them, so a selected agent row reads
         // "working \u00b7 $4.20" with its dot muted (VKCF3Z, 2026-11-06), and
