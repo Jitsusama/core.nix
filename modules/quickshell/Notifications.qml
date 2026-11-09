@@ -293,6 +293,21 @@ Scope {
             notification.dismiss();
     }
 
+    // What the stack means to draw, by rank, read from what it shows rather
+    // than from what's visible, for the IPC to hold the gathered frames to.
+    function meant() {
+        const found = root.playing ? [track] : [];
+        if (root.holding)
+            return found.concat([held]);
+        const front = root.shown.slice(0, root.behind + 1);
+        const tracked = server.trackedNotifications.values;
+        for (let i = 0; i < tracked.length; i++) {
+            if (front.includes(tracked[i].id))
+                found.push(cards.itemAt(i));
+        }
+        return found;
+    }
+
     // One whose time is up leaves the screen but stays open, resting, so
     // its program still answers its actions from the launcher; one its
     // sender asked not to be kept closes. Past `rests` of them, the oldest
@@ -373,6 +388,7 @@ Scope {
                 return "{}";
             const at = card.mapToItem(null, 0, 0);
             const left = screen.width - window.width + at.x;
+            const pileAt = pile.mapToItem(null, 0, 0);
             const from = Notices.sender(root.front.appName, root.front.desktopEntry);
             return JSON.stringify({
                 signed: from.name,
@@ -383,7 +399,24 @@ Scope {
                 left: left / screen.width,
                 top: at.y / screen.height,
                 right: (left + card.width) / screen.width,
-                bottom: (at.y + card.height) / screen.height
+                bottom: (at.y + card.height) / screen.height,
+                // Where the stack ends, below its last edge.
+                foot: (pileAt.y + pile.height) / screen.height,
+                // What niri blurs and the pointer reaches, a frame each,
+                // beside where each thing meant to be drawn stands in the
+                // window, in the window's points, which those frames must
+                // match. What's meant is read from the stack itself, not
+                // from what gathers the frames, so a frame gathered by
+                // mistake shows: what's playing, the held list, or the
+                // shown cards from the front to the last edge.
+                blurred: window.areas.map(area => [area.x, area.y, area.width, area.height]),
+                drawn: meant().map(one => {
+                    const where = one.mapToItem(null, 0, 0);
+                    const x = Math.floor(where.x);
+                    const y = Math.floor(where.y);
+                    return [x, y, Math.ceil(where.x + one.width) - x,
+                        Math.ceil(where.y + one.height) - y];
+                })
             });
         }
     }
@@ -500,21 +533,25 @@ Scope {
             regions: window.areas
         }
 
-        function gather() {
-            const found = root.playing ? [track.area] : [];
+        // What's drawn, in the order its frames are gathered: what's
+        // playing, the held list, and the cards drawn, as they're tracked.
+        function drawn() {
+            const found = root.playing ? [track] : [];
             if (root.holding)
-                found.push(held.area);
+                found.push(held);
             for (let i = 0; i < cards.count; i++) {
                 const card = cards.itemAt(i) as Card;
-                if (card)
-                    found.push(card.area);
+                if (card?.visible)
+                    found.push(card);
             }
-            // Emptied first, since Qt takes a list holding the same
-            // regions as no change at all, and a card that moved with its
-            // column would keep being blurred where it was. Both land in
-            // the one polish that builds what niri gets.
-            areas = [];
-            areas = found;
+            return found;
+        }
+
+        // Gathered as what's drawn changes, never as it moves, since each
+        // frame follows its surface; a card resting off the screen, or
+        // past the last edge, is tracked but not drawn, so it's left out.
+        function gather() {
+            areas = drawn().map(one => one.framed);
         }
 
         visible: (root.shown.length > 0 || root.playing || root.holding)
@@ -572,11 +609,6 @@ Scope {
             x: Theme.floating.reach + (held.visible ? held.gutter : 0)
             y: root.inside.top
             onHeightChanged: reported.changed()
-            // Where the pointer reaches and what niri blurs follow a card
-            // only as it moves within the column, so they're gathered again
-            // as the column moves, or they'd stay behind as a shadow where
-            // it was.
-            onYChanged: window.gather()
 
             Behavior on y {
                 enabled: root.glides
@@ -595,8 +627,8 @@ Scope {
 
                 width: noticeColumn.width
                 visible: root.playing
+                standsAt: Qt.point(noticeColumn.x + track.x, noticeColumn.y + track.y)
                 onVisibleChanged: Qt.callLater(window.gather)
-                onHeightChanged: Qt.callLater(window.gather)
 
                 // A notice's three groups and room, as its neighbours'
                 // are: the track, who plays it, and the player and where
@@ -720,10 +752,9 @@ Scope {
                 width: noticeColumn.width + gutter
                 visible: root.holding
                 screenHeight: window.screen ? window.screen.height : 768
-                onVisibleChanged: Qt.callLater(window.gather)
-                onHeightChanged: Qt.callLater(window.gather)
                 // It moves as what's playing comes and goes above it.
-                onYChanged: Qt.callLater(window.gather)
+                standsAt: Qt.point(noticeColumn.x + held.x, noticeColumn.y + held.y)
+                onVisibleChanged: Qt.callLater(window.gather)
             }
 
             // The notices, one stack: the front one whole, and behind it
@@ -740,9 +771,6 @@ Scope {
                 height: root.shown.length === 0 || root.holding ? 0 : Math.max(root.frontHeight,
                     root.edgeHeight + Math.min(root.shown.length - 1, root.behind) * root.peek)
                 visible: root.shown.length > 0 && !root.holding
-                // The cards move with it as what's above them comes and
-                // goes, which their regions follow only when told.
-                onYChanged: Qt.callLater(window.gather)
 
             Repeater {
                 id: cards
@@ -772,10 +800,13 @@ Scope {
 
                     onFrontChanged: if (front) root.frontHeight = implicitHeight
                     onImplicitHeightChanged: if (front) root.frontHeight = implicitHeight
-                    // Its frame moves as the stack turns, which its window's
-                    // regions follow only when told.
-                    onRankChanged: Qt.callLater(window.gather)
-                    onHeightChanged: Qt.callLater(window.gather)
+                    // It moves with the stack as it turns, and with what's
+                    // above it as that comes and goes.
+                    standsAt: Qt.point(noticeColumn.x + pile.x + card.x,
+                        noticeColumn.y + pile.y + card.y)
+                    // Drawn or not as it comes to the stack, goes past its
+                    // last edge, rests or the stack is held.
+                    onVisibleChanged: Qt.callLater(window.gather)
 
                     Component.onCompleted: {
                         if (!(card.modelData.id in Notices.resting))
