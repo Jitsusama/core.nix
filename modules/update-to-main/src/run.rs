@@ -14,7 +14,8 @@ use std::time::{Duration, Instant};
 
 /// By the thread running each update, the process groups of the commands
 /// it runs now and whether it's being stopped, so a stop can end what runs
-/// and start nothing more. An update runs its commands on one thread.
+/// and start nothing more. An update runs its commands on its own thread,
+/// or on a helper's, which a stop of the update stops too.
 static RUNNING: LazyLock<Mutex<HashMap<ThreadId, Running>>> = LazyLock::new(Mutex::default);
 
 #[derive(Default)]
@@ -22,6 +23,8 @@ struct Running {
     groups: Vec<libc::pid_t>,
     stopping: bool,
     granted: bool,
+    /// The threads that run commands for this update beside its own.
+    helpers: Vec<ThreadId>,
 }
 
 fn running() -> MutexGuard<'static, HashMap<ThreadId, Running>> {
@@ -32,7 +35,10 @@ fn running() -> MutexGuard<'static, HashMap<ThreadId, Running>> {
 /// whole process group, and lets it start none until it has `ended`, so
 /// the update fails at once. Says how many it ended.
 pub fn stop(thread: ThreadId) -> Option<usize> {
-    let mut running = running();
+    stop_in(&mut running(), thread)
+}
+
+fn stop_in(running: &mut HashMap<ThreadId, Running>, thread: ThreadId) -> Option<usize> {
     let update = running.entry(thread).or_default();
     if update.granted {
         return None;
@@ -42,7 +48,32 @@ pub fn stop(thread: ThreadId) -> Option<usize> {
         // SAFETY: kill only sends a signal; a group already gone is ESRCH.
         unsafe { libc::kill(-group, libc::SIGTERM) };
     }
-    Some(update.groups.len())
+    let mut ended = update.groups.len();
+    for helper in update.helpers.clone() {
+        ended += stop_in(running, helper).unwrap_or_default();
+    }
+    Some(ended)
+}
+
+/// Makes this thread a helper of the update on `update`, running commands
+/// beside it, so a stop of the update stops it too; stopped already if
+/// the update is. Its own stop, by its thread's id, stops it alone.
+pub fn helps(update: ThreadId) {
+    let me = thread::current().id();
+    let mut running = running();
+    let owner = running.entry(update).or_default();
+    owner.helpers.push(me);
+    let stopping = owner.stopping;
+    running.entry(me).or_default().stopping |= stopping;
+}
+
+/// Forgets a helper of the update on `update` once it has ended.
+pub fn helped(update: ThreadId, helper: ThreadId) {
+    let mut running = running();
+    running.remove(&helper);
+    if let Some(owner) = running.get_mut(&update) {
+        owner.helpers.retain(|h| *h != helper);
+    }
 }
 
 /// Marks this thread's update as one a hold was given for, which a stop
