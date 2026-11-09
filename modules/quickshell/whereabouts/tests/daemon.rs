@@ -5,12 +5,11 @@
 //! taken away are each said to the watch as they happen; and a kind it
 //! doesn't keep is refused.
 
-use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+use daemon_client::{Client, Daemon};
 use serde_json::{Value, json};
 
 /// Where the laptop was kept before the daemon started, found by Wi-Fi.
@@ -22,10 +21,9 @@ fn kept() -> Value {
     })
 }
 
+/// The daemon, over a root and files of its own.
 struct Running {
-    daemon: Child,
-    socket: PathBuf,
-    folder: PathBuf,
+    daemon: Daemon,
 }
 
 impl Running {
@@ -39,7 +37,8 @@ impl Running {
         zone_set(&folder, "America/Halifax");
         std::fs::write(folder.join("kept/here.json"), kept().to_string()).unwrap();
         let socket = folder.join("daemons/location.sock");
-        let daemon = Command::new(env!("CARGO_BIN_EXE_whereabouts"))
+        let mut command = Command::new(env!("CARGO_BIN_EXE_whereabouts"));
+        command
             .arg(&socket)
             .arg(folder.join("root"))
             .arg(folder.join("kept/here.json"))
@@ -48,38 +47,22 @@ impl Running {
             // Never the machine's own GeoClue, which would find where the
             // tests run and ask the web what's there.
             .env("DBUS_SYSTEM_BUS_ADDRESS", "unix:path=/nonexistent/bus")
-            .stderr(Stdio::null())
-            .spawn()
-            .unwrap();
-        until("the socket never came", || socket.exists());
+            .stderr(Stdio::null());
         Running {
-            daemon,
-            socket,
-            folder,
+            daemon: Daemon::start(&mut command, socket, folder),
         }
+    }
+
+    fn folder(&self) -> &Path {
+        self.daemon.folder()
     }
 
     fn path(&self, path: &str) -> PathBuf {
-        self.folder.join(path)
+        self.folder().join(path)
     }
 
     fn client(&self) -> Client {
-        let stream = UnixStream::connect(&self.socket).unwrap();
-        stream
-            .set_read_timeout(Some(Duration::from_secs(10)))
-            .unwrap();
-        Client {
-            lines: BufReader::new(stream.try_clone().unwrap()),
-            stream,
-        }
-    }
-}
-
-impl Drop for Running {
-    fn drop(&mut self) {
-        let _ = self.daemon.kill();
-        let _ = self.daemon.wait();
-        let _ = std::fs::remove_dir_all(&self.folder);
+        self.daemon.client()
     }
 }
 
@@ -101,55 +84,23 @@ fn written(file: &Path, said: &Value) {
     std::fs::rename(new, file).unwrap();
 }
 
-struct Client {
-    stream: UnixStream,
-    lines: BufReader<UnixStream>,
-}
-
-impl Client {
-    /// The answer to an ask, passing over what a watch pushed meanwhile.
-    fn ask(&mut self, asked: &Value) -> Value {
-        writeln!(self.stream, "{asked}").unwrap();
-        loop {
-            let said = self.next();
-            if said["id"] == asked["id"] && said.get("changed").is_none() {
-                return said;
-            }
-        }
-    }
-
-    fn next(&mut self) -> Value {
-        let mut line = String::new();
-        self.lines.read_line(&mut line).unwrap();
-        serde_json::from_str(&line).unwrap()
-    }
-
-    /// The laptop's record as a watch is next told it, once `wanted`
-    /// holds of it, passing over changes that don't.
-    fn changed_until(&mut self, wanted: impl Fn(&Value) -> bool) -> Value {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        while Instant::now() < deadline {
-            let said = self.next();
-            let found = said["changed"].as_array().and_then(|records| {
-                records
-                    .iter()
-                    .find(|record| record["key"] == "here:laptop")
-                    .cloned()
-            });
-            if let Some(record) = found.filter(|record| wanted(record)) {
-                return record;
-            }
-        }
-        panic!("the watch was never told what was wanted");
-    }
-}
-
-fn until(why: &str, done: impl Fn() -> bool) {
+/// The laptop's record as a watch is next told it, once `wanted` holds of
+/// it, passing over changes that don't.
+fn changed_until(client: &mut Client, wanted: impl Fn(&Value) -> bool) -> Value {
     let deadline = Instant::now() + Duration::from_secs(10);
-    while !done() {
-        assert!(Instant::now() < deadline, "{why}");
-        std::thread::sleep(Duration::from_millis(20));
+    while Instant::now() < deadline {
+        let said = client.heard();
+        let found = said["changed"].as_array().and_then(|records| {
+            records
+                .iter()
+                .find(|record| record["key"] == "here:laptop")
+                .cloned()
+        });
+        if let Some(record) = found.filter(|record| wanted(record)) {
+            return record;
+        }
     }
+    panic!("the watch was never told what was wanted");
 }
 
 #[test]
@@ -186,15 +137,17 @@ fn the_clocks_zone_and_its_move_are_said_as_they_change() {
     let running = Running::new("moves");
     let mut client = running.client();
     client.ask(&json!({"id": "w", "ask": "watch", "kind": "here"}));
-    zone_set(&running.folder, "America/Edmonton");
-    let record = client.changed_until(|record| record["clock_zone"] == "America/Edmonton");
+    zone_set(running.folder(), "America/Edmonton");
+    let record = changed_until(&mut client, |record| {
+        record["clock_zone"] == "America/Edmonton"
+    });
     assert_eq!(record["place"], "Kelpwater, Highreach");
     written(
         &running.path("state/moved.json"),
         &json!({"from": "America/Halifax", "to": "America/Edmonton",
                 "place": "Kelpwater, Highreach", "when": 1_790_000_100}),
     );
-    let record = client.changed_until(|record| !record["moved"].is_null());
+    let record = changed_until(&mut client, |record| !record["moved"].is_null());
     assert_eq!(record["moved"]["from"], "America/Halifax");
     assert_eq!(record["moved"]["at_s"], 1_790_000_100);
 }
@@ -209,7 +162,7 @@ fn a_pin_holds_until_it_is_taken_away() {
         "place": "Quaystead, Westmark", "zone": "America/Halifax", "hand": true,
     });
     written(&running.path("state/pin.json"), &pin);
-    let record = client.changed_until(|record| record["hand"] == true);
+    let record = changed_until(&mut client, |record| record["hand"] == true);
     assert_eq!(record["place"], "Quaystead, Westmark");
     let kept = std::fs::read_to_string(running.path("kept/here.json")).unwrap();
     assert!(
@@ -218,7 +171,7 @@ fn a_pin_holds_until_it_is_taken_away() {
     );
     // Taken away, a here set by hand is let go, until GeoClue says one.
     std::fs::remove_file(running.path("state/pin.json")).unwrap();
-    let record = client.changed_until(|record| record["latitude"].is_null());
+    let record = changed_until(&mut client, |record| record["latitude"].is_null());
     assert_eq!(record["hand"], Value::Null);
     assert!(
         !running.path("kept/here.json").exists(),

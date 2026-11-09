@@ -18,3 +18,8 @@ tokio = { version = "1.53", features = ["macros", "rt", "sync", "time"] }
 # The name and zone of a new here, asked once each time it moves (named.rs).
 ureq = "3.5"
 zbus = { version = "5.19", default-features = false, features = ["tokio"] }
+
+[dev-dependencies]
+# The daemon started for a test, and its client, as every daemon's tests
+# share them (tests/daemon.rs).
+daemon-client = { path = "../../daemon-client" }

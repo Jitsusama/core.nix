@@ -1,19 +1,25 @@
 # The daemon that holds where the laptop is and the clock's zone, for the
 # launcher, built from this directory, its tests run as it builds: its
-# socket's among them (tests/daemon.rs).
+# socket's among them (tests/daemon.rs). Those tests start it and ask it
+# with a crate every daemon's tests share (../../daemon-client), so the
+# source is cut from the modules folder holding both, and built from this
+# one.
 { lib, rustPlatform }:
-rustPlatform.buildRustPackage {
+rustPlatform.buildRustPackage rec {
   pname = "whereabouts";
   version = "0.1.0";
   src = lib.fileset.toSource {
-    root = ./.;
+    root = ../../.;
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
       ./src
       ./tests
+      ../../daemon-client/Cargo.toml
+      ../../daemon-client/src
     ];
   };
+  sourceRoot = "${src.name}/quickshell/whereabouts";
   cargoLock.lockFile = ./Cargo.lock;
   meta = {
     description = "Holds where the laptop is, from GeoClue, and the clock's zone, over a socket";

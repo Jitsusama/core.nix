@@ -389,6 +389,9 @@
   console-font-passes-clippy = ''
     clippy finds nothing in the console's font tool or its tests
   '';
+  daemon-client-passes-clippy = ''
+    clippy finds nothing in daemon-client, the daemon and client the daemons' tests share
+  '';
   darwin-role-twice-is-once = ''
     importing a nix-darwin role twice leaves the machine unchanged
   '';
