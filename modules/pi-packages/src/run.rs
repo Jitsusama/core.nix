@@ -17,7 +17,7 @@ use crate::version::{self, Place};
 /// between 18:49 and 20:36 cost about $45 of rewritten cache in an hour,
 /// across some 70 sessions, so what merges within the hour is swapped in
 /// together.
-pub const SPACING: Duration = Duration::from_secs(60 * 60);
+pub const SPACING: Duration = Duration::from_hours(1);
 
 /// Whether an update waits out [`SPACING`] before swapping.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

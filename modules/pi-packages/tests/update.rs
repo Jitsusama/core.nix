@@ -186,10 +186,9 @@ impl Fixture {
     fn twice(&self) -> Config {
         let twin = self.upstream.with_file_name("upstream-twin");
         std::os::unix::fs::symlink(&self.upstream, &twin).expect("a second name");
+        let url = format!("file://{}", twin.display());
         let mut config = self.alone();
-        config.packages.push(
-            Package::new(&format!("file://{}", twin.display()), "main").expect("a package"),
-        );
+        config.packages.push(Package::new(&url, "main").expect("a package"));
         config
     }
 
@@ -218,7 +217,10 @@ impl Fixture {
             .current_dir(&self.upstream)
             .output()
             .expect("git runs");
-        String::from_utf8(out.stdout).expect("a commit").trim().to_owned()
+        String::from_utf8(out.stdout)
+            .expect("a commit")
+            .trim()
+            .to_owned()
     }
 
     /// Commit a change and update to it, so `current` moves on.
@@ -630,7 +632,7 @@ fn an_update_under_way_is_left_to_finish() {
 }
 
 /// Half an hour: inside [`SPACING`] after a swap.
-const HALF_AN_HOUR: Duration = Duration::from_secs(30 * 60);
+const HALF_AN_HOUR: Duration = Duration::from_mins(30);
 
 /// Just past [`SPACING`] after a swap.
 const PAST_THE_HOUR: Duration = SPACING.saturating_add(Duration::from_secs(1));
@@ -662,7 +664,11 @@ fn a_swap_waits_an_hour_after_the_last() {
         "held for {waited:?} after the last swap, not an hour"
     );
     assert_eq!(fixture.place().current_commit(), Some(first.clone()));
-    assert_eq!(fixture.versions(), [first.clone()], "a held update built a version");
+    assert_eq!(
+        fixture.versions(),
+        [first.clone()],
+        "a held update built a version"
+    );
 
     fixture.change("third");
     let later = Fixture::update_all(&config, start + PAST_THE_HOUR, Pace::Spaced);
@@ -685,7 +691,7 @@ fn an_update_told_now_swaps_inside_the_hour() {
     Fixture::update_all(&config, start, Pace::Spaced);
     fixture.change("second");
 
-    let moved = Fixture::update_all(&config, start + Duration::from_secs(60), Pace::Now);
+    let moved = Fixture::update_all(&config, start + Duration::from_mins(1), Pace::Now);
 
     assert_eq!(
         moved,
