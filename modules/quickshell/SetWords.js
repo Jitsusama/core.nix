@@ -209,7 +209,9 @@ const escapedSpace = /\s/g;
 // :set's arguments, as a space after it lists them: the options, in name
 // order, each with where it stands, or after one's = the values it takes,
 // its choices or what its `choices` gives, a space in one escaped as Vim
-// escapes it. A number has nothing to choose.
+// escapes it. A choice given as { value, note } says its note beside it,
+// as a screen's rotation=upright says "upright" is its row's words. A
+// number has nothing to choose.
 function setArguments(arg, options) {
     const word = Commands.lastWord(arg);
     const equals = word.indexOf("=");
@@ -227,7 +229,10 @@ function setArguments(arg, options) {
     }
     const values = option.values ?? (option.choices ? option.choices() : []);
     const given = word.slice(equals + 1).toLowerCase();
-    return values.map(value => `${name}=${value.replace(escapedSpace, "\\ ")}`)
-        .filter(value => value.slice(equals + 1).toLowerCase().startsWith(given))
-        .map(value => ({ value, note: "" }));
+    return values.map(each => typeof each === "string" ? { value: each, note: "" } : each)
+        .map(each => ({
+            value: `${name}=${each.value.replace(escapedSpace, "\\ ")}`,
+            note: each.note ?? ""
+        }))
+        .filter(each => each.value.slice(equals + 1).toLowerCase().startsWith(given));
 }

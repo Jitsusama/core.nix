@@ -198,6 +198,99 @@ QtObject {
             + "Flipped Flipped90 Flipped180 Flipped270", Screens.transforms().join(" "));
     }
 
+    // A screen's settings typed on the : line (VKCF3Z, 2026-11-09): each
+    // completing from its own choices, their words beside, the turns in
+    // the vocabulary's typed words, a whole rate taken where one mode
+    // rounds to it, and a value it doesn't offer saying what it does.
+    function onTheLine(check) {
+        const typed = { Normal: "upright", 90: "left", 180: "upside-down", 270: "right",
+            Flipped: "mirrored", Flipped90: "mirrored-left",
+            Flipped180: "mirrored-upside-down", Flipped270: "mirrored-right" };
+        const lineWords = {
+            named: id => id,
+            said: (id, key) => key.startsWith("typed-") ? typed[key.slice("typed-".length)]
+                : ({ "not-offered": "{value} not set \u00b7 {screen} offers {offers}",
+                    "none-given": "no {setting} given \u00b7 {screen} offers {offers}",
+                    "offers-range": "{first} to {last}" })[key] ?? key,
+            turned: transform => transform === "Normal" ? "upright" : transform
+        };
+        const monitor = panel();
+        monitor.modes = [
+            { width: 2560, height: 1440, refresh_rate: 59951, is_preferred: true },
+            { width: 2560, height: 1440, refresh_rate: 75000, is_preferred: false },
+            { width: 1920, height: 1080, refresh_rate: 60000, is_preferred: false }
+        ];
+        monitor.current_mode = 0;
+        monitor.logical.transform = "Flipped90";
+        const values = setting => Screens.lineValues(monitor, setting, lineWords)
+            .map(each => `${each.value} (${each.note})`).join(", ");
+        const set = (setting, given) => JSON.stringify(Screens.lineSet(monitor,
+            { setting: setting, typed: given }, lineWords, "HP"));
+        check("the settings a running mode has",
+            Screens.lineSettings(monitor).join(" ") === "scale refresh resolution rotation",
+            Screens.lineSettings(monitor).join(" "));
+        check("scale completes as typed, its multiple beside", values("scale").startsWith(
+            "1 (1\u00d7), 1.25 (1.25\u00d7), 1.5 (1.5\u00d7)"), values("scale"));
+        check("refresh completes every digit, its words beside",
+            values("refresh") === "59.951 (59.951 Hz \u00b7 preferred), 75 (75 Hz)",
+            values("refresh"));
+        check("resolution completes by x", values("resolution")
+            === "2560x1440 (2560 \u00d7 1440 \u00b7 preferred), 1920x1080 (1920 \u00d7 1080)",
+            values("resolution"));
+        check("rotation completes in its typed words", values("rotation").startsWith(
+            "upright (upright), left (90)"), values("rotation"));
+        const now = ["scale", "refresh", "resolution", "rotation"]
+            .map(setting => Screens.lineNow(monitor, setting, lineWords)).join(" ");
+        check("each says where it stands as it's typed",
+            now === "2 59.951 2560x1440 mirrored-left", now);
+        check("a scale is taken with its unit or without",
+            set("scale", "1.5") === set("scale", "1.5\u00d7")
+            && set("scale", "1.5") === '{"asks":{"Scale":{"scale":{"Specific":1.5}}}}',
+            set("scale", "1.5"));
+        check("a whole rate one mode rounds to sets it", set("refresh", "60")
+            === '{"asks":{"Mode":{"mode":{"Specific":{"width":2560,"height":1440,'
+            + '"refresh":59.951}}}}}', set("refresh", "60"));
+        check("a size is taken by x or \u00d7, niri choosing its rate",
+            set("resolution", "1920\u00d71080") === '{"asks":{"Mode":{"mode":{"Specific":'
+            + '{"width":1920,"height":1080,"refresh":null}}}}}', set("resolution", "1920x1080"));
+        check("a turn is taken by its typed word, in any case", set("rotation", "Mirrored-Left")
+            === '{"asks":{"Transform":{"transform":"Flipped90"}}}', set("rotation", "Left"));
+        check("a scale it doesn't offer says what it does", set("scale", "1.3")
+            === '{"refused":"1.3\u00d7 not set \u00b7 HP offers 1\u00d7 to 3\u00d7"}',
+            set("scale", "1.3"));
+        check("a rate no one mode rounds to is refused, in hertz", set("refresh", "120")
+            === '{"refused":"120 Hz not set \u00b7 HP offers 59.951 Hz to 75 Hz"}',
+            set("refresh", "120"));
+        check("a turn it doesn't know says each", set("rotation", "sideways").includes(
+            "sideways not set \u00b7 HP offers upright, left, upside-down, right, mirrored, "),
+            set("rotation", "sideways"));
+        check("nothing after = says none was given", set("scale", " ")
+            === '{"refused":"no scale given \u00b7 HP offers 1\u00d7 to 3\u00d7"}',
+            set("scale", " "));
+        // niri lists the preferred mode first, so the ends are found by
+        // size, never by place, and two modes alike complete once.
+        monitor.modes = [
+            { width: 1920, height: 1080, refresh_rate: 60000, is_preferred: true },
+            { width: 1920, height: 1080, refresh_rate: 144000, is_preferred: false },
+            { width: 1920, height: 1080, refresh_rate: 144000, is_preferred: false },
+            { width: 1920, height: 1080, refresh_rate: 59940, is_preferred: false },
+            { width: 2560, height: 1440, refresh_rate: 60000, is_preferred: false },
+            { width: 1280, height: 720, refresh_rate: 60000, is_preferred: false }
+        ];
+        check("a rate's ends are its least and its most", set("refresh", "100")
+            === '{"refused":"100 Hz not set \u00b7 HP offers 59.94 Hz to 144 Hz"}',
+            set("refresh", "100"));
+        check("a size's ends are its least and its most", set("resolution", "800x600")
+            === '{"refused":"800 \u00d7 600 not set \u00b7 HP offers 1280 \u00d7 720 to 2560 '
+            + '\u00d7 1440"}', set("resolution", "800x600"));
+        check("two modes alike complete once", Screens.lineValues(monitor, "refresh", lineWords)
+            .map(each => each.value).join(" ") === "60 144 59.94", values("refresh"));
+        monitor.current_mode = null;
+        check("a screen running no mode takes only its scale and turn",
+            Screens.lineSettings(monitor).join(" ") === "scale rotation",
+            Screens.lineSettings(monitor).join(" "));
+    }
+
     function run() {
         const failures = [];
         const check = (what, holds, got) => {
@@ -296,6 +389,7 @@ QtObject {
 
         backlight(check);
         settings(check);
+        onTheLine(check);
 
         if (failures.length > 0) {
             for (const failure of failures)

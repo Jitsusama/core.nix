@@ -83,16 +83,24 @@ Provider {
     // A choice a step into a setting, as the vocabulary names it, keyed by
     // what it chooses too, so each level is a row of its own to hold as it
     // becomes chosen.
-    function choice(key, fill, chosen, glyph, run) {
+    // Said by its value alone, as every choice is (VKCF3Z, 2026-11-09):
+    // "60%", "4,000 K", its setting's name a hidden word so "warmth 4000"
+    // still finds it, and its words' :set deskbrightness= its command.
+    // `made` holds its words' id, the value it's keyed by, what fills its
+    // words, whether it's chosen, its mark, its run and its setting.
+    function choice(made) {
         return thing({
-            key: `${key}:${Object.values(fill).join(":")}`,
-            verb: Words.verb(key),
-            name: Words.name(key, "", fill),
-            glyph: glyph,
+            key: `${made.key}:${made.value}`,
+            wordsId: made.key,
+            fill: made.fill,
+            verb: Words.verb(made.key),
+            name: Words.name(made.key, "", made.fill),
+            keywords: `${Words.name(made.setting)} ${made.value}`,
+            glyph: made.glyph,
             hue: "action",
-            side: chosen ? "chosen" : "",
+            side: made.chosen ? said("chosen") : "",
             stays: true,
-            run: run
+            run: made.run
         });
     }
 
@@ -128,7 +136,8 @@ Provider {
         const brightness = setting({
             key: "light:desk:brightness",
             name: Words.name("light:desk:brightness"),
-            side: light.on ? `${light.percent}%` : `out, ${light.percent}% once lit`,
+            side: light.on ? `${light.percent}%`
+                : said("outOnceLit").replace("{percent}", light.percent),
             glyph: Theme.glyph.brightness,
             graph: level(light.on ? light.percent : 0, 100)
         }, () => provider.brightnesses());
@@ -152,8 +161,15 @@ Provider {
         return [
             deskStep("verb:brighter", "", () => provider.brighten(at() + brightnessStep)),
             deskStep("verb:dimmer", "", () => provider.brighten(at() - brightnessStep))
-        ].concat(levels.map(each => choice("light:desk:level", { n: each },
-            light.percent === each, Theme.glyph.brightness, () => provider.brighten(each))));
+        ].concat(levels.map(each => choice({
+            key: "light:desk:level",
+            value: each,
+            fill: { n: each },
+            chosen: light.percent === each,
+            glyph: Theme.glyph.brightness,
+            run: () => provider.brighten(each),
+            setting: "light:desk:brightness"
+        })));
     }
 
     // A step into its Warmth: a step warmer or cooler, then each warmth.
@@ -162,8 +178,15 @@ Provider {
         return [
             deskStep("verb:warmer", "", () => provider.warm(at() - warmthStep)),
             deskStep("verb:cooler", "", () => provider.warm(at() + warmthStep))
-        ].concat(warmths.map(each => choice("light:desk:kelvin", { k: each },
-            light.kelvin === each, Theme.glyph.lamp, () => provider.warm(each))));
+        ].concat(warmths.map(each => choice({
+            key: "light:desk:kelvin",
+            value: each,
+            fill: { k: each, warmth: kelvins(each) },
+            chosen: light.kelvin === each,
+            glyph: Theme.glyph.lamp,
+            run: () => provider.warm(each),
+            setting: "light:desk:warmth"
+        })));
     }
 
     // Every row that says how the light is lit, made as `light` lights it:
@@ -223,7 +246,7 @@ Provider {
     // How the desk light is lit, in a few words, set apart by a dot.
     function deskLit() {
         const light = DeskLight.light;
-        return light.on ? `${light.percent}% \u00b7 ${kelvins(light.kelvin)}` : "off";
+        return light.on ? `${light.percent}% \u00b7 ${kelvins(light.kelvin)}` : said("off");
     }
 
     // A word the desk light's drawer says, as the vocabulary has it.
@@ -235,9 +258,9 @@ Provider {
         if (DeskLight.light === null)
             return null;
         return {
-            headline: `the desk light is ${deskLit()}`,
+            headline: said("is").replace("{lit}", deskLit()),
             rows: deskParts(),
-            note: "a camera lights it",
+            note: said("cameraLights"),
             thing: true,
             drawer: () => provider.deskDrawer()
         };
@@ -275,27 +298,36 @@ Provider {
         };
     }
 
+    // What setting the desk light does, said and run: on or off where a
+    // power is given, else a share, else a warmth.
+    function deskDone(share, kelvin, power) {
+        if (power !== undefined)
+            return {
+                headline: said(power === "on" ? "turnOn" : "turnOff"),
+                run: () => provider.turn(power === "on")
+            };
+        if (share !== undefined)
+            return {
+                headline: said("setTo").replace("{to}", `${Math.min(100, Number(share))}%`),
+                run: () => provider.brighten(Number(share))
+            };
+        return {
+            headline: said("setTo").replace("{to}", kelvins(Number(kelvin))),
+            run: () => provider.warm(Number(kelvin))
+        };
+    }
+
     // Setting the desk light to a share, a warmth, or on or off, Return
     // doing it.
     function setDesk(share, kelvin, power) {
         const shown = deskTold();
         if (shown === null)
             return null;
-        const done = power !== undefined ? {
-            headline: power === "on" ? "turn the desk light on" : "turn the desk light off",
-            run: () => provider.turn(power === "on")
-        } : share !== undefined ? {
-            headline: `set the desk light to ${Math.min(100, Number(share))}%`,
-            run: () => provider.brighten(Number(share))
-        } : {
-            headline: `set the desk light to ${kelvins(Number(kelvin))}`,
-            run: () => provider.warm(Number(kelvin))
-        };
-        return Object.assign(done, {
+        return Object.assign(deskDone(share, kelvin, power), {
             verb: Words.command("command:desk").verb,
             stays: true,
             rows: shown.rows,
-            note: `now ${deskLit()}`
+            note: said("now").replace("{lit}", deskLit())
         });
     }
 
@@ -306,12 +338,12 @@ Provider {
         const kelvin = DeskLight.light.kelvin + (way === "warmer" ? -warmthStep : warmthStep);
         const kept = Math.max(DeskLight.warmest, Math.min(DeskLight.coolest, kelvin));
         return {
-            headline: `make the desk light ${way} \u00b7 ${kelvins(kept)}`,
+            headline: said("make").replace("{way}", way).replace("{warmth}", kelvins(kept)),
             verb: Words.command("command:desk").verb,
             run: () => provider.warm(kept),
             stays: true,
             rows: shown.rows,
-            note: `now ${deskLit()}`
+            note: said("now").replace("{lit}", deskLit())
         };
     }
 

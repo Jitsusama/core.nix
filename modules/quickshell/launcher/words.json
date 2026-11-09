@@ -3135,7 +3135,17 @@
       "said": {
         "usb": "on USB",
         "plate": "desk light",
-        "of": "of {least} to {most}"
+        "of": "of {least} to {most}",
+        "chosen": "chosen",
+        "off": "off",
+        "outOnceLit": "out, {percent}% once lit",
+        "is": "the desk light is {lit}",
+        "cameraLights": "a camera lights it",
+        "turnOn": "turn the desk light on",
+        "turnOff": "turn the desk light off",
+        "setTo": "set the desk light to {to}",
+        "make": "make the desk light {way} \u00b7 {warmth}",
+        "now": "now {lit}"
       }
     },
     {
@@ -3167,14 +3177,18 @@
     },
     {
       "id": "light:desk:level",
+      "command": "set",
+      "argument": "deskbrightness={n}",
       "in": "light:desk:brightness",
-      "name": "Brightness to {n}%",
+      "name": "{n}%",
       "verb": "set"
     },
     {
       "id": "light:desk:kelvin",
+      "command": "set",
+      "argument": "deskwarmth={k}",
       "in": "light:desk:warmth",
-      "name": "Warmth to {k} K",
+      "name": "{warmth}",
       "verb": "set"
     },
     {
@@ -8094,7 +8108,17 @@
         "isUnplugged": "{name} is unplugged",
         "isPluggedIn": "{name} is plugged in",
         "notUnplugged": "{name} not unplugged \u00b7 the last lit screen",
-        "notOff": "{name} not turned off \u00b7 the last lit screen"
+        "notOff": "{name} not turned off \u00b7 the last lit screen",
+        "not-offered": "{value} not set \u00b7 {screen} offers {offers}",
+        "offers-range": "{first} to {last}",
+        "none-given": "no {setting} given \u00b7 {screen} offers {offers}",
+        "off": "off",
+        "focused": "focused",
+        "focus": "focus",
+        "turnOn": "turn on",
+        "scaleAt": "scale {scale}",
+        "setTo": "set the screen to {share}%",
+        "now": "now {share}%"
       }
     },
     {
@@ -8104,12 +8128,18 @@
       "term": "Desktop/brightness",
       "answers": [
         "brightness"
-      ]
+      ],
+      "said": {
+        "followsRoom": "{now} of {most} steps; it follows the room, and the keys set it",
+        "everyFollows": "every screen follows it, and the keys set it"
+      }
     },
     {
       "id": "displays:brightness:level",
+      "command": "set",
+      "argument": "brightness={n}",
       "in": "displays:brightness",
-      "name": "Brightness to {n}%",
+      "name": "{n}%",
       "verb": "set"
     },
     {
@@ -8215,6 +8245,14 @@
       }
     },
     {
+      "id": "verb:display-set",
+      "command": "setlocal",
+      "argument": "{setting}={value}",
+      "in": "displays",
+      "name": "{value}",
+      "verb": "set"
+    },
+    {
       "id": "verb:display-unplug",
       "command": "setlocal",
       "argument": "unplugged",
@@ -8231,7 +8269,10 @@
       "name": "Room Light",
       "answers": [
         "room light"
-      ]
+      ],
+      "said": {
+        "hears": "as the screen's sensor hears it, from dark to daylight"
+      }
     },
     {
       "id": "displays:scale",
@@ -8272,7 +8313,15 @@
         "Flipped": "mirrored",
         "Flipped90": "mirrored, a quarter turn left",
         "Flipped180": "mirrored, upside down",
-        "Flipped270": "mirrored, a quarter turn right"
+        "Flipped270": "mirrored, a quarter turn right",
+        "typed-Normal": "upright",
+        "typed-90": "left",
+        "typed-180": "upside-down",
+        "typed-270": "right",
+        "typed-Flipped": "mirrored",
+        "typed-Flipped90": "mirrored-left",
+        "typed-Flipped180": "mirrored-upside-down",
+        "typed-Flipped270": "mirrored-right"
       }
     },
     {

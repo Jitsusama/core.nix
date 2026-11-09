@@ -249,8 +249,9 @@ def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noq
     desktop.next_row()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Brightness")
     desktop.step_in("ret")
-    desktop.launcher_until(lambda shown: "Brightness to 40%" in shown["rows"])
-    desktop.type_in("40", selecting="Brightness to 40%")
+    # Each level is said by its value alone, as every choice is (VKCF3Z, 2026-11-09).
+    desktop.launcher_until(lambda shown: "40%" in shown["rows"])
+    desktop.type_in("40", selecting="40%")
     # Return from the find lands on it, since it changes how things stand, and a second does it.
     desktop.land()
     machine.send_key("ret")
