@@ -33,8 +33,7 @@ function addressing(model) {
     return kept([
         { heading: "addressing" },
         fact("public", joined([net.public_address, net.double_nat ? "behind another NAT" : ""])),
-        fact("lease", joined([net.wan_type, lease.address && lease.mask
-            ? `${lease.address} / ${lease.mask}` : lease.address,
+        fact("lease", joined([net.wan_type, withPrefix(lease.address, lease.mask),
             lease.router ? `router ${lease.router}` : ""])),
         fact("gateway", net.gateway_address),
         fact("mode", joined([String(net.mode ?? "").toUpperCase(),
@@ -49,17 +48,23 @@ function addressing(model) {
     ])).concat(reserved(model));
 }
 
+// An address with its mask as a prefix, "10.0.0.0/22", as every address and
+// mask here is said, the mask whole only where it's no prefix.
+function withPrefix(address, mask) {
+    const bits = prefix(mask);
+    return known(address) && bits !== null ? `${address}/${bits}`
+        : joined([address, known(mask) ? `mask ${mask}` : ""]);
+}
+
 // A subnet, by its kind: how it stands first, a part that isn't so giving
 // way, then its address and prefix and the range DHCP hands out:
 // "off \u00b7 10.0.0.0/21 \u00b7 DHCP 10.0.0.20 to 10.0.0.254" (VKCF3Z, 2026-11-08).
 function subnet(one) {
-    const bits = prefix(one.mask);
     const value = joined([
         one.on === false ? "off" : "",
         one.internet === false ? "no internet" : "",
         one.open === true ? "open" : "",
-        known(one.address) && bits !== null ? `${one.address}/${bits}`
-            : joined([one.address, known(one.mask) ? `mask ${one.mask}` : ""]),
+        withPrefix(one.address, one.mask),
         known(one.first) && known(one.last) ? `DHCP ${one.first} to ${one.last}` : "",
     ]);
     if (one.kind === "main" || one.kind === "guest") {

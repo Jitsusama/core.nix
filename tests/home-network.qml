@@ -185,7 +185,7 @@ QtObject {
             ["mesh", "connected"],
             ["isp", "Example ISP \u00b7 AS64496"],
             ["public", "203.0.113.1"],
-            ["lease", "DHCP \u00b7 203.0.113.1 / 255.255.254.0 \u00b7 router 203.0.113.2"],
+            ["lease", "DHCP \u00b7 203.0.113.1/23 \u00b7 router 203.0.113.2"],
             ["gateway", "10.0.0.1"],
             ["mode", "NAT \u00b7 addresses automatic"],
             ["dns", "automatic \u00b7 203.0.113.3 \u00b7 203.0.113.4 \u00b7 caching off \u00b7 "
