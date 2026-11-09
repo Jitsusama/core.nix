@@ -157,15 +157,22 @@ its guide, the greeter or lock, `flake.lock` or nix-offload
 (`tools/merge-net/must-run.txt`). Of those, it names only the ones whose
 derivation moved from main, since the rest would give main's result. A
 change to nix-offload, which moves none, sends one VM test's subtests
-through itself with `run-subtests --there` instead. A machine switches only to merged main,
-and a bad switch is undone by switching back to the generation before it.
+through itself with `run-subtests --there` instead. `merge-net ready COMMIT`,
+asked before a head merges, refuses one that doesn't sit on origin's main
+as it is now, or at which no `changed-checks` run that built what it named
+passed, from nix-offload's record of what passed at each commit. A machine
+switches only to merged main, and a bad switch is undone by switching
+back to the generation before it.
 
 The rest run after the merge, on the net: `merge-net watch`, which
-`modules/merge-net` runs as a daemon, follows main and runs each VM test
-a head changed since the last head it passed, on the VM builders, twelve
-at once. A test that fails twice at one commit is broken: the net finds
-which merge broke it the moment it does, while the round's other tests
-run on, searching only the merges that changed the test's derivation,
+`modules/merge-net` runs as a daemon, follows main and runs each check
+a head changed since the last head it passed, on the builders, twelve at
+once: the checks other than VM tests first, since they take seconds, then
+the VM tests. A branch built before its rebase, or that built only some of
+what it named, merges a red check main never ran; on 2026-11-08 four were
+red on main by 11:00, and none was caught. A check that fails twice at one
+commit is broken: the net finds which merge broke it the moment it does,
+while the round's other tests run on, searching only the merges that changed the test's derivation,
 since a derivation fails wherever it does, and running a searched merge's
 two runs at once, checks that the merge changed the test and that the
 test passed just before it, writes `~/.local/state/net/hold.json` so no machine
@@ -191,7 +198,11 @@ a quarantined test still runs, but its failure is said and blocks nothing.
 A run the net stops, past two hours on a builder or silent there for
 thirty minutes, is a stall, not a failure (the wait for a builder counts
 for neither): one stalling twice at a commit is a finding, and no
-merge is blamed for it. A switch leaves the net running, since stopping it
+merge is blamed for it. A search its stalls leave unsettled holds no switch:
+its test is kept in `~/.local/state/net/unsettled.json` and runs first at the
+next head, as a held test does, since only a test's own output earns a hold.
+A failure already found fixed forward at a head isn't searched again when a
+restarted round hears it. A switch leaves the net running, since stopping it
 mid-round loses every run in flight; it starts its new build between rounds.
 The net starts nothing while a hold on the whole machine stands, or while
 `~/.local/state/net/pause` is there, and `merge-net status` says where it

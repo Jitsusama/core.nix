@@ -18,8 +18,8 @@ XDG's state folder for every run sent to a builder, the lent builder's
 - A VM run's wait for a builder: a median under 2 minutes.
 - The machine Joel uses: CPU pressure over five minutes under 15% from
   agents' work.
-- The net: a merge that breaks a VM test is caught within an hour of
-  landing, so a round runs as many tests at once as the VM builders hold.
+- The net: a merge that breaks a check, a VM test or any other, is caught
+  within an hour of landing, so a round runs as many tests at once as the VM builders hold.
 - Memory: no machine-wide out-of-memory kill for a week, and swap rarely
   touched. Sessions that only wait are parked or ended rather than held.
 - Runs and tokens per landing: falling week on week, each group against
