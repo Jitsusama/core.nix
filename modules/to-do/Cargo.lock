@@ -285,6 +285,7 @@ version = "0.1.0"
 dependencies = [
  "inotify",
  "jiff",
+ "libc",
  "serde",
  "serde_json",
  "tempfile",

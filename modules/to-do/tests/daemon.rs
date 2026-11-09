@@ -1,6 +1,8 @@
 //! The daemon itself, over a folder of to-dos and a stand-in machine: the
 //! verdicts it writes as checks pass, files come, a boot is newer than a
-//! to-do, and a to-do leaves its file.
+//! to-do, and a to-do leaves its file; a check that hangs holding up no
+//! other; and a done to-do staying done through a failing check and a
+//! restart.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -155,4 +157,55 @@ fn only_joels_word_has_no_verdict_and_a_to_do_gone_takes_its_own() {
             .as_object()
             .is_some_and(serde_json::Map::is_empty)
     });
+}
+
+#[test]
+fn a_check_that_hangs_holds_up_no_other() {
+    let dir = tempfile::tempdir().unwrap();
+    let running = start(dir.path());
+    // The hanging check stands for one that never answers, and is stopped
+    // as the daemon is.
+    to_dos(
+        dir.path(),
+        "QEST-5",
+        r#"{"id":"hangs","title":"H","doneWhen":{"check":"sleep 20"}},
+           {"id":"quick","title":"Q","doneWhen":{"check":"true"}}"#,
+    );
+    let found = until(&running, |v| state(v, "QEST-5:quick").is_some());
+    assert_eq!(state(&found, "QEST-5:quick"), Some("done"));
+    assert_eq!(state(&found, "QEST-5:hangs"), None);
+}
+
+#[test]
+fn a_done_to_do_stays_done_though_its_check_fails_after_and_across_a_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let once = dir.path().join("once");
+    fs::write(&once, "").unwrap();
+    // It passes the first time it runs and fails every time after.
+    let done = format!(
+        r#"{{"id":"once","title":"O","doneWhen":{{"check":"rm {}"}}}}"#,
+        once.display()
+    );
+    // Each later to-do's check takes a second, so a check run again
+    // beside it would be heard first.
+    let later =
+        |id: &str| format!(r#"{{"id":"{id}","title":"L","doneWhen":{{"check":"sleep 1"}}}}"#);
+    let running = start(dir.path());
+    to_dos(dir.path(), "QEST-6", &done);
+    until(&running, |v| state(v, "QEST-6:once") == Some("done"));
+    // A sign-in is a signal, which would run every check again.
+    fs::create_dir_all(dir.path().join("signins")).unwrap();
+    fs::write(dir.path().join("signins/stand-in.json"), "{}").unwrap();
+    to_dos(dir.path(), "QEST-6", &format!("{done},{}", later("after")));
+    let found = until(&running, |v| state(v, "QEST-6:after").is_some());
+    assert_eq!(state(&found, "QEST-6:once"), Some("done"));
+    drop(running);
+    let running = start(dir.path());
+    to_dos(
+        dir.path(),
+        "QEST-6",
+        &format!("{done},{},{}", later("after"), later("restarted")),
+    );
+    let found = until(&running, |v| state(v, "QEST-6:restarted").is_some());
+    assert_eq!(state(&found, "QEST-6:once"), Some("done"));
 }

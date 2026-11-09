@@ -112,27 +112,42 @@ pub fn heard(
                     figure: ("changed_at", at.unwrap_or_default().to_string()),
                 })
             } else {
-                Err(at.map(|at| ("changed_at", at.to_string())))
+                // Nothing writes a service's sign-in yet but what a test
+                // does, so one never made says so rather than nothing.
+                Err(Some(at.map_or(("signed_in", "never".to_owned()), |at| {
+                    ("changed_at", at.to_string())
+                })))
             }
         }
         Signal::Device(name) => facts
             .devices
             .iter()
-            .find(|d| d.to_lowercase().contains(&name.to_lowercase()))
+            .find(|d| plain(d).contains(&plain(name)))
             .map(|d| Heard {
                 at: None,
                 figure: ("device", d.clone()),
             })
             .ok_or(None),
-        Signal::File(path) => facts
-            .files
-            .get(path)
-            .map(|at| Heard {
+        // A file counts once it's written as the to-do is raised or
+        // after, within the second both are told in.
+        Signal::File(path) => match facts.files.get(path) {
+            Some(at) if raised.is_none_or(|raised| *at >= raised) => Ok(Heard {
                 at: Some(*at),
                 figure: ("changed_at", at.to_string()),
-            })
-            .ok_or(None),
+            }),
+            Some(at) => Err(Some(("changed_at", at.to_string()))),
+            None => Err(None),
+        },
     }
+}
+
+/// A device's name as it's matched: its letters and digits alone, in
+/// lower case, so `ergodox-ez` finds "ErgoDox EZ".
+fn plain(name: &str) -> String {
+    name.chars()
+        .filter(char::is_ascii_alphanumeric)
+        .map(|c| c.to_ascii_lowercase())
+        .collect()
 }
 
 #[cfg(test)]
@@ -235,7 +250,15 @@ mod tests {
         let dock = heard(&Signal::Device("dock".into()), None, &found, &line).unwrap();
         assert_eq!(dock.figure, ("device", "Thunderbolt Dock TB4".into()));
         assert!(heard(&Signal::Device("Keyboard".into()), None, &found, &line).is_err());
+        let spelled = heard(&Signal::Device("dock-tb4".into()), None, &found, &line);
+        assert!(spelled.is_ok());
+        assert_eq!(
+            heard(&Signal::Signin("slack".into()), None, &found, &line),
+            Err(Some(("signed_in", "never".into())))
+        );
         assert!(heard(&Signal::File("/run/x".into()), None, &found, &line).is_ok());
+        assert!(heard(&Signal::File("/run/x".into()), Some(400), &found, &line).is_ok());
+        assert!(heard(&Signal::File("/run/x".into()), Some(401), &found, &line).is_err());
         assert!(heard(&Signal::File("/run/y".into()), None, &found, &line).is_err());
     }
 }

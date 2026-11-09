@@ -2708,11 +2708,16 @@
   to-do-clears-each-to-do-by-itself = ''
     the to-do daemon finds a to-do done or ready by its check or its signal, a boot or a switch
     only after it was raised and a switch to a commit at it or past it, keeps a failing check to
-    a run each ten minutes at most, says every figure it found, and writes its verdicts only as
-    they change
+    a run each ten minutes at most, stops a check that hangs with all it started, keeps a to-do
+    done through a failing check and a restart, says every figure it found, and writes its
+    verdicts only as they change
   '';
   to-do-passes-clippy = ''
     clippy finds nothing in the to-do daemon or its tests
+  '';
+  to-do-runs-in-each-account = ''
+    the to-do daemon runs in each account with its own git and journalctl named, its checks on
+    the user manager's PATH, and a switch restarts it
   '';
   tuple-call-holds-the-call = ''
     tuple-call follows Tuple's stream only while Tuple's daemon answers, at once when its log says

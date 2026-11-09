@@ -5,11 +5,15 @@
 # For You. Every session that needs him writes its to-dos beside it, in
 # mission/waiting, through mesh_wait.
 #
-# A check runs as the account does, on its own PATH, so a to-do's check
-# finds what a session's would. A switch's core is read from
-# update-to-main's follower's journal, and whether it's past a commit from
-# a bare clone of core of the daemon's own, fetched only while a to-do
-# waits on a commit it lacks.
+# A check runs on the user manager's own PATH, the one every session's
+# shell starts from, so a to-do's check finds quick, ~/.local/bin and
+# the wrappers as a session's would; the daemon's own git and journalctl
+# are named outright instead. Each check is stopped, with all it
+# started, after 90 seconds. A switch's core is read from
+# update-to-main's follower's journal, and whether it's past a commit
+# from a bare clone of core of the daemon's own, fetched only while a
+# to-do waits on a commit it lacks. A switch restarts it, so it runs the
+# daemon it was switched to; what it found done stays done.
 #
 # It reads Linux's inotify, /proc and sysfs, so it runs only there.
 {
@@ -26,7 +30,10 @@ lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
   home.packages = [ package ];
 
   systemd.user.services.to-do = {
-    Unit.Description = "Runs each to-do's check and hears its signals";
+    Unit = {
+      Description = "Runs each to-do's check and hears its signals";
+      X-SwitchMethod = "restart";
+    };
     Service = {
       ExecStart = lib.escapeShellArgs [
         (lib.getExe package)
@@ -34,17 +41,10 @@ lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
         "${mission}/verdicts.json"
         "${mission}/signins"
         "${config.xdg.stateHome}/to-do/core.git"
-      ];
-      # The account's own programs for its checks, then git for core's
-      # history, journalctl for the follower and timeout for each check.
-      Environment = [
-        "PATH=${config.home.profileDirectory}/bin:/run/current-system/sw/bin:${
-          lib.makeBinPath [
-            pkgs.coreutils
-            pkgs.git
-            pkgs.systemd
-          ]
-        }"
+        "--git"
+        (lib.getExe pkgs.git)
+        "--journalctl"
+        "${pkgs.systemd}/bin/journalctl"
       ];
       Restart = "always";
       RestartSec = 5;

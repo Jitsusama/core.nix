@@ -8,11 +8,12 @@ use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::time::UNIX_EPOCH;
+use std::process::Command;
+use std::time::{Duration, UNIX_EPOCH};
 
 use serde::Deserialize;
 
+use crate::bounded;
 use crate::judge::{History, Switch};
 
 /// Core's repository, which the daemon keeps a bare clone of to say
@@ -152,26 +153,36 @@ impl Follower {
     }
 }
 
+/// How long git may take to read the clone, and to clone or fetch it.
+const READING: Duration = Duration::from_secs(10);
+const FETCHING: Duration = Duration::from_secs(120);
+
 /// Core's history, from a bare clone of its own.
 pub struct Core {
     pub folder: PathBuf,
+    /// The git it's read with.
+    pub git: PathBuf,
+}
+
+/// Runs git for at most `bound`, saying whether it succeeded.
+fn succeeds(command: Command, bound: Duration) -> io::Result<bool> {
+    let ended = bounded::run(command, bound, bounded::GRACE)?;
+    Ok(ended.status.is_some_and(|s| s.success()))
 }
 
 impl Core {
-    fn git(&self, args: &[&str]) -> io::Result<std::process::ExitStatus> {
-        Command::new("git")
-            .arg("--git-dir")
-            .arg(&self.folder)
-            .args(args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
+    fn git(&self, args: &[&str], bound: Duration) -> io::Result<bool> {
+        let mut command = Command::new(&self.git);
+        command.arg("--git-dir").arg(&self.folder).args(args);
+        succeeds(command, bound)
     }
 
     fn has(&self, commit: &str) -> bool {
-        self.git(&["cat-file", "-e", &format!("{commit}^{{commit}}")])
-            .is_ok_and(|s| s.success())
+        self.git(
+            &["cat-file", "-e", &format!("{commit}^{{commit}}")],
+            READING,
+        )
+        .unwrap_or(false)
     }
 
     /// Fetches main, cloning first where there's no clone yet, only when
@@ -179,20 +190,21 @@ impl Core {
     /// waits on a commit.
     pub fn fetch_for(&self, commits: &[&str]) -> io::Result<()> {
         if !self.folder.exists() {
-            let status = Command::new("git")
+            let mut clone = Command::new(&self.git);
+            clone
                 .args(["clone", "--bare", "--quiet", CORE])
-                .arg(&self.folder)
-                .stdin(Stdio::null())
-                .status()?;
-            if !status.success() {
+                .arg(&self.folder);
+            if !succeeds(clone, FETCHING)? {
+                // A clone stopped part way would be taken for a whole one.
+                let _ = fs::remove_dir_all(&self.folder);
                 return Err(io::Error::other("git clone failed"));
             }
         }
         if commits.iter().all(|c| self.has(c)) {
             return Ok(());
         }
-        let status = self.git(&["fetch", "--quiet", "origin", "+refs/heads/*:refs/heads/*"])?;
-        if status.success() {
+        let fetch = ["fetch", "--quiet", "origin", "+refs/heads/*:refs/heads/*"];
+        if self.git(&fetch, FETCHING)? {
             Ok(())
         } else {
             Err(io::Error::other("git fetch failed"))
@@ -205,9 +217,8 @@ impl History for Core {
         if !self.has(core) || !self.has(commit) {
             return None;
         }
-        self.git(&["merge-base", "--is-ancestor", commit, core])
+        self.git(&["merge-base", "--is-ancestor", commit, core], READING)
             .ok()
-            .map(|s| s.success())
     }
 }
 

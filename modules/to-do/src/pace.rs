@@ -2,16 +2,23 @@
 //! as its to-do is first heard and at each signal the machine gives, and
 //! between those after 30 s, doubling to 10 min while it keeps failing,
 //! so a check that won't pass for a day costs a run each ten minutes.
+//! Every due check runs at once, each on its own and for at most
+//! TIMEOUT, its run told back as it ends, so one slow check holds up no
+//! other.
 
-use std::process::{Command, Stdio};
-use std::time::Instant;
+use std::process::Command;
+use std::time::Duration;
+
+use crate::bounded;
 
 /// The first wait after a failing run, in seconds.
 pub const FIRST: i64 = 30;
 /// The longest wait, in seconds.
 pub const LONGEST: i64 = 600;
-/// How long a run may take before it's stopped, in seconds.
-pub const TIMEOUT: u32 = 10;
+/// How long a run may take before it's asked to stop, in seconds: long
+/// enough for a check that asks a service over the network, as one
+/// bounding its own call at a minute does.
+pub const TIMEOUT: u64 = 90;
 /// How much of a run's output is kept, its end, in bytes.
 const KEPT: usize = 4096;
 
@@ -45,6 +52,10 @@ pub struct Pace {
     pub next_at: i64,
     /// How many runs in a row have failed.
     failing: u32,
+    /// Whether a run has started that hasn't been told back yet.
+    running: bool,
+    /// Whether a signal came while it ran, so it runs again as it ends.
+    again: bool,
 }
 
 impl Pace {
@@ -58,25 +69,46 @@ impl Pace {
             last: None,
             next_at: now,
             failing: 0,
+            running: false,
+            again: false,
         }
     }
 
+    /// When it must next wake the daemon: never while it runs, since its
+    /// run wakes it as it ends.
+    pub fn next(&self) -> Option<i64> {
+        (!self.running).then_some(self.next_at)
+    }
+
+    /// Whether it should start a run now, never while one goes.
     pub fn due(&self, now: i64) -> bool {
-        now >= self.next_at
+        !self.running && now >= self.next_at
+    }
+
+    /// Says a run has started, so none starts beside it.
+    pub fn start(&mut self) {
+        self.running = true;
     }
 
     /// Runs it again at once, as a signal may have changed what it checks.
     pub fn hurry(&mut self, now: i64) {
         self.next_at = self.next_at.min(now);
+        self.again |= self.running;
     }
 
     /// Takes in a run made at `at`, and when the next is due.
     pub fn ran(&mut self, run: Run, at: i64) {
+        self.running = false;
         self.ran += 1;
         self.first_at.get_or_insert(at);
         self.last_at = Some(at);
         self.failing = if run.passed() { 0 } else { self.failing + 1 };
-        self.next_at = at + wait(self.failing);
+        self.next_at = if self.again {
+            at
+        } else {
+            at + wait(self.failing)
+        };
+        self.again = false;
         self.last = Some(run);
     }
 }
@@ -89,28 +121,27 @@ pub fn wait(failing: u32) -> i64 {
 
 /// Runs `check` in `sh`, stopped after TIMEOUT seconds.
 pub fn run(check: &str) -> Run {
-    let started = Instant::now();
-    let output = Command::new("timeout")
-        .args([&TIMEOUT.to_string(), "sh", "-c", check])
-        .stdin(Stdio::null())
-        .output();
-    let took_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-    match output {
-        Ok(output) => {
-            // timeout says 124 when it stopped the check, which is no
-            // exit of the check's own.
-            let exit = output.status.code().filter(|code| *code != 124);
-            let mut text = output.stdout;
-            text.extend_from_slice(&output.stderr);
-            Run {
-                exit,
-                took_ms,
-                said: last_line(&text),
-            }
-        }
+    run_within(check, Duration::from_secs(TIMEOUT), bounded::GRACE)
+}
+
+/// Runs `check` in `sh` for at most `bound`, then `grace` once asked to
+/// stop.
+pub fn run_within(check: &str, bound: Duration, grace: Duration) -> Run {
+    let mut command = Command::new("sh");
+    command.args(["-c", check]);
+    match bounded::run(command, bound, grace) {
+        Ok(ended) => Run {
+            exit: ended.status.and_then(|status| status.code()),
+            took_ms: u64::try_from(ended.took.as_millis()).unwrap_or(u64::MAX),
+            said: if ended.status.is_some() {
+                last_line(&ended.output)
+            } else {
+                format!("stopped after {} s", bound.as_secs())
+            },
+        },
         Err(error) => Run {
             exit: None,
-            took_ms,
+            took_ms: 0,
             said: error.to_string(),
         },
     }
@@ -167,6 +198,19 @@ mod tests {
         assert_eq!(found.exit, Some(3));
         assert_eq!(found.said, "two");
         assert!(run("true").passed());
+    }
+
+    #[test]
+    fn a_check_that_hangs_is_stopped_and_says_so() {
+        // The sleep stands for a check that never answers.
+        let found = run_within(
+            "sleep 30",
+            Duration::from_millis(200),
+            Duration::from_millis(200),
+        );
+        assert_eq!(found.exit, None);
+        assert!(!found.passed());
+        assert!(found.said.starts_with("stopped after "), "{}", found.said);
     }
 
     #[test]

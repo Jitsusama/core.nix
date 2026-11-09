@@ -71,6 +71,43 @@ pub fn by_check(of: For, pace: &Pace) -> Value {
     })
 }
 
+/// A check not run, since its owner is in the strict sandbox and here it
+/// would run outside it, as Joel with all he can reach.
+pub fn refused(of: For, check: &str) -> Value {
+    json!({
+        "by": "check",
+        "for": of.name(),
+        "check": check,
+        "refused": "strict sandbox",
+    })
+}
+
+/// The to-dos `text` says are done, as it was last written, so a restart
+/// keeps what was found until each to-do leaves its file.
+pub fn done_in(text: &str) -> BTreeMap<String, Verdict> {
+    let Ok(file) = serde_json::from_str::<Value>(text) else {
+        return BTreeMap::new();
+    };
+    let Some(items) = file.get("items").and_then(Value::as_object) else {
+        return BTreeMap::new();
+    };
+    items
+        .iter()
+        .filter(|(_, item)| item.get("state").and_then(Value::as_str) == Some("done"))
+        .filter_map(|(key, item)| {
+            let at = item.get("at")?.as_str()?.parse::<jiff::Timestamp>().ok()?;
+            Some((
+                key.clone(),
+                Verdict {
+                    state: State::Done,
+                    at: at.as_second(),
+                    how: item.get("how").cloned().unwrap_or(Value::Null),
+                },
+            ))
+        })
+        .collect()
+}
+
 /// How a signal stands: whether it was heard, and its figure.
 pub fn by_signal(of: For, signal: &str, found: &Result<Heard, Option<(&str, String)>>) -> Value {
     let mut how = Map::new();
@@ -195,5 +232,9 @@ mod tests {
         assert_eq!(read["items"]["Q:a"]["state"], "done");
         assert_eq!(read["items"]["Q:a"]["at"], "2026-11-09T04:53:20Z");
         assert_eq!(read["items"]["Q:b"]["state"], "waiting");
+        let kept = done_in(&text);
+        assert_eq!(kept.keys().collect::<Vec<_>>(), ["Q:a"]);
+        assert_eq!(kept["Q:a"], verdicts["Q:a"]);
+        assert_eq!(done_in("not json"), BTreeMap::new());
     }
 }

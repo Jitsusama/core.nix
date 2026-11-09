@@ -44,6 +44,9 @@ pub struct ToDo {
     pub ready: bool,
     pub done_when: Option<Knowing>,
     pub ready_when: Option<Knowing>,
+    /// Whether its owner runs in the strict sandbox, whose checks would
+    /// run here outside it, and so aren't run.
+    pub strict: bool,
 }
 
 impl ToDo {
@@ -115,6 +118,7 @@ pub fn in_file(text: &str) -> Vec<ToDo> {
                 ready: item.get("ready").and_then(Value::as_bool) == Some(true),
                 done_when: item.get("doneWhen").and_then(knowing),
                 ready_when: item.get("readyWhen").and_then(knowing),
+                strict: item.pointer("/owner/sandbox").and_then(Value::as_str) == Some("strict"),
             })
         })
         .collect()
