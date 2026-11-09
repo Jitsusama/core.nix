@@ -31,7 +31,6 @@ import "Order.js" as Order
 import "Moment.js" as Moment
 import "NeedsYou.js" as NeedsYou
 import "Here.js" as Here
-import "../When.js" as When
 
 Provider {
     id: provider
