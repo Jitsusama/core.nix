@@ -89,6 +89,19 @@ off. Its tests are a file of their own that a check runs, as
 `tools/run-subtests/run-subtests-test.py` is. A build phase of a line or two stays
 inline, since it reads as part of the derivation.
 
+## Long Files Say Why
+
+A code file past 800 lines, or a folder of more than 40 entries, is split by
+what changes for one reason, or says why it stays whole: a file in its
+opening comment, in a sentence beginning "Long because", and a folder in its
+README.md or AGENTS.md, in one beginning "Many entries because". One that
+grew past them is usually several things that grew together, which a reader
+has to tell apart before they find the one they came for. A table, such as
+`check-descriptions.nix`, is a reason; a file that only grew isn't.
+`every-long-file-says-why` holds it, and those over before the rule wait in
+`tests/every-long-file-says-why-waiting.nix` while they're split, a list
+that only shrinks.
+
 ## Applications That Write Their Own Settings
 
 Some applications change their own configuration, and some share a file with
