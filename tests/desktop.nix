@@ -1234,7 +1234,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           # shoot zathura's page saying the page each is on. Only there, so
           # no other area's test moves with it.
           // pkgs.lib.optionalAttrs (area == "looks-programs") {
-            book = import ./page.nix {
+            book = import ./lib/page.nix {
               inherit (pkgs) lib;
               inherit pkgs;
               pages = 12;
