@@ -165,10 +165,12 @@ Provider {
         });
     }
 
-    function told() {
+    // Each keyboard connected now, its row as the answer lists it, kept
+    // where Now finds a row a piece draws by (launcher/Now.qml's borrowed):
+    // the Keyboard Layer is the board's.
+    readonly property var all: {
         const found = ConnectedKeyboards.listed;
-        const caps = Lights.caps;
-        const rows = found.map(device => thingRow({
+        return found.map(device => thingRow({
             thing: true,
             key: `keyboards:${device.phys || device.name}`,
             name: named(device),
@@ -177,6 +179,12 @@ Provider {
             // Everything it says, under the row (Keyboards.js's drawer).
             drawer: () => provider.drawerOf(device, Keyboards.lightHolder(found))
         }, () => provider.parts(device, Keyboards.lightHolder(found))));
+    }
+
+    function told() {
+        const found = ConnectedKeyboards.listed;
+        const caps = Lights.caps;
+        const rows = all;
         const count = found.length === 1 ? "one keyboard" : `${found.length} keyboards`;
         return {
             headline: `${count}, caps lock ${caps ? "on" : "off"}`,

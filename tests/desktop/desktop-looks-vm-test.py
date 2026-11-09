@@ -3638,7 +3638,8 @@ def now_drawer(desktop: Desktop, row: str, eyebrow: str, shot: str) -> None:
 # 2026-11-07: "every integration has an insanely high bar of nerdiness and integration"), where
 # the thing is and what it is above, and each is photographed at each of Joel's scales for the
 # design's look: mpv's program row and its Media, playing and paused, the ErgoDox and the
-# laptop's own board, a picture Capture took, and Now's Disks and Lag.
+# laptop's own board, a picture Capture took, and Now's Disks and Lag, and its Keyboard Layer,
+# which draws the ErgoDox's own drawer.
 def media_drawer(desktop: Desktop, shot: str, side: str, program: str = "") -> None:
     """Open mpv's Media, its side saying how it stands, and photograph its drawer.
 
@@ -3730,12 +3731,15 @@ def drawers_at(desktop: Desktop, scale: str) -> None:
     now_drawer(desktop, "Disks", "on this machine \u00b7 disk", f"launcher-disk-drawer-at-{at}")
     lag_lasting(desktop)
     now_drawer(desktop, "Lag", "on this machine \u00b7 lag", f"launcher-lag-drawer-at-{at}")
+    now_drawer(
+        desktop, "Keyboard Layer", "on USB \u00b7 keyboard", f"launcher-layer-drawer-at-{at}"
+    )
 
 
 # Called from the unplugged ErgoDox subtest once the board is back, so it's plugged in here and
 # that subtest's own finally unplugs it.
 def each_drawer_drawn(desktop: Desktop, scales: list[str]) -> None:
-    """Photograph a program's, its Media's, each keyboard's, a capture's, Disks' and Lag's."""
+    """Photograph a program's, its Media's, each keyboard's, a capture's, and Now's pieces'."""
     machine = desktop.machine
     desktop.as_account(
         "systemd-run --user --unit=player mpv --ao=null --no-video --loop"

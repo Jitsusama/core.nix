@@ -8,6 +8,10 @@ Piece {
 
     readonly property PwNode sink: Pipewire.defaultAudioSink
 
+    // The speakers' own drawer, as Sound draws their row (launcher/Now.qml's
+    // borrowed): none while Sound's rows draw none.
+    drawnBy: sink ? { place: "sound", key: `sound:${sink.name}` } : null
+
     active: !sink || sink.audio.muted
     value: !sink ? "none" : sink.audio.muted ? "muted" : Math.round(sink.audio.volume * 100) + "%"
     sign: active ? "silent" : settings.sign ?? ""
