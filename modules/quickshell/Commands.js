@@ -268,8 +268,7 @@ function namedLines(own, read, typed, argued) {
             || (read.arg === "" && one.argument === ""));
     }
     const before = typed.slice(0, typed.length - lastWord(typed).length);
-    // An argument that reads as a row, as :filter's kinds and sources do,
-    // gives its count at the side and its own mark and hue.
+    // An argument read as a row, as :filter's are, gives its count, its mark and its hue.
     return args.map(one => ({ command: one.value, short: one.value, title: one.note ?? "",
         key: one.side ?? "", glyph: one.glyph ?? "", hue: one.hue ?? "", kind: "argument",
         line: before + one.value }));
