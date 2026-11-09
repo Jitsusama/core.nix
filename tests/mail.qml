@@ -37,6 +37,7 @@ QtObject {
             now: "just now",
             minutes: "{minutes} min ago",
             yesterday: "yesterday",
+            tomorrow: "tomorrow",
             date: (date, format) => Qt.formatDate(date, format)
         };
         const standup = {
@@ -159,7 +160,8 @@ QtObject {
             ["last month", at(8, 30, 9, 0), "30 Sep"],
             ["last year", new Date(2025, 9, 28, 9, 0).getTime(), "28 Oct 2025"],
             ["later today, by a wrong clock", at(9, 26, 17, 0), "17:00"],
-            ["tomorrow, by a wrong clock", at(9, 27, 9, 0), "27 Oct"]
+            // A day ahead reads as a day behind does (VKCF3Z, 2026-11-08).
+            ["tomorrow, by a wrong clock", at(9, 27, 9, 0), "tomorrow"]
         ];
         for (const [what, time, meant] of cames)
             check(`came ${what}`, Mail.came(time, now, said), meant);
@@ -173,7 +175,7 @@ QtObject {
             ["on Thursday", at(9, 22, 9, 0), "Thursday 09:00"],
             ["a week ago today", at(9, 19, 9, 0), "19 Oct 09:00"],
             ["last year", new Date(2025, 9, 28, 9, 0).getTime(), "28 Oct 2025 09:00"],
-            ["tomorrow, by a wrong clock", at(9, 27, 9, 0), "27 Oct 09:00"]
+            ["tomorrow, by a wrong clock", at(9, 27, 9, 0), "tomorrow 09:00"]
         ];
         for (const [what, time, meant] of moments)
             check(`a moment ${what}`, Mail.moment(time, now, said), meant);

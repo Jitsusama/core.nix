@@ -104,7 +104,7 @@ pub fn run(config: &Config, now: SystemTime, most: Option<usize>) -> Result<Done
     }
     let sign_in = token::sign_in(&config.folder);
     let mut login = Login::read(&config.credentials, &config.token, sign_in)?;
-    let agent = drive::agent();
+    let agent = drive::agent(login.project())?;
     let folder = match drive::folder_id(
         &config.folder,
         &agent,

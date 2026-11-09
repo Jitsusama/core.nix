@@ -22,6 +22,7 @@ import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Ago.js" as Ago
+import "Order.js" as Order
 
 Provider {
     id: provider
@@ -235,8 +236,8 @@ Provider {
             finest = Math.min(finest, f.grade);
         if (asked.score >= 0)
             finest = Math.min(finest, asked.grade);
-        const kept = aged(found.filter(f => f.grade === finest)
-            .sort((a, b) => b.score - a.score || b.row.at - a.row.at).map(f => f.row));
+        const kept = aged(Order.sorted(found.filter(f => f.grade === finest),
+            (a, b) => b.score - a.score || b.row.at - a.row.at).map(f => f.row));
         const forgets = asked.score >= 0 && asked.grade === finest;
         return { rows: forgets ? kept.concat([forget]) : kept, grade: finest };
     }

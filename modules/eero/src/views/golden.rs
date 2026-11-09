@@ -180,7 +180,9 @@ fn narrow() -> Vec<View> {
 /// The record with something wrong in each place a view marks it: a node
 /// offline with its heartbeat missed, an update waiting, a port linked
 /// under its best, a busy radio, the internet down, and a device over
-/// Ethernet.
+/// Ethernet whose address is reserved, which the record's one reservation
+/// isn't, with the guest subnet on but kept from the internet and open,
+/// and the bands' security differing.
 fn troubled() -> HomeNetwork {
     let mut model = model();
     let net = &mut model.internet;
@@ -203,6 +205,18 @@ fn troubled() -> HomeNetwork {
         name: Some("2".into()),
         mbps: Some(100),
     });
+    let mac = printer.mac.clone();
+    let addresses = &mut model.internet.addresses;
+    addresses.reservations.push(crate::model::Reservation {
+        mac,
+        description: Some("office printer".into()),
+        address: Some("10.0.0.30".into()),
+    });
+    let guest = &mut addresses.subnets[1];
+    guest.on = Some(true);
+    guest.internet = Some(false);
+    guest.open = Some(true);
+    model.internet.security[1].security = "wpa3".into();
     model
 }
 

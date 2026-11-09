@@ -95,6 +95,22 @@ function counted(count, one, many) {
     return (count === 1 ? one : many).replace("{count}", grouped(count));
 }
 
+// What Spotify's drawer in Programs says it holds, by each place's id in
+// the launcher's words (VKCF3Z, 2026-11-08): how many songs are liked,
+// then how many of each list Joel keeps, each once it's read and left out
+// at none, and nothing while signed out, since what was read is no longer
+// his to say.
+function held(liked, lists, stands) {
+    if (stands === "signedOut") {
+        return [];
+    }
+    const counts = [["spotify:liked", liked]]
+        .concat(LISTS.filter(name => name in lists)
+            .map(name => [`spotify:${name}`, lists[name].length]));
+    return counts.filter(count => count[1] > 0)
+        .map(count => ({ id: count[0], value: grouped(count[1]) }));
+}
+
 // The link anyone can open for a Spotify URI: open.spotify.com's, as
 // Spotify's own Share copies it. Liked Songs is the account's own, so its
 // link opens whoever's are signed in.

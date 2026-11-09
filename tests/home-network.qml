@@ -191,6 +191,10 @@ QtObject {
             ["dns", "automatic \u00b7 203.0.113.3 \u00b7 203.0.113.4 \u00b7 caching off \u00b7 "
                 + "IPv6 automatic"],
             ["ipv6", "off"],
+            ["main-subnet", "10.0.0.0/22 \u00b7 DHCP 10.0.0.20 to 10.0.0.254"],
+            ["guest-subnet", "off \u00b7 10.0.0.0/21 \u00b7 DHCP 10.0.0.20 to 10.0.0.254"],
+            ["forwards", "none"],
+            ["pinholes", "none"],
             ["speed-test", "370 Mb/s down \u00b7 11.9 Mb/s up \u00b7 5 Nov 10:52"],
             ["down", "370 Mb/s"],
             ["up", "11.9 Mb/s"],
@@ -200,7 +204,10 @@ QtObject {
             ["randomization", "off"],
             ["steering", "on"],
             ["wpa3", "off"],
+            ["security", "WPA2"],
             ["wifi-mode", "default"],
+            ["ac-compatibility", "off"],
+            ["name-clash", "none seen"],
             ["mlo", "disabled"],
             ["thread", "off \u00b7 name 56 \u00b7 channel 25"],
             ["guest", "off \u00b7 name 49"],
@@ -229,7 +236,7 @@ QtObject {
             "mesh"]);
         expect("the internet's groups", internetFacts.filter(fact => fact.heading !== undefined)
             .map(fact => fact.heading), ["probe", "outage-list", "speed-tests", "addressing",
-            "settings", "devices-off", "joins-and-leaves", "events"]);
+            "reserved", "settings", "devices-off", "joins-and-leaves", "events"]);
         expect("eero's outages counted where no history is kept", value(byId(Drawers
             .internet(unkept, now)), "outages"), "none recorded");
 
@@ -287,6 +294,50 @@ QtObject {
             { label: "22:50", value: "10 min so far \u00b7 seen by this machine" },
             { label: "time not given", value: "seen by eero" }
         ]);
+
+        // The addresses kept for a device, each by the device's name where
+        // eero lists it, else by the label it was given; none says so.
+        expect("an address kept for a device eero doesn't list", listed("reserved"), [
+            { label: "network equipment 1", value: "10.0.0.208" }
+        ]);
+        const addresses = model.internet.addresses;
+        const keeping = (reservations, subnets) => Object.assign({}, model, {
+            internet: Object.assign({}, model.internet, {
+                addresses: Object.assign({}, addresses, { reservations,
+                    subnets: subnets ?? addresses.subnets })
+            })
+        });
+        const printer = device("printer 1");
+        const reserving = keeping(addresses.reservations.concat([{ mac: printer.mac.toUpperCase(),
+            description: "office printer", address: "10.0.0.30" }]));
+        expect("a device's own name, and the label it was given", Drawers.internet(reserving, now)
+            .facts.filter(fact => fact.label === "printer 1"), [
+            { label: "printer 1", value: "10.0.0.30 \u00b7 office printer" }
+        ]);
+        expect("none kept says none", value(byId(Drawers.internet(keeping([]), now)),
+            "reserved"), "none");
+        const odd = keeping([], [Object.assign({}, addresses.subnets[1], { kind: "iot",
+            name: "things", mask: "255.0.255.0", on: true, internet: false, open: true })]);
+        expect("a subnet of a kind eero hasn't named, by its name, its mask whole",
+            byId(Drawers.internet(odd, now)).things.value, "no internet \u00b7 open "
+            + "\u00b7 10.0.0.0 \u00b7 mask 255.0.255.0 \u00b7 DHCP 10.0.0.20 to 10.0.0.254");
+        expect("a device's reserved address, not the one it has", ["address", "reserved"]
+            .map(id => value(byId(Drawers.device(reserving, printer, now)), id)),
+            ["10.0.0.31", "10.0.0.30"]);
+        const keptAsIs = keeping([{ mac: printer.mac, description: "", address: printer.address }]);
+        expect("the address it has, said reserved and said once", [
+            value(byId(Drawers.device(keptAsIs, printer, now)), "address"),
+            byId(Drawers.device(keptAsIs, printer, now)).reserved], ["10.0.0.31 \u00b7 reserved",
+            undefined]);
+        expect("bands that differ, band by band", value(byId(Drawers.internet(Object.assign({},
+            model, { internet: Object.assign({}, model.internet, { security: [
+                { band: "2.4 GHz", security: "wpa2" }, { band: "5 GHz", security: "wpa3" }] })
+        }), now)), "security"), "2.4 GHz WPA2 \u00b7 5 GHz WPA3");
+        expect("none for a device with none", byId(Drawers.device(model, printer, now))
+            .reserved, undefined);
+        expect("a name clash", value(byId(Drawers.internet(Object.assign({}, model, {
+            internet: Object.assign({}, model.internet, { name_clash: true })
+        }), now)), "name-clash"), "another network has its name");
 
         // The devices that joined or left over the last day, newest first.
         expect("who joined and left", listed("joins-and-leaves"), [

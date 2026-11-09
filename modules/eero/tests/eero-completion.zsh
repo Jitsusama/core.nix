@@ -93,6 +93,9 @@ refuse 'eero device ' 'phone\ 1'
 # Nor is a name one device has and another's hostname shares.
 expect 'eero device ' 02:00:00:00:00:0d
 refuse 'eero device ' 'thermostat\ 1'
+# A device not on now is offered too, since its page says where it last was,
+# and by its address where one on now shares its name.
+expect 'eero device ' 'phone\ 2' 02:00:00:00:00:19
 expect 'eero profile ' 'profile\ 1' 'profile\ 2' 'profile\ 3'
 expect 'eero watch ' status devices node
 refuse 'eero watch ' speedtest sqm watch

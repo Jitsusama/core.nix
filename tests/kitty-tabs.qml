@@ -167,6 +167,16 @@ QtObject {
             Kitty.tabs([first], niri.slice(1, 2)), []);
         check("none shown, none listed", Kitty.tabs([first, second], []), []);
 
+        // Its drawer in Programs: its tabs and the OS windows holding them,
+        // then its repositories and machines, each left out at none.
+        const held = { inWindow: "{count} in 1 window", inWindows: "{count} in {windows} windows" };
+        check("what kitty holds", Kitty.held(all, 34, 12, held),
+            [{ id: "kitty:tabs", value: "5 in 3 windows" },
+                { id: "kitty:repositories", value: "34" }, { id: "kitty:machines", value: "12" }]);
+        check("one OS window's", Kitty.held(all.slice(1, 4), 0, 0, held),
+            [{ id: "kitty:tabs", value: "3 in 1 window" }]);
+        check("nothing open or known, nothing said", Kitty.held([], 0, 0, held), []);
+
         // Each row's words: the name a title gives, else what runs; at the
         // right how it stands, how many panes, what runs where the name
         // doesn't say it, and the folder, never for an ssh session.

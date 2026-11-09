@@ -13,10 +13,10 @@ use std::collections::BTreeMap;
 use serde_json::Value;
 
 use crate::model::{
-    Backhaul, BackhaulKind, Cloud, Device, DeviceHistory, DeviceOff, DevicePort, Dns, Event,
-    Filters, Firmware, Guest, HomeNetwork, Hour, Internet, InternetHistory, Lease, Light, Member,
-    Node, NodeCounts, NodeDevices, NodeHistory, Packets, Port, Profile, Radio, RadioHistory, Rate,
-    Series, Speed, SpeedTest, Thread, Usage,
+    Addresses, Backhaul, BackhaulKind, BandSecurity, Cloud, Device, DeviceHistory, DeviceOff,
+    DevicePort, Dns, Event, Filters, Firmware, Guest, HomeNetwork, Hour, Internet, InternetHistory,
+    Lease, Light, Member, Node, NodeCounts, NodeDevices, NodeHistory, Packets, Port, Profile,
+    Radio, RadioHistory, Rate, Reservation, Series, Speed, SpeedTest, Subnet, Thread, Usage,
 };
 use crate::time;
 
@@ -48,6 +48,17 @@ pub struct Answers {
     pub profile_usage: BTreeMap<String, Value>,
     /// `networks/<id>/app_events`.
     pub events: Value,
+    /// `networks/<id>/subnets_config`.
+    pub subnets: Value,
+    /// `networks/<id>/routing`, which embeds reservations, forwards and
+    /// pinholes.
+    pub routing: Value,
+    /// `networks/<id>/wpa3_per_band`.
+    pub security: Value,
+    /// `networks/<id>/ac_compat`.
+    pub ac_compatibility: Value,
+    /// `networks/<id>/network_scan`.
+    pub scan: Value,
 }
 
 /// The home network as eero answered, read at `read` while the cloud is
@@ -157,6 +168,10 @@ fn internet(answers: &Answers) -> Internet {
             on: flag(n, "/guest_network/enabled"),
             name: text(n, "/guest_network/name"),
         },
+        addresses: addresses(answers),
+        security: security(&answers.security),
+        ac_compatibility: flag(&answers.ac_compatibility, "/enabled"),
+        name_clash: flag(&answers.scan, "/conflicting_ssid"),
         ddns: flag(n, "/ddns/enabled"),
         backup_internet: flag(n, "/backup_internet_enabled"),
         power_saving: flag(n, "/power_saving"),
@@ -171,6 +186,62 @@ fn internet(answers: &Answers) -> Internet {
         probe: None,
         history: InternetHistory::default(),
     }
+}
+
+fn addresses(answers: &Answers) -> Addresses {
+    let routing = &answers.routing;
+    Addresses {
+        subnets: list(&answers.subnets, "")
+            .map(|subnet| Subnet {
+                kind: text(subnet, "/subnet_kind"),
+                name: text(subnet, "/name"),
+                on: flag(subnet, "/enabled"),
+                address: text(subnet, "/dedicated_subnet/subnet_ip"),
+                mask: text(subnet, "/dedicated_subnet/subnet_mask"),
+                first: text(subnet, "/dedicated_subnet/start_ip"),
+                last: text(subnet, "/dedicated_subnet/end_ip"),
+                internet: flag(subnet, "/wan_access"),
+                open: flag(subnet, "/open_network"),
+            })
+            .collect(),
+        reservations: list(routing, "/reservations/data")
+            .filter_map(|kept| {
+                Some(Reservation {
+                    mac: text(kept, "/mac")?.to_ascii_lowercase(),
+                    description: text(kept, "/description"),
+                    address: text(kept, "/ip"),
+                })
+            })
+            .collect(),
+        forwards: list(routing, "/forwards/data").cloned().collect(),
+        pinholes: list(routing, "/pinholes/data").cloned().collect(),
+    }
+}
+
+/// Each band's security, lowest band first, from eero's keys such as
+/// `band_2_4_ghz`.
+fn security(answer: &Value) -> Vec<BandSecurity> {
+    let Some(bands) = answer.as_object() else {
+        return Vec::new();
+    };
+    let mut each: Vec<(f64, BandSecurity)> = bands
+        .iter()
+        .filter_map(|(key, security)| {
+            let ghz = key
+                .strip_prefix("band_")?
+                .strip_suffix("_ghz")?
+                .replace('_', ".");
+            Some((
+                ghz.parse().ok()?,
+                BandSecurity {
+                    band: format!("{ghz} GHz"),
+                    security: security.as_str()?.to_owned(),
+                },
+            ))
+        })
+        .collect();
+    each.sort_by(|(a, _), (b, _)| a.total_cmp(b));
+    each.into_iter().map(|(_, band)| band).collect()
 }
 
 fn speed_tests(answer: &Value) -> Vec<SpeedTest> {

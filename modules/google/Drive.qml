@@ -175,6 +175,16 @@ Singleton {
             }));
     }
 
+    // What Google Drive's drawer in Programs says it holds: each of its
+    // places holding anything, by its name, and how many, as its row says
+    // beside it (VKCF3Z, 2026-11-08: a place's row is another row, so it
+    // isn't said twice).
+    function placeFacts() {
+        const over = key => Words.of(key).said?.more ?? "{count}";
+        return Places.listed(root.places, over)
+            .map(place => ({ label: Words.name(place.key), value: place.count }));
+    }
+
     function open(document) {
         if (document && document.link)
             Niri.spawn(["google-opens", document.link]);

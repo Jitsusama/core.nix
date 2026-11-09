@@ -72,6 +72,7 @@ import "launcher/Standing.js" as Standing
 import "launcher/Steady.js" as Steady
 import "launcher/Becoming.js" as Becoming
 import "launcher/Pacing.js" as Pacing
+import "launcher/Order.js" as Order
 
 Scope {
     id: root
@@ -938,6 +939,22 @@ Scope {
     // for the walk too.
     property bool cataloguing: false
 
+    // The rows a terminal's `launcher show` last walked through (`walked`)
+    // and listed (`listed`), held a few seconds after it asks, so a
+    // provider that reads only while its rows are seen, as Machine reads
+    // its daemon and its disks, reads for a terminal with the launcher
+    // closed, and the terminal's next ask has the figures (Y2YBTS's
+    // review of #2404). Let go once nothing has asked for a while, so a
+    // daemon read for one show isn't read for ever.
+    property var terminalSees: ({ walked: [], listed: [] })
+
+    Timer {
+        id: terminalSeeing
+
+        interval: 3000
+        onTriggered: root.terminalSees = { walked: [], listed: [] }
+    }
+
     function catalogue() {
         cataloguing = true;
         try {
@@ -1246,21 +1263,33 @@ Scope {
     // asked starting with a step's mark, since qs takes no empty argument,
     // so home is that mark alone and an empty step is no step.
     // `everyDrawer`, for `launcher show --drawers`, gives each row's
-    // drawer too, which is only built where it's asked for.
-    function shownToTerminal(path, everyDrawer) {
+    // drawer too, which is only built where it's asked for. `namesOnly`,
+    // for completion, leaves terminalSees as it was, so a Tab starts no
+    // daemon reading for figures it never shows (design.md: nothing
+    // polled that needn't be).
+    function shownToTerminal(path, everyDrawer, namesOnly) {
         cataloguing = true;
         try {
-            return shownWalked(path, everyDrawer === true);
+            return shownWalked(path, everyDrawer === true, namesOnly === true);
         } finally {
             cataloguing = false;
         }
     }
 
-    function shownWalked(path, everyDrawer) {
+    function shownWalked(path, everyDrawer, namesOnly) {
         freshen();
         const walked = walkedByName(String(path ?? "").split(catalogueStep));
+        // A row a read makes, as a joined network's Speed is made from
+        // wifid's detail of it, is missed until the read comes, so the walk
+        // as far as it went is seen too, and the miss says whether what it
+        // looked among is still being read, for the terminal to ask again.
         if (walked.missing !== undefined)
-            return walked;
+            return {
+                missing: walked.missing,
+                near: walked.near,
+                in: walked.in,
+                reading: seenByTerminal(walked.trail, walked.looked, namesOnly)
+            };
         const { trail, rows, among } = walked;
         const ids = trail.map(one => steadyId(one));
         // Only the row the path names says its drawer, since a listed row's
@@ -1285,6 +1314,7 @@ Scope {
             || verbs.includes(steadyId(one));
         const sayable = rows.filter(one => !!one && !one.gone && (one.name ?? "") !== "");
         return {
+            reading: seenByTerminal(trail, sayable, namesOnly),
             in: trail.map(one => one.name),
             path: ids,
             row: last === null ? null : entry(last, ids.slice(0, -1), true),
@@ -1293,11 +1323,30 @@ Scope {
         };
     }
 
+    // Counts what a terminal's show walked through and listed as seen,
+    // unless it's completion asking (`namesOnly`), and says whether a
+    // provider of a row among them is still reading it for this look, so
+    // the terminal asks again for its figures; another's reading never
+    // holds it up. A row is the provider's when it's live from it, as
+    // Machine's are, or is the collection it opens, as Wi-Fi is for its
+    // networks.
+    function seenByTerminal(trail, listed, namesOnly) {
+        if (!namesOnly) {
+            terminalSees = { walked: trail, listed: listed };
+            terminalSeeing.restart();
+        }
+        const seen = trail.concat(listed);
+        return sources.some(source => source.stillReading === true
+            && seen.some(one => one?.live === source || one?.from === source));
+    }
+
     // The rows steps name from home, each by its steady id or its name as
     // Showing.step finds it, with what the last holds (`trail`, `rows`);
     // or, where a step names nothing, that step, the names it might have
-    // meant and where it was looked for. An empty step is no step. `among`
-    // says whether the last was found among things, as asThing reads it.
+    // meant and where it was looked for, by name (`in`) and as the rows
+    // walked (`trail`) and looked among (`looked`). An empty step is no
+    // step. `among` says whether the last was found among things, as
+    // asThing reads it.
     function walkedByName(steps) {
         let rows = home();
         let things = true;
@@ -1307,7 +1356,8 @@ Scope {
             const found = Showing.step(rows.filter(one => !!one && !one.gone), said,
                 one => steadyId(one));
             if (!found.row)
-                return { missing: said, near: found.near, in: trail.map(one => one.name) };
+                return { missing: said, near: found.near, in: trail.map(one => one.name),
+                    trail: trail, looked: rows.filter(one => !!one && !one.gone) };
             trail.push(found.row);
             among = things;
             rows = catalogueHolds(found.row, things);
@@ -1358,7 +1408,10 @@ Scope {
             return doneWalked(path.length > 0 ? walkedById(path, steps) : walkedByName(steps),
                 said.words ?? "", said.sure === true);
         } catch (error) {
-            return { error: String(error) };
+            // The shell's own failure, said in its log in the engine's words;
+            // the terminal says it in words.json's (Y2YBTS's review of #2421).
+            console.warn(`launcher: a terminal's do failed: ${error}`);
+            return { failed: true };
         } finally {
             cataloguing = false;
         }
@@ -1368,7 +1421,7 @@ Scope {
     // `nothing`, which the terminal says in its own words.
     function doneWalked(walked, words, sure) {
         if (walked.missing !== undefined)
-            return walked;
+            return { missing: walked.missing, near: walked.near, in: walked.in };
         const trail = walked.trail;
         if (trail.length === 0)
             return { nothing: true };
@@ -1602,16 +1655,16 @@ Scope {
         return source?.stands?.() ?? "";
     }
 
-    // Names as one line, as many whole as fit in `room` characters, then
-    // an ellipsis for the rest.
+    // Names as one line, as many whole as fit in `room` characters, ending
+    // on the last that fits with nothing after it (VKCF3Z, 2026-11-08: "no
+    // ellipsis anywhere"). The row gives way by whole names again where
+    // its face is wider than a character a letter (Reading.wholeNamesFromEnd).
     function listed(cased, room) {
-        const more = ", \u2026";
         let said = "";
         for (let at = 0; at < cased.length; at++) {
             const next = said === "" ? cased[at] : `${said}, ${cased[at]}`;
-            const last = at === cased.length - 1;
-            if (next.length + (last ? 0 : more.length) > room)
-                return said === "" ? "" : `${said}${more}`;
+            if (next.length > room)
+                return said;
             said = next;
         }
         return said;
@@ -2162,12 +2215,10 @@ Scope {
         return typeof asked === "string" ? asked : "";
     }
 
-    // What an act asked from its own row is an act of, for its ask: the
-    // thing holding it, as Disconnect's is the Keychron, but never a place,
-    // so Power's Reboot asks of itself rather than "Reboot Power" (VKCF3Z,
-    // 2026-11-08).
+    // What an act asked from its own row is an act of, for its ask
+    // (Confirm.actOf): the thing holding it, never a place.
     function askedOfHolder(holder, act) {
-        return holder && Catalogue.kindOf(holder) !== "place" ? holder : act;
+        return Confirm.actOf(holder, act, holder ? Catalogue.kindOf(holder) : "");
     }
 
     // The command a row is named by (Catalogue.js's named), from its words
@@ -2407,7 +2458,7 @@ Scope {
         // goes with the row (Joel, 2026-11-05: "in programs i don't
         // understand how to go to sub commands on a program"). It's the
         // most needed, though, so the others give way before it
-        // (findYielding).
+        // (footYielding).
         const stepping = stepsIn(choice) || stepsThing(choice);
         if (!stepping && !choice.still && (holdsParts(choice) || !!choice.landsIn))
             taught.push([hintKey("into", "find"), hints.in ?? ""]);
@@ -2433,11 +2484,21 @@ Scope {
     // already shows, then less to type or next time, so Tab in and
     // Return never go (VKCF3Z, 2026-11-06: at "k", "Tab in \u00b7
     // Super+\u21b5 next time \u00b7 \u21b5 start", Tab being Ctrl+]'s
-    // named twin since 2026-11-07). Other modes give way
+    // named twin since 2026-11-07). Normal's Tab in goes first, as it's
+    // drawn furthest, then the operators' d and y, which Space ? lists,
+    // so - up and : outlast them: in a step such as a filter of For You,
+    // - is the one way back (VKCF3Z, 2026-11-08, on a look's foot at 2
+    // saying only "Space ? keys \u00b7 \u21b5 open"). Other modes give way
     // furthest from Return first.
-    readonly property var findYielding: prompt.mode !== "find" ? [] : [
-        (Words.field.hints ?? {}).complete, (Words.field.hints ?? {}).enough,
-        (Words.field.hints ?? {}).nextTime].filter(word => !!word)
+    readonly property var footYielding: {
+        const hints = Words.field.hints ?? {};
+        if (prompt.mode === "find")
+            return [hints.complete, hints.enough, hints.nextTime].filter(word => !!word);
+        if (prompt.modal && prompt.mode === "normal" && !visual)
+            return [hints.in, ...(selected ? operatorKeys(selected) : []).map(key => key[1])]
+                .filter(word => !!word);
+        return [];
+    }
 
     // An ending row's keys: Return and the line it writes, "\u21b5 :disconnect";
     // on the find, how to get to normal's keys; in normal, - up where a step
@@ -3012,8 +3073,13 @@ Scope {
         const rest = says !== null ? says
             : names.length > 0 && fitted === "" ? source.counted() : fitted;
         const placed = Object.assign({}, row, {
-            count: lead === "" && rest === "" ? source.collection.empty ?? ""
+            // Holding none, it says so as a run, never the sentence an
+            // empty place says inside (VKCF3Z, 2026-11-08).
+            count: lead === "" && rest === "" ? source.collection.none ?? ""
                 : [lead, rest].filter(part => part !== "").join(" \u00b7 "),
+            // Its count is a run of what it holds, given way by whole names;
+            // any other row's words are items, which a comma doesn't part.
+            names: true,
             // A home row never draws its chord: the foot teaches it as the
             // next time's way while it's the cursor row, furthest from
             // Return, and the row's far end is its say's. Drawn on Now,
@@ -3096,8 +3162,8 @@ Scope {
         const before = found.filter(row => learned[row.key]);
         if (before.length === 0)
             return found;
-        before.sort((a, b) => learned[b.key].weight - learned[a.key].weight);
-        return before.concat(found.filter(row => !learned[row.key]));
+        return Order.sorted(before, (a, b) => learned[b.key].weight - learned[a.key].weight)
+            .concat(found.filter(row => !learned[row.key]));
     }
 
     // Shift+Return, as a chord beside a verb that does what it does.
@@ -6081,19 +6147,27 @@ Scope {
         // What a place or a row shows, its drawer and the rows inside it,
         // for `launcher show` in a terminal, as JSON: the path's steps
         // joined by a "\u203a", each a row's name or its steady id, and
-        // none for home.
-        // Does what a terminal names, as launcher do asks it.
-        function doing(asked: string): string {
-            return JSON.stringify(root.doneFromTerminal(asked));
+        // none for home. Its `reading` says a provider of a row shown is
+        // still reading it, as `--json` prints it, and the program asks
+        // again while it's true.
+        function show(path: string): string {
+            return JSON.stringify(root.shownToTerminal(path, false, false));
         }
 
-        function show(path: string): string {
-            return JSON.stringify(root.shownToTerminal(path, false));
+        // The same for completion, which wants names alone, so it's read
+        // for nothing (shownToTerminal's namesOnly).
+        function names(path: string): string {
+            return JSON.stringify(root.shownToTerminal(path, false, true));
         }
 
         // The same, with each row's drawer, for `launcher show --drawers`.
         function drawers(path: string): string {
-            return JSON.stringify(root.shownToTerminal(path, true));
+            return JSON.stringify(root.shownToTerminal(path, true, false));
+        }
+
+        // Does what a terminal names, as launcher do asks it.
+        function doing(asked: string): string {
+            return JSON.stringify(root.doneFromTerminal(asked));
         }
 
         // Where every word on the card is drawn, for the check that nothing
@@ -6270,22 +6344,8 @@ Scope {
         const own = typeof row.drawer === "function" ? row.drawer() : row.drawer;
         const drawer = own ? own : { title: row.name, body: row.reads ?? "",
             picture: row.picture ?? "", across: row.across ?? 0, down: row.down ?? 0 };
-        return drawerAdds(drawer, row) ? drawer : null;
-    }
-    // Whether a drawer says anything its row doesn't: a fact, a picture, or
-    // words, its title among them, other than the row's own name, side and
-    // note. One that would only repeat the row is never shown, for any kind
-    // (Joel, 2026-10-29: "we should never show the side panel when it is
-    // just repeating the currently selected text").
-    function drawerAdds(drawer, row) {
-        // A plate of the moment says what no row does, the time large.
-        if (drawer.now === true)
-            return true;
-        if ((drawer.facts ?? []).some(fact => fact) || (drawer.picture ?? "") !== "")
-            return true;
-        const own = [row.name, row.side, row.note].map(words => String(words ?? "").trim());
-        return [drawer.title, drawer.body].map(words => String(words ?? "").trim())
-            .some(words => words !== "" && !own.includes(words));
+        // One that would only repeat its row is never shown (Showing.adds).
+        return Showing.adds(drawer, row) ? drawer : null;
     }
 
     // Whether a row is a thing with details, by its kind rather than by
@@ -7885,8 +7945,10 @@ Scope {
                                     groundFrom: commandRows.x
                                     selected: commandRow.index === commandRows.currentIndex
                                     shown: card.opacity > 0
-                                    glyph: commandRow.act?.glyph ?? ""
-                                    hue: Theme[commandRow.act?.hue ?? ""] ?? Theme.text
+                                    glyph: commandRow.modelData.glyph
+                                        || (commandRow.act?.glyph ?? "")
+                                    hue: Theme[commandRow.modelData.hue
+                                        || (commandRow.act?.hue ?? "")] ?? Theme.text
                                     name: commandRow.named
                                     plainName: commandRow.named
                                     count: commandRow.modelData.title ?? ""
@@ -8387,6 +8449,7 @@ Scope {
                                     count: entry.modelData.count ?? ""
                                     countItems: entry.modelData.countItems ?? []
                                     sideWhole: !!entry.modelData.sideWhole
+                                    names: entry.modelData.names === true
                                     kind: root.held.length === 0 ? root.kindOf(entry.modelData) : ""
                                     landed: selected && root.landedOn(entry.modelData)
                                         ? `\u21b5 ${root.verbOf(entry.modelData)}` : ""
@@ -8539,7 +8602,7 @@ Scope {
                             - statusLine.factsAt - standing.least - Theme.space.rung.groups
                             - (prompt.mode === "find" ? 0 : modeWord.room)
                         readonly property var kept: Standing.keysFitted(told,
-                            told => root.keysWide(told, foot.loose), keysRoom, root.findYielding)
+                            told => root.keysWide(told, foot.loose), keysRoom, root.footYielding)
                         readonly property real returnPlace: told.length === 0 ? 0
                             : loose ? statusLine.keys.advance(told[0][0], told[0][1])
                             : root.returnPlace(told[0])

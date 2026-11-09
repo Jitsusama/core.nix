@@ -51,7 +51,9 @@ model of it.
 | `geo_ip.isp`, `org`, `asn`, `city`, `region`, `countryCode` | who carries the internet, and where eero places it | place head (ISP), internet, `internet` |
 | `ipv6_upstream`, `ipv6_lease` | whether the internet gives IPv6 | internet, `internet` |
 | `upnp`, `nat_port_randomization`, `sqm` | UPnP, port randomization, and Optimize for Conferencing and Gaming | internet, `internet`; `sqm` is `:sqm` and `eero sqm` |
-| `band_steering`, `wpa3`, `wireless_mode`, `mlo_mode`, `net.wpa3_per_band` | the radios' network-wide settings | internet, `internet` |
+| `band_steering`, `wpa3`, `wireless_mode`, `mlo_mode` | the radios' network-wide settings | internet, `internet` |
+| `net.wpa3_per_band.json` `band_<GHz>_ghz` | each band's Wi-Fi security, as eero names it | internet, `internet` |
+| `net.ac_compat.json` `enabled` | whether the network keeps to what older Wi-Fi 5 (802.11ac) devices can join | internet, `internet` |
 | `speed.{down,up}.value`, `speed.date`, `speed.status` | the last speed test | place head, internet, `status`, `speeds` |
 | `net.speedtest.json` `[].{down_mbps,up_mbps,date}` | every speed test eero kept | internet (a spark of each), `speeds` |
 | `online_eeros_count`, `offline_eeros_count`, `pending_eeros_count` | the nodes by state | place head, `status` |
@@ -61,7 +63,10 @@ model of it.
 | `guest_network.{enabled,name}` | the guest network | internet, `internet`; its password is dropped |
 | `ddns.enabled`, `backup_internet_enabled`, `power_saving` | the rest of the internet's switches | internet, `internet` |
 | `net.cellular_backup_events.json` `outages` | the outages eero recorded | internet, `outages` |
-| `net.diagnostics.json`, `net.network_scan.json` | a diagnostics run and a conflicting-SSID scan | internet, `internet` |
+| `net.network_scan.json` `conflicting_ssid` | whether eero's last scan saw another network with this one's name | internet, `internet` |
+| `net.diagnostics.json` `status` | whether a diagnostics run has begun | left out: `not_started` here, so a run's shape is unknown |
+| `net.guestnetwork.json` | the guest network again | left out: `guest_network` gives it |
+| `net.cellular_backup_usage.json`, `net.blacklist.json` | backup internet's traffic, and devices blocked from the network | left out: empty here, so their shape is unknown |
 | `premium_status`, `capabilities.*` | eero Plus and what the network can do | `capabilities`; the place notes a figure only Plus gives |
 | `flags`, `resources`, Amazon and Ring fields | eero's own wiring | left out: not about the network |
 
@@ -126,7 +131,20 @@ are joined by `url`.
 | `proxied_nodes` | not known | left out: empty here |
 | `usage.profile.<id>.json` series | its bytes by hour | profile (a spark), `traffic` |
 | `members[].user_role` | who may change the network | internet, `internet`; names are dropped |
-| `net.reservations.json`, `net.forwards.json`, `net.routing.json` | reserved addresses and forwarded ports | internet, `internet`, the device a reservation names |
+
+### Addresses (`net.subnets_config.json`, `net.routing.json`)
+
+| Figure | Means | Shows |
+| ------ | ----- | ----- |
+| `[].{subnet_kind,name,enabled}` | each subnet: the main or guest network, its name, whether it's on | internet, `internet` |
+| `[].dedicated_subnet.{subnet_ip,subnet_mask,start_ip,end_ip}` | its address, as a prefix, and the range DHCP hands out | internet, `internet` |
+| `[].{wan_access,open_network}` | whether its devices reach the internet, and whether it asks no password | internet, `internet` |
+| `[].lan_access` | not known | left out: false for the main network too, so what it means isn't clear |
+| `[].{subnet_type,subnet_label,nat_port_randomization}` | `subnet_kind` again, a label the app never shows, and the network's own switch | left out: said elsewhere or never shown |
+| `routing` `reservations.data[].{mac,description,ip}` | an address kept for a device, and the label it was given | internet, `internet`, the device it names, `device` |
+| `routing` `forwards.data`, `pinholes.data` | ports forwarded in, and IPv6 pinholes | internet, `internet`, in eero's own words, since none here gives their shape |
+| `routing` `devices.data[].{mac,nickname}` | devices by nickname | left out: 29 here, repeating names the device reads give |
+| `net.reservations.json`, `net.forwards.json` | `routing`'s own lists again | left out: `routing` gives them in one read |
 
 ### What Happened (`net.app_events.json`)
 

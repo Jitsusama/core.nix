@@ -377,7 +377,7 @@ Provider {
         if (settings.preview && (said === undefined || entry && askedAt[path] !== entry.modified))
             Qt.callLater(provider.preview, path);
         const file = { path: path, name: Files.named(path), where: Files.within(path), entry: entry };
-        return FileFacts.plate(file, said || null, Date.now(), factWords);
+        return FileFacts.plate(file, said || null, factWords);
     }
 
     // Wants file-preview's word on a file, asked once it's answered what
@@ -625,7 +625,7 @@ Provider {
             return fields;
         return Object.assign({}, fields, {
             side: FileFacts.sideElsewhere(fields.entry, Date.now(), factWords),
-            drawer: () => FileFacts.plateElsewhere(fields, Date.now(), factWords)
+            drawer: () => FileFacts.plateElsewhere(fields, factWords)
         });
     }
 

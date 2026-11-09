@@ -39,6 +39,9 @@ if TYPE_CHECKING:
     from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
 
+# The scales Joel uses, where what VKCF3Z judges is photographed.
+JOELS_SCALES = ("1.5", "2")
+
 
 @pytest.fixture(scope="module")
 def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
@@ -704,12 +707,30 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
     """For You steps into one with nowhere to go, whose drawer gives its steps and why."""
     machine = desktop.machine
     asked = f"{MISSION}/waiting/GONEQA.json"
+    # Its quest by its title, in the eyebrow (VKCF3Z, 2026-11-08), which
+    # the index gives only a quest's own id (Waiting.js). The index goes
+    # first, so the node has told its title before the item can be
+    # stepped into, whose drawer is the one it was entered with.
+    kept(
+        desktop,
+        INDEX,
+        {
+            "quests": [
+                {
+                    "id": "QEST-20261027-GONEQA",
+                    "address": "GONEQA",
+                    "title": "Reef Quest",
+                    "status": "active",
+                }
+            ]
+        },
+    )
     # A session that's gone, so the item has no window to go to.
     kept(
         desktop,
         asked,
         {
-            "quest": "GONEQA",
+            "quest": "QEST-20261027-GONEQA",
             "items": [
                 {
                     "id": "form",
@@ -717,7 +738,12 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
                     "when": "now",
                     "why": "It goes out in your name.",
                     "steps": ["Print it", "Sign it"],
-                    "doneWhen": {"by": "person"},
+                    "at": "2026-11-09T09:30:00Z",
+                    "deadline": "2026-11-09T15:00:00Z",
+                    "raisedAt": "2026-11-08T09:00:00Z",
+                    "where": {"machine": "harbour"},
+                    "owner": {"address": "8IDU4E"},
+                    "doneWhen": {"check": "test -e /run/user/1000/form/signed"},
                 }
             ],
         },
@@ -725,6 +751,10 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
     # Its steps, then why only Joel can; how it'll be known done is its
     # Clears When fact, so the words don't say it again.
     steps = "1. Print it\n2. Sign it\n\nIt goes out in your name."
+    # What its owner said of it, each a fact in For You's order (VKCF3Z,
+    # 2026-11-08). Its row's side says when it's due, so Due doesn't, and
+    # with no window open there's no Where.
+    owned = ["Set For", "Waiting Since", "Clears When", "Machine", "Address", "Check"]
     try:
         retry(
             lambda _: waiting_inside(desktop) == ("1", ["Sign the Form"]),
@@ -738,15 +768,23 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
         # Its drawer gives its steps, numbered, then why only Joel can.
         desktop.launcher_until(
             lambda shown: (
-                (shown.get("drawer") or {}).get("out") is True and shown["drawer"]["body"] == steps
+                (shown.get("drawer") or {}).get("out") is True
+                and shown["drawer"]["body"] == steps
+                and [fact for fact in shown["drawer"]["facts"] if fact in owned] == owned
+                and "Due" not in shown["drawer"]["facts"]
+                and shown["drawer"]["eyebrow"] == "from Reef Quest \u00b7 to-do"
             )
         )
-        # Return on it steps in, with nowhere to go: Mark It Done, then Put It Off.
+        desktop.shoot("launcher-for-you-drawer")
+        # Return on it steps in, with nowhere to go: Mark It Done, then Put
+        # It Off, then its quest, which the index holds.
         desktop.step_in("ret")
-        desktop.launcher_until(lambda shown: shown["rows"] == ["Mark It Done", "Put It Off"])
+        desktop.launcher_until(
+            lambda shown: shown["rows"] == ["Mark It Done", "Put It Off", "Open Its Quest"]
+        )
         desktop.close_launcher()
     finally:
-        desktop.as_account(f"rm -f {asked}")
+        desktop.as_account(f"rm -f {asked} {INDEX}")
         # Its notice goes a moment after its item does; until then the
         # margin holds it, and Now would open on it in the next subtest.
         machine.wait_until_succeeds(
@@ -1080,6 +1118,66 @@ def draws_nothing_held_still(desktop: Desktop, who: str, on: str) -> None:
     assert drawn <= 1, (
         f"{who} drew {drawn} frames in three seconds left still on {on}, selecting {selected}"
     )
+
+
+def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desktop) -> None:
+    """In For You, :filter lists the kinds there and look steps into the looks, shot at 1.5 and 2.
+
+    What a filter keeps and the words it takes are tests/for-you-filter.qml's, and its one
+    path through the launcher the nested niri's; here the menu and the head are photographed
+    at Joel's scales, for VKCF3Z to judge (2026-11-08).
+    """
+    asked = {
+        "quest": "QUEST2",
+        "items": [{"id": "ask", "title": "Answer the ask", "minutes": 2, "ready": True}],
+    }
+    look = {"v": 1, "id": "filtered", "title": "Read the plan", "target": "/etc/hostname",
+            "kind": "file", "state": "waiting", "at": "2026-11-08T12:00:00Z"}  # fmt: skip
+    desktop.as_account(f"mkdir -p {MISSION}/waiting {HARNESS}/looks")
+    try:
+        kept(desktop, f"{HARNESS}/looks/filtered.json", look)
+        # A to-do ready now is raised as a notice the moment it's heard, which would stand
+        # over the launcher in the shots, so it's left to rest first, ten seconds on.
+        with desktop.told("rests Answer the ask", timeout=dt.timedelta(seconds=60)):
+            kept(desktop, f"{MISSION}/waiting/QUEST2.json", asked)
+        for scale in (*JOELS_SCALES, "1"):
+            desktop.as_account(f"niri msg output winit scale {scale}")
+            waiting_opened(desktop)
+            desktop.machine.send_key("ret")
+            desktop.launcher_until(
+                lambda shown: {"Answer the ask", "Read the plan"} <= set(shown["rows"])
+            )
+            desktop.normal()
+            whole = desktop.showing()["hints"]
+            desktop.machine.send_chars(":filter ")
+            desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "filter ")
+            named = scale.replace(".", "-")
+            if scale != "1":
+                desktop.shoot(f"launcher-for-you-filter-menu-at-{named}")
+            desktop.machine.send_chars("look\n")
+            desktop.launcher_until(
+                lambda shown: (
+                    shown["path"][-2:] == ["For You", "Looks"]
+                    and shown["rows"] == ["Read the plan"]
+                )
+            )
+            # - is the one way back out of a filter, so its foot keeps - up and : wherever
+            # For You's own does, the look's d and y giving way first (VKCF3Z, 2026-11-08): at 1.5
+            # those are - up and : commands, which the six keys' 505 against 413 of room
+            # had cut; at 2 the test's screen, 636 across, leaves room for neither, there
+            # or in For You.
+            hints = desktop.showing()["hints"]
+            assert {"- up", ": commands"} & set(whole) <= set(hints), (scale, whole, hints)
+            if scale == "1.5":
+                assert {"- up", ": commands"} <= set(hints), (scale, hints)
+            if scale != "1":
+                desktop.shoot(f"launcher-for-you-filtered-at-{named}")
+            desktop.machine.send_chars("-")
+            desktop.launcher_until(lambda shown: shown["path"][-1:] == ["For You"])
+            desktop.close_launcher()
+    finally:
+        desktop.as_account("niri msg output winit scale 1")
+        desktop.as_account(f"rm -f {MISSION}/waiting/QUEST2.json {HARNESS}/looks/filtered.json")
 
 
 # A binding that throws or assigns the wrong type only warns, and

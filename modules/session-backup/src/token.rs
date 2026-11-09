@@ -28,6 +28,12 @@ pub const SIGN_IN_OWN: &str = "CLOUDSDK_CONFIG=<the backup's own folder> \
      --scopes=openid,https://www.googleapis.com/auth/userinfo.email,\
      https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/drive.file";
 
+/// How to name the project Drive counts a login's calls against, which a
+/// login made with gcloud's application-default client needs, run with
+/// the same `CLOUDSDK_CONFIG` the login was made with.
+pub const SET_PROJECT: &str =
+    "gcloud auth application-default set-quota-project <a project with Drive's API on>";
+
 /// How to sign in for a backup into `folder`.
 pub fn sign_in(folder: &Folder) -> &'static str {
     match folder {
@@ -44,6 +50,10 @@ pub struct Login {
     client_id: String,
     client_secret: String,
     refresh_token: String,
+    /// The project Drive counts the calls against, which gcloud's own
+    /// application-default client must name; a login made with gcloud's
+    /// older client works without one.
+    project: Option<String>,
     endpoint: String,
     /// How to sign in again, said when Google refuses the login.
     sign_in: &'static str,
@@ -80,6 +90,10 @@ impl Login {
             client_id: field("client_id")?,
             client_secret: field("client_secret")?,
             refresh_token: field("refresh_token")?,
+            project: value
+                .get("quota_project_id")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
             endpoint: endpoint.to_owned(),
             sign_in,
             held: None,
@@ -125,6 +139,13 @@ impl Login {
             .unwrap_or(3600);
         self.held = Some((token.clone(), Instant::now() + Duration::from_secs(lasts)));
         Ok(token)
+    }
+
+    /// The project Drive is to count the calls against, when the login
+    /// names one, as `gcloud auth application-default set-quota-project`
+    /// writes it.
+    pub fn project(&self) -> Option<&str> {
+        self.project.as_deref()
     }
 
     /// Forget the token held, as when Drive says it no longer counts.

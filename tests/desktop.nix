@@ -768,7 +768,9 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
               exec = "true %U";
             };
           }
-          // lib.optionalAttrs bringsChrome {
+          # And Chrome's, where an area opens Chrome or a login that
+          # 1Password's extension fills in it.
+          // lib.optionalAttrs (bringsChrome || walksPasswords) {
             google-chrome = {
               name = "Google Chrome";
               genericName = "Web Browser";

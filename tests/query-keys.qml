@@ -278,6 +278,19 @@ QtObject {
             Confirm.question([{ ends: "reboot", name: "Power", kind: "place",
                 asked: "Reboot the Machine, Closing 12 Windows" }], asking),
             "Reboot the Machine, Closing 12 Windows? (y/n)");
+        // An act asked from its own row is an act of the thing holding it,
+        // never of a place, on the : line and from a terminal alike.
+        const keychron = { name: "Keychron" };
+        const disconnect = { name: "Disconnect", ends: "disconnect" };
+        holds("an act held in a thing is asked of the thing",
+            Confirm.actOf(keychron, disconnect, "device"), keychron);
+        holds("and one held in a place is asked of itself",
+            Confirm.actOf({ name: "Power" }, disconnect, "place"), disconnect);
+        holds("and one held in nothing is asked of itself",
+            Confirm.actOf(null, disconnect, ""), disconnect);
+        holds("and a window's Close names the window",
+            Confirm.question([{ ends: "close", name: Confirm.actOf({ name: "Plover Notes" },
+                { name: "Close" }, "window").name }], asking), "Close Plover Notes? (y/n)");
         holds("and one that says what it leaves says so before y/n, as a sentence",
             Confirm.question([Object.assign({ leaves: "its worktree stays." },
                 closing("Lamplight"))], asking), "Close Lamplight? Its worktree stays. (y/n)");
@@ -1019,6 +1032,8 @@ QtObject {
         ];
         const firefox = "/run/current-system/sw/bin/firefox";
         const command = [{ said: firefox, path: firefox }, { said: "--private-window" }];
+        const mpv = ["mpv", "--player-operation-mode=pseudo-gui", "--"]
+            .map(said => ({ said, whole: true }));
         const store = "/nix/store/abc/def";
         const cases = [
             ["items that fit share a line", disk, " \u00b7 ", 400,
@@ -1039,6 +1054,23 @@ QtObject {
             ["a path still too wide in its shortest form gives way from its middle too",
                 [{ said: firefox, path: firefox }], " ", 80, ["\u2026/fi\u2026fox"]],
             ["an empty item is left out", [{ said: "" }, { said: "on" }], " ", 100, ["on"]],
+            ["an identifier wraps at its spaces first, shown whole", mpv, " ", 400,
+                ["mpv", "--player-operation-mode=pseudo-gui --"]],
+            ["a short last argument never stands alone", mpv, " ", 340,
+                ["mpv", "--player-operation-mode=", "pseudo-gui --"]],
+            ["one too long alone breaks at its = before its hyphens", mpv, " ", 240,
+                ["mpv", "--player-operation-mode=", "pseudo-gui --"]],
+            ["and at its hyphens where a piece is still too long", mpv, " ", 160,
+                ["mpv", "--player-", "operation-mode=", "pseudo-gui --"]],
+            ["a short last argument brings the one before it down",
+                ["mpv", "-v", "--"].map(said => ({ said, whole: true })), " ", 60,
+                ["mpv", "-v --"]],
+            ["one never breaks at the marks it opens with to keep it company",
+                ["mpv", "--x", "--"].map(said => ({ said, whole: true })), " ", 40,
+                ["mpv", "--x", "--"]],
+            ["a whole path breaks after its slashes, nothing left out",
+                [{ said: firefox, whole: true }], " ", 200,
+                ["/run/current-system/", "sw/bin/firefox"]],
             ["an emoji in its middle is kept whole or left out, never split",
                 [{ said: "ab\ud83c\udf89cdefgh" }], " ", 60, ["ab\u2026gh"]]
         ];

@@ -21,7 +21,8 @@ function sameYear(at, now) {
 // hour, its time earlier today, and before today its day as When.js says
 // any: "yesterday", its weekday within the last six days, else "28 Oct",
 // with the year only when it isn't this one. A moment ahead of now, from a
-// wrong clock, says its time on its own day, else its date. The words are
+// wrong clock, reads as one behind does: its time today, then "tomorrow",
+// its weekday within the next six days, else its date. The words are
 // `said`'s, the vocabulary's, and the names the locale's, as `said.date`
 // gives them, Qt's `formatDate` in the shell.
 function came(at, now, said) {

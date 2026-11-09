@@ -45,6 +45,7 @@ import Quickshell.Io
 import Quickshell.Services.Pipewire
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "Numbers.js" as Numbers
 import "Order.js" as Order
 import "Plate.js" as Plate
 import "Sounds.js" as Sounds
@@ -503,6 +504,40 @@ Provider {
             .find(fact => ["playing", "recording"].includes(fact.name.toLowerCase()))?.value;
         const format = graph === "" || (card && Sounds.sameFormat(graph, card)) ? []
             : [{ label: Words.name(card ? "sound:graph-format" : "sound:format"), value: graph }];
+        // How it keeps time moves each second, so it goes ahead of Format
+        // (VKCF3Z, 2026-11-08): its Dropouts, warned past none, as a glitch
+        // it recovers from rather than a failure; its Load, the share of
+        // each cycle it was busy; and its Cycle, the frames it moves each
+        // time and how long that takes. Only a running node has them. One
+        // that ran past its cycle has taken more than all of it, so its
+        // Load says so in its own form, its stroke full, both warned
+        // (VKCF3Z, 2026-11-08).
+        const timed = timings[node.id] ?? null;
+        // A measured figure takes its three significant digits; a count,
+        // dropouts or frames, is whole.
+        const figure = (value, places) => Numbers.format(value, places ?? Sounds.places(value),
+            settings.group, settings.point);
+        const load = timed === null ? [] : timed.unfinished ? [{
+            label: Words.name("sound:load"),
+            value: said("each-cycle", {
+                share: said("over", { share: `${figure(Sounds.load(1))}%` })
+            }),
+            warns: true,
+            figure: { shape: "stroke", values: [1], warn: true }
+        }] : timed.busy === null ? [] : [{
+            label: Words.name("sound:load"),
+            value: said("each-cycle", { share: `${figure(Sounds.load(timed.busy))}%` }),
+            figure: { shape: "stroke", values: [Math.min(timed.busy, 1)], warn: false }
+        }];
+        const keeping = timed === null ? [] : [{
+            label: Words.name("sound:dropouts"),
+            value: timed.errors === 0 ? said("none") : figure(timed.errors, 0),
+            warns: timed.errors > 0
+        }].concat(load, [{
+            label: Words.name("sound:cycle"),
+            value: said("cycle", { frames: figure(timed.quantum, 0),
+                ms: figure(Sounds.cycleMs(timed)) })
+        }]);
         const known = (ids, identifies) => ids.filter(([, value]) => value !== "")
             .map(([id, value]) => ({
                 label: Words.name(`sound:${id}`), value: value, identifies: identifies
@@ -511,7 +546,7 @@ Provider {
         return {
             eyebrow: Plate.runs([joinedBy(node), said(node.isSink ? "plate-out" : "plate-in")]),
             title: named(node),
-            facts: doing.concat(facts, format,
+            facts: doing.concat(facts, keeping, format,
                 known([["priority", String(properties["priority.session"] ?? "")]], false),
                 known([["alsa-device", String(properties["api.alsa.path"] ?? "")]], true),
                 Plate.facts(hardware.filter(row => row.key === usb)).map(identified),
@@ -1042,6 +1077,61 @@ Provider {
     // than being stopped, whose output is cut short.
     readonly property int normalExit: 0
 
+    // The device whose drawer is out, by its node's name, or "". pw-top
+    // runs only while one shows, since it asks the graph for its timing
+    // every cycle while it runs.
+    readonly property string timedDevice: {
+        const key = launcher !== null && launcher.open && launcher.drawerOut
+            ? String(launcher.selected?.key ?? "") : "";
+        const device = devices.find(node => `sound:${node.name}` === key);
+        return device === undefined ? "" : device.name;
+    }
+
+    // How each running node keeps time, by its id, as pw-top's last whole
+    // frame said it (Sounds.timing), the frame it's reading now, and the
+    // driver last read in it, whose cycle its followers run in. The drawer
+    // reads `timings`, so it moves with each frame without the launcher
+    // refreshing.
+    property var timings: ({})
+    property var timing: ({})
+    property var driving: null
+
+    // pw-top prints every node each second until it's stopped; a frame
+    // opens with its header, so the one before stands whole then. It
+    // never flushes, so into a pipe its frames would come in clumps of a
+    // few kilobytes; stdbuf has it give each line as it's printed.
+    Process {
+        running: provider.timedDevice !== ""
+        command: [provider.settings.stdbuf ?? "stdbuf", "-oL",
+            provider.settings.pwTop ?? "pw-top", "--batch-mode"]
+        onRunningChanged: {
+            if (!running) {
+                provider.timings = ({});
+                provider.timing = ({});
+                provider.driving = null;
+            }
+        }
+        stdout: SplitParser {
+            onRead: line => provider.heardTiming(line)
+        }
+    }
+
+    function heardTiming(line) {
+        if (Sounds.heading(line)) {
+            timings = timing;
+            timing = ({});
+            driving = null;
+            return;
+        }
+        const timed = Sounds.timing(line, driving);
+        // A line that isn't a follower's ends its driver's run, so one
+        // not running leaves its followers with no cycle, not the last.
+        if (!Sounds.follower(line))
+            driving = timed;
+        if (timed !== null)
+            timing[timed.id] = timed;
+    }
+
     Process {
         id: portReader
         onExited: (code, status) => {
@@ -1216,7 +1306,8 @@ Provider {
         let finest = 3;
         for (const f of found)
             finest = Math.min(finest, f.grade);
-        const kept = found.filter(f => f.grade === finest).sort((a, b) => b.score - a.score);
+        const kept = Order.sorted(found.filter(f => f.grade === finest),
+            (a, b) => b.score - a.score);
         return { rows: kept.map(f => f.row), grade: finest };
     }
 

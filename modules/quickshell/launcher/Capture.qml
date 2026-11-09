@@ -39,6 +39,7 @@ import "../FileFacts.js" as FileFacts
 import "../Fuzzy.js" as Fuzzy
 import "Captured.js" as Captured
 import "Recent.js" as Recent
+import "Order.js" as Order
 
 Provider {
     id: provider
@@ -443,15 +444,6 @@ Provider {
         return row;
     }
 
-    // What each folder's captures are, by the folder, for the drawer's
-    // eyebrow.
-    readonly property var kinds: ({
-            [`${home}/Pictures/Screenshots`]: "screenshot",
-            [`${home}/Videos/Recordings`]: "recording",
-            [`${home}/Pictures/Camera`]: "photo",
-            [`${home}/Videos/Camera`]: "video"
-        })
-
     // The drawer under one thing taken (Captured.js): where and what it is,
     // the picture, when it was taken and its size, as Taken read them, then
     // its dimensions or length once file-preview has said, which is asked
@@ -459,7 +451,6 @@ Provider {
     // would change what it reads.
     function takenDrawer(path, name) {
         const read = Taken.files.find(file => file.path === path) ?? { path };
-        const folder = path.slice(0, path.lastIndexOf("/"));
         const shown = provider.previews[path];
         if (shown === undefined && provider.canPreview && !provider.previewAsked[path]) {
             provider.previewAsked[path] = true;
@@ -469,7 +460,6 @@ Provider {
             path,
             name,
             where: Files.within(path),
-            kind: provider.kinds[folder] ?? "",
             at: read.at,
             size: read.size
         }, shown ?? null, {
@@ -557,7 +547,8 @@ Provider {
         let finest = 3;
         for (const f of found)
             finest = Math.min(finest, f.grade);
-        const kept = found.filter(f => f.grade === finest).sort((a, b) => b.score - a.score);
+        const kept = Order.sorted(found.filter(f => f.grade === finest),
+            (a, b) => b.score - a.score);
         return { rows: kept.map(f => f.row), grade: finest };
     }
 

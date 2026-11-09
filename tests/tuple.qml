@@ -89,6 +89,7 @@ QtObject {
             on: "on {program}",
             call: "call",
             missedCall: "missed call",
+            missedCount: "{count} missed",
             program: "Tuple",
             rang: "Who Rang",
             with: "With",
@@ -251,6 +252,30 @@ QtObject {
         asked++;
         if (Tuple.newestFirst(undefined).length !== 0)
             failures.push("a record with no Recent listed some");
+
+        // Its drawer in Programs: its last call, its state first, then how
+        // many it keeps and how many were missed; nothing while it keeps none.
+        const lately = [
+            { people: named("Ada Brightwater"), since: at(3, 14, 10), ended: at(3, 14, 11),
+                missed: true },
+            { people: named("Ben"), since: at(2, 9, 0), ended: at(2, 9, 30), missed: false },
+            { people: named("Cy"), since: at(1, 9, 0), ended: at(1, 9, 1), missed: true }
+        ];
+        const facts = [
+            ["a missed call last", lately, JSON.stringify([
+                { id: "tuple:last-call", value: "missed \u00b7 Ada Brightwater \u00b7 14:10" },
+                { id: "tuple:calls-lately", value: "3 \u00b7 2 missed" }])],
+            ["one answered", lately.slice(1, 2), JSON.stringify([
+                { id: "tuple:last-call", value: "Ben \u00b7 yesterday 09:00" },
+                { id: "tuple:calls-lately", value: "1" }])],
+            ["none", [], "[]"]
+        ];
+        for (const [what, recent, expected] of facts) {
+            asked++;
+            const got = JSON.stringify(Tuple.held(recent, now, said));
+            if (got !== expected)
+                failures.push(`${what} said ${got}, not ${expected}`);
+        }
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)

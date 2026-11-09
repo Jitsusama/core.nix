@@ -1611,7 +1611,8 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
     )
     assert status == not_sure, (status, said)
     assert "--yes does it" in said, said
-    # One that ends nothing needs no terminal: Machine opens in the launcher.
+    # One that ends nothing needs no terminal: Machine opens in the launcher, closed before.
+    assert not desktop.showing()["open"], "the launcher was open before launcher do"
     status, said = machine.execute(desktop.in_session("launcher do machine </dev/null 2>&1"))
     assert status == 0, (status, said)
     desktop.launcher_until(lambda shown: shown["open"])

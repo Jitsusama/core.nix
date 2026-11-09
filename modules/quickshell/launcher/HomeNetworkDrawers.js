@@ -7,11 +7,14 @@
 // what eero says rather than by a word of ours, a radio's band, carries
 // its `label` itself. A figure eero didn't give is no fact at all. What
 // the daemon keeps of the last hour and day is drawn by
-// HomeNetworkHistory.js, which holds the pieces a fact is made of too.
+// HomeNetworkHistory.js, which holds the pieces a fact is made of too,
+// and how the network has and hands out addresses by
+// HomeNetworkAddresses.js.
 // Plain reading of the record, held in Qt's own engine
 // (tests/home-network.qml).
 .pragma library
 .import "HomeNetwork.js" as Home
+.import "HomeNetworkAddresses.js" as Addresses
 .import "HomeNetworkHistory.js" as History
 .import "Interfaces.js" as Interfaces
 .import "Machine.js" as Machine
@@ -28,14 +31,7 @@ const joined = History.joined;
 const fact = History.fact;
 const kept = History.kept;
 const stroke = History.stroke;
-
-// A switch as words: "on" or "off".
-function onOff(value) {
-    if (!known(value)) {
-        return "";
-    }
-    return value ? "on" : "off";
-}
+const onOff = History.onOff;
 
 // Readings as Graph's spark: the newest twenty, scaled to their most.
 function spark(values) {
@@ -71,8 +67,6 @@ function trafficFact(usage, settings) {
 // the thing is, then its kind (VKCF3Z, 2026-11-07).
 function internet(model, now, settings) {
     const net = model?.internet ?? {};
-    const lease = net.lease ?? {};
-    const dns = net.dns ?? {};
     const firmware = net.firmware ?? {};
     return {
         eyebrow: known(net.isp) ? `via ${net.isp}` : "",
@@ -98,20 +92,7 @@ function internet(model, now, settings) {
             trafficFact(net.usage, settings),
             fact("read", joined([Home.when(model?.read, now), model?.cloud?.state])),
         ]).concat(History.probe(net, now, settings), History.outages(net, now),
-            speedTests(net, now, settings), kept([
-            { heading: "addressing" },
-            fact("public", joined([net.public_address, net.double_nat ? "behind another NAT" : ""])),
-            fact("lease", joined([net.wan_type, lease.address && lease.mask
-                ? `${lease.address} / ${lease.mask}` : lease.address,
-                lease.router ? `router ${lease.router}` : ""])),
-            fact("gateway", net.gateway_address),
-            fact("mode", joined([String(net.mode ?? "").toUpperCase(),
-                net.dhcp ? `addresses ${net.dhcp}` : ""])),
-            fact("dns", joined([dns.mode, (dns.servers ?? []).join(DOT),
-                known(dns.caching) ? `caching ${onOff(dns.caching)}` : "",
-                dns.ipv6_mode ? `IPv6 ${dns.ipv6_mode}` : ""])),
-            fact("ipv6", onOff(net.ipv6)),
-        ]), switches(net), History.devicesOff(model, now), History.joinsAndLeaves(model, now),
+            speedTests(net, now, settings), Addresses.addressing(model), switches(net), History.devicesOff(model, now), History.joinsAndLeaves(model, now),
             happened(History.timeline(model), now)),
     };
 }
@@ -228,7 +209,10 @@ function switches(net) {
         fact("randomization", onOff(net.nat_port_randomization)),
         fact("steering", onOff(net.band_steering)),
         fact("wpa3", onOff(net.wpa3)),
+        fact("security", Addresses.security(net.security)),
         fact("wifi-mode", net.wireless_mode),
+        fact("ac-compatibility", onOff(net.ac_compatibility)),
+        fact("name-clash", Addresses.nameClash(net.name_clash)),
         fact("mlo", net.mlo_mode),
         fact("thread", joined([onOff(thread.on), thread.name,
             known(thread.channel) ? `channel ${thread.channel}` : ""])),
@@ -467,7 +451,7 @@ function device(model, one, now, asked) {
             { heading: "where" },
             fact("network", joined([one.ssid, String(one.auth ?? "").toUpperCase(), one.subnet,
                 one.guest ? "guest" : ""])),
-            fact("address", one.address),
+        ].concat(Addresses.deviceAddress(model, one), [
             fact("addresses", (one.addresses ?? []).filter((each) => each !== one.address)
                 .join(DOT)),
             fact("mac", joined([one.mac, one.private ? "private" : ""])),
@@ -479,7 +463,7 @@ function device(model, one, now, asked) {
             fact("profile", group ? joined([group.name, group.paused ? "paused" : ""])
                 : null),
             fact("held", joined([one.paused ? "paused" : "", one.blocked ? "blocked" : ""])),
-        ]).concat(History.roams(model, one, now), happened((model?.events ?? [])
+        ])).concat(History.roams(model, one, now), happened((model?.events ?? [])
             .filter((event) => about(event, one)), now)),
     };
 }

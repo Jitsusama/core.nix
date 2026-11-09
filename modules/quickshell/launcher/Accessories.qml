@@ -878,7 +878,8 @@ Provider {
         let finest = 3;
         for (const f of found)
             finest = Math.min(finest, f.grade);
-        const kept = found.filter(f => f.grade === finest).sort((a, b) => b.score - a.score);
+        const kept = Order.sorted(found.filter(f => f.grade === finest),
+            (a, b) => b.score - a.score);
         return { rows: kept.map(f => f.row), grade: finest };
     }
 

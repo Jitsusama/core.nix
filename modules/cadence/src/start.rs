@@ -239,7 +239,7 @@ fn seen(mesh: &Mesh) -> Vec<Seen> {
 }
 
 /// Whether `pid` is a pi, rather than gone or reused by another program.
-fn is_pi(pid: u32) -> bool {
+pub fn is_pi(pid: u32) -> bool {
     fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|c| c.trim() == "pi")
 }
 

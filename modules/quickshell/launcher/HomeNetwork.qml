@@ -31,6 +31,7 @@ import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "HomeNetwork.js" as Home
 import "HomeNetworkDrawers.js" as Drawers
+import "Order.js" as Order
 
 Provider {
     id: provider
@@ -307,7 +308,8 @@ Provider {
         let finest = 3;
         for (const f of found)
             finest = Math.min(finest, f.grade);
-        const kept = found.filter(f => f.grade === finest).sort((a, b) => b.score - a.score);
+        const kept = Order.sorted(found.filter(f => f.grade === finest),
+            (a, b) => b.score - a.score);
         return { rows: kept.map(f => Object.assign({}, f.row, { depth: 0 })), grade: finest };
     }
 }

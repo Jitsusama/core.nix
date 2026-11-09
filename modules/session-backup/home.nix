@@ -35,6 +35,13 @@
 #
 # with `credentials` naming the application_default_credentials.json it
 # writes there. gcloud insists on cloud-platform in any login it makes.
+# Drive refuses a login from gcloud's application-default client until it
+# names a project to count its calls against, one with Drive's API on:
+#
+#   CLOUDSDK_CONFIG=~/.config/session-backup/gcloud \
+#     gcloud auth application-default set-quota-project <the project>
+#
+# and the backup names it on every call.
 #
 # `session-backup status` says what is sent and what waits. A copy is
 # opened with age and one of the recipients' keys, then zstd -d.

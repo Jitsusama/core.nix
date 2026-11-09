@@ -10,7 +10,10 @@
 //!
 //! A move glides, 50 K a fifth of a second, so it's never seen as a jump,
 //! and one smaller than 150 K isn't started, so the screen doesn't wander
-//! with every flicker of the light. This file only decides; main.rs sets
+//! with every flicker of the light. The night comes slower: a move to the
+//! night's white that isn't one of its evening steps, as when the laptop
+//! starts or opens after sunset, glides 50 K every 1.2 seconds, so its
+//! whole warmth comes over about a minute rather than in ten seconds. This file only decides; main.rs sets
 //! what it decides.
 //!
 //! Joel can say the screen shouldn't follow the room. Then it glides back
@@ -36,6 +39,8 @@ const DIM: f64 = 10.0;
 /// One step of a glide, in kelvin, and how often one is taken.
 const STEP: u16 = 50;
 const EVERY: Duration = Duration::from_millis(200);
+/// How often a step is taken when the night arrives all at once.
+const ARRIVING: Duration = Duration::from_millis(1200);
 /// The least move worth starting, in kelvin.
 const WORTH: u16 = 150;
 
@@ -74,6 +79,8 @@ pub struct Warmth {
     /// brought back to it by morning whatever the room says.
     night: u16,
     by_night: bool,
+    /// How often the glide under way takes a step.
+    pace: Duration,
 }
 
 impl Warmth {
@@ -90,6 +97,7 @@ impl Warmth {
             held: None,
             night: WHITE,
             by_night: false,
+            pace: EVERY,
         }
     }
 
@@ -215,6 +223,11 @@ impl Warmth {
             self.by_night = true;
         }
         let slight = self.follows && !nightly && to != WHITE && to.abs_diff(self.shown) < WORTH;
+        self.pace = if nightly && to.abs_diff(self.shown) > STEP {
+            ARRIVING
+        } else {
+            EVERY
+        };
         match self.aim {
             Some(aim) if aim == to => {}
             Some(_) => self.aim = Some(to),
@@ -255,7 +268,7 @@ impl Warmth {
         if self.aim == Some(kelvin) {
             self.abandon();
         } else {
-            self.next = Some(now + EVERY);
+            self.next = Some(now + self.pace);
         }
     }
 }
@@ -435,6 +448,37 @@ mod tests {
         warmth.light(100.0, now);
         warmth.night(4000, now);
         assert_eq!(glide(&mut warmth, now).last(), Some(&4000));
+    }
+
+    #[test]
+    fn a_night_arriving_all_at_once_comes_over_a_minute() {
+        let start = Instant::now();
+        let mut warmth = Warmth::new(WHITE);
+        warmth.night(4000, start);
+        let mut at = start;
+        while let Some(due) = warmth.wake() {
+            at = at.max(due);
+            if let Some(kelvin) = warmth.step(at) {
+                warmth.set(kelvin, at);
+            }
+        }
+        assert_eq!(warmth.stands(), 4000);
+        let took = at - start;
+        assert!(
+            took >= Duration::from_secs(55) && took <= Duration::from_secs(65),
+            "the night's 2500 K came in {took:?}"
+        );
+    }
+
+    #[test]
+    fn the_room_still_glides_at_its_own_pace() {
+        let start = Instant::now();
+        let mut warmth = Warmth::new(WHITE);
+        warmth.light(100.0, start);
+        warmth.room(2700.0, start);
+        let first = warmth.step(start).expect("the room's glide started");
+        warmth.set(first, start);
+        assert_eq!(warmth.wake(), Some(start + EVERY));
     }
 
     #[test]

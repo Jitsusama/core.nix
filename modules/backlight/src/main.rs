@@ -40,6 +40,7 @@
 //! built-in panel too, whatever its sensor sees (night.rs), through the
 //! same program; where it is comes from whereabouts'
 //! `$XDG_RUNTIME_DIR/whereabouts.json`, looked at again within the hour,
+//! or every ten seconds until it says a place,
 //! and Joel's say over it is kept in `$XDG_STATE_HOME/backlight/night`.
 //! Where the warmth stands, whether it follows the room, whether a sensor
 //! sees colour, and the night light's white, sunset and sunrise are written
@@ -780,7 +781,7 @@ impl Backlight<'_> {
             }
         }
         self.night.plan = plan;
-        let next = plan.map_or(now + night::EASE * 2, |plan| plan.next);
+        let next = plan.map_or(now + night::UNPLACED, |plan| plan.next);
         let wait = u64::try_from(next - now).unwrap_or_default();
         self.night.due = Some(Instant::now() + Duration::from_millis(wait));
         let kelvin = match plan {

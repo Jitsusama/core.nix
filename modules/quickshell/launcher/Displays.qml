@@ -547,13 +547,19 @@ Provider {
         return workspace ? workspace.output : "";
     }
 
+    // A screen dark by name is still in niri's outputs, so it's turned on
+    // by name, and says only that its hub is on, "dark" beside it saying
+    // the rest.
     function made(output) {
-        const on = output.logical !== null;
+        const stands = Screens.standing(output);
         const focused = lit.length > 1 && output.name === focusedOutput;
+        const turnsOn = stands === "dark" ? () => provider.ask({
+            Action: { PowerOnMonitor: { output: output.name } }
+        }) : () => provider.change(output, "On");
         return member({
             thing: true,
             key: `display:${output.name}`,
-            verb: on ? "focus" : "turn on",
+            verb: stands === "lit" ? "focus" : "turn on",
             name: named(output),
             keywords: output.name,
             // A screen, built in or not, wears the screen's mark, its
@@ -561,13 +567,41 @@ Provider {
             // 2026-11-08: one mark, one meaning).
             glyph: Theme.glyph.display,
             hue: "machine",
-            side: !on ? "off" : focused ? "focused" : "",
-            note: described(output),
-            run: on ? () => Niri.act({ FocusMonitor: { output: output.name } })
-                : () => provider.change(output, "On"),
+            side: stands === "dark" ? screenSaid.dark
+                : stands === "off" ? "off" : focused ? "focused" : "",
+            note: stands === "dark" ? screenSaid.hubOn : described(output),
+            run: stands === "lit" ? () => Niri.act({ FocusMonitor: { output: output.name } })
+                : turnsOn,
             verbs: () => provider.verbs(output),
-            drawer: () => provider.drawerOf(output)
+            drawer: () => provider.drawerOf(output),
+            options: {
+                power: provider.screenOption(output, "power"),
+                unplugged: provider.screenOption(output, "unplugged")
+            }
         });
+    }
+
+    // A screen's option for the : line's :setl, which turns it as its Turn
+    // It Off, Turn It On and Unplug It rows do (Screens.wayTo); one it
+    // can't take, as unplugging the last lit screen, says so and does
+    // nothing else.
+    function screenOption(output, option) {
+        return {
+            kind: "switch",
+            now: () => Screens.optionNow(output, option),
+            set: on => {
+                const asked = { option: option, on: on };
+                const told = Screens.toldOf(output, shown, Niri.powersOffEach, asked);
+                if (told !== "")
+                    return String(screenSaid[told] ?? "").replace("{name}", named(output));
+                const way = Screens.wayTo(output, shown, Niri.powersOffEach, asked);
+                if (way.waits)
+                    provider.darkenLast(way.asks);
+                else
+                    provider.ask(way.asks);
+                return "";
+            }
+        };
     }
 
     // Every screen off, as niri's power-off-monitors turns them off: each
@@ -675,13 +709,15 @@ Provider {
     // or let go just after, would wake them at once: they're turned off
     // once it has come up and the launcher has closed.
     function sleepAll() {
+        darkening = null;
         sleeping.restart();
     }
 
     Timer {
         id: sleeping
         interval: 750
-        onTriggered: Niri.act({ PowerOffMonitors: {} })
+        onTriggered: provider.darkening === null ? Niri.act({ PowerOffMonitors: {} })
+            : provider.ask(provider.darkening)
     }
 
     // A choice wears the theme's mark of the setting it's for, by name.
@@ -731,22 +767,52 @@ Provider {
         return partNamed("displays", id);
     }
 
-    // A display's right arrow: turning it on while it's off; while it's
-    // on, each of its settings as a part saying how it's set, whose step
-    // in offers the others (and whose choices what's typed finds from
-    // here, so "scale 1.5" is Scale to 1.5\u00d7), then turning it off while
-    // another is on, then what its EDID says.
+    // A display's right arrow: turning it on while it's off or dark; while
+    // it's lit, each of its settings as a part saying how it's set, whose
+    // step in offers the others (and whose choices what's typed finds from
+    // here, so "scale 1.5" is Scale to 1.5\u00d7), then the ways it turns
+    // off that Screens.js gives, then what its EDID says.
     function verbs(output) {
-        if (output.logical === null)
-            return [choice("on", "Turn It On", "display", false, () => change(output, "On"))]
-                .concat(factRows(output));
-        const rows = setUp(output);
-        // The last display on stays on, or nothing would show the launcher.
-        if (lit.length > 1)
-            rows.push(choice("off", "Turn It Off", "displayOff", false,
-                () => change(output, "Off")));
-        return rows.concat(factRows(output));
+        const ways = Screens.ways(output, shown, Niri.powersOffEach).map(way => powerRow(way));
+        if (Screens.standing(output) !== "lit")
+            return ways.concat(factRows(output));
+        return setUp(output).concat(ways, factRows(output));
     }
+
+    // Words a screen's standing is said in, from the vocabulary.
+    readonly property var screenSaid: Words.of("displays").said ?? {}
+
+    // One way a screen turns off or on, as a choice: its words the
+    // vocabulary's, its note why it matters, and the last lit screen's
+    // darkening closing the launcher, since nothing would show it, and
+    // waiting for the key to come up, which would light every screen.
+    function powerRow(way) {
+        const id = `verb:display-${way.word}`;
+        return thing({
+            key: id,
+            name: Words.name(id),
+            glyph: Words.glyph(id),
+            hue: "action",
+            note: way.note === "" ? "" : Words.of(id).said?.[way.note] ?? "",
+            stays: !way.waits,
+            run: way.waits ? () => provider.darkenLast(way.asks) : () => provider.ask(way.asks)
+        });
+    }
+
+    // Asks niri to change a screen, then asks again how they stand, so a
+    // screen dark by name says so at once.
+    function ask(asked) {
+        Niri.request(asked, () => provider.refresh());
+    }
+
+    function darkenLast(asked) {
+        darkening = asked;
+        sleeping.restart();
+    }
+
+    // What the last lit screen's darkening asks, once the key is up; none
+    // when every screen goes off.
+    property var darkening: null
 
     // A setting as a part: its name, how it's set, and the choices a step
     // in, or only how it's set when there's nothing else to choose.
@@ -898,7 +964,8 @@ Provider {
         let finest = 3;
         for (const f of found)
             finest = Math.min(finest, f.grade);
-        const kept = found.filter(f => f.grade === finest).sort((a, b) => b.score - a.score);
+        const kept = Order.sorted(found.filter(f => f.grade === finest),
+            (a, b) => b.score - a.score);
         return { rows: kept.map(f => f.row), grade: finest };
     }
 

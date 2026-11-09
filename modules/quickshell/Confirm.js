@@ -70,6 +70,15 @@ function question(rows, words) {
     return joined(questionParts(rows, words));
 }
 
+// What an act asked from its own row is an act of, for its ask: the
+// thing holding it, as Disconnect's is the Keychron or Close's a window,
+// but never a place, so Power's Reboot asks of itself rather than
+// "Reboot Power" (VKCF3Z, 2026-11-08). `holderKind` is the holder's kind,
+// as the catalogue says it; the : line and launcher do both ask so.
+function actOf(holder, act, holderKind) {
+    return holder && holderKind !== "place" ? holder : act;
+}
+
 // The same ask in its parts: its head, what it does and to what; the
 // clause saying what stays, where one does; and the keys after it, so
 // fitted can give the clause way alone.

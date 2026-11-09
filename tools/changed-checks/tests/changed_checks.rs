@@ -126,8 +126,13 @@ echo "{\"flake\":\"$4\",\"on\":\"lent\",\"sent\":4321}" \
 /// A folder holding the stand-ins and what they read, emptied first and
 /// gone once the test ends, even when it fails: the tests' `$TMPDIR` is a
 /// quest's scratch, where a folder left behind stays until the quest ends.
+/// One made `here` runs changed-checks as asked to run on this machine,
+/// since a run nowhere else took is refused otherwise; one made
+/// `elsewhere` offers each run to a nix-offload that takes it first, as a
+/// person's run does.
 struct StandIn {
     folder: PathBuf,
+    here: bool,
 }
 
 impl Drop for StandIn {
@@ -138,6 +143,16 @@ impl Drop for StandIn {
 
 impl StandIn {
     fn new(test: &str) -> Self {
+        Self::made(test, true)
+    }
+
+    fn elsewhere(test: &str) -> Self {
+        let made = Self::made(test, false);
+        fs::write(made.path("takes-changed"), "").expect("written");
+        made
+    }
+
+    fn made(test: &str, here: bool) -> Self {
         let folder =
             std::env::temp_dir().join(format!("changed-checks-{}-{test}", std::process::id()));
         let _ = fs::remove_dir_all(&folder);
@@ -148,7 +163,7 @@ impl StandIn {
             fs::write(&path, script).expect("a stand-in");
             fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("it runs");
         }
-        Self { folder }
+        Self { folder, here }
     }
 
     /// Have nix give these derivations for one side, "base" or "working".
@@ -186,9 +201,11 @@ impl StandIn {
             self.folder.join("bin").display(),
             std::env::var("PATH").unwrap_or_default()
         );
+        let asked_here = self.here && !arguments.contains(&"--here");
         let _starting = starting();
         Command::new(env!("CARGO_BIN_EXE_changed-checks"))
             .args(arguments)
+            .args(asked_here.then_some("--here"))
             .env("PATH", path)
             .env("STAND_IN", &self.folder)
             .env("XDG_CACHE_HOME", self.folder.join("cache"))
@@ -196,7 +213,6 @@ impl StandIn {
             .env("NIX_OFFLOAD_DIR", self.folder.join("offload"))
             // No stall, whatever the machine running the tests holds.
             .env("CHANGED_CHECKS_PRESSURE", self.folder.join("pressure"))
-            .env("CHANGED_CHECKS_CPU_PRESSURE", self.folder.join("cpu"))
             .envs(told.iter().copied())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -430,11 +446,10 @@ fn a_pushed_commit_is_built_on_the_lent_builder_and_anything_else_here() {
 
 #[test]
 fn the_whole_run_goes_elsewhere_where_nix_offload_takes_it_naming_this_system() {
-    let stand_in = StandIn::new("sent-whole");
+    let stand_in = StandIn::elsewhere("sent-whole");
     stand_in.checks("base", BASE);
     stand_in.checks("working", WORKING);
     fs::create_dir_all(stand_in.path("repo")).expect("the repository");
-    fs::write(stand_in.path("takes-changed"), "").expect("written");
     fs::write(stand_in.path("clean"), "").expect("written");
 
     let ran = stand_in.run(&["--build", "--no-vm"]);
@@ -457,25 +472,34 @@ fn the_whole_run_goes_elsewhere_where_nix_offload_takes_it_naming_this_system() 
     assert_eq!(stand_in.run(&["--build"]).status.code(), Some(1));
 }
 
+// Runs no builder took evaluated and built here while the machine looked
+// idle, and on 8 November one built openvino here for three hours beside
+// Joel's work. Only one asked to runs here.
 #[test]
-fn it_runs_here_when_asked_to_when_its_base_is_its_own_or_when_nowhere_took_it() {
-    let stand_in = StandIn::new("kept-here");
+fn it_runs_here_only_when_asked_and_otherwise_says_why_it_went_nowhere() {
+    let stand_in = StandIn::elsewhere("kept-here");
     stand_in.checks("base", BASE);
     stand_in.checks("working", WORKING);
     fs::create_dir_all(stand_in.path("repo")).expect("the repository");
-    fs::write(stand_in.path("takes-changed"), "").expect("written");
     let named = "added    new\nchanged  a\nchanged  vm-x\nremoved  gone\n";
+    let refused = |ran: &Output, why: &str| {
+        let said = text(&ran.stderr);
+        assert_eq!(ran.status.code(), Some(75), "{said}");
+        assert!(said.contains(why), "{said}");
+        assert!(
+            said.contains("so nothing was run here; --here runs it on this machine"),
+            "{said}"
+        );
+        assert_eq!(text(&ran.stdout), "", "nothing was evaluated here");
+    };
 
-    // Edits not yet committed stay here: the far side checks a commit, so
+    // Edits not yet committed aren't sent: the far side checks a commit, so
     // it would pass the last one rather than what's in the working tree.
     let ran = stand_in.run(&["--system", "x86_64-linux"]);
     assert!(!stand_in.path("changed").exists(), "{}", text(&ran.stderr));
-    assert!(
-        text(&ran.stderr).contains("uncommitted"),
-        "{}",
-        text(&ran.stderr)
-    );
-    assert_eq!(text(&ran.stdout), named);
+    refused(&ran, "uncommitted");
+    let ran = stand_in.run(&["--system", "x86_64-linux", "--here"]);
+    assert_eq!(text(&ran.stdout), named, "{}", text(&ran.stderr));
     fs::write(stand_in.path("clean"), "").expect("written");
 
     for arguments in [
@@ -497,32 +521,17 @@ fn it_runs_here_when_asked_to_when_its_base_is_its_own_or_when_nowhere_took_it()
         }
     }
 
-    // A base only this checkout names stays here; the stand-in git knows
-    // origin's main alone, so it says it shares no history.
+    // A base only this checkout names shares no history the stand-in git
+    // knows, so it's refused as asked wrongly, sent nowhere.
     let _ = fs::remove_file(stand_in.path("changed"));
     let ran = stand_in.run(&["--system", "x86_64-linux", "--base", "topic"]);
     assert!(!stand_in.path("changed").exists(), "{}", text(&ran.stderr));
 
-    // Nowhere took it, so it runs here after all, while the machine is idle.
+    // Offered and taken nowhere, it isn't run here instead, idle or not.
     fs::write(stand_in.path("changed-exit"), "75").expect("written");
     let ran = stand_in.run(&["--system", "x86_64-linux"]);
-    assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert!(stand_in.path("changed").exists(), "it was offered first");
-    assert_eq!(text(&ran.stdout), named);
-
-    // Busy, it waits to be run again rather than evaluate beside the
-    // person's work, unless told to run here.
-    fs::write(
-        stand_in.path("cpu"),
-        "some avg10=70.00 avg60=64.00 avg300=60.00 total=1\n",
-    )
-    .expect("written");
-    let ran = stand_in.run(&["--system", "x86_64-linux"]);
-    assert!(!ran.status.success(), "{}", text(&ran.stderr));
-    assert!(text(&ran.stderr).contains("busy"), "{}", text(&ran.stderr));
-    assert_eq!(text(&ran.stdout), "");
-    let ran = stand_in.run(&["--system", "x86_64-linux", "--here"]);
-    assert_eq!(text(&ran.stdout), named, "{}", text(&ran.stderr));
+    refused(&ran, "no builder took the run");
 }
 
 #[test]
@@ -530,11 +539,10 @@ fn a_base_origins_main_holds_goes_with_the_run_as_its_commit_and_any_other_stays
     // A run comparing with an older commit of main, as one checking what
     // changed since main last passed does, stayed here and evaluated twice,
     // about 4 GB each, at a load of 118 on 30 October.
-    let stand_in = StandIn::new("far-base");
+    let stand_in = StandIn::elsewhere("far-base");
     stand_in.checks("base", BASE);
     stand_in.checks("working", WORKING);
     fs::create_dir_all(stand_in.path("repo")).expect("the repository");
-    fs::write(stand_in.path("takes-changed"), "").expect("written");
     fs::write(stand_in.path("clean"), "").expect("written");
 
     let ran = stand_in.run(&["--base", "older", "--system", "x86_64-linux"]);
@@ -550,7 +558,7 @@ fn a_base_origins_main_holds_goes_with_the_run_as_its_commit_and_any_other_stays
     fs::remove_file(stand_in.path("changed")).expect("cleared");
     let ran = stand_in.run(&["--base", "unpushed", "--system", "x86_64-linux"]);
 
-    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(ran.status.code(), Some(75), "{}", text(&ran.stderr));
     assert!(!stand_in.path("changed").exists(), "{}", text(&ran.stderr));
     assert!(
         text(&ran.stderr).contains("origin's main doesn't hold abcdef012345"),
@@ -785,10 +793,9 @@ fn a_run_evaluating_here_waits_its_turn_while_another_holds_it() {
 
 #[test]
 fn keeping_a_base_elsewhere_never_asks_for_a_builder_nor_goes_where_it_must() {
-    let stand_in = StandIn::new("keeps-elsewhere");
+    let stand_in = StandIn::elsewhere("keeps-elsewhere");
     stand_in.checks("base", BASE);
     fs::create_dir_all(stand_in.path("repo")).expect("the repository");
-    fs::write(stand_in.path("takes-changed"), "").expect("written");
     fs::write(stand_in.path("clean"), "").expect("written");
     let keeping = ["--system", "x86_64-linux", "--keep-base"];
 
@@ -813,9 +820,8 @@ fn keeping_a_base_elsewhere_never_asks_for_a_builder_nor_goes_where_it_must() {
 
 #[test]
 fn a_session_asking_to_go_first_waits_its_turn_and_says_so() {
-    let stand_in = StandIn::new("first");
+    let stand_in = StandIn::elsewhere("first");
     fs::create_dir_all(stand_in.path("repo")).expect("the repository");
-    fs::write(stand_in.path("takes-changed"), "").expect("written");
     fs::write(stand_in.path("takes-first"), "").expect("written");
     fs::write(stand_in.path("clean"), "").expect("written");
 

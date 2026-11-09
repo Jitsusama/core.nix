@@ -41,7 +41,7 @@ pub fn rate(mbps: f64) -> String {
         .collect()
 }
 
-use crate::model::{CloudState, Device, HomeNetwork, Node, Profile};
+use crate::model::{CloudState, Device, DeviceOff, HomeNetwork, Node, Profile};
 use figures::joined;
 use marks::marks;
 use text::{Line, Page, Role, muted, plain, run, strong};
@@ -264,6 +264,32 @@ pub fn device_name(device: &Device) -> &str {
         .unwrap_or(&device.mac)
 }
 
+/// What a device not on now is called, as `device_name` says one on now.
+pub fn off_name(device: &DeviceOff) -> &str {
+    device
+        .name
+        .as_deref()
+        .or(device.nickname.as_deref())
+        .or(device.hostname.as_deref())
+        .unwrap_or(&device.mac)
+}
+
+/// What the device with a hardware address is called, on now or not; none
+/// for one eero doesn't list.
+pub fn listed_name<'a>(model: &'a HomeNetwork, mac: &str) -> Option<&'a str> {
+    let on = model
+        .devices
+        .iter()
+        .find(|device| device.mac.eq_ignore_ascii_case(mac));
+    let off = || {
+        model
+            .devices_off
+            .iter()
+            .find(|device| device.mac.eq_ignore_ascii_case(mac))
+    };
+    on.map(device_name).or_else(|| off().map(off_name))
+}
+
 /// Words listing names: Hall, Study and Den.
 pub fn listed(names: &[&str]) -> String {
     match names {
@@ -318,12 +344,8 @@ fn find_device<'a>(
     {
         return Ok(device);
     }
-    let called = |device: &&Device| {
-        [&device.name, &device.nickname, &device.hostname]
-            .into_iter()
-            .flatten()
-            .any(|said| said.eq_ignore_ascii_case(name))
-    };
+    let called =
+        |device: &&Device| answers_to(name, [&device.name, &device.nickname, &device.hostname]);
     let matches: Vec<&Device> = model.devices.iter().filter(called).collect();
     match matches.as_slice() {
         [one] => Ok(one),
@@ -347,13 +369,7 @@ fn find_device<'a>(
 /// Why a device eero knows isn't shown: it isn't on now, and where and
 /// when it last was.
 fn off_now(model: &HomeNetwork, name: &str, clock: Option<&Clock>) -> Option<String> {
-    let off = model.devices_off.iter().find(|device| {
-        device.mac.eq_ignore_ascii_case(name)
-            || [&device.name, &device.nickname, &device.hostname]
-                .into_iter()
-                .flatten()
-                .any(|said| said.eq_ignore_ascii_case(name))
-    })?;
+    let off = off_device(model, name)?;
     let mut last = Vec::new();
     if let Some(node) = off.node.as_deref() {
         last.push(location(model, Some(node)).to_owned());
@@ -368,6 +384,32 @@ fn off_now(model: &HomeNetwork, name: &str, clock: Option<&Clock>) -> Option<Str
         format!("{name} isn't on now")
     } else {
         format!("{name} isn't on now; it was last on {}", last.join(", "))
+    })
+}
+
+/// Whether any of a device's names is the one asked for, in any case.
+fn answers_to(name: &str, names: [&Option<String>; 3]) -> bool {
+    names
+        .into_iter()
+        .flatten()
+        .any(|said| said.eq_ignore_ascii_case(name))
+}
+
+/// The device not on now that a name or hardware address finds, the first
+/// eero lists where several answer to it.
+fn off_device<'a>(model: &'a HomeNetwork, name: &str) -> Option<&'a DeviceOff> {
+    model.devices_off.iter().find(|device| {
+        device.mac.eq_ignore_ascii_case(name)
+            || answers_to(name, [&device.name, &device.nickname, &device.hostname])
+    })
+}
+
+/// Whether a device on now answers to a name, so `eero device` shows it
+/// rather than one that's off.
+fn on_now_answers_to(model: &HomeNetwork, name: &str) -> bool {
+    model.devices.iter().any(|device| {
+        device.mac.eq_ignore_ascii_case(name)
+            || answers_to(name, [&device.name, &device.nickname, &device.hostname])
     })
 }
 

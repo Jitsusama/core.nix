@@ -28,6 +28,12 @@ Singleton {
     readonly property int asksForKeys: Quickshell.env("NIRI_ON_DEMAND_WHEN_ASKED") === "1"
         ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive
 
+    // Whether niri powers one output off by name, keeping it docked
+    // (modules/niri/powers-off-each-output.patch), and says which are off
+    // as each output's powered_off. Asked of the niri running, as the keys
+    // are, since a switch restarts the shell under the niri it had.
+    readonly property bool powersOffEach: Quickshell.env("NIRI_POWERS_OFF_EACH_OUTPUT") === "1"
+
     // Requests asked for before the socket connects, sent once it does, and
     // what hears each one's answer, in the order niri answers them.
     property var waiting: []

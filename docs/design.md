@@ -1178,7 +1178,15 @@ works the same way everywhere.
   ("Copy the Title", "Copy the Link", "Copy the Password"). A password's
   Return copies it, since that's its use rather than a copy of what
   describes it, so Copy last doesn't move it; the secret itself reads
-  "hidden", and nothing shows it.
+  "hidden", and nothing shows it. A login's Open the Website opens a
+  web page in the browser its password manager's extension fills in,
+  wearing that browser's mark, and the launcher never fills it: where
+  the manager can't be asked to fill it, as 1Password can't from outside
+  its app, the foot says the extension offers to ("1Password offers to
+  fill it on the page"), and no secret passes through the launcher. With
+  no such browser, it opens in the default one with the globe's mark,
+  and the foot says nothing more; it's one act either way, never a
+  second beside it doing the same (VKCF3Z, 2026-11-08).
   A quest's Go To Its Session is the one that names where, as it pairs
   with Start a Session.
   Ending the session asks once more, saying what it closes ("Reboot now,
@@ -1389,7 +1397,11 @@ works the same way everywhere.
   place says what it holds
   after its name, muted, by its members' own names in the place's own
   order (Desktop: "This Window, Windows, Screens, Notices"), as many whole
-  as fit, so a glance reminds Joel what there is; a place that measures
+  as fit, so a glance reminds Joel what there is. The run ends on the
+  last name that fits, never an ellipsis, which no note wears (VKCF3Z,
+  2026-11-08). A note is a lowercase run, never a sentence: a place
+  holding none says "none running" or "nobody lately", and the sentence
+  stays inside it. A place that measures
   something says how it stands instead, as Processor says "99% busy".
   What a row holds, and a found row's note ("1 window · 14 tabs"), is set
   in the serif upright at the name's size, on its baseline and a step after it,
@@ -2472,7 +2484,10 @@ nor Space ?: in visual the command line, then d, then y. A key that comes
 and goes with the row is drawn furthest from Return, so nothing else moves
 when it does, and which gives way follows need rather than place: on the
 find the completion first, then next time, and never Tab in, which is
-named wherever Tab goes in and nowhere it doesn't, Ctrl+] never. On held
+named wherever Tab goes in and nowhere it doesn't, Ctrl+] never; in
+normal Tab in first, then d and y, which Space ? lists, so - up and :
+outlast them, - being the one way back out of a step such as a filter
+(VKCF3Z, 2026-11-08). On held
 notices d stays too, and the position gives way whole before any of them.
 Return's place holds the widest verb among the rows it may name: on the
 find those the text typed now lists, measured again at each letter or

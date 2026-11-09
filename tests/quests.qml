@@ -13,7 +13,8 @@ pragma ComponentBehavior: Bound
 // its id without making them; Start a
 // Session there steps into the machines the realm's node places on, where
 // it has more than this one, each that can't take a session dimmed with
-// why, and Wherever It Fits last; and a quest made since is heard, each
+// why, each other saying how it stands as Machines says it, from the
+// node's machine records, and Wherever It Fits last; and a quest made since is heard, each
 // other's row kept as every quest is told again. It exits 0 once every
 // case holds, and otherwise 1, saying which didn't.
 import qs
@@ -57,11 +58,20 @@ ShellRoot {
         settings: ({ name: "quests" })
         // Each after the change is done, since a case changes them again.
         onAllChanged: {
-            if (root.waiting === "the first reading" && theQuests.all.length === 4)
-                Qt.callLater(root.first);
+            if (root.waiting === "the first reading")
+                root.read();
             else if (root.waiting === "the quest made since" && theQuests.all.length > 4)
                 Qt.callLater(root.since);
         }
+    }
+
+    // The first cases wait for both quest lists and the machines, each
+    // heard over a watch of its own, in whichever order they come.
+    readonly property bool machinesHeard: theQuests.machineKind?.answered ?? false
+    onMachinesHeardChanged: read()
+    function read() {
+        if (root.waiting === "the first reading" && theQuests.all.length === 4 && machinesHeard)
+            Qt.callLater(root.first);
     }
 
     // A quest as the harness lists it, and as the node serves it: under
@@ -87,6 +97,16 @@ ShellRoot {
             updated: "2025-01-05" })
     ]
 
+    // The realm's machines as the node lists them: this one, one out of
+    // reach and one ready on its battery.
+    readonly property var machines: [
+        { key: "machine:alpha", name: "alpha", here: true, state: "ready" },
+        { key: "machine:beta", name: "beta", state: "unreachable",
+            measured_at: "2026-11-08T05:20:00Z" },
+        { key: "machine:gamma", name: "gamma", state: "ready",
+            power: { on_battery: true, charge: 40 } }
+    ]
+
     // The shell's watch of each kind, by kind, so the node can tell it more.
     property var watches: ({})
 
@@ -97,7 +117,8 @@ ShellRoot {
     }
 
     // A stand-in for the machine's node, speaking the daemon interface:
-    // hello, and a watch of either list answered with it whole.
+    // hello, and a watch of either list, or of the machines, answered with
+    // it whole.
     SocketServer {
         active: true
         path: Sessions.nodePath
@@ -109,6 +130,8 @@ ShellRoot {
                     let answer;
                     if (ask.ask === "hello") {
                         answer = { id: ask.id, version: 1, domain: "node", state: "running" };
+                    } else if (ask.ask === "watch" && ask.kind === "machine") {
+                        answer = { id: ask.id, records: root.machines };
                     } else if (ask.ask === "watch" && ["quest", "ended-quest"].includes(ask.kind)) {
                         root.watches[ask.kind] = { socket: asked, id: ask.id };
                         answer = { id: ask.id,
@@ -221,7 +244,8 @@ ShellRoot {
             // With another machine the realm links, out of reach now.
             Sessions.places = [
                 { name: "alpha", cannot: "", rather: "" },
-                { name: "beta", cannot: "out of reach", rather: "" }
+                { name: "beta", cannot: "out of reach", rather: "" },
+                { name: "gamma", cannot: "", rather: "" }
             ];
             Sessions.fits = "alpha";
             const start = prompt.verbs()[0];
@@ -229,11 +253,13 @@ ShellRoot {
                 start.note);
             const machines = start.verbs();
             expect("stepping into the machines, this one first, Wherever It Fits last",
-                names(machines) === "alpha, beta, Wherever It Fits", names(machines));
-            const [here, away, anywhere] = machines;
+                names(machines) === "alpha, beta, gamma, Wherever It Fits", names(machines));
+            const [here, away, other, anywhere] = machines;
             expect("this machine says so", here.note === "this machine" && !here.gone, here.note);
             expect("one that can't take it stays, dimmed, saying why",
                 away.gone && away.note === "out of reach", `${away.gone} ${away.note}`);
+            expect("one that can take it says how it stands, as Machines says it",
+                !other.gone && other.note === "ready \u00b7 on battery 40%", other.note);
             expect("Wherever It Fits says where", anywhere.note === "on alpha", anywhere.note);
             here.run();
             expect("starting it on the machine chosen",

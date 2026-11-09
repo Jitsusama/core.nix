@@ -23,14 +23,15 @@ import QtQuick
 import Qt.labs.folderlistmodel
 import "../Fuzzy.js" as Fuzzy
 import "../Marks.js" as Marks
+import "../When.js" as When
 import "Ago.js" as Ago
 import "ForYou.js" as ForYou
+import "ForYouFilter.js" as Filter
 import "NowGroups.js" as Groups
 import "Order.js" as Order
 import "Moment.js" as Moment
 import "NeedsYou.js" as NeedsYou
 import "Here.js" as Here
-import "../When.js" as When
 
 Provider {
     id: provider
@@ -383,14 +384,6 @@ Provider {
         return words;
     }
 
-    // A time an item names, as the clock says it: today's by its hour, and
-    // another day's with its day.
-    function clocked(at) {
-        const when = new Date(at);
-        const today = new Date().toDateString() === when.toDateString();
-        return Qt.formatDateTime(when, today ? "HH:mm" : "ddd d MMM, HH:mm");
-    }
-
     // What one not ready yet waits for, in words (Waiting.waitsFor), or its
     // owner's own words in a file older than that.
     function waitsSaid(each) {
@@ -406,14 +399,12 @@ Provider {
     // view (NeedsYou.js) from what this says in words: its times as the
     // clock says them, the machine it's done on, whether anything will see
     // it done, and its side, so its note never says the side again.
-    function toldOf(each) {
-        const time = at => Number.isNaN(Date.parse(at ?? "")) ? "" : clocked(at);
+    // In For You, its side is the strongest reason it's there (`reason`).
+    function toldOf(each, reason) {
         return {
-            at: time(each.at),
-            by: time(each.deadline),
-            machine: typeof each.where?.machine === "string" ? each.where.machine : "",
             watched: WaitingOnYou.watched(each),
-            side: sideOf(each),
+            side: (reason ?? "") !== "" ? reason : sideOf(each),
+            ready: each.ready === true && !each.putOff,
             now: Date.now()
         };
     }
@@ -422,8 +413,8 @@ Provider {
     // watching it when only Joel can say it's done and the session that
     // raised it has gone (VKCF3Z, 2026-10-30), led by its owner's words for
     // when and ended by how long it's waited (VKCF3Z, 2026-11-07).
-    function noteOf(each) {
-        return NeedsYou.note(each, Words.of("on:waiting").said ?? {}, toldOf(each));
+    function noteOf(each, reason) {
+        return NeedsYou.note(each, Words.of("on:waiting").said ?? {}, toldOf(each, reason));
     }
 
     // Its drawer: where it's from and that it's a thing to do, its title,
@@ -432,7 +423,9 @@ Provider {
     // its steps, numbered, and why only Joel can do it (VKCF3Z, 2026-10-31
     // and 2026-11-08), each only when it says it. How it's known done is a
     // fact now, so the words don't say it again.
-    function drawerOf(each) {
+    // `reason` is the weighed row's side, "" for one not weighed, such as
+    // Later's, whose side says what it waits for.
+    function drawerOf(each, reason) {
         const steps = (Array.isArray(each.steps) ? each.steps : [])
             .filter(step => typeof step === "string" && step !== "")
             .map((step, at) => `${at + 1}. ${step}`);
@@ -443,22 +436,41 @@ Provider {
         const quest = WaitingOnYou.questOf(each) ?? "";
         const since = ForYou.when(each.raisedAt);
         const checked = ForYou.when(each.checkedAt);
+        const owner = ForYou.figures(each, {
+            now,
+            sideSaysDue: (reason ?? "") !== "" && itemThing(each).blocks === 0
+                && ForYou.when(each.deadline) !== null,
+            window: WaitingOnYou.windowOf(each)?.title ?? ""
+        }, say);
+        // An identifier is set in the Name face; a check's command stands
+        // under its name, wrapping at its own punctuation (Drawer.qml).
+        const identifier = (id, value, under) => Object.assign(fact(id, value),
+            { identifies: true }, under ? { words: true } : {});
         const facts = [
             fact("weight", ForYou.weightSaid(itemThing(each), now, say)),
+            fact("due", owner.due),
+            fact("set-for", owner.setFor),
             fact("takes", typeof each.minutes === "number"
                 ? waitingSaid("takes", { minutes: each.minutes }) : ""),
-            fact("since", since === null ? "" : clocked(since)),
+            fact("since", since === null ? "" : say.clock(since)),
             // When the session that raised it last found it still true, so
             // Joel can tell an ask that's gone stale (Joel, 2026-11-08: "i
             // don't know if it is still relevant").
-            fact("checked", checked === null ? "" : clocked(checked)),
-            fact("clears", knownSaid(each)),
+            fact("checked", checked === null ? "" : say.clock(checked)),
+            // A sentence, so it's set in Words, under its name.
+            Object.assign(fact("clears", knownSaid(each)), { words: true }),
+            fact("machine", owner.machine),
+            fact("where", owner.where),
             fact("quest", quest),
             fact("session", session?.title ?? ""),
+            identifier("address", owner.address, false),
+            identifier("check", owner.check, true),
             Object.assign(fact("item", WaitingOnYou.identity(each)), { identifies: true })
         ].filter(one => one.value !== "");
         return {
-            eyebrow: waitingSaid("from", { from: session?.title || quest, kind: say.todo }),
+            // Its quest by its title (VKCF3Z, 2026-11-08); its owner's
+            // address is a fact of its own.
+            eyebrow: waitingSaid("from", { from: quest || session?.title || "", kind: say.todo }),
             eyebrowNames: true,
             title: each.title,
             facts: facts,
@@ -497,10 +509,19 @@ Provider {
     // The words For You's rows and drawers are said in, with the clock and
     // how long ago as the launcher says them (Ago.js), at `now`.
     function forYouSaid(now) {
-        return Object.assign({}, Words.of("on:waiting").said ?? {}, {
-            clock: at => provider.clocked(at),
-            ago: at => Ago.ago(at, now)
+        const said = Words.of("on:waiting").said ?? {};
+        const say = Object.assign({}, said, {
+            ago: at => Ago.ago(at, now),
+            day: (at, today) => When.day(at, today, {
+                yesterday: said.yesterday,
+                tomorrow: said.tomorrow,
+                date: (date, format) => Qt.formatDate(date, format)
+            }),
+            time: at => Qt.formatTime(new Date(at), "HH:mm")
         });
+        // Every moment For You says, one way (ForYou.js's moment).
+        say.clock = at => ForYou.moment(at, now, say);
+        return say;
     }
 
     // An item as ForYou.js weighs it: a thing to do, ready while Joel can do
@@ -633,8 +654,8 @@ Provider {
                 : typeof each.minutes === "number"
                 ? waitingSaid("minutes", { minutes: each.minutes }) : ""]
                 .filter(part => part !== "").join(" \u00b7 "),
-            note: noteOf(each),
-            drawer: () => provider.drawerOf(each),
+            note: noteOf(each, reason),
+            drawer: () => provider.drawerOf(each, reason),
             // Its verbs and targets both make it a row holding rows, which
             // Return's own act never leads (Catalogue.js's leading).
             verbs: inside,
@@ -785,7 +806,7 @@ Provider {
         const identified = (id, value) => Object.assign(fact(id, value), { identifies: true });
         const facts = [
             fact("weight", waits ? ForYou.weightSaid(lookThing(one), now, say) : ""),
-            fact("since", one.since === null ? "" : clocked(one.since)),
+            fact("since", one.since === null ? "" : say.clock(one.since)),
             fact("clears", !waits ? "" : one.kind === "pr" ? say.clearsPr : say.clearsLook),
             fact("resolved", waits ? "" : ForYou.historySide(one, say)),
             fact("quest", one.quest ?? ""),
@@ -871,10 +892,11 @@ Provider {
             later: true,
             drawer: () => {
                 const drawn = provider.drawerOf(each);
-                // What it weighed and what would clear it no longer matter
-                // once it's done, so how it went stands in their place, as
-                // a look's does.
-                const gone = [Words.name("on:waiting:weight"), Words.name("on:waiting:clears")];
+                // What it weighed, when it was due and what would clear it
+                // no longer matter once it's done, so how it went stands in
+                // their place, as a look's does.
+                const gone = ["weight", "due", "clears", "check"]
+                    .map(id => Words.name(`on:waiting:${id}`));
                 const facts = drawn.facts.filter(part => !gone.includes(part.label));
                 const since = facts.findIndex(part => part.label
                     === Words.name("on:waiting:since"));
@@ -1015,7 +1037,7 @@ Provider {
         // What its list says when it holds nothing (Launcher.qml).
         empty: Words.of("on:waiting").empty,
         name: Words.name("on:waiting"),
-        glyph: Theme.glyph.waitsOnJoel,
+        glyph: Theme.glyph[ForYou.markOf(provider.waitsNow, WaitingOnYou.later.length)],
         hue: provider.waitsNow > 0 ? "strong" : "muted",
         side: provider.waitsNow > 0 ? String(provider.waitsNow)
             : WaitingOnYou.later.length > 0
@@ -1028,8 +1050,73 @@ Provider {
         nested: true,
         verbs: () => provider.waitingRows(),
         targets: () => provider.waitingRows(),
+        commands: () => provider.filterCommands(null),
         run: () => provider.launcher?.enter(provider.waiting)
     })
+
+    // The words a filter's kinds and sources are said in, for its head.
+    readonly property var filterSaid: Filter.saidFrom(Object.keys(Words.things),
+        id => Words.name(id))
+
+    // For You's :filter, from For You or from a filter inside it, `from`:
+    // a step into the rows of a kind, a source or both (ForYouFilter.js),
+    // as VKCF3Z ruled it (2026-11-08). From inside a filter it narrows that
+    // one and takes its place, so `-` is always one step back out to
+    // everything. Tab offers the kinds and sources there, with how many.
+    // The rows are read once, as the line opens, so a key typed after it
+    // weighs none of them again, as :set's options are (Launcher.qml's
+    // standingOptions).
+    function filterCommands(from) {
+        const rows = waitingRows();
+        return [{
+                command: "filter",
+                short: "filt",
+                title: (Words.field.command ?? {}).filter ?? "",
+                bang: false,
+                args: arg => Filter.offered(rows, arg, filterSaid, from)
+                    .map(one => Object.assign({ glyph: filterGlyph(one) }, one)),
+                run: call => {
+                    const filter = Filter.asked(call.arg, rows, filterSaid, from);
+                    if (filter.error !== undefined) {
+                        provider.launcher?.commandSay(filter.error, true);
+                        return;
+                    }
+                    if (from !== null)
+                        provider.launcher?.back();
+                    provider.launcher?.enter(filterRow(filter));
+                }
+            }];
+    }
+
+    // The mark a kind or source wears in :filter's menu (ForYouFilter.js).
+    function filterGlyph(one) {
+        const mark = Filter.markOf(one);
+        return mark.program !== undefined ? provider.programGlyph(mark.program)
+            : Theme.glyph[mark.glyph] ?? "";
+    }
+
+    // A filter's place, named for what it keeps, which the head shows after
+    // For You. What it holds is For You's rows as they stand when it's
+    // stepped into, in For You's order.
+    function filterRow(filter) {
+        const rows = () => Filter.filtered(waitingRows(), filter);
+        const row = member({
+            key: `on:waitingOnYou:filter:${Filter.keyOf(filter)}`,
+            verb: "more",
+            stays: true,
+            empty: Words.of("on:waiting").empty,
+            name: Filter.heading(filter, filterSaid),
+            // For You's own tray, as its head is For You's with a filter.
+            glyph: Theme.glyph[ForYou.markOf(provider.waitsNow, WaitingOnYou.later.length)],
+            hue: "strong",
+            nested: true,
+            verbs: rows,
+            targets: rows,
+            commands: () => filterCommands(filter),
+            run: () => provider.launcher?.enter(row)
+        });
+        return row;
+    }
     // What home's Now leads with: the first thing waiting, after its row's
     // own name, or nothing.
     readonly property string foremost: first === "" ? ""

@@ -975,10 +975,9 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     )
     # A place names the places it holds, by their names, never the words
     # its typed commands start with: Network once read "ip, is, split, mac".
+    # It ends on the last name that fits, with no ellipsis after it.
     held = reads["category:network"].split(" \u00b7 ", 1)[1].split(", ")
-    assert all(name[:1].isupper() or name == "\u2026" for name in held), (
-        f"network reads {reads['category:network']!r}"
-    )
+    assert all(name[:1].isupper() for name in held), f"network reads {reads['category:network']!r}"
     assert reads["collection:on"].startswith("Now \u00b7 "), f"now reads {reads['collection:on']!r}"
     assert reads["collection:applications"].startswith("Programs \u00b7 "), reads
     home_holds_still_as_the_queue_changes(desktop)
@@ -1050,7 +1049,8 @@ def walk_passwords(desktop: Desktop) -> None:
     )
     assert desktop.showing()["selected"]["side"] == "keeper", desktop.showing()["selected"]
     desktop.shoot("launcher-passwords-place")
-    # Stepping into it reads it in full, so its one-time code is there among its acts.
+    # Stepping into it reads it in full, so its one-time code is there among its acts, and
+    # its website opens in Chrome, whose entry this machine has, for 1Password to fill.
     desktop.follow()
     acts = [
         "Copy the Password",

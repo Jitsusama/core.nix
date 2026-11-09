@@ -343,8 +343,10 @@ onLinux {
   # Joel steps in, unlocking it from its first row, an entry's Return
   # copying its password through wl-copy as the launcher goes, the margin
   # wearing the clipboard's mark and the foot, opened again, counting to
-  # its clearing, resting on one reading it in full, and stepping into one
-  # holding its acts in order (tests/passwords-on-niri-test.py). A VM adds only the units, which
+  # its clearing, resting on one reading it in full, stepping into one
+  # holding its acts in order, and Open the Website handing a stand-in
+  # Chrome its website as the launcher goes
+  # (tests/passwords-on-niri-test.py). A VM adds only the units, which
   # passwords-runs-each-password-manager reads.
   the-passwords-place-copies-through-its-daemon-on-niri = launcherOnNiri {
     name = "the-passwords-place-copies-through-its-daemon-on-niri";
@@ -1032,6 +1034,24 @@ onLinux {
       touch $out
     '';
 
+  # For You's :filter narrows to a kind and a source, by their words, as
+  # VKCF3Z ruled it; tests/for-you-filter.qml holds launcher/ForYouFilter.js
+  # to it in Qt's own engine.
+  for-you-narrows-by-kind-and-source =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "for-you-narrows-by-kind-and-source" { } ''
+      cp ${../../tests/for-you-filter.qml} for-you-filter.qml
+      cp ${./launcher/ForYouFilter.js} ForYouFilter.js
+      cp ${./launcher/Order.js} Order.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml for-you-filter.qml
+      touch $out
+    '';
+
   # Each kind of list keeps its one order with nothing typed (docs/design.md,
   # Lists): tests/order.qml holds launcher/Order.js's orders to the rule in
   # Qt's own engine, and tests/every-list-keeps-its-kinds-order.py walks each
@@ -1141,6 +1161,44 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml pi-source.qml
+      touch $out
+    '';
+
+  # A screen darkens by name where niri powers one output off, docked with
+  # its hub powered, and unplugs only as the bigger step; the last one lit
+  # waits for the key that asked to come up; an older niri only unplugs, as
+  # tests/screens.qml holds launcher/Screens.js to it in Qt's own engine.
+  the-launcher-turns-each-screen-off =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-turns-each-screen-off" { } ''
+      cp ${../../tests/screens.qml} screens.qml
+      cp ${./launcher/Screens.js} Screens.js
+      cp ${./launcher/Numbers.js} Numbers.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml screens.qml
+      touch $out
+    '';
+
+  # Machines says every machine of the realms this one links, this one
+  # first, each in words with how it stands, and its drawer from what
+  # moves most to the model's identifier, leaving out what no node said, as
+  # tests/machines.qml holds launcher/RealmMachines.js to it in Qt's own engine.
+  the-launcher-says-every-machine-of-the-realm =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-says-every-machine-of-the-realm" { } ''
+      cp ${../../tests/machines.qml} machines.qml
+      cp ${./launcher/RealmMachines.js} RealmMachines.js
+      cp ${./launcher/Order.js} Order.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml machines.qml
       touch $out
     '';
 
@@ -1381,6 +1439,7 @@ onLinux {
     pkgs.runCommandLocal "the-home-network-says-each-figure" { } ''
       cp ${../../tests/home-network.qml} home-network.qml
       cp ${./launcher/HomeNetwork.js} HomeNetwork.js
+      cp ${./launcher/HomeNetworkAddresses.js} HomeNetworkAddresses.js
       cp ${./launcher/HomeNetworkDrawers.js} HomeNetworkDrawers.js
       cp ${./launcher/HomeNetworkHistory.js} HomeNetworkHistory.js
       cp ${./launcher/Order.js} Order.js
@@ -1742,6 +1801,7 @@ onLinux {
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Quests.qml} launcher/Quests.qml
       cp ${./launcher/Order.js} launcher/Order.js
+      cp ${./launcher/RealmMachines.js} launcher/RealmMachines.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/quests.qml} shell.qml
@@ -1877,6 +1937,7 @@ onLinux {
       cp ${./launcher/NowGroups.js} launcher/NowGroups.js
       cp ${./launcher/Order.js} launcher/Order.js
       cp ${./launcher/ForYou.js} launcher/ForYou.js
+      cp ${./launcher/ForYouFilter.js} launcher/ForYouFilter.js
       cp ${./launcher/Ago.js} launcher/Ago.js
       cp ${./launcher/Here.js} launcher/Here.js
       cp ${./When.js} When.js
@@ -2806,6 +2867,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Queue.qml} launcher/Queue.qml
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/queue.qml} shell.qml
@@ -3885,6 +3947,7 @@ onLinux {
       cp ${./Finding.js} Finding.js
       cp ${./Confirm.js} Confirm.js
       cp ${./DrawerPage.js} DrawerPage.js
+      cp ${./Identifier.js} Identifier.js
       cp ${./Search.js} Search.js
       cp ${./Reading.js} Reading.js
       cp ${./LineEditing.js} LineEditing.js

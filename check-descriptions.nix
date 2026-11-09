@@ -301,10 +301,10 @@
     broken one, builds those added and changed unless asked only to name them, the VM tests only
     with --build and without --no-vm, compares the system with the most checks unless told one,
     sends a commit origin has to a lent builder to build by itself and anything else, or what no
-    builder took, builds here, and evaluates a commit's checks once; where nix-offload takes it, the whole run goes to
-    `there --changed` naming this machine's system and a base as its merge base's commit, and it
-    runs here with --here, a base origin's main doesn't hold, edits not yet committed, or
-    nowhere taking it
+    builder took, builds here, and evaluates a commit's checks once; where nix-offload takes it,
+    the whole run goes to `there --changed` naming this machine's system and a base as its merge
+    base's commit; with a base origin's main doesn't hold, edits not yet committed, or nowhere
+    taking it, it runs nothing and exits 75, and it runs here only with --here
   '';
   changed-checks-passes-clippy = ''
     clippy finds nothing in changed-checks or its tests
@@ -1651,9 +1651,12 @@
   sound-hears-only-what-can-be-heard = ''
     the launcher's Sound leaves out a jack with nothing plugged in and a display's output with no
     display, and never listens to a headset's microphone while it plays music; a device's drawer
-    says where it is and which way it goes, its volume in decibels, its parts, the kernel's facts
-    and its node, ALSA device and priority last, never whether it's muted nor its level; and
-    channels at one level are balanced, a stereo pair's otherwise named without front
+    says where it is and which way it goes, its state, its volume in decibels, its parts, how it
+    keeps time while it runs (dropouts warned past none, load to three significant digits from
+    its busy time over the cycle or warned as over 100% where it didn't finish, a follower in
+    its driver's cycle), its format, the kernel's facts, and its priority and identifiers last,
+    never whether it's muted nor its level; and channels at one level are balanced, a stereo
+    pair's otherwise named without front
   '';
   space-is-set-by-rung = ''
     no QML file of the shell's names a space by its step on the size scale, rather than by the
@@ -1915,7 +1918,8 @@
     and asks before they act, draws nothing closed as a minute turns though it says the new time
     as it opens, draws nothing left open and still, its caret steady, searches text a program
     types at once once for its newest letters, a Return among them acting on the row those
-    letters found, glides the selection to its row by the arrows only and draws it on its row as
+    letters found, steps into For You's looks by :filter look and back out by -, glides the
+    selection to its row by the arrows only and draws it on its row as
     rows above it change, reads on a long name while it's selected, tells the meaning daemon the
     parts its places hold and adds one meant below what the letters found, saying where it lives,
     and warns of nothing it drew;
@@ -1975,7 +1979,8 @@
   the-launcher-finds-the-quests = ''
     the launcher reads the open and ended quests the node serves, each with its own kind rather
     than the node's, lists open ones driving first, finds finished ones and ids, opens pi on one
-    in the folder the harness names or goes to its session, and sees one made since
+    in the folder the harness names or goes to its session, offers the machines the node places on,
+    each saying how it stands as Machines does, and sees one made since
   '';
   the-launcher-finds-the-queue = ''
     the launcher's queue names each job in words, running first, says its time against its last
@@ -2012,6 +2017,13 @@
     its row says how many and the first one's name, none while empty and an ellipsis while waiting,
     and a source's lines are read with their times apart, the shared list's by each program
   '';
+  for-you-narrows-by-kind-and-source = ''
+    For You's :filter keeps the rows of a kind (do, look or try) and of a source, by its id in any
+    case, both where two words are given or one is given inside a filter, refuses a word that's
+    neither or a second of one with Vim's E475 and none at all with E471, names the source then
+    the kind for the head, and Tab offers only the kinds and sources that would keep something,
+    each with how many, its name as the head says it, and its kind's, source's or program's mark
+  '';
   an-act-shows-before-its-daemon-answers = ''
     a row an act asked a daemon to change is drawn as it will be, keeping what the launcher made
     of it, until its source's row reads the same; one to go is left out until it's gone; a hold
@@ -2036,6 +2048,11 @@
   pi-tells-of-its-sessions-as-an-agent-source = ''
     pi, as an agent source, sorts the node's sessions into those running, parked and closed this
     boot, and says each as the agent source contract's record, leaving out what pi didn't say
+  '';
+  the-launcher-says-every-machine-of-the-realm = ''
+    Machines says every machine of the realms this one links, this one first, each in words with how
+    it stands, and its drawer from what moves most to the model's identifier, leaving out what no
+    node said, says how an update it was asked for ended, and how Start a Session says each machine
   '';
   the-launcher-keeps-its-trials = ''
     each opening of the launcher is kept as its keys by kind, its pick and how long it took, and a
@@ -2111,6 +2128,11 @@
   the-launcher-sums-within-a-key = ''
     the launcher's sums and measures, worked out by libqalculate in the shell's own process, take a
     typical key under five milliseconds
+  '';
+  the-launcher-turns-each-screen-off = ''
+    where niri powers one output off by name, Turn It Off darkens a screen and Unplug It follows
+    while another is lit, the last lit one darkening only after the key that asked comes up, a
+    dark screen turning on by name; an older niri only unplugs, keeping the last screen on
   '';
   the-launcher-traces-each-opening = ''
     each opening of the launcher is a trace whose steps, backs, acts and searches are spans under
@@ -2226,13 +2248,16 @@
     margin wearing the clipboard's mark and the foot, opened again, counting to its clearing,
     nothing on screen saying it, reads an entry in full as the selection rests on it, never as
     Joel's own ask, its drawer never saying its password, and holds its acts in the design's order
-    once it's stepped into, with a stand-in for 1Password's manager
+    once it's stepped into, Open the Website handing a stand-in Chrome its website as the
+    launcher goes, its foot saying 1Password offers to fill it, with a stand-in for 1Password's
+    manager
   '';
   the-passwords-show-every-figure-but-the-secret = ''
     each kind of entry wears its own mark, the favourites are listed first, then what changed
     lately, newest first, twenty at most, a row says its username at its side and names its
     password manager only while two are on the machine, an entry's acts come in the design's
-    order, each only where it has what it needs, its manager's link is filled only where the entry
+    order, each only where it has what it needs, opening it in the browser its manager fills in
+    only on an http or https website, its manager's link is filled only where the entry
     says every part, its drawer's eyebrow says its vault and kind, and its facts every figure but
     its username and its password, the design's first in its order, a hidden detail as hidden and
     never its value, a website sent in the clear as its health and a weak password as its strength,

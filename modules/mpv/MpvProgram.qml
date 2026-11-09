@@ -107,6 +107,16 @@ Provider {
         return asked === program ? stopped.map(leftRow) : [];
     }
 
+    // What its drawer in Programs says of what it left part way
+    // (Applications.qml asks every provider's programFacts), from what
+    // mpv-stopped said when mpv was last stepped into.
+    function programFacts(asked) {
+        if (asked !== program)
+            return [];
+        return Mpv.held(stopped, words.said)
+            .map(fact => ({ label: Words.name(fact.id), value: fact.value }));
+    }
+
     // One of mpv's acts on a file, by its key in the launcher's words.
     function act(key, one, fields) {
         return thing(Object.assign({

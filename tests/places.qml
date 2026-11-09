@@ -224,6 +224,34 @@ QtObject {
                 { id: "01-loose", cwd: "/home/j/loose", title: "Loose", at: null,
                     orchestrates: "REEF01" }
             ]);
+        // Two windows stacked in one column are each kept at their own
+        // tile, as the list says it or else in the order it lists them, so
+        // neither is moved onto the other's place: after the 21:24 boot on
+        // 2026-11-08 two kept at one column, both at tile 1, swapped 25
+        // times.
+        const stacked = JSON.stringify({ v: 1, boot: "the-last",
+            taken: "2026-11-07T16:59:00Z", sessions: [
+                { id: "01-top", cwd: "/tmp", output: "eDP-1", workspace: 3, column: 3 },
+                { id: "01-under", cwd: "/tmp", output: "eDP-1", workspace: 3, column: 3 },
+                { id: "01-said", cwd: "/tmp", output: "eDP-1", workspace: 4, column: 1,
+                    tile: 2 },
+                { id: "01-next", cwd: "/tmp", output: "eDP-1", workspace: 3, column: 4 }
+            ] });
+        expect("two in one column at a tile each, a tile the list says kept",
+            Places.rebootList(stacked, "this-one", began).sessions.map(one => one.at.tile),
+            [1, 2, 2, 1]);
+        // A session its orchestrator hands over goes where it sat this boot,
+        // else where the reboot's list says, else where the restored boot
+        // kept it.
+        const here = { output: "eDP-1", workspace: 1, column: 2, tile: 1 };
+        const listedAt = { output: "eDP-1", workspace: 3, column: 3, tile: 2 };
+        const restoredAt = { output: "DP-4", workspace: 5, column: 1, tile: 1 };
+        const keptPlaces = { now: { "01-a": here }, reboot: { "01-a": listedAt,
+            "01-b": listedAt }, restored: { "01-a": restoredAt, "01-b": restoredAt,
+            "01-c": restoredAt } };
+        expect("handed over: this boot's, the reboot's list, the restored boot's, none",
+            ["01-a", "01-b", "01-c", "01-d"].map(id => Places.keptFor(id, keptPlaces)),
+            [here, listedAt, restoredAt, null]);
         // Those that orchestrate are begun first, so the sessions they lead
         // have them back to answer to; the rest keep their order.
         const queued = (id, orchestrates) => ({ one: { id, orchestrates } });

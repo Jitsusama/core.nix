@@ -260,6 +260,13 @@ impl Config {
         self.state.join("last")
     }
 
+    /// The file made when an update first builds a new main, and taken away
+    /// once the machine runs it; its age is how long the machine has been
+    /// behind.
+    pub fn behind_file(&self) -> PathBuf {
+        self.state.join("behind")
+    }
+
     /// The link that keeps the system being built from being collected.
     pub fn building_link(&self) -> PathBuf {
         self.state.join("building")

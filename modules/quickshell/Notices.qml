@@ -88,9 +88,11 @@ Singleton {
             glyph: Theme.glyph.agent.codePointAt(0), hue: "program", answers: true,
             name: Words.name("agents")
         },
-        // Something an agent has ready for Joel to do (WaitingOnYou.qml).
+        // Something an agent has ready for Joel to do (WaitingOnYou.qml),
+        // sent by For You, so its margin mark is For You's own tray, the
+        // mark its row in Now and its head wear (VKCF3Z, 2026-11-08).
         "waiting": {
-            glyph: Theme.glyph.waitsOnJoel.codePointAt(0), hue: "program",
+            glyph: Theme.glyph.forYou.codePointAt(0), hue: "program",
             name: Words.name("on:waiting")
         },
         "recorder": {

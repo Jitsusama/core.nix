@@ -297,8 +297,8 @@ Provider {
                 found.push({ score: best.score, grade: best.grade, row: row });
         }
         const grade = Math.min(3, ...found.map(f => f.grade));
-        const kept = found.filter(f => f.grade === grade)
-            .sort((a, b) => Number(b.row.live) - Number(a.row.live) || b.score - a.score);
+        const kept = Order.sorted(found.filter(f => f.grade === grade),
+            (a, b) => Number(b.row.live) - Number(a.row.live) || b.score - a.score);
         return { rows: kept.map(f => f.row), grade: grade };
     }
 

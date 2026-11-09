@@ -324,7 +324,7 @@ def test_capture_holds_what_it_took_lately_a_picture_shown_in_the_drawer(desktop
             (shown["selected"] or {}).get("name") == newest.rsplit("/", 1)[1]
             and shown["selected"]["side"] in {"just now", "1 min ago"}
             and shown["drawer"]["out"]
-            and shown["drawer"]["eyebrow"] == "in ~/Pictures/Screenshots \u00b7 screenshot"
+            and shown["drawer"]["eyebrow"] == "in ~/Pictures/Screenshots \u00b7 picture"
             and shown["drawer"]["facts"] == ["Taken", "Size", "Dimensions"]
         )
     )

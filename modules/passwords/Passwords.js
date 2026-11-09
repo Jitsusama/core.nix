@@ -71,6 +71,8 @@ const SECOND = 1000;
 const WEAK = ["terrible", "weak", "fair"];
 // A website's address sent in the clear, which its health says.
 const UNSECURED = /^http:\/\//i;
+// A website a browser opens, so its manager's extension can fill it.
+const BROWSED = /^https?:\/\//i;
 
 // How many managers it takes before rows name theirs.
 const SEVERAL = 2;
@@ -95,6 +97,13 @@ function website(record) {
     const given = (record.websites ?? []).filter(one => (one.address ?? "") !== "");
     const primary = given.find(one => one.primary === true) ?? given[0];
     return primary ? String(primary.address) : "";
+}
+
+// The website its manager's extension fills in a browser: its primary
+// one, where that's a web page, or "".
+function fillsAt(record) {
+    const address = website(record);
+    return BROWSED.test(address) ? address : "";
 }
 
 // Every website it has, the primary first.

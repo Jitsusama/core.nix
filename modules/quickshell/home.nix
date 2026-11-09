@@ -131,6 +131,7 @@ let
     "StatusLine.js"
     "Drawer.qml"
     "DrawerPage.js"
+    "Identifier.js"
     "Pictures.js"
     "Launcher.qml"
     "Choice.qml"
@@ -247,11 +248,13 @@ let
     "launcher/Power.js"
     "launcher/Traffic.js"
     "launcher/HomeNetwork.js"
+    "launcher/HomeNetworkAddresses.js"
     "launcher/HomeNetworkDrawers.js"
     "launcher/HomeNetworkHistory.js"
     "launcher/Cameras.js"
     "launcher/Firmware.js"
     "launcher/Warp.js"
+    "launcher/RealmMachines.js"
     "launcher/Interfaces.js"
     "launcher/Networkd.js"
     "launcher/WifiLink.js"
@@ -298,6 +301,7 @@ let
     "launcher/Media.js"
     "launcher/NowGroups.js"
     "launcher/ForYou.js"
+    "launcher/ForYouFilter.js"
     "launcher/Program.js"
     "launcher/Captured.js"
     "launcher/NeedsYou.js"
@@ -711,6 +715,7 @@ let
     waits = ./launcher/Waits.qml;
     firmware = ./launcher/Firmware.qml;
     warp = ./launcher/Warp.qml;
+    machines = ./launcher/Machines.qml;
     today = ./launcher/Today.qml;
     light = ./launcher/Light.qml;
     keyboards = ./launcher/Keyboards.qml;
@@ -1447,6 +1452,16 @@ in
         warp = lib.getExe (pkgs.callPackage ../warp/package.nix { });
         warpCli = if systemWarpCli != null then lib.getExe systemWarpCli else "";
       };
+      # Every machine of the realms this one's mycelium nodes run, each
+      # node's records watched; a machine with no node lists itself alone.
+      machines = {
+        order = 92;
+        source = "machines";
+        weight = 0.9;
+        realms =
+          lib.optional ((config.jitsusama.mycelium.realm or null) != null) config.jitsusama.mycelium.realm
+          ++ lib.attrNames (config.jitsusama.mycelium.alsoJoins or { });
+      };
       # The date's week, day of the year, UTC, zone and epoch.
       today = {
         order = 97;
@@ -1488,8 +1503,12 @@ in
         order = 103;
         source = "sound";
         weight = 0.9;
-        # What reads a card's ports, and what moves one onto another.
+        # What reads a card's ports, what moves one onto another, and what
+        # reads how a device keeps time while its drawer is out, a line at
+        # a time through stdbuf.
         pwDump = lib.getExe' pkgs.pipewire "pw-dump";
+        pwTop = lib.getExe' pkgs.pipewire "pw-top";
+        stdbuf = lib.getExe' pkgs.coreutils "stdbuf";
         wpctl = lib.getExe' pkgs.wireplumber "wpctl";
       };
       # Every media player and what it plays, beside Sound, which holds the
