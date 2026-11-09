@@ -42,6 +42,9 @@ Piece {
     }
 
     title: "Battery"
+    // Power's Energy part draws its drawer, of what it holds against its
+    // design and the battery the kernel names (Piece.qml's drawnBy).
+    drawnBy: ({ place: "power", key: "power:energy" })
     // Running low, and then critical, is said as it happens.
     arrives: true
     app: "Battery"

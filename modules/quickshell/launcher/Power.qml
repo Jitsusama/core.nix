@@ -364,10 +364,21 @@ Provider {
         return text !== null && text !== undefined && text !== "" && text !== "Unknown";
     }
 
+    // The battery's rows as they stand, the last reads sampled first, so
+    // the sparks move while it's shown.
     function told() {
-        const record = battery;
+        return toldOf(battery, sample(battery));
+    }
+
+    // Every row the battery's answer holds, read from the reads kept and
+    // sampling nothing, so Now's Battery can borrow a row's drawer
+    // (Piece.qml's drawnBy) without moving the sparks.
+    readonly property var all: battery === null ? [] : toldOf(battery, series).rows
+
+    // The battery's rows from `record` and the reads `kept` of it, making
+    // nothing and keeping nothing.
+    function toldOf(record, kept) {
         const rows = [chargerPart()];
-        const kept = sample(record);
         const state = Power.stateOf(record);
 
         // The charge, as a bar: the headline says it, but not once it's
