@@ -8,9 +8,19 @@ use crate::run::{self, Failure};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::thread;
+use std::time::Duration;
 
 /// The ref main is kept at in root's copy.
 const MAIN: &str = "refs/heads/main";
+
+/// How long a failed fetch waits before each try again. A host under load
+/// refuses a fetch and asks for one later: on 9 November at 12:30 one
+/// answered "memory budget exhausted on this instance; retry with backoff",
+/// and the whole update failed on that one answer, while merges waited for
+/// a switch. Fetches change nothing until they succeed, so trying again is
+/// safe, and a minute and a quarter is little beside a build.
+const FETCH_AGAIN: [Duration; 2] = [Duration::from_secs(15), Duration::from_secs(60)];
 
 /// The one signature state that counts: good, by a key trusted. For SSH
 /// that's a signer in the allowed-signers file, and `U` is a good signature
@@ -97,16 +107,37 @@ pub fn has(repo: &Repo, commit: &str) -> bool {
 pub fn fetch(repo: &Repo) -> Result<String, Failure> {
     make_copy(repo)?;
     let refspec = format!("+refs/heads/{}:{MAIN}", repo.branch);
-    run::output(
-        git(repo),
-        &format!("fetching {}", repo.called),
-        ["fetch", "--quiet", "--no-tags", repo.url, &refspec],
-    )?;
+    retried(&FETCH_AGAIN, thread::sleep, || {
+        run::output(
+            git(repo),
+            &format!("fetching {}", repo.called),
+            ["fetch", "--quiet", "--no-tags", repo.url, &refspec],
+        )
+    })?;
     run::output(
         git(repo),
         &format!("reading {}", repo.called),
         ["rev-parse", "--verify", MAIN],
     )
+}
+
+/// What `attempt` gives, tried again after each of `waits` while it fails,
+/// with the last failure once they run out.
+fn retried<T>(
+    waits: &[Duration],
+    wait: impl Fn(Duration),
+    mut attempt: impl FnMut() -> Result<T, Failure>,
+) -> Result<T, Failure> {
+    let mut waits = waits.iter();
+    loop {
+        match attempt() {
+            Ok(done) => return Ok(done),
+            Err(failed) => match waits.next() {
+                Some(each) => wait(*each),
+                None => return Err(failed),
+            },
+        }
+    }
 }
 
 /// Whether `newer` descends from `older`, so main wasn't rewritten or
@@ -284,4 +315,53 @@ pub fn flake(config: &Config, commit: &str) -> String {
 /// A commit's first twelve characters, as answers name one to a person.
 pub fn short(commit: &str) -> &str {
     &commit[..commit.len().min(12)]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::RefCell;
+
+    /// Tries `retried` with answers given in turn, and gives what it
+    /// answered, how many tries it made and the waits between them.
+    fn tried(answers: &[Result<&str, &str>]) -> (Result<String, Failure>, usize, Vec<u64>) {
+        let waited = RefCell::new(Vec::new());
+        let mut tries = 0;
+        let said = retried(
+            &FETCH_AGAIN,
+            |each| waited.borrow_mut().push(each.as_secs()),
+            || {
+                let answer = answers[tries.min(answers.len() - 1)];
+                tries += 1;
+                answer.map(str::to_owned).map_err(Failure::new)
+            },
+        );
+        (said, tries, waited.into_inner())
+    }
+
+    #[test]
+    fn a_fetch_the_host_refuses_once_is_tried_again() {
+        let refused = "fetching main failed: retry with backoff";
+        assert_eq!(
+            tried(&[Err(refused), Ok("abc")]),
+            (Ok("abc".to_owned()), 2, vec![15])
+        );
+        assert_eq!(
+            tried(&[Err(refused), Err(refused), Ok("abc")]),
+            (Ok("abc".to_owned()), 3, vec![15, 60])
+        );
+    }
+
+    #[test]
+    fn a_fetch_refused_every_time_fails_with_its_last_answer() {
+        assert_eq!(
+            tried(&[Err("first"), Err("second"), Err("third")]),
+            (Err(Failure::new("third")), 3, vec![15, 60])
+        );
+    }
+
+    #[test]
+    fn a_fetch_that_succeeds_waits_for_nothing() {
+        assert_eq!(tried(&[Ok("abc")]), (Ok("abc".to_owned()), 1, vec![]));
+    }
 }
