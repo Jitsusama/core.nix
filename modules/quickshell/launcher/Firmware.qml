@@ -261,7 +261,7 @@ Provider {
 
     // What an attribute holds a step in: Fix It where it fails and fwupd
     // can change it itself, Undo the Fix where it passes and fwupd can put
-    // it back, Restart Into Firmware Setup where it fails and a firmware
+    // it back, Reboot Into Firmware Setup where it fails and a firmware
     // setting fixes it, then fwupd's id for it, which Return copies and
     // its documentation goes by.
     function actsOn(attribute) {
