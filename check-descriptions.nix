@@ -519,6 +519,10 @@
   docs-name-what-exists = ''
     every doc's links and paths name what's there, but the exemptions named
   '';
+  every-fixed-wait-says-why = ''
+    every sleep in a test polls, or says what passes while it waits in a comment or by a named
+    constant, but those still waiting to become waits on their events
+  '';
   every-folder-says-what-it-holds = ''
     every folder says what goes in it, but those still waiting for their note
   '';

@@ -337,6 +337,20 @@ A Nix string of more than five lines that runs as shell, or opens as QML,
 Python or JavaScript, moves into a file of its language, unless it's a
 short splice of values or says why it's kept, as [conventions.md][6] says.
 
+Its tests wait on events, as core's do, through a fourth:
+
+```nix
+every-fixed-wait-says-why = core.lib.everyFixedWaitSaysWhy pkgs {
+  src = ./.;
+  # How many sleeps without a reason each test file holds while they go.
+  waiting = { };
+};
+```
+
+A sleep in a test polls inside a loop, or says what passes while it waits,
+in a comment on its line or just above or by a named constant, as
+[testing.md][3] says.
+
 Its names say the glossary's words, as core's do, through a check that reads
 the glossary of the core it locks:
 

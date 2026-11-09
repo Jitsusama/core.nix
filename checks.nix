@@ -993,6 +993,16 @@ gather (
         waiting = import ./tests/programs-live-in-their-own-files-waiting.nix;
       };
 
+      # A test waits on the event it needs, and a fixed wait stands only for
+      # "nothing happens for this long" and says so, since a guess at how long
+      # a loaded machine takes fails or wastes time when it's wrong. Those
+      # before the rule wait, counted by file, in
+      # tests/every-fixed-wait-says-why-waiting.nix, and a count may only fall.
+      every-fixed-wait-says-why = self.lib.everyFixedWaitSaysWhy pkgs {
+        src = ./.;
+        waiting = import ./tests/every-fixed-wait-says-why-waiting.nix;
+      };
+
       # A doc names only what's there, so a move or a rename that leaves a guide
       # pointing at nothing fails here rather than misleading the next reader:
       # every relative link, and every backticked path from a top folder. Those

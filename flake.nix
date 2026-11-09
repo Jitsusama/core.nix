@@ -493,6 +493,13 @@
       lib.programsLiveInTheirOwnFiles =
         pkgs: pkgs.callPackage ./tests/programs-live-in-their-own-files.nix { };
 
+      # How a repository built on core keeps its tests waiting on events, as core
+      # does: `core.lib.everyFixedWaitSaysWhy pkgs { src = ./.; waiting = { ... };
+      # }` is a check that fails on a test file holding more sleeps that neither
+      # poll nor say what passes while they wait than it waits with, and on one
+      # holding fewer until its count is lowered.
+      lib.everyFixedWaitSaysWhy = pkgs: pkgs.callPackage ./tests/every-fixed-wait-says-why.nix { };
+
       # How a repository built on core holds its names to core's glossary:
       # `core.lib.namesSayTheGlossary pkgs { names = ...; otherSenses = ...;
       # waiting = ...; }` is a check that no name says a name the glossary
