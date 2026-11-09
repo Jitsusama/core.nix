@@ -1114,7 +1114,7 @@ Provider {
     // notices' own.
     function latelyName(source) {
         const fact = latelyPieces.find(one => one.piece.lately === source);
-        return fact === undefined ? Words.name(`on:waiting:${source}`) : fact.piece.title;
+        return fact === undefined ? Words.name(`for-you:source:${source}`) : fact.piece.title;
     }
 
     // The sources Lately holds unread, in its order, as For You's own row
@@ -1144,7 +1144,7 @@ Provider {
     // listing its acts doesn't. It's after the step, so the history isn't
     // changed while it's read.
     function noticesRow(from, note, forYou) {
-        const said = Words.of("on:waiting:desktop").said ?? {};
+        const said = Words.of("for-you:source:desktop").said ?? {};
         const notices = noticesOf[from] ?? [];
         const ids = notices.map(notice => notice.id);
         const act = (key, words, more) => thing(Object.assign({
@@ -1172,8 +1172,8 @@ Provider {
             forYou: forYou,
             verb: "more",
             stays: true,
-            name: Words.name(`on:waiting:${from}`),
-            glyph: Words.glyph(`on:waiting:${from}`),
+            name: Words.name(`for-you:source:${from}`),
+            glyph: Words.glyph(`for-you:source:${from}`),
             hue: "muted",
             side: ForYou.filled(said.count ?? "{count}", { count: ids.length }),
             note: note,
@@ -1181,7 +1181,7 @@ Provider {
             thing: true,
             drawer: () => ({
                 eyebrow: (Words.of("on:notices").said ?? {}).eyebrow ?? "",
-                title: Words.name(`on:waiting:${from}`),
+                title: Words.name(`for-you:source:${from}`),
                 facts: Lately.senders(notices)
             }),
             verbs: listed,
@@ -1201,7 +1201,7 @@ Provider {
     readonly property var cameDone: Lately.done({ notices: latelyNotices, messages: null,
         finished: Facts.all.find(fact => fact.piece?.lately === "mail" && fact.piece.present)
             ?.piece.finished ?? [] }, { mail: Words.of("mail:message").said ?? {}, slack: {},
-        notice: Words.of("on:waiting:desktop").said ?? {} })
+        notice: Words.of("for-you:source:desktop").said ?? {} })
 
     // A done one's row in History: the row its piece gives it, as a piece
     // of mail's, or a notice's row in Notices, with how and when it was
@@ -1214,7 +1214,7 @@ Provider {
         const row = given ?? (one.source === "mail" ? null : rows[one.of.id]) ?? member({
             key: `on:waiting:came:${one.source}:${one.at}`,
             name: one.title,
-            glyph: Words.glyph("on:waiting:desktop"),
+            glyph: Words.glyph("for-you:source:desktop"),
             plain: true
         });
         return Object.assign({}, row, { side: side, hue: "muted",

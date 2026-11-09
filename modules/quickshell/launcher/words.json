@@ -6890,7 +6890,9 @@
     {
       "id": "for-you:source:slack",
       "in": "on:waiting",
-      "name": "Slack"
+      "name": "Slack",
+      "verb": "more",
+      "glyph": "notifications"
     },
     {
       "id": "for-you:source:calendar",
@@ -6900,7 +6902,15 @@
     {
       "id": "for-you:source:desktop",
       "in": "on:waiting",
-      "name": "Desktop"
+      "name": "Desktop",
+      "verb": "more",
+      "glyph": "notifications",
+      "said": {
+        "count": "{count} to read",
+        "read": "read here",
+        "withdrawn": "withdrawn",
+        "earlier": "read"
+      }
     },
     {
       "id": "on:waiting:history",
@@ -6914,29 +6924,9 @@
       }
     },
     {
-      "id": "on:waiting:desktop",
-      "in": "on:waiting",
-      "name": "Desktop",
-      "verb": "more",
-      "glyph": "notifications",
-      "said": {
-        "count": "{count} to read",
-        "read": "read here",
-        "withdrawn": "withdrawn",
-        "earlier": "read"
-      }
-    },
-    {
-      "id": "on:waiting:slack",
-      "in": "on:waiting",
-      "name": "Slack",
-      "verb": "more",
-      "glyph": "notifications"
-    },
-    {
       "id": "verb:on:waiting:desktop:read",
       "command": "delete",
-      "in": "on:waiting:desktop",
+      "in": "for-you:source:desktop",
       "name": "Mark Them Read",
       "verb": "mark",
       "glyph": "read"
