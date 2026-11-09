@@ -1221,7 +1221,7 @@ def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desk
             kept(desktop, f"{MISSION}/waiting/QUEST2.json", asked)
         for_you_counts_its_bands(desktop)
         for scale in (*JOELS_SCALES, "1"):
-            desktop.as_account(f"niri msg output winit scale {scale}")
+            named = at_scale_shooting_now(desktop, scale)
             waiting_opened(desktop)
             desktop.machine.send_key("ret")
             # The look blocks nothing and isn't due, so it's in To Look At, after the to-do,
@@ -1243,7 +1243,6 @@ def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desk
                     and shown["drawer"]["facts"] == ["Heaviest"]
                 )
             )
-            named = scale.replace(".", "-")
             if scale != "1":
                 desktop.shoot(f"launcher-for-you-at-{named}")
             desktop.step_in()
@@ -1309,6 +1308,32 @@ def for_you_counts_its_bands(desktop: Desktop) -> None:
         lambda shown: (shown["selected"] or {}).get("side") == "1 to do \u00b7 1 to look at"
     )
     desktop.close_launcher()
+
+
+def at_scale_shooting_now(desktop: Desktop, scale: str) -> str:
+    """Put niri at a scale and, at Joel's, shoot Now's rows, For You's counting its bands.
+
+    Gives the scale as a shot's name says it, for VKCF3Z to judge (3a92c450).
+    """
+    desktop.as_account(f"niri msg output winit scale {scale}")
+    named = scale.replace(".", "-")
+    if scale == "1":
+        return named
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("now", selecting="Now")
+    desktop.machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["path"][-1:] == ["Now"]
+            and any(
+                thing["reads"].startswith("For You \u00b7 1 to do") for thing in shown["things"]
+            )
+        )
+    )
+    desktop.shoot(f"launcher-now-bands-at-{named}")
+    desktop.close_launcher()
+    return named
 
 
 def home_counts_what_is_calm(desktop: Desktop) -> None:
