@@ -39,6 +39,10 @@
   "modules/people/tests/daemon.rs" = 4;
   "modules/pi-packages/tests/inuse.rs" = 1;
   "modules/pi-packages/tests/update.rs" = 1;
+  "modules/pi/tests/pi-ask-answers-on-the-machines-plan.sh" = 1;
+  "modules/pi/tests/pi-claude-keeps-to-the-plan.sh" = 1;
+  "modules/pi/tests/pi-keeps-its-own-settings.sh" = 1;
+  "modules/pi/tests/pi-rings-low.sh" = 1;
   "modules/plymouth/tests/the-splash-prompt-is-the-locks.sh" = 1;
   "modules/programs/tests/daemon.rs" = 7;
   "modules/spend-watch/feeds/claude/tests/feed.rs" = 1;
@@ -110,11 +114,7 @@
   "tests/part-names.qml" = 2;
   "tests/passwords-on-niri-test.py" = 1;
   "tests/people.qml" = 2;
-  "tests/pi-ask-answers-on-the-machines-plan.sh" = 1;
-  "tests/pi-claude-keeps-to-the-plan.sh" = 1;
   "tests/piece-drawers.qml" = 1;
-  "tests/pi-keeps-its-own-settings.sh" = 1;
-  "tests/pi-rings-low.sh" = 1;
   "tests/pi-source.qml" = 1;
   "tests/program-acts.qml" = 2;
   "tests/program-controls.qml" = 2;
