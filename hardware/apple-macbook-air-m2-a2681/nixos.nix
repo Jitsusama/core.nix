@@ -55,6 +55,13 @@
   # it on each switch.
   boot.loader.systemd-boot.enable = true;
 
+  # The keyboard reaches the system through the M2's DockChannel, which
+  # Asahi's kernel gives Apple's ID for this model: 05ac:0351, the 2022 Air's
+  # in its hid-ids.h, seen on an Air as "Apple MTP keyboard". Without it,
+  # keyd would leave the built-in keyboard US at the stick, the disk prompt
+  # and the session alike.
+  jitsusama.keyboard.builtIn = [ "05ac:0351" ];
+
   # With neither Secure Boot nor a TPM, the guide makes no Secure Boot keys
   # and seals nothing, and the disk opens with a YubiKey or the recovery
   # words at every start.
