@@ -1361,7 +1361,10 @@ Provider {
     function borrowed(drawnBy, by) {
         const place = source(drawnBy.place);
         const row = (place?.all ?? place?.things ?? []).find(each => each.key === drawnBy.key);
-        return Showing.besides(row?.drawer?.() ?? null, by ?? {});
+        // A drawer made as it's drawn, or one a row holds made, as
+        // Power's parts do (Launcher.qml's drawerOf takes both).
+        const drawer = typeof row?.drawer === "function" ? row.drawer() : row?.drawer ?? null;
+        return Showing.besides(drawer, by ?? {});
     }
 
     // `over` holds what a row made elsewhere says in place of the piece's

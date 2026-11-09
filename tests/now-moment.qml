@@ -77,6 +77,18 @@ ShellRoot {
         }]
     }
 
+    // A place that lists every row it answers with, each holding its drawer
+    // made, as Power does.
+    QtObject {
+        id: power
+
+        readonly property var settings: ({ name: "power" })
+        readonly property var all: [{
+            key: "power:energy",
+            drawer: { eyebrow: "held \u00b7 battery", facts: [] }
+        }]
+    }
+
     // The launcher's placing of an answered thing, as Launcher.qml's
     // resolved gives it: named by the thing, what it says beside, its
     // parts a step in. Each row it gives is marked, so the test knows Now
@@ -85,7 +97,7 @@ ShellRoot {
         id: theLauncher
 
         property bool open: false
-        readonly property var sources: [weather, calendar, cameras]
+        readonly property var sources: [weather, calendar, cameras, power]
         property int placed: 0
 
         function resolved(id) {
@@ -253,6 +265,9 @@ ShellRoot {
                 === "built in \u00b7 camera"
                 && now.borrowed({ place: "cameras", key: "camera:rear" }) === null
                 && now.borrowed({ place: "sound", key: "sound:mic" }) === null, "it was drawn");
+        expect("and a drawer its place's row holds made",
+            now.borrowed({ place: "power", key: "power:energy" })?.eyebrow
+                === "held \u00b7 battery", "it wasn't drawn");
         expect("a drawer's clock rests while the launcher is closed", !now.drawing, "it ran");
         theLauncher.open = true;
         expect("and turns while it's open", now.drawing, "it rested");
