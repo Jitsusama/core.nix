@@ -99,6 +99,18 @@ pub struct Internet {
     pub firmware: Firmware,
     pub thread: Thread,
     pub guest: Guest,
+    /// How the network hands out addresses, and what it keeps for whom.
+    #[serde(default)]
+    pub addresses: Addresses,
+    /// Each band's Wi-Fi security, as eero names it: wpa2, wpa3.
+    #[serde(default)]
+    pub security: Vec<BandSecurity>,
+    /// Whether the network keeps to what older 802.11ac devices can join.
+    #[serde(default)]
+    pub ac_compatibility: Option<bool>,
+    /// Whether eero's last scan saw another network with this one's name.
+    #[serde(default)]
+    pub name_clash: Option<bool>,
     pub ddns: Option<bool>,
     pub backup_internet: Option<bool>,
     pub power_saving: Option<bool>,
@@ -229,6 +241,50 @@ pub struct Thread {
 pub struct Guest {
     pub on: Option<bool>,
     pub name: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Addresses {
+    /// The main network first, then the guest network, as eero lists them.
+    pub subnets: Vec<Subnet>,
+    /// The addresses kept for a device, in eero's order.
+    pub reservations: Vec<Reservation>,
+    /// What eero said of each port forward and IPv6 pinhole: none has been
+    /// seen yet to give their shapes a type.
+    pub forwards: Vec<Value>,
+    pub pinholes: Vec<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Subnet {
+    /// eero's word for it: main, guest.
+    pub kind: Option<String>,
+    pub name: Option<String>,
+    pub on: Option<bool>,
+    pub address: Option<String>,
+    pub mask: Option<String>,
+    /// The first and last addresses DHCP hands out.
+    pub first: Option<String>,
+    pub last: Option<String>,
+    /// Whether its devices reach the internet.
+    pub internet: Option<bool>,
+    /// Whether it asks no password.
+    pub open: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Reservation {
+    pub mac: String,
+    /// What the reservation is called in the eero app.
+    pub description: Option<String>,
+    pub address: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BandSecurity {
+    /// The band as the views say it: 2.4 GHz, 5 GHz, 6 GHz.
+    pub band: String,
+    pub security: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

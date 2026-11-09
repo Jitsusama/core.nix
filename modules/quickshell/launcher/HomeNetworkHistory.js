@@ -38,6 +38,14 @@ function kept(facts) {
     return facts.filter((one) => one !== null);
 }
 
+// A switch as words: "on" or "off".
+function onOff(value) {
+    if (!known(value)) {
+        return "";
+    }
+    return value ? "on" : "off";
+}
+
 // A share as Meter's stroke, warning past `warn` where it's given.
 function stroke(share, warn) {
     const value = Math.max(0, Math.min(1, share));

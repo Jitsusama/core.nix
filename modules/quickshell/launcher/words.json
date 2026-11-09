@@ -3157,6 +3157,31 @@
       "name": "IPv6"
     },
     {
+      "id": "eero:internet:main-subnet",
+      "in": "eero:internet",
+      "name": "Main Subnet"
+    },
+    {
+      "id": "eero:internet:guest-subnet",
+      "in": "eero:internet",
+      "name": "Guest Subnet"
+    },
+    {
+      "id": "eero:internet:forwards",
+      "in": "eero:internet",
+      "name": "Port Forwards"
+    },
+    {
+      "id": "eero:internet:pinholes",
+      "in": "eero:internet",
+      "name": "IPv6 Pinholes"
+    },
+    {
+      "id": "eero:internet:reserved",
+      "in": "eero:internet",
+      "name": "Reserved Addresses"
+    },
+    {
       "id": "eero:internet:speed-test",
       "in": "eero:internet",
       "name": "Speed Test",
@@ -3214,9 +3239,24 @@
       "name": "WPA3"
     },
     {
+      "id": "eero:internet:security",
+      "in": "eero:internet",
+      "name": "Wi-Fi Security"
+    },
+    {
       "id": "eero:internet:wifi-mode",
       "in": "eero:internet",
       "name": "Wi-Fi Mode"
+    },
+    {
+      "id": "eero:internet:ac-compatibility",
+      "in": "eero:internet",
+      "name": "Wi-Fi 5 Compatibility"
+    },
+    {
+      "id": "eero:internet:name-clash",
+      "in": "eero:internet",
+      "name": "Name Clash"
     },
     {
       "id": "eero:internet:mlo",
@@ -3553,6 +3593,12 @@
       "id": "eero:device:address",
       "in": "eero:device",
       "name": "Address"
+    },
+    {
+      "id": "eero:device:reserved",
+      "in": "eero:device",
+      "name": "Reserved Address",
+      "term": "Network/reserved address"
     },
     {
       "id": "eero:device:addresses",

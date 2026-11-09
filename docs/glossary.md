@@ -371,6 +371,8 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | speed | how fast the connection, or a device on the home network, carries data now, each way | network speed, connection speed, bandwidth | `traffic` |
 | address | an address the machine has on a network | network address, IP | `networks` |
 | lease | an address a network's server lends for a while, to the machine or to the gateway node, with the name servers and domain that come with it | | DHCP, `leases` |
+| subnet | the run of addresses one of the home network's networks hands out, the main one or the guest one, as its address and prefix | | `subnets_config`, `Subnet` |
+| reserved address | an address the home network keeps for one device, so it has the same one each time it joins | static IP | `reservations`, `Reservation` |
 | neighbour | what a cable's other end says it is, such as a switch, and the port of it the machine is plugged into | | LLDP, `neighbours` |
 | Wi-Fi | the network without a cable | WLAN, wireless | `wifid`, `wifi` |
 | Ethernet | the network through a cable | wired | |

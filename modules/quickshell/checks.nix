@@ -1374,6 +1374,7 @@ onLinux {
     pkgs.runCommandLocal "the-home-network-says-each-figure" { } ''
       cp ${../../tests/home-network.qml} home-network.qml
       cp ${./launcher/HomeNetwork.js} HomeNetwork.js
+      cp ${./launcher/HomeNetworkAddresses.js} HomeNetworkAddresses.js
       cp ${./launcher/HomeNetworkDrawers.js} HomeNetworkDrawers.js
       cp ${./launcher/HomeNetworkHistory.js} HomeNetworkHistory.js
       cp ${./launcher/Order.js} Order.js

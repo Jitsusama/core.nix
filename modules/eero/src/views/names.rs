@@ -7,7 +7,8 @@
 //! which is what the view would ask for.
 
 use super::{
-    VIEWS, device_name, find_device, find_node, find_profile, location, node_name, profile_name,
+    VIEWS, device_name, find_device, find_node, find_profile, location, node_name, off_device,
+    off_name, on_now_answers_to, profile_name,
 };
 use crate::model::HomeNetwork;
 
@@ -41,22 +42,34 @@ pub fn nodes(model: &HomeNetwork) -> Vec<Named> {
 }
 
 /// Each device on now by its name, or its hardware address where another
-/// shares the name.
+/// shares the name, then each eero knows that isn't on now the same way,
+/// since `eero device` says where and when that one was last on.
 pub fn devices(model: &HomeNetwork) -> Vec<Named> {
-    model
-        .devices
-        .iter()
-        .map(|device| {
-            let name = device_name(device);
-            let found = find_device(model, name, None).is_ok_and(|found| found.mac == device.mac);
-            let on = location(model, device.node.as_deref());
-            if found {
-                (name.to_owned(), format!("on {on}"))
-            } else {
-                (device.mac.clone(), format!("{name} on {on}"))
-            }
-        })
-        .collect()
+    let on = model.devices.iter().map(|device| {
+        let name = device_name(device);
+        let found = find_device(model, name, None).is_ok_and(|found| found.mac == device.mac);
+        let on = location(model, device.node.as_deref());
+        if found {
+            (name.to_owned(), format!("on {on}"))
+        } else {
+            (device.mac.clone(), format!("{name} on {on}"))
+        }
+    });
+    let off = model.devices_off.iter().map(|device| {
+        let name = off_name(device);
+        let found = !on_now_answers_to(model, name)
+            && off_device(model, name).is_some_and(|found| found.mac == device.mac);
+        let last = match device.node.as_deref() {
+            Some(node) => format!("not on now, last on {}", location(model, Some(node))),
+            None => "not on now".to_owned(),
+        };
+        if found {
+            (name.to_owned(), last)
+        } else {
+            (device.mac.clone(), format!("{name}, {last}"))
+        }
+    });
+    on.chain(off).collect()
 }
 
 /// Each profile by its name, or its id where another shares it.
@@ -119,6 +132,18 @@ mod tests {
         assert!(offered.contains(&"02:00:00:00:00:03"), "{offered:?}");
         let phone = devices.iter().find(|(name, _)| name == "02:00:00:00:00:03");
         assert_eq!(phone.unwrap().1, "phone 1 on Study");
+    }
+
+    #[test]
+    fn a_device_not_on_now_is_offered_by_the_name_that_finds_it() {
+        let devices = devices(&model());
+
+        let phone = devices.iter().find(|(name, _)| name == "phone 2");
+        assert_eq!(phone.unwrap().1, "not on now, last on Den");
+        let shared = devices.iter().find(|(name, _)| name == "02:00:00:00:00:19");
+        assert_eq!(shared.unwrap().1, "phone 1, not on now, last on Den");
+        let nameless = devices.iter().find(|(name, _)| name == "02:00:00:00:00:1b");
+        assert!(nameless.is_some(), "{devices:?}");
     }
 
     #[test]

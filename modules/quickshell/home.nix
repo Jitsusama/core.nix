@@ -247,6 +247,7 @@ let
     "launcher/Power.js"
     "launcher/Traffic.js"
     "launcher/HomeNetwork.js"
+    "launcher/HomeNetworkAddresses.js"
     "launcher/HomeNetworkDrawers.js"
     "launcher/HomeNetworkHistory.js"
     "launcher/Cameras.js"
