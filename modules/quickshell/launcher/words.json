@@ -8297,7 +8297,8 @@
       "term": "Machine/log out",
       "verb": "log out",
       "glyph": "logout",
-      "sure": "Log Out Now"
+      "sure": "Log Out Now",
+      "asked": "Log Out of the Desktop"
     },
     {
       "id": "session:Reboot",
@@ -8307,7 +8308,8 @@
       "term": "Machine/reboot",
       "verb": "reboot",
       "glyph": "reboot",
-      "sure": "Reboot Now"
+      "sure": "Reboot Now",
+      "asked": "Reboot the Machine"
     },
     {
       "id": "session:Power Off",
@@ -8317,7 +8319,8 @@
       "term": "Machine/power off",
       "verb": "off",
       "glyph": "poweroff",
-      "sure": "Power Off Now"
+      "sure": "Power Off Now",
+      "asked": "Power Off the Machine"
     },
     {
       "id": "wifi:radio",
@@ -11207,6 +11210,7 @@
   "terminal": {
     "usage": [
       "launcher show [--drawers] [--json] [step ...] [-- step ...]",
+      "launcher do [--yes] step ... [-- words]",
       "",
       "Shows a place or a row the launcher holds, its drawer and what is inside it,",
       "as the launcher would: launcher show machine disk. Each step is a row's name,",
@@ -11215,11 +11219,18 @@
       "what the launcher says as JSON, with every row's drawer given --drawers.",
       "After --, every word is a step, so one starting with a hyphen can be named.",
       "",
+      "launcher do does what a row does on Return, and any act a place offers among",
+      "its rows, as : offers it: launcher do programs kitty. One that ends something",
+      "asks first, as the launcher does, and with no terminal to answer on it's done",
+      "only with --yes. Words an act asks for follow --. A place opens in the",
+      "launcher.",
+      "",
       "launcher completion zsh writes zsh's completion, which offers each place's",
       "rows as you type."
     ],
     "offers": {
-      "show": "any place, row or drawer the launcher holds"
+      "show": "any place, row or drawer the launcher holds",
+      "do": "what a row does, or an act a place offers"
     },
     "missing": "nothing called {step}",
     "missingIn": "nothing called {step} in {place}",
@@ -11228,6 +11239,10 @@
     "apart": "\u00b7",
     "silent": "the shell isn't answering",
     "unknown": "launcher doesn't take {what}",
-    "waiting": "\u2026"
+    "waiting": "\u2026",
+    "unsure": "{question} \u00b7 nothing to answer on, so --yes does it",
+    "takes": "{name} takes words \u00b7 {ask} \u00b7 give them after --",
+    "nothingToDo": "launcher do needs a row to do",
+    "blankStep": "a blank step names no row"
   }
 }

@@ -1583,6 +1583,8 @@ def test_spotify_signed_out_offers_sign_in_and_says_so(desktop: Desktop) -> None
 def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Desktop) -> None:
     """`launcher` in a terminal says a place as the running shell answers, and a miss on stderr.
 
+    It does nothing that ends something unasked: with no terminal, it's refused.
+
     What the shell answers is tests/launcher-on-niri-test.py's, and how it's laid out
     in-a-terminal's own tests'; here the program the account is given reaches the shell the
     session runs. The gallery keeps it in kitty at Joel's scales.
@@ -1601,6 +1603,19 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
     status, said = machine.execute(desktop.in_session("launcher show mahcine 2>&1 >/dev/null"))
     assert status == 1, (status, said)
     assert "did you mean Machine?" in said, said
+    # An act that ends something, with no terminal to ask on, is refused unasked, and says so
+    # by its own status.
+    not_sure = 3
+    status, said = machine.execute(
+        desktop.in_session("launcher do machine power reboot </dev/null 2>&1 >/dev/null")
+    )
+    assert status == not_sure, (status, said)
+    assert "--yes does it" in said, said
+    # One that ends nothing needs no terminal: Machine opens in the launcher.
+    status, said = machine.execute(desktop.in_session("launcher do machine </dev/null 2>&1"))
+    assert status == 0, (status, said)
+    desktop.launcher_until(lambda shown: shown["open"])
+    desktop.close_launcher()
     if not desktop.values["shots"]:
         return
     for scale in ("1.5", "2"):
@@ -1612,6 +1627,7 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
             ("launcher show desktop screens", "terminal-screens"),
             ("launcher show mahcine", "terminal-miss"),
             ("launcher show desktop screens --drawers", "terminal-drawers"),
+            ("launcher do machine power reboot", "terminal-asks"),
         ]:
             window = desktop.opened(
                 picture, f"sh -c {shlex.quote(f'echo {asked}; {asked}; exec sleep infinity')}"

@@ -8,7 +8,7 @@ use serde_json::Value;
 use crate::words::Words;
 
 /// The commands zsh's completion offers first.
-const COMMANDS: [&str; 1] = ["show"];
+const COMMANDS: [&str; 2] = ["show", "do"];
 
 /// zsh's completion for launcher, each command described in words.json's
 /// words, single-quoted as zsh reads them, a colon in a name escaped.
@@ -72,9 +72,9 @@ mod tests {
             "show": "what Joel's launcher holds"}}}));
         let written = completion(&words);
         assert!(written.starts_with("#compdef launcher\n"));
-        assert!(written.contains("commands=('show:what Joel'\\''s launcher holds')"));
+        assert!(written.contains("commands=('show:what Joel'\\''s launcher holds' 'do:do')"));
         let bare = completion(&Words::from_value(&Value::Null));
-        assert!(bare.contains("commands=('show:show')"));
+        assert!(bare.contains("commands=('show:show' 'do:do')"));
     }
 
     #[test]

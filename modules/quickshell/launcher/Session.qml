@@ -444,6 +444,7 @@ Provider {
     ].map(action => {
         const key = `session:${action.was}`;
         const sure = Words.of(key).sure ?? "";
+        const asked = Words.of(key).asked ?? "";
         return said(key, "", {
             chord: action.does ? bound(action.does) : [],
             hue: "machine",
@@ -451,6 +452,9 @@ Provider {
             // Those that end the session ask once, as a second Return, since
             // everyday words now find them.
             confirm: sure !== "",
+            // Asked, it says what it does to what, then what it closes, as
+            // "Reboot the Machine, Closing 12 Windows" (Confirm.question).
+            asked: asked !== "" ? () => asked + provider.closing : undefined,
             verbs: sure !== "" ? () => [provider.thing({
                 key: `${key}:sure`,
                 // The step that asks Joel to be sure, so its Return does it (Launcher.lands).

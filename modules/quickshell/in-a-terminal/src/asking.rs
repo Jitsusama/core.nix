@@ -1,5 +1,6 @@
-//! Asking the running shell what the launcher shows, through Quickshell's
-//! `qs ipc call launcher show`, as pi-ask's tool asks it for the catalogue.
+//! Asking the running shell what the launcher shows, and to do what it
+//! offers, through Quickshell's `qs ipc call launcher show` and `doing`, as
+//! pi-ask's tool asks it for the catalogue.
 
 use std::io::Read;
 use std::process::{Command, Stdio};
@@ -22,7 +23,8 @@ const LOOK_AGAIN: Duration = Duration::from_millis(10);
 /// What the shell answered.
 #[derive(Debug, PartialEq)]
 pub enum Answer {
-    /// What a place or a row shows, as launcher/Showing.js shapes it.
+    /// What a place or a row shows, as launcher/Showing.js shapes it, or
+    /// what came of doing it.
     Shown(Value),
     /// A step named nothing: the step, the names it might have meant and
     /// the names of the steps before it.
@@ -37,11 +39,36 @@ pub enum Answer {
 /// where `drawers` asks, since the shell builds them only then. An error is
 /// the shell not answering, with what qs said where it said anything.
 pub fn show(qs: &str, steps: &[String], drawers: bool) -> Result<Answer, String> {
-    let asked = if drawers { "drawers" } else { "show" };
+    call(qs, if drawers { "drawers" } else { "show" }, &path(steps))
+}
+
+/// Asks the shell through `qs` to do what the steps name, with the words
+/// an act asks for, and past its question once the terminal's sure. It
+/// answers with what it asks first (`asks`, with the steady ids of the
+/// rows it asked about, `path`), the words an act takes (`takes`), or that
+/// it's done. Given a `path`, the shell walks those ids rather than the
+/// names, so a y does the row it was asked about even where rows moved
+/// since, or nothing.
+pub fn doing(
+    qs: &str,
+    steps: &[String],
+    path: &[String],
+    words: &str,
+    sure: bool,
+) -> Result<Answer, String> {
+    call(qs, "doing", &asked(steps, path, words, sure))
+}
+
+/// What `doing` is given, as JSON, which is never empty as qs needs.
+pub fn asked(steps: &[String], path: &[String], words: &str, sure: bool) -> String {
+    serde_json::json!({ "steps": steps, "path": path, "words": words, "sure": sure }).to_string()
+}
+
+fn call(qs: &str, function: &str, argument: &str) -> Result<Answer, String> {
     let mut child = Command::new(qs)
         // After `--`, since `show` is also qs ipc's own command, which
         // takes no argument, and qs reads the call as it otherwise.
-        .args(["ipc", "call", "--", "launcher", asked, &path(steps)])
+        .args(["ipc", "call", "--", "launcher", function, argument])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -123,7 +150,7 @@ pub fn answer_of(printed: &str) -> Option<Answer> {
 }
 
 /// A JSON list's strings, or none.
-fn strings(value: Option<&Value>) -> Vec<String> {
+pub fn strings(value: Option<&Value>) -> Vec<String> {
     value
         .and_then(Value::as_array)
         .map(|all| {
@@ -161,6 +188,26 @@ mod tests {
         assert_eq!(
             path(&["machine".to_string(), "disk".to_string()]),
             "\u{203a}machine\u{203a}disk"
+        );
+    }
+
+    #[test]
+    fn what_to_do_is_asked_as_json() {
+        let steps = ["machine".to_string(), "power".to_string()];
+        assert_eq!(
+            asked(&steps, &[], "", false),
+            r#"{"path":[],"steps":["machine","power"],"sure":false,"words":""}"#
+        );
+        let path = [
+            "category:computer".to_string(),
+            "category:power".to_string(),
+        ];
+        assert_eq!(
+            asked(&steps, &path, "", true),
+            concat!(
+                r#"{"path":["category:computer","category:power"],"#,
+                r#""steps":["machine","power"],"sure":true,"words":""}"#
+            )
         );
     }
 

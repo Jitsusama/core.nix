@@ -88,7 +88,9 @@ machine, one path through each connection.
 - [`in-a-terminal/`][terminal]: `launcher`, a Rust program printing any
   place, row or drawer the launcher holds, as text or as JSON, from the
   shell's `show`, so every integration has a command line at once; zsh
-  completes its steps by asking the shell the same way.
+  completes its steps by asking the shell the same way. `launcher do`
+  does what a row offers through `doing`, asking the launcher's question
+  on the terminal before an act that ends something.
 - [`pieces/`][pieces]: the pieces the margin and the launcher's foot show,
   each starting from `Piece.qml`.
 - [`clipboard/`][clipboard]: the clipboard's history, a Rust daemon.

@@ -25,7 +25,7 @@ import launcher_on_niri
 import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from launcher_on_niri import Json, Shell
 
@@ -1050,6 +1050,91 @@ def test_a_meaning_lands_on_a_part_inside_a_place(shell: Shell) -> None:
         shell.close_launcher()
     finally:
         means.unlink(missing_ok=True)
+
+
+def test_a_terminal_is_asked_before_an_ending_act_and_a_place_opens(shell: Shell) -> None:
+    """`launcher do` is asked the launcher's question before an act that ends something.
+
+    The shell walks the steps as `show` does (Launcher.qml's doneFromTerminal), and an act the
+    line would ask about, or that ends something, isn't done until the terminal says it's sure:
+    its answer is the launcher's own question, in the act's own words and what it closes, never
+    the place's name joined to the act's. A place opens in the launcher, as the catalogue's run
+    opens one.
+    """
+
+    def done(*steps: str) -> Json:
+        asked = shlex.quote(json.dumps({"steps": steps, "words": "", "sure": False}))
+        said = shell.as_account(f"qs -p {shell.folder} ipc call -- launcher doing {asked}")
+        return cast("Json", json.loads(said))
+
+    reboot = done("machine", "power", "reboot")
+    assert reboot["in"] == ["Machine", "Power", "Reboot"], reboot
+    closing = r"(, Closing (the Window|\d+ Windows))?"
+    assert re.fullmatch(rf"Reboot the Machine{closing}\? \(y/n\)", reboot["asks"]), reboot
+    assert not shell.showing()["open"]
+    assert done("mahcine") == {"missing": "mahcine", "near": ["Machine"], "in": []}
+    machine = done("machine")
+    assert machine == {"done": True, "opened": True, "in": ["Machine"]}, machine
+    assert shell.showing()["open"]
+    shell.close_launcher()
+
+
+def test_a_terminal_does_an_act_unasked_and_an_ending_one_once_sure(shell: Shell) -> None:
+    """`launcher do` does an act that ends nothing at once, and one that ends only once sure.
+
+    Going to a window ends nothing and the : line never asks it, so it's done unasked; Float
+    is asked, as :float is, since it changes the window with nothing to take it back. Close
+    ends the window, so it's asked of the window first and done only by the sure ask, which
+    walks the steady ids the question gave (`path`) rather than the names again, so a row
+    moved since is never closed in its place (Y2YBTS's review of #2421).
+    """
+
+    def done(*steps: str, path: list[str] | None = None, sure: bool = False) -> Json:
+        said = {"steps": steps, "path": path or [], "words": "", "sure": sure}
+        asked = shlex.quote(json.dumps(said))
+        answer = shell.as_account(f"qs -p {shell.folder} ipc call -- launcher doing {asked}")
+        return cast("Json", json.loads(answer))
+
+    def listed(title: str) -> Json | None:
+        """Give the window as niri lists it, or None once it's gone."""
+        titled = [one for one in shell.windows() if one["title"] == title]
+        return titled[0] if titled else None
+
+    def until(test: Callable[[], bool], what: str) -> None:
+        deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+        while not test():
+            assert time.monotonic() < deadline, f"{what} never came: {shell.windows()}"
+            time.sleep(launcher_on_niri.POLL)
+
+    def windows_listed() -> list[str]:
+        """Give the names Desktop's Windows lists, as a terminal's show walks them."""
+        path = shlex.quote("\u203adesktop\u203awindows")
+        asked = f"qs -p {shell.folder} ipc call -- launcher show {path}"
+        return [row["name"] for row in json.loads(shell.as_account(asked)).get("rows", [])]
+
+    # Windows lists every window but the focused one, Desktop's This Window, so each acted on
+    # is one the other took the focus from.
+    kestrel = shell.opened("Kestrel Notes")
+    plover = shell.opened("Plover Notes")
+    try:
+        until(lambda: "Kestrel Notes" in windows_listed(), "Kestrel Notes in Windows")
+        went = done("desktop", "windows", "kestrel notes")
+        assert went == {"done": True, "in": ["Desktop", "Windows", "Kestrel Notes"]}, went
+        until(lambda: (listed("Kestrel Notes") or {}).get("is_focused") is True, "The focus")
+        until(lambda: "Plover Notes" in windows_listed(), "Plover Notes in Windows")
+        floating = done("desktop", "windows", "plover notes", "float")
+        assert floating["asks"] == "Float Plover Notes? (y/n)", floating
+        closing = done("desktop", "windows", "plover notes", "close")
+        assert closing["asks"] == "Close Plover Notes? (y/n)", closing
+        assert listed("Plover Notes") is not None, "Close was done before it was sure"
+        closed = done(path=closing["path"], sure=True)
+        assert closed["done"] is True, closed
+        assert closed["in"] == ["Desktop", "Windows", "Plover Notes", "Close"], closed
+        until(lambda: listed("Plover Notes") is None, "Its closing")
+    finally:
+        for window in (kestrel, plover):
+            if listed(window["title"]) is not None:
+                shell.close(window)
 
 
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
