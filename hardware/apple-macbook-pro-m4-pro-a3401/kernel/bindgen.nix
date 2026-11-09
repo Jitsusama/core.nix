@@ -54,18 +54,20 @@ rustPlatform.buildRustPackage rec {
 
   # The workspace's own tests are bindgen's, which the repairs leave alone.
   # What proves the repairs is the tree's test.py, which compiles C and Rust
-  # fixtures of each case it fixes and checks their layouts agree.
+  # fixtures of each case it fixes and checks their layouts agree. It names
+  # each target itself and its fixtures include nothing, so it's given
+  # clang unwrapped: a wrapper built for another target has another name.
   doCheck = false;
   doInstallCheck = true;
   nativeInstallCheckInputs = [
-    llvmPackages.clang
     python3
     rustc
   ];
   installCheckPhase = ''
     runHook preInstallCheck
     python3 ${tools}/test.py --bindgen $out/bin/bindgen \
-      --rustc ${lib.getExe' rustc "rustc"} --clang ${lib.getExe' llvmPackages.clang "clang"} \
+      --rustc ${lib.getExe' rustc "rustc"} \
+      --clang ${lib.getExe' llvmPackages.clang-unwrapped "clang"} \
       --output-dir "$TMPDIR/layout-checks"
     runHook postInstallCheck
   '';
