@@ -55,14 +55,14 @@
         target = kernelFile;
         inherit (machine.config.system) modulesTree;
       };
-      kernel = "${image}/${kernelFile}";
+      # Compared as text: a string naming a store path can't be matched against.
+      text = builtins.unsafeDiscardStringContext;
+      kernel = text "${image}/${kernelFile}";
+      names = commands: lib.hasInfix kernel (text commands);
     in
     holds "the-kernel-boots-with-its-modules-keys"
       "the kernel booted carries no certificate for its modules' keys, so it loads each module unchecked."
-      (
-        lib.hasInfix kernel machine.config.boot.bootspec.writer
-        && lib.hasInfix kernel machine.config.system.systemBuilderCommands
-      );
+      (names machine.config.boot.bootspec.writer && names machine.config.system.systemBuilderCommands);
 
   # The wrappers unit stays active once it's run, so the units measured
   # boot's wait for sysinit.target pulls in again can't run it past its
