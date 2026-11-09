@@ -38,6 +38,7 @@
 //! Usage: `merge-net watch [--from COMMIT] [--branch NAME] [--once] [--follow PATH]
 //! | merge-net needs [--base REF] | merge-net ready COMMIT | merge-net status`
 
+mod apart;
 mod holds;
 mod ready;
 mod rules;
