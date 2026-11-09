@@ -2,7 +2,8 @@
 // holds, apart from drawing them (Passwords.qml): the order they're listed
 // in, each row's words and mark, which acts an entry has inside it and in
 // what order, what its drawer says, and what the foot says of a copy as
-// its time runs out. Kept apart so the-passwords-show-every-figure-but-the-
+// its time runs out; For You's one to-do for what the last check found is
+// Checked.js's. Kept apart so the-passwords-show-every-figure-but-the-
 // secret runs it in Qt's own engine (tests/passwords.qml).
 //
 // An entry is a record as the daemon gives it: { key, manager, id, title,

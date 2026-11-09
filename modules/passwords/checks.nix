@@ -126,11 +126,12 @@ onLinux {
   # manager fills only on a web page, its link in its manager's program, its drawer's eyebrow, and its facts saying every
   # figure and never a secret, its health and a weak strength warning,
   # its password reused and breached once every password is checked and
-  # nothing before, those needing attention, and the foot counting a copy
-  # down are Passwords.js's, and a manager's entries by vault Managers.js's,
-  # run in Qt's own engine (tests/passwords.qml),
-  # beside the launcher's own wording of how long ago (Ago.js) and of a
-  # figure (Numbers.js).
+  # nothing before, those needing attention and the foot counting a copy
+  # down are Passwords.js's, a manager's entries by vault Managers.js's,
+  # and For You's one to-do for what the last check found, whether it
+  # stands or is done, its side and its weight, Checked.js's, run in Qt's
+  # own engine (tests/passwords.qml), beside the launcher's own wording of
+  # how long ago (Ago.js) and of a figure (Numbers.js).
   the-passwords-show-every-figure-but-the-secret =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -139,6 +140,7 @@ onLinux {
       cp ${../../tests/passwords.qml} passwords.qml
       cp ${./Passwords.js} Passwords.js
       cp ${./Managers.js} Managers.js
+      cp ${./Checked.js} Checked.js
       cp ${../quickshell/launcher/Ago.js} Ago.js
       cp ${../quickshell/launcher/Numbers.js} Numbers.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

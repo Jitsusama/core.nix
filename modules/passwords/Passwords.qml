@@ -36,10 +36,23 @@
 // so while it runs. Each entry's Health then says what was found
 // (Passwords.js), and Needing Attention, after any unlock row, holds
 // each entry with a problem, counted.
+//
+// What the last check found outlives the daemon, which keeps it, and
+// stands in For You as one to-do however many logins it found, so a
+// check never floods it (VKCF3Z [6d59cde5], WCJQSG [faf5592e]): Change
+// the Passwords the Check Found, how many are breached and reused at its
+// side, Return stepping into those logins alone. Weak, unsecured and old
+// logins stay here and are never in it. It goes to For You's History once
+// a later check finds none breached or reused (`forYou`, which Now.qml
+// gathers). Stepping into it is stepping into Passwords' list, so it asks
+// for the list as stepping in here does.
 import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "Ago.js" as Ago
+import "Checked.js" as Checked
+import "ForYou.js" as ForYou
 import "Passwords.js" as Passwords
 import "Managers.js" as Managers
 
@@ -58,6 +71,10 @@ Provider {
         // Entries change as a manager is read, so each is kept by key and
         // a manager's standing told as it changes.
         onSourcesChanged: provider.changed()
+        // What the last check found is asked as the daemon says hello, so
+        // once as the shell starts and again whenever the daemon does, and
+        // taken as its watch tells it changed.
+        onTold: answer => provider.heardTold(answer)
     }
 
     // The managers, as the module lists them: each by its name in the
@@ -196,7 +213,156 @@ Provider {
             provider.checkWhy = answer === null ? said.away ?? ""
                 : answer.error ? String(answer.error.message ?? answer.error.code)
                 : String(answer.unreached ?? "");
+            provider.askChecked();
         });
+    }
+
+    // What the last check of every password found, as the daemon keeps it
+    // through a reboot (Checked.js's figures), or null before any check.
+    // It's replaced only when a figure differs, so For You's to-do is made
+    // again only then, never as an entry changes or the launcher opens.
+    property var figures: null
+
+    function tookChecked(checked) {
+        const next = Checked.figures(checked ?? null);
+        if (!Checked.sameFigures(figures, next))
+            figures = next;
+    }
+
+    function askChecked() {
+        daemon.ask({ ask: "health" }, answer => {
+            if (answer !== null && answer.checked !== undefined)
+                provider.tookChecked(answer.checked);
+        });
+    }
+
+    function heardTold(answer) {
+        if (answer.id === "hello")
+            askChecked();
+        else if (answer.id === "all" && answer.checked !== undefined)
+            tookChecked(answer.checked);
+    }
+
+    // The to-do's own words, from the vocabulary.
+    readonly property var todoSaid: Words.of("passwords:todo").said ?? {}
+
+    // For You's one to-do for the passwords the last check found breached
+    // or reused, never one a login, as Now gathers each source's (Now.qml's
+    // waitingRows): while it stands, { row, thing }, which For You weighs
+    // beside the rest; once a later check finds none, { row, done }, how
+    // it went and when, for its History. Made only as the figures change.
+    readonly property var forYou: {
+        const found = figures;
+        if (Checked.stands(found))
+            return [{ row: todoRow(found, false), thing: Checked.todoThing(found) }];
+        if (Checked.cleared(found))
+            return [{ row: todoRow(found, true), done: { how: todoSaid.how ?? "",
+                at: found.cleared } }];
+        return [];
+    }
+
+    // The to-do's row: its name, the counts at its side or, done, how it
+    // went and when, and Return stepping in, never acting, to the logins
+    // it's for (troubledRows), as every For You row steps into what it
+    // asks. Its drawer is made as it's shown, so its weight says now's.
+    function todoRow(found, done) {
+        const words = "passwords:todo";
+        const rows = () => provider.troubledRows();
+        const row = member({
+            thing: true,
+            what: "on",
+            key: done ? `${words}:done` : words,
+            // What it is and where it's from, which For You filters by.
+            forYou: { kind: "do", source: "passwords" },
+            verb: "more",
+            stays: true,
+            nested: true,
+            name: Words.name(words),
+            glyph: Words.glyph(words),
+            hue: done ? "muted" : "strong",
+            side: done ? "" : Checked.todoSide(found, todoSaid),
+            // Where the row is narrow, how many are reused gives way
+            // first, whole, rather than either being cut.
+            sideItems: done ? [] : Checked.todoSideItems(found, todoSaid),
+            empty: Words.of(words).empty,
+            drawer: () => provider.todoDrawer(found, done),
+            verbs: rows,
+            targets: rows,
+            run: () => provider.launcher?.enter(row)
+        });
+        // Done, it says when as the clock says it as it's read, so one
+        // cleared yesterday names its day.
+        if (done)
+            Object.defineProperty(row, "side", {
+                enumerable: true,
+                get: () => provider.clearedSide(found)
+            });
+        return row;
+    }
+
+    // What the to-do holds: a row for each manager that can't read, which
+    // lets the launcher in, then each entry the last check found breached
+    // or reused, by title, as Needing Attention lists them.
+    function troubledRows() {
+        const byKey = {};
+        for (const row of everyone)
+            byKey[row.key] = row;
+        return managers.filter(manager => signedOut(manager)).map(manager => unlock(manager))
+            .concat(Passwords.needing(records).map(record => byKey[record.key]).filter(Boolean));
+    }
+
+    // The to-do's drawer, in the facts every For You drawer gives
+    // (Now.qml's drawerOf): where it's from and that it's a thing to do,
+    // what it weighs, how long it takes, since when it has waited, when the
+    // last check ran and what clears it; then its own, how many are
+    // breached and how many reused. Done, how it went stands in place of
+    // what it weighed and what clears it, as a done item's does.
+    function todoDrawer(found, done) {
+        const now = Date.now();
+        const say = forYouSaid(now);
+        const thing = Checked.todoThing(found);
+        const fact = (id, value) => ({ label: Words.name(id), value: String(value) });
+        const facts = [
+            fact("on:waiting:weight", done ? "" : ForYou.weightSaid(thing, now, say)),
+            fact("on:waiting:takes", done || thing.takes === 0 ? ""
+                : ForYou.filled(say.takes, { minutes: thing.takes })),
+            fact("on:waiting:since", found.since === null ? "" : clocked(found.since)),
+            fact("on:waiting:resolved", done ? clearedSide(found) : ""),
+            fact("on:waiting:checked", clocked(found.at)),
+            fact("on:waiting:clears", done ? "" : todoSaid.clears ?? ""),
+            fact("passwords:todo:breached", Checked.counted(found.breached)),
+            fact("passwords:todo:reused", Checked.counted(found.reused))
+        ].filter(one => one.value !== "");
+        return {
+            eyebrow: ForYou.filled(say.from, { from: Words.name("passwords"), kind: say.todo }),
+            eyebrowNames: true,
+            title: Words.name("passwords:todo"),
+            facts: facts,
+            body: done ? "" : (Words.of("passwords:todo").tells ?? {}).steps ?? ""
+        };
+    }
+
+    // Done, how it went and when, "checked clear 14:02", as History says.
+    function clearedSide(found) {
+        return ForYou.historySide({ how: todoSaid.how ?? "", resolved: found.cleared,
+            since: null }, forYouSaid(Date.now()));
+    }
+
+    // For You's words, with the clock and how long ago as the launcher
+    // says them, at `now`, as Now says its own (Now.qml's forYouSaid).
+    function forYouSaid(now) {
+        return Object.assign({}, Words.of("on:waiting").said ?? {}, {
+            clock: at => provider.clocked(at),
+            ago: at => Ago.ago(at, now)
+        });
+    }
+
+    // A time as the clock says it: today's by its hour, and another day's
+    // with its day, as For You's own are.
+    function clocked(at) {
+        const when = new Date(at);
+        const today = new Date().toDateString() === when.toDateString();
+        return Qt.formatDateTime(when, today ? "HH:mm" : "ddd d MMM, HH:mm");
     }
 
     // The record held by a key now, or null.
@@ -458,6 +624,10 @@ Provider {
             const last = steps.length > 0 ? steps[steps.length - 1].row : null;
             if (provider.launcher.open && last && provider.recordOf(last.key ?? "") !== null)
                 provider.getAsked(last.key, true);
+            // Stepping into For You's to-do is stepping into Passwords'
+            // list, Joel's key, so the logins it's for are read.
+            if (provider.launcher.open && String(last?.key ?? "").startsWith("passwords:todo"))
+                provider.listAsked();
         }
 
         function onSelectedChanged() {

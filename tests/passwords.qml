@@ -3,14 +3,16 @@
 // order, what a row says, which acts an entry holds and in what order, its
 // link in its manager's program, what its drawer says and that it never
 // says a secret, its health once every password is checked, those
-// needing attention, and what the foot says of a copy as its time runs
-// out, and a manager's entries by vault, run in Qt's own JavaScript
-// engine, the one the shell runs it in. The
-// `the-passwords-show-every-figure-but-the-secret` check copies
-// Passwords.js, Managers.js, and the launcher's Ago.js and Numbers.js
-// Passwords.js reads, beside this file and runs
+// needing attention, what the foot says of a copy as its time runs out,
+// a manager's entries by vault, and For You's one to-do from what the
+// last check found: whether it stands or is done, what its side says and
+// what For You weighs, run in Qt's own JavaScript engine, the one the
+// shell runs it in. The `the-passwords-show-every-figure-but-the-secret`
+// check copies Passwords.js, Managers.js and Checked.js, and the
+// launcher's Ago.js and Numbers.js they read, beside this file and runs
 // `qml -platform offscreen passwords.qml`.
 import QtQuick
+import "Checked.js" as Checked
 import "Passwords.js" as Passwords
 import "Managers.js" as Managers
 
@@ -278,6 +280,50 @@ QtObject {
         check("one refused is the row's", Passwords.speaks(Passwords.answered(asking, null, now,
             "away")), true);
         check("nothing copied isn't", Passwords.speaks(null), false);
+
+        // For You's one to-do, from what the daemon says the last check
+        // found: nothing before any check, nor from what isn't one.
+        check("no figures before a check", Checked.figures({ at: null, since: null,
+            cleared: null, breached: 0, reused: 0, troubled: 0 }), null);
+        check("no figures from nothing", Checked.figures(null), null);
+        const hour = 3_600_000;
+        const found = Checked.figures({ at: now - hour, since: now - 3 * hour, cleared: null,
+            breached: 3, reused: 1204, troubled: 1205 });
+        check("the figures as the daemon said them", found, { at: now - hour,
+            since: now - 3 * hour, cleared: null, breached: 3, reused: 1204, troubled: 1205 });
+        check("figures read the same are the same", Checked.sameFigures(found,
+            Checked.figures(Object.assign({}, found))), true);
+        check("figures that differ by a count differ", Checked.sameFigures(found,
+            Checked.figures(Object.assign({}, found, { reused: 1203 }))), false);
+        check("a check finding trouble stands", Checked.stands(found), true);
+        check("one standing isn't done", Checked.cleared(found), false);
+        const todo = { breached: "{count} breached", reused: "{count} reused" };
+        check("its side, breached first, the figures grouped", Checked.todoSide(found, todo),
+            "3 breached \u00b7 1,204 reused");
+        check("none breached is left out", Checked.todoSide(Object.assign({}, found,
+            { breached: 0 }), todo), "1,204 reused");
+        check("none reused is left out", Checked.todoSide(Object.assign({}, found,
+            { reused: 0 }), todo), "3 breached");
+        check("its parts give way reused first", Checked.todoSideItems(found, todo),
+            [{ said: "3 breached", keep: 2 }, { said: "1,204 reused", keep: 1 }]);
+        check("a count of none says nothing", Checked.counted(0), "");
+        check("what For You weighs", Checked.todoThing(found), { kind: "todo",
+            since: now - 3 * hour, takes: 1205 * 3, ready: true });
+        // Each changed since the check took leaves the counts, and with
+        // none left it no longer stands, though no check has cleared it.
+        const changed = Object.assign({}, found, { breached: 0, reused: 0, troubled: 0 });
+        check("with every one changed, it doesn't stand", Checked.stands(changed), false);
+        check("nor is it done before a check says so", Checked.cleared(changed), false);
+        // A later check finding none clears it, into History.
+        const clear = Checked.figures({ at: now, since: null, cleared: now, breached: 0,
+            reused: 0, troubled: 0 });
+        check("a check finding none doesn't stand", Checked.stands(clear), false);
+        check("a check finding none is done", Checked.cleared(clear), true);
+        // One that found none before any trouble is neither.
+        const never = Checked.figures({ at: now, since: null, cleared: null, breached: 0,
+            reused: 0, troubled: 0 });
+        check("never troubled, it neither stands nor is done", [Checked.stands(never),
+            Checked.cleared(never)], [false, false]);
 
         // By vault, as Programs › 1Password holds them, each by title.
         check("by vault", Managers.vaults([gitHub, bank, door]).map(vault =>

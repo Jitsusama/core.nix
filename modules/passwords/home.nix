@@ -118,11 +118,13 @@ in
       (pkgs.callPackage ./completion.nix { })
     ];
 
-    # What the place works out apart from drawing it, beside it, and the
-    # copy it last made, which the place and the margin's mark both read.
+    # What the place works out apart from drawing it, and what For You's
+    # to-do for the last check works out, beside it, and the copy it last
+    # made, which the place and the margin's mark both read.
     xdg.configFile = {
       "quickshell/launcher/Passwords.js".source = ./Passwords.js;
       "quickshell/launcher/Managers.js".source = ./Managers.js;
+      "quickshell/launcher/Checked.js".source = ./Checked.js;
       "quickshell/Clearing.qml".source = ./Clearing.qml;
     };
 
