@@ -233,20 +233,30 @@ Scope {
         || launcher.wants(provider)
 
     // A row kept from the making before while what it's made from says the
-    // same, `from` being all of that as text, or else made anew by `make`;
-    // either is kept in `next` for the making after, which keepOnly makes
-    // the rows kept. So a change remakes only the rows it changed, as
-    // Quests keeps its own, rather than every row at every change.
-    function keptOr(kept, next, key, from, make) {
-        const before = kept[key];
-        next[key] = before && before.from === from ? before : { from: from, row: make() };
-        return next[key].row;
+    // same, `from` being all of that as text, or else made anew by `make`.
+    // So a change remakes only the rows it changed, as Quests keeps its
+    // own, rather than every row at every change. A keeper is a plain
+    // object, `{ rows: {}, next: null }` (keeper()), so keeping notifies
+    // nothing, and a binding that keeps its rows in one never depends on
+    // it and can't loop. Between keepingBegun and keptOnly, each row asked
+    // for is kept in `next` too, and keptOnly lets the rest go.
+    function keeper() {
+        return { rows: {}, next: null };
     }
-    // `kept`, a plain object so keeping notifies nothing, made `next`.
-    function keepOnly(kept, next) {
-        for (const key of Object.keys(kept))
-            delete kept[key];
-        Object.assign(kept, next);
+    function keptOr(keeping, key, from, make) {
+        const before = keeping.rows[key];
+        const kept = before && before.from === from ? before : { from: from, row: make() };
+        (keeping.next ?? keeping.rows)[key] = kept;
+        return kept.row;
+    }
+    function keepingBegun(keeping) {
+        keeping.next = {};
+    }
+    function keptOnly(keeping) {
+        if (keeping.next === null)
+            return;
+        keeping.rows = keeping.next;
+        keeping.next = null;
     }
 
     // The one row a source ends every search at the top with, after

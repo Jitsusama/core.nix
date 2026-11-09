@@ -292,6 +292,7 @@ let
     "launcher/Recent.js"
     "launcher/Recents.js"
     "launcher/SessionRow.js"
+    "launcher/SessionMade.js"
     "launcher/SessionDrawer.js"
     "launcher/Holders.js"
     "launcher/SpendDrawer.js"

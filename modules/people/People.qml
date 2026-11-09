@@ -197,14 +197,14 @@ Provider {
     // made every row again each time, the launcher open or not, 813 to
     // 2,595 of them an opening on Joel's shell (2026-11-08). Each is kept
     // while the person reads the same. Plain, so keeping notifies nothing.
-    readonly property var rowsOfEveryone: ({ rows: [], stale: true, kept: {} })
+    readonly property var rowsOfEveryone: ({ rows: [], stale: true, keeping: keeper() })
     function everyone() {
         const made = rowsOfEveryone;
         if (made.stale) {
-            const next = {};
-            made.rows = persons.map(person => keptOr(made.kept, next, person.key,
+            keepingBegun(made.keeping);
+            made.rows = persons.map(person => keptOr(made.keeping, person.key,
                 JSON.stringify(person), () => provider.made(person, Person.standing(person, []))));
-            keepOnly(made.kept, next);
+            keptOnly(made.keeping);
             made.stale = false;
         }
         return made.rows;
@@ -225,7 +225,9 @@ Provider {
     // same, as everyone's are, so a change remakes only those it changed;
     // and they're made only while they're wanted (Provider.qml's wanted),
     // or as they're asked for, so a change nobody sees makes none and
-    // refreshes nothing.
+    // refreshes nothing. Listing them writes keptListed, a plain object
+    // this binding never reads as a property, so it can't loop
+    // (Provider.qml's keeper).
     readonly property var all: provider.wanted ? listedNow() : []
     onAllChanged: {
         if (provider.wanted)
@@ -233,17 +235,17 @@ Provider {
     }
     function listedNow() {
         const now = Date.now();
-        const next = {};
+        keepingBegun(keptListed);
         const rows = Person.ordered(persons.filter(person => Person.listed(person,
             standOf(person), now)), person => standOf(person), now).map(person => {
             const stood = standOf(person);
-            return keptOr(keptListed, next, person.key, JSON.stringify([person, stood]),
+            return keptOr(keptListed, person.key, JSON.stringify([person, stood]),
                 () => made(person, stood));
         });
-        keepOnly(keptListed, next);
+        keptOnly(keptListed);
         return rows;
     }
-    readonly property var keptListed: ({})
+    readonly property var keptListed: keeper()
 
     // The listed rows by key, so a search finds them as they stand.
     readonly property var known: {
