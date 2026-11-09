@@ -143,14 +143,12 @@ fn worked(cgroup: &Path) -> u64 {
                 .and_then(|usec| usec.trim().parse().ok())
         })
         .unwrap_or(0);
-    let written: u64 = fs::read_to_string(cgroup.join("io.stat"))
-        .map(|stat| {
-            stat.split_whitespace()
-                .filter_map(|field| field.strip_prefix("wbytes="))
-                .filter_map(|bytes| bytes.parse::<u64>().ok())
-                .sum()
-        })
-        .unwrap_or(0);
+    let written: u64 = fs::read_to_string(cgroup.join("io.stat")).map_or(0, |stat| {
+        stat.split_whitespace()
+            .filter_map(|field| field.strip_prefix("wbytes="))
+            .filter_map(|bytes| bytes.parse::<u64>().ok())
+            .sum()
+    });
     cpu + written
 }
 

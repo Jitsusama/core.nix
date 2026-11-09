@@ -397,7 +397,7 @@ where
         child
     };
     let group = child.id().cast_signed();
-    let heard = Arc::new(Mutex::new((Instant::now(), String::new(), false)));
+    let heard: Heard = Arc::new(Mutex::new((Instant::now(), String::new(), false)));
     let readers: Vec<_> = [
         child
             .stdout
@@ -425,38 +425,7 @@ where
         })
     })
     .collect();
-    let mut quiet = None;
-    let mut seen = 0;
-    // When the pieces' work last started the clock again.
-    let mut working: Option<Instant> = None;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break Ok(status),
-            Ok(None) => {}
-            Err(e) => break Err(e),
-        }
-        let (last, patient) = {
-            let heard = heard.lock().unwrap_or_else(PoisonError::into_inner);
-            (heard.0, heard.2)
-        };
-        let limit = if patient { silent * COPYING } else { silent };
-        let clock = working.map_or(last, |working| working.max(last));
-        if quiet.is_none() && clock.elapsed() >= limit {
-            let now = done(group);
-            let moved = now != seen;
-            seen = now;
-            if moved && last.elapsed() < limit * PATIENT_MOST {
-                // Its pieces work, so the clock starts again, but the
-                // quiet spell it is in still counts towards the most.
-                working = Some(Instant::now());
-            } else {
-                // SAFETY: kill only sends a signal; a group already gone is ESRCH.
-                unsafe { libc::kill(-group, libc::SIGTERM) };
-                quiet = Some((last.elapsed(), moved));
-            }
-        }
-        thread::sleep(Duration::from_millis(200));
-    };
+    let (status, quiet) = watched(&mut child, &heard, silent, done);
     for reader in readers {
         let _ = reader.join();
     }
@@ -491,6 +460,59 @@ where
         why: format!("{what} failed ({status})"),
         lines: tail(&said),
     })
+}
+
+/// What nix has said, as `built` hears it: when it last said anything,
+/// what it said of its own, and whether its newest line has it building
+/// or copying back.
+type Heard = Arc<Mutex<(Instant, String, bool)>>;
+
+/// Waits for `child` to end, stopping its group once it is quiet past
+/// its limit with its pieces doing no work, or past the most whatever
+/// they do. Gives how it ended and, if it was stopped, how long it had
+/// been quiet and whether its pieces still worked.
+fn watched(
+    child: &mut std::process::Child,
+    heard: &Heard,
+    silent: Duration,
+    done: &dyn Fn(libc::pid_t) -> u64,
+) -> (
+    std::io::Result<std::process::ExitStatus>,
+    Option<(Duration, bool)>,
+) {
+    let group = child.id().cast_signed();
+    let mut quiet = None;
+    let mut seen = 0;
+    // When the pieces' work last started the clock again.
+    let mut working: Option<Instant> = None;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return (Ok(status), quiet),
+            Ok(None) => {}
+            Err(e) => return (Err(e), quiet),
+        }
+        let (last, patient) = {
+            let heard = heard.lock().unwrap_or_else(PoisonError::into_inner);
+            (heard.0, heard.2)
+        };
+        let limit = if patient { silent * COPYING } else { silent };
+        let clock = working.map_or(last, |working| working.max(last));
+        if quiet.is_none() && clock.elapsed() >= limit {
+            let now = done(group);
+            let moved = now != seen;
+            seen = now;
+            if moved && last.elapsed() < limit * PATIENT_MOST {
+                // Its pieces work, so the clock starts again, but the
+                // quiet spell it is in still counts towards the most.
+                working = Some(Instant::now());
+            } else {
+                // SAFETY: kill only sends a signal; a group already gone is ESRCH.
+                unsafe { libc::kill(-group, libc::SIGTERM) };
+                quiet = Some((last.elapsed(), moved));
+            }
+        }
+        thread::sleep(Duration::from_millis(200));
+    }
 }
 
 /// How many times as long a copy back from a builder may stay quiet as a
