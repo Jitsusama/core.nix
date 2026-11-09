@@ -324,7 +324,7 @@ function isNoticed(said, held) {
 // only where it could be one message alone, that one read in Slack, and
 // no other notice, read or not, could be of it too.
 function readInSlack(notices, all) {
-    const held = (all ?? []).filter(listable).map(one => ({ one: one, words: words(one.text),
+    const held = (all ?? []).filter(listable).map(one => ({ one, words: words(one.text),
         cut: [...String(one.text ?? "")].length > CUT_PAST }));
     if (!held.some(each => each.one.done?.how === "readInSlack")) {
         return [];

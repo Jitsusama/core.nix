@@ -224,9 +224,9 @@ QtObject {
         const okOnce = said("D1", "Ada Lovelace", "Ada Lovelace", "ok", 4000000);
         const okTwice = said("D1", "Ada Lovelace", "Ada Lovelace", "ok", 4060000, null);
         const thanks = said("D2", "Bo", "Bo", "ok \u8c22\u8c22", 7000000);
-        const held = [dm, deploy, lunch, cut, review, build, unread, gone, okOnce, okTwice,
+        const holding = [dm, deploy, lunch, cut, review, build, unread, gone, okOnce, okTwice,
             thanks];
-        const readIn = notices => Unreads.readInSlack(notices, held);
+        const readIn = notices => Unreads.readInSlack(notices, holding);
         check("a direct message's notice is read, its emoji shown rather than named",
             readIn([raised("n1", "[ada] from Ada Lovelace",
                 "Thank you! \u2764\ufe0f I\u2019m so excited!", 1000300)]), ["n1"]);
