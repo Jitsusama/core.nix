@@ -320,6 +320,7 @@ off.
 | chipset | the chip beside the processor that reaches the disk, USB and the rest | | the PCH |
 | power controller | the processor's part that sets its power and clocks | | |
 | held back | the processor kept below the speed it asked for, by a power or heat limit, and for how long | | `HeldBack` |
+| read | one figure a sensor gave at a moment, of those a spark draws, as heat's Last Reads are, apart from the disk's Data Read | | `Seen.js`'s samples |
 | throttled | the processor slowing itself to cool down, counted each time | | the kernel's `throttle_count` |
 | kept from resting | a part keeping the processor out of its deepest rest while the machine idles, and for how long | | the telemetry's `kept` |
 | memory | what programs run in while the machine is on | RAM | |
@@ -362,6 +363,7 @@ off.
 | Nearby | the Bluetooth devices heard but not paired | | |
 | Sound | the place holding what the machine plays through and hears with, built in or plugged in, and what each program plays and records | | `Sound.qml`, PipeWire |
 | volume | how loud a device or a program plays, as a share of its full level | | |
+| recording | programs taking sound from a microphone now, apart from the screen's recording | | PipeWire's capture streams |
 | microphone | what the machine hears with: built in, a headset's or plugged in, chosen in Sound | | |
 | hardware | a device's own chips and what they carry, as the kernel reports them: its card, its USB ID and its resolution | | ALSA's and USB's properties |
 | card | the chip a sound device plays through or hears with, as the kernel lists it | | ALSA's card |
@@ -379,6 +381,7 @@ off.
 | image processor | the part turning the built-in camera's raw picture into an image | ISP, IPU | |
 | IR camera | the infrared camera beside the built-in camera, for signing in by face | | `ir-camera`, Howdy |
 | desk light | the light on the screen, lit while a camera is in use | | Litra |
+| brightness | how bright the desk light shines, apart from a screen's brightness | | Litra's `brightness` |
 | console | the text screen the machine starts on, and the ones past Ctrl+Alt+F2 | | kmscon |
 | splash | the picture shown while the machine starts and stops | boot screen | Plymouth |
 | device check | the program that tells Joel a device stopped working | | `device-check`, smartd |
@@ -433,6 +436,7 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | rate | how fast a radio link can carry data each way as it's set now, and how it's made: MCS, streams, width and guard interval | link speed, PHY rate, bitrate | `rate_bps` |
 | speed test | eero measuring the most the internet carries each way, from the gateway node | speedtest | `speedtest` |
 | traffic | how much data the machine's link, the home network, a node, a profile or a device moved | data usage | `usage`, `data_usage`, `wifi:carried` |
+| read | one figure taken of a link at a moment, of those a spark draws, as WARP's Reads count and the internet's Last Read says when, apart from mail read | | `WarpSeen.js`'s samples |
 | profile | a group of devices eero lets through or holds off together | | `profiles` |
 | light | a node's status light, on or off and how bright | | eero's `led_on`, `led_brightness` |
 | mode | how the gateway node gets its address: lent by the internet provider's server, set by hand, or through a sign-in | | eero's `lease.mode` |
@@ -494,7 +498,7 @@ shortcuts are listed inside it.
 | cursor row | the one row normal stands on | | |
 | visual | the mode choosing several things | | |
 | selection | what visual has chosen | | |
-| gathered | files collected across folders for one answer, with :arga | | the arglist |
+| gathered | files collected across folders for one answer: Neovim's with :arga, or the file chooser's marked | | the arglist, the file chooser's `marked` |
 | done | a notice forgotten, marked read first where its sender offers it | | |
 | leader | Space, starting a sequence of keys in normal and visual | | `mapleader` |
 | mark | a place kept under a letter, set with m and gone back to with ' | | |

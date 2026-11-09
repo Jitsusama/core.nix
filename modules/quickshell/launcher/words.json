@@ -620,7 +620,8 @@
     {
       "id": "agents:budget",
       "in": "agents",
-      "name": "Budget"
+      "name": "Budget",
+      "term": "Agents/budget"
     },
     {
       "id": "jobs",
@@ -689,7 +690,8 @@
     {
       "id": "jobs:checks",
       "in": "jobs",
-      "name": "Checks"
+      "name": "Checks",
+      "term": "Checks/check"
     },
     {
       "id": "jobs:quest",
@@ -822,6 +824,7 @@
       "id": "machine:memory:held-programs",
       "in": "machine:memory:held",
       "name": "Programs",
+      "term": "Programs/program",
       "said": {
         "note": "programs' own memory"
       }
@@ -989,6 +992,7 @@
       "id": "machine:cpu:spent-user",
       "in": "machine:cpu:spent",
       "name": "Programs",
+      "term": "Programs/program",
       "said": {
         "note": "programs' own work"
       }
@@ -1375,6 +1379,7 @@
       "id": "machine:uptime:idle",
       "in": "machine:uptime",
       "name": "Idle",
+      "term": "Machine/idle",
       "said": {
         "note": "of the processors' time awake since it started"
       }
@@ -2054,7 +2059,8 @@
     {
       "id": "warp:reads",
       "in": "warp",
-      "name": "Reads"
+      "name": "Reads",
+      "term": "Network/read"
     },
     {
       "id": "warp:in",
@@ -2124,7 +2130,8 @@
     {
       "id": "warp:traffic",
       "in": "warp",
-      "name": "Traffic"
+      "name": "Traffic",
+      "term": "Network/traffic"
     },
     {
       "id": "warp:tls",
@@ -2673,22 +2680,32 @@
       "term": "Machine/memory pressure" },
     { "id": "machines:pressure:io", "in": "machines", "name": "Disk Pressure",
       "term": "Machine/disk pressure" },
-    { "id": "machines:memory", "in": "machines", "name": "Memory" },
+    { "id": "machines:memory", "in": "machines", "name": "Memory", "term": "Machine/memory" },
     { "id": "machines:charge", "in": "machines", "name": "Charge" },
     { "id": "machines:takes", "in": "machines", "name": "Takes" },
-    { "id": "machines:disk", "in": "machines", "name": "Disk" },
+    { "id": "machines:disk", "in": "machines", "name": "Disk", "term": "Disk/disk" },
     { "id": "machines:commit", "in": "machines", "name": "Commit" },
     { "id": "machines:core", "in": "machines", "name": "Core", "term": "The Library/core" },
     { "id": "machines:step", "in": "machines", "name": "Last Update" },
-    { "id": "machines:reboot", "in": "machines", "name": "Reboot" },
+    { "id": "machines:reboot", "in": "machines", "name": "Reboot", "term": "Machine/reboot" },
     { "id": "machines:measured", "in": "machines", "name": "Measured" },
-    { "id": "machines:processor", "in": "machines", "name": "Processor" },
+    {
+      "id": "machines:processor",
+      "in": "machines",
+      "name": "Processor",
+      "term": "Machine/processor"
+    },
     { "id": "machines:accelerators", "in": "machines", "name": "Accelerators" },
     { "id": "machines:system", "in": "machines", "name": "System" },
-    { "id": "machines:model", "in": "machines", "name": "Model" },
+    { "id": "machines:model", "in": "machines", "name": "Model", "term": "Machine/model" },
     { "id": "machines:kind:macos", "in": "machines", "name": "Mac" },
     { "id": "machines:kind:linux", "in": "machines", "name": "Linux" },
-    { "id": "machines:kind:machine", "in": "machines", "name": "Machine" },
+    {
+      "id": "machines:kind:machine",
+      "in": "machines",
+      "name": "Machine",
+      "term": "Machine/machine"
+    },
     {
       "id": "verb:machines:start",
       "command": "new",
@@ -2759,7 +2776,8 @@
     {
       "id": "light:desk:brightness",
       "in": "light",
-      "name": "Brightness"
+      "name": "Brightness",
+      "term": "Machine/brightness"
     },
     {
       "id": "light:desk:warmth",
@@ -2989,6 +3007,7 @@
       "id": "today:calendars",
       "in": "today",
       "name": "Calendars",
+      "term": "Programs/calendar",
       "said": {
         "atSunset": "at sunset",
         "days": "{value} days",
@@ -3421,7 +3440,8 @@
     {
       "id": "eero:internet:reserved",
       "in": "eero:internet",
-      "name": "Reserved Addresses"
+      "name": "Reserved Addresses",
+      "term": "Network/reserved address"
     },
     {
       "id": "eero:internet:speed-test",
@@ -3928,7 +3948,8 @@
     {
       "id": "keyboards:keys",
       "in": "keyboards",
-      "name": "Keys"
+      "name": "Keys",
+      "term": "Keyboards/key"
     },
     {
       "id": "keyboards:firmware",
@@ -4298,7 +4319,8 @@
     {
       "id": "networks:subnets",
       "in": "networks",
-      "name": "Subnets"
+      "name": "Subnets",
+      "term": "Network/subnet"
     },
     {
       "id": "networks:broadcast",
@@ -5247,7 +5269,8 @@
     {
       "id": "sound:recorders",
       "in": "sound",
-      "name": "Recording"
+      "name": "Recording",
+      "term": "Machine/recording"
     },
     {
       "id": "sound:tuning",
@@ -5591,12 +5614,14 @@
     {
       "id": "actions",
       "name": "Desktop",
+      "term": "Desktop/desktop",
       "by": "shortcuts"
     },
     {
       "id": "shortcuts:desktop",
       "in": "shortcuts",
       "name": "Desktop",
+      "term": "Desktop/desktop",
       "glyph": "desktop"
     },
     {
@@ -5613,6 +5638,7 @@
       "id": "shortcuts:pi",
       "in": "shortcuts",
       "name": "Agents",
+      "term": "Agents/agent",
       "glyph": "agent"
     },
     {
@@ -5656,6 +5682,7 @@
       "id": "shortcuts:google-mail",
       "in": "shortcuts",
       "name": "Mail",
+      "term": "Programs/mail",
       "said": {
         "note": "works once Gmail's keyboard shortcuts are on"
       }
@@ -5663,7 +5690,8 @@
     {
       "id": "shortcuts:google-calendar",
       "in": "shortcuts",
-      "name": "Calendar"
+      "name": "Calendar",
+      "term": "Programs/calendar"
     },
     {
       "id": "shortcuts:google-meet",
@@ -5700,6 +5728,7 @@
       "id": "shortcuts:onepassword",
       "in": "shortcuts",
       "name": "Passwords",
+      "term": "Security/passwords",
       "glyph": "password"
     },
     {
@@ -5724,6 +5753,7 @@
       "id": "shortcuts:desktop:windows",
       "in": "shortcuts",
       "name": "Windows",
+      "term": "Desktop/window",
       "glyph": "windows"
     },
     {
@@ -5736,12 +5766,14 @@
       "id": "shortcuts:desktop:workspaces",
       "in": "shortcuts",
       "name": "Workspaces",
+      "term": "Desktop/workspace",
       "glyph": "workspace"
     },
     {
       "id": "shortcuts:desktop:screens",
       "in": "shortcuts",
       "name": "Screens",
+      "term": "Desktop/screen",
       "glyph": "display"
     },
     {
@@ -5865,6 +5897,7 @@
       "id": "shortcuts:desktop:launcher:notices",
       "in": "shortcuts",
       "name": "Notices",
+      "term": "Desktop/notice",
       "glyph": "notifications"
     },
     {
@@ -6271,7 +6304,8 @@
     {
       "id": "shortcuts:pi:models",
       "in": "shortcuts",
-      "name": "Models"
+      "name": "Models",
+      "term": "Agents/model"
     },
     {
       "id": "shortcuts:swayimg:moving",
@@ -6653,7 +6687,8 @@
     {
       "id": "on:lag:jobs",
       "in": "on",
-      "name": "Jobs"
+      "name": "Jobs",
+      "term": "Machine/job"
     },
     {
       "id": "on:lag:build",
@@ -6686,7 +6721,8 @@
     {
       "id": "on:sharing:notices",
       "in": "on",
-      "name": "Notices"
+      "name": "Notices",
+      "term": "Desktop/notice"
     },
     {
       "id": "on:sharing:kind",
@@ -6753,7 +6789,8 @@
     {
       "id": "on:plate:here",
       "in": "on:plate",
-      "name": "Here"
+      "name": "Here",
+      "term": "Desktop/here"
     },
     {
       "id": "on:plate:clock",
@@ -6851,7 +6888,8 @@
     {
       "id": "on:waiting:machine",
       "in": "on:waiting",
-      "name": "Machine"
+      "name": "Machine",
+      "term": "Machine/machine"
     },
     {
       "id": "on:waiting:where",
@@ -6905,27 +6943,32 @@
     {
       "id": "for-you:kind:do",
       "in": "on:waiting",
-      "name": "To-Dos"
+      "name": "To-Dos",
+      "term": "Desktop/to-do"
     },
     {
       "id": "for-you:kind:look",
       "in": "on:waiting",
-      "name": "Looks"
+      "name": "Looks",
+      "term": "Desktop/look"
     },
     {
       "id": "for-you:kind:try",
       "in": "on:waiting",
-      "name": "To Try"
+      "name": "To Try",
+      "term": "Desktop/to try"
     },
     {
       "id": "for-you:source:sessions",
       "in": "on:waiting",
-      "name": "Sessions"
+      "name": "Sessions",
+      "term": "Agents/session"
     },
     {
       "id": "for-you:source:mail",
       "in": "on:waiting",
-      "name": "Mail"
+      "name": "Mail",
+      "term": "Programs/mail"
     },
     {
       "id": "for-you:source:slack",
@@ -6937,12 +6980,14 @@
     {
       "id": "for-you:source:calendar",
       "in": "on:waiting",
-      "name": "Calendar"
+      "name": "Calendar",
+      "term": "Programs/calendar"
     },
     {
       "id": "for-you:source:desktop",
       "in": "on:waiting",
       "name": "Desktop",
+      "term": "Desktop/desktop",
       "verb": "more",
       "glyph": "notifications",
       "said": {
@@ -7346,6 +7391,7 @@
       "command": "lap",
       "in": "stopwatch",
       "name": "Lap",
+      "term": "Desktop/lap",
       "verb": "lap",
       "glyph": "lap"
     },
@@ -7490,6 +7536,7 @@
       "id": "notices:calls",
       "in": "notices",
       "name": "Calls",
+      "term": "Programs/call",
       "glyph": "call"
     },
     {
@@ -8148,6 +8195,7 @@
       "id": "media:volume",
       "in": "media",
       "name": "Volume",
+      "term": "Machine/volume",
       "glyph": "volume"
     },
     {
@@ -8207,6 +8255,7 @@
       "argument": "loop=track",
       "in": "media:loop",
       "name": "Track",
+      "term": "Programs/track",
       "verb": "set"
     },
     {
@@ -8277,7 +8326,8 @@
     {
       "id": "cameras:holders",
       "in": "cameras",
-      "name": "In Use"
+      "name": "In Use",
+      "term": "Machine/in use"
     },
     {
       "id": "cameras:privacy",
@@ -8475,6 +8525,7 @@
     {
       "id": "passwords",
       "name": "Passwords",
+      "term": "Security/passwords",
       "noun": "passwords",
       "glyph": "passwords",
       "ask": "which entry?",
@@ -8621,9 +8672,19 @@
     { "id": "passwords:created", "in": "passwords", "name": "Created" },
     { "id": "passwords:changed", "in": "passwords", "name": "Last Changed" },
     { "id": "passwords:strength", "in": "passwords", "name": "Strength" },
-    { "id": "passwords:code", "in": "passwords", "name": "One-Time Code" },
+    {
+      "id": "passwords:code",
+      "in": "passwords",
+      "name": "One-Time Code",
+      "term": "Security/one-time code"
+    },
     { "id": "passwords:health", "in": "passwords", "name": "Health" },
-    { "id": "passwords:manager", "in": "passwords", "name": "Password Manager" },
+    {
+      "id": "passwords:manager",
+      "in": "passwords",
+      "name": "Password Manager",
+      "term": "Security/password manager"
+    },
     { "id": "passwords:files", "in": "passwords", "name": "Files" },
     {
       "id": "verb:slack:search",
@@ -9235,12 +9296,14 @@
     {
       "id": "session:profile:slowed",
       "in": "session:profile",
-      "name": "Held Back"
+      "name": "Held Back",
+      "term": "Machine/held back"
     },
     {
       "id": "session:profile:firmware",
       "in": "session:profile",
-      "name": "Firmware"
+      "name": "Firmware",
+      "term": "Machine/firmware"
     },
     {
       "id": "session:profile:offers",
@@ -9250,7 +9313,8 @@
     {
       "id": "session:profile:processor",
       "in": "session:profile",
-      "name": "Processor"
+      "name": "Processor",
+      "term": "Machine/processor"
     },
     {
       "id": "session:profile:processor-driver",
@@ -9795,7 +9859,8 @@
     {
       "id": "bluetooth:traffic",
       "in": "bluetooth",
-      "name": "Traffic"
+      "name": "Traffic",
+      "term": "Network/traffic"
     },
     {
       "id": "bluetooth:name",
@@ -10112,6 +10177,7 @@
       "id": "mail:message",
       "of": "program:google-mail",
       "name": "Mail",
+      "term": "Programs/mail",
       "glyph": "mail",
       "verb": "open",
       "states": {
@@ -10670,12 +10736,14 @@
     {
       "id": "applications:processor",
       "in": "applications",
-      "name": "Processor"
+      "name": "Processor",
+      "term": "Machine/processor"
     },
     {
       "id": "applications:memory",
       "in": "applications",
-      "name": "Memory"
+      "name": "Memory",
+      "term": "Machine/memory"
     },
     {
       "id": "applications:processes",
@@ -10720,7 +10788,8 @@
     {
       "id": "kitty:machines",
       "in": "applications",
-      "name": "Machines"
+      "name": "Machines",
+      "term": "Machine/machine"
     },
     {
       "id": "tuple:last-call",
@@ -10945,6 +11014,7 @@
       "id": "kitty:machine",
       "in": "verb:kitty:ssh",
       "name": "Machine",
+      "term": "Machine/machine",
       "verb": "ssh",
       "glyph": "sshMachine",
       "said": {
@@ -11081,7 +11151,8 @@
     {
       "id": "kitty:pane:machine",
       "in": "kitty:pane",
-      "name": "Machine"
+      "name": "Machine",
+      "term": "Machine/machine"
     },
     {
       "id": "kitty:pane:running",
@@ -11272,6 +11343,7 @@
       "id": "file-chooser:marked",
       "in": "path:file",
       "name": "Gathered",
+      "term": "Keyboards/gathered",
       "verb": "gather",
       "glyph": "marked"
     },
@@ -11751,6 +11823,7 @@
       "id": "tuple:call",
       "in": "program:recent",
       "name": "Call",
+      "term": "Programs/call",
       "verb": "call",
       "glyph": "call",
       "states": {
