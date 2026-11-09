@@ -1145,6 +1145,7 @@ def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desk
                 lambda shown: {"Answer the ask", "Read the plan"} <= set(shown["rows"])
             )
             desktop.normal()
+            whole = desktop.showing()["hints"]
             desktop.machine.send_chars(":filter ")
             desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "filter ")
             named = scale.replace(".", "-")
@@ -1157,10 +1158,15 @@ def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desk
                     and shown["rows"] == ["Read the plan"]
                 )
             )
-            # - is the one way back out of a filter, so its foot keeps it and the commands
-            # wherever the look's d and y give way (VKCF3Z, 2026-11-08).
+            # - is the one way back out of a filter, so its foot keeps - up and : wherever
+            # For You's own does, the look's d and y giving way first (VKCF3Z, 2026-11-08): at 1.5
+            # those are - up and : commands, which the six keys' 505 against 413 of room
+            # had cut; at 2 the test's screen, 636 across, leaves room for neither, there
+            # or in For You.
             hints = desktop.showing()["hints"]
-            assert {"- up", ": commands"} <= set(hints), (scale, hints)
+            assert {"- up", ": commands"} & set(whole) <= set(hints), (scale, whole, hints)
+            if scale == "1.5":
+                assert {"- up", ": commands"} <= set(hints), (scale, hints)
             if scale != "1":
                 desktop.shoot(f"launcher-for-you-filtered-at-{named}")
             desktop.machine.send_chars("-")
