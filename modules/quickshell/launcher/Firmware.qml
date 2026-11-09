@@ -324,7 +324,7 @@ Provider {
         })];
         const failed = ended?.outcome === "failed";
         return noted({ verbs: sure, targets: sure },
-            failed ? [notes.failed, ended.reason].filter(Boolean).join(": ") : notes.what);
+            failed ? [notes.failed, ended.reason].filter(Boolean).join(" \u00b7 ") : notes.what);
     }
 
     // Restarting into the firmware's own setup, where the setting that
@@ -341,7 +341,7 @@ Provider {
         const asked = setting?.target ? String(notes.set ?? "").replace("{setting}", setting.id)
             .replace("{target}", setting.target) : notes.find;
         const note = ended?.outcome === "failed"
-            ? [notes.failed, ended.reason].filter(Boolean).join(": ") : asked;
+            ? [notes.failed, ended.reason].filter(Boolean).join(" \u00b7 ") : asked;
         const sure = () => [thing({
             key: `${id}:sure:${attribute.id}`,
             // The step that asks Joel to be sure, so its Return does it (Launcher.lands).
@@ -488,7 +488,8 @@ Provider {
             run: () => provider.install(device)
         })];
         const failed = ended?.outcome === "failed";
-        return noted({ verbs: sure, targets: sure }, failed ? notes.failed : "");
+        return noted({ verbs: sure, targets: sure },
+            failed ? [notes.failed, ended.reason].filter(Boolean).join(" \u00b7 ") : "");
     }
 
     // What Install asks, as every act that can't be taken back does:
@@ -583,7 +584,7 @@ Provider {
         add("firmware:serial", about.serial, { identifies: true });
         const ended = installs[device.id] ?? null;
         const failed = ended?.outcome === "failed" && ended.reason !== ""
-            ? `${Words.of("verb:firmware:install").said?.failed ?? ""}: ${ended.reason}` : "";
+            ? `${Words.of("verb:firmware:install").said?.failed ?? ""} \u00b7 ${ended.reason}` : "";
         const eyebrows = Words.of("firmware:vendor").said ?? {};
         const eyebrow = device.vendor
             ? String(eyebrows.from ?? "").replace("{vendor}", device.vendor) : eyebrows.alone ?? "";

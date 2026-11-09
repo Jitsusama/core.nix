@@ -266,11 +266,23 @@ function versionOf(device, said) {
     return device.offered === null ? device.version : from(said.ready, device.offered);
 }
 
-// The last line fwupdmgr said of why an install didn't go in, as its
-// error says it, or "" where it said nothing.
+// A sentence's closing full stop.
+const CLOSING_STOP = /\.$/u;
+// A word opened by two capitals, as BIOS and UEFI are, which keeps its
+// first.
+const CAPITALS = /^\p{Lu}\p{Lu}/u;
+
+// The last line fwupdmgr or systemctl said of why what it was asked
+// didn't go, or "" where it said nothing, as a note says it, after a
+// dot: its first letter lowered, unless it opens a word in capitals,
+// and no closing full stop (VKCF3Z, 2026-11-09).
 function reason(text) {
     const lines = String(text).split("\n").map(line => line.trim()).filter(line => line !== "");
-    return lines.length === 0 ? "" : lines[lines.length - 1];
+    if (lines.length === 0) {
+        return "";
+    }
+    const last = lines[lines.length - 1].replace(CLOSING_STOP, "");
+    return CAPITALS.test(last) ? last : last.charAt(0).toLowerCase() + last.slice(1);
 }
 
 // The least an install is waited for, in minutes: long enough for a

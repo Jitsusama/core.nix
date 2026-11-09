@@ -2230,7 +2230,13 @@ QtObject {
             waiting("pending", "1.13.0").waits, null);
         machine("why an install didn't go in", Firmware.reason(
             "Decompressing\u2026\nSystem Firmware cannot be updated: on battery\n\n"),
-            "System Firmware cannot be updated: on battery");
+            "system Firmware cannot be updated: on battery");
+        machine("why a restart into setup didn't go, without its full stop", Firmware.reason(
+            "Cannot indicate to EFI to boot into setup mode: Firmware does not support it.\n"),
+            "cannot indicate to EFI to boot into setup mode: Firmware does not support it");
+        machine("a reason opened by a word in capitals keeps it",
+            Firmware.reason("UEFI capsule updates not available"),
+            "UEFI capsule updates not available");
         machine("an install that said nothing", Firmware.reason(""), "");
         machine("a long install is waited for twice what fwupd says it takes",
             Firmware.installPatience({ release: { minutes: 25 } }), 50);

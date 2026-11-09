@@ -3227,7 +3227,7 @@
         "waits": "restart to finish",
         "installed": "installed",
         "failed": "didn't install",
-        "stopped": "stopped waiting after {count} minutes"
+        "stopped": "stopped waiting after {count} min"
       }
     },
     {
@@ -3244,7 +3244,7 @@
         "changing": "fixing",
         "changed": "fixed",
         "failed": "didn't fix",
-        "stopped": "stopped waiting after {count} minutes"
+        "stopped": "stopped waiting after {count} min"
       }
     },
     {
@@ -3261,7 +3261,7 @@
         "changing": "undoing",
         "changed": "undone",
         "failed": "didn't undo",
-        "stopped": "stopped waiting after {count} minutes"
+        "stopped": "stopped waiting after {count} min"
       }
     },
     {
