@@ -41,6 +41,7 @@ import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Passwords.js" as Passwords
+import "Managers.js" as Managers
 
 Provider {
     id: provider
@@ -566,7 +567,7 @@ Provider {
         const byKey = {};
         for (const row of everyone)
             byKey[row.key] = row;
-        return Passwords.vaults(records.filter(record => record.manager === manager.name))
+        return Managers.vaults(records.filter(record => record.manager === manager.name))
             .map(vault => {
                 const rows = () => vault.records.map(record => byKey[record.key])
                     .filter(Boolean);
