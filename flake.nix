@@ -45,16 +45,6 @@
       url = "github:nix-community/disko/v1.13.0";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    # Asahi Linux's kernel, m1n1 and U-Boot for Apple's laptops. Its last
-    # release is from July and builds against that summer's nixpkgs, so
-    # it's pinned by commit, on the 7.2 kernel, until a release follows.
-    # Its commits from 2026-11-08 on want an avd-fw newer than nixpkgs here.
-    nixos-apple-silicon = {
-      url = "github:nix-community/nixos-apple-silicon/73301d52f114946d53e62902692c36b0fea0c904";
-      inputs.nixpkgs.follows = "nixpkgs";
-      # Only its non-flake users take it.
-      inputs.flake-compat.follows = "";
-    };
     wallpapers.url = "github:Jitsusama/wallpapers.nix";
     # Builds Spotify's client with the theme's colours in it.
     spicetify-nix = {
@@ -98,7 +88,6 @@
       lanzaboote,
       rust-overlay,
       disko,
-      nixos-apple-silicon,
       wallpapers,
       neovim-pi,
       mycelium,
@@ -288,6 +277,8 @@
       };
 
       nixosModules = {
+        asahi-audio = ./modules/asahi-audio/nixos.nix;
+        asahi-firmware = ./modules/asahi-firmware/nixos.nix;
         backlight = ./modules/backlight/nixos.nix;
         bluetooth = ./modules/bluetooth/nixos.nix;
         bluetooth-disk-prompt = ./modules/bluetooth-disk-prompt/nixos.nix;
@@ -362,6 +353,7 @@
         shaper = ./modules/shaper/nixos.nix;
         shure-mv7 = ./modules/shure-mv7/nixos.nix;
         slices = ./modules/slices/nixos.nix;
+        speakersafetyd = ./modules/speakersafetyd/nixos.nix;
         swayimg = ./modules/swayimg/nixos.nix;
         switch-system = ./modules/switch-system/nixos.nix;
         systemd = ./modules/systemd/nixos.nix;
@@ -394,12 +386,9 @@
           inherit (self) nixosModules;
           inherit nixpkgs;
         };
-        guide-stick-apple-silicon = moduleFrom ./modules/guide/stick-apple-silicon.nix {
-          inherit nixos-apple-silicon;
-        };
+        guide-stick-apple-silicon = ./modules/guide/stick-apple-silicon.nix;
 
         apple-macbook-air-m2-a2681 = moduleFrom ./hardware/apple-macbook-air-m2-a2681/nixos.nix {
-          inherit nixos-apple-silicon;
           inherit (self.nixosModules) hibernate;
         };
         dell-xps-14-da14260 = ./hardware/dell-xps-14-da14260/nixos.nix;

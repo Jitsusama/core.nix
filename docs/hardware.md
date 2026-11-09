@@ -43,9 +43,13 @@ and four efficiency cores and Apple's own GPU, a 2560x1664 panel, Broadcom's
 BCM4387 for Wi-Fi 6 and Bluetooth, two USB-C ports and MagSafe. Asahi Linux
 drives it: core builds Asahi's kernel itself ([its kernel folder][34]), with
 Asahi's fairydust branch on top for a screen on the front-left port, and
-takes m1n1, which Apple's boot firmware starts in a macOS stub's place, and
-U-Boot, which m1n1 starts and which gives systemd-boot a plain UEFI, from
-[nixos-apple-silicon][32]. Asahi's installer, run from macOS, shrinks macOS,
+its boot chain too ([its boot folder][35]): m1n1's second stage, which the
+m1n1 in a macOS stub's place loads, with the Air's own device tree and
+U-Boot, which gives systemd-boot a plain UEFI. The firmware unpacking
+(`modules/asahi-firmware`) and the speakers (`modules/asahi-audio`, with
+`modules/speakersafetyd`) are core's too; all of it began from
+[nixos-apple-silicon][32]'s modules, under their MIT notice. Asahi's
+installer, run from macOS, shrinks macOS,
 makes the stub and the EFI system partition, and copies the firmware for
 Wi-Fi, Bluetooth and the camera out of macOS onto that partition. The kernel
 is Asahi's tree rather than core's mainline one, so `jitsusama.kernel.cpu`
@@ -54,9 +58,10 @@ isn't set.
 | Part     | What the module does                                                   |
 | -------- | ---------------------------------------------------------------------- |
 | Kernel   | Asahi's at a tag, core's own build, with fairydust for a screen        |
-| Loaders  | m1n1 and U-Boot from nixos-apple-silicon, starting core's kernel       |
+| Loaders  | m1n1's second stage and U-Boot, core's own, starting core's kernel     |
 | Boot     | systemd-boot under U-Boot's UEFI, which keeps no variables             |
 | Firmware | Asahi's copy from macOS, unpacked from the EFI partition at each boot  |
+| Sound    | asahi-audio's speaker filters, behind speakersafetyd                   |
 | Stick    | how to start one from U-Boot, for the guide to say                     |
 | Guide    | no Secure Boot or TPM steps, since the model has neither               |
 
@@ -1567,3 +1572,4 @@ sealed to.
 [32]: https://github.com/nix-community/nixos-apple-silicon
 [33]: https://asahilinux.org/docs/platform/feature-support/m2/
 [34]: ../hardware/apple-macbook-air-m2-a2681/kernel/README.md
+[35]: ../hardware/apple-macbook-air-m2-a2681/boot/README.md
