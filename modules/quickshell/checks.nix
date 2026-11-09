@@ -1406,6 +1406,7 @@ onLinux {
       cp ${./launcher/Machine.js} Machine.js
       cp ${./launcher/Heat.js} Heat.js
       cp ${./launcher/Power.js} Power.js
+      cp ${./launcher/Seen.js} Seen.js
       cp ${./launcher/Standing.js} Standing.js
       cp ${./launcher/Traffic.js} Traffic.js
       cp ${./launcher/Interfaces.js} Interfaces.js

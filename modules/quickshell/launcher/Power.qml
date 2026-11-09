@@ -18,9 +18,9 @@
 //
 // The figures are the machine daemon's (modules/machine), its supply
 // records, each power supply's every figure with what UPower works out of
-// the battery; it reads them once a second once Power is asked, as
-// Machine's Power row asks it, until the launcher closes. The charge limit
-// is still written here, through the kernel's own files.
+// the battery; it reads them once a second while Power's rows can be seen
+// (Seen.js), as Machine's Power row is. The charge limit is still written
+// here, through the kernel's own files.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -29,6 +29,7 @@ import "Numbers.js" as Numbers
 import "Machine.js" as Machine
 import "Power.js" as Power
 import "Interfaces.js" as Interfaces
+import "Seen.js" as Seen
 
 Provider {
     id: provider
@@ -60,9 +61,9 @@ Provider {
         return Numbers.significant(value, settings.group, settings.point);
     }
 
-    // A figure to three significant digits, with the real minus.
+    // The same, with the real minus, for a figure that can be negative.
     function figure(value) {
-        return Machine.digits(value).replace("-", "\u2212");
+        return measured(value).replace("-", "\u2212");
     }
 
     // Below this share, draining, the battery wants Joel to plug in, as
@@ -83,9 +84,14 @@ Provider {
         return Words.name(`power:${id}`, state ?? "", fill);
     }
 
-    // What a part's words say, by the phrase's name.
-    function says(id, phrase) {
-        return (Words.of(`power:${id}`).said ?? {})[phrase] ?? "";
+    // What a part's words say, by the phrase's name, its braces filled:
+    // Power's own where `id` is "".
+    function says(id, phrase, fill) {
+        let said = String((Words.of(id === "" ? "power" : `power:${id}`).said ?? {})[phrase]
+            ?? "");
+        for (const key of Object.keys(fill ?? {}))
+            said = said.replace(`{${key}}`, fill[key]);
+        return said;
     }
 
     // The parts asked for alone, by their own words, as the part's name.
@@ -102,20 +108,15 @@ Provider {
     questions: Words.started("power").concat(Object.keys(partsAsked),
         Words.olds(Words.of("power:charger")))
 
-    // Whether Power has been asked since the launcher opened, so the
-    // daemon reads the supplies only then.
-    property bool askedSinceOpen: false
-
-    function ask() {
-        if (!askedSinceOpen)
-            Qt.callLater(() => provider.askedSinceOpen = true);
-    }
+    // Whether Power's rows can be seen: its answer, a row of it, its own
+    // place, or Machine's holding the Power row that says how it stands,
+    // so the daemon reads the supplies only then.
+    readonly property bool seen: Seen.seen(launcher, provider, ["energy", "power"])
 
     function answer(typed) {
         const question = asks(typed);
         if (question === "")
             return null;
-        ask();
         if (battery === null)
             return null;
         const whole = told();
@@ -142,14 +143,13 @@ Provider {
     // and "6 h 41 min to full" and then "Full Performance", a dot between. A
     // machine with no battery says its profile alone.
     function stands() {
-        ask();
         const session = (launcher?.sources ?? []).find(one => one.settings.name === "session");
         return [battery ? doing() : "", session?.profile?.side ?? ""]
             .filter(part => part !== "").join(" \u00b7 ");
     }
 
     function doing() {
-        return Power.doing(battery, Interfaces.lasted);
+        return Power.doing(battery, Interfaces.lasted, Words.of("power").said ?? {});
     }
 
     // A USB-C port's drawer, the one Power.js's portDrawer lays out, from
@@ -183,23 +183,22 @@ Provider {
     // what it gives, or only saying so where the machine has none.
     function chargerPart() {
         const all = supplies();
-        const usb = Power.portsOf(all).map(port => Object.assign({ said: Power.portOf(port.record) },
-            port));
+        const usb = Power.portsOf(all)
+            .map(port => Object.assign({ said: Power.portOf(port.record) }, port));
         const charging = usb.find(port => port.said.online && port.said.volts > 0
             && port.said.amps > 0);
         // A charger on a barrel or the dock rather than a USB-C port, said
         // as plugged in, the glossary's word being charger, never mains.
         const plugged = Power.pluggedElsewhere(all);
         const online = usb.find(port => port.said.online);
-        const side = charging ? `${figure(charging.said.volts * charging.said.amps)} W `
-            + `on port ${charging.n}`
-            : online ? `on port ${online.n}` : plugged ? "plugged in" : "none plugged in";
+        const side = chargerSaid(charging, online, plugged);
         const fields = { key: "power:charger", name: named("charger"), side: side, copy: side };
         if (usb.length === 0)
             return copyRow(Object.assign(fields, { glyph: "" }));
         return holderRow(Object.assign(fields, {
             glyph: Theme.glyph.charging,
-            note: usb.length === 1 ? "one USB-C port" : `${usb.length} USB-C ports`
+            note: usb.length === 1 ? says("charger", "port")
+                : says("charger", "ports", { count: usb.length })
         }), () => usb.map(port => {
             const what = Power.port(port.said, provider.measured,
                 Words.of("power:port").said);
@@ -209,12 +208,25 @@ Provider {
                 name: provider.named("port", "", { n: port.n }),
                 side: what,
                 copy: what,
-                glyph: "",
+                // The mark the Charger's own row wears, so a port beside
+                // Copy wears one too (VKCF3Z, 2026-11-08).
+                glyph: Theme.glyph.charging,
                 // How its power and data go and what's plugged in offers,
                 // under the row (Power.js's portDrawer).
                 drawer: provider.portDrawer(port)
             });
         }));
+    }
+
+    // What the Charger's row says: what charges and on which port, or
+    // where something is plugged in, or that nothing is.
+    function chargerSaid(charging, online, plugged) {
+        if (charging)
+            return says("charger", "charging", {
+                watts: figure(charging.said.volts * charging.said.amps), n: charging.n });
+        if (online)
+            return says("charger", "on", { n: online.n });
+        return says("charger", plugged ? "plugged" : "none");
     }
 
     // The last reads of what moves, each kept with its time: the watts
@@ -274,11 +286,10 @@ Provider {
         if (stop === null || stop === undefined)
             return null;
         const start = record.limit_start_pct ?? null;
-        const side = stop === 100 && (start === null || start === 0) ? "charges fully"
-            : start !== null ? `stops at ${stop}%, starts below ${start}%` : `stops at ${stop}%`;
+        const side = limitSaid(start, stop);
         if (record.limit_settable !== true)
             return leaf("limit", side, {
-                note: record.limit_settable === false ? "set in the firmware's settings" : ""
+                note: record.limit_settable === false ? says("limit", "firmware") : ""
             });
         return holderRow({
             key: "power:limit",
@@ -292,10 +303,31 @@ Provider {
             verb: Words.verb("power:limit:stop"),
             glyph: Theme.glyph.charge,
             hue: "action",
-            side: stop === each ? "chosen" : "",
+            side: stop === each ? says("limit:stop", "chosen") : "",
             stays: true,
             run: () => provider.setLimit(record.name, start, stop, each)
         })));
+    }
+
+    // Where charging stops and starts again, as the limit's row says it.
+    function limitSaid(start, stop) {
+        if (stop === 100 && (start === null || start === 0))
+            return says("limit", "full");
+        return start === null ? says("limit", "stop", { stop: stop })
+            : says("limit", "both", { stop: stop, start: start });
+    }
+
+    // Its health against its design and the cycles it's been through, each
+    // a part of its side, "92% of design" and "312 cycles" (VKCF3Z,
+    // 2026-11-08), or none where the battery says neither.
+    function healthItems(ratio, cycles) {
+        const items = [];
+        if (ratio !== null)
+            items.push(says("health", "design", { pct: Math.round(ratio * 100) }));
+        if (cycles !== null)
+            items.push(cycles === 1 ? says("health", "cycle")
+                : says("health", "cycles", { count: number(cycles, 0) }));
+        return items;
     }
 
     // Whether the kernel said something of it: neither nothing nor
@@ -311,14 +343,17 @@ Provider {
         const state = Power.stateOf(record);
 
         // The charge, as a bar: the headline says it, but not once it's
-        // stepped into. The kernel's word for its level goes with it.
-        const charge = record.capacity_pct ?? 0;
-        const barred = bar(charge / 100, state === "discharging" && charge <= low);
-        rows.push(leaf("charge", `${charge}%`, {
-            graph: barred,
-            note: said(record.capacity_level)
-                ? `its level ${record.capacity_level.toLowerCase()}` : ""
-        }));
+        // stepped into. The kernel's word for its level goes with it. A
+        // charge the battery doesn't say is left out, never said as none.
+        const charge = record.capacity_pct ?? null;
+        const barred = charge === null ? undefined
+            : bar(charge / 100, state === "discharging" && charge <= low);
+        if (charge !== null)
+            rows.push(leaf("charge", `${charge}%`, {
+                graph: barred,
+                note: said(record.capacity_level)
+                    ? says("charge", "level", { level: record.capacity_level.toLowerCase() }) : ""
+            }));
 
         const watts = kept.watts.length > 0 ? kept.watts[kept.watts.length - 1] : 0;
         if (watts >= 0.05) {
@@ -326,7 +361,7 @@ Provider {
             rows.push(leaf("rate", `${figure(watts)} W`, {
                 name: named("rate", charging ? "charging" : ""),
                 graph: spark(kept.watts, 1),
-                note: charging ? "into the battery" : "from the battery"
+                note: says("rate", charging ? "into" : "from")
             }));
         }
         // A stand-in's energy and voltage can be too small to say, and say
@@ -340,11 +375,17 @@ Provider {
             if (energy.design !== null)
                 charged.push({ label: named("energy:designed"),
                     value: `${figure(energy.design)} Wh` });
-            rows.push(leaf("energy", `${figure(energy.now ?? 0)} of ${figure(energy.full)} Wh`, {
+            // The battery as the kernel names it, last, in the Name face,
+            // rather than in the eyebrow (VKCF3Z, 2026-11-08).
+            if (charged.length > 0)
+                charged.push({ label: named("device"), value: record.name, identifies: true });
+            const side = energy.now === null ? `${figure(energy.full)} Wh`
+                : says("energy", "of", { now: figure(energy.now), full: figure(energy.full) });
+            rows.push(leaf("energy", side, {
                 thing: charged.length > 0,
-                note: "now, of what it holds full",
+                note: says("energy", energy.now === null ? "full" : "note"),
                 drawer: charged.length > 0 ? {
-                    eyebrow: says("energy", "eyebrow").replace("{battery}", record.name),
+                    eyebrow: says("energy", "eyebrow"),
                     eyebrowNames: true,
                     title: named("energy"),
                     facts: charged
@@ -360,7 +401,7 @@ Provider {
             const lowest = Math.min(...kept.volts);
             rows.push(leaf("voltage", `${figure(volts)} V`, {
                 graph: spark(kept.volts.map(each => each - lowest), 0.2),
-                note: designed ? `${figure(designed)} V as designed` : ""
+                note: designed ? says("voltage", "designed", { volts: figure(designed) }) : ""
             }));
         }
 
@@ -369,26 +410,25 @@ Provider {
         // 2026-11-08); the kernel's own word for it is the note.
         const ratio = record.health_ratio ?? null;
         const cycles = record.cycles ?? null;
-        const healthItems = [ratio !== null ? `${Math.round(ratio * 100)}% of design` : "",
-            cycles !== null ? `${cycles} cycles` : ""].filter(part => part !== "");
-        if (healthItems.length > 0 || said(record.health)) {
+        const items = healthItems(ratio, cycles);
+        if (items.length > 0 || said(record.health)) {
             // A battery holding under four fifths of its design is worn,
             // as makers count it, so its bar warns.
-            const side = healthItems.length > 0 ? healthItems.join(" \u00b7 ") : record.health;
+            const side = items.length > 0 ? items.join(" \u00b7 ") : record.health;
             rows.push(leaf("health", side, {
-                sideItems: healthItems.map((item, at) => ({ said: item, keep: at === 0 ? 2 : 1 })),
+                sideItems: items.map((item, at) => ({ said: item, keep: at === 0 ? 2 : 1 })),
                 graph: ratio !== null ? bar(ratio, ratio < 0.8) : undefined,
-                note: said(record.health) && healthItems.length > 0
-                    ? `the battery says it's ${record.health.toLowerCase()}` : ""
+                note: said(record.health) && items.length > 0
+                    ? says("health", "says", { health: record.health.toLowerCase() }) : ""
             }));
         }
         if (cycles !== null)
-            rows.push(leaf("cycles", String(cycles)));
+            rows.push(leaf("cycles", number(cycles, 0)));
         const types = record.charge_types ?? [];
         if (said(record.charge_type))
             rows.push(leaf("type", record.charge_type, {
-                note: types.length > 1 ? `of ${types.slice(0, -1).join(", ")} `
-                    + `and ${types[types.length - 1]}` : ""
+                note: types.length > 1 ? says("type", "of", { some: types.slice(0, -1).join(", "),
+                    last: types[types.length - 1] }) : ""
             }));
         const limit = limitPart(record);
         if (limit !== null)
@@ -397,7 +437,7 @@ Provider {
         if (degrees !== null) {
             rows.push(leaf("temperature", `${figure(degrees)} \u00b0C`, {
                 graph: bar(degrees / hottest, degrees >= warm),
-                note: `of the ${hottest} \u00b0C it's made to run at`
+                note: says("temperature", "of", { most: hottest })
             }));
         }
         const what = [record.manufacturer ?? "", record.model ?? ""]
@@ -441,23 +481,13 @@ Provider {
         }
     }
 
-    Connections {
-        target: provider.launcher
-
-        function onOpenChanged() {
-            if (!provider.launcher.open)
-                provider.askedSinceOpen = false;
-        }
-    }
-
-    // The machine daemon's supplies, held once Power has been asked since
-    // the launcher opened, until it closes.
+    // The machine daemon's supplies, held while Power's rows can be seen.
     Daemon {
         id: daemon
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
         kind: "supply"
-        live: provider.launcher !== null && provider.launcher.open && provider.askedSinceOpen
+        live: provider.seen
         keptThroughGap: false
         answersWhole: true
     }

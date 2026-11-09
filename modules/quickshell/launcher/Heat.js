@@ -10,6 +10,7 @@
 // level, so the two say them alike.
 .pragma library
 .import "Machine.js" as Machine
+.import "Numbers.js" as Numbers
 .import "Order.js" as Order
 
 // A sensor on a chip that measures many, as dell_ddv's are, by its label,
@@ -98,10 +99,12 @@ function electricOf(list, unit) {
 // significant digits with the real minus: a figure under one in its unit
 // is said in thousandths, "3.00 mV", and a negative one "-2.00 mA" with
 // the real minus (VKCF3Z, 2026-11-08), rather than "0.00300 V". One that
-// rounds up to one, as 0.9996 does, is said whole.
-function electricSaid(value, unit) {
-    const small = value !== 0 && Math.abs(Number(Machine.digits(value))) < 1;
-    const figure = Machine.digits(small ? value * 1000 : value).replace("-", "\u2212");
+// rounds up to one, as 0.9996 does, is said whole. Grouped and pointed as
+// Joel's settings say, `group` and `point` (Numbers.significant).
+function electricSaid(value, unit, group, point) {
+    const small = value !== 0 && Math.abs(Number(value.toPrecision(3))) < 1;
+    const figure = Numbers.significant(small ? value * 1000 : value, group, point)
+        .replace("-", "\u2212");
     return `${figure} ${small ? "m" : ""}${unit}`;
 }
 

@@ -14,8 +14,6 @@ const HIDDEN = "updatable-hidden";
 const AT_RESTART = "needs-reboot";
 // What fwupd names a vendor it doesn't know.
 const UNKNOWN = "Unknown";
-// A device fwupd installs to only on the charger, as the BIOS.
-const ON_THE_CHARGER = "require-ac";
 // What fwupd's history says of an update that's in but finishes at a
 // restart: pending, as a BIOS's capsule is until the restart flashes it,
 // or needing a reboot.
@@ -29,11 +27,10 @@ const ESCAPED = [["&lt;", "<"], ["&gt;", ">"], ["&quot;", "\""], ["&#39;", "'"],
 // Each device worth listing from the daemon's firmware records: a named
 // device with a version that fwupd doesn't hide, those with an update
 // first, then in fwupd's order, each { id, name, vendor, version,
-// offered, notes, updated, restarts, waits, charger, problems, failed,
-// release, about }:
+// offered, notes, updated, restarts, waits, problems, failed, release,
+// about }:
 // - `waits` is the version installed to finish at the next restart,
 //   which is offered too until then;
-// - `charger` whether fwupd installs to it only on the charger;
 // - `problems` what fwupd says keeps it from updating now, by fwupd's
 //   names, as "require-ac-power" while it's on battery;
 // - `failed` fwupd's words for why the last install didn't go in;
@@ -72,7 +69,6 @@ function deviceOf(record) {
         updated: last?.updated_at_s ?? null,
         restarts: flags.includes(AT_RESTART),
         waits,
-        charger: flags.includes(ON_THE_CHARGER),
         problems: record.problems ?? [],
         failed: last !== null && FAILED.includes(last.state) ? last.error ?? "" : null,
         release: releaseOf(update),
@@ -125,8 +121,11 @@ function aboutOf(record) {
 // null before fwupd has answered.
 function hostOf(records) {
     const host = (records ?? []).find(record => record.key === "firmware:host") ?? null;
-    return host === null ? null
-        : { security: host.security ?? null, product: host.product ?? null, fwupd: host.fwupd ?? null };
+    if (host === null) {
+        return null;
+    }
+    return { security: host.security ?? null, product: host.product ?? null,
+        fwupd: host.fwupd ?? null };
 }
 
 // What holds back an update that's offered, by fwupd's name for it, or
@@ -157,25 +156,27 @@ function numbered(list) {
 }
 
 // How many updates are offered, as Firmware's row says it: "up to date",
-// or "1 update ready".
-function standing(list) {
+// or "1 update ready", in Firmware's words, `said`.
+function standing(list, said) {
     const count = list.filter(device => device.offered !== null).length;
     if (count === 0) {
-        return "up to date";
+        return said.current ?? "";
     }
-    return count === 1 ? "1 update ready" : `${count} updates ready`;
+    return count === 1 ? said.one ?? "" : String(said.many ?? "").replace("{count}", count);
 }
 
 // A device's version as its row says it, how it stands first and the
 // version it runs after a dot (VKCF3Z, 2026-11-08): "1.12.0", "1.13.0
 // ready, from 1.12.0", or "1.13.0 at the restart, from 1.12.0" once it's
-// installed to finish there, each comma a dot as drawn.
-function versionOf(device) {
+// installed to finish there, each comma a dot as drawn, in Firmware's
+// words, `said`.
+function versionOf(device, said) {
+    const from = (way, version) => String(way ?? "").replace("{version}", version)
+        .replace("{was}", device.version);
     if (device.waits !== null) {
-        return `${device.waits} at the restart \u00b7 from ${device.version}`;
+        return from(said.restart, device.waits);
     }
-    return device.offered === null ? device.version
-        : `${device.offered} ready \u00b7 from ${device.version}`;
+    return device.offered === null ? device.version : from(said.ready, device.offered);
 }
 
 // The last line fwupdmgr said of why an install didn't go in, as its

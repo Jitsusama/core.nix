@@ -10,8 +10,8 @@
 // the machine's own firmware.
 //
 // What fwupd says comes from the machine daemon's firmware records
-// (modules/machine), watched once Firmware is asked since the launcher
-// opened, until it closes. The daemon asks fwupd once a minute while
+// (modules/machine), watched while Firmware's rows can be seen (Seen.js).
+// Every word is the vocabulary's (launcher/words.json). The daemon asks fwupd once a minute while
 // watched and at once each time fwupd says something changed, as when a
 // device is unplugged from the charger, so nothing here asks fwupd
 // anything but to install. A machine without fwupd names no Firmware.
@@ -30,6 +30,7 @@ import Quickshell.Io
 import QtQuick
 import "Firmware.js" as Fwupd
 import "Machine.js" as Machine
+import "Seen.js" as Seen
 
 Provider {
     id: provider
@@ -44,20 +45,19 @@ Provider {
     // { outcome, reason }, outcome "installed" or "failed", so its row
     // stays to say so until Firmware is opened again, by the Lists rule.
     property var installs: ({})
-    // Whether Firmware has been asked since the launcher opened, so the
-    // daemon asks fwupd only then.
-    property bool askedSinceOpen: false
 
     readonly property string fwupdmgr: settings.fwupdmgr ?? ""
-    // Whether anyone can see what it says, so a change fwupd says is
-    // answered at once.
-    readonly property bool shown: launcher !== null && (launcher.open || launcher.cataloguing)
+    // Whether Firmware's rows can be seen: its answer, a row of it, or
+    // Machine's place holding its row, so the daemon asks fwupd only then
+    // and a change fwupd says is answered at once.
+    readonly property bool seen: Seen.seen(launcher, provider, ["firmware"])
+
+    // Firmware's own words, for Firmware.js.
+    readonly property var said: Words.of("firmware").said ?? {}
 
     function answer(typed) {
         if (fwupdmgr === "" || asks(typed) === "")
             return null;
-        if (!askedSinceOpen)
-            Qt.callLater(() => provider.askedSinceOpen = true);
         // A daemon that isn't there says nothing, so Firmware is left out
         // rather than waiting on it.
         if (daemon.state === "not answering")
@@ -88,7 +88,7 @@ Provider {
             return null;
         const host = Fwupd.hostOf(records);
         return {
-            headline: Fwupd.standing(devices),
+            headline: Fwupd.standing(devices, provider.said),
             warns: devices.some(device => device.offered !== null),
             glyph: Words.glyph("firmware"),
             rows: devices.map(device => provider.deviceRow(device))
@@ -106,6 +106,7 @@ Provider {
 
     function deviceRow(device) {
         const held = heldSaid(device);
+        const version = Fwupd.versionOf(device, provider.said);
         return thingRow({
             thing: true,
             key: `firmware:${device.id}`,
@@ -113,9 +114,8 @@ Provider {
             // The version and what's offered are said once, on the side,
             // and what holds an update back after a dot (VKCF3Z,
             // 2026-11-08), going first where the row is too narrow.
-            side: held === "" ? Fwupd.versionOf(device) : `${Fwupd.versionOf(device)} \u00b7 ${held}`,
-            sideItems: held === "" ? [] : [{ said: Fwupd.versionOf(device), keep: 2 },
-                { said: held, keep: 1 }],
+            side: held === "" ? version : `${version} \u00b7 ${held}`,
+            sideItems: held === "" ? [] : [{ said: version, keep: 2 }, { said: held, keep: 1 }],
             note: "",
             warns: device.offered !== null,
             glyph: Words.glyph("firmware"),
@@ -224,8 +224,8 @@ Provider {
     // "Install 1.13.0 on System Firmware Now", noted that it can't be
     // undone, and that it finishes at a restart where it does.
     function sureOf(device) {
-        return String(Words.of("verb:firmware:install").sure ?? "").replace("{version}", device.offered)
-            .replace("{device}", device.name);
+        return String(Words.of("verb:firmware:install").sure ?? "")
+            .replace("{version}", device.offered).replace("{device}", device.name);
     }
 
     // What the foot says of an install: "installing" while it goes in,
@@ -271,7 +271,8 @@ Provider {
         const facts = [];
         const add = (id, value, extra) => {
             if (value !== null && value !== undefined && value !== "")
-                facts.push(Object.assign({ label: Words.name(id), value: String(value) }, extra ?? {}));
+                facts.push(Object.assign({ label: Words.name(id), value: String(value) },
+                    extra ?? {}));
         };
         const about = device.about;
         const release = device.release;
@@ -289,7 +290,8 @@ Provider {
             add("firmware:takes", String(Words.of("firmware:takes").said?.minutes ?? "")
                 .replace("{count}", release.minutes));
         const held = Words.of("firmware:held").said ?? {};
-        add("firmware:held", device.problems.map(problem => held[problem] ?? problem).join(" \u00b7 "));
+        add("firmware:held", device.problems.map(problem => held[problem] ?? problem)
+            .join(" \u00b7 "));
         add("firmware:none", device.offered === null ? about.none : null);
         add("firmware:failed", device.failed);
         if (about.flashes !== null)
@@ -303,10 +305,11 @@ Provider {
         const failed = ended?.outcome === "failed" && ended.reason !== ""
             ? `${Words.of("verb:firmware:install").said?.failed ?? ""}: ${ended.reason}` : "";
         const eyebrows = Words.of("firmware:vendor").said ?? {};
-        const eyebrow = device.vendor ? String(eyebrows.from ?? "").replace("{vendor}", device.vendor)
-            : eyebrows.alone ?? "";
+        const eyebrow = device.vendor
+            ? String(eyebrows.from ?? "").replace("{vendor}", device.vendor) : eyebrows.alone ?? "";
+        const body = [failed, release?.summary ?? "", device.notes].filter(part => part !== "");
         return { eyebrow: eyebrow, eyebrowNames: !!device.vendor, title: device.name, facts: facts,
-            body: [failed, release?.summary ?? "", device.notes].filter(part => part !== "").join("\n\n") };
+            body: body.join("\n\n") };
     }
 
     // A day, as Quests says one: "29 Oct", or "29 Oct 2025" in another year.
@@ -321,7 +324,7 @@ Provider {
         target: daemon
 
         function onHeard(keys) {
-            if (provider.shown)
+            if (provider.seen)
                 provider.answered();
         }
     }
@@ -331,10 +334,8 @@ Provider {
         target: provider.launcher
 
         function onOpenChanged() {
-            if (!provider.launcher.open) {
+            if (!provider.launcher.open)
                 provider.installs = ({});
-                provider.askedSinceOpen = false;
-            }
         }
     }
 
@@ -343,7 +344,7 @@ Provider {
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
         kind: ["firmware"]
-        live: provider.launcher !== null && provider.launcher.open && provider.askedSinceOpen
+        live: provider.seen
         keptThroughGap: false
         answersWhole: true
     }

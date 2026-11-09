@@ -161,7 +161,7 @@ def test_heat_copies_the_hottest_part_and_each_part_steps_into_its_history(
     print(machine.succeed("grep -H . /sys/class/hwmon/*/name"))
     desktop.answer("heat")
     desktop.shoot("launcher-heat")
-    assert re.search("^-?\\d+ \\u00b0C at the ", yanked(desktop))
+    assert re.search("^\\u2212?[\\d.]+ \\u00b0C at the ", yanked(desktop))
     # Each part reads name first, a step in by Return; Return opens one,
     # its history first, and again once back out by -.
     desktop.answer("heat")
@@ -169,7 +169,7 @@ def test_heat_copies_the_hottest_part_and_each_part_steps_into_its_history(
     desktop.step_in()
     desktop.launcher_until(lambda shown: "Battery" in shown["rows"])
     desktop.type_in("battery", "Battery")
-    assert re.search("^-?\\d+ \\u00b0C$", desktop.showing()["selected"]["side"])
+    assert re.search("^\\u2212?[\\d.]+ \\u00b0C$", desktop.showing()["selected"]["side"])
 
     def in_battery(shown: Json) -> bool:
         """Say whether the launcher holds the battery's heat, its Last Reads selected."""
@@ -195,7 +195,7 @@ def test_heat_copies_the_hottest_part_and_each_part_steps_into_its_history(
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     pasted = desktop.as_account("wl-paste --no-newline")
-    assert re.search("^-?\\d+ \\u00b0C$", pasted), pasted
+    assert re.search("^\\u2212?[\\d.]+ \\u00b0C$", pasted), pasted
 
 
 def test_the_lights_are_asked_and_set_and_the_keyboards_hold_their_parts(  # noqa: PLR0915
@@ -1645,7 +1645,7 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
         )
     )
     desktop.type_in("npu", "NPU")
-    assert desktop.showing()["selected"]["side"] == "62 \u00b0C"
+    assert desktop.showing()["selected"]["side"] == "62.0 \u00b0C"
     desktop.close_launcher()
     # The Processor says what held it back, after its Clock, and each core
     # held, a step in; the core its cluster didn't hold isn't listed.

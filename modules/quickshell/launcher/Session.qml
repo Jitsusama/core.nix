@@ -440,7 +440,7 @@ Provider {
         if (sleeping === null)
             return {};
         const told = Power.sleepSaid(sleeping, Words.of("session:Suspend").said ?? {},
-            Interfaces.lasted);
+            Interfaces.lasted, Words.of("sleep:error").said ?? {});
         return {
             thing: told.facts.length > 0,
             carries: false,

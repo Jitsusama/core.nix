@@ -95,7 +95,7 @@ units, or named here as left out with the reason.
 | `sensor:<chip>` | each temperature, low, high, critical, emergency, alarm | Heat, each part by what it measures |
 |                 | each fan's speed, least, most, aim, power, mode | Heat's fans                            |
 |                 | each voltage, current and power, with limits | Heat's part's drawer, each figure         |
-|                 | the chip's name                              | Heat's part's drawer, Chip                |
+|                 | the chip's name                              | Heat's part's drawer, Device              |
 | `zone:<type>`   | temperature, policy, mode, each trip point   | Heat, for a part no chip gives; drawer's trips and Zone |
 | `cooling:<type>`| how many, each one's state, the most         | Heat's Processor's drawer, Cooling Step   |
 | `supply:<name>` | capacity, its level                          | Power's Charge                            |
@@ -111,7 +111,7 @@ units, or named here as left out with the reason.
 |                 | UPower's state, times, rate                  | Power's headline, Drawing                 |
 | `sleep:main`    | mode, those offered, the ways Linux can sleep | Sleep's side, Other Modes, Ways to Sleep |
 |                 | successes, the last failed step and its count | Slept, Sleep's note                      |
-|                 | failures by step, last device, errno         | Failed, Last Failed Device, Last Error    |
+|                 | failures by step, last device, errno         | Failed, Blocked By, Last Error, Error Code |
 |                 | last and all hardware sleep, and the most it counts | Sleep's drawer                     |
 | `awake:main`    | logind: idle, since, idle action and delay   | nothing yet; Keep Awake's drawer watches it next |
 |                 | every inhibitor, the last sleep's start, end | nothing yet, as above                     |

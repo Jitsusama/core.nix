@@ -35,6 +35,7 @@ import "Firmware.js" as Firmware
 import "Warp.js" as Warp
 import "WarpSeen.js" as WarpSeen
 import "WarpSwitch.js" as WarpSwitch
+import "Seen.js" as Seen
 import "Interfaces.js" as Interfaces
 import "Networkd.js" as Networkd
 import "WifiLink.js" as WifiLink
@@ -1200,8 +1201,9 @@ QtObject {
                 watts: [{ n: 1, label: "Package", value: 12.5 }] });
         machine("electricity in the unit that fits it", [Heat.electricSaid(0.003, "V"),
             Heat.electricSaid(-0.002, "A"), Heat.electricSaid(11.42, "V"),
-            Heat.electricSaid(0.9996, "V"), Heat.electricSaid(0, "W")],
-            ["3.00 mV", "\u22122.00 mA", "11.4 V", "1.00 V", "0 W"]);
+            Heat.electricSaid(0.9996, "V"), Heat.electricSaid(0, "W"),
+            Heat.electricSaid(1234, "W", " ", ","), Heat.electricSaid(11.42, "V", " ", ",")],
+            ["3.00 mV", "\u22122.00 mA", "11.4 V", "1.00 V", "0 W", "1 230 W", "11,4 V"]);
         machine("a reading no part could reach, left out", heatHeld[2].temps.map(t => t.label),
             ["Composite"]);
         machine("an unlabelled fan, its speed read", heatHeld[1].fans,
@@ -2054,7 +2056,7 @@ QtObject {
         machine("the firmware with an update offered", firmware[0], {
             id: "bios", name: "System Firmware", vendor: "Dell", version: "1.12.0",
             offered: "1.13.0", notes: "This release fixes:\na & b\nc", updated: 1793278224,
-            restarts: true, waits: null, charger: true, problems: [], failed: null,
+            restarts: true, waits: null, problems: [], failed: null,
             release: { urgency: "high", size: 26518575, released: 1788150135, minutes: 2,
                 summary: "Dell System Firmware Update" },
             about: { lowest: "1.2.0", bootloader: null, branch: null, flashes: null,
@@ -2066,11 +2068,19 @@ QtObject {
             "device was not in supported mode");
         machine("why nothing's offered, in fwupd's words", firmware[1].about.none,
             "current version is 61001171: 61001171=same");
-        machine("firmware's version with an update offered", Firmware.versionOf(firmware[0]),
-            "1.13.0 ready \u00b7 from 1.12.0");
-        machine("firmware's version alone", Firmware.versionOf(firmware[1]), "61001171");
-        machine("one firmware update ready", Firmware.standing(firmware), "1 update ready");
-        machine("firmware up to date", Firmware.standing(firmware.slice(1)), "up to date");
+        const firmwareWords = { current: "up to date", one: "1 update ready",
+            many: "{count} updates ready", ready: "{version} ready \u00b7 from {was}",
+            restart: "{version} at the restart \u00b7 from {was}" };
+        machine("firmware's version with an update offered",
+            Firmware.versionOf(firmware[0], firmwareWords), "1.13.0 ready \u00b7 from 1.12.0");
+        machine("firmware's version alone", Firmware.versionOf(firmware[1], firmwareWords),
+            "61001171");
+        machine("one firmware update ready", Firmware.standing(firmware, firmwareWords),
+            "1 update ready");
+        machine("two firmware updates ready", Firmware.standing([firmware[0], firmware[0]],
+            firmwareWords), "2 updates ready");
+        machine("firmware up to date", Firmware.standing(firmware.slice(1), firmwareWords),
+            "up to date");
         machine("fwupd with no devices", Firmware.devicesOf([firmwareHeld[0]]), []);
         machine("the daemon with nothing held", Firmware.devicesOf([]), []);
         machine("a vendor fwupd doesn't know is none",
@@ -2102,12 +2112,39 @@ QtObject {
         const waits = waiting("pending");
         machine("firmware waiting for the restart", [waits.offered, waits.waits],
             ["1.13.0", "1.13.0"]);
-        machine("firmware's version waiting for the restart", Firmware.versionOf(waits),
-            "1.13.0 at the restart \u00b7 from 1.12.0");
+        machine("firmware's version waiting for the restart",
+            Firmware.versionOf(waits, firmwareWords), "1.13.0 at the restart \u00b7 from 1.12.0");
         machine("firmware waiting for the restart is held back by nothing",
             Firmware.heldBy(waits), "");
         machine("firmware needing a reboot waits too", waiting("needs-reboot").waits, "1.13.0");
         machine("firmware that failed doesn't wait", waiting("failed").waits, null);
+        // Whether a provider's rows can be seen, so it watches its daemon
+        // only then: never once only asked, and never with the launcher
+        // closed unless a terminal just showed them.
+        const watcher = {};
+        const its = { live: watcher };
+        const closed = { open: false, answer: its, held: [], matches: [], placed: ["heat"] };
+        const opened = fields => Object.assign({ open: true, answer: null, held: [], matches: [],
+            placed: [] }, fields);
+        machine("unseen with the launcher closed, whatever it last held",
+            Seen.seen(closed, watcher, ["heat"]), false);
+        machine("unseen with the launcher open on something else",
+            Seen.seen(opened({ answer: { live: {} }, placed: ["power"] }), watcher, ["heat"]),
+            false);
+        machine("seen as its answer", Seen.seen(opened({ answer: its }), watcher, []), true);
+        machine("seen stepped into", Seen.seen(opened({ held: [{ row: its }] }), watcher, []),
+            true);
+        machine("seen among what's found", Seen.seen(opened({ matches: [its] }), watcher, []),
+            true);
+        machine("seen in a place holding its row",
+            Seen.seen(opened({ placed: ["heat"] }), watcher, ["heat"]), true);
+        machine("seen as the place it says how things stand in",
+            Seen.seen(opened({ matches: [{ category: { id: "energy" } }] }), watcher,
+                ["energy", "power"]), true);
+        machine("seen by a terminal's show with the launcher closed",
+            Seen.seen(Object.assign({}, closed, { terminalSees: { walked: [], listed: [its] } }),
+                watcher, []), true);
+        machine("no launcher sees nothing", Seen.seen(null, watcher, ["heat"]), false);
         machine("firmware flashed at the restart waits no more",
             waiting("pending", "1.13.0").waits, null);
         machine("why an install didn't go in", Firmware.reason(
@@ -2528,12 +2565,19 @@ QtObject {
         machine("a charger plugged in elsewhere", [Power.pluggedElsewhere(powerHeld),
             Power.pluggedElsewhere([{ name: "AC", type: "Mains", online: true }])],
             [false, true]);
+        const powerWords = { full: "{time} to full", charging: "charging",
+            empty: "{time} to empty", battery: "on battery", whole: "full",
+            holding: "on power, holding" };
         machine("the battery's time, as UPower works it out",
-            Power.doing(powerHeld[1], Interfaces.lasted), "36% \u00b7 3 h 10 min to empty");
+            Power.doing(powerHeld[1], Interfaces.lasted, powerWords),
+            "36% \u00b7 3 h 10 min to empty");
         machine("the battery charging with no time said", Power.doing({ capacity_pct: 80,
-            status: "Charging", upower: null }, Interfaces.lasted), "80% \u00b7 charging");
+            status: "Charging", upower: null }, Interfaces.lasted, powerWords),
+            "80% \u00b7 charging");
         machine("the battery full", Power.doing({ capacity_pct: 100, status: "Full" },
-            Interfaces.lasted), "100% \u00b7 full");
+            Interfaces.lasted, powerWords), "100% \u00b7 full");
+        machine("a charge nobody knows, left out rather than none",
+            Power.doing({ status: "Discharging" }, Interfaces.lasted, powerWords), "on battery");
         machine("the energy a battery counting charge holds", Power.energyOf(powerHeld[1]),
             { now: 22.5, full: 54, design: 60 });
         machine("the energy a battery counts itself", Power.energyOf({ energy_wh: 30,
@@ -2857,7 +2901,8 @@ QtObject {
         machine("sleep's other modes", slept.others, ["deep"]);
         machine("sleep's hardware time in seconds", [slept.lastHardware, slept.countsTo],
             [3600, 523986.00999]);
-        const sleepTold = Power.sleepSaid(slept, sleepWords, Interfaces.lasted);
+        const sleepErrors = { EBUSY: "a device was busy" };
+        const sleepTold = Power.sleepSaid(slept, sleepWords, Interfaces.lasted, sleepErrors);
         machine("sleep's mode and the step it last failed at", [sleepTold.side, sleepTold.note],
             ["s2idle", "failed while freezing \u00b7 2 times"]);
         machine("sleep's drawer, the failures the note doesn't say, the device last",
@@ -2866,19 +2911,21 @@ QtObject {
             { id: "sleep:ways", value: "freeze \u00b7 mem \u00b7 disk" },
             { id: "sleep:slept", value: "12 times" },
             { id: "sleep:failed", value: "1 while resuming" },
-            { id: "sleep:error", value: "EBUSY (\u221216)" },
+            { id: "sleep:error", value: "a device was busy" },
             { id: "sleep:hardware", value: "1 h" },
             { id: "sleep:counts-to", value: "6 d 1 h" },
-            { id: "sleep:device", value: "0000:00:14.0", identifies: true }
+            { id: "sleep:device", value: "0000:00:14.0", identifies: true },
+            { id: "sleep:code", value: "EBUSY", identifies: true }
         ]);
         const neverFailed = Power.sleepSaid(Power.sleepOf({ mode: "s2idle", modes: ["s2idle"],
             successes: 1, failures: 0, failed_at: {}, last_failed_step: "",
-            last_failed_errno: null, last_hardware_sleep_us: null }), sleepWords, Interfaces.lasted);
+            last_failed_errno: null, last_hardware_sleep_us: null }), sleepWords, Interfaces.lasted,
+            sleepErrors);
         machine("sleep that never failed says only its mode",
             [neverFailed.note, neverFailed.facts],
             ["", [{ id: "sleep:slept", value: "1 time" }]]);
         machine("sleep before the daemon answers", Power.sleepOf(null), null);
-        machine("an error Linux names", Power.errorOf(-5), "EIO (\u22125)");
+        machine("an error Linux names", Power.errorOf(-5), "EIO");
         machine("an error with no name kept", Power.errorOf(-71), "\u221271");
 
         // Said as warnings, since Qt keeps ordinary logging quiet.

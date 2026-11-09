@@ -266,23 +266,30 @@ function stateOf(record) {
 // How the battery stands, as its headline says it: its charge, then how
 // long it has as UPower works it out ("36% \u00b7 3 h 10 min to empty",
 // VKCF3Z, 2026-11-08), or what it's doing where UPower says no time.
-// `lasted` says a span of seconds.
-function doing(record, lasted) {
-    const charge = `${record.capacity_pct ?? 0}%`;
+// `lasted` says a span of seconds, and `said` is Power's words. A charge
+// the battery doesn't say is left out, never said as none.
+function doing(record, lasted, said) {
     const upower = record.upower ?? {};
-    switch (stateOf(record)) {
+    const how = doingSaid(stateOf(record), upower, lasted, said);
+    const charge = record.capacity_pct ?? null;
+    return charge === null ? how : `${charge}% \u00b7 ${how}`;
+}
+
+// What the battery is doing, as its headline says it after its charge.
+function doingSaid(state, upower, lasted, said) {
+    switch (state) {
         case "charging":
             return upower.time_to_full_s > 0
-                ? `${charge} \u00b7 ${lasted(upower.time_to_full_s)} to full`
-                : `${charge} \u00b7 charging`;
+                ? String(said.full ?? "").replace("{time}", lasted(upower.time_to_full_s))
+                : said.charging ?? "";
         case "discharging":
             return upower.time_to_empty_s > 0
-                ? `${charge} \u00b7 ${lasted(upower.time_to_empty_s)} to empty`
-                : `${charge} \u00b7 on battery`;
+                ? String(said.empty ?? "").replace("{time}", lasted(upower.time_to_empty_s))
+                : said.battery ?? "";
         case "full":
-            return `${charge} \u00b7 full`;
+            return said.whole ?? "";
         default:
-            return `${charge} \u00b7 on power, holding`;
+            return said.holding ?? "";
     }
 }
 
@@ -377,12 +384,10 @@ function seconds(microseconds) {
 const ERRORS = { 1: "EPERM", 5: "EIO", 11: "EAGAIN", 12: "ENOMEM", 16: "EBUSY", 19: "ENODEV",
     22: "EINVAL", 110: "ETIMEDOUT" };
 
-// An error number as Linux gives it, -16, said with its name and the
-// real minus: "EBUSY (\u221216)".
+// An error number as Linux gives it, -16, by its name alone, "EBUSY",
+// or where it has none the number with the real minus, "\u221271".
 function errorOf(errno) {
-    const number = errno < 0 ? `\u2212${-errno}` : String(errno);
-    const name = ERRORS[Math.abs(errno)];
-    return name ? `${name} (${number})` : number;
+    return ERRORS[Math.abs(errno)] ?? (errno < 0 ? `\u2212${-errno}` : String(errno));
 }
 
 // What Sleep's row says of how sleep stands, in the words `said` gives
@@ -390,15 +395,18 @@ function errorOf(errno) {
 // side, the step it last failed at and how often as the note, "failed
 // while freezing \u00b7 2 times", and its drawer's facts by their words'
 // ids, the failures at every step but the one the note names, in the
-// order taken (VKCF3Z, 2026-11-08: no fact repeats the side), the device
-// that failed last, an identifier, last of all. A figure that's none or
+// order taken (VKCF3Z, 2026-11-08: no fact repeats the side), why the last
+// failure came in words, `errors` by the error's name ("a device was
+// busy"), and last, as identifiers, the device that blocked it, as Linux
+// names it, and the error's own name, "EBUSY". A figure that's none or
 // zero gives way.
-function sleepSaid(sleep, said, lasted) {
+function sleepSaid(sleep, said, lasted, errors) {
     const times = (count) => count === 1 ? said.time : String(said.times).replace("{count}", count);
     const step = (name) => said[name] ?? name;
     const at = (each) => String(said.at).replace("{count}", each.count).replace("{step}",
         step(each.step));
     const took = (value) => value === null || value <= 0 ? "" : lasted(value);
+    const code = sleep.errno === null ? "" : errorOf(sleep.errno);
     const failed = sleep.lastStep !== "" && sleep.lastFailures > 0;
     const elsewhere = sleep.failedAt.filter((each) => !failed || each.step !== sleep.lastStep);
     const facts = [
@@ -406,11 +414,12 @@ function sleepSaid(sleep, said, lasted) {
         { id: "sleep:ways", value: sleep.states.join(" \u00b7 ") },
         { id: "sleep:slept", value: sleep.slept > 0 ? times(sleep.slept) : "" },
         { id: "sleep:failed", value: elsewhere.map(at).join(" \u00b7 ") },
-        { id: "sleep:error", value: sleep.errno === null ? "" : errorOf(sleep.errno) },
+        { id: "sleep:error", value: code === "" ? "" : errors?.[code] ?? "" },
         { id: "sleep:hardware", value: took(sleep.lastHardware) },
         { id: "sleep:hardware-all", value: took(sleep.allHardware) },
         { id: "sleep:counts-to", value: took(sleep.countsTo) },
-        { id: "sleep:device", value: sleep.lastDevice, identifies: true }
+        { id: "sleep:device", value: sleep.lastDevice, identifies: true },
+        { id: "sleep:code", value: code, identifies: true }
     ].filter((fact) => fact.value !== "");
     return {
         side: sleep.mode,
