@@ -309,6 +309,7 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
                 and shown["selected"]["note"] == "Ada Lovelace, #deploys, Threads"
             )
         )
+        desktop.shoot("launcher-for-you-slack")
         machine.send_key("ret")
         desktop.launcher_until(
             lambda shown: (

@@ -421,6 +421,8 @@ def test_a_missed_notice_shows_its_glyph_and_now_shows_the_notices(desktop: Desk
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: "Desktop" in shown["rows"])
     desktop.down_to("Desktop")
+    # For You's Lately band, Desktop's row on, for the design's look.
+    desktop.shoot("launcher-for-you-lately")
     machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: shown["keys"] and shown["held"] == ["now", "For You", "Desktop"]
