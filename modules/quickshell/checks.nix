@@ -1305,9 +1305,10 @@ onLinux {
     '';
 
   # For You weighs what needs Joel, heaviest first and ties as they came,
-  # says each row's strongest reason, and reads the looks folder's files
-  # into what waits and what's history, as tests/for-you.qml holds
-  # ForYou.js to it in Qt's own engine.
+  # says each row's strongest reason, reads the looks folder's files into
+  # what waits and what's history, and gathers what other sources give it,
+  # as Passwords' one to-do, weighed beside the rest or done, as
+  # tests/for-you.qml holds ForYou.js to it in Qt's own engine.
   for-you-weighs-what-needs-joel =
     let
       qt = pkgs.qt6.qtdeclarative;

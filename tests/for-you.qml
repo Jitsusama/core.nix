@@ -5,8 +5,10 @@
 // rules (VKCF3Z, 2026-11-08): what blocks a session counts most, then what's
 // due, what he can do now, its kind and how long it has waited; the heaviest
 // leads and ties keep the order they came in; a row's side says its strongest
-// reason; and the looks folder's files are read into what waits and what's
-// history, a file that can't be read left out.
+// reason; the looks folder's files are read into what waits and what's
+// history, a file that can't be read left out; and what other sources give
+// For You, as Passwords' one to-do, is gathered into what waits and what's
+// done, and weighed beside the rest.
 import QtQuick
 import "ForYou.js" as ForYou
 
@@ -246,6 +248,38 @@ QtObject {
         expect("its mark holding nothing", ForYou.markOf(0, 0), "forYouEmpty");
         expect("never its to-dos' mark", [ForYou.markOf(0, 0), ForYou.markOf(3, 1)]
             .includes("waitsOnJoel"), false);
+
+        // What other sources give For You (ForYou.js's given), as
+        // Passwords gives its one to-do for what its last check found: each
+        // to do weighed beside the rest, each done kept for History, and a
+        // source giving nothing, or something neither, left out.
+        const todo = { row: { name: "Change the Passwords the Check Found" },
+            thing: { kind: "todo", since: now - 7 * hour, takes: 45, ready: true } };
+        const clear = { row: { name: "Change the Passwords the Check Found" },
+            done: { how: "checked clear", at: now - hour } };
+        const sources = [{ forYou: [todo] }, {}, { forYou: null },
+            { forYou: [clear, { row: { name: "neither" } }, null] }, null];
+        const gathered = ForYou.given(sources);
+        expect("those to do, gathered from every source", gathered.waiting.map(one =>
+            one.row.name), ["Change the Passwords the Check Found"]);
+        expect("those done, with how and when", gathered.done.map(one => [one.row.name,
+            one.done.how, one.done.at]), [["Change the Passwords the Check Found",
+            "checked clear", now - hour]]);
+        expect("a done one's time, read from an ISO time", ForYou.given([{ forYou: [{
+            row: {}, done: { how: "", at: "2026-11-08T13:00:00Z" } }] }]).done[0].done.at,
+        now - hour);
+        expect("no sources give nothing", ForYou.given(undefined), { waiting: [], done: [] });
+        // Ready to do and waiting seven hours, the to-do weighs less than a
+        // session waiting on Joel, which blocks, and more than a look.
+        const passwords = ForYou.weigh(todo.thing, now).weight;
+        expect("the passwords to-do's weight", passwords, 20 + 10 + 15);
+        expect("weighed beside the rest", ForYou.ordered([
+            { name: "look", weight: ForYou.weigh({ kind: "look", since: now - 7 * hour },
+                now).weight },
+            { name: "passwords", weight: passwords },
+            { name: "session", weight: ForYou.weigh({ kind: "todo", blocks: 1, since: now },
+                now).weight }
+        ]).map(one => one.name), ["session", "passwords", "look"]);
 
         if (failures.length > 0) {
             for (const failure of failures)
