@@ -1469,6 +1469,37 @@ def test_a_terminal_disconnects_warp_once_sure_and_connects_it_unasked(shell: Sh
         shutil.rmtree(said)
 
 
+def test_a_held_arrow_makes_one_drawer_once_it_rests(shell: Shell) -> None:
+    """Arrows pressed quicker than the drawer follows make it once, for where they rest.
+
+    A session's or a program's drawer was made on each key's own path, 56 to 122 ms a key in a
+    VM (2026-11-09), so the highlight waited on it (Joel, 2026-11-08: "the highlight doesn't
+    always perfectly match my keyboard interactions").
+    """
+    windows = [shell.opened(f"Drawn {at}") for at in range(1, 5)]
+    try:
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        typed = shell.mark()
+        shell.type_in("drawn")
+        shell.reported("drawer follows ", lambda _: True, typed)
+        shell.held_still()
+        since = shell.mark()
+        # Three in one go, as a held arrow's repeat sends them, quicker than the drawer follows.
+        shell.as_account("wtype -k Down -k Down -k Down")
+        rested = shell.showing()["selected"]
+        shell.reported("drawer follows ", lambda _: True, since)
+        shell.held_still()
+        said, _ = shell.said_since(since)
+        followed = [report for report in said if report.startswith("drawer follows ")]
+        assert len(followed) == 1, f"the drawer was made for each key: {followed}"
+        assert shell.showing()["selected"] == rested, rested
+    finally:
+        shell.close_launcher()
+        for window in windows:
+            shell.close(window)
+
+
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
     """No answer raised an error, and Quickshell warned of nothing it drew."""
     log = shell.log.read_text(errors="replace").splitlines()
