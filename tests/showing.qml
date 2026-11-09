@@ -137,6 +137,19 @@ QtObject {
             false);
         expect("a row that's none of the thing's verbs is a row",
             act({ key: "part", name: "Model" }, ["copy"]), false);
+        // A row's note is said in its drawer, once, as a sentence.
+        expect("a note becomes the drawer's sentence",
+            Showing.noted(keyboard, "the layer lock key lets it go").body,
+            "The layer lock key lets it go.");
+        expect("its own words, or a note its facts or title say, stay as they are", [
+            Showing.noted({ title: "Disks", body: "Filling fast." }, "nearly full").body,
+            Showing.noted(keyboard, "none \u00b7 ergodox").body,
+            Showing.noted(keyboard, "").body
+        ], ["Filling fast.", undefined, undefined]);
+        expect("a note ending as a sentence keeps its end, and none stays none", [
+            Showing.noted({ title: "Lag" }, "waiting on memory!").body,
+            Showing.noted(null, "on")
+        ], ["Waiting on memory!", null]);
         if (failed > 0) {
             console.warn(`${failed} failed`);
             Qt.exit(1);
