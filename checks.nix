@@ -1170,6 +1170,7 @@ gather (
     ./modules/wifid/checks.nix
     ./modules/yubikey/checks.nix
     ./modules/zathura/checks.nix
+    ./modules/zoom/checks.nix
     ./modules/zoxide/checks.nix
     ./modules/zsh/checks.nix
   ]
