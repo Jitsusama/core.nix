@@ -407,9 +407,16 @@ function everyFigure(machine, said) {
 // hyphens, rather than one word running past the drawer's edge.
 const IDENTIFIERS = ["uuid", "security-label"];
 
-// Whether a figure, by its id, names a machine (IDENTIFIERS).
-function identifies(id) {
-    return IDENTIFIERS.includes(id);
+// A figure as its drawer's fact, `label` its name: one naming a machine
+// (IDENTIFIERS) is an identifier, one whole item the drawer lays on as
+// many lines as it needs, broken at its own marks (Identifier.js), as a
+// program's command is; any other, its value alone.
+function factOf(figure, label) {
+    const fact = { label, value: figure.value };
+    return IDENTIFIERS.includes(figure.id)
+        ? Object.assign(fact, { valueItems: [{ said: figure.value, whole: true }],
+            between: " ", identifies: true })
+        : fact;
 }
 
 // Every figure dominfo gave for a machine, each { id, value }, in the

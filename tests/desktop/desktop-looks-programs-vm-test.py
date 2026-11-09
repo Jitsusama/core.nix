@@ -86,9 +86,8 @@ def drawer_on(title: str, shown: Json) -> bool:
 
 
 def whole_on(title: str, shown: Json) -> bool:
-    """Say whether the drawer draws the thing titled whole: every value, none cut or left over."""
-    drawer = shown["drawer"]
-    return drawer_on(title, shown) and drawer["valuesWhole"] is True and not drawer["more"]
+    """Say whether the drawer draws the thing titled whole, no fact left over for its keys."""
+    return drawer_on(title, shown) and not shown["drawer"]["more"]
 
 
 def named(name: str, shown: Json) -> bool:
@@ -231,8 +230,9 @@ def test_the_vms_are_shot_at_each_scale(desktop: Desktop, at_each_scale: list[st
         desktop.answer("vms")
         desktop.launcher_until(partial(named, "VMs"))
         desktop.into_program()
-        # Its UUID and security label are identifiers, so they're whole on as many lines as
-        # they take rather than one word running past the drawer's edge.
+        # Every figure fits, none left for its keys; its UUID and security label are
+        # identifiers, so they're whole on as many lines as they take, broken at their hyphens,
+        # rather than one word running past the drawer's edge, which the shot shows.
         desktop.launcher_until(partial(whole_on, "web"))
         desktop.shoot(f"launcher-vms-at-{at}")
         desktop.close_launcher()

@@ -236,8 +236,17 @@ QtObject {
         check("one paused still says its memory in use",
             Machines.figures(held, said).find(one => one.id === "memory")?.value, "2.15 GB");
         check("what names a machine is set as an identifier",
-            Machines.figures(web, said).filter(one => Machines.identifies(one.id))
-                .map(one => one.id), ["security-label", "uuid"]);
+            Machines.figures(web, said).map(one => Machines.factOf(one, one.id))
+                .filter(fact => fact.identifies === true).map(fact => fact.label),
+            ["security-label", "uuid"]);
+        check("an identifier is one whole item",
+            Machines.factOf({ id: "uuid", value: "3e8f0a52-1b7d" }, "UUID"),
+            { label: "UUID", value: "3e8f0a52-1b7d",
+                valueItems: [{ said: "3e8f0a52-1b7d", whole: true }], between: " ",
+                identifies: true });
+        check("a measure is its value alone",
+            Machines.factOf({ id: "processors", value: "2" }, "Processors"),
+            { label: "Processors", value: "2" });
         const unread = Machines.described(running.replace(/Used memory:.*\n/, ""))[0];
         check("one running that didn't say its memory in use lacks it as unknown",
             Machines.leftOut(unread, said), { stopped: [], unsaid: ["memory"] });

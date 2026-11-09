@@ -146,10 +146,8 @@ Provider {
         return {
             eyebrow: one.system ? said.inSystem : said.session,
             title: one.name,
-            facts: Machines.figures(one, said).map(figure => Object.assign({
-                label: Words.name(`vm:${figure.id}`),
-                value: figure.value
-            }, Machines.identifies(figure.id) ? { identifies: true } : {})),
+            facts: Machines.figures(one, said)
+                .map(figure => Machines.factOf(figure, Words.name(`vm:${figure.id}`))),
             body: [one.system ? tells.system ?? "" : "", why(missing.stopped, tells.stopped),
                 why(missing.unsaid, tells.unsaid)].filter(words => words !== "").join(" ")
         };
