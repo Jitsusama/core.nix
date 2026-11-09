@@ -13,6 +13,7 @@
   ...
 }:
 let
+  linux = pkgs.stdenv.hostPlatform.isLinux;
   client = lib.meta.availableOn pkgs.stdenv.hostPlatform pkgs.zoom-us;
 
   # The window command, each %u in it the link, as a desktop entry writes it.
@@ -48,23 +49,23 @@ in
     '';
   };
 
-  config = lib.mkIf pkgs.stdenv.hostPlatform.isLinux (
-    if client then
-      { home.packages = [ pkgs.zoom-us ]; }
-    else
-      {
-        # Zoom as a program, and the one program that says it opens Zoom's
-        # own links, so gio sends them here without a default naming it.
-        xdg.desktopEntries.zoom = {
-          name = "Zoom";
-          comment = "Meetings in Zoom's web client";
-          exec = "${lib.getExe opens} %u";
-          categories = [ "Network" ];
-          mimeType = [
-            "x-scheme-handler/zoommtg"
-            "x-scheme-handler/zoomus"
-          ];
-        };
-      }
-  );
+  # Each half under its own mkIf, since choosing between them with an if
+  # would read pkgs before the module system knows what config holds.
+  config = lib.mkMerge [
+    (lib.mkIf (linux && client) { home.packages = [ pkgs.zoom-us ]; })
+    (lib.mkIf (linux && !client) {
+      # Zoom as a program, and the one program that says it opens Zoom's
+      # own links, so gio sends them here without a default naming it.
+      xdg.desktopEntries.zoom = {
+        name = "Zoom";
+        comment = "Meetings in Zoom's web client";
+        exec = "${lib.getExe opens} %u";
+        categories = [ "Network" ];
+        mimeType = [
+          "x-scheme-handler/zoommtg"
+          "x-scheme-handler/zoomus"
+        ];
+      };
+    })
+  ];
 }
