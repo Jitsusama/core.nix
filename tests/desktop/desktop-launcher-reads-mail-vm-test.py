@@ -1278,9 +1278,7 @@ def test_search_slack_ends_a_search_and_asks_slack_once_on_return_lighting_in_pl
         lambda shown: (shown["selected"] or {}).get("count") == "Launcher notes for Friday"
     )
     desktop.previous_row()
-    desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("name") == "Ada Lovelace"
-    )
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Ada Lovelace")
     # Inside, Open in Slack, whose drawer holds the messages around it once
     # asked, only Joel's named, then the link to copy last.
     desktop.follow()

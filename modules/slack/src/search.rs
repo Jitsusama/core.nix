@@ -247,9 +247,9 @@ impl Slack {
                 return Ok(known.clone());
             }
             let user = self.ask(account, "users.info", &[("user", id)])?;
-            let named = named_in(&user);
-            names.insert(id.to_owned(), named.clone());
-            Ok(named)
+            let person = named_in(&user);
+            names.insert(id.to_owned(), person.clone());
+            Ok(person)
         };
         for one in &mut found {
             if !one.mine && !one.user.is_empty() {
