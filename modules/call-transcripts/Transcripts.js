@@ -3,12 +3,10 @@
 // words, and which calls are with someone or of a meeting. Plain
 // JavaScript, held by tests/transcripts.qml in Qt's own engine.
 .pragma library
+.import "When.js" as When
 
 const MINUTE = 60_000;
 const HOUR_MINUTES = 60;
-const DAY = 86_400_000;
-const WEEK_DAYS = 7;
-const DIGITS = 2;
 
 // Markdown's marks, as a summary or a transcript is written with them.
 const RETURNS = /\r/g;
@@ -41,41 +39,8 @@ function kind(record) {
     return record.person ? "person" : "call";
 }
 
-function clock(time) {
-    const date = new Date(time);
-    const two = n => String(n).padStart(DIGITS, "0");
-    return `${two(date.getHours())}:${two(date.getMinutes())}`;
-}
-
-function midnight(time) {
-    const date = new Date(time);
-    date.setHours(0, 0, 0, 0);
-    return date.getTime();
-}
-
 function sameYear(time, now) {
     return new Date(time).getFullYear() === new Date(now).getFullYear();
-}
-
-// The day it was on, as the launcher says one before a time (Y2YBTS's
-// one way to say when): nothing today, which is never said as a word,
-// "yesterday", the weekday within the last six days, else "28 Oct", with
-// the year only when it isn't this one. A moment ahead of now, from a
-// wrong clock, is today's. The names are the locale's, as `said.date`
-// gives them, Qt's `formatDate` in the shell.
-function day(time, now, said) {
-    const days = Math.round((midnight(now) - midnight(time)) / DAY);
-    const date = new Date(time);
-    if (days <= 0) {
-        return "";
-    }
-    if (days === 1) {
-        return said.yesterday;
-    }
-    if (days < WEEK_DAYS) {
-        return said.date(date, "dddd");
-    }
-    return said.date(date, sameYear(time, now) ? "d MMM" : "d MMM yyyy");
 }
 
 function filled(words, hours, minutes) {
@@ -100,12 +65,13 @@ function length(started, ended, said) {
 // Its note: when it was and how long, "yesterday 14:00 \u00b7 32 min",
 // or, while it's on, what `said` says of it: being written down, or on
 // still with nothing being written, "14:00 \u00b7 not written down".
+// When it began is said as the launcher says every moment (When.js's
+// moment), so a call's day reads as a meeting's or a mail's does.
 function note(record, now, said) {
     if (record.transcribing) {
         return said.writing;
     }
-    const when = [day(record.started, now, said), clock(record.started)]
-        .filter(part => part !== "").join(" ");
+    const when = When.moment(record.started, now, said);
     if (typeof record.ended !== "number") {
         return `${when} \u00b7 ${said.on}`;
     }
@@ -120,7 +86,7 @@ function dated(record, now, said) {
     const date = new Date(record.started);
     const named = said.date(date, sameYear(record.started, now) ? "dddd d MMMM"
         : "dddd d MMMM yyyy");
-    return `${named} \u00b7 ${clock(record.started)}`;
+    return `${named} \u00b7 ${When.clock(record.started)}`;
 }
 
 // Text made safe to show as styled text, so nothing a call said is read

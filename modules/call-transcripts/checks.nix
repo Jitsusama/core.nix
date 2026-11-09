@@ -35,7 +35,7 @@ onLinux {
   # How the shell says each call written down, when it was and for how
   # long, its drawer's words set from the markdown they're written in, and
   # which calls are with someone or of a meeting (tests/transcripts.qml,
-  # over Transcripts.js).
+  # over Transcripts.js and the When.js it reads).
   the-desktop-reads-the-transcripts =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -43,6 +43,7 @@ onLinux {
     pkgs.runCommandLocal "the-desktop-reads-the-transcripts" { } ''
       cp ${./tests/transcripts.qml} transcripts.qml
       cp ${./Transcripts.js} Transcripts.js
+      cp ${../quickshell/When.js} When.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       ${shellFolderLint}

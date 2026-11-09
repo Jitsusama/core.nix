@@ -263,7 +263,10 @@ function weightSaid(thing, now, say) {
 // 2026-11-08: one moment reads one way everywhere, as When.js writes it).
 // `at` is milliseconds or an ISO time; "" for none. `say` holds its
 // words, with `day(ms, now)` as When.js says a day, "" today, and
-// `time(ms)` as the clock does.
+// `time(ms)` as the clock does. It is When.moment's rule with its day
+// and clock handed in rather than read from When, so tests/for-you.qml
+// can give them in UTC and hold in any timezone; Now.qml hands in
+// When.day and When.clock, so the shell says it as When does.
 function moment(at, now, say) {
     const read = when(at);
     if (read === null) {
