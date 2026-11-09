@@ -30,6 +30,18 @@ const FAILED = {
     "not-answering": "notAnswering",
     unreadable: "unreadable",
 };
+// What warp-cli's error means when WARP's service isn't answering, as the
+// word its note says it in, first match winning. warp-cli passes on the
+// system's error for the service's socket: none there (2) or nothing
+// listening on it (111) is a service that isn't running, and one shut to
+// this account (13) won't let it in. warp's own words for a warp-cli that
+// hangs say it's too slow. Anything else can't be reached, and the error as
+// written is in the drawer for whoever looks further (VKCF3Z, 2026-11-09).
+const WHY = [
+    [/\(os error (2|111)\)$/, "notRunning"],
+    [/\(os error 13\)$/, "shutOut"],
+    [/didn't answer within/, "tooSlow"],
+];
 
 // A word of warp's in the vocabulary, its {placeholders} filled.
 function worded(said, key, fill) {
@@ -447,17 +459,25 @@ function told(record, settings, said) {
 
 // What warp said when it couldn't read WARP ({ error, said }), as the row
 // says it in warp's words (`said`): { headline, warns, note }, or null
-// where there's no warp-cli, so no WARP to show. Its note is why, in
-// warp's words, so the row reads as one run, "not answering \u00b7 <why>",
-// rather than saying it isn't answering twice.
+// where there's no warp-cli, so no WARP to show. Its note is why, so the
+// row reads as one run, "not answering \u00b7 its service isn't running",
+// rather than saying it isn't answering twice. Not answering, the note
+// says what warp-cli's error means and `error` keeps it as written, for
+// the drawer; unreadable, the note is what warp couldn't read.
 function failed(printed, said) {
     const word = FAILED[printed?.error];
     if (!word) {
         return null;
     }
+    const error = String(printed.said ?? "");
+    if (printed.error !== "not-answering") {
+        return { headline: worded(said, word), warns: true, note: error };
+    }
+    const why = WHY.find(([means]) => means.test(error));
     return {
         headline: worded(said, word),
         warns: true,
-        note: String(printed.said ?? ""),
+        note: worded(said, why ? why[1] : "unreached"),
+        error,
     };
 }
