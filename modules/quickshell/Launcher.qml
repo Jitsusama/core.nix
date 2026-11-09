@@ -589,6 +589,13 @@ Scope {
                     ? heldBack(place, again(row) ?? row) : row)
             });
         } else {
+            // A member that didn't answer as its place was made, as Firmware
+            // while fwupd is first asked, or Power's Kept From Resting
+            // before its reading, has no row there to say again, so the
+            // place is made again from its members, the row in its place.
+            const place = steps[last].row.category ?? category;
+            if (place && members(place).some(row => row.asker === source))
+                placesRead();
             return;
         }
         held = steps;
