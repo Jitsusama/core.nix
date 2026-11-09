@@ -1,0 +1,33 @@
+diff --git a/walk/git.go b/walk/git.go
+index 4874e2c..7fac8bc 100644
+--- a/walk/git.go
++++ b/walk/git.go
+@@ -25,6 +25,7 @@ type GitReader struct {
+ 	stats *stats.Stats
+ 
+ 	eg      *errgroup.Group
++	reader  *io.PipeReader
+ 	scanner *bufio.Scanner
+ }
+ 
+@@ -127,6 +128,12 @@ LOOP:
+ }
+ 
+ func (g *GitReader) Close() error {
++	// Stop reading what git still lists before waiting for it: a run that ends
++	// early, on an unmatched file under on-unmatched = fatal, would otherwise
++	// wait forever on git blocked writing into the pipe. A run that read to the
++	// end loses nothing, as git has written all it had.
++	_ = g.reader.Close()
++
+ 	err := g.eg.Wait()
+ 	if err != nil {
+ 		return fmt.Errorf("failed to wait for git command to complete: %w", err)
+@@ -174,6 +181,7 @@ func NewGitReader(
+ 
+ 	return &GitReader{
+ 		eg:      eg,
++		reader:  r,
+ 		root:    root,
+ 		path:    path,
+ 		stats:   statz,

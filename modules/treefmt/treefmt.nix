@@ -67,6 +67,10 @@ in
   config = {
     projectRootFile = "flake.nix";
 
+    # treefmt that fails on a file no formatter reads rather than hanging
+    # (package.nix).
+    package = pkgs.callPackage ./package.nix { };
+
     # mypy reads every script at once, from a Python carrying the libraries
     # they import and the test driver's types, so their types are checked
     # too.

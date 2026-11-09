@@ -24,11 +24,11 @@ let
   libvirt = osConfig.virtualisation.libvirtd.package or pkgs.libvirt;
 in
 {
-  # Only where the shell is: the launcher's providers are declared on an
-  # account without it too, for the programs that give it acts
-  # (../quickshell/providers.nix), but its vocabulary only by the shell's
-  # own module (../quickshell/home.nix).
-  config = lib.optionalAttrs (options ? jitsusama.quickshell.launcher.words) {
+  # Only where the shell is: the providers option is declared without it
+  # too, so Neovim, Chrome and Reader can give it their acts
+  # (../quickshell/providers.nix), but a VMs entry there would list a
+  # program nobody can open. The shell's surfaces option is its own.
+  config = lib.optionalAttrs (options ? jitsusama.quickshell.surfaces) {
     # After Meet's and Slack's own acts, since VMs are a program's too.
     jitsusama.quickshell.launcher.providers = {
       vms = {

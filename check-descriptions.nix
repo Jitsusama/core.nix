@@ -22,6 +22,10 @@
     60 for muted, or a mark's hue under Lc 45, on the grounds they're read on and a selected row,
     doesn't build, and APCA gives its own reference values
   '';
+  a-file-no-linter-reads-fails-at-once = ''
+    treefmt fails within a minute, naming them, on two files no formatter reads that git lists
+    before thousands of others, where released treefmt waits on git for good
+  '';
   a-file-says-its-size-and-when-it-changed = ''
     a file in the launcher's chooser of files says its size in SI units, one decimal under 10, and
     when it changed by how long ago, a folder its count; its plate says its kind with its numbers,

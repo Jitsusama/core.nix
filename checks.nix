@@ -1188,6 +1188,7 @@ gather (
     ./modules/tcp/checks.nix
     ./modules/theme/checks.nix
     ./modules/touchpad/checks.nix
+    ./modules/treefmt/checks.nix
     ./modules/tuple/checks.nix
     ./modules/unlisted/checks.nix
     ./modules/update-to-main/checks.nix
