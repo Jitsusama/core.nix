@@ -2,20 +2,20 @@
 # from this directory's crate with its tests run as it builds, linked to
 # OpenVINO's C API and GenAI's, and PipeWire's. It takes what counts as
 # a call from modules/calls' crate, so the source holds both, from
-# modules, and the build runs in this one. OpenVINO, its tokenizers and
-# GenAI are this directory's builds of them (openvino.nix says why), and
-# the services name the same tokenizers, from passthru.
+# modules, and the build runs in this one. OpenVINO and its tokenizers are
+# nixpkgs', from the cache, and GenAI is patched here (openvino-genai.nix
+# says why); the services name the same tokenizers, from passthru.
 {
   callPackage,
   lib,
+  openvino,
+  openvino-tokenizers,
   pipewire,
   pkg-config,
   rustPlatform,
 }:
 let
-  openvino = callPackage ./openvino.nix { };
-  openvino-tokenizers = callPackage ./openvino-tokenizers.nix { inherit openvino; };
-  openvino-genai = callPackage ./openvino-genai.nix { inherit openvino openvino-tokenizers; };
+  openvino-genai = callPackage ./openvino-genai.nix { };
   src = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [

@@ -1111,9 +1111,8 @@ upstream as it is and the override can then come out.
   decoder with a cache of fixed length. On a 2.4 s clip at a load of about
   ten, a take went from 460 to 580 ms with the decoder on the CPU to about
   155 ms, and a whole run, the model's load included, from 2.2 s of CPU
-  time and a 1 GB peak in memory to 0.85 s and 194 MB. GenAI's 2026.4.1.0
-  needs two C++20 fixes from its main to build, and its static pipeline
-  takes Joel's words only with our patch
+  time and a 1 GB peak in memory to 0.85 s and 194 MB. GenAI's static
+  pipeline takes Joel's words only with our patch
   (`modules/dictation/openvino-genai-npu-prompt.patch`); the NPU's other
   pipeline can't, since its plugin fixes the decoder's first step at four
   tokens.
