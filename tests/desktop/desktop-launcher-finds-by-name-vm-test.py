@@ -1466,14 +1466,13 @@ def shoot_the_calendars(desktop: Desktop) -> None:
     """
     for calendar in ["Chinese", "Japanese", "Hebrew", "Islamic"]:
         shoot_a_calendar(desktop, calendar, f"launcher-date-{calendar.lower()}")
-    fix = "$XDG_RUNTIME_DIR/whereabouts.json"
     said = {"v": 2, "latitude": 51.4769, "longitude": -0.0005, "accuracy": 3000, "when": 1,
             "place": None, "zone": None}  # fmt: skip
-    desktop.as_account(f"echo '{json.dumps(said)}' > {fix}.new && mv {fix}.new {fix}")
+    desktop.found_at(said)
     try:
         shoot_a_calendar(desktop, "Hebrew", "launcher-date-hebrew-sunset", timed=True)
     finally:
-        desktop.as_account(f"echo '{{}}' > {fix}.new && mv {fix}.new {fix}")
+        desktop.found_at(None)
 
 
 def shoot_a_calendar(desktop: Desktop, calendar: str, picture: str, *, timed: bool = False) -> None:

@@ -1,0 +1,15 @@
+# daemon-client: a daemon of the launcher's daemon interface started for a
+# test, and a client asking it over its socket, a library each daemon's
+# tests name by path, so one copy serves them all (src/lib.rs says how).
+[package]
+name = "daemon-client"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde_json = "1.0"

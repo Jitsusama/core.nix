@@ -778,9 +778,10 @@ let
   ) null (osConfig.environment.systemPackages or [ ]);
   keepsCopies = launcher.providers.clipboard.enable or false;
 
-  # The program that says where the laptop is, for the weather's here. It
-  # runs only while the weather may ask the network, since it has GeoClue
-  # ask BeaconDB, and where the machine runs GeoClue (nixos.nix).
+  # The daemon that says where the laptop is, for the weather's here, and
+  # the zone the clock keeps. It asks GeoClue only while the weather may
+  # ask the network, since it has GeoClue ask BeaconDB, and where the
+  # machine runs GeoClue (nixos.nix).
   whereabouts = pkgs.callPackage ./whereabouts/package.nix { };
   clockFollows = pkgs.callPackage ./clock-follows/package.nix { };
   timedatectl = lib.getExe' pkgs.systemd "timedatectl";
@@ -2288,52 +2289,101 @@ in
       Install.WantedBy = [ "graphical-session.target" ];
     };
 
-    # Where the laptop is, as GeoClue last found it, in the runtime
-    # directory for the weather to watch (launcher/Weather.qml). A GeoClue
-    # that refuses or goes is asked again a minute on, not at once, so a
-    # machine without it isn't kept busy asking.
-    systemd.user.services.whereabouts = lib.mkIf followsTheLaptop {
+    # Where the laptop is and the zone the clock keeps, held over
+    # $XDG_RUNTIME_DIR/daemons/location.sock in the shell's daemon interface
+    # for Location.qml and clock-follows (whereabouts/src/main.rs says how).
+    # Every machine runs it for the clock's zone; one that follows the
+    # laptop has it ask GeoClue too, keeping its last here in its runtime
+    # folder through a restart and Joel's pin in its state folder, which
+    # Now's Location sets and takes away through the same program, on the
+    # shell's path. A GeoClue that refuses or goes is asked again a minute
+    # on, while the socket goes on answering.
+    systemd.user.services.whereabouts = {
       Unit = {
-        Description = "Says where the laptop is, for the launcher's weather";
+        Description = "Holds where the laptop is and the clock's zone ready for the shell";
         PartOf = [ "graphical-session.target" ];
-        After = [ "graphical-session.target" ];
+        After = [
+          "graphical-session.target"
+          "location.socket"
+        ];
+        # Its socket is systemd's, handed to it as it starts.
+        Requires = [ "location.socket" ];
+        # Restarted after a switch reloads the units, it comes back as the
+        # new one.
+        X-SwitchMethod = "restart";
       };
-      # A place Joel sets himself is pinned in its state folder, and Now's
-      # Location sets and takes the pin away through the same program, on
-      # the shell's path.
       Service = {
-        StateDirectory = "whereabouts";
-        ExecStart = "${lib.getExe whereabouts} %t/whereabouts.json %S/whereabouts/pin.json";
+        ExecStart = lib.concatStringsSep " " (
+          [
+            (lib.getExe whereabouts)
+            "%t/daemons/location.sock"
+            "/"
+          ]
+          ++ lib.optionals followsTheLaptop [
+            "%t/whereabouts/here.json"
+            "%S/whereabouts/pin.json"
+            "%S/clock-follows/moved.json"
+          ]
+        );
         Restart = "on-failure";
-        RestartSec = 60;
+        RestartSec = 5;
+      }
+      // lib.optionalAttrs followsTheLaptop {
+        StateDirectory = [
+          "whereabouts"
+          "clock-follows"
+        ];
+        RuntimeDirectory = "whereabouts";
+        RuntimeDirectoryPreserve = "yes";
       };
       Install.WantedBy = [ "graphical-session.target" ];
     };
 
-    # The clock's zone follows where the laptop is (clock-follows/), asked
-    # each time whereabouts writes it and never otherwise: a path unit
-    # watches the file and starts the one run. What it did is kept in its
-    # state folder for Now to say (Location.qml), and Put It Back starts
-    # its other run, from the launcher.
-    systemd.user.paths.clock-follows = lib.mkIf followsTheLaptop {
-      Unit.Description = "Watches where the laptop is, for the clock's zone";
-      Path.PathChanged = "%t/whereabouts.json";
-      Install.WantedBy = [ "graphical-session.target" ];
+    # Its socket, held by systemd whether or not the daemon runs, so the
+    # shell asking while it starts, or starts again, waits on it rather
+    # than finding no socket. It's named for its domain, so it names the
+    # daemon it hands its listener to, which systemd would otherwise look
+    # for as location.service and refuse.
+    systemd.user.sockets.location = {
+      Unit.Description = "Where the shell asks where the laptop is";
+      Socket = {
+        Service = "whereabouts.service";
+        ListenStream = "%t/daemons/location.sock";
+        SocketMode = "0600";
+        DirectoryMode = "0700";
+      };
+      Install.WantedBy = [ "sockets.target" ];
     };
+
+    # The clock's zone follows where the laptop is (clock-follows/): it
+    # watches `here:laptop` over whereabouts' socket and decides each time
+    # it's told, never otherwise. What it did is kept in its state folder,
+    # which whereabouts says beside here for Now (Location.qml), and Put It
+    # Back starts its other run, from the launcher.
     systemd.user.services.clock-follows = lib.mkIf followsTheLaptop {
       Unit = {
         Description = "Moves the clock's zone to where the laptop is";
-        # Each run reads only the latest fix, so a burst of them is never
-        # too many. Five within ten seconds, systemd's limit, would fail
-        # the run and its path unit with it, and the clock would follow
-        # the laptop no more until the next login.
-        StartLimitIntervalSec = 0;
+        PartOf = [ "graphical-session.target" ];
+        After = [
+          "graphical-session.target"
+          "location.socket"
+        ];
+        Wants = [ "location.socket" ];
+        X-SwitchMethod = "restart";
       };
       Service = {
-        Type = "oneshot";
         StateDirectory = "clock-follows";
-        ExecStart = "${lib.getExe clockFollows} follow %t/whereabouts.json %S/clock-follows ${timedatectl}";
+        ExecStart = lib.concatStringsSep " " [
+          (lib.getExe clockFollows)
+          "follow"
+          "%t/daemons/location.sock"
+          "%S/clock-follows"
+          timedatectl
+        ];
+        Restart = "on-failure";
+        RestartSec = 5;
       };
+      Install.WantedBy = [ "graphical-session.target" ];
     };
     systemd.user.services.clock-put-back = lib.mkIf followsTheLaptop {
       Unit.Description = "Puts the clock's zone back where it was before it followed the laptop";

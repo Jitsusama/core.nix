@@ -389,6 +389,9 @@
   console-font-passes-clippy = ''
     clippy finds nothing in the console's font tool or its tests
   '';
+  daemon-client-passes-clippy = ''
+    clippy finds nothing in daemon-client, the daemon and client the daemons' tests share
+  '';
   darwin-role-twice-is-once = ''
     importing a nix-darwin role twice leaves the machine unchanged
   '';
@@ -2285,7 +2288,7 @@
     version Now draws, the location, saying its town and when the place keeps another zone than
     the clock, the weather, placed the same way, read as the launcher opens and kept while it's
     asked again, then the calendar's own row for the next meeting, and Now counts nothing while
-    only they are there
+    only they are there; the location and the clock's zone are whereabouts' own, over its socket
   '';
   the-launcher-sums-within-a-key = ''
     the launcher's sums and measures, worked out by libqalculate in the shell's own process, take a
@@ -3378,7 +3381,8 @@
     driver ends as a failed subtest ends it
   '';
   whereabouts-passes-clippy = ''
-    clippy finds nothing in whereabouts or its tests
+    clippy finds nothing in whereabouts, which holds where the laptop is and the clock's zone for
+    the shell, or its tests
   '';
   wifid-passes-clippy = ''
     clippy finds nothing in wifid, its sign-in window or their tests

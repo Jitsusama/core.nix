@@ -1955,7 +1955,6 @@ def test_nows_plate_sets_its_head_and_groups_as_every_plate(
 
 def location_plate_shown(desktop: Desktop, scale: str) -> None:
     """See the Location's plate at a scale: how it was found, its town, and its figures."""
-    fix = "$XDG_RUNTIME_DIR/whereabouts.json"
     when = int(desktop.machine.succeed("date +%s").strip()) - 720
     here = {
         "v": 2,
@@ -1967,8 +1966,7 @@ def location_plate_shown(desktop: Desktop, scale: str) -> None:
         "zone": "America/Toronto",
         "country": "Canada",
     }
-    text = shlex.quote(json.dumps(here))
-    desktop.as_account(f"printf %s {text} > {fix}.q && mv {fix}.q {fix}")
+    desktop.found_at(here)
     desktop.as_account("qs ipc call launcher collection on")
     desktop.launcher_ready()
     desktop.down_to("Location")
@@ -1983,8 +1981,8 @@ def location_plate_shown(desktop: Desktop, scale: str) -> None:
     assert drawer["valuesWhole"], f"at {scale} a fact's value breaks a word: {drawer}"
     desktop.shoot(f"launcher-location-plate-at-{scale.replace('.', '-')}")
     desktop.close_launcher()
-    # Nowhere again, as whereabouts writes it, for the tests after.
-    desktop.as_account(f"echo '{{}}' > {fix}.q && mv {fix}.q {fix}")
+    # Nowhere again, for the tests after.
+    desktop.found_at(None)
 
 
 # The file picker's plate, for each kind of file it previews and one it doesn't, at both of

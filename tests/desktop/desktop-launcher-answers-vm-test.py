@@ -844,7 +844,6 @@ def test_a_folder_filling_the_disk_is_cleared_once_joel_is_sure(desktop: Desktop
 def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
     """The weather's here follows the laptop."""
     machine = desktop.machine
-    fix = "$XDG_RUNTIME_DIR/whereabouts.json"
 
     def asked(test: Callable[[Json], bool]) -> None:
         desktop.answer("rain")
@@ -860,10 +859,10 @@ def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
     machine.wait_until_succeeds(desktop.in_session("systemctl --user is-active whereabouts"))
     refused = desktop.as_account("journalctl --user -u whereabouts -p err --no-pager -o cat")
     assert refused.strip() == "", f"whereabouts was refused: {refused}"
-    desktop.as_account(f"test ! -e {fix}")
+    assert desktop.here_kept() is None
     # The VM sets no time zone and no place, so here is nowhere until
-    # whereabouts says where the laptop is. This writes the file in its
-    # stead, as it does: whole, under another name, then renamed.
+    # whereabouts says where the laptop is. This has it say a position in
+    # GeoClue's stead.
     asked(nowhere)
     said = {
         "v": 2,
@@ -874,8 +873,8 @@ def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
         "place": None,
         "zone": None,
     }
-    desktop.as_account(f"echo '{json.dumps(said)}' > {fix}.new && mv {fix}.new {fix}")
-    # Here is the laptop's position now, heard as the file changes,
+    desktop.found_at(said)
+    # Here is the laptop's position now, heard over whereabouts' socket,
     # and its forecast is asked by it. Built as a check, the VM has no
     # network, so Open-Meteo didn't answer; run by hand it may, and then
     # the footer says how here was found.
@@ -898,10 +897,9 @@ def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
         )
     )
     desktop.close_launcher()
-    # And once the file says nowhere, here is nowhere again, and the
-    # location is said to be unknown rather than guessed. It's never
-    # removed, since the shell can't see a removed file come back.
-    desktop.as_account(f"echo '{{}}' > {fix}.new && mv {fix}.new {fix}")
+    # And once whereabouts says nowhere, here is nowhere again, and the
+    # location is said to be unknown rather than guessed.
+    desktop.found_at(None)
     asked(nowhere)
     desktop.answer("location")
     desktop.launcher_until(
@@ -913,23 +911,29 @@ def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
     desktop.close_launcher()
 
 
+# What clock-follows keeps of its last move and a zone put back, forgotten for the tests after;
+# named, since the account's shell refuses a pattern that matches nothing.
+FORGET_MOVES = (
+    "rm -f ~/.local/state/clock-follows/moved.json ~/.local/state/clock-follows/held.json"
+)
+
+
 def test_the_clock_follows_the_laptop_into_another_zone_and_is_put_back(desktop: Desktop) -> None:
     """The clock follows the laptop into another zone, says so in Time, and is put back."""
     machine = desktop.machine
-    fix = "$XDG_RUNTIME_DIR/whereabouts.json"
     zone = "timedatectl show --property=Timezone --value"
     began = machine.succeed(zone).strip()
-    ran = "systemctl --user show clock-follows.service"
-    ran += " --property=InactiveEnterTimestampMonotonic --value"
+    # clock-follows says in its journal each time it has decided, never where.
+    decided = "journalctl --user -u clock-follows -o cat --no-pager | grep -c 'was decided'; true"
 
     def found(where: str, accuracy: int, place: str) -> None:
-        """Write where the laptop is, as whereabouts does, and wait for the clock to read it."""
-        before = desktop.as_account(ran).strip()
+        """Say where the laptop is, as whereabouts does, and wait for the clock to decide."""
+        before = desktop.as_account(decided).strip()
         said = {"v": 2, "latitude": 52.34, "longitude": -115.67, "accuracy": accuracy,
                 "when": int(time.time()), "place": place, "zone": where}  # fmt: skip
-        desktop.as_account(f"echo '{json.dumps(said)}' > {fix}.new && mv {fix}.new {fix}")
+        desktop.found_at(said)
         machine.wait_until_succeeds(
-            desktop.in_session(f'test "$({ran})" != {shlex.quote(before)}'),
+            desktop.in_session(f'test "$({decided})" -gt {shlex.quote(before or "0")}'),
             timeout=dt.timedelta(seconds=30),
         )
 
@@ -971,14 +975,14 @@ def test_the_clock_follows_the_laptop_into_another_zone_and_is_put_back(desktop:
         assert machine.succeed(zone).strip() == "America/Vancouver"
     finally:
         machine.succeed(f"timedatectl set-timezone {shlex.quote(began)}")
-        desktop.as_account(f"echo '{{}}' > {fix}.new && mv {fix}.new {fix}")
-        desktop.as_account("rm -rf ~/.local/state/clock-follows")
+        desktop.found_at(None)
+        desktop.as_account(FORGET_MOVES)
 
 
 def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desktop) -> None:
     """A place set by hand holds over GeoClue until the laptop is found again."""
     machine = desktop.machine
-    fix = "$XDG_RUNTIME_DIR/whereabouts.json"
+    kept = desktop.KEPT_HERE
     pin = "~/.local/state/whereabouts/pin.json"
     began = machine.succeed("timedatectl show --property=Timezone --value").strip()
 
@@ -1021,12 +1025,12 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
         said = {"v": 2, "latitude": 52.34, "longitude": -115.67, "accuracy": 1000,
                 "when": int(time.time()), "place": "Kelpwater, Highreach",
                 "zone": "America/Edmonton", "country": "Canada", "hand": True}  # fmt: skip
+        # whereabouts hears the pin at once, without starting again.
         desktop.as_account(
             f"mkdir -p ~/.local/state/whereabouts && echo '{json.dumps(said)}' > {pin}"
         )
-        desktop.as_account("systemctl --user restart whereabouts.service")
         machine.wait_until_succeeds(
-            desktop.in_session(f"grep -q '\"hand\":true' {fix}"), timeout=dt.timedelta(seconds=30)
+            desktop.in_session(f"grep -q '\"hand\":true' {kept}"), timeout=dt.timedelta(seconds=30)
         )
         machine.wait_until_succeeds(
             "test $(timedatectl show --property=Timezone --value) = America/Edmonton",
@@ -1047,7 +1051,7 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
         desktop.down_to("Find It Again")
         machine.send_key("ret")
         machine.wait_until_succeeds(
-            desktop.in_session(f"test ! -e {pin} && test \"$(cat {fix})\" = '{{}}'"),
+            desktop.in_session(f"test ! -e {pin} && test ! -e {kept}"),
             timeout=dt.timedelta(seconds=30),
         )
         close()
@@ -1055,8 +1059,9 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
         close()
     finally:
         machine.succeed(f"timedatectl set-timezone {shlex.quote(began)}")
-        desktop.as_account(f"echo '{{}}' > {fix}.new && mv {fix}.new {fix}")
-        desktop.as_account(f"rm -rf {pin} ~/.local/state/clock-follows")
+        desktop.as_account(f"rm -f {pin}")
+        desktop.found_at(None)
+        desktop.as_account(FORGET_MOVES)
 
 
 def kept_by_the_stand_in(desktop: Desktop) -> None:
@@ -1106,19 +1111,15 @@ def date_steps_into_its_calendars(desktop: Desktop) -> None:
     """Step Date into today in other calendars, once without the reader and once with it."""
     # Seen from Greenwich, as whereabouts would say it, with no zone to move the clock to,
     # so the Hebrew day says when the sun sets there to begin it. What was there before is
-    # put back after, or nowhere, since the shell can't see a removed file come back.
-    fix = "$XDG_RUNTIME_DIR/whereabouts.json"
+    # put back after, or nowhere.
     said = {"v": 2, "latitude": 51.4769, "longitude": -0.0005, "accuracy": 3000, "when": 1,
             "place": None, "zone": None}  # fmt: skip
-    desktop.as_account(f"if test -e {fix}; then cp {fix} {fix}.kept; fi")
-    desktop.as_account(f"echo '{json.dumps(said)}' > {fix}.new && mv {fix}.new {fix}")
+    was = desktop.here_kept()
+    desktop.found_at(said)
     try:
         calendars_asked(desktop)
     finally:
-        desktop.as_account(
-            f"if test -e {fix}.kept; then mv {fix}.kept {fix}; "
-            f"else echo '{{}}' > {fix}.new && mv {fix}.new {fix}; fi"
-        )
+        desktop.found_at(was)
 
 
 def calendars_from_now(desktop: Desktop) -> None:

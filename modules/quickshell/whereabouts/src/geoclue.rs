@@ -70,6 +70,18 @@ trait Location {
     #[zbus(property)]
     fn accuracy(&self) -> zbus::Result<f64>;
 
+    /// Metres above the sea, or the least a double holds while unknown.
+    #[zbus(property)]
+    fn altitude(&self) -> zbus::Result<f64>;
+
+    /// Metres a second, or -1 while unknown.
+    #[zbus(property)]
+    fn speed(&self) -> zbus::Result<f64>;
+
+    /// Degrees east of north, or -1 while unknown.
+    #[zbus(property)]
+    fn heading(&self) -> zbus::Result<f64>;
+
     /// Seconds and microseconds since the epoch.
     #[zbus(property)]
     fn timestamp(&self) -> zbus::Result<(u64, u64)>;
@@ -92,7 +104,7 @@ pub async fn client(bus: &Connection) -> zbus::Result<ClientProxy<'static>> {
 }
 
 /// Ends when GeoClue leaves the bus, taking every client with it, so the
-/// program stops and systemd starts it again with a client anew.
+/// daemon asks it again for a client anew.
 pub async fn gone(bus: &Connection) -> zbus::Result<impl Stream<Item = ()> + Unpin> {
     let owners = DBusProxy::new(bus).await?;
     let changes = owners
@@ -116,10 +128,21 @@ pub async fn fix(bus: &Connection, path: OwnedObjectPath) -> Option<Fix> {
         .build()
         .await
         .ok()?;
-    Fix::new(
+    let fix = Fix::new(
         location.latitude().await.ok()?,
         location.longitude().await.ok()?,
         location.accuracy().await.ok()?,
         location.timestamp().await.ok()?.0,
-    )
+    )?;
+    // GeoClue's least double for no altitude is finite, so it's named.
+    let altitude = location
+        .altitude()
+        .await
+        .ok()
+        .filter(|metres| *metres > f64::MIN);
+    Some(fix.measured(
+        altitude,
+        location.speed().await.ok(),
+        location.heading().await.ok(),
+    ))
 }

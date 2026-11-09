@@ -1955,9 +1955,10 @@ onLinux {
   # read as the launcher opens and the next meeting, whose Return is the
   # meeting's own (tests/now-moment.qml), with the margin's pieces, the
   # agents' waiting list, the weather and the calendar stood in. The
-  # location is Location.qml's own, reading the file whereabouts would
-  # write, written here, and a clock whose zone a stand-in timedatectl says
-  # is another than the place's.
+  # location is Location.qml's own, reading whereabouts itself over its
+  # socket: here is the one it kept from before it started, written here,
+  # GeoClue isn't there to say another, and the clock's zone is a link
+  # that names another than the place's.
   the-launcher-shows-the-moment-in-now =
     let
       facts = singleton "Facts.qml" ''
@@ -1997,7 +1998,7 @@ onLinux {
         function markRead(ids) {}
         function seen() {}
       '';
-      timedatectl = pkgs.writeShellScriptBin "timedatectl" "echo America/Halifax";
+      whereabouts = pkgs.callPackage ./whereabouts/package.nix { };
     in
     pkgs.runCommandLocal "the-launcher-shows-the-moment-in-now" { } ''
       mkdir launcher
@@ -2030,13 +2031,17 @@ onLinux {
       cp ${niri} Niri.qml
       cp ${notices} Notices.qml
       cp ${./Location.qml} Location.qml
+      cp ${./Daemon.qml} Daemon.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      export PATH=${timedatectl}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
+      mkdir -p $XDG_RUNTIME_DIR/whereabouts root/etc
+      ln -s /etc/zoneinfo/America/Halifax root/etc/localtime
       echo '{"v":2,"latitude":12.3457,"longitude":-98.7654,"accuracy":26000,'\
       '"when":1790000000,"place":"Kelpwater, Westmark","zone":"America/Toronto",'\
       '"country":"Canada"}' \
-        > $XDG_RUNTIME_DIR/whereabouts.json
+        > $XDG_RUNTIME_DIR/whereabouts/here.json
+      ${lib.getExe whereabouts} $XDG_RUNTIME_DIR/daemons/location.sock root \
+        $XDG_RUNTIME_DIR/whereabouts/here.json $TMPDIR/pin.json $TMPDIR/moved.json &
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
