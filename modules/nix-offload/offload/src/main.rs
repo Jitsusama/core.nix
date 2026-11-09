@@ -7,7 +7,7 @@
 //! [--beside PATH]` to name standing builders alone and lend none, or
 //! `nix-offload report --rate DOLLARS` for today's line, or `nix-offload
 //! there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
-//! [--print-out-paths] [--here] [--here-when-idle] [--outlive] [--bulk]
+//! [--print-out-paths] [--here] [--here-when-idle] [--outlive] [--bulk] [--first]
 //! (FLAKE ATTR... | DRV...)` to build a flake, or derivations, on the
 //! builder, or on a machine nearby for systems this one can't build, as
 //! src/there.rs says. A build waiting for a builder
@@ -231,9 +231,10 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     | nix-offload report --rate DOLLARS \
                     | nix-offload there [--never-ask] [-L] [--keep-going] [--apply FUNCTION] \
                     [--out DIR] [--print-out-paths] [--here] [--here-when-idle] [--outlive] \
-                    [--bulk] \
+                    [--bulk] [--first] \
                     (FLAKE ATTR... | DRV...) \
-                    | nix-offload there [--never-ask] --changed [CHANGED-CHECKS ARGUMENT...]";
+                    | nix-offload there [--never-ask] [--first] --changed \
+                    [CHANGED-CHECKS ARGUMENT...]";
 
 /// Set when the service is told to end, so its builder is journalled for the
 /// next start to give back.
@@ -443,12 +444,19 @@ fn there(arguments: &[String]) -> ExitCode {
     // machine's slices let its processes go after other work when memory
     // runs out; they read the mark from where each started, so this starts
     // again with it rather than only handing it on.
-    if env::var_os(ELSEWHERE.0).is_none_or(|value| value != ELSEWHERE.1) {
-        let again = Command::new("/proc/self/exe")
+    // `--first` is carried the same way, so everything this run starts
+    // and sends is marked sent first, and taken off what it's asked.
+    let asked_first = arguments.iter().any(|word| word == "--first");
+    if asked_first || env::var_os(ELSEWHERE.0).is_none_or(|value| value != ELSEWHERE.1) {
+        let mut again = Command::new("/proc/self/exe");
+        again
             .arg("there")
-            .args(arguments)
-            .env(ELSEWHERE.0, ELSEWHERE.1)
-            .exec();
+            .args(arguments.iter().filter(|word| *word != "--first"))
+            .env(ELSEWHERE.0, ELSEWHERE.1);
+        if asked_first {
+            again.env(there::FIRST.0, there::FIRST.1);
+        }
+        let again = again.exec();
         eprintln!("nix-offload: couldn't start there again marked: {again}");
         return ExitCode::from(71);
     }
@@ -751,8 +759,8 @@ fn at_once<'a>(
                 scope.spawn(move || {
                     let began = now();
                     let (dir, _claim) = if vm {
-                        let bulk = there::bulk(part);
-                        there::admitted(dir, &others, there::count(part), room, bulk)
+                        let rank = there::rank(part);
+                        there::admitted(dir, &others, there::count(part), room, rank)
                     } else {
                         (dir.as_path(), None)
                     };

@@ -1,10 +1,13 @@
 //! `nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
-//! [--print-out-paths] [--here] [--here-when-idle] [--outlive] [--bulk] FLAKE ATTR...`, or
+//! [--print-out-paths] [--here] [--here-when-idle] [--outlive] [--bulk] [--first]
+//! FLAKE ATTR...`, or
 //! `DRV...` in place of the flake and its attributes: builds a flake's
 //! attributes on the lent builder by sending it a command, or here with
 //! `--here` when none takes it, or with `--here-when-idle` while this
 //! machine is idle and they hold no VM test. With `--bulk`, its VM tests
-//! waiting for room let any run's that isn't go first.
+//! waiting for room let any run's that isn't go first, and with `--first`
+//! they go ahead of every other run's, as its changed-checks evaluation
+//! does for a turn on the lent builder.
 //!
 //! The build hook builds a build's inputs here and copies each up, and a
 //! VM test took 1025 s that way against 60 s here, nearly all of it the
@@ -1214,9 +1217,10 @@ impl Source {
 /// made here while this machine is idle, `--print-out-paths`,
 /// what was built brought into this store, derivations' paths,
 /// `--outlive`, a build that goes on once its caller is gone, `--bulk`,
-/// one whose VM tests let others' go first, and `--never-ask`, a run
-/// that asks the lender for no builder.
-pub const TAKES: [&str; 13] = [
+/// one whose VM tests let others' go first, `--never-ask`, a run
+/// that asks the lender for no builder, and `--first`, one that goes
+/// ahead of every other run waiting for room or for a turn.
+pub const TAKES: [&str; 14] = [
     "tree",
     "apply",
     "out",
@@ -1230,7 +1234,27 @@ pub const TAKES: [&str; 13] = [
     "outlive",
     "bulk",
     "never-ask",
+    "first",
 ];
+
+/// The variable, with its value, that marks a run sent first, as
+/// `there --first` sets it: the net's runs are, since on 8 November it
+/// tested nothing for an hour while sessions' runs held the builders.
+pub const FIRST: (&str, &str) = ("NIX_OFFLOAD_FIRST", "1");
+
+/// Whether this run was sent first.
+pub fn first() -> bool {
+    std::env::var_os(FIRST.0).is_some_and(|value| value == FIRST.1)
+}
+
+/// Where a run waiting for a VM builder's room stands among the others:
+/// one sent first ahead of every other, and a bulk one behind them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Rank {
+    First,
+    Plain,
+    Bulk,
+}
 
 /// A ref for one bundle to carry its commit under, here only while it's
 /// made. Worktrees share their repository's refs, so runs from two of them
@@ -2278,9 +2302,16 @@ pub fn count(asked: &Asked) -> usize {
     asked.attributes.len()
 }
 
-/// Whether a part is bulk, as `--bulk` asks.
-pub fn bulk(asked: &Asked) -> bool {
-    asked.bulk
+/// Where a part waits for room, as `--first` and `--bulk` ask, the
+/// first winning.
+pub fn rank(asked: &Asked) -> Rank {
+    if first() {
+        Rank::First
+    } else if asked.bulk {
+        Rank::Bulk
+    } else {
+        Rank::Plain
+    }
 }
 
 /// The VM tests a run has sent a VM builder, counted while it goes on: a
@@ -2337,13 +2368,14 @@ pub const VM_ROOM: usize = 4;
 /// A `bulk` run lets every run that isn't go before it, those waiting
 /// and those coming while it waits, and they wait for no bulk run: the
 /// after-merge net sends dozens of VM tests a round, and on 5 November a
-/// session's few waited behind the whole round.
+/// session's few waited behind the whole round. A run sent first goes
+/// ahead of every run that isn't, bulk or not.
 pub fn admitted<'a>(
     dir: &'a Path,
     others: &[&'a Path],
     count: usize,
     room: usize,
-    bulk: bool,
+    rank: Rank,
 ) -> (&'a Path, Option<Claim>) {
     use std::os::fd::AsRawFd;
     let wants = count.clamp(1, room.max(1));
@@ -2358,7 +2390,7 @@ pub fn admitted<'a>(
             return (dir, claim(dir, wants));
         }
         let busy = claimed(dir);
-        let before = ahead(dir, place.as_ref(), bulk);
+        let before = ahead(dir, place.as_ref(), rank);
         if before == 0 && (busy == 0 || busy + wants <= room) {
             // Claimed, and its place given up, before the lock is let go,
             // as dropping it does.
@@ -2367,7 +2399,7 @@ pub fn admitted<'a>(
             return (dir, claimed);
         }
         if place.is_none() {
-            place = queued(dir, wants, bulk);
+            place = queued(dir, wants, rank);
         }
         // Let go before the other's is taken, so two runs waiting on each
         // other's builders never hold one lock each and wait on the other.
@@ -2378,7 +2410,7 @@ pub fn admitted<'a>(
         if let Some((other, claimed)) = others
             .iter()
             .filter(|other| !here_warm || warm(other))
-            .find_map(|other| Some((*other, free(other, wants, room, bulk)?)))
+            .find_map(|other| Some((*other, free(other, wants, room, rank)?)))
         {
             eprintln!(
                 "nix-offload: another VM builder has room now and nothing waiting, so this goes \
@@ -2397,7 +2429,7 @@ pub fn admitted<'a>(
                 "nix-offload: the VM builder has {busy} VM tests of runs here and room for \
                  {room}{queue}, so this waits for room"
             );
-            if bulk {
+            if rank == Rank::Bulk {
                 eprintln!("nix-offload: this run is bulk, so runs that aren't go first");
             }
             said = true;
@@ -2408,9 +2440,9 @@ pub fn admitted<'a>(
 
 /// A claim of `wants` VM tests on the builder `dir`'s lender lends, taken
 /// under its lock only while no run waits there ahead of a run that's
-/// `bulk` or not and it has room for them as [`admitted`] counts it; none
+/// at its `rank` and it has room for them as [`admitted`] counts it; none
 /// otherwise.
-fn free(dir: &Path, wants: usize, room: usize, bulk: bool) -> Option<Claim> {
+fn free(dir: &Path, wants: usize, room: usize, rank: Rank) -> Option<Claim> {
     use std::os::fd::AsRawFd;
     let lock = fs::File::create(dir.join("sending.lock")).ok()?;
     // SAFETY: flock only locks the file it's given, open until dropped.
@@ -2418,7 +2450,7 @@ fn free(dir: &Path, wants: usize, room: usize, bulk: bool) -> Option<Claim> {
         return None;
     }
     let busy = claimed(dir);
-    if ahead(dir, None, bulk) == 0 && (busy == 0 || busy + wants <= room) {
+    if ahead(dir, None, rank) == 0 && (busy == 0 || busy + wants <= room) {
         claim(dir, wants)
     } else {
         None
@@ -2428,9 +2460,9 @@ fn free(dir: &Path, wants: usize, room: usize, bulk: bool) -> Option<Claim> {
 /// A place among the runs waiting for room in `dir`, after every run
 /// already there: named by when it was taken, then this run's pid, so
 /// they sort in the order they came and one whose run ended is seen, and
-/// a [`BULK`] run's marked so. It holds how many VM tests the run `wants`,
-/// which [`waiting`] counts.
-fn queued(dir: &Path, wants: usize, bulk: bool) -> Option<Claim> {
+/// a [`BULK`] or [`FIRST_PLACE`] run's marked so. It holds how many VM
+/// tests the run `wants`, which [`waiting`] counts.
+fn queued(dir: &Path, wants: usize, rank: Rank) -> Option<Claim> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let waiting = dir.join("waiting");
@@ -2443,7 +2475,11 @@ fn queued(dir: &Path, wants: usize, bulk: bool) -> Option<Claim> {
         "{came:020}.{}.{}{}",
         std::process::id(),
         NEXT.fetch_add(1, Ordering::Relaxed),
-        if bulk { BULK } else { "" }
+        match rank {
+            Rank::First => FIRST_PLACE,
+            Rank::Plain => "",
+            Rank::Bulk => BULK,
+        }
     ));
     fs::write(&path, format!("{wants}\n")).ok()?;
     Some(Claim(path))
@@ -2473,12 +2509,14 @@ pub fn waiting(dir: &Path) -> usize {
 /// What ends a bulk run's place among those waiting.
 const BULK: &str = ".bulk";
 
+/// What ends the place of a run sent first.
+const FIRST_PLACE: &str = ".first";
+
 /// How many runs still going wait for room in `dir` ahead of the one at
-/// `place`, or at all for one with no place yet: for a `bulk` run, every
-/// run that isn't and bulk ones that came before it, and for one that
-/// isn't, only those that aren't bulk and came before it. A place whose
-/// run ended without giving it up is taken away here.
-fn ahead(dir: &Path, place: Option<&Claim>, bulk: bool) -> usize {
+/// `place`, or at all for one with no place yet: every run of a rank
+/// ahead of its `rank`, and those of its own that came before it. A place
+/// whose run ended without giving it up is taken away here.
+fn ahead(dir: &Path, place: Option<&Claim>, rank: Rank) -> usize {
     let Ok(entries) = fs::read_dir(dir.join("waiting")) else {
         return 0;
     };
@@ -2490,14 +2528,14 @@ fn ahead(dir: &Path, place: Option<&Claim>, bulk: bool) -> usize {
             .to_str()
             .and_then(|name| name.split('.').nth(1)?.parse().ok());
         let came_before = mine.as_ref().is_none_or(|mine| name < *mine);
-        let theirs_bulk = name.to_str().is_some_and(|name| name.ends_with(BULK));
+        let theirs = match name.to_str() {
+            Some(name) if name.ends_with(FIRST_PLACE) => Rank::First,
+            Some(name) if name.ends_with(BULK) => Rank::Bulk,
+            _ => Rank::Plain,
+        };
         if !pid.is_some_and(runs) {
             let _ = fs::remove_file(entry.path());
-        } else if if bulk {
-            !theirs_bulk || came_before
-        } else {
-            !theirs_bulk && came_before
-        } {
+        } else if theirs < rank || (theirs == rank && came_before) {
             before += 1;
         }
     }

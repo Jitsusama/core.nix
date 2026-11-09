@@ -159,6 +159,13 @@ pub fn sending(source: Source, arguments: &[String], passed: &[String]) -> Sendi
             .join(" ");
         format!("CHANGED_CHECKS_PASSED={} ", there::quoted(&named))
     };
+    // The builder's gate reads the mark and lets a run sent first past
+    // the sessions' runs waiting for a turn at evaluating.
+    let first = if there::first() {
+        format!("{}={} ", there::FIRST.0, there::FIRST.1)
+    } else {
+        String::new()
+    };
     let command = format!(
         "set -e; rm -rf {into}; mkdir -p {into}; trap 'rm -rf {into}' EXIT; \
          command -v git >/dev/null || \
@@ -171,7 +178,7 @@ pub fn sending(source: Source, arguments: &[String], passed: &[String]) -> Sendi
          {unbundled}\
          git -C {into}/tree checkout -q -B nix-offload-changed {commit}; \
          cd {into}/tree/{}; \
-         {told}{HERE} nix run .#changed-checks -- {}",
+         {told}{HERE} {first}nix run .#changed-checks -- {}",
         dir.as_deref().unwrap_or("."),
         words.join(" ")
     );

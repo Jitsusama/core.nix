@@ -1780,7 +1780,7 @@ fn it_says_what_it_takes_a_word_a_line() {
         String::from_utf8_lossy(&said.stdout),
         concat!(
             "tree\napply\nout\nwants\nfolder\nchanged\nhere\n",
-            "here-when-idle\nprint\nderivation\noutlive\nbulk\nnever-ask\n"
+            "here-when-idle\nprint\nderivation\noutlive\nbulk\nnever-ask\nfirst\n"
         )
     );
 }
@@ -1809,9 +1809,11 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
     git(&["update-ref", "refs/remotes/origin/main", &head]);
     let offload = folder.path().join("offload");
     fs::create_dir(&offload).unwrap();
-    let run = || {
+    let run_as = |before: &[&str]| {
         Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-            .args(["there", "--changed", "--build", "--no-vm"])
+            .arg("there")
+            .args(before)
+            .args(["--changed", "--build", "--no-vm"])
             .args(["--system", "x86_64-linux"])
             .current_dir(&tree)
             .env(
@@ -1833,15 +1835,28 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
             .output()
             .unwrap()
     };
+    let run = || run_as(&[]);
     let given = || fs::read_to_string(bin.join("ssh-was-given")).unwrap();
 
-    // The lent builder evaluates and builds, in one place.
+    // Sent first, as the net's runs are, it tells the builder's gate so,
+    // which lets it past the sessions' runs waiting for a turn.
     fs::write(offload.join("store"), STORE).unwrap();
+    let ran = run_as(&["--first"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let sent = given();
+    assert!(
+        sent.contains("NIX_OFFLOAD_FIRST=1 nix run .#changed-checks"),
+        "{sent}"
+    );
+    fs::remove_dir_all(folder.path().join("nix-offload/passed")).unwrap();
+
+    // The lent builder evaluates and builds, in one place.
     let ran = run();
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
     let sent = given();
     assert_eq!(sent.lines().next(), Some("nix-offload"), "{sent}");
     within_far(sent.lines().nth(1).unwrap());
+    assert!(!sent.contains("NIX_OFFLOAD_FIRST"), "{sent}");
     for part in [
         format!("checkout -q -B nix-offload-changed {head}"),
         "nix run .#changed-checks -- --build --no-vm --system x86_64-linux".to_owned(),
@@ -3069,6 +3084,38 @@ fn a_bulk_run_waiting_for_room_lets_one_that_isnt_go_first() {
         said.contains("this run is bulk, so runs that aren't go first"),
         "{said}"
     );
+}
+
+#[test]
+fn a_run_sent_first_goes_ahead_of_every_run_waiting_for_room() {
+    // On 8 November the net tested nothing for an hour while sessions'
+    // runs held the builders, so the net's are sent first, and go ahead
+    // of runs that came before them and aren't.
+    let tests = |name: &str, count: usize, flags: &[&str]| -> Vec<String> {
+        flags
+            .iter()
+            .copied()
+            .chain(["-L", "github:o/r/abc"])
+            .map(str::to_owned)
+            .chain((0..count).map(|test| format!("checks.x.vm-{name}{test}")))
+            .collect()
+    };
+    let (building, waiting, first) = (
+        tests("a", 3, &[]),
+        tests("b", 2, &[]),
+        tests("c", 2, &["--bulk", "--first"]),
+    );
+    let (_, sent, said) = one_after_another(&[&building, &waiting, &first]);
+    let order: Vec<&str> = sent
+        .iter()
+        .map(|build| {
+            ["vm-a0", "vm-b0", "vm-c0"]
+                .into_iter()
+                .find(|test| build.contains(*test))
+                .unwrap_or(build)
+        })
+        .collect();
+    assert_eq!(order, ["vm-a0", "vm-c0", "vm-b0"], "{said}");
 }
 
 /// Two `there` runs with `runs`' arguments, the second started while the
