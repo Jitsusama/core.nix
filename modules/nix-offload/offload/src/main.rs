@@ -1420,22 +1420,16 @@ impl Sent<'_> {
                 eprintln!("nix-offload: changed-checks names its system when it builds elsewhere");
                 return Some(Finished::of(USAGE, None));
             };
-            let built = changed::building(folder, system, &targets).status();
-            let status = built.map_or(1, |built| {
-                match built.code() {
-                    // Never `NOT_TAKEN`, which would have changed-checks do
-                    // it all here, the build it was just refused included.
-                    Some(there::UNSENT) => {
-                        eprintln!(
-                            "nix-offload: {} checks were named, but no builder took their \
-                             build, so nothing was built",
-                            targets.len()
-                        );
-                        i32::from(changed::UNBUILT)
-                    }
-                    code => code.unwrap_or(1),
-                }
-            });
+            let mut build = |names: &[String]| built_evaluated(folder, system, names);
+            // What main holds in quarantine is built alone after the rest,
+            // as changed-checks builds it, so its failure blocks nothing.
+            let (blocking, held) = changed::apart(targets, &changed::held_on_main(folder));
+            let status = if blocking.is_empty() {
+                0
+            } else {
+                build(&blocking)
+            };
+            changed::built_alone(&held, &mut build);
             return Some(Finished::of(status, Some(printed)));
         }
         // Asked for and waited on, as any `there` waits, while a lender
@@ -1502,6 +1496,10 @@ impl Apart<'_> {
             .into_iter()
             .filter(|name| name.starts_with("vm-"))
             .collect();
+        // The VM tests main holds in quarantine go alone once the rest are
+        // done, as changed-checks builds them, so their failure blocks
+        // nothing; the lent builder's own run splits those it builds.
+        let (vm, held) = changed::apart(vm, &changed::held_on_main(self.sent.folder));
         let testing = if vm.is_empty() {
             None
         } else {
@@ -1516,10 +1514,20 @@ impl Apart<'_> {
         let mut rest = arguments.to_vec();
         rest.push("--no-vm".to_owned());
         let built = self.run(&rest);
-        let tested = testing.map(|testing| tested(testing, vm.len()));
+        let vm_tested = testing.map(|testing| tested(testing, vm.len()));
+        changed::built_alone(&held, &mut |names| {
+            let building = changed::building(self.sent.folder, self.system, names).spawn();
+            building.map_or_else(
+                |error| {
+                    eprintln!("nix-offload: couldn't send {} on: {error}", names.join(" "));
+                    1
+                },
+                |testing| tested(testing, names.len()),
+            )
+        });
         // The first that failed says how the whole did.
         let status = if built == 0 {
-            tested.unwrap_or(0)
+            vm_tested.unwrap_or(0)
         } else {
             built
         };
@@ -1538,6 +1546,27 @@ impl Apart<'_> {
             }
         }
     }
+}
+
+/// How building `names`, which an evaluator named, from the flake in
+/// `folder` did.
+fn built_evaluated(folder: &Path, system: &str, names: &[String]) -> i32 {
+    let built = changed::building(folder, system, names).status();
+    built.map_or(1, |built| {
+        match built.code() {
+            // Never `NOT_TAKEN`, which would have changed-checks do it all
+            // here, the build it was just refused included.
+            Some(there::UNSENT) => {
+                eprintln!(
+                    "nix-offload: {} checks were named, but no builder took their build, \
+                     so nothing was built",
+                    names.len()
+                );
+                i32::from(changed::UNBUILT)
+            }
+            code => code.unwrap_or(1),
+        }
+    })
 }
 
 /// How the `there` sending `named` VM tests on did, once it ends: never
