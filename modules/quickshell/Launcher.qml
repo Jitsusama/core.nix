@@ -493,7 +493,6 @@ Scope {
             return;
         }
         const at = current;
-        const scroll = list.contentY;
         // Said again in place, as a refresh is: composed afresh, the rows
         // took their ranked order and a row d had just closed went, since
         // the waits answer each time the machine's queue moves (the moves-
@@ -504,8 +503,6 @@ Scope {
         } finally {
             steadying = false;
         }
-        if (list.contentY !== scroll)
-            list.contentY = scroll;
         root.showMoved(at);
     }
 
@@ -4027,7 +4024,9 @@ Scope {
             typed: typed,
             at: current,
             key: row ? steadyId(row) : "",
-            scroll: list.contentY
+            // How far below the list's top its row stood, so coming back
+            // stands it there again, wherever the rows made again begin.
+            above: current >= 0 ? list.rowY(current) - list.contentY : 0
         };
     }
 
@@ -4041,10 +4040,12 @@ Scope {
         const lowest = answer || lineHeads ? -1 : 0;
         const at = left.at === -1 && (answer || lineHeads) ? -1
             : byKey >= 0 ? byKey : Math.max(lowest, Math.min(left.at, matches.length - 1));
-        list.contentY = left.scroll;
         current = at;
-        if (current >= 0)
-            list.positionViewAtIndex(current, ListView.Contain);
+        if (current < 0)
+            return;
+        list.positionViewAtIndex(current, ListView.Contain);
+        const above = Math.max(0, Math.min(left.above ?? 0, list.height - list.rowHeight(current)));
+        list.contentY = list.clamped(list.rowY(current) - above);
     }
     readonly property var offered: held.length > 0 ? held[held.length - 1].rows : []
 
@@ -4699,7 +4700,6 @@ Scope {
     function reshow(count) {
         const was = current >= 0 && selected ? steadyId(selected) : "";
         const at = current;
-        const scroll = list.contentY;
         // A provider that throws mid-search mustn't leave every later search
         // keeping its rows as a refresh does.
         steadying = true;
@@ -4717,10 +4717,12 @@ Scope {
             at: at,
             lowest: lowest
         }, steadyId);
+        // The list stays where it stands: Qt keeps the rows in view still as
+        // rows above them come or go. Put back to where it had been scrolled,
+        // it was put to a place the rows had left, above the first once rows
+        // above it went, and stopped a glide short (Joel, 2026-11-08).
         if (current !== now)
             current = now;
-        if (list.contentY !== scroll)
-            list.contentY = scroll;
         root.showMoved(at);
     }
 
@@ -5126,8 +5128,15 @@ Scope {
                 found: found.length };
         }
         const matched = Date.now();
-        compose(true);
-        list.positionViewAtBeginning();
+        // Said again in place, as each refresh at home is, the selection
+        // stays on its row and the list where it stands. Composed afresh,
+        // each refresh put the selection on the first row, sent the list to
+        // the top and put both back after, under a glide already running,
+        // a hundred times an opening: the highlight went its own way and
+        // the list stopped short of its first row (Joel, 2026-11-08).
+        compose(!steadying);
+        if (!steadying)
+            list.positionViewAtBeginning();
         searchParts = { before: began - searchBegan, lists: listed - began, rows: matched - listed,
             answers: Date.now() - matched, each: listsTook, within: costs,
             composing: composeParts };
@@ -7981,6 +7990,10 @@ Scope {
                                 list.rows = rows;
                                 for (let at = start; at < now; at += 1)
                                     rowsKept.insert(at, { key: keys[at] });
+                                // Laid out now rather than at the next frame,
+                                // so the rows drawn stand where they will and
+                                // the selection is placed from them (rowY).
+                                list.forceLayout();
                                 return false;
                             }
 
@@ -8008,20 +8021,31 @@ Scope {
                                 // A glide under way is aimed again where its
                                 // row now is, should a row above it have
                                 // changed height, so it never ends off it.
+                                // So is the list's: aimed at a place rather
+                                // than a row, it ended where the row had been,
+                                // above the first row once rows above it went,
+                                // leaving an empty band at the top (Joel,
+                                // 2026-11-08).
                                 if (same && root.typed === list.typedWas) {
                                     if (!picking.running)
                                         list.pick(false);
                                     else if (picking.to !== list.fillAt(root.current))
                                         list.pick(true);
+                                    list.reaim();
                                     Qt.callLater(root.settledNow);
                                     return;
                                 }
                                 list.typedWas = root.typed;
                                 list.settled = false;
-                                // A glide under way ends where it was going,
-                                // never stopped short.
-                                scrolling.complete();
+                                // A glide under way gives way at once, its
+                                // row shown where it now stands: ended where
+                                // it was going, it went to a place the new
+                                // rows no longer hold.
+                                const gliding = scrolling.running;
+                                scrolling.stop();
                                 list.pick(false);
+                                if (gliding && root.current >= 0)
+                                    list.positionViewAtIndex(root.current, ListView.Contain);
                                 Qt.callLater(() => list.settled = true);
                                 Qt.callLater(root.settledNow);
                             }
@@ -8031,11 +8055,38 @@ Scope {
                             // way at once to rows made afresh.
                             property real pickY: 0
 
-                            // Where the fill sits on a row, counted from
-                            // the first row's top as rowTop is; the fill
-                            // adds the list's origin, below.
+                            // Where the fill sits on a row, in the list's
+                            // own place, as its rows' y is.
                             function fillAt(at) {
-                                return list.rowTop(at) + list.rowHeight(at) - root.rowTall;
+                                return list.rowY(at) + list.rowHeight(at) - root.rowTall;
+                            }
+
+                            // Where a row's own place starts in the list,
+                            // its gap above it included, counted from a row
+                            // the list has drawn. Qt places what it hasn't
+                            // drawn by the average height of what it has,
+                            // so with a gap above some rows the origin and
+                            // the heights summed from it put the fill off
+                            // its row and aimed the list above its first,
+                            // leaving an empty band at the top (Joel,
+                            // 2026-11-08). With nothing drawn, the estimate
+                            // is all there is.
+                            function rowY(at) {
+                                const drawn = list.itemAtIndex(at) !== null ? at
+                                    : list.indexAt(list.width / 2, list.contentY + 1);
+                                const item = drawn >= 0 ? list.itemAtIndex(drawn) : null;
+                                return item === null ? list.originY + list.rowTop(at)
+                                    : item.y + list.rowTop(at) - list.rowTop(drawn);
+                            }
+
+                            // A place to scroll to, kept within the rows:
+                            // never above the first nor past the last.
+                            function clamped(to) {
+                                const last = root.matches.length - 1;
+                                const least = list.rowY(0);
+                                const most = last < 0 ? least : Math.max(least,
+                                    list.rowY(last) + list.rowHeight(last) - list.height);
+                                return Math.max(least, Math.min(to, most));
                             }
 
                             function pick(glide) {
@@ -8121,21 +8172,55 @@ Scope {
                             // far as the rows go, gliding as reveal does, so
                             // the selection moved as far keeps its place.
                             function scrollRows(by) {
+                                const top = Math.min(Math.max(0, list.inView().top + by),
+                                    Math.max(0, root.matches.length - 1));
+                                list.glide({ top }, list.clamped(list.rowY(top)));
+                            }
+
+                            // What a glide under way is going to: a row to
+                            // show ({ shown }) or to stand at the top
+                            // ({ top }), by its place among rows that stay
+                            // the same, so it's aimed again where that row
+                            // now is (reaim).
+                            property var aim: null
+
+                            function glide(aim, to) {
                                 const from = scrolling.running ? scrolling.to : list.contentY;
-                                const top = Math.max(0, list.inView().top + by);
-                                const most = list.originY
-                                    + Math.max(0, list.contentHeight - list.height);
-                                const to = Math.max(list.originY,
-                                    Math.min(list.originY + list.rowTop(top), most));
                                 if (to === from)
                                     return;
                                 if (!list.settled) {
+                                    scrolling.stop();
                                     list.contentY = to;
                                     return;
                                 }
+                                list.aim = aim;
                                 scrolling.stop();
                                 scrolling.to = to;
                                 scrolling.start();
+                            }
+
+                            // Aims a glide under way again where its row
+                            // stands now.
+                            function reaim() {
+                                if (!scrolling.running || list.aim === null)
+                                    return;
+                                const to = list.aim.top !== undefined
+                                    ? list.clamped(list.rowY(list.aim.top))
+                                    : list.showing(list.aim.shown, list.contentY);
+                                if (to === scrolling.to)
+                                    return;
+                                scrolling.stop();
+                                scrolling.to = to;
+                                scrolling.start();
+                            }
+
+                            // Where the list stands to show a row, from
+                            // where it stands, moving as little as it can.
+                            function showing(at, from) {
+                                const top = list.rowY(at);
+                                const bottom = top + list.rowHeight(at);
+                                return list.clamped(top < from ? top
+                                    : bottom > from + list.height ? bottom - list.height : from);
                             }
 
                             // Scrolls just far enough to show the row, as
@@ -8149,15 +8234,7 @@ Scope {
                                 // From where a glide under way is going, so a
                                 // second key while it runs goes on from there.
                                 const from = scrolling.running ? scrolling.to : list.contentY;
-                                const top = list.originY + list.rowTop(at);
-                                const bottom = top + list.rowHeight(at);
-                                const to = top < from ? top
-                                    : bottom > from + list.height ? bottom - list.height : from;
-                                if (to === from)
-                                    return;
-                                scrolling.stop();
-                                scrolling.to = to;
-                                scrolling.start();
+                                list.glide({ shown: at }, list.showing(at, from));
                             }
 
                             NumberAnimation {
@@ -8167,6 +8244,14 @@ Scope {
                                 duration: Theme.motion.medium
                                 easing.type: Easing.BezierSpline
                                 easing.bezierCurve: Theme.motion.curve
+                                // Ended within the rows, should they have
+                                // changed under it after its last aim.
+                                onFinished: {
+                                    list.aim = null;
+                                    const within = list.clamped(list.contentY);
+                                    if (Math.abs(within - list.contentY) > 0.5)
+                                        list.contentY = within;
+                                }
                             }
 
                             // The selection itself, under the rows, which
@@ -8185,14 +8270,13 @@ Scope {
                                 from: list.x
                                 width: listBox.width
                                 height: root.rowTall
-                                // The rows sit from the list's origin, which
-                                // moves off 0 as rows above come or go while
-                                // the list is scrolled, so the fill does too,
-                                // at once, as its row does. Counted from 0, it
-                                // stayed where its row had been, under
-                                // another row (Joel, 2026-10-29: the
-                                // highlight sat off the selected text).
-                                y: list.originY + list.pickY
+                                // Where its row is drawn (fillAt reads the
+                                // drawn rows), so rows coming or going above
+                                // a scrolled list, which move its origin and
+                                // leave the rows in view where they are,
+                                // leave it on its row too (Joel, 2026-10-29:
+                                // the highlight sat off the selected text).
+                                y: list.pickY
                                 visible: root.current >= 0 && root.current < root.matches.length
                                 // While the drawer holds the keys the row
                                 // stays marked, in the raised role rather
