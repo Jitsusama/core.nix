@@ -719,7 +719,8 @@ def test_the_launchers_picker_fetches_a_file_from_google_drive_for_the_portal(
         desktop.normal()
         desktop.down_to("Quarterly Plan")
         desktop.launcher_until(
-            lambda _: "as .docx" in " ".join(word["text"] for word in laid_out(desktop)["foot"])
+            lambda shown: (shown["selected"] or {}).get("name") == "Quarterly Plan"
+            and shown["footer"] == "as .docx"
         )
         desktop.down_to("menu.pdf")
         # Its row says its size and when it changed, as a file here does.
