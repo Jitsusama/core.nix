@@ -56,9 +56,23 @@ impl Health {
         }
     }
 
+    /// A health as [`Health::said`] says it, read back from what the daemon
+    /// keeps of its last check, or none for anything else.
+    pub fn heard(said: &Value) -> Option<Health> {
+        Some(Health {
+            reused: said.get("reused")?.as_u64()?,
+            breached: said.get("breached").and_then(Value::as_u64),
+        })
+    }
+
     /// Whether it needs Joel's attention: shared, or seen in a breach.
     pub fn troubled(&self) -> bool {
         self.reused > 0 || self.breached.is_some_and(|breached| breached > 0)
+    }
+
+    /// Whether it was seen in a breach.
+    pub fn breached(&self) -> bool {
+        self.breached.is_some_and(|breached| breached > 0)
     }
 }
 
@@ -244,5 +258,23 @@ mod tests {
         };
         assert_eq!(well.said(), json!({"reused": 0, "breached": 0}));
         assert!(!well.troubled());
+    }
+
+    #[test]
+    fn health_is_read_back_as_it_was_said() {
+        for health in [
+            Health {
+                reused: 2,
+                breached: Some(1204),
+            },
+            Health {
+                reused: 1,
+                breached: None,
+            },
+        ] {
+            assert_eq!(Health::heard(&health.said()), Some(health));
+        }
+        assert_eq!(Health::heard(&json!({"breached": 3})), None);
+        assert_eq!(Health::heard(&json!("well")), None);
     }
 }

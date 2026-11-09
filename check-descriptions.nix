@@ -1265,6 +1265,9 @@
     counting the entries that share one and matching each hash's suffix against a stand-in Have I
     Been Pwned's range, padding counting nothing, sending it five characters alone and saying no
     secret in an answer or a log;
+    keeps what an audit found in the state folder for Joel alone, holding no secret nor any hash,
+    dresses the entries with it again once the daemon starts again, holds since when trouble was
+    found until a check finds none, and tells a watch each change;
     and the passwords command sets each answer in columns under a header for a person and
     tab-separated for a program, gives the daemon's answer with --json and no secret but show's,
     finds an entry by its title and a detail by its label, lists an audit's entries with a
@@ -1280,8 +1283,9 @@
   '';
   passwords-runs-each-password-manager = ''
     on a machine with 1Password, the passwords daemon runs 1Password's manager through the system's
-    op on the daemons' socket systemd holds, copies with wl-copy and writes no core dump, and the
-    launcher's Passwords knows 1Password's program
+    op on the daemons' socket systemd holds, copies with wl-copy, writes no core dump and has a
+    state folder of its own for what the checks found, and the launcher's Passwords knows
+    1Password's program
   '';
   pause-for-calls-follows-the-calls = ''
     pause-for-calls pauses Spotify two seconds into a call, as calls counts one, and plays it five

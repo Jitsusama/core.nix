@@ -9,11 +9,16 @@
 //! know is refused; and an audit, asked by Joel alone, finds the entries
 //! sharing a password and those Have I Been Pwned's stand-in has seen in a
 //! breach, sending it each hash's five characters alone, and saying no
-//! secret, nor any hash, in an answer or a log.
+//! secret, nor any hash, in an answer or a log. What an audit found is
+//! kept in the state folder, readable by Joel alone and holding no secret
+//! nor any hash, and dresses the entries again once the daemon starts
+//! again; and since when trouble's been found holds while it does, and
+//! clears once a check finds none, each told to a watch.
 
 mod common;
 
-use std::path::Path;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
 
 use common::{AUDITING, Breaches, KEEPING, Running, SIGNED_OUT, until};
 use passwords::audit::hash;
@@ -395,4 +400,185 @@ fn an_ask_or_a_kind_it_doesnt_know_is_refused() {
     assert_eq!(refused["error"]["code"], "unknown-ask");
     let refused = client.ask(&json!({"id": 2, "ask": "list", "kind": "person"}));
     assert_eq!(refused["error"]["code"], "unknown-kind");
+}
+
+/// A folder of the test's own that outlives one run of the daemon, as the
+/// account's state folder does, gone once the test ends.
+struct Outliving(PathBuf);
+
+impl Outliving {
+    fn named(test: &str) -> Outliving {
+        let folder = std::env::temp_dir().join(format!("passwords-{test}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).unwrap();
+        Outliving(folder)
+    }
+
+    fn path(&self) -> &str {
+        self.0.to_str().unwrap()
+    }
+
+    fn kept(&self) -> PathBuf {
+        self.0.join("passwords/checked.json")
+    }
+}
+
+impl Drop for Outliving {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+#[test]
+fn what_an_audit_found_is_kept_without_a_secret_and_outlives_the_daemon() {
+    let breaches = breaches();
+    let state = Outliving::named("kept-state");
+    let set = [
+        ("PASSWORDS_BREACHES", breaches.address.as_str()),
+        ("XDG_STATE_HOME", state.path()),
+    ];
+    let checked = {
+        let running = Running::with_env("kept", &[("auditing", AUDITING)], &set);
+        let audited = running
+            .client()
+            .ask(&json!({"id": 1, "ask": "audit", "asked": true}));
+        assert_eq!(audited["reused"], 3, "{audited}");
+        let text = std::fs::read_to_string(state.kept()).expect("the audit was kept");
+        let mode = std::fs::metadata(state.kept())
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600, "it can be read by others: {mode:o}");
+        let folder = std::fs::metadata(state.0.join("passwords")).unwrap();
+        assert_eq!(folder.permissions().mode() & 0o777, 0o700);
+        // Written whole through a file beside it, which is gone.
+        assert!(!state.0.join("passwords/checked.json.writing").exists());
+        says_no_secret(&text);
+        let password = hash("password");
+        assert!(!text.contains(&password[..5]), "a hash was kept: {text}");
+        let kept: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(kept["version"], 1);
+        assert!(kept["at"].is_u64(), "{kept}");
+        assert_eq!(kept["since"], kept["at"]);
+        assert_eq!(kept["cleared"], Value::Null);
+        // Only the entries in trouble, each by its two counts.
+        let mut troubled: Vec<&String> = kept["health"].as_object().unwrap().keys().collect();
+        troubled.sort();
+        assert_eq!(
+            troubled,
+            [
+                "entry:auditing:gh",
+                "entry:auditing:gist",
+                "entry:auditing:mail"
+            ]
+        );
+        assert_eq!(
+            kept["health"]["entry:auditing:gh"],
+            json!({"reused": 2, "breached": 1204})
+        );
+        let health = running.client().ask(&json!({"id": 2, "ask": "health"}));
+        assert_eq!(health["checked"]["at"], kept["at"], "{health}");
+        assert_eq!(health["checked"]["breached"], 3, "{health}");
+        assert_eq!(health["checked"]["reused"], 3, "{health}");
+        assert_eq!(health["checked"]["troubled"], 3, "{health}");
+        health["checked"].clone()
+    };
+    // Started again, it says what the last check found before any is run
+    // or anything is read, and once its manager lists the entries, they
+    // wear their health again.
+    let running = Running::with_env("kept-again", &[("auditing", AUDITING)], &set);
+    let mut client = running.client();
+    let health = client.ask(&json!({"id": 1, "ask": "health"}));
+    assert_eq!(health["checked"], checked, "{health}");
+    let listed = client.ask(&json!({"id": 2, "ask": "list", "asked": true}));
+    assert_eq!(
+        listed["records"][0]["health"],
+        json!({"reused": 2, "breached": 1204}),
+        "{listed}"
+    );
+    assert!(listed["records"][3].get("health").is_none(), "{listed}");
+    assert!(!running.asked_of("auditing").contains("audit"));
+    says_no_secret(&running.logged());
+}
+
+/// A manager whose two logins' passwords are what `$AUDITED`'s file says
+/// as each audit asks, so a test changes them between checks, as Joel
+/// changes a password between one check and the next.
+const CHANGING: &str = r#"
+log=$1
+entry() { printf '{"id":"%s","title":"%s","category":"login","version":1}' "$1" "$2"; }
+echo '{"state":"answering"}'
+while read -r line; do
+  printf '%s\n' "$line" >> "$log"
+  [[ $line =~ \"id\":([0-9]+) ]] && id=${BASH_REMATCH[1]}
+  [[ $line =~ \"ask\":\"([a-z-]+)\" ]] && ask=${BASH_REMATCH[1]}
+  case $ask in
+    list) printf '{"id":%s,"entries":[%s,%s]}\n' "$id" "$(entry gh GitHub)" "$(entry bank Bank)" ;;
+    audit) printf '{"id":%s,"passwords":%s}\n' "$id" "$(cat "$AUDITED")" ;;
+  esac
+done
+"#;
+
+#[test]
+fn since_holds_while_a_check_finds_trouble_and_clears_once_one_finds_none() {
+    let breaches = breaches();
+    let state = Outliving::named("since-state");
+    let audited = state.0.join("audited.json");
+    let set = [
+        ("PASSWORDS_BREACHES", breaches.address.as_str()),
+        ("XDG_STATE_HOME", state.path()),
+        ("AUDITED", audited.to_str().unwrap()),
+    ];
+    let running = Running::with_env("since", &[("changing", CHANGING)], &set);
+    let mut watching = running.client();
+    watching.say(&json!({"id": "w", "ask": "watch"}));
+    watching.hear();
+    let mut client = running.client();
+    let mut check = |gh: &str, id: u64| {
+        std::fs::write(
+            &audited,
+            json!([{"entry": "gh", "value": gh}, {"entry": "bank", "value": "abc"}]).to_string(),
+        )
+        .unwrap();
+        // Each check ends at a later millisecond than the one before.
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let answer = client.ask(&json!({"id": id, "ask": "audit", "asked": true}));
+        assert!(answer.get("error").is_none(), "{answer}");
+        let told = loop {
+            let heard = watching.hear();
+            if heard.get("checked").is_some() {
+                break heard["checked"].clone();
+            }
+        };
+        let kept: Value =
+            serde_json::from_str(&std::fs::read_to_string(state.kept()).unwrap()).unwrap();
+        assert_eq!(
+            told["at"], kept["at"],
+            "the watch wasn't told what was kept"
+        );
+        told
+    };
+    // GitHub's password is breached, so trouble's found from this check on.
+    let first = check("password", 1);
+    assert_eq!(first["since"], first["at"], "{first}");
+    assert_eq!(first["breached"], 1, "{first}");
+    assert_eq!(first["cleared"], Value::Null, "{first}");
+    // Still breached at the next, it's been found since the first.
+    let second = check("password", 2);
+    assert!(second["at"].as_u64() > first["at"].as_u64(), "{second}");
+    assert_eq!(second["since"], first["since"], "{second}");
+    // Changed, none is breached or reused: it clears, and since is gone.
+    let third = check("a changed one", 3);
+    assert_eq!(third["since"], Value::Null, "{third}");
+    assert_eq!(third["cleared"], third["at"], "{third}");
+    assert_eq!(
+        (&third["breached"], &third["reused"], &third["troubled"]),
+        (&json!(0), &json!(0), &json!(0)),
+        "{third}"
+    );
+    let kept: Value =
+        serde_json::from_str(&std::fs::read_to_string(state.kept()).unwrap()).unwrap();
+    assert_eq!(kept["health"], json!({}), "{kept}");
+    let health = client.ask(&json!({"id": 4, "ask": "health"}));
+    assert_eq!(health["checked"], third, "{health}");
 }

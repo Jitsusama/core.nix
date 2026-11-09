@@ -25,7 +25,10 @@ onLinux {
   # otherwise or by a manager signed out, counts the entries sharing a
   # password and matches each hash's suffix against a stand-in Have I Been
   # Pwned's range, padding counting nothing, sending it five characters
-  # alone and saying no secret in an answer or a log. The command's tests
+  # alone and saying no secret in an answer or a log; what it found is kept
+  # in the state folder for Joel alone, holding no secret nor any hash,
+  # outlives the daemon, and holds since when trouble was found until a
+  # check finds none, each told to a watch. The command's tests
   # run too: each answer set
   # in columns under a header for a person and tab-separated for a
   # program, its --json the daemon's answer with no secret but show's, a
@@ -94,9 +97,10 @@ onLinux {
     pkgs.callPackage ./package.nix { }
   );
   # On a machine with 1Password, the daemon runs it as a password manager
-  # on the daemons' socket, which systemd holds, with wl-copy to copy and
-  # no core dump to write a secret in, and the launcher's Passwords
-  # provider knows its program.
+  # on the daemons' socket, which systemd holds, with wl-copy to copy, no
+  # core dump to write a secret in and a state folder of its own to keep
+  # what the checks found, and the launcher's Passwords provider knows its
+  # program.
   passwords-runs-each-password-manager =
     let
       home = account graphical;
@@ -110,6 +114,7 @@ onLinux {
         lib.hasInfix "%t/daemons/passwords.sock" started
         && (home.systemd.user.sockets.passwords.Socket.ListenStream or "") == "%t/daemons/passwords.sock"
         && (service.Service.LimitCORE or null) == 0
+        && (service.Service.StateDirectory or null) == "passwords"
         && lib.elem "graphical-session.target" (service.Unit.PartOf or [ ])
         && lib.any (lib.hasInfix "PASSWORDS_COPIER=") (lib.toList (service.Service.Environment or [ ]))
         && home.jitsusama.passwords.managers ? "1password"

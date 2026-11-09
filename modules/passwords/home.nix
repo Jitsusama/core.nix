@@ -16,7 +16,10 @@
 # asks, reads every password to find those reused and those breached,
 # hashing each in the daemon's memory and sending Have I Been Pwned the
 # first five characters of a hash alone; the unit restricts no network, so
-# that reaches it as it is.
+# that reaches it as it is. What the last check found, each troubled
+# entry's two counts and when trouble was found and cleared, is kept in
+# the account's state folder, so For You's to-do for it outlives a reboot;
+# never a hash or a password.
 #
 # `passwords` completes in zsh with the completion it writes itself
 # (completion.nix), which offers the entries and details the daemon holds
@@ -174,7 +177,11 @@ in
         Environment = [ "PASSWORDS_COPIER=${lib.getExe' pkgs.wl-clipboard "wl-copy"}" ];
         Restart = "on-failure";
         RestartSec = 5;
-        # Nothing it holds is ever written, and a core dump would write it.
+        # What the checks found is kept in ~/.local/state/passwords, made
+        # by systemd for Joel alone; it's the one thing the daemon writes.
+        StateDirectory = "passwords";
+        StateDirectoryMode = "0700";
+        # No secret it holds is ever written, and a core dump would write one.
         LimitCORE = 0;
       };
       Install.WantedBy = [ "graphical-session.target" ];

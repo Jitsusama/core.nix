@@ -75,7 +75,10 @@ impl Running {
     }
 
     /// The daemon with these managers, and these variables set beside the
-    /// tests' own, as `PASSWORDS_BREACHES` points it at a stand-in.
+    /// tests' own, as `PASSWORDS_BREACHES` points it at a stand-in. What
+    /// the checks find is kept in the test's own folder, never the
+    /// account's, unless `XDG_STATE_HOME` is set to another that outlives
+    /// it, as a test of a daemon starting again sets it.
     pub fn with_env(test: &str, managers: &[(&str, &str)], set: &[(&str, &str)]) -> Running {
         let folder = std::env::temp_dir().join(format!("passwords-{test}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
@@ -104,6 +107,7 @@ impl Running {
             .env("PASSWORDS_COPIER", &copier)
             .env("PASSWORDS_CLEARS_MS", "700")
             .env("COPIED", folder.join("copied"))
+            .env("XDG_STATE_HOME", folder.join("state"))
             .envs(set.iter().copied())
             .stdin(Stdio::null())
             // What it and its managers log, kept so a test can say no
