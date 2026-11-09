@@ -647,6 +647,11 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
     waiting_opened(desktop)
     desktop.follow()
     desktop.down_to("Answer the old")
+    # No check or signal will see it done, and no session of its owner's is live, so its
+    # note says nobody's watching it, in place of the old file's why (Waiting.js's watched).
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("note") == "nobody's watching this"
+    )
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: shown["rows"] == ["Mark It Done", "Put It Off"])
     # Mark It Done ends what waits, so Return writes :delete, and its line asks first; done, it
@@ -1133,10 +1138,15 @@ def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desk
         "quest": "QUEST2",
         "items": [{"id": "ask", "title": "Answer the ask", "minutes": 2, "ready": True}],
     }
+    # A look names the quest that pointed at it, which the index holds paused, and a
+    # session that's gone.
     look = {"v": 1, "id": "filtered", "title": "Read the plan", "target": "/etc/hostname",
-            "kind": "file", "state": "waiting", "at": "2026-11-08T12:00:00Z"}  # fmt: skip
+            "kind": "file", "state": "waiting", "at": "2026-11-08T12:00:00Z",
+            "quest": "QEST-20261027-GONEQA", "session": "pi-reef"}  # fmt: skip
     desktop.as_account(f"mkdir -p {MISSION}/waiting {HARNESS}/looks")
     try:
+        kept(desktop, INDEX, {"quests": [{"id": "QEST-20261027-GONEQA", "address": "GONEQA",
+                                          "title": "Reef Quest", "status": "paused"}]})  # fmt: skip
         kept(desktop, f"{HARNESS}/looks/filtered.json", look)
         # A to-do ready now is raised as a notice the moment it's heard, which would stand
         # over the launcher in the shots, so it's left to rest first, ten seconds on.
@@ -1174,12 +1184,32 @@ def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desk
                 assert {"- up", ": commands"} <= set(hints), (scale, hints)
             if scale != "1":
                 desktop.shoot(f"launcher-for-you-filtered-at-{named}")
+            else:
+                # Its drawer names its quest by its title from the index, once, and says the
+                # quest's standing beside its session (VKCF3Z, 2026-11-08).
+                desktop.launcher_until(
+                    lambda shown: (
+                        looks_drawer(shown)
+                        == ("from Reef Quest \u00b7 to look at", "pi-reef \u00b7 paused", False)
+                    )
+                )
             desktop.machine.send_chars("-")
             desktop.launcher_until(lambda shown: shown["path"][-1:] == ["For You"])
             desktop.close_launcher()
     finally:
         desktop.as_account("niri msg output winit scale 1")
-        desktop.as_account(f"rm -f {MISSION}/waiting/QUEST2.json {HARNESS}/looks/filtered.json")
+        desktop.as_account(
+            f"rm -f {MISSION}/waiting/QUEST2.json {HARNESS}/looks/filtered.json {INDEX}"
+        )
+
+
+def looks_drawer(shown: dict[str, Any]) -> tuple[str, str | None, bool] | None:
+    """Give a shown look's drawer's eyebrow, its Session, and whether a Quest fact says more."""
+    drawer = shown.get("drawer") or {}
+    if not drawer.get("shown"):
+        return None
+    facts = dict(zip(drawer["drawnFacts"], drawer["values"], strict=True))
+    return drawer["eyebrow"], facts.get("Session"), "Quest" in facts
 
 
 # A binding that throws or assigns the wrong type only warns, and
