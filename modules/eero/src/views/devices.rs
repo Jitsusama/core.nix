@@ -6,7 +6,9 @@ use super::clock::Clock;
 use super::figures::{count, figure, maybe, rate, said, signed, unknown, words, yes};
 use super::marks::marks;
 use super::text::{Align, Line, Page, Table, muted, plain, strong};
-use super::{counted, device_name, facts, head, labelled, location, on_node, titled, when};
+use super::{
+    counted, device_name, facts, head, labelled, location, off_name, on_node, titled, when,
+};
 use crate::model::{Device, DeviceOff, HomeNetwork, Rate};
 
 #[derive(serde::Serialize)]
@@ -132,16 +134,6 @@ fn profile_named<'a>(model: &'a HomeNetwork, id: &'a str) -> &'a str {
         .unwrap_or(id)
 }
 
-/// What a device not on now is called, as `device_name` says one on now.
-fn off_name(device: &DeviceOff) -> &str {
-    device
-        .name
-        .as_deref()
-        .or(device.nickname.as_deref())
-        .or(device.hostname.as_deref())
-        .unwrap_or(&device.mac)
-}
-
 /// The devices' table: a row each, its link's figures and its speed now,
 /// after a column for its node when it holds several nodes' devices.
 pub fn table(with_node: bool) -> Table {
@@ -262,6 +254,14 @@ fn who<'a>(model: &'a HomeNetwork, device: &'a Device, clock: &Clock) -> Vec<(&'
     }
     let addresses: Vec<Line> = device.addresses.iter().map(|a| vec![plain(a)]).collect();
     let node = location(model, device.node.as_deref());
+    // The address eero keeps for it, which no device has unless one's set.
+    let reserved = model
+        .internet
+        .addresses
+        .reservations
+        .iter()
+        .find(|kept| kept.mac.eq_ignore_ascii_case(&device.mac))
+        .map_or_else(|| vec![plain("no")], |kept| said(kept.address.as_deref()));
     vec![
         ("kind", facts(what)),
         (
@@ -291,6 +291,7 @@ fn who<'a>(model: &'a HomeNetwork, device: &'a Device, clock: &Clock) -> Vec<(&'
                 facts(addresses)
             },
         ),
+        ("reserved", reserved),
         ("on since", at(device.first_active.as_deref())),
         ("last active", at(device.last_active.as_deref())),
         ("first seen", at(device.first_seen.as_deref())),

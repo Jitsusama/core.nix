@@ -139,6 +139,53 @@
       "on": false,
       "name": "name 49"
     },
+    "addresses": {
+      "subnets": [
+        {
+          "kind": "main",
+          "name": "home",
+          "on": true,
+          "address": "10.0.0.0",
+          "mask": "255.255.252.0",
+          "first": "10.0.0.20",
+          "last": "10.0.0.254",
+          "internet": true,
+          "open": false
+        },
+        {
+          "kind": "guest",
+          "name": "name 49",
+          "on": false,
+          "address": "10.0.0.0",
+          "mask": "255.255.248.0",
+          "first": "10.0.0.20",
+          "last": "10.0.0.254",
+          "internet": true,
+          "open": false
+        }
+      ],
+      "reservations": [
+        {
+          "mac": "02:00:00:00:00:38",
+          "description": "network equipment 1",
+          "address": "10.0.0.208"
+        }
+      ],
+      "forwards": [],
+      "pinholes": []
+    },
+    "security": [
+      {
+        "band": "2.4 GHz",
+        "security": "wpa2"
+      },
+      {
+        "band": "5 GHz",
+        "security": "wpa2"
+      }
+    ],
+    "ac_compatibility": false,
+    "name_clash": false,
     "ddns": false,
     "backup_internet": true,
     "power_saving": false,

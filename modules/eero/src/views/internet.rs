@@ -9,7 +9,7 @@ use super::marks::marks;
 use super::nodes::traffic;
 use super::text::{Ink, Line, Page, Role, muted, plain, run, strong};
 use super::{counted, facts, head, labelled, titled};
-use crate::model::{HomeNetwork, Internet};
+use crate::model::{BandSecurity, HomeNetwork, Internet, Subnet};
 
 #[derive(serde::Serialize)]
 struct Figures<'a> {
@@ -40,6 +40,7 @@ pub fn page(model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Page {
     page.facts(0, way_out(net));
     for (title, facts) in settings(net, clock)
         .into_iter()
+        .chain(addresses(model))
         .chain(counts(net, clock, ink))
     {
         page.blank();
@@ -150,7 +151,10 @@ fn settings<'a>(net: &Internet, clock: &Clock) -> Vec<(&'a str, Facts<'a>)> {
                 ("NAT port randomization", switch(net.nat_port_randomization)),
                 ("band steering", switch(net.band_steering)),
                 ("WPA3", switch(net.wpa3)),
+                ("security", security(&net.security)),
                 ("Wi-Fi mode", said(net.wireless_mode.as_deref())),
+                ("802.11ac compatibility", switch(net.ac_compatibility)),
+                ("name clash", yes(net.name_clash)),
                 ("MLO mode", said(net.mlo_mode.as_deref())),
                 ("DDNS", switch(net.ddns)),
                 ("backup internet", switch(net.backup_internet)),
@@ -179,6 +183,117 @@ fn settings<'a>(net: &Internet, clock: &Clock) -> Vec<(&'a str, Facts<'a>)> {
             ],
         ),
     ]
+}
+
+/// Each band's security, as its acronym: 2.4 GHz WPA2 · 5 GHz WPA2.
+fn security(bands: &[BandSecurity]) -> Line {
+    if bands.is_empty() {
+        return unknown();
+    }
+    facts(
+        bands
+            .iter()
+            .map(|band| labelled(&band.band, vec![plain(band.security.to_uppercase())]))
+            .collect(),
+    )
+}
+
+/// How the network hands out addresses: each subnet and its DHCP range,
+/// the addresses kept for a device, and what's let in from outside, each
+/// saying none rather than giving way, since none is the figure.
+fn addresses<'a>(model: &HomeNetwork) -> Vec<(&'a str, Facts<'a>)> {
+    let kept = &model.internet.addresses;
+    let mut each: Facts = kept
+        .subnets
+        .iter()
+        .map(|subnet| {
+            let label = match subnet.kind.as_deref() {
+                Some("main") => "main",
+                Some("guest") => "guest",
+                _ => "subnet",
+            };
+            (label, subnet_line(subnet))
+        })
+        .collect();
+    if kept.reservations.is_empty() {
+        each.push(("reserved", vec![plain("none")]));
+    }
+    for reserved in &kept.reservations {
+        // The device's own name where eero lists it, else the label the
+        // reservation was given, and that label too when it says more.
+        let device = super::listed_name(model, &reserved.mac);
+        let label = reserved.description.as_deref();
+        let name = device.or(label).unwrap_or(&reserved.mac);
+        let more = match (device, label) {
+            (Some(device), Some(label)) if device != label => labelled("label", vec![plain(label)]),
+            _ => Vec::new(),
+        };
+        each.push((
+            "reserved",
+            facts(vec![
+                said(reserved.address.as_deref()),
+                vec![plain(name)],
+                more,
+            ]),
+        ));
+    }
+    // eero's own words for each, since none has given its shape.
+    for (label, list) in [
+        ("forwards", &kept.forwards),
+        ("IPv6 pinholes", &kept.pinholes),
+    ] {
+        if list.is_empty() {
+            each.push((label, vec![plain("none")]));
+        }
+        for one in list {
+            each.push((label, vec![plain(one.to_string())]));
+        }
+    }
+    vec![("addresses", each)]
+}
+
+/// A subnet: its address and prefix, the range DHCP hands out, and what
+/// sets it apart, a part that isn't so giving way.
+fn subnet_line(subnet: &Subnet) -> Line {
+    let address = match (
+        subnet.address.as_deref(),
+        subnet.mask.as_deref().and_then(prefix),
+    ) {
+        (Some(address), Some(bits)) => vec![plain(format!("{address}/{bits}"))],
+        (address, _) => facts(vec![
+            said(address),
+            maybe(subnet.mask.as_deref(), |mask| {
+                labelled("mask", vec![plain(mask)])
+            }),
+        ]),
+    };
+    let range = match (subnet.first.as_deref(), subnet.last.as_deref()) {
+        (Some(first), Some(last)) => labelled("DHCP", vec![plain(format!("{first} to {last}"))]),
+        _ => Vec::new(),
+    };
+    let part = |so: bool, word: &str| if so { vec![plain(word)] } else { Vec::new() };
+    facts(vec![
+        address,
+        range,
+        part(subnet.on == Some(false), "off"),
+        part(subnet.internet == Some(false), "no internet"),
+        part(subnet.open == Some(true), "open"),
+    ])
+}
+
+/// The prefix length a mask such as 255.255.252.0 is, none for a mask
+/// whose ones don't run unbroken from the left.
+fn prefix(mask: &str) -> Option<u32> {
+    let bits = mask
+        .split('.')
+        .map(|part| part.parse::<u8>().ok())
+        .collect::<Option<Vec<u8>>>()?;
+    let [a, b, c, d] = bits.as_slice() else {
+        return None;
+    };
+    let whole = u32::from_be_bytes([*a, *b, *c, *d]);
+    let ones = whole.leading_ones();
+    (whole.checked_shl(ones).unwrap_or(0) == 0).then_some(ones)
 }
 
 /// What eero counted and measured: nodes and devices, the speed tests,

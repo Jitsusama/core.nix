@@ -360,6 +360,11 @@ impl Daemon {
                     ("cellular_backup_events", &mut answers.outages),
                     ("profiles", &mut answers.profiles),
                     ("app_events", &mut answers.events),
+                    ("subnets_config", &mut answers.subnets),
+                    ("routing", &mut answers.routing),
+                    ("wpa3_per_band", &mut answers.security),
+                    ("ac_compat", &mut answers.ac_compatibility),
+                    ("network_scan", &mut answers.scan),
                 ] {
                     kept(cloud.get(&format!("{network}/{path}")), answer)?;
                 }

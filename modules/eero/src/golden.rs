@@ -53,6 +53,11 @@ pub fn contract_answers() -> Answers {
             .map(|id| (id.to_owned(), contract(&format!("usage.profile.{id}.json"))))
             .collect(),
         events: contract("net.app_events.json"),
+        subnets: contract("net.subnets_config.json"),
+        routing: contract("net.routing.json"),
+        security: contract("net.wpa3_per_band.json"),
+        ac_compatibility: contract("net.ac_compat.json"),
+        scan: contract("net.network_scan.json"),
     }
 }
 
