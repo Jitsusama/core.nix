@@ -596,8 +596,7 @@ def test_agents_says_how_its_sessions_stand_together_at_home_and_found_by_name(
     shell.launcher_ready()
     shell.launcher_until(
         lambda shown: any(
-            thing["is"] == "collection:agents"
-            and thing["reads"] == f"Agents \u00b7 {together}"
+            thing["is"] == "collection:agents" and thing["reads"] == f"Agents \u00b7 {together}"
             for thing in shown["things"]
         )
     )

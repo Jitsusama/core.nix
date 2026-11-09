@@ -1992,7 +1992,7 @@ Scope {
     // made once: said as items, its side is them joined, as Now's first
     // thing waiting is, else what it says whole (homeSays), null for
     // nothing of its own.
-    function saying(source) {
+    function sidesOf(source) {
         const items = source.homeItems();
         return items.length > 0
             ? { side: items.map(item => item.said).join(" \u00b7 "), sideItems: items }
@@ -2006,7 +2006,7 @@ Scope {
     // right, its answer by name, read as the launcher opens, as home is.
     function named(source) {
         const collection = source.collection;
-        const says = saying(source);
+        const says = sidesOf(source);
         const row = Object.assign(whole(source, false, false), { weight: source.weight },
             says.side !== null ? says : {});
         row.prepared = Fuzzy.prepare(row.name);
@@ -3153,7 +3153,7 @@ Scope {
         const members = !read ? [] : rowsRead ? source.memberNames(held)
             : source.memberNames();
         const none = members.length === 0 ? collection.none ?? "" : "";
-        const says = read ? saying(source) : { side: "", sideItems: [] };
+        const says = read ? sidesOf(source) : { side: "", sideItems: [] };
         const side = read ? PlaceRow.side(says.side,
             rowsRead ? source.counted(held) : "", none) : "";
         const row = {
