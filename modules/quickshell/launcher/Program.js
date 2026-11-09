@@ -8,9 +8,8 @@
 // so tests/program-drawer.qml holds it in Qt's own engine.
 .pragma library
 .import "../FileFacts.js" as FileFacts
+.import "Numbers.js" as Numbers
 
-// How many significant figures a measured share is said to.
-const SIGNIFICANT = 3;
 // Parts of a value, and a list alone in one, run on a dot.
 const DOT = " \u00b7 ";
 // A file's kind by the name its files end in, a glob as `*.pdf`.
@@ -48,12 +47,14 @@ function eyebrow(places, kind, said) {
     return kind === "" ? on : `${on}${DOT}${kind}`;
 }
 
-// A share of the whole machine, from 0 to 1, as a percentage to three
-// significant figures, as every measured figure is: 4.50%, 37.0%; none
-// at all reads "0%", as the machine's Using It says it, since nothing has
-// no places to read it to.
-function percent(share) {
-    return share === 0 ? "0%" : `${(share * 100).toPrecision(SIGNIFICANT)}%`;
+// A share of the whole machine, from 0 to 1, as a percentage by the
+// launcher's one rule (Numbers.significant), three significant digits with
+// their zeros kept, pointed as `marks` say: 4.50%, 37.0%; none at all
+// reads "0%", as the machine's Using It says it, since nothing has no
+// places to read it to.
+function percent(share, marks) {
+    return share === 0 ? "0%"
+        : `${Numbers.significant(share * 100, marks?.group, marks?.point)}%`;
 }
 
 // What a program's processes use, from what the machine daemon says of
@@ -183,7 +184,7 @@ function facts(known, named, said) {
     const figure = (id, say) => (used ? own(id)(say(used))
         : { label: named(id), value: known.asking ? null : "" });
     return [
-        figure("processor", one => percent(one.processor)),
+        figure("processor", one => percent(one.processor, known.marks)),
         figure("memory", one => FileFacts.weighed(one.memory)),
         figure("processes", one => String(one.count)),
         own("playing")(known.playing ?? "")

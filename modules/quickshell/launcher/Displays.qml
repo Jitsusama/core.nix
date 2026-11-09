@@ -661,7 +661,8 @@ Provider {
                 named: id => provider.partName(id),
                 said: (id, key) => provider.partSaid(id, key),
                 turned: transform => provider.turnedSaid(transform)
-            }), edid, physical === "" ? [] : [{ label: partName("size"), value: physical }]),
+            }, settings), edid,
+                physical === "" ? [] : [{ label: partName("size"), value: physical }]),
                 [partName("serial")])
         };
     }

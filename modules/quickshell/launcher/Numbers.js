@@ -69,6 +69,9 @@ const TRAILING_ZEROS = /\.?0+$/;
 const PLACES = 10;
 // The digits a measured figure is said to (VKCF3Z, 2026-11-07).
 const SIGNIFICANT = 3;
+// The real minus a measure under nothing takes, never a hyphen
+// (VKCF3Z, 2026-11-08); a sum's answer keeps the hyphen it was typed with.
+const MINUS = "\u2212";
 // What a place is divided by for its last two digits.
 const HUNDREDS = 100;
 // The teens, 11th to 13th, which end in "th" whatever their last digit.
@@ -95,15 +98,19 @@ function format(value, decimals, group, point) {
 }
 
 // A measured figure to three significant digits, its zeros kept so each
-// says as much as the next: 28.47 as "28.5", 5.2 as "5.20", 0 as "0". One
-// past three whole digits is rounded and grouped: 1234 as "1,230".
+// says as much as the next: 28.47 as "28.5", 5.2 as "5.20", 0 as "0",
+// -3.2 as "\u22123.20". One past three whole digits is rounded and grouped:
+// 1234 as "1,230". It's the launcher's one rule for a measure, whatever
+// it measures; a figure that's a name, as a set point, a version or a
+// refresh rate, keeps its own digits and never comes here (VKCF3Z,
+// 2026-11-08).
 function significant(value, group, point) {
     const rounded = Number(Number(value).toPrecision(SIGNIFICANT));
     if (rounded === 0) {
         return "0";
     }
     const places = Math.max(0, SIGNIFICANT - 1 - Math.floor(Math.log10(Math.abs(rounded))));
-    const said = format(rounded, places, group, point);
+    const said = format(rounded, places, group, point).replace("-", MINUS);
     if (places === 0) {
         return said;
     }

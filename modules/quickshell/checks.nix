@@ -3491,6 +3491,7 @@ onLinux {
       mkdir launcher
       cp ${../../tests/program-drawer.qml} program-drawer.qml
       cp ${./launcher/Program.js} launcher/Program.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./FileFacts.js} FileFacts.js
       cp ${./When.js} When.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
