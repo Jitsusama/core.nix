@@ -26,6 +26,7 @@ import "../Marks.js" as Marks
 import "../When.js" as When
 import "Ago.js" as Ago
 import "ForYou.js" as ForYou
+import "ForYouFilter.js" as Filter
 import "NowGroups.js" as Groups
 import "Order.js" as Order
 import "Moment.js" as Moment
@@ -1049,8 +1050,64 @@ Provider {
         nested: true,
         verbs: () => provider.waitingRows(),
         targets: () => provider.waitingRows(),
+        commands: () => provider.filterCommands(null),
         run: () => provider.launcher?.enter(provider.waiting)
     })
+
+    // The words a filter's kinds and sources are said in, for its head.
+    readonly property var filterSaid: Filter.saidFrom(Object.keys(Words.things),
+        id => Words.name(id))
+
+    // For You's :filter, from For You or from a filter inside it, `from`:
+    // a step into the rows of a kind, a source or both (ForYouFilter.js),
+    // as VKCF3Z ruled it (2026-11-08). From inside a filter it narrows that
+    // one and takes its place, so `-` is always one step back out to
+    // everything. Tab offers the kinds and sources there, with how many.
+    // The rows are read once, as the line opens, so a key typed after it
+    // weighs none of them again, as :set's options are (Launcher.qml's
+    // standingOptions).
+    function filterCommands(from) {
+        const rows = waitingRows();
+        return [{
+                command: "filter",
+                short: "filt",
+                title: (Words.field.command ?? {}).filter ?? "",
+                bang: false,
+                args: arg => Filter.offered(rows, arg, filterSaid, from),
+                run: call => {
+                    const filter = Filter.asked(call.arg, rows, filterSaid, from);
+                    if (filter.error !== undefined) {
+                        provider.launcher?.commandSay(filter.error, true);
+                        return;
+                    }
+                    if (from !== null)
+                        provider.launcher?.back();
+                    provider.launcher?.enter(filterRow(filter));
+                }
+            }];
+    }
+
+    // A filter's place, named for what it keeps, which the head shows after
+    // For You. What it holds is For You's rows as they stand when it's
+    // stepped into, in For You's order.
+    function filterRow(filter) {
+        const rows = () => Filter.filtered(waitingRows(), filter);
+        const row = member({
+            key: `on:waitingOnYou:filter:${Filter.keyOf(filter)}`,
+            verb: "more",
+            stays: true,
+            empty: Words.of("on:waiting").empty,
+            name: Filter.heading(filter, filterSaid),
+            glyph: Theme.glyph.waitsOnJoel,
+            hue: "strong",
+            nested: true,
+            verbs: rows,
+            targets: rows,
+            commands: () => filterCommands(filter),
+            run: () => provider.launcher?.enter(row)
+        });
+        return row;
+    }
     // What home's Now leads with: the first thing waiting, after its row's
     // own name, or nothing.
     readonly property string foremost: first === "" ? ""

@@ -1025,6 +1025,24 @@ onLinux {
       touch $out
     '';
 
+  # For You's :filter narrows to a kind and a source, by their words, as
+  # VKCF3Z ruled it; tests/for-you-filter.qml holds launcher/ForYouFilter.js
+  # to it in Qt's own engine.
+  for-you-narrows-by-kind-and-source =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "for-you-narrows-by-kind-and-source" { } ''
+      cp ${../../tests/for-you-filter.qml} for-you-filter.qml
+      cp ${./launcher/ForYouFilter.js} ForYouFilter.js
+      cp ${./launcher/Order.js} Order.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml for-you-filter.qml
+      touch $out
+    '';
+
   # Each kind of list keeps its one order with nothing typed (docs/design.md,
   # Lists): tests/order.qml holds launcher/Order.js's orders to the rule in
   # Qt's own engine, and tests/every-list-keeps-its-kinds-order.py walks each
@@ -1871,6 +1889,7 @@ onLinux {
       cp ${./launcher/NowGroups.js} launcher/NowGroups.js
       cp ${./launcher/Order.js} launcher/Order.js
       cp ${./launcher/ForYou.js} launcher/ForYou.js
+      cp ${./launcher/ForYouFilter.js} launcher/ForYouFilter.js
       cp ${./launcher/Ago.js} launcher/Ago.js
       cp ${./launcher/Here.js} launcher/Here.js
       cp ${./When.js} When.js

@@ -2476,7 +2476,10 @@ nor Space ?: in visual the command line, then d, then y. A key that comes
 and goes with the row is drawn furthest from Return, so nothing else moves
 when it does, and which gives way follows need rather than place: on the
 find the completion first, then next time, and never Tab in, which is
-named wherever Tab goes in and nowhere it doesn't, Ctrl+] never. On held
+named wherever Tab goes in and nowhere it doesn't, Ctrl+] never; in
+normal Tab in first, then d and y, which Space ? lists, so - up and :
+outlast them, - being the one way back out of a step such as a filter
+(VKCF3Z, 2026-11-08). On held
 notices d stays too, and the position gives way whole before any of them.
 Return's place holds the widest verb among the rows it may name: on the
 find those the text typed now lists, measured again at each letter or

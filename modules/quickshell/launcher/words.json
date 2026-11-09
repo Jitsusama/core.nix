@@ -6624,6 +6624,46 @@
       "name": "Item"
     },
     {
+      "id": "for-you:kind:do",
+      "in": "on:waiting",
+      "name": "To-Dos"
+    },
+    {
+      "id": "for-you:kind:look",
+      "in": "on:waiting",
+      "name": "Looks"
+    },
+    {
+      "id": "for-you:kind:try",
+      "in": "on:waiting",
+      "name": "To Try"
+    },
+    {
+      "id": "for-you:source:sessions",
+      "in": "on:waiting",
+      "name": "Sessions"
+    },
+    {
+      "id": "for-you:source:mail",
+      "in": "on:waiting",
+      "name": "Mail"
+    },
+    {
+      "id": "for-you:source:slack",
+      "in": "on:waiting",
+      "name": "Slack"
+    },
+    {
+      "id": "for-you:source:calendar",
+      "in": "on:waiting",
+      "name": "Calendar"
+    },
+    {
+      "id": "for-you:source:desktop",
+      "in": "on:waiting",
+      "name": "Desktop"
+    },
+    {
       "id": "on:waiting:history",
       "in": "on",
       "name": "History",
@@ -11674,6 +11714,7 @@
       "set": "Set an Option",
       "setlocal": "Set an Option of This",
       "history": "List Earlier Lines",
+      "filter": "Show Only a Kind or Source",
       "row": "Go to a Row",
       "on": "on {things}",
       "onSome": "on {some} of {all}",

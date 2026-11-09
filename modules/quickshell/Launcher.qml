@@ -2438,7 +2438,7 @@ Scope {
         // goes with the row (Joel, 2026-11-05: "in programs i don't
         // understand how to go to sub commands on a program"). It's the
         // most needed, though, so the others give way before it
-        // (findYielding).
+        // (footYielding).
         const stepping = stepsIn(choice) || stepsThing(choice);
         if (!stepping && !choice.still && (holdsParts(choice) || !!choice.landsIn))
             taught.push([hintKey("into", "find"), hints.in ?? ""]);
@@ -2464,11 +2464,21 @@ Scope {
     // already shows, then less to type or next time, so Tab in and
     // Return never go (VKCF3Z, 2026-11-06: at "k", "Tab in \u00b7
     // Super+\u21b5 next time \u00b7 \u21b5 start", Tab being Ctrl+]'s
-    // named twin since 2026-11-07). Other modes give way
+    // named twin since 2026-11-07). Normal's Tab in goes first, as it's
+    // drawn furthest, then the operators' d and y, which Space ? lists,
+    // so - up and : outlast them: in a step such as a filter of For You,
+    // - is the one way back (VKCF3Z, 2026-11-08, on a look's foot at 2
+    // saying only "Space ? keys \u00b7 \u21b5 open"). Other modes give way
     // furthest from Return first.
-    readonly property var findYielding: prompt.mode !== "find" ? [] : [
-        (Words.field.hints ?? {}).complete, (Words.field.hints ?? {}).enough,
-        (Words.field.hints ?? {}).nextTime].filter(word => !!word)
+    readonly property var footYielding: {
+        const hints = Words.field.hints ?? {};
+        if (prompt.mode === "find")
+            return [hints.complete, hints.enough, hints.nextTime].filter(word => !!word);
+        if (prompt.modal && prompt.mode === "normal" && !visual)
+            return [hints.in, ...(selected ? operatorKeys(selected) : []).map(key => key[1])]
+                .filter(word => !!word);
+        return [];
+    }
 
     // An ending row's keys: Return and the line it writes, "\u21b5 :disconnect";
     // on the find, how to get to normal's keys; in normal, - up where a step
@@ -8584,7 +8594,7 @@ Scope {
                             - statusLine.factsAt - standing.least - Theme.space.rung.groups
                             - (prompt.mode === "find" ? 0 : modeWord.room)
                         readonly property var kept: Standing.keysFitted(told,
-                            told => root.keysWide(told, foot.loose), keysRoom, root.findYielding)
+                            told => root.keysWide(told, foot.loose), keysRoom, root.footYielding)
                         readonly property real returnPlace: told.length === 0 ? 0
                             : loose ? statusLine.keys.advance(told[0][0], told[0][1])
                             : root.returnPlace(told[0])
