@@ -302,7 +302,7 @@
   # here rather than in a host. Its seams are there to detect, and a turn its
   # durable generation commits is the host's to end or continue. Every pi an
   # account starts stays unpatched: only this check builds the patched one.
-  pi-host-keeps-turns-its-own =
+  pi-hosted-keeps-turns-its-own =
     let
       hosted = pkgs.pi-coding-agent.overrideAttrs (old: {
         patches = (old.patches or [ ]) ++ [
@@ -320,9 +320,9 @@
         '';
       });
     in
-    pkgs.runCommandLocal "pi-host-keeps-turns-its-own" { } ''
+    pkgs.runCommandLocal "pi-hosted-keeps-turns-its-own" { } ''
       HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
-        ${./tests/pi-host-keeps-turns-its-own.mjs} ${hosted}/lib/node_modules/pi-monorepo
+        ${./tests/pi-hosted-keeps-turns-its-own.mjs} ${hosted}/lib/node_modules/pi-monorepo
       touch $out
     '';
 

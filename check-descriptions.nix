@@ -1430,7 +1430,7 @@
     or end, watched in each package's loaded folder, removes the versions no pi runs, however many
     pis start or end at once
   '';
-  pi-host-keeps-turns-its-own = ''
+  pi-hosted-keeps-turns-its-own = ''
     pi built with the host's patches, applied exactly, shows both seams a host detects, builds a
     session's agent from pi's own options through the host, and a turn its durable generation
     commits waits for the host to end or continue it, once, across recovery
