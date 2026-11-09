@@ -328,7 +328,7 @@ def test_a_rows_words_are_in_the_serif_on_its_names_baseline(
         leaves_kitty(desktop)
         washes_what_it_finds(desktop, scale)
         numbers_programs(desktop, scale)
-        counts_before_its_chord(desktop, scale)
+        counts_with_its_chord_in_the_foot(desktop, scale)
         says_on_its_row(desktop, scale)
 
 
@@ -391,12 +391,12 @@ def washes_what_it_finds(desktop: Desktop, scale: str) -> None:
     desktop.close_launcher()
 
 
-def counts_before_its_chord(desktop: Desktop, scale: str) -> None:
+def counts_with_its_chord_in_the_foot(desktop: Desktop, scale: str) -> None:
     """Step into Desktop, whose collections each open by a chord, and shoot their counts.
 
-    A collection listed whole outside home says how many it holds at its right, a muted dot
-    from its chord, as the status line joins its facts (VKCF3Z, 2026-11-05). A find's rows
-    say no count, which would read all of each at every key.
+    A collection's row reads in Desktop as it does at home: how many it holds at its right,
+    and its chord taught in the foot as the next time's way, never drawn on the row (VKCF3Z,
+    2a429f67). A find's rows say no count, which would read all of each at every key.
     """
     desktop.launcher_until(lambda shown: not shown["open"])
     desktop.as_account("qs ipc call launcher toggle")
@@ -406,7 +406,9 @@ def counts_before_its_chord(desktop: Desktop, scale: str) -> None:
     desktop.launcher_until(lambda shown: shown["held"] == ["desktop"])
     selected = desktop.showing()["selected"]
     assert selected["side"], f"at {scale} Desktop's first has no count: {selected}"
-    assert selected["chord"], f"at {scale} Desktop's first has no chord: {selected}"
+    assert selected["chord"] == "", f"at {scale} Desktop's first draws its chord: {selected}"
+    taught = " ".join(desktop.showing()["wanted"])
+    assert "next time" in taught, f"at {scale} the foot doesn't teach its chord: {taught}"
     desktop.shoot(f"launcher-desktop-counts-at-{scale.replace('.', '-')}")
     desktop.close_launcher()
 

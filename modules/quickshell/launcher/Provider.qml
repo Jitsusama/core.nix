@@ -213,8 +213,9 @@ Scope {
         return null;
     }
 
-    // What Home's row says it holds in place of naming what it holds, as
-    // Agents says how its sessions stand together, or null to name them.
+    // How its row says it stands at its right, at home and wherever else
+    // it's found, as Agents says how its sessions stand together, or null
+    // to say how many it holds (PlaceRow.js).
     function homeSays() {
         return null;
     }
@@ -258,6 +259,13 @@ Scope {
             return;
         keeping.rows = keeping.next;
         keeping.next = null;
+    }
+
+    // The names its row says after its own: each thing it holds, but for
+    // one folded into it, as Agents' Start a Session does something there
+    // rather than being one of what it holds.
+    function memberNames() {
+        return everything().filter(one => one.folded !== true).map(one => one.name);
     }
 
     // The one row a source ends every search at the top with, after
