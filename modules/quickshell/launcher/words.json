@@ -5258,7 +5258,9 @@
         "unnamed": "not named yet",
         "notFound": "not found yet",
         "knows": "found, {within}",
-        "elsewhere": "keeps {zone} \u00b7 not following"
+        "elsewhere": "keeps {zone} \u00b7 not following",
+        "nearEdge": "near a time zone's edge",
+        "foundWithin": "found {within}"
       },
       "tells": {
         "leftOut": "Neither Wi-Fi nor a network's address gives altitude, speed or heading."

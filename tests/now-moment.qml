@@ -207,12 +207,15 @@ ShellRoot {
         WaitingOnYou.foremost = null;
 
         // The location says its town, and that the place keeps another zone
-        // than the clock, in the colour of what wants a look.
+        // than the clock, in the colour of what wants a look, and why the
+        // clock didn't follow: found only to 26 km, with nothing said of
+        // the zone round it, it's wider than the clock follows.
         const location = rows[2];
         expect("the location says its town", location.side === "Kelpwater, Westmark",
             location.side);
         expect("and that the place keeps another zone",
-            location.note === "keeps America/Toronto \u00b7 not following"
+            location.note
+                === "keeps America/Toronto \u00b7 not following \u00b7 found within 26 km"
                 && location.hue === "strong", `${location.note} ${location.hue}`);
         const inside = location.verbs();
         // In the design's order: its town and country, how it knows and
