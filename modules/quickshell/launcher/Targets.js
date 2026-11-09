@@ -76,10 +76,24 @@ function sentAs(targets, streams, target) {
     return next;
 }
 
-// The commands that send each stream to a device, by its name, or back to
-// the default, given "".
+// What sends each stream to a device, by its name, or back to the default,
+// given "": each { id, target, command }, one a stream whose id is a whole
+// number, as pipewire's are, the rest left alone. "--" ends pw-metadata's
+// options first, so a name opening with "-" is a name.
 function sending(program, streams, target) {
-    return streams.map(stream => target === ""
-        ? [program, "-n", "default", "-d", String(stream.id), TARGET]
-        : [program, "-n", "default", String(stream.id), TARGET, target]);
+    return streams.filter(stream => Number.isInteger(stream.id) && stream.id >= 0)
+        .map(stream => {
+            const id = String(stream.id);
+            const command = target === ""
+                ? [program, "-n", "default", "-d", "--", id, TARGET]
+                : [program, "-n", "default", "--", id, TARGET, target];
+            return { id, target, command };
+        });
+}
+
+// The value :setlocal takes for the default, beside each device's name.
+const DEFAULT = "default";
+
+function byDefault() {
+    return DEFAULT;
 }

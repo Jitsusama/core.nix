@@ -69,17 +69,19 @@ def sends_a_program(desktop: Desktop) -> None:
     Its Plays On steps in to the default and each output, each said by its value alone. Picking
     one sets its stream's target.object, which WirePlumber moves it by, and the launcher stays
     with the program, on its new device's path, on Plays On, which says the device it's sent
-    to, or the default and the device that is (VKCF3Z, 2026-11-09).
+    to, or the default and the device that is (VKCF3Z, 2026-11-09). pw-cat names no target of
+    its own, so back on the default it follows the default where it moves next.
     """
     machine = desktop.machine
-    # Silence, as fast as the node plays it, which pw-cat paces.
+    # Silence, as fast as the node plays it, which pw-cat paces, on the
+    # default, the speakers.
     desktop.as_account(
         "systemd-run --user --collect --quiet --unit=sent -- sh -c "
         + shlex.quote(
-            "pw-cat --playback --raw --format s16 --rate 48000 --channels 2"
-            " --target stand-in-speakers - < /dev/zero"
+            "pw-cat --playback --raw --format s16 --rate 48000 --channels 2 - < /dev/zero"
         )
     )
+    sound_heard_on(desktop, "stand-in-speakers")
     sound_device(desktop, "speakers", "speakers")
     desktop.launcher_until(lambda shown: "Playing" in shown["rows"])
     desktop.down_to("Playing")
@@ -118,7 +120,37 @@ def sends_a_program(desktop: Desktop) -> None:
         else:
             machine.wait_until_fails(sent, timeout=WAIT)
     desktop.close_launcher()
+    # Following the default again, it goes where the default goes, and the
+    # speakers are the default again after.
+    for output in ["stand-in-headphones", "stand-in-speakers"]:
+        named = {
+            node["info"]["props"].get("node.name"): int(node["id"])
+            for node in sound_nodes(desktop)
+            if node.get("type") == "PipeWire:Interface:Node"
+        }
+        desktop.as_account(f"wpctl set-default {named[output]}")
+        sound_heard_on(desktop, output)
     desktop.as_account("systemctl --user stop sent")
+
+
+def sound_heard_on(desktop: Desktop, output: str) -> None:
+    """Wait until pw-cat's stream is linked to this output, as the sound server lists it."""
+
+    def linked(_: bool) -> bool:  # As retry calls it.
+        nodes = sound_nodes(desktop)
+        props = {
+            int(node["id"]): node["info"]["props"]
+            for node in nodes
+            if node.get("type") == "PipeWire:Interface:Node"
+        }
+        return any(
+            link.get("type") == "PipeWire:Interface:Link"
+            and props.get(link["info"]["output-node-id"], {}).get("application.name") == "pw-cat"
+            and props.get(link["info"]["input-node-id"], {}).get("node.name") == output
+            for link in nodes
+        )
+
+    retry(linked, timeout=WAIT)
 
 
 def sets_the_output(desktop: Desktop) -> None:

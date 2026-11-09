@@ -384,13 +384,17 @@ ShellRoot {
             JSON.stringify(held) === JSON.stringify({ 90: "z", 91: "y", 92: "z" })
             && JSON.stringify(Targets.sentAs(held, [ninety], ""))
             === JSON.stringify({ 91: "y", 92: "z" }), JSON.stringify(held));
-        expect("each stream is sent, or brought back to the default",
-            JSON.stringify(Targets.sending("pw-metadata", [ninety], "stand-in-headphones"))
-            === JSON.stringify([["pw-metadata", "-n", "default", "90", "target.object",
-                "stand-in-headphones"]])
-            && JSON.stringify(Targets.sending("pw-metadata", [ninety], ""))
-            === JSON.stringify([["pw-metadata", "-n", "default", "-d", "90",
-                "target.object"]]), "it wasn't");
+        const commands = (streams, target) => JSON.stringify(Targets.sending("pw-metadata",
+            streams, target).map(each => each.command));
+        expect("each stream is sent, or brought back to the default, its options ended first",
+            commands([ninety], "stand-in-headphones") === JSON.stringify([["pw-metadata", "-n",
+                "default", "--", "90", "target.object", "stand-in-headphones"]])
+            && commands([ninety], "") === JSON.stringify([["pw-metadata", "-n", "default",
+                "-d", "--", "90", "target.object"]]), commands([ninety], ""));
+        expect("only a stream with a whole id is sent",
+            commands([{ id: "90 -d" }, { id: 9.5 }, { id: -1 }, {}], "x") === "[]"
+            && Targets.sending("pw-metadata", [ninety], "x")[0].id === "90",
+            commands([{ id: "90 -d" }, { id: 9.5 }, { id: -1 }, {}], "x"));
     }
 
     function calling() {
