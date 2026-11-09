@@ -17,6 +17,7 @@ import "Finding.js" as Finding
 import "Confirm.js" as Confirm
 import "DrawerPage.js" as Page
 import "DrawerFigure.js" as Figure
+import "Identifier.js" as Identifier
 
 QtObject {
     // What failed, said as the test ends, or as it throws.
@@ -1095,10 +1096,44 @@ QtObject {
             ["a run of them wraps between its items, the dot going with the break",
                 "usb-1d50:6122 \u00b7 ABC123", 150, ["usb-1d50:6122", "ABC123"]],
             ["one with spaces breaks at them, ending on none", "Ploopy Adept Trackball", 130,
-                ["Ploopy Adept", "Trackball"]]
+                ["Ploopy Adept", "Trackball"]],
+            // No line after the first opens with a mark (Y2YBTS, 2026-11-09).
+            ["a run of marks stays with the piece before", "fe80::8a2e:370:7334", 60,
+                ["fe80::", "8a2e:", "370:", "7334"]],
+            ["a doubled slash too", "/srv//bar", 60, ["/srv//", "bar"]],
+            ["and a doubled space, which goes", "Ploopy  Adept", 70, ["Ploopy", "Adept"]],
+            ["a word as wide as the line is whole, its space going", "Ploopy Adept", 60,
+                ["Ploopy", "Adept"]],
+            ["a version too long breaks at its figures' dots, never opening on one",
+                "v1.2.3.4.5-rc1", 60, ["v1.2.", "3.4.5-", "rc1"]],
+            ["an address breaks between its numbers, never inside one", "192.168.100.200", 60,
+                ["192.", "168.", "100.", "200"]],
+            ["one broken by its letters keeps each mark with the letter before",
+                "abcdefgh.ij", 50, ["abcde", "fgh.", "ij"]],
+            ["a weak mark after a strong one stays with it", "LDFLAGS=-lfoo", 80,
+                ["LDFLAG", "S=-lfoo"]],
+            ["an option's value its dashes too", "--gtk-options=--verbose", 160,
+                ["--gtk-options=--", "verbose"]],
+            ["after a space a mark opens the next piece, as an argument's do", "-a --verbose",
+                90, ["-a", "--verbose"]],
+            ["a run of marks alone still breaks, never past the frame", "::::::::", 30,
+                [":::", ":::", "::"]]
         ];
         for (const [what, said, wide, want] of identifiers)
             holds(`a drawer's identifier: ${what}`, Page.identifierLines(said, wide, width), want);
+        // Whether an identifier's lines, as drawn, open on no mark but after
+        // a space, which the drawer reports as valuesWhole (Y2YBTS,
+        // 2026-11-09).
+        const laid = [
+            ["lines opening on letters", "fe80::8a2e", ["fe80::", "8a2e"], true],
+            ["a line opening on a mark", "LDFLAGS=-lfoo", ["LDFLAGS=", "-lfoo"], false],
+            ["an argument after a space", "mpv --player-operation-mode=pseudo-gui",
+                ["mpv", "--player-operation-mode=", "pseudo-gui"], true],
+            ["an item after a run's dot", "usb-1d50 \u00b7 -x", ["usb-1d50", "-x"], true],
+            ["kept spaces read as spaces", "a b --c", ["a\u00a0b", "--c"], true]
+        ];
+        for (const [what, said, lines, want] of laid)
+            holds(`an identifier laid: ${what}`, Identifier.laidWell(said, lines), want);
         // The words an identifier is read as, each to stand whole, so a
         // UUID broken at its hyphens reads as whole (RTOIMQ, 2026-11-09).
         const hash = "0c8vy4kd2hxq7rm5ppa6f3jz1nbsw9li";
@@ -1108,6 +1143,7 @@ QtObject {
             ["a desktop entry's are between its dots", desktop,
                 ["com.", "onepassword.", "OnePassword"]],
             ["a figure's dot is inside its word", "6.12", ["6.12"]],
+            ["a run of marks ends the word before", "fe80::8a2e", ["fe80::", "8a2e"]],
             ["spaces end words, kept by none", "Ploopy Adept", ["Ploopy", "Adept"]],
             // A hash has no words, so it may break at any letter (VKCF3Z,
             // 2026-11-09), its mark kept with its last.

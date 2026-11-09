@@ -36,21 +36,39 @@ function short(said) {
     return [...said].length <= SHORT_TOKEN;
 }
 
-// Words cut after each of `marks`, each piece keeping its mark at its end:
-// "mode=pseudo-gui" at "=" is "mode=" and "pseudo-gui". Marks leading a
-// piece stay with what follows them, so "--player-" is one.
-function cutAfter(words, marks) {
+// Every mark a line may end on, and so none may open with.
+const MARKS = `${STRONG_MARKS}${WEAK_MARKS}`;
+
+// Whether the letter at `at` is a figure's dot, between two digits.
+function figureDot(letters, at) {
+    return letters[at] === "." && DIGIT.test(letters[at - 1] ?? "")
+        && DIGIT.test(letters[at + 1] ?? "");
+}
+
+// Words cut after each letter `breaksAfter` says, each piece keeping the
+// marks it ends on, a run of any of them together: "mode=pseudo-gui" at
+// "=" is "mode=" and "pseudo-gui", "fe80::8a2e" at ":" is "fe80::" and
+// "8a2e", and "LDFLAGS=-lfoo" is "LDFLAGS=-" and "lfoo", so no piece but
+// the first opens with a mark (Y2YBTS, 2026-11-09). After a space the next
+// piece opens at once, as a command's next argument "--verbose" does, and
+// marks opening a piece stay with what follows them, so "--player-" is one.
+function cutWhere(words, breaksAfter) {
     const pieces = [""];
     const letters = [...words];
     let worded = false;
+    let broke = false;
+    let spaced = false;
     for (const [at, letter] of letters.entries()) {
-        pieces[pieces.length - 1] += letter;
-        const figure = letter === "." && DIGIT.test(letters[at - 1] ?? "")
-            && DIGIT.test(letters[at + 1] ?? "");
-        const mark = marks.includes(letter) && !figure;
-        if (mark && worded) {
+        const mark = breaksAfter(letters, at);
+        if (broke && !(spaced ? letter === " " : mark || MARKS.includes(letter))) {
             pieces.push("");
+            broke = false;
             worded = false;
+        }
+        pieces[pieces.length - 1] += letter;
+        if (broke || (mark && worded)) {
+            broke = true;
+            spaced = letter === " ";
         } else if (!mark) {
             worded = true;
         }
@@ -58,15 +76,74 @@ function cutAfter(words, marks) {
     return pieces.filter(piece => piece !== "");
 }
 
+// Words cut after each of `marks`, a figure's dot never among them.
+function cutAfter(words, marks) {
+    return cutWhere(words, (letters, at) => marks.includes(letters[at])
+        && !figureDot(letters, at));
+}
+
+// Words cut after their figures' dots, "192." and "168.", so a number
+// too long for a line breaks between its figures before inside one
+// (Y2YBTS, 2026-11-09).
+function cutAtFigures(words) {
+    return cutWhere(words, figureDot);
+}
+
+// Words cut to their letters, each mark kept with the letter before it
+// while the two fit `room`, so a line broken anywhere opens with no mark,
+// and a run of marks too long for a line still breaks rather than draw
+// past the frame (Y2YBTS, 2026-11-09).
+function markedLetters(words, room, width) {
+    return [...words].reduce((all, letter) => {
+        const before = all[all.length - 1];
+        return before !== undefined && MARKS.includes(letter)
+            && fitting(`${before}${letter}`, room, width)
+            ? all.slice(0, -1).concat([`${before}${letter}`]) : all.concat([letter]);
+    }, []);
+}
+
+// Whether `said` fits `room`, the spaces it ends on left out, since they
+// go where a line ends: "Ploopy " fits as wide as "Ploopy".
+function fitting(said, room, width) {
+    return width(said.replace(TRAILING, "")) <= room;
+}
+
+// Whether a line laid opens with a mark, which only the identifier's
+// own first may.
+function opensOnMark(line) {
+    return MARKS.includes([...line][0] ?? "");
+}
+
 // The pieces an identifier breaks into to fit `room`: at its strong marks,
-// a piece still too wide at its hyphens, one still too wide by its
-// characters, so nothing of it is ever left out. Each is cut in turn,
+// a piece still too wide at its hyphens, then its figures' dots, then by
+// its letters, so nothing of it is ever left out. Each is cut in turn,
 // gathered by concat, since Qt's engine has no flatMap.
 function piecesOf(words, room, width) {
     const finer = (pieces, cutting) => pieces.reduce((all, piece) => all.concat(
-        width(piece) <= room ? [piece] : cutting(piece)), []);
-    return finer(finer(cutAfter(words, STRONG_MARKS), piece => cutAfter(piece, WEAK_MARKS)),
-        piece => [...piece]);
+        fitting(piece, room, width) ? [piece] : cutting(piece)), []);
+    return [piece => cutAfter(piece, WEAK_MARKS), cutAtFigures,
+        piece => markedLetters(piece, room, width)]
+        .reduce(finer, cutAfter(words, STRONG_MARKS));
+}
+
+// Whether no line laid from `said` after its first opens on a mark, but one
+// a space comes before, as a command's next argument "--verbose" may or an
+// item after a run's dot (Y2YBTS, 2026-11-09). Each line is found in
+// `said` after the one before, its kept spaces and joiners read as they
+// are; one that isn't, given way from its middle, opens on its item's own
+// start.
+function laidWell(said, lines) {
+    const whole = String(said);
+    let from = 0;
+    return lines.every((line, at) => {
+        const plain = line.replace(/\u00a0/gu, " ").replace(/\u2060/gu, "");
+        const found = whole.indexOf(plain, from);
+        if (found < 0) {
+            return true;
+        }
+        from = found + plain.length;
+        return at === 0 || !opensOnMark(plain) || whole[found - 1] === " ";
+    });
 }
 
 // An identifier too wide for a line, whole on as many lines as it needs:
@@ -74,7 +151,7 @@ function piecesOf(words, room, width) {
 function wholeLines(words, room, width) {
     return piecesOf(words, room, width).reduce((lines, piece) => {
         const last = lines.length - 1;
-        if (last >= 0 && width(`${lines[last]}${piece}`) <= room) {
+        if (last >= 0 && fitting(`${lines[last]}${piece}`, room, width)) {
             lines[last] = `${lines[last]}${piece}`;
         } else {
             lines.push(piece);

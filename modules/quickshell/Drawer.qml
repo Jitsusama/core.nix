@@ -50,6 +50,7 @@ import QtQuick.Effects
 import "launcher/Moment.js" as Moment
 import "DrawerFigure.js" as Figure
 import "DrawerPage.js" as Page
+import "Identifier.js" as Identifier
 import "Pictures.js" as Pictures
 import "Search.js" as Search
 import "Reading.js" as Reading
@@ -1224,13 +1225,41 @@ Floating {
     // own marks, its hyphens among them, since it breaks there as a
     // typesetter breaks a path (DrawerPage.identifierWords), so a UUID
     // broken at its hyphens keeps each of its words whole; a hash's are
-    // its letters, since it has no words of its own.
+    // its letters, since it has no words of its own. An identifier's
+    // lines are read as it's laid on them too: each fits, and none after
+    // its first opens with a mark but after a space, read from the lines
+    // it's drawn on (valueDrawn; Y2YBTS, 2026-11-09). A drawer with no
+    // value known yet has nothing to say this of, so it says no.
     function valuesWhole() {
         const fits = row => word => faceOf(row.modelData).advanceWidth(word) <= row.valueWide;
-        return drawnRows().every(row => !row.known || (row.modelData.identifies === true
+        const known = drawnRows().filter(row => row.known);
+        const laid = row => valueDrawn(row).split("\n");
+        return known.length > 0 && known.every(row => row.modelData.identifies === true
             ? Page.identifierWords(row.modelData.value).every(fits(row))
+                && laid(row).every(line => fits(row)(line.replace(/\u00a0/g, " ")))
+                && Identifier.laidWell(row.modelData.value, laid(row))
             : unbroken(row.modelData.value).split(" ")
-                .every(word => fits(row)(word) && !breaksAtItsHyphen.test(word))));
+                .every(word => fits(row)(word) && !breaksAtItsHyphen.test(word)));
+    }
+    // A fact's value on the lines it's drawn on, an ellipsis while it's
+    // asked: one given as items (`valueItems`, `between`) on the lines
+    // DrawerPage.valueLines lays them on, or with a `tail` on the one line
+    // valueLine gives way on, an identifier as identifierKept lays it, and
+    // any other as itemsKept does. Its `value` is still what's copied.
+    function valueDrawn(fact) {
+        const data = fact.modelData;
+        const width = text => faceOf(data).advanceWidth(text);
+        if (!fact.known) {
+            return "\u2026";
+        }
+        if (data.valueItems) {
+            return (data.tail ? Page.valueLine(data.valueItems, data.tail, fact.valueWide, width)
+                : Page.valueLines(data.valueItems, data.between ?? " \u00b7 ", fact.valueWide,
+                    width)).join("\n");
+        }
+        return data.identifies === true
+            ? identifierKept(data.value, faceOf(data), fact.valueWide)
+            : itemsKept(data.value, faceOf(data), fact.valueWide);
     }
     // A hyphen inside a word, "Wi-Fi" or "v7.17.4-5", that a line may still
     // break after, leaving "Wi-" at a line's end and "Fi" alone on the next.
@@ -2132,22 +2161,7 @@ Floating {
                                 width: parent.width - x
                                 y: fact.base - baselineOffset
                                     + (fact.under ? label.lineCount * drawer.pitch : 0)
-                                plain: !fact.known ? "\u2026"
-                                    : fact.modelData.valueItems && fact.modelData.tail
-                                    ? Page.valueLine(fact.modelData.valueItems,
-                                        fact.modelData.tail, fact.valueWide,
-                                        text => drawer.faceOf(fact.modelData).advanceWidth(text))
-                                        .join("\n")
-                                    : fact.modelData.valueItems
-                                    ? Page.valueLines(fact.modelData.valueItems,
-                                        fact.modelData.between ?? " \u00b7 ", fact.valueWide,
-                                        text => drawer.faceOf(fact.modelData).advanceWidth(text))
-                                        .join("\n")
-                                    : fact.modelData.identifies === true
-                                    ? drawer.identifierKept(fact.modelData.value,
-                                        drawer.faceOf(fact.modelData), fact.valueWide)
-                                    : drawer.itemsKept(fact.modelData.value,
-                                        drawer.faceOf(fact.modelData), fact.valueWide)
+                                plain: drawer.valueDrawn(fact)
                                 leading: drawer.pitch
                                 // A fact that warns, as an entry's weak
                                 // password does, says so in the warning's

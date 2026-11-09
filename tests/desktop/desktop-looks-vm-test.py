@@ -365,6 +365,8 @@ def numbers_programs(desktop: Desktop, scale: str) -> None:
     # The program's drawer holds its identifiers, a desktop entry's id among them, whole in its
     # frame, broken at their own marks (VKCF3Z, 2026-11-09).
     desktop.launcher_until(lambda shown: shown["drawer"]["out"] is True)
+    # Its values are known before they're judged, since a drawer with none known says no.
+    desktop.launcher_until(lambda shown: any(v is not None for v in shown["drawer"]["values"]))
     drawer = desktop.showing()["drawer"]
     assert drawer["valuesWhole"], f"at {scale} a program's value breaks a word: {drawer}"
     desktop.shoot(f"launcher-programs-normal-at-{at}")
@@ -1199,11 +1201,16 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         desktop.follow()
         desktop.launcher_until(lambda shown: "time.harbour.test" in shown["rows"])
         desktop.down_to("time.harbour.test")
+        # Its facts placed, each under the last: one read while its rows are still being laid
+        # holds them all on one line.
         desktop.launcher_until(
             lambda shown: (
                 shown["drawer"]["out"] is True
                 and shown["drawer"]["title"] == "time.harbour.test"
                 and len(shown["drawer"]["lines"]["facts"]) > 1
+                and all(
+                    above < below for above, below in pairwise(shown["drawer"]["lines"]["facts"])
+                )
             )
         )
         drawer = plate_shown(desktop, scale)
@@ -1222,6 +1229,8 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         # it, so a value too long beside its name, as an address or a reach, never wraps
         # there or breaks a word.
         assert drawer["besideOnOneLine"], f"at {scale} a value wraps beside its name: {drawer}"
+        desktop.launcher_until(lambda shown: any(v is not None for v in shown["drawer"]["values"]))
+        drawer = desktop.showing()["drawer"]
         assert drawer["valuesWhole"], f"at {scale} a fact's value breaks a word: {drawer}"
         # One that must stand under its name, as an address, lays every one under: a table or
         # a list, never a mix (VKCF3Z, 2026-11-07).
@@ -1280,6 +1289,8 @@ def home_network_plate(desktop: Desktop, scale: str, title: str) -> None:
     )
     drawer = plate_shown(desktop, scale)
     assert drawer["labelsWhole"], f"at {scale} a fact's name is broken: {drawer}"
+    desktop.launcher_until(lambda shown: any(v is not None for v in shown["drawer"]["values"]))
+    drawer = desktop.showing()["drawer"]
     assert drawer["valuesWhole"], f"at {scale} a fact's value breaks a word: {drawer}"
     assert drawer["laidOneWay"], f"at {scale} its facts mix beside and under: {drawer}"
 
@@ -1967,6 +1978,8 @@ def location_plate_shown(desktop: Desktop, scale: str) -> None:
     drawer = plate_shown(desktop, scale)
     assert drawer["eyebrow"] == "found · location", f"at {scale} the plate: {drawer}"
     assert drawer["facts"] == ["Located", "Accuracy", "Coordinates", "Country", "Zone"], drawer
+    desktop.launcher_until(lambda shown: any(v is not None for v in shown["drawer"]["values"]))
+    drawer = desktop.showing()["drawer"]
     assert drawer["valuesWhole"], f"at {scale} a fact's value breaks a word: {drawer}"
     desktop.shoot(f"launcher-location-plate-at-{scale.replace('.', '-')}")
     desktop.close_launcher()

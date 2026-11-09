@@ -1568,6 +1568,9 @@ def test_the_answers_are_shot_for_the_gallery(desktop: Desktop) -> None:
             )
             # Each fact is its name and its value on one line, or its name with its value
             # under it: no name broken, no value wrapping beside one, no word broken.
+            desktop.launcher_until(
+                lambda shown: any(v is not None for v in shown["drawer"]["values"])
+            )
             drawer = desktop.showing()["drawer"]
             assert drawer["labelsWhole"], f"a fact's name is broken: {drawer}"
             assert drawer["besideOnOneLine"], f"a value wraps beside its name: {drawer}"
