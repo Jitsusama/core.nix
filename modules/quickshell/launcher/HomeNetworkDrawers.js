@@ -93,7 +93,7 @@ function internet(model, now, settings) {
             fact("read", joined([Home.when(model?.read, now), model?.cloud?.state])),
         ]).concat(History.probe(net, now, settings), History.outages(net, now),
             speedTests(net, now, settings), Addresses.addressing(model), switches(net), History.devicesOff(model, now), History.joinsAndLeaves(model, now),
-            happened(History.timeline(model), now)),
+            happened(model, History.timeline(model), now)),
     };
 }
 
@@ -114,13 +114,13 @@ function about(event, one) {
 
 // What happened, newest first, each by when, in the words eero's activity
 // list or the daemon's notice said it.
-function happened(events, now) {
+function happened(model, events, now) {
     if (events.length === 0) {
         return [];
     }
     return [{ heading: "events" }].concat(events.map((event) => ({
         label: Home.when(event.at, now),
-        value: event.text,
+        value: History.namesKept(model, event.text),
     })));
 }
 
@@ -463,7 +463,7 @@ function device(model, one, now, asked) {
             fact("profile", group ? joined([group.name, group.paused ? "paused" : ""])
                 : null),
             fact("held", joined([one.paused ? "paused" : "", one.blocked ? "blocked" : ""])),
-        ])).concat(History.roams(model, one, now), happened((model?.events ?? [])
+        ])).concat(History.roams(model, one, now), happened(model, (model?.events ?? [])
             .filter((event) => about(event, one)), now)),
     };
 }

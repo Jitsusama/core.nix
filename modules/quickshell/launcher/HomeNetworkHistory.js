@@ -19,6 +19,15 @@ const BARS = 5;
 const PERCENT = 100;
 const SECOND = 1000;
 const DOT = " \u00b7 ";
+// A name's words kept on one line, so "laptop computer 1" never leaves its
+// 1 alone on the next, as a figure keeps to its unit (FileFacts.js).
+const KEPT = "\u00a0";
+const SPACES = / /g;
+// A kept name's last word a number, then a space: the drawer keeps a
+// figure to the word after it, as a unit (Drawer.qml's unbroken), which
+// would bind "laptop computer 1 joined" into one run too wide for its
+// line, so a zero-width space after the number lets the line break there.
+const NUMBER_ENDS = /(\u00a0\d+) /g;
 
 function known(value) {
     return value !== null && value !== undefined && value !== "";
@@ -263,12 +272,32 @@ function joinsAndLeaves(model, now) {
     }
     return [{ heading: "joins-and-leaves" }].concat(list.map((one) => {
         const where = known(one.node) ? ` ${nodeNamed(model, one.node)}` : "";
+        const did = one.kind === "joined" ? "joined" : "left";
         return {
             label: Home.when(one.at, now),
-            value: joined([`${one.name ?? one.mac} ${one.kind === "joined" ? "joined" : "left"}`
-                + where, one.band]),
+            value: joined([breakable(`${whole(one.name ?? one.mac)} ${did}${where}`), one.band]),
         };
     }));
+}
+
+// A name with its words kept on one line.
+function whole(name) {
+    return String(name).replace(SPACES, KEPT);
+}
+
+// A sentence with each device's name in it kept on one line, the longest
+// first, so a name inside another is kept as part of it.
+function namesKept(model, text) {
+    const names = (model?.devices ?? []).concat(model?.devices_off ?? [])
+        .map((one) => Home.nameOf(one)).filter((name) => known(name) && name.includes(" "))
+        .sort((a, b) => b.length - a.length);
+    return breakable(names.reduce((said, name) => said.split(name).join(whole(name)),
+        String(text ?? "")));
+}
+
+// Words a kept name's last number may break after, where a space follows it.
+function breakable(text) {
+    return text.replace(NUMBER_ENDS, "$1\u200b ");
 }
 
 // The devices eero knows that aren't on now, the last on first, each by
