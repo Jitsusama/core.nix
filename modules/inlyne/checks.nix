@@ -133,7 +133,7 @@ onLinux {
   # inlyne keeps the file it shows, read by the command its Recent in the
   # launcher is led by as its process and the whole path of a file given
   # by name in the folder it was started in, and nothing once q closes it
-  # (../../tests/says-what-it-has-open.sh). What a killed inlyne left is
+  # (../../tests/lib/says-what-it-has-open.sh). What a killed inlyne left is
   # cleared as it starts.
   inlyne-says-the-file-it-shows =
     let
@@ -170,7 +170,7 @@ onLinux {
         printf '# A Sheet\n\nTo read.\n' > sheet.md
         printf '999999\t/gone.md\n' > state/inlyne/showing/999999
         : > state/inlyne/showing/.999999
-        timeout 300 cage -- $BASH ${../../tests/says-what-it-has-open.sh} sheet.md \
+        timeout 300 cage -- $BASH ${../../tests/lib/says-what-it-has-open.sh} sheet.md \
           inlyne view -- ${opened} > ran 2>&1 || true
         if [ ! -e passed ]; then cat ran; exit 1; fi
         if [ -n "$(ls -A state/inlyne/showing)" ]; then

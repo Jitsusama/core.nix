@@ -89,6 +89,8 @@
   "tests/google-opens-its-links.sh" = 1;
   "tests/imports-installed.sh" = 2;
   "tests/lib/qemu-after-its-sockets.sh" = 1;
+  "tests/lib/says-what-it-has-open.sh" = 5;
+  "tests/lib/shell-folder-lint.sh" = 5;
   "tests/lid-hinge-stand-in-hinge.sh" = 1;
   "tests/nested-niri.sh" = 1;
   "tests/network-revive-stand-in.sh" = 4;
@@ -96,8 +98,6 @@
   "tests/qml-compiles.sh" = 2;
   "tests/repository/docs-name-what-exists.sh" = 4;
   "tests/repository/every-folder-says-what-it-holds.sh" = 9;
-  "tests/says-what-it-has-open.sh" = 5;
-  "tests/shell-folder-lint.sh" = 5;
   "tests/spend-session.sh" = 3;
   "tests/spotify-recent-stand-in.sh" = 1;
   "tests/vm/guide/asahi-shaped-disk.sh" = 2;
