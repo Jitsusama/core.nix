@@ -14,6 +14,9 @@
 # Given `revive.restart`, each tick first starts again every orchestrator
 # and every orchestrator's session whose pi died, in a terminal on the
 # account's own PATH, so a crash overnight costs minutes, not the night.
+# Given a steward, it also asks each orchestrator about any session of its
+# that has sat idle two hours, once for each idle spell, so a session that
+# finished its piece doesn't wait the night for its next.
 {
   config,
   lib,
