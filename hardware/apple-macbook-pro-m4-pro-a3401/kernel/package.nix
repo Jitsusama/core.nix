@@ -99,9 +99,14 @@ in
     defconfig = "defconfig asahi.config";
 
     # Clang 22, the compiler Aurora's bindgen was qualified with, and the
-    # LLVM tools beside it, as Aurora's builds give make.
+    # LLVM tools beside it, as Aurora's builds give make. The tools the
+    # build runs on its own machine are nixpkgs' GCC's, which links with
+    # bfd; the tree's Makefile otherwise asks them for lld under LLVM=1.
     inherit (llvmPackages_22) stdenv;
-    extraMakeFlags = [ "LLVM=1" ];
+    extraMakeFlags = [
+      "LLVM=1"
+      "HOSTLDFLAGS=-fuse-ld=bfd"
+    ];
 
     # Apple's drivers here are written in Rust, as on the M2. A machine's
     # own features, which NixOS passes through an override, are kept beside
