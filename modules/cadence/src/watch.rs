@@ -482,7 +482,9 @@ mod tests {
             said[0].text
         );
         assert!(
-            said[0].text.ends_with("the builders went away"),
+            said[0]
+                .text
+                .ends_with("the newest failure: the builders went away."),
             "{}",
             said[0].text
         );

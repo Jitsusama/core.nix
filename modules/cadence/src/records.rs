@@ -129,8 +129,9 @@ pub struct Follower {
     pub failed: Option<(i64, String)>,
 }
 
+/// A line update-to-main writes as it goes, saying the step it reached.
 #[derive(Deserialize)]
-struct Step {
+struct Said {
     step: Option<String>,
     followed: Option<Followed>,
     why: Option<String>,
@@ -173,7 +174,7 @@ pub fn parse_follower(journal: &str) -> Follower {
         } else if rest[brace..].contains("\"step\"") {
             follower.meeting = false;
         }
-        let Ok(step) = serde_json::from_str::<Step>(&rest[brace..]) else {
+        let Ok(step) = serde_json::from_str::<Said>(&rest[brace..]) else {
             continue;
         };
         match step.step.as_deref() {

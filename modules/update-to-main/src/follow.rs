@@ -466,7 +466,7 @@ mod tests {
         let none = "Failed to find a machine for remote build!".to_owned();
         assert!(builders_dropped(
             "building the system on the machine's builders failed",
-            &[none.clone()]
+            std::slice::from_ref(&none)
         ));
         assert!(!builders_dropped("it didn't evaluate", &[none]));
         assert!(builders_dropped(

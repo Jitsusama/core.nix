@@ -1699,7 +1699,7 @@ fn a_machine_long_behind_main_builds_what_is_left_here_under_load() {
     let behind = world.config.behind_file();
     fs::File::create(&behind)
         .unwrap()
-        .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(21 * 60))
+        .set_modified(std::time::SystemTime::now() - std::time::Duration::from_mins(21))
         .unwrap();
     assert_eq!(world.update().1, done(&head));
     let here = world.read("here");
