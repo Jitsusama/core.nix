@@ -62,6 +62,16 @@ let
     exec = "${lib.getExe opens} ${url}";
     categories = [ "Network" ];
   };
+
+  # A program's one act of making something new, opened in its window as
+  # its page is, so the launcher finds it by name from the top. The link is
+  # quoted, since a desktop entry's command reserves ? and &.
+  making = name: url: {
+    actions.new = {
+      inherit name;
+      exec = ''${lib.getExe opens} "${url}"'';
+    };
+  };
 in
 {
   imports = [
@@ -108,26 +118,31 @@ in
     # gone.
     xdg.desktopEntries = {
       google-calendar =
-        program "Calendar" "Meetings in the Google account"
-          "https://calendar.google.com/";
-      google-mail = program "Mail" "Mail in the Google account" "https://mail.google.com/";
+        program "Calendar" "Meetings in the Google account" "https://calendar.google.com/"
+        // making "New Event" "https://calendar.google.com/calendar/r/eventedit";
+      # Gmail's own page for a new message, alone in its window.
+      google-mail =
+        program "Mail" "Mail in the Google account" "https://mail.google.com/"
+        // making "Write a Mail" "https://mail.google.com/mail/u/0/?view=cm&fs=1";
     }
     // lib.mapAttrs (_: lib.mapAttrs (_: lib.mkDefault)) {
-      google-docs = program "Docs" "Documents in the Google account" "https://docs.google.com/document/";
+      # Each makes a new one through its own create page, which docs.new
+      # would reach too but in the browser, since opens.sh only gives
+      # docs.google.com its window.
+      google-docs =
+        program "Docs" "Documents in the Google account" "https://docs.google.com/document/"
+        // making "New Document" "https://docs.google.com/document/create";
       google-sheets =
-        program "Sheets" "Spreadsheets in the Google account"
-          "https://docs.google.com/spreadsheets/";
+        program "Sheets" "Spreadsheets in the Google account" "https://docs.google.com/spreadsheets/"
+        // making "New Spreadsheet" "https://docs.google.com/spreadsheets/create";
       google-slides =
-        program "Slides" "Presentations in the Google account"
-          "https://docs.google.com/presentation/";
+        program "Slides" "Presentations in the Google account" "https://docs.google.com/presentation/"
+        // making "New Presentation" "https://docs.google.com/presentation/create";
       google-drive = program "Drive" "Files in the Google account" "https://drive.google.com/";
-      google-meet = program "Meet" "Video calls in the Google account" "https://meet.google.com/" // {
-        # A new meeting, opened in Meet's window, where its link is copied.
-        actions.new = {
-          name = "New Meeting";
-          exec = "${lib.getExe opens} https://meet.google.com/new";
-        };
-      };
+      # A new meeting, opened in Meet's window, where its link is copied.
+      google-meet =
+        program "Meet" "Video calls in the Google account" "https://meet.google.com/"
+        // making "New Meeting" "https://meet.google.com/new";
     };
 
     xdg.configFile = {
