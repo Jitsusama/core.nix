@@ -42,7 +42,7 @@ QtObject {
         "charging:charger": "{charge}% \u00b7 on the charger", build: "{count} build",
         builds: "{count} builds", vmTest: "{count} VM test", vmTests: "{count} VM tests",
         sameCore: "{commit}, as this machine's", reaches: "reached", unreaches: "not reached",
-        freeOf: "{free} free of {total}", cores: "{count} cores", on: "on {realm} \u00b7 {kind}",
+        freeOf: "{free} free of {total}", cores: "{count} cores", on: "on {realm} \u00b7 machine",
         gpu: "graphics", npu: "NPU",
         "updated:done": "{name} updated to {commit}", "updated:done:bare": "{name} updated",
         "updated:unchanged": "{name} was on main already",
@@ -144,7 +144,7 @@ QtObject {
         const hereDrawn = Machines.drawer(byName("anchor"), one);
         const hereFacts = hereDrawn.facts.map(fact => `${fact.label}: ${fact.value}`);
         expect("this machine's drawer is every machine's",
-            hereDrawn.eyebrow === "on personal \u00b7 Linux" && JSON.stringify(hereFacts)
+            hereDrawn.eyebrow === "on personal \u00b7 machine" && JSON.stringify(hereFacts)
                 === JSON.stringify(["Measured: 1 min ago", "System: NixOS 26.11 (Zokor)",
                     "Model: Dell Inc. XPS 14 DA14260"]),
             `${hereDrawn.eyebrow} ${JSON.stringify(hereFacts)}`);
@@ -167,8 +167,8 @@ QtObject {
             unknown);
 
         const drawn = Machines.drawer(byName("skiff"), one);
-        expect("the eyebrow says where, then what kind",
-            drawn.eyebrow === "on personal \u00b7 Linux" && drawn.title === "skiff",
+        expect("the eyebrow says where, then what kind of thing, never its system",
+            drawn.eyebrow === "on personal \u00b7 machine" && drawn.title === "skiff",
             `${drawn.eyebrow} ${drawn.title}`);
         const read = drawn.facts.map(fact => `${fact.label}: ${fact.value}`);
         const expected = ["Processor Pressure: 0.1%", "Memory Pressure: 0.0%",

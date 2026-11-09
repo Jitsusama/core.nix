@@ -2903,7 +2903,7 @@
         "unreaches": "not reached",
         "freeOf": "{free} free of {total}",
         "cores": "{count} cores",
-        "on": "on {realm} \u00b7 {kind}",
+        "on": "on {realm} \u00b7 machine",
         "gpu": "graphics",
         "npu": "NPU",
         "count": "{count} reached",

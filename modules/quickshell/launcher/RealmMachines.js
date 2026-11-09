@@ -288,7 +288,8 @@ function updateEnded(name, text, said) {
 // update, when it was measured, then its processor, accelerators and
 // system, and its model's identifier last. Never the row's side again.
 // Out of reach, every figure keeps its last value and Measured says as
-// of when. The eyebrow says where and what kind: "on personal \u00b7 Mac".
+// of when. The eyebrow says where and what kind of thing it is, "on
+// personal \u00b7 machine"; its system is System's (VKCF3Z, 1ad76438).
 function drawer(record, place) {
     const { said, named } = place;
     const { room } = record;
@@ -318,8 +319,7 @@ function drawer(record, place) {
         fact(named("model"), record.model ?? "")
     ]);
     return {
-        eyebrow: filled(said, "on", { realm: record.realm ?? "",
-            kind: systemOf(record, named) }),
+        eyebrow: filled(said, "on", { realm: record.realm ?? "" }),
         title: record.name,
         facts: facts.filter(one => one !== null)
     };
