@@ -71,6 +71,11 @@ Provider {
     // only then.
     readonly property bool seen: Seen.seen(launcher, provider, ["heat"])
 
+    // Whether the daemon hasn't yet answered this watch whole, so a
+    // terminal's show asks again for the figures rather than printing
+    // what it held before (Provider.stillReading).
+    stillReading: daemon.live && !daemon.answeredThisWatch && daemon.state !== "not answering"
+
     function number(value, places) {
         return Numbers.format(value, places ?? 0, settings.group, settings.point);
     }

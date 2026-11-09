@@ -113,6 +113,11 @@ Provider {
     // so the daemon reads the supplies only then.
     readonly property bool seen: Seen.seen(launcher, provider, ["energy", "power"])
 
+    // Whether the daemon hasn't yet answered this watch whole, so a
+    // terminal's show asks again for the figures rather than printing
+    // what it held before (Provider.stillReading).
+    stillReading: daemon.live && !daemon.answeredThisWatch && daemon.state !== "not answering"
+
     function answer(typed) {
         const question = asks(typed);
         if (question === "")

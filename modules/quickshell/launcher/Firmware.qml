@@ -52,6 +52,11 @@ Provider {
     // and a change fwupd says is answered at once.
     readonly property bool seen: Seen.seen(launcher, provider, ["firmware"])
 
+    // Whether the daemon hasn't yet answered this watch whole, so a
+    // terminal's show asks again for the figures rather than printing
+    // what it held before (Provider.stillReading).
+    stillReading: daemon.live && !daemon.answeredThisWatch && daemon.state !== "not answering"
+
     // Firmware's own words, for Firmware.js.
     readonly property var said: Words.of("firmware").said ?? {}
 
