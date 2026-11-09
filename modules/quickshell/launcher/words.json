@@ -11064,7 +11064,30 @@
     {
       "id": "file-chooser:where",
       "in": "path:file",
-      "name": "Where"
+      "name": "Where",
+      "said": {
+        "in": "in {folder}"
+      }
+    },
+    {
+      "id": "file-chooser:length",
+      "in": "path:file",
+      "name": "Length"
+    },
+    {
+      "id": "file-chooser:dimensions",
+      "in": "path:file",
+      "name": "Dimensions"
+    },
+    {
+      "id": "file-chooser:pages",
+      "in": "path:file",
+      "name": "Pages"
+    },
+    {
+      "id": "file-chooser:lines",
+      "in": "path:file",
+      "name": "Lines"
     },
     {
       "id": "file-chooser:items",
@@ -11088,7 +11111,8 @@
       "said": {
         "one": "{count} line",
         "many": "{count} lines",
-        "more": "over {count} lines"
+        "more": "over {count} lines",
+        "over": "over {count}"
       }
     },
     {

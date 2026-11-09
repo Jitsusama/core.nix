@@ -112,63 +112,75 @@ QtObject {
             ["0:42", "3:41", "1:02:03"]);
 
         const picture = "/home/j/shot.png";
-        const eyebrow = (said, path) => FileFacts.eyebrow(said, path, words);
-        expect("a picture's eyebrow is its kind and size", eyebrow(
+        // A plate's eyebrow, then each fact as its label and value.
+        const plated = (said, path) => {
+            const shown = FileFacts.plate({ path, name: "n", where: "~/n", entry: null }, said,
+                words);
+            return [shown.eyebrow].concat(shown.facts.map(fact => `${fact.label} ${fact.value}`));
+        };
+        expect("a picture's eyebrow is where, then its kind, its dimensions a fact", plated(
             { kind: "PNG", across: 2400, down: 1600, picture: picture }, picture),
-            kept("PNG \u00b7 2400_\u00d7_1600"));
-        expect("a PDF's, its pages", eyebrow({ kind: "PDF", pages: 12, picture: "/c/p.png",
-            across: 1040, down: 1346 }, "/home/j/a.pdf"), kept("PDF \u00b7 12_pages"));
-        expect("one page is one", eyebrow({ kind: "PDF", pages: 1 }, "/a.pdf"),
-            kept("PDF \u00b7 1_page"));
-        expect("a PDF with no count says no picture's size", eyebrow(
-            { kind: "PDF", picture: "/c/p.png", across: 1040, down: 1346 }, "/home/j/a.pdf"), "PDF");
-        expect("a video's, its length", eyebrow({ kind: "MP4", seconds: 221 }, "/v.mp4"),
-            "MP4 \u00b7 3:41");
-        expect("text with no ending is text", eyebrow({ lines: ["a"] }, "/notes"), "Text");
-        expect("text is its kind by its own name, with its lines", eyebrow(
-            { kind: "MD", lines: ["# Plan"], count: 4 }, "/a.md"), kept("Markdown \u00b7 4_lines"));
-        expect("one line is one", eyebrow({ kind: "TXT", lines: ["a"], count: 1 }, "/a.txt"),
-            kept("Text \u00b7 1_line"));
-        expect("text of an ending with no name of its own is its ending", eyebrow(
-            { kind: "CONF", lines: ["a"], count: 120 }, "/a.conf"), kept("CONF \u00b7 120_lines"));
-        expect("text too long to count whole says it's over what was counted", eyebrow(
+            ["in ~/n \u00b7 PNG", kept("Dimensions 2400_\u00d7_1600")]);
+        expect("a PDF's pages are a fact, the number alone", plated({ kind: "PDF", pages: 12,
+            picture: "/c/p.png", across: 1040, down: 1346 }, "/home/j/a.pdf"),
+            ["in ~/n \u00b7 PDF", "Pages 12"]);
+        expect("a PDF with no count says no picture's size", plated(
+            { kind: "PDF", picture: "/c/p.png", across: 1040, down: 1346 }, "/home/j/a.pdf"),
+            ["in ~/n \u00b7 PDF"]);
+        expect("a video's length is a fact, never its eyebrow's", plated(
+            { kind: "MP4", seconds: 20 }, "/v.mp4"), ["in ~/n \u00b7 MP4", "Length 0:20"]);
+        expect("text with no ending is text", plated({ lines: ["a"] }, "/notes"),
+            ["in ~/n \u00b7 Text"]);
+        expect("text is its kind by its own name, its lines a fact", plated(
+            { kind: "MD", lines: ["# Plan"], count: 4 }, "/a.md"),
+            ["in ~/n \u00b7 Markdown", "Lines 4"]);
+        expect("plain text is said as Text", plated({ kind: "TXT", lines: ["a"], count: 1 },
+            "/a.txt"), ["in ~/n \u00b7 Text", "Lines 1"]);
+        expect("text of an ending with no name of its own is its ending", plated(
+            { kind: "CONF", lines: ["a"], count: 120 }, "/a.conf"),
+            ["in ~/n \u00b7 CONF", "Lines 120"]);
+        expect("text too long to count whole says it's over what was counted", plated(
             { kind: "LOG", lines: ["a"], count: 900_000, more: true }, "/a.log"),
-            kept("LOG \u00b7 over 900000_lines"));
-        expect("an ending that names text names nothing else", eyebrow({ kind: "MD" }, "/a.md"),
-            "MD");
-        expect("anything else with none is a file", eyebrow({ size: 1 }, "/blob"), "File");
-        expect("a folder is a folder", eyebrow({ items: 3, names: [] }, "/f"), "Folder");
+            ["in ~/n \u00b7 LOG", kept("Lines over 900000")]);
+        expect("an ending that names text names nothing else", plated({ kind: "MD" }, "/a.md"),
+            ["in ~/n \u00b7 MD"]);
+        expect("anything else with none is a file", plated({ size: 1 }, "/blob"),
+            ["in ~/n \u00b7 File"]);
+        expect("a folder is a folder, its count the row's", plated({ items: 3, names: [] }, "/f"),
+            ["in ~/n \u00b7 Folder"]);
 
         const shot = { path: picture, name: "shot.png", where: "~", entry: file };
-        const before = FileFacts.plate(shot, null, now, words);
-        expect("until it's said, a plate is its facts alone, from its folder", before, {
-            eyebrow: "", title: "shot.png", facts: [{ label: "Size", value: kept("2.40_MB") },
-                { label: "Changed", value: kept("28_Oct") }, { label: "Where", value: "~" }]
-        });
+        const before = FileFacts.plate(shot, null, words);
+        expect("until it's said, a plate is where alone, its size and change the row's", before,
+            {
+                eyebrow: "in ~",
+                eyebrowItems: [{ said: "in ~", keep: 2, path: "~" }],
+                eyebrowNames: true,
+                title: "shot.png",
+                facts: []
+            });
         const said = { kind: "PNG", size: 2_400_000, changed: file.modified, across: 2400,
             down: 1600, picture: picture };
-        const shown = FileFacts.plate(shot, said, now, words);
-        expect("once said, its eyebrow and its picture, its own shape",
-            [shown.eyebrow, shown.preview], [kept("PNG \u00b7 2400_\u00d7_1600"),
-                { picture: picture, across: 2400, down: 1600 }]);
+        const shown = FileFacts.plate(shot, said, words);
+        expect("once said, where and what, the kind giving way first, and its picture",
+            [shown.eyebrowItems, shown.preview], [[{ said: "in ~", keep: 2, path: "~" },
+                { said: "PNG", keep: 1 }], { picture: picture, across: 2400, down: 1600 }]);
         const text = FileFacts.plate({ path: "/n/a.md", name: "a.md", where: "~/n", entry: null },
-            { kind: "MD", size: 9, changed: now, lines: ["# Plan", "one"] }, now, words);
-        expect("a file of text previews its first lines, its facts from what's said",
-            [text.preview, text.facts[0].value], [{ lines: ["# Plan", "one"] }, kept("9_B")]);
-        expect("its change said as its row says it", text.facts[1].value,
-            FileFacts.when(now, now, words));
+            { kind: "MD", size: 9, changed: now, lines: ["# Plan", "one"] }, words);
+        expect("a file of text previews its first lines", text.preview,
+            { lines: ["# Plan", "one"] });
         const sub = { path: "/n/sub", name: "sub", where: "~/n", entry: folder };
         const listed = FileFacts.plate(sub,
-            { size: 4096, changed: now, items: 2, names: ["deep/", "z.md"] }, now, words);
-        expect("a folder previews its first items, quiet, and counts them",
-            [listed.eyebrow, listed.preview, listed.facts[0]], ["Folder",
-                { lines: ["deep/", "z.md"], quiet: true }, { label: "Items", value: "2" }]);
-        const waiting = FileFacts.plate(sub, null, now, words);
-        expect("a folder not yet counted shows the placeholder", waiting.facts[0],
-            { label: "Items", value: null });
+            { size: 4096, changed: now, items: 2, names: ["deep/", "z.md"] }, words);
+        expect("a folder previews its first items, quiet, its count the row's",
+            [listed.eyebrow, listed.preview, listed.facts], ["in ~/n \u00b7 Folder",
+                { lines: ["deep/", "z.md"], quiet: true }, []]);
+        expect("a folder not yet read is a folder at once", FileFacts.plate(sub, null, words)
+            .eyebrow, "in ~/n \u00b7 Folder");
         const plain = FileFacts.plate({ path: "/n/a.zip", name: "a.zip", where: "~/n", entry: null },
-            { kind: "ZIP", size: 7, changed: now }, now, words);
-        expect("anything else shows its facts alone, no stand-in", plain.preview, undefined);
+            { kind: "ZIP", size: 7, changed: now }, words);
+        expect("anything else is where and what alone, no stand-in", [plain.eyebrow,
+            plain.preview, plain.facts], ["in ~/n \u00b7 ZIP", undefined, []]);
 
         // One kept elsewhere, as in Google's Drive, reads as one here does.
         const away = { name: "menu.pdf", folder: false, size: 2_400_000,
