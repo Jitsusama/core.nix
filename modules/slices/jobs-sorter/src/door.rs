@@ -44,6 +44,11 @@
 //! freezes all of it, and on 9 November a stamp check's own timeout went
 //! on counting through the freeze and killed it. A sorter started again
 //! freezes nothing already running.
+//!
+//! A start can take a lock in the moment before it's held, so one held
+//! while another process waits on a lock it holds comes in at once: on 9
+//! November an evaluation held a flake input's fetch lock, frozen, and two
+//! lanes' builds and a lint already let in waited on it for 16 minutes.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -161,6 +166,8 @@ pub struct Coming<'a> {
     pub first: bool,
     /// Whether its cgroup is frozen.
     pub frozen: bool,
+    /// Whether it holds a lock another process waits on.
+    pub blocking: bool,
 }
 
 /// What the machine has, as the door weighs it.
@@ -214,7 +221,6 @@ impl Door {
         uptime: u64,
         mut freeze: impl FnMut(&Path, bool) -> bool,
     ) -> Vec<Done> {
-        let mut done = Vec::new();
         let here: HashSet<(u32, u64)> = coming.iter().map(|it| (it.pid, it.start)).collect();
         let pids: HashSet<u32> = coming.iter().map(|it| it.pid).collect();
         let memory: HashMap<&Path, u64> = coming
@@ -225,6 +231,9 @@ impl Door {
         self.held.retain(|held| pids.contains(&held.pid));
         self.admitted
             .retain(|scope, _| memory.contains_key(scope.as_path()));
+        // Let in before the room is counted, so it counts as growing.
+        let blocking = self.let_in_blocking(coming, now, &mut freeze);
+        let mut done: Vec<Done> = blocking.into_iter().map(Done::LetIn).collect();
         let (need, grows) = (machine.room(), machine.grows());
         let growing: u64 = self
             .admitted
@@ -328,6 +337,35 @@ impl Door {
         done
     }
 
+    /// Lets in each held scope holding a lock others wait on, whatever the
+    /// room and through a call: held, it holds them too, work already let
+    /// in, and what they'd wait for is only its own little start. Says the
+    /// pid of each let in.
+    fn let_in_blocking(
+        &mut self,
+        coming: &[Coming],
+        now: Instant,
+        freeze: &mut impl FnMut(&Path, bool) -> bool,
+    ) -> Vec<u32> {
+        let blocking: HashSet<&Path> = coming
+            .iter()
+            .filter(|it| it.blocking)
+            .map(|it| it.scope.as_path())
+            .collect();
+        let mut let_in = Vec::new();
+        let mut kept = Vec::new();
+        for held in std::mem::take(&mut self.held) {
+            if blocking.contains(held.scope.as_path()) && freeze(&held.scope, false) {
+                let_in.push(held.pid);
+                self.admitted.insert(held.scope, now);
+            } else {
+                kept.push(held);
+            }
+        }
+        self.held = kept;
+        let_in
+    }
+
     /// Holds again each scope frozen with heavy work in it that the door
     /// doesn't hold: a sorter that stopped held it, or a thaw failed, and no
     /// sorter would ever let it in. Its wait counts from its start, and the
@@ -369,6 +407,31 @@ fn own_scope(scope: &Path) -> bool {
                     .extension()
                     .is_some_and(|kind| kind == "scope")
         })
+}
+
+/// The processes holding a lock another waits on, from /proc/locks' text.
+/// A waiter's line follows its holder's under the same number, with `->`
+/// before its kind. Only waited-on locks count: nearly every Nix process
+/// holds a read lock on a database's shared memory for as long as it runs.
+pub fn blocking(locks: &str) -> HashSet<u32> {
+    let mut holders: HashMap<&str, u32> = HashMap::new();
+    let mut waited: HashSet<&str> = HashSet::new();
+    for line in locks.lines() {
+        let mut words = line.split_whitespace();
+        let Some(number) = words.next() else {
+            continue;
+        };
+        let mut rest = words.peekable();
+        if rest.peek() == Some(&"->") {
+            waited.insert(number);
+        } else if let Some(pid) = rest.nth(3).and_then(|pid| pid.parse().ok()) {
+            holders.insert(number, pid);
+        }
+    }
+    waited
+        .iter()
+        .filter_map(|number| holders.get(number).copied())
+        .collect()
 }
 
 /// Freezes or thaws the cgroup at `scope`, saying whether it could.
@@ -512,6 +575,7 @@ mod tests {
             memory: 0,
             first: false,
             frozen: false,
+            blocking: false,
         }
     }
 
@@ -636,6 +700,49 @@ mod tests {
                 (PathBuf::from("/c/work-10-1.scope"), false)
             ]
         );
+    }
+
+    // On 9 November an evaluation took a flake input's fetch lock in the
+    // moment before it was held, and two lanes' builds and a lint waited
+    // on that lock for 16 minutes, already let in and going nowhere.
+    #[test]
+    fn a_held_start_others_wait_on_comes_in_whatever_the_room() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let mut work = [
+            coming(10, 1000, "nix eval .#x", "/c/work-10-1.scope"),
+            coming(11, 1000, "nix eval .#y", "/c/work-11-1.scope"),
+        ];
+        let short = free(10 << 30);
+        let done = door.look(&work, short, at, 1000, |_, _| true);
+        assert_eq!(done, [Done::Held(10), Done::Held(11)]);
+        work[1].blocking = true;
+        let calling = Machine {
+            calling: true,
+            ..short
+        };
+        let done = door.look(&work, calling, at, 1001, |_, _| true);
+        assert_eq!(done, [Done::LetIn(11)], "only the one others wait on");
+        assert_eq!(
+            door.look(&work, calling, at, 1002, |_, _| true),
+            [],
+            "let in once"
+        );
+    }
+
+    #[test]
+    fn a_lock_others_wait_on_is_known_by_its_holder() {
+        let locks = "\
+1: POSIX  ADVISORY  READ 1353274 00:22:102258 1073741826 1073742335
+2: FLOCK  ADVISORY  WRITE 964893 00:22:84096289 0 EOF
+2: -> FLOCK  ADVISORY  WRITE 1200 00:22:84096289 0 EOF
+2: -> FLOCK  ADVISORY  WRITE 1201 00:22:84096289 0 EOF
+3: OFDLCK ADVISORY  WRITE -1 00:22:9 0 EOF
+3: -> OFDLCK ADVISORY  WRITE -1 00:22:9 0 EOF
+4: POSIX  ADVISORY  READ 1257727 00:22:83907755 128 128
+";
+        assert_eq!(blocking(locks), HashSet::from([964_893]));
+        assert_eq!(blocking(""), HashSet::new());
     }
 
     // On 9 November about 13 sessions' builds started within a minute of
