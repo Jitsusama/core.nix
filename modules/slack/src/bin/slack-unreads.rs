@@ -69,7 +69,8 @@ fn main() {
         .map_or(EVERY, Duration::from_millis);
     let credentials = PathBuf::from(credentials);
     let mut names = HashMap::new();
-    let mut messages = Messages::default();
+    // Who each person is, shared with the daemon's searches.
+    let mut messages = Messages::sharing(daemon.people());
     let mut misses = 0;
     loop {
         // The file is read each time, so signing in again from pi is

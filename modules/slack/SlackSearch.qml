@@ -4,15 +4,15 @@
 // a grid about twenty searches a minute; Return steps in and asks Slack's
 // daemon once (src/daemon.rs), a dimmed stand-in holding the place while
 // it's asked, as People's do (#1367), and the messages found light there.
-// Each is a Slack message: titled by its first words, beside it where it
-// is, its note who said it and when; Return opens its conversation in
+// Each is a Slack message's one row, as everywhere (SlackMessage.qml):
+// named by who said it, its first line after its name, or from the first
+// word matched where the match is past it, its side when; Return opens it in
 // Slack, and inside are Open in Slack, its drawer the messages around it,
 // then Copy the Link. Slack too busy says so over Try Again; Slack's
 // daemon gone says it isn't answering. Only ever read.
 import qs
 import Quickshell
 import QtQuick
-import "Ago.js" as Ago
 
 Provider {
     id: provider
@@ -102,13 +102,17 @@ Provider {
         // until a key (Steady.js), had gone.
         if (search.records.length === 0)
             return [waiting("none", words)];
-        // The first lights where the placeholder stood, by its key, as a
-        // page found does (VKCF3Z, c3240f08); the rest follow it.
-        return search.records.map((record, at) => provider.message(record,
-            at === 0 ? first : record.key));
+        // The first lights where the placeholder stood, as a page found
+        // does (VKCF3Z, c3240f08), taking over its place while keeping its
+        // own key, so it's the one message For You lists; the rest follow.
+        return search.records.map((record, at) => SlackMessage.row(record, provider.thing, {
+            takesOver: at === 0 ? first : undefined,
+            around: one => provider.around(one)
+        }));
     }
 
-    // The key the placeholder holds, and the first message found takes.
+    // The key the placeholder holds, whose place the first message found
+    // takes.
     readonly property string first: "slack:search:first"
 
     // Asks Slack's daemon once for these words; Provider's own `ask` is
@@ -121,7 +125,12 @@ Provider {
             else if (answer.error)
                 provider.keep(words, { state: "failed", records: [], code: answer.error.code });
             else
-                provider.keep(words, { state: "found", records: answer.records ?? [], code: "" });
+                provider.keep(words, { state: "found", code: "",
+                    // Where each matched, worked out once as the answer
+                    // comes rather than each time the list is made.
+                    records: (answer.records ?? []).map(record => Object.assign({}, record, {
+                        matched: SlackMessage.noted(record, words)
+                    })) });
         });
     }
 
@@ -159,50 +168,6 @@ Provider {
             stays: true,
             // Asked again from here, the selection stays on it.
             run: () => provider.seek(words)
-        });
-    }
-
-    // A message found, under `key`, opening its conversation in Slack.
-    function message(record, key) {
-        const open = () => Niri.spawn(["xdg-open",
-            `slack://channel?team=${record.team}&id=${record.key.split(":")[1]}`]);
-        const act = (key, fields) => provider.thing(Object.assign({
-            key: key,
-            name: Words.name(key),
-            verb: Words.verb(key),
-            glyph: Words.glyph(key),
-            hue: "action"
-        }, fields));
-        const who = record.mine ? you() : record.who;
-        return provider.thing({
-            key: key,
-            what: "slack message",
-            thing: true,
-            of: "program:slack",
-            part: record.first,
-            name: record.first,
-            verb: Words.verb("verb:slack:message:open"),
-            glyph: Words.glyph("slack:message"),
-            hue: "program",
-            side: record.place,
-            note: `${who} \u00b7 ${Ago.ago(record.at, Date.now())}`,
-            drawer: { title: record.place, facts: [], body: record.text },
-            later: true,
-            run: open,
-            verbs: () => [
-                act("verb:slack:message:open", {
-                    later: true,
-                    run: open,
-                    drawer: provider.around(record)
-                }),
-                // Copy is last, as everywhere.
-                act("verb:slack:message:link", {
-                    now: true,
-                    run: () => {
-                        Quickshell.clipboardText = record.link;
-                    }
-                })
-            ]
         });
     }
 

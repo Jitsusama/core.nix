@@ -126,7 +126,7 @@ Item {
     // What it held that its source says is done with, for For You's
     // History, each with `done` { how, at }, its source's word for how and
     // when, and `row(thing)`, the row it is wherever it's shown; or null
-    // while its source can't say.
+    // while its source can't say, as Slack's daemon holding only some.
     property var finished: null
     // Everything its source says, as Now's row's drawer (Drawer.qml's
     // `drawer`), where the row can't show it all: given what the launcher

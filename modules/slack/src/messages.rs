@@ -22,6 +22,7 @@
 //! when it was seen to move. It only ever reads.
 
 use std::collections::{BTreeMap, HashMap};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use serde::Serialize;
 use serde_json::Value;
@@ -40,11 +41,12 @@ const PAGES: usize = 5;
 /// How long a message done is still said, in milliseconds.
 pub const KEPT: u64 = 24 * 60 * 60 * 1000;
 
-/// How a message read in Slack is said done.
-pub const READ_IN_SLACK: &str = "read in Slack";
+/// How a message read in Slack is said done, by an id the shell words
+/// (words.json's slack:message), as Google's daemon says how mail went.
+pub const READ_IN_SLACK: &str = "readInSlack";
 
 /// How a message is said done whose conversation Slack no longer lists.
-pub const GONE_FROM_SLACK: &str = "gone from Slack";
+pub const GONE_FROM_SLACK: &str = "goneFromSlack";
 
 /// Who said a message when Slack can't say, or nobody did.
 const SLACK: &str = "Slack";
@@ -258,7 +260,7 @@ pub struct Messages {
     /// and whether it was read to its end.
     asked: HashMap<String, ((String, u64), bool)>,
     /// Who each person who said one is, asked once a run.
-    people: HashMap<String, String>,
+    people: People,
     /// Each read mark held, and when it was seen there.
     marks: BTreeMap<String, (String, u64)>,
     /// Where the workspace is on the web, asked once a run.
@@ -267,7 +269,39 @@ pub struct Messages {
     whole: bool,
 }
 
+/// Who each person is, by their Slack id, asked of `users.info` once a run
+/// and shared by the rounds and Search Slack, so one message has one name
+/// wherever it's said, and a search asks only for people no round has.
+#[derive(Clone, Default)]
+pub struct People(Arc<Mutex<HashMap<String, String>>>);
+
+impl People {
+    /// Who the person with `id` is, when they've been asked.
+    #[must_use]
+    pub fn get(&self, id: &str) -> Option<String> {
+        self.lock().get(id).cloned()
+    }
+
+    /// Keeps who the person with `id` is.
+    pub fn keep(&self, id: &str, name: &str) {
+        self.lock().insert(id.to_owned(), name.to_owned());
+    }
+
+    fn lock(&self) -> MutexGuard<'_, HashMap<String, String>> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
 impl Messages {
+    /// Messages held, naming people from `people`, which a search shares.
+    #[must_use]
+    pub fn sharing(people: People) -> Messages {
+        Messages {
+            people,
+            ..Messages::default()
+        }
+    }
+
     /// What a round of asking Slack found, taken at `now`: the unread of
     /// each conversation wanting Joel whose unreads changed, read from its
     /// history, and each held one his read mark, `read`, has reached, said
@@ -432,14 +466,18 @@ impl Messages {
             return Ok(Some(SLACK.to_owned()));
         }
         if let Some(name) = self.people.get(user) {
-            return Ok(Some(name.clone()));
+            return Ok(Some(name));
         }
         match slack.ask(account, "users.info", &[("user", user)]) {
-            Ok(said) => {
-                let name = search::named_in(&said);
-                self.people.insert(user.to_owned(), name.clone());
-                Ok(Some(name))
-            }
+            // Only a name Slack gave is kept, so a person it couldn't say
+            // is asked again next run.
+            Ok(said) => Ok(Some(search::name_in(&said).map_or_else(
+                || SLACK.to_owned(),
+                |name| {
+                    self.people.keep(user, &name);
+                    name
+                },
+            ))),
             Err(Refused::SignedOut) => Err(Refused::SignedOut),
             Err(Refused::Unreachable(_)) => Ok(None),
         }
@@ -646,7 +684,7 @@ mod tests {
         assert_eq!(
             done("slack-message:D1:1730300001.000100"),
             Some(Done {
-                how: "read in Slack",
+                how: "readInSlack",
                 at: "2024-10-31T18:40:00Z".to_owned(),
                 millis: now,
             })
@@ -685,7 +723,7 @@ mod tests {
                 .done
                 .as_ref()
                 .map(|done| done.how),
-            Some("gone from Slack")
+            Some("goneFromSlack")
         );
     }
 
@@ -722,7 +760,7 @@ mod tests {
         });
         assert_eq!(
             serde_json::to_value(&one).unwrap()["done"],
-            json!({"how": "read in Slack", "at": "2024-10-31T18:40:00Z"})
+            json!({"how": "readInSlack", "at": "2024-10-31T18:40:00Z"})
         );
     }
 }

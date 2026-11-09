@@ -1,19 +1,21 @@
 """Stand in for Slack's daemon, slack-unreads, on the socket it keeps (modules/slack/src/daemon.rs).
 
 It speaks the daemon interface, version 1, as the real one does. What Slack says is unread,
-read last and how it stands is the runtime folder's slack-says.json, { state, conversations,
-recent }, which a test writes and then sends SIGHUP, as slack-unreads' rounds would tell it;
-with none, Slack answers with nothing unread. It's held as the daemon's records, slack-unread,
-slack-recent and slack-account, listed and watched, each watch told what changed and went and
-how Slack stands as that changes; each conversation is given a timestamp falling with its place,
-so the order a test lists them in is Slack's. Hello says how Slack stands, a search answers
-the Slack messages found for its words, and a get of a message's key answers the messages
-around it. Each search is written down in slack-searched beside the socket, one
-line of words each, so a test can count how often Slack was asked, and is held until the
-runtime folder's slack-answers file exists, so a test sees what the launcher shows while Slack
-is asked. "launcher" finds two messages, Ada's in #launcher and Joel's own to her; "busy" is
-refused as Slack's rate limit refuses; anything else finds nothing. Nothing else is answered.
-Each hello is written down in slack-hellos, so a test knows the shell has reached it.
+read last, each message wanting Joel and how it stands is the runtime folder's slack-says.json,
+{ state, conversations, recent, messages }, which a test writes and then sends SIGHUP, as
+slack-unreads' rounds would tell it; with none, Slack answers with nothing unread. It's held
+as the daemon's records, slack-unread, slack-recent, slack-message and slack-account, the
+account saying it holds every message once slack-says.json lists any, listed and watched,
+each watch told what changed and went and how Slack stands as that changes; each conversation
+is given a timestamp falling with its place, so the order a test lists them in is Slack's.
+Hello says how Slack stands, a search answers the Slack messages found for its words, and a
+get of a message's key answers the messages around it. Each search is written down in
+slack-searched beside the socket, one line of words each, so a test can count how often Slack
+was asked, and is held until the runtime folder's slack-answers file exists, so a test sees
+what the launcher shows while Slack is asked. "launcher" finds two messages, Ada's in
+#launcher and Joel's own to her; "busy" is refused as Slack's rate limit refuses; anything
+else finds nothing. Nothing else is answered. Each hello is written down in slack-hellos, so a
+test knows the shell has reached it.
 """
 
 import contextlib
@@ -24,8 +26,9 @@ import sys
 import threading
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -36,15 +39,16 @@ SEARCHED = RUNTIME / "slack-searched"
 ANSWERS = RUNTIME / "slack-answers"
 HELLOS = RUNTIME / "slack-hellos"
 SAYS = RUNTIME / "slack-says.json"
-# The kinds it holds, and slack-message, which it holds none of but answers for, as Search
-# Slack watches it to hear how Slack stands.
+# The kinds it holds: slack-message for each message wanting Joel, which Search Slack watches
+# too, to hear how Slack stands.
 KINDS = ("slack-unread", "slack-recent", "slack-account", "slack-message")
 # The daemon's word for how Slack stands, by what slack-says.json says.
 WORDS = {"ok": "answering", "signedOut": "signed-out", "unreachable": "refused"}
 # How often a held search looks for leave to answer, in seconds.
 LOOK = 0.05
-# Milliseconds in an hour, as the daemon gives times.
+# Milliseconds in an hour and a minute, as the daemon gives times.
 HOUR = 3_600_000
+MINUTE = 60_000
 
 
 def found(now: int) -> list[dict[str, object]]:
@@ -54,7 +58,7 @@ def found(now: int) -> list[dict[str, object]]:
             "key": "slack-message:C1:1730300000.000100",
             "kind": "slack-message",
             "place": "#launcher",
-            "who": "ada",
+            "who": "Ada Lovelace",
             "mine": False,
             "first": "The launcher is fast",
             "text": "The launcher is fast\nand never waits",
@@ -150,8 +154,45 @@ def saying() -> tuple[str, dict[str, dict[str, object]]]:
                     thing["count"] = one["count"]
                 thing[field] = f"{1730000000 - place}.000100"
                 things[f"{kind}:{one['id']}"] = thing
-    things["slack-account:slack"] = {"standing": state}
+        things.update(messages(says.get("messages", [])))
+    account: dict[str, object] = {"standing": state}
+    if "messages" in says:
+        account["messages"] = "whole"
+    things["slack-account:slack"] = account
     return state, things
+
+
+def link(channel: str, ts: str) -> str:
+    """Give where Slack shows a message on the web, as the daemon makes it (src/messages.rs)."""
+    return f"https://slack.example/archives/{channel}/p{ts.replace('.', '')}"
+
+
+def messages(listed: list[dict[str, object]]) -> dict[str, dict[str, object]]:
+    """Hold each message wanting Joel as the daemon does (src/messages.rs), by its key.
+
+    Each says its channel, ts, place, who, first, text, link and team, how many minutes ago
+    it was said, and done, { how, minutes }, once it's read in Slack.
+    """
+    now = int(time.time() * 1000)
+    held: dict[str, dict[str, object]] = {}
+    for one in listed:
+        message = {name: one[name] for name in ("channel", "ts", "place", "who", "first")}
+        message |= {
+            "mine": False,
+            "text": one.get("text", one["first"]),
+            "at": now - int(cast("int", one["minutes"])) * MINUTE,
+            "link": one.get("link", link(str(one["channel"]), str(one["ts"]))),
+            "team": one.get("team", "T1"),
+        }
+        done = cast("dict[str, object] | None", one.get("done"))
+        if done is not None:
+            # The daemon says when it was done in ISO 8601, in UTC, where it
+            # says when it was said in milliseconds (src/messages.rs).
+            ended = now - int(cast("int", done["minutes"])) * MINUTE
+            at = datetime.fromtimestamp(ended / 1000, tz=UTC).isoformat()
+            message["done"] = {"how": done["how"], "at": at.replace("+00:00", "Z")}
+        held[f"slack-message:{one['channel']}:{one['ts']}"] = message
+    return held
 
 
 def retell() -> None:

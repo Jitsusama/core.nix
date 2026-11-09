@@ -1644,6 +1644,12 @@
     where it is, who said it and its first words, the messages around one oldest first, and
     Slack too busy apart from signed out or out of reach
   '';
+  slack-message-is-one-row = ''
+    a Slack message is one row whether For You holds it or Search Slack found it: one key, named
+    by who said it, Joel's own as You, its first line after its name or, found past it, the
+    message from the matched word on, its eyebrow where it is or that it's a direct message, and
+    Return opening the message itself, else its conversation
+  '';
   slack-passes-clippy = ''
     clippy finds nothing in slack-people or its tests
   '';
@@ -1666,7 +1672,8 @@
     heard in, and counts what wants Joel only while the daemon answers and Slack answered it,
     saying Slack can't be reached when it can't, and signed out once Slack refuses the sign-in;
     it's listed only with something to read, never with nothing or the daemon not answering,
-    naming the first two conversations and how many more
+    naming the first two conversations and how many more, and Slack's own Unread counts the
+    conversations it lists
   '';
   smartd-stops-cleanly-without-disks = ''
     the workstation's own smartd command, run with no disks, stops cleanly rather than failing

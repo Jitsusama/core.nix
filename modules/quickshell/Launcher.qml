@@ -564,7 +564,7 @@ Scope {
                 return;
             steps[at] = Object.assign({}, was, {
                 row: row,
-                rows: Steady.kept(was.rows, led(row, row.verbs()), steadyId)
+                rows: Steady.kept(was.rows, led(row, row.verbs()), pairedId)
             });
             // The list it was stepped into from says it as it is now too,
             // for the way back out.
@@ -1030,6 +1030,7 @@ Scope {
     readonly property var components: [
         { keyed: /^mail:/, made: "mail" },
         { keyed: /^slack:conversation:/, made: "slackConversation" },
+        { keyed: /^slack:message:/, made: "slackMessage" },
         { keyed: /^calendar:meeting:/, made: "meeting" },
         { keyed: /^file:/, made: "file" },
         { keyed: /^folder:/, made: "folder" },
@@ -4136,9 +4137,9 @@ Scope {
             && !found.some(one => one.key === row.key)).map(row => onOffer(row.key));
         if (!holdingRows) {
             waitingRows = 0;
-            return Steady.kept(shown, found.concat(renamed), steadyId);
+            return Steady.kept(shown, found.concat(renamed), pairedId);
         }
-        const still = Steady.held(shown, found.concat(renamed), steadyId);
+        const still = Steady.held(shown, found.concat(renamed), pairedId);
         waitingRows = still.waiting;
         return still.rows;
     }
@@ -4457,7 +4458,7 @@ Scope {
         if (!open || asking || !held.some(step => !!step.row.category?.while))
             return;
         const steps = held.map(step => step.row.category?.while ? Object.assign({}, step, {
-            rows: Steady.kept(step.rows, members(step.row.category), steadyId)
+            rows: Steady.kept(step.rows, members(step.row.category), pairedId)
                 .map(row => heldBack(step.row.category, row))
         }) : step);
         if (!remade(steps, held.length))
@@ -4713,7 +4714,7 @@ Scope {
         if (from < 0 && !top && !held.some(ofSource))
             return;
         const steps = held.map(step => ofSource(step) ? Object.assign({}, step, {
-            rows: Steady.kept(step.rows, members(step.row.category), steadyId)
+            rows: Steady.kept(step.rows, members(step.row.category), pairedId)
                 .map(row => heldBack(step.row.category, row))
         }) : step);
         const above = top ? own : from < 0 ? [] : source.everything();
@@ -4744,7 +4745,7 @@ Scope {
                 return false;
             steps[at] = Object.assign({}, step, {
                 row: thing,
-                rows: Steady.kept(step.rows, into, steadyId)
+                rows: Steady.kept(step.rows, into, pairedId)
             });
             rows = into;
         }
@@ -4774,7 +4775,7 @@ Scope {
     }
 
     function reshow(count) {
-        const was = current >= 0 && selected ? steadyId(selected) : "";
+        const was = current >= 0 && selected ? pairedId(selected) : "";
         const at = current;
         // A provider that throws mid-search mustn't leave every later search
         // keeping its rows as a refresh does.
@@ -4792,7 +4793,7 @@ Scope {
             row: was,
             at: at,
             lowest: lowest
-        }, steadyId);
+        }, pairedId);
         // The list stays where it stands: Qt keeps the rows in view still as
         // rows above them come or go. Put back to where it had been scrolled,
         // it was put to a place the rows had left, above the first once rows
@@ -4811,6 +4812,17 @@ Scope {
     // name, so the Cores stay the Cores as their loads move.
     function steadyId(row) {
         return Rank.identity(row) || `named:${row.name ?? ""}`;
+    }
+
+    // What a row is to the row it stands in for as the rows change, and
+    // only there: Steady's pairing, the selection held and the rows kept
+    // drawn. A row taking the place a dimmed one held while it was asked
+    // for says so with `steadyAs`, the one it takes over from, as Search
+    // Slack's first message takes its stand-in's light. Everything else,
+    // a trail, a spot or what follows a row, knows it by what it is, so
+    // that message is the one For You lists.
+    function pairedId(row) {
+        return row.steadyAs ?? steadyId(row);
     }
 
     // Whether a row offered now is the one held: by its key, or else by
@@ -8089,7 +8101,7 @@ Scope {
                             // past the old ones' end, and the new ones reach
                             // as far as what's left and what's added.
                             function keep(rows) {
-                                const keys = rows.map(row => root.steadyId(row));
+                                const keys = rows.map(row => root.pairedId(row));
                                 let start = 0;
                                 while (start < rowsKept.count && start < keys.length
                                     && rowsKept.get(start).key === keys[start])

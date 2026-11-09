@@ -1212,19 +1212,26 @@ Provider {
 
     // What came and is done with, each { title, how, at, source, of }, for
     // History (Lately.js's done): a notice read here, or withdrawn by its
-    // sender, as "read here 14:02" (VKCF3Z, 2026-11-08), and mail read or
-    // archived in Gmail or here, as Google's daemon says (Piece.qml's
-    // finished). The mail piece is asked even with nothing to read, since
-    // what it finished outlasts its row.
-    readonly property var cameDone: Lately.done({ notices: latelyNotices, messages: null,
-        finished: Facts.all.find(fact => fact.piece?.lately === "mail" && fact.piece.present)
-            ?.piece.finished ?? [] }, { mail: Words.of("mail:message").said ?? {}, slack: {},
-        notice: Words.of("for-you:source:desktop").said ?? {} })
+    // sender, as "read here 14:02" (VKCF3Z, 2026-11-08), mail read or
+    // archived in Gmail or here, as Google's daemon says, and a Slack
+    // message read in Slack, as its daemon says, "read in Slack 14:02",
+    // while the daemon holds every one (Piece.qml's finished), each how
+    // worded from its source's words. A piece holding nothing more to read
+    // is asked too, since what it finished outlasts its row.
+    function finishedOf(source) {
+        return Facts.all.find(fact => fact.piece?.lately === source && fact.piece.present)
+            ?.piece.finished ?? null;
+    }
+    readonly property var cameDone: Lately.done({ notices: latelyNotices,
+        messages: finishedOf("slack"), finished: finishedOf("mail") ?? [] },
+        { mail: Words.of("mail:message").said ?? {},
+            slack: Words.of("slack:message").said ?? {},
+            notice: Words.of("for-you:source:desktop").said ?? {} })
 
     // A done one's row in History: the row its piece gives it, as a piece
-    // of mail's, or a notice's row in Notices, with how and when it was
-    // done with at its side. `rows` are Notices' rows of every notice done
-    // with, by its id, asked for at once (historyRows).
+    // of mail's or a Slack message's, or a notice's row in Notices, with
+    // how and when it was done with at its side. `rows` are Notices' rows
+    // of every notice done with, by its id, asked for at once (historyRows).
     function cameDoneRow(one, rows) {
         const side = ForYou.historySide({ how: one.how, resolved: one.at, since: null },
             forYouSaid(Date.now()));

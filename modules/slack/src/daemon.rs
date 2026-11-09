@@ -34,6 +34,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use serde_json::{Map, Value, json};
 
+use crate::messages::People;
 use crate::search::{self, Failed};
 use crate::unreads::{Conversation, Said, State};
 use crate::{Account, Slack};
@@ -192,6 +193,8 @@ struct Held {
 pub struct Daemon {
     held: Arc<Mutex<Held>>,
     asking: Arc<Asking>,
+    /// Who each person is, which its rounds fill and its searches read.
+    people: People,
 }
 
 struct Asking {
@@ -266,7 +269,15 @@ impl Daemon {
                 origin,
                 since: crate::now() * 1000,
             }),
+            people: People::default(),
         }
+    }
+
+    /// Who each person is, for the rounds to name people in and fill, so
+    /// a search asks Slack only for those no round has named.
+    #[must_use]
+    pub fn people(&self) -> People {
+        self.people.clone()
     }
 
     fn lock(&self) -> MutexGuard<'_, Held> {
@@ -470,7 +481,7 @@ impl Daemon {
         if words.is_empty() {
             return json!({"id": id, "records": []});
         }
-        match Slack::new(self.asking.origin.clone()).search(&account, words) {
+        match Slack::new(self.asking.origin.clone()).search(&account, words, &self.people) {
             Ok(found) => json!({"id": id, "records": found}),
             Err(failed) => refused(id, &failed),
         }
@@ -669,7 +680,7 @@ mod tests {
         }];
         daemon.say(Some(&said), 10);
         let done = Done {
-            how: "read in Slack",
+            how: "readInSlack",
             at: "2024-10-31T18:40:00Z".to_owned(),
             millis: 1_730_400_000_000,
         };
@@ -696,7 +707,7 @@ mod tests {
         assert_eq!(keys(&lines[3]), [message, "slack-read:D1"]);
         assert_eq!(
             lines[3]["changed"][0]["slack-message"]["done"],
-            json!({"how": "read in Slack", "at": "2024-10-31T18:40:00Z"})
+            json!({"how": "readInSlack", "at": "2024-10-31T18:40:00Z"})
         );
         assert_eq!(lines[3]["gone"], json!([]));
     }

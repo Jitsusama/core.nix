@@ -667,6 +667,16 @@ fn what_wants_joel_is_held_whole_each_conversation_named_once() {
 fn searching(line: &str) -> String {
     if line.contains("search.messages") && line.contains("query=busy") {
         r#"{"ok": false, "error": "ratelimited"}"#.into()
+    } else if line.contains("search.messages") && line.contains("query=grace") {
+        concat!(
+            r#"{"ok": true, "messages": {"matches": [{"channel": {"id": "C1","#,
+            r#""is_channel": true, "name": "launcher"}, "ts": "1730300002.000100","#,
+            r#""user": "U8", "username": "grace", "text": "Grace was here","#,
+            r#""permalink": "https://slack/p2"}]}}"#
+        )
+        .into()
+    } else if line.contains("users.info?user=U8") {
+        r#"{"ok": false, "error": "user_not_found"}"#.into()
     } else if line.contains("search.messages") {
         concat!(
             r#"{"ok": true, "messages": {"matches": [{"channel": {"id": "C1","#,
@@ -684,6 +694,9 @@ fn searching(line: &str) -> String {
         .into()
     } else if line.contains("conversations.history") {
         r#"{"ok": true, "messages": [{"ts": "1730300000.000100", "user": "U9", "text": "The launcher is fast"}]}"#.into()
+    } else if line.contains("users.info?user=U9") {
+        r#"{"ok": true, "user": {"id": "U9", "name": "ada", "profile": {"real_name": "Ada L"}}}"#
+            .into()
     } else {
         wanting(line)
     }
@@ -741,12 +754,15 @@ fn a_search_asked_over_the_socket_says_each_message_and_what_is_around_it() {
         (
             &record["key"],
             &record["place"],
+            &record["who"],
             &record["first"],
             &record["team"]
         ),
         (
             &serde_json::json!("slack-message:C1:1730300000.000100"),
             &serde_json::json!("#launcher"),
+            // Named as a message held for Joel is, never by a handle.
+            &serde_json::json!("Ada L"),
             &serde_json::json!("The launcher is fast"),
             // A match that doesn't say its workspace is the sign-in's.
             &serde_json::json!("T1")
@@ -773,6 +789,23 @@ fn a_search_asked_over_the_socket_says_each_message_and_what_is_around_it() {
         &serde_json::json!({"id": 4, "ask": "search", "words": "busy"}),
     );
     assert_eq!(busy["error"]["code"], "too-many");
+    // Someone Slack won't name keeps their handle, and the search answers.
+    let refused = asked(
+        &run,
+        &serde_json::json!({"id": 5, "ask": "search", "words": "grace"}),
+    );
+    assert_eq!(refused["records"][0]["who"], "grace", "{refused}");
+    // Ada, named once, is never asked for again.
+    asked(
+        &run,
+        &serde_json::json!({"id": 6, "ask": "search", "words": "launcher"}),
+    );
+    let asked_for_ada = stand_in
+        .heard()
+        .iter()
+        .filter(|heard| heard.line.contains("users.info?user=U9"))
+        .count();
+    assert_eq!(asked_for_ada, 1, "{:?}", stand_in.heard());
     program.kill().unwrap();
     program.wait().unwrap();
     // Still only reading.
@@ -1154,7 +1187,7 @@ fn each_message_wanting_joel_is_held_until_he_reads_it_in_slack() {
         )
     );
     let done = &changed["changed"][0]["slack-message"]["done"];
-    assert_eq!(done["how"], "read in Slack");
+    assert_eq!(done["how"], "readInSlack");
     let at = done["at"].as_str().unwrap();
     assert!(
         at.len() == 20 && at.ends_with('Z') && at.as_bytes()[10] == b'T',
