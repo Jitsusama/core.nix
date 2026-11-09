@@ -286,6 +286,8 @@ or a copy, can be opened, copied or forgotten.
 | time peer | a time server that sets its time by the machine's too, each keeping the other right | | chrony's `peer` mode |
 | reference clock | a clock wired to the machine that it sets its time by, such as a GPS receiver | | chrony's `refclock` |
 | here | where the weather is when no town is typed: the location, else the town set, else the clock's time zone's city | | the weather provider's `place` |
+| conditions | what the weather is like this moment where it's asked for: its sky and every figure of it | | Open-Meteo's `current` |
+| local time | the clock and weekday where the weather is asked for, when that isn't here | | the forecast's `current.time` |
 
 ## Machine
 

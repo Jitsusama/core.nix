@@ -720,7 +720,8 @@
     {
       "id": "jobs:held",
       "in": "jobs",
-      "name": "Holds"
+      "name": "Memory",
+      "term": "Machine/memory"
     },
     {
       "id": "jobs:since",
@@ -1677,12 +1678,12 @@
     {
       "id": "machine:disk:written",
       "in": "machine:disk:health",
-      "name": "Written"
+      "name": "Data Written"
     },
     {
       "id": "machine:disk:read",
       "in": "machine:disk:health",
-      "name": "Read"
+      "name": "Data Read"
     },
     {
       "id": "machine:disk:powered",
@@ -4566,12 +4567,14 @@
     {
       "id": "weather:now",
       "in": "weather",
-      "name": "Now",
-      "states": {
-        "away": {
-          "name": "Now There, {clock} {weekday}"
-        }
-      }
+      "name": "Conditions",
+      "term": "Desktop/conditions"
+    },
+    {
+      "id": "weather:local-time",
+      "in": "weather",
+      "name": "Local Time",
+      "term": "Desktop/local time"
     },
     {
       "id": "weather:rain",
@@ -6032,7 +6035,7 @@
     {
       "id": "shortcuts:neovim:editor:looks",
       "in": "shortcuts",
-      "name": "Looks"
+      "name": "Appearance"
     },
     {
       "id": "shortcuts:neovim:editor:insides",
