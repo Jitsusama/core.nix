@@ -3368,6 +3368,11 @@ Scope {
     property var livesLongest: null
     // How long a slice of the walk may run, in ms, inside a key's 4.
     readonly property int livesSlice: 3
+    // The rows each source has made for the walk, by its name, for the
+    // check that tells them from what a key made: the walk lays out a
+    // place it walks, as Agents' sessions, once the list is quiet, never
+    // on a key. A plain object, so adding to it notifies nothing.
+    readonly property var livesMade: ({})
 
     function livesFor(id) {
         if (followIndex === null)
@@ -3379,6 +3384,7 @@ Scope {
     // it if none is under way; true once it's done.
     function walkLives(until) {
         const walking = Date.now();
+        const before = tallies();
         const ways = {
             idOf: one => steadyId(one),
             holds: (one, above) => catalogueHolds(one,
@@ -3389,6 +3395,9 @@ Scope {
             livesWalk = Object.assign(Catalogue.livesBegun(home(), ways), { took: 0, longest: 0 });
         const walk = livesWalk;
         const done = Catalogue.livesOn(walk, ways);
+        const after = tallies();
+        for (const name of Object.keys(after))
+            livesMade[name] = (livesMade[name] ?? 0) + after[name] - (before[name] ?? 0);
         const took = Date.now() - walking;
         walk.took += took;
         walk.longest = Math.max(walk.longest, took);
@@ -6254,12 +6263,13 @@ Scope {
 
         // How many rows each source has made since the shell started, by
         // its name, and how many times the open launcher has refreshed,
-        // and how many changes it took as a key's own, for the check that a
-        // source nobody sees makes none, the list refreshes at most four
-        // times a second, and an arrow takes no change as its own.
+        // how many changes it took as a key's own, and the rows made for the
+        // walk of where rows live (livesMade), for the check that a source
+        // nobody sees makes none, the list refreshes at most four times a
+        // second, and an arrow takes no change as its own.
         function made(): string {
             return JSON.stringify({ rows: root.tallies(), refreshes: root.refreshesDone,
-                keyed: root.refreshesKeyed });
+                keyed: root.refreshesKeyed, walked: root.livesMade });
         }
 
         // How many frames the card has drawn since this was first asked,
