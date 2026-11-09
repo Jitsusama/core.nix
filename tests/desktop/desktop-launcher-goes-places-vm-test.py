@@ -1066,7 +1066,7 @@ def walk_passwords_for_you(desktop: Desktop) -> None:
         )
         shown = desktop.showing()
         assert shown["selected"]["side"] == "1 breached \u00b7 2 reused", shown["selected"]
-        assert shown["drawer"]["eyebrow"] == "from Passwords \u00b7 to do", shown["drawer"]
+        assert shown["drawer"]["eyebrow"] == "from Passwords \u00b7 to-do", shown["drawer"]
         desktop.shoot("launcher-for-you-passwords-todo")
         # The keys go into its drawer, which draws it wherever there's room, to read its facts.
         machine = desktop.machine
