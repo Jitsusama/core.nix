@@ -42,7 +42,12 @@ function holds(names, row) {
 
 // What a place's row says at its right: how it stands, where it says
 // (Processor's "99% busy", Power's charge, how Agents' sessions stand),
-// or else how many it holds.
-function side(stands, counted) {
-    return stands !== null && stands !== undefined && stands !== "" ? stands : counted;
+// or else how many it holds. One whose name is followed by its word for
+// holding none, as Media's "none", says no count there, which would only
+// say "empty" again.
+function side(stands, counted, saidNone = false) {
+    if (stands !== null && stands !== undefined && stands !== "") {
+        return stands;
+    }
+    return saidNone ? "" : counted;
 }

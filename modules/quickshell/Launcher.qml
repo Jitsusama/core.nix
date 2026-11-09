@@ -3078,7 +3078,10 @@ Scope {
         const name = source.settings.name;
         const opener = Shortcuts.actions.find(action => action.opens === name);
         const title = collection.title ?? collection.noun;
-        const side = read ? PlaceRow.side(source.homeSays(), source.counted()) : "";
+        const members = read ? source.memberNames() : [];
+        const none = collection.none ?? "";
+        const side = read ? PlaceRow.side(source.homeSays(), source.counted(),
+            members.length === 0 && none !== "") : "";
         const row = {
             key: `collection:${name}`,
             verb: "open",
@@ -3101,8 +3104,8 @@ Scope {
             // What it holds by name, given way by whole names; holding
             // none, it says so as a run, never the sentence an empty place
             // says inside (VKCF3Z, 2026-11-08).
-            count: read ? PlaceRow.holds(source.memberNames(),
-                { name: title, says: side, room: rowRoom(), none: collection.none ?? "" }) : "",
+            count: read ? PlaceRow.holds(members,
+                { name: title, says: side, room: rowRoom(), none: none }) : "",
             names: read,
             gap: gap,
             opens: name,

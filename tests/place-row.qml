@@ -58,6 +58,10 @@ QtObject {
             "99% busy");
         check(failures, "how many where it says nothing", PlaceRow.side(null, "12"), "12");
         check(failures, "and where what it says is empty", PlaceRow.side("", "12"), "12");
+        check(failures, "no count where its name is followed by none",
+            PlaceRow.side(null, "empty", true), "");
+        check(failures, "but how it stands still", PlaceRow.side("0 working", "empty", true),
+            "0 working");
 
         // Now's parts give way the same way (Now.qml's listedAfter).
         check(failures, "names listed in their room", PlaceRow.listed(["a", "bb", "ccc"], 6),
