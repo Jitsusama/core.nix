@@ -293,7 +293,7 @@ function looks(files) {
     };
 }
 
-// Needs You's items Joel said were done, for History, newest first: each
+// The to-dos Joel said were done, for History, newest first: each
 // { item, resolved }, when he said it, as settled.json keeps it. What's
 // kept of an item's words goes with its quest's file, so it's there only
 // while that is. One the to do daemon found done isn't Joel's word, and

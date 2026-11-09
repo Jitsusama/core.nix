@@ -152,8 +152,8 @@
         "tree": "worktree",
         "folder": "folder",
         "and": "and",
-        "needItem": "{count} to-do",
-        "needItems": "{count} to-dos",
+        "toDo": "{count} to-do",
+        "toDos": "{count} to-dos",
         "full": "{share}% full",
         "contextOf": "{used} of {limit}",
         "turnTook": "{took} \u00b7 {out} out",
@@ -10609,7 +10609,7 @@
     {
       "id": "tuple:calls-lately",
       "in": "applications",
-      "name": "Calls Lately"
+      "name": "Recent Calls"
     },
     {
       "id": "mpv:to-finish",

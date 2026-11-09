@@ -171,8 +171,8 @@ QtObject {
             tree: "worktree",
             folder: "folder",
             and: "and",
-            needItem: "{count} to-do",
-            needItems: "{count} to-dos"
+            toDo: "{count} to-do",
+            toDos: "{count} to-dos"
         };
         for (const [tree, needs, want] of [[true, 0, "its worktree stays."],
             [true, 1, "its worktree and 1 to-do stay."],

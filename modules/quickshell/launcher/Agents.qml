@@ -357,7 +357,7 @@ Provider {
         // What it landed last, newest by when, with its ref and its time.
         const last = Order.sorted(presence.landings,
             Order.stream(one => String(one.at ?? "")))[0];
-        // What its quest waits on Joel for, in the order Needs You says it.
+        // What its quest waits on Joel for, in the order For You says it.
         const needs = (presence.quest ?? "") === "" ? []
             : WaitingOnYou.items.filter(item => item.quest === presence.quest);
         return SessionDrawer.drawer(session.title, presence, {

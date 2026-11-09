@@ -869,7 +869,7 @@ Provider {
         });
     }
 
-    // Needs You's items Joel said were done, while their quest's file
+    // The to-dos Joel said were done, while their quest's file
     // still tells of them (ForYou.js's settledItems).
     readonly property var doneItems: ForYou.settledItems(WaitingOnYou.asked,
         WaitingOnYou.settled, each => WaitingOnYou.identity(each))

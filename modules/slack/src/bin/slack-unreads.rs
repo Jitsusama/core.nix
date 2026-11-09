@@ -19,7 +19,7 @@
 //! after a restart is known read.
 //!
 //! While Slack refuses the sign-in, signing in again waits on Joel in
-//! Needs You, through WAITING, a file of what waits on him as each
+//! For You, through WAITING, a file of what waits on him as each
 //! quest's is (lib's `sign_in_waits`): written once Slack refuses, and
 //! taken away once Slack answers again or there's no sign-in, so it clears
 //! itself. Slack out of reach leaves it as it stood, since that says
@@ -210,7 +210,7 @@ fn named(
     Ok(listed)
 }
 
-/// Asks Joel to sign in again in Needs You, or stops asking, writing or
+/// Asks Joel to sign in again in For You, or stops asking, writing or
 /// taking away `waiting` only when that changes, so the shell hears it
 /// once; its folder is made at login, and here too should it be missing.
 fn ask_joel(waiting: &Path, asks: bool) {

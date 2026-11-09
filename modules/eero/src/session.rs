@@ -26,7 +26,7 @@ pub fn folder() -> io::Result<PathBuf> {
     Ok(state()?.join("eero"))
 }
 
-/// The account's state folder, which eero's folder and Needs You's share.
+/// The account's state folder, which eero's folder and For You's share.
 pub fn state() -> io::Result<PathBuf> {
     std::env::var_os("XDG_STATE_HOME")
         .map(PathBuf::from)

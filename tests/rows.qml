@@ -42,7 +42,7 @@ ShellRoot {
     // Joel's panel, in logical pixels.
     readonly property int panel: 677
     readonly property string long: "Heavy turns in Walgit Push Policy: Protect the Main Branch"
-    readonly property string voice: "Nothing needs you."
+    readonly property string voice: "Nothing waits on you."
     // Home's house, nf-md-home, as the theme names it.
     readonly property string house: String.fromCodePoint(0xf02dc)
     readonly property string sentence: "$4,199 billed in the last 7 days against an allowance"

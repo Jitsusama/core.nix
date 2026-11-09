@@ -186,7 +186,7 @@ function leaves(inTree, needs, said) {
     if (needs === 0) {
         return String(said.stays ?? "").replace("{kept}", place);
     }
-    const items = String((needs === 1 ? said.needItem : said.needItems) ?? "")
+    const items = String((needs === 1 ? said.toDo : said.toDos) ?? "")
         .replace("{count}", needs);
     return String(said.stay ?? "").replace("{kept}", `${place} ${said.and} ${items}`);
 }

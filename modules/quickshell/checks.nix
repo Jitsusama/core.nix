@@ -3748,7 +3748,7 @@ onLinux {
       touch $out
     '';
 
-  # Needs You holds only what Joel can do, now or later, in the order he
+  # For You's to-dos hold only what Joel can do, now or later, in the order he
   # does them, and a session's want is his only while it's true, as
   # tests/waiting-on-you.qml holds Waiting.js to the agents' own files, as
   # the mycelium node serves them.

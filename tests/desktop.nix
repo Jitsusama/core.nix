@@ -858,7 +858,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           "${lib.getExe pkgs.socat} UNIX-LISTEN:%t/tuple-0,fork,unlink-early /dev/null";
         # The screen-text daemon, where Capture's Recent is searched by
         # what its screenshots say, a stand-in that reads no picture; in
-        # looks too, where it's photographed beside what meaning saw.
+        # looks too, where it's shot beside what meaning saw.
         systemd.user.services.screen-text.Service.ExecStart = lib.mkIf (builtins.elem area [
           "launcher-goes-places"
           "looks"

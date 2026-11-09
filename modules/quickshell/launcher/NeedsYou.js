@@ -1,4 +1,4 @@
-// What one of Needs You's items says in its note (launcher/Now.qml's item),
+// What one of For You's to-dos says in its note (launcher/Now.qml's item),
 // out of what its owner wrote of it through mesh_wait (Waiting.js reads
 // which stand), so its own words for when and how long it has waited are
 // shown on every item (docs/design.md, As deep as the deepest; VKCF3Z's

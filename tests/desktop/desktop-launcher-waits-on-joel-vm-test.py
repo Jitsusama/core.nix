@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
 
-# The scales Joel uses, where what VKCF3Z judges is photographed.
+# The scales Joel uses, where what VKCF3Z judges is shot.
 JOELS_SCALES = ("1.5", "2")
 
 
@@ -219,7 +219,7 @@ def test_super_tab_finds_a_pi_window_by_its_work_and_puts_one_waiting_next(
         "said": "Which way?",
     }
     # The shell hears it from the node, a moment after pi writes it, so the
-    # windows are opened once it has: as its Needs You notice shows.
+    # windows are opened once it has: as its For You notice shows.
     with desktop.told("shows card A quest of its own & whole needs you"):
         desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
     tabbed()
@@ -924,7 +924,7 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
 def test_a_sessions_action_is_in_needs_you_once_as_its_item(desktop: Desktop) -> None:
     """A session wanting Joel to do one of its items is in For You once, as the item.
 
-    And it's said once, by Needs You's notice: the session's own notice for the same thing
+    And it's said once, by For You's notice: the session's own notice for the same thing
     put two up in the same second (2026-11-06).
     """
     desktop.pi_session()
@@ -1126,7 +1126,7 @@ def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desk
     """In For You, :filter lists the kinds there and look steps into the looks, shot at 1.5 and 2.
 
     What a filter keeps and the words it takes are tests/for-you-filter.qml's, and its one
-    path through the launcher the nested niri's; here the menu and the head are photographed
+    path through the launcher the nested niri's; here the menu and the head are shot
     at Joel's scales, for VKCF3Z to judge (2026-11-08).
     """
     asked = {
