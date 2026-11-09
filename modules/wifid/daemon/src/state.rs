@@ -333,6 +333,13 @@ impl State {
     /// Takes in that the card of that name has looked for networks.
     pub fn looked(&mut self, card: &str) {
         self.looked.insert(card.to_string());
+        self.look_ended();
+    }
+
+    /// Takes in that a card's look ended, heard or failed: one that failed
+    /// hasn't looked, so settles nothing, but whoever asked for it is done
+    /// waiting.
+    pub fn look_ended(&mut self) {
         self.looks = self.looks.wrapping_add(1);
     }
 
@@ -923,6 +930,17 @@ mod tests {
         let after = state.described();
         assert_eq!((before.looks, after.looks), (0, 2));
         assert_eq!(after.nearby, before.nearby);
+    }
+
+    #[test]
+    fn a_failed_look_ends_the_wait_but_settles_nothing() {
+        let mut state = State::default();
+        state.follow(&on_nothing(2));
+
+        state.look_ended();
+
+        assert_eq!(state.described().looks, 1);
+        assert!(!state.settled());
     }
 
     #[test]
