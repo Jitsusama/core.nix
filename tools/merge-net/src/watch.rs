@@ -2328,6 +2328,8 @@ mod tests {
     #[test]
     fn a_test_main_lists_while_it_waits_for_a_search_is_not_searched() {
         let state = state("listed-while-waiting");
+        state.set_heads("s", "s").unwrap();
+        state.begin("h").unwrap();
         let world = Stand {
             head: "n".into(),
             merges: names("a b h"),
