@@ -1175,6 +1175,32 @@ fn broke(
     if state.found("fixed-forward", test, head) {
         return Ok(());
     }
+    // A test the base failed twice failed before every merge since, so no
+    // search over them can find what broke it, and `before` clears the
+    // merge one finds only after all its runs. On 9 November
+    // vm-desktop-looks failed twice at the base while it was listed, came
+    // off the list still failing, and its search took four runs of 25
+    // minutes each. A merge that broke it again after another fixed it in
+    // the same round goes unblamed, which costs less than such a search.
+    let failed_at_base = state
+        .runs(base, test)
+        .iter()
+        .filter(|&&ran| ran == Ran::Failed)
+        .count();
+    if failed_at_base >= FAILURES {
+        let log = state.log(head, test, 2).display().to_string();
+        state.find(&json!({
+            "kind": "failed-before", "test": test, "commit": head, "since": base,
+            "owner_pr": Value::Null, "log": log, "at": now(),
+        }))?;
+        state.say(&format!(
+            "{test} fails at {}, and failed twice at {} before it, so no merge since broke it: \
+             nothing is reverted or held",
+            short(head),
+            short(base)
+        ));
+        return Ok(());
+    }
     let merges = to_search(world, state, base, head, test)?;
     // Whether main's newest head fixed it is asked beside the search's first
     // step, and the search waits for the answer before its second. On
@@ -2681,6 +2707,45 @@ mod tests {
         assert!(world.reverted.lock().unwrap().is_empty());
         assert!(state.hold().is_none());
         assert_eq!(findings(&state)[0]["kind"], "failed-before");
+    }
+
+    #[test]
+    fn a_test_the_base_failed_twice_is_searched_no_further() {
+        let state = state("base-failed");
+        let log = state.log("s", "vm-a", 1);
+        for _ in 0..FAILURES {
+            state
+                .record("s", "vm-a", Ran::Failed, Some(1), &log)
+                .unwrap();
+        }
+        let world = Stand {
+            head: "m4".into(),
+            merges: names("m1 m2 m3 m4"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("m4", "vm-a", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("m4".into())
+        );
+        let searched: Vec<_> = world
+            .built()
+            .into_iter()
+            .filter(|(commit, _)| commit != "m4")
+            .collect();
+        assert!(
+            searched.is_empty(),
+            "it searched merges after a base that already failed: {searched:?}"
+        );
+        assert!(
+            world.reverted.lock().unwrap().is_empty(),
+            "a merge was blamed for what failed before it"
+        );
+        assert!(state.hold().is_none(), "switches were held");
+        let found = findings(&state);
+        assert_eq!(found[0]["kind"], "failed-before");
+        assert_eq!(found[0]["since"], "s");
     }
 
     #[test]
