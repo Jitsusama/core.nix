@@ -17,13 +17,15 @@ echo harbour >"$state/mycelium/realm"
 # shell would read; and two windows joined to sessions another machine
 # holds, one by its words as an argv and one by a line a shell would read;
 # and three another machine carried here as it went away, two whole, the
-# older listed first, and one saying where from badly.
+# older listed first, and one saying where from badly; and one that ran
+# hosted, which its host brings back itself.
 cat >"$state/pi/restore.json" <<'EOF'
 {"v":1,"boot":"an-earlier-boot","sessions":[
   {"id":"s-before","address":"BEFORE","title":"Harbour","cwd":"/tmp","lostAt":1},
   {"id":"s-fresh","address":"FRESH7","title":"Fresh","cwd":"/tmp","lostAt":1,"fresh":true,
    "quest":"QEST-FRESH"},
   {"id":"s-given-back","address":"GIVENB","title":"Given Back","cwd":"/given-back","lostAt":1},
+  {"id":"s-hosted","address":"HOSTED","title":"Hosted","cwd":"/tmp","lostAt":1,"hosted":true},
   {"id":"s-nowhere","address":"NOWHRE","title":"Nowhere","lostAt":1},
   {"id":"s; rm -rf ~","address":"SHELLY","title":"Shelly","cwd":"/tmp","lostAt":1},
   {"id":"s-far","address":"FARLST","title":"Far","cwd":"/tmp","lostAt":"",

@@ -391,7 +391,9 @@ Singleton {
     }
 
     // What the file says, keeping only the sessions it names whole: an id
-    // safe to hand pi's command line and a folder to open in.
+    // safe to hand pi's command line and a folder to open in. One that ran
+    // hosted (`hosted`) is left out: its host's own unit brings it back, so
+    // reopening it would start it twice (N4S6OF, 2026-11-09).
     function restoreOf(text) {
         let read = null;
         try {
@@ -419,6 +421,7 @@ Singleton {
             boot: typeof read.boot === "string" ? read.boot : "",
             sessions: read.sessions.filter(one => one !== null && typeof one === "object"
                 && /^[A-Za-z0-9._-]+$/.test(String(one.id ?? "")) && carried(one)
+                && one.hosted !== true
                 && (one.machine === undefined
                     ? typeof one.cwd === "string" && one.cwd.startsWith("/") : elsewhere(one)))
         };
@@ -1675,8 +1678,16 @@ Singleton {
     // which kitty raises if niri lets it. A held session in no window is
     // attached in a new one, and only then: Go To never makes a second
     // window of a session (Joel: "seeing multiples of the same thing
-    // gives me executive dysfunction").
+    // gives me executive dysfunction"). A hosted one, which pi's host runs
+    // under a unit of its own with no window, has nothing to raise and
+    // nothing yet that opens one, so Go To tells `unhosted` and opens
+    // nothing until a window of it is known (N4S6OF, 2026-11-09).
+    signal unhosted(var session)
     function goTo(session) {
+        if (session.presence?.hosted && !session.window) {
+            unhosted(session);
+            return;
+        }
         if (!session.here && !session.window && !session.kitty) {
             joinElsewhere(session);
             return;
