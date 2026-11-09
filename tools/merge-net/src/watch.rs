@@ -1160,6 +1160,37 @@ fn stalled(state: &State, head: &str, test: &str, owner: Option<u64>) -> Result<
     Ok(())
 }
 
+/// Whether `test` failed twice at the round's `base`, and if so says so
+/// and finds it failed before, naming no merge. It failed then before
+/// every merge since, so no search over them can find what broke it, and
+/// `before` clears the merge one finds only after all its runs. On
+/// 9 November vm-desktop-looks failed twice at the base while it was
+/// listed, came off the list still failing, and its search took four runs
+/// of 25 minutes each. A merge that broke it again after another fixed it
+/// in the same round goes unblamed, which costs less than such a search.
+fn failed_at_base(state: &State, base: &str, head: &str, test: &str) -> Result<bool, String> {
+    let failures = state
+        .runs(base, test)
+        .iter()
+        .filter(|&&ran| ran == Ran::Failed)
+        .count();
+    if failures < FAILURES {
+        return Ok(false);
+    }
+    let log = state.log(head, test, 2).display().to_string();
+    state.find(&json!({
+        "kind": "failed-before", "test": test, "commit": head, "since": base,
+        "owner_pr": Value::Null, "log": log, "at": now(),
+    }))?;
+    state.say(&format!(
+        "{test} fails at {}, and failed twice at {} before it, so no merge since broke it: \
+         nothing is reverted or held",
+        short(head),
+        short(base)
+    ));
+    Ok(true)
+}
+
 /// A test failed for real at `head`: find the merge since `base` that
 /// broke it, hold switching on it, revert it, and tell its owner.
 fn broke(
@@ -1172,33 +1203,7 @@ fn broke(
     // A round taken up again after a restart hears its failures again, and
     // one already found fixed forward was searched a second time on
     // 8 November, where runs stalled and held main.
-    if state.found("fixed-forward", test, head) {
-        return Ok(());
-    }
-    // A test the base failed twice failed before every merge since, so no
-    // search over them can find what broke it, and `before` clears the
-    // merge one finds only after all its runs. On 9 November
-    // vm-desktop-looks failed twice at the base while it was listed, came
-    // off the list still failing, and its search took four runs of 25
-    // minutes each. A merge that broke it again after another fixed it in
-    // the same round goes unblamed, which costs less than such a search.
-    let failed_at_base = state
-        .runs(base, test)
-        .iter()
-        .filter(|&&ran| ran == Ran::Failed)
-        .count();
-    if failed_at_base >= FAILURES {
-        let log = state.log(head, test, 2).display().to_string();
-        state.find(&json!({
-            "kind": "failed-before", "test": test, "commit": head, "since": base,
-            "owner_pr": Value::Null, "log": log, "at": now(),
-        }))?;
-        state.say(&format!(
-            "{test} fails at {}, and failed twice at {} before it, so no merge since broke it: \
-             nothing is reverted or held",
-            short(head),
-            short(base)
-        ));
+    if state.found("fixed-forward", test, head) || failed_at_base(state, base, head, test)? {
         return Ok(());
     }
     let merges = to_search(world, state, base, head, test)?;
