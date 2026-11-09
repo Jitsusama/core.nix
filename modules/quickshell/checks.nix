@@ -63,14 +63,15 @@ let
         '') files
       )}
       mv quickshell qs
-      # Slack's source for People, its conversation's row, Now's Slack
-      # piece and what its program row says are installed only where a
-      # machine brings Slack, as no example does, so they're read here as
-      # if one had.
+      # Slack's source for People, its conversation's row and a message's,
+      # Now's Slack piece and what its program row says are installed only
+      # where a machine brings Slack, as no example does, so they're read
+      # here as if one had.
       mkdir -p qs/launcher/people qs/pieces
       cp ${../slack/SlackSource.qml} qs/launcher/people/slack.qml
       cp ${../slack/Slack.js} qs/launcher/people/Slack.js
       cp ${../slack/SlackConversation.qml} qs/SlackConversation.qml
+      cp ${../slack/SlackMessage.qml} qs/SlackMessage.qml
       cp ${../slack/SlackUnreads.qml} qs/SlackUnreads.qml
       cp ${../slack/SlackUnreads.js} qs/SlackUnreads.js
       cp ${../slack/NewSlack.qml} qs/pieces/slack.qml

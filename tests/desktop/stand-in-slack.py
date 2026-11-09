@@ -3,10 +3,10 @@
 It speaks the daemon interface, version 1, as the real one does. What Slack says is unread,
 read last, each message wanting Joel and how it stands is the runtime folder's slack-says.json,
 { state, conversations, recent, messages }, which a test writes and then sends SIGHUP, as
-slack-unreads' rounds would tell it; with none, Slack answers with nothing unread. It's held as the daemon's records, slack-unread,
-slack-recent, slack-message and slack-account, the account saying it holds every message once
-slack-says.json lists any, listed and watched, each watch told what changed and went and
-how Slack stands as that changes; each conversation is given a timestamp falling with its place,
+slack-unreads' rounds would tell it; with none, Slack answers with nothing unread. It's held
+as the daemon's records, slack-unread, slack-recent, slack-message and slack-account, the
+account saying it holds every message once slack-says.json lists any, listed and watched,
+each watch told what changed and went and how Slack stands as that changes; each conversation is given a timestamp falling with its place,
 so the order a test lists them in is Slack's. Hello says how Slack stands, a search answers
 the Slack messages found for its words, and a get of a message's key answers the messages
 around it. Each search is written down in slack-searched beside the socket, one

@@ -8760,8 +8760,7 @@
         "searching": "searching Slack",
         "you": "you",
         "where": "in {place} \u00b7 message",
-        "direct": "direct message",
-        "sent": "Sent"
+        "direct": "direct message"
       },
       "tells": {
         "none": "Nothing in Slack says {words}.",
@@ -8769,6 +8768,11 @@
         "down": "Slack isn't answering.",
         "failed": "Slack couldn't be reached."
       }
+    },
+    {
+      "id": "slack:message:sent",
+      "in": "slack:message",
+      "name": "Sent"
     },
     {
       "id": "verb:slack:message:open",

@@ -265,7 +265,7 @@ def slack_holds_each_message(desktop: Desktop, conversations: list[Json]) -> Non
             and shown["rows"]
             == ["Ada Lovelace", "Ada Lovelace", "Grace Hopper", "Threads", "Show Slack"]
             and shown["selected"]["note"] == "or tea?"
-            and re.fullmatch(r"\d+ min ago", shown["selected"]["side"]) is not None
+            and re.fullmatch(r"\d+\smin\sago", shown["selected"]["side"]) is not None
         )
     )
     desktop.shoot("launcher-for-you-slack-messages")
@@ -280,7 +280,7 @@ def slack_holds_each_message(desktop: Desktop, conversations: list[Json]) -> Non
         desktop,
         "ok",
         conversations,
-        messages=held[:2] + [grace | {"done": {"how": "read in Slack", "minutes": 0}}],
+        messages=[*held[:2], grace | {"done": {"how": "read in Slack", "minutes": 0}}],
     )
     for_you_rows(desktop)
     desktop.down_to("Slack")
@@ -294,7 +294,7 @@ def slack_holds_each_message(desktop: Desktop, conversations: list[Json]) -> Non
     desktop.step_in("ret")
     desktop.down_to("Grace Hopper")
     desktop.launcher_until(
-        lambda shown: re.fullmatch(r"read in Slack \d\d:\d\d", shown["selected"]["side"])
+        lambda shown: re.fullmatch(r"read\sin\sSlack\s\d\d:\d\d", shown["selected"]["side"])
         is not None
     )
     desktop.close_launcher()

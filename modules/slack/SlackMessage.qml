@@ -51,7 +51,7 @@ Singleton {
                     : String(said.where ?? "").replace("{place}", one.place ?? ""),
                 eyebrowNames: !direct,
                 title: one.who,
-                facts: [{ label: said.sent ?? "", value: day === "" ? clock : `${day} ${clock}` }],
+                facts: [{ label: Words.name("slack:message:sent"), value: day === "" ? clock : `${day} ${clock}` }],
                 body: one.text ?? ""
             },
             later: true,
