@@ -1003,6 +1003,25 @@ gather (
         waiting = import ./tests/every-fixed-wait-says-why-waiting.nix;
       };
 
+      # A failure that says only "assertion failed" makes the reader run the test
+      # again to learn anything, so an assertion the language can't show both
+      # sides of carries a message. Those before the rule wait, counted by
+      # file, in tests/every-assert-says-what-was-wrong-waiting.nix, and a count
+      # may only fall.
+      every-assert-says-what-was-wrong = self.lib.everyAssertSaysWhatWasWrong pkgs {
+        src = ./.;
+        waiting = import ./tests/every-assert-says-what-was-wrong-waiting.nix;
+      };
+
+      # A test that can't run, for want of a filesystem, a device or a tool,
+      # fails rather than passing, since a skip nobody sees passes a gate that
+      # proved nothing. Those before the rule wait, counted by file, in
+      # tests/every-test-runs-or-fails-waiting.nix, and a count may only fall.
+      every-test-runs-or-fails = self.lib.everyTestRunsOrFails pkgs {
+        src = ./.;
+        waiting = import ./tests/every-test-runs-or-fails-waiting.nix;
+      };
+
       # A doc names only what's there, so a move or a rename that leaves a guide
       # pointing at nothing fails here rather than misleading the next reader:
       # every relative link, and every backticked path from a top folder. Those

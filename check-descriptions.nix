@@ -508,6 +508,10 @@
   ergodox-on-every-workstation = ''
     every workstation can flash the ErgoDox, a Mac as much as Linux
   '';
+  every-assert-says-what-was-wrong = ''
+    every Rust assert! and every Python assert of anything but a comparison carries a message
+    saying what was expected, but those still waiting for theirs
+  '';
   every-card-is-the-one-card = ''
     the launcher, the held notices and a notice take their frame from the one card and stand their
     ink on its content, never drawing a frame, reading the inset or tinting a row's ground
@@ -543,6 +547,10 @@
   every-pattern-names-a-file = ''
     every path pattern merge-net's must-run.txt, ruff.toml's per-file ignores and treefmt's
     unread kinds past treefmt-nix's own give matches a file the repository holds
+  '';
+  every-test-runs-or-fails = ''
+    no test passes without running, by an #[ignore] with no reason, a printed skip, an early return
+    or pytest's or QML's skips, but those still waiting to run where they can
   '';
   every-vm-test-keeps-to-the-pyramid = ''
     no VM test holds more than twenty subtests, but those past it today, each held to its count

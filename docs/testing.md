@@ -235,6 +235,15 @@ name, and carried in its `meta.description`, so the list is one query away:
 nix eval --json .#checks.x86_64-linux --apply 'builtins.mapAttrs (_: check: check.meta.description)'
 ```
 
+At every tier, a failing assertion says what was wrong. Where the language
+shows what each side held, as Rust's `assert_eq!` and a Python comparison
+under pytest do, nothing is added; where it can't, as with Rust's `assert!`
+and a Python `assert` of anything but a comparison, the assertion carries a
+message saying what was expected. `every-assert-says-what-was-wrong` holds
+it, and those before the rule wait, counted by file, in
+`tests/every-assert-says-what-was-wrong-waiting.nix`, where a count only
+falls.
+
 ### Promises
 
 Read from evaluated machines, without building them. They catch an option
@@ -379,6 +388,13 @@ a test polls, inside a loop that looks again, or says what passes while it
 waits, in a comment on its line or just above, or by sleeping for a named
 constant such as `UNHEARD`. Those before the rule wait, counted by file, in
 `tests/every-fixed-wait-says-why-waiting.nix`, and a count only falls.
+
+A test that can't run, for want of a filesystem, a device or a tool, fails
+rather than returning early, since a skip nobody sees passes a gate that
+proved nothing; it runs where it can, such as in a VM. An `#[ignore]` says
+what runs it instead, as `#[ignore = "needs OpenSSH, which ... gives"]`
+does. `every-test-runs-or-fails` holds it, and the skips before the rule
+wait, counted by file, in `tests/every-test-runs-or-fails-waiting.nix`.
 
 The install test builds a disk image with disko and boots it with a software
 TPM, then follows [the install guide][3] step by step: the keys are made and

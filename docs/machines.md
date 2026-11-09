@@ -351,6 +351,29 @@ A sleep in a test polls inside a loop, or says what passes while it waits,
 in a comment on its line or just above or by a named constant, as
 [testing.md][3] says.
 
+Its failing assertions say what was wrong, as core's do, through a fifth:
+
+```nix
+every-assert-says-what-was-wrong = core.lib.everyAssertSaysWhatWasWrong pkgs {
+  src = ./.;
+  # How many assertions without a message each file holds while they gain one.
+  waiting = { };
+};
+```
+
+A Rust `assert!` or a Python `assert` of anything but a comparison carries a
+message saying what was expected.
+
+Its tests run or fail, as core's do, through a sixth:
+
+```nix
+every-test-runs-or-fails = core.lib.everyTestRunsOrFails pkgs {
+  src = ./.;
+  # How many skips each test file holds while its tests come to run.
+  waiting = { };
+};
+```
+
 Its names say the glossary's words, as core's do, through a check that reads
 the glossary of the core it locks:
 
