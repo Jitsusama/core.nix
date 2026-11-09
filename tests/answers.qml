@@ -1225,12 +1225,13 @@ QtObject {
                 { type: "hot", value: 105, zone: "x86_pkg_temp" },
                 { type: "critical", value: 110, zone: "TCPU" }]);
         machine("no trips for a part no zone stands for", Heat.tripsFor(heatZones, "disk"), []);
+        // A to Z with case alike, as Order.js reads names.
         machine("each kind of cooling, stepped as far as any of it", Heat.coolingOf([
-            { type: "iwlwifi", count: 1, states: [0], max_state: 19 },
             { type: "Processor", count: 16, states: [0, 2, 1], max_state: 3 },
+            { type: "iwlwifi", count: 1, states: [0], max_state: 19 },
             { type: "LCD", count: 1, states: [0], max_state: 0 }]),
-            [{ type: "Processor", count: 16, state: 2, max: 3 },
-                { type: "iwlwifi", count: 1, state: 0, max: 19 }]);
+            [{ type: "iwlwifi", count: 1, state: 0, max: 19 },
+                { type: "Processor", count: 16, state: 2, max: 3 }]);
         machine("what's left to the high", Heat.leftTo(71, 100, 110),
             { by: 29, limit: "high", past: false, hue: "" });
         machine("past the high, what's left to the critical, warning", Heat.leftTo(102, 100, 110),
