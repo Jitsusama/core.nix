@@ -790,6 +790,44 @@ def test_the_selection_is_drawn_on_its_row_as_rows_above_it_change(shell: Shell)
     assert not drift, f"the selection was drawn off its row: {drift}"
 
 
+def test_a_refresh_at_home_moves_neither_the_selection_nor_the_list(shell: Shell) -> None:
+    """A collection changing while home is shown leaves the selection and the list still.
+
+    Each refresh at home was composed afresh: the selection went to the first row, the list
+    to the top, and both were put back, under any glide already running, so the highlight
+    went its own way and the list stopped short of its first row (Joel, 2026-11-08).
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shown = shell.showing()
+    for _ in range(len(shown["rows"]) - 1 - shown["rows"].index(shown["selected"]["name"])):
+        shell.send_key("down")
+    shell.launcher_until(
+        lambda shown: (
+            shown["selected"]["name"] == shown["rows"][-1] and shown["selected"]["settled"]
+        )
+    )
+    before = laid_out(shell)
+    selected = shell.showing()["selected"]["name"]
+    since = shell.mark()
+    window = shell.opened("Refresh Under Home")
+    shell.reported("refreshed ", lambda _: True, since)
+    after = laid_out(shell)
+    said, _ = shell.said_since(since)
+    now = shell.showing()["selected"]["name"]
+    shell.close_launcher()
+    shell.close(window)
+    glided = [report for report in said if report.startswith("glides ")]
+    assert not glided, f"the selection glided with no key: {glided}"
+    assert now == selected, f"the selection moved from {selected!r} to {now!r}"
+    assert after["selection"]["y"] == after["selection"]["row"], (
+        f"the selection was drawn off its row: {after['selection']}"
+    )
+    assert after["firstAt"] == before["firstAt"], (
+        f"the list moved from {before['firstAt']} to {after['firstAt']}"
+    )
+
+
 def test_a_name_too_long_for_its_row_reads_on_while_selected(shell: Shell) -> None:
     """A name too long for its row slides to show its end while selected, and only it moves."""
     title = (
