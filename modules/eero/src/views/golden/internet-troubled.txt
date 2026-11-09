@@ -24,7 +24,7 @@ settings
   WPA3                    off
   security                2.4 GHz WPA2 · 5 GHz WPA3
   Wi-Fi mode              default
-  802.11ac compatibility  off
+  Wi-Fi 5 compatibility   off
   name clash              no
   MLO mode                disabled
   DDNS                    off

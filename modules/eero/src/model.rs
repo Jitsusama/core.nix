@@ -105,7 +105,7 @@ pub struct Internet {
     /// Each band's Wi-Fi security, as eero names it: wpa2, wpa3.
     #[serde(default)]
     pub security: Vec<BandSecurity>,
-    /// Whether the network keeps to what older 802.11ac devices can join.
+    /// Whether the network keeps to what older Wi-Fi 5 (802.11ac) devices can join.
     #[serde(default)]
     pub ac_compatibility: Option<bool>,
     /// Whether eero's last scan saw another network with this one's name.

@@ -153,7 +153,7 @@ fn settings<'a>(net: &Internet, clock: &Clock) -> Vec<(&'a str, Facts<'a>)> {
                 ("WPA3", switch(net.wpa3)),
                 ("security", security(&net.security)),
                 ("Wi-Fi mode", said(net.wireless_mode.as_deref())),
-                ("802.11ac compatibility", switch(net.ac_compatibility)),
+                ("Wi-Fi 5 compatibility", switch(net.ac_compatibility)),
                 ("name clash", yes(net.name_clash)),
                 ("MLO mode", said(net.mlo_mode.as_deref())),
                 ("DDNS", switch(net.ddns)),
