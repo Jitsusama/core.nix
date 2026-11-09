@@ -35,20 +35,6 @@
     "test": "vm-desktop-launcher-answers"
   },
   {
-    "at": 1794233487,
-    "commit": "9ab4e1cf1799fe1796b1a1d6a5226ab7ef641724",
-    "owner_pr": 2539,
-    "reason": "failed twice at 9ab4e1cf1799 and 4 of 20 runs on a branch, with HomeNetwork.qml handed no drawer; owned by the shell's session, which fixes it forward and takes it off this list",
-    "test": "vm-desktop-launcher-reads-mail"
-  },
-  {
-    "at": 1794234500,
-    "commit": "9ab4e1cf1799fe1796b1a1d6a5226ab7ef641724",
-    "owner_pr": 2539,
-    "reason": "failed twice at 9ab4e1cf1799 and on a branch after 78264d4d4, with HomeNetwork.qml handed no drawer; owned by the shell's session, which fixes it forward and takes it off this list",
-    "test": "vm-desktop-launcher-finds-by-name"
-  },
-  {
     "at": 1794238758,
     "commit": "e81e5e375e1b2c13890909fe24629df0514f6ed8",
     "owner_pr": null,

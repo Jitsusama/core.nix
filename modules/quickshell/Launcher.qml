@@ -3195,9 +3195,12 @@ Scope {
             verbs: () => source.everything()
         };
         // A collection with a plate of its own, as Now's moment is
-        // (Now.qml), shows it beside its row.
-        return typeof source.plate !== "function" ? row
-            : Object.assign(row, { plated: true, drawer: () => source.plate() });
+        // (Now.qml), shows it beside its row: by `placePlate` alone, since
+        // Home Network's and WARP's `plate` make one of their rows' plates
+        // and, asked with nothing, threw on every opening that listed them
+        // (the net, 2026-11-09).
+        return typeof source.placePlate !== "function" ? row
+            : Object.assign(row, { plated: true, drawer: () => source.placePlate() });
     }
 
     readonly property bool atHome: typed === "" && held.length === 0

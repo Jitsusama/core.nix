@@ -347,7 +347,9 @@ Provider {
     // what qualifies it follows, quieter (VKCF3Z's look 3, for Joel's
     // "for time i want to be able to dig into ntp server details", 29
     // October). A fact nothing can say yet is left out rather than guessed.
-    function plate() {
+    // Named for the place it stands beside, so another source's own plate,
+    // as Home Network's for one of its rows, is never taken for it.
+    function placePlate() {
         const said = key => String((Words.of("on:plate").said ?? {})[key] ?? key);
         // Each fact named as its thing is: the weather and the week by
         // their own, the rest by the plate's.
