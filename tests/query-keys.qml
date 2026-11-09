@@ -1080,6 +1080,37 @@ QtObject {
         ];
         for (const [what, items, between, wide, want] of cases)
             holds(`a drawer's value: ${what}`, Page.valueLines(items, between, wide, width), want);
+        // An identifier's value, as a program's Desktop ID: whole where it
+        // fits, else broken at its own marks, a dot among them but never a
+        // figure's (VKCF3Z, 2026-11-09; Y2YBTS: "only an identifier's
+        // dots").
+        const desktop = "com.onepassword.OnePassword";
+        const identifiers = [
+            ["one that fits is whole", desktop, 300, [desktop]],
+            ["one too wide breaks after its dots", desktop, 200,
+                ["com.onepassword.", "OnePassword"]],
+            ["a version's dots are a figure's, never a break", "linux-6.12.1", 70,
+                ["linux-", "6.12.1"]],
+            ["nor a figure's like 0.50", "mpv-0.50.0", 60, ["mpv-", "0.50.0"]],
+            ["a run of them wraps between its items, the dot going with the break",
+                "usb-1d50:6122 \u00b7 ABC123", 150, ["usb-1d50:6122", "ABC123"]],
+            ["one with spaces breaks at them, ending on none", "Ploopy Adept Trackball", 130,
+                ["Ploopy Adept", "Trackball"]]
+        ];
+        for (const [what, said, wide, want] of identifiers)
+            holds(`a drawer's identifier: ${what}`, Page.identifierLines(said, wide, width), want);
+        // The words an identifier is read as, each to stand whole, so a
+        // UUID broken at its hyphens reads as whole (RTOIMQ, 2026-11-09).
+        const read = [
+            ["a UUID's are between its hyphens", "0f8fad5b-d9cb-469f-a165-70867728950e",
+                ["0f8fad5b-", "d9cb-", "469f-", "a165-", "70867728950e"]],
+            ["a desktop entry's are between its dots", desktop,
+                ["com.", "onepassword.", "OnePassword"]],
+            ["a figure's dot is inside its word", "6.12", ["6.12"]],
+            ["spaces end words, kept by none", "Ploopy Adept", ["Ploopy", "Adept"]]
+        ];
+        for (const [what, said, want] of read)
+            holds(`an identifier's words: ${what}`, Page.identifierWords(said), want);
         // A list alone in a value, on one line, giving way to a tail.
         const kinds = ["PDF", "HTML", "PNG", "JPEG"].map(said => ({ said }));
         const lines = [
