@@ -419,7 +419,7 @@ Provider {
 
     // Its drawer: where it's from and that it's a thing to do, its title,
     // then its facts, what it weighs and why, since when it has waited, how
-    // it'll be known done, its quest and session, and who it is last; then
+    // it'll be known done, its session, and who it is last; then
     // its steps, numbered, and why only Joel can do it (VKCF3Z, 2026-10-31
     // and 2026-11-08), each only when it says it. How it's known done is a
     // fact now, so the words don't say it again.

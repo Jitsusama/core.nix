@@ -228,7 +228,7 @@ function dueSaidElsewhere(item, sideSaysDue, now) {
 // where neither the row's side nor its weight says it (no fact repeats
 // another), and when it's set for, each a moment; the machine it's done
 // on, as its owner names it; the window it's done in, by its title, its
-// quest and session being facts of their own; and, as written, its
+// session being a fact of its own; and, as written, its
 // owner's address and the command that checks it's done. Each is ""
 // where nothing says it. `told` holds `now`, whether its row's side
 // says its deadline (`sideSaysDue`), as a weighed row's does while it

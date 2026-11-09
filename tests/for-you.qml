@@ -218,9 +218,11 @@ QtObject {
         expect("no due while the weight says it, within the day", figures(owned).due, "");
         expect("set for another day, by its day", figures(owned).setFor, "9 Nov 09:30");
         expect("no deadline, no due", figures({}).due, "");
-        expect("a moment as For You says each, today's its time alone", [ForYou.moment("2026-11-08T15:00:00Z", now,
-            ownSay), ForYou.moment("2026-11-09T09:30:00Z", now, ownSay),
-        ForYou.moment(null, now, ownSay)], ["15:00", "9 Nov 09:30", ""]);
+        expect("a moment as For You says each, today's its time alone", [
+            ForYou.moment("2026-11-08T15:00:00Z", now, ownSay),
+            ForYou.moment("2026-11-09T09:30:00Z", now, ownSay),
+            ForYou.moment(null, now, ownSay)
+        ], ["15:00", "9 Nov 09:30", ""]);
         expect("the machine as its owner names it", figures(owned).machine, "harbour");
         expect("where, the window it's done in", figures(owned, { window: "pi \u00b7 core" })
             .where, "pi \u00b7 core");
