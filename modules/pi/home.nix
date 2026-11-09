@@ -349,16 +349,20 @@ in
     home.sessionVariables = lib.mkIf onClaude {
       PI_CLAUDE_CODE_COMMAND = lib.getExe claude;
     };
-    jitsusama.pi.settings.defaultProvider = lib.mkIf onClaude "claude-code";
-    jitsusama.pi.settings.defaultModel = lib.mkIf onClaude config.jitsusama.pi.claude.model;
-
+    #
     # Off the plan every pi starts on Opus 5.5 at high thinking, the one
     # model its sessions run on. pi rewrites these keys when a model is
     # picked as the default, and a launcher pi is wrapped in may write its
     # own: on 9 November one moved every new session to another model.
     # Each switch puts them back.
-    jitsusama.pi.settings.defaultProvider = lib.mkDefault "anthropic";
-    jitsusama.pi.settings.defaultModel = lib.mkDefault "claude-opus-5-5";
+    jitsusama.pi.settings.defaultProvider = lib.mkMerge [
+      (lib.mkIf onClaude "claude-code")
+      (lib.mkDefault "anthropic")
+    ];
+    jitsusama.pi.settings.defaultModel = lib.mkMerge [
+      (lib.mkIf onClaude config.jitsusama.pi.claude.model)
+      (lib.mkDefault "claude-opus-5-5")
+    ];
     jitsusama.pi.settings.defaultThinkingLevel = lib.mkDefault "high";
 
     # The harness, and neovim.pi for pi beside Neovim, on every machine,
