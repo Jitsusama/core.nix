@@ -94,7 +94,7 @@
   "tests/notices-on-niri.sh" = 1;
   "tests/pi-ask-answers-on-the-machines-plan.sh" = 3;
   "tests/pi-keeps-its-own-settings.sh" = 5;
-  "tests/pi-rings-low-and-says-it.sh" = 21;
+  "tests/pi-rings-low.sh" = 8;
   "tests/qml-compiles.sh" = 2;
   "tests/says-what-it-has-open.sh" = 5;
   "tests/shell-folder-lint.sh" = 5;

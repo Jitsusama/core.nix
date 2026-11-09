@@ -1045,6 +1045,15 @@ gather (
             includes = [ "modules/quickshell/in-a-terminal/tests/qs" ];
           };
 
+      # A test's function copied into a second file drifts from the first the
+      # next time one is fixed. Those before the rule wait, counted by file, in
+      # tests/every-test-function-lives-once-waiting.nix, and a count may only
+      # fall.
+      every-test-function-lives-once = self.lib.everyTestFunctionLivesOnce pkgs {
+        src = ./.;
+        waiting = import ./tests/every-test-function-lives-once-waiting.nix;
+      };
+
       # A doc names only what's there, so a move or a rename that leaves a guide
       # pointing at nothing fails here rather than misleading the next reader:
       # every relative link, and every backticked path from a top folder. Those

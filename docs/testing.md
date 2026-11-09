@@ -408,6 +408,14 @@ what runs it instead, as `#[ignore = "needs OpenSSH, which ... gives"]`
 does. `every-test-runs-or-fails` holds it, and the skips before the rule
 wait, counted by file, in `tests/every-test-runs-or-fails-waiting.nix`.
 
+A function, fake or fixture two tests need lives once, in the test
+library both import (`tests/lib/` for VM tests' Python), since a copy
+drifts from the first the next time one is fixed.
+`every-test-function-lives-once` finds a function's body of two lines or
+more in a second test file, whatever its name there, and the copies before
+the rule wait, counted by file, in
+`tests/every-test-function-lives-once-waiting.nix`.
+
 The install test builds a disk image with disko and boots it with a software
 TPM, then follows [the install guide][3] step by step: the keys are made and
 enrolled, the disk is bound to the TPM and a PIN, the passphrase is wiped,
