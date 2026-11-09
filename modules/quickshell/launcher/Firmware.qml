@@ -140,8 +140,9 @@ Provider {
     // where there's a "!" (VKCF3Z, 2026-11-09). The drawer says what the
     // next level needs and what's running that lowers it, in our words,
     // then what it rated and which fwupd, its words saying the level once
-    // as a sentence. A step in lists every attribute the level is made of
-    // (attributeRow), each failing one first.
+    // as a sentence, under an eyebrow saying where and what kind it is. A
+    // step in lists every attribute the level is made of (attributeRow),
+    // each failing one first.
     function securityRow(host) {
         const id = "firmware:security";
         const rating = Fwupd.ratingOf(host.security);
@@ -174,7 +175,8 @@ Provider {
             note: [meaning, rating.lowered ? said.lowered : ""].filter(Boolean).join(" \u00b7 "),
             glyph: Words.glyph("firmware"),
             live: provider,
-            drawer: () => ({ title: Words.name(id), facts: facts, body: sentence })
+            drawer: () => ({ eyebrow: said.eyebrow ?? "", title: Words.name(id), facts: facts,
+                body: sentence })
         }, () => Fwupd.listed(attributes).map(attributeRow));
     }
 
@@ -187,27 +189,30 @@ Provider {
 
     // One attribute of the security level, as fwupd names it: its note its
     // group, the level it counts at or what's running, its side what was
-    // found, warning where it fails (VKCF3Z, 2026-11-09). Its drawer says
-    // what passing would find, what fixes it, the firmware setting it
-    // reads and what that's set to, and fwupd's description in its words.
-    // Return copies fwupd's id for it, which its documentation goes by.
+    // found, warning where it fails; its mark the theme's for a pass, or
+    // its warning mark in warning ink for a shortfall (VKCF3Z,
+    // 2026-11-09). Its drawer says what passing would find, what fixes it,
+    // the firmware setting it reads and what that's set to, and fwupd's
+    // description in its words, the setting, plugin and attribute laid out
+    // as identifiers, at their dots. Return copies fwupd's id for it,
+    // which its documentation goes by.
     function attributeRow(attribute) {
         const results = Words.of("firmware:result").said ?? {};
         const groups = Words.of("firmware:group").said ?? {};
         const fixes = Words.of("firmware:fixed-in").said ?? {};
         const facts = [];
-        const fact = (id, value) => {
+        const fact = (id, value, identifies) => {
             if (value)
-                facts.push({ label: Words.name(id), value: value });
+                facts.push({ label: Words.name(id), value: value, identifies: !!identifies });
         };
         if (!attribute.passed && attribute.passesAs)
             fact("firmware:passes-as", results[attribute.passesAs] ?? attribute.passesAs);
         if (!attribute.passed)
             fact("firmware:fixed-in", fixes[attribute.fix] ?? "");
-        fact("firmware:setting", attribute.setting?.id ?? "");
+        fact("firmware:setting", attribute.setting?.id ?? "", true);
         fact("firmware:set-to", attribute.setting?.current ?? "");
-        fact("firmware:plugin", attribute.plugin);
-        fact("firmware:attribute", attribute.id);
+        fact("firmware:plugin", attribute.plugin, true);
+        fact("firmware:attribute", attribute.id, true);
         const group = attribute.level === null ? groups.running
             : String(groups.level ?? "").replace("{level}", attribute.level);
         // A thing, so its drawer shows as it's selected, as a port's does.
@@ -219,8 +224,8 @@ Provider {
             note: group,
             copy: attribute.id,
             warns: !attribute.passed,
-            hue: "machine",
-            glyph: "",
+            hue: attribute.passed ? "machine" : "warning",
+            glyph: attribute.passed ? Theme.glyph.complete : Theme.glyph.caution,
             drawer: () => ({ eyebrow: group, title: attribute.name, facts: facts,
                 body: attribute.about })
         });

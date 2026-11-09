@@ -3109,6 +3109,7 @@
         "3": "the basic, important and theoretical protections",
         "4": "those below and out-of-band protection",
         "5": "those below and out-of-band attestation",
+        "eyebrow": "on this machine \u00b7 rating",
         "lowered": "lowered by what's running",
         "sentence": "fwupd rates the firmware's defences at level {level} of 5, which holds {meaning}.",
         "sentence-lowered": "fwupd rates the firmware's defences at level {level} of 5, which holds {meaning}, and what's running lowers it."
