@@ -1033,13 +1033,15 @@ def test_a_click_on_a_notice_about_nothing_to_open_puts_it_away(desktop: Desktop
     x, y = desktop.offer_to_play("notice-to-put-away")
     desktop.click(x, y)
     assert desktop.answered() == "", "a click on the notice did what it offers"
-    # It wasn't missed, so the margin never once said one waits: a notice
+    # It wasn't missed, so For You's tray never once lit for it: a notice
     # arriving or leaving mustn't flash it.
     said = desktop.as_account(
         "journalctl --user --unit=quickshell --no-pager --output=cat"
         f" --after-cursor={shlex.quote(since)}"
     )
-    assert "holds margin waiting" not in said, "the margin flashed a waiting notice"
+    assert not re.search("holds margin [^\\n]*\\bforYou\\b", said), (
+        "the margin flashed For You's tray for a notice"
+    )
 
 
 def test_a_click_on_a_notice_opens_what_its_about_with_a_token_to_come_forward(

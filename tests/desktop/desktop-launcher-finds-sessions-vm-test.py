@@ -184,15 +184,13 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     assert "Binding loop" not in log, "a session's title is read inside a binding"
 
     # It comes to want Joel, its presence replaced by rename as pi's
-    # is: the margin hangs pi's mark, and lets it go once answered.
+    # is: For You's tray lights in the margin, and goes once answered.
     # From another window, so it's said as a notice too, whose
     # Return goes to the session's window.
     desktop.as_account(
         f"niri msg action focus-window --id {desktop.window_titled('Elsewhere')['id']}"
     )
 
-    # The margin may hold other marks, a notice missed earlier among
-    # them, so it's pi's own that's waited on.
     # Wants begun now, as the shell only says those it saw begin.
     def begun() -> str:
         """Give the machine's time now, as pi writes when a want began."""
@@ -207,14 +205,14 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     # on what follows, so Super+N takes the stack at once: held, it waits.
     with desktop.told("keys notices"):
         machine.send_key("meta_l-n")
-    # The card says it, so pi's mark waits for the card to go: a card or
-    # a mark, never both.
+    # The card says it, so the tray, holding only pi's want, waits for
+    # the card to go: a card or a mark, never both.
     told_since = desktop.as_account(
         "journalctl --user --unit=quickshell --no-pager --output=cat"
         f" --after-cursor={shlex.quote(since)}"
     )
-    assert not re.search("holds margin [^\\n]*\\bagent\\b", told_since), (
-        "pi's mark showed beside its card"
+    assert not re.search("holds margin [^\\n]*\\bforYou\\b", told_since), (
+        "For You's tray showed beside pi's card"
     )
     # The same want, its file replaced again, says nothing new.
     desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
@@ -234,21 +232,11 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
         desktop.in_session("niri msg layers | grep -q notifications"),
         timeout=dt.timedelta(seconds=10),
     )
-    # Its card gone, the want still stands, so pi's mark shows.
-    desktop.reported("holds margin ", lambda rest: "agent" in rest.split(), since)
+    # Its card gone, the want still stands, so For You's tray shows.
+    desktop.reported("holds margin ", lambda rest: "forYou" in rest.split(), since)
     desktop.shoot("margin-pi-wants")
     # Another, unanswered, from the other window: its notice says what
-    # it wants, and goes when the want does, missed by nobody. Notices
-    # missed earlier are let go first, so the margin's notices mark is
-    # this one's alone.
-    held = desktop.as_account(
-        "journalctl --user --unit=quickshell --no-pager --output=cat"
-        " | grep -o 'report\\[holds margin [^]]*' | tail -n 1"
-    )
-    since = desktop.mark()
-    desktop.as_account("qs ipc call notices seen")
-    if "waiting" in held.split()[2:]:
-        desktop.reported("holds margin ", lambda rest: "waiting" not in rest.split(), since)
+    # it wants, and goes when the want does, missed by nobody.
     desktop.as_account(
         f"niri msg action focus-window --id {desktop.window_titled('Elsewhere')['id']}"
     )
@@ -268,7 +256,8 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
         timeout=dt.timedelta(seconds=5),
     )
     # A third, left to time out while its want stands: it isn't
-    # missed, since pi's mark says the want; ended, the mark goes.
+    # missed, since the tray says the want; ended, the tray goes, so
+    # nothing of pi's notice was left in For You either.
     with desktop.told("shows card A quest of its own & whole needs you to unblock it"):
         desktop.presence_says(
             {
@@ -281,20 +270,9 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
         desktop.in_session("niri msg layers | grep -q notifications"),
         timeout=dt.timedelta(seconds=30),
     )
-    time.sleep(2)
-
-    def margin_holds() -> list[str]:
-        """Give what the margin last said it holds."""
-        return desktop.as_account(
-            "journalctl --user --unit=quickshell --no-pager --output=cat"
-            " | grep -o 'report\\[holds margin [^]]*' | tail -n 1"
-        ).split()[2:]
-
-    assert "waiting" not in margin_holds(), "pi's notice counted as missed"
     since = desktop.mark()
     desktop.presence_says({"addresses": ["TESTQA"], "busy": False})
-    desktop.reported("holds margin ", lambda rest: "agent" not in rest.split(), since)
-    assert "waiting" not in margin_holds(), "pi's notice counted as missed"
+    desktop.reported("holds margin ", lambda rest: "forYou" not in rest.split(), since)
 
 
 def an_orchestrator(desktop: Desktop) -> None:

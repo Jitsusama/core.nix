@@ -2371,7 +2371,9 @@
     every mark in the margin stands one height on the gap's middle line, read from the right by
     kind, in the colour that says how much it asks; what was on air lingers, what a notice will say
     waits for its card, and a wait shows once the same one lasts; each stands in a square cell the
-    gap's size with the same room all round, and Now points at the row the keys are on
+    gap's size with the same room all round, and Now points at the row the keys are on; For You's
+    tray is lit by what For You holds that waits on Joel, a want, a to-do he can do now, a look,
+    a landing to try or a critical notice missed, and by nothing else
   '';
   the-margins-marks-are-drawn-level = ''
     every mark the margin can show, a device's kind and Slack's among them, is the theme's

@@ -859,12 +859,12 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
         desktop.close_launcher()
     finally:
         desktop.as_account(f"rm -f {asked} {INDEX}")
-        # Its notice goes a moment after its item does; until then the
-        # margin holds it, and Now would open on it in the next subtest.
+        # For You's tray goes a moment after its item does; until then it
+        # holds it, and Now would open on it in the next subtest.
         machine.wait_until_succeeds(
             desktop.in_session(
                 "journalctl --user --unit=quickshell --no-pager --output=cat"
-                " | grep -o 'report\\[holds margin [^]]*' | tail -n 1 | grep -qvw waiting"
+                " | grep -o 'report\\[holds margin [^]]*' | tail -n 1 | grep -qvw forYou"
             ),
             timeout=dt.timedelta(seconds=10),
         )
@@ -1118,12 +1118,12 @@ def test_a_session_wants_joel_only_while_it_is_true(desktop: Desktop) -> None:
         )
 
     def marked() -> bool:
-        """Say whether the margin last held pi's mark, which says a session wants Joel."""
+        """Say whether the margin last held For You's tray, lit while a session wants Joel."""
         held = desktop.as_account(
             "journalctl --user --unit=quickshell --no-pager --output=cat"
             " | grep -o 'report\\[holds margin [^]]*' | tail -n 1"
         )
-        return "agent" in held.split()[2:]
+        return "forYou" in held.split()[2:]
 
     # An action its quest's file holds only for later isn't Joel's yet.
     later = {"quest": "TESTQA", "items": [{"id": "later", "title": "Later", "ready": False}]}

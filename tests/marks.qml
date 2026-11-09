@@ -1,10 +1,11 @@
 // How the margin sets its glyphs, run in Qt's own JavaScript engine, the
 // one the shell runs it in. The `the-margins-marks-stand-level` check
-// copies Marks.js beside this file and runs `qml -platform offscreen
+// copies Marks.js and pieces/Holding.js beside this file and runs `qml -platform offscreen
 // marks.qml` over ink measured as TextMetrics measures it: from the
 // baseline, its top negative.
 import QtQuick
 import "Marks.js" as Marks
+import "Holding.js" as Holding
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -145,6 +146,42 @@ QtObject {
         expect("nothing selected points nowhere",
             Marks.pointed(launcher(true, "on", [""])), "");
         expect("shut points nowhere", Marks.pointed(launcher(false, "on", ["on:camera"])), "");
+        expect("For You's row points at its tray",
+            Marks.pointed(launcher(true, "on", ["on:waitingOnYou"])), "forYou");
+        expect("and so does anything within it",
+            Marks.pointed(launcher(true, "on", ["on:waitingOnYou", "on:waitingOnYou:kind:look"])),
+            "forYou");
+
+        // For You's tray is lit by what For You holds, of every kind, and
+        // nothing else (Joel's pick, VKCF3Z, 2026-11-09).
+        const session = { title: "pi" };
+        const critical = { urgency: "critical" };
+        const holds = [
+            ["nothing held, nothing lit", {}, { do: 0, look: 0, try: 0, notice: 0 }],
+            ["a session's want and a to-do are each a to-do",
+                { wanting: [session], toDo: [{ title: "Sign in" }] },
+                { do: 2, look: 0, try: 0, notice: 0 }],
+            ["a look counts only while it waits",
+                { looks: [{ state: "waiting" }, { state: "opened" }] },
+                { do: 0, look: 1, try: 0, notice: 0 }],
+            ["a landing to try counts", { tries: [{ title: "Try the tray" }] },
+                { do: 0, look: 0, try: 1, notice: 0 }],
+            ["only a critical notice missed counts, the rest came lately",
+                { notices: [critical, { urgency: "normal" }, { urgency: "low" }] },
+                { do: 0, look: 0, try: 0, notice: 1 }],
+            ["a source that isn't a list holds nothing", { wanting: null, notices: "x" },
+                { do: 0, look: 0, try: 0, notice: 0 }]
+        ];
+        for (const [what, sources, held] of holds)
+            expect(`For You holds: ${what}`, Holding.held(sources), held);
+        expect("its count is every kind's",
+            Holding.count(Holding.held({ wanting: [session], tries: [{}], notices: [critical] })), 3);
+        const saidBy = sources => Holding.saidBy(sources, Holding.held(sources));
+        expect("pi's card says it while all held is sessions wanting",
+            saidBy({ wanting: [session, session] }), "pi");
+        expect("no one card says a want beside a to-do",
+            saidBy({ wanting: [session], toDo: [{}] }), "");
+        expect("nor anything else", saidBy({ notices: [critical] }), "");
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);

@@ -615,6 +615,17 @@ in
     glyph = nerd "f1296";
     console = "Y";
     means = "For You: what wants Joel, weighed, in one place, and the place holding it";
+    # The margin's one mark for what waits on Joel: a sheet over an
+    # in-tray, its slot a U. Filled, as the bell it took the place of was,
+    # since an outline beside filled marks reads as left on rather than
+    # wanting him; on whole units, so it lands on the pixel grid, its gaps
+    # two units, so they hold open at 1.5, where two sheets and a shallow
+    # slot read as a padlock (Joel's pick, VKCF3Z, 2026-11-09). The
+    # launcher keeps the font's tray, drawn among its own glyphs.
+    drawn = drawing [
+      "M2 0H10V3H2Z"
+      "M0 5H3V8H9V5H12V12H0Z"
+    ];
   };
   # The same tray emptied, for For You holding nothing.
   forYouEmpty = {

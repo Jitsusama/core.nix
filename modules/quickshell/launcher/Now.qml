@@ -1018,8 +1018,11 @@ Provider {
     // through from home: "notices", as Super+N with no cards and the
     // margin's Show Them ask, is For You's Desktop, one key to one place
     // whatever it holds (VKCF3Z, 2026-11-09), never the Notices place it
-    // once was; the notices stay found by `/` (PastNotices.qml).
+    // once was; the notices stay found by `/` (PastNotices.qml). "forYou",
+    // as the margin's tray is pressed, is For You itself.
     function leadsTo(name) {
+        if (name === "forYou")
+            return [waiting];
         if (name !== "notices")
             return null;
         const { holding } = latelyBands(Date.now());
@@ -1718,8 +1721,10 @@ Provider {
     // runs on past its start, and is then the moment's meeting row.
     function above(fact) {
         // What came for Joel is For You's Lately, and the notices missed
-        // are among its Desktop row's (latelyRows).
-        if (fact.entry.mark === "agent" || fact.entry.mark === "waiting"
+        // are among its Desktop row's (latelyRows). The margin's tray is
+        // For You's own.
+        if (fact.entry.mark === "forYou" || fact.entry.mark === "agent"
+            || fact.entry.mark === "waiting"
             || Lately.SOURCES.includes(fact.piece.lately))
             return waiting.key;
         if (fact.entry.mark === "meeting" && meeting !== null

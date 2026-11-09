@@ -3878,8 +3878,8 @@ onLinux {
 
   # Every glyph in the margin stands the same height on the gap's middle
   # line, however tall its font draws it, and they line up from the corner
-  # by how much each asks, in the colour that says so, as tests/marks.qml
-  # holds them.
+  # by how much each asks, in the colour that says so, and For You's tray
+  # is lit by what For You holds, as tests/marks.qml holds them.
   the-margins-marks-stand-level =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -3887,6 +3887,7 @@ onLinux {
     pkgs.runCommandLocal "the-margins-marks-stand-level" { } ''
       cp ${../../tests/marks.qml} marks.qml
       cp ${./Marks.js} Marks.js
+      cp ${./pieces/Holding.js} Holding.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
