@@ -56,7 +56,7 @@ QtObject {
         return {
             "pressure:cpu": "Processor Pressure", "pressure:memory": "Memory Pressure",
             "pressure:io": "Disk Pressure", memory: "Memory", charge: "Charge", takes: "Takes",
-            disk: "Disk", commit: "Commit", core: "Core", step: "Step", reboot: "Reboot",
+            disk: "Disk", commit: "Commit", core: "Core", step: "Last Update", reboot: "Reboot",
             measured: "Measured", processor: "Processor", accelerators: "Accelerators",
             system: "System", model: "Model", "kind:macos": "Mac", "kind:linux": "Linux",
             "kind:machine": "Machine"
@@ -157,7 +157,7 @@ QtObject {
             "Memory: 3.2 GiB free of 8 GiB", "Charge: 62%, on battery",
             "Takes: 1 build, 1 VM test", "Disk: 128 GiB", "internet: reached",
             "office: not reached", "Commit: 7307356", "Core: a97eea7, as this machine's",
-            "Step: done", "Reboot: its kernel changed", "Measured: 2 min ago",
+            "Last Update: done", "Reboot: its kernel changed", "Measured: 2 min ago",
             "Processor: AMD Ryzen 5, 12 cores", "Accelerators: amdgpu graphics",
             "System: NixOS 26.11 (Zokor) \u00b7 x86_64",
             "Model: Microsoft Corporation Surface Laptop 4"];

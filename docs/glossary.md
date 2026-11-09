@@ -311,6 +311,8 @@ off.
 | memory | what programs run in while the machine is on | RAM | |
 | swap | memory set aside out of the way, compressed first, then in the swap file | swapfile | zswap |
 | memory pressure | how long programs are waiting for memory | | PSI |
+| processor pressure | how long programs are waiting for the processor | | PSI's `cpu` |
+| disk pressure | how long programs are waiting for the disk, not how full it is | | PSI's `io` |
 | lag | how long the desktop takes to answer a key or a click, and what made it wait | slow, jank, stutter | `lag-watch` |
 | trace | one thing a program did, followed through its steps, each a span with a start and an end | | OpenTelemetry's traces |
 | collector | the program keeping the machine's traces, to read any moment back | observability backend | `collector` |
@@ -501,6 +503,7 @@ The words core.nix is built from. Never a launcher place.
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
+| core | core.nix, the library every machine is built from, and the commit of it a machine runs | | the `core` input |
 | machine repository | a repository of machines built on core.nix, adding its own modules | | any flake with core.nix as an input |
 | module | one program or subsystem, configured | | `modules/bat/` becomes `homeModules.bat` |
 | kernel module | a part of the kernel loaded on its own, always written whole | | `boot.kernelModules` |
