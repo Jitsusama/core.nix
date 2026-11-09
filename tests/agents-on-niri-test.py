@@ -629,6 +629,10 @@ def test_a_closed_orchestrator_stands_dimmed_at_the_trees_end_the_last_live_firs
     shell.launcher_until(lambda shown: shown["selected"]["side"] == "closed \u00b7 $14.20 in all")
     row = shell.showing()["selected"]
     assert (row["hue"], row["note"], row["verb"]) == ("muted", "Keep the lamp lit", "reopen"), row
+    # Its note follows its name, and its right is left to how it stands (VKCF3Z, 2026-11-09).
+    shell.launcher_until(
+        lambda shown: (shown["noted"], shown["stands"]) == ("Keep the lamp lit", "")
+    )
     assert row["told"][:1] == ["\u21b5 reopen"], row
     shell.down_to("Beacon")
     assert shell.showing()["selected"]["side"] == "closed", shell.showing()["selected"]
