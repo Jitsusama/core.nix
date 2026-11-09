@@ -53,3 +53,15 @@ function holding(count, said) {
     const words = String((count === 1 ? said.entry : said.entries) ?? "");
     return words.replace("{count}", Numbers.format(count, 0));
 }
+
+// What a manager's note in Programs says while it can't read: why, as
+// its daemon says, less the manager's own name leading it, since the note
+// sits under its program, and a note is a lower-case run rather than a
+// sentence (VKCF3Z, c943eec1). "1Password asks you to let the launcher
+// in" reads "asks you to let the launcher in"; a copy refused, said
+// elsewhere, keeps the name.
+function noted(reason, called) {
+    const why = String(reason ?? "");
+    const name = String(called ?? "");
+    return name !== "" && why.startsWith(`${name} `) ? why.slice(name.length + 1) : why;
+}

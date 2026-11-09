@@ -349,6 +349,13 @@ QtObject {
         check("a vault of one", Managers.holding(1, counts), "1 entry");
         check("a vault of many", Managers.holding(1201, counts), "1,201 entries");
         check("an empty vault", Managers.holding(0, counts), "0 entries");
+        // Its note in Programs sits under its program, so it leaves its name out.
+        check("a note leaves the manager's name out", Managers.noted(
+            "1Password asks you to let the launcher in", "1Password"),
+        "asks you to let the launcher in");
+        check("a note naming no manager is said whole", Managers.noted(
+            "it stopped answering", "1Password"), "it stopped answering");
+        check("a note with no reason says nothing", Managers.noted(undefined, "1Password"), "");
 
         // What 1Password's drawer in Programs says it holds.
         const holds = { inVault: "{count} in 1 vault", inVaults: "{count} in {vaults} vaults" };
