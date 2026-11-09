@@ -201,7 +201,9 @@ Provider {
             side: rating.code,
             copy: rating.code,
             hue: "machine",
-            glyph: Words.glyph("firmware")
+            glyph: Words.glyph("firmware"),
+            // A figure wears no mark unless it's marked (Choice.qml).
+            marked: true
         })]));
     }
 
