@@ -356,10 +356,13 @@ ShellRoot {
         expect("the clock says its RMS offset, stratum and update interval",
             told === "200 \u00b5s, 3, 1 min 4 s", told);
         const servers = row("time:servers").verbs();
+        // A server never heard from says so on its side, so its note
+        // doesn't say it again.
+        const plates = servers.map(each => `${each.name} [${each.side}] ${each.note}`);
         expect("the servers are each a thing, the chosen first",
-            servers.map(each => `${each.name} ${each.note}`).join(", ")
-                === "time.harbour.test chosen, far.harbour.test out of reach",
-            servers.map(each => `${each.name} ${each.note}`).join(", "));
+            plates[0].startsWith("time.harbour.test [") && plates[0].endsWith("] chosen")
+                && plates[1] === "far.harbour.test [not answering] ",
+            plates.join(", "));
         // The launcher knows a row by what it is, or else its key, keeping
         // the selection on it as the reading changes and taking two it knows
         // alike as one, so two servers known alike would pull it back to the
