@@ -124,7 +124,7 @@ QtObject {
             { id: 1, active_tab_history: [3, 1], tabs: [
                 tab(1, false, [pane(1, `${home}/src/core.nix`, [[51, ["nvim", "home.nix"]]],
                     { title: "\ud83d\udcdd modules/kitty/home.nix", columns: 80, lines: 24,
-                        user_vars: { neovim_file: "/home/joel/src/core.nix/x" } })]),
+                        user_vars: { neovim_server: "/run/user/1000/nvim.51.0" } })]),
                 tab(2, true, [pane(2, `${home}/src/core.nix`, [[52, ["-zsh"]]],
                     { is_active: true, at_prompt: true, last_reported_cmdline: "make test",
                         last_cmd_exit_status: 2 })]),
@@ -227,7 +227,7 @@ QtObject {
             Kitty.drawerOf(all[2].panes[0], words, opened).facts
                 .filter(fact => ["<machine>", "<vars>", "<last>", "<size>"].includes(fact.label)),
             [{ label: "<size>", value: "80 columns, 24 lines" },
-                { label: "<vars>", value: "neovim_file=/home/joel/src/core.nix/x" }]);
+                { label: "<vars>", value: "neovim_server=/run/user/1000/nvim.51.0" }]);
         check("over ssh", Kitty.drawerOf(all[3].panes[0], words, opened).facts[1],
             { label: "<machine>", value: "devbox" });
 

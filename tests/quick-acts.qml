@@ -11,19 +11,24 @@
 // what stat says of each .git, the one written last first, a repository's files the same, and each one's
 // page on GitHub from its remotes, origin's first, however git names the
 // host, those listed that have one, and a file's folder said within its
-// repository (Repositories.js); and Neovim opened at a line and column, in the
-// kitty used last or a new one (NeovimOpening.js); and Chrome's
-// downloads read from the lines chrome-recent-sites prints, those
-// without a path or a size left out and one with no time undated, the
-// latest the first, said by the host it came from and opened as the
-// desktop opens a file (ChromeDownloads.js). The
-// `the-launcher-acts-only-on-what-it-can` check copies the four beside
+// repository (Repositories.js); Neovim opened at a line and column, or on
+// a session, in the kitty used last or a new one (NeovimOpening.js); what
+// each Neovim says it holds, read whole lines alone, every file once from
+// the Neovim looked at last and the file used last in it, said modified
+// and by its tab, hidden or shown, the command going to its buffer, the
+// program's drawer's counts, and the sessions read back to their folders,
+// newest first (Neovim.js); and Chrome's downloads read from the lines
+// chrome-recent-sites prints, those without a path or a size left out and
+// one with no time undated, the latest the first, said by the host it came
+// from and opened as the desktop opens a file (ChromeDownloads.js). The
+// `the-launcher-acts-only-on-what-it-can` check copies the six beside
 // this file and runs `qml quick-acts.qml`.
 import QtQuick
 import "ChromeDownloads.js" as Downloads
 import "Copied.js" as Copying
 import "Repositories.js" as Repos
 import "NeovimOpening.js" as Opening
+import "Neovim.js" as Neovim
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -34,6 +39,71 @@ QtObject {
             console.warn(`the test threw: ${error}`);
             Qt.exit(1);
         }
+    }
+
+    // What each Neovim says it holds and its sessions, as Neovim.js reads
+    // them.
+    function neovims(check) {
+        const held = (files, tabs) => JSON.stringify({ pid: 1, folder: "/r", tab: 1, tabs: tabs,
+            current: 1, files: files });
+        const file = (buffer, path, modified, tabs, at) => ({ buffer, path, modified, tabs, at });
+        const lines = [
+            `@5\t41:7\t/run/a\t${held([file(1, "/r/a.rs", false, [1], 100),
+                file(2, "/r/b.rs", true, [2], 200), file(3, "/r/c.rs", false, [], 50),
+                file(4, "/r/d.rs", false, [1, 2], 10)], 2)}`,
+            `@6\t41:8\t/run/b\t${held([file(1, "/r/a.rs", true, [1], 300),
+                file(2, "/q/e.md", false, [1], 20)], 1)}`,
+            "@7\t41:9\t/run/c\tnot json",
+            `9\t41:9\t/run/c\t${held([], 1)}`,
+            "@8\t41:9",
+            ""
+        ];
+        const heard = Neovim.heard(lines.join("\n"));
+        check("only whole lines read", heard.map(one => [one.window, one.go, one.server]),
+            [[5, "41:7", "/run/a"], [6, "41:8", "/run/b"]]);
+        // Window 5 was looked at after window 6.
+        const focus = { 5: 20, 6: 10 };
+        const open = Neovim.open(heard, window => focus[window] ?? 0);
+        check("each file once, the Neovim looked at last first, the file used last first",
+            open.map(one => `${one.path} ${one.buffer} ${one.windows} ${one.neovim.window}`),
+            ["/r/b.rs 2 1 5", "/r/a.rs 1 2 5", "/r/c.rs 3 1 5", "/r/d.rs 4 1 5",
+                "/q/e.md 2 1 6"]);
+        const said = { modified: "modified", tab: "tab {index}", tabs: "tabs {indices}",
+            shown: "shown", hidden: "hidden", windows: "in {count} windows",
+            inWindow: "{count} in 1 window", inWindows: "{count} in {windows} windows" };
+        check("modified first, then its tab, then how many windows hold it",
+            open.map(one => Neovim.side(one, said)),
+            ["modified \u00b7 tab 2", "modified \u00b7 tab 1 \u00b7 in 2 windows", "hidden",
+                "tabs 1, 2", "shown"]);
+        check("going to its buffer through its kitty window",
+            Neovim.going("/bin/open-now", open[0]),
+            ["/bin/open-now", "neovim", "go", "41:7", "/run/a", "2"]);
+        const sessions = Neovim.sessions([
+            "1700000100.5\t=2Fhome=2Fjoel=2Fsrc=2Fcore.nix.vim",
+            // A space, an = and an accented letter, each byte escaped.
+            "1700000300.0\t=2Fhome=2Fjoel=2Fmy=20notes=20=3D1=20=C3=A9.vim",
+            "1700000200\tnotes.txt",
+            "1700000200\t=2Fhalf.vim.tmp",
+            "1700000200\t=2Fbroken=ZZ.vim",
+            "never\t=2Fx.vim",
+            ""
+        ].join("\n"), "/s");
+        check("the sessions read back to their folders, newest first",
+            sessions.map(one => `${one.folder} ${one.path} ${one.at}`),
+            ["/home/joel/my notes =1 \u00e9 /s/=2Fhome=2Fjoel=2Fmy=20notes=20=3D1=20=C3=A9.vim"
+                + " 1700000300000",
+                "/home/joel/src/core.nix /s/=2Fhome=2Fjoel=2Fsrc=2Fcore.nix.vim 1700000100500"]);
+        check("a session's side, when and then the folder holding it",
+            Neovim.sessionSide(sessions[1], 1700000100500 + 600000, "~/src"),
+            "10 min ago \u00b7 ~/src");
+        check("what the drawer says Neovim holds",
+            Neovim.held(heard, open, sessions, said),
+            [{ id: "nvim:files", value: "5 in 2 windows" }, { id: "nvim:modified", value: "2" },
+                { id: "nvim:sessions", value: "2" }]);
+        check("one window, nothing modified, no sessions",
+            Neovim.held(heard.slice(1), open.slice(4), [], said),
+            [{ id: "nvim:files", value: "1 in 1 window" }]);
+        check("nothing open, nothing said", Neovim.held([], [], [], said), []);
     }
 
     function run() {
@@ -251,6 +321,9 @@ QtObject {
                 "nvim", "/r/a.rs"]);
         check("in a new kitty", Opening.inKitty(0, "/r", ["nvim", "/r/a.rs"]),
             ["kitty", "--directory", "/r", "nvim", "/r/a.rs"]);
+        check("a session", Opening.session("/s/=2Fr.vim"), ["nvim", "-S", "/s/=2Fr.vim"]);
+
+        neovims(check);
 
         // Chrome's downloads as chrome-recent-sites prints them: a path,
         // its size, when in seconds and where from, each line its own.

@@ -1087,6 +1087,12 @@
     the account's entry for Neovim is named Neovim, not nixpkgs' "Neovim wrapper", and still runs
     nvim
   '';
+  neovim-keeps-a-session-of-its-folder = ''
+    Neovim keeps a session of the folder it's in as it's left with more than one file open, named
+    by the folder's whole path, never for a quick edit, comparing two files or leaving with an
+    error, and opening it with nvim -S goes back to the folder with its files in their tabs, a
+    space and a % in the folder's name escaped
+  '';
   neovim-keeps-its-numbers-in-one-column = ''
     Neovim's number column gives the cursor line its own number, marked, as wide as the relative
     counts beside it, and is blank with numbers off
@@ -1095,9 +1101,9 @@
     Neovim spell-checks markdown without flagging niri, Quickshell, YubiKey, TPM or monospace, and
     still flags a misspelt word
   '';
-  neovim-says-the-file-it-has-open = ''
-    in a kitty window, Neovim says the file it has open to the window, the one it starts with once
-    its terminal attaches and the next as it's entered, nothing for help, and nothing once it leaves
+  neovim-says-what-it-has-open = ''
+    in a kitty window, Neovim says where its own server listens to the window once its terminal
+    attaches, and nothing once it leaves, and open-now asks it there for its files and tabs
   '';
   neovim-says-the-files-it-opens = ''
     Neovim says each file it opens to the desktop's list of files opened lately, as each comes into
@@ -1971,10 +1977,14 @@
     under ~/src, read once for both as the shell starts and as the launcher opens, hold one they
     can open, listing the one whose git last wrote first, a repository's files the one changed
     last first, each beside its folder there, its hidden ones but not what git ignores, and only
-    those with a remote on GitHub, origin's first; and Chrome's downloads, read as Chrome is
+    those with a remote on GitHub, origin's first; Chrome's downloads, read as Chrome is
     stepped into, are file rows in its Recent, dated, their size and when beside them and where
     each came from in its drawer, with Open the Latest Download listed and found from the top
-    only while there's one, opening it as the desktop opens a file
+    only while there's one, opening it as the desktop opens a file; and Neovim lists every file
+    each Neovim has open once, the one looked at last first, said modified and by its tab, going
+    to its buffer through open-now, counts them in its drawer, and lists its sessions in its
+    Recent as their folders, newest first, opening one in the kitty used last and forgetting one
+    at once
   '';
   the-launcher-answers-the-rain = ''
     the weather's parts and the rain by the hour come from one forecast, and "rain", "umbrella"

@@ -10,6 +10,7 @@
   pkg-config,
   glib,
   shared-mime-info,
+  neovim-unwrapped,
   quickshell,
 }:
 rustPlatform.buildRustPackage (_finalAttrs: {
@@ -28,8 +29,12 @@ rustPlatform.buildRustPackage (_finalAttrs: {
   nativeBuildInputs = [ pkg-config ];
   buildInputs = [ glib ];
   # A file's kind is guessed from the desktop's MIME database, which the
-  # build has only from here.
-  nativeCheckInputs = [ shared-mime-info ];
+  # build has only from here, and what a Neovim holds is asked of a real
+  # one, headless, with no config of anyone's (src/neovim.rs).
+  nativeCheckInputs = [
+    shared-mime-info
+    neovim-unwrapped
+  ];
   preCheck = ''
     export XDG_DATA_DIRS=${shared-mime-info}/share
   '';

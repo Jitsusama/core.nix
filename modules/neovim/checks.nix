@@ -240,20 +240,26 @@ onLinux {
         touch $out
       '';
 
-  # In a kitty window, the account's Neovim says the file it has open to
-  # the window, for the launcher's Recent (showing.lua): the one it starts
-  # with once its terminal attaches, the next as it's entered, nothing for
-  # help, which isn't a file, and nothing once it leaves. Run in a terminal
-  # of its own, as script gives it, which keeps what Neovim wrote to it.
-  neovim-says-the-file-it-has-open =
+  # In a kitty window, the account's Neovim says where its own server
+  # listens, once its terminal attaches, and clears it on leaving
+  # (showing.lua); open-now asks it there what it has open, and hears both
+  # files, the second in the tab it was opened in. Run in a terminal of its
+  # own, as script gives it, which keeps what Neovim wrote to it.
+  neovim-says-what-it-has-open =
     let
       home = account workstation;
+      open-now = lib.getExe' (pkgs.callPackage ../open-with/recent-files.nix { }) "open-now";
+      # Each file open, by its name, with the tabs showing it.
+      reading =
+        ''"\(.tabs) " + (.files | map((.path | ltrimstr($dir + "/")) + ":"''
+        + ''+ (.tabs | map(tostring) | join(","))) | join(" "))'';
     in
-    pkgs.runCommandLocal "neovim-says-the-file-it-has-open"
+    pkgs.runCommandLocal "neovim-says-what-it-has-open"
       {
         nativeBuildInputs = [
           home.home.path
           pkgs.util-linux
+          pkgs.jq
         ];
       }
       ''
@@ -261,15 +267,88 @@ onLinux {
         echo one > one.txt
         echo two > two.txt
         export KITTY_WINDOW_ID=1 TERM=xterm-256color
-        timeout 60 script -q -e -c "nvim --cmd 'luafile ${./probes/says-what-it-has-open.lua}' one.txt" \
-          written < /dev/null > /dev/null || true
-        said=$({ grep -a -o $'\e]1337;SetUserVar=neovim_file[^\a]*' written || true; } \
-          | sed 's/.*neovim_file//' | tr '\n' ' ')
-        wanted="=$(printf %s "$PWD/one.txt" | base64 -w0) =$(printf %s "$PWD/two.txt" | base64 -w0)  "
-        [ "$said" = "$wanted" ] || {
-          echo "Neovim said '$said' to its kitty window, not '$wanted'"
+        # Flushed as Neovim writes it, since the check reads it while
+        # Neovim runs, and a terminal drawn small writes too little to fill
+        # script's buffer before it leaves.
+        timeout 60 script -q -e -f -c \
+          "nvim --cmd 'luafile ${./probes/says-what-it-has-open.lua}' one.txt" \
+          written < /dev/null > /dev/null &
+        running=$!
+        said() {
+          { grep -a -o $'\e]1337;SetUserVar=neovim_server[^\a]*' written 2> /dev/null || true; } \
+            | sed 's/.*neovim_server//' | tr '\n' ' '
+        }
+        for _ in $(seq 600); do
+          [ -n "$(said)" ] && break
+          sleep 0.1
+        done
+        server=$(said | sed 's/^=//; s/ .*//' | base64 -d)
+        held=$(${open-now} neovim at "$server" || true)
+        touch asked
+        wait "$running" || true
+        open=$(printf %s "$held" | jq -r --arg dir "$PWD" '${reading}')
+        [ "$open" = "2 one.txt:1 two.txt:2" ] || {
+          echo "Neovim at '$server' said it holds '$held', read as '$open'"
           exit 1
         }
+        wanted="=$(printf %s "$server" | base64 -w0)  "
+        [ "$(said)" = "$wanted" ] || {
+          echo "Neovim said '$(said)' to its kitty window, not '$wanted'"
+          exit 1
+        }
+        touch $out
+      '';
+
+  # Neovim keeps a session of the folder it's working in as it's left, under
+  # its state's folder, named by the folder's whole path (sessions.lua),
+  # only while more than one file is open: a quick edit leaves none and
+  # never replaces one, nor does comparing two files or leaving with an
+  # error, and opening the session with nvim -S goes back to the folder
+  # with its files in their tabs, a space and a % in its name escaped.
+  # Neovim runs headless, so nothing draws.
+  neovim-keeps-a-session-of-its-folder =
+    let
+      home = account workstation;
+    in
+    pkgs.runCommandLocal "neovim-keeps-a-session-of-its-folder"
+      { nativeBuildInputs = [ home.home.path ]; }
+      # Kept in Nix because it leaves Neovim through the account's own
+      # Neovim and probe, which Nix splices in, and each leaving is a line.
+      ''
+        ${neovimAt home}
+        # A folder whose name holds a space and a %, which a command line
+        # would read as the end of a name and the current file, so the
+        # session's name has to escape them for nvim -S to open it.
+        project="my project %1"
+        mkdir -p "$project" quick elsewhere
+        echo one > "$project/one.txt"
+        echo two > "$project/two.txt"
+        echo three > quick/three.txt
+        sessions=$PWD/state/nvim/sessions
+        session=$sessions/$(printf %s "$PWD/$project" | sed 's|/|=2F|g; s| |=20|g; s|%|=25|g').vim
+        # Neovim left as the arguments say, in a folder, failing on any
+        # complaint, whatever it exits with.
+        leave() {
+          (cd "$1" && shift && timeout 60 nvim --headless "$@" 2> "$OLDPWD/complaints") || true
+          if [ -s complaints ]; then
+            cat complaints
+            exit 1
+          fi
+        }
+        leave "$project" one.txt -c 'tabedit two.txt' -c 'qa'
+        [ -f "$session" ] || { echo "no session kept, only: $(ls "$sessions")"; exit 1; }
+        leave quick three.txt -c 'qa'
+        [ "$(ls "$sessions" | wc -l)" = 1 ] || { echo "kept: $(ls "$sessions")"; exit 1; }
+        # A session marked as written long ago, which none of these touch.
+        touch -d @1000 "$session"
+        leave "$project" one.txt -c 'qa'
+        leave "$project" -d one.txt two.txt -c 'qa'
+        leave "$project" one.txt two.txt -c 'cq'
+        [ "$(stat -c %Y "$session")" = 1000 ] || { echo "the session was replaced"; exit 1; }
+        cd elsewhere
+        ${probed} "$project 2 one.txt two.txt" -S "$session" \
+          -c 'luafile ${./probes/opens-its-session.lua}'
+        cd ..
         touch $out
       '';
 
