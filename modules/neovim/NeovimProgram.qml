@@ -153,6 +153,15 @@ Provider {
             provider.openNow().map(one => provider.openRow(one)));
     }
 
+    // What it lists as open now, by the keys Programs gives a file's row
+    // (Applications.qml's keyOf), so Neovim's Recent leaves each out and
+    // its note counts them, from what was read ahead.
+    function programOpen(asked) {
+        if (asked !== program)
+            return [];
+        return provider.openNow().map(one => `file:${one.path}`);
+    }
+
     // What its drawer in Programs says it holds (Applications.qml asks
     // every provider's programFacts), from what was read ahead, never a
     // read of its own.
