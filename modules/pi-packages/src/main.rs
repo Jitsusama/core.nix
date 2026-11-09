@@ -17,7 +17,8 @@ use pi_packages::config::Config;
 use pi_packages::run::{self, Done, Pace};
 use pi_packages::version::Place;
 
-const USAGE: &str = "usage: pi-packages update --config FILE [--now] | sweep --config FILE | status --config FILE";
+const USAGE: &str =
+    "usage: pi-packages update --config FILE [--now] | sweep --config FILE | status --config FILE";
 
 /// Characters of a commit worth showing.
 const SHORT: usize = 8;
@@ -82,7 +83,8 @@ fn update(file: &Path, pace: Pace) -> Result<(), String> {
                     }
                     Done::Busy => println!("{name}: another update holds it, so this one left it"),
                     Done::Held { commit, until } => println!(
-                        "{name}: {} waits {} more minutes, since installs swap in at most once an hour; `pi-packages update --now` swaps it in now",
+                        "{name}: {} waits {} more minutes, since installs swap in at most \
+                         once an hour; `pi-packages update --now` swaps it in now",
                         short(commit),
                         minutes_until(now, *until)
                     ),

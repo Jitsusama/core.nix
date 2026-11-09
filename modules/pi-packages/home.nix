@@ -70,7 +70,8 @@ let
   configured = pkgs.writeShellScriptBin "pi-packages" ''
     case "''${1:-status} ''${2:-}" in
       "update --now") exec ${lib.getExe package} update --config ${configFile} --now ;;
-      "update " | "sweep " | "status ") exec ${lib.getExe package} "''${1:-status}" --config ${configFile} ;;
+      "update " | "sweep " | "status ")
+        exec ${lib.getExe package} "''${1:-status}" --config ${configFile} ;;
       *) echo "usage: pi-packages [status | update [--now] | sweep]" >&2; exit 2 ;;
     esac
   '';

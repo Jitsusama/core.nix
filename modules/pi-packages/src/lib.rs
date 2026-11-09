@@ -21,6 +21,13 @@
 //! link over the old one, which a reader sees as the old version or the new,
 //! never half of either (version.rs).
 //!
+//! A swap happens at most once an hour across every package (run.rs),
+//! since each one costs every running pi a rewrite of its prompt cache
+//! when it follows. An update inside the hour builds nothing and says how
+//! long is left; the first one past it swaps in whatever merged meanwhile,
+//! every package together. `--now` swaps at once, and a package with no
+//! version yet is never held.
+//!
 //! A version `current` has left stays as it was, for the sessions still
 //! running it, until no process on the machine runs it, holds a file in it
 //! or stands in it (inuse/); what a pi runs is what it says it loaded
