@@ -427,7 +427,12 @@ mod tests {
             "main moved a minute after a switch, which waits"
         );
         assert!(
-            !f.should_ask(&at("b"), "", t + SWITCH_EVERY - LOOK_EVERY, EVERY),
+            !f.should_ask(
+                &at("b"),
+                "",
+                t + SWITCH_EVERY.saturating_sub(LOOK_EVERY),
+                EVERY
+            ),
             "it asked again within half an hour of a switch"
         );
         assert!(
