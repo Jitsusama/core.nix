@@ -11,7 +11,8 @@
 //! launcher lists them. `displays.json` is keyed by the connector's name as
 //! niri gives it ("DP-4", "eDP-1"), with what the display's EDID says of
 //! itself: who made it and when, its size, native mode, refresh range, colour
-//! depth and connection, its colours against sRGB's, and whether it takes
+//! depth and connection, how its colours compare with sRGB's, its white point
+//! and primaries as figures for the launcher to say, and whether it takes
 //! HDR. The one external display, when exactly one Type-C partner shows
 //! DisplayPort, also gets its cable's facts: the USB mode beside the
 //! picture, the power the machine charges at, and the supplies the monitor
@@ -232,8 +233,9 @@ fn chromaticity(edid: &[u8]) -> [(f64, f64); 4] {
     ]
 }
 
-/// How its colours compare with sRGB's: the same primaries, or how much
-/// wider or narrower its triangle is.
+/// How much wider or narrower its colours' triangle is than sRGB's. One
+/// with sRGB's own primaries says nothing, since its Primaries' figures
+/// say so beside it (VKCF3Z, 2026-11-09), nor does one giving no colours.
 fn gamut(edid: &[u8]) -> String {
     let [red, green, blue, _] = chromaticity(edid);
     let primaries = [red, green, blue];
@@ -241,10 +243,66 @@ fn gamut(edid: &[u8]) -> String {
         .iter()
         .zip(SRGB)
         .all(|((x, y), (sx, sy))| (x - sx).abs() < 0.005 && (y - sy).abs() < 0.005);
-    if same {
-        return "sRGB's primaries".to_owned();
+    let covers = area(primaries) / area(SRGB);
+    if same || covers <= 0.0 {
+        return String::new();
     }
-    format!("{:.2} \u{d7} sRGB's area", area(primaries) / area(SRGB))
+    format!("{covers:.2} \u{d7} sRGB's area")
+}
+
+/// An xy point as figures, x then y, each exactly as its ten bits give it,
+/// so the launcher rounds it once, to three places: 0.3134765625, never
+/// 0.3135 and then 0.314.
+fn figures((x, y): (f64, f64)) -> String {
+    format!("{x} {y}")
+}
+
+/// `McCamy`'s cubic for a white's correlated colour temperature from its xy,
+/// within a few kelvin of the daylight whites a display is set to: its
+/// epicentre, then the cubic's terms, highest first.
+const EPICENTRE: (f64, f64) = (0.3320, 0.1858);
+const MCCAMY: [f64; 4] = [449.0, 3525.0, 6823.3, 5520.33];
+
+/// The coldest and warmest whites a display is set to, in kelvin. Near the
+/// cubic's epicentre it gives tens of millions, which no white is, so one
+/// past them is said to be none (Y2YBTS, 2026-11-09).
+const WHITES: std::ops::RangeInclusive<f64> = 1000.0..=25000.0;
+
+/// A white's correlated colour temperature in kelvin, by `McCamy`'s cubic,
+/// where it is one a display could be set to.
+fn kelvin((x, y): (f64, f64)) -> Option<f64> {
+    let n = (x - EPICENTRE.0) / (EPICENTRE.1 - y);
+    let [cubed, squared, linear, constant] = MCCAMY;
+    let temperature = n.mul_add(n.mul_add(n.mul_add(cubed, squared), linear), constant);
+    WHITES.contains(&temperature).then_some(temperature)
+}
+
+/// The white an EDID gives, as figures for the launcher to say by Joel's
+/// grouping and decimal point: its colour temperature in whole kelvin, then
+/// its x and y, "6462 0.3134765625 0.3291015625"; nothing where it gives
+/// none.
+fn white_point(edid: &[u8]) -> String {
+    let [.., white] = chromaticity(edid);
+    if white.1 <= 0.0 {
+        return String::new();
+    }
+    kelvin(white).map_or_else(String::new, |temperature| {
+        format!("{temperature:.0} {}", figures(white))
+    })
+}
+
+/// The red, green and blue an EDID gives, as the figures of each point in
+/// turn, red's "0.6396484375 0.330078125" first; nothing where it gives
+/// none.
+fn primaries(edid: &[u8]) -> String {
+    let [red, green, blue, _] = chromaticity(edid);
+    if [red, green, blue]
+        .iter()
+        .all(|(x, y)| *x <= 0.0 && *y <= 0.0)
+    {
+        return String::new();
+    }
+    [red, green, blue].map(figures).join(" ")
 }
 
 /// Its native mode, from the first detailed timing.
@@ -399,6 +457,8 @@ fn display(edid: &[u8]) -> Option<Facts> {
     fact(&mut facts, "depth", depth);
     fact(&mut facts, "input", link);
     fact(&mut facts, "colours", gamut(block));
+    fact(&mut facts, "white", white_point(block));
+    fact(&mut facts, "primaries", primaries(block));
     if let Some(extension) = edid.get(128..256) {
         fact(&mut facts, "HDR", hdr(extension).unwrap_or_default());
     }
@@ -2486,7 +2546,16 @@ mod tests {
         assert_eq!(named(&facts, "refresh"), Some("29 to 60 Hz"));
         assert_eq!(named(&facts, "depth"), Some("10 bit"));
         assert_eq!(named(&facts, "input"), Some("DisplayPort"));
-        assert_eq!(named(&facts, "colours"), Some("sRGB's primaries"));
+        // sRGB's own primaries, which its Primaries' figures say.
+        assert_eq!(named(&facts, "colours"), None);
+        assert_eq!(
+            named(&facts, "white"),
+            Some("6462 0.3134765625 0.3291015625")
+        );
+        assert_eq!(
+            named(&facts, "primaries"),
+            Some("0.6396484375 0.330078125 0.2998046875 0.599609375 0.150390625 0.0595703125")
+        );
         assert_eq!(named(&facts, "HDR"), Some("none"));
         assert_eq!(named(&facts, "EDID"), Some("1.4"));
     }
@@ -2518,6 +2587,28 @@ mod tests {
         let said = gamut(&edid);
         assert!(said.ends_with("sRGB's area"), "{said}");
         assert!(said.starts_with("1.3"), "{said}");
+    }
+
+    #[test]
+    fn an_edid_without_its_colours_says_nothing_of_them() {
+        let mut edid = bytes(Z27K_G3);
+        let given = edid[25..35]
+            .iter()
+            .fold(0u8, |sum, byte| sum.wrapping_add(*byte));
+        edid[25..35].fill(0);
+        edid[127] = edid[127].wrapping_add(given);
+        let facts = display(&edid).unwrap();
+        assert_eq!(named(&facts, "colours"), None);
+        assert_eq!(named(&facts, "white"), None);
+        assert_eq!(named(&facts, "primaries"), None);
+    }
+
+    #[test]
+    fn a_white_is_one_a_display_could_be_set_to() {
+        // D65, then one beside the cubic's epicentre, tens of millions.
+        let d65 = kelvin((0.3127, 0.3290)).unwrap();
+        assert!((d65 - 6505.0).abs() < 1.0, "{d65}");
+        assert!(kelvin((0.4, 0.185)).is_none());
     }
 
     #[test]
