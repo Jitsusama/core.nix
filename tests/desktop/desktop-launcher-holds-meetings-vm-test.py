@@ -78,9 +78,35 @@ def test_a_meeting_about_to_start_is_found_by_its_name_and_return_joins_it(
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+def first_in_recent(desktop: Desktop, name: str, side: str) -> None:
+    """Go into the program held's Recent, and wait until its first row is the one named.
+
+    That row is selected, saying at its side what `side` matches.
+    """
+    desktop.launcher_until(lambda shown: "Recent" in shown["rows"])
+    desktop.down_to("Recent")
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"][-1:] == ["Recent"]
+            and shown["rows"][:1] == [name]
+            and (shown["selected"] or {}).get("name") == name
+            and re.fullmatch(side, str(shown["selected"].get("side", ""))) is not None
+        )
+    )
+
+
 @pytest.mark.usefixtures("google")
 def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> None:
-    """Calendar typed lists its next meetings under it, Calendar first, so Return opens it."""
+    """Calendar typed lists its next meetings under it, Calendar first, so Return opens it.
+
+    Calendar's Recent, Mail's and Meet's each hold what Joel had lately, newest first.
+    """
+    machine = desktop.machine
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    # The stand-in's Retro was held a day before it started, so it's said by its day.
+    day = r"(yesterday|[A-Z][a-z]+day)"
 
     def under_calendar(shown: Json) -> bool:
         """Say whether Calendar is selected with Design Review among the rows just under it."""
@@ -88,10 +114,11 @@ def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> No
         if "Calendar" not in rows or (shown["selected"] or {}).get("name") != "Calendar":
             return False
         at = rows.index("Calendar")
-        # And Calendar counts today's, never naming a meeting listed just under it.
+        # And Calendar counts today's, never naming a meeting listed just under it, after
+        # what its Recent holds.
         said = str(shown["selected"].get("note", ""))
         listed = "Design Review" in rows[at + 1 : at + 4]
-        return listed and re.fullmatch(r"\d+ today", said) is not None
+        return listed and re.fullmatch(r"1 recent \u00b7 \d+ today", said) is not None
 
     desktop.answer("calendar")
     desktop.launcher_until(under_calendar)
@@ -108,13 +135,51 @@ def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> No
     desktop.launcher_until(
         lambda shown: (
             re.fullmatch(
-                r"next in \d+ min \u00b7 Design Review", str(shown["selected"].get("note", ""))
+                r"1 recent \u00b7 next in \d+ min \u00b7 Design Review",
+                str(shown["selected"].get("note", "")),
             )
             is not None
         )
     )
     desktop.shoot("launcher-calendar-in-programs")
+    # Its Recent holds Retro, saying when it was held; Return on a meeting over steps in to
+    # it, as Show in Calendar does, since there's nothing to join.
+    desktop.follow()
+    first_in_recent(desktop, "Retro", day)
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["held"][-1:] == ["Retro"])
     desktop.close_launcher()
+    # Mail's holds Trip Notes, which Joel read, saying who it's from and when; Return opens it.
+    desktop.answer("mail")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Mail")
+    desktop.into_program()
+    first_in_recent(desktop, "Trip Notes", rf"Grace Hopper \u00b7 (\d\d:\d\d|{day})")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        f"grep -qxF 'https://mail.google.com/mail/u/0/#all/trip' {opened}",
+        timeout=dt.timedelta(seconds=30),
+    )
+    desktop.launcher_until(lambda shown: not shown["open"])
+    # Meet's holds Retro's call, saying who it was with and when; Return steps in to Join the
+    # Meeting, so Return twice joins it again.
+    desktop.answer("meet")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Meet")
+    desktop.into_program()
+    first_in_recent(desktop, "Retro", rf"Ada Lovelace and Grace Hopper \u00b7 {day}")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"][-1:] == ["Retro"]
+            and (shown["selected"] or {}).get("name") == "Join the Meeting"
+        )
+    )
+    machine.succeed(f"! grep -qxF https://meet.google.com/rtr-ospe-ctv {opened}")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        f"grep -qxF https://meet.google.com/rtr-ospe-ctv {opened}",
+        timeout=dt.timedelta(seconds=30),
+    )
+    desktop.launcher_until(lambda shown: not shown["open"])
 
 
 @pytest.mark.usefixtures("google")

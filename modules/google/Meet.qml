@@ -15,6 +15,19 @@
 // the clipboard needs, and the launcher leaves saying "copied", as every
 // copy does. One Google won't make stays, saying so, and copies nothing
 // (VKCF3Z, 959f52e2).
+//
+// Meet's Recent (recentOf, which Applications.qml asks every provider that
+// has it) is the calls Joel had through Meet: the meetings held lately on
+// a Meet link, each once by its code, where it was newest, newest first
+// (Calendar.called). A row is named by its meeting's title, what the call
+// is, as Calendar names it and Now names a call on air; who it was with
+// and when are at its side, "Ada Lovelace and Grace Hopper \u00b7
+// yesterday", as a mail says who it's from and when, so the title isn't
+// said twice, and its times below, its drawer the meeting's details.
+// Return steps in to the meeting's acts, Join the Meeting first, so
+// Return twice joins again, as an ended call's row does in Tuple's Recent
+// (VKCF3Z): the call is over, so joining its room again is chosen, never
+// what a press on a past call does at once.
 import qs
 import Quickshell
 import QtQuick
@@ -85,6 +98,50 @@ Provider {
             given: words => provider.join(words)
         })];
         return granted ? acts.concat([copying()]) : acts;
+    }
+
+    function recentOf(program) {
+        return program === "google-meet" ? Calendar.called.map(call => provider.calledRow(call))
+            : [];
+    }
+
+    function keepsRecentOf(program) {
+        return program === "google-meet";
+    }
+
+    // What a call's side says: who it was with, in the vocabulary's words,
+    // and when, in the words mail says when in.
+    readonly property var said: Object.assign({}, Mail.dates, Words.of("meet:held").said ?? {})
+
+    // So Programs › Meet, held as a call's meeting ends or a side moves on,
+    // draws its Recent again, and only then.
+    readonly property string recentSaid: JSON.stringify(Calendar.called
+        .map(call => [call.code, Calendar.calledSide(call.meeting, said)]))
+    onRecentSaidChanged: changed()
+
+    // One call Joel had through Meet, as its Recent's row.
+    function calledRow(call) {
+        const meeting = call.meeting;
+        const row = thing({
+            key: `meet:held:${call.code}`,
+            name: Calendar.titled(meeting),
+            verb: Words.verb("meet:held"),
+            glyph: Words.glyph("meet:held"),
+            hue: "program",
+            side: Calendar.calledSide(meeting, said),
+            note: Calendar.span(meeting),
+            drawer: Calendar.details(meeting),
+            // A call is a thing with details, so the launcher gives it its
+            // drawer (Launcher.qml, detailed), which it never does an act.
+            thing: true,
+            keywords: (meeting.guests ?? []).map(guest => guest.email).filter(Boolean)
+                .join(" ") || null,
+            at: meeting.start,
+            stays: true,
+            verbs: () => Calendar.acts(meeting, provider)
+        });
+        row.run = () => provider.launcher?.enter(row);
+        return row;
     }
 
     function copying() {

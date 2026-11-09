@@ -26,6 +26,8 @@ holds, and for a file in one, to open or pick, kept in the cache home's google/d
 program keeps it, or to save, Google's own as their office files.
 Drive's own places hold the menu, which he opened last, then the two documents, as its Recent;
 the Trips folder, as Starred; Team Budget, as Shared with Me; and the Team shared drive.
+What a Recent holds: Joel held Retro a day before the stand-in starts, Ada's on Meet with Grace
+going, and read Grace's Trip Notes three hours before it.
 """
 
 import copy
@@ -52,6 +54,9 @@ SOON = int(os.environ.get("GOOGLE_STAND_IN_SOON", str(5 * MINUTE)))
 # nothing, as the program says it (state.rs).
 SIGNED_OUT = os.environ.get("GOOGLE_STAND_IN_ACCOUNT") == "signedOut"
 AHEAD = 30 * MINUTE
+# How long before the stand-in starts Retro was held, and Trip Notes read.
+HELD = 26 * 60 * MINUTE
+READ = 3 * 60 * MINUTE
 LATER = 120 * MINUTE
 LASTS = 30 * MINUTE
 # What Drive's copies kept here take, and the most they may before the oldest go, in bytes.
@@ -280,6 +285,35 @@ class Account:
                 "attachments": [],
             },
         ]
+        # What a Recent holds: the meetings held in the month before today, and the mail Joel
+        # sent or read lately, as the program keeps them (src/state.rs).
+        self.held = [
+            meeting(
+                "retro",
+                "Retro",
+                now - HELD,
+                "rtr-ospe-ctv",
+                holds=False,
+                through="ada@example.com",
+                organizer={"name": "Ada Lovelace", "email": "ada@example.com"},
+                guests=[{"name": "Grace Hopper", "email": "grace@example.com", "answer": "yes"}],
+            )
+        ]
+        self.lately = [
+            {
+                "id": "trip",
+                "from": "Grace Hopper",
+                "address": "grace@example.com",
+                "to": "Joel Gerber",
+                "cc": "",
+                "others": [],
+                "subject": "Trip Notes",
+                "at": now - READ,
+                "page": "https://mail.google.com/mail/u/0/#all/trip",
+                "body": "The train leaves at nine.",
+                "attachments": [],
+            }
+        ]
         self.unread = 3
         # Mail marked read, which marking it unread again brings back.
         self.read: list[dict[str, object]] = []
@@ -342,6 +376,8 @@ class Account:
                 "account": "signedOut",
                 "meetings": [],
                 "mail": [],
+                "held": [],
+                "lately": [],
                 "unread": None,
                 "documents": [],
                 "heard": None,
@@ -353,6 +389,8 @@ class Account:
             "account": "ready",
             "meetings": self.meetings,
             "mail": self.mail,
+            "held": self.held,
+            "lately": self.lately,
             "unread": self.unread,
             "documents": self.documents,
             "heard": self.heard,
@@ -373,7 +411,13 @@ class Account:
         # last told must stay as it was to find what changed.
         state = copy.deepcopy(self.state())
         made: dict[str, dict[str, object]] = {}
-        for kind, things in (("meeting", "meetings"), ("mail", "mail"), ("file", "documents")):
+        for kind, things in (
+            ("meeting", "meetings"),
+            ("mail", "mail"),
+            ("file", "documents"),
+            ("held", "held"),
+            ("lately", "lately"),
+        ):
             for thing in cast("list[dict[str, object]]", state[things]):
                 key = f"{kind}:{thing['id']}"
                 made[key] = {"key": key, "kind": kind, "heard": self.heard, kind: thing}

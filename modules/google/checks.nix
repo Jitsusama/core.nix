@@ -68,9 +68,11 @@ onLinux {
   # clippy finds nothing in google, its tests included.
   google-passes-clippy = passesClippy "google-passes-clippy" (pkgs.callPackage ./package.nix { });
 
-  # Which meeting is next, when it is in words and whether it's about to
-  # start are Calendar.js's, and which Meet call a window is Meet.js's, run
-  # in Qt's own engine over meetings like the program's (tests/calendar.qml).
+  # Which meeting is next, when it is in words, or was once it's over, and
+  # whether it's about to start are Calendar.js's, and which Meet call a
+  # window is, which held meetings Meet's Recent lists and who each was with
+  # Meet.js's, run in Qt's own engine over meetings like the program's
+  # (tests/calendar.qml).
   the-desktop-tells-the-next-meeting =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -79,6 +81,7 @@ onLinux {
       cp ${../../tests/calendar.qml} calendar.qml
       cp ${./Calendar.js} Calendar.js
       cp ${./Meet.js} Meet.js
+      cp ${../quickshell/When.js} When.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       ${shellFolderLint}
@@ -113,7 +116,8 @@ onLinux {
       touch $out
     '';
 
-  # Reading the daemon's records is Google.js's, and when mail came and the
+  # Reading the daemon's records and which meetings were held lately are
+  # Google.js's, and when mail came, which mail Mail's Recent lists and the
   # lines marking it read or archiving it Mail.js's, run in Qt's own engine
   # (tests/mail.qml).
   the-desktop-reads-the-mail =

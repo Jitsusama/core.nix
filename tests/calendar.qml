@@ -505,9 +505,86 @@ QtObject {
                 meeting: null }, said).facts
                 .map(fact => fact.label), ["Started", "Code"]);
 
+        heldCases(check, at, now, meeting);
+
         for (const failure of failures)
             console.warn(failure);
         console.log(`${asked - failures.length} of ${asked} held`);
         Qt.exit(failures.length > 0 ? 1 : 0);
+    }
+
+    // The meetings over, as Calendar's Recent and Meet's say them: when each
+    // was held, which of them were calls on Meet, and who each was with.
+    function heldCases(check, at, now, meeting) {
+        // How the launcher says when, as Mail.qml gives it, and who a call
+        // was with, as Meet.qml gives it: the vocabulary's words, and the
+        // locale's names, the check's being English.
+        const said = {
+            now: "just now", minutes: "{minutes} min ago", yesterday: "yesterday",
+            tomorrow: "tomorrow", date: (date, format) => Qt.formatDate(date, format),
+            two: "{first} and {second}", others: "{first} and {count} others"
+        };
+        // When one over was held, from its start, as the launcher says when
+        // anywhere, never "now": [the meeting, said]
+        const whens = [
+            [meeting("ended now", at(26, 15, 0), now), "20 min ago"],
+            [meeting("short", at(26, 15, 10), at(26, 15, 15)), "10 min ago"],
+            [meeting("just", now - 30 * 1000, now - 10 * 1000), "just now"],
+            [meeting("lunch", at(26, 12, 0), at(26, 13, 0)), "12:00"],
+            [meeting("yesterday", at(25, 9, 0), at(25, 9, 30)), "yesterday"],
+            [meeting("thursday", at(22, 9, 0), at(22, 9, 30)), "Thursday"],
+            [meeting("long ago", at(12, 9, 0), at(12, 9, 30)), "12 Oct"],
+            [meeting("holiday", at(25, 0, 0), at(26, 0, 0), { allDay: true }), "yesterday"]
+        ];
+        for (const [one, meant] of whens)
+            check(`when ${one.id} was held`, Calendar.when(one, now, said), meant);
+
+        const ada = { name: "Ada Lovelace", email: "ada@example.com" };
+        const grace = { name: "Grace Hopper", email: "grace@example.com", answer: "yes" };
+        const theirs = fields => Object.assign({ holds: false, organizer: ada, guests: [] },
+            fields);
+        // Who a call was with: [what, the meeting's fields, said]
+        const withs = [
+            ["nobody, his own", { holds: true, organizer: null }, ""],
+            ["who holds it", theirs(), "Ada Lovelace"],
+            ["who holds it and a guest", theirs({ guests: [grace] }),
+                "Ada Lovelace and Grace Hopper"],
+            ["a guest of his own", { holds: true, organizer: null, guests: [grace] },
+                "Grace Hopper"],
+            ["three, one by address, and not one who said no", theirs({ guests: [grace,
+                { name: "", email: "alan@example.com", answer: "waiting" },
+                { name: "Charles Babbage", email: "charles@example.com", answer: "no" }] }),
+                "Ada Lovelace and 2 others"]
+        ];
+        for (const [what, fields, meant] of withs)
+            check(`with ${what}`, Meet.withWhom(meeting("call", at(25, 9, 0), at(25, 9, 30),
+                fields), said), meant);
+        check("a call's side, who and when", Meet.heldSide(meeting("retro", at(25, 9, 0),
+            at(25, 9, 30), theirs({ guests: [grace] })), now, said),
+            "Ada Lovelace and Grace Hopper \u00b7 yesterday");
+        check("a call's side with nobody else, when alone", Meet.heldSide(meeting("alone",
+            at(26, 12, 0), at(26, 12, 30), { holds: true }), now, said), "12:00");
+
+        // The calls among the meetings held, newest first: each on Meet
+        // once by its code, where it was newest, whatever follows the link.
+        const standup = "https://meet.google.com/abc-defg-hij";
+        const held = [
+            meeting("standup today", at(26, 9, 0), at(26, 9, 15), { link: standup }),
+            meeting("review", at(25, 16, 0), at(25, 16, 30), { link: null, kind: null }),
+            meeting("standup yesterday", at(25, 9, 0), at(25, 9, 15),
+                { link: `${standup}?authuser=0` }),
+            meeting("pairing", at(24, 9, 0), at(24, 9, 30),
+                { link: "https://tuple.app/c/abc", kind: "tuple" }),
+            meeting("retro", at(23, 9, 0), at(23, 9, 30),
+                { link: "https://meet.google.com/xyz-abcd-efg" })
+        ];
+        check("Meet's calls, once by code, newest first", Meet.called(held)
+            .map(call => [call.code, call.meeting.id]),
+            [["abc-defg-hij", "standup today"], ["xyz-abcd-efg", "retro"]]);
+        check("no calls among none held", Meet.called([]), []);
+        check("at most nine calls", Meet.called(Array.from({ length: 12 }, (_, day) => meeting(
+            `call ${day}`, at(26, 9, 0) - day * 86_400_000, at(26, 9, 30) - day * 86_400_000, {
+                link: `https://meet.google.com/abc-defg-h${String.fromCharCode(97 + day)}a`
+            }))).length, 9);
     }
 }
