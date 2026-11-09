@@ -217,9 +217,16 @@ const SHORTCODE = /:[a-z0-9_+'-]+:/g;
 // What a word is made of besides a letter with case: a digit, or a
 // letter of a script without one, by its block (Hebrew, Arabic, the
 // Indic scripts, Thai and Lao, Hangul, kana and CJK). Qt's engine has no
-// \p{L}, so a letter beyond these, as of CJK's rarest, splits words.
+// \p{L}, so a letter beyond these isn't known as one.
 const UNCASED = /[0-9\u0590-\u06ff\u0900-\u0d7f\u0e00-\u0eff\u1100-\u11ff\u3040-\u30ff]/;
 const HAN_OR_HANGUL = /[\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff]/;
+// What parts words beyond ASCII: Latin-1's signs, general punctuation and
+// the symbols, arrows and dingbats after it, CJK's and the fullwidth
+// punctuation, emoji's variation selectors, and emoji themselves, each a
+// pair of halves past U+1F000 or a flag's tag.
+const PARTING = /[\u00a0-\u00bf\u00d7\u00f7\u2000-\u2bff\u3000-\u303f\ufe00-\ufe0f\ufe30-\ufe6f]/;
+const EMOJI = /^(\ud83c|\ud83d|\ud83e|\udb40)[\udc00-\udfff]$/;
+const FULLWIDTH_SIGN = /[\uff01-\uff0f\uff1a-\uff20\uff3b-\uff40\uff5b-\uff65]/;
 // A notice's text Slack cut short ends so, maybe within a word.
 const ELLIPSIS = /\u2026\s*$/;
 // The daemon cuts a message's text at a space to 400 characters (LONGEST
@@ -242,8 +249,7 @@ const FEWEST_SHARED = 3;
 // whether Slack cut them short, and when it came; or null for one that
 // isn't Slack's or doesn't say it as Slack does.
 function noticed(notice) {
-    const named = field => String(field ?? "").toLowerCase();
-    if (named(notice?.app) !== "slack" && named(notice?.entry) !== "slack") {
+    if (!isSlacks(notice)) {
         return null;
     }
     const said = NOTICE.exec(String(notice.summary ?? ""));
@@ -263,14 +269,26 @@ function noticed(notice) {
         cut: ELLIPSIS.test(text), at: notice.at };
 }
 
+// Whether a notice is Slack's own.
+function isSlacks(notice) {
+    const named = field => String(field ?? "").toLowerCase();
+    return named(notice?.app) === "slack" || named(notice?.entry) === "slack";
+}
+
 // A text's words, lower case, its letters and digits alone: an emoji,
-// named or shown, and punctuation are neither.
+// named or shown, and punctuation are neither. A text holding a character
+// that's none of these it knows has no words, so it's never matched on
+// the words left beside it.
 function words(text) {
     const all = [];
     let word = "";
     for (const each of String(text ?? "").toLowerCase().replace(SHORTCODE, " ")) {
+        const parts = each.charCodeAt(0) < 0x80 || PARTING.test(each) || EMOJI.test(each)
+            || FULLWIDTH_SIGN.test(each);
         if (each.toUpperCase() !== each || UNCASED.test(each) || HAN_OR_HANGUL.test(each)) {
             word += each;
+        } else if (!parts) {
+            return [];
         } else if (word !== "") {
             all.push(word);
             word = "";
@@ -307,7 +325,7 @@ function sameWords(said, held) {
 function isNoticed(said, held) {
     const one = held.one;
     const after = said.at - one.at;
-    if (one.who !== said.who || after < -CLOCKS_APART || after > NOTICED_WITHIN) {
+    if (one.who !== said.who || !(after >= -CLOCKS_APART && after <= NOTICED_WITHIN)) {
         return false;
     }
     const place = String(one.place ?? "");
@@ -325,9 +343,14 @@ function isNoticed(said, held) {
 // looked at the slack message in slack"). `all` are every message the
 // daemon holds, read or not (SlackUnreads.qml's messages), or null while
 // it doesn't hold every one. Nothing is read on a guess: a notice is read
-// only where it could be one message alone, that one read in Slack, and
-// no other notice, read or not, could be of it too.
+// only where it could be one message alone, that one read in Slack after
+// the notice came (the daemon looks only now and then, so a notice that
+// came later is of another it hasn't heard yet), and no other notice,
+// read or not, could be of it too.
 function readInSlack(notices, all) {
+    if (!(notices ?? []).some(notice => notice?.read !== true && isSlacks(notice))) {
+        return [];
+    }
     const held = (all ?? []).filter(listable).map(one => ({ one, words: words(one.text),
         cut: [...String(one.text ?? "")].length > CUT_PAST }));
     if (!held.some(each => each.one.done?.how === "readInSlack")) {
@@ -337,7 +360,7 @@ function readInSlack(notices, all) {
     for (const notice of notices ?? []) {
         const said = noticed(notice);
         if (said !== null) {
-            matched.push({ id: notice.id, unread: notice.read !== true,
+            matched.push({ id: notice.id, at: said.at, unread: notice.read !== true,
                 of: held.filter(each => isNoticed(said, each)).map(each => each.one) });
         }
     }
@@ -349,6 +372,18 @@ function readInSlack(notices, all) {
         }
     }
     return matched.filter(each => each.unread && each.of.length === 1
-        && each.of[0].done?.how === "readInSlack" && claimed.get(keyOf(each.of[0])) === 1)
+        && claimed.get(keyOf(each.of[0])) === 1 && readAfter(each.of[0], each.at))
         .map(each => each.id);
+}
+
+// Whether a message was read in Slack at or after `at`, the daemon's time
+// for it in milliseconds or as an ISO time.
+function readAfter(one, at) {
+    const finished = one.done;
+    if (finished?.how !== "readInSlack") {
+        return false;
+    }
+    const read = typeof finished.at === "number" ? finished.at
+        : Date.parse(String(finished.at ?? ""));
+    return at <= read;
 }

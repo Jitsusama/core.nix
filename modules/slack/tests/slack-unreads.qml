@@ -260,6 +260,18 @@ QtObject {
             Unreads.readInSlack([raised("n17", "[ada] from Ada Lovelace", "ok", 4000300,
                 { read: true }), raised("n18", "[ada] from Ada Lovelace", "ok", 4050000)],
                 [okOnce]), []);
+        // Joel read Kai's first "ok" in Slack, which raised no notice; the
+        // notice of a second, raised after, isn't of it.
+        const seen = [said("D4", "Kai", "Kai", "ok", 8000000,
+            { how: "readInSlack", at: new Date(8000500).toISOString() })];
+        check("nor one raised after its message was read",
+            [Unreads.readInSlack([raised("n25", "[ada] from Kai", "ok", 8000300)], seen),
+                Unreads.readInSlack([raised("n26", "[ada] from Kai", "ok", 8030000)], seen)],
+            [["n25"], []]);
+        check("nor one in a script whose letters aren't known",
+            Unreads.readInSlack([raised("n27", "[ada] from Lin",
+                "ok \u179f\u17bd\u179f\u17d2\u178f\u17b8", 9000100)],
+                [said("D5", "Lin", "Lin", "ok \u1781\u17d2\u1798\u17c2\u179a", 9000000)]), []);
         check("nor a group's of a direct message whose sender isn't named yet",
             Unreads.readInSlack([raised("n19", "[ada] in Lunch Crew",
                 "Grace: lunch at noon, then we ship", 1000200)],
