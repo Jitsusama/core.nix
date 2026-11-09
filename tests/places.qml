@@ -266,6 +266,12 @@ QtObject {
                 { workspace: 7, column: 5 }, { workspace: 7, column: 5 }]);
         expect("with no orchestrator here, nowhere of its own",
             Places.underOrchestrator("Coral Counts", null, under), null);
+        // One handed over while Reopen Them All already holds it, or has
+        // begun it, joins nothing, or two pis would write one log.
+        const asked = id => ({ one: { id } });
+        expect("handed over again while queued or begun, it isn't asked twice",
+            Places.queuedOnce([asked("q1"), asked("q2")], [asked("q2"), asked("q3"), asked("q4")],
+                ["q4"]).map(entry => entry.one.id), ["q1", "q2", "q3"]);
         // Those that orchestrate are begun first, so the sessions they lead
         // have them back to answer to; the rest keep their order.
         const queued = (id, orchestrates) => ({ one: { id, orchestrates } });
