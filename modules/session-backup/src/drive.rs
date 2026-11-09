@@ -11,10 +11,14 @@ use std::path::Path;
 use std::time::Duration;
 
 use serde_json::{Value, json};
+use ureq::SendBody;
+use ureq::http::Request;
+use ureq::http::header::HeaderValue;
+use ureq::middleware::MiddlewareNext;
 
 use crate::config::Folder;
 use crate::retry::{again, patiently};
-use crate::token::Login;
+use crate::token::{Login, SET_PROJECT};
 
 /// How long a connection may take to open.
 const CONNECT: Duration = Duration::from_secs(30);
@@ -38,14 +42,32 @@ impl std::fmt::Display for Fault {
     }
 }
 
-/// An agent that hands back every answer, so a refusal can be read.
-pub fn agent() -> ureq::Agent {
-    ureq::Agent::config_builder()
+/// An agent that hands back every answer, so a refusal can be read. With
+/// a `project`, every call names it as the one Drive counts it against,
+/// which Drive asks of a login made with gcloud's application-default
+/// client and refuses without.
+pub fn agent(project: Option<&str>) -> Result<ureq::Agent, String> {
+    let config = ureq::Agent::config_builder()
         .http_status_as_error(false)
-        .timeout_connect(Some(CONNECT))
-        .build()
-        .into()
+        .timeout_connect(Some(CONNECT));
+    let config = match project {
+        Some(project) => {
+            let value = HeaderValue::from_str(project)
+                .map_err(|why| format!("the login's quota project {project:?}: {why}"))?;
+            config.middleware(
+                move |mut request: Request<SendBody>, next: MiddlewareNext| {
+                    request.headers_mut().insert(QUOTA_PROJECT, value.clone());
+                    next.handle(request)
+                },
+            )
+        }
+        None => config,
+    };
+    Ok(config.build().into())
 }
+
+/// The header naming the project a call to a Google API is counted against.
+const QUOTA_PROJECT: &str = "x-goog-user-project";
 
 /// The backup's folder on Drive.
 pub struct Drive<'a> {
@@ -263,6 +285,12 @@ fn read(
         ))),
         // A login made without a Drive scope is refused this way, which
         // signing in again with one fixes.
+        // A login made with gcloud's application-default client names no
+        // project to count its calls against until one is set.
+        403 if body.contains("requires a quota project") => Err(Fault::Other(format!(
+            "Drive refused to {doing} {name}, since the login names no quota project; \
+             name one with {SET_PROJECT}"
+        ))),
         403 if body.contains("insufficient authentication scopes")
             || body.contains("ACCESS_TOKEN_SCOPE_INSUFFICIENT") =>
         {
