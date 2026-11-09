@@ -92,6 +92,12 @@ function markedLetters(words) {
         : all.concat([letter]), []);
 }
 
+// Whether `said` fits `room`, the spaces it ends on left out, since they
+// go where a line ends: "Ploopy " fits as wide as "Ploopy".
+function fitting(said, room, width) {
+    return width(said.replace(TRAILING, "")) <= room;
+}
+
 // Whether a line laid opens with a mark, which only the identifier's
 // own first may.
 function opensOnMark(line) {
@@ -104,7 +110,7 @@ function opensOnMark(line) {
 // gathered by concat, since Qt's engine has no flatMap.
 function piecesOf(words, room, width) {
     const finer = (pieces, cutting) => pieces.reduce((all, piece) => all.concat(
-        width(piece) <= room ? [piece] : cutting(piece)), []);
+        fitting(piece, room, width) ? [piece] : cutting(piece)), []);
     return [piece => cutAfter(piece, WEAK_MARKS), cutAtFigures, markedLetters]
         .reduce(finer, cutAfter(words, STRONG_MARKS));
 }
@@ -114,7 +120,7 @@ function piecesOf(words, room, width) {
 function wholeLines(words, room, width) {
     return piecesOf(words, room, width).reduce((lines, piece) => {
         const last = lines.length - 1;
-        if (last >= 0 && width(`${lines[last]}${piece}`) <= room) {
+        if (last >= 0 && fitting(`${lines[last]}${piece}`, room, width)) {
             lines[last] = `${lines[last]}${piece}`;
         } else {
             lines.push(piece);

@@ -1101,6 +1101,8 @@ QtObject {
                 ["fe80::", "8a2e:", "370:", "7334"]],
             ["a doubled slash too", "/srv//bar", 60, ["/srv//", "bar"]],
             ["and a doubled space, which goes", "Ploopy  Adept", 70, ["Ploopy", "Adept"]],
+            ["a word as wide as the line is whole, its space going", "Ploopy Adept", 60,
+                ["Ploopy", "Adept"]],
             ["a version too long breaks at its figures' dots, never opening on one",
                 "v1.2.3.4.5-rc1", 60, ["v1.2.", "3.4.5-", "rc1"]],
             ["an address breaks between its numbers, never inside one", "192.168.100.200", 60,
