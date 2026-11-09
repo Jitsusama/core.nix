@@ -364,6 +364,16 @@ every-assert-says-what-was-wrong = core.lib.everyAssertSaysWhatWasWrong pkgs {
 A Rust `assert!` or a Python `assert` of anything but a comparison carries a
 message saying what was expected.
 
+Its tests run or fail, as core's do, through a sixth:
+
+```nix
+every-test-runs-or-fails = core.lib.everyTestRunsOrFails pkgs {
+  src = ./.;
+  # How many skips each test file holds while its tests come to run.
+  waiting = { };
+};
+```
+
 Its names say the glossary's words, as core's do, through a check that reads
 the glossary of the core it locks:
 

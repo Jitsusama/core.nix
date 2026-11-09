@@ -508,6 +508,12 @@
       lib.everyAssertSaysWhatWasWrong =
         pkgs: pkgs.callPackage ./tests/every-assert-says-what-was-wrong.nix { };
 
+      # How a repository built on core keeps a test that can't run from passing,
+      # as core does: `core.lib.everyTestRunsOrFails pkgs { src = ./.; waiting =
+      # { ... }; }` is a check that fails on a test file holding more skips than
+      # it waits with, and on one holding fewer until its count is lowered.
+      lib.everyTestRunsOrFails = pkgs: pkgs.callPackage ./tests/every-test-runs-or-fails.nix { };
+
       # How a repository built on core holds its names to core's glossary:
       # `core.lib.namesSayTheGlossary pkgs { names = ...; otherSenses = ...;
       # waiting = ...; }` is a check that no name says a name the glossary

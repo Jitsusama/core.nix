@@ -389,6 +389,13 @@ waits, in a comment on its line or just above, or by sleeping for a named
 constant such as `UNHEARD`. Those before the rule wait, counted by file, in
 `tests/every-fixed-wait-says-why-waiting.nix`, and a count only falls.
 
+A test that can't run, for want of a filesystem, a device or a tool, fails
+rather than returning early, since a skip nobody sees passes a gate that
+proved nothing; it runs where it can, such as in a VM. An `#[ignore]` says
+what runs it instead, as `#[ignore = "needs OpenSSH, which ... gives"]`
+does. `every-test-runs-or-fails` holds it, and the skips before the rule
+wait, counted by file, in `tests/every-test-runs-or-fails-waiting.nix`.
+
 The install test builds a disk image with disko and boots it with a software
 TPM, then follows [the install guide][3] step by step: the keys are made and
 enrolled, the disk is bound to the TPM and a PIN, the passphrase is wiped,
