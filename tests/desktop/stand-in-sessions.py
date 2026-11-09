@@ -41,6 +41,8 @@ def owner() -> dict[str, object]:
 def record(at: int, *, busy: bool, whose: dict[str, object]) -> dict[str, object]:
     """Give one stand-in session's record, numbered `at`, working or listening."""
     address = f"LD{at:04d}"
+    if FAT:
+        return fat(at, address, busy=busy, whose=whose)
     return {
         "session": f"01a1face-load-{at:04d}",
         "addresses": [address],
@@ -48,6 +50,57 @@ def record(at: int, *, busy: bool, whose: dict[str, object]) -> dict[str, object
         "busy": busy,
         "worksOn": f"Stand-in work {at}",
         "at": datetime.now(UTC).isoformat(),
+        "owner": whose,
+    }
+
+
+FAT = sys.argv[5:6] == ["fat"]
+
+
+def fat(at: int, address: str, *, busy: bool, whose: dict[str, object]) -> dict[str, object]:
+    """Diagnostic: a record as large as Joel's, about 3.5 KB, with what changes in his."""
+    now = datetime.now(UTC).isoformat()
+    quest = f"QEST-20261109-LD{at:04d}"
+    return {
+        "session": f"01a1face-load-{at:04d}",
+        "addresses": [address],
+        "title": f"Stand-in session {at} working on something with a long title",
+        "busy": busy,
+        "state": "busy" if busy else "idle",
+        "step": "tool" if busy else "idle",
+        "stepDetail": {"kind": "tool", "name": "bash", "detail": f"nix fmt {time.time()}"},
+        "since": now,
+        "worksOn": f"Stand-in work {at}, " + "described at length as Joel's are, " * 7,
+        "cwd": f"/home/jitsusama/.local/state/pi/agentic-harness.pi/work/trees/tree-{at:04d}",
+        "repo": "github:Jitsusama/core.nix",
+        "quest": quest,
+        "questInfo": {
+            "id": quest,
+            "title": f"Quest {at} title",
+            "short": f"LD{at:04d}",
+            "status": "active",
+            "priority": "active",
+        },
+        "groups": [f"#quest/ld{at:04d}", "#quest/wcjqsg", "#repo/core.nix"],
+        "owns": [{"kind": "tree", "what": f"tree-{at:04d}", "since": now}],
+        "orchestratedBy": "P9R1KI",
+        "joined": now,
+        "usage": {
+            "gen_ai.request.model": "claude-opus",
+            "last": {
+                "gen_ai.usage.input_tokens": int(time.time()) % 9000,
+                "gen_ai.usage.output_tokens": 812,
+                "pi.cache.read": 120000,
+            },
+            "pi.cost.usd": {"last": 0.05, "today": time.time() % 100, "session": 12.5},
+            "pi.context": {"used": int(time.time()) % 200000, "window": 200000},
+            "history": [{"at": now, "tokens": n * 1000, "usd": n * 0.1} for n in range(8)],
+        },
+        "landings": [
+            {"pr": 2600 + n, "at": now, "title": f"A landing titled at length {n}"}
+            for n in range(5)
+        ],
+        "at": now,
         "owner": whose,
     }
 

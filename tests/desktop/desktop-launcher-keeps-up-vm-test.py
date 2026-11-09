@@ -314,6 +314,56 @@ class Turns:
         )
 
 
+DIAG_SPAN = 30
+DIAG_CPU = (
+    "t=/proc/{pid}/task/{pid}; echo $(cut -d' ' -f1 $t/schedstat)"
+    " $(awk '/^voluntary/ {{v=$2}} /^nonvol/ {{n=$2}} END {{print v, n}}' $t/status)"
+    " $(cat /proc/{pid}/task/*/schedstat | awk '{{s+=$1}} END {{print s}}')"
+)
+
+
+def diag_measure(desktop: Desktop, pid: str, name: str) -> None:
+    """Diagnostic: the closed shell's main-thread CPU and wakes over a span."""
+    machine = desktop.machine
+    before = [int(n) for n in machine.succeed(DIAG_CPU.format(pid=pid)).split()]
+    # The span measured, not a wait.
+    machine.sleep(duration=timedelta(seconds=DIAG_SPAN))
+    after = [int(n) for n in machine.succeed(DIAG_CPU.format(pid=pid)).split()]
+    main_ms, vol, invol, all_ms = ((a - b) for a, b in zip(after, before, strict=True))
+    print(
+        f"DIAG {name}: main {main_ms / 1e6:.0f} ms CPU in {DIAG_SPAN} s,"
+        f" {vol / DIAG_SPAN:.1f} vol/s {invol / DIAG_SPAN:.1f} invol/s,"
+        f" all threads {all_ms / 1e6:.0f} ms"
+    )
+
+
+@pytest.mark.parametrize("shape", ["lean", "fat"])
+def test_diag_closed_shell_with_joels_sessions(desktop: Desktop, shape: str) -> None:
+    """Diagnostic only: what Joel's 113 sessions, one changing a beat, cost the closed shell."""
+    machine = desktop.machine
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    pid = desktop.as_account("systemctl --user show quickshell -p MainPID --value").strip()
+    diag_measure(desktop, pid, f"{shape} none")
+    since = desktop.mark()
+    sessions = f"{desktop.values['stand_in_sessions']} {PI_PRESENCE} 113 1 0.8 {shape}"
+    desktop.as_account(f"systemd-run --user --collect --quiet --unit=diag-sessions {sessions}")
+    try:
+        # The span the shell takes to hear them all, not a wait on anything said.
+        machine.sleep(duration=timedelta(seconds=10))
+        diag_measure(desktop, pid, f"{shape} changing")
+        said = desktop.as_account(
+            f"journalctl --user --unit=quickshell --no-pager --output=cat"
+            f" --after-cursor='{since}' | grep 'diag ' || true"
+        )
+        lines = said.splitlines()
+        print(f"DIAG {shape} lines: {len(lines)}")
+        for line in lines[-40:]:
+            print(f"DIAG {shape} | {line}")
+    finally:
+        desktop.as_account("systemctl --user stop diag-sessions || true")
+        machine.sleep(duration=timedelta(seconds=5))
+
+
 @pytest.mark.usefixtures("keyboard", "changing")
 @pytest.mark.parametrize("scale", JOELS_SCALES)
 @pytest.mark.parametrize("where", list(PLACES))

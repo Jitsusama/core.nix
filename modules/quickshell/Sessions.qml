@@ -2092,23 +2092,35 @@ Singleton {
             delete kept.window;
             return kept;
         };
+        const t0 = Date.now();
         const next = PiSource.live.map(kitted);
         const sleeping = PiSource.resting.map(kitted);
         const ended = PiSource.ending.map(kitted);
+        const t1 = Date.now();
         const said = JSON.stringify([next, sleeping, ended]);
-        if (said === liveSaid)
+        const t2 = Date.now();
+        if (said === liveSaid) {
+            console.info(`diag relive same map ${t1 - t0} said ${t2 - t1}`);
             return;
+        }
         liveSaid = said;
         resting = sleeping;
+        const t3 = Date.now();
         ending = ended;
+        const t4 = Date.now();
         const by = {};
         for (const record of next) {
             for (const address of record.presence.addresses)
                 by[address] = record.presence;
         }
         present = by;
+        const t5 = Date.now();
         live = next;
+        const t6 = Date.now();
         ask();
+        const t7 = Date.now();
+        console.info(`diag relive map ${t1 - t0} said ${t2 - t1} resting ${t3 - t2}`
+            + ` ending ${t4 - t3} present ${t5 - t4} live ${t6 - t5} ask ${t7 - t6}`);
     }
 
     // niri's windows by the process drawing them, each kitty's oldest first.
