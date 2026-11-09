@@ -1420,10 +1420,11 @@ def neovims_open_files_are_gone_to(desktop: Desktop) -> None:
     """Neovim's page lists each file two Neovims hold, and Return goes to one's buffer.
 
     One Neovim holds two files in two tabs, the first changed and unsaved, and the other one
-    file. Each row says whether it's modified and which tab shows it, as the page's offscreen
-    cases do (tests/program-acts.qml), and Return on the file in the first Neovim's second tab,
-    in the window not looked at last, brings that window forward with that buffer current in
-    it, opening no other.
+    file. Neovim's row counts the three open, each page row says whether it's modified and which
+    tab shows it, as the page's offscreen cases do (tests/program-acts.qml), no other row names
+    one again, as Recent did before it left out what's open, and Return on the file in the first
+    Neovim's second tab, in the window not looked at last, brings that window forward with that
+    buffer current in it, opening no other.
     """
     machine = desktop.machine
     folder = f"/home/{desktop.account}/soundings"
@@ -1441,7 +1442,13 @@ def neovims_open_files_are_gone_to(desktop: Desktop) -> None:
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in("neovim")
-        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "program:nvim")
+
+        def counts_them_open(shown: Json) -> bool:
+            """Say whether Neovim's row is selected, counting the three files open."""
+            selected = shown["selected"] or {}
+            return selected.get("is") == "program:nvim" and "3 open" in selected.get("note", "")
+
+        desktop.launcher_until(counts_them_open)
         desktop.into_program()
         # Each file a row, said modified and by its tab before its folder,
         # as the page's offscreen cases say it.
@@ -1450,11 +1457,19 @@ def neovims_open_files_are_gone_to(desktop: Desktop) -> None:
             f"file:{currents}": "currents.txt \u00b7 tab 2 \u00b7 ~/soundings",
             f"file:{reefs}": "reefs.txt \u00b7 shown \u00b7 ~/soundings",
         }
+        names = ("tides.txt", "currents.txt", "reefs.txt")
 
         def lists_each(shown: Json) -> bool:
             """Say whether every file the Neovims hold is a row, saying how it stands."""
             reads = {thing["is"]: thing["reads"] for thing in shown["things"]}
-            return all(reads.get(key, "").startswith(said) for key, said in held.items())
+            again = [
+                said
+                for key, said in reads.items()
+                if key not in held and any(name in said for name in names)
+            ]
+            return not again and all(
+                reads.get(key, "").startswith(said) for key, said in held.items()
+            )
 
         desktop.launcher_until(lists_each)
         desktop.shoot("launcher-neovim-page")
