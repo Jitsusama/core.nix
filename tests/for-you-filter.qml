@@ -139,7 +139,7 @@ QtObject {
                 const mark = Filter.markOf(one);
                 return `${one.value} ${mark.glyph ?? `program:${mark.program}`}`;
             }).join(", "), "do waitsOnJoel, look look, try toTry, desktop desktop, "
-                + "home-network forYou, mail mail, sessions session, slack program:slack");
+                + "home-network forYou, mail mail, sessions agent, slack program:slack");
 
         // Two sources alike by name keep the order they came, and A to Z
         // reads numbers as numbers, so a tenth session follows the ninth.

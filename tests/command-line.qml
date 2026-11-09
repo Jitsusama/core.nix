@@ -404,6 +404,17 @@ QtObject {
         holds("a number lists nothing to choose", listedAs("set volume="), []);
         holds("a surface command lists its own", listedAs("sort "),
             [["name", "A to Z"], ["changed", "Newest First"]]);
+        // An argument that reads as a row, as :filter's do, keeps its count,
+        // mark and hue; one with none, as :set's, stays bare.
+        const rowed = (whole, typed) => Commands.narrowed(whole, typed, argued)
+            .map(line => [line.command, line.key, line.glyph, line.hue]);
+        const filter = { command: "filter", short: "filt", title: "Show Only", key: "",
+            args: [{ value: "look", note: "Looks", side: "4", glyph: "E", hue: "accent" }],
+            run: () => {} };
+        holds("an argument read as a row keeps its count, mark and hue",
+            rowed(menuOf(network(), [filter]), "filter "), [["look", "4", "E", "accent"]]);
+        holds("and one with none of them stays bare", rowed(menu, "set m"),
+            [["mute", "", "", ""]]);
         holds("choosing one writes it in place of the word",
             Commands.chosen(Commands.typing("set wifi=c"), 1,
                 Commands.narrowed(menu, "set wifi=c", argued)).line, "set wifi=Cafe\\ Wifi");

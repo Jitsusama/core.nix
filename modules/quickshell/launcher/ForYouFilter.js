@@ -37,7 +37,7 @@ const SOURCE_ID = "for-you:source:";
 // would read as a to-do (VKCF3Z, 2026-11-08).
 const MARKS = {
     kind: { do: "waitsOnJoel", look: "look", try: "toTry" },
-    source: { mail: "mail", calendar: "calendar", desktop: "desktop", sessions: "session" }
+    source: { mail: "mail", calendar: "calendar", desktop: "desktop", sessions: "agent" }
 };
 const PROGRAMS = { slack: "slack" };
 const OWN_MARK = "forYou";
