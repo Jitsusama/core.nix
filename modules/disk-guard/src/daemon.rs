@@ -195,8 +195,8 @@ const LISTING_PRESSED: f64 = 3600.0;
 const LISTING_RETRY: f64 = 3600.0;
 const LISTING_RETRY_PRESSED: f64 = 300.0;
 /// How soon after the last listing began one comes again on a filling disk
-/// once a root has left, so a build's result deleted is garbage gone within
-/// a minute; and once a process holding paths has ended, which happens every
+/// once a root has left and the last listing has rested, so a build's
+/// result deleted is garbage gone within a minute of that; and once a process holding paths has ended, which happens every
 /// few seconds on a busy machine, so the listing's minute of the disk's time
 /// is spent at most every two. On a healthy disk neither brings a listing:
 /// on 7 November a listing of 101,000 paths took 13 minutes of a core over
@@ -210,7 +210,10 @@ const HELD_ENDED_GAP: f64 = 120.0;
 /// tenth of the guard's time, kept with the listing so a restart rests
 /// too. A store of 400 GiB took 108 s and 75 s of CPU to list on 31
 /// October, and roots left so often that one began as each ended, a core
-/// spent to free kilobytes. On a filling disk, none.
+/// spent to free kilobytes. A filling disk rests the same short of
+/// urgent: on 8 November one at 75% listed back to back, five to six
+/// minutes of a core each with the machine's processors 45 to 55% stalled,
+/// and each pass found nothing more to clear. Urgent and past, none.
 const LISTING_REST: f64 = 9.0;
 
 /// How often the guard looks for an owner that has ended: a tree's last
@@ -1506,7 +1509,7 @@ impl Guard {
             LISTING_RETRY
         };
         let since = age(self.listing_begun);
-        let rested = pressed
+        let rested = band >= Band::Urgent
             || self
                 .listing_ended
                 .is_none_or(|(ended, took)| now - ended >= LISTING_REST * took);
