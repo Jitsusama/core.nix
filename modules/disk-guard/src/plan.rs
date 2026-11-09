@@ -265,9 +265,16 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
                 ],
             )
         }
-        // At most hourly, like a producer's.
-        Class::Podman { unused: false } => (Group::Caches, [NEVER, NEVER, hours(1.0), hours(1.0)]),
-        Class::Podman { unused: true } => (Group::Occupied, [NEVER, NEVER, NEVER, hours(1.0)]),
+        // At most hourly, like a producer's, once the disk fills. Images no
+        // container uses go once a day on a filling disk: on 9 November they
+        // were 16.6 of podman's 16.9 GB and grew 3 GB a day, on a disk that
+        // had been filling for days and so never pruned them.
+        Class::Podman { unused: false } => {
+            (Group::Caches, [NEVER, hours(1.0), hours(1.0), hours(1.0)])
+        }
+        Class::Podman { unused: true } => {
+            (Group::Occupied, [NEVER, days(1.0), hours(1.0), hours(1.0)])
+        }
     };
     (group, windows)
 }

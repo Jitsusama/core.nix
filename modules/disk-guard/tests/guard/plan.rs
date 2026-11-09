@@ -440,8 +440,11 @@ fn a_producer_runs_on_its_schedule_and_from_its_band_at_most_hourly() {
     );
 }
 
+/// On 9 November 16.6 of podman's 16.9 GB was images no container used,
+/// growing 3 GB a day, on a disk filling for days: only a critically full
+/// one pruned them.
 #[test]
-fn podman_prunes_after_the_caches_once_nearly_full_and_its_unused_images_once_critically_full() {
+fn podman_prunes_its_cache_hourly_and_its_unused_images_daily_once_filling() {
     let dangling = Class::Podman { unused: false };
     let unused = Class::Podman { unused: true };
     let cache = Class::Cache {
@@ -454,15 +457,19 @@ fn podman_prunes_after_the_caches_once_nearly_full_and_its_unused_images_once_cr
         candidate("cache", cache, 0.0),
         candidate("idle", Class::Target, 7.0 * HOUR),
     ];
-    assert_eq!(taken(&candidates, Band::Filling), ["idle"]);
+    assert_eq!(taken(&candidates, Band::Healthy), [] as [&str; 0]);
+    assert_eq!(taken(&candidates, Band::Filling), ["podman", "idle"]);
     assert_eq!(
         taken(&candidates, Band::NearlyFull),
-        ["cache", "podman", "idle"]
+        ["cache", "podman", "idle", "podman-unused"]
     );
     assert_eq!(
         taken(&candidates, Band::CriticallyFull),
         ["cache", "podman", "idle", "podman-unused"]
     );
+    let a_day = [candidate("podman-unused", unused, DAY)];
+    assert_eq!(taken(&a_day, Band::Filling), ["podman-unused"]);
+    assert_eq!(taken(&a_day, Band::Healthy), [] as [&str; 0]);
     let recent = [
         candidate("podman-unused", unused, 0.5 * HOUR),
         candidate("podman", dangling, 0.5 * HOUR),
