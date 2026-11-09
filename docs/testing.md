@@ -235,6 +235,15 @@ name, and carried in its `meta.description`, so the list is one query away:
 nix eval --json .#checks.x86_64-linux --apply 'builtins.mapAttrs (_: check: check.meta.description)'
 ```
 
+At every tier, a failing assertion says what was wrong. Where the language
+shows what each side held, as Rust's `assert_eq!` and a Python comparison
+under pytest do, nothing is added; where it can't, as with Rust's `assert!`
+and a Python `assert` of anything but a comparison, the assertion carries a
+message saying what was expected. `every-assert-says-what-was-wrong` holds
+it, and those before the rule wait, counted by file, in
+`tests/every-assert-says-what-was-wrong-waiting.nix`, where a count only
+falls.
+
 ### Promises
 
 Read from evaluated machines, without building them. They catch an option

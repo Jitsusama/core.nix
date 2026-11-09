@@ -500,6 +500,14 @@
       # holding fewer until its count is lowered.
       lib.everyFixedWaitSaysWhy = pkgs: pkgs.callPackage ./tests/every-fixed-wait-says-why.nix { };
 
+      # How a repository built on core keeps its failing assertions saying what
+      # was wrong, as core does: `core.lib.everyAssertSaysWhatWasWrong pkgs { src
+      # = ./.; waiting = { ... }; }` is a check that fails on a file holding more
+      # Rust `assert!`s or Python non-comparison asserts without a message than
+      # it waits with, and on one holding fewer until its count is lowered.
+      lib.everyAssertSaysWhatWasWrong =
+        pkgs: pkgs.callPackage ./tests/every-assert-says-what-was-wrong.nix { };
+
       # How a repository built on core holds its names to core's glossary:
       # `core.lib.namesSayTheGlossary pkgs { names = ...; otherSenses = ...;
       # waiting = ...; }` is a check that no name says a name the glossary
