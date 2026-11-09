@@ -20,7 +20,6 @@
         "windows:this",
         "windows",
         "displays",
-        "notices",
         "clipboard",
         "timers",
         "capture",
@@ -7416,7 +7415,8 @@
         "read": "read here",
         "withdrawn": "withdrawn",
         "earlier": "read"
-      }
+      },
+      "empty": "Nothing unread from the desktop."
     },
     {
       "id": "for-you:source:passwords",
@@ -7836,6 +7836,7 @@
     },
     {
       "id": "notices",
+      "in": "for-you:source:desktop",
       "once": ["Notifications"],
       "name": "Notices",
       "term": "Desktop/notice",

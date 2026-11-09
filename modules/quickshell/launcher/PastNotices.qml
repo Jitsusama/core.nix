@@ -1,8 +1,10 @@
 // The session's notifications, a collection: everything that arrived,
 // newest first, from the shell's own history (Notices.qml), so nothing is
-// asked of another program. A search with a match adds one row; Return
-// on it, or on its row at home, shows them all, and its row at home says how
-// many were missed until it's opened. Return on one still open, on screen
+// asked of another program. It's no place of its own: For You holds the
+// unread under Desktop and the read in History, its rows these, and
+// "notices" asked from outside leads there (Now.qml's leadsTo); here,
+// a search with a match adds one row, whose Return shows all it found
+// (VKCF3Z, 2026-11-09). Return on one still open, on screen
 // or resting off it once its time there was up (Notices.qml), does what its
 // sender does when it's chosen, as clicking it does, which takes Joel to
 // the very conversation or tab it's about; on one closed, it goes to
@@ -30,8 +32,9 @@ Provider {
 
     what: "notice"
 
-    // Named Notifications, Joel's word, as the vocabulary says (Words.qml).
-    collection: Words.collection("notices")
+    // Named Notifications, Joel's word, as the vocabulary says (Words.qml),
+    // and never found by it, since it's no place of its own.
+    collection: Words.collection("notices", { placed: false })
 
     // The window of the program that sent it, or the program to open.
     function source(app) {
@@ -391,16 +394,32 @@ Provider {
         };
     }
 
-    // Made again only when the history changes, each with its age as of
-    // when it's shown.
-    readonly property var all: Notices.history.map(notice => made(notice))
+    // Each notice's row, each with its age as of when it's shown, made
+    // again only once something reads them after the history changed, so
+    // the thousand kept (Notices.qml, VKCF3Z 2026-11-09) cost nothing while
+    // notices come and go with the launcher closed.
+    property var rowsMade: []
+    property bool rowsStale: true
+    function all() {
+        if (rowsStale) {
+            rowsMade = Notices.history.map(notice => made(notice));
+            rowsStale = false;
+        }
+        return rowsMade;
+    }
     // Said, so a notice read, forgotten or arriving shows while the launcher
     // holds the list, rather than once something else makes it again.
-    onAllChanged: changed()
+    Connections {
+        target: Notices
+        function onHistoryChanged() {
+            provider.rowsStale = true;
+            provider.changed();
+        }
+    }
 
     // The same rows, without saying how long ago each came.
     function looksThrough() {
-        return all;
+        return all();
     }
 
     function aged(rows) {
@@ -414,7 +433,7 @@ Provider {
     // own row (Applications.qml) holds them and Return on one does what it
     // does here. `sent` says whether a sender's name is the program.
     function sentBy(sent) {
-        return lined(aged(all.filter((row, index) => sent(Notices.history[index]?.app ?? ""))),
+        return lined(aged(all().filter((row, index) => sent(Notices.history[index]?.app ?? ""))),
             []);
     }
 
@@ -422,7 +441,7 @@ Provider {
     // Desktop row (Now.qml) holds the unread ones, and its History the
     // read, as they're listed here.
     function rowsOf(ids) {
-        return lined(aged(all.filter((row, index) => ids.includes(Notices.history[index]?.id))),
+        return lined(aged(all().filter((row, index) => ids.includes(Notices.history[index]?.id))),
             []);
     }
 
@@ -447,7 +466,7 @@ Provider {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
         const found = [];
-        for (const row of poolFor(all, typed)) {
+        for (const row of poolFor(all(), typed)) {
             if ((row.also.mask & need) !== need)
                 continue;
             const byName = Fuzzy.match(row.prepared, words, false);
@@ -455,7 +474,7 @@ Provider {
             if (m.score >= 0)
                 found.push({ score: m.score, grade: m.grade, row: row });
         }
-        matchedIn(all, typed, found.map(f => f.row));
+        matchedIn(all(), typed, found.map(f => f.row));
         // Newest first among equals, since a notice is wanted by when it came.
         let finest = 3;
         for (const f of found)
@@ -466,24 +485,27 @@ Provider {
     }
 
     function everything() {
-        return lined(aged(all.slice()), []);
+        return lined(aged(all().slice()), []);
     }
 
     function counted() {
         return Notices.waiting.length > 0 ? `${Notices.waiting.length} missed`
-            : all.length === 0 ? "none" : countedAs(all.length);
+            : Notices.history.length === 0 ? "none" : countedAs(Notices.history.length);
     }
 
     function opened() {
         Notices.seen();
     }
 
-    // The notices on screen step aside while this is open, so each is in
-    // one place: here, where the keys reach it.
+    // The notices on screen step aside while the launcher holds a place
+    // listing them, so each is in one place: where the keys reach it. That's
+    // a row that says it gathers them, as For You's Desktop does, where
+    // every way to the notices goes (Now.qml's leadsTo), or one of these.
     Binding {
         target: Notices
         property: "gathered"
         value: provider.launcher !== null && provider.launcher.open
-            && provider.launcher.held.length > 0 && provider.launcher.held[0].row.from === provider
+            && provider.launcher.held.some(step => step.row.from === provider
+                || step.row.gathers === true)
     }
 }

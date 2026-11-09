@@ -375,7 +375,15 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Show What's Held"])
     desktop.type_in("show", selecting="Show What's Held")
     machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notices"])
+    # What's held is unread, so it's For You's Desktop, where every way to
+    # the notices goes (VKCF3Z, 2026-11-09).
+    desktop.launcher_until(
+        lambda shown: (
+            shown["keys"]
+            and shown["held"][-1:] == ["Desktop"]
+            and any(row.startswith("Held back") for row in shown["rows"])
+        )
+    )
     desktop.shoot("launcher-held")
     desktop.close_launcher()
     now_down_to(desktop, "Do Not Disturb")
@@ -432,6 +440,34 @@ def test_a_missed_notice_shows_its_glyph_and_now_shows_the_notices(desktop: Desk
     desktop.close_launcher()
     # Opening them counted them seen, so nothing's waiting.
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
+    reads_them_all(desktop)
+
+
+def reads_them_all(desktop: Desktop) -> None:
+    """Mark Them Read reads every notice, and Super+N then says nothing's unread over History.
+
+    With no cards, Super+N goes to For You's Desktop, as every way to the notices does. With
+    none unread, the empty line says so where any empty place says it, and History is its one
+    row, the cursor on it (VKCF3Z, 2026-11-09: a row Return does nothing on is a fake one).
+    """
+    desktop.machine.send_key("meta_l-n")
+    desktop.launcher_until(lambda shown: shown["held"][-1:] == ["Desktop"])
+    desktop.down_to("Mark Them Read")
+    # Reading them all can't be taken back, so Return writes :delete and its line asks first.
+    # Desktop holds still while it's open, so they leave it once it closes.
+    desktop.line_answered("delete")
+    desktop.close_launcher()
+    desktop.machine.send_key("meta_l-n")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"] == ["now", "For You", "Desktop"]
+            and shown["nothing"] == "Nothing unread from the desktop."
+            and shown["rows"] == ["History"]
+            and (shown["selected"] or {}).get("name") == "History"
+        )
+    )
+    desktop.shoot("launcher-desktop-none-unread")
+    desktop.close_launcher()
 
 
 def forgets_then_brings_back(desktop: Desktop) -> None:

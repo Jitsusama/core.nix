@@ -695,12 +695,50 @@ Scope {
                     out.push(withSynonyms(row));
             }
         }
-        for (const source of collections)
+        // One that's no place of its own (`placed: false`), as Notices,
+        // whose notices For You holds, is never found by its name, though
+        // what it holds is (gathering).
+        for (const source of collections.filter(one => one.collection.placed !== false))
             out.push(withSynonyms(named(source)));
+        for (const source of collections.filter(one => one.collection.placed === false)) {
+            const led = ledFound(source);
+            if (led !== null)
+                out.push(led);
+        }
         for (const row of categories)
             out.push(withSynonyms(row));
         choicesJoined += 1;
         choices = out;
+    }
+
+    // Where a collection that's no place of its own leads, as one found row,
+    // found by the collection's own words, its name, noun and the names it
+    // once had: "notices" and "notifications" find For You's Desktop, where
+    // Super+N goes, whether or not For You lists it now, and never by the
+    // name it leads to, which that row answers, so there's never two
+    // (VKCF3Z, 2026-11-09: a rename never loses a row). It's the leading
+    // source's own row, its key and drawer, said where it is, and Return
+    // steps in as `into` does.
+    function ledFound(source) {
+        const name = source.settings.name;
+        const leading = sources.find(one => typeof one.leadsTo === "function"
+            && one.leadsTo(name) !== null) ?? null;
+        const rows = leading === null ? [] : leading.leadsTo(name);
+        const row = rows[rows.length - 1];
+        if (row === undefined)
+            return null;
+        const found = Object.assign({}, row, {
+            side: [leading.collection?.title ?? leading.settings.name]
+                .concat(rows.slice(0, -1).map(one => one.name)).join(" \u203a "),
+            verb: "go to",
+            stays: true,
+            weight: 1,
+            prepared: Fuzzy.prepare(""),
+            keywords: withSynonyms(named(source)).keywords,
+            named: true
+        });
+        found.run = () => root.into(name);
+        return found;
     }
     readonly property var collections: sources.filter(source => source.collection)
 
@@ -3563,7 +3601,7 @@ Scope {
             const entry = shown.itemAtIndex(at);
             if (!entry || entry.y - from >= shown.height)
                 break;
-            placed.push({ at, base: entry.y - from + entry.nameBaseline });
+            placed.push({ at, base: shown.y + entry.y - from + entry.nameBaseline });
         }
         rowsGutter.rows = placed;
     }
@@ -7028,6 +7066,22 @@ Scope {
     // has opens the search.
     function into(name) {
         open = true;
+        // A name a source leads somewhere deeper, as Now leads "notices"
+        // to For You's Desktop (`leadsTo`), opens on its place and steps
+        // through those rows as Joel would, so - climbs back out the same
+        // way and Escape at rest closes there.
+        const leading = sources.find(one => typeof one.leadsTo === "function"
+            && one.leadsTo(name) !== null) ?? null;
+        if (leading !== null && leading.settings.name !== name) {
+            const rows = leading.leadsTo(name);
+            into(leading.settings.name);
+            for (const row of rows) {
+                if (!enter(row))
+                    break;
+            }
+            openedHere();
+            return;
+        }
         const source = collections.find(s => s.settings.name === name);
         if (!source)
             return;
@@ -8100,6 +8154,7 @@ Scope {
                             function onContentYChanged() { root.placeNumbers(); }
                             function onContentHeightChanged() { root.placeNumbers(); }
                             function onOriginYChanged() { root.placeNumbers(); }
+                            function onYChanged() { root.placeNumbers(); }
                         }
 
                         ListView {
@@ -8112,6 +8167,9 @@ Scope {
                             x: root.textAreaAt
                             width: parent.width - x
                             anchors.top: parent.top
+                            // Below the empty line, where it says a place
+                            // holds nothing but ways elsewhere.
+                            anchors.topMargin: nothingShown.visible ? root.rowTall : 0
                             anchors.bottom: parent.bottom
                             // How many characters the widest of what graphed rows
                             // have said at their right in this step, as Choice
@@ -8583,16 +8641,18 @@ Scope {
                         }
 
                         // With nothing typed, the shell says what it can do, or an
-                        // empty collection says it's empty in its own words; with
-                        // nothing found, it says so. A field asking for words has
-                        // only space below it.
+                        // empty collection says it's empty in its own words, above
+                        // its ways elsewhere if it holds them (Showing.js's
+                        // saysNothing); with nothing found, it says so. A field
+                        // asking for words has only space below it.
                         Choice {
                             id: nothingShown
 
                             readonly property var holder: root.held.length > 0
                                 ? root.held[root.held.length - 1].row : null
                             readonly property var inside: holder?.from ?? null
-                            visible: root.matches.length === 0 && root.answer === null
+                            visible: Showing.saysNothing(root.typed, root.matches,
+                                holder?.empty) && root.answer === null
                                 && root.asking === null && root.commanding === null
                             glyph: root.typed === "" ? Theme.glyph.greeting
                                 : Theme.glyph.nothingFound

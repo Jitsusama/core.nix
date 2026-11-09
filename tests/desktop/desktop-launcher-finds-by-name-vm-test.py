@@ -292,6 +292,29 @@ def test_the_launcher_lists_each_thing_once_for_everything_joel_types(desktop: D
     assert looked_at > ROWS_LOOKED_AT
 
 
+def finds_where_the_notices_went(desktop: Desktop) -> None:
+    """Find where the notices went, For You's Desktop, by their place's words.
+
+    Said where it is, Return steps in as Super+N does, unread or not, and - climbs back out
+    the way it stepped in, through For You (VKCF3Z, 2026-11-09: a rename never loses a row).
+    """
+    for typed in ["notices", "notifications"]:
+        desktop.answer(typed)
+        desktop.launcher_until(lambda shown: "Desktop" in shown["rows"])
+        desktop.down_to("Desktop")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("side") == "Now \u203a For You"
+        )
+        if typed == "notices":
+            desktop.close_launcher()
+    desktop.machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["held"] == ["now", "For You", "Desktop"])
+    desktop.normal()
+    desktop.machine.send_key("minus")
+    desktop.launcher_until(lambda shown: shown["held"] == ["now", "For You"])
+    desktop.close_launcher()
+
+
 def test_a_collection_or_half_a_word_is_asked_and_the_fields_keys_edit_it(desktop: Desktop) -> None:
     """A collection is found by its name, half a word asks, and the field's keys edit it."""
     machine = desktop.machine
@@ -299,7 +322,7 @@ def test_a_collection_or_half_a_word_is_asked_and_the_fields_keys_edit_it(deskto
     # A collection is found by its name, and Return goes straight into
     # it.
     # Beside the field, it says what sort of thing each is.
-    for typed, collection in [("sound", "Sound"), ("notices", "Notices")]:
+    for typed, collection in [("sound", "Sound"), ("clipboard", "Clipboard")]:
         desktop.answer(typed)
         # The wait ends before the loop moves on, so it reads this pass's name.
         desktop.launcher_until(
@@ -309,6 +332,7 @@ def test_a_collection_or_half_a_word_is_asked_and_the_fields_keys_edit_it(deskto
             )
         )
         desktop.close_launcher()
+    finds_where_the_notices_went(desktop)
     # Half a word asks its question too: "batt" is the battery, and
     # Ctrl+Y finishes the word, the field saying so at its right edge.
     # A copy kept from before saying "battery", a later word, never takes

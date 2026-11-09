@@ -931,23 +931,28 @@ Provider {
     // one row at the very end of For You, so what's resolved can still be
     // found (Joel, 2026-11-08: "have a history so i can see anything
     // resolved in case i want to see it later").
-    function historyRows() {
+    // Narrowed to a `source` of Lately's, only what came from it, as the
+    // desktop's row ends on its own History (VKCF3Z, 2026-11-09).
+    function historyRows(from) {
         const now = Date.now();
+        const came = from === undefined ? cameDone
+            : cameDone.filter(one => one.source === from);
         // Notices' rows of every notice done with, asked for at once, each
         // by its notice's id: rowsOf keeps the history's order.
-        const ids = cameDone.map(one => one.of.id);
+        const ids = came.map(one => one.of.id);
         const found = source("notices")?.rowsOf(ids) ?? [];
         const notices = {};
         Notices.history.filter(notice => ids.includes(notice.id)).forEach((notice, at) => {
             if (found[at] !== undefined)
                 notices[notice.id] = found[at];
         });
-        const rows = looks.history.map(one => ({ at: one.resolved ?? one.since,
-            row: () => provider.lookRow(one, now) }))
+        const ours = from === undefined ? looks.history.map(one => ({
+            at: one.resolved ?? one.since, row: () => provider.lookRow(one, now) }))
             .concat(doneItems.map(one => ({ at: one.resolved, row: () => provider.doneRow(one) })),
-                cameDone.map(one => ({ at: one.at,
-                    row: () => provider.cameDoneRow(one, notices) })),
-                given.done.map(one => ({ at: one.done.at, row: () => one.row })));
+                given.done.map(one => ({ at: one.done.at, row: () => one.row })))
+            : [];
+        const rows = ours.concat(came.map(one => ({ at: one.at,
+            row: () => provider.cameDoneRow(one, notices) })));
         return Order.sorted(rows, Order.stream(one => one.at)).map(one => one.row());
     }
     readonly property int resolvedCount: looks.history.length + doneItems.length
@@ -967,6 +972,45 @@ Provider {
         targets: () => provider.historyRows(),
         run: () => provider.launcher?.enter(provider.historyRow)
     })
+
+    // History narrowed to what came from one source, the last row inside
+    // its row, there with nothing in it too, so the way to what's read
+    // never moves (VKCF3Z, 2026-11-09). It's a way elsewhere, so a place
+    // holding only it says it holds nothing above it (Showing.js's
+    // saysNothing).
+    function historyOf(from) {
+        const count = cameDone.filter(one => one.source === from).length;
+        const row = member({
+            key: `on:waiting:history:${from}`,
+            verb: "more",
+            stays: true,
+            name: Words.name("on:waiting:history"),
+            glyph: Words.glyph("on:waiting:history"),
+            hue: "muted",
+            side: String(count),
+            empty: Words.of("on:waiting:history").empty,
+            elsewhere: true,
+            nested: true,
+            verbs: () => provider.historyRows(from),
+            targets: () => provider.historyRows(from),
+            run: () => provider.launcher?.enter(row)
+        });
+        return row;
+    }
+
+    // Where a place named from outside leads, by the rows Joel would step
+    // through from home: "notices", as Super+N with no cards and the
+    // margin's Show Them ask, is For You's Desktop, one key to one place
+    // whatever it holds (VKCF3Z, 2026-11-09), never the Notices place it
+    // once was; the notices stay found by `/` (PastNotices.qml).
+    function leadsTo(name) {
+        if (name !== "notices")
+            return null;
+        const { holding } = latelyBands(Date.now());
+        return [waiting, noticesRow("desktop",
+            Lately.members(holding.desktop, one => one.who).join(", "),
+            { kind: "notice", source: "desktop" })];
+    }
 
     // Everything that wants Joel, For You, one row however many: the pi
     // sessions that want him, each the row it is in Agents (Agents.qml's
@@ -1156,12 +1200,15 @@ Provider {
     // A source's unread notices' row, the desktop's, or Slack's while its
     // piece can't speak: how many to read, and from whom, and its drawer
     // who sent how many. Return steps in to each, the row it is in
-    // Notices, then Mark Them Read and Show Them, the Notices place with
-    // what's read and its search. Stepping in counts them seen, as opening
-    // Notices does, so the margin no longer says any were missed; `:`
+    // Notices, then Mark Them Read, and last its History, what's read.
+    // With none unread it says so where an empty place does, over its
+    // History alone, the cursor on it: a row Return does nothing on would
+    // be a fake one (VKCF3Z, 2026-11-09). Stepping in
+    // counts them seen, so the margin no longer says any were missed; `:`
     // listing its acts doesn't. It's after the step, so the history isn't
     // changed while it's read.
     function noticesRow(from, note, forYou) {
+        const words = Words.of(`for-you:source:${from}`);
         const said = Words.of("for-you:source:desktop").said ?? {};
         const notices = noticesOf[from] ?? [];
         const ids = notices.map(notice => notice.id);
@@ -1172,19 +1219,14 @@ Provider {
             glyph: Words.glyph(words),
             hue: "action"
         }, more));
-        const listed = () => (source("notices")?.rowsOf(ids) ?? []).concat([
-            act(`verb:on:waiting:${from}:read`, "verb:on:waiting:desktop:read", {
-                stays: true,
-                run: () => Notices.markRead(ids)
-            }),
-            // The chord that opens the Notices place beside it, as the
-            // missed notices' row gave it (pieces/Waiting.qml).
-            act(`verb:on:waiting:${from}:show`, "verb:notices:show", {
-                chord: (Shortcuts.actions.find(action => action.opens === "notices")
-                    ?? { chord: [] }).chord,
-                run: () => provider.launcher?.into("notices")
-            })
-        ]);
+        const none = words.empty ?? "";
+        const listed = () => (ids.length > 0
+            ? (source("notices")?.rowsOf(ids) ?? []).concat([
+                act(`verb:on:waiting:${from}:read`, "verb:on:waiting:desktop:read", {
+                    stays: true,
+                    run: () => Notices.markRead(ids)
+                })])
+            : []).concat([provider.historyOf(from)]);
         const row = member({
             key: `on:waiting:${from}`,
             forYou: forYou,
@@ -1195,6 +1237,7 @@ Provider {
             hue: "muted",
             side: ForYou.filled(said.count ?? "{count}", { count: ids.length }),
             note: note,
+            empty: none,
             nested: true,
             thing: true,
             drawer: () => ({
@@ -1205,6 +1248,9 @@ Provider {
             verbs: listed,
             targets: listed,
             stepped: () => Qt.callLater(() => Notices.seen()),
+            // Held, it lists the notices the screen shows, so the cards step
+            // aside while it's open (PastNotices.qml), each in one place.
+            gathers: true,
             run: () => provider.launcher?.enter(row)
         });
         return row;

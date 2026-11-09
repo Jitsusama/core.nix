@@ -311,7 +311,8 @@ Scope {
             oldest.expire();
     }
 
-    // The session's notices in the launcher, where past ones are too.
+    // The notices in the launcher: For You's Desktop, those unread and then
+    // History, what's read (launcher/Now.qml's leadsTo).
     function history() {
         holding = false;
         if (launcher)

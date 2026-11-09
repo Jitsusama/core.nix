@@ -131,23 +131,22 @@ QtObject {
                 at: "1970-01-01T00:00:01.000Z" } })] }, say).map(one => [one.how, one.at]),
             [["gone", 1000]]);
 
-        const keptFor = 100;
         const ages = [notice("new read", { read: true, at: 950 }),
             notice("new unread", { at: 940 }), notice("old read", { read: true, at: 920 }),
-            notice("old unread", { at: 10 }), notice("stale read", { read: true, at: 5 })];
-        check(failures, "an unread notice stays whatever its age, a read one for a while",
-            summaries(Lately.kept(ages, 1000, keptFor, 10)),
-            ["new read", "new unread", "old read", "old unread"]);
-        check(failures, "past the most kept, the oldest read go before any unread",
-            summaries(Lately.kept(ages, 1000, keptFor, 2)), ["new unread", "old unread"]);
-        check(failures, "and the oldest unread go only once none read are left",
-            summaries(Lately.kept(ages, 1000, keptFor, 1)), ["new unread"]);
+            notice("old unread", { at: 10 }), notice("oldest read", { read: true, at: 5 })];
+        check(failures, "every notice stays, however old, while there's room",
+            summaries(Lately.kept(ages, 10)),
+            ["new read", "new unread", "old read", "old unread", "oldest read"]);
+        check(failures, "past the most kept, the oldest read go first",
+            summaries(Lately.kept(ages, 3)), ["new read", "new unread", "old unread"]);
+        check(failures, "and never one unread, however many there are",
+            summaries(Lately.kept(ages, 1)), ["new unread", "old unread"]);
         const slackAges = [notice("new from Ada", { app: "Slack", at: 960 }),
             notice("old from Ada", { app: "Slack", at: 10 }), notice("old unread", { at: 10 })];
-        check(failures, "Slack's unread notices are kept as read ones, since Slack keeps its own",
-            summaries(Lately.kept(slackAges, 1000, keptFor, 10)), ["new from Ada", "old unread"]);
-        check(failures, "and go before the desktop's unread",
-            summaries(Lately.kept(slackAges, 1000, keptFor, 1)), ["old unread"]);
+        check(failures, "Slack's unread notices go as read ones do, since Slack keeps its own",
+            summaries(Lately.kept(slackAges, 2)), ["new from Ada", "old unread"]);
+        check(failures, "before the desktop's unread",
+            summaries(Lately.kept(slackAges, 1)), ["old unread"]);
 
         if (failures.length > 0) {
             for (const failure of failures)
