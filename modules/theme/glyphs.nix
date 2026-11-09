@@ -1338,6 +1338,11 @@ in
     console = "~";
     means = "how often a display draws itself again";
   };
+  variableRefresh = {
+    glyph = nerd "f18f2";
+    console = "~";
+    means = "a display drawing as often as what it shows asks";
+  };
   resolution = {
     glyph = nerd "f0a24";
     console = "#";

@@ -904,7 +904,9 @@ Provider {
             wordState: on ? "" : "off",
             name: partName("variable"),
             verb: Words.verb("displays:variable", on ? "" : "off"),
-            glyph: Theme.glyph.refresh,
+            // Its own mark, as a switch wears its thing's (VKCF3Z,
+            // 2026-11-09): one mark, one meaning, so never Refresh's.
+            glyph: Theme.glyph.variableRefresh,
             hue: "machine",
             side: partSaid("variable", on ? "on" : "off"),
             stays: true,
