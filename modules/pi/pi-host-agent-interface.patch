@@ -1,0 +1,33 @@
+A hosted execution adapter implements Agent's public methods and state, not
+its private fields. AgentSession already accepts that object at runtime;
+make its type structural and expose a version for fail-closed host startup.
+
+Offered upstream as the structural AgentSession execution seam. Apply only
+to the host's private pi build; ordinary interactive pi stays unchanged.
+
+--- a/packages/coding-agent/src/core/agent-session.ts
++++ b/packages/coding-agent/src/core/agent-session.ts
+@@ -264,8 +264,11 @@
+ 		: undefined;
+ }
+ 
++/** The execution object's public contract, without Agent's nominal private fields. */
++export type SessionAgent = Pick<Agent, keyof Agent>;
++
+ export interface AgentSessionConfig {
+-	agent: Agent;
++	agent: SessionAgent;
+ 	sessionManager: SessionManager;
+ 	settingsManager: SettingsManager;
+ 	cwd: string;
+@@ -392,7 +395,9 @@
+ // ============================================================================
+ 
+ export class AgentSession {
+-	readonly agent: Agent;
++	/** Hosts refuse an unpatched runtime rather than casting a different execution object to Agent. */
++	static readonly hostAgentInterfaceVersion = 1;
++	readonly agent: SessionAgent;
+ 	readonly sessionManager: SessionManager;
+ 	readonly settingsManager: SettingsManager;
+ 

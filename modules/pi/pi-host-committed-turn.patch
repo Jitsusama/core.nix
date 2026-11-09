@@ -1,0 +1,220 @@
+A host must finalize pi's messages and decide finishTurn before any queued
+input or further request. Legacy onYield runs before the answer commits and
+fabricates a user message to continue; afterTools cannot request an end.
+
+Add an opt-in committed-turn callback and persist its decision in a separate
+phase. Recovery before that decision reuses the same entry IDs; callbacks
+must be idempotent. Recovery after it never calls the host again. Continue
+adds no user message. No callback decision fails closed. Existing paths stay
+unchanged without the hook; task version 3 prevents older hosts replaying
+the new phases.
+
+Offered upstream as the committed-turn host seam. Apply only to the host's
+private pi build; ordinary interactive pi stays unchanged.
+
+--- a/packages/durable/src/harness/generation.ts
++++ b/packages/durable/src/harness/generation.ts
+@@ -64,10 +64,23 @@
+ import { recordUsage } from "./usage.ts";
+ import { optionalExtension } from "./util.ts";
+ 
+-export type GenerationInput = Record<string, never>;
++export type GenerationInput = { readonly continueAfterAnswer?: true };
+ 
+ export type GenerationCheckpoint =
+ 	| {
++			/** The assistant and its tool results are committed; ask the host before placing queued inputs. */
++			phase: "committedTurn";
++			assistant: EntryId;
++			tools?: TaskId<ToolTaskResult>[];
++	  }
++	| {
++			/** The host decision is committed; recovery applies it without calling the host again. */
++			phase: "turnBoundary";
++			assistant: EntryId;
++			tools?: TaskId<ToolTaskResult>[];
++			action: "end" | "continue";
++	  }
++	| {
+ 			phase: "prepare";
+ 			attempt: number;
+ 			/** The blocking compaction this generation waited for; it starts no other compaction (spec §8.3). */
+@@ -161,8 +174,10 @@
+  */
+ export const GenerationTask = defineTask<GenerationInput, GenerationCheckpoint, GenerationResult, GenerationHooks>({
+ 	name: "pi.generation",
+-	version: 2,
++	version: 3,
+ 	initial: () => ({ phase: "prepare", attempt: 1 }),
++	// Version 3 persists the committed-turn callback and its decision as separate phases. An older host must not
++	// resume them. With no onCommittedTurn hook selected, version 2 behaviour is unchanged.
+ 	// Version 2 leaves calls to tools not offered in a sequential round's `pending`, flagged `unoffered` in their slots.
+ 	// A version 1 Harness would start their tool tasks unflagged, resolving the name, so it leaves version 2 blocked
+ 	// instead. A version 1 checkpoint has no such calls and is kept as it is.
+@@ -205,7 +220,11 @@
+ 			// nothing it answers. Otherwise, as for a continue after an answer or in an empty conversation, end the run
+ 			// before any request.
+ 			const last = view.messages.findLast((message) => message.role !== "system");
+-			if (last?.role !== "user" && last?.role !== "toolResult") return failNothingToAnswer(runtime, context);
++			if (
++				last?.role !== "user" &&
++				last?.role !== "toolResult" &&
++				!(last?.role === "assistant" && task.input.continueAfterAnswer === true)
++			) return failNothingToAnswer(runtime, context);
+ 			const shown = replaySections(view.messages);
+ 			let env: ExecutionEnv | undefined;
+ 			try {
+@@ -340,7 +359,15 @@
+ 			if (cutOffTooOften(task, runtime)) return endCutOff(runtime, task, context);
+ 			const { assistant, tools, pending } = task.state.checkpoint;
+ 			const [next, ...rest] = pending;
+-			if (next === undefined) return finishToolRound(runtime, assistant, tools, context);
++			if (next === undefined) {
++				if (await asksCommittedTurn(runtime, context)) {
++					await runtime.commit(async (): Promise<Next> => ({
++						status: "running", checkpoint: { phase: "committedTurn", assistant, tools },
++					}), context);
++					return;
++				}
++				return finishToolRound(runtime, assistant, tools, context);
++			}
+ 			// Sequential round: start the next call and wait for it.
+ 			await runtime.commit(async (tx): Promise<Next> => {
+ 				const live = await tx.doc(LiveDoc, runtime.conversationId);
+@@ -356,6 +383,33 @@
+ 				return { status: "waiting", checkpoint, on: [taskId], policy: "allSettled" };
+ 			}, context);
+ 		},
++		/** The host callback can replay until its decision commits; entry IDs are its idempotency key. */
++		committedTurn: async (task, runtime, context) => {
++			if (cutOffTooOften(task, runtime)) return endCutOff(runtime, task, context);
++			const { assistant, tools } = task.state.checkpoint;
++			const slots = tools === undefined ? [] : (await runtime.snapshot(LiveDoc, runtime.conversationId, context))?.tools ?? [];
++			const results = slots.flatMap((slot) => slot.entry === undefined ? [] : [slot.entry]);
++			if (tools !== undefined) await runtime.hooks.each("afterTools", (hook) => hook(assistant, results, runtime, context));
++			let action: "end" | "continue" | undefined;
++			await runtime.hooks.each("onCommittedTurn", async (hook) => {
++				if (action !== undefined) return;
++				const asked = await hook({ assistant, results }, runtime, context);
++				if (asked?.action === "end" || asked?.action === "continue") action = asked.action;
++			});
++			// A missing or failed host callback cannot silently authorize a new provider request.
++			if (action === undefined) throw new Error("onCommittedTurn must return end or continue");
++			const decided = action;
++			await runtime.commit(async (): Promise<Next> => ({
++				status: "running", checkpoint: { phase: "turnBoundary", assistant, ...(tools === undefined ? {} : { tools }), action: decided },
++			}), context);
++		},
++		/** Recovery uses the stored host decision; provider requests and tool tasks are not repeated. */
++		turnBoundary: async (task, runtime, context) => {
++			if (cutOffTooOften(task, runtime)) return endCutOff(runtime, task, context);
++			const { assistant, tools, action } = task.state.checkpoint;
++			if (tools !== undefined) return finishToolRound(runtime, assistant, tools, context, action);
++			return finishCommittedAnswer(runtime, assistant, action, context);
++		},
+ 		/**
+ 		 * Ask the `afterRun` hooks for tasks and create them, as the generation's children, in the commit that moves to
+ 		 * `drain`; without any, end the run now.
+@@ -856,6 +910,16 @@
+  * in `finish` and `drain`, before the final boundary; without, selected user items start the next run now.
+  */
+ async function answer(runtime: Runtime, message: AssistantMessage, context: Context): Promise<void> {
++	if (await asksCommittedTurn(runtime, context)) {
++		await runtime.commit(async (tx): Promise<Next> => {
++			const live = await tx.doc(LiveDoc, runtime.conversationId);
++			const entry = await appendAssistant(tx, runtime.conversationId, message);
++			// The committed answer owns the transcript now; abort or restart must not salvage its streamed partial again.
++			delete live.generation;
++			return { status: "running", checkpoint: { phase: "committedTurn", assistant: entry.id } };
++		}, context);
++		return;
++	}
+ 	let continuation: UserInput | undefined;
+ 	await runtime.hooks.each("onYield", async (hook) => {
+ 		if (continuation !== undefined) return;
+@@ -890,6 +954,36 @@
+ 	}, context);
+ }
+ 
++/** Whether the host opted into a committed-turn decision instead of the legacy onYield continuation. */
++async function asksCommittedTurn(runtime: Runtime, context: Context): Promise<boolean> {
++	return agentHooks(await runtime.agent(context), GenerationTask.definition.name)
++		.some(({ handlers }) => typeof (handlers as Partial<GenerationHooks>).onCommittedTurn === "function");
++}
++
++/** Apply an already committed host decision; a continuation adds no fabricated user message. */
++async function finishCommittedAnswer(runtime: Runtime, assistant: EntryId, action: "end" | "continue", context: Context): Promise<void> {
++	const afterRun = action === "end" && await asksAfterRun(runtime, context);
++	const conversationId = runtime.conversationId;
++	await runtime.commit(async (tx): Promise<Next> => {
++		const boundary = await prepareBoundary(tx, conversationId, runtime.settings);
++		const live = await tx.doc(LiveDoc, conversationId);
++		if (afterRun) {
++			const held = holdRun(tx, live, runtime, { reason: "answer", answer: assistant, last: assistant });
++			if (held !== undefined) return held;
++		}
++		const { users, first, reset } = await applyBoundary(tx, boundary, action === "end" ? "final" : "postTools", runtime.now());
++		if (action === "end" || reset) {
++			endRun(tx, live, runtime.taskId, reset && action === "continue" ? { status: "unanswered", reason: "reset" } : { status: "done", answer: assistant });
++			if (users.length > 0) await startRun(tx, conversationId, live, { inputs: users, first });
++		} else {
++			if (live.run?.taskId === runtime.taskId) live.run.inputs.push(...users);
++			handOver(live, runtime.taskId, await createGeneration(tx, conversationId, {}, { continueAfterAnswer: true }));
++			delete live.generation;
++		}
++		return { status: "terminal", outcome: { status: "completed", result: { entryId: assistant } } };
++	}, context);
++}
++
+ /** Whether the phase's agent selects an `afterRun` hook, so a run that answers waits for its tasks (spec §8.3). */
+ async function asksAfterRun(runtime: Runtime, context: Context): Promise<boolean> {
+ 	const hooks = agentHooks(await runtime.agent(context), GenerationTask.definition.name);
+@@ -1066,6 +1160,7 @@
+ 	assistant: EntryId,
+ 	tools: readonly TaskId<ToolTaskResult>[],
+ 	context: Context,
++	action?: "end" | "continue",
+ ): Promise<void> {
+ 	const conversationId = runtime.conversationId;
+ 	const controls = new Map<TaskId, ToolControl | undefined>();
+@@ -1080,11 +1175,11 @@
+ 	});
+ 	const slots = (await runtime.snapshot(LiveDoc, conversationId, context))?.tools ?? [];
+ 	const results = slots.flatMap((slot) => (slot.entry === undefined ? [] : [slot.entry]));
+-	await runtime.hooks.each("afterTools", (hook) => hook(assistant, results, runtime, context));
++	if (action === undefined) await runtime.hooks.each("afterTools", (hook) => hook(assistant, results, runtime, context));
+ 	// In call order, the slots' order; a slot without a task (faulted or orphaned before it got one) has no control.
+ 	const ordered = slots.map((slot) => (slot.taskId === undefined ? undefined : controls.get(slot.taskId)));
+ 	// Every call of the round must ask to terminate.
+-	const terminate = slots.length > 0 && ordered.every((control) => control?.terminate === true);
++	const terminate = action === "end" || (slots.length > 0 && ordered.every((control) => control?.terminate === true));
+ 	const added = ordered.flatMap((control) => control?.addTools ?? []);
+ 	// The last handoff in call order wins.
+ 	const handoff = ordered.findLast((control) => control?.handoff !== undefined)?.handoff;
+@@ -1177,8 +1272,9 @@
+ 	tx: Tx,
+ 	conversationId: ConversationId,
+ 	telemetry: Pick<TaskCreationOptions, "submissionIds"> = {},
++	input: GenerationInput = {},
+ ): Promise<TaskId<GenerationResult>> {
+-	return tx.createTask(GenerationTask, {}, { ownership: { kind: "conversation" }, conversationId, ...telemetry });
++	return tx.createTask(GenerationTask, input, { ownership: { kind: "conversation" }, conversationId, ...telemetry });
+ }
+ 
+ /** Hand run control from `from` to `to`; the run's inputs move with it. */
+--- a/packages/durable/src/harness/types.ts
++++ b/packages/durable/src/harness/types.ts
+@@ -993,6 +993,13 @@
+ 	): HookResult<{ readonly payload: unknown }>;
+ 	/** Every terminal provider message, before classification. */
+ 	afterResponse(message: AssistantMessage, api: HookApi, context: Context): void | Promise<void>;
++	/**
++	 * Opt-in host boundary after the assistant and every tool result commit, before queue placement or another request.
++	 * Replaces onYield. The first decision wins. A crash before the decision commits asks again with the same entry IDs,
++	 * so the callback must be idempotent; once committed the decision applies without calling it again. No decision fails
++	 * closed. Continue adds no user message and leaves follow-ups queued; end uses the ordinary final boundary.
++	 */
++	onCommittedTurn(turn: { readonly assistant: EntryId; readonly results: readonly EntryId[] }, api: HookApi, context: Context): HookResult<{ readonly action: "end" | "continue" }>;
+ 	/** A final answer; the first `continue` appends a user message and continues the run. */
+ 	onYield(answer: AssistantMessage, api: HookApi, context: Context): HookResult<{ readonly continue: UserInput }>;
+ 	/** After every tool of the round is terminal; `results` are the round's result entries in call order. */
