@@ -621,6 +621,19 @@ in
     console = "Y";
     means = "For You holding nothing, now or later";
   };
+  # An eye: For You's looks as a kind, in :filter's menu; a look's own row
+  # wears its target's mark.
+  look = {
+    glyph = nerd "f06d0";
+    console = "L";
+    means = "something a session points Joel at to see";
+  };
+  # A flask: For You's landings to try, as a kind.
+  toTry = {
+    glyph = nerd "f0096";
+    console = "T";
+    means = "a landing whose line asks Joel to try something";
+  };
   thinking = {
     glyph = nerd "f09d1";
     console = "t";

@@ -1073,7 +1073,8 @@ Provider {
                 short: "filt",
                 title: (Words.field.command ?? {}).filter ?? "",
                 bang: false,
-                args: arg => Filter.offered(rows, arg, filterSaid, from),
+                args: arg => Filter.offered(rows, arg, filterSaid, from)
+                    .map(one => Object.assign({ glyph: filterGlyph(one) }, one)),
                 run: call => {
                     const filter = Filter.asked(call.arg, rows, filterSaid, from);
                     if (filter.error !== undefined) {
@@ -1085,6 +1086,13 @@ Provider {
                     provider.launcher?.enter(filterRow(filter));
                 }
             }];
+    }
+
+    // The mark a kind or source wears in :filter's menu (ForYouFilter.js).
+    function filterGlyph(one) {
+        const mark = Filter.markOf(one);
+        return mark.program !== undefined ? provider.programGlyph(mark.program)
+            : Theme.glyph[mark.glyph] ?? "";
     }
 
     // A filter's place, named for what it keeps, which the head shows after

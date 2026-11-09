@@ -30,6 +30,17 @@ const JOINED = " · ";
 const KIND_ID = "for-you:kind:";
 const SOURCE_ID = "for-you:source:";
 
+// The mark each word wears in Tab's menu, by the theme's name for it, so
+// the menu teaches what each word means (VKCF3Z, 2026-11-08). A source
+// that's a program, as Slack is, wears its program's own mark; one the
+// table doesn't know yet wears For You's own, as its head does.
+const MARKS = {
+    kind: { do: "waitsOnJoel", look: "look", try: "toTry" },
+    source: { mail: "mail", calendar: "calendar", desktop: "desktop", sessions: "session" }
+};
+const PROGRAMS = { slack: "slack" };
+const OWN_MARK = "waitsOnJoel";
+
 // The names a filter's head says, from the vocabulary's ids and how it
 // names each: { kinds, sources }, each by its word.
 function saidFrom(ids, nameOf) {
@@ -134,6 +145,15 @@ function heading(filter, said) {
     return names.join(JOINED);
 }
 
+// The mark an offer wears: { glyph } by the theme's name, or { program }
+// by the desktop entry whose mark it wears.
+function markOf(one) {
+    if (one.field === "source" && one.value in PROGRAMS) {
+        return { program: PROGRAMS[one.value] };
+    }
+    return { glyph: MARKS[one.field]?.[one.value] ?? OWN_MARK };
+}
+
 // A filter's own key, so two steps into one filter are one place.
 function keyOf(filter) {
     return `${filter.source}:${filter.kind}`;
@@ -142,8 +162,11 @@ function keyOf(filter) {
 // What Tab offers after `:filter `: each kind and source not yet named,
 // in `from` or the words already typed, that would keep something, with
 // how many it would keep. Kinds come in their bands' order, then sources
-// A to Z by the name the head would give them. The word being typed is
-// the last, which Commands.ownArguments narrows these to.
+// A to Z by the name the head would give them. Each reads as a row:
+// the word, its name as the head would say it, how many it keeps at the
+// side, and which field it fills, so the menu can give it that field's
+// mark (VKCF3Z, 2026-11-08). The word being typed is the last, which
+// Commands.ownArguments narrows these to.
 function offered(rows, arg, said, from) {
     const typed = wordsOf(arg);
     const done = ENDS_IN_SPACE.test(arg ?? "") ? typed : typed.slice(0, -1);
@@ -154,13 +177,16 @@ function offered(rows, arg, said, from) {
     const kept = filtered(rows, so);
     const count = (field, word) => kept.filter(row => fieldOf(row, field) === word).length;
     const kinds = so.kind !== "" ? []
-        : KINDS.map(kind => ({ value: kind, note: count("kind", kind) }));
+        : KINDS.map(kind => ({ value: kind, field: "kind", count: count("kind", kind),
+            note: said?.kinds?.[kind] ?? kind }));
     const present = so.source !== "" ? []
         : Array.from(new Set(kept.map(row => fieldOf(row, "source"))
             .filter(one => one !== "" && !(one in AS_KIND))));
     const sources = Order.sorted(present, Order.byName(source => sourceName(source, said)))
-        .map(source => ({ value: source, note: count("source", source) }));
+        .map(source => ({ value: source, field: "source", count: count("source", source),
+            note: sourceName(source, said) }));
     return kinds.concat(sources)
-        .filter(one => one.note > 0)
-        .map(one => ({ value: one.value, note: String(one.note) }));
+        .filter(one => one.count > 0)
+        .map(one => ({ value: one.value, field: one.field, note: one.note,
+            side: String(one.count) }));
 }
