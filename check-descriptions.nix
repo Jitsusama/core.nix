@@ -723,6 +723,9 @@
   kernel-settings-hold-apple-macbook-air-m2-a2681 = ''
     the MacBook Air M2's own Asahi kernel applies its screen patches and holds every setting
   '';
+  kernel-settings-hold-apple-macbook-pro-m4-pro-a3401 = ''
+    the 14-inch M4 Pro's own Aurora kernel holds every setting of Aurora's Apple fragment and core's
+  '';
   kernel-settings-hold-dell-xps-14-da14260 = ''
     the XPS 14's own kernel applies its patches and holds every setting
   '';
@@ -853,6 +856,10 @@
     the boot step gives the loader an entry of its own on the ESP, never taking a past install's
     entry on another partition for it, makes it active and first in BootOrder, and writes nothing
     once it is
+  '';
+  m4-pro-kernel-describes-both-external-screens = ''
+    the 14-inch M4 Pro's device tree describes both external screens' coprocessors, their firmware
+    memory and their crossbars as its own ADT has them
   '';
   machine-holds-the-machine-ready = ''
     the machine daemon says hello on the socket systemd hands it, says every record of a watch's

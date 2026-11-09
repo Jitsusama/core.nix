@@ -97,6 +97,32 @@ the web player stay.
 | Keys     | the TPM's SSH, signing and link keys need a YubiKey or another home    |
 | Install  | the guide's install beside macOS, proven in a VM, then on the Mac      |
 
+## Apple MacBook Pro 14-inch M4 Pro (A3401)
+
+[`hardware/apple-macbook-pro-m4-pro-a3401/nixos.nix`][36]. The 14-inch
+MacBook Pro of 2024 with the M4 Pro (Mac16,8, board J614s): Apple's M4 Pro
+(T6040) with eight or ten performance and four efficiency cores and Apple's
+own GPU, three Thunderbolt 5 ports, HDMI, an SD card slot and MagSafe.
+Asahi Linux doesn't drive the M4 family yet; [Aurora Silicon][38], a fork
+of Asahi's work for the newer chips, does, and core builds Aurora's kernel
+itself ([its kernel folder][37]). The module holds only that kernel so far,
+so a machine can't be built on it yet.
+
+| Part   | What the module does                                                   |
+| ------ | ---------------------------------------------------------------------- |
+| Kernel | Aurora's at a commit, core's own build, with Aurora's Apple settings   |
+
+### What's Left
+
+| Part     | Why it isn't here yet                                                  |
+| -------- | ---------------------------------------------------------------------- |
+| Loaders  | Aurora's aura and U-Boot, which fill the external screens' firmware in |
+| Firmware | what Wi-Fi, Bluetooth and the rest need, copied from macOS             |
+| Screens  | the kernel describes both, but only HDMI has shown a picture on one    |
+| Sleep    | Aurora's sleep and battery come from the 16-inch, untried on this one  |
+| Speakers | no safety profile exists for this model's amplifiers                   |
+| Touchpad | palm rejection, once the touchpad works                                |
+
 ## Dell XPS 14 (DA14260)
 
 [`hardware/dell-xps-14-da14260/nixos.nix`][2]. An Intel Core Ultra X7 358H
@@ -1573,3 +1599,6 @@ sealed to.
 [33]: https://asahilinux.org/docs/platform/feature-support/m2/
 [34]: ../hardware/apple-macbook-air-m2-a2681/kernel/README.md
 [35]: ../hardware/apple-macbook-air-m2-a2681/boot/README.md
+[36]: ../hardware/apple-macbook-pro-m4-pro-a3401/nixos.nix
+[37]: ../hardware/apple-macbook-pro-m4-pro-a3401/kernel/README.md
+[38]: https://github.com/aurora-silicon

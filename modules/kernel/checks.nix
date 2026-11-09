@@ -67,6 +67,15 @@
           { nixpkgs.buildPlatform = "x86_64-linux"; }
         ];
       }).config.boot.kernelPackages.kernel;
+    # And the M4 Pro's, cross-compiled the same way, which holds every
+    # setting of Aurora's fragment it takes in.
+    kernel-settings-hold-apple-macbook-pro-m4-pro-a3401 =
+      (nixpkgs.lib.nixosSystem {
+        modules = [
+          self.nixosModules.apple-macbook-pro-m4-pro-a3401
+          { nixpkgs.buildPlatform = "x86_64-linux"; }
+        ];
+      }).config.boot.kernelPackages.kernel;
 
     # And with an account's theme, whose panic colours the kernel has to take.
     kernel-settings-hold-with-a-theme =
