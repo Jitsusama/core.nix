@@ -306,6 +306,22 @@ a line in the README's map, its name and then a comment, as
 `machines/   # one folder per machine`. A waiting folder that has its note,
 or is gone, fails too, so the list only shrinks.
 
+Its long files and crowded folders say why, as core's do, through another:
+
+```nix
+every-long-file-says-why = core.lib.everyLongFileSaysWhy pkgs {
+  src = ./.;
+  # Each file or folder past its limit that waits to be split.
+  waiting = [ ];
+};
+```
+
+A code file past 800 lines says why it stays whole in its opening comment,
+in a sentence beginning "Long because", and a folder of more than 40
+entries in its README.md or AGENTS.md, in one beginning "Many entries
+because", as [conventions.md][5] says. A waiting one that's
+split, says why or is gone fails too.
+
 Its names say the glossary's words, as core's do, through a check that reads
 the glossary of the core it locks:
 
@@ -333,3 +349,4 @@ nix flake update core
 [2]: hardware.md
 [3]: testing.md
 [4]: glossary.md
+[5]: conventions.md#long-files-say-why

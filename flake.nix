@@ -478,6 +478,13 @@
       lib.everyFolderSaysWhatItHolds =
         pkgs: pkgs.callPackage ./tests/every-folder-says-what-it-holds.nix { };
 
+      # How a repository built on core holds every long file and crowded folder
+      # to saying why, as core does: `core.lib.everyLongFileSaysWhy pkgs { src =
+      # ./.; waiting = [ ... ]; }` is a check that fails on a code file past 800
+      # lines or a folder of more than 40 entries that doesn't say why it stays
+      # whole, and on a waiting one that's split, says why or is gone.
+      lib.everyLongFileSaysWhy = pkgs: pkgs.callPackage ./tests/every-long-file-says-why.nix { };
+
       # How a repository built on core holds its names to core's glossary:
       # `core.lib.namesSayTheGlossary pkgs { names = ...; otherSenses = ...;
       # waiting = ...; }` is a check that no name says a name the glossary

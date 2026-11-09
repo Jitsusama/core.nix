@@ -1,6 +1,7 @@
 # What each check proves, by its name, as a sentence's predicate: checks.nix puts each in its
 # check's meta.description, and every-check-says-what-it-proves fails on a check with none or
-# one with no check. A check added names what it proves here, in its place by name.
+# one with no check. A check added names what it proves here, in its place by name. Long
+# because it's one table, a line or two for each of core's checks.
 {
   a-bluetooth-keyboard-may-wake-it = ''
     a machine with Bluetooth lets a USB or PCI controller of Bluetooth's class wake it, so a paired
@@ -520,6 +521,10 @@
   '';
   every-folder-says-what-it-holds = ''
     every folder says what goes in it, but those still waiting for their note
+  '';
+  every-long-file-says-why = ''
+    every code file past 800 lines and folder of more than 40 entries says why it stays whole, but
+    those still waiting to be split
   '';
   every-machine-answers-local-names-in-time = ''
     every NixOS machine's name service is nsncd answering a .local name as not found once it has

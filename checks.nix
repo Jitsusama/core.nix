@@ -971,6 +971,17 @@ gather (
           inherit waiting;
         };
 
+      # A code file past 800 lines, or a folder of more than 40 entries, says
+      # why it stays whole or is split, since one that grew past them is
+      # usually several things a reader has to tell apart. Those over before
+      # the rule wait in tests/every-long-file-says-why-waiting.nix, and the
+      # check fails once one is split, says why or is gone, so the list only
+      # shrinks.
+      every-long-file-says-why = self.lib.everyLongFileSaysWhy pkgs {
+        src = ./.;
+        waiting = import ./tests/every-long-file-says-why-waiting.nix;
+      };
+
       # A doc names only what's there, so a move or a rename that leaves a guide
       # pointing at nothing fails here rather than misleading the next reader:
       # every relative link, and every backticked path from a top folder. Those
