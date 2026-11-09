@@ -487,9 +487,10 @@ axis.
 
 Label is Note told apart by case, so a surface counting its levels counts
 them as one. Label's capitals are for our own words: a name from the world,
-an address, a repository, a folder or a file, is never re-cased, so an
-eyebrow carrying one is set in Note as written ("8IDU4E · core.nix ·
-since 21:52"). The eyebrows of one place share one shape, where the thing
+an address, a repository, a folder or a file, is never re-cased, nor is a
+figure's unit ("on 2.4 GHz · network"), so an eyebrow carrying one
+is set in Note as written ("8IDU4E · core.nix · since 21:52"). The
+eyebrows of one place share one shape, where the thing
 is and then its kind ("via Example ISP", "eero Pro 6 · node", "on Study
 · Wi-Fi"), and say no state, which its first fact says. Nothing the
 launcher shows names a daemon: it says where a thing came from ("set by
@@ -1362,7 +1363,10 @@ works the same way everywhere.
   written as it's typed, in lowercase; every other row's name, and every
   step of the path, is in Title Case as the glossary sets it, and what an
   empty list says is a sentence, above the one act that fills it where
-  there is one ("No sessions running.", then Start a Session).
+  there is one ("No sessions running.", then Start a Session), or above
+  the one way elsewhere when that is all it holds ("Nothing unread from
+  the desktop.", then History). The sentence is never a row the cursor
+  lands on.
   The-launcher-means-one-thing-a-word holds the vocabulary to it.
 - **Nothing moves that Joel didn't move.** Rows that arrive late go below
   the ones of their kind already shown, the selection stays on its thing
@@ -1406,7 +1410,9 @@ works the same way everywhere.
   place says what it holds
   after its name, muted, by its members' own names in the place's own
   order (Desktop: "This Window, Windows, Screens, Notices"), as many whole
-  as fit, so a glance reminds Joel what there is. The run ends on the
+  as fit, so a glance reminds Joel what there is. Its members are what it
+  holds, never what it does: Passwords says "1Password", not Check Every
+  Password. The run ends on the
   last name that fits, never an ellipsis, which no note wears (VKCF3Z,
   2026-11-08). A note is a lowercase run, never a sentence: a place
   holding none says "none running" or "nobody lately", and the sentence
@@ -1598,8 +1604,10 @@ works the same way everywhere.
   one row
   first in the list, named by what it says and saying it's an answer at its
   right edge, with its parts a step in, so a question never lists a column
-  of bare figures. The weather's parts are Now, Rain, then the seven days
-  from today. Now holds every figure of this moment: the temperature, what
+  of bare figures. The weather's parts are Conditions, Rain, then the
+  seven days from today, and away from home Local Time follows Conditions
+  ("22:45 Saturday"). Conditions holds every figure of this moment: the
+  temperature, what
   it feels like, the humidity, the dew point, the precipitation, the wind
   and its gusts, the cloud cover, the UV index, the visibility and the
   pressure. Rain says when it next rains ("from 15:00 · 70%") beside the
@@ -2452,8 +2460,10 @@ hairline, the rows, a hairline, the status line.
 - **The head** is the card's one line for typing, a 48 band like the rows.
   It draws nothing over the gutter in any mode. The place's glyph stands in
   the rows' glyph cell and its Title over their names, home's too ("⌂ Home",
-  "Notices", "Time › Servers"). The mode's mark takes the glyph's cell
-  while the mode lasts, centred by its ink: the accent's `/` on the find,
+  "Notices", "Time › Servers"). The glyph is its path's first place's,
+  however deep it goes, so "Now › For You › Slack" wears Now's mark.
+  The mode's mark takes the glyph's cell while the mode lasts, centred by
+  its ink: the accent's `/` on the find,
   `:` on the command line (Joel, 2026-11-06: "we have an extra space in
   front of the launcher heading when in command mode that we don't have in
   find"). So the Title and what's typed start on one x in every mode. What's
