@@ -3979,12 +3979,22 @@ def nearby_heard(desktop: Desktop, at_each_scale: list[str], values: dict[str, A
         # at once, since the radio looks only for a few seconds after each show.
         desktop.launcher_left_closed()
         shown = desktop.in_session("launcher show machine bluetooth nearby | grep -q Buds")
-        machine.wait_until_succeeds(
-            f"{shown} && ( "
-            + " || ".join(f"{discovering(adapter)} | grep -qx 'b true'" for adapter in ADAPTERS)
-            + " )",
-            timeout=timedelta(seconds=60),
-        )
+        try:
+            machine.wait_until_succeeds(
+                f"{shown} && ( "
+                + " || ".join(f"{discovering(adapter)} | grep -qx 'b true'" for adapter in ADAPTERS)
+                + " )",
+                timeout=timedelta(seconds=60),
+            )
+        except Exception:
+            # What the terminal was shown, and whether either radio looked, to say why.
+            said = machine.execute(
+                desktop.in_session("launcher show --json machine bluetooth nearby 2>&1")
+            )
+            radios = [machine.execute(discovering(adapter))[1].strip() for adapter in ADAPTERS]
+            heard = machine.execute("busctl tree org.bluez --list")[1]
+            print("nearby for a terminal:", said, radios, heard)
+            raise
     finally:
         machine.succeed("systemctl stop bluetooth.service btvirt || true")
 
