@@ -4,9 +4,13 @@
 // them after the program's own acts, and a meeting's name finds it from
 // anywhere. Each is the meeting's one row (Calendar.row), the same as
 // every other surface shows it, with the same acts and details. `next` is
-// the next meeting's row, which Now shows.
+// the next meeting's row, which Now shows. Calendar's own Recent is the
+// meetings Joel had in the last month (recentOf, which Applications.qml
+// asks every provider that has it), as Google.js lays them out, each its
+// one row too.
 import qs
 import QtQuick
+import "Google.js" as Had
 
 Provider {
     id: provider
@@ -34,4 +38,24 @@ Provider {
     readonly property var next: Google.account === "ready" && Calendar.upNext(Calendar.next)
         ? things.find(row => row.key === `calendar:meeting:${Calendar.next.id}`) ?? null
         : null
+
+    // The desktop entry whose Recent this gives (home.nix).
+    readonly property string program: "google-calendar"
+
+    // Calendar's Recent: each meeting he had in the month, those held
+    // before today and today's that are over, newest first, a series once
+    // at its latest, each with when it ended, so Recent.js merges it by
+    // time. Made only as it's asked, as Calendar is stepped into.
+    function recentOf(asked) {
+        if (asked !== program)
+            return [];
+        return Had.hadMeetings(Google.held.concat(Calendar.meetings), Calendar.now)
+            .map(one => Object.assign(Calendar.row(one.meeting, provider), { at: one.at }));
+    }
+
+    // Whether a program's Recent is this one's to give, so Calendar's
+    // stands, saying "none", while it holds nothing.
+    function keepsRecentOf(asked) {
+        return asked === program;
+    }
 }

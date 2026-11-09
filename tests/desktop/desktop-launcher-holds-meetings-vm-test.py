@@ -118,6 +118,47 @@ def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> No
 
 
 @pytest.mark.usefixtures("google")
+def test_calendars_and_mails_own_recent_hold_what_joel_had_lately(desktop: Desktop) -> None:
+    """Calendar's Recent holds the series he held, once at its latest, and Mail's what he sent.
+
+    Both are what the google program kept of the month, given each program's Recent as Docs'
+    documents are, each its thing's own row. How they're laid out is held in Qt's engine
+    (tests/mail.qml, tests/calendar.qml); this holds that they reach the launcher.
+    """
+    desktop.answer("calendar")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Calendar")
+    desktop.into_program()
+    desktop.type_in("recent", selecting="Recent")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("count") == "Retro"
+        and shown["selected"].get("side") == "1"
+    )
+    desktop.follow()
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Retro"])
+    retro = desktop.showing()["selected"]
+    assert str(retro["is"]).startswith("calendar:meeting:retro_"), retro
+    # Its side says when it was, and its drawer that the other one came before it.
+    assert str(retro["side"]).startswith("yesterday "), retro
+    facts = (retro.get("drawer") or {}).get("facts") or []
+    assert {"label": "Earlier", "value": "1 this month"} in facts, retro
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.answer("mail")
+    desktop.launcher_until(lambda shown: "Mail" in shown["rows"])
+    desktop.down_to("Mail")
+    desktop.into_program()
+    desktop.type_in("recent", selecting="Recent")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("count") == "Notes on the Plan"
+        and shown["selected"].get("side") == "1"
+    )
+    desktop.follow()
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Notes on the Plan"])
+    notes = desktop.showing()["selected"]
+    assert notes["is"] == "mail:notes", notes
+    desktop.close_launcher()
+
+
+@pytest.mark.usefixtures("google")
 def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     """Now lists today's next meeting as a row of its own, joining one about to start."""
     machine = desktop.machine

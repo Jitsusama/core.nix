@@ -1254,7 +1254,12 @@ works the same way everywhere.
   above it (VKCF3Z, 2026-10-30). A program's holds what it opened or
   saved and has closed since, a person's what he had with them (a
   meeting held, a call, a conversation), Capture's what he took, and
-  each is laid out by the one rule (Recent.js). It always
+  each is laid out by the one rule (Recent.js). Calendar's holds the
+  meetings he had in the month, never one he said no to, a series once
+  at its latest, its drawer saying how many came before; Mail's what he
+  sent or read, a conversation once by its newest. Each row is its
+  thing's own, a meeting saying when it was, "yesterday 15:00" (VKCF3Z,
+  2026-11-09). It always
   stands where its thing keeps any, so it never arrives late at the
   bottom: how many at its right, "none" while it holds nothing and an
   ellipsis while its source first answers, after its name the names it

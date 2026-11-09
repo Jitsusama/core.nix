@@ -250,3 +250,58 @@ function mailedWith(mail, emails) {
     const has = email => emails.includes(String(email ?? "").toLowerCase());
     return has(mail.address) || (mail.others ?? []).some(has);
 }
+
+// The series a meeting is one of, as Google names each time of one: the
+// event's id before the moment that time starts, "_20261026T150000Z", or
+// "_20261026" for one lasting all day. A meeting held once is its own.
+function seriesOf(meeting) {
+    return String(meeting.id ?? "").replace(/_\d{8}(T\d{6}Z?)?$/, "");
+}
+
+// What Calendar's own Recent holds, as Recent.js lays out every Recent:
+// the meetings Joel had in the month, each over by `now`, newest first by
+// when it ended, with the time it ended as `at`. One he said No to he
+// didn't have, so it's left out, while a maybe, one not answered and one
+// he holds stay. A series is listed once, at its latest, saying how many
+// of it came before (`earlier`), so a daily meeting takes one place, not
+// nine (VKCF3Z, ccccbe5f). Each is { meeting, at }, with `earlier` put on
+// the meeting for its drawer.
+function hadMeetings(meetings, now) {
+    const over = (meetings ?? []).filter(meeting => meeting.end <= now && meeting.answer !== "no")
+        .sort((one, other) => other.end - one.end);
+    const bySeries = new Map();
+    for (const meeting of over) {
+        const series = seriesOf(meeting);
+        const had = bySeries.get(series);
+        if (had) {
+            had.earlier += 1;
+        } else {
+            bySeries.set(series, { meeting: meeting, earlier: 0 });
+        }
+    }
+    return [...bySeries.values()].map(one => ({
+        meeting: Object.assign({}, one.meeting, { earlier: one.earlier }),
+        at: one.meeting.end
+    }));
+}
+
+// What Mail's own Recent holds, as Recent.js lays out every Recent: the
+// mail Joel sent or read in the month (src/mail.rs's LATELY), newest
+// first, a conversation once, by its newest, with when it came as `at`
+// (VKCF3Z, ccccbe5f). Mail that still wants him is never among it: Gmail's
+// search leaves out what's unread, and Mail lists that above it. Each is
+// { mail, at }; a conversation is its page in Gmail, or the mail itself
+// where it has none.
+function hadMail(mail) {
+    const seen = new Set();
+    const rows = [];
+    for (const one of [...(mail ?? [])].sort((a, b) => b.at - a.at)) {
+        const conversation = one.page || `mail:${one.id}`;
+        if (seen.has(conversation)) {
+            continue;
+        }
+        seen.add(conversation);
+        rows.push({ mail: one, at: one.at });
+    }
+    return rows;
+}

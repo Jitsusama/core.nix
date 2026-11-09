@@ -315,6 +315,48 @@ QtObject {
             Google.mailedWith(sent, ["x@example.com"]),
             Google.withThem(sent, ["ada@example.com"])], [true, true, false, false]);
 
+        // Calendar's own Recent: the meetings over by now, newest first by
+        // when each ended, none he said No to, a series once at its latest
+        // with how many came before it. [id, earlier, at its end]
+        const had = (id, start, end, fields) => Object.assign({
+            id: id, start: start, end: end, allDay: false, answer: "yes"
+        }, fields ?? {});
+        const meetings = [
+            had("s_20261022T130000Z", at(9, 22, 9, 0), at(9, 22, 9, 15)),
+            had("lunch", at(9, 25, 12, 0), at(9, 25, 13, 0), { answer: null }),
+            had("s_20261026T130000Z", at(9, 26, 9, 0), at(9, 26, 9, 15)),
+            had("h_20261025", at(9, 25, 0, 0), at(9, 26, 0, 0), { allDay: true }),
+            had("turned", at(9, 26, 11, 0), at(9, 26, 11, 30), { answer: "no" }),
+            had("maybe", at(9, 24, 10, 0), at(9, 24, 11, 0), { answer: "maybe" }),
+            had("s_20261023T130000Z", at(9, 23, 9, 0), at(9, 23, 9, 15)),
+            had("asked", at(9, 21, 10, 0), at(9, 21, 11, 0), { answer: "waiting" }),
+            had("coming", at(9, 26, 16, 0), at(9, 26, 16, 30)),
+            had("on", at(9, 26, 15, 0), at(9, 26, 16, 0))
+        ];
+        check("the meetings he had, a series once", Google.hadMeetings(meetings, now)
+            .map(one => [one.meeting.id, one.meeting.earlier, one.at === one.meeting.end]), [
+            ["s_20261026T130000Z", 2, true], ["h_20261025", 0, true], ["lunch", 0, true],
+            ["maybe", 0, true], ["asked", 0, true]
+        ]);
+        check("no meetings had", Google.hadMeetings(null, now), []);
+        check("a series by its id", ["s_20261026T130000Z", "h_20261025", "once", "a_b"]
+            .map(id => Google.seriesOf({ id: id })), ["s", "h", "once", "a_b"]);
+
+        // Mail's own Recent: newest first, a conversation once by its
+        // newest; mail with no page is each its own.
+        const thread = "https://mail.google.com/mail/u/0/#inbox/t1";
+        const lately = [
+            { id: "a", at: at(9, 26, 14, 2), page: thread },
+            { id: "c", at: at(9, 26, 10, 0), page: "https://mail.google.com/mail/u/0/#inbox/t2" },
+            { id: "b", at: at(9, 26, 15, 0), page: thread },
+            { id: "d", at: at(9, 26, 9, 0), page: "" },
+            { id: "e", at: at(9, 26, 8, 0), page: "" }
+        ];
+        check("the mail he had, a conversation once", Google.hadMail(lately)
+            .map(one => [one.mail.id, one.at === one.mail.at]),
+            [["b", true], ["c", true], ["d", true], ["e", true]]);
+        check("no mail had", Google.hadMail(undefined), []);
+
         // Reply All: to who sent it, copied to everyone else, each once.
         check("a reply to all, copied to the others", Mail.replyingAll(Object.assign({}, lunch,
             { others: ["grace@example.com", "alan@example.com", "grace@example.com"] })),

@@ -57,9 +57,17 @@ Singleton {
 
     readonly property var next: Said.next(meetings, now)
 
-    // When a meeting is, as its row says it: "in 12 min", "at 16:00".
+    // How a meeting says when it was, and how many of its series came
+    // before, in the vocabulary's words, with the locale's names of days
+    // and months, as Qt gives them, as mail says when it came (Mail.qml).
+    readonly property var dates: Object.assign({}, Words.of("calendar:meeting").said ?? {}, {
+        date: (date, format) => Qt.formatDate(date, format)
+    })
+
+    // When a meeting is, as its row says it: "in 12 min", "at 16:00", or
+    // for one that's over, when it was, "yesterday 15:00".
     function when(meeting) {
-        return Said.when(meeting, now);
+        return Said.when(meeting, now, root.dates);
     }
 
     // Whether Return on a meeting joins its call, as it does only when the
@@ -197,7 +205,8 @@ Singleton {
             // meetings while they're listed under it (Applications.qml).
             today: Said.dayOf(meeting.start, root.now) === "",
             note: root.about(meeting),
-            drawer: Said.details(meeting, Words.name("calendar:meeting", "untitled")),
+            drawer: Said.details(meeting, Words.name("calendar:meeting", "untitled"),
+                root.dates),
             later: joins,
             stays: !joins,
             run: joins ? () => root.join(meeting)
