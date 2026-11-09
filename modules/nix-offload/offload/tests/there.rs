@@ -1785,6 +1785,16 @@ fn it_says_what_it_takes_a_word_a_line() {
     );
 }
 
+/// The variables that name VM builders' folders, so none stands: the
+/// first's in `folder`, where a test may make one, and no others.
+fn no_vm_builders(folder: &Path) -> [(&'static str, PathBuf); 3] {
+    [
+        ("NIX_OFFLOAD_VM_DIR", folder.join("offload-vm")),
+        ("NIX_OFFLOAD_VM_MORE_DIR", PathBuf::from(NO_SECOND_VM)),
+        ("NIX_OFFLOAD_VM_EXTRA_DIRS", PathBuf::from(NO_MORE_VMS)),
+    ]
+}
+
 #[test]
 fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
     let folder = tempfile::tempdir().unwrap();
@@ -1809,11 +1819,9 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
     git(&["update-ref", "refs/remotes/origin/main", &head]);
     let offload = folder.path().join("offload");
     fs::create_dir(&offload).unwrap();
-    let run_as = |before: &[&str]| {
+    let run = || {
         Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-            .arg("there")
-            .args(before)
-            .args(["--changed", "--build", "--no-vm"])
+            .args(["there", "--changed", "--build", "--no-vm"])
             .args(["--system", "x86_64-linux"])
             .current_dir(&tree)
             .env(
@@ -1824,9 +1832,7 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
             .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
             // No VM builder stands, whatever this machine's own lenders hold,
             // since a run no lent builder takes now goes to one that does.
-            .env("NIX_OFFLOAD_VM_DIR", folder.path().join("offload-vm"))
-            .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
-            .env("NIX_OFFLOAD_VM_EXTRA_DIRS", NO_MORE_VMS)
+            .envs(no_vm_builders(folder.path()))
             .env("XDG_RUNTIME_DIR", folder.path())
             .env("XDG_STATE_HOME", folder.path())
             .env("XDG_CONFIG_HOME", folder.path())
@@ -1835,28 +1841,15 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
             .output()
             .unwrap()
     };
-    let run = || run_as(&[]);
     let given = || fs::read_to_string(bin.join("ssh-was-given")).unwrap();
 
-    // Sent first, as the net's runs are, it tells the builder's gate so,
-    // which lets it past the sessions' runs waiting for a turn.
-    fs::write(offload.join("store"), STORE).unwrap();
-    let ran = run_as(&["--first"]);
-    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
-    let sent = given();
-    assert!(
-        sent.contains("NIX_OFFLOAD_FIRST=1 nix run .#changed-checks"),
-        "{sent}"
-    );
-    fs::remove_dir_all(folder.path().join("nix-offload/passed")).unwrap();
-
     // The lent builder evaluates and builds, in one place.
+    fs::write(offload.join("store"), STORE).unwrap();
     let ran = run();
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
     let sent = given();
     assert_eq!(sent.lines().next(), Some("nix-offload"), "{sent}");
     within_far(sent.lines().nth(1).unwrap());
-    assert!(!sent.contains("NIX_OFFLOAD_FIRST"), "{sent}");
     for part in [
         format!("checkout -q -B nix-offload-changed {head}"),
         "nix run .#changed-checks -- --build --no-vm --system x86_64-linux".to_owned(),
@@ -1971,10 +1964,17 @@ impl Changed {
     /// `there --changed` with these arguments, and what ssh was told to
     /// run, if anything.
     fn run(&self, arguments: &[&str]) -> (Output, Option<String>) {
+        self.run_after(&[], arguments)
+    }
+
+    /// `run`, with `before` given ahead of `--changed`.
+    fn run_after(&self, before: &[&str], arguments: &[&str]) -> (Output, Option<String>) {
         let given = self.bin.join("ssh-was-given");
         let _ = fs::remove_file(&given);
         let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-            .args(["there", "--changed"])
+            .arg("there")
+            .args(before)
+            .arg("--changed")
             .args(arguments)
             .env("NIX_OFFLOAD_EVALUATING_LONGEST", "5")
             .current_dir(&self.tree)
@@ -1999,6 +1999,24 @@ impl Changed {
             .map(|given| given.lines().nth(1).unwrap().to_owned());
         (ran, sent)
     }
+}
+
+#[test]
+fn a_changed_run_sent_first_tells_the_builders_gate_so() {
+    // As the net's runs are, so the gate lets it past the sessions' runs
+    // waiting for a turn; a run not sent first isn't marked.
+    let changed = Changed::new();
+    let (ran, sent) = changed.run_after(&["--first"], &["--no-vm", "--system", "x86_64-linux"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let sent = sent.unwrap();
+    assert!(
+        sent.contains("NIX_OFFLOAD_FIRST=1 nix run .#changed-checks"),
+        "{sent}"
+    );
+    let _ = fs::remove_dir_all(changed.folder.path().join("nix-offload/passed"));
+    let (ran, sent) = changed.run(&["--no-vm", "--system", "x86_64-linux"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert!(!sent.unwrap().contains("NIX_OFFLOAD_FIRST"));
 }
 
 #[test]

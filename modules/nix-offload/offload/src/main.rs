@@ -437,28 +437,37 @@ fn main() -> ExitCode {
     serving(&arguments, given)
 }
 
+/// Starts `there` again marked as work run elsewhere, and as sent first
+/// when asked `--first`, unless it's so marked already; how it ended when
+/// it couldn't. A `there` run only waits on a build done elsewhere, mostly,
+/// so the machine's slices let its processes go after other work when
+/// memory runs out; they read the mark from where each started, so this
+/// starts again with it rather than only handing it on. `--first` is
+/// carried the same way, so everything the run starts and sends is marked
+/// sent first, and taken off what it's asked.
+fn marked(arguments: &[String]) -> Option<ExitCode> {
+    let asked_first = arguments.iter().any(|word| word == "--first");
+    if !asked_first && env::var_os(ELSEWHERE.0).is_some_and(|value| value == ELSEWHERE.1) {
+        return None;
+    }
+    let mut again = Command::new("/proc/self/exe");
+    again
+        .arg("there")
+        .args(arguments.iter().filter(|word| *word != "--first"))
+        .env(ELSEWHERE.0, ELSEWHERE.1);
+    if asked_first {
+        again.env(there::FIRST.0, there::FIRST.1);
+    }
+    let again = again.exec();
+    eprintln!("nix-offload: couldn't start there again marked: {again}");
+    Some(ExitCode::from(71))
+}
+
 /// `there`: builds a flake's attributes where src/there.rs says, each part
 /// journalled, exiting with the first status that failed.
 fn there(arguments: &[String]) -> ExitCode {
-    // A `there` run only waits on a build done elsewhere, mostly, so the
-    // machine's slices let its processes go after other work when memory
-    // runs out; they read the mark from where each started, so this starts
-    // again with it rather than only handing it on.
-    // `--first` is carried the same way, so everything this run starts
-    // and sends is marked sent first, and taken off what it's asked.
-    let asked_first = arguments.iter().any(|word| word == "--first");
-    if asked_first || env::var_os(ELSEWHERE.0).is_none_or(|value| value != ELSEWHERE.1) {
-        let mut again = Command::new("/proc/self/exe");
-        again
-            .arg("there")
-            .args(arguments.iter().filter(|word| *word != "--first"))
-            .env(ELSEWHERE.0, ELSEWHERE.1);
-        if asked_first {
-            again.env(there::FIRST.0, there::FIRST.1);
-        }
-        let again = again.exec();
-        eprintln!("nix-offload: couldn't start there again marked: {again}");
-        return ExitCode::from(71);
+    if let Some(code) = marked(arguments) {
+        return code;
     }
     // What this `there` takes, a word each, so a caller can tell it from
     // an older one, which refuses the flag with 64.
