@@ -546,15 +546,15 @@ ShellRoot {
     function storeNames() {
         const whole = "bdmylmvw562fyhfd39fkn89zcw7qn66w-track.mp3";
         const path = `/nix/store/${whole}`;
-        const away = chooser.fileRow(path, true);
+        const away = theChooser.fileRow(path, true);
         expect("a store file opened lately elsewhere goes by its own name",
             away.name === "track.mp3" && away.side === "/nix/store", `${away.name} ${away.side}`);
         expect("one the store's listing holds keeps its hash",
-            chooser.fileRow(path).name === whole, chooser.fileRow(path).name);
+            theChooser.fileRow(path).name === whole, theChooser.fileRow(path).name);
         expect("a store folder listed there keeps its hash too",
-            chooser.folderRow("/nix/store/bdmylmvw562fyhfd39fkn89zcw7qn66w-pkg").name
+            theChooser.folderRow("/nix/store/bdmylmvw562fyhfd39fkn89zcw7qn66w-pkg").name
                 === "bdmylmvw562fyhfd39fkn89zcw7qn66w-pkg",
-            chooser.folderRow("/nix/store/bdmylmvw562fyhfd39fkn89zcw7qn66w-pkg").name);
+            theChooser.folderRow("/nix/store/bdmylmvw562fyhfd39fkn89zcw7qn66w-pkg").name);
     }
 
     // ]b and [b go to the folder beside this one, as the folder holding it

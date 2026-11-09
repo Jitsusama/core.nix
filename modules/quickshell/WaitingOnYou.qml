@@ -135,7 +135,7 @@ Singleton {
     // changes in place, so its revision is read first, as owners does, and
     // a drawer held open follows a quest's new title or status.
     function ownerOf(quest) {
-        questKind?.revision;
+        void questKind?.revision;
         return Waiting.owners(questKind?.answered ? questKind.held : null, [quest])[quest];
     }
 
