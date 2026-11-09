@@ -2091,7 +2091,66 @@ QtObject {
             fw("bios", { name: "System Firmware", version: "1",
                 update: { version: "2", urgency: "unknown" } })])[0].release.urgency, null);
         machine("fwupd's rating of the machine", Firmware.hostOf(firmwareHeld),
-            { security: "HSI:3! (v2.1.6)", product: "XPS", fwupd: "2.1.6" });
+            { security: "HSI:3! (v2.1.6)", product: "XPS", fwupd: "2.1.6", attributes: [] });
+        // The rating as fwupd writes it, its level and its "!", and what
+        // the level is made of, as fwupd counts it
+        // (fu_security_attrs_calculate_hsi): the next level needs each of
+        // its attributes that hasn't passed, one it couldn't read
+        // included; what's running lowers it by each of its own that
+        // hasn't; one obsoleted counts for nothing.
+        machine("a rating's level and what lowers it",
+            [Firmware.ratingOf("HSI:1! (v2.1.9)"), Firmware.ratingOf("HSI:4"),
+                Firmware.ratingOf("HSI:INVALID:missing-data"), Firmware.ratingOf(null)],
+            [{ code: "HSI:1!", level: 1, lowered: true },
+                { code: "HSI:4", level: 4, lowered: false },
+                { code: "HSI:INVALID:missing-data", level: null, lowered: false }, null]);
+        const attribute = (id, level, passed, fields) => Object.assign({ id: id, name: id,
+            summary: `${id} summary`, level: level, result: passed ? "enabled" : "not-enabled",
+            passes_as: "enabled", passed: passed, flags: passed ? ["success"] : [] }, fields);
+        const attributes = Firmware.attributesOf([
+            attribute("tpm", 1, true),
+            attribute("lockdown", null, false, { flags: ["runtime-issue", "action-config-os"] }),
+            attribute("rollback", 2, false, { flags: ["action-config-fw"],
+                bios_setting: { id: "AllowBiosDowngrade", current: "Enabled" } }),
+            attribute("mtd", 2, false, { result: "not-supported", flags: ["missing-data"] }),
+            attribute("debug", 2, false, { flags: ["obsoleted"] }),
+            attribute("iommu", 2, true),
+            attribute("cet", null, true, { flags: ["success", "runtime-issue"] }),
+            attribute("smap", 4, false, { summary: "" })
+        ]);
+        machine("an attribute fwupd obsoletes is left out",
+            attributes.map(one => one.id), ["tpm", "lockdown", "rollback", "mtd", "iommu", "cet",
+                "smap"]);
+        machine("an attribute by fwupd's summary, else its name",
+            [attributes[0].name, attributes[6].name], ["tpm summary", "smap"]);
+        machine("what fixes a failing attribute", attributes.map(one => one.fix),
+            ["", "system", "setup", "", "", "", ""]);
+        machine("an attribute's firmware setting", attributes[2].setting,
+            { id: "AllowBiosDowngrade", current: "Enabled" });
+        machine("an attribute fwupd couldn't read", attributes.map(one => one.missing),
+            [false, false, false, true, false, false, false]);
+        machine("what the next level needs",
+            Firmware.neededFor(attributes, 1).map(one => one.id), ["rollback", "mtd"]);
+        machine("nothing needed past the top level or with no level",
+            [Firmware.neededFor(attributes, 5), Firmware.neededFor(attributes, null)], [[], []]);
+        machine("what's running that lowers the level",
+            Firmware.loweredBy(attributes).map(one => one.id), ["lockdown"]);
+        // fwupd adds its "!" only for a runtime issue, so one with no
+        // level about updates or attestation lowers nothing.
+        machine("only a runtime issue lowers the level", Firmware.loweredBy(Firmware.attributesOf([
+            attribute("updates", null, false, { flags: ["runtime-updates"] }),
+            attribute("attestation", null, false, { flags: ["runtime-attestation"] })
+        ])), []);
+        const changeable = Firmware.attributesOf([attribute("swap", null, false, {
+            flags: ["runtime-issue", "can-fix", "can-undo"],
+            kernel: { current: "none", target: "integrity" } })])[0];
+        machine("what fwupd can change itself, and the kernel's setting",
+            [changeable.runtimeIssue, changeable.canFix, changeable.canUndo, changeable.kernel,
+                attributes[0].canFix, attributes[0].kernel],
+            [true, true, true, { current: "none", target: "integrity" }, false, null]);
+        machine("failing attributes first, each part by level, what's running last",
+            Firmware.listed(attributes).map(one => one.id),
+            ["rollback", "mtd", "smap", "lockdown", "tpm", "iommu", "cet"]);
         machine("no rating before fwupd answers", Firmware.hostOf([]), null);
         // What holds back an update that's offered, by fwupd's name: the
         // charger's, unplugged; nothing, with nothing offered or once it
@@ -2171,8 +2230,20 @@ QtObject {
             waiting("pending", "1.13.0").waits, null);
         machine("why an install didn't go in", Firmware.reason(
             "Decompressing\u2026\nSystem Firmware cannot be updated: on battery\n\n"),
-            "System Firmware cannot be updated: on battery");
+            "system Firmware cannot be updated: on battery");
+        machine("why a restart into setup didn't go, without its full stop", Firmware.reason(
+            "Cannot indicate to EFI to boot into setup mode: Firmware does not support it.\n"),
+            "cannot indicate to EFI to boot into setup mode: Firmware does not support it");
+        machine("a reason opened by a word in capitals keeps it",
+            Firmware.reason("UEFI capsule updates not available"),
+            "UEFI capsule updates not available");
         machine("an install that said nothing", Firmware.reason(""), "");
+        machine("a long install is waited for twice what fwupd says it takes",
+            Firmware.installPatience({ release: { minutes: 25 } }), 50);
+        machine("a short install is waited for the least",
+            Firmware.installPatience({ release: { minutes: 3 } }), 30);
+        machine("an install fwupd gives no length is waited for the least",
+            Firmware.installPatience({ release: null }), 30);
         // What each camera says of itself, from sysfs and desk-facts.
         machine("a loopback's format at a fraction of frames",
             Cameras.loopback("NV12:1920x1080@300000/10000\n"), "NV12 1920 \u00d7 1080 at 30");

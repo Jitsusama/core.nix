@@ -1,7 +1,8 @@
 //! What fwupd knows of the machine's firmware (`firmware:<id>`): each
 //! device it names, its versions and what it can do, the update it
 //! offers, or in fwupd's own words why it offers none; and the machine's
-//! own (`firmware:host`), its security level as fwupd rates it. main.rs
+//! own (`firmware:host`), its security level as fwupd rates it and each
+//! attribute that level is made of. main.rs
 //! asks fwupd over the system bus and hands its answers here as plain
 //! JSON, so a record is a function of what fwupd said.
 
@@ -69,6 +70,41 @@ const PROBLEMS: [(u32, &str); 15] = [
     (12, "lower-priority"),
     (13, "insecure-platform"),
     (14, "firmware-locked"),
+];
+
+/// fwupd's security attribute flags by their bits, as its own names say
+/// them (libfwupd/fwupd-security-attr-struct.h, fwupd 2.1.9).
+const ATTRIBUTE_FLAGS: [(u32, &str); 11] = [
+    (0, "success"),
+    (1, "obsoleted"),
+    (2, "missing-data"),
+    (8, "runtime-updates"),
+    (9, "runtime-attestation"),
+    (10, "runtime-issue"),
+    (11, "action-contact-oem"),
+    (12, "action-config-fw"),
+    (13, "action-config-os"),
+    (14, "can-fix"),
+    (15, "can-undo"),
+];
+
+/// What fwupd found of an attribute, by its number.
+const RESULTS: [&str; 15] = [
+    "unknown",
+    "enabled",
+    "not-enabled",
+    "valid",
+    "not-valid",
+    "locked",
+    "not-locked",
+    "encrypted",
+    "not-encrypted",
+    "tainted",
+    "not-tainted",
+    "found",
+    "not-found",
+    "supported",
+    "not-supported",
 ];
 
 /// How urgent fwupd says a release is, by its number.
@@ -218,16 +254,78 @@ pub fn records(
         .collect()
 }
 
-/// The machine's own, as fwupd rates it: its security level (HSI), the
-/// product and fwupd's version.
-pub fn host(security: Option<&str>, product: Option<&str>, version: Option<&str>) -> Value {
+/// The machine's own, as fwupd rates it: its security level (HSI), each
+/// attribute the level is made of, the product and fwupd's version.
+pub fn host(
+    security: Option<&str>,
+    attributes: &[Value],
+    product: Option<&str>,
+    version: Option<&str>,
+) -> Value {
+    let mut said: Vec<Value> = attributes.iter().filter_map(attribute).collect();
+    // Level by level, as fwupd's own report lists them, the runtime's
+    // (which have none) last, and in fwupd's order within a level, as
+    // the launcher keeps it.
+    said.sort_by_key(|one| one["level"].as_u64().unwrap_or(u64::MAX));
     json!({
         "key": "firmware:host",
         "kind": "firmware",
         "security": security,
+        "attributes": said,
         "product": product,
         "fwupd": version,
     })
+}
+
+/// One attribute of the security level as fwupd says it, or none for one
+/// with no id: what it is, what was found and what passing would find,
+/// the level it counts at (none for one about what's running), whether
+/// it passes, and what would fix it: the firmware setting or the
+/// kernel's, each as it's set and as passing needs it.
+fn attribute(said: &Value) -> Option<Value> {
+    let id = said["AppstreamId"].as_str()?;
+    let result = |key: &str| {
+        said[key]
+            .as_u64()
+            .and_then(|n| RESULTS.get(usize::try_from(n).ok()?))
+            .copied()
+    };
+    let flags = named(said["Flags"].as_u64(), &ATTRIBUTE_FLAGS);
+    let setting = said["BiosSettingId"].as_str().map(|setting| {
+        json!({
+            "id": setting,
+            "current": said["BiosSettingCurrentValue"].as_str(),
+            "target": said["BiosSettingTargetValue"].as_str(),
+        })
+    });
+    let kernel = (said.get("KernelCurrentValue").is_some()
+        || said.get("KernelTargetValue").is_some())
+    .then(|| {
+        json!({
+            "current": said["KernelCurrentValue"].as_str(),
+            "target": said["KernelTargetValue"].as_str(),
+        })
+    });
+    Some(json!({
+        "id": id,
+        "name": said["Name"].as_str(),
+        "summary": said["Summary"].as_str(),
+        "description": said["Description"].as_str(),
+        // fwupd leaves the level out of one about what's running, and
+        // names no level 0.
+        "level": said["HsiLevel"].as_u64().filter(|level| *level > 0),
+        "result": result("HsiResult"),
+        "passes_as": result("HsiResultSuccess"),
+        "fallback": result("HsiResultFallback"),
+        "passed": flags.contains(&"success"),
+        "flags": flags,
+        "bios_setting": setting,
+        "kernel": kernel,
+        "plugin": said["Plugin"].as_str(),
+        "uri": said["Uri"].as_str(),
+        "guids": said["Guid"].clone(),
+        "created_at_s": said["Created"].as_u64(),
+    }))
 }
 
 #[cfg(test)]
@@ -242,6 +340,91 @@ mod tests {
         );
         assert_eq!(named(Some(1 << 4), &PROBLEMS), ["require-ac-power"]);
         assert!(named(Some(1 << 2), &FLAGS).is_empty(), "an unnamed bit");
+    }
+
+    #[test]
+    fn the_host_says_each_attribute_of_its_level_in_order() {
+        let attributes = [
+            json!({"AppstreamId": "org.fwupd.hsi.Kernel.Lockdown", "Name": "Linux lockdown",
+                "Flags": (1u64 << 10) | (1 << 13), "HsiResult": 2, "HsiResultSuccess": 1,
+                "KernelCurrentValue": "none", "KernelTargetValue": "integrity"}),
+            json!({"AppstreamId": "org.fwupd.hsi.Bios.RollbackProtection",
+                "Name": "BIOS rollback protection", "HsiLevel": 2, "Flags": 1u64 << 12,
+                "HsiResult": 2, "HsiResultSuccess": 1, "HsiResultFallback": 6,
+                "BiosSettingId": "rollback", "BiosSettingCurrentValue": "Enabled",
+                "BiosSettingTargetValue": "Disabled"}),
+            json!({"AppstreamId": "org.fwupd.hsi.Iommu", "Name": "IOMMU", "HsiLevel": 2,
+                "Flags": 1, "HsiResult": 1, "HsiResultSuccess": 1}),
+            json!({"AppstreamId": "org.fwupd.hsi.Tpm.Version20", "Name": "TPM v2.0",
+                "HsiLevel": 1, "Flags": 1, "HsiResult": 11, "HsiResultSuccess": 11}),
+            json!({"Name": "no id"}),
+        ];
+        let said = host(Some("HSI:1!"), &attributes, None, Some("2.1.9"));
+        let names: Vec<_> = said["attributes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|one| one["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "TPM v2.0",
+                "BIOS rollback protection",
+                "IOMMU",
+                "Linux lockdown"
+            ],
+            "level by level in fwupd's order, what's running last, one with no id left out"
+        );
+        let rollback = &said["attributes"][1];
+        assert_eq!(
+            [
+                &rollback["result"],
+                &rollback["passes_as"],
+                &rollback["fallback"]
+            ],
+            ["not-enabled", "enabled", "not-locked"],
+            "what was found, what passing finds and fwupd's fallback, in its words"
+        );
+        assert_eq!(
+            rollback["passed"], false,
+            "one without fwupd's success flag fails"
+        );
+        assert_eq!(
+            rollback["flags"],
+            json!(["action-config-fw"]),
+            "its flags by fwupd's names"
+        );
+        assert_eq!(
+            rollback["bios_setting"],
+            json!({"id": "rollback", "current": "Enabled", "target": "Disabled"}),
+            "the firmware setting as it's set and as passing needs it"
+        );
+        assert_eq!(
+            rollback["kernel"],
+            Value::Null,
+            "no kernel setting where fwupd names none"
+        );
+        assert_eq!(
+            said["attributes"][0]["passed"], true,
+            "one with the success flag passes"
+        );
+        let lockdown = &said["attributes"][3];
+        assert_eq!(
+            lockdown["level"],
+            Value::Null,
+            "one about what's running has no level"
+        );
+        assert_eq!(
+            lockdown["flags"],
+            json!(["runtime-issue", "action-config-os"]),
+            "its flags by fwupd's names"
+        );
+        assert_eq!(
+            lockdown["kernel"],
+            json!({"current": "none", "target": "integrity"}),
+            "the kernel's setting as it's set and as passing needs it"
+        );
     }
 
     #[test]

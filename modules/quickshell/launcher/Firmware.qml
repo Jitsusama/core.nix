@@ -14,7 +14,8 @@
 // Every word is the vocabulary's (launcher/words.json). The daemon asks fwupd once a minute while
 // watched and at once each time fwupd says something changed, as when a
 // device is unplugged from the charger, so nothing here asks fwupd
-// anything but to install. A machine without fwupd names no Firmware.
+// anything but to install, or to fix a security attribute or put its fix
+// back. A machine without fwupd names no Firmware.
 //
 // A device with an update offered holds Install first (VKCF3Z,
 // 2026-10-30), which asks once, saying what it ends, since firmware can't
@@ -45,8 +46,22 @@ Provider {
     // { outcome, reason }, outcome "installed" or "failed", so its row
     // stays to say so until Firmware is opened again, by the Lists rule.
     property var installs: ({})
+    // The change fwupd is making, "fix:" or "undo:" and the attribute,
+    // or "", and how each change since the launcher opened ended, keyed
+    // the same way, so a fix's end never reads as its undo's; a restart
+    // into firmware setup that didn't go is kept there too, as "setup:".
+    property string changing: ""
+    property var changes: ({})
+    // The attribute whose restart into firmware setup is being asked of
+    // logind, or "".
+    property string restarting: ""
+    // The minutes an install or a change was waited for before fwupdmgr
+    // was stopped, or 0 while it ended by itself.
+    property int installStopped: 0
+    property int changeStopped: 0
 
     readonly property string fwupdmgr: settings.fwupdmgr ?? ""
+    readonly property string systemctl: settings.systemctl ?? ""
     // Whether Firmware's rows can be seen: its answer, or words typed that
     // ask it, a row of it, or Machine's place holding its row, so the
     // daemon asks fwupd only then and a change fwupd says is answered at
@@ -134,35 +149,287 @@ Provider {
         }, () => provider.inside(device));
     }
 
-    // fwupd's rating of the machine's own firmware, "HSI:3!", as fwupd
-    // writes it, without the version it appends; a "!" says something
-    // running lowers it. The drawer says what it rated and which fwupd.
+    // fwupd's rating of the machine's own firmware, "HSI:1!", as fwupd
+    // writes it, a name from the world, without the version it appends;
+    // its note says the level in words, and that what's running lowers it
+    // where there's a "!" (VKCF3Z [55ed47a4], 2026-11-09, which rules
+    // this row's note though it steps in). The drawer says what the next
+    // level needs and what's running that lowers it, in our words, then
+    // what it rated and which fwupd, its words saying the level once as a
+    // sentence, under an eyebrow saying where and what kind it is. A step
+    // in lists every attribute the level is made of (attributeRow), each
+    // failing one first, then the rating, which Return copies, wearing
+    // Security Level's mark so it doesn't read as a heading (VKCF3Z,
+    // 2026-11-09).
     function securityRow(host) {
         const id = "firmware:security";
-        const level = String(host.security).replace(/\s*\(v[^)]*\)\s*$/, "");
+        const rating = Fwupd.ratingOf(host.security);
         const said = Words.of(id).said ?? {};
+        const meaning = rating.level === null ? "" : said[String(rating.level)] ?? "";
+        const attributes = host.attributes;
+        const results = Words.of("firmware:result").said ?? {};
+        const failing = list => list.map(one => `${one.name} ${resultOf(one, results)}`)
+            .join(" \u00b7 ");
+        const needed = Fwupd.neededFor(attributes, rating.level);
+        const lowered = rating.lowered ? Fwupd.loweredBy(attributes) : [];
         const facts = [];
+        if (needed.length > 0)
+            facts.push({ label: Words.name("firmware:needed", "", { level: rating.level + 1 }),
+                value: failing(needed) });
+        if (lowered.length > 0)
+            facts.push({ label: Words.name("firmware:lowered"), value: failing(lowered) });
         if (host.product)
             facts.push({ label: Words.name("firmware:product"), value: host.product });
         if (host.fwupd)
             facts.push({ label: Words.name("firmware:rated"), value: `fwupd ${host.fwupd}` });
+        const form = rating.lowered ? "sentence-lowered" : "sentence";
+        const sentence = meaning === "" ? "" : String(said[form] ?? "")
+            .replace("{level}", rating.level).replace("{meaning}", meaning);
         return thingRow({
             thing: true,
             key: `${id}`,
             name: Words.name(id),
-            side: level,
-            note: level.endsWith("!") ? said.running : said.level,
+            side: rating.code,
+            note: [meaning, rating.lowered ? said.lowered : ""].filter(Boolean).join(" \u00b7 "),
             glyph: Words.glyph("firmware"),
             live: provider,
-            drawer: () => ({ title: Words.name(id), facts: facts, body: "" })
-        }, () => [copyRow({
+            drawer: () => ({ eyebrow: said.eyebrow ?? "", title: Words.name(id), facts: facts,
+                body: sentence })
+        }, () => Fwupd.listed(attributes).map(attributeRow).concat([copyRow({
             key: `${id}:level`,
             name: Words.name(id),
-            side: level,
-            copy: level,
+            side: rating.code,
+            copy: rating.code,
+            hue: "machine",
+            glyph: Words.glyph("firmware"),
+            // A figure wears no mark unless it's marked (Choice.qml).
+            marked: true
+        })]));
+    }
+
+    // What fwupd found of an attribute in our words, "not enabled", and
+    // that it couldn't read what it needed where it says so.
+    function resultOf(attribute, results) {
+        const found = results[attribute.result] ?? attribute.result;
+        return attribute.missing ? `${found} \u00b7 ${results.missing}` : found;
+    }
+
+    // One attribute of the security level, as fwupd names it: its side
+    // its group, the level it counts at or what's running, muted on every
+    // row, then what was found, warning where it fails; its mark the theme's for a pass, or
+    // its warning mark in warning ink for a shortfall (VKCF3Z,
+    // 2026-11-09). Its drawer, under an eyebrow saying its group and that
+    // it's a check, "level 2 \u00b7 check", says what passing would find, what fixes it,
+    // the firmware setting or the kernel's it reads, what that's set to
+    // and what passing needs, and fwupd's description in its words, the
+    // setting, plugin and attribute laid out as identifiers, at their
+    // dots. A step in holds what takes Joel to its fix (actsOn).
+    function attributeRow(attribute) {
+        const results = Words.of("firmware:result").said ?? {};
+        const groups = Words.of("firmware:group").said ?? {};
+        const fixes = Words.of("firmware:fixed-in").said ?? {};
+        const facts = [];
+        const fact = (id, value, identifies) => {
+            if (value)
+                facts.push({ label: Words.name(id), value: value, identifies: !!identifies });
+        };
+        if (!attribute.passed && attribute.passesAs)
+            fact("firmware:passes-as", results[attribute.passesAs] ?? attribute.passesAs);
+        if (!attribute.passed)
+            fact("firmware:fixed-in", fixes[attribute.fix] ?? "");
+        fact("firmware:setting", attribute.setting?.id ?? "", true);
+        fact("firmware:set-to", attribute.setting?.current ?? "");
+        if (!attribute.passed)
+            fact("firmware:should-be", attribute.setting?.target ?? "");
+        fact("firmware:kernel-set-to", attribute.kernel?.current ?? "");
+        if (!attribute.passed)
+            fact("firmware:kernel-should-be", attribute.kernel?.target ?? "");
+        fact("firmware:plugin", attribute.plugin, true);
+        fact("firmware:attribute", attribute.id, true);
+        const group = attribute.level === null ? groups.running
+            : String(groups.level ?? "").replace("{level}", attribute.level);
+        const result = resultOf(attribute, results);
+        // A thing, so its drawer shows as it's selected, as a port's does.
+        return thingRow({
+            thing: true,
+            key: `firmware:security:${attribute.id}`,
+            name: attribute.name,
+            side: `${group} \u00b7 ${result}`,
+            sideItems: [{ said: group, keep: 1, hue: "muted" }, { said: result, keep: 2 }],
+            note: "",
+            warns: !attribute.passed,
+            hue: attribute.passed ? "machine" : "warning",
+            glyph: attribute.passed ? Theme.glyph.complete : Theme.glyph.caution,
+            live: provider,
+            drawer: () => ({ eyebrow: [group, groups.kind].filter(Boolean).join(" \u00b7 "),
+                title: attribute.name, facts: facts,
+                body: attribute.about })
+        }, () => provider.actsOn(attribute));
+    }
+
+    // What an attribute holds a step in: Secure It where it fails and fwupd
+    // can change it itself, Undo It where it passes and fwupd can put
+    // it back, Reboot Into Firmware Setup where it fails and a firmware
+    // setting fixes it, then fwupd's id for it, which Return copies and
+    // its documentation goes by.
+    function actsOn(attribute) {
+        const acts = [];
+        if (!attribute.passed && attribute.canFix)
+            acts.push(changeRow(attribute, "fix"));
+        if (attribute.passed && attribute.canUndo)
+            acts.push(changeRow(attribute, "undo"));
+        if (!attribute.passed && attribute.fix === "setup")
+            acts.push(setupRow(attribute));
+        return acts.concat([copyRow({
+            key: `firmware:security:${attribute.id}:id`,
+            name: Words.name("firmware:attribute"),
+            side: attribute.id,
+            copy: attribute.id,
             hue: "machine",
             glyph: ""
         })]);
+    }
+
+    // fwupd fixing an attribute itself, or putting a fix back, as
+    // fwupdmgr's security-fix and security-undo do: asked once, saying
+    // what it changes, then done with Joel's second Return, fwupd's polkit
+    // rules saying whether a password is asked. The row stays to say how
+    // it ended.
+    function changeRow(attribute, how) {
+        const id = `verb:firmware:${how}`;
+        const notes = Words.of(id).said ?? {};
+        const keyed = `${how}:${attribute.id}`;
+        const ended = changes[keyed] ?? null;
+        const row = {
+            key: `${id}:${attribute.id}`,
+            name: Words.name(id),
+            verb: Words.verb(id),
+            glyph: Words.glyph(id),
+            hue: "action",
+            stays: true
+        };
+        const standing = note => changing === keyed ? notes.changing : note;
+        const noted = (fields, note) => thing(Object.assign(row, fields, {
+            note: note,
+            state: () => standing(note)
+        }));
+        if (changing === keyed)
+            return noted({ run: () => {} }, notes.changing);
+        if (ended?.outcome === "changed")
+            return noted({ gone: true }, notes.changed);
+        const sure = () => [thing({
+            key: `${id}:sure:${attribute.id}`,
+            // The step that asks Joel to be sure, so its Return does it (Launcher.lands).
+            sure: true,
+            name: String(Words.of(id).sure ?? "").replace("{attribute}", attribute.name),
+            note: notes.final,
+            verb: Words.verb(id),
+            glyph: Words.glyph(id),
+            hue: "alert",
+            stays: true,
+            state: () => standing(notes.final),
+            run: () => provider.change(attribute, how)
+        })];
+        const failed = ended?.outcome === "failed";
+        return noted({ verbs: sure, targets: sure },
+            failed ? [notes.failed, ended.reason].filter(Boolean).join(" \u00b7 ") : notes.what);
+    }
+
+    // Restarting into the firmware's own setup, where the setting that
+    // fixes an attribute is changed, saying which and to what where fwupd
+    // says: asked once, since it closes every window, then done with
+    // Joel's second Return, as Power's Reboot is. logind refuses it where
+    // the firmware can't be asked to open its setup, and the row then
+    // says logind's words for why.
+    function setupRow(attribute) {
+        const id = "verb:firmware:setup";
+        const notes = Words.of(id).said ?? {};
+        const setting = attribute.setting;
+        const ended = changes[`setup:${attribute.id}`] ?? null;
+        const asked = setting?.target ? String(notes.set ?? "").replace("{setting}", setting.id)
+            .replace("{target}", setting.target) : notes.find;
+        const note = ended?.outcome === "failed"
+            ? [notes.failed, ended.reason].filter(Boolean).join(" \u00b7 ") : asked;
+        const sure = () => [thing({
+            key: `${id}:sure:${attribute.id}`,
+            // The step that asks Joel to be sure, so its Return does it (Launcher.lands).
+            sure: true,
+            name: Words.of(id).sure ?? "",
+            note: notes.final,
+            verb: Words.verb(id),
+            glyph: Words.glyph(id),
+            hue: "alert",
+            run: () => provider.restart(attribute)
+        })];
+        return thing({
+            key: `${id}:${attribute.id}`,
+            name: Words.name(id),
+            note: note,
+            verb: Words.verb(id),
+            glyph: Words.glyph(id),
+            hue: "action",
+            stays: true,
+            verbs: sure,
+            targets: sure
+        });
+    }
+
+    // Has logind restart into the firmware's setup, unless it's already
+    // asked to.
+    function restart(attribute) {
+        if (restarting !== "" || systemctl === "")
+            return;
+        restarting = attribute.id;
+        restarter.command = [systemctl, "reboot", "--firmware-setup"];
+        restarter.running = true;
+    }
+
+    // logind refused the restart, or took it, in which case nothing here
+    // is left to see it.
+    function restartEnded(code) {
+        if (code !== 0) {
+            const ended = Object.assign({}, changes);
+            ended[`setup:${restarting}`] = { outcome: "failed",
+                reason: Fwupd.reason(restarterErr.text) };
+            changes = ended;
+        }
+        restarting = "";
+        answered();
+    }
+
+    // Has fwupd fix an attribute itself, or put a fix back, unless a
+    // change is going in. Neither asks anything in fwupd 2.1.9, but
+    // --no-reboot-check keeps a later fwupdmgr from answering a restart's
+    // question by itself, as Install does; the restart stays Joel's.
+    function change(attribute, how) {
+        if (changing !== "")
+            return;
+        changing = `${how}:${attribute.id}`;
+        changeStopped = 0;
+        changer.command = [fwupdmgr, how === "fix" ? "security-fix" : "security-undo",
+            attribute.id, "--assume-yes", "--no-reboot-check"];
+        changer.running = true;
+        changeWait.interval = Fwupd.changePatience() * 60000;
+        changeWait.restart();
+        answered();
+    }
+
+    // A change ended: fwupd says what changed, which the daemon reads at
+    // once, so the attribute says what it found now. One stopped for
+    // taking too long says how long it was waited for.
+    function changeEnded(code) {
+        changeWait.stop();
+        const how = changing.slice(0, changing.indexOf(":"));
+        const stopped = String(Words.of(`verb:firmware:${how}`).said?.stopped ?? "")
+            .replace("{count}", changeStopped);
+        const ended = Object.assign({}, changes);
+        ended[changing] = code === 0 && changeStopped === 0
+            ? { outcome: "changed", reason: "" }
+            : { outcome: "failed",
+                reason: changeStopped > 0 ? stopped : Fwupd.reason(changerErr.text) };
+        changes = ended;
+        changing = "";
+        answered();
     }
 
     // What a device holds a step in: Install while an update is offered,
@@ -229,7 +496,8 @@ Provider {
             run: () => provider.install(device)
         })];
         const failed = ended?.outcome === "failed";
-        return noted({ verbs: sure, targets: sure }, failed ? notes.failed : "");
+        return noted({ verbs: sure, targets: sure },
+            failed ? [notes.failed, ended.reason].filter(Boolean).join(" \u00b7 ") : "");
     }
 
     // What Install asks, as every act that can't be taken back does:
@@ -256,18 +524,27 @@ Provider {
         if (installing !== "" || device.offered === null)
             return;
         installing = device.id;
+        installStopped = 0;
         installer.command = [fwupdmgr, "update", device.id, "--assume-yes", "--no-reboot-check"];
         installer.running = true;
+        installWait.interval = Fwupd.installPatience(device) * 60000;
+        installWait.restart();
         answered();
     }
 
     // An install ended: fwupd says what changed, which the daemon reads
     // at once, so the row says whether it waits for the restart or has
-    // gone in.
+    // gone in. One stopped for taking too long says how long it was
+    // waited for, and the device says what fwupd went on to do.
     function installEnded(code) {
+        installWait.stop();
+        const stopped = String(Words.of("verb:firmware:install").said?.stopped ?? "")
+            .replace("{count}", installStopped);
         const ended = Object.assign({}, installs);
-        ended[installing] = code === 0 ? { outcome: "installed", reason: "" }
-            : { outcome: "failed", reason: Fwupd.reason(installerErr.text) };
+        ended[installing] = code === 0 && installStopped === 0
+            ? { outcome: "installed", reason: "" }
+            : { outcome: "failed",
+                reason: installStopped > 0 ? stopped : Fwupd.reason(installerErr.text) };
         installs = ended;
         installing = "";
         answered();
@@ -315,7 +592,7 @@ Provider {
         add("firmware:serial", about.serial, { identifies: true });
         const ended = installs[device.id] ?? null;
         const failed = ended?.outcome === "failed" && ended.reason !== ""
-            ? `${Words.of("verb:firmware:install").said?.failed ?? ""}: ${ended.reason}` : "";
+            ? `${Words.of("verb:firmware:install").said?.failed ?? ""} \u00b7 ${ended.reason}` : "";
         const eyebrows = Words.of("firmware:vendor").said ?? {};
         const eyebrow = device.vendor
             ? String(eyebrows.from ?? "").replace("{vendor}", device.vendor) : eyebrows.alone ?? "";
@@ -346,8 +623,10 @@ Provider {
         target: provider.launcher
 
         function onOpenChanged() {
-            if (!provider.launcher.open)
+            if (!provider.launcher.open) {
                 provider.installs = ({});
+                provider.changes = ({});
+            }
         }
     }
 
@@ -367,5 +646,43 @@ Provider {
             id: installerErr
         }
         onExited: code => provider.installEnded(code)
+    }
+
+    Process {
+        id: changer
+        stderr: StdioCollector {
+            id: changerErr
+        }
+        onExited: code => provider.changeEnded(code)
+    }
+
+    Process {
+        id: restarter
+        stderr: StdioCollector {
+            id: restarterErr
+        }
+        onExited: code => provider.restartEnded(code)
+    }
+
+    // A stuck fwupdmgr, or a polkit prompt left unanswered, is stopped
+    // once it has been waited for long enough (Firmware.js), so one
+    // install or change can't hold every other until the launcher
+    // restarts.
+    Timer {
+        id: installWait
+
+        onTriggered: {
+            provider.installStopped = Math.round(interval / 60000);
+            installer.running = false;
+        }
+    }
+
+    Timer {
+        id: changeWait
+
+        onTriggered: {
+            provider.changeStopped = Math.round(interval / 60000);
+            changer.running = false;
+        }
     }
 }

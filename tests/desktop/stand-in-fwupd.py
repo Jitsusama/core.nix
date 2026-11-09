@@ -7,6 +7,8 @@ has installed. The VM has no firmware to update, so this answers in fwupd's plac
 files a test writes in FOLDER, each as `fwupdmgr <command> --json` gives it: get-devices.json,
 get-updates.json and get-history.json. With no get-devices.json it says DEVICES, the laptop's
 two. Each time a file there changes it says Changed, as fwupd does once an update goes in.
+Its security level is the laptop's four attributes in SECURITY, one failing at level 2 for
+a firmware setting and one about what's running, which lowers it.
 """
 
 import json
@@ -45,8 +47,71 @@ NARROW = {"UpdateState", "Urgency", "InstallDuration", "VersionFormat"}
 SAID = {
     "DaemonVersion": ("s", "2.1.6"),
     "HostProduct": ("s", "Stand-in Laptop"),
-    "HostSecurityId": ("s", "HSI:1"),
+    "HostSecurityId": ("s", "HSI:1! (v2.1.6)"),
 }
+# fwupd's security attribute flags by their bits, as libfwupd numbers them.
+SUCCESS = 1 << 0
+RUNTIME_ISSUE = 1 << 10
+CONFIG_FW = 1 << 12
+CONFIG_OS = 1 << 13
+# What fwupd found of an attribute, by its number.
+ENABLED, NOT_ENABLED, FOUND = 1, 2, 11
+# The attributes the laptop's level is made of, as GetHostSecurityAttrs gives them: its
+# numbers are 32-bit but Flags and Created, as fwupd sends them.
+SECURITY = [
+    {
+        "AppstreamId": ("s", "org.fwupd.hsi.Tpm.Version20"),
+        "Name": ("s", "TPM v2.0"),
+        "Summary": ("s", "TPM 2.0 Present"),
+        "Description": ("s", "A TPM securely stores measurements of the firmware."),
+        "Plugin": ("s", "tpm"),
+        "HsiLevel": ("u", 1),
+        "HsiResult": ("u", FOUND),
+        "HsiResultSuccess": ("u", FOUND),
+        "Flags": ("t", SUCCESS),
+        "Created": ("t", 1_700_000_000),
+    },
+    {
+        "AppstreamId": ("s", "org.fwupd.hsi.Iommu"),
+        "Name": ("s", "IOMMU"),
+        "Summary": ("s", "IOMMU Protection"),
+        "Description": ("s", "The IOMMU keeps devices from reading memory they weren't given."),
+        "Plugin": ("s", "iommu"),
+        "HsiLevel": ("u", 1),
+        "HsiResult": ("u", ENABLED),
+        "HsiResultSuccess": ("u", ENABLED),
+        "Flags": ("t", SUCCESS),
+        "Created": ("t", 1_700_000_000),
+    },
+    {
+        "AppstreamId": ("s", "org.fwupd.hsi.Bios.RollbackProtection"),
+        "Name": ("s", "BIOS rollback protection"),
+        "Summary": ("s", "BIOS Rollback Protection"),
+        "Description": ("s", "Rollback protection keeps older firmware from being put back."),
+        "Plugin": ("s", "bios"),
+        "HsiLevel": ("u", 2),
+        "HsiResult": ("u", NOT_ENABLED),
+        "HsiResultSuccess": ("u", ENABLED),
+        "Flags": ("t", CONFIG_FW),
+        "BiosSettingId": ("s", "AllowBiosDowngrade"),
+        "BiosSettingCurrentValue": ("s", "Enabled"),
+        "BiosSettingTargetValue": ("s", "Disabled"),
+        "Created": ("t", 1_700_000_000),
+    },
+    {
+        "AppstreamId": ("s", "org.fwupd.hsi.Kernel.Lockdown"),
+        "Name": ("s", "Linux kernel lockdown"),
+        "Summary": ("s", "Linux Kernel Lockdown"),
+        "Description": ("s", "Lockdown keeps even root from changing the running kernel."),
+        "Plugin": ("s", "linux_lockdown"),
+        "HsiResult": ("u", NOT_ENABLED),
+        "HsiResultSuccess": ("u", ENABLED),
+        "Flags": ("t", RUNTIME_ISSUE | CONFIG_OS),
+        "KernelCurrentValue": ("s", "none"),
+        "KernelTargetValue": ("s", "integrity"),
+        "Created": ("t", 1_700_000_000),
+    },
+]
 # How often the folder is looked at for a change, in seconds.
 LOOK_EVERY = 0.25
 
@@ -137,6 +202,9 @@ def answer(connection: DBusConnection, fwupd: Fwupd, asked: Message) -> None:
     elif member == "GetDevices":
         devices = [dictionary(device) for device in fwupd.read("get-devices")]
         connection.send(new_method_return(asked, "aa{sv}", (devices,)))
+        return
+    elif member == "GetHostSecurityAttrs":
+        connection.send(new_method_return(asked, "aa{sv}", (SECURITY,)))
         return
     elif member == "GetHistory":
         history = [dictionary(entry) for entry in fwupd.read("get-history")]

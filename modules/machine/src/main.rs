@@ -798,14 +798,24 @@ fn fwupd(connection: &zbus::blocking::Connection) -> Vec<Value> {
         return vec![];
     };
     let text = |property: &str| proxy.get_property::<String>(property).ok();
-    let mut records = vec![firmware::host(
-        text("HostSecurityId").as_deref(),
-        text("HostProduct").as_deref(),
-        text("DaemonVersion").as_deref(),
-    )];
     let as_json = |dict: &HashMap<String, zbus::zvariant::OwnedValue>| {
         Value::Object(dict.iter().map(|(k, v)| (k.clone(), plain(v))).collect())
     };
+    // What the level is made of; an fwupd that can't say has none, and
+    // the journal says why.
+    let attributes: Vec<Value> = match proxy.call::<_, _, Dicts>("GetHostSecurityAttrs", &()) {
+        Ok(all) => all.iter().map(as_json).collect(),
+        Err(why) => {
+            eprintln!("<4>fwupd couldn't say its security attributes: {why}");
+            vec![]
+        }
+    };
+    let mut records = vec![firmware::host(
+        text("HostSecurityId").as_deref(),
+        &attributes,
+        text("HostProduct").as_deref(),
+        text("DaemonVersion").as_deref(),
+    )];
     let Ok(devices) = proxy.call::<_, _, Dicts>("GetDevices", &()) else {
         return records;
     };

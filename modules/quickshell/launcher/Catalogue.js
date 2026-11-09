@@ -42,10 +42,10 @@ const LOOKUPS = "keyboard:key:";
 // What a row's verb says it does that can't be taken back, or that ends
 // something in use: a window or a program closed, a call left, a session
 // locked or ended, a radio or a device turned off or forgotten, the
-// screen shared, firmware installed. Those are offered, never done, from
-// outside.
+// screen shared, firmware installed or a security setting fwupd fixes or
+// puts back. Those are offered, never done, from outside.
 const DISRUPTIVE = new Set(["close", "quit", "leave", "lock", "sleep", "reboot", "stop", "off",
-    "turn off", "forget", "disconnect", "share", "install"]);
+    "turn off", "forget", "disconnect", "share", "install", "fix", "undo"]);
 
 // The verb a row says now: a word, or a getter's; for one naming the act
 // its Return does (`returns`, Launcher.qml's returnOf), that act's.

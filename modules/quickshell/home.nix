@@ -1457,6 +1457,9 @@ in
             lib.getExe' osConfig.services.fwupd.package "fwupdmgr"
           else
             "";
+        # What asks logind to restart into the firmware's setup, by its
+        # store path, so its refusal can be read and said.
+        systemctl = lib.getExe' pkgs.systemd "systemctl";
       };
       # How WARP's link stands, from warp (modules/warp) asking the warp-cli
       # the system installs, only where it installs one, so a machine without
