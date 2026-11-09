@@ -13,7 +13,7 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
-use serde_json::Value;
+use crate::apart::apart;
 
 /// Whether nix-offload's record for a commit holds a changed-checks run that
 /// passed there and built what it named, against a base `on_main` says
@@ -48,6 +48,11 @@ pub enum Before {
     /// The same change passed at this commit, but main has since moved
     /// these of its files, so changed-checks runs again at the head.
     Shares(String, Vec<String>),
+    /// The same change passed whole at two commits, the newest first, and
+    /// main has since moved these of its files: it has been checked twice,
+    /// so a clean rebase needs no third run unless main renamed or deleted
+    /// a path it names, which [`names_gone`] says.
+    Twice(String, String, Vec<String>),
     /// No commit of the same change passed.
     Unchecked,
 }
@@ -65,14 +70,18 @@ pub enum Before {
 /// derivations: on 9 November #2504 merged with words.json's checks rerun
 /// at its head after main moved two other of its files, which no check
 /// that ran read. Nix builds only what the rebase moved, and takes the
-/// rest from the builders.
+/// rest from the builders. But main moves faster than a run: on 9
+/// November #2571 ran six times and #2576, #2603 and #2600 four or five
+/// each, every run passing, so a change that passed at two commits is
+/// `Twice` and the net tests it after it merges.
 pub fn checked_before(
     candidates: &[String],
     record: &dyn Fn(&str) -> String,
     on_main: &dyn Fn(&str) -> bool,
     same: &dyn Fn(&str) -> Option<Vec<String>>,
 ) -> Before {
-    let mut first_shared = None;
+    let mut first_shared: Option<(String, Vec<String>)> = None;
+    let mut passes = 0;
     for candidate in candidates {
         if !built_there(&record(candidate), on_main) {
             continue;
@@ -83,9 +92,18 @@ pub fn checked_before(
         if shared.is_empty() {
             return Before::Clean(candidate.clone());
         }
-        first_shared.get_or_insert(Before::Shares(candidate.clone(), shared));
+        passes += 1;
+        match &first_shared {
+            None => first_shared = Some((candidate.clone(), shared)),
+            Some((newest, shared)) if passes == 2 => {
+                return Before::Twice(newest.clone(), candidate.clone(), shared.clone());
+            }
+            Some(_) => {}
+        }
     }
-    first_shared.unwrap_or(Before::Unchecked)
+    first_shared.map_or(Before::Unchecked, |(newest, shared)| {
+        Before::Shares(newest, shared)
+    })
 }
 
 /// One side of a rebase: the files it changed, the paths it renamed or
@@ -108,15 +126,28 @@ pub fn shared(branch: &Side, main: &Side) -> Vec<String> {
         .filter(|file| branch.changed.contains(file))
         .cloned()
         .collect();
-    for (side, other) in [(main, branch), (branch, main)] {
-        for file in side.changed {
-            let text = (side.text)(file);
-            if !shared.contains(file) && other.gone.iter().any(|path| names(&text, file, path)) {
-                shared.push(file.clone());
-            }
+    for file in names_gone(branch, main) {
+        if !shared.contains(&file) {
+            shared.push(file);
         }
     }
     shared
+}
+
+/// The files either side changed that name a path the other renamed or
+/// deleted, which no number of earlier runs speaks for, since the run
+/// that reads the old path never saw it gone.
+pub fn names_gone(branch: &Side, main: &Side) -> Vec<String> {
+    let mut naming: Vec<String> = Vec::new();
+    for (side, other) in [(main, branch), (branch, main)] {
+        for file in side.changed {
+            let text = (side.text)(file);
+            if !naming.contains(file) && other.gone.iter().any(|path| names(&text, file, path)) {
+                naming.push(file.clone());
+            }
+        }
+    }
+    naming
 }
 
 /// Whether `text`, the file at `file`, names `path`: whole, from the
@@ -157,126 +188,6 @@ pub fn stands_apart(
         .chain(main.gone)
         .any(|path| head.contains(path.as_str()));
     !names_gone && apart(&base(file), &checked(file), &(main.text)(file), &head)
-}
-
-/// Whether a JSON file both sides changed was changed apart: what the
-/// branch changed from `base` and what main changed since touch no key in
-/// common, and the rebased `head` differs from each side only where the
-/// other changed it. Two such changes stand as two files would, which the
-/// gate already lets merge with no new run, the net catching how they
-/// meet. On 9 November #2571 was refused four times in two hours, each
-/// time for main moving words.json, a 300 KB file of the launcher's words
-/// that a quarter of main's merges change, during its own run; each of the
-/// 23 merges to it that day changed different words from the one before.
-/// A file any side leaves unreadable isn't apart.
-#[must_use]
-pub fn apart(base: &str, branch: &str, main: &str, head: &str) -> bool {
-    let read = |text: &str| serde_json::from_str::<Value>(text).ok();
-    let (Some(base), Some(branch), Some(main), Some(head)) =
-        (read(base), read(branch), read(main), read(head))
-    else {
-        return false;
-    };
-    let ours = changed(&base, &branch);
-    let theirs = changed(&base, &main);
-    let within = |paths: &[Vec<String>], of: &[Vec<String>]| {
-        paths
-            .iter()
-            .all(|path| of.iter().any(|whole| path.starts_with(whole)))
-    };
-    !ours
-        .iter()
-        .any(|a| theirs.iter().any(|b| a.starts_with(b) || b.starts_with(a)))
-        && within(&changed(&main, &head), &ours)
-        && within(&changed(&branch, &head), &theirs)
-}
-
-/// The paths of the keys at which `after` differs from `before`. An array
-/// whose items are objects each with its own `id` is read as keyed by it,
-/// since adding one moves every index after it, and its order counts as
-/// one change to the whole; any other array is read by index, and one
-/// that changes length is changed whole.
-fn changed(before: &Value, after: &Value) -> Vec<Vec<String>> {
-    let mut paths = Vec::new();
-    differ(before, after, &mut Vec::new(), &mut paths);
-    paths
-}
-
-/// The paths under one key, one side or both having it.
-fn under(
-    key: String,
-    before: Option<&Value>,
-    after: Option<&Value>,
-    at: &mut Vec<String>,
-    paths: &mut Vec<Vec<String>>,
-) {
-    at.push(key);
-    match (before, after) {
-        (Some(before), Some(after)) => differ(before, after, at, paths),
-        _ => paths.push(at.clone()),
-    }
-    at.pop();
-}
-
-fn differ(before: &Value, after: &Value, at: &mut Vec<String>, paths: &mut Vec<Vec<String>>) {
-    match (before, after) {
-        (Value::Object(a), Value::Object(b)) => {
-            for key in a.keys().chain(b.keys().filter(|key| !a.contains_key(*key))) {
-                under(format!(".{key}"), a.get(key), b.get(key), at, paths);
-            }
-        }
-        (Value::Array(a), Value::Array(b)) => match (by_id(a), by_id(b)) {
-            (Some(a), Some(b)) => {
-                let kept = |from: &[(&str, &Value)], to: &[(&str, &Value)]| -> Vec<String> {
-                    from.iter()
-                        .filter(|(id, _)| to.iter().any(|(other, _)| other == id))
-                        .map(|(id, _)| (*id).to_owned())
-                        .collect()
-                };
-                if kept(&a, &b) != kept(&b, &a) {
-                    paths.push(at.clone());
-                    return;
-                }
-                let mut ids: Vec<&str> = a.iter().map(|(id, _)| *id).collect();
-                ids.extend(
-                    b.iter()
-                        .map(|(id, _)| *id)
-                        .filter(|id| find(&a, id).is_none()),
-                );
-                for id in ids {
-                    under(format!("[id={id}]"), find(&a, id), find(&b, id), at, paths);
-                }
-            }
-            _ if a.len() == b.len() => {
-                for (index, (a, b)) in a.iter().zip(b).enumerate() {
-                    under(format!("[{index}]"), Some(a), Some(b), at, paths);
-                }
-            }
-            _ => paths.push(at.clone()),
-        },
-        _ if before != after => paths.push(at.clone()),
-        _ => {}
-    }
-}
-
-/// The item with `id` among `items`.
-fn find<'a>(items: &[(&str, &'a Value)], id: &str) -> Option<&'a Value> {
-    items
-        .iter()
-        .find(|(other, _)| *other == id)
-        .map(|(_, item)| *item)
-}
-
-/// An array's items by their `id`, when each is an object with its own.
-fn by_id(items: &[Value]) -> Option<Vec<(&str, &Value)>> {
-    let keyed: Vec<(&str, &Value)> = items
-        .iter()
-        .map(|item| item["id"].as_str().map(|id| (id, item)))
-        .collect::<Option<_>>()?;
-    let mut ids: Vec<&str> = keyed.iter().map(|(id, _)| *id).collect();
-    ids.sort_unstable();
-    ids.dedup();
-    (!keyed.is_empty() && ids.len() == keyed.len()).then_some(keyed)
 }
 
 /// A list each change adds a line to, which on a busy day main moves in
@@ -439,52 +350,6 @@ mod tests {
 
     fn owned(names: &[&str]) -> Vec<String> {
         names.iter().map(|name| (*name).to_owned()).collect()
-    }
-
-    const WORDS: &str = r#"{"home": ["on"], "things": [
-        {"id": "a", "said": {"x": "1"}}, {"id": "b", "said": {"y": "2"}}]}"#;
-
-    #[test]
-    fn a_json_file_changed_at_different_keys_is_apart() {
-        // #2571's case: the branch changed one thing's words, and main added
-        // another thing, which moves every index after it.
-        let branch = WORDS.replace("\"1\"", "\"one\"");
-        let main = WORDS.replace("[\n", "[\n{\"id\": \"new\"}, ");
-        let head = main.replace("\"1\"", "\"one\"");
-        assert!(apart(WORDS, &branch, &main, &head), "main added a thing");
-        let main = WORDS.replace("[\"on\"]", "[\"on\", \"off\"]");
-        let head = main.replace("\"1\"", "\"one\"");
-        assert!(
-            apart(WORDS, &branch, &main, &head),
-            "a list elsewhere moved"
-        );
-    }
-
-    #[test]
-    fn a_json_file_changed_at_one_key_or_merged_oddly_is_not() {
-        let branch = WORDS.replace("\"1\"", "\"one\"");
-        let main = WORDS.replace("{\"id\": \"a\", \"said\": {\"x\": \"1\"}}, ", "");
-        assert!(
-            !apart(WORDS, &branch, &main, &main),
-            "main took away what it changed"
-        );
-        let reordered = r#"{"home": ["on"], "things": [
-            {"id": "b", "said": {"y": "2"}}, {"id": "a", "said": {"x": "1"}}]}"#;
-        let head = reordered.replace("\"1\"", "\"one\"");
-        assert!(
-            !apart(WORDS, &branch, reordered, &head),
-            "main reordered the things"
-        );
-        let main = WORDS.replace("[\"on\"]", "[\"on\", \"off\"]");
-        let head = main.replace("\"1\"", "\"one\"").replace("\"2\"", "\"two\"");
-        assert!(
-            !apart(WORDS, &branch, &main, &head),
-            "the head changed what neither did"
-        );
-        assert!(
-            !apart(WORDS, &branch, "{", &head),
-            "main's side doesn't read"
-        );
     }
 
     #[test]
@@ -723,6 +588,70 @@ mod tests {
             )),
             Before::Unchecked
         );
+    }
+
+    #[test]
+    fn the_same_change_passed_at_two_commits_needs_no_third_run() {
+        let passed = "{\"dir\":null,\"printed\":\"\",\"run\":[\"--system\",\"x86_64-linux\"]}\n";
+        let files = vec!["a.rs".to_owned(), "b.md".to_owned()];
+        let candidates = vec!["rebased".to_owned(), "old".to_owned(), "other".to_owned()];
+        let moved = |commit: &str| match commit {
+            "rebased" => Some(vec!["b.md".to_owned()]),
+            "old" => Some(vec!["a.rs".to_owned(), "b.md".to_owned()]),
+            _ => None,
+        };
+        let both = |commit: &str| match commit {
+            "rebased" | "old" | "other" => passed.to_owned(),
+            _ => String::new(),
+        };
+        assert_eq!(
+            checked_before(&candidates, &both, &on_main, &|at: &str| sharing(
+                &files,
+                moved(at)
+            )),
+            Before::Twice(
+                "rebased".to_owned(),
+                "old".to_owned(),
+                vec!["b.md".to_owned()]
+            ),
+            "passed whole at two commits of the same change, so a third rebase needs no run"
+        );
+        // Passed once, and another change passed: one run still asks.
+        let once = |commit: &str| match commit {
+            "rebased" | "other" => passed.to_owned(),
+            _ => String::new(),
+        };
+        assert_eq!(
+            checked_before(&candidates, &once, &on_main, &|at: &str| sharing(
+                &files,
+                moved(at)
+            )),
+            Before::Shares("rebased".to_owned(), vec!["b.md".to_owned()])
+        );
+    }
+
+    #[test]
+    fn a_file_naming_what_main_took_away_is_named_whatever_ran() {
+        let files = vec!["tests/list.nix".to_owned()];
+        let moved = vec!["tests/old.sh".to_owned()];
+        let names_old = |_: &str| "[ ./old.sh ]".to_owned();
+        let branch = Side {
+            changed: &files,
+            gone: &[],
+            text: &names_old,
+        };
+        let main = Side {
+            changed: &moved,
+            gone: &moved,
+            text: &nothing,
+        };
+        assert_eq!(names_gone(&branch, &main), files);
+        let branch = Side {
+            changed: &files,
+            gone: &[],
+            text: &nothing,
+        };
+        assert_eq!(names_gone(&branch, &main), Vec::<String>::new());
     }
 
     #[test]
