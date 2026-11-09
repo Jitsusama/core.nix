@@ -106,12 +106,14 @@ Provider {
     // warp can't read, which the row says in its place; or there's no
     // warp-cli, so no WARP at all. Not answering, its drawer ends with
     // warp-cli's error as written, in the Name face, as something to copy
-    // or look up (VKCF3Z, 2026-11-09).
+    // or look up (VKCF3Z, 2026-11-09). With a drawer it's a thing, as the
+    // desk light's answer is, since the launcher draws only a thing's.
     function failedAnswer() {
         const failed = Warp.failed(said, words);
         if (failed === null)
             return null;
         return {
+            thing: !!failed.error,
             headline: failed.headline,
             warns: failed.warns,
             whole: true,

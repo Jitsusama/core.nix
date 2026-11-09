@@ -1308,6 +1308,14 @@ def test_warp_says_how_its_link_stands_in_network_and_when_it_isnt_answering(
                 == ("not answering", "its service isn't running")
             )
         )
+        # Its drawer comes out, warp-cli's error as written its last fact (VKCF3Z, 2026-11-09).
+        shell.launcher_until(
+            lambda shown: (
+                shown["drawer"]["shown"]
+                and shown["drawer"]["title"] == "WARP"
+                and shown["drawer"]["facts"][-1:] == ["Error"]
+            )
+        )
         shell.close_launcher()
     finally:
         shutil.rmtree(said)
