@@ -1301,11 +1301,20 @@ def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desk
 
 
 def for_you_counts_its_bands(desktop: Desktop) -> None:
-    """Hold that For You's own row, holding an ask and a look, counts each band it holds."""
-    # VKCF3Z, 3a92c450: its row says the bands as a run, needed most first.
+    """Hold that For You's own row, holding an ask and a look, counts each band it holds.
+
+    It's a place's row, so nothing stands after its name, and its drawer names the heaviest.
+    """
+    # VKCF3Z, 3a92c450 and 16efb1dc: its row says the bands as a run, needed most first.
     waiting_opened(desktop)
     desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("side") == "1 to do \u00b7 1 to look at"
+        lambda shown: (
+            (shown["selected"] or {}).get("side") == "1 to do \u00b7 1 to look at"
+            and not shown["selected"].get("count")
+            and not shown["selected"].get("note")
+            and shown["drawer"]["title"] == "For You"
+            and shown["drawer"]["facts"] == ["Heaviest"]
+        )
     )
     desktop.close_launcher()
 

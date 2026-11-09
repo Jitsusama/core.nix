@@ -1280,18 +1280,14 @@ Provider {
         return { holding, bands: Lately.bands(holding, weigh) };
     }
 
-    // Each source's name as its row says it: its piece's title, or its
-    // notices' own.
-    function latelyName(source) {
-        const fact = latelyPieces.find(one => one.piece.lately === source);
-        return fact === undefined ? Words.name(`for-you:source:${source}`) : fact.piece.title;
+    // What needs Joel most, its title and minutes as home's Now says it
+    // ("Answer the ask \u00b7 2 min"), else the heaviest To Look At holds,
+    // for For You's drawer.
+    function heaviestSaid() {
+        const items = toDoCount > 0 ? homeItems().filter(item => item.keep < 3) : [];
+        return items.length > 0 ? items.map(item => item.said).join(" \u00b7 ")
+            : forYouBands.look[0]?.make(Date.now())?.name ?? "";
     }
-
-    // The sources Lately holds unread, in its order, as For You's own row
-    // names them after its name, so mail waiting alone is still on Now's
-    // top (VKCF3Z, 2026-11-08).
-    readonly property string latelyNames: latelyBands(Date.now()).bands
-        .map(band => latelyName(band.source)).join(", ")
 
     // Each is a place's row, stepped into for rows of its own (VKCF3Z,
     // 2026-11-09, fef0c4d5): nothing after its name, as no place says
@@ -1428,16 +1424,15 @@ Provider {
             : WaitingOnYou.later.length > 0
                 ? waitingSaid("later", { count: WaitingOnYou.later.length })
                 : waitingSaid("none", {}),
-        // The first thing waiting, in its words after its name, since
-        // it's what the row holds; the head no longer says it (VKCF3Z,
-        // 2026-11-06, one calm head). With nothing waiting, the sources
-        // Lately holds unread stand there instead, "For You  Mail", and
-        // beside what waits they're its note, so what came is never lost
-        // from Now's top while the side counts only what waits on Joel
-        // (VKCF3Z, 2026-11-08).
-        count: first !== "" ? first : latelyNames,
-        note: first !== "" ? latelyNames : "",
+        // A place's row, so nothing stands after its name; its drawer
+        // names the heaviest it holds, as To Look At's does, and the
+        // bands keep the row's room (VKCF3Z, 16efb1dc).
         nested: true,
+        thing: true,
+        drawer: () => heaviestSaid() === "" ? null : {
+            title: Words.name("on:waiting"),
+            facts: [provider.fact("heaviest", heaviestSaid())]
+        },
         verbs: () => provider.waitingRows(),
         targets: () => provider.waitingRows(),
         commands: () => provider.filterCommands(null),

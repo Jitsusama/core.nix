@@ -1460,9 +1460,10 @@ works the same way everywhere.
   (VKCF3Z, bd5cb965). Calm, it says what waits by its band ("44 to look
   at · 2 to try"), and nothing only when all are empty; For You's own
   row inside Now counts every band, needed most first ("1 to do · 44 to
-  look at · 2 to try"), To Try giving way first (VKCF3Z, a31a0e1b,
-  3a92c450). Now's drawer is its moment plate, which leaves out For You
-  while the row says it. A place's
+  look at · 2 to try"), To Try giving way first, and as a place's row
+  says nothing after its name, its drawer naming the heaviest it holds
+  (VKCF3Z, a31a0e1b, 3a92c450, 16efb1dc). Now's drawer is its moment
+  plate, which leaves out For You while the row says it. A place's
   row is the same row at home and inside its parent, made by one
   function (Joel, 2026-11-08: "i don't like how the title and values on
   the home screen differ from every other sub-menu"; VKCF3Z, 2a429f67),
