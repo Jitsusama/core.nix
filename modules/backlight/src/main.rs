@@ -39,7 +39,8 @@
 //! From sunset to sunrise where the laptop is, the night light warms the
 //! built-in panel too, whatever its sensor sees (night.rs), through the
 //! same program; where it is comes from whereabouts'
-//! `$XDG_RUNTIME_DIR/whereabouts.json`, looked at again within the hour,
+//! `$XDG_RUNTIME_DIR/whereabouts/here.json`, what it keeps of where here
+//! is, looked at again within the hour,
 //! or every ten seconds until it says a place,
 //! and Joel's say over it is kept in `$XDG_STATE_HOME/backlight/night`.
 //! Where the warmth stands, whether it follows the room, whether a sensor
@@ -540,7 +541,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
         night: Nightly::new(
             night_white,
             kept.join("night"),
-            runtime.join("whereabouts.json"),
+            runtime.join("whereabouts/here.json"),
         ),
         relay_down: None,
     };

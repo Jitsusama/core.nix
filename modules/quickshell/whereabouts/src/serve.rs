@@ -132,11 +132,6 @@ impl Shared {
         })
     }
 
-    /// What's known now, a copy of one part of it.
-    pub fn read<T>(&self, part: impl FnOnce(&Known) -> T) -> T {
-        part(&lock(self).known)
-    }
-
     /// Changes what's known, and tells every watch the record if it
     /// changed. A connection whose lines aren't being read is hung up on,
     /// and its watches dropped, rather than told less than it asked for.
@@ -325,7 +320,10 @@ mod tests {
     fn a_fix_is_said_in_its_units() {
         let fix = Fix::new(12.3457, -98.7654, 26_000.0, 1_790_000_000)
             .unwrap()
-            .named(Some("Kelpwater, Ontario".into()), Some("America/Toronto".into()))
+            .named(
+                Some("Kelpwater, Ontario".into()),
+                Some("America/Toronto".into()),
+            )
             .countried(Some("Canada".into()));
         let said = record(&Known {
             here: Some(fix),

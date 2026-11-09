@@ -366,6 +366,27 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         """Run a command as the account, inside its session, and give what it printed."""
         return self.machine.succeed(self.in_session(command))
 
+    # What whereabouts keeps of where the laptop is, read back as it starts.
+    KEPT_HERE = "$XDG_RUNTIME_DIR/whereabouts/here.json"
+
+    def found_at(self, here: Json | None) -> None:
+        """Say where the laptop is in whereabouts' stead, or nowhere for None.
+
+        The VM has no geolocation service, so GeoClue finds nothing and what whereabouts kept
+        from before it started stands: this writes that, in the kept file's shape, and starts
+        it again, which says it over its socket as a restart would.
+        """
+        kept = self.KEPT_HERE
+        write = f"rm -f {kept}"
+        if here is not None:
+            write = f"printf %s {shlex.quote(json.dumps(here))} > {kept}"
+        self.as_account(f"{write} && systemctl --user restart whereabouts.service")
+
+    def here_kept(self) -> Json | None:
+        """Give where whereabouts says the laptop is, as it keeps it, or None for nowhere."""
+        said = self.as_account(f"cat {self.KEPT_HERE} 2>/dev/null || true").strip()
+        return cast("Json", json.loads(said)) if said else None
+
     def shell_said(self, *words: str) -> str:
         """Give which of these words the shell's journal holds, one a line.
 

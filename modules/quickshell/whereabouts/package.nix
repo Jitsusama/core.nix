@@ -1,5 +1,6 @@
-# Where the laptop is, for the launcher's weather, built from this
-# directory, its tests run as it builds.
+# The daemon that holds where the laptop is and the clock's zone, for the
+# launcher, built from this directory, its tests run as it builds: its
+# socket's among them (tests/daemon.rs).
 { lib, rustPlatform }:
 rustPlatform.buildRustPackage {
   pname = "whereabouts";
@@ -10,11 +11,12 @@ rustPlatform.buildRustPackage {
       ./Cargo.toml
       ./Cargo.lock
       ./src
+      ./tests
     ];
   };
   cargoLock.lockFile = ./Cargo.lock;
   meta = {
-    description = "Says where the laptop is, from GeoClue, for the launcher's weather";
+    description = "Holds where the laptop is, from GeoClue, and the clock's zone, over a socket";
     license = lib.licenses.mit;
     mainProgram = "whereabouts";
     platforms = lib.platforms.linux;

@@ -215,12 +215,11 @@ async fn serve(socket: &Path, root: &Path, files: Option<Files>) -> Result<(), B
             }
         });
     }
-    match files {
-        Some(files) => follow(&shared, &files, pinned).await,
-        None => {
-            std::future::pending::<()>().await;
-            Ok(())
-        }
+    if let Some(files) = files {
+        follow(&shared, &files, pinned).await
+    } else {
+        std::future::pending::<()>().await;
+        Ok(())
     }
 }
 
@@ -244,9 +243,8 @@ fn beside(file: &Path) -> Option<(PathBuf, String)> {
 /// the pin's is passed to `follow`, which says what it means for here.
 fn hear(shared: &Shared, watched: &Watched, pins: &UnboundedSender<()>) -> io::Result<()> {
     let notify = Notify::new()?;
-    let watch = |file: &Path| {
-        beside(file).and_then(|(folder, name)| Some((notify.watch(&folder)?, name)))
-    };
+    let watch =
+        |file: &Path| beside(file).and_then(|(folder, name)| Some((notify.watch(&folder)?, name)));
     let zone = watch(&watched.localtime);
     let moved = watched.moved.as_deref().and_then(watch);
     let pin = watched.pin.as_deref().and_then(watch);
@@ -273,6 +271,9 @@ fn hear(shared: &Shared, watched: &Watched, pins: &UnboundedSender<()>) -> io::R
 
 /// Says a new here: kept for the next start, and told every watch.
 fn say(shared: &Shared, files: &Files, here: Option<Fix>) {
+    if let Some(folder) = files.kept.parent() {
+        let _ = fs::create_dir_all(folder);
+    }
     let kept = match &here {
         Some(fix) => fix.write(&files.kept),
         None => match fs::remove_file(&files.kept) {
@@ -289,22 +290,18 @@ fn say(shared: &Shared, files: &Files, here: Option<Fix>) {
 /// Says the pin while there is one, and lets a here Joel set go once its
 /// pin has; answers whether a pin holds.
 fn pin_holds(shared: &Shared, files: &Files, last: &mut Option<Fix>) -> bool {
-    match pinned(&files.pin) {
-        Some(set) => {
-            if last.as_ref() != Some(&set) {
-                *last = Some(set.clone());
-                say(shared, files, Some(set));
-            }
-            true
+    if let Some(set) = pinned(&files.pin) {
+        if last.as_ref() != Some(&set) {
+            *last = Some(set.clone());
+            say(shared, files, Some(set));
         }
-        None => {
-            if last.as_ref().is_some_and(|fix| fix.hand) {
-                *last = None;
-                say(shared, files, None);
-            }
-            false
-        }
+        return true;
     }
+    if last.as_ref().is_some_and(|fix| fix.hand) {
+        *last = None;
+        say(shared, files, None);
+    }
+    false
 }
 
 /// Follows GeoClue for as long as the program runs, asking it again a

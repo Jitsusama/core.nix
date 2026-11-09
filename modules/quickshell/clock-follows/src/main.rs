@@ -176,8 +176,11 @@ fn watched(socket: &Path, state: &Path, timedatectl: &str) -> io::Result<()> {
         for fix in fixes(&line?) {
             // A move that fails, as when timedated refuses, is said and
             // the next change decided anew.
-            if let Err(why) = decided(&fix, state, timedatectl) {
-                eprintln!("<3>{why}");
+            match decided(&fix, state, timedatectl) {
+                // Said each time, never where, so what was heard can be
+                // counted without the journal keeping where Joel is.
+                Ok(()) => eprintln!("<7>where the laptop is was decided"),
+                Err(why) => eprintln!("<3>{why}"),
             }
         }
     }

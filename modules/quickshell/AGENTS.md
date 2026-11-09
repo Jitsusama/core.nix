@@ -65,7 +65,8 @@ machine, one path through each connection.
   Tuple's among them; `keyboard-lights.rs`, which says whether caps
   lock is on, run by `nixos.nix`; [`record-window/`][record], one
   window's recording for the recorder; and [`whereabouts/`][whereabouts],
-  where the laptop is, from GeoClue, for the weather's here.
+  the daemon that holds where the laptop is, from GeoClue, and the
+  clock's zone, over `daemons/location.sock`.
 - [`maths/`][maths]: libqalculate as a QML module, `Maths`, which the
   launcher's sums and measures are worked out by in the shell's own
   process, its definitions read once and each key asked with a time limit;
