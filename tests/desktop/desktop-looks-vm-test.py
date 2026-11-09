@@ -3991,7 +3991,8 @@ def nearby_shown_to_a_terminal(desktop: Desktop) -> None:
     machine = desktop.machine
     desktop.launcher_left_closed()
     for adapter in ADAPTERS:
-        heard = machine.succeed(f"busctl tree org.bluez --list | grep -x '{adapter}/dev_[^/]*' || true")
+        devices = f"grep -x '{adapter}/dev_[^/]*' || true"
+        heard = machine.succeed(f"busctl tree org.bluez --list | {devices}")
         for device in heard.split():
             machine.succeed(
                 f"busctl call org.bluez {adapter} org.bluez.Adapter1 RemoveDevice o {device}"
