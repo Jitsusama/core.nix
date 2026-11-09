@@ -149,7 +149,7 @@
     the XPS 14's kernel drives an MST hub whose first branch didn't answer its link address as a
     single stream until the sink goes away, so the monitor behind it still lights
   '';
-  a-stick-carries-apple-restores-apart = ''
+  a-stick-carries-apples-macos-apart = ''
     a stick given Apple's restore image lays it last, as a partition of its own named for its zip,
     with a usbmuxd that skips pairing and a line saying `guide revive`; core's own stick has none
   '';

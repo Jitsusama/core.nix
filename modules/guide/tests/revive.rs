@@ -398,7 +398,11 @@ fn the_revive_keeps_the_macs_disk_through_the_sticks_own_usbmuxd() {
     );
 
     let fact = format!("{ECID} UniversalMac_27.2_26B123");
-    assert!(stand_in.journal().knows("revive-mac", &fact));
+    assert!(
+        stand_in.journal().knows("revive-mac", &fact),
+        "the journal never learned the Mac was revived: {:?}",
+        stand_in.journal().said("revive-mac")
+    );
 
     // Revived, the Mac starts up into macOS, and every step stays done.
     let mut revived = StandIn::new();
@@ -417,10 +421,10 @@ fn the_revive_keeps_the_macs_disk_through_the_sticks_own_usbmuxd() {
         evidence(standing(&FindMac, &mut revived)),
         "the Mac was found in DFU mode"
     );
-    assert!(matches!(
-        standing(&CheckSigning, &mut revived),
-        Standing::Done { .. }
-    ));
+    assert_eq!(
+        evidence(standing(&CheckSigning, &mut revived)),
+        "Apple signs macOS 27.2 (26B123) for this Mac"
+    );
     assert_eq!(
         evidence(standing(&Revive, &mut revived)),
         "macOS 27.2 (26B123) is back on the Mac, which starts up by itself"

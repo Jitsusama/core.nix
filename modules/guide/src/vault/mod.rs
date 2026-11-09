@@ -873,7 +873,10 @@ mod tests {
             vault.extract("state", &mut vec![]),
             Err(Fault::Unopened { .. })
         ));
-        assert!(matches!(vault.read_back(), Err(Fault::Unopened { .. })));
+        assert!(
+            matches!(vault.read_back(), Err(Fault::Unopened { .. })),
+            "reading the vault back took a changed object"
+        );
     }
 
     #[test]

@@ -56,7 +56,7 @@ onLinux {
   # its own after the system's, named for the zip `guide revive` reads,
   # with the usbmuxd a revive starts; core's own stick carries none, so
   # nothing else pays for tens of gigabytes.
-  a-stick-carries-apple-restores-apart =
+  a-stick-carries-apples-macos-apart =
     let
       restore = pkgs.callPackage ./apple-restore.nix { } {
         url = "https://updates.cdn-apple.com/2026FallFCS/0/UniversalMac_27.2_26B123_Restore.ipsw";
@@ -86,7 +86,7 @@ onLinux {
           || plain.systemd.services ? guide-usbmuxd
         ) "core's own stick carrying none";
     in
-    holds "a-stick-carries-apple-restores-apart"
+    holds "a-stick-carries-apples-macos-apart"
       "A stick carrying Apple's restore image gets these wrong: ${lib.concatStringsSep ", " wrong}."
       (wrong == [ ]);
 
