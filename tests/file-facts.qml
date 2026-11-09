@@ -265,15 +265,17 @@ QtObject {
         // 2026-11-08), and every other path by its last part.
         const hash = "bdmylmvw562fyhfd39fkn89zcw7qn66w";
         const names = [
-            ["a store file goes by its own name", `/nix/store/${hash}-track.mp3`, false, "track.mp3"],
+            ["a store file goes by its own name", `/nix/store/${hash}-track.mp3`, false,
+                "track.mp3"],
             ["one listed in the store keeps its hash", `/nix/store/${hash}-track.mp3`, true,
                 `${hash}-track.mp3`],
-            ["one deeper in the store is its last part", `/nix/store/${hash}-pkg/share/a.mp3`, false,
-                "a.mp3"],
+            ["one deeper in the store is its last part", `/nix/store/${hash}-pkg/share/a.mp3`,
+                false, "a.mp3"],
             ["a store-like name elsewhere keeps its hash", `~/Music/${hash}-track.mp3`, false,
                 `${hash}-track.mp3`],
-            ["a hash Nix can't write isn't one", "/nix/store/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee-track.mp3",
-                false, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee-track.mp3"],
+            ["a hash Nix can't write isn't one",
+                "/nix/store/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee-track.mp3", false,
+                "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee-track.mp3"],
             ["a file at home is its last part", "~/src/core.nix", false, "core.nix"],
             ["the root is itself", "/", false, "/"],
             ["home is itself", "~", false, "~"]

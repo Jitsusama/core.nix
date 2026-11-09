@@ -1949,10 +1949,11 @@
     the launcher chooses the files a program opens or saves in the folder it asks for, the files
     opened lately first, then its folders and files, then its filters, and answers what was picked;
     a file in the Nix store opened lately goes by its own name past its hash, and keeps the hash
-    where the store lists it; a place kept elsewhere, as Google's Drive, is listed after home's files, and its files are
-    fetched before they're answered; saving, the line holds the name, kept from folder to folder,
-    each folder leading with it unnarrowed, a name already there asking once, no saving nothing;
-    saving there, its folders take the name, ask once before replacing one, and answer the path
+    where the store lists it; a place kept elsewhere, as Google's Drive, is listed after home's
+    files, and its files are fetched before they're answered; saving, the line holds the name,
+    kept from folder to folder, each folder leading with it unnarrowed, a name already there
+    asking once, no saving nothing; saving there, its folders take the name, ask once before
+    replacing one, and answer the path
     the place stages it at once its folder is made, marked beside it with the program that asked;
     the files selected in one ask are previewed by one file-preview; where several may be opened,
     :arga gathers the cursor row's file or a range's, each once, Return answers what's gathered,
