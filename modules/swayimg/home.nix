@@ -40,9 +40,11 @@
 # same list, handed over in nix.lua.
 #
 # The launcher finds the screenshots folder's gallery by typing, and holds
-# it among the picture viewer's own acts (Screenshots.qml). Its Recent
-# there is led by the picture each swayimg shows now, which init.lua keeps
-# and Return goes to.
+# it among the picture viewer's own acts (Screenshots.qml), with a gallery
+# of each folder the pictures in its Recent are in, so its page always
+# leads with something to look through while there's anything to. Its
+# Recent there is led by the picture each swayimg shows now, which
+# init.lua keeps and Return goes to.
 { niri, quickshell }:
 {
   config,
@@ -449,10 +451,22 @@ in
 
   jitsusama.keys.swayimg = map (key: removeAttrs key [ "act" ]) keys;
 
-  # After GIMP's, since it's about the same pictures.
+  # What swayimg's provider works out, beside it, where its import finds it.
+  xdg.configFile."quickshell/launcher/Swayimg.js".source = ./Swayimg.js;
+
+  # After GIMP's, since it's about the same pictures. A gallery opens
+  # newest first, as a folder's names may not sort that way: niri's and the
+  # shell's region pictures are named differently. Given a folder, it opens
+  # on the newest; given a picture, on that one among its folder's, which
+  # init.lua brings along with it.
   jitsusama.quickshell.launcher.providers.swayimg = {
     order = 47;
     source = ./Screenshots.qml;
     folder = "${config.home.homeDirectory}/Pictures/Screenshots";
+    gallery = [
+      "swayimg"
+      "--gallery"
+      "--execute=swayimg.imagelist.order = 'mtime'; swayimg.imagelist.reverse = true"
+    ];
   };
 }
