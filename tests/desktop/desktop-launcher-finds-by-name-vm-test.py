@@ -512,8 +512,11 @@ def test_every_name_a_thing_had_still_finds_it(desktop: Desktop) -> None:
     # Every one the vocabulary keeps, so a rename that lost its row fails
     # here rather than with Joel: whatever it selects, a row, a spot or an
     # answer, says what it was once called. One whose thing this machine
-    # hasn't got, as a VPN, finds nothing by its new name either, and is
-    # passed over; the count of those found proves the walk looked.
+    # hasn't got, as a VPN, or kitty's SSH to a Machine with no machine
+    # known, isn't found by its new name either, and is passed over; the
+    # count of those found proves the walk looked. Only the thing itself
+    # counts as found by its name, never Ask, which offers to take any
+    # sentence (the net, 2026-11-08: every run since #2362 failed on Host).
     fewest = 15
     lost = []
     absent = []
@@ -528,11 +531,13 @@ def test_every_name_a_thing_had_still_finds_it(desktop: Desktop) -> None:
             shown = desktop.showing()
             desktop.close_launcher()
             desktop.answer(name.lower())
+
+            def by_its_name(there: Json, name: str = name) -> bool:
+                """Say whether the thing itself is found by its name, never Ask."""
+                return name in there["rows"] or (there.get("selected") or {}).get("name") == name
+
             try:
-                desktop.launcher_until(
-                    lambda there: bool(there["rows"]) or there["kind"] == "answer",
-                    timeout=dt.timedelta(seconds=5),
-                )
+                desktop.launcher_until(by_its_name, timeout=dt.timedelta(seconds=5))
                 found = [thing["is"] for thing in desktop.showing()["things"][:3]]
                 lost.append(f"{old} -> {name}: {shown['rows'][:5]} {shown['footer']!r}, {found}")
             except AssertionError:
