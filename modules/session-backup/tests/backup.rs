@@ -627,7 +627,7 @@ fn says_how_to_sign_in_when_the_login_may_not_use_drive() {
         why.contains("may not use Drive") && why.contains("https://www.googleapis.com/auth/drive"),
         "{why}"
     );
-    assert!(google.names().is_empty());
+    assert_eq!(google.names(), [] as [std::string::String; 0]);
 }
 
 #[test]
@@ -645,7 +645,7 @@ fn names_the_logins_quota_project_on_every_drive_call() {
     assert_eq!(account.run().unwrap().sent, 1);
 
     let projects = google.google.lock().unwrap().projects.clone();
-    assert!(!projects.is_empty());
+    assert_ne!(projects, Vec::<Option<String>>::new());
     assert!(
         projects
             .iter()
@@ -665,7 +665,7 @@ fn says_how_to_name_a_quota_project_when_drive_asks_for_one() {
     let why = account.run().unwrap_err();
 
     assert!(why.contains("set-quota-project"), "{why}");
-    assert!(google.names().is_empty());
+    assert_eq!(google.names(), Vec::<String>::new());
 }
 
 /// An account whose backup goes in a folder of its own, `name`.
@@ -732,7 +732,7 @@ fn says_how_to_sign_in_for_a_folder_of_its_own() {
             && why.contains("https://www.googleapis.com/auth/drive.file"),
         "{why}"
     );
-    assert!(google.calls().is_empty());
+    assert_eq!(google.calls(), Vec::<String>::new());
 }
 
 #[test]
@@ -764,7 +764,7 @@ fn says_how_to_sign_in_when_there_is_no_login() {
             && why.contains("https://www.googleapis.com/auth/drive"),
         "{why}"
     );
-    assert!(google.calls().is_empty());
+    assert_eq!(google.calls(), [] as [std::string::String; 0]);
 }
 
 /// The account's settings, keeping a log Drive holds for `days`.
@@ -1142,7 +1142,7 @@ fn leaves_the_rows_for_the_next_run_when_drive_stays_busy() {
     assert_eq!(stopped.indexed, 0);
     assert!(stopped.busy.is_some(), "{stopped:?}");
     assert!(!account.root.join("state/index.jsonl").exists());
-    assert!(index_objects(&google).is_empty());
+    assert_eq!(index_objects(&google), [] as [std::string::String; 0]);
 
     let done = account.run().unwrap();
     assert_eq!(done.indexed, 1);

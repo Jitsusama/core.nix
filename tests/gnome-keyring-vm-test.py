@@ -20,8 +20,9 @@ if TYPE_CHECKING:
     from test_driver.machine import BaseMachine, QemuMachine
 
 # How a credential's header opens, as od writes it, when systemd sealed it with the TPM's key
-# and the host's, scoped to one account.
-TPM_AND_HOST = "ef 4a c1 36 79 a9 48 0e a7 db 68 89 7f 9f 16 5d"
+# and the host's, scoped to one account. Since systemd 262 the seal is pinned to the TPM's
+# storage root key too, which gives the key a name of its own.
+TPM_AND_HOST = "2a 1f 87 7a 42 75 43 1a b3 f9 ed 1f 5d 8f 66 01"
 # The secret stored, as Slack stores one.
 SLACKS = "hunter2"
 LOOKUP = "timeout 10 secret-tool lookup service slack account joel"
@@ -114,8 +115,9 @@ def test_the_session_doesnt_wait_for_the_keyring(joel: Joel) -> None:
 def test_the_password_is_sealed_to_the_tpm_at_the_first_login(signed_in: Joel) -> None:
     """The keyring's password is sealed to the TPM at the first login.
 
-    The header's first 16 bytes name the key: the TPM's and the host's, scoped to one
-    account. systemd falls back to the host's alone, silently, when it can't reach the TPM.
+    The header's first 16 bytes name the key: the TPM's, pinned to its storage root key, and
+    the host's, scoped to one account. systemd falls back to the host's alone, silently, when
+    it can't reach the TPM.
     """
     key = signed_in.run(
         "base64 -d ~/.local/state/gnome-keyring/login.cred | head -c 16 | od -An -tx1"

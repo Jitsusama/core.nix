@@ -204,7 +204,7 @@ mod tests {
             {"url": "/2.2/networks/2", "name": "cottage"}
         ]}});
         assert_eq!(networks(&account), ["/2.2/networks/1", "/2.2/networks/2"]);
-        assert!(networks(&json!({})).is_empty());
+        assert_eq!(networks(&json!({})), [] as [std::string::String; 0]);
     }
 
     #[test]

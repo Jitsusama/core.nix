@@ -87,7 +87,6 @@ in
 
   boot = {
     loader.grub.enable = false;
-    initrd.systemd.enable = true;
     # A Mac's stick runs Asahi's kernel instead (stick-apple-silicon.nix).
     kernelPackages = lib.mkDefault pkgs.linuxPackages_latest;
     # The stick's own disk, and the keyboards that reach the system through

@@ -195,7 +195,7 @@ mod tests {
     fn resting_all_second_says_nothing_kept_it() {
         let rested = resting(&region(&[]), &region(&[]), 1.0);
         assert!(rested.kept.abs() < 1e-9);
-        assert!(rested.by.is_empty());
+        assert_eq!(rested.by, [] as [crate::resting::Kept; 0]);
     }
 
     #[test]
@@ -238,7 +238,7 @@ mod tests {
         let after = region(&[(KEPT_AT_ALL, 10), (low(9), 10)]);
         let rested = resting(&before, &after, 1.0);
         assert!(rested.kept.abs() < 1e-9);
-        assert!(rested.by.is_empty());
+        assert_eq!(rested.by, [] as [crate::resting::Kept; 0]);
     }
 
     #[test]

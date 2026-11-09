@@ -22,8 +22,13 @@ stdenv.mkDerivation {
   ];
   buildFlags = [ "modules" ];
 
-  installPhase = ''
-    install -D stand-in-monitor.ko \
-      $out/lib/modules/${kernel.modDirVersion}/extra/stand-in-monitor.ko
-  '';
+  # The kernel's own install, which signs the module and leaves its
+  # certificate beside it, where NixOS gathers it into the kernel's trusted
+  # set. depmod is NixOS's to run, over every module at once.
+  installFlags = [
+    "INSTALL_MOD_PATH=${placeholder "out"}"
+    "INSTALL_MOD_DIR=extra"
+    "DEPMOD=true"
+  ];
+  installTargets = [ "modules_install" ];
 }

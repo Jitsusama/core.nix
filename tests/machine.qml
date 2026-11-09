@@ -20,7 +20,7 @@ ShellRoot {
 
     // The launcher as Machine reads it: open, showing what `answer` is.
     QtObject {
-        id: launcher
+        id: theLauncher
 
         property bool open: true
         property var answer: null
@@ -32,7 +32,7 @@ ShellRoot {
     Launcher.Machine {
         id: machine
 
-        launcher: launcher
+        launcher: theLauncher
     }
 
     // Machine's place stepped into, before the daemon has said anything,
@@ -42,7 +42,7 @@ ShellRoot {
     // is the telemetry's, so a place holding it alone asks nothing.
     Component.onCompleted: {
         try {
-            launcher.placed = ["energy", "machine:cpu:kept-from-resting"];
+            theLauncher.placed = ["energy", "machine:cpu:kept-from-resting"];
             expect("Power's place asks the daemon nothing", !machine.shown, "it did");
             const before = machine.answer("processor");
             expect("before the daemon says, Processor waits with its parts to come",
@@ -73,7 +73,7 @@ ShellRoot {
                 total: 9 }, { name: "/" });
             expect("a healthy disk says its room beside it, with no drawer",
                 healthy.side === "7 B free" && !healthy.drawer, JSON.stringify(healthy.drawer));
-            launcher.placed = ["energy", "machine:cpu", "machine:memory", "heat"];
+            theLauncher.placed = ["energy", "machine:cpu", "machine:memory", "heat"];
             expect("Machine's place asks the daemon", machine.shown, "it didn't");
             waiting.start();
         } catch (error) {
@@ -124,7 +124,7 @@ ShellRoot {
                 `${processors.parted} ${memory.parted}`);
             expect("the headlines asked for no programs", !machine.usingWanted, "they did");
             // Stepped into, its parts ask for the programs.
-            launcher.held = [{ row: processors }];
+            theLauncher.held = [{ row: processors }];
             const parts = processors.rows.map(row => row.name);
             expect("the processors' parts", parts.includes("Cores") && parts.includes("Time Spent"),
                 parts.join(", "));

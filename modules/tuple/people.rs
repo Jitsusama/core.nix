@@ -693,7 +693,10 @@ mod tests {
             roster.heard(&snapshot(&usual())),
             [ada("online"), BEN.to_owned(), CAL.to_owned()]
         );
-        assert!(roster.heard(&snapshot(&usual())).is_empty());
+        assert_eq!(
+            roster.heard(&snapshot(&usual())),
+            [] as [std::string::String; 0]
+        );
         // Ada busy is one line; Ben deleted is gone; Cal at a new address
         // is gone from the old one and said at the new.
         let changed = vec![
@@ -715,7 +718,7 @@ mod tests {
         let stopped = roster.stopped();
         assert_eq!(stopped.len(), 2);
         assert_eq!(stopped[0], ada("unknown"));
-        assert!(roster.stopped().is_empty());
+        assert_eq!(roster.stopped(), [] as [std::string::String; 0]);
     }
 
     #[test]
@@ -816,7 +819,7 @@ mod tests {
         ] {
             assert!(roster.heard(line).is_empty(), "{line}");
         }
-        assert!(roster.heard(&whole).is_empty());
+        assert_eq!(roster.heard(&whole), [] as [std::string::String; 0]);
         let mut changed = usual();
         changed[2] = contact(3, "Cal Dunmore", "online", true);
         assert_eq!(roster.heard(&snapshot(&changed)).len(), 1);

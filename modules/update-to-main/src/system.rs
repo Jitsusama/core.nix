@@ -832,7 +832,10 @@ mod tests {
             to_build(said),
             ["/nix/store/a-one.drv", "/nix/store/b-two.drv"]
         );
-        assert!(to_build("this path will be fetched:\n  /nix/store/c.drv\n").is_empty());
+        assert_eq!(
+            to_build("this path will be fetched:\n  /nix/store/c.drv\n"),
+            [] as [std::string::String; 0]
+        );
     }
 
     fn every(shown: &str) -> Vec<String> {
@@ -952,7 +955,7 @@ mod tests {
         let needed = ["/nix/store/s-secret.drv", "/nix/store/w-wrapper.drv"].map(str::to_owned);
         let (kept, rest) = heavy(&pieces(older).unwrap(), &needed, &["secret".to_owned()]);
         assert_eq!(kept, ["/nix/store/s-secret.drv"]);
-        assert!(rest.is_empty());
+        assert_eq!(rest, [] as [std::string::String; 0]);
     }
 
     #[test]

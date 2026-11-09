@@ -148,7 +148,7 @@ Provider {
     // last first, followed as niri's windows change. Read when a row is
     // drawn or run, so a window opening never prepares every program again.
     readonly property var running: {
-        Niri.revision;
+        void Niri.revision;
         const by = {};
         for (const window of Object.values(Niri.windows)
             .sort((a, b) => provider.focusedAt(b) - provider.focusedAt(a))) {

@@ -214,28 +214,33 @@ impl Walk<'_> {
             .log
             .and_then(|log| std::fs::read_to_string(log).ok())
             .unwrap_or_else(|| "nothing has been logged".into());
-        let (_, height) = io.size();
-        let tail: Vec<&str> = text
-            .lines()
-            .rev()
-            .take(height.saturating_sub(8) as usize)
-            .collect();
-        let said: String = tail.into_iter().rev().collect::<Vec<_>>().join(" / ");
-        self.show(
-            io,
-            Some(step),
-            done,
-            &Moment::Working {
-                title: "The log",
-                meanwhile: &said,
-                progress: None,
-            },
-        )?;
+        // As many of its last lines as the screen has room for, drawn
+        // again whenever it changes size.
         loop {
-            match io.press()? {
-                Press::Tab | Press::Return | Press::Escape => return Ok(true),
-                Press::Leave => return Ok(false),
-                _ => {}
+            let (_, height) = io.size();
+            let tail: Vec<&str> = text
+                .lines()
+                .rev()
+                .take(height.saturating_sub(8) as usize)
+                .collect();
+            let said: String = tail.into_iter().rev().collect::<Vec<_>>().join(" / ");
+            self.show(
+                io,
+                Some(step),
+                done,
+                &Moment::Working {
+                    title: "The log",
+                    meanwhile: &said,
+                    progress: None,
+                },
+            )?;
+            loop {
+                match io.press()? {
+                    Press::Tab | Press::Return | Press::Escape => return Ok(true),
+                    Press::Leave => return Ok(false),
+                    Press::Resized => break,
+                    _ => {}
+                }
             }
         }
     }
@@ -397,8 +402,14 @@ impl Walk<'_> {
         then: &str,
     ) -> Result<bool, Fault> {
         let done = self.done.borrow().clone();
-        self.show(io, None, &done, &Moment::Card { title, said, then })?;
-        wait(io)
+        loop {
+            self.show(io, None, &done, &Moment::Card { title, said, then })?;
+            match io.press()? {
+                Press::Return => return Ok(true),
+                Press::Leave => return Ok(false),
+                _ => {}
+            }
+        }
     }
 
     pub fn walk(&self, machine: &mut dyn Machine, io: &mut dyn Io) -> Result<Ended, Fault> {
@@ -558,17 +569,6 @@ fn wait_or_look(io: &mut dyn Io) -> Result<bool, Fault> {
     }
 }
 
-/// Waits for Return, or Ctrl+C. Says whether to go on.
-fn wait(io: &mut dyn Io) -> Result<bool, Fault> {
-    loop {
-        match io.press()? {
-            Press::Return => return Ok(true),
-            Press::Leave => return Ok(false),
-            _ => {}
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;
@@ -593,6 +593,10 @@ mod tests {
         leaves_after: Option<usize>,
         /// The step the painter was told to stop partway through, if any.
         stopped: Arc<Mutex<Vec<String>>>,
+        /// The size the screen is, 80 by 24 until it's changed.
+        size: Option<(u16, u16)>,
+        /// The size it changes to as each `Press::Resized` is read.
+        resizes: VecDeque<(u16, u16)>,
     }
 
     fn text(drawn: &Drawn) -> Vec<String> {
@@ -606,7 +610,11 @@ mod tests {
 
     impl Keys for Stand {
         fn press(&mut self) -> Result<Press, Fault> {
-            Ok(self.keys.pop_front().unwrap_or(Press::Leave))
+            let press = self.keys.pop_front().unwrap_or(Press::Leave);
+            if press == Press::Resized {
+                self.size = self.resizes.pop_front();
+            }
+            Ok(press)
         }
 
         /// No key pressed in time, once the keys run out.
@@ -617,7 +625,7 @@ mod tests {
 
     impl Screen for Stand {
         fn size(&self) -> (u16, u16) {
-            (80, 24)
+            self.size.unwrap_or((80, 24))
         }
 
         fn show(&mut self, drawn: &Drawn, _theme: &Theme) -> Result<(), Fault> {
@@ -802,6 +810,57 @@ mod tests {
                 .any(|line| line.contains("The stick was read")),
             "{shown:#?}"
         );
+    }
+
+    /// A screen that changes size, as the stick's console does when its
+    /// font loads once the graphics driver has taken it over, is laid out
+    /// again for its new size, so no line runs off its edge and its keys
+    /// stay at its foot.
+    fn laid_out_again(shown: &[Vec<String>]) {
+        assert_eq!(shown.len(), 2, "{shown:#?}");
+        assert_eq!(shown[0].len(), 23, "{shown:#?}");
+        assert_eq!(shown[1].len(), 49, "{shown:#?}");
+        let widest = |lines: &[String]| lines.iter().map(|l| l.chars().count()).max();
+        assert!(widest(&shown[0]) <= Some(80), "{shown:#?}");
+        assert!(widest(&shown[1]) > Some(80), "{shown:#?}");
+    }
+
+    const LONG: &str = concat!(
+        "This computer's disk already holds a machine: a disk with no model name, ",
+        "8 GB, serial root. Recover it, or install hedgehog on it again?",
+    );
+
+    #[test]
+    fn a_choice_is_laid_out_again_when_the_screen_changes_size() {
+        let journey = Journey::new(vec![]).unwrap();
+        let theme = Theme::from("", "", true);
+        let mut stand = Stand::default();
+        stand.keys.extend([Press::Resized, Press::Return]);
+        stand.resizes.push_back((160, 50));
+        let chosen = walk(&journey, &theme)
+            .choose(
+                &mut stand,
+                "A machine is already here",
+                LONG,
+                &["Recover it"],
+            )
+            .unwrap();
+        assert_eq!(chosen, Some(0));
+        laid_out_again(&stand.shown.lock().unwrap());
+    }
+
+    #[test]
+    fn a_card_is_laid_out_again_when_the_screen_changes_size() {
+        let journey = Journey::new(vec![]).unwrap();
+        let theme = Theme::from("", "", true);
+        let mut stand = Stand::default();
+        stand.keys.extend([Press::Resized, Press::Return]);
+        stand.resizes.push_back((160, 50));
+        let on = walk(&journey, &theme)
+            .card(&mut stand, "Installed", LONG, "restart")
+            .unwrap();
+        assert!(on);
+        laid_out_again(&stand.shown.lock().unwrap());
     }
 
     fn walk<'a>(journey: &'a Journey, theme: &'a Theme) -> Walk<'a> {

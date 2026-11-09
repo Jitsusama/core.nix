@@ -9,7 +9,7 @@ import QtQuick
 ShellRoot {
     Wallpaper {}
     Notifications {
-        launcher: launcher
+        launcher: theLauncher
     }
     Polkit {}
     Askpass {}
@@ -22,21 +22,21 @@ ShellRoot {
     Power {}
 
     OpenBelow {
-        id: grid
+        id: theGrid
     }
 
     Lock {
-        id: lock
+        id: theLock
     }
 
     Launcher {
-        id: launcher
-        lock: lock
-        grid: grid
+        id: theLauncher
+        lock: theLock
+        grid: theGrid
     }
 
     Margin {
-        launcher: launcher
+        launcher: theLauncher
     }
 
     // The machine queue is drawn only in the launcher, so it's read only
@@ -44,7 +44,7 @@ ShellRoot {
     Binding {
         target: Jobs
         property: "showing"
-        value: launcher.open
+        value: theLauncher.open
     }
 
     // Now's row tells a timer's time left only while the launcher is open
@@ -52,7 +52,7 @@ ShellRoot {
     Binding {
         target: HeldTimers
         property: "showing"
-        value: launcher.open
+        value: theLauncher.open
     }
 
     // Sessions opened behind the lock are placed once it's let go, since
@@ -60,11 +60,11 @@ ShellRoot {
     Binding {
         target: Sessions
         property: "behindTheLock"
-        value: lock.held
+        value: theLock.held
     }
 
     Arrivals {
-        launcher: launcher
+        launcher: theLauncher
     }
 
     // What other modules add, such as dictation's look, each its own file.

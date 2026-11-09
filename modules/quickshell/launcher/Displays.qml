@@ -567,7 +567,7 @@ Provider {
     readonly property var lit: shown.filter(output => output.logical !== null)
 
     readonly property string focusedOutput: {
-        Niri.revision;
+        void Niri.revision;
         const workspace = Niri.workspace();
         return workspace ? workspace.output : "";
     }

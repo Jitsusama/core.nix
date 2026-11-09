@@ -420,7 +420,7 @@ fn a_workspace_goes_and_its_worktrees_are_pruned() {
     assert!(!workspace.exists());
     let listed = git(&repo, &["worktree", "list", "--porcelain"]);
     assert_eq!(listed.matches("worktree ").count(), 1, "{listed}");
-    assert!(reclaim.notes().is_empty());
+    assert_eq!(reclaim.notes(), [] as [String; 0]);
 }
 
 #[test]

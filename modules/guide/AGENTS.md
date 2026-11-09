@@ -434,6 +434,12 @@ driven on; the installed machine's steps come later.
 - **Drawn again.** A screen waiting for a key is drawn again every two
   seconds (`src/screen/terminal.rs`), since the kernel writes on the
   console when a device comes or goes and nothing else would redraw it.
+  It's laid out again when the screen has changed size since, looked at
+  then and after every event: the stick's console shrinks when its font
+  loads, once the graphics driver takes it over (160 by 50 to 80 by 25
+  in the VM tests), which can be after the guide's first screen is up.
+  Drawn for the size before, a long line ran off the edge and the keys
+  off the foot (2026-11-08).
 - **The vault.** A FAT32 partition any machine can read, holding files
   sealed with age to a vault key made for it. The key is sealed to the
   stick's passphrase alone, so every machine opens it the same way. Files

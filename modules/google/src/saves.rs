@@ -357,7 +357,10 @@ mod tests {
         keep(&path, "f1").unwrap();
         assert!(!waiting(&path));
         assert_eq!(sent(&path).as_deref(), Some("f1"));
-        assert!(pending(&root, &root.join("root")).is_empty());
+        assert_eq!(
+            pending(&root, &root.join("root")),
+            [] as [crate::saves::Staged; 0]
+        );
         let later = SystemTime::now() + Duration::from_secs(5);
         fs::File::options()
             .write(true)

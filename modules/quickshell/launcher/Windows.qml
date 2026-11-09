@@ -119,7 +119,7 @@ Provider {
     readonly property var kept: ({})
 
     things: {
-        Niri.revision;
+        void Niri.revision;
         const waiting = Sessions.waitingWindows.split(" ");
         const here = Niri.workspace();
         const when = window => {

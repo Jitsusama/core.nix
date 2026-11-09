@@ -74,7 +74,7 @@ ShellRoot {
     }
 
     QtObject {
-        id: launcher
+        id: theLauncher
 
         property bool open: false
         // The row chosen, whose drawer shows; Applications ends a program's
@@ -138,14 +138,14 @@ ShellRoot {
     Launcher.PastNotices {
         id: notices
 
-        launcher: launcher
+        launcher: theLauncher
         settings: ({ name: "notices" })
     }
 
     Launcher.Applications {
         id: applications
 
-        launcher: launcher
+        launcher: theLauncher
         settings: ({
             name: "applications",
             recents: [{
@@ -290,8 +290,8 @@ ShellRoot {
                 focus_timestamp: { secs: 200, nanos: 0 } }
         });
         Niri.revision += 1;
-        launcher.open = false;
-        launcher.open = true;
+        theLauncher.open = false;
+        theLauncher.open = true;
         same("sites aren't read before their program is stepped into",
             applications.recents.of("browser").length, 0);
         root.waiting = "the sites";
@@ -389,10 +389,10 @@ ShellRoot {
             sites[4].run();
             same("Return opens the page by the program's own command", JSON.stringify(Niri.spawned),
                 JSON.stringify(["browser", "https://example.org/1"]));
-            launcher.open = false;
+            theLauncher.open = false;
             same("closing the launcher lets the next opening read them again",
                 JSON.stringify(applications.recents.asked), "{}");
-            launcher.open = true;
+            theLauncher.open = true;
             root.waiting = "the sites again";
             program("browser").verbs();
         } catch (error) {
@@ -535,7 +535,7 @@ ShellRoot {
                 + "| Open the Room, Recent, Copy the Room's Link");
             const spawnedBefore = JSON.stringify(Niri.spawned);
             pair.run();
-            expect("and Return steps in, starting nothing", launcher.entered === pair
+            expect("and Return steps in, starting nothing", theLauncher.entered === pair
                 && JSON.stringify(Niri.spawned) === spawnedBefore, JSON.stringify(Niri.spawned));
             same("one closed still starts", program("radio").verb, "start");
             same("Go To names the window used last", switching.side, "Logbook");
@@ -583,12 +583,12 @@ ShellRoot {
             // Its processes are watched only while a program's row is the
             // one selected (Applications.qml).
             applications.treesWanted = [5151];
-            launcher.selected = program("tester");
+            theLauncher.selected = program("tester");
             same("a program's row keeps its processes watched",
                 applications.treesWanted.join(", "), "5151");
-            launcher.selected = { is: "media:playing" };
+            theLauncher.selected = { is: "media:playing" };
             same("moving off it ends the watch", applications.treesWanted.join(", "), "");
-            launcher.selected = null;
+            theLauncher.selected = null;
             const played = media.targets();
             same("Media's acts, then what's playing", names(played),
                 "Pause, Next, Previous, Song of the test");
@@ -758,7 +758,7 @@ ShellRoot {
                 { key: "tester:pick", name: "Pick a Log", verb: "open", targets: () => [] });
             choosing.run();
             same("a found act asking for a choice goes to its list inside its program",
-                `${JSON.stringify(choosing.trail)} ${launcher.went === choosing}`,
+                `${JSON.stringify(choosing.trail)} ${theLauncher.went === choosing}`,
                 '["collection:applications","program:tester","tester:pick"] true');
             const found = typed => names(applications.search(typed).rows);
             const whole = typed => {
@@ -783,7 +783,7 @@ ShellRoot {
             // Written while the launcher is closed, quiet's list isn't read
             // until it opens, however long that is.
             root.waiting = "a change while closed";
-            launcher.open = false;
+            theLauncher.open = false;
             writer.setText(Array.from({ length: 10 }, (_, n) => `${root.home}/folder ${n + 1}`)
                 .join("\n") + "\n");
             whileClosed.start();
@@ -799,7 +799,7 @@ ShellRoot {
         interval: 1000
         onTriggered: {
             root.waiting = "read as it opens";
-            launcher.open = true;
+            theLauncher.open = true;
         }
     }
 
@@ -810,7 +810,7 @@ ShellRoot {
             same("a change while it was closed is read as the launcher opens",
                 applications.recents.of("quiet")[0], `${root.home}/folder 1`);
             root.waiting = "the recents to change";
-            launcher.held = [{ row: program("quiet"), rows: program("quiet").verbs() }];
+            theLauncher.held = [{ row: program("quiet"), rows: program("quiet").verbs() }];
             root.redrawn = 0;
             writer.setText(Array.from({ length: 11 }, (_, n) => `${root.home}/folder ${n + 1}`)
                 .join("\n") + "\n");

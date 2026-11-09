@@ -455,7 +455,7 @@ mod tests {
         );
         let array = format!("[{}]", login());
         assert_eq!(passwords(&array).len(), 1);
-        assert!(passwords("").is_empty());
+        assert_eq!(passwords(""), Vec::<(String, String)>::new());
     }
 
     #[test]

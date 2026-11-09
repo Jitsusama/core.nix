@@ -88,12 +88,12 @@ Singleton {
 
     // Each item the quests keep, as the node serves them.
     readonly property var asked: {
-        waitingKind?.revision;
+        void waitingKind?.revision;
         return Waiting.served(waitingKind?.held ?? {});
     }
     // What the to do daemon found, or none while the node hasn't said.
     readonly property var verdicts: {
-        verdictKind?.revision;
+        void verdictKind?.revision;
         return verdictKind?.answered ? Waiting.verdictsOf(verdictKind.held) : null;
     }
     // The quests the items name, as one string, so the items heard again
@@ -103,7 +103,7 @@ Singleton {
     // null once the index no longer holds it, and absent until the node
     // has answered.
     readonly property var owners: {
-        questKind?.revision;
+        void questKind?.revision;
         return Waiting.owners(questKind?.answered ? questKind.held : null,
             named === "" ? [] : named.split(" "));
     }
@@ -135,7 +135,7 @@ Singleton {
     // changes in place, so its revision is read first, as owners does, and
     // a drawer held open follows a quest's new title or status.
     function ownerOf(quest) {
-        questKind?.revision;
+        void questKind?.revision;
         return Waiting.owners(questKind?.answered ? questKind.held : null, [quest])[quest];
     }
 

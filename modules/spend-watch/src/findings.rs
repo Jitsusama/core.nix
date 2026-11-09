@@ -249,7 +249,10 @@ mod tests {
         let mut down = finding("health:proxy:meter", Severity::Note, 0.0);
         down.detector = "health".into();
         settle(&history, &[down], 0.0).unwrap();
-        assert!(settle(&history, &[], 30.0).unwrap().is_empty());
+        assert_eq!(
+            settle(&history, &[], 30.0).unwrap(),
+            [] as [crate::findings::Finding; 0]
+        );
     }
 
     // A cap's change is as plain: once the cap is back, the fall is past,
@@ -269,10 +272,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(
-        clippy::float_cmp,
-        reason = "the start is kept as it was given, a whole number of seconds"
-    )]
     fn one_cause_is_one_finding_and_it_settles_before_clearing() {
         let history = History::memory();
         settle(&history, &[finding("burn:s1", Severity::Alert, 100.0)], 0.0).unwrap();
@@ -289,10 +288,9 @@ mod tests {
             1,
             "not yet settled"
         );
-        assert!(
-            settle(&history, &[], 60.0 + SETTLE + 1.0)
-                .unwrap()
-                .is_empty()
+        assert_eq!(
+            settle(&history, &[], 60.0 + SETTLE + 1.0).unwrap(),
+            [] as [Finding; 0]
         );
     }
 
@@ -339,10 +337,6 @@ mod tests {
 
     // Marking this week's near cap leaves next week's to ask.
     #[test]
-    #[expect(
-        clippy::float_cmp,
-        reason = "the start is kept as it was given, a whole number of seconds"
-    )]
     fn a_mark_lasts_one_episode() {
         let history = History::memory();
         settle(

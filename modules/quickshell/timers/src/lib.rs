@@ -712,7 +712,7 @@ mod tests {
                 ..
             })
         ));
-        assert!(held.timers.is_empty());
+        assert_eq!(held.timers, Vec::<Timer>::new());
     }
 
     #[test]
@@ -844,7 +844,7 @@ mod tests {
         let mut held = Held::default();
         held.start("tea", MINUTE, 0).unwrap();
         assert_eq!(held.end("timer:1").unwrap().name, "tea");
-        assert!(held.timers.is_empty());
+        assert_eq!(held.timers, Vec::<Timer>::new());
         assert_eq!(
             held.end("timer:1"),
             Err(Refusal::Unknown("timer:1".to_owned()))

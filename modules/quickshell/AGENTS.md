@@ -109,8 +109,8 @@ view's rows counts only those wholly inside it, since `itemAtIndex` also
 answers for rows made but clipped away.
 
 `quickshell-passes-qmllint` runs qmllint over the account's files, and any
-warning fails. It reads Quickshell's own type files, with two of their faults
-corrected, and leaves out two kinds of report that are gaps in those files
+warning fails. It reads Quickshell's own type files, with three of their
+faults corrected, and leaves out two kinds of report that are gaps in those files
 rather than the shell; its comment in [`checks.nix`][checks] says which. A
 line qmllint still can't read because of them says so with a `qmllint
 disable` comment and the reason above it.

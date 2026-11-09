@@ -245,6 +245,9 @@ R   73    256  48000   3.1us   1.0us  0.01  0.00    4    S32LE 2 48000 alsa_outp
     #[test]
     fn nothing_rose_when_nothing_changed() {
         let errors = errors(TOP);
-        assert!(rose(&errors, &errors, &running(TOP)).is_empty());
+        assert_eq!(
+            rose(&errors, &errors, &running(TOP)),
+            [] as [(std::string::String, u64); 0]
+        );
     }
 }

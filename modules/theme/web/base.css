@@ -40,8 +40,14 @@
     0.996,
     1
   );
+}
 
-  interpolate-size: allow-keywords;
+/* What a browser hasn't taken up everywhere yet is asked for only where it
+   says it can, and is missed elsewhere without harm. */
+@supports (interpolate-size: allow-keywords) {
+  :root {
+    interpolate-size: allow-keywords;
+  }
 }
 
 *,
@@ -64,10 +70,25 @@ html {
   font-variant-ligatures: common-ligatures contextual;
   font-synthesis: none;
   line-height: 1.55;
-  text-size-adjust: 100%;
-  scrollbar-gutter: stable;
-  hanging-punctuation: first allow-end last;
   -webkit-font-smoothing: antialiased;
+}
+
+@supports (text-size-adjust: 100%) {
+  html {
+    text-size-adjust: 100%;
+  }
+}
+
+@supports (scrollbar-gutter: stable) {
+  html {
+    scrollbar-gutter: stable;
+  }
+}
+
+@supports (hanging-punctuation: first allow-end last) {
+  html {
+    hanging-punctuation: first allow-end last;
+  }
 }
 
 :root[data-kind="interface"] {
@@ -92,7 +113,15 @@ h4 {
   color: var(--strong);
   font-weight: var(--title-weight);
   line-height: 1.1;
-  text-wrap: balance;
+}
+
+@supports (text-wrap: balance) {
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
+  }
 }
 
 h1 {
@@ -128,12 +157,14 @@ em,
   font-weight: 400;
 }
 
-p,
-li,
-dd,
-blockquote,
-figcaption {
-  text-wrap: pretty;
+@supports (text-wrap: pretty) {
+  p,
+  li,
+  dd,
+  blockquote,
+  figcaption {
+    text-wrap: pretty;
+  }
 }
 
 p,
@@ -152,11 +183,20 @@ b {
 }
 
 @media (width < 34rem) {
-  p,
-  li,
-  dd {
-    hyphens: auto;
-    hyphenate-limit-chars: 7 3 3;
+  @supports (hyphens: auto) {
+    p,
+    li,
+    dd {
+      hyphens: auto;
+    }
+  }
+
+  @supports (hyphenate-limit-chars: 7 3 3) {
+    p,
+    li,
+    dd {
+      hyphenate-limit-chars: 7 3 3;
+    }
   }
 }
 
@@ -308,9 +348,16 @@ select {
   background: var(--sunken);
 }
 
-textarea {
-  resize: none;
-  field-sizing: content;
+@supports (resize: none) {
+  textarea {
+    resize: none;
+  }
+}
+
+@supports (field-sizing: content) {
+  textarea {
+    field-sizing: content;
+  }
 }
 
 button {
@@ -349,13 +396,27 @@ video {
    duration of zero, not one too short to see, so what measures the page
    reads it where it ends. A star reaches no pseudo-element it doesn't name,
    so a fold's content, a dialog's backdrop and a view transition are named
-   here too, or they would still move. */
+   here too, or they would still move. A browser drops a whole list of
+   selectors for one it doesn't know, so those it may not are each a rule of
+   their own. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after,
-  *::details-content,
-  *::backdrop,
+  *::backdrop {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+
+  *::details-content {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+
   ::view-transition-group(*),
   ::view-transition-old(*),
   ::view-transition-new(*) {

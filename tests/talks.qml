@@ -29,7 +29,7 @@ ShellRoot {
     }
 
     QtObject {
-        id: launcher
+        id: theLauncher
 
         property bool open: false
         function enter(row) {
@@ -39,7 +39,7 @@ ShellRoot {
     Launcher.Orchestrators {
         id: orchestrators
 
-        launcher: launcher
+        launcher: theLauncher
         settings: ({ name: "orchestrators" })
         onTalksChanged: Qt.callLater(root.check)
     }

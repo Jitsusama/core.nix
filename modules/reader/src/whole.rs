@@ -76,7 +76,6 @@ pub fn bare_from(lines: &[Shown], over: f64) -> f64 {
 }
 
 #[cfg(test)]
-#[expect(clippy::float_cmp, reason = "the places given, read back whole")]
 mod tests {
     use super::*;
 

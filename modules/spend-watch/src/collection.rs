@@ -1170,7 +1170,7 @@ mod tests {
         );
         assert!(row.note.len() <= 45, "{}", row.note);
         assert!(row.copy.contains("a newer one"), "{}", row.copy);
-        assert!(held.now.is_empty());
+        assert_eq!(held.now, [] as [crate::collection::Line; 0]);
         let ids: Vec<_> = held.reports.keys().collect();
         assert_eq!(ids, ["summary"]);
         assert!(!held.reports["summary"].headline.contains('$'));

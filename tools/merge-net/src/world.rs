@@ -964,7 +964,7 @@ mod tests {
     fn a_quarantine_list_names_its_tests() {
         let list = json!([{ "test": "vm-a", "reason": "r" }, { "test": "vm-b" }]);
         assert_eq!(tests_in(&list), ["vm-a", "vm-b"]);
-        assert!(tests_in(&json!({})).is_empty());
+        assert_eq!(tests_in(&json!({})), [] as [std::string::String; 0]);
     }
 
     #[test]

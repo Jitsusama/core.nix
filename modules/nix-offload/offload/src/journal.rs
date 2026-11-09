@@ -315,7 +315,7 @@ mod tests {
                 },
             ]
         );
-        assert!(unreturned("").is_empty());
+        assert_eq!(unreturned(""), [] as [crate::journal::Unreturned; 0]);
     }
 
     #[test]

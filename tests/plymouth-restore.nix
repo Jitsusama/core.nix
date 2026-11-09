@@ -80,7 +80,6 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         useNixStoreImage = true;
         sharedDirectories = lib.mkForce { };
       };
-      boot.initrd.systemd.enable = true;
       boot.initrd.supportedFilesystems.btrfs = true;
       # Opened in the initrd with the passphrase, at the theme's ask. It's
       # empty until the tests make it, so the first boot carries on without

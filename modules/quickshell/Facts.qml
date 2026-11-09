@@ -16,7 +16,7 @@ Singleton {
     // { entry, piece } in the pieces' order, piece null until it loads,
     // and one for each thing a piece stands for (Facts.js).
     readonly property var all: {
-        loaded.count;
+        void loaded.count;
         return Listed.facts(Pieces.inOrder, Pieces.inOrder.map((entry, index) => {
             const loader = loaded.objectAt(index);
             return loader ? loader.item : null;

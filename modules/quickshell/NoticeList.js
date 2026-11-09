@@ -235,10 +235,11 @@ function footHints(hints, wide, join, fits) {
     const width = some => some.reduce((sum, hint) => sum + wide(hint), 0)
         + Math.max(0, some.length - 1) * join;
     const gives = hint => !stays(hint);
+    const without = (some, gone) => some.filter((_, at) => at !== gone);
     let kept = hints;
     let going = kept.findIndex(gives);
     while (going >= 0 && width(kept) > fits) {
-        kept = kept.filter((_, at) => at !== going);
+        kept = without(kept, going);
         going = kept.findIndex(gives);
     }
     return kept;

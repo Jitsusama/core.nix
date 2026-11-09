@@ -127,7 +127,10 @@ mod tests {
 
     #[test]
     fn a_step_with_no_keys_counts_none() {
-        assert!(delays(SAID, 2000.0).unwrap().is_empty());
+        assert_eq!(
+            delays(SAID, 2000.0).unwrap(),
+            [] as [std::time::Duration; 0]
+        );
     }
 
     #[test]

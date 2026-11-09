@@ -2421,6 +2421,9 @@ mod tests {
             ..Stand::default()
         };
         assert_eq!(round(&world, &state, "s").unwrap(), Round::Idle);
-        assert!(world.built().is_empty());
+        assert_eq!(
+            world.built(),
+            [] as [(std::string::String, std::string::String); 0]
+        );
     }
 }

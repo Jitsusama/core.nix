@@ -66,7 +66,7 @@ ShellRoot {
     }
 
     QtObject {
-        id: launcher
+        id: theLauncher
 
         property bool open: false
         // The rows the light said it will become, by key, and as what, as
@@ -87,7 +87,7 @@ ShellRoot {
     Launcher.Light {
         id: light
 
-        launcher: launcher
+        launcher: theLauncher
         settings: ({ name: "light" })
     }
 
@@ -142,14 +142,14 @@ ShellRoot {
         // Told before litra answers, the rows as they'll be: its Brightness
         // at 60% and that level chosen in its step, but nothing it leaves as
         // it was (Joel, 2026-11-07: "it should show right away").
-        const becoming = launcher.held;
+        const becoming = theLauncher.held;
         expect("the rows as they'll be, before litra answers",
             becoming["light:desk:brightness"]?.side === "60%"
                 && becoming["light:desk:level:60"]?.side === "chosen"
                 && becoming["light:desk:level:40"]?.side === ""
                 && !("light:desk:warmth" in becoming) && !("verb:turn" in becoming)
-                && launcher.told?.name === "Desk Light" && launcher.told?.act === "set",
-            `${Object.keys(becoming).join(" ")} ${JSON.stringify(launcher.told)}`);
+                && theLauncher.told?.name === "Desk Light" && theLauncher.told?.act === "set",
+            `${Object.keys(becoming).join(" ")} ${JSON.stringify(theLauncher.told)}`);
         root.step("brighter by the launcher", () => root.lit(60, 4000), root.brighter);
     }
 
@@ -223,14 +223,14 @@ ShellRoot {
             `${root.brightened} ${root.warmed}`);
         expect("off", light.answer("desk light").headline === "the desk light is off",
             light.answer("desk light").headline);
-        launcher.held = ({});
+        theLauncher.held = ({});
         light.answer("desk light on").run();
-        const lighting = launcher.held;
+        const lighting = theLauncher.held;
         expect("lit, it says so at once",
             lighting["verb:turn"]?.name === "Turn It Off"
                 && lighting["light:desk:brightness"]?.side === "70%"
-                && launcher.told?.act === "on",
-            `${Object.keys(lighting).join(" ")} ${JSON.stringify(launcher.told)}`);
+                && theLauncher.told?.act === "on",
+            `${Object.keys(lighting).join(" ")} ${JSON.stringify(theLauncher.told)}`);
         root.step("lit by the launcher", () => DeskLight.light !== null && DeskLight.light.on,
             root.optioned);
     }

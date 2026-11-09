@@ -136,10 +136,6 @@ mod tests {
     use super::*;
 
     #[test]
-    #[expect(
-        clippy::float_cmp,
-        reason = "a whole second in milliseconds divides by a thousand exactly"
-    )]
     fn a_harness_from_before_sessions_were_recorded_still_reads() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("runs.db");
@@ -157,12 +153,15 @@ mod tests {
         let runs = read(&path).unwrap();
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].parent, None);
-        assert!(runs[0].sessions.is_empty());
+        assert_eq!(runs[0].sessions, [] as [std::string::String; 0]);
         assert_eq!(runs[0].started, 1_791_950_171.0);
     }
 
     #[test]
     fn no_database_is_no_runs() {
-        assert!(read(Path::new("/nonexistent/runs.db")).unwrap().is_empty());
+        assert_eq!(
+            read(Path::new("/nonexistent/runs.db")).unwrap(),
+            [] as [crate::runs::Run; 0]
+        );
     }
 }

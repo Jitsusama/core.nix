@@ -482,9 +482,12 @@ onLinux {
   # Quickshell's files, not the shell: a property typed by a name its files
   # don't export (AuthFlow, BluetoothAdapter and the like), and a handler
   # whose parameter is a Qt enum QML can't see (QProcess::ExitStatus).
+  # Every message qmllint counts is printed, as its own report can leave
+  # one out and fail showing only infos (tests/qmllint-counted.sh).
   quickshell-passes-qmllint =
     let
       qt = pkgs.kdePackages.qtdeclarative;
+      lint = lib.getExe (pkgs.callPackage ../../tests/qmllint-counted.nix { });
     in
     # In UTF-8, which Qt otherwise switches to and says so.
     pkgs.runCommandLocal "quickshell-passes-qmllint" { LC_ALL = "C.UTF-8"; } ''
@@ -492,10 +495,14 @@ onLinux {
       # Quickshell finds a folder's files as a module by its path; qmllint
       # needs a qmldir saying so (tests/qmldir.sh).
       ${lib.getExe pkgs.bash} ${../../tests/qmldir.sh} qs
-      ${qt}/bin/qmllint --ignore-settings --max-warnings 0 \
+      # Each file is named by its real, whole path, as Qt 6.12's qmllint
+      # names a qmldir's entries: named any other way, the file it lints and
+      # the qmldir's entry are two types to it, the first never told it's a
+      # singleton.
+      ${lint} --ignore-settings --max-warnings 0 \
         -I ${quickshellTypes}/lib/qt-6/qml -I ${qt}/lib/qt-6/qml -I . \
         --unresolved-type disable --signal-handler-parameters disable \
-        $(find qs -name '*.qml' | sort)
+        $(find "$(pwd -P)/qs" -name '*.qml' | sort)
       touch $out
     '';
 
@@ -2781,7 +2788,7 @@ onLinux {
         })
         property var focused: 11
         property int revision: 0
-        readonly property var current: { revision; return focused; }
+        readonly property var current: { void revision; return focused; }
         function workspace(id) {
           return id === undefined ? Object.values(workspaces).find(one => one.is_focused) ?? null
             : workspaces[id] ?? null;

@@ -932,7 +932,7 @@ mod tests {
             })
         );
         assert_eq!(found[1].dial, None);
-        assert!(found[1].attachments.is_empty());
+        assert_eq!(found[1].attachments, [] as [crate::calendar::Attachment; 0]);
     }
 
     #[test]

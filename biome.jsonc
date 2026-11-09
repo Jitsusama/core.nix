@@ -50,6 +50,17 @@
             // A reader asking for less motion stills every rule a site adds
             // after the kit, which only !important can promise.
             "noImportantStyles": "off"
+          },
+          "suspicious": {
+            // What isn't Baseline is asked for behind @supports, which the
+            // rule takes for a property but never for a pseudo-element, so
+            // the selection's colours and a disclosure's growing can be
+            // neither gated nor kept. Each is a rule of its own, which a
+            // browser without it drops alone.
+            "useBaseline": {
+              "level": "warn",
+              "options": { "allowSelectors": ["selection", "details-content"] }
+            }
           }
         }
       }

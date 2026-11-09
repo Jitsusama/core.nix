@@ -437,7 +437,7 @@ fn a_source_running_is_answering_before_anything_asks_it() {
         );
         std::thread::sleep(Duration::from_millis(20));
     }
-    assert!(running.asked("slack").is_empty());
+    assert_eq!(running.asked("slack"), [] as [std::string::String; 0]);
 }
 
 #[test]

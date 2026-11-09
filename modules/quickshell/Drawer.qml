@@ -137,8 +137,8 @@ Floating {
                 // fixed line keeps its spare room above its letters, which a
                 // TextEdit's baselineOffset leaves out, so it's set by both.
                 readonly property real drop: {
-                    contentHeight;
-                    width;
+                    void contentHeight;
+                    void width;
                     return positionToRectangle(0).y;
                 }
                 readonly property string said: words.elides

@@ -71,7 +71,7 @@ ShellRoot {
     ]
 
     QtObject {
-        id: launcher
+        id: theLauncher
 
         property bool open: false
     }
@@ -79,7 +79,7 @@ ShellRoot {
     Launcher.Runs {
         id: runs
 
-        launcher: launcher
+        launcher: theLauncher
         settings: ({ name: "runs" })
     }
 

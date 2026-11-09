@@ -1714,7 +1714,10 @@ mod tests {
         let fell = NOW - 3.0 * HOUR;
         premium(&history, fell - 60.0, 1000.0);
         premium(&history, fell, 300.0);
-        assert!(cap_titles(&history, fell + 60.0).is_empty());
+        assert_eq!(
+            cap_titles(&history, fell + 60.0),
+            [] as [std::string::String; 0]
+        );
         assert_eq!(cap_titles(&history, fell + 900.0), ["the cap fell to $300"]);
         premium(&history, NOW - HOUR, 1000.0);
         assert_eq!(cap_titles(&history, NOW), ["the cap rose to $1,000"]);
@@ -1729,8 +1732,11 @@ mod tests {
         premium(&history, at - 240.0, 1000.0);
         premium(&history, at, 300.0);
         premium(&history, at + 30.0, 1000.0);
-        assert!(cap_titles(&history, at + 15.0).is_empty());
-        assert!(cap_titles(&history, NOW).is_empty());
+        assert_eq!(
+            cap_titles(&history, at + 15.0),
+            [] as [std::string::String; 0]
+        );
+        assert_eq!(cap_titles(&history, NOW), [] as [std::string::String; 0]);
     }
 
     // A running daemon reads the hour under way on every pass, and the
@@ -1766,7 +1772,7 @@ mod tests {
         for minute in (0..60).step_by(10) {
             turn(&history, "s0", NOW - 3600.0 + f64::from(minute) * 60.0, 1.0);
         }
-        assert!(burns(&history).is_empty());
+        assert_eq!(burns(&history), [] as [crate::findings::Finding; 0]);
     }
 
     // Ten dollars a minute for the last hour is one burn, in the session
@@ -1823,7 +1829,10 @@ mod tests {
                 1.5,
             );
         }
-        assert!(burns_at(&history, night).is_empty());
+        assert_eq!(
+            burns_at(&history, night),
+            [] as [crate::findings::Finding; 0]
+        );
     }
 
     // A burn is the account's spend running hot, so it's one burn however
@@ -1915,7 +1924,7 @@ mod tests {
     // while its subquest changed that morning.
     #[test]
     fn a_quest_moving_in_its_subquest_isnt_stalled() {
-        assert!(stalled_keys("2026-10-14").is_empty());
+        assert_eq!(stalled_keys("2026-10-14"), [] as [std::string::String; 0]);
         assert_eq!(stalled_keys("2026-09-30"), ["stalled:root"]);
     }
 
@@ -1948,7 +1957,10 @@ mod tests {
                 10.0,
             );
         }
-        assert!(burns_at(&history, evening).is_empty());
+        assert_eq!(
+            burns_at(&history, evening),
+            [] as [crate::findings::Finding; 0]
+        );
     }
 
     fn billed(history: &History, hour: &str, model: &str, dollars: f64) {
@@ -1979,7 +1991,10 @@ mod tests {
         health_at(&history, "meter", "error", failed, NOW - 60.0);
         health_at(&history, "meter", "error", failed, NOW);
         let config = config();
-        assert!(health(&Picture::read(&history, &config, NOW).unwrap()).is_empty());
+        assert_eq!(
+            health(&Picture::read(&history, &config, NOW).unwrap()),
+            [] as [crate::findings::Finding; 0]
+        );
         let later = NOW + 15.0 * 60.0;
         health_at(&history, "meter", "error", failed, later);
         let found = health(&Picture::read(&history, &config, later).unwrap());
@@ -1991,7 +2006,10 @@ mod tests {
         // Fine for a moment between starts the count again.
         health_at(&history, "meter", "fine", "live", later + 30.0);
         health_at(&history, "meter", "error", failed, later + 60.0);
-        assert!(health(&Picture::read(&history, &config, later + 60.0).unwrap()).is_empty());
+        assert_eq!(
+            health(&Picture::read(&history, &config, later + 60.0).unwrap()),
+            [] as [crate::findings::Finding; 0]
+        );
     }
 
     // Something new is a warning past the floor; below it, it's too

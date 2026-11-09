@@ -92,7 +92,8 @@ function fittedFrom(facts, fits, from) {
 function keysFitted(keys, wide, room, yielding = []) {
     let kept = keys;
     while (kept.length > 2 && wide(kept) > room) {
-        const word = yielding.find(one => kept.slice(1).some(key => key[1] === one));
+        const after = kept.slice(1);
+        const word = yielding.find(one => after.some(key => key[1] === one));
         const going = word === undefined ? 1 : kept.findIndex((key, at) => at > 0 && key[1] === word);
         kept = kept.filter((_, at) => at !== going);
     }

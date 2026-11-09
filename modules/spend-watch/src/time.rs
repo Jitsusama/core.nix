@@ -255,10 +255,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(
-        clippy::float_cmp,
-        reason = "both instants are whole seconds, which f64 holds and subtracts exactly"
-    )]
     fn a_day_across_daylight_saving_is_its_own_length() {
         let toronto = Zone::named("America/Toronto").unwrap();
         let day = parse_day("2026-11-01").unwrap();
@@ -287,10 +283,6 @@ mod tests {
     // Noon in Toronto after the clocks go back is noon before, an hour of
     // UTC apart.
     #[test]
-    #[expect(
-        clippy::float_cmp,
-        reason = "both instants are whole seconds, which f64 holds exactly"
-    )]
     fn the_same_time_holds_across_a_change_of_clocks() {
         let toronto = Zone::named("America/Toronto").unwrap();
         let after = parse("2026-11-02T17:00:00Z").unwrap();

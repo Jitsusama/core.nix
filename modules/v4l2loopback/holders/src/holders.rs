@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn this_process_is_named_by_its_own_program() {
         let named = program(Path::new("/proc/self")).unwrap();
-        assert!(!named.is_empty());
+        assert_ne!(named, "");
         assert!(!named.contains('\n'));
     }
 }

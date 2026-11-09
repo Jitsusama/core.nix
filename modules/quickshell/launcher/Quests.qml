@@ -85,8 +85,8 @@ Provider {
     // the harness says that again as quest.kind. A quest in both lists, as
     // it ends or reopens, is the open one until both are written.
     readonly property var quests: {
-        openKind?.revision;
-        endedKind?.revision;
+        void openKind?.revision;
+        void endedKind?.revision;
         const seen = new Set();
         const all = [];
         const records = Object.values(openKind?.held ?? {})

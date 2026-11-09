@@ -523,8 +523,8 @@ mod tests {
     #[test]
     fn a_blank_naming_no_move_moves_on_one() {
         let mut model = Scripted::new(&[(0, 8, 0), (1, 8, 0), (2, 8, 0)]);
-        assert!(greedy(3, &mut model).unwrap().is_empty());
-        assert!(model.predicted.is_empty());
+        assert_eq!(greedy(3, &mut model).unwrap(), [] as [usize; 0]);
+        assert_eq!(model.predicted, [] as [usize; 0]);
     }
 
     #[test]

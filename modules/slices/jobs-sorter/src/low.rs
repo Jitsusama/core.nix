@@ -222,19 +222,28 @@ mod tests {
     fn only_a_change_is_asked_for_and_a_window_comes_back_up_once_unmarked() {
         let mut weighing = Weighing::default();
         let windows = |wanted| vec![("kitty-1-1.scope".to_owned(), wanted)];
-        assert!(weighing.changes(&windows(AT)).is_empty());
+        assert_eq!(
+            weighing.changes(&windows(AT)),
+            [] as [(std::string::String, u64); 0]
+        );
         assert_eq!(
             weighing.changes(&windows(10)),
             [("kitty-1-1.scope".to_owned(), 10)]
         );
         weighing.weighed("kitty-1-1.scope", 10);
-        assert!(weighing.changes(&windows(10)).is_empty());
+        assert_eq!(
+            weighing.changes(&windows(10)),
+            [] as [(std::string::String, u64); 0]
+        );
         assert_eq!(
             weighing.changes(&windows(AT)),
             [("kitty-1-1.scope".to_owned(), AT)]
         );
         weighing.keep_only(&[]);
-        assert!(weighing.changes(&windows(AT)).is_empty());
+        assert_eq!(
+            weighing.changes(&windows(AT)),
+            [] as [(std::string::String, u64); 0]
+        );
         // A new window's pi starting is asked for at once.
         assert_eq!(
             weighing.changes(&windows(STARTING)),

@@ -505,7 +505,10 @@ mod tests {
         ));
         let picked = picked.unwrap();
         assert_eq!(picked.filter, None);
-        assert!(picked.choices.is_empty());
+        assert_eq!(
+            picked.choices,
+            [] as [(std::string::String, std::string::String); 0]
+        );
     }
 
     #[test]

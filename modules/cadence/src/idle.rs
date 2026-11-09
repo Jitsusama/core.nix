@@ -175,7 +175,10 @@ mod tests {
             tells[0].text
         );
         assert!(tells[0].text.contains("(session s-1)"));
-        assert!(due(&sessions, &mut told, NOW + 3600, clock).is_empty());
+        assert_eq!(
+            due(&sessions, &mut told, NOW + 3600, clock),
+            Vec::<Tell>::new()
+        );
     }
 
     #[test]
@@ -183,7 +186,10 @@ mod tests {
         let mut told = Told::default();
         assert_eq!(due(&[quiet(IDLE_FOR)], &mut told, NOW, clock).len(), 1);
         let again = quiet(IDLE_FOR - 60);
-        assert!(due(std::slice::from_ref(&again), &mut told, NOW, clock).is_empty());
+        assert_eq!(
+            due(std::slice::from_ref(&again), &mut told, NOW, clock),
+            Vec::<Tell>::new()
+        );
         assert_eq!(due(&[again], &mut told, NOW + 60, clock).len(), 1);
     }
 

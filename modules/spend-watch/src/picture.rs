@@ -1080,10 +1080,6 @@ mod tests {
     // Read at 04:00 with the day resetting at 10:00: it counts from that
     // day's start, and resets every day after.
     #[test]
-    #[expect(
-        clippy::float_cmp,
-        reason = "whole dollars sum exactly, so the share is the very division written here"
-    )]
     fn a_period_s_cap_counts_from_its_start_and_resets_on_its_own() {
         let mut day = cap("proxy", 300.0);
         day.at = 100.0 * HOUR;
@@ -1100,10 +1096,6 @@ mod tests {
     // $50 an hour billed for the day: a premium day that counted none of it
     // simulates none, and one that counted half simulates half.
     #[test]
-    #[expect(
-        clippy::float_cmp,
-        reason = "whole dollars sum exactly, and these shares are exact binary fractions"
-    )]
     fn a_cap_counts_its_share_of_what_is_billed() {
         let hours: BTreeMap<i64, f64> = (77..=100).map(|hour| (hour, 50.0)).collect();
         assert_eq!(counted(&cap("proxy", 0.0), &[], &hours), 0.0);
@@ -1116,10 +1108,6 @@ mod tests {
     // which says nothing of its share; the days before, which counted none
     // of what was billed, say it's none.
     #[test]
-    #[expect(
-        clippy::float_cmp,
-        reason = "whole dollars sum exactly, and these shares are exact binary fractions"
-    )]
     fn a_period_just_begun_takes_its_share_from_the_ones_before() {
         let period = |at: f64, resets: f64, spent: f64| {
             let mut day = cap("proxy", spent);

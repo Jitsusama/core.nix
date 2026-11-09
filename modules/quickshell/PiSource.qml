@@ -119,11 +119,11 @@ Singleton {
     // and what each session answered Joel, each record as the node serves
     // it, by its key.
     readonly property var runs: {
-        runKind?.revision;
+        void runKind?.revision;
         return Object.values(runKind?.held ?? {});
     }
     readonly property var talks: {
-        talkKind?.revision;
+        void talkKind?.revision;
         return Object.values(talkKind?.held ?? {});
     }
 

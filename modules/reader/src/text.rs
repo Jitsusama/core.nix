@@ -359,11 +359,10 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["left", "right"]
         );
-        assert!(find(&lines, "t r").is_empty());
+        assert_eq!(find(&lines, "t r"), [] as [crate::text::Found; 0]);
     }
 
     #[test]
-    #[expect(clippy::float_cmp, reason = "the baselines given, read back unchanged")]
     fn each_match_says_where_it_sits() {
         let lines = lines(vec![run(0.0, 10.0, "a cat sat"), run(0.0, 30.0, "cats")]);
         let found = find(&lines, "cat");
@@ -429,8 +428,8 @@ mod tests {
     #[test]
     fn nothing_is_found_for_nothing() {
         let lines = lines(vec![run(0.0, 10.0, "text")]);
-        assert!(find(&lines, "").is_empty());
-        assert!(find(&lines, "absent").is_empty());
+        assert_eq!(find(&lines, ""), [] as [crate::text::Found; 0]);
+        assert_eq!(find(&lines, "absent"), [] as [crate::text::Found; 0]);
     }
 
     #[test]
@@ -439,7 +438,7 @@ mod tests {
         assert_eq!(find(&lines, "page").len(), 5);
         assert_eq!(find(&lines, "\\<page\\>").len(), 2);
         assert_eq!(find(&lines, "\\<page").len(), 4, "only its start a word's");
-        assert!(find(&lines, "\\<\\>").is_empty());
+        assert_eq!(find(&lines, "\\<\\>"), [] as [crate::text::Found; 0]);
         assert_eq!(find(&lines, "\\<Page\\>").len(), 0);
         assert_eq!(
             find_as(&lines, "\\<Page\\>", false).len(),

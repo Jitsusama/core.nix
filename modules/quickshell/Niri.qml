@@ -57,7 +57,7 @@ Singleton {
     // while a layer such as the launcher has the keys, so it's the focused
     // workspace's active window then; null on an empty workspace.
     readonly property var current: {
-        revision;
+        void revision;
         const workspace = root.workspace();
         const id = focused ?? (workspace ? workspace.active_window_id : null);
         return id ?? null;

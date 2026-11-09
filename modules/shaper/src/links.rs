@@ -301,7 +301,7 @@ mod tests {
 
     #[test]
     fn nothing_routed_is_no_uplinks() {
-        assert!(uplinks("", "[]").is_empty());
+        assert_eq!(uplinks("", "[]"), [] as [crate::links::Uplink; 0]);
     }
 
     #[test]

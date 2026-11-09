@@ -11,12 +11,6 @@
 let
   inherit (config.jitsusama.theme) colours;
   sgr = import ../theme/sgr.nix { inherit lib; };
-  # home-manager makes the history's folder with a dirname and a mkdir at
-  # every start; zsh can name the folder itself, and it's there after the
-  # first.
-  makesFolder = ''mkdir -p "$(dirname "$HISTFILE")"'';
-  findsFolder = "[[ -d \${HISTFILE:h} ]] || mkdir -p \${HISTFILE:h}";
-  rc = config.programs.zsh.initContent;
 in
 {
   imports = [ ../theme/home.nix ];
@@ -47,9 +41,4 @@ in
       (builtins.readFile ./terminal.zsh)
     ];
   };
-
-  home.file."${config.lib.zsh.dotDirRel}/.zshrc".text =
-    assert lib.assertMsg (lib.hasInfix makesFolder rc)
-      "home-manager no longer makes the history's folder as modules/zsh/home.nix expects";
-    lib.mkForce (lib.replaceStrings [ makesFolder ] [ findsFolder ] rc);
 }

@@ -544,7 +544,7 @@ mod tests {
         let _silent = dialled(&far);
         let mut heard = Vec::new();
         caller.read_to_end(&mut heard).expect("the hang-up");
-        assert!(heard.is_empty());
+        assert_eq!(heard, [] as [u8; 0]);
         assert!(far.accept().is_err(), "a slow far side isn't dialled again");
     }
 }

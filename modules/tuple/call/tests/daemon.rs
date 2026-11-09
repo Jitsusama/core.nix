@@ -295,8 +295,8 @@ fn a_stopped_tuple_is_never_started_and_its_call_is_none() {
     // since hello said it.
     client.stands("starting");
     std::thread::sleep(Duration::from_millis(300));
-    assert!(running.read("bin/followed").is_empty());
-    assert!(running.read("bin/asked").is_empty());
+    assert_eq!(running.read("bin/followed"), [] as [std::string::String; 0]);
+    assert_eq!(running.read("bin/asked"), [] as [std::string::String; 0]);
 }
 
 #[test]

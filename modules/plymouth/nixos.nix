@@ -514,6 +514,10 @@ let
       ${plymouth} update --status="generation:$number"
     fi
   '';
+
+  # systemd's password agent as the initrd carries it, from the systemd the
+  # initrd boots.
+  initrdAgent = lib.getExe' config.boot.initrd.systemd.package "systemd-tty-ask-password-agent";
 in
 {
   config = lib.mkIf (theme != null) {
@@ -597,7 +601,19 @@ in
       ];
       ExecStopPost = [ "-${config.boot.plymouth.package}/bin/plymouth update --status=hibernation:none" ];
     };
+    # The disk's ask reaches the splash through systemd's password agent, and
+    # Plymouth's unit runs the agent from the systemd Plymouth was built
+    # against, nixpkgs' own. NixOS now patches the systemd it boots, so the
+    # initrd's systemd is another store path, and only its agent goes in the
+    # initrd: Plymouth's agent wasn't there, its unit never started, and the
+    # splash never asked for the disk. So the initrd's unit runs the agent
+    # the initrd carries.
+    boot.initrd.systemd.services.systemd-ask-password-plymouth.serviceConfig.ExecStart = [
+      ""
+      "${initrdAgent} --watch --plymouth"
+    ];
     boot.initrd.systemd.storePaths = [
+      initrdAgent
       (lib.getExe' pkgs.coreutils "sleep")
       imageBar
       # The initrd takes a script's own path but not those it names, so the

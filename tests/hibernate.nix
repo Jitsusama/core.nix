@@ -49,7 +49,6 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         useNixStoreImage = true;
         sharedDirectories = lib.mkForce { };
       };
-      boot.initrd.systemd.enable = true;
       # A laptop's initrd has btrfs for its root. Without it, udev can't ask
       # whether the swap file's filesystem is whole, so its device never
       # shows and the resume waits it out.

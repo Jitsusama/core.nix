@@ -4,7 +4,9 @@
 # Quickshell's type files (the first argument), and any warning fails. A
 # check's own QML, its cases and stand-ins, is held to what the shell is.
 # The same two kinds of report are left out, since each is a gap in
-# Quickshell's files rather than the shell (checks.nix says which).
+# Quickshell's files rather than the shell (checks.nix says which). Each
+# message qmllint counts is printed, as its own report can leave one out
+# (qmllint-counted.sh).
 #
 # usage: shell-folder-lint <Quickshell's types> <Qt's QML modules>
 
@@ -36,8 +38,11 @@ find "$module/qs" -type d | while read -r dir; do
   } > "$dir/qmldir"
 done
 
+# Each file is named by its real, whole path, as Qt 6.12's qmllint names a
+# qmldir's entries: named any other way, the file it lints and the qmldir's
+# entry are two types to it, the first never told it's a singleton.
 cd "$module" || exit
-find qs -name '*.qml' -print0 | sort -z |
-  xargs -0 qmllint --ignore-settings --max-warnings 0 \
+find "$(pwd -P)/qs" -name '*.qml' -print0 | sort -z |
+  xargs -0 qmllint-counted --ignore-settings --max-warnings 0 \
     -I "$types" -I "$qt" -I . \
     --unresolved-type disable --signal-handler-parameters disable

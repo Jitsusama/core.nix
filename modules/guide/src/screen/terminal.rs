@@ -24,6 +24,9 @@ pub enum Press {
     Down,
     /// Ctrl+C: leave the guide.
     Leave,
+    /// No key, but the screen is no longer the size the last screen shown
+    /// was laid out for, so it's laid out again for the size it is.
+    Resized,
 }
 
 pub trait Keys {
@@ -82,6 +85,9 @@ const REPAINT: Duration = Duration::from_secs(2);
 pub struct Terminal {
     out: Stdout,
     last: Option<(Drawn, Theme)>,
+    /// The size last said to have changed since the last screen shown, so
+    /// it's said once, though nothing draws the screen again for it.
+    told: Option<(u16, u16)>,
 }
 
 impl Terminal {
@@ -89,7 +95,11 @@ impl Terminal {
         let mut out = stdout();
         terminal::enable_raw_mode().map_err(broken)?;
         execute!(out, terminal::EnterAlternateScreen, cursor::Hide).map_err(broken)?;
-        Ok(Terminal { out, last: None })
+        Ok(Terminal {
+            out,
+            last: None,
+            told: None,
+        })
     }
 
     /// Whether it's the Linux console, whose font has none of the marks
@@ -135,11 +145,31 @@ impl Terminal {
             None => Ok(()),
         }
     }
+
+    /// Whether the screen has changed size since the last screen shown was
+    /// laid out, not said already. A console changes size when its font
+    /// loads, which on the stick is once the graphics driver has taken it
+    /// over, often after the guide's first screens: one drawn for the size
+    /// before runs off the new edge and loses its keys off the new foot.
+    /// Asked before each wait for a key, and so after every event, the
+    /// kernel's SIGWINCH among them, and every two seconds.
+    fn resized(&mut self) -> bool {
+        let now = self.size();
+        let drawn_for = self.last.as_ref().map(|(drawn, _)| drawn.size);
+        let changed = drawn_for.is_some_and(|size| size != now) && self.told != Some(now);
+        if changed {
+            self.told = Some(now);
+        }
+        changed
+    }
 }
 
 impl Keys for Terminal {
     fn press(&mut self) -> Result<Press, Fault> {
         loop {
+            if self.resized() {
+                return Ok(Press::Resized);
+            }
             if !event::poll(REPAINT).map_err(broken)? {
                 self.repaint()?;
                 continue;
@@ -153,6 +183,9 @@ impl Keys for Terminal {
     fn press_within(&mut self, wait: std::time::Duration) -> Result<Option<Press>, Fault> {
         let until = std::time::Instant::now() + wait;
         loop {
+            if self.resized() {
+                return Ok(Some(Press::Resized));
+            }
             let left = until.saturating_duration_since(std::time::Instant::now());
             if left.is_zero() {
                 return Ok(None);
@@ -176,6 +209,7 @@ impl Screen for Terminal {
     fn show(&mut self, drawn: &Drawn, theme: &Theme) -> Result<(), Fault> {
         paint(&mut self.out, drawn, theme)?;
         self.last = Some((drawn.clone(), theme.clone()));
+        self.told = None;
         Ok(())
     }
 

@@ -1419,7 +1419,7 @@ pub fn source(folder: &Path, scratch: &Path, pinned: Option<&str>) -> Result<Sou
         .filter(|dir| !dir.is_empty());
     let commit = match pinned {
         Some(commit) => commit.to_owned(),
-        None => committed(&top, scratch).map_err(&not)?,
+        None => committed(&top, scratch).map_err(not)?,
     };
     let base = ["@{upstream}", "origin/main"]
         .iter()
@@ -3365,7 +3365,7 @@ mod tests {
             fetched_of(said, &fetching),
             ["/nix/store/a.drv", "/nix/store/c.drv"].map(str::to_owned)
         );
-        assert!(fetched_of("", &fetching).is_empty());
+        assert_eq!(fetched_of("", &fetching), [] as [std::string::String; 0]);
     }
 
     #[test]
@@ -4088,7 +4088,10 @@ mod tests {
         };
         let linux = asked(&words("path:/z checks.x86_64-linux.a")).unwrap();
         let (near, _) = shared(&linux, &machines, answers);
-        assert!(near.is_empty());
+        assert_eq!(
+            near,
+            [] as [(&crate::there::Nearby, crate::there::Asked); 0]
+        );
         assert_eq!(probed.get(), 0, "nothing asked is the machine's");
         let darwin = asked(&words("path:/z checks.aarch64-darwin.b")).unwrap();
         let (near, _) = shared(&darwin, &machines, answers);
@@ -4454,7 +4457,7 @@ mod tests {
             "root": {"inputs": {}}
         }}"#;
         assert_eq!(pinned(lock), words("/nix/store/abc-mint"));
-        assert!(pinned("not a lock").is_empty());
+        assert_eq!(pinned("not a lock"), [] as [std::string::String; 0]);
     }
 
     #[test]

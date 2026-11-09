@@ -71,8 +71,6 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
       boot.loader.systemd-boot.enable = true;
       boot.loader.efi.canTouchEfiVariables = false;
       boot.loader.timeout = 0;
-      # The disk's FIDO2 slot is opened by systemd in the initrd.
-      boot.initrd.systemd.enable = true;
       networking.hostName = "machine";
       users.users.alice = {
         isNormalUser = true;

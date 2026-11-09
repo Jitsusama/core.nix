@@ -462,7 +462,7 @@ mod tests {
         };
         assert_eq!(spent(&caps[0], 7), [9.0, 7.0]);
         assert_eq!(spent(&caps[0], 1), [9.0]);
-        assert!(spent(&caps[1], 7).is_empty());
+        assert_eq!(spent(&caps[1], 7), [] as [f64; 0]);
     }
 
     fn change(name: &str, at: f64, kind: &str, before: f64, after: f64) -> Event {
@@ -502,14 +502,14 @@ mod tests {
             change("premium", at + 30.0, "raised", 300.0, 500.0),
             change("premium", at + 60.0, "raised", 500.0, 1000.0),
         ];
-        assert!(held(events, at + HOUR).is_empty());
+        assert_eq!(held(events, at + HOUR), [] as [crate::caps::Event; 0]);
     }
 
     #[test]
     fn a_change_is_told_once_it_has_stood() {
         let at = 1_792_012_983.0;
         let fell = || vec![change("premium", at, "lowered", 1000.0, 300.0)];
-        assert!(held(fell(), at + 60.0).is_empty());
+        assert_eq!(held(fell(), at + 60.0), [] as [crate::caps::Event; 0]);
         assert_eq!(kinds(&held(fell(), at + HELD)), [("premium", "lowered")]);
         // A state is said as it changes, so it isn't held back.
         let refusing = Event {
@@ -550,10 +550,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(
-        clippy::float_cmp,
-        reason = "a share of ten paths that all reach the cap is exactly one"
-    )]
     fn over_the_cap_it_frees_when_old_hours_roll_out() {
         // $100 an hour for the window's first ten hours, nothing since.
         let mut past = vec![100.0; 10];
@@ -660,10 +656,6 @@ mod tests {
     // $1,000 spent and $40 an hour to come: it warns before the reset and
     // never reaches the cap after, where a rolling day would by 04:00.
     #[test]
-    #[expect(
-        clippy::float_cmp,
-        reason = "a share of paths that all reach the cap is exactly one"
-    )]
     fn a_period_s_spend_goes_all_at_once_when_it_resets() {
         let zone = Zone::utc();
         let now = 1_791_936_000.0 + 22.0 * HOUR;
@@ -710,7 +702,6 @@ mod tests {
     // A reset an hour off, then one a day after: $50 an hour counts
     // toward each day from its own start.
     #[test]
-    #[expect(clippy::float_cmp, reason = "sums of whole dollars are exact in f64")]
     fn every_period_after_the_first_resets_too() {
         let now = 1_791_936_000.0;
         let window = Window::Resets {

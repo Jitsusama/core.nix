@@ -136,7 +136,7 @@ ShellRoot {
 
     // The launcher, as far as Nearby asks it: open, and what's held.
     QtObject {
-        id: launcher
+        id: theLauncher
         property bool open: true
         property var held: []
     }
@@ -144,7 +144,7 @@ ShellRoot {
     Accessories {
         id: finding
         adapter: air
-        launcher: launcher
+        launcher: theLauncher
     }
 
     function nearbyHolds() {
@@ -158,7 +158,7 @@ ShellRoot {
         expect("Nearby says it looks while open", place.side === ""
             && place.note === "looks while open" && place.verb === "more"
             && place.empty === "Nothing heard yet.", `${place.side}; ${place.note}`);
-        launcher.held = [{ row: { key: "bluetooth:nearby" } }];
+        theLauncher.held = [{ row: { key: "bluetooth:nearby" } }];
         expect("looking while Nearby is open", air.discovering, "the radio isn't looking");
         const rows = finding.nearbyPlace.verbs();
         expect("the named heard, strongest first, then how many more had no name", said(rows)
@@ -188,7 +188,7 @@ ShellRoot {
         speaker.rssi = -70;
         expect("heard again, said again", finding.nearbyPlace.verbs()[0].side
             === "\u221270 dBm \u00b7 fair", finding.nearbyPlace.verbs()[0].side);
-        launcher.held = [];
+        theLauncher.held = [];
         expect("done looking once Nearby closes", !air.discovering, "the radio's still looking");
 
         expect("none heard, none listed", Nearby.heard([unheard]).length === 0, "one listed");

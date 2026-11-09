@@ -134,7 +134,7 @@ Scope {
         if (!there)
             return;
         for (const line of lines) {
-            const made = sender.createObject(root, { line, path: root.collector });
+            const made = sender.createObject(root, { line, path: root.collector }) as Socket;
             made.connected = true;
         }
     }

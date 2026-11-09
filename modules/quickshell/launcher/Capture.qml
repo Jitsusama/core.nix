@@ -103,7 +103,7 @@ Provider {
     // this follows Niri.revision too: on an empty workspace, Niri.current
     // names the new window while Niri.windows doesn't hold it yet.
     readonly property var focused: {
-        Niri.revision;
+        void Niri.revision;
         return Niri.current === null ? null : Niri.windows[Niri.current] ?? null;
     }
 
@@ -255,7 +255,7 @@ Provider {
     // object, so keeping one notifies nothing.
     readonly property var keptWindows: ({})
     readonly property var windows: {
-        Niri.revision;
+        void Niri.revision;
         const next = {};
         const rows = Object.values(Niri.windows)
             .filter(window => provider.focused === null || window.id !== provider.focused.id)

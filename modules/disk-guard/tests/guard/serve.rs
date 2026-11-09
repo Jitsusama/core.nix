@@ -446,7 +446,7 @@ fn a_healthy_disk_tells_the_desktop_nothing_and_a_deaf_one_is_told_of() {
     let dir = tempfile::tempdir().unwrap();
     let mut desk = Fake::default();
     assert_eq!(stepped(&mut guard(dir.path()), 2, &mut desk), STOPPING);
-    assert!(desk.told.is_empty());
+    assert_eq!(desk.told, [] as [disk_guard::notices::Change; 0]);
     let other = tempfile::tempdir().unwrap();
     let mut deaf = Fake {
         refuse: true,

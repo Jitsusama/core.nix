@@ -121,7 +121,7 @@ fn colours_it_cant_read_are_named_and_no_line_is_printed() {
     let ran = run(&[missing.to_str().expect("a path")], "{}");
 
     assert_eq!(ran.status.code(), Some(1));
-    assert!(ran.stdout.is_empty());
+    assert_eq!(ran.stdout, [] as [u8; 0]);
     let said = text(&ran.stderr);
     assert!(said.starts_with(&format!(
         "claude-statusline: can't read {}",

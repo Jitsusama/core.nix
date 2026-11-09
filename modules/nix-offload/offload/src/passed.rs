@@ -234,7 +234,7 @@ mod tests {
             passed.checks(&top),
             ["checks.x.a", "checks.x.b", "checks.x.c"]
         );
-        assert!(passed.checks(&sub).is_empty());
+        assert_eq!(passed.checks(&sub), [] as [std::string::String; 0]);
 
         let arguments = checks(&["--build"]);
         assert_eq!(passed.run(&top, &arguments), None);

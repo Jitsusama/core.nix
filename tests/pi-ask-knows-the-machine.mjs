@@ -12,7 +12,7 @@ import { dirname, join } from "node:path";
 
 const { digest, default: register } = await import(process.argv[2]);
 
-const QUEST_LINE = /^- [A-Z0-9]{6} /;
+const QUEST_LINE = /^- [A-Z0-9]{6} /u;
 
 const root = mkdtempSync(join(tmpdir(), "ask-digest-"));
 const write = (path, content) => {
@@ -97,12 +97,12 @@ quest(
 
 const said = digest(now, places, "Joel Gerber");
 const lines = said.split("\n");
-assert.match(lines[0], /^What's true right now/);
+assert.match(lines[0], /^What's true right now/u);
 assert.ok(lines.includes("Asking: Joel Gerber, whose machine this is."));
-assert.match(said, /^Now: Monday, October 26, 2026 at \d\d:45/m);
+assert.match(said, /^Now: Monday, October 26, 2026 at \d\d:45/mu);
 assert.match(
   said,
-  /^Machine: .+; battery 64%, discharging, not on power; disk: The disk is healthy, with 300 GiB free\.; network: wlan0 \(Wi-Fi\)\.$/m,
+  /^Machine: .+; battery 64%, discharging, not on power; disk: The disk is healthy, with 300 GiB free\.; network: wlan0 \(Wi-Fi\)\.$/mu,
 );
 assert.ok(lines.includes("Waiting on them:"));
 assert.ok(lines.includes("- Type ~/s at the other laptop, now"));
@@ -121,8 +121,8 @@ const bare = {
   sys: join(root, "none"),
 };
 const plain = digest(now, bare);
-assert.doesNotMatch(plain, /Asking:|battery|network|Quests/);
-assert.match(plain, /disk: [\d.]+ GiB free/);
+assert.doesNotMatch(plain, /Asking:|battery|network|Quests/u);
+assert.match(plain, /disk: [\d.]+ GiB free/u);
 assert.ok(plain.split("\n").includes("Nothing waits on them."));
 
 let handler;
@@ -134,4 +134,4 @@ register({
   },
 });
 const { systemPrompt } = handler({ systemPrompt: "You answer quick questions." });
-assert.match(systemPrompt, /^You answer quick questions\.\n\nWhat's true right now/);
+assert.match(systemPrompt, /^You answer quick questions\.\n\nWhat's true right now/u);

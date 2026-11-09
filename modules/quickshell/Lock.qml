@@ -52,8 +52,8 @@ Scope {
     // Whether the lock is asked for or up: from the moment it's asked for,
     // since niri refuses moves while it's locking too, until it's let go.
     // It's read back from the lock each time rather than bound to it, since
-    // Quickshell's lock says its locked changed only when it's let go, and
-    // never when it's taken.
+    // Quickshell's lock doesn't say each time its locked changes: 0.3.1
+    // said so only when it was let go, and 0.3.2 only when it's taken.
     property bool held: false
 
     function lock() {
@@ -124,8 +124,14 @@ Scope {
             root.held = sessionLock.locked;
         }
 
+        // A lock that's no longer secure is being let go, or niri ended it.
+        // Quickshell 0.3.2 says so while its locked still reads true, and
+        // never says after that locked changed, so a held that read locked
+        // alone stayed true once let go: Sessions.qml waited for the lock
+        // forever, and the sessions opened behind it never went to their
+        // places.
         function onSecureChanged() {
-            root.held = sessionLock.locked;
+            root.held = sessionLock.secure && sessionLock.locked;
             if (sessionLock.secure) {
                 holder.setText(`${root.niri}\n`);
                 marker.setText("locked\n");

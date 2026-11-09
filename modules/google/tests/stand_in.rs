@@ -13,7 +13,7 @@ use std::thread;
 use google::api::{Google, Origins};
 use google::calendar::Answer;
 use google::done::Went;
-use google::drive::{DOWNLOADS_KEPT, Is, LISTINGS_KEPT, Unlisted, Unsaved};
+use google::drive::{DOWNLOADS_KEPT, Document, Is, LISTINGS_KEPT, Unlisted, Unsaved};
 use google::files::{Failed, How, Places};
 use google::mail::Tidy;
 use google::saves;
@@ -528,7 +528,10 @@ fn a_call_followed_says_who_is_in_it_once_the_sign_in_grants_reading_meet() {
     // The call's window closed: nothing followed, nothing asked.
     watch.follow(vec!["abc-defg-hij".into()], &now());
     let before = asked(&stand_in);
-    assert!(watch.follow(Vec::new(), &now()).calls.is_empty());
+    assert_eq!(
+        watch.follow(Vec::new(), &now()).calls,
+        Vec::<google::meet::Call>::new()
+    );
     assert!(!watch.following(&now()));
     assert_eq!(asked(&stand_in), before);
 }
@@ -924,7 +927,7 @@ fn a_place_drive_wont_answer_costs_the_rest_nothing() {
     let state = watch.look(&now()).clone();
     assert_eq!(state.account, Standing::Ready);
     assert_eq!(state.documents.len(), 3);
-    assert!(state.drive.places.starred.files.is_empty());
+    assert_eq!(state.drive.places.starred.files, Vec::<Document>::new());
     assert_eq!(state.drive.places.recent.len(), 2);
     assert_eq!(state.drive.places.shared.files.len(), 1);
     assert_eq!(state.drive.places.drives.files.len(), 1);
@@ -1153,7 +1156,7 @@ fn a_refused_sign_in_is_signed_out_and_not_asked_again() {
     );
     let state = watch.look(&now()).clone();
     assert_eq!(state.account, Standing::SignedOut);
-    assert!(state.meetings.is_empty());
+    assert_eq!(state.meetings, [] as [google::calendar::Meeting; 0]);
     watch.look(&now());
     assert_eq!(
         stand_in.heard().len(),
@@ -1400,7 +1403,7 @@ fn mail_read_elsewhere_or_tidied_here_says_how_it_went_and_a_meeting_its_end() {
     let path = credentials("done", now().timestamp().as_millisecond() + 3_600_000);
     let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
     let state = watch.look(&now()).clone();
-    assert!(state.finished.is_empty());
+    assert_eq!(state.finished, Vec::<google::mail::Mail>::new());
     assert_eq!(state.meetings[0].done, None, "the meeting is still to come");
     // Joel reads the newer one in Gmail: it's done, read there.
     read_elsewhere.store(true, Ordering::SeqCst);
@@ -1701,7 +1704,7 @@ fn a_meeting_joel_holds_is_cancelled_telling_every_guest_and_let_go_at_once() {
     let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
     assert!(watch.look(&now()).meetings[0].holds);
     let state = watch.cancel("e1", &now()).clone();
-    assert!(state.meetings.is_empty());
+    assert_eq!(state.meetings, [] as [google::calendar::Meeting; 0]);
     let heard = stand_in.heard();
     let written = heard.last().unwrap();
     assert!(

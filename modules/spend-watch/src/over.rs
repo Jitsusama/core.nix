@@ -386,8 +386,8 @@ mod tests {
         let history = History::memory();
         let dir = tempfile::tempdir().unwrap();
         let reports = dir.path();
-        assert!(pass(&history, reports, 0.5, NOW).is_empty());
-        assert!(written(reports).is_empty());
+        assert_eq!(pass(&history, reports, 0.5, NOW), Vec::<f64>::new());
+        assert_eq!(written(reports), Vec::<String>::new());
         let over = NOW + 60.0;
         assert_eq!(pass(&history, reports, 1.0, over), [over]);
         assert_eq!(pass(&history, reports, 1.0, NOW + 120.0), [over]);
@@ -395,11 +395,11 @@ mod tests {
             written(reports),
             ["over-claude-five-hours-2026-10-14-1431.md"]
         );
-        assert!(pass(&history, reports, 0.4, NOW + 180.0).is_empty());
+        assert_eq!(pass(&history, reports, 0.4, NOW + 180.0), Vec::<f64>::new());
         assert_eq!(pass(&history, reports, 1.0, NOW + 240.0), [over]);
         assert_eq!(written(reports).len(), 1);
         let back = NOW + 300.0;
-        assert!(pass(&history, reports, 0.4, back).is_empty());
+        assert_eq!(pass(&history, reports, 0.4, back), Vec::<f64>::new());
         let again = back + FLICKER + 60.0;
         assert_eq!(pass(&history, reports, 1.0, again), [again]);
         assert_eq!(

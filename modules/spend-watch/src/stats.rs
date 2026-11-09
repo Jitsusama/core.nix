@@ -121,10 +121,6 @@ mod tests {
     use super::*;
 
     #[test]
-    #[expect(
-        clippy::float_cmp,
-        reason = "the median of an odd count is one of the values, untouched"
-    )]
     fn a_median_and_its_scale_ignore_one_wild_value() {
         let values = [10.0, 11.0, 9.0, 10.0, 1000.0];
         assert_eq!(median(&values), 10.0);

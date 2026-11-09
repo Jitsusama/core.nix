@@ -413,7 +413,7 @@ mod tests {
                 why: "host not found".into()
             }
         );
-        assert!(units.actions().is_empty());
+        assert_eq!(units.actions(), [] as [std::string::String; 0]);
         assert_eq!(units.checked_at().len(), 1 + AGAIN.len());
         assert_eq!(units.checked_at().last(), Some(&Duration::from_secs(31)));
     }
@@ -426,7 +426,7 @@ mod tests {
         let outcome = revive(&units, &unit(true, true), Why::Changed).await;
 
         assert_eq!(outcome, Outcome::Left);
-        assert!(units.actions().is_empty());
+        assert_eq!(units.actions(), [] as [std::string::String; 0]);
     }
 
     #[tokio::test(start_paused = true)]
@@ -441,7 +441,7 @@ mod tests {
                 why: "host not found".into()
             }
         );
-        assert!(units.actions().is_empty());
+        assert_eq!(units.actions(), [] as [std::string::String; 0]);
         assert_eq!(units.checked_at(), [Duration::ZERO]);
     }
 
@@ -525,6 +525,6 @@ mod tests {
         let outcome = revive(&units, &unit(false, false), Why::Changed).await;
 
         assert_eq!(outcome, Outcome::Started(state("failed", "failed")));
-        assert!(units.checked_at().is_empty());
+        assert_eq!(units.checked_at(), [] as [std::time::Duration; 0]);
     }
 }

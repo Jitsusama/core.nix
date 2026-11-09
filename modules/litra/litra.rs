@@ -880,7 +880,10 @@ mod tests {
             lights(&root.join("sys"), Path::new("/dev")),
             [PathBuf::from("/dev/hidraw1"), PathBuf::from("/dev/hidraw3")]
         );
-        assert!(lights(&root.join("nothing"), Path::new("/dev")).is_empty());
+        assert_eq!(
+            lights(&root.join("nothing"), Path::new("/dev")),
+            [] as [std::path::PathBuf; 0]
+        );
     }
 
     #[test]

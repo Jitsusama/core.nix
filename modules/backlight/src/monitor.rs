@@ -1232,7 +1232,7 @@ mod tests {
             "Synopsys DesignWare I2C adapter",
             "pci0000:00/i2c-1",
         );
-        assert!(tree.buses().is_empty());
+        assert_eq!(tree.buses(), [] as [(String, Reach); 0]);
     }
 
     #[test]
@@ -1319,10 +1319,9 @@ mod tests {
     #[test]
     fn no_class_of_buses_is_none_found() {
         let tree = Tree::new("no-class");
-        assert!(
-            buses(&tree.0.join("missing"), &tree.0.join("dev"))
-                .unwrap()
-                .is_empty()
+        assert_eq!(
+            buses(&tree.0.join("missing"), &tree.0.join("dev")).unwrap(),
+            [] as [(String, Reach); 0]
         );
     }
 

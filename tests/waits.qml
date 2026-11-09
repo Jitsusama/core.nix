@@ -26,7 +26,7 @@ ShellRoot {
 
     // The launcher as Lag's acts reach it: where they leave it.
     QtObject {
-        id: launcher
+        id: theLauncher
 
         property var held: [{ row: {} }]
         property string typed: ""
@@ -39,7 +39,7 @@ ShellRoot {
     Launcher.Waits {
         id: waits
 
-        launcher: launcher
+        launcher: theLauncher
         settings: ({ name: "waits" })
     }
 
@@ -96,12 +96,12 @@ ShellRoot {
             slow.rows[3].side);
         slow.rows[1].run();
         expect("showing goes to the processor from the top",
-            launcher.held.length === 0 && launcher.typed === "processor",
-            `${launcher.held.length} ${launcher.typed}`);
+            theLauncher.held.length === 0 && theLauncher.typed === "processor",
+            `${theLauncher.held.length} ${theLauncher.typed}`);
         expect("and keeps the launcher there", slow.rows[1].stays === true,
             String(slow.rows[1].stays));
         slow.rows[3].run();
-        expect("heavy work goes to the queue", launcher.typed === "queue", launcher.typed);
+        expect("heavy work goes to the queue", theLauncher.typed === "queue", theLauncher.typed);
         write({}, calmed);
     }
 

@@ -3087,7 +3087,8 @@
   vm-screens-keep-the-launcher = ''
     the launcher opens, finds and runs a row on either of two screens, a Return held doing it
     once, as each goes and comes back, as both go, and after a sleep, its foot still telling the
-    time after the wake; Quickshell warns of nothing meanwhile
+    time after the wake; Quickshell warns of nothing meanwhile, Qt's own text input and absent
+    daemons aside
   '';
   vm-secure-boot-installs = ''
     the whole install works, and the disk opens only for it; the firmware starts the loader by
