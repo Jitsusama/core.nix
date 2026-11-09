@@ -7506,6 +7506,7 @@
       "argument": "nonightlight",
       "in": "displays:warmth",
       "name": "Night Light",
+      "term": "Desktop/night light",
       "verb": "turn off",
       "glyph": "nightLight",
       "states": {
@@ -11590,6 +11591,7 @@
       "id": "meet:call",
       "in": "on",
       "name": "Call",
+      "term": "Programs/call",
       "glyph": "call",
       "said": {
         "eyebrow": "on Meet \u00b7 call",
@@ -11611,7 +11613,8 @@
     {
       "id": "meet:call:microphone",
       "in": "meet:call",
-      "name": "Microphone"
+      "name": "Microphone",
+      "term": "Machine/microphone"
     },
     {
       "id": "meet:call:people",
@@ -11626,7 +11629,8 @@
     {
       "id": "meet:call:meeting",
       "in": "meet:call",
-      "name": "Meeting"
+      "name": "Meeting",
+      "term": "Programs/meeting"
     },
     {
       "id": "meet:call:code",
