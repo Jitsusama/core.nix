@@ -717,10 +717,6 @@ def test_whats_playing_shows_in_the_margin_and_a_media_key_shows_what_it_is(
     desktop.as_account("systemctl --user stop player")
 
 
-# Where the timers daemon keeps its timers, in the account's state.
-TIMERS_KEPT = "~/.local/state/timers/held.json"
-
-
 def test_for_yous_tray_is_shot_alone_calm_and_beside_a_timer_and_music(desktop: Desktop) -> None:
     """For You's tray is shot alone, then out and lit beside a running timer and music.
 
@@ -752,16 +748,16 @@ def test_for_yous_tray_is_shot_alone_calm_and_beside_a_timer_and_music(desktop: 
     desktop.close_launcher()
     try:
         for scale in JOELS_SCALES:
-            at = scale.replace(".", "-")
             desktop.as_account(f"niri msg output winit scale {scale}")
-            desktop.shoot(f"margin-calm-beside-a-timer-at-{at}")
+            desktop.shoot(f"margin-calm-beside-a-timer-at-{scale.replace('.', '-')}")
             for_you_lit(desktop, f"Beside at {scale}")
-            desktop.shoot(f"margin-for-you-beside-a-timer-at-{at}")
+            desktop.shoot(f"margin-for-you-beside-a-timer-at-{scale.replace('.', '-')}")
             for_you_read(desktop, "timer", "playing")
     finally:
         desktop.as_account("niri msg output winit scale 1")
         desktop.as_account("systemctl --user stop player timers.service")
-        desktop.as_account(f"rm -f {TIMERS_KEPT}")
+        # The timers the daemon keeps go with it, in the account's state.
+        desktop.as_account("rm -f ~/.local/state/timers/held.json")
         machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=30))
 
 
