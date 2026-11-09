@@ -16,6 +16,7 @@ import qs
 import Quickshell
 import QtQuick
 import "Transcripts.js" as Said
+import "When.js" as When
 
 Singleton {
     id: root
@@ -62,7 +63,7 @@ Singleton {
         // People knows them, else their address.
         const on = call.event ? who : call.title || who || call.person;
         return on ? Words.name("transcript", "untitled", { who: on })
-            : Words.name("transcript", "unknown", { time: Said.clock(call.started) });
+            : Words.name("transcript", "unknown", { time: When.clock(call.started) });
     }
 
     // Who it was with, as People knows them, or "" when it doesn't, or

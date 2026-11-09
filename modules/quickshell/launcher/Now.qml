@@ -539,7 +539,7 @@ Provider {
                 tomorrow: said.tomorrow,
                 date: (date, format) => Qt.formatDate(date, format)
             }),
-            time: at => Qt.formatTime(new Date(at), "HH:mm")
+            time: at => When.clock(at)
         });
         // Every moment For You says, one way (ForYou.js's moment).
         say.clock = at => ForYou.moment(at, now, say);

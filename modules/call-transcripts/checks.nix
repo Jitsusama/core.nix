@@ -43,6 +43,7 @@ onLinux {
     pkgs.runCommandLocal "the-desktop-reads-the-transcripts" { } ''
       cp ${./tests/transcripts.qml} transcripts.qml
       cp ${./Transcripts.js} Transcripts.js
+      cp ${../quickshell/When.js} When.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       ${shellFolderLint}
