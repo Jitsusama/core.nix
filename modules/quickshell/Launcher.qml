@@ -721,7 +721,7 @@ Scope {
     // Tab and Ctrl+] step in as `into` does (`ledBy`, read by `enter`).
     function ledFound(source) {
         const name = source.settings.name;
-        const { leading, rows } = led(name) ?? { leading: null, rows: [] };
+        const { leading, rows } = leadingTo(name) ?? { leading: null, rows: [] };
         const row = rows[rows.length - 1];
         if (row === undefined)
             return null;
@@ -742,7 +742,7 @@ Scope {
 
     // The source that leads a name deeper (`leadsTo`) and the rows it
     // leads through, asked once, or null when none does.
-    function led(name) {
+    function leadingTo(name) {
         for (const one of sources) {
             const rows = typeof one.leadsTo === "function" ? one.leadsTo(name) : null;
             if (rows !== null)
@@ -7120,7 +7120,7 @@ Scope {
         // to For You's Desktop (`leadsTo`), opens on its place and steps
         // through those rows as Joel would, so - climbs back out the same
         // way and Escape at rest closes there.
-        const { leading, rows } = led(name) ?? { leading: null, rows: [] };
+        const { leading, rows } = leadingTo(name) ?? { leading: null, rows: [] };
         if (leading !== null && leading.settings.name !== name) {
             into(leading.settings.name);
             for (const row of rows) {
