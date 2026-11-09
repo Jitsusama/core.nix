@@ -568,7 +568,15 @@ QtObject {
             servers: { reach: "{count} of the last 8", unreachable: "out of reach",
                 unusable: "set aside", aside: "set aside: {why}",
                 "standing:chosen": "chosen", "standing:tooVariable": "set aside: too variable",
-                "why:tooFewSamples": "too few samples yet" }
+                "why:tooFewSamples": "too few samples yet",
+                "kind:reference": "reference clock", interleaved: "interleaved",
+                basic: "basic", authenticated: "authenticated",
+                unauthenticated: "unauthenticated", exchange: "{mode} \u00b7 {authentication}",
+                allGood: "{sent} sent, all good",
+                packets: "{sent} sent \u00b7 {received} received \u00b7 {valid} valid \u00b7 "
+                    + "{good} good",
+                offline: "{count} offline", burst: "{count} in a burst",
+                unresolved: "{count} unresolved" }
         };
         // A night in Toronto's November as the daemon says it, the clock
         // given as hours and minutes in local time and a kelvin bare, so
@@ -636,22 +644,28 @@ QtObject {
             // How chrony's keeping is worded: seconds in the unit that reads
             // them, signed with a true minus; how far a clock is out and how
             // fast it runs; a span; a hardware clock's drift in a day; how
-            // many polls were answered; and where a server stands.
-            ["nanoseconds", Keeping.seconds(2.98e-8, false), "30 ns"],
+            // many polls were answered; and where a server stands. Every
+            // measure keeps three significant digits, trailing zeros too, in
+            // the settings' decimal mark (VKCF3Z, 2026-11-07).
+            ["nanoseconds", Keeping.seconds(2.98e-8, false), "29.8 ns"],
             ["microseconds, signed", Keeping.seconds(-0.000388, true), "\u2212388 \u00b5s"],
             ["milliseconds", Keeping.seconds(0.036112, false), "36.1 ms"],
+            ["milliseconds, in a comma's mark", Keeping.seconds(0.036112, false, ","),
+                "36,1 ms"],
             ["a microsecond short of a millisecond", Keeping.seconds(0.0009996, false),
-                "1.0 ms"],
-            ["seconds", Keeping.seconds(1.5, true), "+1.500 s"],
-            ["a clock behind", Keeping.out(-0.000012, KeepingCases.clock), "12 \u00b5s slow"],
-            ["a clock ahead", Keeping.out(0.31, KeepingCases.clock), "310.0 ms fast"],
+                "1.00 ms"],
+            ["seconds", Keeping.seconds(1.5, true), "+1.50 s"],
+            ["under chronyd's finest", Keeping.seconds(1e-10, true), "0 s"],
+            ["a clock behind", Keeping.out(-0.000012, KeepingCases.clock), "12.0 \u00b5s slow"],
+            ["a clock ahead", Keeping.out(0.31, KeepingCases.clock), "310 ms fast"],
             ["a clock on time", Keeping.out(0, KeepingCases.clock), "on time"],
-            ["a clock running fast", Keeping.runs(6.267, KeepingCases.clock), "6.267 ppm fast"],
-            ["a clock running slow", Keeping.runs(-3.225, KeepingCases.clock), "3.225 ppm slow"],
+            ["a clock running fast", Keeping.runs(6.267, KeepingCases.clock), "6.27 ppm fast"],
+            ["a clock running slow", Keeping.runs(-3.226, KeepingCases.clock), "3.23 ppm slow"],
+            ["a skew of ten", Keeping.ppm(9.861, false), "9.86 ppm"],
             ["a span in minutes", Keeping.span(1024), "17 min 4 s"],
             ["a span in hours", Keeping.span(86400), "24 h"],
             ["a span under a second", Keeping.span(0.5), "0.5 s"],
-            ["a drift in a day", Keeping.daily(2.1, KeepingCases.clock), "gains 181.4 ms a day"],
+            ["a drift in a day", Keeping.daily(2.1, KeepingCases.clock), "gains 181 ms a day"],
             ["a loss in a day", Keeping.daily(-0.5, KeepingCases.clock), "loses 43.2 ms a day"],
             ["polls answered", Keeping.reach(0o375, KeepingCases.servers), "7 of the last 8"],
             ["the next poll", Keeping.nextPoll({ poll: 64, lastSample: 12 }), 52],
@@ -695,7 +709,33 @@ QtObject {
             ["by day, the sunset comes first, and no room's white without a sensor",
                 Warmth.figures(Object.assign({}, WarmthCases.night, { seesColour: false }),
                     WarmthCases.noon, WarmthCases.said, WarmthCases.told)
-                    .map(figure => figure.id).join(" "), "sunset sunrise night"]
+                    .map(figure => figure.id).join(" "), "sunset sunrise night"],
+            // What a server is asked as, how its exchange went, its packets
+            // saying only what differs, its score, its delay's asymmetry,
+            // and what the servers' activity says beyond their count, a
+            // part with nothing in it giving way (VKCF3Z, 2026-11-07).
+            ["a reference clock", Keeping.mode({ kind: "reference" }, KeepingCases.servers),
+                "reference clock"],
+            ["an interleaved exchange, authenticated", Keeping.exchanged({ interleaved: true,
+                authenticated: true }, KeepingCases.servers),
+                "interleaved \u00b7 authenticated"],
+            ["a basic exchange", Keeping.exchanged({ interleaved: false,
+                authenticated: false }, KeepingCases.servers), "basic \u00b7 unauthenticated"],
+            ["every packet good", Keeping.packets({ sent: 13, received: 13, valid: 13, good: 13 },
+                KeepingCases.servers), "13 sent, all good"],
+            ["packets lost", Keeping.packets({ sent: 13, received: 12, valid: 12, good: 11 },
+                KeepingCases.servers),
+                "13 sent \u00b7 12 received \u00b7 12 valid \u00b7 11 good"],
+            ["a score", Keeping.score(1), "1.00"],
+            ["no score, as chronyd's NaN", Keeping.score(null), ""],
+            ["no asymmetry", Keeping.asymmetry(0), "0"],
+            ["an asymmetry", Keeping.asymmetry(-0.125), "\u22120.125"],
+            ["activity with nothing beyond the count", Keeping.activity({ online: 2,
+                offline: 0, burstOnline: 0, burstOffline: 0, unresolved: 0 },
+                KeepingCases.servers).join(", "), ""],
+            ["activity beyond the count", Keeping.activity({ online: 1, offline: 1,
+                burstOnline: 1, burstOffline: 1, unresolved: 1 }, KeepingCases.servers)
+                .join(", "), "1 offline, 2 in a burst, 1 unresolved"]
         ];
         for (const [what, got, expected] of figures) {
             asked++;

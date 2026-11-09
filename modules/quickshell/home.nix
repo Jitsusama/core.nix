@@ -298,6 +298,7 @@ let
     "launcher/ForYou.js"
     "launcher/Program.js"
     "launcher/Captured.js"
+    "launcher/NeedsYou.js"
     "launcher/Notice.js"
   ];
 

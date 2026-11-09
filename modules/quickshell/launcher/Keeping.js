@@ -3,8 +3,11 @@
 // its frequencies, its spans, and where each server stands and why. Kept
 // apart from Clocks.qml so each figure's wording is tested on its own
 // (tests/answers.qml). Every word comes from the vocabulary, passed in as
-// `said`.
+// `said`, and every measured figure keeps three significant digits, its
+// trailing zeros too, in the settings' decimal mark, `point` (VKCF3Z,
+// 2026-11-07, as Machine.js and Screens.js keep them).
 .pragma library
+.import "Numbers.js" as Numbers
 
 const MINUS = "\u2212";
 
@@ -13,9 +16,9 @@ const MICROSECONDS = 1e6;
 const MILLISECONDS = 1e3;
 // A unit reads a figure until it would be a thousand of it.
 const NEXT_UNIT = 1000;
-// Seconds and parts per million are said to a thousandth, as chronyc says
-// them.
-const THOUSANDTHS = 3;
+const SIGNIFICANT = 3;
+// Under half a nanosecond, chronyd's finest, reads as none.
+const FINEST = 0.5;
 const MINUTE = 60;
 const HOUR = 3600;
 const DAY = 86_400;
@@ -29,37 +32,44 @@ function sign(value) {
     return value < 0 ? MINUS : "+";
 }
 
-// Seconds in the unit that reads them: nanoseconds and microseconds whole,
-// milliseconds to a tenth, seconds to a thousandth. Signed, a figure says
-// "+" or a true minus.
-function seconds(value, signed) {
-    const size = Math.abs(value);
-    const marked = signed && size !== 0 ? sign(value) : "";
-    if (size === 0) {
-        return "0 s";
-    }
-    if (Math.round(size * NANOSECONDS) < NEXT_UNIT) {
-        return `${marked}${Math.round(size * NANOSECONDS)} ns`;
-    }
-    if (Math.round(size * MICROSECONDS) < NEXT_UNIT) {
-        return `${marked}${Math.round(size * MICROSECONDS)} \u00b5s`;
-    }
-    if (Number((size * MILLISECONDS).toFixed(1)) < NEXT_UNIT) {
-        return `${marked}${(size * MILLISECONDS).toFixed(1)} ms`;
-    }
-    return `${marked}${size.toFixed(THOUSANDTHS)} s`;
+// A size to three significant digits, its trailing zeros kept, in the
+// decimal mark `point`, as every measured figure is said (Numbers.js):
+// "915", "1.52", "0.0400". A unit reads under a thousand of it, so none
+// is grouped.
+function digits(size, point) {
+    return Numbers.significant(size, "", point);
 }
 
-// Parts per million, to a thousandth, as chronyc says them.
-function ppm(value, signed) {
-    return `${signed ? sign(value) : ""}${Math.abs(value).toFixed(THOUSANDTHS)} ppm`;
+// Whether a size reads as a thousand or more in its unit, once it's
+// rounded to three digits, so the next unit reads it.
+function past(size) {
+    return Number(size.toPrecision(SIGNIFICANT)) >= NEXT_UNIT;
+}
+
+// Seconds in the unit that reads them, to three significant digits: "29.8
+// ns", "388 \u00b5s", "36.1 ms", "1.50 s". Signed, a figure says "+" or a
+// true minus.
+function seconds(value, signed, point) {
+    const size = Math.abs(value);
+    if (size * NANOSECONDS < FINEST) {
+        return "0 s";
+    }
+    const marked = signed ? sign(value) : "";
+    const units = [[NANOSECONDS, "ns"], [MICROSECONDS, "\u00b5s"], [MILLISECONDS, "ms"]];
+    const [scale, unit] = units.find(([each]) => !past(size * each)) ?? [1, "s"];
+    return `${marked}${digits(size * scale, point)} ${unit}`;
+}
+
+// Parts per million, to three significant digits.
+function ppm(value, signed, point) {
+    return `${signed ? sign(value) : ""}${digits(Math.abs(value), point)} ppm`;
 }
 
 // A span of seconds as hours, minutes and seconds, the largest two that
 // say it; under a second, to a tenth.
-function span(value) {
+function span(value, point) {
     if (value < 1) {
-        return `${Number(value.toFixed(1))} s`;
+        return `${String(Number(value.toFixed(1))).replace(".", point ?? ".")} s`;
     }
     const whole = Math.round(value);
     const hours = Math.floor(whole / HOUR);
@@ -76,25 +86,26 @@ function span(value) {
 
 // Whether seconds read as none in the unit that reads them.
 function none(value) {
-    return ["0 s", "0 ns"].includes(seconds(value, false));
+    return seconds(value, false) === "0 s";
 }
 
-// How far a clock is out, from how far ahead of true time it is: "12 µs
-// fast", "0.4 ms slow", or on time.
+// How far a clock is out, from how far ahead of true time it is: "12.0 µs
+// fast", "412 µs slow", or on time; in the decimal mark `said.point`.
 function out(ahead, said) {
     if (none(ahead)) {
         return said.onTime;
     }
-    return (ahead > 0 ? said.fast : said.slow).replace("{offset}", seconds(ahead, false));
+    return (ahead > 0 ? said.fast : said.slow)
+        .replace("{offset}", seconds(ahead, false, said.point));
 }
 
-// How fast a clock runs, from its parts per million fast: "6.267 ppm
-// fast", "3.225 ppm slow".
+// How fast a clock runs, from its parts per million fast: "6.27 ppm
+// fast", "3.23 ppm slow".
 function runs(fast, said) {
     if (Math.abs(fast) < STILL) {
         return said.onTime;
     }
-    return (fast > 0 ? said.fast : said.slow).replace("{offset}", ppm(fast, false));
+    return (fast > 0 ? said.fast : said.slow).replace("{offset}", ppm(fast, false, said.point));
 }
 
 // What a clock gaining `gain` parts per million does in a day.
@@ -103,7 +114,8 @@ function daily(gain, said) {
     if (none(day)) {
         return said.onTime;
     }
-    return (day > 0 ? said.gains : said.loses).replace("{seconds}", seconds(day, false));
+    return (day > 0 ? said.gains : said.loses)
+        .replace("{seconds}", seconds(day, false, said.point));
 }
 
 // The leap second announced.
@@ -151,4 +163,65 @@ function standing(server, said) {
 // Why chronyd chose a server or set it aside, in a sentence's words.
 function why(server, said) {
     return server.chosen ? (said[`why:${server.chosen.why}`] ?? "") : "";
+}
+
+// A figure as a plate says it, its note after its side as an item of its
+// own, so the plate holds what the step in does: "+3 µs · last update
+// −1 µs" (Y2YBTS's review of #2303).
+function told(part) {
+    return part.note ? `${part.side} \u00b7 ${part.note}` : part.side;
+}
+
+// What chronyd asks a server as: a server, a peer or a reference clock.
+function mode(server, said) {
+    return said[`kind:${server.kind}`] ?? "";
+}
+
+// How a server's last exchange went: interleaved or basic, and whether it
+// was authenticated, as NTS or a key would make it (VKCF3Z, 2026-11-07:
+// runs of items join with dots).
+function exchanged(exchange, said) {
+    return said.exchange
+        .replace("{mode}", exchange.interleaved ? said.interleaved : said.basic)
+        .replace("{authentication}", exchange.authenticated ? said.authenticated
+            : said.unauthenticated);
+}
+
+// A server's packets, saying only what differs: "13 sent, all good" while
+// every one sent came back valid and good, else each count (VKCF3Z).
+function packets(exchange, said) {
+    const counts = [exchange.received, exchange.valid, exchange.good];
+    if (counts.every(count => count === exchange.sent)) {
+        return said.allGood.replace("{sent}", String(exchange.sent));
+    }
+    return said.packets.replace("{sent}", String(exchange.sent))
+        .replace("{received}", String(exchange.received))
+        .replace("{valid}", String(exchange.valid))
+        .replace("{good}", String(exchange.good));
+}
+
+// The selection's score, a measure as every figure is, or "" where
+// chronyd has none, as serde_json writes a NaN as null.
+function score(value, point) {
+    return typeof value === "number" && Number.isFinite(value) ? digits(value, point) : "";
+}
+
+// How lopsided a server's delay is, from -0.5 to +0.5, signed but at none.
+function asymmetry(value, point) {
+    return value === 0 ? "0" : `${sign(value)}${digits(Math.abs(value), point)}`;
+}
+
+// What chronyd's activity says of the servers beyond how many there are:
+// each count that isn't none, offline, in a burst and unresolved, so a
+// part with nothing in it gives way (VKCF3Z, 2026-11-07).
+function activity(counts, said) {
+    if (!counts) {
+        return [];
+    }
+    return [
+        [counts.offline, said.offline],
+        [counts.burstOnline + counts.burstOffline, said.burst],
+        [counts.unresolved, said.unresolved]
+    ].filter(([count]) => count > 0)
+        .map(([count, words]) => words.replace("{count}", String(count)));
 }
