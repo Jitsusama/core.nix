@@ -25,6 +25,28 @@ pub const ASKED: &str = "awk '$1 == \"usage_usec\" { print $2 }' \
                          awk '$3 ~ /^(sd[a-z]+|vd[a-z]+|nvme[0-9]+n[0-9]+)$/ \
                          { written += $10 } END { print written + 0 }' /proc/diskstats";
 
+/// What starts the line a builder's proof says its figures on, on its
+/// standard error, each after it, so its lender keeps them in its
+/// `health.json` as `builds` (src/proof.rs).
+pub const SAID: &str = "nix-offload-builds";
+
+/// What a proof asks the builder once it has built: [`ASKED`]'s figures
+/// on one line of standard error, after [`SAID`].
+pub fn asked_said() -> String {
+    format!("{{ printf '%s ' {SAID}; {{ {ASKED}; }} | tr '\\n' ' '; echo; }} >&2")
+}
+
+/// The figures a line of a proof's standard error says, if it says them.
+pub fn heard(line: &str) -> Option<(u64, u64)> {
+    let figures = line.trim().strip_prefix(SAID)?;
+    read(&figures.split_whitespace().collect::<Vec<_>>().join("\n"))
+}
+
+/// The JSON a lender keeps a builder's figures as, read `at`.
+pub fn kept((cpu, written): (u64, u64), at: u64) -> serde_json::Value {
+    json!({ "cpuUsec": cpu, "writtenBytes": written, "at": at })
+}
+
 /// The two figures the builder answered `ASKED` with: processor time in
 /// microseconds, and bytes written, from 512-byte sectors.
 pub fn read(answer: &str) -> Option<(u64, u64)> {
@@ -57,6 +79,14 @@ mod tests {
         );
         assert_eq!(read("no daemon\n"), None);
         assert_eq!(read("17\n"), None, "written is missing");
+    }
+
+    #[test]
+    fn a_proofs_figures_are_heard_from_its_own_line() {
+        assert_eq!(heard("nix-offload-builds 17 4 "), Some((17, 2048)));
+        assert_eq!(heard("building '/nix/store/x.drv'..."), None);
+        assert!(asked_said().contains("usage_usec"));
+        assert!(asked_said().ends_with(">&2"));
     }
 
     #[test]
