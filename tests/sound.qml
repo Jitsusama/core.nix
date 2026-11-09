@@ -139,7 +139,7 @@ ShellRoot {
         const plate = sound.drawerOf(card);
         const volume = plate.facts.find(fact => fact.label === "Volume");
         expect("a built-in output says so over its name, as it's written",
-            plate.eyebrow === "built in \u00b7 output" && plate.eyebrowNames === true,
+            plate.eyebrow === "built in \u00b7 output" && plate.eyebrowNames !== true,
             plate.eyebrow);
         const made = device("stand-in-speakers", true, {});
         expect("one the machine makes is on this machine",
@@ -327,6 +327,19 @@ ShellRoot {
         expect("a program with no entry is named as it names itself",
             sound.programOf({ name: "pw-cat", properties: { "application.name": "pw-cat" } })
                 .name === "pw-cat", "capitalised");
+        // A stream that says no format, rate or what it plays still has a
+        // drawer, of what it does say.
+        const scant = sound.programPlate(speakers,
+            { name: "Firefox", streams: [{ id: 93, name: "firefox", properties: {} }] });
+        expect("a stream that says little says what it does",
+            said(scant) === "Graph ID=93*", said(scant));
+        // pw-top times a device's drawer and its programs', never its list's.
+        const among = [speakers, headphones];
+        for (const [key, timed] of [["sound:alsa_output.pci.speakers", speakers.name],
+            ["sound:alsa_output.pci.speakers:program:Firefox", speakers.name],
+            ["sound:alsa_output.pci.speakers:programs", ""], ["sound:elsewhere", ""]])
+            expect(`${key} times ${timed || "nothing"}`, sound.timedBy(key, among) === timed,
+                sound.timedBy(key, among));
         sound.timings = {};
     }
 

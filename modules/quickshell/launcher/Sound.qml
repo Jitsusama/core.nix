@@ -441,6 +441,15 @@ Provider {
             : factParts("sound", key, facts[key], ["lighting", "playing", "recording"]);
     }
 
+    // The facts a device's or a stream's drawer knows, each by its word and
+    // only where it has a value, marked as identifiers where they are:
+    // pairs of the word's id under sound: and its value.
+    function known(ids, identifies) {
+        return ids.filter(([, value]) => value !== "").map(([id, value]) => ({
+            label: Words.name(`sound:${id}`), value: value, identifies: identifies
+        }));
+    }
+
     // A device's drawer (Plate.js): where it is and which way it goes over
     // its name, then its parts as facts, what moves most first (VKCF3Z,
     // 2026-11-07): its State as pipewire says it, its Volume in decibels,
@@ -507,18 +516,13 @@ Provider {
         // How it keeps time moves each second, so it goes ahead of Format
         // (VKCF3Z, 2026-11-08).
         const keeping = keepingOf(node);
-        const known = (ids, identifies) => ids.filter(([, value]) => value !== "")
-            .map(([id, value]) => ({
-                label: Words.name(`sound:${id}`), value: value, identifies: identifies
-            }));
         const identified = fact => Object.assign({}, fact, { identifies: true });
         return {
-            // Where it is and what it is, in Note as it's written, never
-            // in Label's capitals (VKCF3Z, 2026-11-09): one the machine
-            // makes, joined by nothing, is on this machine.
+            // Where it is and what it is, in our own words, so in Label's
+            // capitals (VKCF3Z, 2026-11-09): one the machine makes, joined
+            // by nothing, is on this machine.
             eyebrow: Plate.runs([joinedBy(node) || said("joined-here"),
                 said(node.isSink ? "plate-out" : "plate-in")]),
-            eyebrowNames: true,
             title: named(node),
             facts: doing.concat(facts, keeping, format,
                 known([["priority", String(properties["priority.session"] ?? "")]], false),
@@ -953,7 +957,8 @@ Provider {
 
     // A program's drawer, playing through a device or recording from one
     // (VKCF3Z, 2026-11-08): each of its streams, loudest then newest
-    // first, a group headed by what it plays where it has more than one,
+    // first (by its graph ID, which pipewire gives out rising but reuses,
+    // so newest only roughly), a group headed by what it plays where it has more than one,
     // or that said as its Stream where it has one. Under it, how it keeps
     // time, which moves most; its Format; its Sample Rate and Delay, its
     // parts, the rate only where its Format doesn't open with it; its
@@ -1010,12 +1015,7 @@ Provider {
             head = [{ label: Words.name("sound:stream"), value: plays }];
         const format = Sounds.graphFormat(stream.audio?.format);
         const rate = Sounds.rate(properties["node.rate"]);
-        const opensWithRate = format !== ""
-            && (format === rate || format.startsWith(`${rate} \u00b7`));
-        const known = (ids, identifies) => ids.filter(([, value]) => value !== "")
-            .map(([id, value]) => ({
-                label: Words.name(`sound:${id}`), value: value, identifies: identifies
-            }));
+        const opensWithRate = format !== "" && Sounds.sameFormat(rate, format);
         return head.concat(keepingOf(stream),
             format === "" ? [] : [{ label: Words.name("sound:format"), value: format }],
             Plate.facts(streamFigures(key, stream)
@@ -1193,10 +1193,14 @@ Provider {
     // recording from it, by the device's node's name, or "". pw-top runs
     // only while one shows, since it asks the graph for its timing every
     // cycle while it runs.
-    readonly property string timedDevice: {
-        const key = launcher !== null && launcher.open && launcher.drawerOut
-            ? String(launcher.selected?.key ?? "") : "";
-        const device = devices.find(node => key === `sound:${node.name}`
+    readonly property string timedDevice: timedBy(launcher !== null && launcher.open
+        && launcher.drawerOut ? String(launcher.selected?.key ?? "") : "", devices)
+
+    // Which of the devices the row by this key times, by its node's name,
+    // or "": the device's own, or a program's through it, never its
+    // Playing list's.
+    function timedBy(key, among) {
+        const device = among.find(node => key === `sound:${node.name}`
             || key.startsWith(`sound:${node.name}:program:`));
         return device === undefined ? "" : device.name;
     }
