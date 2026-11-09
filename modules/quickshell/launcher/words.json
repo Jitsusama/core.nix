@@ -1248,6 +1248,7 @@
       "id": "machine:cpu:caches",
       "in": "machine:cpu:model",
       "name": "Caches",
+      "term": "Machine/cache",
       "said": {
         "note": "all of them together"
       }
@@ -5247,7 +5248,8 @@
     {
       "id": "sound:channels",
       "in": "sound",
-      "name": "Channels"
+      "name": "Channels",
+      "term": "Machine/channel"
     },
     {
       "id": "sound:hardware",
@@ -9399,7 +9401,8 @@
     {
       "id": "wifi:streams",
       "in": "wifi:speed",
-      "name": "Streams"
+      "name": "Streams",
+      "term": "Network/stream"
     },
     {
       "id": "wifi:guard",
@@ -9606,7 +9609,8 @@
     {
       "id": "bluetooth:channels",
       "in": "bluetooth",
-      "name": "Channels"
+      "name": "Channels",
+      "term": "Network/channel"
     },
     {
       "id": "bluetooth:battery",
@@ -10547,7 +10551,8 @@
     {
       "id": "program:media:link",
       "in": "program:media",
-      "name": "Link"
+      "name": "Link",
+      "term": "Programs/link"
     },
     {
       "id": "program:media:bus-name",

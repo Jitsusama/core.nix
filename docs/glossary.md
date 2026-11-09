@@ -200,6 +200,7 @@ be read, marked unread and archived.
 | Media | the place holding every player and what each is playing, beside Sound, which holds the devices it plays through | | `program:media` |
 | player | a program playing sound or video that the desktop can pause, skip and go to, such as Spotify or a browser's tab | | MPRIS, `Playing.qml` |
 | track | what a player is playing: one song, episode or video, with its artist and album | | MPRIS's `xesam` metadata |
+| link | the web address a track, a page or a message opens at, which Copy the Link copies | | MPRIS's `xesam:url` |
 | podcast | a series of spoken episodes a player plays, such as one on Spotify | | Spotify's `show` |
 | episode | one part of a podcast | | Spotify's `episode` |
 | speed | how fast a player plays its track against the track's own pace, such as one and a half times | | MPRIS's `Rate` |
@@ -298,6 +299,7 @@ off.
 | firmware | the program in a chip that runs it: the machine's, which starts it and keeps its settings, or a device's, such as a keyboard's or a sound card's | BIOS, UEFI | |
 | revive | sending a Mac that won't start Apple's firmware again from another machine over USB-C, keeping its files; a restore does the same and erases it | DFU restore | `idevicerestore`, without and with `--erase` |
 | processor | what runs every program | CPU | |
+| cache | memory inside the processor holding what it used last, nearer to it than the machine's memory, in levels one to three | | `L{level}` caches |
 | model | a device's maker's name for what it is, such as a processor's, a disk's, a battery's or a keyboard's | | |
 | version | which release of a device's firmware is in it, or which Bluetooth its radio speaks, as its maker numbers them | | fwupd's `version` |
 | Linux name | the name Linux gives a part of the machine, such as a sensor's chip or a battery | kernel name | hwmon's `name`, power_supply's name |
@@ -352,6 +354,7 @@ off.
 | card | the chip a sound device plays through or hears with, as the kernel lists it | | ALSA's card |
 | profile | what a headset carries now: music one way, or both ways for a call | | Bluetooth's A2DP and HFP |
 | level | how loud a sound device plays or hears at this moment, as its meter draws it, apart from its volume | | `sound:level` |
+| channel | one of the separate signals a sound device carries at once, such as left and right | | `sound:channels` |
 | graph | how the machine's sound joins each device to each program playing or recording, where a device's Graph ID says which it is and its Graph Format the audio it moves | | PipeWire's graph, its node id |
 | stream | what one program plays through a sound device or records from one, each with a panel of its own in Sound | | a PipeWire stream node |
 | role | what a stream is for, as its program says: music, a film, a call and the like | | PipeWire's `media.role` |
@@ -407,7 +410,8 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | outage | a time the internet was down | downtime | |
 | radio | a Wi-Fi transmitter on one band: the machine's card's, or one of a node's | | |
 | band | the frequencies a radio uses: 2.4, 5 or 6 GHz | frequency band | |
-| channel | the slice of a band a radio uses, with its width | | |
+| channel | the slice of a band a radio uses, with its width, such as Wi-Fi's or the ones Bluetooth hops between | | `bluetooth:channels` |
+| stream | one of the signals a Wi-Fi link carries side by side at once, each adding to its speed | | `wifi:streams`, MIMO's spatial streams |
 | signal | how strongly one radio hears another, in dBm | RSSI, signal strength | |
 | rate | how fast a radio link can carry data each way as it's set now, and how it's made: MCS, streams, width and guard interval | link speed, PHY rate, bitrate | `rate_bps` |
 | speed test | eero measuring the most the internet carries each way, from the gateway node | speedtest | `speedtest` |
