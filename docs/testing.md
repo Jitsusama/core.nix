@@ -453,12 +453,12 @@ the same test shooting every state it puts the desktop in, each once
 the screen holds still, and keeping the pictures in its result. The area
 itself takes none, since proving a change needs none and each shot
 waits for the screen to hold still; a subtest that measures the screen uses
-`settled_screen`, which the gallery keeps as a picture too. Still is by
-evidence: the shell's own count of its windows' frames says none drew, and
-the picture stays the same, for two spans in a row, each stretched with how
-busy the host is, since a busy host draws a fade slower than any fixed wait
+`settled_screen`, which the gallery keeps as a picture too. Still is the
+picture staying the same for two spans, each stretched with how busy the
+host is, since a busy host draws a fade slower than any fixed wait
 (`vm_helpers.settled`). A shot that never stands still is taken, then fails
-saying what was still moving. No check
+saying where the picture last changed and whether the shell, by its own
+count of frames, drew meanwhile. No check
 compares them with stored ones: a stored picture would fail on every change
 meant, and two runs of the same code don't draw every picture the same, as a
 clock or a notice's age moves on. Instead, a change to how anything looks is

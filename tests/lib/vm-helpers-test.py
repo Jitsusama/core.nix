@@ -232,10 +232,6 @@ class FadingGuest:
         """Give the guest's time."""
         return self.now
 
-    def wait(self, span: float) -> None:
-        """Let the time pass."""
-        self.now += span
-
     def screen(self) -> bytes:
         """Give the screen's picture, which another window moving changes each time."""
         self.now += self.LOOKING
@@ -249,16 +245,15 @@ class FadingGuest:
         return {"launcher": drawn} if drawn else {}
 
 
-def settled(guest: FadingGuest, span: float, within: float, asking: int = 0) -> str | None:
+def settled(
+    guest: FadingGuest,
+    span: float,
+    within: float,
+    where: Callable[[bytes, bytes], str] = vm_helpers.nowhere,
+) -> str | None:
     """Wait on the guest's screen to stand still."""
     return vm_helpers.settled(
-        guest.screen,
-        guest.drawn,
-        span,
-        within,
-        asking=asking,
-        clock=guest.clock,
-        wait=guest.wait,
+        guest.screen, guest.drawn, span, within, clock=guest.clock, where=where
     )
 
 
@@ -280,22 +275,16 @@ def test_a_screen_already_still_settles_in_two_spans() -> None:
 def test_a_screen_still_drawing_at_the_bound_says_so() -> None:
     guest = FadingGuest(frames=100, apart=0.3)
     why = settled(guest, 0.5, 5) or ""
-    said = "the screen never stood still for 2 spans of 0.5 s in 5 s: the shell was still drawing"
+    said = (
+        "the screen never stood still for 2 spans of 0.5 s in 5 s:"
+        " it last changed, the shell drawing {'launcher': "
+    )
     assert why.startswith(said), why
 
 
-def test_the_frame_asking_costs_a_still_launcher_is_rest() -> None:
-    # Every gallery's launcher shots on 2026-11-09 counted one frame a span, however long.
-    assert settled(FadingGuest(frames=0, apart=1.0, asked=True), 0.5, 5, asking=1) is None
-    why = settled(FadingGuest(frames=0, apart=1.0, asked=True), 0.5, 5) or ""
-    assert why.endswith("the shell was still drawing, last {'launcher': 1}"), why
-
-
-def test_a_fade_is_waited_out_past_the_frames_asking_costs() -> None:
-    guest = FadingGuest(frames=5, apart=0.6, asked=True)
-    pace = vm_helpers.pace(2.0)
-    assert settled(guest, 0.5 * pace, 10 * pace, asking=1) is None
-    assert guest.now >= guest.faded_by, f"still at {guest.now:.2f} s, the fade ends at 3 s"
+def test_frames_that_change_nothing_are_rest() -> None:
+    # Every gallery's open launcher on 2026-11-09 drew frames the picture never showed.
+    assert settled(FadingGuest(frames=0, apart=1.0, asked=True), 0.5, 5) is None
 
 
 def test_another_programs_window_moving_is_no_rest_either() -> None:
@@ -303,5 +292,13 @@ def test_another_programs_window_moving_is_no_rest_either() -> None:
     why = settled(guest, 0.5, 5)
     assert why == (
         "the screen never stood still for 2 spans of 0.5 s in 5 s:"
-        " the screen changed with no frame of the shell's"
+        " it last changed, the shell drawing nothing meanwhile"
     ), why
+
+
+def test_the_reason_says_where_the_picture_last_changed() -> None:
+    def at_the_corner(_before: bytes, _now: bytes) -> str:
+        return " at 0,0 to 8,8"
+
+    why = settled(FadingGuest(frames=0, apart=1.0, other=True), 0.5, 5, at_the_corner) or ""
+    assert why.endswith("it last changed at 0,0 to 8,8, the shell drawing nothing meanwhile"), why

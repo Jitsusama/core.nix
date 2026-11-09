@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import functools
+import io
 import itertools
 import json
 import re
@@ -22,7 +23,7 @@ from typing import TYPE_CHECKING, Any, TypedDict, cast
 import pytest
 import test_driver.machine
 import vm_helpers
-from PIL import Image, ImageStat
+from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -195,6 +196,14 @@ def margin_points(pointed: str) -> Callable[[str], bool]:
         )
 
     return points
+
+
+def changed_where(before: bytes, now: bytes) -> str:
+    """Say where two of QEMU's pictures of the screen differ, as the box around it all."""
+    box = ImageChops.difference(
+        Image.open(io.BytesIO(before)).convert("RGB"), Image.open(io.BytesIO(now)).convert("RGB")
+    ).getbbox()
+    return f" from {box[0]},{box[1]} to {box[2]},{box[3]}" if box else ""
 
 
 def drawn_at(window: Json) -> tuple[int, int, int, int]:
@@ -438,45 +447,51 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
     ) -> str | None:
         """Wait for the screen to stand still, giving None once it has, or why it never did.
 
-        Still is by evidence (vm_helpers.settled): the shell's windows drew no frame, as its
-        own count says (Frames.qml), and the screen's picture stayed the same, for two spans
-        in a row. Half a second is twice the theme's longest movement; both it and the bound
-        stretch with how busy the host is, since a busy host draws a fade slower than that.
-        Shell only waits on the count alone, for a screen where something else always moves.
-        An open launcher draws a frame, which changes nothing on screen, for being asked (every
-        gallery's launcher shots counted one a span on 2026-11-09, however long the span), so
-        one a span is rest; what each span drew is printed, to show it holds.
+        Still is the screen's picture staying the same for two spans (vm_helpers.settled).
+        Half a second is twice the theme's longest movement; both it and the bound stretch
+        with how busy the host is, since a busy host draws a fade slower than that. The
+        shell's own count of its frames (Frames.qml) says, when it never stands still, whether
+        the shell drew meanwhile, and the pictures say where the screen last changed. Shell
+        only reads the count in place of the picture, for a screen where something else
+        always moves: still is then the shell drawing the same between looks.
         """
         pace = vm_helpers.pace(vm_helpers.busyness())
+        began = time.monotonic()
         with tempfile.TemporaryDirectory() as folder:
             shot = Path(folder) / "shot.ppm"
 
-            def screen() -> bytes:
-                if shell_only:
-                    return b""
-                self.machine.send_monitor_command(f"screendump {shot}")
-                return shot.read_bytes()
-
-            seen: list[dict[str, int]] = []
-
-            def drawn() -> dict[str, int]:
+            def counted() -> dict[str, int]:
                 # Before the shell runs, or after it's gone, nothing of its own is drawing.
                 status, said = self.machine.execute(
                     self.in_session("qs ipc call frames said && qs ipc call frames start")
                 )
                 lines = said.strip().splitlines()
-                frames = json.loads(lines[0]) if status == 0 and lines else {}
-                seen.append(frames)
-                return cast("dict[str, int]", frames)
+                return cast("dict[str, int]", json.loads(lines[0]) if status == 0 and lines else {})
+
+            def screen() -> bytes:
+                if shell_only:
+                    return json.dumps(counted(), sort_keys=True).encode()
+                self.machine.send_monitor_command(f"screendump {shot}")
+                return shot.read_bytes()
+
+            def drawn() -> dict[str, int]:
+                return {} if shell_only else counted()
 
             try:
                 return vm_helpers.settled(
-                    screen, drawn, span * pace, timeout.total_seconds() * pace, asking=1
+                    screen,
+                    drawn,
+                    span * pace,
+                    timeout.total_seconds() * pace,
+                    where=(vm_helpers.nowhere if shell_only else changed_where),
                 )
             finally:
-                print(f"the shell drew {seen[1:]} in spans of {span * pace:.1f} s")
                 # Counting stops, so a shell between checks pays nothing for it.
-                self.machine.execute(self.in_session("qs ipc call frames said"))
+                _, said = self.machine.execute(self.in_session("qs ipc call frames said"))
+                print(
+                    f"the screen looked at for {time.monotonic() - began:.1f} s, in spans of"
+                    f" {span * pace:.1f} s, the shell drawing {said.strip()} at the last"
+                )
 
     def held_still(self, timeout: timedelta = timedelta(seconds=10), span: float = 0.5) -> bool:
         """Say whether the screen stands still before the time is up (unsettled)."""

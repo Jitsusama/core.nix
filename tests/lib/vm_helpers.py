@@ -139,59 +139,49 @@ def pace_the_driver(script: dict[str, Any], describe: Callable[[], None] | None 
 
 
 # How many spans in a row the screen must stand still for. A guest a busy host gives no time
-# through one span draws nothing in it because it runs nothing, so one quiet span isn't rest;
+# through one span draws nothing in it because it runs nothing, so one still span isn't rest;
 # a fade that guest draws slowly still draws across the next.
 STILL_SPANS = 2
 
 
-def settled(  # noqa: PLR0913 # The clock and the wait are the stand-ins' way in.
+def nowhere(_before: bytes, _now: bytes) -> str:
+    """Say nothing of where two pictures differ, for a screen with no picture to read."""
+    return ""
+
+
+def settled(  # noqa: PLR0913 # The clock is the stand-ins' way in; where reads a picture.
     screen: Callable[[], bytes],
     drawn: Callable[[], dict[str, int]],
     span: float,
     within: float,
     *,
-    asking: int = 0,
     clock: Callable[[], float] = time.monotonic,
-    wait: Callable[[float], None] = time.sleep,
+    where: Callable[[bytes, bytes], str] = nowhere,
 ) -> str | None:
     """Wait for the screen to stand still, giving None once it has, or why it never did.
 
-    Still is by evidence, twice over, for STILL_SPANS spans in a row: the windows the shell
-    counts drew no more frames across the span than asking drawn for them costs (drawn gives
-    what drew since it was last called), and the screen's picture didn't change across it,
-    which catches another program's window moving. A picture alike for a while alone isn't
-    enough: a busy host leaves a drawer's fade on one frame longer than any fixed span (ZJ62K2,
-    2026-11-09), and the shell still counts that frame's next. A fade's every frame changes
-    the picture, so the frames asking costs, which change nothing, never hide one.
+    Still is the screen's picture, looked at over and over, staying the same for STILL_SPANS
+    spans, each stretched with how busy the host is, since a busy host draws a fade slower
+    than any fixed span (ZJ62K2, 2026-11-09). The picture, not the shell's count of frames,
+    says it: an open launcher draws frames that change nothing (every gallery's launcher shots
+    on 2026-11-09 counted some), and a fade changes the picture with every frame. The count
+    says, when the screen never stands still, whether the shell drew as it changed, and
+    where says where the picture last changed.
     """
     deadline = clock() + within
     drawn()
     before = screen()
-    quiet = 0
-    why = "no span was looked at"
+    since = clock()
+    last = before
     while clock() < deadline:
-        # The span measured, not a guess at how long a motion takes: what's counted is what's
-        # drawn while nothing is asked of the screen.
-        wait(span)
-        frames = drawn()
         now = screen()
-        if sum(frames.values()) > asking:
-            quiet, why = 0, f"the shell was still drawing, last {frames}"
-        elif now != before:
-            quiet, why = (
-                0,
-                (
-                    f"the screen changed as the shell drew {frames}"
-                    if frames
-                    else "the screen changed with no frame of the shell's"
-                ),
-            )
-        else:
-            quiet += 1
-            if quiet == STILL_SPANS:
-                return None
-        before = now
+        if now != before:
+            last, before, since = before, now, clock()
+        elif clock() - since >= span * STILL_SPANS:
+            return None
+    frames = drawn()
+    shell = f"the shell drawing {frames}" if frames else "the shell drawing nothing"
     return (
         f"the screen never stood still for {STILL_SPANS} spans of {span:.1f} s"
-        f" in {within:.0f} s: {why}"
+        f" in {within:.0f} s: it last changed{where(last, before)}, {shell} meanwhile"
     )
