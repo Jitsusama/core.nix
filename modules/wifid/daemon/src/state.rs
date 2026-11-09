@@ -33,6 +33,8 @@ pub struct State {
     /// The cards, by name, that have looked for networks since wifid was
     /// given them.
     looked: BTreeSet<String>,
+    /// How many looks the cards have finished, as the shell is told.
+    looks: u32,
     /// What each card's driver last read of its link, by the card's name,
     /// while the shell asks for a network in detail.
     polled: BTreeMap<String, Polled>,
@@ -53,6 +55,10 @@ pub struct Described {
     pub radio: bool,
     /// Whether a cable reaches beyond the machine.
     pub wired: bool,
+    /// How many looks for networks the cards have finished, so whoever
+    /// asked for one knows when it's done: what a look hears is described
+    /// before it, and one that hears nothing changes nothing else.
+    pub looks: u32,
 }
 
 /// A Wi-Fi card.
@@ -327,6 +333,14 @@ impl State {
     /// Takes in that the card of that name has looked for networks.
     pub fn looked(&mut self, card: &str) {
         self.looked.insert(card.to_string());
+        self.look_ended();
+    }
+
+    /// Takes in that a card's look ended, heard or failed: one that failed
+    /// hasn't looked, so settles nothing, but whoever asked for it is done
+    /// waiting.
+    pub fn look_ended(&mut self) {
+        self.looks = self.looks.wrapping_add(1);
     }
 
     /// Whether the machine is as online as it's going to get for now: a
@@ -404,6 +418,7 @@ impl State {
             nearby: self.nearby(),
             radio: !self.radio_off,
             wired: self.wired,
+            looks: self.looks,
         }
     }
 
@@ -901,6 +916,31 @@ mod tests {
         state.looked("wlan2");
 
         assert!(state.settled());
+    }
+
+    #[test]
+    fn each_look_a_card_finishes_is_described_even_hearing_nothing() {
+        let mut state = State::default();
+        state.follow(&on_nothing(2));
+        let before = state.described();
+
+        state.looked("wlan2");
+        state.looked("wlan2");
+
+        let after = state.described();
+        assert_eq!((before.looks, after.looks), (0, 2));
+        assert_eq!(after.nearby, before.nearby);
+    }
+
+    #[test]
+    fn a_failed_look_ends_the_wait_but_settles_nothing() {
+        let mut state = State::default();
+        state.follow(&on_nothing(2));
+
+        state.look_ended();
+
+        assert_eq!(state.described().looks, 1);
+        assert!(!state.settled());
     }
 
     #[test]

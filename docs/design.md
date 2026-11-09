@@ -492,8 +492,9 @@ eyebrow carrying one is set in Note as written ("8IDU4E · core.nix ·
 since 21:52"). The eyebrows of one place share one shape, where the thing
 is and then its kind ("via Example ISP", "eero Pro 6 · node", "on Study
 · Wi-Fi"), and say no state, which its first fact says. Nothing the
-launcher shows names a daemon: it says where a thing came from ("from
-Wi-Fi · location"), never what told it, such as GeoClue. Short of room,
+launcher shows names a daemon: it says where a thing came from ("set by
+hand · location"), never what told it, such as GeoClue, and never a
+source it can't tell ("found · location"). Short of room,
 an eyebrow gives way by whole items from its end, as a note does. Each
 surface says which levels it shows, in the surfaces table.
 

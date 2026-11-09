@@ -51,8 +51,12 @@ impl Answer {
 
 /// How long what a place shows may still be reading once it's first asked:
 /// a provider asks its daemon only when it's seen, as Machine does, so a
-/// place asked cold is read only from the terminal's first ask on.
-const SETTLING: Duration = Duration::from_millis(1500);
+/// place asked cold is read only from the terminal's first ask on. It's
+/// longer than a Wi-Fi card's look across every band takes, which was 7.3 s
+/// in the desktop's VM, since Wi-Fi asked cold lists only what a look it
+/// starts hears; what's read sooner is said sooner, and a provider says
+/// it's reading only while an answer is coming.
+const SETTLING: Duration = Duration::from_secs(10);
 
 /// How long between asking again while it settles.
 const ASK_AGAIN: Duration = Duration::from_millis(150);
@@ -268,7 +272,7 @@ mod tests {
         let answer = settled(&stand_in::qs("missed"), &[], false).expect("the stand-in answers");
         assert!(matches!(answer, Answer::Missing { reading: false, .. }));
         assert!(
-            began.elapsed() < SETTLING,
+            began.elapsed() < ASK_AGAIN + LEEWAY,
             "it waited {:?}",
             began.elapsed()
         );
@@ -280,7 +284,7 @@ mod tests {
         let answer = settled(&stand_in::qs("read"), &[], false).expect("the stand-in answers");
         assert!(matches!(&answer, Answer::Shown(shown) if !still_reading(shown)));
         assert!(
-            began.elapsed() < SETTLING,
+            began.elapsed() < ASK_AGAIN + LEEWAY,
             "it waited {:?}",
             began.elapsed()
         );

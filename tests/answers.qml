@@ -631,6 +631,9 @@ QtObject {
             south: "S", east: "E", west: "W" };
         const hereTold = { number: (value, decimals) => Qt.locale("en_CA").toString(value, "f",
             decimals) };
+        // A plate's first two facts, when it was found and how near.
+        const nearAndWhen = [{ id: "located", value: "12 min ago" },
+            { id: "accuracy", value: "within 26 km" }];
         const figures = [
             ["UTC", Moment.utcClock(evening + 7000), "22:00:07"],
             ["Unix time", Moment.unix(evening), 1793829600],
@@ -849,7 +852,13 @@ QtObject {
             ["located within the day", Here.located(1000, 1000 * 1000 + 720_000,
                 { ago: (at, now) => `${(now - at) / 60_000} min ago` }), "12 min ago"],
             ["located days ago", Here.located(1000, 1000 * 1000 + 3 * 86_400_000,
-                { day: () => "Saturday", clock: () => "06:46" }), "Saturday 06:46"]
+                { day: () => "Saturday", clock: () => "06:46" }), "Saturday 06:46"],
+            ["how near goes from the plate while the note says it",
+                JSON.stringify(Here.besideNote(nearAndWhen, true).map(fact => fact.id)),
+                JSON.stringify(["located"])],
+            ["and stays while the note says the zone instead",
+                JSON.stringify(Here.besideNote(nearAndWhen, false).map(fact => fact.id)),
+                JSON.stringify(["located", "accuracy"])]
         ];
         for (const [what, got, expected] of figures) {
             asked++;

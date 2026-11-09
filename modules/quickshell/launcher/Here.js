@@ -92,3 +92,12 @@ function facts(here, now, said, told) {
         { id: "zone", value: here.zone ?? "", identifies: true }
     ].filter(fact => fact.value !== "");
 }
+
+// The facts the row's note doesn't already say, since its drawer, shown
+// beside it, never says a thing twice (VKCF3Z, 2026-11-09): Accuracy goes
+// from the plate while the note says how near it is, and stays while the
+// note says the zone instead. Known by its id rather than its words, so a
+// note that ever said a fact's value for another reason takes nothing.
+function besideNote(plate, noteSaysHowNear) {
+    return noteSaysHowNear ? plate.filter(fact => fact.id !== "accuracy") : plate;
+}

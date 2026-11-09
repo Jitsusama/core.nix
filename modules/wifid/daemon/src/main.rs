@@ -651,6 +651,7 @@ impl Air<'_> {
                     change(&self.state, |state| state.looked(&card));
                 } else {
                     println!("<7>{card}'s look failed");
+                    change(&self.state, State::look_ended);
                 }
             }
             // How an enterprise network's join went: the server proving

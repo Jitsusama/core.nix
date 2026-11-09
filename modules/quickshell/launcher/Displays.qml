@@ -422,6 +422,7 @@ Provider {
     function heardRoom(raw) {
         roomPending = false;
         roomTried = true;
+        roomHeard = true;
         room = Power.lux(raw, readOut(`${roomSensor}/in_illuminance_scale`),
             readOut(`${roomSensor}/in_illuminance_offset`));
         // The launcher asks again only while the answer is out at the top.
@@ -476,12 +477,33 @@ Provider {
         interval: 1000
         repeat: true
         triggeredOnStart: true
-        running: provider.launcher !== null && provider.launcher.open
+        running: provider.launcher !== null
+            && (provider.launcher.open || provider.terminalLooks)
         onTriggered: {
-            provider.askRoom();
+            provider.roomless = !provider.askRoom();
             provider.readLight();
+            provider.lightAsked = true;
         }
     }
+
+    // Whether a terminal's `launcher show` walked into Screens or to a
+    // screen (Launcher.qml's terminalSees), so its drawer's light is read
+    // with the launcher closed too.
+    readonly property bool terminalLooks: (launcher?.terminalSees.walked ?? [])
+        .some(row => row?.from === provider || String(row?.key ?? "").startsWith("display:"))
+    // Whether the light, and the room's, have been read since the terminal
+    // looked, or there's no sensor to hear the room by.
+    property bool lightAsked: false
+    property bool roomHeard: false
+    property bool roomless: false
+    onTerminalLooksChanged: {
+        lightAsked = false;
+        roomHeard = false;
+    }
+    // A terminal's look waits for a fresh read of each, as the launcher
+    // shows them once it opens (Provider.stillReading).
+    stillReading: terminalLooks && !(launcher?.open ?? false)
+        && (!lightAsked || (!roomHeard && !roomless))
 
     FolderListModel {
         id: backlights

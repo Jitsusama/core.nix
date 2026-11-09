@@ -1295,12 +1295,16 @@ Scope {
         // Only the row the path names says its drawer, since a listed row's
         // would be built for every row a long place holds, for one show;
         // `everyDrawer` (`launcher show --drawers`) asks for each row's too.
+        // A drawer read as it's first asked for, a turn later, as a
+        // keyboard's, is still being read until it's in (drawerOf's `told`),
+        // so the terminal asks again for it.
+        const told = { unread: false };
         const entry = (one, at, drawn) => Showing.shaped(one, {
             id: at.concat([steadyId(one)]).join(catalogueStep),
             kind: Catalogue.kindOf(one),
             verb: verbOf(one),
             holds: showsMore(one),
-            drawer: drawn ? drawerOf(one) : null
+            drawer: drawn ? drawerOf(one, told) : null
         });
         const last = trail.length > 0 ? trail[trail.length - 1] : null;
         // A thing's own acts, Return's act (an emoji's Copy) and its verbs, are
@@ -1313,14 +1317,17 @@ Scope {
         const isAct = one => String(one.key ?? "").startsWith("return:")
             || verbs.includes(steadyId(one));
         const sayable = rows.filter(one => !!one && !one.gone && (one.name ?? "") !== "");
-        return {
-            reading: seenByTerminal(trail, sayable, namesOnly),
+        // Built before `reading` is reckoned, since building a drawer may
+        // start its read.
+        const shown = {
             in: trail.map(one => one.name),
             path: ids,
             row: last === null ? null : entry(last, ids.slice(0, -1), true),
             rows: sayable.filter(one => !isAct(one)).map(one => entry(one, ids, everyDrawer)),
             acts: sayable.filter(one => isAct(one)).map(one => entry(one, ids, false))
         };
+        const reading = seenByTerminal(trail, sayable, namesOnly) || told.unread;
+        return Object.assign({ reading: reading }, shown);
     }
 
     // Counts what a terminal's show walked through and listed as seen,
@@ -6344,11 +6351,15 @@ Scope {
     // only shows in certain places"). Between two rows that both have one it stays, and what it
     // shows changes in place; onto a row without one, or from one, it fades
     // only once the selection has rested, so holding an arrow never
-    // flickers it.
-    function drawerOf(row) {
+    // flickers it. `told`, where given, is told as `unread` of a drawer
+    // read as it's first asked for, a turn later, that isn't in yet (the
+    // row's `drawerUnread`, as a keyboard's), so a terminal asks again.
+    function drawerOf(row, told) {
         if (!detailed(row) && row?.plated !== true)
             return null;
         const own = typeof row.drawer === "function" ? row.drawer() : row.drawer;
+        if (told && typeof row.drawerUnread === "function" && row.drawerUnread())
+            told.unread = true;
         const drawer = own ? own : { title: row.name, body: row.reads ?? "",
             picture: row.picture ?? "", across: row.across ?? 0, down: row.down ?? 0 };
         // One that would only repeat its row is never shown (Showing.adds).

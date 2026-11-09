@@ -198,24 +198,48 @@ ShellRoot {
             JSON.stringify(inside.map(row => [row.name, row.side])));
         expect("its country is the one whereabouts named", inside[1].side === "Canada",
             inside[1].side);
+        // Found, since the record doesn't say whether from Wi-Fi or the
+        // network's address, and naming no daemon (VKCF3Z, 2026-11-09).
+        expect("it knows it found where it is, naming no source it can't tell",
+            inside[2].side === "found, within 26 km", inside[2].side);
         // Its plate: how it was found, its town, then when, how near, where
         // on a map to no more places than it knows, its country and its
         // zone last as the identifier it is (VKCF3Z, 2026-11-08).
         const plate = location.thing === true ? location.drawer() : null;
-        expect("its plate says it was found from Wi-Fi, titled by its town",
-            plate?.eyebrow === "from Wi-Fi \u00b7 location" && plate?.title === "Kelpwater",
+        expect("its plate says it was found, titled by its town",
+            plate?.eyebrow === "found \u00b7 location" && plate?.title === "Kelpwater",
             JSON.stringify(plate));
         expect("its plate's facts, from what moves most, the zone an identifier",
             JSON.stringify(plate.facts.map(fact => [fact.label, fact.identifies]))
                 === JSON.stringify([["Located", false], ["Accuracy", false],
                     ["Coordinates", false], ["Country", false], ["Zone", true]]),
             JSON.stringify(plate.facts));
-        expect("its plate names what GeoClue can't say from Wi-Fi, and why",
-            plate.body === "Wi-Fi gives no altitude, speed or heading.", plate.body);
+        expect("its plate names what it can't say, and why",
+            plate.body === "Neither Wi-Fi nor a network's address gives altitude, speed or "
+                + "heading.", plate.body);
         expect("a position within 26 km says a tenth of a degree",
             plate.facts[2].value === "12.3\u00b0 N \u00b7 98.8\u00b0 W"
                 && plate.facts[1].value === "within 26 km",
             JSON.stringify(plate.facts));
+        // Where the place keeps the clock's own zone, the note says how near
+        // it is and the plate leaves Accuracy to it; with no fix once
+        // Location has read, it's not found yet (Y2YBTS's review of #2493).
+        const clockKept = Location.clockZone;
+        const found = Location.here;
+        Location.clockZone = found.zone;
+        const matching = now.location;
+        expect("where the zones match, the note says how near",
+            matching.note === "within 26 km" && matching.hue === "voice",
+            `${matching.note} ${matching.hue}`);
+        expect("and its plate leaves Accuracy to the note",
+            JSON.stringify(matching.drawer().facts.map(fact => fact.label))
+                === JSON.stringify(["Located", "Coordinates", "Country", "Zone"]),
+            JSON.stringify(matching.drawer().facts));
+        Location.here = null;
+        expect("with no fix, not found yet", now.location.note === "not found yet",
+            now.location.note);
+        Location.here = found;
+        Location.clockZone = clockKept;
         expect("it's found by its name too, Now being its home",
             now.things.some(row => row.key === "on:location"),
             JSON.stringify(now.things.map(row => row.key)));
