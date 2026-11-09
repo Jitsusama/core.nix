@@ -37,6 +37,9 @@ ShellRoot {
     function step(name, test, then) {
         root.waiting = name;
         root.next = { test: test, then: then };
+        // Each step has its own while to come, so a builder slow over every
+        // step before it can't spend this one's.
+        patience.restart();
         Qt.callLater(root.heard);
     }
 
@@ -276,8 +279,12 @@ ShellRoot {
         Qt.exit(0);
     }
 
-    // Nothing here waits forever: a case that never comes fails, by name.
+    // Nothing here waits forever: a step that never comes fails, by name,
+    // 30 s after it began. It was 30 s for the whole case, which a loaded
+    // builder ran past in other sessions' changed-checks (RTOIMQ,
+    // 2026-11-09, "never came: set by its options").
     Timer {
+        id: patience
         running: true
         interval: 30000
         onTriggered: root.fail(`never came: ${root.waiting}`)

@@ -55,7 +55,7 @@
   "tests/captured.qml" = 1;
   "tests/command-line.qml" = 1;
   "tests/daemon.qml" = 1;
-  "tests/desk-light.qml" = 4;
+  "tests/desk-light.qml" = 3;
   "tests/desktop/desktop-captures-vm-test.py" = 2;
   "tests/desktop/desktop-keeps-copies-vm-test.py" = 2;
   "tests/desktop/desktop-launcher-answers-vm-test.py" = 3;
@@ -139,7 +139,7 @@
   "tests/swayimg-galleries.qml" = 1;
   "tests/taken.qml" = 1;
   "tests/talks.qml" = 3;
-  "tests/tuple-call.qml" = 4;
+  "tests/tuple-call.qml" = 3;
   "tests/vm/guide/guide-beside-vm-test.py" = 2;
   "tests/vm/guide/guide-install-vm-test.py" = 2;
   "tests/vm/guide/secure-boot-vm-test.py" = 1;
