@@ -1256,7 +1256,7 @@ Singleton {
         const queue = Places.leadersFirst(here.map((one, at) => ({ one, at: places[at],
             kept: keptPlaces[at], gone, told })).sort(order));
         if (reopening !== null) {
-            reopening.queue = reopening.queue.concat(queue);
+            reopening.queue = Places.queuedOnce(reopening.queue, queue, reopening.begun);
             // Settled again once these are placed too, beside the rest.
             reopening.settling = false;
             reopenSettling.stop();
@@ -1274,7 +1274,9 @@ Singleton {
             behind: [],
             settling: false,
             rounds: 0,
-            focused: false
+            focused: false,
+            // Each it has begun, by id, so one handed over again isn't.
+            begun: []
         };
         reopenNext();
     }
@@ -1349,6 +1351,7 @@ Singleton {
             reopenNext();
             return;
         }
+        reopening.begun.push(next.one.id);
         reopening.looking = true;
         lookFor([next.one.cwd], there => {
             reopening.looking = false;

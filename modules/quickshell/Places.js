@@ -353,6 +353,16 @@ function underOrchestrator(title, orchestrator, under) {
     return { workspace: orchestrator.workspace, column };
 }
 
+// Reopen Them All's queue with `more` joined at its end, but for each one
+// it holds already or has `begun`, by id: an orchestrator handing over its
+// own sessions as it comes back, while the queue still holds them, would
+// otherwise begin each twice, two pis on one log, before either has said
+// it runs here.
+function queuedOnce(queue, more, begun) {
+    const asked = new Set(queue.map(entry => entry.one.id).concat(begun));
+    return queue.concat(more.filter(entry => !asked.has(entry.one.id)));
+}
+
 function leadersFirst(queue) {
     const leads = entry => String(entry.one?.orchestrates ?? "") !== "";
     return queue.filter(leads).concat(queue.filter(entry => !leads(entry)));
