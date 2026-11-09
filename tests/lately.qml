@@ -36,7 +36,8 @@ QtObject {
     readonly property var say: ({
         mail: { readInGmail: "read in Gmail" },
         slack: {},
-        notice: { read: "read", withdrawn: "taken back", earlier: "read once" }
+        notice: { read: "read", readInSlack: "read in Slack", withdrawn: "taken back",
+            earlier: "read once" }
     })
 
     function summaries(rows) {
@@ -118,6 +119,14 @@ QtObject {
                 Lately.done({ notices: [readSlack], messages: null }, say)
                     .map(one => [one.source, one.title])],
             [0, [["slack", "from Lin"]]]);
+
+        const readThere = notice("from Lin", { app: "Slack", read: true, readAt: 7500,
+            readHow: "readInSlack" });
+        check(failures, "one read in Slack says so, not that it was read here",
+            Lately.done({ notices: [readThere], messages: null }, say)
+                .map(one => [one.how, one.at]), [["read in Slack", 7500]]);
+        check(failures, "and goes at once, as Joel didn't read it here",
+            Lately.holdingStill([readThere], 7000).map(one => one.read), [true]);
 
         const readLate = notice("Backup done", { read: true, at: 1000, readAt: 8000 });
         check(failures, "a notice read is done when it was read, not when it came",

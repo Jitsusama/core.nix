@@ -9,8 +9,9 @@
 // it were Slack's (Joel, 2026-10-28: "out of date information also sucks
 // ass"). Why there's no count is said on Slack's program row
 // (SlackProgram.qml), not in Now, since Slack out of reach doesn't want
-// Joel (VKCF3Z, b8c8920e). Kept apart from the QML so Qt's own engine runs
-// it (tests/slack-unreads.qml).
+// Joel (VKCF3Z, b8c8920e). Slack's own desktop notices of what was read in
+// Slack are found here too, so the shell reads them. Kept apart from the
+// QML so Qt's own engine runs it (tests/slack-unreads.qml).
 .pragma library
 
 // The order what's unread comes in, as Slack's daemon says it: direct
@@ -200,4 +201,124 @@ const kinds = {
 
 function note(one) {
     return kinds[one.kind] ?? "";
+}
+
+// Slack's own desktop notices say what they're of only in words: a direct
+// message's summary is "[team] from {who}" and its body the text, and
+// another's is "[team] in {place}" and its body "{who}: {text}", with no
+// id, link or time of the message to know it by.
+const NOTICE = /^\[[^\]]*\] (from|in) (.+)$/;
+// An emoji as Slack's markup names it, ":heart:", which the daemon keeps
+// and the notice shows as the emoji itself, so neither is a word.
+const SHORTCODE = /:[a-z0-9_+'-]+:/g;
+const DIGIT = /[0-9]/;
+// How long after Slack's time for a message its notice may come: Slack's
+// raise one within a second or so (median 0.3 s over 108 kept, the
+// slowest under two minutes), and its clock and the machine's may differ
+// by a few seconds either way.
+const NOTICED_WITHIN = 5 * 60 * 1000;
+const CLOCKS_APART = 10 * 1000;
+// The fewest words two texts must share where one is cut short, so a
+// greeting or a lone "ok" stands only for its own words.
+const FEWEST_SHARED = 3;
+
+// What a Slack notice says of its message, { kind, place, who, text, at },
+// `at` when it came, a kind of "direct", "channel" or "group", or null for one that isn't
+// Slack's or doesn't say it as Slack does.
+function noticed(notice) {
+    const named = value => String(value ?? "").toLowerCase();
+    if (named(notice?.app) !== "slack" && named(notice?.entry) !== "slack") {
+        return null;
+    }
+    const said = NOTICE.exec(String(notice.summary ?? ""));
+    if (said === null) {
+        return null;
+    }
+    const body = String(notice.body ?? "");
+    if (said[1] === "from") {
+        return { kind: "direct", place: said[2], who: said[2], text: body, at: notice.at };
+    }
+    const by = body.indexOf(": ");
+    if (by <= 0) {
+        return null;
+    }
+    return { kind: said[2].startsWith("#") ? "channel" : "group", place: said[2],
+        who: body.slice(0, by), text: body.slice(by + 2), at: notice.at };
+}
+
+// A text's words, lower case, its letters and digits alone: an emoji,
+// named or shown, and punctuation are neither.
+function words(text) {
+    const all = [];
+    let word = "";
+    for (const each of String(text ?? "").toLowerCase().replace(SHORTCODE, " ")) {
+        if (each.toUpperCase() !== each || DIGIT.test(each)) {
+            word += each;
+        } else if (word !== "") {
+            all.push(word);
+            word = "";
+        }
+    }
+    return word === "" ? all : all.concat([word]);
+}
+
+// Whether a notice's text and a message's say the same: every word alike,
+// or, where either is cut short, the shorter's words but its last, which
+// the cut may have split, opening the longer's, and enough of them.
+function sameWords(text, other) {
+    const one = words(text);
+    const two = words(other);
+    if (one.length === two.length) {
+        return one.length > 0 && one.every((word, at) => word === two[at]);
+    }
+    const [shorter, longer] = one.length < two.length ? [one, two] : [two, one];
+    const kept = shorter.slice(0, -1);
+    return kept.length >= FEWEST_SHARED && kept.every((word, at) => word === longer[at]);
+}
+
+// Whether a message the daemon holds is the one a notice says: its
+// sender, its conversation, a direct message by who it's with and a
+// channel by its name (a group's notice names it by its title and the
+// daemon by its members, so a group is known by being one), its words,
+// and its notice coming as Slack raises one.
+function isNoticed(said, one) {
+    const place = String(one.place ?? "");
+    const placed = {
+        direct: place === said.who,
+        channel: place === said.place,
+        group: !place.startsWith("#") && place !== one.who
+    }[said.kind];
+    const after = said.at - one.at;
+    return one.who === said.who && placed && after >= -CLOCKS_APART
+        && after <= NOTICED_WITHIN && sameWords(said.text, one.text);
+}
+
+// The ids of Slack's own notices still unread whose message the daemon
+// says was read in Slack, so each is read in Notices too (Joel,
+// 2026-11-08: "i shouldn't be required to mark a notice as read if I
+// looked at the slack message in slack"). `messages` are the daemon's
+// done with (SlackUnreads.qml's doneWith), or null while it doesn't hold
+// every one. Nothing is read on a guess: a notice two messages could be,
+// or one of two notices a message could be, is left as it is.
+function readInSlack(notices, messages) {
+    const read = (messages ?? []).filter(one => listable(one) && one.done?.how === "readInSlack");
+    if (read.length === 0) {
+        return [];
+    }
+    const matched = [];
+    for (const notice of notices ?? []) {
+        const said = notice?.read === true ? null : noticed(notice);
+        if (said !== null) {
+            matched.push({ id: notice.id, of: read.filter(one => isNoticed(said, one)) });
+        }
+    }
+    const claimed = new Map();
+    for (const each of matched) {
+        for (const one of each.of) {
+            const key = `${one.channel}:${one.ts}`;
+            claimed.set(key, (claimed.get(key) ?? 0) + 1);
+        }
+    }
+    return matched.filter(each => each.of.length === 1
+        && claimed.get(`${each.of[0].channel}:${each.of[0].ts}`) === 1).map(each => each.id);
 }

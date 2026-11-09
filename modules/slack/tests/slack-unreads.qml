@@ -4,7 +4,8 @@
 // shown only while the daemon answers and Slack answered it, why there's
 // none when not, said on Slack's program rather than in Now, a channel
 // merely unread kept for Slack's Unread but never counted in Now, Recent,
-// and each conversation's words. The `slack-says-only-whats-current`
+// each conversation's words, and which of Slack's own desktop notices
+// were of a message read in Slack. The `slack-says-only-whats-current`
 // check copies SlackUnreads.js beside this file and runs
 // `qml -platform offscreen slack-unreads.qml`.
 import QtQuick
@@ -196,6 +197,67 @@ QtObject {
         const later = Object.assign({}, first, { ts: "1730000001.000200" });
         check("a tie newest first", Unreads.gathered(held("ok", { messages: [first, later],
             whole: true }), true).messages.map(one => one.ts), [later.ts, first.ts]);
+
+        // Slack's own notices of what was read in Slack are read too, each
+        // known by its conversation, sender, time and words, one to one.
+        const readAt = { how: "readInSlack", at: "2024-10-31T18:40:00Z" };
+        const said = (channel, place, who, text, at, done) => ({ channel: channel,
+            ts: `${at / 1000}.000100`, place: place, who: who, first: text, text: text,
+            at: at, done: done === undefined ? readAt : done });
+        const raised = (id, summary, body, at, more) => Object.assign({ id: id, app: "Slack",
+            entry: "slack", summary: summary, body: body, at: at, read: false }, more ?? {});
+        const dm = said("D1", "Ada Lovelace", "Ada Lovelace",
+            "Thank you! :heart: I'm so excited!", 1000000);
+        const deploy = said("C1", "#deploys", "Grace", "the deploy is out, cc @joel", 1000000);
+        const lunch = said("G1", "ada, grace", "Grace", "lunch at noon, then we ship", 1000000);
+        const cut = said("D1", "Ada Lovelace", "Ada Lovelace",
+            "a long message the daemon cut sho\u2026", 2000000);
+        const unread = said("D1", "Ada Lovelace", "Ada Lovelace", "are you there", 3000000,
+            null);
+        const gone = said("C2", "#old", "Grace", "this channel is going away", 3000000,
+            { how: "goneFromSlack", at: "2024-10-31T18:40:00Z" });
+        const okOnce = said("D1", "Ada Lovelace", "Ada Lovelace", "ok", 4000000);
+        const okTwice = said("D1", "Ada Lovelace", "Ada Lovelace", "ok", 4010000);
+        const doneWith = [dm, deploy, lunch, cut, unread, gone, okOnce, okTwice];
+        const readIn = notices => Unreads.readInSlack(notices, doneWith);
+        check("a direct message's notice is read, its emoji shown rather than named",
+            readIn([raised("n1", "[ada] from Ada Lovelace",
+                "Thank you! \u2764\ufe0f I\u2019m so excited!", 1000300)]), ["n1"]);
+        check("a channel's, by the sender its body opens with",
+            readIn([raised("n2", "[ada] in #deploys", "Grace: the deploy is out, cc @joel",
+                1000400)]), ["n2"]);
+        check("a group's, named by its title where the daemon names its members",
+            readIn([raised("n3", "[ada] in Lunch Crew", "Grace: lunch at noon, then we ship",
+                1000200)]), ["n3"]);
+        check("one the daemon cut short, its last word split",
+            readIn([raised("n4", "[ada] from Ada Lovelace",
+                "a long message the daemon cut short at its end", 2000100)]), ["n4"]);
+        check("one still unread in Slack, or gone from it, isn't",
+            readIn([raised("n5", "[ada] from Ada Lovelace", "are you there", 3000100),
+                raised("n6", "[ada] in #old", "Grace: this channel is going away", 3000100)]),
+            []);
+        check("nor one two messages could be",
+            readIn([raised("n7", "[ada] from Ada Lovelace", "ok", 4015000)]), []);
+        check("nor one of two notices one message could be",
+            readIn([raised("n8", "[ada] in #deploys", "Grace: the deploy is out, cc @joel",
+                1000400), raised("n9", "[ada] in #deploys", "Grace: the deploy is out, cc @joel",
+                1000900)]), []);
+        check("nor one from someone else, elsewhere, or long after",
+            readIn([raised("n10", "[ada] in #deploys", "Bo: the deploy is out, cc @joel",
+                1000400), raised("n11", "[ada] in #builds", "Grace: the deploy is out, cc @joel",
+                1000400), raised("n12", "[ada] in #deploys",
+                "Grace: the deploy is out, cc @joel", 1000000 + 6 * 60 * 1000)]), []);
+        check("nor one whose words differ, as where an emoji stands for one",
+            readIn([raised("n13", "[ada] from Ada Lovelace",
+                "Thank you! love I\u2019m so excited!", 1000300)]), []);
+        check("nor one read already, nor another program's",
+            readIn([raised("n14", "[ada] from Ada Lovelace",
+                "Thank you! \u2764\ufe0f I\u2019m so excited!", 1000300, { read: true }),
+                raised("n15", "[ada] from Ada Lovelace", "Thank you! I'm so excited!", 1000300,
+                    { app: "Build", entry: "" })]), []);
+        check("and none while the daemon doesn't hold every message",
+            Unreads.readInSlack([raised("n16", "[ada] in #deploys",
+                "Grace: the deploy is out, cc @joel", 1000400)], null), []);
 
         for (const failure of failures)
             console.warn(failure);

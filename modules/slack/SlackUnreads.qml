@@ -5,6 +5,9 @@ pragma Singleton
 // change heard as Slack's daemon hears it, so nothing here keeps a clock.
 // What's held is let go once the daemon stops answering, so no count
 // outlives it. What it says and how it stands are SlackUnreads.js's.
+// Slack's own desktop notice of a message read in Slack is read in
+// Notices too, as the message leaves For You by itself.
+import qs
 import Quickshell
 import QtQuick
 import "SlackUnreads.js" as Unreads
@@ -56,6 +59,19 @@ Singleton {
     readonly property var toRead: messages === null ? null
         : messages.filter(one => !Unreads.done(one))
     readonly property var doneWith: messages === null ? null : messages.filter(Unreads.done)
+
+    // Slack's notices still unread whose message was read in Slack, found
+    // again only when the notices or what's done with change, as this
+    // watch hears them whether or not the launcher is open, so none waits
+    // in Notices or comes back while Slack's daemon is away (Joel,
+    // 2026-11-08: "i shouldn't be required to mark a notice as read if I
+    // looked at the slack message in slack"). Each is read in one change,
+    // saying where, so History says "read in Slack" rather than "read here".
+    readonly property var readThere: Unreads.readInSlack(Notices.history, doneWith)
+    onReadThereChanged: {
+        if (readThere.length > 0)
+            Notices.markRead(readThere, "readInSlack");
+    }
     // Threads, which no message stands for, beside the messages.
     readonly property var unheld: stands === "ok" ? Unreads.unheld(told) : []
 

@@ -1744,7 +1744,8 @@
     saying Slack can't be reached when it can't, and signed out once Slack refuses the sign-in;
     it's listed only with something to read, never with nothing or the daemon not answering,
     naming the first two conversations and how many more, and Slack's own Unread counts the
-    conversations it lists
+    conversations it lists; Slack's own desktop notice of a message read in Slack is found by
+    its conversation, sender, time and words, one to one, and none is found on a guess
   '';
   smartd-stops-cleanly-without-disks = ''
     the workstation's own smartd command, run with no disks, stops cleanly rather than failing
