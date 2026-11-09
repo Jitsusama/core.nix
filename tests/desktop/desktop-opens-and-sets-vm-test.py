@@ -2112,7 +2112,13 @@ def shoot_now_holding_timers(desktop: Desktop, standing: str) -> None:
         desktop.held_still()
         before = desktop.screen_now()
         machine.send_chars("G")
-        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Timers")
+        # A place, it says nothing after its name, its timers in its drawer (VKCF3Z, 5fa2cbda).
+        desktop.launcher_until(
+            lambda shown: (
+                (shown["selected"] or {}).get("name") == "Timers"
+                and not shown["selected"].get("count")
+            )
+        )
 
         def moved(_: bool, before: Image.Image = before) -> bool:
             return ImageChops.difference(before, desktop.screen_now()).getbbox() is not None
