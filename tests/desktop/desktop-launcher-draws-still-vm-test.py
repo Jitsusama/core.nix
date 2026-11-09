@@ -269,7 +269,7 @@ def test_an_act_shows_on_the_frame_after_its_key_with_another_source_changing(
 
 
 def test_dd_on_a_notice_shows_on_the_frame_after_its_key(desktop: Desktop) -> None:
-    """Dd on an unread notice in Notices shows it read on the frame after the key.
+    """Dd on an unread notice in For You's Desktop shows it read on the frame after the key.
 
     Joel, 2026-11-07: "doing a dd on ntofications does not update the screen wright away".
     d marked it read in the shell at once, but the notices never said they'd changed, so the
@@ -279,24 +279,20 @@ def test_dd_on_a_notice_shows_on_the_frame_after_its_key(desktop: Desktop) -> No
 
     def timed(rest: str) -> bool:
         found = re.fullmatch(
-            r"notices after (\d+) ms, refreshed (-?\d+) ms after the key's work", rest
+            r"(?:notices|on) after (\d+) ms, refreshed (-?\d+) ms after the key's work", rest
         )
         if found:
             took.append((int(found[1]), int(found[2])))
         return found is not None
 
     def lunch(shown: Json) -> bool:
-        return shown["held"] == ["notices"] and LUNCH in shown["rows"]
+        return shown["held"][-1:] == ["Desktop"] and LUNCH in shown["rows"]
 
     with desktop.told("shows card Peter"):
         desktop.as_account("notify-send --expire-time=60000 'Peter' 'lunch at noon?'")
     try:
-        desktop.as_account("qs ipc call launcher toggle")
-        desktop.launcher_ready()
-        desktop.machine.send_chars("notices")
-        desktop.launcher_until(lambda shown: "Notices" in shown["rows"])
-        desktop.down_to("Notices")
-        desktop.machine.send_key("ret")
+        # Where Super+N goes with no cards, as the margin's Show Them does.
+        desktop.as_account("qs ipc call launcher collection notices")
         desktop.launcher_until(lunch)
         desktop.down_to(LUNCH)
         desktop.normal()

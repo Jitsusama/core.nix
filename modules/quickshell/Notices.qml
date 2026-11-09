@@ -1,8 +1,9 @@
 pragma Singleton
 // Every notification, newest first, for the launcher's collection of them
 // (launcher/PastNotices.qml), kept on disk in the shell's state so a restart
-// loses none: a read one for a week, an unread one until it's read, and
-// never more than `keep` (launcher/Lately.js's kept).
+// loses none: an unread one until it's read, and the rest for good, the
+// oldest read going once more than `keep` are kept (launcher/Lately.js's
+// kept).
 //
 // One leaves the screen in one of three ways: clicked away; withdrawn by its
 // program, as a chat app does once the message is read there; or by itself
@@ -34,11 +35,10 @@ import "launcher/Lately.js" as Lately
 Singleton {
     id: root
 
-    // How many are kept, and how long one read is; one unread stays until
-    // it's read or forgotten.
-    readonly property int keep: 200
-    readonly property real day: 24 * 60 * 60 * 1000
-    readonly property real readFor: 7 * day
+    // How many are kept: far past what Joel would scroll, so History keeps
+    // what's read for good, and its file stays small, about 300 KB (VKCF3Z,
+    // 2026-11-09). One unread stays until it's read or forgotten.
+    readonly property int keep: 1000
 
     // { id, at, app, entry, summary, body, styled, links, picture, glyph,
     // hue, urgency, category, low, urgent, held, missed, read, waits, left,
@@ -203,10 +203,10 @@ Singleton {
         return still ? picture(still) : notice.picture ?? "";
     }
 
-    // Those kept: every one unread, and those read for `readFor`, at most
-    // `keep` of them, the oldest read going first (Lately.js's kept).
+    // Those kept: every one unread, and at most `keep` in all, the oldest
+    // read going first (Lately.js's kept).
     function fresh(notices) {
-        return Lately.kept(notices, Date.now(), readFor, keep);
+        return Lately.kept(notices, keep);
     }
 
     // Keeps a notification as it arrives, missed until it's seen unless

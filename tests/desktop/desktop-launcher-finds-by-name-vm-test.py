@@ -299,7 +299,7 @@ def test_a_collection_or_half_a_word_is_asked_and_the_fields_keys_edit_it(deskto
     # A collection is found by its name, and Return goes straight into
     # it.
     # Beside the field, it says what sort of thing each is.
-    for typed, collection in [("sound", "Sound"), ("notices", "Notices")]:
+    for typed, collection in [("sound", "Sound"), ("clipboard", "Clipboard")]:
         desktop.answer(typed)
         # The wait ends before the loop moves on, so it reads this pass's name.
         desktop.launcher_until(

@@ -375,7 +375,15 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Show What's Held"])
     desktop.type_in("show", selecting="Show What's Held")
     machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notices"])
+    # What's held is unread, so it's For You's Desktop, where every way to
+    # the notices goes (VKCF3Z, 2026-11-09).
+    desktop.launcher_until(
+        lambda shown: (
+            shown["keys"]
+            and shown["held"][-1:] == ["Desktop"]
+            and any(row.startswith("Held back") for row in shown["rows"])
+        )
+    )
     desktop.shoot("launcher-held")
     desktop.close_launcher()
     now_down_to(desktop, "Do Not Disturb")

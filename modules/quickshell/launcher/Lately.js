@@ -65,23 +65,21 @@ function awaits(notice) {
 }
 
 // The notices the history keeps, in their order, newest first: every one
-// awaiting Joel whatever its age, since one stays until it's read or
-// forgotten (Y2YBTS, 2026-11-08), and the rest for `readFor`. Past
-// `most`, the oldest of the rest go first, and the oldest awaiting only
-// once none else are left, so what Joel hasn't seen outlasts what he has.
-function kept(notices, now, readFor, most) {
-    const young = notices.filter(notice => awaits(notice) || now - notice.at < readFor);
-    let over = young.length - most;
+// awaiting Joel, since one stays until it's read or forgotten (Y2YBTS,
+// 2026-11-08), and the rest for good, since History keeps what's done
+// with and no timer clears it (VKCF3Z, 2026-11-09). Past `most`, the
+// oldest of the rest go first, and never one awaiting, so what Joel
+// hasn't seen outlasts what he has.
+function kept(notices, most) {
+    let over = notices.length - most;
     const gone = new Set();
-    for (const waits of [false, true]) {
-        for (let at = young.length - 1; at >= 0 && over > 0; at--) {
-            if (awaits(young[at]) === waits) {
-                gone.add(at);
-                over--;
-            }
+    for (let at = notices.length - 1; at >= 0 && over > 0; at--) {
+        if (!awaits(notices[at])) {
+            gone.add(at);
+            over--;
         }
     }
-    return young.filter((_notice, at) => !gone.has(at));
+    return notices.filter((_notice, at) => !gone.has(at));
 }
 
 // The unread notices of each source, as { slack, desktop }, newest first

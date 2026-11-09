@@ -695,7 +695,10 @@ Scope {
                     out.push(withSynonyms(row));
             }
         }
-        for (const source of collections)
+        // One that's no place of its own (`placed: false`), as Notices,
+        // whose notices For You holds, is never found by its name, though
+        // what it holds is (gathering).
+        for (const source of collections.filter(one => one.collection.placed !== false))
             out.push(withSynonyms(named(source)));
         for (const row of categories)
             out.push(withSynonyms(row));
@@ -7028,6 +7031,22 @@ Scope {
     // has opens the search.
     function into(name) {
         open = true;
+        // A name a source leads somewhere deeper, as Now leads "notices"
+        // to For You's Desktop (`leadsTo`), opens on its place and steps
+        // through those rows as Joel would, so - climbs back out the same
+        // way and Escape at rest closes there.
+        const leading = sources.find(one => typeof one.leadsTo === "function"
+            && one.leadsTo(name) !== null) ?? null;
+        if (leading !== null && leading.settings.name !== name) {
+            const rows = leading.leadsTo(name);
+            into(leading.settings.name);
+            for (const row of rows) {
+                if (!enter(row))
+                    break;
+            }
+            openedHere();
+            return;
+        }
         const source = collections.find(s => s.settings.name === name);
         if (!source)
             return;

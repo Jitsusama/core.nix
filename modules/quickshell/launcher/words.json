@@ -20,7 +20,6 @@
         "windows:this",
         "windows",
         "displays",
-        "notices",
         "clipboard",
         "timers",
         "capture",
@@ -7416,6 +7415,9 @@
         "read": "read here",
         "withdrawn": "withdrawn",
         "earlier": "read"
+      },
+      "tells": {
+        "none": "Nothing unread from the desktop."
       }
     },
     {

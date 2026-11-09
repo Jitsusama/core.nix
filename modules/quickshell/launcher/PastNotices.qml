@@ -1,8 +1,10 @@
 // The session's notifications, a collection: everything that arrived,
 // newest first, from the shell's own history (Notices.qml), so nothing is
-// asked of another program. A search with a match adds one row; Return
-// on it, or on its row at home, shows them all, and its row at home says how
-// many were missed until it's opened. Return on one still open, on screen
+// asked of another program. It's no place of its own: For You holds the
+// unread under Desktop and the read in History, its rows these, and
+// "notices" asked from outside leads there (Now.qml's leadsTo); here,
+// a search with a match adds one row, whose Return shows all it found
+// (VKCF3Z, 2026-11-09). Return on one still open, on screen
 // or resting off it once its time there was up (Notices.qml), does what its
 // sender does when it's chosen, as clicking it does, which takes Joel to
 // the very conversation or tab it's about; on one closed, it goes to
@@ -30,8 +32,9 @@ Provider {
 
     what: "notice"
 
-    // Named Notifications, Joel's word, as the vocabulary says (Words.qml).
-    collection: Words.collection("notices")
+    // Named Notifications, Joel's word, as the vocabulary says (Words.qml),
+    // and never found by it, since it's no place of its own.
+    collection: Words.collection("notices", { placed: false })
 
     // The window of the program that sent it, or the program to open.
     function source(app) {
