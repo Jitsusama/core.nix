@@ -424,24 +424,13 @@ fn term_at_end_of(day: RataDie) -> usize {
         clippy::cast_sign_loss,
         reason = "a longitude from 0 up to 360, divided by 15, is a term from 0 to 23"
     )]
-    let term = (sun_longitude(julian_day) / 15.0).floor() as usize;
+    // The sun's apparent longitude, as the sun crate reckons it for
+    // sunset too, is within about 0.01°, about fifteen minutes of the
+    // sun's path: a term that begins that near midnight may be put a day
+    // out, though none from 2025 to 2030 is (solar-terms.txt, the Hong
+    // Kong Observatory's days).
+    let term = (sun::apparent_longitude(julian_day) / 15.0).floor() as usize;
     term % 24
-}
-
-/// The sun's apparent longitude in degrees at a Julian day, by Meeus's
-/// low-precision formula (Astronomical Algorithms, chapter 25), within
-/// about 0.01°, about fifteen minutes of the sun's path: a term that
-/// begins that near midnight may be put a day out, though none from 2025
-/// to 2030 is (solar-terms.txt, the Hong Kong Observatory's days).
-fn sun_longitude(julian_day: f64) -> f64 {
-    let t = (julian_day - 2_451_545.0) / 36_525.0;
-    let mean = 280.466_46 + 36_000.769_83 * t + 0.000_303_2 * t * t;
-    let anomaly = (357.529_11 + 35_999.050_29 * t - 0.000_153_7 * t * t).to_radians();
-    let centre = (1.914_602 - 0.004_817 * t - 0.000_014 * t * t) * anomaly.sin()
-        + (0.019_993 - 0.000_101 * t) * (2.0 * anomaly).sin()
-        + 0.000_289 * (3.0 * anomaly).sin();
-    let node = (125.04 - 1_934.136 * t).to_radians();
-    (mean + centre - 0.005_69 - 0.004_78 * node.sin()).rem_euclid(360.0)
 }
 
 fn japanese(iso: Date<Iso>) -> Option<Calendar> {
