@@ -14,6 +14,9 @@ const RATE = /([\d.]+) MBit\/s/;
 const WIDTH = /(\d+)MHz/;
 const TX_POWER = /txpower ([\d.]+) dBm/;
 const CHANNEL = /channel (\d+) \((\d+) MHz\)/;
+const WPA3 = /WPA3/;
+const WPA2 = /WPA2/;
+const WEP = /WEP/;
 // Milliseconds in a second, seconds in a minute, and the seconds under
 // which one keeps a decimal.
 const SECOND = 1000;
@@ -202,4 +205,71 @@ function idle(milliseconds, number) {
         return `${number(seconds, seconds < TEN_SECONDS ? 1 : 0)} s`;
     }
     return Interfaces.lasted(Math.floor(milliseconds / SECOND));
+}
+
+// How hard a network's protection is to break, by its standard as wifid
+// names it: WPA3 strong, WPA2 good, WEP broken, and anything else weak.
+function strength(standard) {
+    const said = String(standard ?? "");
+    if (WPA3.test(said)) {
+        return "strong";
+    }
+    if (WPA2.test(said)) {
+        return "good";
+    }
+    return WEP.test(said) ? "broken" : "weak";
+}
+
+// What had to be sent again or never was since the card joined, as iw
+// counts it: "none", or "12 sent again \u00b7 1 never sent", each counted
+// as `number` writes it.
+function retried(retries, failed, number) {
+    const never = failed ?? 0;
+    return retries + never === 0
+        ? "none"
+        : `${number(retries)} sent again \u00b7 ${number(never)} never sent`;
+}
+
+// The network connected's drawer, from what Wireless.qml read of the card
+// on it (`known`, each figure already written, "" or null where it isn't
+// read): the band it's on and what it is above its name; what moves first,
+// its signal, speed, traffic and retries; then how the link is made, its
+// generation, coding, streams, width and channel; then the access points
+// heard and how it's protected; how long it's been connected; and the
+// access point's hardware address last, an identifier (VKCF3Z, 2026-11-07:
+// what moves most first, identifiers last). Each fact is named by its id
+// (`named`), and one it doesn't say is left out, never said as unknown.
+// `said` is the vocabulary's wifi:drawer words.
+function drawer(known, named, said) {
+    const dotted = (parts) =>
+        parts.filter((part) => part !== null && part !== undefined && part !== "").join(" \u00b7 ");
+    const fact = (id, value) => ({ label: named(id), value: String(value ?? "") });
+    const margin =
+        known.margin === null || known.margin === undefined
+            ? ""
+            : said.over.replace("{margin}", known.margin);
+    const since = known.since ? said.since.replace("{time}", known.since) : "";
+    const facts = [
+        fact("signal", dotted([known.signal, margin])),
+        fact("speed", known.speed),
+        fact("expected", known.expected),
+        fact("carried", known.carried),
+        fact("retries", known.retries),
+        fact("generation", known.generation),
+        fact("coding", known.coding),
+        fact("streams", known.streams),
+        fact("width", known.width),
+        fact("channel", known.channel),
+        fact("heard", known.heard),
+        fact("protection", known.protection),
+        fact("standard", known.standard),
+        fact("connected", dotted([known.connected, since])),
+        // Its identifier in the Name face (DrawerPage.faceOf).
+        Object.assign(fact("bssid", known.bssid), { identifies: true }),
+    ].filter((one) => one.value.trim() !== "");
+    return {
+        eyebrow: known.band ? said.eyebrow.replace("{band}", known.band) : said.kind,
+        title: known.name,
+        facts,
+    };
 }

@@ -10,6 +10,10 @@ Piece {
     readonly property var card: Wifi.joined
     readonly property string reach: card ? card.reach ?? "" : ""
 
+    // The network connected's own drawer, as Wi-Fi draws its row
+    // (launcher/Now.qml's borrowed): none while it's on none, or wired.
+    drawnBy: Wifi.wired || card === null ? null : { place: "wifi", key: `wifi:${card.network}` }
+
     present: Wifi.described
     active: !Wifi.wired && (card === null || reach === "signIn" || reach === "limited")
     role: active ? "warning" : "text"

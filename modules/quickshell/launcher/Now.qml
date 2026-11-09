@@ -1395,6 +1395,9 @@ Provider {
             }
         } : piece.drawnBy ? {
             thing: true,
+            // Which row it draws, so a place reading more of a thing
+            // while it's selected, as Wi-Fi does, reads it here too.
+            borrows: piece.drawnBy,
             drawer: () => provider.borrowed(piece.drawnBy, {
                 side: piece.value,
                 note: piece.context
