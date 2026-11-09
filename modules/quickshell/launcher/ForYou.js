@@ -166,11 +166,11 @@ function bandsRun(counts, said) {
 // 16efb1dc): what needs Joel now as home's Now row leads with it, its
 // title and minutes but never how many more, which `lead` keeps third
 // ("Answer the ask \u00b7 2 min"), else the heaviest To Look At holds,
-// by `look`, its name. Holding only things to try, it names none, and
-// For You's row has no drawer.
-function heaviest(lead, look) {
+// by `heaviestLook`, its name. Holding only things to try, it names
+// none, and For You's row has no drawer.
+function heaviest(lead, heaviestLook) {
     const first = (lead ?? []).filter(item => item.keep < 3).map(item => item.said);
-    return first.length > 0 ? first.join(" \u00b7 ") : look ?? "";
+    return first.length > 0 ? first.join(" \u00b7 ") : heaviestLook ?? "";
 }
 
 // Whether a look was left by a session, by the session or the address the
