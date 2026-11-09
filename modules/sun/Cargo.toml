@@ -1,0 +1,13 @@
+# sun: when the sun rises and sets on a day, where it's asked from, as
+# NOAA reckons it, a library for the launcher's calendars (timekeeping)
+# and the backlight's night light, which name it by path (src/lib.rs says
+# how).
+[package]
+name = "sun"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+path = "src/lib.rs"

@@ -18,6 +18,9 @@ icu_calendar = "2.4"
 icu_datetime = "2.4"
 icu_locale = "2.4"
 serde = { version = "1.0", features = ["derive"] }
+# When the sun sets, for the Hebrew and Islamic days, as the backlight's
+# night light reckons it.
+sun = { path = "../../sun" }
 tokio = { version = "1.53", features = ["macros", "net", "rt", "time"] }
 # zlink logs through tracing, which says nothing with no subscriber, so the
 # reader keeps to its own journal lines.

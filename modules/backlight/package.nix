@@ -1,7 +1,7 @@
 # backlight, built from this directory's crate. Its tests run as it builds.
-# The sun's reckoning is the launcher's calendars' own file
-# (src/main.rs's sun), so the source is cut from the modules folder holding
-# both, and built from this one.
+# The sun's reckoning is a crate it shares with the launcher's calendars
+# (../sun), so the source is cut from the modules folder holding both, and
+# built from this one.
 { lib, rustPlatform }:
 rustPlatform.buildRustPackage rec {
   pname = "backlight";
@@ -12,7 +12,8 @@ rustPlatform.buildRustPackage rec {
       ./Cargo.toml
       ./Cargo.lock
       ./src
-      ../quickshell/timekeeping/src/sun.rs
+      ../sun/Cargo.toml
+      ../sun/src
     ];
   };
   sourceRoot = "${src.name}/backlight";
