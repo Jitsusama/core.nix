@@ -4176,23 +4176,9 @@ onLinux {
         function spawn(command) { spawned = command; }
         function act(action) { acted = acted.concat([action]); }
       '';
-      # What open-now says two Neovims in one kitty hold, as open-with's
-      # neovim-held.lua has them say it: the first with two tabs, a file
-      # modified and one hidden, the second with one tab and a file the
-      # first holds too, modified there.
-      openNow = pkgs.writeShellScript "open-now" ''
-        [ "$1" = neovim ] || exit 1
-        file() { printf '{"buffer":%s,"path":"%s","modified":%s,"tabs":[%s],"at":%s}' "$@"; }
-        printf '@5\t41:7\t/run/n1\t{"pid":101,"folder":"%s","tab":2,"tabs":2,"current":2,' \
-          "$HOME/src/alpha"
-        printf '"files":[%s,%s,%s]}\n' "$(file 1 "$HOME/src/alpha/main.rs" false 1 100)" \
-          "$(file 2 "$HOME/src/alpha/docs/notes.md" true 2 200)" \
-          "$(file 3 "$HOME/src/alpha/.env" false "" 50)"
-        printf '@6\t41:8\t/run/n2\t{"pid":102,"folder":"%s","tab":1,"tabs":1,"current":4,' \
-          "$HOME/src/beta"
-        printf '"files":[%s,%s]}\n' "$(file 4 "$HOME/src/beta/README.md" false 1 300)" \
-          "$(file 1 "$HOME/src/alpha/main.rs" true 1 10)"
-      '';
+      # What open-now says two Neovims in one kitty hold, as
+      # tests/neovim-open-now.sh says.
+      openNow = pkgs.writeShellScript "open-now" (builtins.readFile ../../tests/neovim-open-now.sh);
       paste = pkgs.writeShellScriptBin "wl-paste" "exec sleep 300";
       # Three repositories a folder deep, alpha's git written last, alpha's
       # origin and gamma's upstream on GitHub and beta's on GitLab, and one
