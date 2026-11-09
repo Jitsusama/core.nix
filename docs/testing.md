@@ -219,8 +219,10 @@ new name, is a finding for its owner, and nothing is reverted or held. So is one
 that fails after a merge that didn't change it, since something outside the
 code broke it. So is one that passes at main's newest head, since a fix
 forward has landed: the net asks beside the search's first step, stops the
-search if it was, and asks again before it reverts, running nothing at a
-head that builds the test unchanged. One that
+search if it was, asks again before it reverts, and once more when main
+moved while the revert's checks ran, dropping the revert when the test
+passes there, running nothing at a head that builds the test unchanged.
+One that
 fails and then passes at a commit is flaky, which is a defect in the test:
 it goes on `tools/merge-net/quarantine.json` with its owner, and the net
 reverts nothing for it until the owner makes it steady and takes it off.
