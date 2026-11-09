@@ -443,14 +443,16 @@ mod tests {
 
     #[test]
     fn a_fix_to_beacondbs_width_in_another_zone_moves_the_clock() {
-        // BeaconDB places a laptop from the Wi-Fi in reach to about 26 km.
+        // BeaconDB places a laptop from the network's address to about
+        // 25 km where it knows none of the Wi-Fi in reach.
         assert_eq!(
             decide(
                 &fix(26_000.0, Some("America/Halifax")),
                 "America/Toronto",
                 None
             ),
-            Decision::Move("America/Halifax".into())
+            Decision::Move("America/Halifax".into()),
+            "a fix to 26 km whose zone holds round its circle"
         );
     }
 
@@ -460,7 +462,11 @@ mod tests {
             zone_holds: Some(false),
             ..fix(26_000.0, Some("America/Winnipeg"))
         };
-        assert_eq!(decide(&crossed, "America/Toronto", None), Decision::Stay);
+        assert_eq!(
+            decide(&crossed, "America/Toronto", None),
+            Decision::Stay,
+            "a fix to 26 km whose circle keeps another time"
+        );
         let near = Fix {
             zone_holds: Some(false),
             ..fix(3_000.0, Some("America/Winnipeg"))
@@ -487,16 +493,20 @@ mod tests {
             zone_holds: None,
             ..fix(26_000.0, Some("America/Edmonton"))
         };
-        assert_eq!(decide(&wide, "America/Toronto", None), Decision::Stay);
+        assert_eq!(
+            decide(&wide, "America/Toronto", None),
+            Decision::Stay,
+            "a fix to 26 km with nothing said of its circle"
+        );
     }
 
     #[test]
-    fn a_fix_found_from_an_address_alone_never_moves_the_clock() {
-        // GeoClue's answer from the network's address, as through WARP's
-        // exit, is a country's width.
+    fn a_fix_wider_than_a_region_never_moves_the_clock() {
+        // GeoClue's width where it knows only the country.
         assert_eq!(
             decide(&fix(300_000.0, Some("Asia/Tokyo")), "America/Toronto", None),
-            Decision::Stay
+            Decision::Stay,
+            "a country wide"
         );
         assert_eq!(
             decide(&fix(50_001.0, Some("Asia/Tokyo")), "America/Toronto", None),
@@ -505,7 +515,8 @@ mod tests {
         );
         assert_eq!(
             decide(&fix(f64::NAN, Some("Asia/Tokyo")), "America/Toronto", None),
-            Decision::Stay
+            Decision::Stay,
+            "a width that's no number"
         );
     }
 

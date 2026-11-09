@@ -198,6 +198,11 @@ mod tests {
             r#"{"v":2,"latitude":10.5,"longitude":-20.25,"accuracy":3000.0,"when":1790000000,"place":null,"zone":null}"#
         );
         assert_eq!(Fix::read(&text), Some(fix));
+        assert_eq!(
+            Fix::read(&text).and_then(|fix| fix.zone_holds),
+            None,
+            "a file that never says whether its zone holds says nothing of it"
+        );
         let named = at(10.5, -20.25, 3000.0).named(
             Some("Kelpwater, Westmark".into()),
             Some("America/Toronto".into()),

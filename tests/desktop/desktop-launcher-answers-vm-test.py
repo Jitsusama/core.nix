@@ -971,7 +971,7 @@ def test_the_clock_follows_the_laptop_into_another_zone_and_is_put_back(desktop:
         keeps("America/Vancouver")
         # Found only to a country's width, wider than a zone needs, it never
         # moves the clock.
-        found("Asia/Tokyo", 300000, "Shibuya, Tokyo")
+        found("Asia/Tokyo", 300000, "Saltmere, Farshore")
         assert machine.succeed(zone).strip() == "America/Vancouver"
     finally:
         machine.succeed(f"timedatectl set-timezone {shlex.quote(began)}")
