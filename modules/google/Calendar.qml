@@ -11,7 +11,9 @@ pragma ComponentBehavior: Bound
 // `join` goes into a meeting's call through google-opens (opens.sh), which
 // joins a Tuple link through Tuple and opens Google's own in a window of
 // their own. `row` is a meeting's one row, with its acts and details,
-// which every surface showing a meeting takes as it is.
+// which every surface showing a meeting takes as it is. `lately` are the
+// meetings held lately and `called` their Meet calls, which Calendar's
+// Recent and Meet's list.
 // `answer` answers an invitation through the program (ask.rs),
 // which says the meeting answered as soon as Google takes it. `calls` are
 // the Meet calls open in windows of their own, each with its meeting,
@@ -20,6 +22,7 @@ import qs
 import Quickshell
 import QtQuick
 import "Calendar.js" as Said
+import "Google.js" as Account
 import "Mail.js" as Written
 import "Meet.js" as Calls
 
@@ -57,9 +60,18 @@ Singleton {
 
     readonly property var next: Said.next(meetings, now)
 
-    // When a meeting is, as its row says it: "in 12 min", "at 16:00".
+    // The meetings Joel held lately, newest first (Google.js's
+    // heldLately), for Calendar's Recent (Meetings.qml), reckoned again
+    // each minute as `now` is, so one that ends joins it then; and those
+    // of them on Meet, each once by its code, for Meet's (Meet.qml).
+    readonly property var lately: Account.heldLately(Google.held, meetings, now)
+    readonly property var called: Calls.called(lately)
+
+    // When a meeting is, as its row says it: "in 12 min", "at 16:00", and
+    // for one over when it was held, "yesterday", in the words mail says
+    // when in.
     function when(meeting) {
-        return Said.when(meeting, now);
+        return Said.when(meeting, now, Mail.dates);
     }
 
     // Whether Return on a meeting joins its call, as it does only when the
@@ -197,13 +209,24 @@ Singleton {
             // meetings while they're listed under it (Applications.qml).
             today: Said.dayOf(meeting.start, root.now) === "",
             note: root.about(meeting),
-            drawer: Said.details(meeting, Words.name("calendar:meeting", "untitled")),
+            drawer: root.details(meeting),
             later: joins,
             stays: !joins,
             run: joins ? () => root.join(meeting)
                 : () => provider.launcher?.enter(root.seeing(meeting, provider, name)),
             verbs: () => root.acts(meeting, provider)
         });
+    }
+
+    // What a call in Meet's Recent says beside it: who it was with and
+    // when it was held (Meet.js's heldSide), in `said`'s words.
+    function calledSide(meeting, said) {
+        return Calls.heldSide(meeting, now, said);
+    }
+
+    // Its details, as the launcher's drawer shows them beside its row.
+    function details(meeting) {
+        return Said.details(meeting, Words.name("calendar:meeting", "untitled"));
     }
 
     function titled(meeting) {

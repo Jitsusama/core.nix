@@ -250,3 +250,16 @@ function mailedWith(mail, emails) {
     const has = email => emails.includes(String(email ?? "").toLowerCase());
     return has(mail.address) || (mail.others ?? []).some(has);
 }
+
+// The meetings Joel held lately, as Calendar's Recent lists them and Meet's
+// finds its calls among: each over, from the month before today the
+// program keeps (`held`) and from today's (`meetings`), newest first by
+// when each started, as the times their rows say read down, each once.
+// One he said no to is left out, since he never held it.
+function heldLately(held, meetings, now) {
+    const seen = new Set();
+    return (held ?? []).concat(meetings ?? [])
+        .filter(meeting => meeting.end <= now && meeting.answer !== "no")
+        .sort((one, other) => other.start - one.start)
+        .filter(meeting => !seen.has(meeting.id) && seen.add(meeting.id));
+}

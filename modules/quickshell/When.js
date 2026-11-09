@@ -1,11 +1,17 @@
-// The day something was on, said the one way the launcher says when
-// (Y2YBTS, 2026-11-03), so a file's row and a call's read alike. Plain
-// JavaScript, held to it through FileFacts.js by tests/file-facts.qml.
+// The day something was on, and when it was, said the one way the
+// launcher says when (Y2YBTS, 2026-11-03), so a file's row, a call's, a
+// mail's and a meeting's read alike. Plain JavaScript, held to it through
+// FileFacts.js by tests/file-facts.qml, and through google's Mail.js and
+// Calendar.js by tests/mail.qml and tests/calendar.qml.
 .pragma library
 
+const MINUTE = 60_000;
+const HOUR = 3_600_000;
 const DAY = 86_400_000;
 // How many days back, or on, a day is said by its weekday.
 const LATELY_DAYS = 6;
+// How wide a clock's hours and minutes are written.
+const DIGITS = 2;
 
 function midnight(moment) {
     return new Date(moment.getFullYear(), moment.getMonth(), moment.getDate()).getTime();
@@ -42,4 +48,28 @@ function day(time, now, said) {
         return said.date(at, "dddd");
     }
     return said.date(at, at.getFullYear() === today.getFullYear() ? "d MMM" : "d MMM yyyy");
+}
+
+// When something was, as a row says it at its side: "just now" within a
+// minute, "12 min ago" within the hour, its time earlier today, "14:02",
+// and before today its day as `day` says it. A moment ahead of now, from
+// a wrong clock, reads as one behind does: its time today, then its day.
+// `said` gives `now` and `minutes` besides what `day` takes, as mail's
+// words do; mail says when it came by it, and a meeting over when it was
+// held.
+function came(time, now, said) {
+    const since = now - time;
+    if (since >= 0 && since < MINUTE) {
+        return said.now;
+    }
+    if (since >= 0 && since < HOUR) {
+        return String(said.minutes).replace("{minutes}", Math.floor(since / MINUTE));
+    }
+    const on = day(time, now, said);
+    if (on !== "") {
+        return on;
+    }
+    const at = new Date(time);
+    const two = number => String(number).padStart(DIGITS, "0");
+    return `${two(at.getHours())}:${two(at.getMinutes())}`;
 }

@@ -2482,8 +2482,9 @@
     say, who was copied and the files it carries among them, each file by its kind and size;
     writes a reply to who sent it, and to all, copied to everyone else it went to, and a mail to
     everyone else a meeting names; writes the lines that mark mail read or unread again or archive
-    it or fetch a file it carries; says how that fetch stands; and writes the line making a Meet
-    meeting and says how one asked for stands
+    it or fetch a file it carries; says how that fetch stands; writes the line making a Meet
+    meeting and says how one asked for stands; and lists as Recent the meetings held lately and
+    the mail Joel had, newest first, each once, none said no to and none still wanting him
   '';
   the-desktop-reads-the-transcripts = ''
     the shell says what each call written down was, when it was in words and how long it went on,
@@ -2497,8 +2498,9 @@
     whether Return joins it or shows it, whether it's today's and how Joel answered it, gives its
     details for the drawer, how it repeats in words and how many of those asked answered each way
     among them, which may be moved and to what later or typed time, what that clashes with and who's
-    told, writes the lines that answer, cancel and move it, and knows which Meet call a window is
-    and whose meeting it is
+    told, writes the lines that answer, cancel and move it, says when one over was held, knows
+    which Meet call a window is and whose meeting it is, and lists as Meet's Recent the calls held
+    on Meet, once by code and newest first, each saying who it was with and when
   '';
   the-shutdown-mark-cannot-stop-a-reboot = ''
     the mark a healthy stop leaves can't fail the reboot, and what reads it outlives the last stage

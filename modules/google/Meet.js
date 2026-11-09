@@ -2,7 +2,8 @@
 // code Joel types to join one, and whose meeting a call is, from the
 // meetings the google program keeps (src/state.rs), and how a call Joel
 // is in is said in Now (Call.qml): its side, who's in it and its plate,
-// from what Meet says of it (src/meet.rs). Calendar.qml and Call.qml ask
+// from what Meet says of it (src/meet.rs), and which calls Meet's Recent
+// lists and what each says beside it. Calendar.qml and Call.qml ask
 // these, for themselves and for Meet.qml, and the checks run them in Qt's
 // own engine (tests/calendar.qml).
 .pragma library
@@ -45,6 +46,47 @@ function calledBy(meetings, code) {
 
 const MINUTE = 60_000;
 const HOUR = 60;
+// As many as a Recent lists (launcher/Recent.js).
+const MOST = 9;
+
+// The calls Joel had through Meet, as Meet's Recent lists them: of the
+// meetings held lately, newest first (Calendar.js's lately), each on a
+// Meet link, by its code, once, where it was newest, since a meeting that
+// repeats keeps one room, and joining it again is what the row does. At
+// most as many as a Recent lists, each { code, meeting }.
+function called(meetings) {
+    const seen = new Set();
+    return meetings.map(meeting => ({ code: meetCode(meeting.link), meeting }))
+        .filter(call => call.code !== "" && !seen.has(call.code) && seen.add(call.code))
+        .slice(0, MOST);
+}
+
+// Who a call was with, as its row says beside it: whoever held its
+// meeting where that wasn't Joel, then each guest but those who said no,
+// each by name or else address, in `said`'s words: "Ada Lovelace", "Ada
+// Lovelace and Grace Hopper", "Ada Lovelace and 2 others"; nothing for a
+// call nobody else was asked to.
+function withWhom(meeting, said) {
+    const guests = (meeting.guests ?? []).filter(guest => guest.answer !== "no");
+    const names = (meeting.holds ? [] : [meeting.organizer]).concat(guests)
+        .filter(Boolean).map(one => one.name || one.email || "").filter(name => name !== "");
+    if (names.length <= 1) {
+        return names[0] ?? "";
+    }
+    if (names.length === 2) {
+        return filled(said.two, { first: names[0], second: names[1] });
+    }
+    return filled(said.others, { first: names[0], count: names.length - 1 });
+}
+
+// What a call in Meet's Recent says beside it: who it was with, then when
+// it was held, as a mail says who it's from and when it came (Mail.js's
+// beside), "Ada Lovelace \u00b7 yesterday"; only when, for a call with
+// nobody else on it.
+function heldSide(meeting, now, said) {
+    return [withWhom(meeting, said), Calendar.when(meeting, now, said)]
+        .filter(part => part !== "").join(" \u00b7 ");
+}
 
 // Words with what's in braces filled in: "{count} in the call".
 function filled(words, fill) {

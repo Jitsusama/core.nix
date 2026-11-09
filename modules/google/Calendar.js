@@ -8,6 +8,7 @@
 // engine (tests/calendar.qml). Times are milliseconds since 1970, as the
 // program gives them.
 .pragma library
+.import "When.js" as When
 
 // In milliseconds.
 const MINUTE = 60_000;
@@ -154,8 +155,13 @@ function dayOf(time, now) {
 // When a meeting is, as the Today row says it after its title: "now" while
 // it's on, "in 12 min" within the hour, else its time, with "tomorrow" or
 // the day of the week in front past today. An all-day meeting is "today",
-// "tomorrow" or its day.
-function when(meeting, now) {
+// "tomorrow" or its day. One over says when it was held, from its start,
+// as the launcher says when anywhere (When.js's came, in `said`'s words),
+// so a meeting in a Recent reads as a mail there does, never "now".
+function when(meeting, now, said) {
+    if (meeting.end <= now) {
+        return When.came(meeting.start, now, said);
+    }
     const start = new Date(meeting.start);
     const day = dayOf(meeting.start, now);
     if (meeting.allDay) {

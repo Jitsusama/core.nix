@@ -1,40 +1,39 @@
 // What the shell says of the mail that wants Joel, as the google program
 // keeps it (src/mail.rs): when each came, what its row and its details
 // say, where a reply to it, or to all, is written, the lines that mark one
-// read or archive it (src/ask.rs), and which windows are Mail's. Mail.qml asks
-// these, and the checks run them in Qt's own engine (tests/mail.qml).
-// Times are milliseconds since 1970, as the program gives them.
+// read or archive it (src/ask.rs), which of the mail Joel had lately its
+// Recent lists, and which windows are Mail's. Mail.qml asks these, and the
+// checks run them in Qt's own engine (tests/mail.qml). Times are
+// milliseconds since 1970, as the program gives them.
 .pragma library
 .import "Calendar.js" as Calendar
 .import "When.js" as When
 
-// In milliseconds.
-const MINUTE = 60_000;
-const HOUR = 3_600_000;
+// As many as a Recent lists (launcher/Recent.js), so Mail's makes no row
+// it would only drop.
+const MOST = 9;
 
 function sameYear(at, now) {
     return new Date(at).getFullYear() === new Date(now).getFullYear();
 }
 
 // When mail came, as its row says it, in the launcher's one way to say
-// when (Y2YBTS's): "just now" within a minute, "12 min ago" within the
-// hour, its time earlier today, and before today its day as When.js says
-// any: "yesterday", its weekday within the last six days, else "28 Oct",
-// with the year only when it isn't this one. A moment ahead of now, from a
-// wrong clock, reads as one behind does: its time today, then "tomorrow",
-// its weekday within the next six days, else its date. The words are
-// `said`'s, the vocabulary's, and the names the locale's, as `said.date`
-// gives them, Qt's `formatDate` in the shell.
+// when (When.js's came), the way a meeting held says it too: "just now",
+// "12 min ago", "14:02", "yesterday", "28 Oct".
 function came(at, now, said) {
-    const since = now - at;
-    if (since >= 0 && since < MINUTE) {
-        return said.now;
-    }
-    if (since >= 0 && since < HOUR) {
-        return String(said.minutes).replace("{minutes}", Math.floor(since / MINUTE));
-    }
-    const day = When.day(at, now, said);
-    return day === "" ? Calendar.clock(new Date(at)) : day;
+    return When.came(at, now, said);
+}
+
+// The mail Joel had lately, as Mail's Recent lists it: what he sent or
+// read in the last month (`had`, as the program keeps it), newest first,
+// each once, leaving out any that still wants him (`wanting`), which Mail
+// lists above it and is never Recent (docs/design.md, Recent means one
+// thing). At most as many as a Recent lists.
+function lately(had, wanting) {
+    const seen = new Set(wanting.map(mail => mail.id));
+    return had.slice().sort((one, other) => other.at - one.at)
+        .filter(mail => !seen.has(mail.id) && seen.add(mail.id))
+        .slice(0, MOST);
 }
 
 // When something was, as a drawer's fact says it beside a row that says

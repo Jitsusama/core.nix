@@ -375,9 +375,55 @@ QtObject {
         check("mail read, the mail and its count too",
             Google.changed(after.texts, more).parts, ["mail", "unread", "heard"]);
 
+        recentCases(check, at, now);
+
         for (const failure of failures)
             console.warn(failure);
         console.log(`${asked - failures.length} of ${asked} held`);
         Qt.exit(failures.length > 0 ? 1 : 0);
+    }
+
+    // What Calendar's Recent and Mail's list, from what the program keeps of
+    // the month before: the meetings held and the mail Joel had.
+    function recentCases(check, at, now) {
+        const held = (id, start, end, fields) => Object.assign({
+            id: id, title: id, start: start, end: end, allDay: false, answer: "yes",
+            link: null, kind: null, page: ""
+        }, fields ?? {});
+        const ids = meetings => meetings.map(meeting => meeting.id);
+        // The month before today, by start, as Google.js gathers it.
+        const month = [
+            held("retro", at(9, 22, 9, 0), at(9, 22, 9, 30)),
+            held("declined", at(9, 23, 9, 0), at(9, 23, 9, 30), { answer: "no" }),
+            held("planning", at(9, 25, 14, 0), at(9, 25, 15, 0))
+        ];
+        // Today's, one over, one on and one to come, and one the month
+        // held too, as a meeting over midnight might be.
+        const today = [
+            held("planning", at(9, 25, 14, 0), at(9, 25, 15, 0)),
+            held("standup", at(9, 26, 9, 0), at(9, 26, 9, 15)),
+            held("review", at(9, 26, 15, 0), at(9, 26, 16, 0)),
+            held("later", at(9, 26, 17, 0), at(9, 26, 17, 30))
+        ];
+        check("the meetings held, newest first, each once, none said no to or not over",
+            ids(Google.heldLately(month, today, now)), ["standup", "planning", "retro"]);
+        check("one held ends just now", ids(Google.heldLately([], [
+            held("ended", at(9, 26, 15, 0), now)], now)), ["ended"]);
+        check("none held with nothing kept", Google.heldLately(undefined, [], now), []);
+
+        const mail = (id, came) => ({ id: id, from: "Ada", subject: id, at: came });
+        const wanting = [mail("lunch", at(9, 26, 15, 18))];
+        const had = [
+            mail("sent", at(9, 26, 11, 0)),
+            mail("lunch", at(9, 26, 15, 18)),
+            mail("read", at(9, 26, 14, 0)),
+            mail("old", at(9, 1, 9, 0))
+        ];
+        check("the mail had, newest first, none still wanting him",
+            Mail.lately(had, wanting).map(one => one.id), ["read", "sent", "old"]);
+        check("at most nine", Mail.lately(Array.from({ length: 12 },
+            (_, hour) => mail(`m${hour}`, at(9, 26, hour, 0))), []).length, 9);
+        check("the newest of them first", Mail.lately(Array.from({ length: 12 },
+            (_, hour) => mail(`m${hour}`, at(9, 26, hour, 0))), [])[0].id, "m11");
     }
 }

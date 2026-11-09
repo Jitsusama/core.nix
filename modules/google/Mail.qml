@@ -38,6 +38,9 @@ Singleton {
     // Each { id, from, address, to, subject, at, page, body, attachments },
     // each attachment { name, kind, size, runs }.
     readonly property var mail: Google.mail
+    // The mail Joel sent or read lately, newest first, none of it still
+    // wanting him, for Mail's Recent (Messages.qml, Mail.js's lately).
+    readonly property var lately: Said.lately(Google.lately, mail)
 
     // How mail says when, in the vocabulary's words, with the locale's
     // names of days and months, as Qt gives them. Documents say when in

@@ -5,6 +5,15 @@
 // anywhere. Each is the meeting's one row (Calendar.row), the same as
 // every other surface shows it, with the same acts and details. `next` is
 // the next meeting's row, which Now shows.
+//
+// Calendar's Recent (recentOf, which Applications.qml asks every provider
+// that has it) is the meetings Joel held lately, newest first by when
+// each started (Calendar.lately), each that same row, which says at its
+// side when it was held, as the launcher says when anywhere ("yesterday",
+// "14:00"), and its times below. Return does what it does on any meeting
+// over: it steps in to Show in Calendar, since it can't be joined; the
+// right arrow lists every act. It stands, "none" while it holds nothing
+// (keepsRecentOf), since the program keeps a month of them.
 import qs
 import QtQuick
 
@@ -30,6 +39,27 @@ Provider {
     // it's closed.
     readonly property bool callsWatched: launcher !== null && launcher.open === true
     onCallsWatchedChanged: Calendar.watchingCalls += callsWatched ? 1 : -1
+
+    // As many as a Recent lists (launcher/Recent.js), so none is made only
+    // to be dropped.
+    readonly property int most: 9
+
+    function recentOf(program) {
+        if (program !== "google-calendar")
+            return [];
+        return Calendar.lately.slice(0, most).map(meeting => Object.assign(
+            Calendar.row(meeting, provider), { at: meeting.start }));
+    }
+
+    function keepsRecentOf(program) {
+        return program === "google-calendar";
+    }
+
+    // So Programs › Calendar, held as a meeting ends or its side moves on,
+    // draws its Recent again, and only then.
+    readonly property string recentSaid: JSON.stringify(Calendar.lately.slice(0, most)
+        .map(meeting => [meeting.id, Calendar.when(meeting)]))
+    onRecentSaidChanged: changed()
 
     readonly property var next: Google.account === "ready" && Calendar.upNext(Calendar.next)
         ? things.find(row => row.key === `calendar:meeting:${Calendar.next.id}`) ?? null

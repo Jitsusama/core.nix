@@ -12579,6 +12579,18 @@
       "in": "meet:call",
       "name": "Leave It",
       "verb": "leave"
+    },
+    {
+      "id": "meet:held",
+      "in": "applications",
+      "name": "Call",
+      "term": "Programs/call",
+      "verb": "join",
+      "glyph": "joinCall",
+      "said": {
+        "two": "{first} and {second}",
+        "others": "{first} and {count} others"
+      }
     }
   ],
   "commands": [
