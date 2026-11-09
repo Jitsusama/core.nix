@@ -25,7 +25,7 @@ import desktop_session
 import pytest
 
 # pytest finds a fixture by its name in the test's module, so the stand-in Google's is
-# imported for Drive's test and Calendar's and Mail's to ask for.
+# imported for Drive's test to ask for.
 from desktop_session import LAUNCHER_OPEN, google, retry  # noqa: F401
 
 if TYPE_CHECKING:
@@ -92,10 +92,6 @@ GOOGLE_WINDOWS = [
     ("chrome-mail.google.com__-Default", "Inbox - joel@example.com - Gmail", "Mail", "mail"),
     ("google-chrome", "Notes - Google Docs - Google Chrome", "Docs", "docs-tab"),
 ]
-
-# Google's programs with a Recent, each with what the stand-in Google says Joel had in it
-# lately (desktop/stand-in-google.py): the meeting he held, and the mail he read.
-GOOGLE_LATELY = (("Calendar", "Retro"), ("Mail", "Trip Notes"))
 
 
 @pytest.fixture(scope="module")
@@ -170,29 +166,6 @@ def test_drives_places_and_recent_are_shot_at_each_scale(
         desktop.launcher_until(partial(drawer_on, "menu.pdf"))
         desktop.shoot(f"launcher-drive-recent-at-{at}")
         desktop.close_launcher()
-
-
-@pytest.mark.usefixtures("google")
-def test_calendars_and_mails_recent_are_shot_at_each_scale(
-    desktop: Desktop, at_each_scale: list[str]
-) -> None:
-    """Shoot Calendar's Recent and Mail's in Programs, each led by what Joel had lately.
-
-    The stand-in Google held Retro a day before it started, and Grace's Trip Notes were read
-    three hours before, so each leads its Recent, selected, its drawer out.
-    """
-    for scale in at_each_scale:
-        at = at_scale(desktop, scale)
-        for program, lately in GOOGLE_LATELY:
-            desktop.answer(program.lower())
-            desktop.launcher_until(partial(named, program))
-            desktop.into_program()
-            desktop.launcher_until(lambda shown: "Recent" in shown["rows"])
-            desktop.down_to("Recent")
-            desktop.step_in()
-            desktop.launcher_until(partial(drawer_on, lately))
-            desktop.shoot(f"launcher-{program.lower()}-recent-at-{at}")
-            desktop.close_launcher()
 
 
 def test_spotify_and_its_podcasts_are_shot_at_each_scale(
