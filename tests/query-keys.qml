@@ -1165,7 +1165,14 @@ QtObject {
             ["a word too wide breaks at its dots", "Server time.harbour.test", 100,
                 "Server time.\u200bharbour.\u200btest"],
             ["a name with no space breaks at its marks", "/srv/files_kept", 100,
-                "/\u200bsrv/\u200bfiles_\u200bkept"]
+                "/\u200bsrv/\u200bfiles_\u200bkept"],
+            ["an empty title stays empty", "", 100, ""],
+            ["a word as wide as the line keeps its dots", "Server a.b.c.d.e.f", 110,
+                "Server a.b.c.d.e.f"],
+            ["a letter more breaks it", "Server a.b.c.d.e.fg", 110,
+                "Server a.\u200bb.\u200bc.\u200bd.\u200be.\u200bfg"],
+            ["spaces running stay as they are", "Two  a.b", 100, "Two  a.b"],
+            ["a tab ends a word too", "Tab\tfile.name.txt", 140, "Tab\tfile.name.txt"]
         ];
         for (const [what, said, room, want] of titles)
             holds(`a title's breaks: ${what}`, Identifier.titleBreaks(said, room, width), want);
