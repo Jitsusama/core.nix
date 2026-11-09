@@ -223,10 +223,7 @@ pub fn read(answer: &Value) -> Option<Mail> {
         subject: header("Subject").trim().to_owned(),
         sent,
         went: if sent {
-            went(
-                &[header("To"), header("Cc"), header("Bcc")],
-                header("From"),
-            )
+            went(&[header("To"), header("Cc"), header("Bcc")], header("From"))
         } else {
             Vec::new()
         },
