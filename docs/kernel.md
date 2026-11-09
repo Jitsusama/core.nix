@@ -143,6 +143,7 @@ configuration, and its own setting wins where the two differ. In short:
 | build in what every boot loads    | AES-NI, vfat, the firewall's set    |
 | decompress modules quickly        | `MODULE_COMPRESS_ZSTD`, not xz      |
 | no allocation profiler            | `MEM_ALLOC_PROFILING` off           |
+| check every indirect call         | `CFI`, permissive for now           |
 | reboot after a panic              | `PANIC_TIMEOUT` of 10 s             |
 | a panic screen in the theme       | `DRM_PANIC_*_COLOR` from its roles  |
 
@@ -162,6 +163,16 @@ per CPU second, about 3% in the middle, and dentry churn about 2%. Turning
 it off at boot, with `sysctl.vm.mem_profiling=never`, frees the page
 extensions but still leaves a tag slot in every slab object's vector, so
 it comes out of the build. A leak hunt can build it back in.
+
+A corrupted function pointer can send an indirect call anywhere that IBT
+accepts as a landing pad. kCFI checks each indirect call against the type
+of function it meant to reach, and on a processor with IBT the kernel
+rewrites those checks into FineIBT as it boots, which costs less. It starts
+permissive, with `CFI_PERMISSIVE`, so a driver built outside the kernel
+that breaks the rule logs a warning rather than stopping the machine. It
+turns strict after a week of boots with no warning. Module signing stays
+unforced, since the build's throwaway key can't sign the drivers built
+outside it, such as the cameras'.
 
 A panic otherwise waits forever, and on the XPS 14 [both crashes][crashes]
 froze it until the power button was held. Ten seconds later the record is
