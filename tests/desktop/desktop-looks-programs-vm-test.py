@@ -26,7 +26,7 @@ import pytest
 
 # pytest finds a fixture by its name in the test's module, so the stand-in Google's is
 # imported for Drive's test to ask for.
-from desktop_session import LAUNCHER_OPEN, google  # noqa: F401
+from desktop_session import LAUNCHER_OPEN, google, retry  # noqa: F401
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -45,6 +45,45 @@ SSH_CONFIG = "Host ferry\n    HostName ferry.harbour.test\n    User deckhand\n  
 
 # Where tuple-call keeps the calls that ended, for Tuple's Recent.
 TUPLE_KEPT = "~/.local/state/tuple-call/recent.jsonl"
+
+# How long the reader and zathura are given to take a key, or to let their windows go.
+TAKING = timedelta(seconds=30)
+
+# Screenshots as niri names them, for swayimg's page to lead with their gallery.
+SCREENSHOTS = (
+    "Screenshot from 2026-11-09 09-14-02.png",
+    "Screenshot from 2026-11-09 11-40-57.png",
+)
+# Folders in the home swayimg opened pictures in, each with its pictures: the first only
+# stepped to in its gallery, the rest opened, the last of all the newest.
+LOOKED_AT = {
+    "Pictures/Harbour": ("the-quay.png", "ferry-at-dawn.png", "lighthouse.png"),
+    "Pictures/Charts": ("soundings.png", "tide-chart.png"),
+}
+
+# Where in the home the reader reads markdown files here, and where it keeps where each was
+# left (modules/reader/src/place.rs).
+NOTES = "Documents/Harbour"
+PLACES = ".local/state/reader/places"
+# The title of the page left part way, which its row says it was left under; how many lines
+# each of its headings holds, so half a screen is a small part of it, as a document's is; and
+# the act reading from its mark.
+PAGE_TITLE = "A Page"
+LINES = 120
+MARK = "Read From Mark a"
+
+# How many pages the book has (tests/desktop.nix), and the names it's open under in zathura,
+# each with the page it's on.
+BOOK_PAGES = 12
+OPEN_ON = (("almanac.pdf", 5), ("logbook.pdf", 11))
+
+# Where in the home Inkscape's new drawings go, and the two it opened lately there: one Joel
+# saved under a name of his own, a map's size, and one New Drawing made from the template,
+# named as it names one.
+DRAWINGS = "Pictures/Drawings"
+SAVED = "Harbour Map.svg"
+SAVED_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"></svg>\n'
+FRESH = "Drawing 2026-11-09 10.12.03.svg"
 
 # Windows standing in for Google's programs in Chrome, as launcher-moves-windows' are: a kitty
 # given the app id and title Chrome gives Mail's own window, and one given Chrome's app id and a
@@ -180,6 +219,294 @@ def test_what_mpv_stopped_is_shot_at_each_scale(
         desktop.follow()
         desktop.launcher_until(partial(drawer_on, title))
         desktop.shoot(f"launcher-mpv-stopped-at-{at}")
+        desktop.close_launcher()
+
+
+@pytest.fixture
+def pictures_looked_at(desktop: Desktop) -> Iterator[None]:
+    """Give the screenshots' folder two screenshots, and swayimg pictures it opened in two more.
+
+    Each picture opened is said to the desktop's list of files opened lately as swayimg says
+    the one it opens (modules/swayimg/init.lua); the first of each folder was only stepped to
+    in its gallery, so only its count says it. After, the screenshots and the folders go, and
+    their entries on the list go unlisted with them, as it lists only what's still there.
+    """
+    home = f"/home/{desktop.account}"
+    shots = [shlex.quote(f"{desktop.pictures}/{name}") for name in SCREENSHOTS]
+    folders = [f"{home}/{folder}" for folder in LOOKED_AT]
+    there = [f"{home}/{folder}/{name}" for folder, names in LOOKED_AT.items() for name in names]
+    opened = [
+        f"{home}/{folder}/{name}" for folder, names in LOOKED_AT.items() for name in names[1:]
+    ]
+    desktop.as_account(
+        f"mkdir -p {desktop.pictures} {' '.join(folders)}"
+        f' && for to in {" ".join(shots + there)}; do cp {desktop.values["picture"]} "$to"; done'
+        f" && recent-files add swayimg {' '.join(opened)}"
+    )
+    yield
+    desktop.as_account(f"rm -f {' '.join(shots)} && rm -rf {' '.join(folders)}")
+
+
+def galleries_counted(shown: Json) -> bool:
+    """Say whether swayimg's page holds the screenshots' gallery and each folder's, counted."""
+    reads = [str(thing["reads"]) for thing in shown["things"]]
+    galleries = [read for read in reads if read.startswith("Look Through ")]
+    return len(galleries) == len(LOOKED_AT) + 1 and not any("\u2026" in read for read in galleries)
+
+
+def selects(key: str, shown: Json) -> bool:
+    """Say whether the selected row is the thing this key names, as a program's row."""
+    return (shown["selected"] or {}).get("is") == key
+
+
+@pytest.mark.usefixtures("pictures_looked_at")
+def test_swayimgs_galleries_are_shot_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Shoot swayimg's page, led by the screenshots' gallery, each folder's gallery after it.
+
+    How many pictures each folder holds is read as swayimg is stepped into, so the page is
+    shot once every gallery says its count.
+    """
+    for scale in at_each_scale:
+        at = at_scale(desktop, scale)
+        desktop.answer("swayimg")
+        desktop.launcher_until(partial(selects, "program:swayimg"))
+        desktop.into_program()
+        desktop.launcher_until(galleries_counted)
+        desktop.shoot(f"launcher-swayimg-at-{at}")
+        desktop.close_launcher()
+
+
+def markdown(title: str, section: str) -> str:
+    """Give a markdown file's words: its title and a section after it, each over its lines."""
+
+    def under(heading: str) -> list[str]:
+        """Give the paragraphs under a heading, enough that the page runs several screens."""
+        lines = range(1, LINES + 1)
+        return [f"Line {n} under {heading}, kept as the tide came in." for n in lines]
+
+    return "\n\n".join([f"# {title}", *under(title), f"## {section}", *under(section)]) + "\n"
+
+
+def pressed(desktop: Desktop, log: str, act: str, *keys: str) -> str:
+    """Press the keys making an act in the reader, and give its key log's line once it's done.
+
+    Each act's own lines are counted, by the name the reader logs it under, so a key it took
+    earlier and logs late is never taken for this one.
+    """
+    machine = desktop.machine
+    line = shlex.quote(f"key {act} ")
+    # grep counts none as a failure, which the driver's shell would end on.
+    counted = f"grep -c -F {line} {log} || true"
+    before = int(machine.succeed(counted))
+    for key in keys:
+        machine.send_key(key)
+    machine.wait_until_succeeds(f"[ $({counted}) -gt {before} ]", timeout=TAKING)
+    return machine.succeed(f"grep -F {line} {log} | tail -n 1")
+
+
+def read_in_the_reader(desktop: Desktop, path: str, *acts: tuple[str, ...]) -> None:
+    """Open a file in the reader, go to its end and do each act, then close it by ZZ.
+
+    Its keys are logged (READER_KEYS_LOG), as its own check reads them, and each act is its
+    name in the log then the keys making it. Keys are pressed once it says it holds the
+    keyboard, and G again until it goes past the top, as that check presses it, since G goes
+    nowhere until a page is set; each is taken before the next is pressed, so none lands
+    after the acts. As it closes, the reader keeps where the file was left, saying how far
+    down it is once the whole page is set, which is waited for.
+    """
+    machine = desktop.machine
+    log = f"/run/user/1000/reader-{path.rsplit('/', 1)[-1]}.log"
+    read = shlex.quote('READER_KEYS_LOG=1 exec reader "$1" 2> "$2"')
+    desktop.as_account(f"niri msg action spawn -- sh -c {read} sh {path} {log}")
+    focused = shlex.quote('"app_id":"reader"')
+    reading = desktop.in_session(f"niri msg --json focused-window | grep -qF {focused}")
+    machine.wait_until_succeeds(reading, timeout=timedelta(seconds=60))
+    machine.wait_until_succeeds(f"grep -qx 'keys: focused' {log}", timeout=TAKING)
+
+    def at_the_end(_: bool) -> bool:
+        """Press G, and say whether the reader went past the top of a page it has set."""
+        return " heading 0.0 pt" not in pressed(desktop, log, "Last", "shift-g")
+
+    retry(at_the_end, timeout=TAKING)
+    for act in acts:
+        pressed(desktop, log, *act)
+    machine.send_key("shift-z")
+    machine.send_key("shift-z")
+    machine.wait_until_fails(reading, timeout=TAKING)
+    places = f"/home/{desktop.account}/{PLACES}"
+    kept = f'grep -hF \'"file":"{path}"\' {places}/*.json'
+    machine.wait_until_succeeds(f"{kept} | grep -qF '\"through\"'", timeout=TAKING)
+    # What it kept is what Recent says, so the log says it beside the shots.
+    print(f"the reader kept {machine.succeed(kept)}")
+    machine.succeed(f"rm -f {log}")
+
+
+@pytest.fixture
+def markdown_read(desktop: Desktop) -> Iterator[str]:
+    """Read two markdown files in the reader, one to its end and one part way, marked.
+
+    The reader keeps where each was left as it closes, as on a machine, and the launcher
+    lists them through reader --places. The tide log is read to its end; the page is marked
+    a under its section and then left half a screen into its title's lines, read last. It
+    gives the page. After, the files go, and so do their places.
+    """
+    folder = f"/home/{desktop.account}/{NOTES}"
+    tides = f"{folder}/tide-log.md"
+    page = f"{folder}/a-page.md"
+    desktop.as_account(
+        f"mkdir -p {folder}"
+        f" && printf %s {shlex.quote(markdown('The Tide Log', 'Slack Water'))} > {tides}"
+        f" && printf %s {shlex.quote(markdown(PAGE_TITLE, 'Further On'))} > {page}"
+    )
+    read_in_the_reader(desktop, tides)
+    # To the top, to the next heading, the section, two lines into it and mark a there, since
+    # a mark on a heading's own line is kept under the heading before it, back to the top,
+    # and down half a screen.
+    read_in_the_reader(
+        desktop,
+        page,
+        ("First", "g", "g"),
+        ("HeadingOn", "bracket_right", "bracket_right"),
+        ("Down", "j"),
+        ("Down", "j"),
+        ("SetMark('a')", "m", "a"),
+        ("First", "g", "g"),
+        ("HalfDown", "ctrl-d"),
+    )
+    yield page
+    places = f"/home/{desktop.account}/{PLACES}"
+    desktop.as_account(
+        f"rm -rf {folder} && (grep -lF {folder}/ {places}/*.json || true) | xargs -r rm -f"
+    )
+
+
+def left_under(name: str, heading: str, shown: Json) -> bool:
+    """Say whether the file named is selected, its drawer out, saying it was left under this."""
+    side = str((shown["selected"] or {}).get("side", ""))
+    return drawer_on(name, shown) and side.startswith(f"{heading} \u00b7 ")
+
+
+def test_the_readers_recent_is_shot_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str], markdown_read: str
+) -> None:
+    """Shoot the reader's Recent, each file saying where it was left, and a mark's row in one.
+
+    Its places are read as the reader is stepped into, so the page leads Recent saying where
+    it was left once reader --places has answered.
+    """
+    name = markdown_read.rsplit("/", 1)[-1]
+    for scale in at_each_scale:
+        at = at_scale(desktop, scale)
+        desktop.answer("reader")
+        desktop.launcher_until(partial(selects, "program:reader"))
+        desktop.into_program()
+        desktop.type_in("recent", selecting="Recent")
+        desktop.follow()
+        desktop.launcher_until(partial(left_under, name, PAGE_TITLE))
+        desktop.shoot(f"launcher-reader-recent-at-{at}")
+        desktop.follow()
+        desktop.launcher_until(lambda shown: MARK in shown["rows"])
+        desktop.down_to(MARK)
+        desktop.shoot(f"launcher-reader-mark-at-{at}")
+        desktop.close_launcher()
+
+
+@pytest.fixture
+def documents_open(desktop: Desktop, values: dict[str, Any]) -> Iterator[None]:
+    """Open the book twice in zathura, under two names, each on a page of its own.
+
+    Each opens once the one before has its window, so the last is the one focused, and the
+    page leads with it, whichever zathura starts sooner. After, each window closes and its
+    document goes.
+    """
+    machine = desktop.machine
+    zathuras = 'niri msg --json windows | grep -oF \'"app_id":"org.pwmt.zathura"\' | wc -l'
+    for opened, (name, page) in enumerate(OPEN_ON, start=1):
+        desktop.as_account(
+            f"cp {values['book']} ~/{name}"
+            f" && niri msg action spawn -- zathura --page={page} ~/{name}"
+        )
+        machine.wait_until_succeeds(
+            desktop.in_session(f"[ $({zathuras}) -eq {opened} ]"), timeout=timedelta(seconds=60)
+        )
+    yield
+    for window in desktop.windows():
+        if window["app_id"] == "org.pwmt.zathura":
+            desktop.close(window)
+    machine.wait_until_succeeds(desktop.in_session(f"[ $({zathuras}) -eq 0 ]"), timeout=TAKING)
+    desktop.as_account(f"rm -f {' '.join(f'~/{name}' for name, _ in OPEN_ON)}")
+
+
+def each_on_its_page(shown: Json) -> bool:
+    """Say whether zathura's page lists each document open, saying the page it's on."""
+    reads = [str(thing["reads"]) for thing in shown["things"]]
+    return all(
+        any(read.startswith(name) and f"p. {page} of {BOOK_PAGES}" in read for read in reads)
+        for name, page in OPEN_ON
+    )
+
+
+@pytest.mark.usefixtures("documents_open")
+def test_zathuras_page_is_shot_at_each_scale(desktop: Desktop, at_each_scale: list[str]) -> None:
+    """Shoot zathura's page, each document open saying the page it's on.
+
+    zathura is asked over its bus as its page opens, so it's shot once each has answered.
+    """
+    for scale in at_each_scale:
+        at = at_scale(desktop, scale)
+        desktop.answer("zathura")
+        desktop.launcher_until(partial(selects, "program:org.pwmt.zathura"))
+        desktop.into_program()
+        desktop.launcher_until(each_on_its_page)
+        desktop.shoot(f"launcher-zathura-at-{at}")
+        desktop.close_launcher()
+
+
+@pytest.fixture
+def drawings_and_a_picture_copied(desktop: Desktop) -> Iterator[None]:
+    """Give Inkscape two drawings it opened lately, and the clipboard a picture.
+
+    Each drawing is said to the desktop's list of files opened lately under Inkscape's own
+    name, as it says each it opens, the saved map first and the new one after, newest. After,
+    something else is copied over the picture and the drawings go.
+    """
+    folder = f"/home/{desktop.account}/{DRAWINGS}"
+    template = f"/home/{desktop.account}/.config/inkscape/templates/default.svg"
+    saved = shlex.quote(f"{folder}/{SAVED}")
+    fresh = shlex.quote(f"{folder}/{FRESH}")
+    desktop.as_account(
+        f"mkdir -p {folder} && printf %s {shlex.quote(SAVED_SVG)} > {saved}"
+        f" && cp {template} {fresh} && recent-files add org.inkscape.Inkscape {saved} {fresh}"
+    )
+    with desktop.told("heard copy Image 256 \u00d7 256"):
+        desktop.as_account(
+            f"wl-copy --type image/png < {desktop.values['picture']} > /dev/null 2>&1"
+        )
+    yield
+    with desktop.told("heard copy after the picture"):
+        desktop.as_account("echo -n 'after the picture' | wl-copy > /dev/null 2>&1")
+    desktop.as_account(f"rm -rf {folder}")
+
+
+@pytest.mark.usefixtures("drawings_and_a_picture_copied")
+def test_inkscapes_page_and_its_recent_are_shot_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Shoot Inkscape's page, with a picture copied, and its Recent led by the newest drawing."""
+    acts = {"New Drawing", "New Drawing From the Copied Picture", "Recent"}
+    for scale in at_each_scale:
+        at = at_scale(desktop, scale)
+        desktop.answer("inkscape")
+        desktop.launcher_until(partial(selects, "program:org.inkscape.Inkscape"))
+        desktop.into_program()
+        desktop.launcher_until(lambda shown: acts <= set(shown["rows"]))
+        desktop.shoot(f"launcher-inkscape-at-{at}")
+        desktop.type_in("recent", selecting="Recent")
+        desktop.follow()
+        desktop.launcher_until(partial(drawer_on, FRESH))
+        desktop.shoot(f"launcher-inkscape-recent-at-{at}")
         desktop.close_launcher()
 
 
