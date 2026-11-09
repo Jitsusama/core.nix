@@ -6,6 +6,73 @@
 # .rumdl.toml for Markdown.
 { pkgs, ... }:
 {
+  # A file no formatter reads stops `nix fmt` and the formatting check, so a
+  # new kind of file can't slip past every linter unseen. What no linter
+  # reads yet is named below by kind, each with its reason; giving a kind
+  # its linter takes its line off.
+  settings.on-unmatched = "fatal";
+
+  settings.excludes = [
+    # The shell's QML is read by quickshell-passes-qmllint as the account
+    # installs it; the QML cases in tests/ run in Qt's own engine, unlinted.
+    "*.qml"
+    # Cargo reads each crate's manifest as the crate builds, refusing a
+    # malformed one; no TOML linter reads it, nor the other TOML, yet.
+    "*.toml"
+    # JSON, read by the programs and tests that load it; none formats it yet.
+    "*.json"
+    "*.jsonc"
+    "*.jsonl"
+    # What programs and devices answered, recorded for the tests to compare
+    # byte for byte, and the stand-in keys and signatures they sign with.
+    "modules/eero/src/views/golden/*"
+    "modules/guide/fixtures/*"
+    "modules/signing/tests/*.sig"
+    "*.pem"
+    "tests/update-to-main-signer"
+    # C and C++ built by the kernel's, QMK's and CMake's own builds, which
+    # stop on an error but don't lint.
+    "*.c"
+    "*.cpp"
+    "*.h"
+    "*/Kbuild"
+    "*/CMakeLists.txt"
+    "*/rules.mk"
+    # Settings in a program's own format, read by the program they set.
+    "*.conf"
+    "*/kernel/*.config"
+    "*.ini"
+    "*.kdl"
+    "*.quirk"
+    "*.script"
+    "*.svg"
+    "*.xml"
+    "*.yml"
+    ".luacheckrc"
+    "modules/ghostty/config"
+    "modules/gimp/gimprc"
+    "modules/gimp/shortcutsrc"
+    # polkit's rules are JavaScript and udev's their own lines; the nft,
+    # bpftrace and jq programs are read only by their own tools as they run.
+    "*.rules"
+    "*.nft"
+    "*.bt"
+    "*.jq"
+    # Word lists, one per line: a dictionary, glyphs, paths and check names.
+    "*.txt"
+    "*.add"
+    # The licences that came with code taken from another project, kept
+    # beside it word for word.
+    "*/LICENSE.*"
+    # The launcher's matcher, being redesigned, comes under biome as it's
+    # rewritten (as qt-javascript-lint says).
+    "modules/quickshell/Fuzzy.js"
+  ];
+
+  # A stand-in program for a test, named as the program it stands in for,
+  # so its kind isn't in its name.
+  settings.formatter.shellcheck.includes = [ "modules/quickshell/in-a-terminal/tests/qs" ];
+
   # The libraries core's own Python imports.
   jitsusama.mypy.packages =
     python:
