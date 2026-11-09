@@ -10,7 +10,12 @@
 // a refused sign-in waits in For You (VKCF3Z, b8c8920e and 347abdb7);
 // with Slack's daemon not answering, there's no count to show at all. In
 // Now it's For You's Slack row, among what came for him (Now.qml's
-// Lately), and the margin shows it as it is.
+// Lately), and the margin shows it as it is. While the daemon holds every
+// message wanting him, Return lists each message instead, by who said it
+// (SlackMessage.qml), then Threads, whose replies it doesn't hold, and
+// each read in Slack leaves by itself for For You's History (Joel,
+// 2026-11-08: "i shouldn't be required to mark a notice as read if I
+// looked at the slack message in slack").
 import qs
 import QtQuick
 
@@ -26,19 +31,25 @@ Piece {
     value: SlackUnreads.value
     hint: SlackUnreads.hint
     context: SlackUnreads.context
-    rows: thing => SlackUnreads.conversations.map(one => SlackConversation.row({
-        id: one.id,
-        name: one.name,
-        opens: one.link,
-        side: SlackUnreads.beside(one),
-        note: SlackUnreads.note(one)
-    }, thing))
+    rows: thing => (SlackUnreads.toRead ?? []).map(one => SlackMessage.row(one, thing))
+        .concat((SlackUnreads.toRead === null ? SlackUnreads.conversations : SlackUnreads.unheld)
+            .map(one => SlackConversation.row({
+                id: one.id,
+                name: one.name,
+                opens: one.link,
+                side: SlackUnreads.beside(one),
+                note: SlackUnreads.note(one)
+            }, thing)))
     lately: "slack"
-    // Slack's timestamps are seconds, as text.
-    came: SlackUnreads.conversations.map(one => ({
-        who: one.name,
-        at: one.latest ? Number(one.latest) * 1000 : null
-    }))
+    // Slack's timestamps are seconds, as text; a message's, milliseconds.
+    came: (SlackUnreads.toRead ?? []).map(one => ({ who: one.who, at: one.at }))
+        .concat((SlackUnreads.toRead === null ? SlackUnreads.conversations : SlackUnreads.unheld)
+            .map(one => ({
+                who: one.name,
+                at: one.latest ? Number(one.latest) * 1000 : null
+            })))
+    finished: SlackUnreads.doneWith === null ? null : SlackUnreads.doneWith.map(one =>
+        Object.assign({}, one, { row: thing => SlackMessage.row(one, thing) }))
     actions: [{
         glyph: Theme.glyph.chat,
         name: "Show Slack",

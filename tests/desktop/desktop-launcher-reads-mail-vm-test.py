@@ -212,13 +212,18 @@ def slack_says(
     conversations: list[Json],
     *,
     recent: list[Json] | None = None,
+    messages: list[Json] | None = None,
 ) -> None:
     """Have the stand-in Slack daemon say this, as a round of asking Slack would.
 
     The stand-in reads it from slack-says.json, as it starts or once told by SIGHUP that it
-    changed; a stand-in only just started is never sent one, as it may not hear it yet.
+    changed; a stand-in only just started is never sent one, as it may not hear it yet. With
+    messages, it holds every message wanting Joel, as the daemon does once Slack gave them all.
     """
-    told = json.dumps({"state": state, "conversations": conversations, "recent": recent or []})
+    said: Json = {"state": state, "conversations": conversations, "recent": recent or []}
+    if messages is not None:
+        said["messages"] = messages
+    told = json.dumps(said)
     desktop.as_account(
         f"printf '%s' {shlex.quote(told)} > $XDG_RUNTIME_DIR/slack-says.new"
         " && mv $XDG_RUNTIME_DIR/slack-says.new $XDG_RUNTIME_DIR/slack-says.json"
@@ -226,6 +231,73 @@ def slack_says(
         " then systemctl --user kill -s HUP slack-stand-in.service;"
         " else systemctl --user start slack-stand-in.service; fi"
     )
+
+
+def slack_holds_each_message(desktop: Desktop, conversations: list[Json]) -> None:
+    """With every message held, For You's Slack row lists each; one read in Slack leaves.
+
+    Each is named by who said it, its note its first words and its side when, newest first,
+    then Threads, whose replies aren't held (VKCF3Z, 2026-11-08). One read in Slack leaves
+    by itself and History says so, "read in Slack 14:02", with nothing marked here.
+    """
+    machine = desktop.machine
+    ada = {"channel": "D1", "place": "Ada Lovelace", "who": "Ada Lovelace"}
+    grace = {
+        "channel": "C1",
+        "ts": "1730000003.000100",
+        "place": "#deploys",
+        "who": "Grace Hopper",
+        "first": "@joel ship it?",
+        "minutes": 30,
+    }
+    held = [
+        ada | {"ts": "1730000002.000100", "first": "or tea?", "minutes": 2},
+        ada | {"ts": "1730000001.000100", "first": "lunch at noon?", "minutes": 3},
+        grace,
+    ]
+    slack_says(desktop, "ok", conversations, messages=held)
+    for_you_rows(desktop)
+    desktop.down_to("Slack")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"][-1:] == ["Slack"]
+            and shown["rows"]
+            == ["Ada Lovelace", "Ada Lovelace", "Grace Hopper", "Threads", "Show Slack"]
+            and shown["selected"]["note"] == "or tea?"
+            and re.fullmatch(r"\d+ min ago", shown["selected"]["side"]) is not None
+        )
+    )
+    desktop.shoot("launcher-for-you-slack-messages")
+    desktop.follow()
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Open in Slack", "Copy the Link"])
+    desktop.close_launcher()
+    # Each message row is made by its one component, as a conversation's is.
+    said = cast("Json", json.loads(desktop.as_account("qs ipc call launcher actless")))
+    assert said["uncomposed"] == [], "\n".join(said["uncomposed"])
+    # Read in Slack, Grace's message leaves For You by itself, for its History.
+    slack_says(
+        desktop,
+        "ok",
+        conversations,
+        messages=held[:2] + [grace | {"done": {"how": "read in Slack", "minutes": 0}}],
+    )
+    for_you_rows(desktop)
+    desktop.down_to("Slack")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: shown["rows"] == ["Ada Lovelace", "Ada Lovelace", "Threads", "Show Slack"]
+    )
+    desktop.close_launcher()
+    for_you_rows(desktop)
+    desktop.down_to("History")
+    desktop.step_in("ret")
+    desktop.down_to("Grace Hopper")
+    desktop.launcher_until(
+        lambda shown: re.fullmatch(r"read in Slack \d\d:\d\d", shown["selected"]["side"])
+        is not None
+    )
+    desktop.close_launcher()
 
 
 def slack_goes(desktop: Desktop) -> None:
@@ -333,6 +405,7 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
             "A row drawn by the surface listing it, though a thing is one row:\n"
             + "\n".join(said["uncomposed"])
         )
+        slack_holds_each_message(desktop, conversations)
         # Slack out of reach wants nothing of Joel, so For You has no Slack row;
         # Slack's program row says why.
         slack_says(desktop, "unreachable", [])

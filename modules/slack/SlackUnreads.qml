@@ -1,7 +1,8 @@
 pragma Singleton
 // What in Slack is unread and what Joel read last, as Slack's daemon
 // serves it on its socket (src/daemon.rs): one connection, watching every
-// slack-unread, slack-recent and slack-account record, each change heard
+// slack-unread, slack-recent, slack-message and slack-account record, each
+// change heard
 // as Slack's daemon hears it, so nothing here keeps a clock. What's held
 // is let go once the daemon stops answering, so no count outlives it.
 // What it says and how it stands are SlackUnreads.js's.
@@ -16,7 +17,7 @@ Singleton {
         id: slack
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR") ?? ""}/daemons/slack.sock`
-        kind: ["slack-unread", "slack-recent", "slack-account"]
+        kind: ["slack-unread", "slack-recent", "slack-message", "slack-account"]
         keptThroughGap: false
     }
 
@@ -46,6 +47,16 @@ Singleton {
     readonly property var unread: stands === "ok" ? told.conversations : []
     // What he read last, newest first, for Slack's Recent.
     readonly property var recent: stands === "ok" ? told.recent : []
+    // Each message wanting him, done ones too, the newest first, while the
+    // daemon holds every one; else null, and the conversations stand for
+    // them (SlackUnreads.js's messages). For You's Slack row lists those
+    // still to read, and its History those done (NewSlack.qml).
+    readonly property var messages: Unreads.messages(told, stands)
+    readonly property var toRead: messages === null ? null
+        : messages.filter(one => !Unreads.done(one))
+    readonly property var doneWith: messages === null ? null : messages.filter(Unreads.done)
+    // Threads, which no message stands for, beside the messages.
+    readonly property var unheld: stands === "ok" ? Unreads.unheld(told) : []
 
     // A conversation's row's words, for the piece, which lives where
     // SlackUnreads.js can't be imported.

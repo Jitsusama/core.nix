@@ -1030,6 +1030,7 @@ Scope {
     readonly property var components: [
         { keyed: /^mail:/, made: "mail" },
         { keyed: /^slack:conversation:/, made: "slackConversation" },
+        { keyed: /^slack:message:/, made: "slackMessage" },
         { keyed: /^calendar:meeting:/, made: "meeting" },
         { keyed: /^file:/, made: "file" },
         { keyed: /^folder:/, made: "folder" },

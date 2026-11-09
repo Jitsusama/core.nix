@@ -28,11 +28,22 @@ function newest(field) {
     };
 }
 
+// Whether a message the daemon holds can be listed: it names its
+// conversation, Slack's time for it, who said it and when.
+function listable(one) {
+    return one !== null && typeof one === "object" && typeof one.channel === "string"
+        && typeof one.ts === "string" && typeof one.who === "string"
+        && typeof one.at === "number";
+}
+
 // What the daemon holds, by key (Daemon.qml's `held`), as { state,
-// conversations, recent }, or null while it doesn't answer or hasn't yet
-// said how Slack stands. A conversation is kept when it's whole: a channel
-// merely unread, or one in Recent, has no count, and anything else has
-// one.
+// conversations, recent, messages, whole }, or null while it doesn't
+// answer or hasn't yet said how Slack stands. A conversation is kept when
+// it's whole: a channel merely unread, or one in Recent, has no count, and
+// anything else has one. `messages` are each message wanting Joel, done
+// ones too, the newest first (src/messages.rs), and `whole` whether the
+// daemon says it holds every one, since a history Slack didn't give
+// leaves some out.
 function gathered(held, answering) {
     if (!answering || held === null || typeof held !== "object") {
         return null;
@@ -56,8 +67,35 @@ function gathered(held, answering) {
             .filter(one => one.kind === "unread" || one.count > 0)
             .sort((one, other) => ((groups[one.kind] ?? 4) - (groups[other.kind] ?? 4))
                 || first(one, other)),
-        recent: of("slack-recent").sort(newest("read"))
+        recent: of("slack-recent").sort(newest("read")),
+        messages: Object.values(held)
+            .filter(record => record?.kind === "slack-message")
+            .map(record => record["slack-message"])
+            .filter(listable)
+            .sort((one, other) => (other.at - one.at) || one.ts.localeCompare(other.ts)),
+        whole: account.messages === "whole"
     };
+}
+
+// The messages wanting Joel, one each, while the daemon holds every one,
+// done ones too, the newest first, or null where it holds none or not
+// all, so Slack's conversations stand for them, as they did before the
+// daemon held messages. A thread's replies are never held, so Threads
+// stays a conversation beside them (src/messages.rs).
+function messages(told, stands) {
+    return stands === "ok" && told.whole ? told.messages : null;
+}
+
+// Whether a message is done with, as its daemon says: read in Slack, or
+// gone from it.
+function done(one) {
+    return one.done !== null && typeof one.done === "object" && typeof one.done.how === "string";
+}
+
+// The conversations a message never stands for, listed beside the
+// messages: Threads, whose replies the daemon doesn't hold.
+function unheld(told) {
+    return wanting(told).filter(one => one.kind === "thread");
 }
 
 // Whether a conversation wants Joel, as Now lists only those that do: a

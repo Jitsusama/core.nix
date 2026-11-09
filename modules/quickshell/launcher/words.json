@@ -8758,7 +8758,10 @@
       "verb": "open",
       "said": {
         "searching": "searching Slack",
-        "you": "you"
+        "you": "you",
+        "where": "in {place} \u00b7 message",
+        "direct": "direct message",
+        "sent": "Sent"
       },
       "tells": {
         "none": "Nothing in Slack says {words}.",
