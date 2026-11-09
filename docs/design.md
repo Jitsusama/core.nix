@@ -802,7 +802,13 @@ it stands as its neighbours do (VKCF3Z, 2026-11-09). A note is a run of items, l
 where the words are ours, never a sentence with a capital and a stop
 ("found by its meaning"), written most-needed first, so that short of
 room it gives way by whole items from its end, never to an ellipsis
-(VKCF3Z, 2026-11-08). How it stands never gives way: short of room the
+(VKCF3Z, 2026-11-08). A run that wraps, in a drawer or a plate,
+breaks between its items, the break taking the dot's place, so no line
+ends or starts on one. An identifier wraps at its own marks, each dot
+kept with the part before it ("com.onepassword." over "OnePassword"),
+and a run of 20 or more letters and digits with no mark, a hash, may
+break at any letter once no slash or hyphen fits (VKCF3Z, 2026-11-09).
+How it stands never gives way: short of room the
 note goes first, then the name ends as a long name does. Two rows that
 would read alike (one track in two players) each say in their note what
 tells them apart, and a file's name kept there gives way from its middle,
@@ -1231,7 +1237,8 @@ works the same way everywhere.
   into a thing lists a few parts rather than every choice: a
   display's Scale "1.75×", Refresh, Resolution and Rotation, then what
   its EDID says (Colour depth "10 bit"). What's typed beside them finds
-  their choices too, so "scale 1.5" is Scale to 1.5× without a step in.
+  their choices too, so "scale 1.5" finds 1.5× without a step in, the
+  setting's name a hidden word on each of its choices.
   A part is found from the top by its name, three letters or more,
   saying where it lives (Rotation, Desktop › Screens › Built-in screen;
   Health, Machine › Power › Battery), and Return goes there, the path
@@ -1259,13 +1266,12 @@ works the same way everywhere.
   each is laid out by the one rule (Recent.js). It always
   stands where its thing keeps any, so it never arrives late at the
   bottom: how many at its right, "none" while it holds nothing and an
-  ellipsis while its source first answers, after its name the names it
-  holds, newest first, as many whole as fit and never how many more,
-  which its right already says ("Wikipedia, Kayak" after Recent and 9
-  at its right; VKCF3Z, 2026-11-07), and "Nothing yet." stepped into empty. Every part
-  inside a thing that holds things reads that way, Unread too, while a
-  place's row names nothing after its name (below): names after its name, how
-  many at its right, nothing in the foot. What waits on Joel is
+  ellipsis while its source first answers, nothing after its name, the
+  names it holds newest first in its drawer, and "Nothing yet." stepped
+  into empty. Every part inside a thing that holds things, Unread too,
+  is a place's row: nothing after its name, how many at its right, its
+  members in its drawer, nothing in the foot (VKCF3Z, dafc2199).
+  What waits on Joel is
   never Recent: a person's unread mail is their Unread, before it,
   standing only while there's any.
 - **Acts in one order.** Every kind of thing lists what's inside it in
@@ -1284,7 +1290,9 @@ works the same way everywhere.
   the act's own words, never a place's name joined to it: "Reboot the
   Machine, Closing 12 Windows?", never "Reboot Power?". A choice is said by its value alone
   ("100%", "60 Hz", "Upright"), the setting it's for named in the path
-  above it, the one chosen saying "chosen", whoever picked it. "In use"
+  above it, the one chosen saying "chosen", whoever picked it; its
+  note says only what marks it out ("preferred", "custom", the default's
+  name), and its foot "↵ set", never the value again. "In use"
   is only ever what a program holds, as a camera Chrome has open. Rows
   that come and go, such as Media, sit at the end of their group. A check walks every row to hold
   the order.
@@ -1393,8 +1401,9 @@ works the same way everywhere.
   place in Machine, beside Processor, Memory and Heat, with Lag after it,
   since what slowed the desktop is one of them, and a disk filling
   fast shows in Now. Now's top never changes: For You first, always,
-  its side a bare count of what waits on Joel, or "nothing now", and
-  its note the sources holding something unread ("Mail, Slack");
+  nothing after its name, as a place's row, its side what each of its
+  bands holds as a run ("1 to do · 44 to look at · 2 to try"), or
+  "nothing now";
   then its own
   rows, always there in this order: the time, the date, the location,
   the weather and the next meeting, with no Today to step into, each the
@@ -1428,9 +1437,13 @@ works the same way everywhere.
   nothing, a lowercase run and never the sentence that stays inside it,
   else how many it holds ("78 keys"); a place that only groups others
   (Machine, Network, Desktop) says nothing there. Now's right names the
-  first thing waiting on Joel, its minutes and how many more wait
-  ("Answer the ask · 2 min · 2 more"); short of room its title gives way
-  by whole words, and calm it says nothing (VKCF3Z, bd5cb965). A place's
+  first thing that needs Joel now, its minutes and how many more do
+  ("Answer the ask · 2 min · 2 more"), else what To Look At and To Try
+  hold ("44 to look at · 2 to try"); short of room its title gives way
+  by whole words behind an ellipsis, its minutes and counts never, and
+  with nothing waiting it says nothing (VKCF3Z, bd5cb965, a31a0e1b).
+  Now's drawer is its moment plate, which leaves out For You while the
+  row says it. A place's
   row is the same row at home and inside its parent, made by one
   function (Joel, 2026-11-08: "i don't like how the title and values on
   the home screen differ from every other sub-menu"; VKCF3Z, 2a429f67),
@@ -1615,8 +1628,12 @@ works the same way everywhere.
   foot says is lowercase, as a said value is ("copied", "told reef").
   A refusal names the thing, what wasn't done, then why: "GitHub's
   password not copied · 1Password is locked", "HP Z27 not unplugged ·
-  the last lit screen". Asked for what already holds, it says what's
-  true, as Vim's `:set` does: "HP Z27 is plugged in".
+  the last lit screen". The thing is what was asked ("1.3× not set · HP
+  offers 1× to 3×"), and the why is the world's own words, the first
+  letter lowered and no closing full stop; an act that gave up says so
+  the same way, "didn't install · stopped waiting after 30 min". Asked
+  for what already holds, it says what's true, as Vim's `:set` does:
+  "HP Z27 is plugged in".
 - **Answers first.** A sum is answered in grey right after what's typed,
   and that's its only home. Sums, bases, bits ("0b1011 << 3", "~5", "5
   xor 3"), "20% of 50", "3 squared" and measures worked out together ("5
@@ -1844,13 +1861,14 @@ works the same way everywhere.
   opens in the one window there is, never squeezed until a word breaks.
   It's out only while the selected row is a thing (a program, a session, a
   quest, a mail, a meeting, a person, a file, a folder, a notice, a
-  window, a device, a network, a copy, a value with a history) and the
-  drawer holds something the row doesn't already say: facts, a picture,
+  window, a device, a network, a copy, a value with a history) or a
+  place, whose drawer names what it holds, and the drawer holds
+  something the row doesn't already say: facts, a picture,
   words beyond its name, side and note, or more. A drawer that would
   only repeat the row is never shown (Joel, 2026-10-29: "we should
   never show the side panel when it is just repeating the currently
   selected text"). It's the same at home, in a search and in every
-  place; an act, a switch, a choice or a place has none (Joel,
+  place; an act, a switch or a choice has none (Joel,
   2026-10-29: "the side drawer shows when it's not needed, and only
   shows in certain places"). Between two things it stays and what it
   shows changes in place; onto or off one it fades in place once the
