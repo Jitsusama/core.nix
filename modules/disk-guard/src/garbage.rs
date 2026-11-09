@@ -235,6 +235,32 @@ fn named_in(text: &[u8], store: &Path) -> Vec<String> {
 /// listing to delete from.
 pub const GC_TIMEOUT: Duration = Duration::from_mins(10);
 
+/// How far above Nix's own `min-free` the store's free space is kept.
+/// Under it, every Nix worker that adds a path starts a collection of its
+/// own, each queued on the lock the last holds, and builds and adds wait
+/// on them with nothing said; so the guard's steps start this far above.
+pub const ABOVE_MIN_FREE: u64 = 10 << 30;
+
+/// How often steps of `nix store gc` go while the store is short of
+/// `ABOVE_MIN_FREE` over Nix's `min-free`: often enough that a step of
+/// `BATCH_BYTES` keeps ahead of builds, where hourly fell behind them.
+pub const NEAR_MIN_FREE_EVERY: Duration = Duration::from_mins(5);
+
+/// The `min-free` Nix is set to on this machine, in bytes: what a
+/// person's own `nix.conf` says, which the guard reads rather than
+/// repeats. None where Nix can't say, which leaves the guard to its bands.
+pub fn min_free(nix: &Path) -> Option<u64> {
+    let argv: Vec<&OsStr> = std::iter::once(nix.as_os_str())
+        .chain(NIX_COMMAND.iter().map(OsStr::new))
+        .chain(["config", "show", "min-free"].map(OsStr::new))
+        .collect();
+    ran(&argv, Duration::from_secs(30), true)
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
+}
+
 /// What the `nix` command needs to be told before any of the commands the
 /// guard runs, which stock Nix still calls experimental and refuses
 /// unless the machine's own settings allow them. Where they're stable the
