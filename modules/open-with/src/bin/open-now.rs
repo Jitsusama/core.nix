@@ -141,11 +141,7 @@ fn neovim() -> Result<(), String> {
         .iter()
         .zip(held)
         .filter_map(|(one, held)| Some((one, held?)))
-        .filter(|(one, held)| {
-            held["pid"]
-                .as_u64()
-                .is_some_and(|pid| one.pids.contains(&pid))
-        })
+        .filter(|(one, held)| one.answers(held))
         .try_for_each(|(one, held)| {
             writeln!(out, "@{}\t{}\t{}\t{held}", one.window, one.go, one.server)
         })

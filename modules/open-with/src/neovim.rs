@@ -478,6 +478,7 @@ mod tests {
         .unwrap();
         let held = held(&neovim.server).unwrap();
         assert_eq!(held["pid"], json!(neovim.child.id()));
+        assert_eq!(held["parent"], json!(std::process::id()));
         assert_eq!(held["tab"], json!(1));
         assert_eq!(held["tabs"], json!(2));
         let files: Vec<_> = held["files"]

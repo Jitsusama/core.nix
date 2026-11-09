@@ -1,10 +1,12 @@
 -- What a running Neovim holds, asked of it over its own msgpack-RPC
 -- server by open-now (neovim.rs), for the launcher's Programs › Neovim:
--- its process, its folder, its tabs, and each listed buffer that holds a
--- file, never a terminal, help, a plugin's buffer or a folder. Each says
--- which tabs show it, by their number in the tab line, none while it's
--- hidden, whether it's modified, and when it was last used, so the
--- launcher can lead with the file Joel was in. It's sent whole each time
+-- its process and the one that started it (the client drawing it in a
+-- terminal, which kitty sees in front, from 0.12 on), its folder, its
+-- tabs, and each listed buffer that holds a file, never a terminal,
+-- help, a plugin's buffer or a folder. Each says which tabs show it, by
+-- their number in the tab line, none while it's hidden, whether it's
+-- modified, and when it was last used, so the launcher can lead with the
+-- file Joel was in. It's sent whole each time
 -- rather than kept in Neovim, so any Neovim answers it, the account's
 -- config or none.
 local tabs = vim.api.nvim_list_tabpages()
@@ -41,6 +43,7 @@ end
 
 return {
   pid = vim.fn.getpid(),
+  parent = vim.uv.os_getppid(),
   folder = vim.fn.getcwd(),
   tab = numbers[vim.api.nvim_get_current_tabpage()],
   tabs = #tabs,
