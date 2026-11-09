@@ -1048,9 +1048,10 @@ def test_a_markdown_file_opens_in_the_reader_and_takes_neovims_keys(desktop: Des
 
     Where the reader was when it closed is kept beside its state, so what each key did is
     read back from there: G and ZZ keep it at the end, opening again comes back to the end,
-    and gg then Ctrl+D then ZZ keep it half a screen down. The launcher's Recent in the
-    reader's page then leads with the file, saying beside it the heading it was left under,
-    how far down and when, as reader --places lists it on the machine.
+    and gg then Ctrl+D then ZZ keep it half a screen down, with the mark ma set there. The
+    launcher's Recent in the reader's page then leads with the file, saying beside it the
+    heading it was left under, how far down and when, as reader --places lists it on the
+    machine, the mark a row of its own inside it, and Return there reads on where it was left.
     """
     machine = desktop.machine
     page = f"/home/{desktop.account}/page.md"
@@ -1073,11 +1074,14 @@ def test_a_markdown_file_opens_in_the_reader_and_takes_neovims_keys(desktop: Des
     machine.send_key("g")
     machine.send_key("g")
     machine.send_key("ctrl-d")
+    machine.send_chars("ma")
     close_the_reader(desktop)
     kept = reader_closed_at(desktop, reader)
     assert not kept["at_end"], kept
     assert kept["block"] != 0 or kept["into_pt"] != 0, "Ctrl+D didn't move from the top"
     assert kept.get("heading") == "A Page", kept
+    marks = cast("list[Json]", kept.get("marks", []))
+    assert [mark.get("letter") for mark in marks] == ["a"], kept
 
     left = re.compile("^A Page \u00b7 \\d{1,2}% \u00b7 (just now|\\d+\u00a0min ago)$")
     try:
@@ -1092,6 +1096,27 @@ def test_a_markdown_file_opens_in_the_reader_and_takes_neovims_keys(desktop: Des
             lambda shown: bool(left.match(str((shown["selected"] or {}).get("side", ""))))
         )
         assert desktop.showing()["selected"]["name"] == "page.md", desktop.showing()
+        # Inside it, the mark is a row of its own, by its letter, and Read On
+        # leads, as the row's Return does.
+        desktop.follow()
+        desktop.launcher_until(
+            lambda shown: (
+                "Read From Mark a" in shown["rows"]
+                and (shown["selected"] or {}).get("name") == "Read On"
+            )
+        )
+        desktop.shoot("launcher-reader-marks")
+        kernel_lines = int(machine.succeed("dmesg | wc -l"))
+        machine.send_key("ret")
+        reader = (reader_focused(desktop), kernel_lines)
+        desktop.launcher_until(lambda shown: not shown["open"])
+        # Closed at once, it keeps the place it opened on, which is where it
+        # was left rather than the top.
+        close_the_reader(desktop)
+        again = reader_closed_at(desktop, reader)
+        assert again["block"] == kept["block"], (kept, again)
+        moved = abs(cast("float", again["into_pt"]) - cast("float", kept["into_pt"]))
+        assert moved < 1, (kept, again)
     finally:
         desktop.close_launcher()
     machine.succeed(f"rm {page}")
@@ -1142,6 +1167,15 @@ def reader_opened(desktop: Desktop, page: str) -> tuple[str, int]:
     return pid, kernel_lines
 
 
+def reader_focused(desktop: Desktop) -> str:
+    """Wait until a reader the launcher started holds the keys, and give its process id."""
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session('niri msg --json focused-window | grep -q \'"app_id":"reader"\''),
+        timeout=STARTING,
+    )
+    return desktop.as_account("pgrep -u $(id -u) -n -x .reader-wrapped").strip()
+
+
 def reader_closed_at(desktop: Desktop, reader: tuple[str, int]) -> dict[str, object]:
     """Where the reader closed, once its process has gone, having faulted nowhere."""
     machine = desktop.machine
@@ -1179,11 +1213,7 @@ def test_the_reader_started_from_programs_shows_what_to_read(desktop: Desktop) -
     desktop.launcher_ready()
     desktop.type_in("reader", selecting="Reader")
     machine.send_key("ret")
-    machine.wait_until_succeeds(
-        desktop.in_session('niri msg --json focused-window | grep -q \'"app_id":"reader"\''),
-        timeout=STARTING,
-    )
-    pid = desktop.as_account("pgrep -u $(id -u) -n -x .reader-wrapped").strip()
+    pid = reader_focused(desktop)
     start = desktop.as_account("cat /run/user/$(id -u)/reader/start.md")
     assert start.startswith("# What to Read"), start
     assert f"(<{notes}/to-read.md>)" in start, start
@@ -1205,6 +1235,12 @@ def test_the_reader_started_from_programs_shows_what_to_read(desktop: Desktop) -
     machine.succeed(f"rm -r {notes}")
 
 
+# Chrome's downloads, as the stand-in's lister prints them (tests/desktop.nix), and the
+# act its page ends with once they're read.
+CHROME_DOWNLOADS = "/run/user/1000/chrome-downloads"
+LATEST_DOWNLOAD = "Open the Latest Download"
+
+
 # kitty's Recent holds the folders zoxide has learned, read again as
 # zoxide's database changes, even one it made after the shell started.
 # Return on one opens a kitty window there through the kitty already open,
@@ -1220,7 +1256,10 @@ def test_chrome_typed_lists_its_tabs_then_its_sites_under_it_and_tab_opens_its_p
     chrome-recent-sites prints them: a tab a line (its id, window, whether it's in front, when
     it was looked at, its address and title), and a site a line (its address and title). Closed,
     the tab its session kept is a site it visited, never open beside a Return that starts it;
-    with a window, the tab is open, Return goes to Chrome, and its page opens on Go To.
+    with a window, the tab is open, Return goes to Chrome, and its page opens on Go To. Its
+    downloads are a third, a file a line (its path, size, when it finished and where from),
+    which Chrome's own provider reads as its page opens: the file is in its Recent, and Open
+    the Latest Download opens it as the desktop opens a file, in swayimg.
     """
     visited = "/run/user/1000/chrome-visited"
     open_now = "/run/user/1000/chrome-open"
@@ -1228,6 +1267,7 @@ def test_chrome_typed_lists_its_tabs_then_its_sites_under_it_and_tab_opens_its_p
     tab = "7\t1\ttrue\t1794070000000\thttps://tide.example.org/\tTide Tables\n"
     desktop.as_account(f"printf '%s' {shlex.quote(sites)} > {visited}")
     desktop.as_account(f"printf '%s' {shlex.quote(tab)} > {open_now}")
+    downloaded = chrome_downloaded(desktop)
     window = "kitty --class google-chrome --title 'Tide Tables - Google Chrome'"
 
     def under_chrome(note: str, verb: str) -> Callable[[Json], bool]:
@@ -1276,19 +1316,77 @@ def test_chrome_typed_lists_its_tabs_then_its_sites_under_it_and_tab_opens_its_p
             1,
         ], depths
         desktop.shoot("launcher-chrome-typed")
-        # Tab opens Chrome's page, its first row Return's own, and its Recent in it.
+        # Tab opens Chrome's page, its first row Return's own, and its Recent in it,
+        # and its downloads read as it opens, Open the Latest Download after the rest.
         desktop.into_program()
         desktop.launcher_until(
             lambda shown: (
-                len(shown["held"]) == 1 and shown["current"] == 0 and "Recent" in shown["rows"]
+                len(shown["held"]) == 1
+                and shown["current"] == 0
+                and {"Recent", LATEST_DOWNLOAD} <= set(shown["rows"])
             )
         )
         assert desktop.showing()["selected"]["name"] == "Go To", desktop.showing()["selected"]
         desktop.shoot("launcher-chrome-page")
+        chrome_download_opened(desktop, downloaded)
     finally:
         desktop.close_launcher()
         # The bracket keeps pkill from matching the shell that runs it.
         desktop.as_account(f"pkill -f 'kitty --clas[s] google-chrome'; rm -f {visited} {open_now}")
+        chrome_download_gone(desktop, downloaded)
+
+
+def chrome_downloaded(desktop: Desktop) -> str:
+    """Put a picture in Downloads, listed as Chrome's newest download, and give its path.
+
+    Its line is what chrome-recent-sites downloads prints: its path, its size in bytes, when it
+    finished in seconds since 1970 and the page it came from, a tab between each.
+    """
+    downloaded = f"/home/{desktop.account}/Downloads/tide-chart.png"
+    desktop.as_account(
+        f"mkdir -p ~/Downloads && cp {desktop.values['picture']} {downloaded} && printf"
+        f' \'%s\\t%s\\t%s\\t%s\\n\' {downloaded} "$(stat -c %s {downloaded})" "$(date +%s)"'
+        f" https://tide.example.org/charts > {CHROME_DOWNLOADS}"
+    )
+    return downloaded
+
+
+def chrome_download_opened(desktop: Desktop, downloaded: str) -> None:
+    """From Chrome's page, find the download in its Recent, then open it by its act.
+
+    Its Recent holds it, its size and when beside it, under a minute ago unless the machine
+    is slow to get there. Open the Latest Download says its name, and opens it as the desktop
+    opens a file, a picture in swayimg.
+    """
+    machine = desktop.machine
+    name = downloaded.rsplit("/", 1)[-1]
+    sized = re.compile("^[\\d.]+\u00a0[kMG]?B \u00b7 (just now|\\d+\u00a0min ago)$")
+    desktop.down_to("Recent")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: name in shown["rows"])
+    desktop.down_to(name)
+    desktop.launcher_until(
+        lambda shown: bool(sized.match(str((shown["selected"] or {}).get("side", ""))))
+    )
+    desktop.shoot("launcher-chrome-downloads")
+    desktop.step_out()
+    desktop.down_to(LATEST_DOWNLOAD)
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == name)
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        f"pgrep -u {desktop.account} -f '[s]wayimg.*{downloaded}'", timeout=STARTING
+    )
+
+
+def chrome_download_gone(desktop: Desktop, downloaded: str) -> None:
+    """Close what opened the download, and take it and its listing away."""
+    machine = desktop.machine
+    # A swayimg left open would be the next subtest's.
+    machine.succeed(f"pkill -KILL -u {desktop.account} -x swayimg || true")
+    machine.wait_until_fails(
+        f"pgrep -u {desktop.account} -x swayimg", timeout=timedelta(seconds=30)
+    )
+    machine.succeed(f"rm -f {downloaded} {CHROME_DOWNLOADS}")
 
 
 def test_kitty_typed_lists_the_folders_it_visited_under_it(desktop: Desktop) -> None:

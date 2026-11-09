@@ -55,10 +55,11 @@ let
     "launcher-reads-mail"
     "launcher-moves-windows"
   ];
-  # The area whose machine has a Chrome to say its tabs and sites, as the
-  # chrome module's recents give them: a desktop entry that starts nothing,
-  # and its two lists read from files the test writes, in chrome-recent-sites'
-  # form, since no browser runs here.
+  # The area whose machine has a Chrome to say its tabs, its sites and its
+  # downloads, as the chrome module's recents and its own provider give
+  # them: a desktop entry that starts nothing, and its three lists read from
+  # files the test writes, in chrome-recent-sites' form, since no browser
+  # runs here.
   bringsChrome = area == "opens-files";
   # The area whose machine brings Neovim, as a workstation does, so
   # Programs › Neovim lists the files each Neovim in a kitty window holds
@@ -861,6 +862,20 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
             ];
           }
         ];
+        # And Chrome's own provider, as its module gives it (modules/chrome/
+        # home.nix), for its downloads and Open the Latest Download. Its
+        # repositories aren't given, since no repository is here to open.
+        jitsusama.quickshell.launcher.providers.chrome = lib.mkIf bringsChrome {
+          order = 52;
+          source = ../modules/chrome/ChromeProgram.qml;
+          downloads = [
+            "${pkgs.coreutils}/bin/cat"
+            "/run/user/1000/chrome-downloads"
+          ];
+        };
+        xdg.configFile."quickshell/launcher/ChromeDownloads.js" = lib.mkIf bringsChrome {
+          source = ../modules/chrome/ChromeDownloads.js;
+        };
         home.stateVersion = "26.05";
         # A cursor that holds still, so two runs shoot kitty the same
         # rather than catching its fade wherever it happens to be.
