@@ -6,7 +6,7 @@
 //! is copied as an object of its own once it has settled, which is when it
 //! has had no writes for a while (`settledHours`, two days by default):
 //!
-//!   <host>/<folder>/<log>.<last write>.jsonl.zst.age
+//!   <machine>/<folder>/<log>.<last write>.jsonl.zst.age
 //!
 //! named for the machine, the folder pi keeps it in, the log's own name and
 //! the time of its last write, in UTC. A session resumed after it was copied
