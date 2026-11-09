@@ -241,68 +241,6 @@ function opensAt(where, beside) {
     return where.after !== undefined ? next.column + 1 : next.column;
 }
 
-// How long before a boot began its reboot's list may have been taken, and
-// still be the list of that reboot.
-const rebootListLasts = 60 * 60 * 1000;
-const safeId = /^[A-Za-z0-9._-]+$/;
-
-// The sessions a reboot's list names for Reopen Them All to offer once the
-// next boot has begun, each {id, cwd, title} with its place, from the list
-// as the reboot's hold writes it ({v, boot, taken, sessions: [{id, cwd,
-// title, output, workspace, column}]}), with the boot it was taken in.
-// Only a list taken in another boot, at most an hour before this one
-// began, names any: one from this boot, or from long ago, is no reboot's,
-// so it never offers sessions a boot days old had left (2026-11-07, when a
-// switch's restart reopened 36 of those). `bootedAt` is when this boot
-// began, in milliseconds since the epoch.
-function rebootList(text, boot, bootedAt) {
-    let read = null;
-    try {
-        read = JSON.parse(text);
-    } catch (_error) {
-        read = null;
-    }
-    const taken = Date.parse(read?.taken ?? "");
-    const fresh = taken < bootedAt && bootedAt - taken <= rebootListLasts;
-    if (read?.v !== 1 || typeof read.boot !== "string" || read.boot === ""
-        || read.boot === boot || !fresh || !Array.isArray(read.sessions)) {
-        return { boot: "", taken: "", sessions: [] };
-    }
-    const whole = one => one !== null && typeof one === "object"
-        && safeId.test(String(one.id ?? "")) && typeof one.cwd === "string"
-        && one.cwd.startsWith("/");
-    // Each in its tile: the one the list says, else the next free in its
-    // column in the order listed, so two stacked in one column never both
-    // go after one place and move each other back and forth (25 times
-    // after the 21:24 boot on 2026-11-08).
-    const stacked = {};
-    const at = one => {
-        if (!Number.isInteger(one.workspace) || !Number.isInteger(one.column)
-            || typeof one.output !== "string" || one.output === "") {
-            return null;
-        }
-        const column = `${one.output} ${one.workspace} ${one.column}`;
-        const tile = Number.isInteger(one.tile) && one.tile > 0 ? one.tile
-            : (stacked[column] ?? 0) + 1;
-        stacked[column] = Math.max(stacked[column] ?? 0, tile);
-        return { output: one.output, workspace: one.workspace, column: one.column, tile };
-    };
-    return {
-        boot: read.boot,
-        taken: read.taken,
-        sessions: read.sessions.filter(whole).map(one => ({ id: String(one.id), cwd: one.cwd,
-            title: String(one.title ?? ""), at: at(one),
-            orchestrates: String(one.orchestrates ?? "") }))
-    };
-}
-
-// The last boot's sessions Sessions to Reopen offers, and that boot: the
-// reboot's list (rebootList) while it names any, each until it's `back`
-// here (running or parked, by id), since nothing takes one out of it as
-// the harness takes a session out of restore.json; else what restore.json
-// (`restored`, {boot, sessions}) kept but the carried, which are offered
-// apart. None from this boot, `now.boot`, or from the boot Joel put off,
-// `now.putOff`.
 // How much of the disk's time may be stalled, as the share of the last ten
 // seconds some task waited on it, before the next session waits too: past
 // it git, rustc and nix sit in D state and journalctl stops answering.
@@ -310,28 +248,24 @@ const ioStalls = 50;
 // How old the queue's heartbeat may be, in seconds, and still be heard.
 const queueHeard = 120;
 
-// Whether Reopen Them All may begin the next session now, from the machine
-// queue's own verdict (`text`, /run/user/$UID/jobs/queue.json): not while
-// it says the memory or the processors are over, or while the disk stalls,
-// as eighty sessions begun two seconds apart did eleven minutes after the
-// 09:23 boot on 2026-11-08 (load 245, IO pressure 98%, 16 GB swapped). A
-// queue unread, or silent past `queueHeard`, holds nothing back, so a
-// reopening never waits on a queue that's gone. `now` is in seconds since
-// the epoch, as the heartbeat is.
-// Reopen Them All's queue, `{ one }` each, with those whose session
-// orchestrates (a reboot's list says `orchestrates`, its address) first,
+// Where a session handed over sat, by its id: this boot's place while it
+// has one, else the restored boot's. An orchestrator bringing its own
+// sessions back after a reboot hands them over before Reopen Them All
+// reaches them, and without a kept place each went to its orchestrator's
+// workspace wherever niri put it (40 of them after the 21:24 boot on
+// 2026-11-08). `kept` holds `now` and `restored`, each places by id.
+function keptFor(id, kept) {
+    return kept.now?.[id] ?? kept.restored?.[id] ?? null;
+}
+
+// Reopen Them All's queue, `{ one, kept }` each, with those whose kept
+// place says it `leads` (it orchestrated others as it was kept) first,
 // each part in the order it came, so the sessions an orchestrator leads
 // have it back to answer to as they return. Where each goes doesn't hang on
 // the order begun, since each is placed by the kept places of those back.
-// Where a session handed over sat, by its id: this boot's place while it
-// has one, else where the reboot's list says, else the restored boot's.
-// An orchestrator bringing its own sessions back after a reboot hands them
-// over before Reopen Them All reaches them, and without the list's place
-// each went to its orchestrator's workspace wherever niri put it (40 of
-// them after the 21:24 boot on 2026-11-08). `kept` holds `now`, `reboot`
-// and `restored`, each places by id.
-function keptFor(id, kept) {
-    return kept.now?.[id] ?? kept.reboot?.[id] ?? kept.restored?.[id] ?? null;
+function leadersFirst(queue) {
+    const leads = entry => entry.kept?.leads === true;
+    return queue.filter(leads).concat(queue.filter(entry => !leads(entry)));
 }
 
 // Where a session started under an orchestrator opens, { workspace, column }
@@ -364,11 +298,14 @@ function queuedOnce(queue, more, begun) {
     return queue.concat(more.filter(entry => !asked.has(entry.one.id)));
 }
 
-function leadersFirst(queue) {
-    const leads = entry => String(entry.one?.orchestrates ?? "") !== "";
-    return queue.filter(leads).concat(queue.filter(entry => !leads(entry)));
-}
-
+// Whether Reopen Them All may begin the next session now, from the machine
+// queue's own verdict (`text`, /run/user/$UID/jobs/queue.json): not while
+// it says the memory or the processors are over, or while the disk stalls,
+// as eighty sessions begun two seconds apart did eleven minutes after the
+// 09:23 boot on 2026-11-08 (load 245, IO pressure 98%, 16 GB swapped). A
+// queue unread, or silent past `queueHeard`, holds nothing back, so a
+// reopening never waits on a queue that's gone. `now` is in seconds since
+// the epoch, as the heartbeat is.
 function mayBegin(text, now) {
     let read = null;
     try {
@@ -383,16 +320,24 @@ function mayBegin(text, now) {
     return (machine.over ?? []).length === 0 && (machine.pressure?.io ?? 0) < ioStalls;
 }
 
-function lastBoot(listed, restored, now) {
+// The last boot's sessions Sessions to Reopen offers, and that boot: what
+// restore.json (`restored`, {boot, sessions}) kept, the parked among them,
+// but the carried, which are offered apart, and those `back` here already
+// (running or parked, by id) before the harness has written it again.
+// None from this boot, `now.boot`, or from the boot Joel put off,
+// `now.putOff`. restore.json alone says it, as the harness writes it
+// whatever ends a boot: until 2026-11-09 a list taken by hand before a
+// planned reboot was read first, so a reboot nobody listed, as at 08:05
+// that day, went another way.
+function lastBoot(restored, now) {
     const { boot, putOff, back } = now;
-    const fromList = listed.sessions.length > 0;
-    const from = fromList ? listed.boot : restored.boot;
+    const from = restored.boot;
     if (boot === "" || from === "" || from === boot || from === putOff) {
         return { boot: from, sessions: [] };
     }
     return {
         boot: from,
-        sessions: fromList ? listed.sessions.filter(one => !back.includes(one.id))
-            : restored.sessions.filter(one => one.carried === undefined)
+        sessions: restored.sessions.filter(one => one.carried === undefined
+            && !back.includes(one.id))
     };
 }
