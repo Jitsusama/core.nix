@@ -1,11 +1,11 @@
 // pi at a glance: how many sessions run and how many are working, for the
 // launcher's foot, where the time and the battery are; and while any wants
 // Joel (Sessions.qml: a question, an approval, or a run stuck without him),
-// a way to each one's window on its notice. The margin says a want by For
+// a way to each one's window in What's On. The margin says a want by For
 // You's tray (ForYou.qml), which holds it.
-// Now has no row of its own for it: Waiting on You lists each session that
-// wants Joel, as the session (launcher/Now.qml's above). With no pi
-// running there's nothing to show.
+// Now has no row of its own for it: For You lists each session that wants
+// Joel, as what it asks (launcher/Now.qml's wantRow), and no notice says
+// it. With no pi running there's nothing to show.
 import qs
 import QtQuick
 
@@ -16,7 +16,8 @@ Piece {
     present: Sessions.running.length > 0
     active: wanting.length > 0
     wants: active
-    // Its want is said as a notice of pi's (Sessions.qml) while it's new.
+    // The harness's own notices are pi's, so the mark waits while one of
+    // its cards is up.
     app: "pi"
     // A program's, as the agents' glyph is on their notices and in Agents.
     hue: "program"
@@ -39,8 +40,7 @@ Piece {
     hint: !first ? value : `${first.title} ${Sessions.wanted(first.presence.wants)}`
     context: !first ? "" : wanting.length === 1 ? (first.presence.wants.said ?? "")
         : `and ${wanting.length - 1} more`
-    // Each one's window, the oldest want first: every one in What's On,
-    // and as many as fit on its notice (Arrivals.qml).
+    // Each one's window, the oldest want first, in What's On.
     readonly property var every: wanting.map(session => ({
         glyph: Theme.glyph.windows,
         // Go To, where it goes at its side, as going to anything open is

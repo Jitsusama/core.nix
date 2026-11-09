@@ -70,12 +70,6 @@ Provider {
             name: fact.piece.title,
             row: own(fact) ?? made(fact)
         }));
-        // The sessions there are to reopen, Agents' own row,
-        // among what else wants Joel while any are left to reopen (VKCF3Z's
-        // design, [fce929da]), drawn the same as there.
-        const lost = source("agents")?.toReopen ?? null;
-        if (lost)
-            rows.push({ group: "wants", name: lost.name, row: lost });
         // What sessions landed that he hasn't read, Agents' own row too,
         // while any is (VKCF3Z's design: Landed in Now, tier 2).
         const landed = source("agents")?.landed ?? null;
@@ -1110,7 +1104,13 @@ Provider {
     // waits in For You's Desktop as the tray says (ForYouHolds.qml).
     readonly property int waitsNow: ForYouHolds.count
     readonly property var criticalNotices: ForYouHolds.holds.notices
-    readonly property string first: sessions.length > 0
+    // The sessions there are to reopen, Agents' own row, drawn the same as
+    // there, which For You lists as a thing to do while any are left (Joel
+    // said yes to For You as the one place for what wants him, 2026-11-08),
+    // and the tray counts as one (ForYouHolds.qml's reopen).
+    readonly property var toReopen: source("agents")?.toReopen ?? null
+    readonly property string first: toReopen !== null ? toReopen.name
+        : sessions.length > 0
         ? `${sessions[0].title} ${Sessions.wanted(sessions[0].presence.wants)}`
         : WaitingOnYou.foremost ? WaitingOnYou.titled(WaitingOnYou.foremost)
         : looks.waiting.length > 0 ? looks.waiting[0].title
@@ -1169,11 +1169,19 @@ Provider {
 
     // Everything For You weighs, each as ForYou.js bands it, { kind, thing,
     // make }, `make(now)` giving its row as it's stepped into: the sessions
-    // wanting Joel, each blocking one, itself; what he can do now; what
+    // to reopen, while any are; the sessions wanting Joel, each blocking
+    // one, itself; what he can do now; what
     // he's to look at; and what the launcher's sources give, by the kind
     // its row says, a to-do where it says none. A session's row is Agents',
     // so without Agents there is none, and none is counted.
-    readonly property var forYouItems: (provider.source("agents") ? sessions : [])
+    readonly property var forYouItems: (toReopen === null ? [] : [{
+            // Each session to reopen waits on him until he does, so the row
+            // blocks as many as there are, and he can do it now: after a
+            // boot it's the first thing to do.
+            kind: "do",
+            thing: { kind: "todo", ready: true, blocks: Sessions.toReopen.length },
+            make: () => provider.toReopen
+        }]).concat((provider.source("agents") ? sessions : [])
         .map(session => ({
             kind: "do",
             thing: { kind: "todo", blocks: 1, since: session.presence?.wants?.since ?? null },
@@ -1193,7 +1201,7 @@ Provider {
             kind: one.row.forYou?.kind ?? "do",
             thing: one.thing,
             make: () => one.row
-        })))
+        }))))
     // How many each band holds, as they stand now (ForYou.js's banded):
     // what needs Joel now, lifted looks and things to try among them, then
     // what To Look At and To Try hold, which For You's row says as a run,

@@ -725,8 +725,8 @@ Provider {
     // last boot's end took away, gone on the boot they ran in or once put
     // off, and those other machines carried here, offered whatever the
     // boot until each runs here (VKCF3Z's design, [fce929da], [17db838c]).
-    // One row after the sessions running while any are left, which Now
-    // shows among what else wants Joel (Now.qml). Return steps in with
+    // One row after the sessions running while any are left, which For You
+    // lists as a thing to do (Now.qml's waitingRows). Return steps in with
     // Reopen Them All first, so Return twice brings every one back, each in
     // its own window and folder; then each one, as a closed session,
     // reopening just it, the last boot's and then the carried, newest
@@ -836,7 +836,9 @@ Provider {
                 .replace("{count}", lost.length),
             note: note,
             glyph: Words.glyph("agents:to-reopen"),
-            hue: "action"
+            hue: "action",
+            // For You's filter knows it as a session's, to be done.
+            forYou: { kind: "do", source: "sessions" }
         }, () => (reopenable.length === 0 ? [] : [themAll()]).concat(lost.map(closed),
             booted === 0 ? [] : [act("notNow", {
             run: () => Sessions.putOffLastBoot()

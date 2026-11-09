@@ -26,7 +26,7 @@ pragma Singleton
 // record says them (`questInfo` and `cwd`, which the harness publishes),
 // or for a record from before it did, as its window's label cuts them;
 // no README is read for them. Nothing is asked of pi;
-// a want is said by starting pi-wants-you (home.nix), which posts its notice.
+// a want sounds, and For You and the margin say it (onWantingChanged).
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -1912,28 +1912,22 @@ Singleton {
             .filter(part => part !== "").join(" ");
     }
 
-    // A want new to this shell is said once as a notice from pi, whose
-    // Return goes to the session as Go To does, back through `sessions`
-    // below, so one on another machine is joined from here (pi-wants-you,
-    // home.nix), unless
-    // Joel is in that window already, and one that stood before the shell
-    // began isn't, since the margin's mark says it. Each is known by its
+    // A want new to this shell sounds once, softly, and is said nowhere
+    // else: For You lists it as a thing to do (launcher/Now.qml's
+    // wantRow) and the margin's mark says it while it stands, so a notice
+    // as well said one ask three times (Joel said yes to For You,
+    // 2026-11-08). It sounds unless Joel is in that window already, and not
+    // for one that stood before the shell began. Each is known by its
     // session and its want's own id or start (Waiting.wantKey), never by
-    // its words, so one rewording itself isn't said again. It's kept
-    // known: a presence
-    // file replaced by rename leaves its folder for a moment, which would
-    // otherwise make a want that never ended look new. Its notice carries
-    // that key, and is withdrawn once the want ends or its session goes.
-    // An action is For You's to say (Waiting.saidByNeedsYou), so it
-    // only sounds here.
+    // its words, so one rewording itself doesn't sound again. It's kept
+    // known: a presence file replaced by rename leaves its folder for a
+    // moment, which would otherwise make a want that never ended look new.
     readonly property real began: Date.now()
     property var told: ({})
     function key(session) {
-        const wants = session.presence.wants;
         return Waiting.wantKey(session.address, session.presence.wants);
     }
     onWantingChanged: {
-        withdrawing.restart();
         for (const session of wanting) {
             const known = key(session);
             if (told[known])
@@ -1943,60 +1937,20 @@ Singleton {
             const window = session.window ? String(session.window.id) : "";
             if (window === String(Niri.current) || (since < began))
                 continue;
-            if (!Waiting.saidByNeedsYou(session.presence.wants))
-                Niri.spawn(["pi-wants-you", session.address, known,
-                    `${session.title} ${wanted(session.presence.wants)}`,
-                    plain(session.presence.wants.said ?? "")]);
-            // Softly, and never while notices are held.
+            // Never while notices are held.
             if (Options.sounds.wants !== "" && !Quiet.on)
                 Niri.spawn([Options.sounds.player, "--volume=0.5", Options.sounds.wants]);
         }
     }
 
-    // A want's notice goes a moment after the want does, so a presence
-    // file's rename, which takes it away for an instant, doesn't.
-    Timer {
-        id: withdrawing
-        interval: 1000
-        onTriggered: {
-            const standing = {};
-            for (const session of root.wanting)
-                standing[root.key(session)] = true;
-            for (const id in Notices.live) {
-                const notice = Notices.live[id];
-                const want = notice.hints["x-pi-want"];
-                if (notice.appName === "pi" && want !== undefined && !standing[want]) {
-                    Notices.mark(notice.id, true, "withdrawn");
-                    notice.dismiss();
-                }
-            }
-        }
-    }
-
-    // What's outside the shell asks of sessions: Go To, as a want's notice
-    // does, the session by an address it answers to, if it still runs; and
-    // reopen, as the harness hands over the sessions it restores
-    // (handedOver).
+    // What's outside the shell asks of sessions: reopen, as the harness
+    // hands over the sessions it restores (handedOver).
     IpcHandler {
         target: "sessions"
 
         function reopen(sessions: string): string {
             return root.handedOver(sessions);
         }
-
-        function goTo(address: string): void {
-            const upper = address.toUpperCase();
-            const session = root.running.find(one => (one.presence?.addresses ?? [one.address])
-                .some(each => String(each).toUpperCase() === upper));
-            if (session)
-                root.goTo(session);
-        }
-    }
-
-    // Words as a notice's body draws them, which reads markup, so pi's own
-    // say what they say. A summary is plain text, as the spec has it.
-    function plain(text) {
-        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
     // Whether a session's want is truly on Joel, rather than one its
