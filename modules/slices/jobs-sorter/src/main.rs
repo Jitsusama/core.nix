@@ -1112,6 +1112,7 @@ fn watch_door(doorway: &mut Doorway, root: &Path, cgroup: Option<&str>, uptime: 
             Some((pid, stat.start, words, scope))
         })
         .collect();
+    let blocking = door::blocking(&fs::read_to_string("/proc/locks").unwrap_or_default());
     let coming: Vec<door::Coming> = read
         .iter()
         .map(|(pid, start, words, scope)| {
@@ -1130,6 +1131,7 @@ fn watch_door(doorway: &mut Doorway, root: &Path, cgroup: Option<&str>, uptime: 
                 frozen: heavy
                     && fs::read(scope.join("cgroup.freeze"))
                         .is_ok_and(|state| state.starts_with(b"1")),
+                blocking: blocking.contains(pid),
             }
         })
         .collect();
