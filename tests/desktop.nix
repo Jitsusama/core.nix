@@ -1230,6 +1230,16 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           // pkgs.lib.optionalAttrs standsInForWarp {
             warp_contract = "${../modules/warp/contract}";
           }
+          # A document of twelve pages, for looks-programs to open twice and
+          # shoot zathura's page saying the page each is on. Only there, so
+          # no other area's test moves with it.
+          // pkgs.lib.optionalAttrs (area == "looks-programs") {
+            book = import ./page.nix {
+              inherit (pkgs) lib;
+              inherit pkgs;
+              pages = 12;
+            };
+          }
         )
       );
     in
