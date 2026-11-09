@@ -342,6 +342,10 @@ impl World for Real {
         self.git(&["rev-parse", &self.followed()])
     }
 
+    fn fetched(&self) -> Option<String> {
+        self.git(&["rev-parse", &self.followed()]).ok()
+    }
+
     fn merges(&self, base: &str, head: &str) -> Result<Vec<String>, String> {
         let listed = self.git(&[
             "rev-list",
