@@ -231,8 +231,12 @@ or a copy, can be opened, copied or forgotten.
 | desktop | the screen and everything on it around the windows: the launcher, notices, the margin and niri's workspaces | | niri, Quickshell |
 | screen | a monitor, built in or plugged in | display, monitor | niri's outputs |
 | screen mode | a size and refresh rate a screen can run at: the one it runs at now, and the ones it offers | | niri's `modes` |
+| colour depth | how many bits a screen gives each of its red, green and blue | | the EDID's bit depth |
+| colours | the range of colour a screen can show, said against sRGB's, apart from the theme's colour | | the EDID's gamut |
+| white point | the white a screen's panel gives of itself, in kelvin and where it sits, apart from warmth, the white the desktop sets it to | | the EDID's white |
+| primaries | where a screen's red, green and blue sit, the corners of its colours | | the EDID's primaries |
 | brightness | how bright a screen is, which follows the room's light | | the `backlight` program |
-| warmth | how warm a light's white is, in kelvin: a screen's, which follows the room's light or the night light, or the desk light's | | the `backlight` program's colour temperature |
+| warmth | how warm a light's white is, in kelvin: a screen's, which follows the room's light or the night light, or the desk light's, apart from a panel's white point | | the `backlight` program's colour temperature |
 | night light | a screen warmed to a set white from sunset to sunrise, wherever the machine is, whatever the room's light | | the `backlight` program's night |
 | workspace | one of niri's rows of windows on a screen | | |
 | overview | niri's view of every workspace and its windows, on Super+A | | |
@@ -548,7 +552,7 @@ The words core.nix is built from. Never a launcher place.
 | identity | who Joel is on a machine | | `jitsusama.identity.email` |
 | age key | the file that opens what was sealed to it with age | age identity | |
 | theme | the look every program Joel sees shares | | `jitsusama.theme` |
-| colour | what a colour means in the theme, such as the accent | colour role | `jitsusama.theme.colours`, a theme file's `[colours]` |
+| colour | what a colour means in the theme, such as the accent, apart from a screen's colours | colour role | `jitsusama.theme.colours`, a theme file's `[colours]` |
 | face | one of the theme's typefaces, named by its kind: mono, sans, serif or script | typeface | `jitsusama.theme.font` |
 | serif face | the theme's serif: italic, the desktop's voice, what the launcher says to Joel; upright, the words to read beside a mono name | voice face | `jitsusama.theme.font.serif`, `Theme.serif` |
 | serif text | the serif face upright at large, cut into a font of its own, for a program that can't set a variable font's axes | | `jitsusama.theme.font.serif.text`, `modules/fonts/serif-text.nix` |
