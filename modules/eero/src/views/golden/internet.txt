@@ -5,7 +5,7 @@ provider         Example ISP · AS64496
 public address   203.0.113.1 · double NAT no
 gateway address  10.0.0.1
 WAN              DHCP
-lease            DHCP · 203.0.113.1 · mask 255.255.254.0 · router 203.0.113.2
+lease            DHCP · 203.0.113.1/23 · router 203.0.113.2
 mode             NAT
 DHCP             automatic
 IPv6             off

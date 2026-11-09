@@ -108,8 +108,7 @@ fn way_out(net: &Internet) -> Facts<'static> {
             "lease",
             facts(vec![
                 acronymed(net.lease.mode.as_deref()),
-                said(net.lease.address.as_deref()),
-                labelled("mask", said(net.lease.mask.as_deref())),
+                with_prefix(net.lease.address.as_deref(), net.lease.mask.as_deref()),
                 labelled("router", said(net.lease.router.as_deref())),
             ]),
         ),
@@ -259,21 +258,22 @@ fn addresses<'a>(model: &HomeNetwork) -> Vec<(&'a str, Facts<'a>)> {
     vec![("addresses", each)]
 }
 
-/// A subnet: how it stands first, a part that isn't so giving way, then
-/// its address and prefix and the range DHCP hands out.
-fn subnet_line(subnet: &Subnet) -> Line {
-    let address = match (
-        subnet.address.as_deref(),
-        subnet.mask.as_deref().and_then(prefix),
-    ) {
+/// An address with its mask as a prefix, 10.0.0.0/22, as every address and
+/// mask here is said, the mask whole only where it's no prefix.
+fn with_prefix(address: Option<&str>, mask: Option<&str>) -> Line {
+    match (address, mask.and_then(prefix)) {
         (Some(address), Some(bits)) => vec![plain(format!("{address}/{bits}"))],
         (address, _) => facts(vec![
             said(address),
-            maybe(subnet.mask.as_deref(), |mask| {
-                labelled("mask", vec![plain(mask)])
-            }),
+            maybe(mask, |mask| labelled("mask", vec![plain(mask)])),
         ]),
-    };
+    }
+}
+
+/// A subnet: how it stands first, a part that isn't so giving way, then
+/// its address and prefix and the range DHCP hands out.
+fn subnet_line(subnet: &Subnet) -> Line {
+    let address = with_prefix(subnet.address.as_deref(), subnet.mask.as_deref());
     let range = match (subnet.first.as_deref(), subnet.last.as_deref()) {
         (Some(first), Some(last)) => labelled("DHCP", vec![plain(format!("{first} to {last}"))]),
         _ => Vec::new(),

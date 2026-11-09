@@ -74,6 +74,9 @@ BORDER = 1
 # baseline to half a device pixel.
 WORDS_GAP = 12
 HALF_A_PIXEL = 0.5
+# More pages than the internet's drawer takes at either of Joel's scales, so a paging that
+# never reaches its end fails rather than going on.
+INTERNET_PAGES = 20
 # How long QEMU holds a key down, and how often and how long a sequence that waits for its
 # second key is pressed before it counts as never doing what it does.
 HELD_MS = 20
@@ -1301,6 +1304,7 @@ def home_network_laid_out(desktop: Desktop, at_each_scale: list[str]) -> None:
         )
         home_network_plate(desktop, scale, "Internet")
         desktop.shoot(f"launcher-home-network-at-{at}")
+        the_internet_paged_through(desktop, at)
         desktop.down_to("Study")
         home_network_plate(desktop, scale, "Study")
         desktop.shoot(f"launcher-home-network-node-at-{at}")
@@ -1315,6 +1319,40 @@ def home_network_laid_out(desktop: Desktop, at_each_scale: list[str]) -> None:
         the_desk_lights_plate_lies_on_the_lines(desktop, scale)
         the_screens_plate_says_what_sets_it(desktop, scale)
         warp_stands_in_network(desktop, scale)
+
+
+def the_internet_paged_through(desktop: Desktop, at: str) -> None:
+    """Page through the internet's drawer to its last line, a shot a page, and come back.
+
+    It holds every figure eero gives of the network, far more than one view, so each page is
+    shot for a person to judge how all of it is laid out (Joel, 2026-11-07: "every figure there
+    is, laid out to the design bar"). No page's top cuts a line, and the pages reach its end.
+    """
+    machine = desktop.machine
+    pressed(desktop, "ctrl-w l")
+    desktop.launcher_until(lambda shown: shown["drawer"]["keys"])
+    page = 1
+    while True:
+        drawer = desktop.showing()["drawer"]
+        assert not drawer["cut"], f"page {page} of the internet's drawer cuts a line: {drawer}"
+        cursor = drawer["cursor"]
+        if cursor["line"] == cursor["lines"] - 1:
+            break
+        assert page < INTERNET_PAGES, f"the internet's drawer runs past {page} pages: {drawer}"
+        machine.send_key("ctrl-f")
+        desktop.launcher_until(partial(paged_on, drawer["scrolled"]))
+        page += 1
+        desktop.shoot(f"launcher-home-network-internet-{page}-at-{at}")
+    pressed(desktop, "ctrl-w h")
+    desktop.launcher_until(lambda shown: not shown["drawer"]["keys"])
+
+
+def paged_on(scrolled: int, shown: Json) -> bool:
+    """Say whether the drawer has paged on from where it was scrolled, or stands at its end."""
+    drawer = shown["drawer"]
+    return bool(
+        drawer["scrolled"] != scrolled or drawer["cursor"]["line"] == drawer["cursor"]["lines"] - 1
+    )
 
 
 def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
