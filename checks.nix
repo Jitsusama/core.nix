@@ -340,6 +340,10 @@ let
       inherit self pkgs;
       area = "launcher-finds-sessions";
     };
+    vm-desktop-reopens-under-orchestrators = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "reopens-under-orchestrators";
+    };
     vm-desktop-launcher-waits-on-joel = import ./tests/desktop.nix {
       inherit self pkgs;
       area = "launcher-waits-on-joel";

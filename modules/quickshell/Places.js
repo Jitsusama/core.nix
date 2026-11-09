@@ -333,6 +333,36 @@ function keptFor(id, kept) {
     return kept.now?.[id] ?? kept.reboot?.[id] ?? kept.restored?.[id] ?? null;
 }
 
+// Where a session started under an orchestrator opens, { workspace, column }
+// as opensOn gives it: on the orchestrator's workspace, the column after the
+// last of the sessions it orchestrates there whose title comes before this
+// one's, the orchestrator itself always first, so its sessions stand in title
+// order after it (P9R1KI, 2026-11-08 [38061f98]: a session started for
+// another orchestrator's tree opened on the starter's workspace, beside the
+// focused column). One with no title goes after them all. `orchestrator` and
+// each of `under` are { workspace, column, title }; with no orchestrator,
+// null.
+function underOrchestrator(title, orchestrator, under) {
+    if (!orchestrator) {
+        return null;
+    }
+    const there = under.filter(one => one.workspace === orchestrator.workspace);
+    const before = title === "" ? there
+        : there.filter(one => one.title.localeCompare(title) < 0);
+    const column = Math.max(orchestrator.column, ...before.map(one => one.column)) + 1;
+    return { workspace: orchestrator.workspace, column };
+}
+
+// Reopen Them All's queue with `more` joined at its end, but for each one
+// it holds already or has `begun`, by id: an orchestrator handing over its
+// own sessions as it comes back, while the queue still holds them, would
+// otherwise begin each twice, two pis on one log, before either has said
+// it runs here.
+function queuedOnce(queue, more, begun) {
+    const asked = new Set(queue.map(entry => entry.one.id).concat(begun));
+    return queue.concat(more.filter(entry => !asked.has(entry.one.id)));
+}
+
 function leadersFirst(queue) {
     const leads = entry => String(entry.one?.orchestrates ?? "") !== "";
     return queue.filter(leads).concat(queue.filter(entry => !leads(entry)));

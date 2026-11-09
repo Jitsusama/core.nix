@@ -73,6 +73,7 @@ let
   # it needs no key.
   runsTheNode = builtins.elem area [
     "launcher-finds-sessions"
+    "reopens-under-orchestrators"
     "launcher-draws-still"
     "launcher-waits-on-joel"
     "launcher-goes-places"

@@ -252,6 +252,26 @@ QtObject {
         expect("handed over: this boot's, the reboot's list, the restored boot's, none",
             ["01-a", "01-b", "01-c", "01-d"].map(id => Places.keptFor(id, keptPlaces)),
             [here, listedAt, restoredAt, null]);
+        // A session started under an orchestrator opens on the orchestrator's
+        // workspace, in title order after it, wherever the session that
+        // started it sits; one under it elsewhere doesn't count.
+        const lead = { workspace: 7, column: 2, title: "Reef Orchestrator" };
+        const under = [{ workspace: 7, column: 3, title: "Anchor Checks" },
+            { workspace: 7, column: 4, title: "Kelp Survey" },
+            { workspace: 5, column: 1, title: "Buoy Lights" }];
+        expect("under an orchestrator, by title: between, first, last, untitled last",
+            ["Coral Counts", "Abalone", "Zebra Mussels", ""]
+                .map(title => Places.underOrchestrator(title, lead, under)),
+            [{ workspace: 7, column: 4 }, { workspace: 7, column: 3 },
+                { workspace: 7, column: 5 }, { workspace: 7, column: 5 }]);
+        expect("with no orchestrator here, nowhere of its own",
+            Places.underOrchestrator("Coral Counts", null, under), null);
+        // One handed over while Reopen Them All already holds it, or has
+        // begun it, joins nothing, or two pis would write one log.
+        const asked = id => ({ one: { id } });
+        expect("handed over again while queued or begun, it isn't asked twice",
+            Places.queuedOnce([asked("q1"), asked("q2")], [asked("q2"), asked("q3"), asked("q4")],
+                ["q4"]).map(entry => entry.one.id), ["q1", "q2", "q3"]);
         // Those that orchestrate are begun first, so the sessions they lead
         // have them back to answer to; the rest keep their order.
         const queued = (id, orchestrates) => ({ one: { id, orchestrates } });
