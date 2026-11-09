@@ -44,7 +44,7 @@
   "modules/pnpm/checks.nix" = 1;
   "modules/prompt/checks.nix" = 1;
   "modules/quickshell/checks.nix" = 72;
-  "modules/quickshell/home.nix" = 6;
+  "modules/quickshell/home.nix" = 5;
   "modules/reader/checks.nix" = 4;
   "modules/sccache/checks.nix" = 2;
   "modules/spotify/checks.nix" = 4;
