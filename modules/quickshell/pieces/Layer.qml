@@ -8,6 +8,12 @@ import qs
 import QtQuick
 
 Piece {
+    // The board's own drawer, as the Keyboards place draws its row
+    // (launcher/Now.qml's borrowed), since the layer is the board's.
+    drawnBy: ConnectedKeyboards.board === null ? null : {
+        place: "keyboards",
+        key: `keyboards:${ConnectedKeyboards.board.phys || ConnectedKeyboards.board.name}`
+    }
     present: KeyboardLayer.present && ConnectedKeyboards.board !== null
     active: KeyboardLayer.locked
     value: KeyboardLayer.locked ? `${KeyboardLayer.name} \u00b7 locked` : KeyboardLayer.name

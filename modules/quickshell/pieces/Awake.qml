@@ -5,6 +5,9 @@ import qs
 import QtQuick
 
 Piece {
+    // Keep Awake's own drawer, as the session's row draws it
+    // (launcher/Now.qml's borrowed): none while that row draws none.
+    drawnBy: ({ place: "session", key: "session:awake" })
     active: KeepAwake.on
     value: !KeepAwake.on ? "no" : KeepAwake.lidShutToo ? "lid shut too" : "while open"
     title: "Keep Awake"

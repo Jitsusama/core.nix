@@ -1930,6 +1930,7 @@ onLinux {
       cp ${./launcher/NeedsYou.js} launcher/NeedsYou.js
       cp ${./launcher/Moment.js} launcher/Moment.js
       cp ${./launcher/NowGroups.js} launcher/NowGroups.js
+      cp ${./launcher/Showing.js} launcher/Showing.js
       cp ${./launcher/Order.js} launcher/Order.js
       cp ${./launcher/ForYou.js} launcher/ForYou.js
       cp ${./launcher/ForYouFilter.js} launcher/ForYouFilter.js
