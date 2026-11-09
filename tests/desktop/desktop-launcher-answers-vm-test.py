@@ -172,7 +172,8 @@ def test_heat_copies_the_hottest_part_and_each_part_steps_into_its_history(
     def in_battery(shown: Json) -> bool:
         """Say whether the launcher holds the battery's heat, its Last Reads selected."""
         return bool(
-            shown["held"][-1:] == ["Battery"] and (shown["selected"] or {}).get("name") == "Last Reads"
+            shown["held"][-1:] == ["Battery"]
+            and (shown["selected"] or {}).get("name") == "Last Reads"
         )
 
     desktop.follow()
