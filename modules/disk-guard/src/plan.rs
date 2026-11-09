@@ -230,7 +230,10 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
         Class::Coredump if candidate.idle < DAY => {
             (Group::Occupied, [NEVER, NEVER, NEVER, AT_ONCE])
         }
-        Class::Coredump => (Group::Waste, [days(7.0), days(3.0), days(1.0), AT_ONCE]),
+        // A crash is in the journal once its dump is a day old, and on 9
+        // November two of Nix's from two days before held 3.7 GB of a disk
+        // filling for days, so a filling disk keeps them only that day.
+        Class::Coredump => (Group::Waste, [days(7.0), days(1.0), days(1.0), AT_ONCE]),
         Class::Replaced => (
             Group::Replaced,
             [

@@ -185,10 +185,14 @@ fn healthy_takes_only_waste_and_week_old_leftovers() {
     assert_eq!(names, expected);
 }
 
+/// A coredump a day old goes too: on 9 November two of Nix's from two
+/// days before held 3.7 GB of a disk filling for days, their crashes long
+/// since in the journal.
 #[test]
 fn filling_adds_idle_targets_but_not_installs_or_occupied_trees() {
     let names = sorted(taken(&everything(), Band::Filling));
     let expected = [
+        "core-2d",
         "replaced-2d",
         "scratch-2d",
         "scratch-31d",
