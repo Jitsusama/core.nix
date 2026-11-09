@@ -910,7 +910,11 @@ Provider {
         });
     }
 
-    // What each budget the sessions draw on stands at, after the tree:
+    // What each budget the sessions draw on stands at, the last of its
+    // parts, beside AI Spend, wherever the tree is and however many
+    // sessions it holds, since a place's rows keep their places (VKCF3Z,
+    // 2026-11-08): a thing of Agents the vocabulary names as its part
+    // after AI spend (words.json), so the launcher lists it there. It is
     // AI spend's own Budgets row (Spend.qml), so its order, its words and
     // its drawers are the ones AI spend shows, never worked out twice. A
     // step in, All AI Spend in billed dollars first, then each budget
@@ -938,11 +942,10 @@ Provider {
         });
     }
 
-    things: [toReopen, landed].filter(row => row !== null).concat([recent, start])
+    things: [toReopen, landed, budgets].filter(row => row !== null).concat([recent, start])
 
     function everything() {
-        return all.concat(budgets === null ? [] : [budgets],
-            [toReopen, landed].filter(row => row !== null), [recent, start]);
+        return all.concat([toReopen, landed].filter(row => row !== null), [recent, start]);
     }
 
     // How every session stands, running and parked, read from Sessions
