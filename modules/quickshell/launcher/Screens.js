@@ -14,7 +14,8 @@
 // niri powers one output off by name (modules/niri/
 // powers-off-each-output.patch), the only niri that says `powered_off`.
 // Displays.qml reads niri and lays the plate, the light and what the
-// EDID says around these.
+// EDID says around these, its white point and primaries said here from
+// the figures desk-facts gives.
 
 // Two items of one value, as a figure's runs are set apart.
 const APART = " \u00b7 ";
@@ -22,6 +23,15 @@ const TIMES = " \u00d7 ";
 const MILLIMETRES_AN_INCH = 25.4;
 const MILLIHERTZ = 1000;
 const TRAILING_ZEROS = /0+$/;
+// A colour temperature's unit.
+const KELVIN = " K";
+// The places a chromaticity's coordinate is said to: ten bits a coordinate
+// hold one to about a thousandth, so "0.060" says all an EDID knows.
+const COORDINATE_PLACES = 3;
+// The primaries desk-facts gives figures for, in its order.
+const PRIMARIES = ["red", "green", "blue"];
+// What sets desk-facts' figures apart.
+const BETWEEN_FIGURES = /\s+/;
 
 // A rate as niri gives it, in millihertz, said in hertz with every digit
 // it has, since it names a mode rather than measuring one: 120001 is
@@ -52,6 +62,47 @@ function density(pixels, millimetres, group, point) {
     return pixels > 0 && millimetres > 0
         ? `${Numbers.significant(pixels / (millimetres / MILLIMETRES_AN_INCH), group, point)} ppi`
         : "";
+}
+
+// The figures desk-facts writes for the launcher to say, as numbers, or
+// null where there aren't `count` of them.
+function figuresOf(given, count) {
+    const all = String(given ?? "").trim().split(BETWEEN_FIGURES).map(Number);
+    return all.length === count && all.every(Number.isFinite) ? all : null;
+}
+
+// A point on the CIE 1931 chart in a part's words, each coordinate named
+// so nobody has to remember the order (VKCF3Z, 2026-11-09), to three
+// places, pointed as the launcher's settings say: "x 0.313 y 0.329".
+function xy(said, x, y, point) {
+    const placed = value => value.toFixed(COORDINATE_PLACES).replace(".", point ?? ".");
+    return said.replace("{x}", placed(x)).replace("{y}", placed(y));
+}
+
+// A screen's white from its EDID's figures, "6462 0.3135 0.3291" from
+// desk-facts: its colour temperature by the launcher's one rule for a
+// measure, grouped and pointed as its settings say, then its point,
+// "6,460 K \u00b7 x 0.313 y 0.329"; "" where the figures aren't whole.
+function whitePoint(given, words, settings) {
+    const figures = figuresOf(given, 3);
+    if (figures === null) {
+        return "";
+    }
+    const [kelvin, x, y] = figures;
+    return Numbers.significant(kelvin, settings?.group, settings?.point) + KELVIN + APART
+        + xy(words.said("white", "point"), x, y, settings?.point);
+}
+
+// A screen's primaries from its EDID's figures, each point's x and y in
+// turn, each named: "red x 0.640 y 0.330", then green and blue, a dot
+// apart; "" where the figures aren't whole.
+function primaries(given, words, settings) {
+    const figures = figuresOf(given, PRIMARIES.length * 2);
+    if (figures === null) {
+        return "";
+    }
+    return PRIMARIES.map((colour, at) => xy(words.said("primaries", colour),
+        figures[at * 2], figures[at * 2 + 1], settings?.point)).join(APART);
 }
 
 function modeOf(output) {

@@ -7818,6 +7818,30 @@
       ]
     },
     {
+      "id": "displays:white",
+      "in": "displays",
+      "name": "White Point",
+      "answers": [
+        "white point"
+      ],
+      "said": {
+        "point": "x {x} y {y}"
+      }
+    },
+    {
+      "id": "displays:primaries",
+      "in": "displays",
+      "name": "Primaries",
+      "answers": [
+        "primaries"
+      ],
+      "said": {
+        "red": "red x {x} y {y}",
+        "green": "green x {x} y {y}",
+        "blue": "blue x {x} y {y}"
+      }
+    },
+    {
       "id": "displays:hdr",
       "in": "displays",
       "name": "HDR",
