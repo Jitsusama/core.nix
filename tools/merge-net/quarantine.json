@@ -33,5 +33,26 @@
     "owner_pr": 2497,
     "reason": "failed, then passed, at 06483ebf3aea",
     "test": "vm-desktop-launcher-goes-places"
+  },
+  {
+    "at": 1794233487,
+    "commit": "9ab4e1cf1799fe1796b1a1d6a5226ab7ef641724",
+    "owner_pr": 2477,
+    "reason": "failed twice at 9ab4e1cf1799: home's Now row no longer leads with For You, as #2477 meant; its owner fixes the expectation forward and takes it off this list",
+    "test": "vm-desktop-launcher-waits-on-joel"
+  },
+  {
+    "at": 1794233487,
+    "commit": "9ab4e1cf1799fe1796b1a1d6a5226ab7ef641724",
+    "owner_pr": 2477,
+    "reason": "failed twice at 9ab4e1cf1799: a place's row names what it holds after its name, as #2477 meant; its owner fixes the expectation forward and takes it off this list",
+    "test": "vm-desktop-launcher-answers"
+  },
+  {
+    "at": 1794233487,
+    "commit": "9ab4e1cf1799fe1796b1a1d6a5226ab7ef641724",
+    "owner_pr": 2539,
+    "reason": "failed twice at 9ab4e1cf1799 and 4 of 20 runs on a branch, with HomeNetwork.qml handed no drawer; owned by the shell's session, which fixes it forward and takes it off this list",
+    "test": "vm-desktop-launcher-reads-mail"
   }
 ]
