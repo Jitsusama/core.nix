@@ -9677,8 +9677,7 @@
       "said": {
         "eyebrow": "on this machine \u00b7 switch",
         "after": "{does} {lasted} after the screens go off",
-        "at": "{does} at {time}",
-        "atDay": "{does} {moment}",
+        "held": "{who}: {why}",
         "locks": "never \u00b7 it only locks",
         "locksCharging": "never on the charger \u00b7 it only locks",
         "never": "never",
@@ -9687,6 +9686,9 @@
         "hybrid-sleep": "suspends and hibernates",
         "suspend-then-hibernate": "suspends, then hibernates",
         "poweroff": "powers off",
+        "halt": "halts",
+        "reboot": "reboots",
+        "kexec": "reboots without its firmware",
         "sleep": "sleeps"
       }
     },

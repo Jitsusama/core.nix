@@ -11,7 +11,6 @@ import "Power.js" as Power
 import "Interfaces.js" as Interfaces
 import "Awake.js" as Awake
 import "Captured.js" as Captured
-import "../When.js" as When
 
 Provider {
     id: provider
@@ -57,13 +56,6 @@ Provider {
         }, awakeFields()));
     }
 
-    // What Keep Awake's drawer says once logind has answered: who else
-    // holds its locks, when an idle machine sleeps, who puts sleep off and
-    // when it last slept (Awake.js). A switch has no drawer
-    // (Launcher.qml's drawerOf), but Keep Awake holds what logind says
-    // keeps the machine up or lets it sleep, so while it has figures to
-    // show it is a thing, its act still keeping awake or letting it sleep
-    // (VKCF3Z, 2026-11-08).
     // A lock's holder as its program names itself, where the desktop has
     // an entry by the name logind was given ("1Password" for 1password),
     // and otherwise as it was given: an entry by id rather than a
@@ -73,6 +65,13 @@ Provider {
         return (DesktopEntries.byId(who) ?? DesktopEntries.byId(who.toLowerCase()))?.name || who;
     }
 
+    // What Keep Awake's drawer says once logind has answered: who else
+    // holds its locks, when an idle machine sleeps, who puts sleep off and
+    // when it last slept (Awake.js). A switch has no drawer
+    // (Launcher.qml's drawerOf), but Keep Awake holds what logind says
+    // keeps the machine up or lets it sleep, so while it has figures to
+    // show it is a thing, its act still keeping awake or letting it sleep
+    // (VKCF3Z, 2026-11-08).
     function awakeFields() {
         const logind = awakeWatch.revision >= 0 ? awakeWatch.held["awake:main"] ?? null : null;
         if (!logind)
@@ -80,10 +79,8 @@ Provider {
         const words = Words.of("session:awake").said ?? {};
         const now = Date.now();
         const facts = Awake.facts(logind, words, {
-            now,
             plugged: !UPower.onBattery,
             when: at => Captured.taken(at, now, provider.days),
-            day: at => When.day(at, now, provider.days),
             lasted: Interfaces.lasted,
             named: programNamed
         });
@@ -100,10 +97,9 @@ Provider {
     }
 
     // The words for a day a file's row says (FileFacts.js), so Last Slept
-    // and Idle Sleep say a day as a thing taken does.
+    // says a day as a thing taken does.
     readonly property var days: ({
         yesterday: (Words.of("file-chooser:changed").said ?? {}).yesterday,
-        tomorrow: (Words.of("file-chooser:changed").said ?? {}).tomorrow,
         date: (at, format) => Qt.formatDate(at, format)
     })
 

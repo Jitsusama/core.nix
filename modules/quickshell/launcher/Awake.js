@@ -38,24 +38,25 @@ function holding(logind, mode, what) {
 // empty, in the order they move most (VKCF3Z, 2026-11-08): everyone else
 // blocking idling, sleep or the lid, each who then why as written, a run
 // of whole items; when an idle machine sleeps, as logind is set to
-// whether or not it's kept awake, at a time once logind says it's idle;
-// who puts sleep off a moment, who alone, since every delay's why says
-// it's before sleep alike; and when the last sleep the daemon saw began
-// and how long it lasted. `said` gives the words (words.json's Keep
-// Awake), and `told` the moment it is (`now`), whether it's on the charger
-// (`plugged`), how a moment (`when(at)`, as Captured.js's taken says
-// one) and its day alone (`day(at)`, as When.js says one, "" today) and
-// a time (`lasted(seconds)`) are said, and how a holder is
-// named (`named(who)`): as its program names itself where the desktop
-// knows it, "1Password" for 1password (VKCF3Z, 2026-11-08). Left out: `preparing`,
-// never true while the launcher is drawn, `idle` itself, since a launcher
-// open means a session that isn't, and each lock's uid and pid, since who
-// says what they would.
+// whether or not it's kept awake; who puts sleep off a moment, who alone,
+// since every delay's why says it's before sleep alike; and when the last
+// sleep the daemon saw began and how long it lasted. `said` gives the
+// words (words.json's Keep Awake), and `told` whether it's on the charger
+// (`plugged`), how a moment (`when(at)`, as Captured.js's taken says one)
+// and a time (`lasted(seconds)`) are said, and how a holder is named
+// (`named(who)`): as its program names itself where the desktop knows it,
+// "1Password" for 1password (VKCF3Z, 2026-11-08). Left out: `preparing`,
+// never true while the launcher is drawn; `idle` and when it began, since
+// logind hears the session idle only once its screens are off, when no
+// drawer is seen; and each lock's uid and pid, since who says what they
+// would.
 function facts(logind, said, told) {
     const held = HELD.map(([what, id]) => ({
         id,
         value: holding(logind, "block", what).filter((lock) => lock.who !== KEEPS_AWAKE)
-            .map((lock) => (lock.why ? `${told.named(lock.who)} ${lock.why}` : told.named(lock.who)))
+            .map((lock) => (lock.why
+                ? filled(said.held, { who: told.named(lock.who), why: lock.why })
+                : told.named(lock.who)))
             .join(BETWEEN)
     }));
     const delaying = holding(logind, "delay", "sleep").map((lock) => told.named(lock.who));
@@ -67,14 +68,11 @@ function facts(logind, said, told) {
 }
 
 // When an idle machine sleeps, as logind's IdleAction and IdleActionUSec
-// say: "suspends 5 min after the screens go off", or once the session is
-// idle at a moment, "suspends at 15:20" today and "suspends tomorrow
-// 00:10" past midnight, since "at" goes before a bare time and never a
-// day (VKCF3Z, 2026-11-08); "never on the charger \u00b7 it only locks" where it
-// only locks, as idle-sleep has it on the charger; "never" where it
-// ignores idling. An action `said` has no verb for is said as logind
-// names it. The screens go off as the session goes idle (idle-sleep's
-// nixos.nix), so logind's time counts from then.
+// say: "suspends 5 min after the screens go off"; "never on the charger
+// \u00b7 it only locks" where it only locks, as idle-sleep has it on the
+// charger; "never" where it ignores idling. An action `said` has no verb
+// for is said as logind names it. The screens go off as the session goes
+// idle (idle-sleep's nixos.nix), so logind's time counts from then.
 function idleSleep(logind, said, told) {
     const action = logind.idle_action ?? "";
     if (action === "") {
@@ -88,12 +86,6 @@ function idleSleep(logind, said, told) {
     }
     const does = said[action] ?? action;
     const after = logind.idle_action_ms ?? 0;
-    const since = logind.idle_since_ms;
-    if (logind.idle === true && typeof since === "number" && since + after > told.now) {
-        const at = since + after;
-        return told.day(at) === "" ? filled(said.at, { does, time: told.when(at) })
-            : filled(said.atDay, { does, moment: told.when(at) });
-    }
     return filled(said.after, { does, lasted: told.lasted(after / MILLISECONDS) });
 }
 

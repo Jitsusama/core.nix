@@ -2952,11 +2952,13 @@ QtObject {
         // What keeps the machine awake, from the daemon's awake:main:
         // a call holding idle off, a download holding sleep, Keep Awake's
         // own two locks left out, two delays, one of them twice, and a
-        // sleep of six hours.
-        const awakeWords = { after: "{does} {lasted} after the screens go off",
-            at: "{does} at {time}", locks: "never \u00b7 it only locks",
-            locksCharging: "never on the charger \u00b7 it only locks", never: "never",
-            suspend: "suspends", hibernate: "hibernates" };
+        // sleep of six hours. Its words are Keep Awake's own, so a word
+        // the drawer needs and the vocabulary lacks fails here.
+        const vocabulary = new XMLHttpRequest();
+        vocabulary.open("GET", Qt.resolvedUrl("words.json"), false);
+        vocabulary.send();
+        const awakeWords = JSON.parse(vocabulary.responseText).things
+            .find(thing => thing.id === "session:awake").said;
         const awakeAt = 1_790_000_000_000;
         const clock = at => `${(at - awakeAt) / 60_000} min`;
         const logind = { idle: false, idle_since_ms: awakeAt - 600_000, preparing: false,
@@ -2975,34 +2977,32 @@ QtObject {
                 { what: ["sleep"], who: "1password", why: "Locking", mode: "delay" }],
             last_sleep: { began_at_ms: awakeAt - 7_200_000 - 21_780_000,
                 ended_at_ms: awakeAt - 7_200_000 } };
-        const awakeTold = plugged => ({ now: awakeAt, plugged, when: clock, day: () => "",
+        const awakeTold = plugged => ({ plugged, when: clock,
             lasted: Interfaces.lasted, named: who => ({ "1password": "1Password" })[who] ?? who });
         machine("keep awake's drawer, others' locks first, its own left out",
             Awake.facts(logind, awakeWords, awakeTold(false)), [
             { id: "awake:idle-held",
-                value: "Google Chrome Playing video \u00b7 mycelium holding work" },
-            { id: "awake:sleep-held", value: "mycelium holding work" },
+                value: "Google Chrome: Playing video \u00b7 mycelium: holding work" },
+            { id: "awake:sleep-held", value: "mycelium: holding work" },
             { id: "awake:idle-sleep", value: "suspends 5 min after the screens go off" },
             { id: "awake:put-off", value: "NetworkManager \u00b7 swayidle \u00b7 1Password" },
             { id: "awake:slept", value: "-483 min \u00b7 6 h 3 min" }
         ]);
         const idleNow = Object.assign({}, logind, { idle: true, idle_since_ms: awakeAt - 60_000,
             inhibitors: [], last_sleep: { began_at_ms: awakeAt, ended_at_ms: null } });
-        machine("an idle machine says when it sleeps, a sleep still going says nothing",
+        // Idle, its screens are off, so no drawer is seen: it says how long
+        // after they go off, as ever.
+        machine("an idle machine says its span alone, a sleep still going says nothing",
             Awake.facts(idleNow, awakeWords, awakeTold(false)),
-            [{ id: "awake:idle-sleep", value: "suspends at 4 min" }]);
-        const pastMidnight = Object.assign(awakeTold(false),
-            { when: () => "tomorrow 00:10", day: () => "tomorrow" });
-        machine("an idle machine sleeping past midnight says its day, with no at",
-            Awake.facts(idleNow, awakeWords, pastMidnight),
-            [{ id: "awake:idle-sleep", value: "suspends tomorrow 00:10" }]);
+            [{ id: "awake:idle-sleep", value: "suspends 5 min after the screens go off" }]);
         const idleSaid = (action, plugged) => Awake.facts({ idle_action: action,
             idle_action_ms: 300_000 }, awakeWords, awakeTold(plugged))[0]?.value ?? "";
         machine("idle sleep as logind is set", [idleSaid("lock", true), idleSaid("lock", false),
             idleSaid("ignore", true), idleSaid("hibernate", false), idleSaid("halt", false),
-            idleSaid("", false)], ["never on the charger \u00b7 it only locks",
-            "never \u00b7 it only locks", "never", "hibernates 5 min after the screens go off",
-            "halt 5 min after the screens go off", ""]);
+            idleSaid("kexec", false), idleSaid("", false)],
+            ["never on the charger \u00b7 it only locks", "never \u00b7 it only locks", "never",
+                "hibernates 5 min after the screens go off", "halts 5 min after the screens go off",
+                "reboots without its firmware 5 min after the screens go off", ""]);
         machine("an error with no name kept", Power.errorOf(-71), "\u221271");
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
