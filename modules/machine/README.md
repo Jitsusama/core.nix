@@ -2,7 +2,7 @@
 
 How this machine is doing, held ready for the shell: a Rust program,
 `machine`, that reads the kernel's files and asks UDisks for each disk's
-health, UPower for each battery's times, logind how the machine sleeps
+health, UPower for each battery's times, logind what keeps it awake
 and fwupd for each device's firmware, and answers over `$XDG_RUNTIME_DIR/daemons/machine.sock` in
 version 1 of the shell's daemon interface (hello, get, list, watch,
 unwatch, health). [`src/main.rs`][main] says how it reads and when;
@@ -32,7 +32,11 @@ counts all its time, and a pid given again counts from its new start.
 Each bus is asked on a thread of its own, only while a kind it gives is
 watched: UDisks once a minute, UPower every 5 seconds, logind every 2,
 and fwupd once a minute and at once each time it says something
-changed, a device's problems among them. A watch starting sooner than
+changed, a device's problems among them. fwupd's signals are listened
+for only while firmware is watched; logind's `PrepareForSleep` is
+listened for from the daemon's start, since a sleep comes while
+nothing watches, and a signal wakes it only when a sleep begins or
+ends. A watch starting sooner than
 that after the last ask doesn't ask again, and each call gives up after
 ten seconds. A chip's labels and limits are read once, until the chips
 listed change, since some answer every read through slow firmware.
@@ -109,8 +113,8 @@ units, or named here as left out with the reason.
 |                 | successes, the last failed step and its count | Slept, Sleep's note                      |
 |                 | failures by step, last device, errno         | Failed, Last Failed Device, Last Error    |
 |                 | last and all hardware sleep, and the most it counts | Sleep's drawer                     |
-|                 | logind: idle, since, idle action and delay   | Keep Awake's headline                     |
-|                 | every inhibitor, the last sleep's start, end | Keep Awake's Held By, Last Slept          |
+| `awake:main`    | logind: idle, since, idle action and delay   | nothing yet; Keep Awake's drawer watches it next |
+|                 | every inhibitor, the last sleep's start, end | nothing yet, as above                     |
 | `firmware:<id>` | name, vendor, version                        | Firmware, each device                     |
 |                 | lowest and bootloader versions, branch       | each device's drawer                      |
 |                 | the hidden, needs-reboot and require-ac flags | which are listed, Install's note         |
@@ -182,7 +186,8 @@ units, or named here as left out with the reason.
 - **An update's vendor, protocol and download.** The device names its
   vendor and protocols, and fwupd fetches the download itself.
 - **The last sleep before the daemon started.** logind says a sleep as
-  it happens and keeps none, so it's kept from the daemon's start; time
+  it happens and keeps none, so it's kept from the daemon's start, its
+  signal listened for whether or not `awake` is watched; time
   asleep since boot is `boot:<id>`'s, whole.
 - **A sensor's reading the chip can't give.** A sensor saying nothing, or
   a temperature no part could reach (an unused sensor's 65,261 degrees),

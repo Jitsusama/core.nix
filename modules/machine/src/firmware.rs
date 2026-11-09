@@ -90,11 +90,15 @@ fn named(mask: Option<u64>, table: &[(u32, &'static str)]) -> Vec<&'static str> 
 /// What fwupd said of a release, as a record's update says it.
 fn release(said: &Value) -> Value {
     let text = |field: &str| said[field].as_str().map(str::to_owned);
+    let urgency = said["Urgency"]
+        .as_u64()
+        .and_then(|u| URGENCIES.get(usize::try_from(u).ok()?))
+        .copied();
     json!({
         "version": text("Version"),
         "summary": text("Summary"),
         "description": text("Description"),
-        "urgency": said["Urgency"].as_u64().and_then(|u| URGENCIES.get(usize::try_from(u).ok()?)).copied(),
+        "urgency": urgency,
         "size_b": said["Size"].as_u64(),
         "released_at_s": said["Created"].as_u64(),
         "vendor": text("Vendor"),

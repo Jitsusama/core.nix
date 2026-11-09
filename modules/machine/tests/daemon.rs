@@ -646,7 +646,7 @@ fn a_supply_says_its_charge_health_and_port_and_sleep_its_steps() {
     power(&running.root());
     let said = running
         .client()
-        .ask(&json!({"id": 1, "ask": "list", "kind": ["supply", "sleep"]}));
+        .ask(&json!({"id": 1, "ask": "list", "kind": ["supply", "sleep", "awake"]}));
     let records = &said["records"];
     let battery = record(records, "supply:BAT0");
     assert_eq!(battery["capacity_pct"], json!(80));
@@ -686,6 +686,8 @@ fn a_supply_says_its_charge_health_and_port_and_sleep_its_steps() {
         sleep["hardware_sleep_counts_to_us"],
         json!(523_986_009_990u64)
     );
+    assert_eq!(sleep["logind"], Value::Null, "logind's is awake:main");
+    assert_eq!(record(records, "awake:main")["kind"], "awake");
 }
 
 #[test]

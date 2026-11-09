@@ -1,7 +1,8 @@
 //! The machine daemon's own logic, apart from its socket and threads so
 //! its tests reach it: what a client asks ([`interface`]), and what each
 //! of the kernel's files says, made into records ([`processor`],
-//! [`memory`], [`disk`], [`boot`], [`using`], [`tree`], [`heat`], [`supply`], [`sleep`], [`firmware`]). Every file is read through
+//! [`memory`], [`disk`], [`boot`], [`using`], [`tree`], [`heat`],
+//! [`supply`], [`sleep`], [`firmware`]). Every file is read through
 //! a [`Root`], `/` in use and a fixture tree in the tests, so a record is
 //! a function of the files and the read before.
 //!

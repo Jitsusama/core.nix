@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 pub const VERSION: u64 = 1;
 
 /// The kinds of record this daemon keeps.
-pub const KINDS: [&str; 12] = [
+pub const KINDS: [&str; 13] = [
     "processor",
     "memory",
     "disk",
@@ -20,6 +20,7 @@ pub const KINDS: [&str; 12] = [
     "cooling",
     "supply",
     "sleep",
+    "awake",
     "firmware",
 ];
 

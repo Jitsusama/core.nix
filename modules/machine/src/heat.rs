@@ -173,10 +173,11 @@ fn chip(root: &Root, kept: &mut Kept, folder: &str, key: &str, name: &str) -> Va
                 .filter(|what| lists(&format!("temp{n}_{what}")))
                 .map(|what| now(format!("temp{n}_{what}")).as_deref() == Some("1"))
                 .reduce(|a, b| a || b);
+            let degrees = thousandths(now(format!("temp{n}_input")), DEGREES);
             json!({
                 "n": n,
                 "label": label_of("temp", n),
-                "temperature_c": thousandths(now(format!("temp{n}_input")), DEGREES).map(|c| rounded(c, 1)),
+                "temperature_c": degrees.map(|c| rounded(c, 1)),
                 "low_c": limit("min", &mut fixed),
                 "high_c": limit("max", &mut fixed),
                 "critical_c": limit("crit", &mut fixed),
@@ -293,11 +294,12 @@ pub fn zones(root: &Root) -> Vec<Value> {
             })
             .collect();
         trips.sort_by_key(|(n, _)| *n);
+        let degrees = thousandths(root.said(&format!("{folder}/temp")), DEGREES);
         records.push(json!({
             "key": key,
             "kind": "zone",
             "type": kind,
-            "temperature_c": thousandths(root.said(&format!("{folder}/temp")), DEGREES).map(|c| rounded(c, 1)),
+            "temperature_c": degrees.map(|c| rounded(c, 1)),
             "policy": root.said(&format!("{folder}/policy")),
             "mode": root.said(&format!("{folder}/mode")),
             "trips": trips.into_iter().map(|(_, trip)| trip).collect::<Vec<_>>(),

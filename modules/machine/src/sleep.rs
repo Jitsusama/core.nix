@@ -1,8 +1,11 @@
 //! How the machine sleeps (`sleep:main`): the ways it can, the one it
-//! takes, how each sleep since it started went as the kernel counts them
-//! in `/sys/power/suspend_stats`, and what logind says, as main.rs last
-//! asked it: whether the session is idle and since when, what holds sleep
-//! or idling off, and when the last sleep began and ended.
+//! takes, and how each sleep since it started went as the kernel counts
+//! them in `/sys/power/suspend_stats`. And what keeps it awake
+//! (`awake:main`), as main.rs last asked logind: whether the session is
+//! idle and since when, what holds sleep or idling off, and when the last
+//! sleep began and ended. They're kinds apart, since logind is asked every
+//! two seconds while its kind is watched and the kernel's counts only
+//! change with a sleep.
 
 use serde_json::{Value, json};
 
@@ -23,20 +26,23 @@ const STEPS: [&str; 8] = [
     "resume",
 ];
 
-/// The record, `logind` what logind last said, or null.
-pub fn record(root: &Root, logind: &Value) -> Value {
+/// The kernel's record of sleeping.
+pub fn record(root: &Root) -> Value {
     let stat = |file: &str| root.number(&format!("{STATS}/{file}"));
     let (mode, modes) = chosen(root.said("/sys/power/mem_sleep"));
     let failures: serde_json::Map<String, Value> = STEPS
         .iter()
         .map(|step| ((*step).to_owned(), json!(stat(&format!("failed_{step}")))))
         .collect();
+    let states = root
+        .said("/sys/power/state")
+        .map(|s| s.split_whitespace().map(str::to_owned).collect::<Vec<_>>());
     json!({
         "key": "sleep:main",
         "kind": "sleep",
         "mode": mode,
         "modes": modes,
-        "states": root.said("/sys/power/state").map(|s| s.split_whitespace().map(str::to_owned).collect::<Vec<_>>()),
+        "states": states,
         "successes": stat("success"),
         "failures": stat("fail"),
         "failed_at": failures,
@@ -51,7 +57,25 @@ pub fn record(root: &Root, logind: &Value) -> Value {
         // can tell: a sleep past it reads short in the other two.
         "hardware_sleep_counts_to_us": stat("max_hw_sleep"),
         "total_hardware_sleep_us": stat("total_hw_sleep"),
-        "logind": logind,
+    })
+}
+
+/// What keeps the machine awake, from what logind last said: its
+/// figures, each null while logind hasn't answered.
+pub fn awake(logind: &Value) -> Value {
+    let said = |field: &str| logind.get(field).cloned().unwrap_or(Value::Null);
+    json!({
+        "key": "awake:main",
+        "kind": "awake",
+        "idle": said("idle"),
+        "idle_since_ms": said("idle_since_ms"),
+        "preparing": said("preparing"),
+        "idle_action": said("idle_action"),
+        "idle_action_ms": said("idle_action_ms"),
+        "blocked": said("blocked"),
+        "delayed": said("delayed"),
+        "inhibitors": said("inhibitors"),
+        "last_sleep": said("last_sleep"),
     })
 }
 
@@ -69,7 +93,7 @@ mod tests {
         std::fs::write(stats.join("failed_freeze"), "2\n").unwrap();
         std::fs::write(stats.join("last_failed_step"), "freeze\n").unwrap();
         std::fs::write(stats.join("last_failed_errno"), "0\n").unwrap();
-        let record = record(&Root::new(&root), &Value::Null);
+        let record = record(&Root::new(&root));
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(record["mode"], "s2idle");
         assert_eq!(record["modes"], json!(["s2idle", "deep"]));
@@ -78,5 +102,16 @@ mod tests {
         assert_eq!(record["failed_at"]["resume"], Value::Null);
         assert_eq!(record["last_failed_step"], "freeze");
         assert_eq!(record["last_failed_errno"], Value::Null, "0 is no error");
+    }
+
+    #[test]
+    fn what_keeps_it_awake_waits_for_logind() {
+        let record = awake(&Value::Null);
+        assert_eq!(record["key"], "awake:main");
+        assert_eq!(record["idle"], Value::Null);
+        assert_eq!(record["inhibitors"], Value::Null);
+        let record = awake(&json!({"idle": true, "blocked": ["sleep"]}));
+        assert_eq!(record["idle"], json!(true));
+        assert_eq!(record["blocked"], json!(["sleep"]));
     }
 }

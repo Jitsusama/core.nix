@@ -50,6 +50,14 @@ fn writable(root: &Root, folder: &str, file: &str) -> Option<bool> {
     Some(unsafe { libc::access(path.as_ptr(), libc::W_OK) } == 0)
 }
 
+/// Whether Joel's account may set the charge limit: its stop, and its
+/// start where the battery has one, since the shell writes both. None
+/// for a battery with no limit.
+fn limit_settable(root: &Root, folder: &str) -> Option<bool> {
+    let stop = writable(root, folder, "charge_control_end_threshold")?;
+    Some(stop && writable(root, folder, "charge_control_start_threshold").unwrap_or(true))
+}
+
 /// A figure the kernel gives in thousandths with its unit, as "5000mV"
 /// or "3000mA", in whole units.
 fn thousandths(root: &Root, path: &str) -> Option<Value> {
@@ -110,11 +118,15 @@ fn port(root: &Root, name: &str) -> Value {
     let partner = format!("{folder}-partner");
     let plugged = root.path(&partner).exists().then(|| {
         let at = |file: &str| root.said(&format!("{partner}/{file}"));
+        let offered = offers(
+            root,
+            &format!("{partner}/usb_power_delivery/source-capabilities"),
+        );
         json!({
             "power_delivery": at("supports_usb_power_delivery").map(|yes| yes == "yes"),
             "power_delivery_revision": at("usb_power_delivery_revision").filter(|r| r != "0.0"),
             "accessory": at("accessory_mode").filter(|mode| mode != "none"),
-            "source_capabilities": offers(root, &format!("{partner}/usb_power_delivery/source-capabilities")),
+            "source_capabilities": offered,
         })
     });
     json!({
@@ -156,6 +168,10 @@ pub fn record(root: &Root, name: &str, upower: &Value) -> Value {
     };
     let (charge_type, charge_types) = chosen(at("charge_types"));
     let (usb_type, usb_types) = chosen(at("usb_type"));
+    // The kernel counts a battery's temperature in tenths of a degree.
+    let temperature = whole("temp")
+        .and_then(|t| u32::try_from(t).ok())
+        .map(|t| rounded(f64::from(t) / 10.0, 1));
     json!({
         "key": format!("supply:{name}"),
         "kind": "supply",
@@ -188,13 +204,13 @@ pub fn record(root: &Root, name: &str, upower: &Value) -> Value {
         "charge_types": charge_types,
         "limit_start_pct": whole("charge_control_start_threshold"),
         "limit_stop_pct": whole("charge_control_end_threshold"),
-        "limit_settable": writable(root, &folder, "charge_control_end_threshold"),
+        "limit_settable": limit_settable(root, &folder),
         "alarm": whole("alarm"),
         "manufacturer": at("manufacturer"),
         "model": at("model_name"),
         "serial": at("serial_number"),
         "made": made,
-        "temperature_c": whole("temp").and_then(|t| u32::try_from(t).ok()).map(|t| rounded(f64::from(t) / 10.0, 1)),
+        "temperature_c": temperature,
         "usb_type": usb_type,
         "usb_types": usb_types,
         "typec": port(root, name),
@@ -210,6 +226,25 @@ pub fn supplies(root: &Root) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn a_limit_is_settable_only_with_both_ends() {
+        let root = std::env::temp_dir().join(format!("machine-limit-{}", std::process::id()));
+        let folder = "/sys/class/power_supply/BAT0";
+        let at = root.join(folder.trim_start_matches('/'));
+        std::fs::create_dir_all(&at).unwrap();
+        let held = Root::new(&root);
+        assert_eq!(limit_settable(&held, folder), None, "no limit");
+        std::fs::write(at.join("charge_control_end_threshold"), "80\n").unwrap();
+        assert_eq!(limit_settable(&held, folder), Some(true), "a stop alone");
+        let start = at.join("charge_control_start_threshold");
+        std::fs::write(&start, "75\n").unwrap();
+        std::fs::set_permissions(&start, std::fs::Permissions::from_mode(0o444)).unwrap();
+        let settable = limit_settable(&held, folder);
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(settable, Some(false), "a start it can't write");
+    }
 
     #[test]
     fn a_list_marks_its_choice() {

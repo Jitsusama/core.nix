@@ -22,6 +22,9 @@
 //! health of `UDisks` once a minute, the battery's times of `UPower` every
 //! five seconds, idling and what holds sleep off of logind every two, and
 //! the firmware of fwupd once a minute and whenever it says it changed.
+//! Its signals are listened for only while firmware is watched, but
+//! logind's `PrepareForSleep` always, since a sleep happens while nothing
+//! watches, and a signal wakes nothing until it comes.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
@@ -56,7 +59,7 @@ const UPOWER_EVERY: Duration = Duration::from_secs(5);
 /// How often fwupd is asked while firmware is watched, unless it says
 /// something changed first.
 const FIRMWARE_EVERY: Duration = Duration::from_secs(60);
-/// How often logind is asked while sleep is watched.
+/// How often logind is asked while `awake` is watched.
 const LOGIND_EVERY: Duration = Duration::from_secs(2);
 /// What a get answers from what's held, rather than reading again.
 const FRESH: Duration = Duration::from_millis(1500);
@@ -171,7 +174,10 @@ impl Reader {
             records.extend(buses.firmware.iter().cloned());
         }
         if wants("sleep") {
-            records.push(sleep::record(&self.root, &buses.logind));
+            records.push(sleep::record(&self.root));
+        }
+        if wants("awake") {
+            records.push(sleep::awake(&buses.logind));
         }
         if wants("supply") {
             for name in supply::supplies(&self.root) {
@@ -300,6 +306,10 @@ fn main() {
     {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || logind_loop(&shared));
+    }
+    {
+        let slept = Arc::clone(&lock(&shared.daemon).slept);
+        std::thread::spawn(move || sleeps_loop(&slept));
     }
     {
         let shared = Arc::clone(&shared);
@@ -542,6 +552,53 @@ fn due(shared: &Shared, kind: &str, every: Duration, last: &mut Option<Instant>)
     *last = Some(Instant::now());
 }
 
+/// As `due`, but false as soon as nothing watches `kind`, rather than
+/// waiting for a watch, so a loop listening for its source's signals can
+/// stop listening with the last watch. The next watch reads at once.
+fn due_while_watched(
+    shared: &Shared,
+    kind: &str,
+    every: Duration,
+    last: &mut Option<Instant>,
+) -> bool {
+    let mut daemon = lock(&shared.daemon);
+    loop {
+        if !watched(&daemon).contains(kind) {
+            *last = None;
+            return false;
+        }
+        if daemon.hurried.remove(kind) || last.is_none_or(|at| at.elapsed() >= every) {
+            break;
+        }
+        let wait = every.saturating_sub(last.map_or(Duration::ZERO, |at| at.elapsed()));
+        daemon = shared
+            .woken
+            .wait_timeout(daemon, wait)
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .0;
+    }
+    *last = Some(Instant::now());
+    true
+}
+
+/// A proxy to one interface of a bus service that keeps none of its
+/// properties, since each is asked afresh on every read: one that kept
+/// them would ask for all of them and add a match rule each time it's
+/// made.
+fn proxy<'a>(
+    connection: &zbus::blocking::Connection,
+    service: &'a str,
+    path: impl TryInto<zbus::zvariant::ObjectPath<'a>, Error: Into<zbus::Error>>,
+    interface: &'a str,
+) -> zbus::Result<zbus::blocking::Proxy<'a>> {
+    zbus::blocking::proxy::Builder::new(connection)
+        .destination(service)?
+        .path(path)?
+        .interface(interface)?
+        .cache_properties(zbus::proxy::CacheProperties::No)
+        .build()
+}
+
 /// A connection to the system bus whose calls give up after `BUS_WAIT`,
 /// so a service that hangs can't hold its loop.
 fn system_bus() -> zbus::Result<zbus::blocking::Connection> {
@@ -566,20 +623,16 @@ fn upower_loop(shared: &Shared) {
     }
 }
 
-/// Asks logind every two seconds while sleep is watched whether the
+/// Asks logind every two seconds while `awake` is watched whether the
 /// session is idle and what holds sleep off, with when the last sleep
 /// began and ended as its signal said.
 fn logind_loop(shared: &Shared) {
     let mut bus: Option<zbus::blocking::Connection> = None;
     let mut last = None;
     loop {
-        due(shared, "sleep", LOGIND_EVERY, &mut last);
+        due(shared, "awake", LOGIND_EVERY, &mut last);
         if bus.is_none() {
             bus = system_bus().ok();
-            if let Some(connection) = bus.clone() {
-                let shared_slept = Arc::clone(&lock(&shared.daemon).slept);
-                std::thread::spawn(move || sleeps(&connection, &shared_slept));
-            }
         }
         let slept = lock(&lock(&shared.daemon).slept).clone();
         let said = bus
@@ -590,12 +643,28 @@ fn logind_loop(shared: &Shared) {
 }
 
 fn login1(connection: &zbus::blocking::Connection) -> zbus::Result<zbus::blocking::Proxy<'_>> {
-    zbus::blocking::Proxy::new(
+    proxy(
         connection,
         "org.freedesktop.login1",
         "/org/freedesktop/login1",
         "org.freedesktop.login1.Manager",
     )
+}
+
+/// How long the sleep listener waits to try the bus again after it
+/// couldn't reach it, or its connection ended.
+const SLEEPS_AGAIN: Duration = Duration::from_secs(60);
+
+/// Listens for logind's `PrepareForSleep` from the daemon's start, as long
+/// as it runs, so the last sleep is known however soon after a wake it's
+/// asked (Keep Awake's Last Slept): a sleep happens while nothing watches.
+fn sleeps_loop(slept: &Mutex<Value>) {
+    loop {
+        if let Ok(connection) = system_bus() {
+            sleeps(&connection, slept);
+        }
+        std::thread::sleep(SLEEPS_AGAIN);
+    }
 }
 
 /// Keeps when each sleep began and ended, as logind's `PrepareForSleep`
@@ -641,6 +710,11 @@ fn logind(connection: &zbus::blocking::Connection, slept: &Value) -> Value {
                 .collect::<Vec<_>>()
         })
         .ok();
+    let idle_since_ms = manager
+        .get_property::<u64>("IdleSinceHint")
+        .ok()
+        .filter(|us| *us > 0)
+        .map(|us| us / 1000);
     let listed = |property: &str| {
         manager.get_property::<String>(property).ok().map(|what| {
             what.split(':')
@@ -651,7 +725,7 @@ fn logind(connection: &zbus::blocking::Connection, slept: &Value) -> Value {
     };
     json!({
         "idle": manager.get_property::<bool>("IdleHint").ok(),
-        "idle_since_ms": manager.get_property::<u64>("IdleSinceHint").ok().filter(|us| *us > 0).map(|us| us / 1000),
+        "idle_since_ms": idle_since_ms,
         "preparing": manager.get_property::<bool>("PreparingForSleep").ok(),
         // Read each time, since the machine's idle sleep reloads logind
         // with other settings on battery.
@@ -666,12 +740,18 @@ fn logind(connection: &zbus::blocking::Connection, slept: &Value) -> Value {
 
 /// Asks fwupd once a minute while firmware is watched, and at once when
 /// it says something changed, what it knows of each device and what it
-/// offers each.
+/// offers each. Its connection is closed with the last watch, which ends
+/// the thread listening for its signals.
 fn firmware_loop(shared: &Arc<Shared>) {
     let mut bus: Option<zbus::blocking::Connection> = None;
     let mut last = None;
     loop {
-        due(shared, "firmware", FIRMWARE_EVERY, &mut last);
+        if !due_while_watched(shared, "firmware", FIRMWARE_EVERY, &mut last) {
+            if let Some(connection) = bus.take() {
+                let _ = connection.close();
+            }
+            due(shared, "firmware", FIRMWARE_EVERY, &mut last);
+        }
         if bus.is_none() {
             bus = system_bus().ok();
             if let Some(connection) = bus.clone() {
@@ -685,7 +765,7 @@ fn firmware_loop(shared: &Arc<Shared>) {
 }
 
 fn fwupd_proxy(connection: &zbus::blocking::Connection) -> zbus::Result<zbus::blocking::Proxy<'_>> {
-    zbus::blocking::Proxy::new(
+    proxy(
         connection,
         "org.freedesktop.fwupd",
         "/",
@@ -693,8 +773,8 @@ fn fwupd_proxy(connection: &zbus::blocking::Connection) -> zbus::Result<zbus::bl
     )
 }
 
-/// Says firmware changed each time fwupd says anything, waiting on the
-/// bus alone: `Changed` as its metadata does, and `DeviceAdded`,
+/// Says firmware changed each time fwupd says anything, until its
+/// connection closes, waiting on the bus alone: `Changed` as its metadata does, and `DeviceAdded`,
 /// `DeviceRemoved` and `DeviceChanged` as a device comes, goes, takes an
 /// update or gains a problem, as one needing the charger does when it's
 /// unplugged.
@@ -765,7 +845,7 @@ fn fwupd(connection: &zbus::blocking::Connection) -> Vec<Value> {
 /// What `UPower` says of each device it keeps, by its supply's name.
 fn upower(connection: &zbus::blocking::Connection) -> BTreeMap<String, Value> {
     let service = "org.freedesktop.UPower";
-    let Ok(manager) = zbus::blocking::Proxy::new(
+    let Ok(manager) = proxy(
         connection,
         service,
         "/org/freedesktop/UPower",
@@ -780,7 +860,7 @@ fn upower(connection: &zbus::blocking::Connection) -> BTreeMap<String, Value> {
     };
     let mut said = BTreeMap::new();
     for path in paths {
-        let Ok(device) = zbus::blocking::Proxy::new(
+        let Ok(device) = proxy(
             connection,
             service,
             path.as_str().to_owned(),
@@ -903,7 +983,7 @@ fn absent(why: &zbus::Error) -> bool {
 /// error, `UDisks` missing or a refusal, is said as one.
 fn smart(connection: &zbus::blocking::Connection, name: &str) -> zbus::Result<Value> {
     let udisks = "org.freedesktop.UDisks2";
-    let block = zbus::blocking::Proxy::new(
+    let block = proxy(
         connection,
         udisks,
         format!("/org/freedesktop/UDisks2/block_devices/{name}"),
@@ -917,7 +997,7 @@ fn smart(connection: &zbus::blocking::Connection, name: &str) -> zbus::Result<Va
     if drive.as_str() == "/" {
         return Ok(Value::Null);
     }
-    let controller = zbus::blocking::Proxy::new(
+    let controller = proxy(
         connection,
         udisks,
         drive.as_str().to_owned(),
