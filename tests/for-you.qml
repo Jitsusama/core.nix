@@ -232,6 +232,15 @@ QtObject {
         expect("one a person says is done has no check",
             figures({ doneWhen: { by: "person" } }).check, "");
 
+        // Its mark: For You's own tray, never the person with a clock its
+        // to-dos wear, emptied only when it holds nothing now or later
+        // (VKCF3Z, 2026-11-08).
+        expect("its mark holding one now", ForYou.markOf(1, 0), "forYou");
+        expect("its mark holding only later", ForYou.markOf(0, 2), "forYou");
+        expect("its mark holding nothing", ForYou.markOf(0, 0), "forYouEmpty");
+        expect("never its to-dos' mark", [ForYou.markOf(0, 0), ForYou.markOf(3, 1)]
+            .includes("waitsOnJoel"), false);
+
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(failure);
