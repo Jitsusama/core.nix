@@ -1716,7 +1716,12 @@ def reads_cold_for_a_terminal(desktop: Desktop) -> None:
         return {row["name"]: row for row in shown["rows"]}
 
     networks = rows("network", "wi-fi")
-    assert "Office" in networks, networks
+    # Where it isn't, what wifid says and did, since a look it was asked for may be refused.
+    assert "Office" in networks, (
+        networks,
+        machine.execute(f"{wifi}.Describe '{{}}'")[1],
+        machine.execute("journalctl -b --unit=wifid --lines=20 --no-pager")[1],
+    )
     firmware = rows("machine", "firmware")
     assert "System Firmware" in firmware, firmware
     cameras = rows("machine", "cameras")

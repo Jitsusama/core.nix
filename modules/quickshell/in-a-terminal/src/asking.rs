@@ -51,8 +51,12 @@ impl Answer {
 
 /// How long what a place shows may still be reading once it's first asked:
 /// a provider asks its daemon only when it's seen, as Machine does, so a
-/// place asked cold is read only from the terminal's first ask on.
-const SETTLING: Duration = Duration::from_millis(1500);
+/// place asked cold is read only from the terminal's first ask on. It's as
+/// long as a Wi-Fi card's look across every band takes, a few seconds,
+/// since Wi-Fi asked cold lists only what a look it starts hears; what's
+/// read sooner is said sooner, and a provider says it's reading only while
+/// an answer is coming.
+const SETTLING: Duration = Duration::from_secs(5);
 
 /// How long between asking again while it settles.
 const ASK_AGAIN: Duration = Duration::from_millis(150);
