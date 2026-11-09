@@ -370,6 +370,7 @@ fn a_check_finds_what_the_sessions_path_holds_now() {
 #[test]
 fn a_watch_is_told_each_to_do_look_and_word_of_joels_as_it_changes() {
     let dir = tempfile::tempdir().unwrap().keep();
+    fs::create_dir_all(dir.join("waiting")).unwrap();
     to_dos(
         &dir,
         "QEST-9",
