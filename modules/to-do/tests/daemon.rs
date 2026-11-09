@@ -6,7 +6,8 @@
 //! check finding what the session's PATH holds.
 
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
+use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::thread;
@@ -78,10 +79,16 @@ fn shell() -> PathBuf {
         .expect("PATH holds sh")
 }
 
-/// Makes `path` a program anyone may run.
+/// Makes `path` a program anyone may run, made runnable as it's made, so
+/// nothing finds it there and not yet runnable.
 fn runnable(path: &Path, text: &str) {
-    fs::write(path, text).unwrap();
-    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o755)
+        .open(path)
+        .unwrap();
+    file.write_all(text.as_bytes()).unwrap();
 }
 
 /// The verdicts once `wanted` holds of them, within five seconds.
