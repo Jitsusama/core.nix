@@ -75,6 +75,40 @@ function rightSays(landed, kind, stands) {
     return kind !== "" ? kind : stands;
 }
 
+// What the cursor row says beyond its name and its side, from what it
+// has to say: `state`, its toggle's state where it has one (undefined
+// where it hasn't); `once`, the name it was once called by, if found by
+// that; `note`, its own note, and `noteInDrawer`, whether its drawer
+// says that note now; `answered`, where the answer it's part of came
+// from (undefined where it's no answer's); and `context`, where a held
+// thing is. Its note follows its name, muted (`note`), never at the
+// right, which says how it stands (`stands`), state first, and never
+// gives way to the note (VKCF3Z, 2026-11-09 [6918348b]: Wi-Fi reads
+// "Lantern  a password" with "connected" at its right). A row with a note
+// says no answer's or held thing's context, as it never has. `footer` is
+// what the foot's report has always named the cursor row's words: the
+// one of them it said before the note moved.
+function cursorSays(row) {
+    const once = row.once ?? "";
+    const note = row.note ?? "";
+    const said = row.noteInDrawer === true ? "" : note;
+    const stands = row.state !== undefined ? row.state
+        : once !== "" ? once
+        : note !== "" ? ""
+        : row.answered !== undefined ? row.answered
+        : row.context ?? "";
+    const footer = row.state !== undefined || once !== "" || note === "" ? stands : said;
+    return { stands, note: said, footer };
+}
+
+// A note as it fits `room` after its row's name: given way by whole items
+// from its end, and a note of one item by whole words, never with an
+// ellipsis, which no note wears; "" where not even its first word fits.
+function noteFitted(note, room, width) {
+    return note.includes(ITEMS_APART) ? wholeItemsFromEnd(note, room, width)
+        : wordsFromEnd(note, room, width);
+}
+
 // The items `wholeItems` keeps, each as it's said, in their own order.
 // An item that `stays` is never given way whole, as Now's minutes and how
 // many more wait never are (VKCF3Z, bd5cb965).

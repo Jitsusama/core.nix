@@ -6896,7 +6896,7 @@ Scope {
                     || !(root.answer && root.answer.asking)
             },
             kind: root.kind,
-            footer: foot.said,
+            footer: foot.said.footer,
             glance: standing.said,
             // Where Return's key starts, which holds still as the arrows go.
             keysAt: Math.round(foot.returnAt),
@@ -8745,7 +8745,11 @@ Scope {
                                     // What the cursor row has to say of how
                                     // it stands, on the row, where the head
                                     // said it before (VKCF3Z, 2026-11-06).
-                                    say: selected ? foot.said : ""
+                                    say: selected ? foot.said.stands : ""
+                                    // Its note, after its name and what it
+                                    // holds, giving way first (VKCF3Z,
+                                    // 2026-11-09 [6918348b]).
+                                    note: selected ? foot.said.note : ""
                                     also: entry.modelData.byWord ? root.saidAs(entry.modelData) : ""
                                     // Gone since it was shown, it stays dimmed
                                     // in its place until a key (Steady.js).
@@ -8925,26 +8929,25 @@ Scope {
                             - (prompt.mode === "find" ? 0 : modeWord.room)
 
                         // As the card last showed it, while it's closed.
-                        property string said: ""
-                        // An answer's footer says where it came from.
-                        readonly property string saidNow: {
-                            if (!choice)
-                                return "";
-                            if (choice.state)
-                                return choice.state();
-                            const once = root.onceCalled(choice);
-                            if (once !== "")
-                                return once;
-                            // A row whose drawer says its note says it
-                            // once, there, while the drawer is out.
-                            if ((choice.note ?? "") !== "")
-                                return choice.noteInDrawer && drawerCard.out ? "" : choice.note;
-                            if (choice.plain && root.answer)
-                                return root.answer.missed === true ? "" : root.answer.note ?? "";
-                            if (root.held.length > 0)
-                                return root.held[0].row.context ?? "";
-                            return "";
-                        }
+                        property var said: Reading.cursorSays({})
+                        // What the cursor row says beyond its name and its
+                        // side: its note, after its name, and how it stands
+                        // or where it came from, at its right
+                        // (Reading.cursorSays). A row whose drawer says its
+                        // note says it once, there, while the drawer is out;
+                        // an answer's row says where the answer came from.
+                        readonly property var saidNow: !choice ? Reading.cursorSays({})
+                            : Reading.cursorSays({
+                                state: choice.state ? choice.state() : undefined,
+                                once: root.onceCalled(choice),
+                                note: choice.note ?? "",
+                                noteInDrawer: !!choice.noteInDrawer && drawerCard.out,
+                                answered: choice.plain && root.answer
+                                    ? root.answer.missed === true ? "" : root.answer.note ?? ""
+                                    : undefined,
+                                context: root.held.length > 0 ? root.held[0].row.context ?? ""
+                                    : ""
+                            })
 
                         width: parent.width
                         // Its baseline on the rows' rhythm, and the frame's
