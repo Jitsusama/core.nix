@@ -959,10 +959,12 @@ impl Watch {
         match looked {
             // What was held may not be Joel's to see once the account is
             // back, maybe as another, so mail waiting to be asked about
-            // goes too: its ids would read as gone.
+            // goes too, since its ids would read as gone, and so do the
+            // meetings he declined, which another account may not share.
             Looked::Missing => {
                 self.state = State::without(Standing::None);
                 self.departed.clear();
+                self.declined.clear();
                 self.documented = None;
                 self.placed = None;
                 self.recalled = None;
@@ -970,6 +972,7 @@ impl Watch {
             Looked::Refused(Refused::SignedOut) => {
                 self.state = State::without(Standing::SignedOut);
                 self.departed.clear();
+                self.declined.clear();
                 self.documented = None;
                 self.placed = None;
                 self.recalled = None;

@@ -37,8 +37,8 @@ function gathered(held, answering) {
         // Mail done is still a mail record, saying how it went, so what
         // wants Joel is the mail without a `done` (src/done.rs).
         mail: of("mail").filter(mail => !mail.done).sort((one, other) => other.at - one.at),
-        finished: of("mail").filter(mail => mail.done).sort((one, other) => other.done.at
-            - one.done.at),
+        finished: of("mail").filter(mail => mail.done)
+            .sort((one, other) => other.done.at - one.done.at),
         unread: account.account.unread,
         documents: of("file").sort((one, other) => rank(one.kind) - rank(other.kind)
             || (other.viewed ?? 0) - (one.viewed ?? 0)),
