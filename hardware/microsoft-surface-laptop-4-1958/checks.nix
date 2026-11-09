@@ -63,6 +63,15 @@
         && lib.hasInfix "EVDEV_ABS_36=::173" services.udev.extraHwdb
       );
 
+  # The touchscreen's driver joins the kernel's own modules in the tree the
+  # system boots with. Building that tree is what shows it, since the tree
+  # gathers each module's certificate and fails on one without.
+  the-surface-touchscreen-joins-the-kernels-modules =
+    (bareNixos [
+      self.nixosModules.laptop
+      self.nixosModules.microsoft-surface-laptop-4-1958
+    ]).config.system.modulesTree;
+
   # fwupd, run against this model's ESRT with the UEFI and the TPM behind,
   # offers the UEFI's update from the remote the module writes and nothing
   # for the TPM (firmware/tests/offers-its-firmware.sh). Building the remote's

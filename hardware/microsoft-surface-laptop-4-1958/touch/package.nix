@@ -24,13 +24,20 @@ stdenv.mkDerivation {
   nativeBuildInputs = kernel.moduleBuildDependencies;
   makeFlags = kernelModuleMakeFlags ++ [
     "KDIR=${kernel.dev}/lib/modules/${kernel.modDirVersion}/build"
+    "INSTALL_MOD_PATH=${placeholder "out"}"
+    "INSTALL_MOD_DIR=extra"
+    "DEPMOD=true"
   ];
 
-  installPhase = ''
-    runHook preInstall
-    install -Dm444 -t $out/lib/modules/${kernel.modDirVersion}/extra sl4a-spi-amd.ko sl4a-spi-hid.ko
-    runHook postInstall
-  '';
+  # The driver's Makefile has no install target, so kbuild's own installs the
+  # modules: it signs each one and writes the certificate beside it, which the
+  # system's module tree gathers into its own and fails without.
+  installFlags = [
+    "-C"
+    "${kernel.dev}/lib/modules/${kernel.modDirVersion}/build"
+    "M=$(PWD)"
+  ];
+  installTargets = [ "modules_install" ];
 
   meta = {
     description = "Touchscreen and pen driver for the Surface Laptop 3 and 4 with AMD";
