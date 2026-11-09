@@ -871,19 +871,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
                 }
             }
             Outcome::Flaky if !kept_out && !state.found("flaky", test, &head) => {
-                let reason = format!("failed, then passed, at {}", short(&head));
-                let owner = owner_in(test);
-                let made = world.quarantine(test, owner, &head, &reason);
-                state.find(&json!({
-                    "kind": "flaky",
-                    "test": test,
-                    "commit": head,
-                    "owner_pr": owner,
-                    "log": state.log(&head, test, 1).display().to_string(),
-                    "quarantine_pr": made.as_ref().ok().map(|merged| merged.pr),
-                    "quarantine_error": made.err(),
-                    "at": now(),
-                }))?;
+                list_flaky(world, state, &head, test, owner_in(test))?;
             }
             Outcome::Flaky => {}
             Outcome::Failed if kept_out => {
@@ -1091,6 +1079,30 @@ fn listed_on_main(world: &dyn World, head: &str, test: &str) -> bool {
     })
 }
 
+/// List `test`, which failed and then passed at `head`, as quarantined
+/// with its owner, and tell the owner.
+fn list_flaky(
+    world: &dyn World,
+    state: &State,
+    head: &str,
+    test: &str,
+    owner: Option<u64>,
+) -> Result<(), String> {
+    let reason = format!("failed, then passed, at {}", short(head));
+    let made = world.quarantine(test, owner, head, &reason);
+    state.find(&json!({
+        "kind": "flaky",
+        "test": test,
+        "commit": head,
+        "owner_pr": owner,
+        "log": state.log(head, test, 1).display().to_string(),
+        "quarantine_pr": made.as_ref().ok().map(|merged| merged.pr),
+        "quarantine_error": made.err(),
+        "at": now(),
+    }))?;
+    Ok(())
+}
+
 /// Tell `test`'s owner that it stalled twice at `head`.
 fn stalled(state: &State, head: &str, test: &str, owner: Option<u64>) -> Result<(), String> {
     state.find(&json!({
@@ -1207,15 +1219,27 @@ fn broke(
         ));
         return Ok(());
     }
+    revert_and_tell(world, state, &found, head)
+}
+
+/// Hold switching on `found`, revert it, and tell its owner, listing its
+/// test as quarantined when the revert won't apply.
+fn revert_and_tell(
+    world: &dyn World,
+    state: &State,
+    found: &Bad,
+    head: &str,
+) -> Result<(), String> {
+    let (commit, test, log) = (&found.commit, &found.test, &found.log);
     let mut hold = json!({
         "test": test, "bad": commit, "bad_pr": found.pr, "revert_pr": Value::Null,
         "revert_commit": Value::Null, "at": now(),
     });
     state.set_hold(&hold)?;
-    let reverted = world.revert(&found);
+    let reverted = world.revert(found);
     keep_revert(state, &mut hold, &reverted)?;
     let listed: Option<Result<Merged, String>> = match &reverted {
-        Err(why) if !why.starts_with(UNCHECKED) => Some(list_broken(world, state, &found, head)),
+        Err(why) if !why.starts_with(UNCHECKED) => Some(list_broken(world, state, found, head)),
         _ => None,
     };
     state.find(&json!({
@@ -1230,7 +1254,7 @@ fn broke(
         Ok(landed) => {
             state.say(&format!(
                 "reverted {} for {test} in #{}",
-                short(&commit),
+                short(commit),
                 landed.pr
             ));
             clear_if_reverted(world, state)
@@ -1238,7 +1262,7 @@ fn broke(
         Err(why) => {
             state.say(&format!(
                 "couldn't revert {} for {test}: {why}",
-                short(&commit)
+                short(commit)
             ));
             Ok(())
         }
