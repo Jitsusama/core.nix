@@ -2009,7 +2009,8 @@
   '';
   the-screens-go-off-on-niri = ''
     on niri, Turn Every Screen Off closes the launcher and then asks niri to power its monitors
-    off, and :set noscreens asks it too, as read on the way to niri's socket
+    off, and :set noscreens asks it too, as read on the way to niri's socket; and a scale niri
+    refuses says niri's words for why on the warning line
   '';
   the-newest-surface-takes-the-keys-on-niri = ''
     on niri, the launcher opened over held notices takes the keys and gives them back as it
@@ -2247,6 +2248,11 @@
     zathura's provider reads open-now's lines as each zathura's document, page and page count,
     says the page beside a document only one zathura has open, and its drawer says each one's
     page and how far through it is
+  '';
+  the-launcher-says-what-niri-refuses = ''
+    a screen's change niri refuses says what was asked, what wasn't done and niri's words for why,
+    begun in lower case with no closing full stop, a $ in them kept as written, and one to a
+    screen gone says it's unplugged; the last lit screen not turned off says so the same way
   '';
   the-launcher-says-why-the-desktop-lags = ''
     the launcher's Lag leads with the worst of what waited, offers to see what's behind it from

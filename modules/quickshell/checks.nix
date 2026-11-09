@@ -372,7 +372,9 @@ onLinux {
   };
 
   # Turn Every Screen Off and :set noscreens ask niri to power its monitors
-  # off, which keeps each output connected, read on their way to niri.
+  # off, which keeps each output connected, read on their way to niri; and
+  # a scale niri refuses, turned into its ReturnError on the way, says
+  # niri's words for why on the warning line.
   the-screens-go-off-on-niri = launcherOnNiri {
     name = "the-screens-go-off-on-niri";
     tests = ../../tests/screens-off-on-niri-test.py;
@@ -1216,6 +1218,25 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml screens.qml
+      touch $out
+    '';
+
+  # A change to a screen niri refuses says on the warning line what was
+  # asked, what wasn't done and niri's own words for why, and one to a
+  # screen gone says it's unplugged, as tests/screen-answers.qml holds
+  # launcher/ScreenAnswers.js to it in Qt's own engine.
+  the-launcher-says-what-niri-refuses =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-says-what-niri-refuses" { } ''
+      cp ${../../tests/screen-answers.qml} screen-answers.qml
+      cp ${./launcher/ScreenAnswers.js} ScreenAnswers.js
+      cp ${../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml screen-answers.qml
       touch $out
     '';
 

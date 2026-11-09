@@ -229,14 +229,17 @@ Singleton {
     }
 
     function act(action: var): void {
-        request({ Action: action }, null);
+        request({ Action: action }, null, null);
     }
 
     // Asks niri something, such as "Outputs", and hands what it says to
-    // `answer`; or tells it something, with nothing to hear back.
-    function request(asked: var, answer: var): void {
+    // `answer`; or tells it something, with nothing to hear back. Where
+    // niri refuses it, `refused` is handed niri's own words for why, so
+    // what asked can say so; where nothing asked to hear, the shell's log
+    // has them.
+    function request(asked: var, answer: var, refused: var): void {
         waiting.push(JSON.stringify(asked));
-        answers.push(answer);
+        answers.push({ answer: answer ?? null, refused: refused ?? null });
         if (socket.connected)
             send();
         else
@@ -284,11 +287,15 @@ Singleton {
         parser: SplitParser {
             onRead: line => {
                 const reply = JSON.parse(line);
-                const answer = root.answers.shift();
-                if (reply.Err)
+                const asked = root.answers.shift() ?? { answer: null, refused: null };
+                if (reply.Err === undefined) {
+                    if (asked.answer)
+                        asked.answer(reply.Ok);
+                } else if (asked.refused) {
+                    asked.refused(String(reply.Err));
+                } else {
                     console.warn("niri refused a request:", reply.Err);
-                else if (answer)
-                    answer(reply.Ok);
+                }
             }
         }
     }
