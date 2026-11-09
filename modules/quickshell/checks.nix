@@ -1408,7 +1408,6 @@ onLinux {
       cp ${./launcher/Power.js} Power.js
       cp ${./launcher/Seen.js} Seen.js
       cp ${./launcher/Awake.js} Awake.js
-      cp ${./launcher/words.json} words.json
       cp ${./launcher/Standing.js} Standing.js
       cp ${./launcher/Traffic.js} Traffic.js
       cp ${./launcher/Interfaces.js} Interfaces.js

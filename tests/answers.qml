@@ -2954,11 +2954,7 @@ QtObject {
         // own two locks left out, two delays, one of them twice, and a
         // sleep of six hours. Its words are Keep Awake's own, so a word
         // the drawer needs and the vocabulary lacks fails here.
-        const vocabulary = new XMLHttpRequest();
-        vocabulary.open("GET", Qt.resolvedUrl("words.json"), false);
-        vocabulary.send();
-        const awakeWords = JSON.parse(vocabulary.responseText).things
-            .find(thing => thing.id === "session:awake").said;
+        const awakeWords = vocabulary.find(thing => thing.id === "session:awake").said;
         const awakeAt = 1_790_000_000_000;
         const clock = at => `${(at - awakeAt) / 60_000} min`;
         const logind = { idle: false, idle_since_ms: awakeAt - 600_000, preparing: false,
