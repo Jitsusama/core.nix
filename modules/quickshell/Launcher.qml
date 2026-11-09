@@ -1279,8 +1279,17 @@ Scope {
     function shownWalked(path, everyDrawer, namesOnly) {
         freshen();
         const walked = walkedByName(String(path ?? "").split(catalogueStep));
+        // A row a read makes, as a joined network's Speed is made from
+        // wifid's detail of it, is missed until the read comes, so the walk
+        // as far as it went is seen too, and the miss says whether what it
+        // looked among is still being read, for the terminal to ask again.
         if (walked.missing !== undefined)
-            return walked;
+            return {
+                missing: walked.missing,
+                near: walked.near,
+                in: walked.in,
+                reading: seenByTerminal(walked.trail, walked.looked, namesOnly)
+            };
         const { trail, rows, among } = walked;
         const ids = trail.map(one => steadyId(one));
         // Only the row the path names says its drawer, since a listed row's
@@ -1304,17 +1313,8 @@ Scope {
         const isAct = one => String(one.key ?? "").startsWith("return:")
             || verbs.includes(steadyId(one));
         const sayable = rows.filter(one => !!one && !one.gone && (one.name ?? "") !== "");
-        if (!namesOnly) {
-            terminalSees = { walked: trail, listed: sayable };
-            terminalSeeing.restart();
-        }
-        const seen = trail.concat(sayable);
         return {
-            // Whether a provider of a row shown is still reading it for this
-            // look, so the terminal asks again for its figures; another's
-            // reading never holds it up.
-            reading: sources.some(source => source.stillReading === true
-                && seen.some(one => one?.live === source)),
+            reading: seenByTerminal(trail, sayable, namesOnly),
             in: trail.map(one => one.name),
             path: ids,
             row: last === null ? null : entry(last, ids.slice(0, -1), true),
@@ -1323,11 +1323,30 @@ Scope {
         };
     }
 
+    // Counts what a terminal's show walked through and listed as seen,
+    // unless it's completion asking (`namesOnly`), and says whether a
+    // provider of a row among them is still reading it for this look, so
+    // the terminal asks again for its figures; another's reading never
+    // holds it up. A row is the provider's when it's live from it, as
+    // Machine's are, or is the collection it opens, as Wi-Fi is for its
+    // networks.
+    function seenByTerminal(trail, listed, namesOnly) {
+        if (!namesOnly) {
+            terminalSees = { walked: trail, listed: listed };
+            terminalSeeing.restart();
+        }
+        const seen = trail.concat(listed);
+        return sources.some(source => source.stillReading === true
+            && seen.some(one => one?.live === source || one?.from === source));
+    }
+
     // The rows steps name from home, each by its steady id or its name as
     // Showing.step finds it, with what the last holds (`trail`, `rows`);
     // or, where a step names nothing, that step, the names it might have
-    // meant and where it was looked for. An empty step is no step. `among`
-    // says whether the last was found among things, as asThing reads it.
+    // meant and where it was looked for, by name (`in`) and as the rows
+    // walked (`trail`) and looked among (`looked`). An empty step is no
+    // step. `among` says whether the last was found among things, as
+    // asThing reads it.
     function walkedByName(steps) {
         let rows = home();
         let things = true;
@@ -1337,7 +1356,8 @@ Scope {
             const found = Showing.step(rows.filter(one => !!one && !one.gone), said,
                 one => steadyId(one));
             if (!found.row)
-                return { missing: said, near: found.near, in: trail.map(one => one.name) };
+                return { missing: said, near: found.near, in: trail.map(one => one.name),
+                    trail: trail, looked: rows.filter(one => !!one && !one.gone) };
             trail.push(found.row);
             among = things;
             rows = catalogueHolds(found.row, things);
@@ -1401,7 +1421,7 @@ Scope {
     // `nothing`, which the terminal says in its own words.
     function doneWalked(walked, words, sure) {
         if (walked.missing !== undefined)
-            return walked;
+            return { missing: walked.missing, near: walked.near, in: walked.in };
         const trail = walked.trail;
         if (trail.length === 0)
             return { nothing: true };

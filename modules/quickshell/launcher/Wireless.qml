@@ -383,20 +383,34 @@ Provider {
     onAllChanged: changed()
 
     // The network stepped into, asked about in detail for as long as it,
-    // or its access points, are shown.
+    // or its access points, are shown: in the open launcher, or walked
+    // through by a terminal's `launcher show` (Launcher.qml's
+    // terminalSees), so its Signal, Speed and Carried are read for a
+    // terminal with the launcher closed. What the launcher held when it
+    // closed asks nothing.
     readonly property string looking: {
         const launcher = provider.launcher;
-        if (!launcher || !launcher.open)
+        if (!launcher)
             return "";
-        const step = launcher.held.find(step => step.row.key === `wifi:${step.row.network}`);
-        return step ? step.row.network : "";
+        const network = row => row?.key === `wifi:${row?.network}`;
+        const step = launcher.open ? launcher.held.find(step => network(step.row)) : undefined;
+        const walked = step?.row ?? (launcher.terminalSees?.walked ?? []).find(network);
+        return walked ? walked.network : "";
     }
     onLookingChanged: {
         order = [];
         linkRead = null;
+        linkAnswered = false;
         signalSeen = [];
         Wifi.watch(looking);
     }
+
+    // Whether the network looked at waits on wifid's detail of it, or on
+    // iw's first read of its card, so what it says is still "not read
+    // yet" (Provider.stillReading). Each look is read afresh: Wifi.watch
+    // lets the last detail go, and a new look forgets iw's read.
+    stillReading: looking !== "" && (detailOf(looking) === null
+        || looked !== "" && reader !== "" && !linkAnswered)
 
     // Its rows change as wifid hears more of it. Without iw to read the
     // signal, wifid's own reading draws its spark.
@@ -423,6 +437,9 @@ Provider {
     // { card, said }, and the signal it's read since the network was shown,
     // each from 0 to 1, the newest last.
     property var linkRead: null
+    // Whether iw has answered this look at all, read or not, so a card iw
+    // can't read holds no terminal up.
+    property bool linkAnswered: false
     property var signalSeen: []
     readonly property int graphed: 20
 
@@ -454,6 +471,7 @@ Provider {
     function readOf(card, text) {
         if (card !== looked)
             return;
+        linkAnswered = true;
         const said = WifiLink.radio(text);
         linkRead = said ? { card: card, said: said } : null;
         if (said && said.signal !== null)
