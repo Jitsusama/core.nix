@@ -513,30 +513,31 @@ Provider {
         // Load says so in its own form, its stroke full, both warned
         // (VKCF3Z, 2026-11-08).
         const timed = timings[node.id] ?? null;
-        // A measured figure takes its three significant digits; a count,
-        // dropouts or frames, is whole.
-        const figure = (value, places) => Numbers.format(value, places ?? Sounds.places(value),
-            settings.group, settings.point);
+        // A measure, a load or a cycle's milliseconds, keeps three
+        // significant digits with their zeros, as every measure does
+        // (VKCF3Z, 2026-11-08); a count, dropouts or frames, is whole.
+        const measure = value => Numbers.significant(value, settings.group, settings.point);
+        const count = value => Numbers.format(value, 0, settings.group, settings.point);
         const load = timed === null ? [] : timed.unfinished ? [{
             label: Words.name("sound:load"),
             value: said("each-cycle", {
-                share: said("over", { share: `${figure(Sounds.load(1))}%` })
+                share: said("over", { share: `${measure(Sounds.load(1))}%` })
             }),
             warns: true,
             figure: { shape: "stroke", values: [1], warn: true }
         }] : timed.busy === null ? [] : [{
             label: Words.name("sound:load"),
-            value: said("each-cycle", { share: `${figure(Sounds.load(timed.busy))}%` }),
+            value: said("each-cycle", { share: `${measure(Sounds.load(timed.busy))}%` }),
             figure: { shape: "stroke", values: [Math.min(timed.busy, 1)], warn: false }
         }];
         const keeping = timed === null ? [] : [{
             label: Words.name("sound:dropouts"),
-            value: timed.errors === 0 ? said("none") : figure(timed.errors, 0),
+            value: timed.errors === 0 ? said("none") : count(timed.errors),
             warns: timed.errors > 0
         }].concat(load, [{
             label: Words.name("sound:cycle"),
-            value: said("cycle", { frames: figure(timed.quantum, 0),
-                ms: figure(Sounds.cycleMs(timed)) })
+            value: said("cycle", { frames: count(timed.quantum),
+                ms: measure(Sounds.cycleMs(timed)) })
         }]);
         const known = (ids, identifies) => ids.filter(([, value]) => value !== "")
             .map(([id, value]) => ({

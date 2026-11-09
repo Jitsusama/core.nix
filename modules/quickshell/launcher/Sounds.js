@@ -43,7 +43,9 @@ const FRONT = /^front /;
 const DIGITAL = /-dmic$/;
 const HERTZ_PER_KILOHERTZ = 1000;
 const MILLISECONDS = 1000;
-// A measured figure is said to three significant digits.
+// A rate names a format, as "44.1 kHz" or "176 kHz", in three significant
+// digits without the zeros a measure keeps, since a name keeps its own digits
+// (VKCF3Z, 2026-11-08) and the card's own figures say it so.
 const SIGNIFICANT = 3;
 // A sample format as the sound server names it short: signed, unsigned or
 // floating, its bits, then how it's laid out, S24_32LE or F32LE.
@@ -234,13 +236,6 @@ function follower(line) {
         .some(field => FOLLOWS.includes(field));
 }
 
-// How many places a measured figure takes to show its three significant
-// digits: 3.12 two, 0.0938 four, 21.3 one, and 1,024 or none at all.
-function places(value) {
-    return value === 0 ? 0
-        : Math.max(0, SIGNIFICANT - 1 - Math.floor(Math.log10(Math.abs(value))));
-}
-
 // Whether a line of `pw-top --batch-mode` opens its next frame, the
 // header it prints over every node each second, so what the frame
 // before held stands whole and a node gone from running drops out.
@@ -248,16 +243,17 @@ function heading(line) {
     return HEADER.test(String(line ?? ""));
 }
 
-// How much of each cycle a node was busy, in percent to three
-// significant digits, as a measured figure is: 0.0312 is 3.12.
+// How much of each cycle a node was busy, in percent: 0.0312 is 3.12.
+// It's said to three significant digits by Numbers.significant, the
+// one rule every measure keeps.
 function load(busy) {
-    return Number((busy * PERCENT).toPrecision(SIGNIFICANT));
+    return busy * PERCENT;
 }
 
-// A cycle's length in milliseconds to three significant digits: a
-// quantum of 1024 at 48 kHz is 21.3.
+// A cycle's length in milliseconds, said by the same rule: a quantum of
+// 1024 at 48 kHz is 21.333, said 21.3.
 function cycleMs(timed) {
-    return Number(timed.ms.toPrecision(SIGNIFICANT));
+    return timed.ms;
 }
 
 // A stream's rate, from its "1/44100".
