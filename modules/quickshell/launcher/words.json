@@ -7846,6 +7846,7 @@
     {
       "id": "media",
       "name": "Media",
+      "term": "Programs/Media",
       "noun": "players",
       "what": "player",
       "glyph": "playing",
