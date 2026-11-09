@@ -5571,7 +5571,6 @@ Scope {
     // for them: Search Slack's asked Slack with each letter typed, which
     // Slack allows only a few times a minute.
     property var selectedActions: ({ row: null, actions: [] })
-    onSelectedChanged: readSelectedActions()
     function readSelectedActions() {
         const reads = selected && prompt.modal && ["normal", "visual"].includes(prompt.mode)
             && !selected.nested;
@@ -6404,7 +6403,33 @@ Scope {
     // nothing is selected, and it has none.
     readonly property var drawerWanted: !open ? null : listing ? listedPlate
         : commandPlate(commandLoader.item?.chosenLine ?? null)
-            ?? (selected ? drawerOf(selected) : null)
+            ?? (drawerRow ? drawerOf(drawerRow) : null)
+    // The row the drawer is made for: the selection, once it has rested a
+    // moment, so a key's own frame draws its highlight and never waits on a
+    // drawer being made, and a held arrow's drawer follows once it's let go.
+    // Made on the key's path, a session's or a program's drawer took 56 to
+    // 122 ms a key in a VM (WENUOW, 2026-11-09), and Joel: "the highlight
+    // doesn't always perfectly match my keyboard interactions" (2026-11-08).
+    // Closed, it's let go at once.
+    property var drawerRow: null
+    readonly property int drawerFollows: 50
+    onSelectedChanged: {
+        readSelectedActions();
+        if (!open || selected === null) {
+            drawerFollowing.stop();
+            drawerRow = selected;
+        } else {
+            drawerFollowing.restart();
+        }
+    }
+    Timer {
+        id: drawerFollowing
+        interval: root.drawerFollows
+        onTriggered: {
+            root.drawerRow = root.selected;
+            Report.say(`drawer follows ${root.selected?.key ?? ""}`);
+        }
+    }
     property bool drawerOut: false
     property var drawerShows: null
     onDrawerWantedChanged: {
