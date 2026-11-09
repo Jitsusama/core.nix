@@ -268,14 +268,16 @@ pub fn over_ssh(store: &str, scratch: &Path, ssh: &str, within: Duration) -> boo
         return false;
     };
     let build = format!(
-        "nix build --no-link --impure --option substitute false --expr {}",
-        there::quoted(&expression(&nonce(), None, &[]))
+        "nix build --no-link --impure --option substitute false --expr {} && {}",
+        there::quoted(&expression(&nonce(), None, &[])),
+        crate::progress::asked_said()
     );
     command
         .args(["-o", &format!("ConnectTimeout={CONNECTING}")])
         .arg(&lent.host)
         .arg(build);
-    let passed = ended_within(&mut command, within, &lent.host, None);
+    let kept = scratch.with_file_name(BUILDS);
+    let passed = ended_within(&mut command, within, &lent.host, None, Some(&kept));
     for file in [&known, &said] {
         let _ = fs::remove_file(file);
     }
@@ -322,7 +324,7 @@ pub fn through_daemon(line: &str, nix: &str, within: Duration) -> bool {
         .arg(own.join(" "))
         .arg("--expr")
         .arg(expression(&nonce(), system, &mandatory));
-    ended_within(&mut command, within, &named(line), Some(BUILT_THERE))
+    ended_within(&mut command, within, &named(line), Some(BUILT_THERE), None)
 }
 
 /// The builder a machines line names, as a person reads it: its host.
@@ -343,6 +345,7 @@ fn ended_within(
     within: Duration,
     builder: &str,
     answered: Option<&str>,
+    figures: Option<&Path>,
 ) -> bool {
     command
         .stdin(Stdio::null())
@@ -375,6 +378,10 @@ fn ended_within(
     let mut why = None;
     let status = loop {
         for line in heard.try_iter() {
+            if let (Some(kept), Some(read)) = (figures, crate::progress::heard(&line)) {
+                keep_builds(kept, read);
+                continue;
+            }
             if answered.is_some_and(|answered| line.contains(answered)) {
                 ends(&mut running);
                 return true;
@@ -394,6 +401,13 @@ fn ended_within(
         }
     };
     if status.is_some_and(|status| status.success()) {
+        // Its figures may come after it ended, a line behind.
+        let ending = Instant::now() + Duration::from_millis(200);
+        while let Ok(line) = heard.recv_timeout(ending.saturating_duration_since(Instant::now())) {
+            if let (Some(kept), Some(read)) = (figures, crate::progress::heard(&line)) {
+                keep_builds(kept, read);
+            }
+        }
         return true;
     }
     // What it said last, before it ended.
@@ -414,9 +428,30 @@ fn ended_within(
     false
 }
 
+/// The file a lender keeps its builder's last figures in, beside its
+/// proofs' folder, for `health.json` to say as `builds`.
+pub const BUILDS: &str = "builds.json";
+
+/// Keeps a builder's figures, `read` now, at `kept`.
+fn keep_builds(kept: &Path, read: (u64, u64)) {
+    let at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs());
+    let writing = kept.with_extension("writing");
+    let said = crate::progress::kept(read, at).to_string();
+    if fs::write(&writing, said)
+        .and_then(|()| fs::rename(&writing, kept))
+        .is_err()
+    {
+        let _ = fs::remove_file(&writing);
+    }
+}
+
 /// Write `dir`'s `health.json`, at `at`: the builder lent, if one is or
-/// the last was left out, and each builder beside, where `beside` gives
-/// them.
+/// the last was left out, each builder beside, where `beside` gives them,
+/// and the lent builder's last figures as `builds`, which say how far its
+/// builds have got: on 9 November a switch stopped a quiet build there
+/// that was still compiling.
 pub fn write(dir: &Path, lent: Option<&Health>, beside: Option<&[Health]>, at: u64) {
     let mut said = lent.map_or_else(
         || {
@@ -431,6 +466,12 @@ pub fn write(dir: &Path, lent: Option<&Health>, beside: Option<&[Health]>, at: u
         Health::json,
     );
     said["at"] = at.into();
+    let builds = fs::read_to_string(dir.join(BUILDS))
+        .ok()
+        .and_then(|kept| serde_json::from_str::<Value>(&kept).ok());
+    if let (Some(builds), Some(_)) = (builds, lent) {
+        said["builds"] = builds;
+    }
     if let Some(beside) = beside {
         said["beside"] = beside.iter().map(Health::json).collect();
     }
@@ -649,6 +690,37 @@ mod tests {
         let failing = stand_in(dir.path(), "ssh", "exit 255");
         assert!(!over_ssh(STORE, &scratch, &failing, WITHIN));
         assert!(!over_ssh("", &scratch, &ssh, WITHIN), "no store, no proof");
+    }
+
+    // On 9 November a switch stopped a quiet build on a lent builder that
+    // was still compiling, since nothing said how far it had got.
+    #[test]
+    fn a_passing_proof_keeps_its_builders_figures_for_health_to_say() {
+        let dir = tempfile::tempdir().unwrap();
+        let ssh = stand_in(
+            dir.path(),
+            "ssh",
+            "echo 'nix-offload-builds 5 2 ' >&2; exit 0",
+        );
+        let scratch = dir.path().join("proving.d");
+        assert!(over_ssh(STORE, &scratch, &ssh, WITHIN));
+        let given = fs::read_to_string(dir.path().join("given")).unwrap();
+        assert!(given.contains("&& { printf"), "{given}");
+        let mut health = Health::of("lend-1");
+        health.heard(true, 90);
+        write(dir.path(), Some(&health), None, 100);
+        let said: Value =
+            serde_json::from_str(&fs::read_to_string(dir.path().join(HEALTH)).unwrap()).unwrap();
+        assert_eq!(said["builds"]["cpuUsec"], 5);
+        assert_eq!(said["builds"]["writtenBytes"], 1024);
+        assert!(said["builds"]["at"].as_u64().is_some_and(|at| at > 0));
+        write(dir.path(), None, None, 101);
+        let said: Value =
+            serde_json::from_str(&fs::read_to_string(dir.path().join(HEALTH)).unwrap()).unwrap();
+        assert!(
+            said.get("builds").is_none(),
+            "none lent, no figures: {said}"
+        );
     }
 
     #[test]
