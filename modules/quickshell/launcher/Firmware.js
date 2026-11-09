@@ -6,6 +6,7 @@
 // notes as words. Firmware.qml watches the daemon and draws the rows;
 // nothing here asks anything.
 .pragma library
+.import "Order.js" as Order
 
 // A device fwupd keeps from people, as it does each region of the BIOS's
 // flash chip and the Secure Boot keys, which it updates only as a whole.
@@ -125,7 +126,83 @@ function hostOf(records) {
         return null;
     }
     return { security: host.security ?? null, product: host.product ?? null,
-        fwupd: host.fwupd ?? null };
+        fwupd: host.fwupd ?? null, attributes: attributesOf(host.attributes) };
+}
+
+// fwupd's highest level, whose protections are each of those levels' and
+// none above.
+const TOP_LEVEL = 5;
+// The version fwupd appends to its rating, " (v2.1.9)".
+const APPENDED = /\s*\(v[^)]*\)\s*$/;
+// A rating's level and its "!".
+const RATING = /^HSI:(\d)(!?)/;
+
+// fwupd's rating as it writes it, "HSI:1!", without the version it
+// appends, and what it says: { code, level, lowered }, `lowered` where
+// something running lowers it, the "!"; or null where fwupd gave none.
+function ratingOf(security) {
+    if (!security) {
+        return null;
+    }
+    const code = String(security).replace(APPENDED, "");
+    const read = RATING.exec(code);
+    return { code, level: read ? Number(read[1]) : null, lowered: read?.[2] === "!" };
+}
+
+// What fixes a failing attribute, by fwupd's flag for it: a setting in
+// the firmware's setup, one in the system, or an update from its maker.
+const FIXES = [["action-config-fw", "setup"], ["action-config-os", "system"],
+    ["action-contact-oem", "maker"]];
+
+// Each attribute the level is made of, one another obsoletes left out as
+// fwupd's own count leaves it: { id, name, about, level, result,
+// passesAs, passed, missing, fix, setting, plugin }, named by fwupd's
+// summary, `level` null for one about what's running, `fix` a FIXES name
+// or "", and `setting` the firmware setting it reads, { id, current }.
+function attributesOf(said) {
+    return (said ?? [])
+        .filter(one => !(one.flags ?? []).includes("obsoleted"))
+        .map(one => {
+            const flags = one.flags ?? [];
+            return {
+                id: one.id,
+                name: one.summary || one.name || one.id,
+                about: one.description ?? "",
+                level: one.level ?? null,
+                result: one.result ?? "unknown",
+                passesAs: one.passes_as ?? null,
+                passed: one.passed === true,
+                missing: flags.includes("missing-data"),
+                fix: FIXES.find(([flag]) => flags.includes(flag))?.[1] ?? "",
+                setting: one.bios_setting ?? null,
+                plugin: one.plugin ?? ""
+            };
+        });
+}
+
+// What the next level needs, as fwupd counts it: each attribute at that
+// level that hasn't passed, one it couldn't read included. None past the
+// top level, or where fwupd gave no level.
+function neededFor(attributes, level) {
+    if (level === null || level >= TOP_LEVEL) {
+        return [];
+    }
+    return attributes.filter(one => one.level === level + 1 && !one.passed);
+}
+
+// What's running that lowers the level, the "!": each attribute about
+// what's running that hasn't passed.
+function loweredBy(attributes) {
+    return attributes.filter(one => one.level === null && !one.passed);
+}
+
+// Every attribute as a step in lists them: each failing one first, so
+// what's wrong is at the top whatever its level, then each passing one,
+// each part by level with what's running last, fwupd's order kept within
+// a level (VKCF3Z, 2026-11-09).
+function listed(attributes) {
+    return Order.sorted(attributes, Order.then(Order.smaller(one => Number(one.passed)),
+        Order.smaller(one => one.level ?? TOP_LEVEL + 1)));
 }
 
 // What blocks an update that's offered, by fwupd's name for it, or "":

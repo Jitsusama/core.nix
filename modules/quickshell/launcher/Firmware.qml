@@ -134,35 +134,94 @@ Provider {
         }, () => provider.inside(device));
     }
 
-    // fwupd's rating of the machine's own firmware, "HSI:3!", as fwupd
-    // writes it, without the version it appends; a "!" says something
-    // running lowers it. The drawer says what it rated and which fwupd.
+    // fwupd's rating of the machine's own firmware, "HSI:1!", as fwupd
+    // writes it, a name from the world, without the version it appends;
+    // its note says the level in words, and that what's running lowers it
+    // where there's a "!" (VKCF3Z, 2026-11-09). The drawer says what the
+    // next level needs and what's running that lowers it, in our words,
+    // then what it rated and which fwupd, its words saying the level once
+    // as a sentence. A step in lists every attribute the level is made of
+    // (attributeRow), each failing one first.
     function securityRow(host) {
         const id = "firmware:security";
-        const level = String(host.security).replace(/\s*\(v[^)]*\)\s*$/, "");
+        const rating = Fwupd.ratingOf(host.security);
         const said = Words.of(id).said ?? {};
+        const meaning = rating.level === null ? "" : said[String(rating.level)] ?? "";
+        const attributes = host.attributes;
+        const results = Words.of("firmware:result").said ?? {};
+        const failing = list => list.map(one => `${one.name} ${resultOf(one, results)}`)
+            .join(" \u00b7 ");
+        const needed = Fwupd.neededFor(attributes, rating.level);
+        const lowered = rating.lowered ? Fwupd.loweredBy(attributes) : [];
         const facts = [];
+        if (needed.length > 0)
+            facts.push({ label: Words.name("firmware:needed", "", { level: rating.level + 1 }),
+                value: failing(needed) });
+        if (lowered.length > 0)
+            facts.push({ label: Words.name("firmware:lowered"), value: failing(lowered) });
         if (host.product)
             facts.push({ label: Words.name("firmware:product"), value: host.product });
         if (host.fwupd)
             facts.push({ label: Words.name("firmware:rated"), value: `fwupd ${host.fwupd}` });
+        const sentence = meaning === "" ? ""
+            : String(said[rating.lowered ? "sentence-lowered" : "sentence"] ?? "")
+                .replace("{level}", rating.level).replace("{meaning}", meaning);
         return thingRow({
             thing: true,
             key: `${id}`,
             name: Words.name(id),
-            side: level,
-            note: level.endsWith("!") ? said.running : said.level,
+            side: rating.code,
+            note: [meaning, rating.lowered ? said.lowered : ""].filter(Boolean).join(" \u00b7 "),
             glyph: Words.glyph("firmware"),
             live: provider,
-            drawer: () => ({ title: Words.name(id), facts: facts, body: "" })
-        }, () => [copyRow({
-            key: `${id}:level`,
-            name: Words.name(id),
-            side: level,
-            copy: level,
+            drawer: () => ({ title: Words.name(id), facts: facts, body: sentence })
+        }, () => Fwupd.listed(attributes).map(attributeRow));
+    }
+
+    // What fwupd found of an attribute in our words, "not enabled", and
+    // that it couldn't read what it needed where it says so.
+    function resultOf(attribute, results) {
+        const found = results[attribute.result] ?? attribute.result;
+        return attribute.missing ? `${found} \u00b7 ${results.missing}` : found;
+    }
+
+    // One attribute of the security level, as fwupd names it: its note its
+    // group, the level it counts at or what's running, its side what was
+    // found, warning where it fails (VKCF3Z, 2026-11-09). Its drawer says
+    // what passing would find, what fixes it, the firmware setting it
+    // reads and what that's set to, and fwupd's description in its words.
+    // Return copies fwupd's id for it, which its documentation goes by.
+    function attributeRow(attribute) {
+        const results = Words.of("firmware:result").said ?? {};
+        const groups = Words.of("firmware:group").said ?? {};
+        const fixes = Words.of("firmware:fixed-in").said ?? {};
+        const facts = [];
+        const fact = (id, value) => {
+            if (value)
+                facts.push({ label: Words.name(id), value: value });
+        };
+        if (!attribute.passed && attribute.passesAs)
+            fact("firmware:passes-as", results[attribute.passesAs] ?? attribute.passesAs);
+        if (!attribute.passed)
+            fact("firmware:fixed-in", fixes[attribute.fix] ?? "");
+        fact("firmware:setting", attribute.setting?.id ?? "");
+        fact("firmware:set-to", attribute.setting?.current ?? "");
+        fact("firmware:plugin", attribute.plugin);
+        fact("firmware:attribute", attribute.id);
+        const group = attribute.level === null ? groups.running
+            : String(groups.level ?? "").replace("{level}", attribute.level);
+        return copyRow({
+            key: `firmware:security:${attribute.id}`,
+            name: attribute.name,
+            side: resultOf(attribute, results),
+            note: group,
+            copy: attribute.id,
+            warns: !attribute.passed,
             hue: "machine",
-            glyph: ""
-        })]);
+            glyph: "",
+            drawer: () => ({ eyebrow: group, title: attribute.name, facts: facts,
+                body: attribute.about })
+        });
     }
 
     // What a device holds a step in: Install while an update is offered,

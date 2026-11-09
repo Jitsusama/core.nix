@@ -261,6 +261,28 @@ def test_an_offered_update_is_shot_at_each_scale(
         desktop.as_account(f"rm -rf {FWUPD_SAYS}")
 
 
+def test_the_security_level_is_shot_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Shoot Firmware's Security Level and its drawer, then a failing attribute's, a step in."""
+    for scale in at_each_scale:
+        named = scale.replace(".", "-")
+        at_scale(desktop, scale)
+        followed(desktop, "firmware", lambda shown: "Security Level" in shown["rows"])
+        desktop.down_to("Security Level")
+        desktop.launcher_until(lambda shown: drawer_says(shown, "Needed for Level 2"))
+        desktop.shoot(f"launcher-firmware-security-at-{named}")
+        desktop.step_in()
+        desktop.launcher_until(
+            lambda shown: (
+                shown["rows"][:1] == ["BIOS Rollback Protection"]
+                and drawer_says(shown, "Firmware Setting")
+            )
+        )
+        desktop.shoot(f"launcher-firmware-security-attribute-at-{named}")
+        desktop.close_launcher()
+
+
 def test_sleep_that_failed_is_shot_at_each_scale(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:

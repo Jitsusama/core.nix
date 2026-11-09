@@ -125,8 +125,10 @@ units, or named here as left out with the reason.
 |                 | when an update last went in                  | Last Updated                              |
 |                 | flashes left, battery, protocols             | each device's drawer                      |
 |                 | plugin, serial                               | the drawer's last, in the Name face       |
-| `firmware:host` | security level                               | Firmware's Security                       |
-|                 | product, fwupd's version                     | Security's drawer                         |
+| `firmware:host` | security level                               | Security Level's side, note and drawer    |
+|                 | product, fwupd's version                     | Security Level's drawer                   |
+|                 | each attribute: name, level, result, passes as | a step in, Needed for Level, Lowered By |
+|                 | an attribute's description, fix flags, setting, plugin, id | each attribute's drawer     |
 
 ## Left Out, and Why
 
@@ -183,6 +185,11 @@ units, or named here as left out with the reason.
   saw it, nothing Joel acts on; the flags that change what Install does
   show as what it does. fwupd's own update error is its words for a
   device it hides.
+- **A security attribute's GUIDs, link, time and other flags.** The
+  GUIDs name the device it was read from, the link is fwupd's page for
+  the attribute, which its description already says, and the time is
+  when fwupd read it, on each start; the flags that say what fixes it,
+  or that it couldn't read what it needed, show as what they mean.
 - **An update's vendor, protocol and download.** The device names its
   vendor and protocols, and fwupd fetches the download itself.
 - **The last sleep before the daemon started.** logind says a sleep as
