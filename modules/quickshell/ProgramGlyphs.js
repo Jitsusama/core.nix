@@ -18,7 +18,9 @@ const table = {
     nvim: "f36f",
     "com.onepassword.onepassword": "f0881",
     gimp: "f338",
-    "org.inkscape.inkscape": "f33b",
+    // Inkscape wears the theme's vector, as its rows and shortcuts do, so
+    // it has one mark everywhere (VKCF3Z, 2026-11-09).
+    "org.inkscape.inkscape": "mark:vector",
     spotify: "f1bc",
     swayimg: "f02e9",
     "org.pwmt.zathura": "f0219",
