@@ -374,6 +374,16 @@ every-test-runs-or-fails = core.lib.everyTestRunsOrFails pkgs {
 };
 ```
 
+Its lint suppressions say why, as core's do, through a seventh:
+
+```nix
+every-suppression-says-why = core.lib.everySuppressionSaysWhy pkgs {
+  src = ./.;
+  # How many suppressions without a reason each file holds while they gain one.
+  waiting = { };
+};
+```
+
 Its names say the glossary's words, as core's do, through a check that reads
 the glossary of the core it locks:
 

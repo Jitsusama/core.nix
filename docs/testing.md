@@ -54,7 +54,12 @@ greeter (`quickshell-passes-qmllint`), and each offscreen check's own
 folder, its cases and stand-ins included, before running it
 (`tests/shell-folder-lint.sh`). A finding that's right as it is says so
 where it is, with its reason: `#[expect(..., reason = ...)]` in Rust, a
-`biome-ignore` comment in JavaScript, `qmllint disable` in QML.
+`biome-ignore` comment in JavaScript, `qmllint disable` in QML. clippy and
+Biome refuse theirs without one, and `every-suppression-says-why` holds the
+rest: a `# noqa`, `# type: ignore`, `# shellcheck disable=` or `qmllint
+disable` says why after the codes it names or in a comment just above.
+Those before the rule wait, counted by file, in
+`tests/every-suppression-says-why-waiting.nix`, where a count only falls.
 
 `nix flake check` runs every check, but Nix reuses any check whose inputs
 didn't change, so a change pays only for the builds it can affect. It still

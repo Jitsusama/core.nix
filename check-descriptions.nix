@@ -548,6 +548,10 @@
     every path pattern merge-net's must-run.txt, ruff.toml's per-file ignores and treefmt's
     unread kinds past treefmt-nix's own give matches a file the repository holds
   '';
+  every-suppression-says-why = ''
+    every noqa, type: ignore, shellcheck disable and qmllint disable says why, after its codes or
+    in a comment just above, but those still waiting for their reason
+  '';
   every-test-runs-or-fails = ''
     no test passes without running, by an #[ignore] with no reason, a printed skip, an early return
     or pytest's or QML's skips, but those still waiting to run where they can
