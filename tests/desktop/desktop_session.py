@@ -430,7 +430,11 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         self.reported(what, lambda rest: rest == "", since, timeout)
 
     def unsettled(
-        self, timeout: timedelta = timedelta(seconds=10), span: float = 0.5
+        self,
+        timeout: timedelta = timedelta(seconds=10),
+        span: float = 0.5,
+        *,
+        shell_only: bool = False,
     ) -> str | None:
         """Wait for the screen to stand still, giving None once it has, or why it never did.
 
@@ -438,12 +442,15 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         own count says (Frames.qml), and the screen's picture stayed the same, for two spans
         in a row. Half a second is twice the theme's longest movement; both it and the bound
         stretch with how busy the host is, since a busy host draws a fade slower than that.
+        Shell only waits on the count alone, for a screen where something else always moves.
         """
         pace = vm_helpers.pace(vm_helpers.busyness())
         with tempfile.TemporaryDirectory() as folder:
             shot = Path(folder) / "shot.ppm"
 
             def screen() -> bytes:
+                if shell_only:
+                    return b""
                 self.machine.send_monitor_command(f"screendump {shot}")
                 return shot.read_bytes()
 
@@ -467,16 +474,19 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         """Say whether the screen stands still before the time is up (unsettled)."""
         return self.unsettled(timeout, span) is None
 
-    def shoot(self, name: str, timeout: timedelta = timedelta(seconds=10)) -> None:
+    def shoot(
+        self, name: str, timeout: timedelta = timedelta(seconds=10), *, moving: str = ""
+    ) -> None:
         """Shoot the screen once it stands still, for a person to look at, in the gallery.
 
         One that never stands still is shot as it is, then fails saying why, so a picture caught
         mid-motion never reaches the person judging the gallery as if it were the design.
-        Outside the gallery it takes nothing and waits for nothing, so a test must never lean on
-        it to let the screen settle.
+        Moving says what in the picture moves by itself, as a camera's view does, so the shot
+        waits on the shell's frames alone. Outside the gallery it takes nothing and waits for
+        nothing, so a test must never lean on it to let the screen settle.
         """
         if self.values["shots"]:
-            why = self.unsettled(timeout)
+            why = self.unsettled(timeout, shell_only=bool(moving))
             self.machine.screenshot(name)
             assert why is None, f"{name} was shot moving: {why}"
 
