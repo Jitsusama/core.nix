@@ -434,35 +434,32 @@ pub fn hung(words: &str, lead: usize, room: Room) -> String {
     wrapped(words, measure).join(&format!("\n{}", " ".repeat(lead)))
 }
 
-/// The mark parting a run's items, which a line may end on.
+/// The mark parting a run's items on a line, which goes with a break.
 const APART: &str = " \u{b7} ";
 
 /// Words wrapped to `measure` cells: a run gives way at its items first,
-/// each item's dot ending its line, and only an item too long for a line
-/// of its own breaks between its words, never parting what `held` keeps
-/// together (VKCF3Z, 2026-11-08). A piece longer than the measure stands
-/// on its own line, never broken.
+/// the dot going with the break, so no line ends or starts on one, and
+/// only an item too long for a line of its own breaks between its words,
+/// never parting what `held` keeps together (VKCF3Z, 2026-11-09). A piece
+/// longer than the measure stands on its own line, never broken.
 fn wrapped(words: &str, measure: usize) -> Vec<String> {
     let mut lines = Vec::new();
     let mut line = String::new();
-    let items: Vec<&str> = words.split(APART).collect();
-    for (at, item) in items.iter().enumerate() {
-        let said = if at + 1 < items.len() {
-            format!("{} \u{b7}", item.trim())
+    for item in words.split(APART).map(str::trim) {
+        if width(&parted(&line, item, APART)) <= measure {
+            line = parted(&line, item, APART);
+        } else if width(item) <= measure {
+            lines.push(std::mem::replace(&mut line, item.to_string()));
         } else {
-            item.trim().to_string()
-        };
-        let after = if line.is_empty() { 0 } else { width(&line) + 1 };
-        if after + width(&said) <= measure {
-            joined_to(&mut line, &said);
-        } else if width(&said) <= measure {
-            lines.push(std::mem::replace(&mut line, said));
-        } else {
-            for piece in held(&said) {
-                if !line.is_empty() && width(&line) + 1 + width(&piece) > measure {
+            // An item's first piece is still parted from the line by its
+            // dot; the rest of its pieces by spaces.
+            let mut between = APART;
+            for piece in held(item) {
+                if !line.is_empty() && width(&parted(&line, &piece, between)) > measure {
                     lines.push(std::mem::take(&mut line));
                 }
-                joined_to(&mut line, &piece);
+                line = parted(&line, &piece, between);
+                between = " ";
             }
         }
     }
@@ -472,15 +469,13 @@ fn wrapped(words: &str, measure: usize) -> Vec<String> {
     lines
 }
 
-/// `line` with `more` after it, a space apart.
-fn joined_to(line: &mut String, more: &str) {
-    if more.is_empty() {
-        return;
+/// `line` with `more` after it, `between` them where both say something.
+fn parted(line: &str, more: &str, between: &str) -> String {
+    match (line.is_empty(), more.is_empty()) {
+        (true, _) => more.to_string(),
+        (false, true) => line.to_string(),
+        (false, false) => format!("{line}{between}{more}"),
     }
-    if !line.is_empty() {
-        line.push(' ');
-    }
-    line.push_str(more);
 }
 
 /// The longest a word joining two figures is, as `at` does in `768 at 60
@@ -705,15 +700,23 @@ mod tests {
         }
         assert_eq!(
             wrapped(modes, 29),
-            vec!["1 \u{b7}", "preferred 1272 \u{d7} 768 at 60 Hz"]
+            vec!["1", "preferred 1272 \u{d7} 768 at 60 Hz"]
         );
     }
 
     #[test]
-    fn a_run_gives_way_at_its_dots_first() {
+    fn a_run_gives_way_at_its_dots_first_and_the_dot_goes_with_the_break() {
         assert_eq!(
             wrapped("one two \u{b7} three four \u{b7} five", 18),
-            vec!["one two \u{b7}", "three four \u{b7} five"]
+            vec!["one two", "three four \u{b7} five"]
+        );
+        let wrapped_lines = wrapped("a \u{b7} bb \u{b7} ccc \u{b7} dddd \u{b7} eeeee", 9);
+        assert_eq!(wrapped_lines, vec!["a \u{b7} bb", "ccc", "dddd", "eeeee"]);
+        assert!(
+            wrapped_lines
+                .iter()
+                .all(|line| !line.starts_with('\u{b7}') && !line.ends_with('\u{b7}')),
+            "no line ends or starts on a dot: {wrapped_lines:?}"
         );
         assert_eq!(
             wrapped("one \u{b7} two three four five six", 14),
@@ -727,7 +730,7 @@ mod tests {
         let said = "nothing called mahcine \u{b7} did you mean Machine?";
         assert_eq!(
             hung(said, 2, Room(42)),
-            "nothing called mahcine \u{b7}\n  did you mean Machine?"
+            "nothing called mahcine\n  did you mean Machine?"
         );
         assert_eq!(hung(said, 2, Room(80)), said);
     }

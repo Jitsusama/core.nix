@@ -69,8 +69,9 @@ function wholeLines(words, room, width) {
 
 // Lines whose last is a short token alone, with the end of the line before
 // brought down to join it: the item that ended it, else its words after
-// their last strong mark, else after a hyphen, the longest that fits.
-// They stay as they were where nothing fits beside it.
+// their last strong mark, else after a hyphen, the longest that fits. The
+// line it leaves ends on no dot, since a dot goes with a break (VKCF3Z,
+// 2026-11-09). They stay as they were where nothing fits beside it.
 function joinedDown(lines, between, wide, width) {
     const alone = lines[lines.length - 1];
     const before = lines[lines.length - 2];
@@ -86,6 +87,9 @@ function joinedDown(lines, between, wide, width) {
     if (tail === undefined) {
         return lines;
     }
-    const left = before.slice(0, before.length - tail.length).replace(TRAILING, "");
+    const mark = between.trim();
+    const kept = before.slice(0, before.length - tail.length).replace(TRAILING, "");
+    const left = mark !== "" && kept.endsWith(mark)
+        ? kept.slice(0, kept.length - mark.length).replace(TRAILING, "") : kept;
     return lines.slice(0, -2).concat([left, `${tail}${between}${alone}`]);
 }
