@@ -309,26 +309,28 @@ ShellRoot {
             same("stepped into, what it has open comes before its other windows and Recent, "
                 + "a window its front tab stands for not listed again", names(rows),
                 "Go To, New Window, New Window Below, Open A, Older page, Another, Behind, "
-                + "Left out, Recent, Quit");
-            const visited = rows[8].targets();
-            const sites = rows.slice(3, 7).concat(visited);
+                + "Filed, Left out, Recent, Quit");
+            const visited = rows[9].targets();
+            const sites = rows.slice(3, 8).concat(visited);
             same("what's open, one row a page, newest looked at first, then in Recent what was "
                 + "open, never a page open now nor one left out", names(sites),
-                `Open A, Older page, Another, Behind, Page ${reading}`);
+                `Open A, Older page, Another, Behind, Filed, Page ${reading}`);
             same("Recent says how many, and their names",
-                `${rows[8].side} ${rows[8].count}`, `1 Page ${reading}`);
+                `${rows[9].side} ${rows[9].count}`, `1 Page ${reading}`);
             same("each saying it's open and in how many tabs, then its host",
                 sites.map(row => row.side).join(" | "),
                 "open in 2 tabs \u00b7 open.example.com | open \u00b7 other.example.net "
                 + "| open \u00b7 another.example.com | open \u00b7 behind.example.com "
+                + "| open \u00b7 filed.example.com "
                 + "| example.org");
             same("each made as every site is, keyed by the page",
                 sites.map(row => `${row.component} ${row.key}`).join(" "),
                 "site site:https://open.example.com/a site site:https://other.example.net/a "
                 + "site site:https://another.example.com/b site site:https://behind.example.com/ "
+                + "site site:https://filed.example.com/ "
                 + `site site:https://example.org/${reading}`);
             same("Return goes to one open, and opens one that was",
-                sites.map(row => row.verb).join(" "), "go to go to go to go to open");
+                sites.map(row => row.verb).join(" "), "go to go to go to go to go to open");
             const inside = sites[0].verbs();
             same("one open holds Go To, Close It, its window, then Copy the Link", names(inside),
                 "Go To, Close It, Open A, Copy the Link");
@@ -351,6 +353,15 @@ ShellRoot {
             sites[3].run();
             same("a tab behind one left out goes to the window titled by that one", acted(),
                 '[{"FocusWindow":{"id":23}}]');
+            // A tab its source said with no id, as Chrome's session file
+            // says each, has nothing to close it or bring it forward by.
+            same("a tab with no id holds no Close It", names(sites[4].verbs()),
+                "Go To, Another, Copy the Link");
+            Niri.acted = [];
+            Niri.spawns = [];
+            sites[4].run();
+            same("and Return brings its window forward, asking the program nothing",
+                `${JSON.stringify(Niri.spawns)} ${acted()}`, '[] [{"FocusWindow":{"id":22}}]');
             same("Close It keeps the launcher, saying how many tabs it closes",
                 `${inside[1].stays} ${inside[1].note}`, "true closes 2 tabs");
             Niri.spawns = [];
@@ -364,7 +375,7 @@ ShellRoot {
             const copied = inside[3];
             same("Copy the Link copies its address", `${copied.verb} ${copied.copy}`,
                 "copy https://open.example.com/a");
-            same("one that was open holds Open, then Copy the Link", names(sites[4].verbs()),
+            same("one that was open holds Open, then Copy the Link", names(sites[5].verbs()),
                 "Open, Copy the Link");
             same("read once an opening, however often it's stepped into",
                 JSON.stringify(applications.recents.asked), '{"browser":true}');
@@ -386,7 +397,7 @@ ShellRoot {
                 root.view();
                 return;
             }
-            sites[4].run();
+            sites[5].run();
             same("Return opens the page by the program's own command", JSON.stringify(Niri.spawned),
                 JSON.stringify(["browser", "https://example.org/1"]));
             theLauncher.open = false;
