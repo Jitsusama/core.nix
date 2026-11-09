@@ -1,0 +1,163 @@
+--- a/packages/coding-agent/src/modes/interactive/interactive-mode.ts
++++ b/packages/coding-agent/src/modes/interactive/interactive-mode.ts
+@@ -449,6 +449,11 @@
+ 	initialThemeSetting?: string;
+ 	/** Terminal implementation. Defaults to the current process terminal. */
+ 	terminal?: Terminal;
++	/** Hosted screens leave process lifetime and session disposal to their owner. */
++	hosted?: {
++		/** Called once after this screen stops; the host closes only its session. */
++		onExit: (exitCode: number, error?: unknown) => Promise<void>;
++	};
+ }
+ 
+ interface ExtensionChangelogUpdate {
+@@ -458,6 +463,9 @@
+ }
+ 
+ export class InteractiveMode {
++	/** Lets a host reject an unpatched pi before constructing a shared screen. */
++	static readonly hostedLifecycleVersion = 1;
++
+ 	private runtimeHost: AgentSessionRuntime;
+ 	private renderer: TuiMainScreen | TuiAltScreen;
+ 	private ui: TUI;
+@@ -616,6 +624,9 @@
+ 	}
+ 
+ 	constructor(runtimeHost: AgentSessionRuntime, options: InteractiveModeOptions = {}) {
++		if (options.hosted && !options.terminal) {
++			throw new Error("Hosted interactive mode requires an independent terminal");
++		}
+ 		this.runtimeHost = runtimeHost;
+ 		setCapabilityOverrides(this.settingsManager.getTerminalCapabilityOverrides());
+ 		const tuiMode = options.tuiMode ?? this.settingsManager.getTuiMode();
+@@ -984,7 +995,10 @@
+ 		// after exit. Fullscreen shows the notice in the header instead (#11508).
+ 		if (this.renderer.mode !== "fullscreen") {
+ 			const modelScopeNotice = this.getModelScopeNotice();
+-			if (modelScopeNotice) console.log(modelScopeNotice);
++			if (modelScopeNotice) {
++				if (this.options.hosted) this.ui.terminal.write(`${modelScopeNotice}\r\n`);
++				else console.log(modelScopeNotice);
++			}
+ 		}
+ 
+ 		// Keep one component tree and remount it when changing renderers.
+@@ -1274,8 +1288,9 @@
+ 		}
+ 
+ 		// Main interactive loop
+-		while (true) {
++		while (!this.isShuttingDown) {
+ 			const userInput = await this.getUserInput();
++			if (this.isShuttingDown) break;
+ 			try {
+ 				await this.session.prompt(userInput);
+ 			} catch (error: unknown) {
+@@ -2216,7 +2231,7 @@
+ 		this.updateTerminalTitle();
+ 	}
+ 
+-	private async handleFatalRuntimeError(prefix: string, error: unknown): Promise<never> {
++	private async handleFatalRuntimeError(prefix: string, error: unknown): Promise<{ cancelled: true }> {
+ 		const message = error instanceof Error ? error.message : String(error);
+ 		this.showError(`${prefix}: ${message}`);
+ 		const extensionHint = this.getCrashExtensionHint(error);
+@@ -2227,6 +2242,10 @@
+ 			const instructions = this.crashReportInstructions();
+ 			this.chatContainer.addChild(new ThemedText(() => theme.fg("muted", instructions), this.outputPad, 0));
+ 		}
++		if (this.options.hosted) {
++			await this.exitHosted(1, error);
++			return { cancelled: true };
++		}
+ 		stopThemeWatcher();
+ 		this.stop("transcript");
+ 		process.exit(1);
+@@ -4340,6 +4359,7 @@
+ 	}
+ 
+ 	async getUserInput(): Promise<string> {
++		if (this.isShuttingDown) return "";
+ 		const queuedInput = this.pendingUserInputs.shift();
+ 		if (queuedInput !== undefined) {
+ 			return queuedInput;
+@@ -4383,8 +4403,31 @@
+ 	 * repaint the final frame while the process is exiting.
+ 	 */
+ 	private isShuttingDown = false;
++	private hostedExit: Promise<void> | undefined;
++
++	/** Stop this screen once; the host owns scoped session and child cleanup. */
++	private exitHosted(exitCode: number, error?: unknown): Promise<void> {
++		if (this.hostedExit) return this.hostedExit;
++		const hosted = this.options.hosted;
++		if (!hosted) throw new Error("Hosted exit requires a host owner");
++		this.isShuttingDown = true;
++		this.pendingUserInputs = [];
++		this.onInputCallback?.("");
++		// Install the promise before cleanup so reentrant quit requests share it.
++		this.hostedExit = Promise.resolve().then(async () => {
++			try {
++				this.stop();
++			} catch (cleanupError) {
++				exitCode = 1;
++				error ??= cleanupError;
++			}
++			await hosted.onExit(exitCode, error);
++		});
++		return this.hostedExit;
++	}
+ 
+ 	private async shutdown(options?: { fromSignal?: boolean }): Promise<void> {
++		if (this.options.hosted) return this.exitHosted(0);
+ 		if (this.isShuttingDown) return;
+ 		this.isShuttingDown = true;
+ 		// Keep signal handlers registered until terminal cleanup has completed.
+@@ -4425,7 +4468,11 @@
+ 		process.exit(0);
+ 	}
+ 
+-	private emergencyTerminalExit(): never {
++	private emergencyTerminalExit(): void {
++		if (this.options.hosted) {
++			void this.exitHosted(129);
++			return;
++		}
+ 		this.isShuttingDown = true;
+ 		this.unregisterSignalHandlers();
+ 		killTrackedDetachedChildren();
+@@ -4445,7 +4492,11 @@
+ 	 * call ui.stop() to restore cooked mode, the cursor, and disable bracketed
+ 	 * paste / Kitty / modifyOtherKeys sequences.
+ 	 */
+-	private uncaughtCrash(error: Error): never {
++	private uncaughtCrash(error: Error): void {
++		if (this.options.hosted) {
++			void this.exitHosted(1, error);
++			return;
++		}
+ 		// A dead terminal is not a pi crash. Do not try to restore it or record it.
+ 		if (isDeadTerminalError(error)) {
+ 			this.emergencyTerminalExit();
+@@ -4482,6 +4533,8 @@
+ 	}
+ 
+ 	private registerSignalHandlers(): void {
++		// The host registers process handlers once and attributes failures itself.
++		if (this.options.hosted) return;
+ 		this.unregisterSignalHandlers();
+ 
+ 		const signals: NodeJS.Signals[] = ["SIGTERM"];
+@@ -4532,6 +4585,10 @@
+ 	}
+ 
+ 	private handleCtrlZ(): void {
++		if (this.options.hosted) {
++			this.showStatus("Suspend is unavailable in a hosted session; close the viewer to detach");
++			return;
++		}
+ 		if (process.platform === "win32") {
+ 			this.showStatus("Suspend to background is not supported on Windows");
+ 			return;
