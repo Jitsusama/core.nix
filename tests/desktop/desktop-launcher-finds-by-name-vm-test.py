@@ -1731,12 +1731,18 @@ def each_read_cold(desktop: Desktop) -> None:
         return {row["name"]: row for row in shown["rows"]}
 
     networks = rows("network", "wi-fi")
-    # Where it isn't, what wifid says and did, since a look it was asked for may be refused.
-    assert "Office" in networks, (
-        networks,
-        machine.execute(f"{wifi}.Describe '{{}}'")[1],
-        machine.execute("journalctl -b --unit=wifid --lines=20 --no-pager")[1],
-    )
+    if "Office" not in networks:
+        # What wifid, wpa_supplicant and the shell said of the look, and how long it took.
+        for unit in ("wifid", "wpa_supplicant"):
+            print(machine.execute(f"journalctl -b --unit={unit} --lines=15 --no-pager")[1])
+        shell = "journalctl --user --unit=quickshell --no-pager"
+        print(desktop.as_account(f"{shell} | grep wifi || true"))
+        print(machine.execute(f"{wifi}.Describe '{{}}'")[1])
+        machine.wait_until_succeeds(
+            desktop.in_session("launcher show network wi-fi | grep -q Office"),
+            timeout=dt.timedelta(seconds=30),
+        )
+    assert "Office" in networks, networks
     firmware = rows("machine", "firmware")
     assert "System Firmware" in firmware, firmware
     cameras = rows("machine", "cameras")
