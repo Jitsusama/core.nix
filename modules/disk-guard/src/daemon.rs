@@ -196,9 +196,10 @@ const LISTING_RETRY: f64 = 3600.0;
 const LISTING_RETRY_PRESSED: f64 = 300.0;
 /// How soon after the last listing began one comes again on a filling disk
 /// once a root has left and the last listing has rested, so a build's
-/// result deleted is garbage gone within a minute of that; and once a process holding paths has ended, which happens every
-/// few seconds on a busy machine, so the listing's minute of the disk's time
-/// is spent at most every two. On a healthy disk neither brings a listing:
+/// result deleted is garbage gone within a minute of that; and once a
+/// process holding paths has ended, which happens every few seconds on a
+/// busy machine, so the listing's minute of the disk's time is spent at
+/// most every two. On a healthy disk neither brings a listing:
 /// on 7 November a listing of 101,000 paths took 13 minutes of a core over
 /// 15 and freed 190 MB with 313 GB free, so what they let go waits for the
 /// next six-hourly one. What a process held in the listing kept goes once it
