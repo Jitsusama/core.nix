@@ -213,6 +213,12 @@ ShellRoot {
         const facts = held.programFacts("nvim").map(fact => `${fact.label} ${fact.value}`)
             .join(", ");
         expect("the drawer counts them", facts === "Files 4 in 2 windows, Modified 2", facts);
+        const given = held.programOpen("nvim").join(", ");
+        expect("Programs is told each by its file's key, so Recent leaves it out",
+            given === `file:${src}/alpha/docs/notes.md, file:${src}/alpha/main.rs,`
+                + ` file:${src}/alpha/.env, file:${src}/beta/README.md`, given);
+        expect("and nothing for another program", held.programOpen("vim").length === 0,
+            held.programOpen("vim").join(", "));
     }
 
     Component.onCompleted: {

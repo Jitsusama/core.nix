@@ -12,7 +12,8 @@
 // Then mpv's Recent: what an mpv plays now listed above it and not in it,
 // then each file mpv left merged by when it left it, newest first, with
 // the list programs share, which gives no times, after them, each file
-// listed once, the shared list's own row giving way to mpv's. One stopped
+// listed once, the shared list's own row giving way to mpv's, and none
+// another provider says is open in mpv, which its row counts open. One stopped
 // part way says "12:04 of 41:10 · 12 min ago" beside it and Return
 // resumes it, with Resume, saying from where, Play From the Start and Copy
 // the Path inside; one watched whole says its length and when, and Return
@@ -89,10 +90,22 @@ ShellRoot {
         property string typed: ""
         property var held: []
         property var belowChord: []
-        property var sources: [mpv]
+        property var sources: [mpv, elsewhere]
         // What a program's row says it holds asks these too.
         property var partsOfRows: ({})
         property string underListed: ""
+    }
+
+    // Another provider saying what's open in mpv, by Recent's keys, as
+    // Neovim's says the files open in it (NeovimProgram.qml).
+    QtObject {
+        id: elsewhere
+
+        property var open: []
+
+        function programOpen(program) {
+            return program === "mpv" ? open : [];
+        }
     }
 
     Launcher.MpvProgram {
@@ -311,6 +324,13 @@ ShellRoot {
                 ["long", "talk", "song", "clip"].map(name => file(name)).join(" "));
             same("Recent counts each once", recent.side, "4");
             same("so does mpv's row", program("mpv").note, "1 open \u00b7 4 recent");
+            elsewhere.open = [file("talk")];
+            same("what another provider has open in it leaves its Recent",
+                program("mpv").verbs().find(row => row.name === "Recent").targets()
+                    .map(row => row.key).join(" "),
+                ["long", "song", "clip"].map(name => file(name)).join(" "));
+            same("and its row counts it open", program("mpv").note, "2 open \u00b7 3 recent");
+            elsewhere.open = [];
 
             const [long, talk, song, clip] = files;
             same("where it stopped, its length and when, beside it", talk.side,

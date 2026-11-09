@@ -931,8 +931,13 @@ Provider {
     }
 
     // The keys of what it has open now, read from what its source said
-    // without making a row, so its Recent never lists one again.
+    // without making a row, and of what other providers list as open in
+    // it (givenOpen), so its Recent never lists one again.
     function openKeys(entry) {
+        return ownOpenKeys(entry).concat(provider.givenOpen(entry.id));
+    }
+
+    function ownOpenKeys(entry) {
         const source = provider.sourceOf(entry);
         if (!source?.opened || !provider.isRunning(entry))
             return [];
@@ -941,6 +946,15 @@ Provider {
             ? lines.filter(tab => (tab[4] ?? "") !== "").map(tab => keyOf("site", tab[4]))
             : lines.filter(([who, path]) => (path ?? "") !== ""
                 && provider.fileWindow(entry, who) !== null).map(([, path]) => keyOf("file", path));
+    }
+
+    // The keys, as keyOf makes them, of what other providers list as open
+    // in a program among its acts (`programOpen(program)`), as Neovim's
+    // files open now are (NeovimProgram.qml): its Recent leaves them out
+    // and its note counts them, so no file shows twice in its step
+    // (RTOIMQ, 2026-11-09).
+    function givenOpen(program) {
+        return hooked("programOpen", program);
     }
 
     // The key a site, file or folder's row has (`site:`, `file:`,
@@ -1022,7 +1036,7 @@ Provider {
         const pages = addresses.size;
         // A closed browser's saved tabs are counted as recent, as listed.
         const live = isRunning(entry);
-        const opened = site ? (live ? pages : 0) : open.length;
+        const opened = site ? (live ? pages : 0) : open.length + givenOpen(entry.id).length;
         // As many as its Recent lists, so what's open, listed above it, isn't
         // counted twice.
         const kept = provider.keepsRecent(entry) ? provider.kept(entry).length : 0;
