@@ -106,7 +106,9 @@ onLinux {
         "Ago.js"
         "words.json"
       ];
-      # A reader's window, its process showing now.md.
+      # A reader's window, its process showing now.md. Kept in Nix because
+      # it's a stand-in's few properties, as each program's check in the
+      # launcher writes its niri.
       niri = singleton "Niri.qml" ''
         property int revision: 0
         property var windows: ({
@@ -138,6 +140,9 @@ onLinux {
       # The clipboard's watcher, which hears nothing.
       paste = pkgs.writeShellScriptBin "wl-paste" "exec sleep 300";
     in
+    # Kept in Nix because each line copies, or names in a variable, a file
+    # Nix gives it, and the places it reads are printed by a script of
+    # their own (tests/places-list.sh).
     pkgs.runCommandLocal "the-launcher-reads-on-where-the-reader-left" { } ''
       mkdir -p launcher share/applications
       cp ${entry} share/applications/reader.desktop
@@ -174,23 +179,8 @@ onLinux {
       export SHOWING_LIST=${pkgs.writeShellScript "showing-list" ''
         printf '5151\t%s\n' "$HOME/notes/now.md"
       ''}
-      # What reader --places prints, newest left first: what a reader shows
-      # now, a file left under a heading with two marks, one under none, one
-      # read to its end two days ago, and a line it never would, counting
-      # each run.
-      export PLACES_LIST=${pkgs.writeShellScript "places-list" ''
-        echo $(( $(cat "$HOME/listed" 2> /dev/null || echo 0) + 1 )) > "$HOME/listed"
-        place() {
-          printf '{"file":"%s","left":%s,"at_end":%s%s,"marks":[%s]}\n' \
-            "$HOME/notes/$1.md" "$2" "$3" "$4" "$5"
-        }
-        place now $((NOW - 60)) false ',"heading":"Now","through":0.1' ""
-        place guide $((NOW - 720)) false ',"heading":"Installing","through":0.4' \
-          '{"letter":"b"},{"letter":"a","heading":"Using It","through":0.625}'
-        place old $((NOW - 3000)) false ',"through":0.25' ""
-        place done $((NOW - 172800)) true ',"heading":"Last Words","through":1' ""
-        echo 'not a place'
-      ''}
+      # What reader --places prints, as tests/places-list.sh says.
+      export PLACES_LIST=${pkgs.writeShellScript "places-list" (builtins.readFile ./tests/places-list.sh)}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
       touch $out
