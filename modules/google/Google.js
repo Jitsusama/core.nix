@@ -12,6 +12,10 @@ const ACCOUNT = "account:google";
 // (src/drive.rs's Kind::ALL), each kind's last looked at first.
 const DOCUMENTS = ["document", "spreadsheet", "presentation"];
 
+// The moment Google puts after a series' id to name one time of it
+// (seriesOf).
+const TIME_OF_SERIES = /_\d{8}(T\d{6}Z?)?$/;
+
 // The account as the program keeps it, gathered from the daemon's
 // records, held by key. A record carries no place, so each kind is put
 // back in its order by its own fields: meetings by when they start, mail
@@ -255,7 +259,7 @@ function mailedWith(mail, emails) {
 // event's id before the moment that time starts, "_20261026T150000Z", or
 // "_20261026" for one lasting all day. A meeting held once is its own.
 function seriesOf(meeting) {
-    return String(meeting.id ?? "").replace(/_\d{8}(T\d{6}Z?)?$/, "");
+    return String(meeting.id ?? "").replace(TIME_OF_SERIES, "");
 }
 
 // What Calendar's own Recent holds, as Recent.js lays out every Recent:
@@ -276,7 +280,7 @@ function hadMeetings(meetings, now) {
         if (had) {
             had.earlier += 1;
         } else {
-            bySeries.set(series, { meeting: meeting, earlier: 0 });
+            bySeries.set(series, { meeting, earlier: 0 });
         }
     }
     return [...bySeries.values()].map(one => ({

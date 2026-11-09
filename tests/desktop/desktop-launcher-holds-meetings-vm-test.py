@@ -88,10 +88,11 @@ def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> No
         if "Calendar" not in rows or (shown["selected"] or {}).get("name") != "Calendar":
             return False
         at = rows.index("Calendar")
-        # And Calendar counts today's, never naming a meeting listed just under it.
+        # And Calendar counts today's, never naming a meeting listed just under it,
+        # after how many its Recent holds: the Retro he held, once.
         said = str(shown["selected"].get("note", ""))
         listed = "Design Review" in rows[at + 1 : at + 4]
-        return listed and re.fullmatch(r"\d+ today", said) is not None
+        return listed and re.fullmatch(r"1 recent \u00b7 \d+ today", said) is not None
 
     desktop.answer("calendar")
     desktop.launcher_until(under_calendar)
