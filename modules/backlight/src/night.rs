@@ -22,6 +22,12 @@ const STEP: u16 = 50;
 /// Where the laptop is may change while it's day or night, so it's looked
 /// at again within the hour, whatever the sun.
 const LOOK_AGAIN: i64 = 60 * MINUTE;
+/// While no place is known it's looked for again this often, since
+/// whereabouts often says it a moment after the daemon starts: on
+/// 2026-11-08 27 seconds later, which waiting the hour turned into an
+/// hour without the night light.
+pub const UNPLACED: i64 = 10 * SECOND;
+
 /// The shortest wait between looks while easing, so a night white close to
 /// the screen's own still eases rather than spinning.
 const SOONEST: i64 = SECOND;
