@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
 
-# The scales Joel uses, where what VKCF3Z judges is photographed.
+# The scales Joel uses, where what VKCF3Z judges is shot.
 JOELS_SCALES = ("1.5", "2")
 
 
@@ -1126,7 +1126,7 @@ def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desk
     """In For You, :filter lists the kinds there and look steps into the looks, shot at 1.5 and 2.
 
     What a filter keeps and the words it takes are tests/for-you-filter.qml's, and its one
-    path through the launcher the nested niri's; here the menu and the head are photographed
+    path through the launcher the nested niri's; here the menu and the head are shot
     at Joel's scales, for VKCF3Z to judge (2026-11-08).
     """
     asked = {
