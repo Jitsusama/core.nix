@@ -35,9 +35,10 @@
   pkgs,
   area,
   gallery ? false,
-  # The screen's size in pixels. Every area but looks, looks-machine and
-  # looks-programs keeps the one its pictures were taken on; those have the
-  # laptop's, so the launcher and its drawer fit at both of Joel's scales.
+  # The screen's size in pixels. Every area but looks, looks-machine,
+  # looks-programs and launcher-keeps-up keeps the one its pictures were
+  # taken on; those have the laptop's, so the launcher and its drawer fit
+  # at both of Joel's scales.
   screen ? {
     width = 1280;
     height = 800;
@@ -74,6 +75,7 @@ let
     "launcher-draws-still"
     "launcher-waits-on-joel"
     "launcher-goes-places"
+    "launcher-keeps-up"
     "looks"
     "looks-machine"
   ];
@@ -1127,6 +1129,9 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
             # A stand-in Litra, plugged in for as long as it runs
             # (desk-light-stand-in.py).
             desk_light = "${pkgs.python3}/bin/python3 ${./desk-light-stand-in.py}";
+            # A crowd of pi's sessions, a few changing each beat
+            # (desktop/stand-in-sessions.py).
+            stand_in_sessions = "${pkgs.python3}/bin/python3 ${./desktop/stand-in-sessions.py}";
             tuple_window = tupleWindow;
             inherit (pkgs)
               coreutils

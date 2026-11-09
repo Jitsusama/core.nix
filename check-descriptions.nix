@@ -2832,6 +2832,13 @@
     opened; Google signed out wants a sign-in, the transcripts list each call written down and
     open it in the reader, and Meet joins a call by its code
   '';
+  vm-desktop-launcher-keeps-up = ''
+    an arrow held at 30 a second at home, in Agents and in People, at scales 2 and 1.5, while 300
+    sessions and 2,000 people change, makes no rows for the source the place doesn't show,
+    refreshes the list at most four times a second, finishes each key's handler within 4 ms, and
+    brings nineteen keys in twenty to their frames within 4 ms of their time with the changes
+    frozen
+  '';
   vm-desktop-launcher-moves-windows = ''
     the launcher opens kitty and learns it was meant, frames the focused window, switches to and
     moves windows by their titles, Super+Tab goes back to the window before, and Super+Shift shows

@@ -4380,6 +4380,9 @@ Scope {
             Qt.callLater(refreshDue);
     }
     readonly property int refreshPace: 250
+    // How many refreshes the open launcher has made, for the check that
+    // it makes at most four a second however fast its sources change.
+    property int refreshesDone: 0
     property var pace: Pacing.rested()
     // The timer rings when the pace says a refresh is due, and is stopped
     // once none waits.
@@ -4498,8 +4501,10 @@ Scope {
         keepPace(Pacing.took(Date.now()));
         const refreshedAt = pace.at;
         const begun = KeyTimes.now();
-        if (open)
+        if (open) {
+            refreshesDone += 1;
             freshen();
+        }
         const due = refreshing;
         // When each began, by the shell's clock, which the pacing goes by:
         // a report said as one ends is moved by its own work.
@@ -5251,6 +5256,9 @@ Scope {
         keysWaiting += 1;
         keysPressed.push(pressed > 0 ? pressed : null);
         keysHeard.push(heard);
+        // Its handler is done once it's searched or moved, all a key's own
+        // work, which design.md holds within 4 ms.
+        keysDone.push(KeyTimes.now());
     }
 
     function keyDrawn() {
@@ -5268,6 +5276,8 @@ Scope {
             keysFramed.splice(0, keysFramed.length - keysKept);
         if (keysHeard.length > keysKept)
             keysHeard.splice(0, keysHeard.length - keysKept);
+        if (keysDone.length > keysKept)
+            keysDone.splice(0, keysDone.length - keysKept);
         if (keysPressed.length > keysKept)
             keysPressed.splice(0, keysPressed.length - keysKept);
     }
@@ -5291,6 +5301,7 @@ Scope {
     // the frames by the keys still waiting for one.
     property var keysPressed: []
     property var keysHeard: []
+    property var keysDone: []
     property int keysTimed: 0
     property int keysWaiting: 0
 
@@ -6214,15 +6225,25 @@ Scope {
         }
 
         // When each of the last keys, typed or arrowed, was pressed, when
-        // the launcher's handler took it and when it reached its frame, in
-        // milliseconds of the monotonic clock, oldest first, a key at each
-        // place in all three, its press null if no press made it; and how
-        // many keys have reached a frame since the shell started.
+        // the launcher's handler took it, when that handler was done and
+        // when it reached its frame, in milliseconds of the monotonic
+        // clock, oldest first, a key at each place in all four, its press
+        // null if no press made it; and how many keys have reached a frame
+        // since the shell started.
         function framed(): string {
             const drawn = root.keysFramed.length;
             return JSON.stringify({ timed: root.keysTimed, clock: "monotonic",
                 pressed: root.keysPressed.slice(0, drawn),
-                heard: root.keysHeard.slice(0, drawn), frames: root.keysFramed });
+                heard: root.keysHeard.slice(0, drawn), done: root.keysDone.slice(0, drawn),
+                frames: root.keysFramed });
+        }
+
+        // How many rows each source has made since the shell started, by
+        // its name, and how many times the open launcher has refreshed,
+        // for the check that a source nobody sees makes none and the list
+        // refreshes at most four times a second.
+        function made(): string {
+            return JSON.stringify({ rows: root.tallies(), refreshes: root.refreshesDone });
         }
 
         // How many frames the card has drawn since this was first asked,
