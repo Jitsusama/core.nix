@@ -668,6 +668,14 @@ Provider {
         return all;
     }
 
+    // What it holds, by name after its name wherever its row stands: its
+    // managers and its entries, never Check Every Password, which is its
+    // act (VKCF3Z, db2d4ed6).
+    function memberNames(held = everything()) {
+        return held.filter(one => one.key !== checkRow.key && one.folded !== true)
+            .map(one => one.name);
+    }
+
     // A search looks through every entry held, not only those listed, and
     // the place's own rows: Check Every Password, and Needing Attention.
     function looksThrough() {
