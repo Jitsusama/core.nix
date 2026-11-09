@@ -2867,6 +2867,7 @@ def marked(line: Json, mark: str, rows: list[Json] | None = None) -> Json:
 # its allowance first, the plan stepping into its two windows.
 BUDGETED = {
     "v": 2,
+    "today": "$412 today",
     "sessions": {},
     "helpers": {},
     "families": {},
@@ -2910,9 +2911,7 @@ BUDGETED = {
                     "agent",
                 ),
                 marked(
-                    spend_line(
-                        "budget:claude", "Claude Pro", "85% of 5 h", "your own plan", "warning"
-                    ),
+                    spend_line("budget:claude", "Claude Pro", "85% of 5 h", role="warning"),
                     "agent",
                     rows=[
                         marked(
@@ -2934,8 +2933,8 @@ BUDGETED = {
                     spend_line(
                         "budget:proxy",
                         "Your AI proxy token",
-                        "$250 of $300",
-                        "the default \u00b7 the employer's money",
+                        "$250 of $300 today",
+                        "the default",
                         "warning",
                     ),
                     "agent",
@@ -2956,9 +2955,7 @@ BUDGETED = {
                     ],
                 ),
                 marked(
-                    spend_line(
-                        "budget:delta", "Delta team token", "$310 this month", "a team's token"
-                    ),
+                    spend_line("budget:delta", "Delta team token", "$310 this month"),
                     "agent",
                 ),
             ],
@@ -2975,7 +2972,7 @@ def allowance(
     unit = "dollars" if standing.startswith("$") else "share"
     window: Json = {"name": name, "label": label, "unit": unit, "warn": warn}
     window |= {"standing": standing, "nearest": nearest}
-    keys = ("window", "warns", "resets", "ends", "changed", "read", "state")
+    keys = ("brief", "window", "warns", "resets", "ends", "changed", "read", "state")
     return window | {"said": {key: said.get(key, "") for key in keys}}
 
 
@@ -3000,6 +2997,7 @@ BUDGETS = {
                     "85% of 5 h",
                     0.85,
                     warn=0.8,
+                    brief="85% \u00b7 resets 16:20",
                     window="5 hours",
                     warns="at 80%",
                     resets="16:20",
@@ -3011,6 +3009,7 @@ BUDGETS = {
                     "40% of the week",
                     0.4,
                     warn=0.8,
+                    brief="40% \u00b7 resets Mon 09:00",
                     window="a week",
                     warns="at 80%",
                     resets="Mon 09:00",
@@ -3018,6 +3017,7 @@ BUDGETS = {
                 ),
             ],
             "said": {
+                "what": "your own \u00b7 plan",
                 "spent": "",
                 "worth": "$84 today \u00b7 $1,120 this month",
                 "reading": "reading fine",
@@ -3028,7 +3028,7 @@ BUDGETS = {
             "label": "Your AI proxy token",
             "words": "the employer's money",
             "providers": [],
-            "standing": "$250 of $300",
+            "standing": "$250 of $300 today",
             "allowances": [
                 allowance(
                     "premium",
@@ -3053,6 +3053,7 @@ BUDGETS = {
                 ),
             ],
             "said": {
+                "what": "the employer's \u00b7 money",
                 "spent": "$402 today \u00b7 $3,060 in 7 days \u00b7 $20,144 this month",
                 "worth": "",
                 "reading": "reading fine",
@@ -3065,7 +3066,12 @@ BUDGETS = {
             "providers": [],
             "standing": "$310 this month",
             "allowances": [],
-            "said": {"spent": "$10 today \u00b7 $310 this month", "worth": "", "reading": ""},
+            "said": {
+                "what": "a team's \u00b7 token",
+                "spent": "$10 today \u00b7 $310 this month",
+                "worth": "",
+                "reading": "",
+            },
         },
     ],
 }
@@ -3091,10 +3097,18 @@ def drawer_shot(desktop: Desktop, title: str, picture: str) -> list[str]:
 
 
 def budgets_stand_in_agents(desktop: Desktop, named: str) -> None:
-    """Shoot Agents' Budgets row, which is AI spend's: its rows, their order and drawers."""
+    """Shoot Agents' Budgets row, which is AI spend's: its rows, their order and drawers.
+
+    It's the last of Agents' rows, beside AI Spend, which says today's dollars with their
+    period, as All AI Spend does (VKCF3Z, 2026-11-08).
+    """
     desktop.as_account("qs ipc call launcher collection agents")
     desktop.launcher_ready()
     desktop.launcher_until(lambda shown: "Budgets" in shown["rows"])
+    rows = desktop.showing()["rows"]
+    assert rows[-2:] == ["AI Spend", "Budgets"], rows
+    desktop.down_to("AI Spend")
+    assert desktop.showing()["selected"]["side"] == "$412 today"
     desktop.down_to("Budgets")
     assert desktop.showing()["selected"]["side"] == "$21,564 this month"
     desktop.shoot(f"launcher-agents-budgets-at-{named}")
@@ -3118,7 +3132,7 @@ def test_the_budgets_stand_behind_one_row_at_each_scale(
     window's say what budgets.json holds of each (VKCF3Z, 2026-11-07): a plan's, the employer's
     money's, a share window's and a dollar window past where it warns. A running period's
     drawer says its days and what its cuts went to most, and a cap's is its window's. Agents
-    shows the same Budgets row after its sessions. Each is kept for the design's look at
+    shows the same Budgets row last, beside AI Spend. Each is kept for the design's look at
     Joel's scales.
     """
     written(desktop, "budgets.json", BUDGETS)

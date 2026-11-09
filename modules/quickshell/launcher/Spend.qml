@@ -180,8 +180,14 @@ Provider {
         return all;
     }
 
-    // At home, after its title, how today stands, as the margin says it.
+    // After its title, at home and in Agents, how today stands with its
+    // period said, "$412 today", as All AI Spend says it (VKCF3Z,
+    // 2026-11-08); while the screen is shared, the first quiet line's,
+    // which holds no amount. Until the daemon writes `today`, as just
+    // after a switch, today's row's side.
     function counted() {
+        if (!sharing && (said?.today ?? "") !== "")
+            return said.today;
         const today = ((sharing ? said?.quiet : said?.now) ?? [])[0];
         return today ? today.side : "";
     }

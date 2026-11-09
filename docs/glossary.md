@@ -76,8 +76,8 @@ own, are never places.
 
 The models working for Joel, what they work on, and what they cost. Its
 sessions stand in one tree, each under its orchestrator, the orchestrators
-closed at its end, then Budgets, how each budget stands. Its places are
-Quests, Orchestrators, the Queue, Runs and AI spend. A
+closed at its end. Its places are Quests, Orchestrators, the Queue, Runs
+and AI spend, then Budgets, how each budget stands, always last. A
 session can be talked to, gone to, paused and stopped, and a closed
 orchestrator reopened; a quest can start a session, orchestrate, go first in
 the queue and conclude.
