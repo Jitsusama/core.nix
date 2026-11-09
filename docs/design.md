@@ -1454,13 +1454,15 @@ works the same way everywhere.
   nothing, a lowercase run and never the sentence that stays inside it,
   else how many it holds ("78 keys"); a place that only groups others
   (Machine, Network, Desktop) says nothing there. Now's right names the
-  first thing that needs Joel now, its minutes and how many more do
-  ("Answer the ask · 2 min · 2 more"), else what To Look At and To Try
-  hold ("44 to look at · 2 to try"); short of room its title gives way
-  by whole words behind an ellipsis, its minutes and counts never, and
-  with nothing waiting it says nothing (VKCF3Z, bd5cb965, a31a0e1b).
-  Now's drawer is its moment plate, which leaves out For You while the
-  row says it. A place's
+  first thing waiting on Joel, its minutes and how many more he can do
+  now ("Answer the ask · 2 min · 2 more"); short of room its title gives
+  way by whole words behind an ellipsis, its minutes and counts never
+  (VKCF3Z, bd5cb965). Calm, it says what waits by its band ("44 to look
+  at · 2 to try"), and nothing only when all are empty; For You's own
+  row inside Now counts every band, needed most first ("1 to do · 44 to
+  look at · 2 to try"), To Try giving way first (VKCF3Z, a31a0e1b,
+  3a92c450). Now's drawer is its moment plate, which leaves out For You
+  while the row says it. A place's
   row is the same row at home and inside its parent, made by one
   function (Joel, 2026-11-08: "i don't like how the title and values on
   the home screen differ from every other sub-menu"; VKCF3Z, 2a429f67),

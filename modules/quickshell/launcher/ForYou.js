@@ -148,6 +148,20 @@ function banded(items, now) {
         try: Order.sorted(bands.try, order) };
 }
 
+// How many each band holds, as items for a row's side: "1 to do · 44
+// to look at · 2 to try", a band holding none left out, what needs Joel
+// now needed most, so short of room To Try gives way first, then To Look
+// At. For You's own row counts all three; home's Now row says the last
+// two only while nothing needs him now, since then it leads with what
+// he acts on (VKCF3Z, 3a92c450). `counts` holds `now`, `look` and
+// `try`, any left out counting none; `said` holds the words.
+function bandsRun(counts, said) {
+    return [["now", "toDo", 3], ["look", "toLookAt", 2], ["try", "toTry", 1]]
+        .filter(([band]) => (counts[band] ?? 0) > 0)
+        .map(([band, word, keep]) => ({ said: filled(said[word], { count: counts[band] }),
+            keep }));
+}
+
 // Whether a look was left by a session, by the session or the address the
 // look names, matched against the session's address, its presence's
 // session or any address its presence answers to.

@@ -350,6 +350,19 @@ QtObject {
                 now).weight }
         ]).map(one => one.name), ["session", "passwords", "look"]);
 
+        // How many each band holds, as a row's side says it.
+        const bandWords = { toDo: "{count} to do", toLookAt: "{count} to look at",
+            toTry: "{count} to try" };
+        expect("every band, needed most first", ForYou.bandsRun({ now: 1, look: 44, try: 2 },
+            bandWords).map(item => [item.said, item.keep]),
+            [["1 to do", 3], ["44 to look at", 2], ["2 to try", 1]]);
+        expect("a band holding none left out", ForYou.bandsRun({ now: 0, look: 44, try: 2 },
+            bandWords).map(item => item.said), ["44 to look at", "2 to try"]);
+        expect("a band not given counts none", ForYou.bandsRun({ try: 2 }, bandWords)
+            .map(item => item.said), ["2 to try"]);
+        expect("all empty, nothing", ForYou.bandsRun({ now: 0, look: 0, try: 0 }, bandWords),
+            []);
+
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(failure);
