@@ -2022,7 +2022,7 @@
     case, both where two words are given or one is given inside a filter, refuses a word that's
     neither or a second of one with Vim's E475 and none at all with E471, names the source then
     the kind for the head, and Tab offers only the kinds and sources that would keep something,
-    each with how many
+    each with how many, its name as the head says it, and its kind's, source's or program's mark
   '';
   an-act-shows-before-its-daemon-answers = ''
     a row an act asked a daemon to change is drawn as it will be, keeping what the launcher made

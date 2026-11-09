@@ -7945,8 +7945,10 @@ Scope {
                                     groundFrom: commandRows.x
                                     selected: commandRow.index === commandRows.currentIndex
                                     shown: card.opacity > 0
-                                    glyph: commandRow.act?.glyph ?? ""
-                                    hue: Theme[commandRow.act?.hue ?? ""] ?? Theme.text
+                                    glyph: commandRow.modelData.glyph
+                                        || (commandRow.act?.glyph ?? "")
+                                    hue: Theme[commandRow.modelData.hue
+                                        || (commandRow.act?.hue ?? "")] ?? Theme.text
                                     name: commandRow.named
                                     plainName: commandRow.named
                                     count: commandRow.modelData.title ?? ""

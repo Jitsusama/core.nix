@@ -51,7 +51,7 @@ QtObject {
     }
 
     function offers(listed) {
-        return listed.map(one => `${one.value} ${one.note}`).join(", ");
+        return listed.map(one => `${one.value} ${one.side}`).join(", ");
     }
 
     function check(failures, what, got, want) {
@@ -126,6 +126,20 @@ QtObject {
         ];
         for (const [what, arg, offered] of tabs)
             check(failures, what, offers(Filter.offered(items, arg, said)), offered);
+        check(failures, "each offer is named as the head names it, with the field it fills",
+            Filter.offered(items, "", said).map(one => `${one.value}:${one.field}:${one.note}`)
+                .join(", "), "do:kind:To-Dos, look:kind:Looks, try:kind:To Try, "
+                + "desktop:source:Desktop, home-network:source:Home Network, "
+                + "mail:source:Mail, sessions:source:Sessions, slack:source:Slack");
+        // Every offer wears a mark: a kind its own, a source its own or its
+        // program's, and one the table doesn't know For You's tray, never the
+        // to-do's.
+        check(failures, "each offer wears its kind's, its source's or its program's mark",
+            Filter.offered(items, "", said).map(one => {
+                const mark = Filter.markOf(one);
+                return `${one.value} ${mark.glyph ?? `program:${mark.program}`}`;
+            }).join(", "), "do waitsOnJoel, look look, try toTry, desktop desktop, "
+                + "home-network forYou, mail mail, sessions agent, slack program:slack");
 
         // Two sources alike by name keep the order they came, and A to Z
         // reads numbers as numbers, so a tenth session follows the ninth.
