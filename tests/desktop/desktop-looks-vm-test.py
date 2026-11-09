@@ -219,9 +219,37 @@ def room_beside_the_card(desktop: Desktop) -> int:
     return round(min(MOST, (width - CARD) / 2 - GAP - MARGIN))
 
 
-def plate_shown(desktop: Desktop, scale: str) -> Json:
-    """Say what the drawer shows, once it's out, holding it to the card's lines and its width."""
-    drawer = desktop.showing()["drawer"]
+def facts_laid(desktop: Desktop, title: str) -> Json:
+    """Wait for the plate titled so to lay each fact under the last; give that report.
+
+    One read while its rows are still being laid holds them all on one line, and the title
+    breaks again as its face takes a new scale, laying the facts again after it, so what
+    the launcher said last may be mid-way: the plate is held to the report that passed.
+    """
+    laid: list[Json] = []
+
+    def placed(shown: Json) -> bool:
+        """Say the plate's facts each lie under the last, keeping the report that did."""
+        facts = shown["drawer"]["lines"]["facts"]
+        if (
+            shown["drawer"]["out"] is True
+            and shown["drawer"]["title"] == title
+            and len(facts) > 1
+            and all(above < below for above, below in pairwise(facts))
+        ):
+            laid.append(shown)
+        return bool(laid)
+
+    desktop.launcher_until(placed)
+    return laid[-1]
+
+
+def plate_shown(desktop: Desktop, scale: str, seen: Json | None = None) -> Json:
+    """Say what the drawer shows, once it's out, holding it to the card's lines and its width.
+
+    What it shows is what the launcher said last, or `seen`, the report a wait passed on.
+    """
+    drawer = (seen or desktop.showing())["drawer"]
     room = room_beside_the_card(desktop)
     assert drawer["width"] == room, f"at {scale} the plate is {drawer['width']} wide, not {room}"
     assert drawer["height"] == drawer["cardHeight"], f"the plate isn't the card's height: {drawer}"
@@ -1200,19 +1228,7 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         desktop.follow()
         desktop.launcher_until(lambda shown: "time.harbour.test" in shown["rows"])
         desktop.down_to("time.harbour.test")
-        # Its facts placed, each under the last: one read while its rows are still being laid
-        # holds them all on one line.
-        desktop.launcher_until(
-            lambda shown: (
-                shown["drawer"]["out"] is True
-                and shown["drawer"]["title"] == "time.harbour.test"
-                and len(shown["drawer"]["lines"]["facts"]) > 1
-                and all(
-                    above < below for above, below in pairwise(shown["drawer"]["lines"]["facts"])
-                )
-            )
-        )
-        drawer = plate_shown(desktop, scale)
+        drawer = plate_shown(desktop, scale, facts_laid(desktop, "time.harbour.test"))
         # The title, at Title, may take two lines of the plate's width, its leading apart;
         # the facts start on the card's beat under it, on the pitch.
         facts = drawer["lines"]["facts"]
