@@ -12,6 +12,7 @@ says why each piece is there.
 | `ir-camera-pipeline.sh`        | the IR sensor's link, set up at each boot                |
 | `camera-cvs.patch`             | the HAL, made to route this sensor through the CVS bridge |
 | `ipu7-psys-*.patch`            | the out-of-tree IPU7 driver, as its processing module needs it |
+| `v4l2-relayd-restarts-a-stalled-camera.patch` | the relay, made to start the camera again when a client gets no frames |
 
 The camera's kernel patches live with the laptop's other kernel
 patches in [`../kernel/local/`][local], since they're made against the

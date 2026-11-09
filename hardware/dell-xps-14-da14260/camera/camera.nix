@@ -28,6 +28,13 @@ let
   });
   icamerasrc = pkgs.gst_all_1.icamerasrc-ipu75xa.override { ipu7x-camera-hal = hal; };
 
+  # The relay, patched to start the camera again when a client waits with
+  # no frame, which a slow setup under pressure left it doing until it was
+  # restarted by hand.
+  relay = pkgs.v4l2-relayd.overrideAttrs (old: {
+    patches = old.patches or [ ] ++ [ ./v4l2-relayd-restarts-a-stalled-camera.patch ];
+  });
+
   # The HAL's configuration with Dell's tuning for the laptop's camera board
   # in place of Intel's, from Dell's driver pack, which can't be shared, so
   # it's fetched as the system builds. The HAL reads the tuning the sensor's
@@ -357,11 +364,24 @@ in
       # The sensor may bind a moment after the image processor appears.
       Restart = "always";
       RestartSec = 2;
+      # A call's picture is as live as its sound, so the relay comes first
+      # for the processor and the disk, as the compositor does. During a
+      # switch on 9 November the HAL's setup took 38 s against 75 ms idle,
+      # with a tenth of a gigabyte of the relay in swap; kept out of swap,
+      # it pages back nothing when a call starts.
+      CPUWeight = 1000;
+      IOWeight = 1000;
+      MemorySwapMax = 0;
     };
     # Four buffers keep the frame rate up, and exclusive capture lets Chrome
     # list it as a camera.
     preStart = "${loopback} add -b 4 -x 1 -n 'Built-in Camera' > ${device}";
-    script = ''exec ${lib.getExe pkgs.v4l2-relayd} -i "${input}" -o "${output}"'';
+    # The HAL writes its log through stdio, which held lines back in batches
+    # and lost them at a restart, so it goes out a line at a time.
+    script = ''
+      exec ${pkgs.coreutils}/bin/stdbuf -oL -eL \
+        ${lib.getExe relay} -i "${input}" -o "${output}"
+    '';
     postStop = ''${loopback} delete "$(cat ${device})" || true'';
   };
 }

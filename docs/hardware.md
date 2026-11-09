@@ -529,6 +529,19 @@ relay's buffers and queue, without which it measured a few frames a second.
 [Omarchy's camera package][12] ships the same graph. The relay starts only when
 the image processor appears, so a machine without the camera never runs it.
 
+The relay starts and stops the camera on its one main loop, and starting
+blocks it for as long as the camera takes to set up: 75 ms idle, but 38 s
+during a switch on 9 November. A call that gave up and came back in that
+time had its stop and start handled late, and the camera was left running
+with nothing asking it for frames until the relay was restarted by hand.
+A patch has the relay start the camera's pipeline again once a client has
+waited 10 s with no frame, and end for its service to start it afresh if
+that brings none, or if its loop stays blocked for 90 s; each says so in
+the relay's log. The relay comes first for the processor and the disk, is
+kept out of swap, and writes the HAL's log a line at a time. The HAL's
+complaints about a sensor control and its tuning at every start are
+harmless: a start that worked logs them too.
+
 Omarchy also sharpens the picture and lowers its exposure. Whether that looks
 better is for the laptop to show, as is the camera itself.
 
