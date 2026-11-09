@@ -255,6 +255,17 @@ Provider {
         return provider.repositoryAct().concat(provider.sshAct(), provider.tabsRow());
     }
 
+    // What its drawer in Programs says it holds (Applications.qml asks
+    // every provider's programFacts), from what was read ahead, never a
+    // read of its own.
+    function programFacts(program) {
+        if (program !== "kitty")
+            return [];
+        return Kitty.held(provider.tabsNow(), provider.repositoriesNow().length,
+            provider.everyMachine().length, provider.words("kitty:tabs"))
+            .map(fact => ({ label: Words.name(fact.id), value: fact.value }));
+    }
+
     // A new kitty window, through the kitty behind the window used last.
     function open(where) {
         Niri.spawn(Opens.opening(provider.tools, Opens.latest(provider.niri()), where));

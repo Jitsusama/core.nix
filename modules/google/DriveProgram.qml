@@ -38,4 +38,11 @@ Provider {
     function programActs(asked) {
         return asked === program ? Drive.placeRows(provider) : [];
     }
+
+    // What its drawer in Programs says it holds (Applications.qml asks
+    // every provider's programFacts), from the places read with the
+    // documents.
+    function programFacts(asked) {
+        return asked === program ? Drive.placeFacts() : [];
+    }
 }

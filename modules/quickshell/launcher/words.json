@@ -9865,6 +9865,10 @@
         "eyebrow": "in {folder} \u00b7 {kind}",
         "video": "video",
         "audio": "audio",
+        "video1": "1 video",
+        "videos": "{count} videos",
+        "audio1": "1 audio file",
+        "audios": "{count} audio files",
         "speed": "{figure}\u00d7",
         "volume": "{figure}%",
         "seconds": "{figure} s",
@@ -10311,6 +10315,31 @@
       "name": "Desktop ID"
     },
     {
+      "id": "kitty:repositories",
+      "in": "applications",
+      "name": "Repositories"
+    },
+    {
+      "id": "kitty:machines",
+      "in": "applications",
+      "name": "Machines"
+    },
+    {
+      "id": "tuple:last-call",
+      "in": "applications",
+      "name": "Last Call"
+    },
+    {
+      "id": "tuple:calls-lately",
+      "in": "applications",
+      "name": "Calls Lately"
+    },
+    {
+      "id": "mpv:to-finish",
+      "in": "applications",
+      "name": "Still to Finish"
+    },
+    {
       "id": "verb:program:play",
       "command": "resume",
       "in": "program:media",
@@ -10581,7 +10610,9 @@
         "closed": "closed",
         "panes": "{count} panes",
         "ssh": "ssh {machine}",
-        "tab": "tab {index} of {count}"
+        "tab": "tab {index} of {count}",
+        "inWindow": "{count} in 1 window",
+        "inWindows": "{count} in {windows} windows"
       }
     },
     {
@@ -11318,7 +11349,8 @@
         "called": "{name} called",
         "on": "on {program}",
         "call": "call",
-        "missedCall": "missed call"
+        "missedCall": "missed call",
+        "missedCount": "{count} missed"
       }
     },
     {

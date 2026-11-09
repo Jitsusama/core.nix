@@ -435,6 +435,21 @@ function drawerOf(pane, words, now) {
     };
 }
 
+// What kitty's drawer in Programs says it holds, from what was read ahead
+// (VKCF3Z, 2026-11-08): its tabs and how many OS windows hold them, "7 in
+// 3 windows", then how many repositories and machines it opens a window
+// in, each left out at none, by its id in the launcher's words.
+function held(open, repositories, machines, said) {
+    const windows = new Set(open.map(tab => tab.window)).size;
+    const inWindows = (windows === 1 ? said.inWindow : said.inWindows) ?? "";
+    return [
+        ["kitty:tabs", open.length === 0 ? ""
+            : inWindows.replace("{count}", String(open.length)).replace("{windows}", String(windows))],
+        ["kitty:repositories", repositories > 0 ? String(repositories) : ""],
+        ["kitty:machines", machines > 0 ? String(machines) : ""]
+    ].filter(fact => fact[1] !== "").map(fact => ({ id: fact[0], value: fact[1] }));
+}
+
 // The commands that go to a pane and close a tab or a pane, through the
 // kitty that holds it, as its remote control listens (kitty.conf).
 function socketOf(pid) {

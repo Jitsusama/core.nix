@@ -164,6 +164,25 @@ function toGo(one) {
     return Math.max(0, one.length - one.start);
 }
 
+// What mpv's drawer in Programs says of what it left part way, by its id
+// in the launcher's words (VKCF3Z, 2026-11-08): how many videos, then how
+// many audio files, "2 videos \u00b7 1 audio file", in `said`'s words; one
+// watched whole isn't left to finish, and nothing is said while none is.
+function held(left, said) {
+    const partway = left.filter(one => !whole(one));
+    const videos = partway.filter(one => one.kind === "video").length;
+    const audio = partway.length - videos;
+    const counted = (count, one, many) => {
+        if (count === 0) {
+            return "";
+        }
+        return String((count === 1 ? one : many) ?? "").replace("{count}", String(count));
+    };
+    const value = [counted(videos, said.video1, said.videos),
+        counted(audio, said.audio1, said.audios)].filter(part => part !== "").join(" \u00b7 ");
+    return value === "" ? [] : [{ id: "mpv:to-finish", value }];
+}
+
 // The words mpv's rows and drawers say, each thing's as `of` gives it, as
 // Words.of does, and a day's as `date(date, format)` says it, as
 // Qt.formatDate names days and months in the locale's words: what Resume's
