@@ -9,6 +9,7 @@
 # usage: inkscape FILE...
 set -euo pipefail
 
-printf '%s\n' "$@" > "$XDG_RUNTIME_DIR/inkscape-given.part"
+runtime=${XDG_RUNTIME_DIR:?the runtime folder of the session}
+printf '%s\n' "$@" > "$runtime/inkscape-given.part"
 recent-files add org.inkscape.Inkscape "$@"
-mv "$XDG_RUNTIME_DIR/inkscape-given.part" "$XDG_RUNTIME_DIR/inkscape-given"
+mv "$runtime/inkscape-given.part" "$runtime/inkscape-given"

@@ -44,6 +44,8 @@ onLinux {
       home = account graphical;
       settings = home.jitsusama.quickshell.launcher.providers.inkscape;
       qs = lib.getExe' graphical.pkgs.quickshell "qs";
+      # What each program had open lately is the programs daemon's.
+      programs = pkgs.callPackage ../programs/package.nix { };
       recent-files = lib.getExe (pkgs.callPackage ../open-with/recent-files.nix { });
       # The launcher's own files the step is made from, each by itself so
       # no other change there builds this again.
@@ -148,6 +150,13 @@ onLinux {
       export DRAWINGS_LIST=${lib.head settings.list}
       ${pkgs.bash}/bin/bash ${./tests/drawings-lately.sh} ${../../tests/inkscape-recent.xbel} \
         ${recent-files}
+      # The programs daemon runs the list programs share, given the source
+      # shell.qml's Applications is, as recents.nix gives it.
+      cat > sources.json <<EOF
+      [{"watch": "$XDG_DATA_HOME/recently-used.xbel", "list": ["$RECENT_FILES", "list"],
+        "dated": true}]
+      EOF
+      ${lib.getExe programs} "$XDG_RUNTIME_DIR/daemons/programs.sock" sources.json &
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
       touch $out
