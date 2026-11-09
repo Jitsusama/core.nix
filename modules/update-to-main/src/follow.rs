@@ -168,11 +168,11 @@ pub fn heads(config: &Config, was: Option<&Followed>) -> Result<Followed, String
 fn folder_head(hosted: &Hosted, was: Option<&Followed>) -> Option<String> {
     let read = || {
         let (program, args) = hosted.changed.as_ref()?.split_first()?;
-        let output = Command::new(program)
+        let mut command = Command::new(program);
+        let output = asking_nobody(&mut command)
             .args(args)
             .env("PATH", std::env::join_paths(&hosted.path).ok()?)
             .current_dir(&hosted.checkout)
-            .stdin(Stdio::null())
             .stderr(Stdio::null())
             .output()
             .ok()?;
@@ -184,15 +184,14 @@ fn folder_head(hosted: &Hosted, was: Option<&Followed>) -> Option<String> {
 }
 
 fn remote_head(config: &Config, repository: &str, branch: &str) -> Result<String, String> {
-    let output = Command::new(&config.tools.git)
+    let mut command = Command::new(&config.tools.git);
+    let output = asking_nobody(&mut command)
         .args([
             "ls-remote",
             "--exit-code",
             repository,
             &format!("refs/heads/{branch}"),
         ])
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .stdin(Stdio::null())
         .stderr(Stdio::null())
         .output()
         .map_err(|e| format!("{}: {e}", config.tools.git.display()))?;
@@ -203,9 +202,65 @@ fn remote_head(config: &Config, repository: &str, branch: &str) -> Result<String
     }
 }
 
+/// Keeps a command the follower runs from asking anyone for a login. It
+/// runs in the account's session from the moment the account signs in,
+/// before the credential broker that hands out its host's tokens is up,
+/// so a credential helper that gives nothing yet sent git to the session's
+/// askpass, and the desktop showed a sign-in nobody could answer (Joel, 8
+/// November: "everytime i boot it asks me for a delta git login"). Git
+/// asks an askpass whether or not terminal prompts are off, so both go,
+/// with git told not to ask at all; a look that gets no answer is taken
+/// again in `LOOK_EVERY`, once the broker can give one.
+fn asking_nobody(command: &mut Command) -> &mut Command {
+    command
+        .env_remove("SSH_ASKPASS")
+        .env_remove("GIT_ASKPASS")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_CONFIG_COUNT", "1")
+        .env("GIT_CONFIG_KEY_0", "credential.interactive")
+        .env("GIT_CONFIG_VALUE_0", "false")
+        .stdin(Stdio::null())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsStr;
+
+    #[test]
+    fn what_it_runs_can_ask_nobody_for_a_login() {
+        let mut command = Command::new("git");
+        command
+            .env("SSH_ASKPASS", "/the/desktops/askpass")
+            .env("GIT_ASKPASS", "/another/askpass");
+        asking_nobody(&mut command);
+        let envs: Vec<_> = command.get_envs().collect();
+        for askpass in ["SSH_ASKPASS", "GIT_ASKPASS"] {
+            assert!(
+                envs.contains(&(OsStr::new(askpass), None)),
+                "{askpass} reaches it: {envs:?}"
+            );
+        }
+        for (key, value) in [
+            ("GIT_TERMINAL_PROMPT", "0"),
+            ("GIT_CONFIG_KEY_0", "credential.interactive"),
+            ("GIT_CONFIG_VALUE_0", "false"),
+        ] {
+            assert!(
+                envs.contains(&(OsStr::new(key), Some(OsStr::new(value)))),
+                "{key} isn't {value}: {envs:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_hosted_mains_folder_is_read_without_a_login_prompt() {
+        let hosted = hosted_saying(&format!(
+            "[ -z \"${{SSH_ASKPASS-}}\" ] && [ \"$GIT_TERMINAL_PROMPT\" = 0 ] \
+             && [ \"$GIT_CONFIG_VALUE_0\" = false ] && echo {COMMIT}"
+        ));
+        assert_eq!(folder_head(&hosted, None).as_deref(), Some(COMMIT));
+    }
 
     #[test]
     fn an_update_is_stale_once_main_moves_past_a_long_build() {
