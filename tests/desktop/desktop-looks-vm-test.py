@@ -3978,7 +3978,7 @@ def nearby_heard(desktop: Desktop, at_each_scale: list[str], values: dict[str, A
         # Asked for by a terminal with the launcher closed, Nearby looks too, and says Buds: both
         # at once, since the radio looks only for a few seconds after each show.
         desktop.launcher_left_closed()
-        shown = desktop.in_session("launcher show bluetooth nearby | grep -q Buds")
+        shown = desktop.in_session("launcher show machine bluetooth nearby | grep -q Buds")
         machine.wait_until_succeeds(
             f"{shown} && ( "
             + " || ".join(f"{discovering(adapter)} | grep -qx 'b true'" for adapter in ADAPTERS)
