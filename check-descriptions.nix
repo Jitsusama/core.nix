@@ -2251,7 +2251,8 @@
   '';
   the-launcher-says-what-niri-refuses = ''
     a screen's change niri refuses says what was asked, what wasn't done and niri's words for why,
-    begun in lower case with no closing full stop, and one to a screen gone says it's unplugged
+    begun in lower case with no closing full stop, a $ in them kept as written, and one to a
+    screen gone says it's unplugged; the last lit screen not turned off says so the same way
   '';
   the-launcher-says-why-the-desktop-lags = ''
     the launcher's Lag leads with the worst of what waited, offers to see what's behind it from

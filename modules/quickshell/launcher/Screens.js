@@ -326,7 +326,7 @@ function toldOf(output, outputs, each, asked) {
     }
     // A screen that isn't lit always offers to come on, so only a way off
     // is ever refused.
-    return option === "unplugged" ? "notUnplugged" : "notOff";
+    return option === "unplugged" ? "not-unplugged" : "not-off";
 }
 
 // What a screen's option says it is now: powered while lit, unplugged

@@ -657,10 +657,8 @@ Provider {
                         screenWords, named(output));
                     if (asked.refused !== undefined)
                         return asked.refused;
-                    change(output, asked.asks, {
-                        thing: Screens.typedSaid(id, String(to)),
-                        done: "set"
-                    });
+                    change(output, asked.asks,
+                        { thing: lineSaid(id, to, asked.asks), done: "set" });
                     return "";
                 }
             };
@@ -678,6 +676,14 @@ Provider {
         return options;
     }
 
+    // A setting typed on the : line, said as its choice's row says it: a
+    // rotation by the vocabulary's words for its turn, the rest by their
+    // value.
+    function lineSaid(id, to, asks) {
+        return id === "rotation" ? turnedSaid(asks.Transform.transform)
+            : Screens.typedSaid(id, String(to));
+    }
+
     // A screen's option for the : line's :setl, which turns it as its Turn
     // It Off, Turn It On and Unplug It rows do (Screens.wayTo); one it
     // can't take, as unplugging the last lit screen, says so and does
@@ -690,7 +696,7 @@ Provider {
                 const asked = { option: option, on: on };
                 const told = Screens.toldOf(output, shown, Niri.powersOffEach, asked);
                 if (told !== "")
-                    return String(screenSaid[told] ?? "").replace("{name}", named(output));
+                    return ScreenAnswers.toldSaid(told, named(output), screenWords);
                 const way = Screens.wayTo(output, shown, Niri.powersOffEach, asked);
                 if (way.waits)
                     provider.darkenLast(way.asks);

@@ -32,7 +32,9 @@ QtObject {
             "not-on": "{thing} not turned on \u00b7 {why}",
             "not-off": "{thing} not turned off \u00b7 {why}",
             "not-unplugged": "{thing} not unplugged \u00b7 {why}",
-            isUnplugged: "{name} is unplugged"
+            isUnplugged: "{name} is unplugged",
+            isOn: "{name} is on",
+            "the-last-lit": "the last lit screen"
         })[key] ?? ""
     })
 
@@ -54,6 +56,17 @@ QtObject {
             refused("HP", "on", "no"), "HP not turned on \u00b7 no");
         check(failures, "and one unplugged",
             refused("HP", "unplug", "no"), "HP not unplugged \u00b7 no");
+        check(failures, "a $ in niri's words reads as niri wrote it",
+            refused("1.5\u00d7", "set", "no $& or $1 here"),
+            "1.5\u00d7 not set \u00b7 no $& or $1 here");
+
+        check(failures, "the last lit screen isn't turned off, said as niri's refusals are",
+            ScreenAnswers.toldSaid("not-off", "HP", words),
+            "HP not turned off \u00b7 the last lit screen");
+        check(failures, "nor unplugged", ScreenAnswers.toldSaid("not-unplugged", "HP", words),
+            "HP not unplugged \u00b7 the last lit screen");
+        check(failures, "and a screen already as asked says how it stands",
+            ScreenAnswers.toldSaid("isOn", "HP", words), "HP is on");
 
         check(failures, "a screen gone before the change came is unplugged",
             ScreenAnswers.answerSaid({ OutputConfigChanged: "OutputWasMissing" }, "HP", words),

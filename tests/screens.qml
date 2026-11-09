@@ -131,9 +131,9 @@ QtObject {
         check(failures, 'an unplugged one unplugged is unplugged',
             told(pulled, [panel, pulled], true, "unplugged", true), "isUnplugged");
         check(failures, 'the last lit screen is not unplugged',
-            told(panel, [panel, darkHp], true, "unplugged", true), "notUnplugged");
+            told(panel, [panel, darkHp], true, "unplugged", true), "not-unplugged");
         check(failures, 'nor turned off on an older niri',
-            told(panel, [panel, pulled], false, "power", false), "notOff");
+            told(panel, [panel, pulled], false, "power", false), "not-off");
         check(failures, 'and a way offered says nothing',
             told(hp, [panel, hp], true, "power", false), "");
 
