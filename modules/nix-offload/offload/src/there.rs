@@ -874,7 +874,8 @@ const PLANS: &str = "xargs -r nix-store --realise --dry-run 2>&1";
 /// and [`held::instead`] says which of those go up. What they reference
 /// goes only where no cache gives it the builder, which fetches the rest
 /// itself, as it would for a build. The builder's account is one its daemon trusts, so they go
-/// unsigned. When any of it fails, the builder builds them, as before.
+/// unsigned. When any of it fails, or the send falls behind
+/// [`send_within`], the builder builds what didn't go up, as before.
 fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, nix]: [&str; 2]) {
     // Said before it's asked, since a fresh builder asks its caches about
     // every path the build takes, which can run for minutes.
@@ -941,6 +942,7 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
         sized(size)
     );
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
+    let within = send_within(size);
     let sent = Command::new(nix)
         .args([
             "copy",
@@ -951,9 +953,80 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
         ])
         .args(&sending)
         .env("TMPDIR", "/tmp")
-        .status();
-    if !sent.is_ok_and(|sent| sent.success()) {
-        eprintln!("nix-offload: they couldn't be sent, so the builder builds {them}");
+        .spawn()
+        .map(|mut send| finished_within(&mut send, within));
+    match sent {
+        Ok(Some(sent)) if sent.success() => {}
+        Ok(None) => eprintln!(
+            "nix-offload: the send took longer than {}, slower than this machine's uplink, so \
+             it stops and the builder builds what didn't go up",
+            lasting(within)
+        ),
+        _ => eprintln!("nix-offload: they couldn't be sent, so the builder builds {them}"),
+    }
+}
+
+/// How fast held outputs must go up, in bytes a second, for sending them
+/// to be worth waiting on: about all of an uplink of 10 Mbit/s, as this
+/// machine's is. On 9 November a send of 1.4 GB shared one with four
+/// other tunnels, fell to 25 KB/s and was on course to outlast its run's
+/// two hours, when the builder could build what it lacked. What went up by
+/// then stays there.
+const SENDS_AT: u64 = 1_000_000;
+
+/// What a send is given before its pace counts, for ssh to connect and
+/// Nix to ask the builder what it holds.
+const SEND_STARTS: std::time::Duration = std::time::Duration::from_mins(2);
+
+/// How long a send of `size` bytes may take at [`SENDS_AT`], unless
+/// `NIX_OFFLOAD_SEND_WITHIN` says otherwise in seconds.
+fn send_within(size: u64) -> std::time::Duration {
+    std::env::var("NIX_OFFLOAD_SEND_WITHIN")
+        .ok()
+        .and_then(|seconds| seconds.parse().ok())
+        .map_or_else(
+            || SEND_STARTS + std::time::Duration::from_secs(size / SENDS_AT),
+            std::time::Duration::from_secs,
+        )
+}
+
+/// How `send` ended, or none once it ran past `within` and was told to
+/// end, which Nix does by ending its ssh and keeping what it had added.
+fn finished_within(
+    send: &mut std::process::Child,
+    within: std::time::Duration,
+) -> Option<std::process::ExitStatus> {
+    let began = std::time::Instant::now();
+    while began.elapsed() < within {
+        match send.try_wait() {
+            Ok(Some(status)) => return Some(status),
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(100)),
+            Err(_) => break,
+        }
+    }
+    if let Ok(pid) = libc::pid_t::try_from(send.id()) {
+        // SAFETY: a signal to our own child, which hasn't been waited on.
+        unsafe { libc::kill(pid, libc::SIGTERM) };
+    }
+    let told = std::time::Instant::now();
+    while told.elapsed() < std::time::Duration::from_secs(5) {
+        if send.try_wait().is_ok_and(|status| status.is_some()) {
+            return None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let _ = send.kill();
+    let _ = send.wait();
+    None
+}
+
+/// A while, as a person reads it: in seconds under two minutes, else in
+/// minutes, rounded up.
+fn lasting(while_: std::time::Duration) -> String {
+    match while_.as_secs() {
+        1 => "1 second".to_owned(),
+        seconds if seconds < 120 => format!("{seconds} seconds"),
+        seconds => format!("{} minutes", seconds.div_ceil(60)),
     }
 }
 
@@ -3311,6 +3384,20 @@ mod tests {
     use std::os::unix::process::CommandExt;
     use std::sync::mpsc;
     use std::time::Duration;
+
+    #[test]
+    fn a_send_is_given_two_minutes_and_its_size_at_a_megabyte_a_second() {
+        assert_eq!(send_within(0), Duration::from_mins(2));
+        // The 1.4 GB that crawled on 9 November gets 25 minutes, not two hours.
+        assert_eq!(send_within(1_400_000_000), Duration::from_secs(120 + 1400));
+    }
+
+    #[test]
+    fn a_while_reads_in_seconds_then_minutes() {
+        assert_eq!(lasting(Duration::from_secs(1)), "1 second");
+        assert_eq!(lasting(Duration::from_secs(90)), "90 seconds");
+        assert_eq!(lasting(Duration::from_secs(1520)), "26 minutes");
+    }
 
     const AARCH64: &str = concat!(
         r#"Derive([("out","/nix/store/a-boot.bin","","")],"#,

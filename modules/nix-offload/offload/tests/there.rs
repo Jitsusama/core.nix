@@ -87,12 +87,17 @@ fn executable(path: &Path, script: &str) {
 /// says. While the `nix-fails` file counts above 0, a call fails with 1
 /// and counts it down. `derivation show` prints the `derivations` file,
 /// `path-info --json` the `held` file and `path-info --recursive` the
-/// `closure` file, when there is one.
+/// `closure` file, when there is one. Sending held outputs up takes as
+/// many seconds as the `copy-takes` file says, when there is one.
 const NIX: &str = r#"#!/bin/sh
 here=$(dirname "$0")
 echo "$@" > "$here/nix-was-given"
 echo "$@" >> "$here/nix-calls"
 echo "${WORK_RUNS_ELSEWHERE:-}" > "$here/nix-marked"
+case "$*" in
+  *--substitute-on-destination*)
+    [ -e "$here/copy-takes" ] && exec sleep "$(cat "$here/copy-takes")" ;;
+esac
 case "$1 $2" in
   "derivation show") cat "$here/derivations" 2>/dev/null ;;
   "path-info --json") cat "$here/held" 2>/dev/null ;;
@@ -508,6 +513,83 @@ fn there_beside(folder: &Path, offload: &Path, vm: &Path, arguments: &[&str]) ->
         .env("XDG_CONFIG_HOME", folder)
         .output()
         .unwrap()
+}
+
+#[test]
+fn a_send_that_falls_behind_stops_and_the_builder_builds_the_rest() {
+    // On 9 November a send of 1.4 GB through an uplink four other tunnels
+    // shared fell to 25 KB/s, and would have run past its run's two hours.
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 0);
+    fs::write(
+        folder.path().join("plans"),
+        "these 2 derivations will be built:\n\
+         \x20 /nix/store/aaaa-system.drv\n\
+         \x20 /nix/store/bbbb-kernel.drv\n",
+    )
+    .unwrap();
+    fs::write(
+        folder.path().join("derivations"),
+        r#"{"version": 4, "derivations": {
+            "aaaa-system.drv": {
+                "outputs": {"out": {"path": "aaaa-system"}},
+                "inputs": {"drvs": {"bbbb-kernel.drv": {"outputs": ["out"]}}}},
+            "bbbb-kernel.drv": {
+                "outputs": {"out": {"path": "bbbb-kernel"}},
+                "inputs": {"drvs": {}}}}}"#,
+    )
+    .unwrap();
+    fs::write(
+        folder.path().join("held"),
+        r#"{"/nix/store/aaaa-system": null, "/nix/store/bbbb-kernel": {"narSize": 24000000}}"#,
+    )
+    .unwrap();
+    fs::write(folder.path().join("copy-takes"), "30").unwrap();
+    let began = std::time::Instant::now();
+    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        .arg("there")
+        .arg("/nix/store/aaaa-system.drv")
+        .env("NIX_OFFLOAD_SEND_WITHIN", "1")
+        .env("NIX_OFFLOAD_VM_DIR", "/nonexistent/nix-offload-vm")
+        .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
+        .env("NIX_OFFLOAD_VM_EXTRA_DIRS", NO_MORE_VMS)
+        .env(
+            "PATH",
+            format!(
+                "{}:{}",
+                folder.path().display(),
+                std::env::var("PATH").unwrap()
+            ),
+        )
+        .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+        .env("XDG_RUNTIME_DIR", folder.path())
+        .env("XDG_STATE_HOME", folder.path())
+        .env("XDG_CONFIG_HOME", folder.path())
+        .output()
+        .unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert!(
+        began.elapsed() < std::time::Duration::from_secs(20),
+        "the send ran to its end: {:?}",
+        began.elapsed()
+    );
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains(
+            "the send took longer than 1 second, slower than this machine's uplink, \
+             so it stops and the builder builds what didn't go up"
+        ) && !said.contains("couldn't be sent"),
+        "{said}"
+    );
+    // The build is still asked for, there.
+    assert_eq!(
+        given_to(folder.path()),
+        "nix-offload\nnix build --no-link '/nix/store/aaaa-system.drv^*'\n"
+    );
 }
 
 #[test]
