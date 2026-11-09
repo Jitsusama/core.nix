@@ -1121,6 +1121,15 @@ def walk_passwords_for_you(desktop: Desktop) -> None:
         )
         desktop.shoot("launcher-for-you-passwords-list")
         desktop.close_launcher()
+        # 1Password's program holds the same two as Needing Attention, after its vaults and
+        # before Check Every Password, now that a check has found them.
+        desktop.answer("1password")
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "1Password")
+        desktop.into_program()
+        desktop.launcher_until(
+            lambda shown: shown["rows"][-3:-1] == ["Needing Attention", "Check Every Password"]
+        )
+        desktop.close_launcher()
     finally:
         if shots:
             desktop.as_account("niri msg output winit scale 1")

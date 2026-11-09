@@ -45,3 +45,11 @@ function held(records, said) {
         ["passwords:favourites", liked > 0 ? Numbers.format(liked, 0) : ""]
     ].filter(fact => fact[1] !== "").map(fact => ({ id: fact[0], value: fact[1] }));
 }
+
+// What a vault holds, at its row's right, saying what it counts, "1 entry"
+// or "1,201 entries", by `said`'s words, rather than a bare figure after
+// its name, where it read as part of the name (VKCF3Z, de87ff45).
+function holding(count, said) {
+    const words = String((count === 1 ? said.entry : said.entries) ?? "");
+    return words.replace("{count}", Numbers.format(count, 0));
+}
