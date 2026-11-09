@@ -204,8 +204,8 @@ function takes(room, said) {
 }
 
 // Its update: the commit its machine runs, shortened, and core's beside
-// this machine's where both say one, then the step, then why it said it
-// needs a reboot.
+// this machine's where both say one, then how its last update ended, then
+// why it said it needs a reboot.
 function update(updated, place) {
     if (!updated) {
         return [];
