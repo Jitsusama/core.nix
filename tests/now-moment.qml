@@ -328,5 +328,21 @@ ShellRoot {
         expect("without a meeting, no meeting row",
             JSON.stringify(names()) === JSON.stringify(["Time", "Date", "Location", "Weather"]),
             JSON.stringify(names()));
+
+        // For You's row and the margin's tray say one count, a critical
+        // notice unread among it, which home's row names (Y2YBTS,
+        // 2026-11-09); its card up, it's the card's to say.
+        Notices.history = [{ id: 7, at: Date.now(), app: "power", summary: "Battery at 5%",
+            urgency: "critical", read: false }];
+        expect("a critical notice unread is one For You holds, as its tray counts",
+            now.waiting.side === "1" && ForYouHolds.count === 1,
+            JSON.stringify([now.waiting.side, ForYouHolds.count]));
+        expect("and home's row names it", now.homeSays() === "Battery at 5%", now.homeSays());
+        Notices.live = { "7": {} };
+        expect("its card up, neither counts it",
+            now.waitsNow === 0 && ForYouHolds.count === 0 && now.homeSays() === "",
+            JSON.stringify([now.waitsNow, ForYouHolds.count, now.homeSays()]));
+        Notices.live = {};
+        Notices.history = [];
     }
 }

@@ -217,6 +217,7 @@ let
     "Location.qml"
     "WaitingOnYou.qml"
     "Waiting.js"
+    "ForYouHolds.qml"
     "SpendWatch.qml"
     "Eero.qml"
     "Jobs.qml"

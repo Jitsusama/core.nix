@@ -1072,7 +1072,7 @@ it. Owners go by layer:
 | Do Not Disturb, Keep Awake, recording, sharing, mic muted, caps lock   | the margin mark, while true                        | Now; the session's rows |
 | Keyboard layer                                                         | the margin mark, while locked; nothing while a key holds it | Keyboard            |
 | Music playing                                                          | the margin mark while it plays; a notice for a moment when the track changes or a media key is pressed | Now |
-| What waits on Joel: an agent's want, a to-do he can do now, a look, a landing to try, a critical notice unread | For You's tray, the margin's one mark for it, while any waits; an agent's want a notice once | For You (Super+O); Agents ("pi" finds them) |
+| What waits on Joel: an agent's want, a to-do he can do now, a look, a source's to-do, a critical notice unread; a landing to try once the to-do daemon streams it | For You's tray, the margin's one mark for it, while any waits, counting as For You's row does; an agent's want a notice once | For You (Super+O); Agents ("pi" finds them) |
 | A camera open, and by what                                            | the margin mark, while a program reads one         | "camera"; Now               |
 | In a call                                                              | the margin mark, while in one                      | Programs › Tuple; Now        |
 | Notifications waiting                                                  | nothing in the margin: they're what came lately, and a critical one is For You's | Notifications (Super+N); Now |

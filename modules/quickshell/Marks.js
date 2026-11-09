@@ -49,9 +49,10 @@ function asked(launcher) {
 // row it holds and of the one selected, in order. A thing's row is
 // `on:<mark>` and its actions' `verb:on:<mark>:<name>`, so the last key
 // that names a thing names the one the keys are on, For You's row
-// `on:waitingOnYou` and all within it its tray's, `forYou`. Empty for
-// none.
-const ROW_MARKS = { waitingOnYou: "forYou" };
+// `on:waitingOnYou` and all within it its tray's, `forYou`: its rows
+// `on:waiting:*`, their acts `verb:on:waiting:*` and a look's
+// `verb:on:look:*` (Y2YBTS, 2026-11-09). Empty for none.
+const ROW_MARKS = { waitingOnYou: "forYou", waiting: "forYou", look: "forYou" };
 function pointed(launcher) {
     if (!asked(launcher)) {
         return "";

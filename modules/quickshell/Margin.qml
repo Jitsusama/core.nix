@@ -27,8 +27,8 @@
 //
 // What each is, in words, and what can be done about it, is the launcher's
 // Now (launcher/Now.qml): Super+O opens it, and clicking a mark
-// opens it on that mark's row, For You's tray For You itself. While it's open on a screen, the mark of
-// the row the keys are on wears the accent on that screen, as where the
+// opens it on that mark's row, For You's tray For You itself. While
+// it's open on a screen, the mark of the row the keys are on wears the accent on that screen, as where the
 // keys are always does, so the eye joins the row to its mark straight up
 // the line they share. Nothing grows, since anything past the gap would lie
 // over a window. A piece whose program has a

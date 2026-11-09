@@ -1992,17 +1992,21 @@ onLinux {
       niri = singleton "Niri.qml" ''
         function spawn(command) {}
       '';
-      # For You's Desktop row holds the notices unread, none of which the
-      # moment needs.
+      # For You's Desktop row holds the notices unread, and For You counts
+      # a critical one among what waits while no card says it.
       notices = singleton "Notices.qml" ''
         property var history: []
+        property var live: ({})
+        property var resting: ({})
         function markRead(ids) {}
         function seen() {}
       '';
       whereabouts = pkgs.callPackage ./whereabouts/package.nix { };
     in
     pkgs.runCommandLocal "the-launcher-shows-the-moment-in-now" { } ''
-      mkdir launcher
+      mkdir launcher pieces
+      cp ${./ForYouHolds.qml} ForYouHolds.qml
+      cp ${./pieces/Holding.js} pieces/Holding.js
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./Marks.js} Marks.js
