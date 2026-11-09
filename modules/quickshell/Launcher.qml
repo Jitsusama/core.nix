@@ -6949,6 +6949,10 @@ Scope {
                 facts: (root.drawerShows?.facts ?? []).filter(fact => fact)
                     .map(fact => fact.label ?? ""),
                 body: root.drawerShows?.body ?? "",
+                // Its words as drawn, a run laid in lines (Drawer.qml's bodySaid).
+                bodyDrawn: drawerCard.bodySaid,
+                // How many lines Qt draws them in.
+                bodyLines: drawerCard.bodyLines,
                 eyebrow: root.drawerShows?.eyebrow ?? "",
                 // Whether it's set as written, naming things, or in capitals.
                 eyebrowNames: !!root.drawerShows?.eyebrowNames,

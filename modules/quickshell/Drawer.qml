@@ -287,6 +287,18 @@ Floating {
     // Whether its words are prose to read, set as the reader sets its text,
     // rather than lines in the mono.
     readonly property bool prose: shown?.prose === true
+    // Whether its words are a run of items a dot apart (`runs: true`), as a
+    // place's members are, laid as a fact's run is (itemsKept): where it
+    // wraps, the break falls between two and the dot goes with it, so no
+    // line ends or starts on one (VKCF3Z, 2026-11-09, 8e0712aa).
+    readonly property bool runs: shown?.runs === true
+    // Its words as they're given to be drawn, a run measured in their own
+    // face, for the launcher to report.
+    readonly property string bodySaid: runs
+        ? itemsKept(body, bodyFace, wordsBox.width) : body
+    // How many lines Qt draws its words in, for the launcher to report: a
+    // run laid as one is as many as bodySaid's, Qt wrapping none further.
+    readonly property int bodyLines: bodyText.lineCount
     // Its groups of facts that hold any: a group with nothing to show
     // gives up its place, so a day with no weather or meeting leaves no
     // empty lines in the middle of the plate (docs/design.md, Space
@@ -968,6 +980,11 @@ Floating {
             : Theme.level.figure.pointSize * drawer.scriptGrown
         font.features: drawer.listsKeys ? ({}) : Theme.level.figure.features
     }
+    // The words' own face, a run among them measured by it.
+    FontMetrics {
+        id: bodyFace
+        font: bodyText.font
+    }
     // A fact's figure (the fact rows', below): Graph's ten braille cells at
     // Figure, which Meter's stroke is as wide as so the two read as kin, and
     // a capital at Figure, whose middle the stroke is centred on, as Meter's.
@@ -1413,7 +1430,10 @@ Floating {
         if (from < 0 || !reader)
             return shownAndHidden.hidden;
         const at = reader.positionAt(0, reader.drop + from * bodyText.leading + 1);
-        return shownAndHidden.hidden + Page.paragraphs(reader.getText(at, reader.length));
+        // A run's lines are where it was laid to wrap, one paragraph still.
+        const left = reader.getText(at, reader.length);
+        return shownAndHidden.hidden
+            + Page.paragraphs(drawer.runs ? left.replace(/[\n\u2028]/g, " ") : left);
     }
     // Whether the words are cut at the foot, so their reader is made to
     // count their paragraphs. It's handed to the words once the cut is
@@ -2237,7 +2257,7 @@ Floating {
                         sought: drawer.washing
                         width: parent.width
                         y: drawer.pitch / 2 + drawer.dropped - baselineOffset
-                        plain: drawer.body
+                        plain: drawer.bodySaid
                         styled: drawer.shown?.styled === true
                         leading: drawer.pitch
                         ink: Theme.text
