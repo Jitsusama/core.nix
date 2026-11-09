@@ -8,7 +8,8 @@
 //! signal, so nothing here asks on a clock.
 //!
 //! Each position far enough from the last one said (fix.rs) is named, its
-//! town and the zone it keeps asked of the web (named.rs), and written to
+//! town, its country and the zone it keeps asked of the web (named.rs),
+//! and written to
 //! the file it's given, a small JSON object replaced whole, which the
 //! launcher watches (Location.qml). The file is read back as it starts, so
 //! a restart says nothing new of a laptop that hasn't moved; one whose
@@ -47,6 +48,10 @@ use fix::{Fix, moved};
 
 /// How long a here still unnamed waits before its name is asked again.
 const AGAIN: std::time::Duration = std::time::Duration::from_mins(5);
+/// How many times one here is asked again for what it lacks, an hour's
+/// worth: a service that names a town but no country never will, and
+/// isn't asked forever.
+const TRIES: u32 = 12;
 
 /// How near, in metres, a town Joel names is taken to be: the width of a
 /// town, which is as sure as its name makes it.
@@ -101,7 +106,10 @@ async fn set(path: &Path, pin: &Path, words: &str) -> ExitCode {
         eprintln!("<3>the place found is nowhere on the Earth");
         return ExitCode::FAILURE;
     };
-    let fix = fix.named(Some(found.place), found.zone).by_hand();
+    let fix = fix
+        .named(Some(found.place), found.zone)
+        .countried(found.country)
+        .by_hand();
     let pinned = pin
         .parent()
         .map_or(Ok(()), fs::create_dir_all)
@@ -162,6 +170,8 @@ async fn follow(path: &Path, pin: &Path) -> Result<(), Box<dyn Error>> {
     client.start().await?;
     // A position GeoClue already had may come before the signal is heard.
     let mut found = geoclue::fix(&bus, client.location().await?).await;
+    // How many times this here has been asked again for what it lacks.
+    let mut tried: u32 = 0;
     loop {
         // While Joel's pin holds, GeoClue's positions are heard and left.
         let held = pinned(pin).is_some();
@@ -169,13 +179,14 @@ async fn follow(path: &Path, pin: &Path) -> Result<(), Box<dyn Error>> {
             // A new here, or the last one again while it still lacks its
             // name or its zone.
             let renamed = if moved(last.as_ref(), &now) {
+                tried = 0;
                 Some(now)
             } else {
                 last.clone().filter(Fix::unnamed)
             };
             if let Some(fix) = renamed {
                 let said = named::name(fix.latitude, fix.longitude).await;
-                let fix = fix.named(said.place, said.zone);
+                let fix = fix.named(said.place, said.zone).countried(said.country);
                 fix.write(path)?;
                 if last.as_ref().is_some_and(|was| was.distance(&fix) < 1.0) {
                     println!("<6>here named");
@@ -190,14 +201,21 @@ async fn follow(path: &Path, pin: &Path) -> Result<(), Box<dyn Error>> {
         }
         // GeoClue says nothing more of a laptop sitting still, so one still
         // unnamed, as when the program starts before a network does, is
-        // asked again a few minutes on, and never once it's named.
-        let unnamed = !held && last.as_ref().is_some_and(Fix::unnamed);
+        // asked again a few minutes on, and never once it's named or it's
+        // been asked an hour's worth.
+        let unnamed = !held && tried < TRIES && last.as_ref().is_some_and(Fix::unnamed);
         tokio::select! {
             update = updates.next() => match update {
                 Some(update) => found = geoclue::fix(&bus, update.args()?.now().clone()).await,
                 None => return Err("GeoClue's client stopped saying anything".into()),
             },
-            () = tokio::time::sleep(AGAIN), if unnamed => found = last.clone(),
+            // Only these retries count toward the hour's worth: a laptop
+            // offline for longer, saying it's still, is named once a
+            // network comes.
+            () = tokio::time::sleep(AGAIN), if unnamed => {
+                tried = tried.saturating_add(1);
+                found = last.clone();
+            }
             _ = gone.next() => return Err("GeoClue left the bus".into()),
         }
     }

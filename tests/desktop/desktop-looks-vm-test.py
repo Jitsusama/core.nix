@@ -1647,6 +1647,39 @@ def test_nows_plate_sets_its_head_and_groups_as_every_plate(
         )
         desktop.shoot(f"launcher-now-plate-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
+        location_plate_shown(desktop, scale)
+
+
+def location_plate_shown(desktop: Desktop, scale: str) -> None:
+    """See the Location's plate at a scale: how it was found, its town, and its figures."""
+    fix = "$XDG_RUNTIME_DIR/whereabouts.json"
+    when = int(desktop.machine.succeed("date +%s").strip()) - 720
+    here = {
+        "v": 2,
+        "latitude": 12.3457,
+        "longitude": -98.7654,
+        "accuracy": 26000,
+        "when": when,
+        "place": "Lighthouse, Ontario",
+        "zone": "America/Toronto",
+        "country": "Canada",
+    }
+    text = shlex.quote(json.dumps(here))
+    desktop.as_account(f"printf %s {text} > {fix}.q && mv {fix}.q {fix}")
+    desktop.as_account("qs ipc call launcher collection on")
+    desktop.launcher_ready()
+    desktop.down_to("Location")
+    desktop.launcher_until(
+        lambda shown: shown["drawer"]["out"] is True and shown["drawer"]["title"] == "Lighthouse"
+    )
+    drawer = plate_shown(desktop, scale)
+    assert drawer["eyebrow"] == "from Wi-Fi · location", f"at {scale} the plate: {drawer}"
+    assert drawer["facts"] == ["Located", "Accuracy", "Coordinates", "Country", "Zone"], drawer
+    assert drawer["valuesWhole"], f"at {scale} a fact's value breaks a word: {drawer}"
+    desktop.shoot(f"launcher-location-plate-at-{scale.replace('.', '-')}")
+    desktop.close_launcher()
+    # Nowhere again, as whereabouts writes it, for the tests after.
+    desktop.as_account(f"echo '{{}}' > {fix}.q && mv {fix}.q {fix}")
 
 
 # The file picker's plate, for each kind of file it previews and one it doesn't, at both of

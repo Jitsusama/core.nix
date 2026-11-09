@@ -300,6 +300,7 @@ let
     "launcher/Program.js"
     "launcher/Captured.js"
     "launcher/NeedsYou.js"
+    "launcher/Here.js"
     "launcher/Notice.js"
   ];
 

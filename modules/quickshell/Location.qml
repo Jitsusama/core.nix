@@ -23,8 +23,9 @@ Singleton {
     property string file: `${Quickshell.env("XDG_RUNTIME_DIR")}/whereabouts.json`
 
     // Here, as the file says it: { latitude, longitude, accuracy, when,
-    // place, zone }, place and zone null while they couldn't be asked; or
-    // null with no file, or one of another version.
+    // place, zone, country }, place and zone null while they couldn't be
+    // asked and country left out; or null with no file, or one of another
+    // version.
     property var here: null
     // Whether the file has been read once, so "unknown" is said only once
     // it's known to be.

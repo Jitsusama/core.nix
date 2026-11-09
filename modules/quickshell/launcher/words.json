@@ -4160,7 +4160,29 @@
       "id": "location",
       "in": "on",
       "name": "Location",
-      "term": "Desktop/location"
+      "term": "Desktop/location",
+      "said": {
+        "via": "from Wi-Fi \u00b7 location",
+        "viaHand": "set by hand \u00b7 location",
+        "hand": "set by hand",
+        "metres": "within {n} m",
+        "kilometres": "within {n} km",
+        "yesterday": "yesterday",
+        "north": "N",
+        "south": "S",
+        "east": "E",
+        "west": "W",
+        "unknown": "unknown",
+        "unnamed": "not named yet",
+        "notFound": "not found yet",
+        "unfound": "not found by GeoClue yet",
+        "found": "{within}, found through GeoClue",
+        "knows": "through GeoClue, {within}",
+        "elsewhere": "keeps {zone} \u00b7 not following"
+      },
+      "tells": {
+        "leftOut": "Wi-Fi gives no altitude, speed or heading."
+      }
     },
     {
       "id": "location:town",
@@ -4168,9 +4190,34 @@
       "name": "Town"
     },
     {
+      "id": "location:country",
+      "in": "location",
+      "name": "Country"
+    },
+    {
       "id": "location:knows",
       "in": "location",
       "name": "How It Knows"
+    },
+    {
+      "id": "location:located",
+      "in": "location",
+      "name": "Located"
+    },
+    {
+      "id": "location:accuracy",
+      "in": "location",
+      "name": "Accuracy"
+    },
+    {
+      "id": "location:coordinates",
+      "in": "location",
+      "name": "Coordinates"
+    },
+    {
+      "id": "location:zone",
+      "in": "location",
+      "name": "Zone"
     },
     {
       "id": "verb:location:copy",
@@ -6143,8 +6190,7 @@
         "unsynchronised": "not synchronised",
         "unkept": "nothing keeps the time",
         "day": "day {day}",
-        "byHand": "set by hand",
-        "within": "within {km} km"
+        "byHand": "set by hand"
       }
     },
     {

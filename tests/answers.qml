@@ -18,6 +18,7 @@ import "Zones.js" as Zones
 import "Moment.js" as Moment
 import "Keeping.js" as Keeping
 import "Warmth.js" as Warmth
+import "Here.js" as Here
 import "Colours.js" as Colours
 import "Asking.js" as Asking
 import "Machine.js" as Machine
@@ -615,6 +616,12 @@ QtObject {
         const day = new Date(2026, 10, 4);
         const moon = Moment.moon(evening);
         const season = Moment.season(evening, 43.67);
+        // Location's words, as words.json says them, and its numbers in an
+        // English locale's marks.
+        const hereSaid = { metres: "within {n} m", kilometres: "within {n} km", north: "N",
+            south: "S", east: "E", west: "W" };
+        const hereTold = { number: (value, decimals) => Qt.locale("en_CA").toString(value, "f",
+            decimals) };
         const figures = [
             ["UTC", Moment.utcClock(evening + 7000), "22:00:07"],
             ["Unix time", Moment.unix(evening), 1793829600],
@@ -745,7 +752,42 @@ QtObject {
                 KeepingCases.servers).join(", "), ""],
             ["activity beyond the count", Keeping.activity({ online: 1, offline: 1,
                 burstOnline: 1, burstOffline: 1, unresolved: 1 }, KeepingCases.servers)
-                .join(", "), "1 offline, 2 in a burst, 1 unresolved"]
+                .join(", "), "1 offline, 2 in a burst, 1 unresolved"],
+            // Where the laptop is claims no more places than it knows, the
+            // nearest order of magnitude to its accuracy: four under 35 m,
+            // three under 350 m, two under 3.5 km, one under 35 km, else
+            // none; how near is said to three figures, rounded up; and when
+            // it was found is how long ago within a day, else its day and
+            // time (VKCF3Z, 2026-11-08).
+            ["a position to 5 m", Here.coordinates({ latitude: 12.345_678,
+                longitude: -98.765_4, accuracy: 5 }, hereSaid),
+                "12.3457\u00b0 N \u00b7 98.7654\u00b0 W"],
+            ["a position to 80 m", Here.coordinates({ latitude: 12.345_678,
+                longitude: -98.765_4, accuracy: 80 }, hereSaid),
+                "12.346\u00b0 N \u00b7 98.765\u00b0 W"],
+            ["a position to 100 m", Here.coordinates({ latitude: 12.345_678,
+                longitude: -98.765_4, accuracy: 100 }, hereSaid),
+                "12.346\u00b0 N \u00b7 98.765\u00b0 W"],
+            ["a position to 5 km, south and east", Here.coordinates({ latitude: -12.345_6,
+                longitude: 123.456_7, accuracy: 5000 }, hereSaid),
+                "12.3\u00b0 S \u00b7 123.5\u00b0 E"],
+            ["a position to 500 km, in whole degrees", Here.coordinates({ latitude: 12.35,
+                longitude: -98.76, accuracy: 500_000 }, hereSaid), "12\u00b0 N \u00b7 99\u00b0 W"],
+            ["no hemisphere at none", Here.coordinates({ latitude: -0.04, longitude: 0.04,
+                accuracy: 26_000 }, hereSaid), "0.0\u00b0 \u00b7 0.0\u00b0"],
+            ["near, in metres", Here.within(80, hereSaid, hereTold), "within 80 m"],
+            ["near, a metre short of a kilometre", Here.within(999.5, hereSaid, hereTold),
+                "within 1 km"],
+            ["near, a metre past one", Here.within(1001, hereSaid, hereTold), "within 1.01 km"],
+            ["near, in kilometres", Here.within(26_000, hereSaid, hereTold), "within 26 km"],
+            ["near, in metres to three figures", Here.within(100.2, hereSaid, hereTold),
+                "within 101 m"],
+            ["near, a thousand kilometres on, to three figures",
+                Here.within(1_234_000, hereSaid, hereTold), "within 1,240 km"],
+            ["located within the day", Here.located(1000, 1000 * 1000 + 720_000,
+                { ago: (at, now) => `${(now - at) / 60_000} min ago` }), "12 min ago"],
+            ["located days ago", Here.located(1000, 1000 * 1000 + 3 * 86_400_000,
+                { day: () => "Saturday", clock: () => "06:46" }), "Saturday 06:46"]
         ];
         for (const [what, got, expected] of figures) {
             asked++;
