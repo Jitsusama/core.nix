@@ -50,7 +50,7 @@ pub struct Config {
     /// The Drive folder every object goes in.
     pub folder: Folder,
     /// The machine, as its objects are named.
-    pub host: String,
+    pub machine: String,
     /// Who can open an object: age recipients, plugins' included.
     pub recipients: Vec<String>,
     /// The gcloud application-default login.
@@ -138,7 +138,7 @@ impl Config {
                 .and_then(|most| usize::try_from(most).ok())
                 .unwrap_or(BACKFILL_PER_RUN),
             folder,
-            host: text("host")?,
+            machine: text("machine")?,
             recipients,
             credentials: text("credentials")?.into(),
             identities: value

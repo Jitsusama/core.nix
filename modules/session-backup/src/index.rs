@@ -8,7 +8,7 @@
 //! turns it took and what they cost, and its quest from the harness's
 //! record of the session where one is kept. Each run that sends logs, or
 //! finds logs sent before there was an index, sends their rows sealed as
-//! one more object, `<host>/index/<run>.jsonl.zst.age`, and keeps them on
+//! one more object, `<machine>/index/<run>.jsonl.zst.age`, and keeps them on
 //! the machine in the index file, which says which logs have a row.
 //!
 //! A row is keyed by the object's name, so a session resumed after it was

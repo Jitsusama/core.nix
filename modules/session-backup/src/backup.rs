@@ -77,7 +77,7 @@ pub fn run(config: &Config, now: SystemTime, most: Option<usize>) -> Result<Done
         });
     };
     let mut ledger = Ledger::open(&config.ledger)?;
-    let settled = names::settled(&config.sessions, &config.host, config.settled, now)?;
+    let settled = names::settled(&config.sessions, &config.machine, config.settled, now)?;
     let waiting: Vec<&Settled> = settled
         .iter()
         .filter(|log| !ledger.has(&log.name))
@@ -151,7 +151,7 @@ pub fn run(config: &Config, now: SystemTime, most: Option<usize>) -> Result<Done
         };
         let gone = gone(config, &settled, &ledger, index);
         rows.extend(read_back(&gone, config, &reading, &mut login, &mut done));
-        let name = batch_name(&config.host, seconds(now), &ledger);
+        let name = batch_name(&config.machine, seconds(now), &ledger);
         send_rows(
             &rows,
             &name,
@@ -233,17 +233,17 @@ fn send_log(
     Ok(())
 }
 
-/// The name a run's rows go to Drive as, `<host>/index/<run>.jsonl.zst.age`,
+/// The name a run's rows go to Drive as, `<machine>/index/<run>.jsonl.zst.age`,
 /// or with `-2`, `-3` and on after the run's time when a run in the same
 /// second sent rows already, since Drive would hold both under one name.
-fn batch_name(host: &str, at: u64, ledger: &Ledger) -> String {
+fn batch_name(machine: &str, at: u64, ledger: &Ledger) -> String {
     let run = names::stamp(at);
     // The ledger can't hold more names than it has entries, so one more
     // try than that always finds a free one.
     (1..=ledger.len() + 1)
         .map(|nth| match nth {
-            1 => format!("{host}/index/{run}.jsonl.zst.age"),
-            nth => format!("{host}/index/{run}-{nth}.jsonl.zst.age"),
+            1 => format!("{machine}/index/{run}.jsonl.zst.age"),
+            nth => format!("{machine}/index/{run}-{nth}.jsonl.zst.age"),
         })
         .find(|name| !ledger.has(name))
         .unwrap_or_default()
@@ -269,7 +269,7 @@ fn gone<'a>(
     if config.identities.is_empty() {
         return Vec::new();
     }
-    let rows = format!("{}/index/", config.host);
+    let rows = format!("{}/index/", config.machine);
     let here: std::collections::HashSet<&str> =
         settled.iter().map(|log| log.name.as_str()).collect();
     let mut gone: Vec<(&str, &str)> = ledger

@@ -8,7 +8,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Settled {
     pub path: PathBuf,
-    /// `<host>/<folder>/<log>.<last write>.jsonl.zst.age`.
+    /// `<machine>/<folder>/<log>.<last write>.jsonl.zst.age`.
     pub name: String,
     pub bytes: u64,
     /// Its last write, in seconds since the epoch, so the oldest go first.
@@ -20,7 +20,7 @@ pub struct Settled {
 /// it; anything else is left alone.
 pub fn settled(
     sessions: &Path,
-    host: &str,
+    machine: &str,
     settled: Duration,
     now: SystemTime,
 ) -> Result<Vec<Settled>, String> {
@@ -44,8 +44,8 @@ pub fn settled(
             continue;
         };
         let name = match &folder {
-            Some(folder) => format!("{host}/{folder}/{stem}.{}.jsonl.zst.age", stamp(written)),
-            None => format!("{host}/{stem}.{}.jsonl.zst.age", stamp(written)),
+            Some(folder) => format!("{machine}/{folder}/{stem}.{}.jsonl.zst.age", stamp(written)),
+            None => format!("{machine}/{stem}.{}.jsonl.zst.age", stamp(written)),
         };
         found.push(Settled {
             path,

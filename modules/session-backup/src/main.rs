@@ -91,7 +91,7 @@ fn status(file: &Path) -> Result<(), String> {
     let ledger = Ledger::open(&config.ledger)?;
     let settled = names::settled(
         &config.sessions,
-        &config.host,
+        &config.machine,
         config.settled,
         SystemTime::now(),
     )?;
@@ -102,7 +102,7 @@ fn status(file: &Path) -> Result<(), String> {
     );
     if let Some(path) = &config.index {
         let index = Index::open(path)?;
-        let rows = format!("{}/index/", config.host);
+        let rows = format!("{}/index/", config.machine);
         let logs = ledger.sent().filter(|(name, _)| !name.starts_with(&rows));
         let (all, rowless) = logs.fold((0, 0), |(all, rowless), (name, _)| {
             (all + 1, rowless + usize::from(!index.has(name)))
