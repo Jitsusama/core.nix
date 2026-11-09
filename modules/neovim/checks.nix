@@ -310,10 +310,10 @@ onLinux {
     let
       home = account workstation;
     in
-    # Kept in Nix because it leaves Neovim through the account's own
-    # Neovim and probe, which Nix splices in, and each leaving is a line.
     pkgs.runCommandLocal "neovim-keeps-a-session-of-its-folder"
       { nativeBuildInputs = [ home.home.path ]; }
+      # Kept in Nix because it leaves Neovim through the account's own
+      # Neovim and probe, which Nix splices in, and each leaving is a line.
       ''
         ${neovimAt home}
         # A folder whose name holds a space and a %, which a command line

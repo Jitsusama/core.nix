@@ -367,9 +367,15 @@ mod tests {
 
     #[test]
     fn a_value_claiming_too_much_or_cut_short_is_refused() {
-        assert!(read(&mut &[0xdb, 0xff, 0xff, 0xff, 0xff][..]).is_err());
-        assert!(read(&mut &[0xa3, b'a'][..]).is_err());
-        assert!(read(&mut &[][..]).is_err());
+        assert!(
+            read(&mut &[0xdb, 0xff, 0xff, 0xff, 0xff][..]).is_err(),
+            "a string claiming four billion bytes"
+        );
+        assert!(
+            read(&mut &[0xa3, b'a'][..]).is_err(),
+            "a string of three cut after one"
+        );
+        assert!(read(&mut &[][..]).is_err(), "nothing at all");
     }
 
     #[test]
@@ -511,12 +517,24 @@ mod tests {
             )
             .unwrap()
         };
-        assert!(go(&neovim.server, buffer("two.txt")).unwrap());
+        assert!(
+            go(&neovim.server, buffer("two.txt")).unwrap(),
+            "two.txt, in the second tab, not gone to"
+        );
         assert_eq!(now(), json!([2, path("two.txt")]));
-        assert!(go(&neovim.server, buffer("three.txt")).unwrap());
+        assert!(
+            go(&neovim.server, buffer("three.txt")).unwrap(),
+            "three.txt, hidden, not gone to"
+        );
         assert_eq!(now(), json!([2, path("three.txt")]));
-        assert!(go(&neovim.server, buffer("one.txt")).unwrap());
+        assert!(
+            go(&neovim.server, buffer("one.txt")).unwrap(),
+            "one.txt, in the first tab, not gone to"
+        );
         assert_eq!(now(), json!([1, path("one.txt")]));
-        assert!(!go(&neovim.server, 999).unwrap());
+        assert!(
+            !go(&neovim.server, 999).unwrap(),
+            "a buffer Neovim lacks said gone to"
+        );
     }
 }
