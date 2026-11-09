@@ -41,6 +41,11 @@ pub struct Meeting {
     pub all_day: bool,
     /// How it repeats, for one of a series whose rule was heard.
     pub repeats: Option<Repeats>,
+    /// The series it's one of, by Google's own id for it
+    /// (`recurringEventId`), so the shell holds a series once by what it
+    /// is rather than by reading an instance's id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub series: Option<String>,
     /// How Joel answered, or none when he wasn't asked: his own event, or
     /// one with nobody else on it.
     pub answer: Option<Answer>,
@@ -474,6 +479,7 @@ fn meeting(event: &Value, zone: &TimeZone, defaults: &[i64], writable: &[&str]) 
         end,
         all_day: start_all_day,
         repeats: None,
+        series: text("recurringEventId").map(str::to_owned),
         answer,
         link,
         kind,
@@ -709,6 +715,11 @@ mod tests {
             said,
             [Some(fortnightly.clone()), Some(fortnightly), None, None]
         );
+        let of: Vec<_> = found
+            .iter()
+            .map(|meeting| meeting.series.as_deref())
+            .collect();
+        assert_eq!(of, [Some("s"), Some("s"), Some("q"), None]);
     }
 
     #[test]
@@ -800,6 +811,7 @@ mod tests {
                 end: 1_793_045_700_000,
                 all_day: false,
                 repeats: None,
+                series: None,
                 answer: Some(Answer::Maybe),
                 link: Some("https://meet.google.com/abc-defg-hij".into()),
                 kind: Some(Kind::Meet),

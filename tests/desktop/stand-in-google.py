@@ -27,7 +27,8 @@ program keeps it, or to save, Google's own as their office files.
 Drive's own places hold the menu, which he opened last, then the two documents, as its Recent;
 the Trips folder, as Starred; Team Budget, as Shared with Me; and the Team shared drive.
 What a Recent holds: Joel held Retro a day before the stand-in starts, Ada's on Meet with Grace
-going, and read Grace's Trip Notes three hours before it.
+going, and once before that, a week earlier, as one series; he read Grace's Trip Notes three
+hours before it starts, and an hour before that sent Ada, Grace and Alan Notes on the Plan.
 """
 
 import copy
@@ -54,9 +55,12 @@ SOON = int(os.environ.get("GOOGLE_STAND_IN_SOON", str(5 * MINUTE)))
 # nothing, as the program says it (state.rs).
 SIGNED_OUT = os.environ.get("GOOGLE_STAND_IN_ACCOUNT") == "signedOut"
 AHEAD = 30 * MINUTE
-# How long before the stand-in starts Retro was held, and Trip Notes read.
+# How long before the stand-in starts Retro was held, and Trip Notes read, and how long before
+# them Retro was held the time before and Notes on the Plan sent.
 HELD = 26 * 60 * MINUTE
 READ = 3 * 60 * MINUTE
+WEEK = 7 * 24 * 60 * MINUTE
+SENT = 60 * MINUTE
 LATER = 120 * MINUTE
 LASTS = 30 * MINUTE
 # What Drive's copies kept here take, and the most they may before the oldest go, in bytes.
@@ -293,11 +297,24 @@ class Account:
                 "Retro",
                 now - HELD,
                 "rtr-ospe-ctv",
+                series="retro",
                 holds=False,
                 through="ada@example.com",
                 organizer={"name": "Ada Lovelace", "email": "ada@example.com"},
                 guests=[{"name": "Grace Hopper", "email": "grace@example.com", "answer": "yes"}],
-            )
+            ),
+            # The time before, of the same series by Google's id for it, so Retro is listed once.
+            meeting(
+                "retro_20261020T150000Z",
+                "Retro",
+                now - HELD - WEEK,
+                "rtr-ospe-ctv",
+                series="retro",
+                holds=False,
+                through="ada@example.com",
+                organizer={"name": "Ada Lovelace", "email": "ada@example.com"},
+                guests=[{"name": "Grace Hopper", "email": "grace@example.com", "answer": "yes"}],
+            ),
         ]
         self.lately = [
             {
@@ -312,7 +329,24 @@ class Account:
                 "page": "https://mail.google.com/mail/u/0/#all/trip",
                 "body": "The train leaves at nine.",
                 "attachments": [],
-            }
+            },
+            {
+                "id": "notes",
+                "from": "Sam Rivers",
+                "address": "sam@example.com",
+                "to": "Ada Lovelace, Grace Hopper",
+                "cc": "Alan Turing",
+                "others": [],
+                "subject": "Notes on the Plan",
+                "at": now - READ - SENT,
+                "page": "https://mail.google.com/mail/u/0/#all/notes",
+                "body": "A few thoughts on the plan.",
+                "attachments": [],
+                # Sent by Joel, as Gmail's SENT label tells the daemon, which names who it
+                # went to, never him: three, so its row gives way by whole names.
+                "sent": True,
+                "went": ["Ada Lovelace", "Grace Hopper", "Alan Turing"],
+            },
         ]
         self.unread = 3
         # Mail marked read, which marking it unread again brings back.

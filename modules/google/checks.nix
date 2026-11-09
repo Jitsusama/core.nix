@@ -80,6 +80,7 @@ onLinux {
     pkgs.runCommandLocal "the-desktop-tells-the-next-meeting" { } ''
       cp ${../../tests/calendar.qml} calendar.qml
       cp ${./Calendar.js} Calendar.js
+      cp ${./Repeats.js} Repeats.js
       cp ${./Meet.js} Meet.js
       cp ${../quickshell/When.js} When.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -106,7 +107,6 @@ onLinux {
       cp ${../quickshell/FileFacts.js} FileFacts.js
       cp ${./Mail.js} Mail.js
       cp ${../quickshell/When.js} When.js
-      cp ${./Calendar.js} Calendar.js
       cp ${./Google.js} Google.js
       cp ${./Saves.js} Saves.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -129,7 +129,6 @@ onLinux {
       cp ${./Google.js} Google.js
       cp ${./Mail.js} Mail.js
       cp ${../quickshell/When.js} When.js
-      cp ${./Calendar.js} Calendar.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       ${shellFolderLint}

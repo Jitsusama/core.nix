@@ -150,6 +150,7 @@ in
       "quickshell/Google.js".source = ./Google.js;
       "quickshell/Calendar.qml".source = ./Calendar.qml;
       "quickshell/Calendar.js".source = ./Calendar.js;
+      "quickshell/Repeats.js".source = ./Repeats.js;
       "quickshell/Mail.qml".source = ./Mail.qml;
       "quickshell/Mail.js".source = ./Mail.js;
       "quickshell/Meet.js".source = ./Meet.js;

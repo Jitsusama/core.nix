@@ -13,8 +13,8 @@ const LATELY_DAYS = 6;
 // How wide a clock's hours and minutes are written.
 const DIGITS = 2;
 
-function midnight(moment) {
-    return new Date(moment.getFullYear(), moment.getMonth(), moment.getDate()).getTime();
+function midnight(date) {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
 // How many days before `now` a moment's day is, by the calendar, so a
@@ -50,6 +50,24 @@ function day(time, now, said) {
     return said.date(at, at.getFullYear() === today.getFullYear() ? "d MMM" : "d MMM yyyy");
 }
 
+// Its time on a clock, "09:05".
+function clock(time) {
+    const at = new Date(time);
+    const two = number => String(number).padStart(DIGITS, "0");
+    return `${two(at.getHours())}:${two(at.getMinutes())}`;
+}
+
+// When something was or will be, its day and its time: today its time
+// alone, "06:06", and on another day its day as `day` says it, then its
+// time, "yesterday 14:10", "Wednesday 09:30", "28 Oct 09:30". A meeting
+// over says when it was by it, and a drawer's fact says when beside a row
+// whose side does, so the launcher says a moment one way (Y2YBTS,
+// 2026-11-09).
+function moment(time, now, said) {
+    const on = day(time, now, said);
+    return on === "" ? clock(time) : `${on} ${clock(time)}`;
+}
+
 // When something was, as a row says it at its side: "just now" within a
 // minute, "12 min ago" within the hour, its time earlier today, "14:02",
 // and before today its day as `day` says it. A moment ahead of now, from
@@ -66,10 +84,5 @@ function came(time, now, said) {
         return String(said.minutes).replace("{minutes}", Math.floor(since / MINUTE));
     }
     const on = day(time, now, said);
-    if (on !== "") {
-        return on;
-    }
-    const at = new Date(time);
-    const two = number => String(number).padStart(DIGITS, "0");
-    return `${two(at.getHours())}:${two(at.getMinutes())}`;
+    return on === "" ? clock(time) : on;
 }

@@ -1,14 +1,16 @@
-// Which meeting is next, when it is in words, whether it's about to start,
-// said as a notice or told already by another, and joined by Return, its day in full, how Joel
-// answered it, its details for the drawer and the line answering it, and
-// which Meet call a window is and whose, from meetings like the google
-// program's, run in Qt's own JavaScript engine,
-// the one the shell runs it in. The
-// `the-desktop-tells-the-next-meeting` check copies Calendar.js and Meet.js beside this
-// file and runs `qml -platform offscreen calendar.qml`. Times are made on
-// the local clock, so the cases hold in whatever zone the check runs in.
+// Which meeting is next, when it is in words, whether it's about to
+// start, said as a notice or told already by another, and joined by
+// Return, its day in full, how Joel answered it, its details for the
+// drawer and the line answering it, and which Meet call a window is and
+// whose, from meetings like the google program's, run in Qt's own
+// JavaScript engine, the one the shell runs it in. The
+// `the-desktop-tells-the-next-meeting` check copies Calendar.js,
+// Repeats.js and Meet.js beside this file and runs `qml -platform
+// offscreen calendar.qml`. Times are made on the local clock, so the
+// cases hold in whatever zone the check runs in.
 import QtQuick
 import "Calendar.js" as Calendar
+import "Repeats.js" as Repeats
 import "Meet.js" as Meet
 
 QtObject {
@@ -223,6 +225,12 @@ QtObject {
             "14:00 to 14:30, maybe");
         check("a meeting he holds says its times alone", Calendar.about(
             meeting("m", at(26, 14, 0), at(26, 14, 30), { answer: null })), "14:00 to 14:30");
+        // A meeting's row notes its times and answer until it's over, then nothing.
+        check("a meeting to come notes its times and answer", Calendar.noted(
+            meeting("m", at(26, 16, 0), at(26, 16, 30), { answer: "maybe" }), now),
+            "16:00 to 16:30, maybe");
+        check("a meeting that's over notes nothing", Calendar.noted(
+            meeting("m", at(25, 16, 0), at(25, 16, 30), { answer: "maybe" }), now), "");
 
         // Its details, as the drawer shows them beside its row.
         check("an invitation's details in full", Calendar.details(meeting("m", at(26, 14, 0),
@@ -276,6 +284,14 @@ QtObject {
             { label: "When", value: "Monday 26 October, 14:00 to 14:30" },
             { label: "Repeats", value: "Every week on Monday" }
         ]);
+        check("one of a series a Recent lists once says how many came before",
+            Calendar.details(meeting("m", at(26, 14, 0), at(26, 14, 30), { answer: null,
+                link: null, repeats: rule({ days: [day(1)] }) }), "Untitled",
+                "8 in the past 30 days").facts, [
+                { label: "When", value: "Monday 26 October, 14:00 to 14:30" },
+                { label: "Repeats", value: "Every week on Monday" },
+                { label: "Earlier", value: "8 in the past 30 days" }
+            ]);
         check("how a series repeats, in words", [
             rule({ days: [1, 2, 3, 4, 5].map(n => day(n)) }),
             rule({ days: [day(1), day(3)], interval: 2 }),
@@ -288,7 +304,7 @@ QtObject {
             rule({ days: [day(1), day(3), day(5)] }),
             null,
             rule({ every: "hour" })
-        ].map(Calendar.repeated), [
+        ].map(Repeats.repeated), [
             "Every weekday",
             "Every 2 weeks on Monday and Wednesday",
             "Every day",
@@ -525,15 +541,16 @@ QtObject {
             two: "{first} and {second}", others: "{first} and {count} others"
         };
         // When one over was held, from its start, as the launcher says when
-        // anywhere, never "now": [the meeting, said]
+        // anywhere, never "now", and before today with its time (VKCF3Z,
+        // ccccbe5f): [the meeting, said]
         const whens = [
             [meeting("ended now", at(26, 15, 0), now), "20 min ago"],
             [meeting("short", at(26, 15, 10), at(26, 15, 15)), "10 min ago"],
             [meeting("just", now - 30 * 1000, now - 10 * 1000), "just now"],
             [meeting("lunch", at(26, 12, 0), at(26, 13, 0)), "12:00"],
-            [meeting("yesterday", at(25, 9, 0), at(25, 9, 30)), "yesterday"],
-            [meeting("thursday", at(22, 9, 0), at(22, 9, 30)), "Thursday"],
-            [meeting("long ago", at(12, 9, 0), at(12, 9, 30)), "12 Oct"],
+            [meeting("yesterday", at(25, 9, 0), at(25, 9, 30)), "yesterday 09:00"],
+            [meeting("thursday", at(22, 9, 0), at(22, 9, 30)), "Thursday 09:00"],
+            [meeting("long ago", at(12, 9, 0), at(12, 9, 30)), "12 Oct 09:00"],
             [meeting("holiday", at(25, 0, 0), at(26, 0, 0), { allDay: true }), "yesterday"]
         ];
         for (const [one, meant] of whens)
@@ -561,7 +578,7 @@ QtObject {
                 fields), said), meant);
         check("a call's side, who and when", Meet.heldSide(meeting("retro", at(25, 9, 0),
             at(25, 9, 30), theirs({ guests: [grace] })), now, said),
-            "Ada Lovelace and Grace Hopper \u00b7 yesterday");
+            "Ada Lovelace and Grace Hopper \u00b7 yesterday 09:00");
         check("a call's side with nobody else, when alone", Meet.heldSide(meeting("alone",
             at(26, 12, 0), at(26, 12, 30), { holds: true }), now, said), "12:00");
 

@@ -263,3 +263,35 @@ function heldLately(held, meetings, now) {
         .sort((one, other) => other.start - one.start)
         .filter(meeting => !seen.has(meeting.id) && seen.add(meeting.id));
 }
+
+// The series a meeting is one of, by Google's own id for it, which the
+// daemon passes on (`series`, its recurringEventId), never read off an
+// instance's id: a series split at "this and following" is two, as Google
+// keeps it. A meeting held once is its own.
+function seriesOf(meeting) {
+    return String(meeting.series ?? meeting.id ?? "");
+}
+
+// The meetings held lately as Calendar's Recent lists them: a series once,
+// at its latest, with how many of it came before as `earlier`, so a daily
+// meeting takes one place, not nine (VKCF3Z, ccccbe5f). `lately` is
+// heldLately's, newest first, which Meet's calls are still found among.
+function seriesOnce(lately) {
+    const bySeries = new Map();
+    for (const meeting of lately ?? []) {
+        const series = seriesOf(meeting);
+        const latest = bySeries.get(series);
+        if (latest) {
+            latest.earlier += 1;
+        } else {
+            bySeries.set(series, Object.assign({}, meeting, { earlier: 0 }));
+        }
+    }
+    return [...bySeries.values()];
+}
+
+// How many of its series came before one a Recent lists, in `said`'s
+// words, "8 in the past 30 days", or nothing when none did.
+function earlier(count, said) {
+    return count > 0 ? String(said?.earlier ?? "").replace("{count}", count) : "";
+}

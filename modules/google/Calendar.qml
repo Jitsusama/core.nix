@@ -66,10 +66,13 @@ Singleton {
     // of them on Meet, each once by its code, for Meet's (Meet.qml).
     readonly property var lately: Account.heldLately(Google.held, meetings, now)
     readonly property var called: Calls.called(lately)
+    // The same as Calendar's Recent lists them, a series once at its
+    // latest, saying how many came before (Google.js's seriesOnce).
+    readonly property var had: Account.seriesOnce(lately)
 
     // When a meeting is, as its row says it: "in 12 min", "at 16:00", and
-    // for one over when it was held, "yesterday", in the words mail says
-    // when in.
+    // for one over when it was held, "yesterday 15:00", in the words mail
+    // says when in.
     function when(meeting) {
         return Said.when(meeting, now, Mail.dates);
     }
@@ -208,7 +211,9 @@ Singleton {
             // Whether it's today's, so Calendar's row counts today's
             // meetings while they're listed under it (Applications.qml).
             today: Said.dayOf(meeting.start, root.now) === "",
-            note: root.about(meeting),
+            // Its times and his answer, or nothing once it's over, where
+            // its right says when it was (Calendar.js's noted).
+            note: Said.noted(meeting, root.now),
             drawer: root.details(meeting),
             later: joins,
             stays: !joins,
@@ -224,9 +229,11 @@ Singleton {
         return Calls.heldSide(meeting, now, said);
     }
 
-    // Its details, as the launcher's drawer shows them beside its row.
+    // Its details, as the launcher's drawer shows them beside its row, one
+    // of a series in Calendar's Recent saying how many came before it.
     function details(meeting) {
-        return Said.details(meeting, Words.name("calendar:meeting", "untitled"));
+        return Said.details(meeting, Words.name("calendar:meeting", "untitled"),
+            Account.earlier(meeting.earlier ?? 0, Words.of("calendar:meeting").said));
     }
 
     function titled(meeting) {

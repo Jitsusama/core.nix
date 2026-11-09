@@ -8,12 +8,14 @@
 //
 // Calendar's Recent (recentOf, which Applications.qml asks every provider
 // that has it) is the meetings Joel held lately, newest first by when
-// each started (Calendar.lately), each that same row, which says at its
-// side when it was held, as the launcher says when anywhere ("yesterday",
-// "14:00"), and its times below. Return does what it does on any meeting
-// over: it steps in to Show in Calendar, since it can't be joined; the
-// right arrow lists every act. It stands, "none" while it holds nothing
-// (keepsRecentOf), since the program keeps a month of them.
+// each started, a series once at its latest (Calendar.had), each that
+// same row, which says at its side when it was held, as the launcher
+// says when anywhere ("yesterday 15:00", "14:00"), and notes nothing,
+// its drawer saying how many of a series came before. Return does what
+// it does on any meeting over: it steps in to Show in Calendar, since it
+// can't be joined; the right arrow lists every act. It stands, "none"
+// while it holds nothing (keepsRecentOf), since the program keeps 30
+// days of them.
 import qs
 import QtQuick
 
@@ -47,7 +49,7 @@ Provider {
     function recentOf(program) {
         if (program !== "google-calendar")
             return [];
-        return Calendar.lately.slice(0, most).map(meeting => Object.assign(
+        return Calendar.had.slice(0, most).map(meeting => Object.assign(
             Calendar.row(meeting, provider), { at: meeting.start }));
     }
 
@@ -57,8 +59,8 @@ Provider {
 
     // So Programs › Calendar, held as a meeting ends or its side moves on,
     // draws its Recent again, and only then.
-    readonly property string recentSaid: JSON.stringify(Calendar.lately.slice(0, most)
-        .map(meeting => [meeting.id, Calendar.when(meeting)]))
+    readonly property string recentSaid: JSON.stringify(Calendar.had.slice(0, most)
+        .map(meeting => [meeting.id, Calendar.when(meeting), meeting.earlier]))
     onRecentSaidChanged: changed()
 
     readonly property var next: Google.account === "ready" && Calendar.upNext(Calendar.next)

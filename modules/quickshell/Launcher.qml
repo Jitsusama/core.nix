@@ -346,9 +346,11 @@ Scope {
 
     // The rows with what the first thing found by its name holds listed
     // under it, as a program found from the top lists its open tabs or its
-    // folders (`under`), and then the first few of its parts, Calendar's
-    // next meetings or Mail's newest, each in its own order, its own row
-    // first so Return still does what it does (VKCF3Z, 2026-11-07). Only
+    // folders (`under`): what it holds now first, what it has open and then
+    // the first few of its parts, Calendar's today's meetings or Mail's
+    // newest, as open windows are for a program, then its Recent, each in
+    // its own order, its own row first so Return still does what it does
+    // (VKCF3Z, 2026-11-07, c7d9e2bd). Only
     // at the top, for what's typed, and only the first, so a word that
     // names several lists one's.
     readonly property int underMost: 3
@@ -364,7 +366,9 @@ Scope {
         // is listed twice.
         const shown = new Set(rows.map(row => Rank.identity(row)));
         const parts = (partsOfRows[rows[at].key] ?? []).slice(0, underMost);
-        const holds = rows[at].under().slice(0, underMost).concat(parts)
+        const own = rows[at].under();
+        const open = own.open.slice(0, underMost);
+        const holds = open.concat(parts, own.recent.slice(0, underMost - open.length))
             .filter(row => !shown.has(Rank.identity(row)))
             .map(row => underIt(row, (rows[at].depth ?? 0) + 1));
         underListed = holds.length > 0 ? rows[at].key : "";

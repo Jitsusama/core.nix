@@ -32,7 +32,7 @@ from desktop_session import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
@@ -100,32 +100,35 @@ def first_in_recent(desktop: Desktop, name: str, side: str) -> None:
 def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> None:
     """Calendar typed lists its next meetings under it, Calendar first, so Return opens it.
 
-    Calendar's Recent, Mail's and Meet's each hold what Joel had lately, newest first.
+    Calendar's Recent, Mail's and Meet's each hold what Joel had lately, newest first. What
+    Calendar holds now, today's meetings, comes before its Recent, as open windows are for a
+    program (VKCF3Z, c7d9e2bd).
     """
     machine = desktop.machine
     opened = "/run/user/1000/google-opened"
     machine.succeed(f"rm -f {opened}")
-    # The stand-in's Retro was held a day before it started, so it's said by its day.
-    day = r"(yesterday|[A-Z][a-z]+day)"
+    # The stand-in's Retro was held a day before it started, so it's said by its day and the
+    # time it started.
+    day = r"(yesterday|[A-Z][a-z]+day) \d\d:\d\d"
 
     def under_calendar(shown: Json) -> bool:
-        """Say whether Calendar is selected with Design Review among the rows just under it."""
+        """Say whether Calendar is selected with today's meetings just under it, then Retro."""
         rows = cast("list[str]", shown["rows"])
         if "Calendar" not in rows or (shown["selected"] or {}).get("name") != "Calendar":
             return False
         at = rows.index("Calendar")
-        # And Calendar counts today's, never naming a meeting listed just under it, after
-        # what its Recent holds.
+        # And Calendar counts today's, never naming a meeting listed just under it, before
+        # what its Recent holds: Retro, once, though held twice.
         said = str(shown["selected"].get("note", ""))
-        listed = "Design Review" in rows[at + 1 : at + 4]
-        return listed and re.fullmatch(r"1 recent \u00b7 \d+ today", said) is not None
+        listed = rows[at + 1 : at + 5] == ["Design Review", "Standup", "Planning", "Retro"]
+        return listed and re.fullmatch(r"\d+ today \u00b7 1 recent", said) is not None
 
     desktop.answer("calendar")
     desktop.launcher_until(under_calendar)
     desktop.shoot("launcher-calendar-typed")
     desktop.close_launcher()
     # In Programs, where nothing is listed under it, it names its next, the time and the name
-    # apart.
+    # apart, before its Recent's count.
     desktop.answer("programs")
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("is") == "collection:applications"
@@ -135,7 +138,7 @@ def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> No
     desktop.launcher_until(
         lambda shown: (
             re.fullmatch(
-                r"1 recent \u00b7 next in \d+ min \u00b7 Design Review",
+                r"next in \d+ min \u00b7 Design Review \u00b7 1 recent",
                 str(shown["selected"].get("note", "")),
             )
             is not None
@@ -146,24 +149,61 @@ def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> No
     # it, as Show in Calendar does, since there's nothing to join.
     desktop.follow()
     first_in_recent(desktop, "Retro", day)
+    # Being over, it notes nothing after its name, and its drawer says the time before.
+    retro = desktop.showing()["selected"]
+    assert not retro.get("note"), retro
+    assert {"label": "Earlier", "value": "1 in the past 30 days"} in retro["drawer"]["facts"], retro
+    desktop.shoot("launcher-calendar-recent")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["held"][-1:] == ["Retro"])
     desktop.close_launcher()
+    mails_recent_opens(desktop, opened, day)
+    meets_recent_joins(desktop, opened, day)
+    shoot_recents_at_joels_scales(desktop, day)
+
+
+def selected_named(name: str) -> Callable[[Json], bool]:
+    """Give a wait for the row named being selected."""
+    return lambda shown: (shown["selected"] or {}).get("name") == name
+
+
+def mails_recent_opens(desktop: Desktop, opened: str, day: str) -> None:
+    """Mail's Recent holds what Joel read and what he sent, and Return opens one."""
+    machine = desktop.machine
     # Mail's holds Trip Notes, which Joel read, saying who it's from and when; Return opens it.
     desktop.answer("mail")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Mail")
+    desktop.launcher_until(selected_named("Mail"))
     desktop.into_program()
     first_in_recent(desktop, "Trip Notes", rf"Grace Hopper \u00b7 (\d\d:\d\d|{day})")
+    # What he sent names who it went to, never him (VKCF3Z, c7d9e2bd).
+    desktop.next_row()
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Notes on the Plan"
+            and re.fullmatch(
+                rf"to Ada Lovelace, Grace Hopper and 1 more \u00b7 (\d\d:\d\d|{day})",
+                str(shown["selected"].get("side")),
+            )
+            is not None
+        )
+    )
+    desktop.shoot("launcher-mail-recent")
+    desktop.down_to("Trip Notes")
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"grep -qxF 'https://mail.google.com/mail/u/0/#all/trip' {opened}",
         timeout=dt.timedelta(seconds=30),
     )
     desktop.launcher_until(lambda shown: not shown["open"])
+
+
+def meets_recent_joins(desktop: Desktop, opened: str, day: str) -> None:
+    """Meet's Recent holds a call Joel was on, and Return twice joins it again."""
+    machine = desktop.machine
     # Meet's holds Retro's call, saying who it was with and when; Return steps in to Join the
     # Meeting, so Return twice joins it again.
     desktop.answer("meet")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Meet")
+    desktop.launcher_until(selected_named("Meet"))
     desktop.into_program()
     first_in_recent(desktop, "Retro", rf"Ada Lovelace and Grace Hopper \u00b7 {day}")
     desktop.step_in("ret")
@@ -182,6 +222,29 @@ def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> No
         timeout=dt.timedelta(seconds=30),
     )
     desktop.launcher_until(lambda shown: not shown["open"])
+
+
+def shoot_recents_at_joels_scales(desktop: Desktop, day: str) -> None:
+    """Shoot Calendar's Recent and Mail's at 1.5 and 2, for the gallery.
+
+    The launcher opens afresh at each, as an open one keeps the size it opened at. Their
+    drawers are judged at 1, above, since this screen at 1.5 or 2 has no room beside the card.
+    """
+    if not desktop.values["shots"]:
+        return
+    for scale in ("1.5", "2"):
+        desktop.as_account(f"niri msg output winit scale {scale}")
+        for program, first, side in (
+            ("Calendar", "Retro", day),
+            ("Mail", "Trip Notes", rf"Grace Hopper \u00b7 (\d\d:\d\d|{day})"),
+        ):
+            desktop.answer(program.lower())
+            desktop.launcher_until(selected_named(program))
+            desktop.into_program()
+            first_in_recent(desktop, first, side)
+            desktop.shoot(f"launcher-{program.lower()}-recent-at-{scale.replace('.', '-')}")
+            desktop.close_launcher()
+    desktop.as_account("niri msg output winit scale 1")
 
 
 @pytest.mark.usefixtures("google")

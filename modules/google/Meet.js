@@ -81,7 +81,7 @@ function withWhom(meeting, said) {
 
 // What a call in Meet's Recent says beside it: who it was with, then when
 // it was held, as a mail says who it's from and when it came (Mail.js's
-// beside), "Ada Lovelace \u00b7 yesterday"; only when, for a call with
+// beside), "Ada Lovelace \u00b7 yesterday 09:00"; only when, for a call with
 // nobody else on it.
 function heldSide(meeting, now, said) {
     return [withWhom(meeting, said), Calendar.when(meeting, now, said)]
