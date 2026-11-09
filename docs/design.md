@@ -1589,7 +1589,7 @@ works the same way everywhere.
   here is the clock's, which follows the laptop into another zone once a
   Wi-Fi fix says it's there to within ten kilometres, never for a fix from
   the network's address alone; the time then says so ("clock moved to
-  Edmonton time, as the laptop is in Lighthouse"), and Put It Back leads
+  Edmonton time, as the laptop is in Kelpwater"), and Put It Back leads
   what's inside, holding the zone it kept until the laptop is somewhere
   else. The time here holds the clock and never the date: its Zone, a
   thing saying its offset, abbreviation, next change and tzdata's

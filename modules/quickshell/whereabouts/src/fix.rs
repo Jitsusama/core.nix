@@ -34,7 +34,7 @@ pub struct Fix {
     pub accuracy: f64,
     /// When it was found, in seconds since the epoch.
     pub when: u64,
-    /// The town and the province it's in, "London, Ontario", or null while
+    /// The town and the province it's in, "Kelpwater, Westmark", or null while
     /// it couldn't be asked.
     #[serde(default)]
     pub place: Option<String>,
@@ -160,11 +160,11 @@ mod tests {
         );
         assert_eq!(Fix::read(&text), Some(fix));
         let named = at(10.5, -20.25, 3000.0).named(
-            Some("Lighthouse, Ontario".into()),
+            Some("Kelpwater, Ontario".into()),
             Some("America/Toronto".into()),
         );
         let text = serde_json::to_string(&named).unwrap();
-        assert!(text.ends_with(r#""place":"Lighthouse, Ontario","zone":"America/Toronto"}"#));
+        assert!(text.ends_with(r#""place":"Kelpwater, Ontario","zone":"America/Toronto"}"#));
         assert_eq!(Fix::read(&text), Some(named));
     }
 

@@ -1,5 +1,5 @@
 //! What a position is called and the time zone it keeps, asked of the web
-//! once for each new here, so the launcher says a place, "London, Ontario",
+//! once for each new here, so the launcher says a place, "Kelpwater, Westmark",
 //! rather than its degrees, and can say when the clock's zone isn't the
 //! place's.
 //!
@@ -150,7 +150,7 @@ fn asked(agent: &ureq::Agent, url: &str) -> Option<Value> {
 }
 
 /// The place Nominatim says, as a person names it: its town and the
-/// province or state it's in, "London, Ontario", or the town alone where
+/// province or state it's in, "Kelpwater, Westmark", or the town alone where
 /// there's no such part.
 pub fn place(said: &Value) -> Option<String> {
     let address = said.get("address")?;
@@ -200,8 +200,8 @@ mod tests {
     #[test]
     fn a_place_is_its_town_and_its_province() {
         let said =
-            json!({"address": {"city": "Lighthouse", "state": "Ontario", "country": "Canada"}});
-        assert_eq!(place(&said).as_deref(), Some("Lighthouse, Ontario"));
+            json!({"address": {"city": "Kelpwater", "state": "Ontario", "country": "Canada"}});
+        assert_eq!(place(&said).as_deref(), Some("Kelpwater, Ontario"));
     }
 
     #[test]
@@ -214,14 +214,14 @@ mod tests {
 
     #[test]
     fn a_city_that_is_its_own_state_is_said_once() {
-        let said = json!({"address": {"city": "Berlin", "state": "Berlin"}});
-        assert_eq!(place(&said).as_deref(), Some("Berlin"));
+        let said = json!({"address": {"city": "Quaystead", "state": "Quaystead"}});
+        assert_eq!(place(&said).as_deref(), Some("Quaystead"));
     }
 
     #[test]
     fn a_place_is_in_the_country_nominatim_says() {
         let said =
-            json!({"address": {"city": "Lighthouse", "state": "Ontario", "country": "Canada"}});
+            json!({"address": {"city": "Kelpwater", "state": "Ontario", "country": "Canada"}});
         assert_eq!(country(&said).as_deref(), Some("Canada"));
         assert_eq!(country(&json!({"address": {"city": "Cove"}})), None);
         assert_eq!(country(&json!({"address": {"country": ""}})), None);
@@ -248,16 +248,16 @@ mod tests {
     #[test]
     fn a_place_named_is_its_first_answer() {
         let said = json!({"results": [
-            {"name": "Lighthouse", "latitude": 52.34, "longitude": -115.67,
+            {"name": "Kelpwater", "latitude": 52.34, "longitude": -115.67,
              "admin1": "Alberta", "country": "Canada", "timezone": "America/Edmonton"},
-            {"name": "Lighthouse", "latitude": 1.0, "longitude": 2.0, "admin1": "Elsewhere"}
+            {"name": "Kelpwater", "latitude": 1.0, "longitude": 2.0, "admin1": "Elsewhere"}
         ]});
         assert_eq!(
             found(&said),
             Some(Found {
                 latitude: 52.34,
                 longitude: -115.67,
-                place: "Lighthouse, Alberta".into(),
+                place: "Kelpwater, Alberta".into(),
                 country: Some("Canada".into()),
                 zone: Some("America/Edmonton".into()),
             })
@@ -269,11 +269,11 @@ mod tests {
         assert_eq!(found(&json!({"generationtime_ms": 0.5})), None);
         assert_eq!(found(&json!({"results": []})), None);
         assert_eq!(found(&json!({"results": [{"name": "Cove"}]})), None);
-        let said = json!({"results": [{"name": "Berlin", "admin1": "Berlin",
-                                       "latitude": 52.5, "longitude": 13.4}]});
+        let said = json!({"results": [{"name": "Quaystead", "admin1": "Quaystead",
+                                       "latitude": 12.35, "longitude": -98.76}]});
         assert_eq!(
             found(&said).map(|place| place.place).as_deref(),
-            Some("Berlin")
+            Some("Quaystead")
         );
     }
 
