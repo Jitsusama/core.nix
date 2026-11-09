@@ -112,6 +112,8 @@ Singleton {
         && (windowOf(player) !== undefined || player.canRaise)
 
     function windowOf(player: MprisPlayer): var {
+        if (!player)
+            return undefined;
         const entry = (player.desktopEntry ?? "").toLowerCase();
         return entry === "" ? undefined : Object.values(Niri.windows)
             .find(window => (window.app_id ?? "").toLowerCase() === entry);
@@ -151,6 +153,65 @@ Singleton {
         show(acted);
     }
 
+    // What else a player can be asked, by the Media place (launcher/
+    // Players.qml), its :set options and the command line, each only where
+    // the player says it can, so none does nothing without a word. Each
+    // says nothing where it did, or why it didn't, for whoever asked, in
+    // words.json's words (refused).
+    function refused(player: MprisPlayer, act: string, fill: var): string {
+        return Players.refusal(Words.of("media").said ?? {}, player ? player.identity : "", act,
+            fill);
+    }
+
+    function louden(player: MprisPlayer, share: real): string {
+        if (!player || !player.volumeSupported || !player.canControl)
+            return refused(player, "volume", {});
+        player.volume = Math.max(0, Math.min(1, share));
+        return "";
+    }
+
+    function shuffled(player: MprisPlayer, on: bool): string {
+        if (!player || !player.shuffleSupported || !player.canControl)
+            return refused(player, on ? "shuffle" : "order", {});
+        player.shuffle = on;
+        return "";
+    }
+
+    function looped(player: MprisPlayer, word: string): string {
+        if (!player || !player.loopSupported || !player.canControl)
+            return refused(player, word === "off" ? "unloop" : "loop", {});
+        player.loopState = Players.loopState(word);
+        return "";
+    }
+
+    // A step through the track, back or ahead, in seconds.
+    function seekBy(player: MprisPlayer, seconds: real): string {
+        if (!player || !player.canSeek)
+            return refused(player, "seek", {});
+        player.seek(seconds);
+        position = player.position;
+        return "";
+    }
+
+    // A place in the track, in seconds from its start.
+    function seekTo(player: MprisPlayer, seconds: real): string {
+        if (!player || !player.canSeek || !player.positionSupported)
+            return refused(player, "seek", {});
+        player.position = Math.max(0, player.lengthSupported
+            ? Math.min(seconds, player.length) : seconds);
+        position = player.position;
+        return "";
+    }
+
+    function sped(player: MprisPlayer, rate: real): string {
+        if (!player || !player.canControl || player.minRate >= player.maxRate)
+            return refused(player, "speed", {});
+        player.rate = Math.max(player.minRate, Math.min(player.maxRate, rate));
+        return "";
+    }
+
+    // The keys and the command line: each acts on the player that matters
+    // now, as the media keys do, and says nothing but what went wrong.
     IpcHandler {
         target: "music"
 
@@ -162,6 +223,27 @@ Singleton {
         }
         function previous(): void {
             root.previous();
+        }
+        // Its volume, as a percentage.
+        function volume(percent: int): string {
+            return root.louden(root.player, percent / 100);
+        }
+        // A step through the track, as 10 or -10 seconds.
+        function seek(seconds: real): string {
+            return root.seekBy(root.player, seconds);
+        }
+        // A place in the track, as 90 or 1:30.
+        function position(at: string): string {
+            const seconds = Players.placeIn(at);
+            return seconds === null ? root.refused(root.player, "place", { at: at })
+                : root.seekTo(root.player, seconds);
+        }
+        function shuffle(on: bool): string {
+            return root.shuffled(root.player, on);
+        }
+        // off, track or playlist.
+        function loop(word: string): string {
+            return root.looped(root.player, word);
         }
     }
 

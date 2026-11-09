@@ -108,6 +108,30 @@ Rectangle {
     property string say
     // A word after the name, muted: "here" beside a workspace.
     property string count
+    // Whether its side is its need, as a player's "paused \u00b7 0:00 of
+    // 1:00" is: said whole, never cut, the name and the note giving way
+    // to it (VKCF3Z, 2026-11-08).
+    property bool sideWhole: false
+    // The note as items, each `{ said, keep }`, beside a whole side: it
+    // gives way to the side, the least kept item first, one naming a
+    // `file` giving way from its middle once it's the last (Reading.js's
+    // keptItems), so the note never ends in an ellipsis either.
+    property var countItems: []
+    // The note as it fits beside the whole side, the name taking its
+    // letters first.
+    readonly property string noted: {
+        if (!sideWhole || countItems.length === 0) {
+            return count;
+        }
+        void wordsFace.font;
+        const width = words => Math.ceil(wordsFace.advanceWidth(words)) + 1;
+        const around = [row.also !== "" ? `\u201c${row.also}\u201d \u00b7 ` : "",
+            row.kind !== "" && row.side !== "" ? ` \u00b7 ${row.side}` : ""]
+            .reduce((sum, words) => sum + (words === "" ? 0 : width(words)), 0);
+        const room = row.ends - Theme.space.rung.groups - nameBox.x - nameBox.implicitWidth
+            - Theme.space.rung.apart - around;
+        return Reading.keptItems(countItems, room, width).join(" \u00b7 ");
+    }
     // What kind of thing it is, for a noun; empty for an act or a set.
     property string kind
     // The other word it was found by, when not its name: said in quotes
@@ -118,7 +142,22 @@ Rectangle {
     // for a noun what would have been on the right. Each is named through
     // the row, since a bare name here would find an id before a property.
     readonly property string detail: [row.also !== "" ? `\u201c${row.also}\u201d` : "",
-        row.count, row.kind !== "" ? row.side : ""].filter(part => part !== "").join(" \u00b7 ")
+        row.noted, row.kind !== "" ? row.side : ""].filter(part => part !== "").join(" \u00b7 ")
+    // The detail as it would be uncut, its note whole, and whether there's
+    // one at all. The side's room and share reckon from these rather than
+    // from the detail, since a note that gives way reads the side's place
+    // (row.ends), and reading the detail back would loop.
+    readonly property string detailUncut: [row.also !== "" ? `\u201c${row.also}\u201d` : "",
+        row.sideWhole && row.countItems.length > 0
+            ? row.countItems.map(item => item.said).join(" \u00b7 ") : row.count,
+        row.kind !== "" ? row.side : ""].filter(part => part !== "").join(" \u00b7 ")
+    readonly property bool detailed: detailUncut !== ""
+    // Read through the face's font, as noted is, so a scale or a theme
+    // changed measures it again.
+    readonly property real detailWide: {
+        void wordsFace.font;
+        return detailed ? Math.ceil(wordsFace.advanceWidth(detailUncut)) + 1 : 0;
+    }
     // Said by the shell rather than found, so it's muted and can't be picked.
     property bool quiet: false
     // Its name is the shell speaking to Joel, in the voice's face, as an
@@ -290,6 +329,12 @@ Rectangle {
         font.variableAxes: Theme.level.words.variableAxes
     }
 
+    // The note's face, to fit a note of items to its room.
+    FontMetrics {
+        id: wordsFace
+        font: countText.font
+    }
+
     Graph {
         id: drawing
         x: right.x - width - (right.width > 0 ? Theme.space.rung.groups : 0)
@@ -361,8 +406,8 @@ Rectangle {
         // The room the name leaves whole, its words after it too, which a
         // side of items is fitted to.
         readonly property real room: row.width - Theme.space.rung.inset - nameBox.x
-            - nameBox.implicitWidth - Theme.space.rung.groups - (row.detail === "" ? 0
-                : Math.min(countText.implicitWidth, row.width * 0.3) + Theme.space.rung.apart)
+            - nameBox.implicitWidth - Theme.space.rung.groups - (!row.detailed ? 0
+                : Math.min(row.detailWide, row.width * 0.3) + Theme.space.rung.apart)
         // A side of items down to its last that still leaves the name no
         // room whole: the name is cut, so where it's cut holds still as
         // that item changes, by the column, as any side's does.
@@ -378,14 +423,15 @@ Rectangle {
         readonly property real share: Math.min(row.width * 0.45, Math.max(row.width * 0.2,
             row.width - nameBox.x + row.indent - nameBox.implicitWidth
             - Theme.space.rung.groups - row.glyphColumn - Theme.space.rung.inset
-            - (row.detail === "" ? 0
-                : Math.min(countText.implicitWidth, row.width * 0.3) + Theme.space.rung.apart)))
+            - (!row.detailed ? 0
+                : Math.min(row.detailWide, row.width * 0.3) + Theme.space.rung.apart)))
         // As wide as the widest beside a graph in the list, so the graphs
         // line up, and never more than what's said may take; for a row
         // without one, as wide as the widest said here in this step, within
         // its share.
         readonly property real column: row.graphed
             ? Math.min(row.figures * noteFace.advanceWidth, row.width * 0.45)
+            : right.sided && row.sideWhole ? row.sides * noteFace.advanceWidth
             : right.sided && (!right.itemised || right.squeezed)
                 ? Math.min(row.sides * noteFace.advanceWidth, right.share) : 0
 
@@ -479,7 +525,8 @@ Rectangle {
             id: sideText
             anchors.right: parent.right
             visible: right.sided
-            width: right.itemised ? implicitWidth : Math.min(implicitWidth, right.share)
+            width: right.itemised || row.sideWhole ? implicitWidth
+                : Math.min(implicitWidth, right.share)
             text: right.dotted ? Reading.styledItems(right.kept, Theme.muted, right.inks)
                 : right.said
             format: right.dotted ? Text.StyledText : Text.PlainText
