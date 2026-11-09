@@ -2,20 +2,23 @@
 //! swapped in whole (src/lib.rs says how).
 //!
 //! Usage:
-//!   pi-packages update --config FILE   bring every package to its branch
+//!   pi-packages update --config FILE [--now]
+//!                                      bring every package to its branch,
+//!                                      swapping at most once an hour unless
+//!                                      told --now
 //!   pi-packages sweep --config FILE    remove the versions no pi runs
 //!   pi-packages status --config FILE   where each package's current is
 
 use std::path::Path;
 use std::process::ExitCode;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use pi_packages::config::Config;
-use pi_packages::run::{self, Done};
+use pi_packages::run::{self, Done, Pace};
 use pi_packages::version::Place;
 
 const USAGE: &str =
-    "usage: pi-packages update --config FILE | sweep --config FILE | status --config FILE";
+    "usage: pi-packages update --config FILE [--now] | sweep --config FILE | status --config FILE";
 
 /// Characters of a commit worth showing.
 const SHORT: usize = 8;
@@ -24,7 +27,8 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let words: Vec<&str> = args.iter().map(String::as_str).collect();
     let done = match words.as_slice() {
-        ["update", "--config", file] => update(Path::new(file)),
+        ["update", "--config", file] => update(Path::new(file), Pace::Spaced),
+        ["update", "--config", file, "--now"] => update(Path::new(file), Pace::Now),
         ["sweep", "--config", file] => sweep(Path::new(file)),
         ["status", "--config", file] => status(Path::new(file)),
         _ => Err(USAGE.into()),
@@ -42,10 +46,21 @@ fn short(commit: &str) -> &str {
     commit.get(..SHORT).unwrap_or(commit)
 }
 
-fn update(file: &Path) -> Result<(), String> {
+/// Whole minutes from `now` to `until`, rounded up, so a wait never reads
+/// as none.
+fn minutes_until(now: SystemTime, until: SystemTime) -> u64 {
+    until
+        .duration_since(now)
+        .unwrap_or(Duration::ZERO)
+        .as_secs()
+        .div_ceil(60)
+}
+
+fn update(file: &Path, pace: Pace) -> Result<(), String> {
     let config = Config::read(file)?;
     let mut failed = Vec::new();
-    for (package, outcome) in run::update(&config, SystemTime::now()) {
+    let now = SystemTime::now();
+    for (package, outcome) in run::update(&config, now, pace) {
         let name = package.key.display();
         match outcome {
             Err(why) => {
@@ -67,6 +82,12 @@ fn update(file: &Path) -> Result<(), String> {
                         println!("{name}: installed at {}", short(to));
                     }
                     Done::Busy => println!("{name}: another update holds it, so this one left it"),
+                    Done::Held { commit, until } => println!(
+                        "{name}: {} waits {} more minutes, since installs swap in at most \
+                         once an hour; `pi-packages update --now` swaps it in now",
+                        short(commit),
+                        minutes_until(now, *until)
+                    ),
                     Done::Failed { commit, why } => {
                         println!(
                             "{name}: {} not swapped in, current left as it was: {why}",

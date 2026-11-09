@@ -6,8 +6,15 @@
 #
 # It installs a package with no version yet at a switch, before pi's
 # settings are written, and updates every fifteen minutes in the
-# background, a switch starting a run without waiting on it; `pi-packages update` runs it now,
-# after a merge, and `pi-packages status` says where each package is. A
+# background, a switch starting a run without waiting on it;
+# `pi-packages update` runs it now, after a merge, and `pi-packages status`
+# says where each package is. A swap happens at most once an hour across
+# every package, since each one costs every running pi a rewrite of its
+# prompt cache (src/run.rs): a run inside the hour builds nothing and says
+# how long is left, and the first run past it swaps in whatever merged
+# meanwhile, together. `pi-packages update --now` swaps at once, for a fix
+# that unblocks work or one somebody waits on; a package with no version
+# yet is never held. A
 # package whose first install fails, as with no network at the switch,
 # has no link yet, and pi warns that it is missing until a later run
 # installs it.
@@ -61,9 +68,11 @@ let
   command = "${lib.getExe package} update --config ${configFile}";
   # The command, told its settings, for the account to run.
   configured = pkgs.writeShellScriptBin "pi-packages" ''
-    case "''${1:-status}" in
-      update | sweep | status) exec ${lib.getExe package} "''${1:-status}" --config ${configFile} ;;
-      *) echo "usage: pi-packages [status | update | sweep]" >&2; exit 2 ;;
+    case "''${1:-status} ''${2:-}" in
+      "update --now") exec ${lib.getExe package} update --config ${configFile} --now ;;
+      "update " | "sweep " | "status ")
+        exec ${lib.getExe package} "''${1:-status}" --config ${configFile} ;;
+      *) echo "usage: pi-packages [status | update [--now] | sweep]" >&2; exit 2 ;;
     esac
   '';
 in
