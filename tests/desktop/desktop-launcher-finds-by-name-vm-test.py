@@ -1688,9 +1688,9 @@ def reads_cold_for_a_terminal(desktop: Desktop) -> None:
 
     Wi-Fi looks for networks, Firmware asks fwupd, and a keyboard's and a camera's drawers
     read their files, each only while something sees them: here a terminal's show does.
-    The cards first forget what their look at boot heard, and wifid says none nearby, so
-    Office is heard only by a look a show starts; that takes as long as the cards do, so
-    it's asked until it's heard.
+    Each is asked once, so it's said within the terminal's own wait or not at all, and from
+    nothing read: the cards first forget what earlier looks heard until wifid says none
+    nearby, and caps lock going on has a keyboard's drawer read again.
     """
     desktop.launcher_left_closed()
     machine = desktop.machine
@@ -1713,16 +1713,29 @@ def reads_cold_for_a_terminal(desktop: Desktop) -> None:
         shown = json.loads(desktop.as_account(f"launcher show --json --drawers {words}"))
         return {row["name"]: row for row in shown["rows"]}
 
-    machine.wait_until_succeeds(
-        desktop.in_session("launcher show network wi-fi | grep -q Office"),
-        timeout=dt.timedelta(seconds=30),
-    )
+    networks = rows("network", "wi-fi")
+    assert "Office" in networks, networks
     firmware = rows("machine", "firmware")
     assert "System Firmware" in firmware, firmware
-    keyboards = rows("keyboard", "keyboards")
-    assert keyboards["The Laptop's Keyboard"].get("drawer"), keyboards
     cameras = rows("machine", "cameras")
     assert cameras["Built-In Camera"].get("drawer"), cameras
+    # Keyboards' row says caps lock from the lights alone, never reading a drawer.
+    machine.send_key("caps_lock")
+    try:
+        machine.wait_until_succeeds(
+            desktop.in_session("launcher show keyboard | grep -q 'caps lock on'"),
+            timeout=dt.timedelta(seconds=10),
+        )
+        drawer = rows("keyboard", "keyboards")["The Laptop's Keyboard"].get("drawer")
+        assert drawer, drawer
+        locks = next(fact for fact in drawer["facts"] if fact.get("label") == "Locks")
+        assert locks["value"] != "none", drawer
+    finally:
+        machine.send_key("caps_lock")
+        machine.wait_until_succeeds(
+            desktop.in_session("launcher show keyboard | grep -q 'caps lock off'"),
+            timeout=dt.timedelta(seconds=10),
+        )
 
 
 def test_no_answer_raised_an_error(desktop: Desktop) -> None:
