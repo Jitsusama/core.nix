@@ -136,6 +136,19 @@ QtObject {
                 "busy \u00b7 short of memory and processors", "ready \u00b7 on battery 62%",
                 "out of reach \u00b7 since 01:20"]), JSON.stringify(sides));
 
+        const here = Machines.hereItems(byName("anchor"), one);
+        expect("this machine's side leads with what tells it apart, its system giving way first",
+            JSON.stringify(here) === JSON.stringify([{ said: "this machine", keep: 3 },
+                { said: "XPS 14 DA14260", keep: 2 }, { said: "NixOS 26.11 (Zokor)", keep: 1 }]),
+            JSON.stringify(here));
+        const hereDrawn = Machines.drawer(byName("anchor"), one);
+        const hereFacts = hereDrawn.facts.map(fact => `${fact.label}: ${fact.value}`);
+        expect("this machine's drawer is every machine's",
+            hereDrawn.eyebrow === "on personal \u00b7 Linux" && JSON.stringify(hereFacts)
+                === JSON.stringify(["Measured: 1 min ago", "System: NixOS 26.11 (Zokor)",
+                    "Model: Dell Inc. XPS 14 DA14260"]),
+            `${hereDrawn.eyebrow} ${JSON.stringify(hereFacts)}`);
+
         const mac = Machines.note(byName("lantern"), one);
         expect("a Mac with no name in words is a Mac, never its identifier",
             mac === "Mac \u00b7 macOS 26.6.2", mac);
@@ -170,6 +183,11 @@ QtObject {
             "Model: Microsoft Corporation Surface Laptop 4"];
         expect("the drawer runs from what moves most to the model, never the side again",
             JSON.stringify(read) === JSON.stringify(expected), JSON.stringify(read));
+        const marked = drawn.facts.filter(fact => fact.mark)
+            .map(fact => `${fact.label} ${fact.mark}`);
+        expect("Last Update alone wears a mark, the update's",
+            JSON.stringify(marked) === JSON.stringify(["Last Update machines:step"]),
+            JSON.stringify(marked));
 
         const strokes = Machines.drawer(byName("lantern"), one).facts
             .filter(fact => fact.figure).map(fact => `${fact.figure.values[0]}`

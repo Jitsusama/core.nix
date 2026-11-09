@@ -122,6 +122,17 @@ function side(record, place) {
         .filter(part => part !== "").join(BETWEEN);
 }
 
+// This machine's side, as items that give way whole (Choice.qml's
+// sideItems): what tells its row apart first, "this machine", then what
+// it is and runs, which its note would say of another, so its system gives
+// way first and its model next, "this machine \u00b7 XPS 14 \u00b7 NixOS
+// 26.11" (VKCF3Z, 2026-11-09).
+function hereItems(record, place) {
+    return [{ said: filled(place.said, "here"), keep: 3 },
+        { said: kindOf(record, place.named), keep: 2 }, { said: record.os ?? "", keep: 1 }]
+        .filter(item => item.said !== "");
+}
+
 // A machine as Start a Session lists it, from the same records as
 // Machines (the design's Elsewhere): why it can't take a session, or what
 // it would rather not start one under, as the node's placement says; else
@@ -229,11 +240,14 @@ function update(updated, place) {
     const shortened = core.slice(0, SHORT_COMMIT);
     const coreSaid = core !== "" && core === place.core
         ? filled(said, "sameCore", { commit: shortened }) : shortened;
+    // Last Update wears the update's mark where its page lists it, as
+    // Update It does (`mark`, the words' id it's drawn from).
+    const step = fact(named("step"), [updated.step ?? "", ended(updated.at, place)]
+        .filter(part => part !== "").join(BETWEEN));
     return [
         fact(named("commit"), String(updated.commit ?? "").slice(0, SHORT_COMMIT)),
         fact(named("core"), coreSaid),
-        fact(named("step"), [updated.step ?? "", ended(updated.at, place)]
-            .filter(part => part !== "").join(BETWEEN)),
+        step && Object.assign(step, { mark: "machines:step" }),
         fact(named("reboot"), updated.restart ?? "")
     ];
 }

@@ -91,9 +91,9 @@ def test_machines_parts_are_shot_at_each_scale(desktop: Desktop, at_each_scale: 
 def test_machines_is_shot_at_each_scale(desktop: Desktop, at_each_scale: list[str]) -> None:
     """Shoot Machines, this machine's row first, saying how it stands from its node's record.
 
-    The node here links no other machine, so this one is the realm's only row. It has no
-    drawer, since Return takes it to the Machine place, whose own places hold its figures;
-    another machine's drawer, and one out of reach dimmed, are tests/machines.qml's.
+    The node here links no other machine, so this one is the realm's only row. Its side
+    leads with "this machine", then what it is, and its drawer is every machine's, though
+    Return takes it to the Machine place; one out of reach dimmed is tests/machines.qml's.
     """
     for scale in at_each_scale:
         named = scale.replace(".", "-")
@@ -105,9 +105,11 @@ def test_machines_is_shot_at_each_scale(desktop: Desktop, at_each_scale: list[st
         desktop.launcher_until(
             lambda shown: (
                 shown["rows"][:1] == ["machine"]
-                and "NixOS" in shown["selected"]["note"]
-                and shown["selected"]["side"] == "this machine"
-                and shown["drawer"]["out"] is False
+                and shown["selected"]["side"].startswith("this machine \u00b7 ")
+                and "NixOS" in shown["selected"]["side"]
+                and shown["drawer"]["out"] is True
+                and shown["drawer"]["title"] == "machine"
+                and any(fact.startswith("System") for fact in shown["drawer"]["facts"])
             )
         )
         desktop.shoot(f"launcher-machines-at-{named}")
