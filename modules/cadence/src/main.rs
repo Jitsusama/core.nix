@@ -161,7 +161,7 @@ fn run(args: &Args) -> io::Result<()> {
             ),
             To::Steward => question.text.clone(),
         };
-        let message = message(to, "question", text);
+        let message = message(to, question.to.intent(), text);
         mesh.send(&message)?;
         if let Some(key) = &question.key {
             state.asked_as(key, &message.id, now, &question.text);
@@ -210,7 +210,8 @@ fn tell_idle(mesh: &Mesh, logs: &Path, folder: &Path, now: i64) -> io::Result<()
             told.spells.remove(&tell.session);
             continue;
         }
-        match mesh.send(&message(&tell.to, "question", tell.text.clone())) {
+        // Told as the steward is: nothing waits on its answer.
+        match mesh.send(&message(&tell.to, To::Steward.intent(), tell.text.clone())) {
             Ok(()) => println!("{}", tell.text),
             Err(err) => {
                 // Not told, so the next tick tells it again.

@@ -126,8 +126,7 @@ pub fn due(
             to: by.clone(),
             text: format!(
                 "{address}{on} has sat idle {h} h {m:02} min: {how} (session {session}). \
-                 Give it its next piece, or park it if it has none. Answer with re set to \
-                 this question once handled.",
+                 Give it its next piece, or park it if it has none.",
                 address = s.address,
                 h = minutes / 60,
                 m = minutes % 60,

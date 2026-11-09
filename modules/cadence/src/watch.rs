@@ -280,6 +280,21 @@ pub enum To {
     Steward,
 }
 
+impl To {
+    /// How the mesh is to carry it. Only the watcher's answers are waited
+    /// on, read from what it sent; the steward is told as a finding, which
+    /// wants no answer, since one sent back to cadence's address reaches no
+    /// session, and on 9 November a question to the steward sat unanswered
+    /// on the mesh.
+    #[must_use]
+    pub fn intent(self) -> &'static str {
+        match self {
+            To::Watcher => "question",
+            To::Steward => "finding",
+        }
+    }
+}
+
 /// A question to send, and the key it was asked under, when it waits on an
 /// answer.
 #[derive(Debug, Clone, PartialEq)]
@@ -616,6 +631,12 @@ mod tests {
         assert!(card_due(&s, &state), "and none since");
         s.last_card = Some(s.now - 60);
         assert!(!card_due(&s, &state), "the watcher's own card counts");
+    }
+
+    #[test]
+    fn only_the_watcher_is_asked_and_the_steward_is_told() {
+        assert_eq!(To::Watcher.intent(), "question");
+        assert_eq!(To::Steward.intent(), "finding");
     }
 
     #[test]
