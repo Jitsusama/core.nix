@@ -7894,6 +7894,7 @@
       "id": "displays:depth",
       "in": "displays",
       "name": "Colour Depth",
+      "term": "Desktop/colour depth",
       "answers": [
         "colour depth"
       ]
@@ -7902,6 +7903,7 @@
       "id": "displays:colours",
       "in": "displays",
       "name": "Colours",
+      "term": "Desktop/colours",
       "answers": [
         "colour gamut"
       ]
@@ -7910,6 +7912,7 @@
       "id": "displays:white",
       "in": "displays",
       "name": "White Point",
+      "term": "Desktop/white point",
       "answers": [
         "white point"
       ],
@@ -7921,6 +7924,7 @@
       "id": "displays:primaries",
       "in": "displays",
       "name": "Primaries",
+      "term": "Desktop/primaries",
       "answers": [
         "primaries"
       ],
