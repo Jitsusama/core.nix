@@ -472,7 +472,7 @@ mod tests {
             on: None,
         }];
         s.follower.failed = Some((100_000 - 4 * 60, "the builders went away".into()));
-        assert!(breaches(&s).is_empty());
+        assert_eq!(breaches(&s), Vec::<Breach>::new());
         s.follower.failed = Some((100_000 - FAILING_MIN * 60, "the builders went away".into()));
         let mut state = State::default();
         let said = tick(&s, &mut state);
@@ -491,10 +491,10 @@ mod tests {
             "{}",
             said[0].text
         );
-        assert!(tick(&s, &mut state).is_empty());
+        assert_eq!(tick(&s, &mut state), Vec::<Question>::new());
         // With nothing waiting, a failure isn't said.
         s.landings.clear();
-        assert!(breaches(&s).is_empty());
+        assert_eq!(breaches(&s), Vec::<Breach>::new());
     }
 
     #[test]

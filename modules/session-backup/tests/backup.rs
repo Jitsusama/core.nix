@@ -665,7 +665,7 @@ fn says_how_to_name_a_quota_project_when_drive_asks_for_one() {
     let why = account.run().unwrap_err();
 
     assert!(why.contains("set-quota-project"), "{why}");
-    assert!(google.names().is_empty());
+    assert_eq!(google.names(), Vec::<String>::new());
 }
 
 /// An account whose backup goes in a folder of its own, `name`.
