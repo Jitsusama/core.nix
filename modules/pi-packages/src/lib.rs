@@ -21,6 +21,11 @@
 //! link over the old one, which a reader sees as the old version or the new,
 //! never half of either (version.rs).
 //!
+//! A dependency that names another package installed here is pointed at
+//! that package's `current` once pnpm has installed, so a package that
+//! pins the harness loads the harness every session already has, not a
+//! second, older copy beside it (version.rs).
+//!
 //! A swap happens at most once an hour across every package (run.rs),
 //! since each one costs every running pi a rewrite of its prompt cache
 //! when it follows. An update inside the hour builds nothing and says how
