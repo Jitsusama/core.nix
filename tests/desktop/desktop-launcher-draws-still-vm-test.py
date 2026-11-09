@@ -699,15 +699,18 @@ COMPOSED_MOST = 1
 
 @dataclasses.dataclass(frozen=True)
 class Step:
-    """What stepping into a place did: the list composed, rows drawn afresh, and rows that fit."""
+    """What stepping into a place did: the list composed and rows drawn afresh, and its reach."""
 
     composed: int
     drawn: int
-    fit: int
+    # The rows in reach of the view, those shown and those the list builds
+    # ahead of it, and every row the place holds.
+    reach: int
+    listed: int
 
     def within(self) -> bool:
-        """Say whether it composed the list once and drew no more rows than fit."""
-        return self.composed <= COMPOSED_MOST and self.drawn <= self.fit
+        """Say whether it composed the list once and drew no rows out of reach."""
+        return self.composed <= COMPOSED_MOST and self.drawn <= self.reach
 
 
 def test_programs_is_drawn_the_moment_return_steps_into_it(desktop: Desktop) -> None:
@@ -742,7 +745,9 @@ def test_programs_is_drawn_the_moment_return_steps_into_it(desktop: Desktop) -> 
         )
         cost = worked() - before
         now = laid_out(desktop)
-        fit = math.ceil(now["inside"]["height"] / now["rowTall"])
+        # Qt's ListView builds rows a cache's height past the view as well as
+        # those shown: 15 where 8 are shown, on main (2026-11-09).
+        reach = math.ceil((now["inside"]["height"] + now["ahead"]) / now["rowTall"])
         # The launcher times a step to its frame as it does a key, and says
         # it once it's felt (Trials.js).
         said = desktop.as_account(
@@ -752,30 +757,35 @@ def test_programs_is_drawn_the_moment_return_steps_into_it(desktop: Desktop) -> 
         step = Step(
             composed=int(now["made"]) - int(was["made"]),
             drawn=int(now["drawn"]) - int(was["drawn"]),
-            fit=fit,
+            reach=reach,
+            listed=int(now["listed"]),
         )
         print(
             f"stepping into Programs: {said or 'within a frame'}, composed {step.composed}"
-            f" times, {step.drawn} rows drawn afresh where {fit} fit, {cost:.0f} ms worked"
+            f" times, {step.drawn} of its {step.listed} rows drawn afresh where {reach} are in"
+            f" reach, {cost:.0f} ms worked"
         )
         desktop.close_launcher()
         return step
 
     # What's held is what the step does, which a loaded builder can't
     # stretch: the list composed once for the place stepped into, and no
-    # more rows drawn afresh than fit in it. Its processor time, which held
-    # it before, is said only, since a builder shared with other machines
-    # stretched it from about 130 ms to 470 to 1220 ms with the step no
-    # slower in kind, past any bound that would still catch one that is
-    # (2026-11-09). A step that threw once left Programs blank, and one
+    # more rows drawn afresh than are in reach of its view. The shell's
+    # processor time across it, which held it before, is said only: a
+    # builder shared with other machines stretched it to 470 to 1220 ms
+    # against a bound of 400, with the step no slower in kind, four times
+    # by 2026-11-09. A step that threw once left Programs blank, and one
     # that composes again or draws every row it holds fails here. A source
     # refreshing within the step composes the list once more on its own,
-    # so the step is taken up to three times and held by its least.
+    # so the step is taken up to three times and passes if one keeps to it.
     tries = []
     for _ in range(3):
         tries.append(stepped())
         if tries[-1].within():
             break
+    # Programs holds more rows than are in reach, so a step drawing every
+    # one would fail.
+    assert all(step.listed > step.reach for step in tries), tries
     assert any(step.within() for step in tries), f"stepping into Programs did more: {tries}"
 
 

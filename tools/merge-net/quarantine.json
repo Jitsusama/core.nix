@@ -14,13 +14,6 @@
     "test": "vm-desktop-starts-clean"
   },
   {
-    "at": 1794218541,
-    "commit": "f18ef97a16af01c795f58359e10e0671ec9f90b1",
-    "owner_pr": 2500,
-    "reason": "failed, then passed, at f18ef97a16af",
-    "test": "vm-desktop-launcher-draws-still"
-  },
-  {
     "at": 1794225341,
     "commit": "06483ebf3aeabbe56e49f2c96bb3cd53e1a8f4b0",
     "owner_pr": null,
