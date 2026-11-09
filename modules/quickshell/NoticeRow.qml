@@ -152,7 +152,7 @@ Item {
     Signature {
         id: signature
         x: row.columns.text
-        y: row.ends + row.signed
+        y: signature.onPixel(row.ends + row.signed)
         width: row.columns.end - x
         mark: row.pictured ? row.mark : ""
         hue: row.markHue

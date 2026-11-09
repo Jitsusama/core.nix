@@ -1983,7 +1983,8 @@ Card {
                     // in the mark column, and when at the far end; its
                     // bottom is the line's baseline.
                     Signature {
-                        y: card.senderBase - implicitHeight
+                        id: sentBy
+                        y: sentBy.onPixel(card.senderBase - sentBy.implicitHeight)
                         width: parent.width
                         name: line.from ? line.from.name : ""
                         side: line.when

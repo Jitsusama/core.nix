@@ -695,7 +695,7 @@ Scope {
                     Signature {
                         id: playedBy
                         x: track.columns.text
-                        y: song.ends + root.signed
+                        y: playedBy.onPixel(song.ends + root.signed)
                         width: track.columns.end - x
                         name: root.song.from
                         side: root.song.where
