@@ -11,6 +11,8 @@
 # row on the plan a machine names in jitsusama.pi.ask (ask.nix). A personal
 # machine sets jitsusama.pi.plan to "claude", and then plain pi is on that
 # plan, with no pi-claude beside it: Joel wants one pi that just works.
+# On Linux a run Joel typed rings when it's done, a low ding and then a
+# voice on the machine saying which session (chime.nix).
 # Each morning, on Linux, the installed harness writes its measure in the
 # background: what the day cost and which mistakes recurred.
 {
@@ -195,6 +197,20 @@ in
       a package installed by hand and not named here is dropped from it.
       Each `git:` one is installed by pi-packages, which follows its branch
       and swaps each new commit in whole, and pi is given its current link.
+    '';
+  };
+
+  options.jitsusama.pi.chime = lib.mkOption {
+    type = lib.types.attrsOf (lib.types.either lib.types.str lib.types.int);
+    readOnly = true;
+    default = import ./chime.nix { inherit pkgs lib; };
+    defaultText = lib.literalExpression "import ./chime.nix { inherit pkgs lib; }";
+    description = ''
+      What pi rings with on Linux when a run is done, for anything else
+      that wants the same loud, low, dog-safe sound: `ding`, a WAV of a
+      bell on G3 that dies away over about three seconds, and `player`,
+      PipeWire's pw-play, which plays it as `player ding`. Read it rather
+      than setting it; a Mac rings with its own sound and has no use for it.
     '';
   };
 
@@ -409,6 +425,16 @@ in
           ;
       };
     };
+
+    # What a run Joel typed rings with when it's done, where the harness's
+    # done-chime-widget reads it: the ding, the voice and the tools that play
+    # and speak them (chime.nix). A Mac rings with its own sound and voice,
+    # which the harness knows.
+    xdg.configFile."pi/agentic-harness.pi/done-chime-widget/sound.json" =
+      lib.mkIf pkgs.stdenv.hostPlatform.isLinux
+        {
+          text = builtins.toJSON config.jitsusama.pi.chime;
+        };
 
     home.file.".pi/agent/keybindings.json".text = builtins.toJSON (
       { "$schema" = "https://pi.dev/schemas/keybindings.schema.json"; } // keybindings

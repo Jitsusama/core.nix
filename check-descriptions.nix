@@ -1353,6 +1353,14 @@
     or end, watched in each package's loaded folder, removes the versions no pi runs, however many
     pis start or end at once
   '';
+  pi-rings-low-and-says-it = ''
+    the account's ding rings loud for seconds, and its piper speaks a line in its voice that sox
+    lowers, near full scale, as the harness's done chime plays them
+  '';
+  pi-rings-when-a-run-is-done = ''
+    pi's done chime is told a ding, the store's pw-play and sox, piper and its voice, and a pitch
+    that lowers the line, on Linux, and a Mac is told nothing, ringing with its own
+  '';
   pi-runs-on-the-machines-plan = ''
     a machine on the Claude plan has one pi, starting on the claude-code provider and Sonnet with
     no pi-claude beside it, and a work machine's pi is unchanged
