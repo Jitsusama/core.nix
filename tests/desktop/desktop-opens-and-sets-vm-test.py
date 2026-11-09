@@ -1424,7 +1424,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     # way's packets a step in.
     desktop.type_in("traffic", selecting="Traffic")
     desktop.follow()
-    desktop.launcher_until(lambda shown: {"Received", "Sent"} <= set(shown["rows"]))
+    desktop.launcher_until(lambda shown: {"In", "Out"} <= set(shown["rows"]))
     desktop.step_out()
     desktop.launcher_until(
         lambda shown: len(shown["held"]) == office and shown["typed"] == "traffic"

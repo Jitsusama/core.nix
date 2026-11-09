@@ -1831,12 +1831,14 @@
     {
       "id": "traffic:in",
       "in": "traffic",
-      "name": "In"
+      "name": "In",
+      "term": "Network/in"
     },
     {
       "id": "traffic:out",
       "in": "traffic",
-      "name": "Out"
+      "name": "Out",
+      "term": "Network/out"
     },
     {
       "id": "traffic:line",
@@ -1944,7 +1946,8 @@
     {
       "id": "warp:settings:mode",
       "in": "warp:settings",
-      "name": "Tunnel Mode"
+      "name": "Tunnel Mode",
+      "term": "Network/tunnel mode"
     },
     {
       "id": "warp:settings:always-on",
@@ -2045,12 +2048,14 @@
     {
       "id": "warp:in",
       "in": "warp:traffic",
-      "name": "In"
+      "name": "In",
+      "term": "Network/in"
     },
     {
       "id": "warp:out",
       "in": "warp:traffic",
-      "name": "Out"
+      "name": "Out",
+      "term": "Network/out"
     },
     {
       "id": "warp:power",
@@ -3418,12 +3423,14 @@
     {
       "id": "eero:internet:down",
       "in": "eero:internet",
-      "name": "Down"
+      "name": "Down",
+      "term": "Network/down"
     },
     {
       "id": "eero:internet:up",
       "in": "eero:internet",
-      "name": "Up"
+      "name": "Up",
+      "term": "Network/up"
     },
     {
       "id": "eero:internet:kept",
@@ -4044,7 +4051,8 @@
     {
       "id": "networks:errors-in",
       "in": "networks:errors",
-      "name": "In"
+      "name": "In",
+      "term": "Network/in"
     },
     {
       "id": "networks:damaged",
@@ -4079,7 +4087,8 @@
     {
       "id": "networks:errors-out",
       "in": "networks:errors",
-      "name": "Out"
+      "name": "Out",
+      "term": "Network/out"
     },
     {
       "id": "networks:aborted",
@@ -9369,12 +9378,14 @@
     {
       "id": "wifi:in",
       "in": "wifi:speed",
-      "name": "In"
+      "name": "In",
+      "term": "Network/in"
     },
     {
       "id": "wifi:out",
       "in": "wifi:speed",
-      "name": "Out"
+      "name": "Out",
+      "term": "Network/out"
     },
     {
       "id": "wifi:expected",
@@ -9446,12 +9457,14 @@
     {
       "id": "wifi:received",
       "in": "wifi:carried",
-      "name": "Received"
+      "name": "In",
+      "term": "Network/in"
     },
     {
       "id": "wifi:sent",
       "in": "wifi:carried",
-      "name": "Sent"
+      "name": "Out",
+      "term": "Network/out"
     },
     {
       "id": "wifi:idle",
