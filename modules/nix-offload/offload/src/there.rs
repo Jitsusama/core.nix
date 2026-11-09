@@ -3627,14 +3627,12 @@ mod tests {
     /// it took, on a builder whose `ps` names `uids` as running and whose
     /// Nix runs `most` builds at once, asked about every second.
     fn said_far(seconds: u32, uids: &str, most: &str) -> (String, Duration) {
-        use std::os::unix::fs::PermissionsExt;
         let folder = tempfile::tempdir().unwrap();
         let bin = folder.path().join("bin");
         fs::create_dir(&bin).unwrap();
         for (name, says) in [("ps", uids), ("nix", most)] {
             let fake = bin.join(name);
-            fs::write(&fake, format!("#!/bin/sh\nprintf '%s\\n' {says}\n")).unwrap();
-            fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
+            crate::testing::executable(&fake, &format!("#!/bin/sh\nprintf '%s\\n' {says}\n"));
         }
         let began = std::time::Instant::now();
         let ran = Command::new("sh")
@@ -3817,22 +3815,11 @@ mod tests {
             "sleep 1.5; exit 255\nsleep 1.5; exit 255\nexit 255\nexit 0\n",
         )
         .unwrap();
-        let draft = folder.path().join("ssh.draft");
-        fs::write(
-            &draft,
+        crate::testing::executable(
+            &ssh,
             "#!/bin/sh\nhere=$(dirname \"$0\")\necho x >> \"$here/count\"\n\
              eval \"$(sed -n \"$(wc -l < \"$here/count\")p\" \"$here/tries\")\"\n",
-        )
-        .unwrap();
-        assert!(
-            Command::new("cp")
-                .arg(&draft)
-                .arg(&ssh)
-                .status()
-                .unwrap()
-                .success()
         );
-        fs::set_permissions(&ssh, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
         let asked = asked(&["github:o/r/abc".to_owned(), "checks.x.a".to_owned()]).unwrap();
         let sinces = std::cell::RefCell::new(Vec::new());
         let again = |since| {
@@ -4312,24 +4299,12 @@ mod tests {
     #[test]
     fn a_builder_warms_by_building_what_its_lender_names() {
         let folder = tempfile::tempdir().unwrap();
-        // Written elsewhere and copied, so no writer holds it as it runs.
-        let draft = folder.path().join("draft");
         let ssh = folder.path().join("ssh");
-        fs::write(
-            &draft,
+        crate::testing::executable(
+            &ssh,
             "#!/bin/sh\nhere=$(dirname \"$0\")\nfor word; do last=$word; done\n\
              printf '%s\\n' \"$last\" > \"$here/told\"\n[ ! -f \"$here/fails\" ]\n",
-        )
-        .unwrap();
-        assert!(
-            Command::new("cp")
-                .arg(&draft)
-                .arg(&ssh)
-                .status()
-                .unwrap()
-                .success()
         );
-        fs::set_permissions(&ssh, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
         let lent = builder("ssh-ng://b").unwrap();
         let installables = ["github:o/r#checks.x.vm-a.driver".to_owned()];
         let scratch = folder.path().join("scratch");

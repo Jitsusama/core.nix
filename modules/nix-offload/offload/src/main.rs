@@ -156,6 +156,8 @@ mod proof;
 mod queue;
 mod relay;
 mod sleep;
+#[cfg(test)]
+mod testing;
 mod there;
 
 use std::io::{BufRead, BufReader, Read};
@@ -2590,6 +2592,7 @@ fn config() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::executable;
     use std::sync::{PoisonError, RwLock, RwLockReadGuard};
 
     /// Held to stop this process, which every test hearing a helper waits
@@ -2755,19 +2758,6 @@ if [ "$1 $2" = "hold lend-5" ]; then
 fi
 exit 1
 "#;
-
-    /// Write a script to run through `cp`, so no thread of this process ever
-    /// holds it open for writing: a test forking meanwhile would keep that
-    /// handle until its child execs, and a script run then is refused as busy
-    /// (ETXTBSY), which failed a run on 31 October.
-    fn executable(path: &Path, script: &str) {
-        use std::os::unix::fs::PermissionsExt;
-        let draft = path.with_extension("draft");
-        fs::write(&draft, script).unwrap();
-        let copied = Command::new("cp").arg(&draft).arg(path).status().unwrap();
-        assert!(copied.success(), "copying {}", path.display());
-        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
-    }
 
     fn holding(folder: &Path, journal: &str) -> (Settings, Machines) {
         let helper = folder.join("helper");

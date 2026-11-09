@@ -636,22 +636,16 @@ mod tests {
     /// A stand-in for a program: records its words a line each in
     /// `given`, beside it, then runs `then`.
     fn stand_in(dir: &Path, name: &str, then: &str) -> String {
-        use std::os::unix::fs::PermissionsExt;
         let path = dir.join(name);
-        let draft = path.with_extension("draft");
-        fs::write(
-            &draft,
-            format!(
+        crate::testing::executable(
+            &path,
+            &format!(
                 "#!/bin/sh\n\
                  for word in \"$@\"; do printf '%s\\n' \"$word\"; done > \"{}\"\n\
                  {then}\n",
                 dir.join("given").display()
             ),
-        )
-        .unwrap();
-        let copied = Command::new("cp").arg(&draft).arg(&path).status().unwrap();
-        assert!(copied.success());
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        );
         path.display().to_string()
     }
 
