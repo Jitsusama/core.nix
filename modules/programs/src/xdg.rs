@@ -155,7 +155,7 @@ mod tests {
         std::fs::create_dir_all(&built).unwrap();
         std::fs::create_dir_all(root.join("profiles")).unwrap();
         std::os::unix::fs::symlink("system-2", root.join("profiles/system")).unwrap();
-        std::os::unix::fs::symlink("../profiles/system", root.join("current")).unwrap();
+        std::os::unix::fs::symlink("./profiles/system", root.join("current")).unwrap();
         // Only those under the test's own folder, since the temporary
         // folder may itself be reached through a link.
         let mut links: Vec<_> = links_toward(&root.join("current/sw/share"))
