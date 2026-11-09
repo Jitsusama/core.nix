@@ -220,7 +220,7 @@ mod tests {
         Fix {
             v: NAMED,
             accuracy,
-            place: Some("Kelpwater, Alberta".into()),
+            place: Some("Kelpwater, Highreach".into()),
             zone: zone.map(Into::into),
         }
     }

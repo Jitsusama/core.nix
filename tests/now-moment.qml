@@ -182,7 +182,7 @@ ShellRoot {
         // The location says its town, and that the place keeps another zone
         // than the clock, in the colour of what wants a look.
         const location = rows[2];
-        expect("the location says its town", location.side === "Kelpwater, Ontario",
+        expect("the location says its town", location.side === "Kelpwater, Westmark",
             location.side);
         expect("and that the place keeps another zone",
             location.note === "keeps America/Toronto \u00b7 not following"

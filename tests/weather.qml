@@ -143,8 +143,8 @@ ShellRoot {
 
         laptop: ({ v: 2, latitude: 10.123, longitude: -20.456, accuracy: 3000,
             when: 1790000000, place: null, zone: null })
-        settings: ({ name: "weather", units: "metric", zone: "America/Toronto", place: "Lima",
-            lookups: true })
+        settings: ({ name: "weather", units: "metric", zone: "America/Toronto",
+            place: "Shoalmouth", lookups: true })
     }
 
     // A place set, with no laptop found, ahead of the time zone.
@@ -152,8 +152,8 @@ ShellRoot {
         id: settled
 
         laptop: null
-        settings: ({ name: "weather", units: "metric", zone: "America/Toronto", place: "Lima",
-            lookups: true })
+        settings: ({ name: "weather", units: "metric", zone: "America/Toronto",
+            place: "Shoalmouth", lookups: true })
     }
 
     Launcher.Weather {
@@ -178,17 +178,20 @@ ShellRoot {
     }
 
     function run() {
-        // Here, it rains from three; Tokyo stays dry; Paris is raining now;
-        // Oslo only might.
+        // Here, it rains from three; Gullhaven stays dry; Brinemoor is
+        // raining now; Driftholm only might. Each is invented, as its
+        // country and its place in open sea are, so no case reads as
+        // where someone is; here comes from the time zone, so it's the
+        // zone's own town.
         kept(where("Toronto"), place("Toronto", "Canada", 43.7, -79.42));
         kept(forecastUrl(43.7, -79.42), forecast("2026-10-24T13:45",
             { 13: 10, 14: 20, 15: 70, 16: 90, 17: 40 }, { 15: 1.2, 16: 3.4, 17: 0.25 }));
-        kept(where("tokyo"), place("Tokyo", "Japan", 35.69, 139.69));
-        kept(forecastUrl(35.69, 139.69), forecast("2026-10-24T22:45", {}, {}));
-        kept(where("paris"), place("Paris", "France", 48.85, 2.35));
-        kept(forecastUrl(48.85, 2.35), forecast("2026-10-24T09:15", { 9: 80 }, { 9: 2 }));
-        kept(where("oslo"), place("Oslo", "Norway", 59.91, 10.75));
-        kept(forecastUrl(59.91, 10.75), forecast("2026-10-24T09:15", { 12: 40 }, {}));
+        kept(where("gullhaven"), place("Gullhaven", "Velmora", 30.41, 171.23));
+        kept(forecastUrl(30.41, 171.23), forecast("2026-10-24T22:45", {}, {}));
+        kept(where("brinemoor"), place("Brinemoor", "Ostrandia", -38.12, -18.45));
+        kept(forecastUrl(-38.12, -18.45), forecast("2026-10-24T09:15", { 9: 80 }, { 9: 2 }));
+        kept(where("driftholm"), place("Driftholm", "Norvessa", 47.33, -38.66));
+        kept(forecastUrl(47.33, -38.66), forecast("2026-10-24T09:15", { 12: 40 }, {}));
         const asked = Object.keys(weather.asked).length;
 
         const here = weather.answer("weather");
@@ -293,31 +296,31 @@ ShellRoot {
         expect("where the rain is", asRain.note === here.note, asRain.note);
 
         // Elsewhere, with its own clock and its own rain.
-        const tokyo = weather.answer("weather in tokyo");
-        expect("conditions there, as here", tokyo.rows[0].name === "Conditions",
-            tokyo.rows[0].name);
-        expect("the time there, a fact of its own", tokyo.rows[1].name === "Local Time"
-            && tokyo.rows[1].side === "22:45 Saturday" && tokyo.rows[1].verb === "copy",
-            `${tokyo.rows[1].name} ${tokyo.rows[1].side} ${tokyo.rows[1].verb}`);
+        const there = weather.answer("weather in gullhaven");
+        expect("conditions there, as here", there.rows[0].name === "Conditions",
+            there.rows[0].name);
+        expect("the time there, a fact of its own", there.rows[1].name === "Local Time"
+            && there.rows[1].side === "22:45 Saturday" && there.rows[1].verb === "copy",
+            `${there.rows[1].name} ${there.rows[1].side} ${there.rows[1].verb}`);
         // No rain due there, so Rain gives up its place rather than say
         // there's none (VKCF3Z, 2026-11-04).
-        expect("no rain, no Rain", !tokyo.rows.some(row => row.name === "Rain"),
-            names(tokyo.rows));
-        expect("where it is", tokyo.note === "Tokyo, Japan \u00b7 Open-Meteo", tokyo.note);
+        expect("no rain, no Rain", !there.rows.some(row => row.name === "Rain"),
+            names(there.rows));
+        expect("where it is", there.note === "Gullhaven, Velmora \u00b7 Open-Meteo", there.note);
         expect("its hours run into tomorrow",
-            hoursOf(tokyo.rows[2]).pop().name === "23:00"
-                && hoursOf(tokyo.rows[3])[0].name === "00:00",
-            `${names(hoursOf(tokyo.rows[2]))} | ${names(hoursOf(tokyo.rows[3]))}`);
-        const dry = weather.answer("rain in tokyo");
+            hoursOf(there.rows[2]).pop().name === "23:00"
+                && hoursOf(there.rows[3])[0].name === "00:00",
+            `${names(hoursOf(there.rows[2]))} | ${names(hoursOf(there.rows[3]))}`);
+        const dry = weather.answer("rain in gullhaven");
         expect("no rain there", dry.headline === "no rain in the next 12 hours", dry.headline);
-        const wet = weather.answer("rain in paris?");
+        const wet = weather.answer("rain in brinemoor?");
         expect("raining now", wet.headline === "rain now \u00b7 80%", wet.headline);
-        const maybe = weather.answer("rain for oslo");
+        const maybe = weather.answer("rain for driftholm");
         expect("might", maybe.headline === "rain unlikely, at most 40%", maybe.headline);
         // Rain that only might come isn't due, so it has no row either.
         expect("rain that might, no Rain",
-            !weather.answer("weather for oslo").rows.some(row => row.name === "Rain"),
-            names(weather.answer("weather for oslo").rows));
+            !weather.answer("weather for driftholm").rows.some(row => row.name === "Rain"),
+            names(weather.answer("weather for driftholm").rows));
 
         // The weather's one word asks it, here or anywhere.
         for (const typed of ["weather", "Weather"]) {
@@ -325,7 +328,7 @@ ShellRoot {
             expect(`"${typed}" answers the weather`,
                 said?.rows.length === 9 && said.rows[1].name === "Rain", said?.headline);
         }
-        for (const typed of ["weather tokyo", "weather for tokyo", "tokyo weather"]) {
+        for (const typed of ["weather gullhaven", "weather for gullhaven", "gullhaven weather"]) {
             const said = weather.answer(typed);
             expect(`"${typed}" answers the weather`,
                 said?.rows.length === 9 && said.rows[1].name === "Local Time"
@@ -355,16 +358,17 @@ ShellRoot {
         expect("the rain where the laptop is", travelling.answer("rain").note === away.note,
             travelling.answer("rain").note);
         // With no laptop found, the place set, then the time zone.
-        kept(where("Lima"), place("Lima", "Peru", -12.05, -77.04), settled);
-        kept(forecastUrl(-12.05, -77.04), forecast("2026-10-24T13:45", {}, {}), settled);
+        kept(where("Shoalmouth"), place("Shoalmouth", "Quellara", -14.32, -101.87), settled);
+        kept(forecastUrl(-14.32, -101.87), forecast("2026-10-24T13:45", {}, {}), settled);
         const set = settled.answer("weather");
-        expect("the place set", set.note === "Lima, from the place you set \u00b7 Open-Meteo",
+        expect("the place set",
+            set.note === "Shoalmouth, from the place you set \u00b7 Open-Meteo",
             set.note);
         // Once its town is known, the laptop's here is said by it.
-        travelling.laptop = Object.assign({}, travelling.laptop, { place: "Kelpwater, Ontario" });
+        travelling.laptop = Object.assign({}, travelling.laptop, { place: "Kelpwater, Westmark" });
         expect("the laptop's town",
             travelling.answer("weather").note
-                === "Kelpwater, Ontario, from where the laptop is \u00b7 Open-Meteo",
+                === "Kelpwater, Westmark, from where the laptop is \u00b7 Open-Meteo",
             travelling.answer("weather").note);
     }
 }

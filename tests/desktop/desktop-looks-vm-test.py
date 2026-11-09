@@ -1845,7 +1845,7 @@ def location_plate_shown(desktop: Desktop, scale: str) -> None:
         "longitude": -98.7654,
         "accuracy": 26000,
         "when": when,
-        "place": "Kelpwater, Ontario",
+        "place": "Kelpwater, Westmark",
         "zone": "America/Toronto",
         "country": "Canada",
     }
