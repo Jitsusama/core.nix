@@ -509,9 +509,14 @@ Item {
     property int keysTaken: 0
     // The last of them, by name, as Vim writes it.
     property string keyTaken: ""
+    // Whether the last key only moved through the rows, as j and Down do,
+    // which changes nothing a source holds, so the launcher never takes a
+    // source changing beside it for the key's doing.
+    property bool keyMoved: false
 
     function modalKey(event: KeyEvent) {
         const key = named(event);
+        keyMoved = false;
         keyTaken = key;
         keysTaken += 1;
         woken();
@@ -542,6 +547,7 @@ Item {
             return;
         }
         const read = QueryKeys.read(standing, key, mode, editsWords);
+        keyMoved = QueryKeys.repeats(read.act);
         // A key held where nothing types repeats only a move, as Vim's
         // motions do: any other act, and a count or a sequence begun, is a
         // press's once, so a key let go late by a busy shell, which

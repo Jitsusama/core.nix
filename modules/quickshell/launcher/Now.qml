@@ -81,7 +81,11 @@ Provider {
             rows.push({ group: "wants", name: landed.name, row: landed });
         return [waiting].concat(moment, Groups.ordered(rows).map(each => each.row));
     }
-    onAllChanged: changed()
+    // Said only when what the rows show has changed (Provider's
+    // changedTo), since `all` is made again whenever any fact moves, and
+    // each change said makes the launcher refresh (Joel, 2026-11-08: "weird
+    // lag can happen").
+    onAllChanged: changedTo(all)
 
     // This moment, Now's own rows, right after what waits on Joel and
     // before what else is on: the

@@ -60,6 +60,18 @@ QtObject {
         const next = Pacing.heard(elsewhere, 1393, every);
         check(failures, "so the next change waits a pace from it", next.pace.due, 1606);
 
+        // A change just after a key that acted is its own, shown at once;
+        // one just after a key that only moved is no key's, and waits on the
+        // pace, since Now's change each second and Agents' every few were
+        // made again on Joel's arrows (Joel, 2026-11-08: "weird lag can
+        // happen").
+        const within = 50;
+        check(failures, "a change 10 ms after an act is its own",
+            Pacing.keyed(10, false, within), true);
+        check(failures, "a change 10 ms after an arrow is no key's",
+            Pacing.keyed(10, true, within), false);
+        check(failures, "nor one 60 ms after an act", Pacing.keyed(60, false, within), false);
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
