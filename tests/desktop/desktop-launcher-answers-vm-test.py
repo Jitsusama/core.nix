@@ -430,15 +430,16 @@ def test_the_disks_and_the_network_say_their_room_speed_and_round_trip(
     )
     # A step further, each disk the guard watches, the headline's first.
     # A disk is a thing, so the drawer is out for it: one that's short
-    # says beside it what the guard is doing, and in the drawer its
-    # figures and the guard's own words (docs/design.md, the drawer).
+    # says beside it its room and what the guard is doing, and in the
+    # drawer its size and the guard's own words, its room not again
+    # (docs/design.md, the drawer).
     desktop.follow()
     desktop.launcher_until(
         lambda shown: (
             shown["rows"][:1] == ["/nix"]
             and shown["selected"]["side"] == "21.5\u00a0GB free \u00b7 clearing old builds"
             and (shown.get("drawer") or {}).get("out") is True
-            and shown["drawer"]["facts"] == ["Free", "Size"]
+            and shown["drawer"]["facts"] == ["Size"]
             and shown["drawer"]["body"] == "The disk is filling, with 20.0 GiB free."
         )
     )
