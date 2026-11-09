@@ -158,7 +158,8 @@ Singleton {
             bootedAt: bootedAt,
             markers: parkedMarkers()
         });
-        const said = Pi.told(next, showing);
+        // Diagnostic control: told whole whether shown or not, as main does.
+        const said = Pi.told(next, true) + String(showing);
         sorts.heard += 1;
         if (said === sortedSaid && saidShown === showing) {
             heldBack = !showing;
