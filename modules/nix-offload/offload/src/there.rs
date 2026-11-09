@@ -465,6 +465,17 @@ pub fn builder(store: &str) -> Option<Builder> {
 /// no build gives.
 pub const UNREACHED: i32 = 255;
 
+/// What a lent builder's gate ends a run marked [`MOVES`] with when the
+/// run would have to wait there: sysexits.h's protocol error, which
+/// neither ssh nor a build gives.
+pub const BUSY: i32 = 76;
+
+/// What a run's command opens with when it may go to the other lent
+/// builder, so the gate of one that would make it wait says so at once,
+/// as [`BUSY`]: on 8 November runs queued at one builder for an hour
+/// while the other stood idle. A gate from before it runs it, waiting.
+pub const MOVES: &str = ": NIX_OFFLOAD_MOVES=1; ";
+
 /// Where a build ran and how it ended.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Ran {

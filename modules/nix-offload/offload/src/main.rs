@@ -1107,6 +1107,7 @@ fn changed_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
         folder: &folder,
         scratch: &scratch,
         waiting,
+        moves: false,
     };
     let more_dir = more_dir();
     let finished = sent.somewhere(arguments, [&dir, &more_dir], &vm_dirs(&vm_dir), vm_apart);
@@ -1155,18 +1156,25 @@ impl Finished {
 /// source, the checks `told` passed at its commit already, the tree's
 /// folder here, the scratch folder its files go in meanwhile, and how it
 /// waits for a builder when none stands.
+#[derive(Clone, Copy)]
 struct Sent<'a> {
     source: &'a there::Source,
     told: &'a [String],
     folder: &'a Path,
     scratch: &'a Path,
     waiting: there::Waiting,
+    /// Whether it may go to the other lent builder, rather than wait.
+    moves: bool,
 }
 
 impl Sent<'_> {
     /// The command changed-checks is sent as with `arguments`.
     fn sending(&self, arguments: &[String]) -> there::Sending {
-        changed::sending(self.source.clone(), arguments, self.told)
+        let mut sending = changed::sending(self.source.clone(), arguments, self.told);
+        if self.moves {
+            sending.command.insert_str(0, there::MOVES);
+        }
+        sending
     }
 
     /// The run on the lent builder a store names, or none when there's no
@@ -1202,6 +1210,34 @@ impl Sent<'_> {
         }
     }
 
+    /// The run on a lent builder, the two taken in turn, or none when
+    /// neither stood or ssh reached neither. While both stand, each is
+    /// asked to turn it away rather than make it wait, so it goes to the
+    /// other; when both do, it waits at the first it asked.
+    fn lent_somewhere(
+        &self,
+        arguments: &[String],
+        lenders: [&Path; 2],
+        vm_apart: bool,
+    ) -> Option<Finished> {
+        let stores = changed::in_turn(lenders, std::process::id()).map(standing);
+        let moving = Self {
+            moves: stores.iter().all(Option::is_some),
+            ..*self
+        };
+        let mut busy = None;
+        for store in &stores {
+            match moving.lent_to(arguments, vm_apart, store.clone()) {
+                Some(finished) if moving.moves && finished.status == there::BUSY => {
+                    busy = busy.or_else(|| store.clone());
+                }
+                Some(finished) => return Some(finished),
+                None => {}
+            }
+        }
+        busy.and_then(|store| self.lent_to(arguments, vm_apart, Some(store)))
+    }
+
     /// Where `there --changed` runs, in its order, or none when nowhere
     /// did: a lent builder, else a warm VM builder of `vm`'s. With
     /// `vm_apart`, VM tests go to a builder of their own, as any `there`
@@ -1230,10 +1266,8 @@ impl Sent<'_> {
         if there::lends(more) {
             there::want(more);
         }
-        for lender in changed::in_turn([dir, more], std::process::id()) {
-            if let Some(finished) = on_builder(standing(lender)) {
-                return Some(finished);
-            }
+        if let Some(finished) = self.lent_somewhere(arguments, [dir, more], vm_apart) {
+            return Some(finished);
         }
         // A warm VM builder that stands takes the run while no lent
         // builder answers, rather than its waiting minutes for one: from

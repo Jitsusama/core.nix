@@ -15,7 +15,9 @@ use std::process::{Command, Output};
 /// `complains` file holds, and exits as the `status` file beside it says.
 /// Once a test writes `refuses-name-only`, a command asking `--name-only`
 /// is refused with 64, as a changed-checks from before it was refuses it.
-/// A host an `unreached-<host>` file names is never reached, exiting 255.
+/// A host an `unreached-<host>` file names is never reached, exiting 255,
+/// and one a `busy-<host>` file names says it's busy, 76, to a run marked
+/// to move on rather than wait.
 /// A read of the builder's CPU pressure prints the `pressure-<host>` file
 /// beside it, when there is one, and nothing else, and a dry run of a
 /// build prints the `plans` file, when there is one, and nothing else.
@@ -33,6 +35,9 @@ printf '%s\n' "$2" >> "$here/ssh-commands"
 printf '%s\n' "$1" >> "$here/ssh-hosts"
 printf '%s %s\n' "$1" "$2" >> "$here/ssh-sent"
 [ -f "$here/unreached-$1" ] && exit 255
+if [ -f "$here/busy-$1" ]; then
+  case "$2" in *": NIX_OFFLOAD_MOVES=1; "*) exit 76 ;; esac
+fi
 case "$2" in
   *--name-only*) [ -f "$here/refuses-name-only" ] && exit 64
     [ -f "$here/evaluates-forever" ] && exec sleep 120 ;;
@@ -1964,11 +1969,41 @@ impl Changed {
     /// `there --changed` with these arguments, and what ssh was told to
     /// run, if anything.
     fn run(&self, arguments: &[&str]) -> (Output, Option<String>) {
-        self.run_after(&[], arguments)
+        self.run_with(&[], arguments, Path::new(NO_SECOND))
     }
 
     /// `run`, with `before` given ahead of `--changed`.
     fn run_after(&self, before: &[&str], arguments: &[&str]) -> (Output, Option<String>) {
+        self.run_with(before, arguments, Path::new(NO_SECOND))
+    }
+
+    /// A second lender beside the first, standing, with a builder of its
+    /// own, `nix-offload-more`.
+    fn second(&self) -> PathBuf {
+        let more = self.folder.path().join("offload-more");
+        fs::create_dir_all(&more).unwrap();
+        fs::write(more.join("lender"), std::process::id().to_string()).unwrap();
+        fs::write(
+            more.join("store"),
+            STORE.replace("nix-offload", "nix-offload-more"),
+        )
+        .unwrap();
+        more
+    }
+
+    /// `run`, with the second lender `more`'s folder names.
+    fn run_beside(&self, arguments: &[&str], more: &Path) -> (Output, Option<String>) {
+        self.run_with(&[], arguments, more)
+    }
+
+    /// `there`, given `before`, then `--changed` and `arguments`, with the
+    /// second lender `more`'s folder names.
+    fn run_with(
+        &self,
+        before: &[&str],
+        arguments: &[&str],
+        more: &Path,
+    ) -> (Output, Option<String>) {
         let given = self.bin.join("ssh-was-given");
         let _ = fs::remove_file(&given);
         let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
@@ -1983,7 +2018,7 @@ impl Changed {
                 format!("{}:{}", self.bin.display(), std::env::var("PATH").unwrap()),
             )
             .env("NIX_OFFLOAD_DIR", &self.offload)
-            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+            .env("NIX_OFFLOAD_MORE_DIR", more)
             .env("NIX_OFFLOAD_VM_DIR", self.folder.path().join("offload-vm"))
             .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
             .env("NIX_OFFLOAD_VM_EXTRA_DIRS", NO_MORE_VMS)
@@ -1999,6 +2034,70 @@ impl Changed {
             .map(|given| given.lines().nth(1).unwrap().to_owned());
         (ran, sent)
     }
+
+    /// Each host ssh was given, with whether its command was marked to
+    /// move on rather than wait, in the order they were asked.
+    fn asked(&self) -> Vec<(String, bool)> {
+        fs::read_to_string(self.bin.join("ssh-sent"))
+            .unwrap()
+            .lines()
+            .map(|line| {
+                let (host, command) = line.split_once(' ').unwrap();
+                (host.to_owned(), command.contains(": NIX_OFFLOAD_MOVES=1; "))
+            })
+            .collect()
+    }
+}
+
+#[test]
+fn a_changed_run_a_busy_lent_builder_turns_away_goes_to_the_other() {
+    // On 8 November runs queued at one lent builder for an hour while the
+    // other stood idle, since each run takes the one its turn names.
+    let changed = Changed::new();
+    let more = changed.second();
+    fs::write(changed.bin.join("busy-nix-offload"), "").unwrap();
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    let (ran, _) = changed.run_beside(&["--name-only", "--system", "x86_64-linux"], &more);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let asked = changed.asked();
+    assert_eq!(
+        asked.last(),
+        Some(&("nix-offload-more".to_owned(), true)),
+        "{asked:?}"
+    );
+    assert!(asked.iter().all(|(_, marked)| *marked), "{asked:?}");
+    assert!(String::from_utf8_lossy(&ran.stdout).contains("changed  a"));
+}
+
+#[test]
+fn a_changed_run_both_lent_builders_turn_away_waits_at_the_first_it_asked() {
+    let changed = Changed::new();
+    let more = changed.second();
+    fs::write(changed.bin.join("busy-nix-offload"), "").unwrap();
+    fs::write(changed.bin.join("busy-nix-offload-more"), "").unwrap();
+    let (ran, _) = changed.run_beside(&["--name-only", "--system", "x86_64-linux"], &more);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let asked = changed.asked();
+    assert_eq!(asked.len(), 3, "{asked:?}");
+    assert_ne!(asked[0].0, asked[1].0, "{asked:?}");
+    assert_eq!(
+        asked[2],
+        (asked[0].0.clone(), false),
+        "waits at the first, unmarked: {asked:?}"
+    );
+    assert!(asked[0].1 && asked[1].1, "{asked:?}");
+}
+
+#[test]
+fn a_changed_run_with_one_lent_builder_waits_there_unmarked() {
+    // With nowhere else to go, a run turned away would only come back and
+    // send its tree again.
+    let changed = Changed::new();
+    fs::write(changed.bin.join("busy-nix-offload"), "").unwrap();
+    let (ran, sent) = changed.run(&["--name-only", "--system", "x86_64-linux"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(changed.asked(), [("nix-offload".to_owned(), false)]);
+    assert!(!sent.unwrap().contains("NIX_OFFLOAD_MOVES"));
 }
 
 #[test]
