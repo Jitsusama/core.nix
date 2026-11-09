@@ -221,11 +221,11 @@ Provider {
 
     // Those listed with nothing typed, as they stand now, the last thing
     // with each measured as they're listed rather than kept up with the
-    // clock.
-    // Each kept while the person and how they stand read the same, as
-    // everyone's are, so a change remakes only those it changed; and made
-    // only while they're wanted (Provider.qml's wanted), or as they're
-    // asked for, so a change nobody sees makes none and refreshes nothing.
+    // clock. Each is kept while the person and how they stand read the
+    // same, as everyone's are, so a change remakes only those it changed;
+    // and they're made only while they're wanted (Provider.qml's wanted),
+    // or as they're asked for, so a change nobody sees makes none and
+    // refreshes nothing.
     readonly property var all: provider.wanted ? listedNow() : []
     onAllChanged: {
         if (provider.wanted)
