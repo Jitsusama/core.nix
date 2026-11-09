@@ -3032,23 +3032,24 @@
     {
       "id": "firmware:held",
       "in": "firmware",
-      "name": "Held Back",
+      "name": "Blocked By",
+      "term": "Machine/blocked by",
       "said": {
-        "system-power-too-low": "system power is too low",
-        "unreachable": "device is unreachable, or out of wireless range",
-        "power-too-low": "device battery power is too low",
-        "update-pending": "device is waiting for the update to be applied",
-        "require-ac-power": "device requires AC power to be connected",
-        "lid-is-closed": "device cannot be updated while the lid is closed",
-        "is-emulated": "device is emulated",
-        "missing-license": "device requires a software license to update",
-        "system-inhibit": "all devices are prevented from update by system inhibit",
-        "update-in-progress": "an update is in progress",
-        "in-use": "device is in use",
-        "display-required": "device requires a display to be plugged in",
-        "lower-priority": "device is lower priority than an equivalent device",
-        "insecure-platform": "system has been signed with an insecure key",
-        "firmware-locked": "device firmware has been locked"
+        "system-power-too-low": "low power",
+        "unreachable": "out of reach",
+        "power-too-low": "its battery low",
+        "update-pending": "an update waiting to go in",
+        "require-ac-power": "no charger",
+        "lid-is-closed": "lid shut",
+        "is-emulated": "emulated",
+        "missing-license": "no licence",
+        "system-inhibit": "updates turned off",
+        "update-in-progress": "another update going",
+        "in-use": "in use",
+        "display-required": "no screen",
+        "lower-priority": "another device first",
+        "insecure-platform": "an insecure signing key",
+        "firmware-locked": "firmware locked"
       }
     },
     {
@@ -3089,7 +3090,8 @@
     {
       "id": "firmware:security",
       "in": "firmware",
-      "name": "Security",
+      "name": "Security Level",
+      "term": "Machine/security level",
       "said": {
         "level": "how fwupd rates the firmware's defences",
         "running": "how fwupd rates the firmware's defences, lowered by what's running"
@@ -9947,7 +9949,8 @@
     {
       "id": "sleep:device",
       "in": "session:Suspend",
-      "name": "Blocked By"
+      "name": "Blocked By",
+      "term": "Machine/blocked by"
     },
     {
       "id": "sleep:code",

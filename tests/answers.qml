@@ -2099,11 +2099,11 @@ QtObject {
         const unplugged = Firmware.devicesOf([fw("bios", { name: "System Firmware",
             version: "1.12.0", problems: ["require-ac-power"],
             update: { version: "1.13.0" } })])[0];
-        machine("an update held back on battery", Firmware.heldBy(unplugged), "require-ac-power");
-        machine("nothing held back with nothing offered", Firmware.heldBy(Firmware.devicesOf([
+        machine("an update blocked on battery", Firmware.heldBy(unplugged), "require-ac-power");
+        machine("nothing blocked with nothing offered", Firmware.heldBy(Firmware.devicesOf([
             fw("pk", { name: "Platform Key", version: "1", problems: ["firmware-locked"] })])[0]),
             "");
-        machine("nothing held back with nothing amiss", Firmware.heldBy(firmware[0]), "");
+        machine("nothing blocked with nothing amiss", Firmware.heldBy(firmware[0]), "");
         // An update in but finishing at the restart, as the history says a
         // capsule's is: offered until then, and said to wait for it; once
         // the restart has flashed it, nothing waits.
@@ -2117,7 +2117,7 @@ QtObject {
             ["1.13.0", "1.13.0"]);
         machine("firmware's version waiting for the restart",
             Firmware.versionOf(waits, firmwareWords), "1.13.0 at the restart \u00b7 from 1.12.0");
-        machine("firmware waiting for the restart is held back by nothing",
+        machine("firmware waiting for the restart is blocked by nothing",
             Firmware.heldBy(waits), "");
         machine("firmware needing a reboot waits too", waiting("needs-reboot").waits, "1.13.0");
         machine("firmware that failed doesn't wait", waiting("failed").waits, null);

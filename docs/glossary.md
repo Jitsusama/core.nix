@@ -325,7 +325,9 @@ off.
 | display engine | the processor's part that sends each screen its picture | | |
 | chipset | the chip beside the processor that reaches the disk, USB and the rest | | the PCH |
 | power controller | the processor's part that sets its power and clocks | | |
-| held back | the processor kept below the speed it asked for, by a power or heat limit, and for how long | | `HeldBack` |
+| held back | the processor kept below the speed it asked for, by a power or heat limit, and for how long, apart from what an update or a sleep is blocked by | | `HeldBack` |
+| blocked by | what stops an act now: a device's firmware update, such as low power or the lid shut, or the machine's deepest sleep | | fwupd's `problems`, the sleep's blocking device |
+| security level | how fwupd rates the machine's firmware's defences, from 0 to 5, a ! when something running lowers it | | fwupd's HSI |
 | read | one figure a sensor gave at a moment, of those a spark draws, as heat's Last Reads are, apart from the disk's Data Read | | `Seen.js`'s samples |
 | throttled | the processor slowing itself to cool down, counted each time | | the kernel's `throttle_count` |
 | kept from resting | a part keeping the processor out of its deepest rest while the machine idles, and for how long | | the telemetry's `kept` |
