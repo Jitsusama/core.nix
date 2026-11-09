@@ -35,14 +35,19 @@
 
   # Nix collects garbage during a build once free space falls under min-free,
   # and stops at max-free. A max-free at or under min-free stops it before it
-  # starts, and nothing says so.
+  # starts, and nothing says so. It's the last resort beneath the disk guard,
+  # so it starts only past the guard's urgent band, a tenth free
+  # (modules/disk-guard/src/config.rs), on a disk as small as 120 GB: above
+  # it, every add to a store the guard had cleared began a collection that
+  # couldn't free what it wanted, holding the store's lock inside the add.
   nix-collects-before-the-disk-fills =
     let
       inherit (workstation.config.nix.settings) min-free max-free;
+      urgent = 120 * 1000 * 1000 * 1000 / 10;
     in
     holds "nix-collects-before-the-disk-fills"
-      "The Nix daemon never collects garbage during a build: min-free is ${toString min-free}, max-free ${toString max-free}."
-      (min-free > 0 && max-free > min-free);
+      "The Nix daemon never collects garbage during a build, or does before the disk guard: min-free is ${toString min-free}, max-free ${toString max-free}."
+      (min-free > 0 && max-free > min-free && min-free < urgent);
 }
 // onLinux {
   # clippy finds nothing in vm-first, its tests included.
