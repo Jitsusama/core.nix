@@ -11,12 +11,15 @@
 // Return goes to that session's window, or opens pi on it in a new
 // terminal, autoloaded as the harness's spawn does, in the folder the
 // harness picks and its lists say; the right arrow steps into what's known
-// of it, each fact a row Return copies.
+// of it, each fact a row Return copies. Start a Session there lists the
+// machines the node places on, each saying how it stands as Machines says
+// it, from the same records.
 import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Order.js" as Order
+import "RealmMachines.js" as Listed
 
 Provider {
     id: provider
@@ -51,6 +54,29 @@ Provider {
             changesDiffer: true
             answersWhole: true
         }
+    }
+
+    // The realm's machines, as Machines reads them, so a machine Start a
+    // Session offers says how it stands in the same words.
+    readonly property var machineKind: machineLink.item
+    LazyLoader {
+        id: machineLink
+        active: Sessions.nodePath !== ""
+
+        Daemon {
+            socket: Sessions.nodePath
+            kind: "machine"
+            changesDiffer: true
+            answersWhole: true
+        }
+    }
+
+    // A machine's record by its name, or this machine's, said as here, from
+    // a node too old to list it.
+    function machineOf(name) {
+        void machineKind?.revision;
+        const record = Object.values(machineKind?.held ?? {}).find(one => one.name === name);
+        return record ?? (name === Sessions.machine ? { here: true } : null);
     }
 
     // A quest as its record says it, without what the node adds: its key,
@@ -317,7 +343,8 @@ Provider {
             name: one.name,
             glyph: Theme.glyph.agent,
             hue: "action",
-            note: one.cannot || one.rather || (one.name === Sessions.machine ? "this machine" : ""),
+            note: Listed.startNote(one, machineOf(one.name),
+                { said: Words.of("machines").said ?? {}, now: Date.now() }),
             gone: one.cannot !== "",
             later: true,
             run: () => {
