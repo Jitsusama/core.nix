@@ -500,7 +500,10 @@ mod tests {
 
     #[test]
     fn how_far_down_is_a_share_of_the_furthest_the_view_goes() {
-        assert!((through(400.0, 1000.0) - 0.4).abs() < 1e-9);
+        assert!(
+            (through(400.0, 1000.0) - 0.4).abs() < 1e-9,
+            "400 down of 1000 is two fifths"
+        );
         assert!(
             (through(1000.0, 1000.0) - 1.0).abs() < 1e-9,
             "the end is the whole"

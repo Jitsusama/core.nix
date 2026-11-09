@@ -88,6 +88,8 @@ onLinux {
     let
       home = account graphical;
       qs = lib.getExe' graphical.pkgs.quickshell "qs";
+      # What each program had open lately is the programs daemon's.
+      programs = pkgs.callPackage ../programs/package.nix { };
       # The launcher's own files the step is made from, each by itself so
       # no other change there builds this again.
       launcher = ../quickshell/launcher;
@@ -181,6 +183,14 @@ onLinux {
       ''}
       # What reader --places prints, as tests/places-list.sh says.
       export PLACES_LIST=${pkgs.writeShellScript "places-list" (builtins.readFile ./tests/places-list.sh)}
+      # The programs daemon runs the shared list and what each reader shows,
+      # given the sources shell.qml's Applications is, as recents.nix gives
+      # both.
+      cat > sources.json <<EOF
+      [{"watch": "$HOME/shared", "list": ["$SHARED_LIST"]},
+       {"app": "reader", "kind": "file", "opened": ["$SHOWING_LIST"]}]
+      EOF
+      ${lib.getExe programs} "$XDG_RUNTIME_DIR/daemons/programs.sock" sources.json &
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
       touch $out
