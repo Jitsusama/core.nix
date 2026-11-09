@@ -91,21 +91,52 @@ struct Sun {
     equation_of_time: f64,
 }
 
+/// Julian centuries from the J2000 epoch to a Julian day.
+fn centuries(julian: f64) -> f64 {
+    (julian - 2_451_545.0) / 36_525.0
+}
+
+/// The sun's geometric mean longitude, in degrees from 0 up to 360.
+fn mean_longitude(centuries: f64) -> f64 {
+    (280.466_46 + centuries * (36_000.769_83 + centuries * 0.000_303_2)).rem_euclid(360.0)
+}
+
+/// The sun's mean anomaly, in degrees.
+fn anomaly(centuries: f64) -> f64 {
+    357.529_11 + centuries * (35_999.050_29 - 0.000_153_7 * centuries)
+}
+
+/// The longitude of the moon's ascending node, in degrees, which nods the
+/// earth's axis and so the sun's apparent place.
+fn node(centuries: f64) -> f64 {
+    125.04 - 1934.136 * centuries
+}
+
+/// The sun's apparent longitude in degrees from 0 up to 360 at a Julian
+/// day, by Meeus's low-precision formula (Astronomical Algorithms,
+/// chapter 25), within about 0.01°. The launcher's calendars take the
+/// solar terms from it, and the sun's declination comes from it here.
+pub fn apparent_longitude(julian: f64) -> f64 {
+    let centuries = centuries(julian);
+    let anomaly = anomaly(centuries);
+    let centre = radians(anomaly).sin()
+        * (1.914_602 - centuries * (0.004_817 + 0.000_014 * centuries))
+        + radians(2.0 * anomaly).sin() * (0.019_993 - 0.000_101 * centuries)
+        + radians(3.0 * anomaly).sin() * 0.000_289;
+    (mean_longitude(centuries) + centre - 0.005_69 - 0.004_78 * radians(node(centuries)).sin())
+        .rem_euclid(360.0)
+}
+
 impl Sun {
     /// The sun at a Julian day, by Meeus's chapters 25 and 28.
     fn at(julian: f64) -> Self {
-        let centuries = (julian - 2_451_545.0) / 36_525.0;
-        let mean_longitude =
-            (280.466_46 + centuries * (36_000.769_83 + centuries * 0.000_303_2)).rem_euclid(360.0);
-        let anomaly = 357.529_11 + centuries * (35_999.050_29 - 0.000_153_7 * centuries);
+        let centuries = centuries(julian);
+        let mean_longitude = mean_longitude(centuries);
+        let anomaly = anomaly(centuries);
         let eccentricity =
             0.016_708_634 - centuries * (0.000_042_037 + 0.000_000_126_7 * centuries);
-        let centre = radians(anomaly).sin()
-            * (1.914_602 - centuries * (0.004_817 + 0.000_014 * centuries))
-            + radians(2.0 * anomaly).sin() * (0.019_993 - 0.000_101 * centuries)
-            + radians(3.0 * anomaly).sin() * 0.000_289;
-        let node = 125.04 - 1934.136 * centuries;
-        let apparent = mean_longitude + centre - 0.005_69 - 0.004_78 * radians(node).sin();
+        let node = node(centuries);
+        let apparent = apparent_longitude(julian);
         let seconds =
             21.448 - centuries * (46.815 + centuries * (0.000_59 - centuries * 0.001_813));
         let obliquity = 23.0 + (26.0 + seconds / 60.0) / 60.0 + 0.002_56 * radians(node).cos();
@@ -215,5 +246,13 @@ mod tests {
         // NOAA's solar calculator gives them.
         rises_within_a_minute_of((2026, 6, 21), GREENWICH, minutes(3, 43));
         rises_within_a_minute_of((2026, 12, 21), GREENWICH, minutes(8, 3));
+    }
+
+    #[test]
+    fn the_suns_apparent_longitude_is_meeuss_own() {
+        // Meeus's example 25.a: on 1992 October 13 at 0h, Julian day
+        // 2448908.5, the sun's apparent longitude is 199.90895 degrees.
+        let longitude = apparent_longitude(2_448_908.5);
+        assert!((longitude - 199.908_95).abs() < 0.001, "{longitude}");
     }
 }

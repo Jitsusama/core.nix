@@ -2502,7 +2502,8 @@
   '';
   the-sun-sets-as-noaa-says = ''
     the sun rises and sets within a minute of NOAA's tables, in Greenwich and far north, and where
-    it neither rises nor sets on a day it says whether it stays up or down
+    it neither rises nor sets on a day it says whether it stays up or down, and its apparent
+    longitude, the calendars' solar terms, is Meeus's worked example's to a thousandth of a degree
   '';
   the-surface-boots-with-its-gpu-and-a-clock-that-reads = ''
     the Surface Laptop 4 loads its GPU's driver and the CMOS clock in the initrd, and keeps
