@@ -385,8 +385,13 @@ in
     IntelSagv = "Enabled";
     # No pause at power-on over a charger it thinks too weak.
     PowerWarn = "Disabled";
-    # A bad firmware release can be rolled back.
-    AllowBiosDowngrade = "Enabled";
+    # No older firmware can be written from the running system, so an
+    # attacker with root can't put back a release with a known flaw. A
+    # bad release is still
+    # rolled back by allowing it first, at F2 or with `run0
+    # firmware-settings set AllowBiosDowngrade Enabled`, both behind the
+    # admin password (docs/hardware.md).
+    AllowBiosDowngrade = "Disabled";
     # The firmware reads the disk's own health report at power-on and stops
     # to say so when it's failing, before anything boots, so a dying disk is
     # named even when the system on it can no longer start to say it. smartd
@@ -421,6 +426,9 @@ in
     DcsdSwDvc = "Disabled";
     TelemetryAccessLvl = "Disabled";
   };
+  # Turned off at F2 at the next restart, since writing it from here needs
+  # the admin password at run0; this comes out once the firmware holds it.
+  jitsusama.firmware.waiting.AllowBiosDowngrade = "Joel to turn Allow BIOS Downgrade off at F2";
 
   # The panel takes its brightness over the display link, and xe picks how
   # from its eDP revision, read once at boot. A boot with a monitor on USB-C

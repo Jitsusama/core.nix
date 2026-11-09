@@ -3,7 +3,8 @@
 # knows what its firmware offers. `firmware-settings check` names what
 # differs, and `run0 firmware-settings apply` writes it, asking for the
 # firmware's admin password, which nothing keeps. A check fails at boot
-# when the firmware holds anything else. The hardware's module also says how
+# when the firmware holds anything else, except a setting waiting for a
+# person at the setup screen, which it names. The hardware's module also says how
 # a person reaches its firmware's screens, which the guide tells them when a
 # stick is written for the machine: how to start it from a stick, and how to
 # clear its Secure Boot keys.
@@ -15,6 +16,7 @@
 }:
 let
   settings = config.jitsusama.firmware.settings;
+  waiting = config.jitsusama.firmware.waiting;
   firmwareSettings = pkgs.callPackage ./package.nix { };
 in
 {
@@ -28,6 +30,20 @@ in
       Firmware settings by the names the kernel's firmware-attributes class
       gives them, under /sys/class/firmware-attributes/*/attributes, with
       the values they should hold.
+    '';
+  };
+
+  options.jitsusama.firmware.waiting = lib.mkOption {
+    type = lib.types.attrsOf lib.types.str;
+    default = { };
+    example = {
+      AllowBiosDowngrade = "someone to turn it off at the firmware's setup screen";
+    };
+    description = ''
+      Declared settings a person has yet to set at the firmware's setup
+      screen, each with what it waits for. The check names them without
+      failing, so a boot before then isn't marked as broken, and apply
+      writes them as any other.
     '';
   };
 
@@ -70,8 +86,17 @@ in
   };
 
   config = lib.mkIf (settings != { }) {
+    assertions = [
+      {
+        assertion = lib.all (name: settings ? ${name}) (lib.attrNames waiting);
+        message = "jitsusama.firmware.waiting names a setting that isn't declared";
+      }
+    ];
     environment.etc."firmware-settings".text = lib.concatLines (
       lib.mapAttrsToList (name: value: "${name}=${value}") settings
+    );
+    environment.etc."firmware-settings-waiting".text = lib.concatLines (
+      lib.mapAttrsToList (name: what: "${name}=${what}") waiting
     );
     environment.systemPackages = [ firmwareSettings ];
 
