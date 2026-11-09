@@ -9,11 +9,12 @@
 //! Where the laptop is comes from whereabouts' file, its latitude and
 //! longitude; with none known there's no schedule, and the shell says the
 //! night light waits for where Joel is rather than guessing. The sun's
-//! times are NOAA's reckoning in sun.rs, the same file the launcher's
-//! calendars reckon their sunsets by.
+//! times are NOAA's reckoning in the sun crate (modules/sun), the same
+//! one the launcher's calendars reckon their sunsets by, so the night falls
+//! here when Date says the day ends.
 
-use crate::sun::{self, Crossing};
 use crate::warmth::WHITE;
+use sun::Crossing;
 
 /// How long the screen takes to ease into the night and back out of it.
 pub const EASE: i64 = 30 * MINUTE;

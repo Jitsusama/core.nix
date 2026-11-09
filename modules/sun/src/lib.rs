@@ -1,8 +1,9 @@
 //! When the sun rises and sets on a day, where it's asked from: for the
-//! calendars whose day begins at sunset, the Hebrew and the Islamic, and
-//! for the backlight daemon's night light, which warms the screen from
-//! sunset to sunrise (modules/backlight/src/night.rs, which takes this file
-//! as its own module, so one reckoning serves both). It's NOAA's own
+//! launcher's calendars whose day begins at sunset, the Hebrew and the
+//! Islamic (modules/quickshell/timekeeping/src/calendar.rs), and for the
+//! backlight daemon's night light, which warms the screen from sunset to
+//! sunrise (modules/backlight/src/night.rs), each naming this crate in its
+//! Cargo.toml, so one reckoning serves both. It's NOAA's own
 //! reckoning, the one behind its solar calculator, from Meeus's
 //! Astronomical Algorithms: the sun's place to a hundredth of a degree,
 //! and the sun risen or set while its centre is 0.833 degrees below the

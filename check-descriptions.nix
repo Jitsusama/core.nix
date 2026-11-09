@@ -1722,6 +1722,10 @@
   stands-alone = ''
     nothing here names a machine, its repository or employer
   '';
+  sun-passes-clippy = ''
+    clippy finds nothing in sun, the sun's reckoning the calendars and night light share, or its
+    tests
+  '';
   surface-clock-passes-clippy = ''
     clippy finds nothing in surface-clock or its tests
   '';
@@ -2495,6 +2499,10 @@
   the-stick-types-colemak-on-every-built-in-keyboard = ''
     the install stick remaps the built-in keyboard of each of the four models core describes, its
     Apple ones included, so a passphrase typed there is the one the owner meant
+  '';
+  the-sun-sets-as-noaa-says = ''
+    the sun rises and sets within a minute of NOAA's tables, in Greenwich and far north, and where
+    it neither rises nor sets on a day it says whether it stays up or down
   '';
   the-surface-boots-with-its-gpu-and-a-clock-that-reads = ''
     the Surface Laptop 4 loads its GPU's driver and the CMOS clock in the initrd, and keeps
