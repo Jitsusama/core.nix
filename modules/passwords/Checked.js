@@ -95,9 +95,10 @@ function todoSide(found, said) {
 // Why the to-do is there, its drawer's one sentence, "The check at 05:10
 // found 1 breached login and 2 reused", which holds both counts whole when
 // the side gives way (VKCF3Z [4e0fcf16]): the logins named once, on the
-// first count, each left out at none. `at` is the check's time as the
-// clock says it; "" while nothing was found.
-function todoWhy(found, said, at) {
+// first count, each left out at none. `sentence` is what the drawer tells,
+// `said` the counts' words, and `at` the check's time as the clock says
+// it; "" while nothing was found.
+function todoWhy(found, said, sentence, at) {
     const parts = [];
     if (found.breached > 0) {
         parts.push({ count: found.breached, one: said.breachedLogin,
@@ -114,7 +115,7 @@ function todoWhy(found, said, at) {
     const told = [Passwords.fill(first.count === 1 ? first.one : first.many,
         { count: counted(first.count) })]
         .concat(rest.map(part => Passwords.fill(part.bare, { count: counted(part.count) })));
-    return Passwords.fill(said.why, { at, found: told.join(said.and) });
+    return Passwords.fill(sentence, { at, found: told.join(said.and) });
 }
 
 // The to-do as For You weighs it (ForYou.js's weigh): a thing to do, ready

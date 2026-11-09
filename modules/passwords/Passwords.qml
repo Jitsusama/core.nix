@@ -332,8 +332,10 @@ Provider {
             fact("on:waiting:checked", clocked(found.at)),
             fact("on:waiting:clears", done ? "" : todoSaid.clears ?? "")
         ].filter(one => one.value !== "");
-        const why = done ? "" : Checked.todoWhy(found, todoSaid, clocked(found.at));
-        const steps = done ? "" : (Words.of("passwords:todo").tells ?? {}).steps ?? "";
+        const tells = Words.of("passwords:todo").tells ?? {};
+        const why = done ? ""
+            : Checked.todoWhy(found, todoSaid, tells.why ?? "", clocked(found.at));
+        const steps = done ? "" : tells.steps ?? "";
         return {
             eyebrow: ForYou.filled(say.from, { from: Words.name("passwords"), kind: say.todo }),
             eyebrowNames: true,
