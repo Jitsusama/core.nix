@@ -66,20 +66,23 @@ pub fn builders_dropped(why: &str, lines: &[String]) -> bool {
             .any(|line| DROPPED.iter().any(|said| line.contains(said)))
 }
 
-/// How long an update may build heads main has since moved past before
-/// it's stopped, so the next ask builds the new ones. Shorter would throw
-/// away a build whose new heads need the same pieces each time a merge
-/// lands; on 8 November one built a kernel for two hours after a revert
-/// had made it moot, and every ask joined it.
+/// How long an update may fetch heads main has since moved past before
+/// it's stopped, so the next ask fetches the new ones.
 const STALE_AFTER: Duration = Duration::from_mins(30);
 
-/// Whether an update asked for at `asked`, still fetching or building
-/// since `since`, is building heads main has moved past for long enough
-/// to stop it.
+/// Whether an update asked for at `asked`, still fetching since `since`,
+/// is fetching heads main has moved past for long enough to stop it.
+///
+/// A build is never stopped for main moving: it finishes and switches,
+/// and the next ask follows main's newer heads. Main takes about twenty
+/// merges an hour, so a build stopped whenever main had moved past it for
+/// half an hour could never finish one past that: on 9 November the
+/// 1,718 pieces of an inputs update were stopped 30 minutes in and
+/// planned again. A build that stops working is the daemon's to stop,
+/// by its quiet limits; one a revert made moot, as a kernel was on 8
+/// November, costs a switch that the next one follows.
 pub fn stale(asked: &Followed, now: &Followed, latest: Option<&Line>, since: Duration) -> bool {
-    asked != now
-        && since >= STALE_AFTER
-        && matches!(latest, Some(Line::Fetching | Line::Building { .. }))
+    asked != now && since >= STALE_AFTER && matches!(latest, Some(Line::Fetching))
 }
 
 /// The key main's own head is kept under among the inputs', which no
@@ -308,19 +311,28 @@ mod tests {
     }
 
     #[test]
-    fn an_update_is_stale_once_main_moves_past_a_long_build() {
-        let building = Line::Building {
-            commit: "c".to_owned(),
-        };
+    fn an_update_is_stale_once_main_moves_past_a_long_fetch_but_a_build_runs_on() {
         let long = STALE_AFTER;
-        assert!(stale(&at("a"), &at("b"), Some(&building), long));
+        assert!(stale(&at("a"), &at("b"), Some(&Line::Fetching), long));
         assert!(
-            !stale(&at("a"), &at("a"), Some(&building), long),
+            !stale(&at("a"), &at("a"), Some(&Line::Fetching), long),
             "main hasn't moved"
         );
         assert!(
-            !stale(&at("a"), &at("b"), Some(&building), Duration::from_mins(29)),
-            "a short build finishes rather than start again at each merge"
+            !stale(
+                &at("a"),
+                &at("b"),
+                Some(&Line::Fetching),
+                Duration::from_mins(29)
+            ),
+            "a short fetch finishes rather than start again at each merge"
+        );
+        let building = Line::Building {
+            commit: "c".to_owned(),
+        };
+        assert!(
+            !stale(&at("a"), &at("b"), Some(&building), Duration::from_hours(2)),
+            "a build finishes and switches, however long main has moved past it"
         );
         let switching = Line::Switching {
             commit: "c".to_owned(),

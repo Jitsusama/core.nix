@@ -164,8 +164,8 @@ fn followed(file: &Path, every: Duration) -> ExitCode {
 }
 
 /// Asks for an update at `heads` and hears it to its ending, looking at
-/// main meanwhile and stopping the update once it has long built heads
-/// main has moved past (`follow::stale`), so the next ask builds the new.
+/// main meanwhile and stopping the update once it has long fetched heads
+/// main has moved past (`follow::stale`), so the next ask fetches the new.
 fn heard(config: &Config, heads: &Followed) -> std::io::Result<Line> {
     let (told, lines) = mpsc::channel::<Line>();
     let socket = config.socket.clone();
