@@ -8170,7 +8170,10 @@
       "in": "passwords",
       "name": "Open the Website",
       "verb": "open",
-      "glyph": "web"
+      "glyph": "web",
+      "said": {
+        "fills": "{manager} offers to fill it on the page"
+      }
     },
     {
       "id": "verb:passwords:show",

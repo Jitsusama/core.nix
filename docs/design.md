@@ -1178,7 +1178,15 @@ works the same way everywhere.
   ("Copy the Title", "Copy the Link", "Copy the Password"). A password's
   Return copies it, since that's its use rather than a copy of what
   describes it, so Copy last doesn't move it; the secret itself reads
-  "hidden", and nothing shows it.
+  "hidden", and nothing shows it. A login's Open the Website opens a
+  web page in the browser its password manager's extension fills in,
+  wearing that browser's mark, and the launcher never fills it: where
+  the manager can't be asked to fill it, as 1Password can't from outside
+  its app, the foot says the extension offers to ("1Password offers to
+  fill it on the page"), and no secret passes through the launcher. With
+  no such browser, it opens in the default one with the globe's mark,
+  and the foot says nothing more; it's one act either way, never a
+  second beside it doing the same (VKCF3Z, 2026-11-08).
   A quest's Go To Its Session is the one that names where, as it pairs
   with Start a Session.
   Ending the session asks once more, saying what it closes ("Reboot now,

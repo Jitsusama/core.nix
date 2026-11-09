@@ -161,6 +161,15 @@ in
           # 1Password's own link to an item, which its desktop entry takes
           # as the onepassword scheme's handler, opening the item there.
           shows = "onepassword://view-item?a={account}&v={collection}&i={id}";
+          # Its Chrome extension fills a sign-in, so an entry's website
+          # opens there, where the extension offers to fill it on the page.
+          # 1Password's own Open and Fill can't be asked from outside:
+          # neither op nor a onepassword:// link offers it, and its app
+          # does it by opening the website with the item's id in the
+          # address, which the extension reads as the page loads. That's
+          # undocumented, and 1Password is sealing the id with the
+          # account's key, after which the extension refuses a plain one.
+          fills = "google-chrome";
         };
       };
 

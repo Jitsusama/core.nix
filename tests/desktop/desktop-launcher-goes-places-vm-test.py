@@ -1049,7 +1049,8 @@ def walk_passwords(desktop: Desktop) -> None:
     )
     assert desktop.showing()["selected"]["side"] == "keeper", desktop.showing()["selected"]
     desktop.shoot("launcher-passwords-place")
-    # Stepping into it reads it in full, so its one-time code is there among its acts.
+    # Stepping into it reads it in full, so its one-time code is there among its acts, and
+    # its website opens in Chrome, whose entry this machine has, for 1Password to fill.
     desktop.follow()
     acts = [
         "Copy the Password",
