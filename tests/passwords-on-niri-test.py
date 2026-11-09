@@ -178,7 +178,9 @@ def test_an_entrys_return_copies_its_password_and_the_foot_says_when_it_clears(
     shell.send_key("ret")
     shell.launcher_until(lambda shown: not shown["open"])
     shell.reported("holds margin ", lambda marks: "clipboard" in marks.split(), since)
-    shell.launcher_until(lambda _: shell.copied() == STAND_IN)
+    # wl-copy takes the clipboard a moment after the shell's mark, and wl-paste fails on one
+    # still empty, so it's read until the copy lands rather than once.
+    shell.launcher_until(lambda _: shell.execute("wl-paste --no-newline") == (0, STAND_IN))
     # Opened again, the margin's mark says it's on the clipboard, so the row and the foot say
     # no copy of it, the row its username alone (VKCF3Z, 2026-11-08); nothing on screen says
     # the password: not the row, nor its drawer, nor the foot.
