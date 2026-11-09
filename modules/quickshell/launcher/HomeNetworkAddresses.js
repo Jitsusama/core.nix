@@ -49,18 +49,18 @@ function addressing(model) {
     ])).concat(reserved(model));
 }
 
-// A subnet, by its kind, as its address and prefix, the range DHCP hands
-// out and what sets it apart, a part that isn't so giving way:
-// "10.0.0.0/22 · DHCP 10.0.0.20 to 10.0.0.254".
+// A subnet, by its kind: how it stands first, a part that isn't so giving
+// way, then its address and prefix and the range DHCP hands out:
+// "off \u00b7 10.0.0.0/21 \u00b7 DHCP 10.0.0.20 to 10.0.0.254" (VKCF3Z, 2026-11-08).
 function subnet(one) {
     const bits = prefix(one.mask);
     const value = joined([
-        known(one.address) && bits !== null ? `${one.address}/${bits}`
-            : joined([one.address, known(one.mask) ? `mask ${one.mask}` : ""]),
-        known(one.first) && known(one.last) ? `DHCP ${one.first} to ${one.last}` : "",
         one.on === false ? "off" : "",
         one.internet === false ? "no internet" : "",
         one.open === true ? "open" : "",
+        known(one.address) && bits !== null ? `${one.address}/${bits}`
+            : joined([one.address, known(one.mask) ? `mask ${one.mask}` : ""]),
+        known(one.first) && known(one.last) ? `DHCP ${one.first} to ${one.last}` : "",
     ]);
     if (one.kind === "main" || one.kind === "guest") {
         return fact(`${one.kind}-subnet`, value);
@@ -117,17 +117,28 @@ function listed(model, mac) {
     return (model?.devices ?? []).find(same) ?? (model?.devices_off ?? []).find(same) ?? null;
 }
 
-// The address kept for a device, or nothing where none is.
-function reservedFor(model, one) {
+// A device's address, said reserved where it's the one kept for it, and
+// the kept one as a fact of its own only where they differ, so no figure
+// is said twice (VKCF3Z, 2026-11-08).
+function deviceAddress(model, one) {
     const same = (each) => String(each.mac).toLowerCase() === String(one.mac).toLowerCase();
-    return (model?.internet?.addresses?.reservations ?? []).find(same)?.address ?? "";
+    const its = (model?.internet?.addresses?.reservations ?? []).find(same)?.address ?? "";
+    return [
+        fact("address", joined([one.address, its !== "" && its === one.address
+            ? "reserved" : ""])),
+        fact("reserved", its === one.address ? "" : its),
+    ];
 }
 
-// Each band's security, lowest band first, as its acronym:
-// "2.4 GHz WPA2 · 5 GHz WPA2".
+// The bands' security as its acronym: one word where every band agrees,
+// "WPA2", else band by band, lowest first, "2.4 GHz WPA2 \u00b7 5 GHz WPA3".
 function security(bands) {
-    return joined((bands ?? []).map((one) => known(one.security)
-        ? `${one.band} ${String(one.security).toUpperCase()}` : ""));
+    const said = (bands ?? []).filter((one) => known(one.security));
+    const words = said.map((one) => String(one.security).toUpperCase());
+    if (words.length > 0 && words.every((word) => word === words[0])) {
+        return words[0];
+    }
+    return joined(said.map((one, at) => `${one.band} ${words[at]}`));
 }
 
 // Whether eero's last scan saw another network with this one's name.

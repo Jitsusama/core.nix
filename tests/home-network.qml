@@ -192,7 +192,7 @@ QtObject {
                 + "IPv6 automatic"],
             ["ipv6", "off"],
             ["main-subnet", "10.0.0.0/22 \u00b7 DHCP 10.0.0.20 to 10.0.0.254"],
-            ["guest-subnet", "10.0.0.0/21 \u00b7 DHCP 10.0.0.20 to 10.0.0.254 \u00b7 off"],
+            ["guest-subnet", "off \u00b7 10.0.0.0/21 \u00b7 DHCP 10.0.0.20 to 10.0.0.254"],
             ["forwards", "none"],
             ["pinholes", "none"],
             ["speed-test", "370 Mb/s down \u00b7 11.9 Mb/s up \u00b7 5 Nov 10:52"],
@@ -204,7 +204,7 @@ QtObject {
             ["randomization", "off"],
             ["steering", "on"],
             ["wpa3", "off"],
-            ["security", "2.4 GHz WPA2 \u00b7 5 GHz WPA2"],
+            ["security", "WPA2"],
             ["wifi-mode", "default"],
             ["ac-compatibility", "off"],
             ["name-clash", "none seen"],
@@ -319,10 +319,20 @@ QtObject {
         const odd = keeping([], [Object.assign({}, addresses.subnets[1], { kind: "iot",
             name: "things", mask: "255.0.255.0", on: true, internet: false, open: true })]);
         expect("a subnet of a kind eero hasn't named, by its name, its mask whole",
-            byId(Drawers.internet(odd, now)).things.value, "10.0.0.0 \u00b7 mask 255.0.255.0 "
-            + "\u00b7 DHCP 10.0.0.20 to 10.0.0.254 \u00b7 no internet \u00b7 open");
-        expect("a device's reserved address", value(byId(Drawers.device(reserving, printer, now)),
-            "reserved"), "10.0.0.30");
+            byId(Drawers.internet(odd, now)).things.value, "no internet \u00b7 open "
+            + "\u00b7 10.0.0.0 \u00b7 mask 255.0.255.0 \u00b7 DHCP 10.0.0.20 to 10.0.0.254");
+        expect("a device's reserved address, not the one it has", ["address", "reserved"]
+            .map(id => value(byId(Drawers.device(reserving, printer, now)), id)),
+            ["10.0.0.31", "10.0.0.30"]);
+        const keptAsIs = keeping([{ mac: printer.mac, description: "", address: printer.address }]);
+        expect("the address it has, said reserved and said once", [
+            value(byId(Drawers.device(keptAsIs, printer, now)), "address"),
+            byId(Drawers.device(keptAsIs, printer, now)).reserved], ["10.0.0.31 \u00b7 reserved",
+            undefined]);
+        expect("bands that differ, band by band", value(byId(Drawers.internet(Object.assign({},
+            model, { internet: Object.assign({}, model.internet, { security: [
+                { band: "2.4 GHz", security: "wpa2" }, { band: "5 GHz", security: "wpa3" }] })
+        }), now)), "security"), "2.4 GHz WPA2 \u00b7 5 GHz WPA3");
         expect("none for a device with none", byId(Drawers.device(model, printer, now))
             .reserved, undefined);
         expect("a name clash", value(byId(Drawers.internet(Object.assign({}, model, {

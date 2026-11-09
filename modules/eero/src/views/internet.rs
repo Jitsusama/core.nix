@@ -153,7 +153,7 @@ fn settings<'a>(net: &Internet, clock: &Clock) -> Vec<(&'a str, Facts<'a>)> {
                 ("WPA3", switch(net.wpa3)),
                 ("security", security(&net.security)),
                 ("Wi-Fi mode", said(net.wireless_mode.as_deref())),
-                ("802.11ac compatibility", switch(net.ac_compatibility)),
+                ("Wi-Fi 5 compatibility", switch(net.ac_compatibility)),
                 ("name clash", yes(net.name_clash)),
                 ("MLO mode", said(net.mlo_mode.as_deref())),
                 ("DDNS", switch(net.ddns)),
@@ -185,10 +185,17 @@ fn settings<'a>(net: &Internet, clock: &Clock) -> Vec<(&'a str, Facts<'a>)> {
     ]
 }
 
-/// Each band's security, as its acronym: 2.4 GHz WPA2 · 5 GHz WPA2.
+/// The security each band uses, as its acronym: WPA2 where they agree,
+/// else 2.4 GHz WPA2 · 5 GHz WPA3. It stands beside WPA3, which is the
+/// switch saying how the network is set, not what a band is using.
 fn security(bands: &[BandSecurity]) -> Line {
-    if bands.is_empty() {
+    let Some(first) = bands.first() else {
         return unknown();
+    };
+    // Where every band agrees, the one word says it, band by band only
+    // where they differ (VKCF3Z, 2026-11-08).
+    if bands.iter().all(|band| band.security == first.security) {
+        return vec![plain(first.security.to_uppercase())];
     }
     facts(
         bands
@@ -252,8 +259,8 @@ fn addresses<'a>(model: &HomeNetwork) -> Vec<(&'a str, Facts<'a>)> {
     vec![("addresses", each)]
 }
 
-/// A subnet: its address and prefix, the range DHCP hands out, and what
-/// sets it apart, a part that isn't so giving way.
+/// A subnet: how it stands first, a part that isn't so giving way, then
+/// its address and prefix and the range DHCP hands out.
 fn subnet_line(subnet: &Subnet) -> Line {
     let address = match (
         subnet.address.as_deref(),
@@ -273,11 +280,11 @@ fn subnet_line(subnet: &Subnet) -> Line {
     };
     let part = |so: bool, word: &str| if so { vec![plain(word)] } else { Vec::new() };
     facts(vec![
-        address,
-        range,
         part(subnet.on == Some(false), "off"),
         part(subnet.internet == Some(false), "no internet"),
         part(subnet.open == Some(true), "open"),
+        address,
+        range,
     ])
 }
 

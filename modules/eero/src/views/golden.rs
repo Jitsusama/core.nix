@@ -181,7 +181,8 @@ fn narrow() -> Vec<View> {
 /// offline with its heartbeat missed, an update waiting, a port linked
 /// under its best, a busy radio, the internet down, and a device over
 /// Ethernet whose address is reserved, which the record's one reservation
-/// isn't, with the guest subnet on but kept from the internet and open.
+/// isn't, with the guest subnet on but kept from the internet and open,
+/// and the bands' security differing.
 fn troubled() -> HomeNetwork {
     let mut model = model();
     let net = &mut model.internet;
@@ -215,6 +216,7 @@ fn troubled() -> HomeNetwork {
     guest.on = Some(true);
     guest.internet = Some(false);
     guest.open = Some(true);
+    model.internet.security[1].security = "wpa3".into();
     model
 }
 

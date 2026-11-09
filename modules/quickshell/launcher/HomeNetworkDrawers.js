@@ -451,8 +451,7 @@ function device(model, one, now, asked) {
             { heading: "where" },
             fact("network", joined([one.ssid, String(one.auth ?? "").toUpperCase(), one.subnet,
                 one.guest ? "guest" : ""])),
-            fact("address", one.address),
-            fact("reserved", Addresses.reservedFor(model, one)),
+        ].concat(Addresses.deviceAddress(model, one), [
             fact("addresses", (one.addresses ?? []).filter((each) => each !== one.address)
                 .join(DOT)),
             fact("mac", joined([one.mac, one.private ? "private" : ""])),
@@ -464,7 +463,7 @@ function device(model, one, now, asked) {
             fact("profile", group ? joined([group.name, group.paused ? "paused" : ""])
                 : null),
             fact("held", joined([one.paused ? "paused" : "", one.blocked ? "blocked" : ""])),
-        ]).concat(History.roams(model, one, now), happened((model?.events ?? [])
+        ])).concat(History.roams(model, one, now), happened((model?.events ?? [])
             .filter((event) => about(event, one)), now)),
     };
 }

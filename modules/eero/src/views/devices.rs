@@ -254,14 +254,15 @@ fn who<'a>(model: &'a HomeNetwork, device: &'a Device, clock: &Clock) -> Vec<(&'
     }
     let addresses: Vec<Line> = device.addresses.iter().map(|a| vec![plain(a)]).collect();
     let node = location(model, device.node.as_deref());
-    // The address eero keeps for it, which no device has unless one's set.
+    // The address eero keeps for it, which no device has unless one's set,
+    // and none said as every empty list here says it.
     let reserved = model
         .internet
         .addresses
         .reservations
         .iter()
         .find(|kept| kept.mac.eq_ignore_ascii_case(&device.mac))
-        .map_or_else(|| vec![plain("no")], |kept| said(kept.address.as_deref()));
+        .map_or_else(|| vec![plain("none")], |kept| said(kept.address.as_deref()));
     vec![
         ("kind", facts(what)),
         (
