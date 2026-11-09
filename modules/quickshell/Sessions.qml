@@ -1281,7 +1281,8 @@ Singleton {
         console.info(`sessions: reopening ${given.length} handed over`);
         reopenAll(given, (one, cwd) => console.info(`sessions: ${one.id} not reopened, `
             + `since its folder, ${cwd}, is gone`),
-            id => arrangement[bootId]?.[id] ?? arrangement[restoring.boot]?.[id] ?? null);
+            id => Places.keptFor(id, { now: arrangement[bootId], reboot: rebootPlaces,
+                restored: arrangement[restoring.boot] }));
         return given.length === listed.length ? "taken"
             : `taken ${given.length} of ${listed.length}`;
     }
