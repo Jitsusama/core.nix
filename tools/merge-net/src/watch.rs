@@ -139,6 +139,8 @@ pub trait World: Sync {
     fn held(&self) -> Option<String>;
     /// Fetch main and give its head.
     fn head(&self) -> Result<String, String>;
+    /// Main's head as it was last fetched, without asking the remote.
+    fn fetched(&self) -> Option<String>;
     /// The first-parent commits after `base` up to `head`, oldest first.
     fn merges(&self, base: &str, head: &str) -> Result<Vec<String>, String>;
     /// A commit's subject line.
@@ -872,8 +874,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
         breaking.heard(test, ran);
     });
     breaking.done()?;
-    let listed = world
-        .head()
+    let listed = newest_known(world)
         .map(|newest| world.quarantined(&newest))
         .unwrap_or_default();
     let mut failed = false;
@@ -1094,9 +1095,18 @@ fn clear_if_fixed_forward(
 /// listed vm-desktop-launcher-moves-windows at 04:13, and the round went on
 /// evaluating the test at 139 merges to search for one it would revert.
 fn listed_on_main(world: &dyn World, head: &str, test: &str) -> bool {
-    world.head().is_ok_and(|newest| {
+    newest_known(world).is_some_and(|newest| {
         newest != head && world.quarantined(&newest).iter().any(|kept| kept == test)
     })
+}
+
+/// Main's newest head, or where it can't be fetched, its head as last
+/// fetched. On 9 November the net came up five seconds before the
+/// network, the round it took up heard vm-desktop-captures' recorded
+/// failures at once, and a failed fetch read as main listing nothing, so a
+/// search of seven steps went after a test main listed.
+fn newest_known(world: &dyn World) -> Option<String> {
+    world.head().ok().or_else(|| world.fetched())
 }
 
 /// List `test`, which failed and then passed at `head`, as quarantined
@@ -1346,6 +1356,9 @@ mod tests {
         quarantined: Vec<String>,
         /// Tests main's newest head lists as quarantined besides those.
         listed_since: Vec<String>,
+        /// What every fetch of main fails with, as before the network is
+        /// up, so only its head as last fetched is known.
+        fetch_fails: Option<String>,
         /// Whether every revert conflicts with main.
         reverts_conflict: bool,
         reverted: Mutex<Vec<String>>,
@@ -1395,8 +1408,14 @@ mod tests {
             self.held.clone()
         }
         fn head(&self) -> Result<String, String> {
+            if let Some(error) = &self.fetch_fails {
+                return Err(error.clone());
+            }
             *self.fetched_since_revert.lock().unwrap() = true;
             Ok(self.head.clone())
+        }
+        fn fetched(&self) -> Option<String> {
+            Some(self.head.clone())
         }
         fn merges(&self, _: &str, _: &str) -> Result<Vec<String>, String> {
             Ok(self.merges.clone())
@@ -2097,6 +2116,33 @@ mod tests {
             Round::Passed("h".into())
         );
         assert!(world.reverted.lock().unwrap().is_empty());
+        assert_eq!(findings(&state)[0]["kind"], "failed-in-quarantine");
+    }
+
+    #[test]
+    fn a_test_main_lists_is_left_be_while_main_cant_be_fetched() {
+        let state = state("listed-unreachable");
+        state.set_heads("s", "s").unwrap();
+        state.begin("h").unwrap();
+        let world = Stand {
+            head: "n".into(),
+            merges: names("a b h"),
+            changed: changed("vm-a"),
+            listed_since: names("vm-a"),
+            fetch_fails: Some("could not resolve host: github.com".into()),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Passed("h".into())
+        );
+        assert!(world.reverted.lock().unwrap().is_empty());
+        assert!(
+            world.built().iter().all(|(at, _)| at == "h"),
+            "nothing is searched: {:?}",
+            world.built()
+        );
         assert_eq!(findings(&state)[0]["kind"], "failed-in-quarantine");
     }
 
