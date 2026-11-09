@@ -292,7 +292,6 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
         let before = ready::checked_before(
             &ready::recent_records(),
             &files,
-            &ready::record(&commit),
             &ready::record,
             &on_main,
             &same,
@@ -307,20 +306,11 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
                 );
                 return Ok(ExitCode::SUCCESS);
             }
-            ready::Before::Rechecked(checked, shared) => {
-                println!(
-                    "ready: {} sits on origin's main, changed-checks built what it named at {}, \
-                     the same change, and since main moved {} a check has passed at the head",
-                    short(&commit),
-                    short(&checked),
-                    shared.join(", ")
-                );
-                return Ok(ExitCode::SUCCESS);
-            }
             ready::Before::Shares(checked, shared) => {
                 eprintln!(
                     "merge-net: the same change passed at {}, but main has since moved {}; run \
-                     the checks covering them at {}, committed so it's sent, and merge again",
+                     changed-checks at {}, committed so it's sent, which builds only what the \
+                     rebase moved, and merge again",
                     short(&checked),
                     shared.join(", "),
                     short(&commit)
