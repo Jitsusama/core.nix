@@ -402,29 +402,6 @@ function startOf(date) {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
-// A moment as a drawer says it: its time today, else its day and time
-// this year, else its day.
-function when(iso, now) {
-    if (!iso) {
-        return "";
-    }
-    const at = new Date(iso);
-    if (Number.isNaN(at.getTime())) {
-        return "";
-    }
-    const day = dayOf(iso, now);
-    const time = Qt.formatTime(at, "HH:mm");
-    if (day === "today") {
-        return time;
-    }
-    if (day === "yesterday") {
-        return `yesterday ${time}`;
-    }
-    return new Date(now).getFullYear() === at.getFullYear()
-        ? `${Qt.formatDate(at, "d MMM")} ${time}`
-        : Qt.formatDate(at, "d MMM yyyy");
-}
-
 // How long ago a moment was, as the launcher says it elsewhere.
 function ago(iso, now) {
     const at = new Date(iso).getTime();

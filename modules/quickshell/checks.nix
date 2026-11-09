@@ -1432,15 +1432,17 @@ onLinux {
       qt = pkgs.qt6.qtdeclarative;
     in
     pkgs.runCommandLocal "the-home-network-says-each-figure" { } ''
+      mkdir launcher
       cp ${../../tests/home-network.qml} home-network.qml
-      cp ${./launcher/HomeNetwork.js} HomeNetwork.js
-      cp ${./launcher/HomeNetworkAddresses.js} HomeNetworkAddresses.js
-      cp ${./launcher/HomeNetworkDrawers.js} HomeNetworkDrawers.js
-      cp ${./launcher/HomeNetworkHistory.js} HomeNetworkHistory.js
-      cp ${./launcher/Order.js} Order.js
-      cp ${./launcher/Numbers.js} Numbers.js
-      cp ${./launcher/Interfaces.js} Interfaces.js
-      cp ${./launcher/Machine.js} Machine.js
+      cp ${./When.js} When.js
+      cp ${./launcher/HomeNetwork.js} launcher/HomeNetwork.js
+      cp ${./launcher/HomeNetworkAddresses.js} launcher/HomeNetworkAddresses.js
+      cp ${./launcher/HomeNetworkDrawers.js} launcher/HomeNetworkDrawers.js
+      cp ${./launcher/HomeNetworkHistory.js} launcher/HomeNetworkHistory.js
+      cp ${./launcher/Order.js} launcher/Order.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
+      cp ${./launcher/Interfaces.js} launcher/Interfaces.js
+      cp ${./launcher/Machine.js} launcher/Machine.js
       cp ${../eero/home-network.json} home-network.json
       export QML_XHR_ALLOW_FILE_READ=1 TZ=UTC
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

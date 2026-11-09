@@ -154,7 +154,7 @@ fn settings<'a>(net: &Internet, clock: &Clock) -> Vec<(&'a str, Facts<'a>)> {
                 ("Wi-Fi mode", said(net.wireless_mode.as_deref())),
                 ("Wi-Fi 5 compatibility", switch(net.ac_compatibility)),
                 ("name clash", yes(net.name_clash)),
-                ("MLO mode", said(net.mlo_mode.as_deref())),
+                ("MLO mode", state(net.mlo_mode.as_deref())),
                 ("DDNS", switch(net.ddns)),
                 ("backup internet", switch(net.backup_internet)),
                 ("power saving", switch(net.power_saving)),
@@ -256,6 +256,16 @@ fn addresses<'a>(model: &HomeNetwork) -> Vec<(&'a str, Facts<'a>)> {
         }
     }
     vec![("addresses", each)]
+}
+
+/// A state eero words as disabled or enabled, said off or on, as every
+/// setting's state is; another word as eero gives it.
+fn state(said_as: Option<&str>) -> Line {
+    said(said_as.map(|word| match word {
+        "disabled" => "off",
+        "enabled" => "on",
+        other => other,
+    }))
 }
 
 /// An address with its mask as a prefix, 10.0.0.0/22, as every address and

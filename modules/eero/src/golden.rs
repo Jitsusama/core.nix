@@ -133,7 +133,7 @@ const TOLD: [(&str, Kind, &[&str], &str, &str); 5] = [
         Kind::Updated,
         &["2001 v7.17.4-5", "2002 v7.17.4-5", "2003 v7.17.4-5"],
         "The nodes updated to v7.17.4-5",
-        "From v7.17.3-9.",
+        "They were on v7.17.3-9.",
     ),
 ];
 

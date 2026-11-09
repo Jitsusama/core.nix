@@ -147,6 +147,25 @@ pub fn radio(said: &str) -> String {
         )
 }
 
+/// A sentence of eero's with its words and names left as eero wrote them
+/// and its figures set as ours are: "5.2GHz channel 52" is "5.2 GHz
+/// channel 52", a unit eero runs into its figure given its space.
+pub fn sentence(said: &str) -> String {
+    let mut set = String::with_capacity(said.len() + 4);
+    let mut last = None;
+    for (at, c) in said.char_indices() {
+        if last.is_some_and(|before: char| before.is_ascii_digit())
+            && matches!(c, 'G' | 'M' | 'k')
+            && said[at + 1..].starts_with("Hz")
+        {
+            set.push(' ');
+        }
+        set.push(c);
+        last = Some(c);
+    }
+    set
+}
+
 /// Several figures on one line, a muted dot between each.
 pub fn joined(parts: Vec<Line>) -> Line {
     let mut line = Vec::new();
@@ -203,6 +222,11 @@ mod tests {
         assert_eq!(signed(-48), "\u{2212}48");
         assert_eq!(radio("5.8GHz"), "5.8 GHz");
         assert_eq!(radio("5 GHz"), "5 GHz");
+        assert_eq!(
+            sentence("tablet 1 connected on 5.2GHz channel 52, then 2.4 GHz."),
+            "tablet 1 connected on 5.2 GHz channel 52, then 2.4 GHz."
+        );
+        assert_eq!(sentence("Hz alone, 80MHz wide"), "Hz alone, 80 MHz wide");
         assert_eq!(words("laptop_computer"), "laptop computer");
     }
 }

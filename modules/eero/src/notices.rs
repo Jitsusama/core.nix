@@ -466,7 +466,17 @@ fn updated(was: &HomeNetwork, now: &HomeNetwork, said: &impl Said) -> Vec<Notice
             Notice {
                 about: Some("firmware".into()),
                 summary: format!("{who} updated to {to}"),
-                body: format!("From {}.", listed(&froms)),
+                // A whole sentence, as every body is, since the drawer and
+                // `eero events` read it after the summary.
+                body: format!(
+                    "{} on {}.",
+                    if changed.len() > 1 {
+                        "They were"
+                    } else {
+                        "It was"
+                    },
+                    listed(&froms)
+                ),
                 urgency: Urgency::Normal,
                 tells: changed
                     .iter()
@@ -873,12 +883,13 @@ mod tests {
             said(&told[0]),
             [(
                 "The nodes updated to v7.18.0-1",
-                "From v7.17.4-5.",
+                "They were on v7.17.4-5.",
                 Urgency::Normal
             )]
         );
         assert_eq!(told[0][0].tells.len(), 3);
         assert_eq!(told[1][0].summary, "Den updated to v7.18.0-1");
+        assert_eq!(told[1][0].body, "It was on v7.17.4-5.");
     }
 
     #[test]
