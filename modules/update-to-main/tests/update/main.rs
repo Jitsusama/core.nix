@@ -20,6 +20,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
+use std::time::{Duration, Instant};
 use update_to_main::config::{
     Batches, Busy, Config, Follow, Here, Holds, Hosted, Kept, Kind, Session, Signers, Tools,
 };
@@ -1972,6 +1973,7 @@ fn refuse_during_calls(world: &mut World) {
         ],
         why: "a call is on".to_owned(),
         follower_waits: false,
+        follower_waits_at_most: None,
     }];
 }
 
@@ -2028,26 +2030,59 @@ fn a_busy_check_that_cant_tell_counts_as_busy() {
     assert_eq!(world.builds(), 0);
 }
 
-/// Says someone is at the machine the first `times` it's asked, and nobody
-/// after, counting each ask in the world's `asked` file.
-fn someone_at_the_machine(world: &mut World, times: usize) {
-    let asked = world.root.join("asked");
-    world.config.refuse_while = vec![Busy {
+/// A follower waits on `why` the first `times` it's asked, and not after,
+/// for `at_most` seconds if given, counting each ask in the world's file
+/// `counted`.
+fn waits_on(world: &World, why: &str, counted: &str, times: usize, at_most: Option<u64>) -> Busy {
+    Busy {
         command: vec![
             shell(),
             "-c".to_owned(),
             format!(
                 "n=$(cat {0} 2>/dev/null || echo 0); echo $((n + 1)) > {0}; test $n -lt {times}",
-                asked.display()
+                world.root.join(counted).display()
             ),
         ],
-        why: "someone is at the machine".to_owned(),
+        why: why.to_owned(),
         follower_waits: true,
-    }];
+        follower_waits_at_most: at_most,
+    }
+}
+
+/// Says someone is at the machine the first `times` it's asked, and nobody
+/// after, counting each ask in the world's `asked` file.
+fn someone_at_the_machine(world: &mut World, times: usize) {
+    world.config.refuse_while = vec![waits_on(
+        world,
+        "someone is at the machine",
+        "asked",
+        times,
+        None,
+    )];
 }
 
 fn asked(world: &World) -> usize {
     world.read("asked").trim().parse().unwrap_or(0)
+}
+
+#[test]
+fn someone_who_never_leaves_holds_the_switch_only_as_long_as_they_may() {
+    let mut world = World::new();
+    world.config.refuse_while = vec![
+        waits_on(&world, "someone is at the machine", "asked", 1000, Some(2)),
+        waits_on(&world, "the launcher is open", "launcher", 4, None),
+    ];
+    let head = world.signed("one");
+    world.system(&head);
+    let began = Instant::now();
+    assert_eq!(world.asked_by(&|| true).1, done(&head));
+    assert!(
+        began.elapsed() >= Duration::from_secs(2),
+        "it switched before someone's two seconds were up"
+    );
+    assert!(asked(&world) < 1000, "it waited for someone who never left");
+    let launcher: usize = world.read("launcher").trim().parse().unwrap_or(0);
+    assert_eq!(launcher, 5, "it switched while the launcher was open");
 }
 
 #[test]

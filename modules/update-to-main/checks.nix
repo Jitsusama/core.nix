@@ -81,7 +81,16 @@ in
           nixos.jitsusama.update-to-main.refuseWhile ++ darwin.jitsusama.update-to-main.refuseWhile
         )
         && lib.any (
-          refusal: refusal.followerWaits && refusal.why == "someone is at the machine"
+          refusal:
+          refusal.followerWaits
+          && refusal.why == "someone is at the machine"
+          && refusal.followerWaitsAtMost == 45 * 60
+        ) nixos.jitsusama.update-to-main.refuseWhile
+        && lib.any (
+          refusal:
+          refusal.followerWaits
+          && refusal.why == "the launcher is open"
+          && refusal.followerWaitsAtMost == null
         ) nixos.jitsusama.update-to-main.refuseWhile
       );
 }

@@ -84,7 +84,10 @@ in
       # stopped taking keys after five switches the follower asked for in
       # half an hour. So one it asked for waits, once built, until nobody
       # has touched a key or the pointer for two minutes, which swayidle
-      # marks (../swayidle/home.nix). A machine without the mark never waits.
+      # marks (../swayidle/home.nix). That evening no such gap came for two
+      # hours while 26 merges waited, so after 45 minutes it waits only
+      # for the launcher to close, which the shell marks, and for no call.
+      # A machine without the marks never waits.
       {
         command = [
           "${pkgs.writeShellScript "update-to-main-someone-is-here" ''
@@ -95,6 +98,19 @@ in
           ''}"
         ];
         why = "someone is at the machine";
+        followerWaits = true;
+        followerWaitsAtMost = 45 * 60;
+      }
+      {
+        command = [
+          "${pkgs.writeShellScript "update-to-main-the-launcher-is-open" ''
+            for mark in /run/user/*/the-launcher-is-open; do
+              test -e "$mark" && exit 0
+            done
+            exit 1
+          ''}"
+        ];
+        why = "the launcher is open";
         followerWaits = true;
       }
     ];

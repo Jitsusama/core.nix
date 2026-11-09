@@ -248,6 +248,17 @@ in
                 they made themselves, nor to build nothing ahead.
               '';
             };
+            followerWaitsAtMost = mkOption {
+              type = types.nullOr types.ints.positive;
+              default = null;
+              example = 2700;
+              description = ''
+                How many seconds at most a switch the follower asked for
+                waits on it, after which it holds the switch no longer,
+                though what else the follower waits on still does. With
+                none, it waits the whole hour.
+              '';
+            };
           };
         }
       );
@@ -509,6 +520,7 @@ in
             refuse_while = map (busy: {
               inherit (busy) command why;
               follower_waits = busy.followerWaits;
+              follower_waits_at_most = busy.followerWaitsAtMost;
             }) cfg.refuseWhile;
             holds =
               if cfg.holdRestarts ++ cfg.holdChanges == [ ] && cfg.holdAccountRestarts == { } then
