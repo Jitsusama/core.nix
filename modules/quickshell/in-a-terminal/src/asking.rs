@@ -1,6 +1,6 @@
 //! Asking the running shell what the launcher shows, and to do what it
-//! offers, through Quickshell's `qs ipc call launcher show` and `doing`, as
-//! pi-ask's tool asks it for the catalogue.
+//! offers, through Quickshell's `qs ipc call launcher show`, `names` and
+//! `doing`, as pi-ask's tool asks it for the catalogue.
 
 use std::io::Read;
 use std::process::{Command, Stdio};
@@ -217,6 +217,9 @@ fn plain(said: &str) -> String {
 mod tests {
     use super::*;
 
+    /// What a stand-in's process takes to start and answer, at most.
+    const LEEWAY: Duration = Duration::from_millis(500);
+
     #[test]
     fn a_place_still_reading_is_asked_again_only_until_its_time_is_up() {
         let began = Instant::now();
@@ -224,7 +227,10 @@ mod tests {
         let took = began.elapsed();
         assert!(matches!(&answer, Answer::Shown(shown) if still_reading(shown)));
         assert!(took >= SETTLING, "it gave up after {took:?}");
-        assert!(took < SETTLING + PATIENCE, "it asked for {took:?}");
+        assert!(
+            took < SETTLING + ASK_AGAIN + LEEWAY,
+            "it asked for {took:?}"
+        );
     }
 
     #[test]

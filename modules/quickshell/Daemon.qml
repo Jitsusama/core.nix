@@ -308,10 +308,12 @@ Scope {
         link.active = true;
     }
 
-    // Gone: said so, and every answer awaited given none.
+    // Gone: said so, and every answer awaited given none. The watch went
+    // with the wire, so what's held waits for the next watch's answer.
     function gone() {
         wire = null;
         state = "not answering";
+        answeredThisWatch = false;
         apart = {};
         if (!keptThroughGap)
             took([], Object.keys(held));
