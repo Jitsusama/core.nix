@@ -1241,6 +1241,7 @@ def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desk
                     and not (shown["selected"] or {}).get("note")
                     and shown["drawer"]["title"] == "To Look At"
                     and shown["drawer"]["facts"] == ["Heaviest"]
+                    and shown["drawer"]["values"] == ["Read the plan"]
                 )
             )
             if scale != "1":
@@ -1314,6 +1315,7 @@ def for_you_counts_its_bands(desktop: Desktop) -> None:
             and not shown["selected"].get("note")
             and shown["drawer"]["title"] == "For You"
             and shown["drawer"]["facts"] == ["Heaviest"]
+            and shown["drawer"]["values"] == ["Answer the ask \u00b7 2 min"]
         )
     )
     desktop.close_launcher()

@@ -162,6 +162,17 @@ function bandsRun(counts, said) {
             keep }));
 }
 
+// What For You's drawer names as the heaviest it holds (VKCF3Z,
+// 16efb1dc): what needs Joel now as home's Now row leads with it, its
+// title and minutes but never how many more, which `lead` keeps third
+// ("Answer the ask \u00b7 2 min"), else the heaviest To Look At holds,
+// by `look`, its name. Holding only things to try, it names none, and
+// For You's row has no drawer.
+function heaviest(lead, look) {
+    const said = (lead ?? []).filter(item => item.keep < 3).map(item => item.said);
+    return said.length > 0 ? said.join(" \u00b7 ") : look ?? "";
+}
+
 // Whether a look was left by a session, by the session or the address the
 // look names, matched against the session's address, its presence's
 // session or any address its presence answers to.

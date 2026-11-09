@@ -344,10 +344,10 @@ Provider {
 
     // Home's Now as a plate beside the card (Launcher.qml's whole): the
     // date as its eyebrow, the time large with its seconds (Drawer.qml
-    // keeps them, counting), what needs Joel or that nothing does, and the
-    // facts behind the moment in two groups, as the card's rows fall in
-    // groups: the day's weather, the next meeting and where here is, then
-    // how the clock is kept and the week. Each fact's figure leads, and
+    // keeps them, counting), and the facts behind the moment in two
+    // groups, as the card's rows fall in groups: the day's weather, the
+    // next meeting and where here is, then how the clock is kept and the
+    // week. Each fact's figure leads, and
     // what qualifies it follows, quieter (VKCF3Z's look 3, for Joel's
     // "for time i want to be able to dig into ntp server details", 29
     // October). A fact nothing can say yet is left out rather than guessed.
@@ -1280,13 +1280,10 @@ Provider {
         return { holding, bands: Lately.bands(holding, weigh) };
     }
 
-    // What needs Joel most, its title and minutes as home's Now says it
-    // ("Answer the ask \u00b7 2 min"), else the heaviest To Look At holds,
-    // for For You's drawer.
+    // What For You's drawer names as its heaviest (ForYou.js's heaviest).
     function heaviestSaid() {
-        const items = toDoCount > 0 ? homeItems().filter(item => item.keep < 3) : [];
-        return items.length > 0 ? items.map(item => item.said).join(" \u00b7 ")
-            : forYouBands.look[0]?.make(Date.now())?.name ?? "";
+        return ForYou.heaviest(toDoCount > 0 ? homeItems() : [],
+            forYouBands.look[0]?.make(Date.now())?.name);
     }
 
     // Each is a place's row, stepped into for rows of its own (VKCF3Z,
@@ -1426,12 +1423,16 @@ Provider {
                 : waitingSaid("none", {}),
         // A place's row, so nothing stands after its name; its drawer
         // names the heaviest it holds, as To Look At's does, and the
-        // bands keep the row's room (VKCF3Z, 16efb1dc).
+        // bands keep the row's room (VKCF3Z, 16efb1dc). Holding only
+        // things to try, it names none, so it has no drawer.
         nested: true,
         thing: true,
-        drawer: () => heaviestSaid() === "" ? null : {
-            title: Words.name("on:waiting"),
-            facts: [provider.fact("heaviest", heaviestSaid())]
+        drawer: () => {
+            const heaviest = heaviestSaid();
+            return heaviest === "" ? null : {
+                title: Words.name("on:waiting"),
+                facts: [provider.fact("heaviest", heaviest)]
+            };
         },
         verbs: () => provider.waitingRows(),
         targets: () => provider.waitingRows(),

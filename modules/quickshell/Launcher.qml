@@ -6945,6 +6945,9 @@ Scope {
                 title: root.drawerShows?.title ?? "",
                 facts: (root.drawerShows?.facts ?? []).filter(fact => fact)
                     .map(fact => fact.label ?? ""),
+                // And what each says, in the same order.
+                values: (root.drawerShows?.facts ?? []).filter(fact => fact)
+                    .map(fact => String(fact.value ?? "")),
                 body: root.drawerShows?.body ?? "",
                 // Its words as drawn, a run laid in lines (Drawer.qml's bodySaid).
                 bodyDrawn: drawerCard.bodySaid,
@@ -6970,14 +6973,12 @@ Scope {
                     time: root.hundredths(lines.time),
                     timeMiddle: root.hundredths(lines.timeMiddle),
                     seconds: root.hundredths(lines.seconds),
-                    say: root.hundredths(lines.say),
                     groups: lines.groups.map(group => group.map(line => root.hundredths(line)))
                 },
                 // What the moment's plate says, line by line.
                 moment: drawerCard.moment ? {
                     time: drawerCard.momentTime,
                     seconds: drawerCard.momentSeconds,
-                    say: drawerCard.shown?.say ?? "",
                     groups: drawerCard.groups.map(group => group.facts.map(fact =>
                         [fact.label, fact.value, fact.qualifier ?? ""]))
                 } : null,

@@ -1865,9 +1865,9 @@ works the same way everywhere.
   whole line of the pitch, so what follows stays on the card's. Home's Now
   has a plate of the moment instead (look 3): the date as its eyebrow;
   the time at Display, in the mono as the lock's clock is, its capitals
-  centred on Now's row, and its seconds counting after it at Note; what
-  needs Joel, or that nothing does, in the voice on Agents' line; and
-  the facts behind the moment in two groups that follow the card's,
+  centred on Now's row, and its seconds counting after it at Note,
+  never what waits, which home's row says (VKCF3Z, 25c253d3); and the
+  facts behind the moment in two groups that follow the card's,
   the weather, the next meeting and where Joel is from Programs' line,
   the clock's keeping and the week from Desktop's, each figure's
   qualifier muted after a dot, and each fact in its place's words, as

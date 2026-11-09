@@ -1913,8 +1913,8 @@ def test_nows_plate_sets_its_head_and_groups_as_every_plate(
         assert drawer["width"] == room, f"at {scale} the plate is {drawer['width']} wide: {drawer}"
         lines, card, moment = drawer["lines"], drawer["cardLines"], drawer["moment"]
         # Its head is one unit, as every plate's is: the eyebrow on the field's baseline, the
-        # time a Display pitch under it with its seconds on its baseline, and what needs Joel a
-        # Voice pitch under the time.
+        # time a Display pitch under it with its seconds on its baseline; what waits is home's
+        # row's to say, never the plate's (VKCF3Z, 25c253d3).
         assert abs(lines["eyebrow"] - card["fieldBase"]) <= NEAR, (
             f"at {scale} Now's eyebrow is off the field's baseline: {drawer}"
         )
@@ -1922,12 +1922,8 @@ def test_nows_plate_sets_its_head_and_groups_as_every_plate(
             f"at {scale} the time isn't a Display pitch under the eyebrow: {drawer}"
         )
         assert abs(lines["seconds"] - lines["time"]) <= NEAR, drawer
+        assert "say" not in moment, f"at {scale} Now's plate says what waits: {drawer}"
         head = lines["time"]
-        if moment["say"]:
-            assert abs(lines["say"] - lines["time"] - PITCH) <= NEAR, (
-                f"at {scale} what needs Joel isn't a Voice pitch under the time: {drawer}"
-            )
-            head = lines["say"]
         # Its groups are a body under the head: the first on the card's first beat two Title
         # pitches or more under it, and each after two pitches from the last line before.
         groups = lines["groups"]

@@ -363,6 +363,17 @@ QtObject {
         expect("all empty, nothing", ForYou.bandsRun({ now: 0, look: 0, try: 0 }, bandWords),
             []);
 
+        // What For You's drawer names as its heaviest.
+        const lead = [{ said: "Answer the ask", keep: 1 }, { said: "2 min", keep: 2 },
+            { said: "2 more", keep: 3 }];
+        expect("what needs Joel by its title and minutes, never how many more",
+            ForYou.heaviest(lead, "Read the plan"), "Answer the ask \u00b7 2 min");
+        expect("one with no minutes by its title", ForYou.heaviest(lead.slice(0, 1), ""),
+            "Answer the ask");
+        expect("nothing to do, the heaviest look", ForYou.heaviest([], "Read the plan"),
+            "Read the plan");
+        expect("only things to try, none", ForYou.heaviest([], undefined), "");
+
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(failure);
