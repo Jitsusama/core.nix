@@ -59,8 +59,10 @@ main() {
   make_joel_key
   echo
   echo "public keys, which belong in jitsusama.signing.allowedSigners:"
+  local key public
   for key in "$joel_key" "$agent_key"; do
-    echo "  $(cut -d' ' -f1-2 "$key.pub")"
+    public=$(cut -d' ' -f1-2 "$key.pub")
+    echo "  $public"
   done
 }
 
