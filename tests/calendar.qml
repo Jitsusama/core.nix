@@ -1,12 +1,13 @@
-// Which meeting is next, when it is in words, whether it's about to start,
-// said as a notice or told already by another, and joined by Return, its day in full, how Joel
-// answered it, its details for the drawer and the line answering it, and
-// which Meet call a window is and whose, from meetings like the google
-// program's, run in Qt's own JavaScript engine,
-// the one the shell runs it in. The
-// `the-desktop-tells-the-next-meeting` check copies Calendar.js, Repeats.js
-// and Meet.js beside this file and runs `qml -platform offscreen calendar.qml`. Times are made on
-// the local clock, so the cases hold in whatever zone the check runs in.
+// Which meeting is next, when it is in words, whether it's about to
+// start, said as a notice or told already by another, and joined by
+// Return, its day in full, how Joel answered it, its details for the
+// drawer and the line answering it, and which Meet call a window is and
+// whose, from meetings like the google program's, run in Qt's own
+// JavaScript engine, the one the shell runs it in. The
+// `the-desktop-tells-the-next-meeting` check copies Calendar.js,
+// Repeats.js and Meet.js beside this file and runs `qml -platform
+// offscreen calendar.qml`. Times are made on the local clock, so the
+// cases hold in whatever zone the check runs in.
 import QtQuick
 import "Calendar.js" as Calendar
 import "Repeats.js" as Repeats
@@ -285,11 +286,11 @@ QtObject {
         ]);
         check("one of a series a Recent lists once says how many came before",
             Calendar.details(meeting("m", at(26, 14, 0), at(26, 14, 30), { answer: null,
-                link: null, repeats: rule({ days: [day(1)] }) }), "Untitled", "8 this past month")
-                .facts, [
+                link: null, repeats: rule({ days: [day(1)] }) }), "Untitled",
+                "8 in the past 30 days").facts, [
                 { label: "When", value: "Monday 26 October, 14:00 to 14:30" },
                 { label: "Repeats", value: "Every week on Monday" },
-                { label: "Earlier", value: "8 this past month" }
+                { label: "Earlier", value: "8 in the past 30 days" }
             ]);
         check("how a series repeats, in words", [
             rule({ days: [1, 2, 3, 4, 5].map(n => day(n)) }),

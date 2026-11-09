@@ -152,7 +152,7 @@ def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> No
     # Being over, it notes nothing after its name, and its drawer says the time before.
     retro = desktop.showing()["selected"]
     assert not retro.get("note"), retro
-    assert {"label": "Earlier", "value": "1 this past month"} in retro["drawer"]["facts"], retro
+    assert {"label": "Earlier", "value": "1 in the past 30 days"} in retro["drawer"]["facts"], retro
     desktop.shoot("launcher-calendar-recent")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["held"][-1:] == ["Retro"])
@@ -181,7 +181,8 @@ def mails_recent_opens(desktop: Desktop, opened: str, day: str) -> None:
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Notes on the Plan"
             and re.fullmatch(
-                rf"to Ada Lovelace \u00b7 (\d\d:\d\d|{day})", str(shown["selected"].get("side"))
+                rf"to Ada Lovelace, Grace Hopper and 1 more \u00b7 (\d\d:\d\d|{day})",
+                str(shown["selected"].get("side")),
             )
             is not None
         )

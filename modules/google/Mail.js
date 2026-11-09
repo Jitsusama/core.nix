@@ -53,31 +53,49 @@ function moment(at, now, said) {
 // many more, so twenty never make a long side.
 const NAMED = 2;
 
-// Who a mail Joel sent went to, as its row names them: "Ada Lovelace",
-// "Ada Lovelace and Grace Hopper", "Ada Lovelace, Grace Hopper and 3
-// more", from the program's `went`, which is never him; or nothing when
-// it names nobody.
-function wentTo(went, said) {
-    const named = went.slice(0, NAMED);
-    if (went.length > NAMED) {
+// Who a mail Joel sent went to, as its row names them, the `most` it
+// names by name: "Ada Lovelace", "Ada Lovelace and Grace Hopper", "Ada
+// Lovelace, Grace Hopper and 3 more", from the program's `went`, which
+// is never him; or nothing when it names nobody.
+function wentTo(went, said, most = NAMED) {
+    const named = went.slice(0, most);
+    if (went.length > most) {
         return String(said.toMore).replace("{who}", named.join(", "))
-            .replace("{count}", went.length - NAMED);
+            .replace("{count}", went.length - most);
     }
     return named.length === NAMED
         ? String(said.toTwo).replace("{one}", named[0]).replace("{other}", named[1])
         : named.join("");
 }
 
-// What its row says beside it: who it's from and when it came, "Ada
-// Lovelace \u00b7 14:02", or only when it came where the sender gives no name.
-// Mail Joel sent names who it went to, "to Ada Lovelace \u00b7 13:17", or
-// only when it went where it names nobody, never him (VKCF3Z, c7d9e2bd).
+// What its row says beside it, as items its right lays in the room it
+// has (Reading.js's keptItems): who it's from and when it came, "Ada
+// Lovelace · 14:02", or only when it came where the sender gives no name.
+// Mail Joel sent names who it went to, never him, "to Ada Lovelace, Grace
+// Hopper and 3 more · 14:02", giving way by whole names, "to Ada Lovelace
+// and 4 more", or only when it went where it names nobody. Neither item
+// gives way whole, and the time never gives way at all: past them the
+// row's name gives way (VKCF3Z, c7d9e2bd, 635ac574).
+function besideItems(mail, now, said) {
+    const when = { said: came(mail.at, now, said), keep: 2, stays: true };
+    const ways = mail.sent === true ? wentWays(mail.went ?? [], said) : [mail.from];
+    return ways[0] === "" ? [when] : [{ said: ways[0], ways, keep: 1, stays: true }, when];
+}
+
+// Every way a sent mail's row may say who it went to, most names first:
+// two by name, then one and how many more, or nothing for nobody named.
+function wentWays(went, said) {
+    const to = most => String(said.to).replace("{who}", wentTo(went, said, most));
+    if (went.length === 0) {
+        return [""];
+    }
+    return went.length === 1 ? [to(1)] : [to(NAMED), to(1)];
+}
+
+// Its side as one line, its items between dots, as surfaces that draw no
+// items say it.
 function beside(mail, now, said) {
-    const when = came(mail.at, now, said);
-    const went = wentTo(mail.went ?? [], said);
-    const who = mail.sent !== true ? mail.from
-        : went === "" ? "" : String(said.to).replace("{who}", went);
-    return who === "" ? when : `${who} \u00b7 ${when}`;
+    return besideItems(mail, now, said).map(item => item.said).join(" \u00b7 ");
 }
 
 // When it came, in full, as its details say it and a meeting's say when

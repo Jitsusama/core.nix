@@ -28,7 +28,7 @@ Drive's own places hold the menu, which he opened last, then the two documents, 
 the Trips folder, as Starred; Team Budget, as Shared with Me; and the Team shared drive.
 What a Recent holds: Joel held Retro a day before the stand-in starts, Ada's on Meet with Grace
 going, and once before that, a week earlier, as one series; he read Grace's Trip Notes three
-hours before it starts, and an hour before that sent Ada Notes on the Plan.
+hours before it starts, and an hour before that sent Ada, Grace and Alan Notes on the Plan.
 """
 
 import copy
@@ -333,9 +333,9 @@ class Account:
             {
                 "id": "notes",
                 "from": "Sam Rivers",
-                "address": "joel@example.com",
-                "to": "Ada Lovelace",
-                "cc": "",
+                "address": "sam@example.com",
+                "to": "Ada Lovelace, Grace Hopper",
+                "cc": "Alan Turing",
                 "others": [],
                 "subject": "Notes on the Plan",
                 "at": now - READ - SENT,
@@ -343,9 +343,9 @@ class Account:
                 "body": "A few thoughts on the plan.",
                 "attachments": [],
                 # Sent by Joel, as Gmail's SENT label tells the daemon, which names who it
-                # went to, never him.
+                # went to, never him: three, so its row gives way by whole names.
                 "sent": True,
-                "went": ["Ada Lovelace"],
+                "went": ["Ada Lovelace", "Grace Hopper", "Alan Turing"],
             },
         ]
         self.unread = 3

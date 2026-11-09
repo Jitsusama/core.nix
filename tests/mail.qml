@@ -220,6 +220,26 @@ QtObject {
             "to Ada Lovelace, Grace Hopper and 3 more \u00b7 14:02");
         check("its side, when Joel sent it to nobody named, when alone, never him",
             wentSide([]), "14:02");
+        // As items, its right gives way by whole names and keeps the time
+        // (VKCF3Z, 635ac574).
+        const wentItems = went => Mail.besideItems({ from: "Sam Rivers", sent: true, went: went,
+            at: lunch.at }, now, said);
+        check("its side's names give way by whole names to one and how many more",
+            wentItems(["Ada Lovelace", "Grace Hopper", "Alan Turing", "Hedy Lamarr",
+                "Edsger Dijkstra"])[0].ways,
+            ["to Ada Lovelace, Grace Hopper and 3 more", "to Ada Lovelace and 4 more"]);
+        check("its side's two names give way to one and 1 more",
+            wentItems(["Ada Lovelace", "Grace Hopper"])[0].ways,
+            ["to Ada Lovelace and Grace Hopper", "to Ada Lovelace and 1 more"]);
+        check("its side's one name has no other way", wentItems(["Ada Lovelace"])[0].ways,
+            ["to Ada Lovelace"]);
+        check("its side's names and time never give way whole",
+            wentItems(["Ada Lovelace"]).map(item => item.stays), [true, true]);
+        check("its side's time stays alone for nobody named",
+            wentItems([]).map(item => [item.said, item.stays]), [["14:02", true]]);
+        check("its side's sender stays whole beside the time",
+            Mail.besideItems(lunch, now, said).map(item => [item.said, item.stays]),
+            [["Ada Lovelace", true], ["14:02", true]]);
         check("when it came, in full, as a meeting's day is", Mail.dated(lunch.at, now, said),
             "Monday 26 October, 14:02");
         check("when it came last year, in full",
@@ -459,9 +479,9 @@ QtObject {
         check("a series by Google's id for it", [
             { id: "s_20261026T130000Z", series: "s" }, { id: "once_20261026" }, { id: "once" }
         ].map(Google.seriesOf), ["s", "once_20261026", "once"]);
-        const before = { earlier: "{count} this past month" };
+        const before = { earlier: "{count} in the past 30 days" };
         check("how many came before, in its words", Google.earlier(8, before),
-            "8 this past month");
+            "8 in the past 30 days");
         check("none came before", Google.earlier(0, before), "");
 
         const mail = (id, came) => ({ id: id, from: "Ada", subject: id, at: came });

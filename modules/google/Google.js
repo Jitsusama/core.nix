@@ -291,7 +291,7 @@ function seriesOnce(lately) {
 }
 
 // How many of its series came before one a Recent lists, in `said`'s
-// words, "8 this past month", or nothing when none did.
+// words, "8 in the past 30 days", or nothing when none did.
 function earlier(count, said) {
     return count > 0 ? String(said?.earlier ?? "").replace("{count}", count) : "";
 }

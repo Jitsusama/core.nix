@@ -121,6 +121,7 @@ Singleton {
     // who it's from and when, and its details beside it. Return opens it in
     // Mail; the right arrow lists every act.
     function row(mail, thing) {
+        const beside = Said.besideItems(mail, Calendar.now, root.dates);
         return thing({
             key: `mail:${mail.id}`,
             what: "mail",
@@ -131,7 +132,8 @@ Singleton {
             verb: Words.verb("verb:mail:open"),
             glyph: Words.glyph("mail:message"),
             hue: "program",
-            side: Said.beside(mail, Calendar.now, root.dates),
+            side: beside.map(item => item.said).join(" \u00b7 "),
+            sideItems: beside,
             drawer: Said.details(mail, Words.name("mail:message", "untitled"), Calendar.now,
                 root.dates),
             later: true,
