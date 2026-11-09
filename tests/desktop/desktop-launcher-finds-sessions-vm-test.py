@@ -60,7 +60,7 @@ def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
 
 
 # One walk, as its subtest was: each step starts where the last left it.
-def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  # noqa: PLR0915
+def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(
     desktop: Desktop,
 ) -> None:
     """The launcher finds a pi session by its quest, and goes to its window."""
