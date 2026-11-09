@@ -260,8 +260,8 @@ fn done(steps: &[String], said: &str, yes: bool, words: &Words) -> ExitCode {
             fail(&errors(), &words.takes(name, &ask));
             return ExitCode::from(MISUSED);
         }
-        if let Some(why) = text("error") {
-            fail(&errors(), &why);
+        if answer.get("failed").and_then(Value::as_bool) == Some(true) {
+            fail(&errors(), &words.failed());
             return ExitCode::from(SHELL_SILENT);
         }
         return ExitCode::SUCCESS;

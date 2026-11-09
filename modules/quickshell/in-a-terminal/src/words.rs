@@ -88,6 +88,11 @@ impl Words {
         self.word("silent", &[])
     }
 
+    /// The shell failing at what it was asked, which its log says more of.
+    pub fn failed(&self) -> String {
+        self.word("failed", &[])
+    }
+
     /// An argument it doesn't take.
     pub fn unknown(&self, what: &str) -> String {
         self.word("unknown", &[("what", what)])
@@ -98,8 +103,13 @@ impl Words {
         self.word("unsure", &[("question", question)])
     }
 
-    /// An act that takes words, given none, and what it asks for.
+    /// An act that takes words, given none, and what it asks for; one
+    /// that asks nothing in words of its own is said without it, never
+    /// with an empty item between two dots.
     pub fn takes(&self, name: &str, ask: &str) -> String {
+        if ask.trim().is_empty() {
+            return self.word("takesWords", &[("name", name)]);
+        }
         self.word("takes", &[("name", name), ("ask", ask)])
     }
 
@@ -152,7 +162,9 @@ mod tests {
                 r#"{"terminal":{"missing":"nothing called {step}",
                     "missingIn":"nothing called {step} in {place}",
                     "meant":"did you mean {names}?","or":"or","apart":"\u00b7",
-                    "silent":"the shell isn't answering","usage":"launcher show"}}"#,
+                    "silent":"the shell isn't answering","usage":"launcher show",
+                    "takes":"{name} takes words \u00b7 {ask} \u00b7 give them after --",
+                    "takesWords":"{name} takes words \u00b7 give them after --"}}"#,
             )
             .expect("the words parse"),
         )
@@ -160,6 +172,18 @@ mod tests {
 
     fn names(of: &[&str]) -> Vec<String> {
         of.iter().map(ToString::to_string).collect()
+    }
+
+    #[test]
+    fn an_act_that_asks_nothing_of_its_own_is_said_without_it() {
+        assert_eq!(
+            words().takes("Talk", "what to say?"),
+            "Talk takes words \u{b7} what to say? \u{b7} give them after --"
+        );
+        assert_eq!(
+            words().takes("Talk", ""),
+            "Talk takes words \u{b7} give them after --"
+        );
     }
 
     #[test]

@@ -1380,7 +1380,10 @@ Scope {
             return doneWalked(path.length > 0 ? walkedById(path, steps) : walkedByName(steps),
                 said.words ?? "", said.sure === true);
         } catch (error) {
-            return { error: String(error) };
+            // The shell's own failure, said in its log in the engine's words;
+            // the terminal says it in words.json's (Y2YBTS's review of #2421).
+            console.warn(`launcher: a terminal's do failed: ${error}`);
+            return { failed: true };
         } finally {
             cataloguing = false;
         }
@@ -2184,12 +2187,10 @@ Scope {
         return typeof asked === "string" ? asked : "";
     }
 
-    // What an act asked from its own row is an act of, for its ask: the
-    // thing holding it, as Disconnect's is the Keychron, but never a place,
-    // so Power's Reboot asks of itself rather than "Reboot Power" (VKCF3Z,
-    // 2026-11-08).
+    // What an act asked from its own row is an act of, for its ask
+    // (Confirm.actOf): the thing holding it, never a place.
     function askedOfHolder(holder, act) {
-        return holder && Catalogue.kindOf(holder) !== "place" ? holder : act;
+        return Confirm.actOf(holder, act, holder ? Catalogue.kindOf(holder) : "");
     }
 
     // The command a row is named by (Catalogue.js's named), from its words
@@ -6104,11 +6105,6 @@ Scope {
         // for `launcher show` in a terminal, as JSON: the path's steps
         // joined by a "\u203a", each a row's name or its steady id, and
         // none for home.
-        // Does what a terminal names, as launcher do asks it.
-        function doing(asked: string): string {
-            return JSON.stringify(root.doneFromTerminal(asked));
-        }
-
         function show(path: string): string {
             return JSON.stringify(root.shownToTerminal(path, false));
         }
@@ -6116,6 +6112,11 @@ Scope {
         // The same, with each row's drawer, for `launcher show --drawers`.
         function drawers(path: string): string {
             return JSON.stringify(root.shownToTerminal(path, true));
+        }
+
+        // Does what a terminal names, as launcher do asks it.
+        function doing(asked: string): string {
+            return JSON.stringify(root.doneFromTerminal(asked));
         }
 
         // Where every word on the card is drawn, for the check that nothing

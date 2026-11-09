@@ -278,6 +278,19 @@ QtObject {
             Confirm.question([{ ends: "reboot", name: "Power", kind: "place",
                 asked: "Reboot the Machine, Closing 12 Windows" }], asking),
             "Reboot the Machine, Closing 12 Windows? (y/n)");
+        // An act asked from its own row is an act of the thing holding it,
+        // never of a place, on the : line and from a terminal alike.
+        const keychron = { name: "Keychron" };
+        const disconnect = { name: "Disconnect", ends: "disconnect" };
+        holds("an act held in a thing is asked of the thing",
+            Confirm.actOf(keychron, disconnect, "device"), keychron);
+        holds("and one held in a place is asked of itself",
+            Confirm.actOf({ name: "Power" }, disconnect, "place"), disconnect);
+        holds("and one held in nothing is asked of itself",
+            Confirm.actOf(null, disconnect, ""), disconnect);
+        holds("and a window's Close names the window",
+            Confirm.question([{ ends: "close", name: Confirm.actOf({ name: "Plover Notes" },
+                { name: "Close" }, "window").name }], asking), "Close Plover Notes? (y/n)");
         holds("and one that says what it leaves says so before y/n, as a sentence",
             Confirm.question([Object.assign({ leaves: "its worktree stays." },
                 closing("Lamplight"))], asking), "Close Lamplight? Its worktree stays. (y/n)");

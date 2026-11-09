@@ -1197,6 +1197,7 @@ def test_a_terminal_does_an_act_unasked_and_an_ending_one_once_sure(shell: Shell
         until(lambda: "Plover Notes" in windows_listed(), "Plover Notes in Windows")
         floating = done("desktop", "windows", "plover notes", "float")
         assert floating["asks"] == "Float Plover Notes? (y/n)", floating
+        assert (listed("Plover Notes") or {}).get("is_floating") is False, "Float was done"
         closing = done("desktop", "windows", "plover notes", "close")
         assert closing["asks"] == "Close Plover Notes? (y/n)", closing
         assert listed("Plover Notes") is not None, "Close was done before it was sure"
