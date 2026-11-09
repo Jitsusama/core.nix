@@ -463,7 +463,7 @@ def test_diag_wakes_by_source(desktop: Desktop) -> None:
         top = dict(sorted(rates.items(), key=lambda r: -r[1])[:6])
         print(f"DIAG {name}: {top}")
         traced = machine.succeed(
-            f"timeout 8 strace -f -qq -p {pid} -o /tmp/st.{name} 2>/dev/null || true; "
+            f"timeout 8 strace -f -qq -p {pid} -o /tmp/st.{name} 2>&1 | tail -3 || true; wc -l /tmp/st.{name} || true; "
             f"awk '{{print $1, $2}}' /tmp/st.{name} | sed -E 's/\\(.*//' | sort | uniq -c"
             " | sort -rn | head -25 || true"
         )
@@ -474,7 +474,7 @@ def test_diag_wakes_by_source(desktop: Desktop) -> None:
         )
         print(f"DIAG {name} main thread:\n{main}")
         desktop.as_account(f"systemctl --user stop diag-{name}; true")
-        desktop.as_account("pkill -f 'echo -ne' ; true")
+        desktop.as_account("pkill -f '[e]cho -ne' || true")
 
 
 def test_quickshell_warned_of_nothing_it_drew_all_along(desktop: Desktop) -> None:
