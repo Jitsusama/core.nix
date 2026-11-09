@@ -414,7 +414,8 @@ let
       };
     };
     # How Machine's things look at Joel's scales, from the machine daemon,
-    # on the same screen: an area of its own, so looks keeps to twenty.
+    # and Machines, from the realm's node, on the same screen: an area of
+    # its own, so looks keeps to twenty.
     vm-desktop-looks-machine = import ./tests/desktop.nix {
       inherit self pkgs;
       area = "looks-machine";
