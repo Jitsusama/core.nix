@@ -383,11 +383,20 @@ class Shell:
 
     def copied(self) -> str:
         """Give what the clipboard holds, and nothing while it holds nothing."""
-        # wl-paste exits 1 while nothing is copied, as it is the moment before
-        # a copy lands, so a wait for the copy reads that as not yet rather
+        # wl-paste says "Nothing is copied" and exits 1 the moment before a
+        # copy lands, so a wait for the copy reads that as not yet rather
         # than failing on it (2026-11-09, Passwords' copy on a busy builder).
-        status, said = self.execute("wl-paste --no-newline")
-        return said if status == 0 else ""
+        # Any other failure is the clipboard's own, and fails.
+        done = subprocess.run(
+            ["wl-paste", "--no-newline"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if done.returncode == 0:
+            return done.stdout
+        assert "Nothing is copied" in done.stderr, f"wl-paste failed: {done.stderr}"
+        return ""
 
     def held_still(self, span: float = 0.5, timeout: timedelta = timedelta(seconds=10)) -> bool:
         """Say whether the launcher's layout holds still for half a second before the time is up.
