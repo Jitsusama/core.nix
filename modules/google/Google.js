@@ -12,10 +12,6 @@ const ACCOUNT = "account:google";
 // (src/drive.rs's Kind::ALL), each kind's last looked at first.
 const DOCUMENTS = ["document", "spreadsheet", "presentation"];
 
-// The moment Google puts after a series' id to name one time of it
-// (seriesOf).
-const TIME_OF_SERIES = /_\d{8}(T\d{6}Z?)?$/;
-
 // The account as the program keeps it, gathered from the daemon's
 // records, held by key. A record carries no place, so each kind is put
 // back in its order by its own fields: meetings by when they start, mail
@@ -268,11 +264,12 @@ function heldLately(held, meetings, now) {
         .filter(meeting => !seen.has(meeting.id) && seen.add(meeting.id));
 }
 
-// The series a meeting is one of, as Google names each time of one: the
-// event's id before the moment that time starts, "_20261026T150000Z", or
-// "_20261026" for one lasting all day. A meeting held once is its own.
+// The series a meeting is one of, by Google's own id for it, which the
+// daemon passes on (`series`, its recurringEventId), never read off an
+// instance's id: a series split at "this and following" is two, as Google
+// keeps it. A meeting held once is its own.
 function seriesOf(meeting) {
-    return String(meeting.id ?? "").replace(TIME_OF_SERIES, "");
+    return String(meeting.series ?? meeting.id ?? "");
 }
 
 // The meetings held lately as Calendar's Recent lists them: a series once,
@@ -294,7 +291,7 @@ function seriesOnce(lately) {
 }
 
 // How many of its series came before one a Recent lists, in `said`'s
-// words, "8 this month", or nothing when none did.
+// words, "8 this past month", or nothing when none did.
 function earlier(count, said) {
     return count > 0 ? String(said?.earlier ?? "").replace("{count}", count) : "";
 }

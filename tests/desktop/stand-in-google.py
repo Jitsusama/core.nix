@@ -297,17 +297,19 @@ class Account:
                 "Retro",
                 now - HELD,
                 "rtr-ospe-ctv",
+                series="retro",
                 holds=False,
                 through="ada@example.com",
                 organizer={"name": "Ada Lovelace", "email": "ada@example.com"},
                 guests=[{"name": "Grace Hopper", "email": "grace@example.com", "answer": "yes"}],
             ),
-            # The time before, as Google names one time of a series, so Retro is listed once.
+            # The time before, of the same series by Google's id for it, so Retro is listed once.
             meeting(
                 "retro_20261020T150000Z",
                 "Retro",
                 now - HELD - WEEK,
                 "rtr-ospe-ctv",
+                series="retro",
                 holds=False,
                 through="ada@example.com",
                 organizer={"name": "Ada Lovelace", "email": "ada@example.com"},
@@ -330,7 +332,7 @@ class Account:
             },
             {
                 "id": "notes",
-                "from": "Joel Gerber",
+                "from": "Sam Rivers",
                 "address": "joel@example.com",
                 "to": "Ada Lovelace",
                 "cc": "",
@@ -340,8 +342,10 @@ class Account:
                 "page": "https://mail.google.com/mail/u/0/#all/notes",
                 "body": "A few thoughts on the plan.",
                 "attachments": [],
-                # Sent by Joel, as Gmail's SENT label tells the daemon.
+                # Sent by Joel, as Gmail's SENT label tells the daemon, which names who it
+                # went to, never him.
                 "sent": True,
+                "went": ["Ada Lovelace"],
             },
         ]
         self.unread = 3

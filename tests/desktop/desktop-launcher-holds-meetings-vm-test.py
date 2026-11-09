@@ -152,7 +152,7 @@ def test_calendar_typed_lists_its_next_meetings_under_it(desktop: Desktop) -> No
     # Being over, it notes nothing after its name, and its drawer says the time before.
     retro = desktop.showing()["selected"]
     assert not retro.get("note"), retro
-    assert {"label": "Earlier", "value": "1 this month"} in retro["drawer"]["facts"], retro
+    assert {"label": "Earlier", "value": "1 this past month"} in retro["drawer"]["facts"], retro
     desktop.shoot("launcher-calendar-recent")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["held"][-1:] == ["Retro"])

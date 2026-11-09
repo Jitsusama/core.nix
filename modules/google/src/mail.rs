@@ -75,6 +75,10 @@ pub struct Mail {
     /// names who it went to rather than him.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub sent: bool,
+    /// Who mail Joel sent went to, by name where the header gives one,
+    /// once each, and never him; empty for mail that came to him.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub went: Vec<String>,
     /// When it came, in milliseconds since the epoch.
     pub at: i64,
     /// Its conversation in Gmail.
@@ -202,6 +206,10 @@ pub fn read(answer: &Value) -> Option<Mail> {
             .and_then(|header| header.get("value").and_then(Value::as_str))
             .unwrap_or("")
     };
+    let sent = answer
+        .get("labelIds")
+        .and_then(Value::as_array)
+        .is_some_and(|labels| labels.iter().any(|label| label.as_str() == Some("SENT")));
     Some(Mail {
         id: id.to_owned(),
         from: sender(header("From")),
@@ -213,10 +221,15 @@ pub fn read(answer: &Value) -> Option<Mail> {
             &[header("Delivered-To"), header("From")],
         ),
         subject: header("Subject").trim().to_owned(),
-        sent: answer
-            .get("labelIds")
-            .and_then(Value::as_array)
-            .is_some_and(|labels| labels.iter().any(|label| label.as_str() == Some("SENT"))),
+        sent,
+        went: if sent {
+            went(
+                &[header("To"), header("Cc"), header("Bcc")],
+                header("From"),
+            )
+        } else {
+            Vec::new()
+        },
         // Gmail writes when it came as a string of milliseconds.
         at: answer
             .get("internalDate")
@@ -317,6 +330,24 @@ fn others(headers: &[&str], but: &[&str]) -> Vec<String> {
         }
     }
     others
+}
+
+/// Who mail went to, by name where its headers give one, in their order
+/// and once each by address, but whoever sent it: To, then Cc, then Bcc,
+/// which only the sender's own copy keeps, so mail Joel sent to nobody
+/// but a blind copy still names who it went to. A list's name with no
+/// address, "Undisclosed recipients:;", names nobody.
+fn went(headers: &[&str], from: &str) -> Vec<String> {
+    let mut seen = vec![address(from).to_ascii_lowercase()];
+    let mut went = Vec::new();
+    for one in headers.iter().flat_map(|header| split(header)) {
+        let known = address(&one).to_ascii_lowercase();
+        if !known.is_empty() && !seen.contains(&known) {
+            seen.push(known);
+            went.push(sender(&one));
+        }
+    }
+    went
 }
 
 /// The people a header lists, split at its commas but not those inside a
@@ -483,6 +514,7 @@ mod tests {
                 others: Vec::new(),
                 subject: "Lunch?".into(),
                 sent: false,
+                went: Vec::new(),
                 at: 1_793_044_800_000,
                 page: "https://mail.google.com/mail/u/0/#inbox/t1".into(),
                 body: String::new(),
@@ -522,6 +554,38 @@ mod tests {
         assert!(
             !mail(json!(["INBOX", "UNREAD"])),
             "mail that came is said to be his"
+        );
+    }
+
+    #[test]
+    fn mail_joel_sent_names_who_it_went_to_once_each_but_him() {
+        let headers = |to: &str, cc: &str, bcc: &str| {
+            json!({"id": "m", "threadId": "t", "labelIds": ["SENT"], "payload": {"headers": [
+                {"name": "From", "value": "Sam Rivers <sam@example.com>"},
+                {"name": "To", "value": to},
+                {"name": "Cc", "value": cc},
+                {"name": "Bcc", "value": bcc}
+            ]}})
+        };
+        let went = |answer: Value| read(&answer).unwrap().went;
+        assert_eq!(
+            went(headers(
+                "Sam <SAM@example.com>, \"Lovelace, Ada\" <ada@example.com>",
+                "Grace Hopper <grace@example.com>, ada@example.com",
+                "Alan Turing <alan@example.com>"
+            )),
+            ["Lovelace, Ada", "Grace Hopper", "Alan Turing"]
+        );
+        assert_eq!(
+            went(headers("Undisclosed recipients:;", "", "alan@example.com")),
+            ["alan@example.com"]
+        );
+        assert_eq!(went(headers("sam@example.com", "", "")), [] as [String; 0]);
+        let came = json!({"id": "m", "threadId": "t", "labelIds": ["INBOX"], "payload": {
+            "headers": [{"name": "To", "value": "Grace Hopper <grace@example.com>"}]}});
+        assert!(
+            read(&came).unwrap().went.is_empty(),
+            "mail that came says who it went to"
         );
     }
 

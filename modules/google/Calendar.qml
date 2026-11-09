@@ -212,8 +212,8 @@ Singleton {
             // meetings while they're listed under it (Applications.qml).
             today: Said.dayOf(meeting.start, root.now) === "",
             // Its times and his answer, or nothing once it's over, where
-            // its right says when it was (Mail.js's noted).
-            note: Written.noted(meeting, root.now),
+            // its right says when it was (Calendar.js's noted).
+            note: Said.noted(meeting, root.now),
             drawer: root.details(meeting),
             later: joins,
             stays: !joins,

@@ -10904,7 +10904,7 @@
         }
       },
       "said": {
-        "earlier": "{count} this month"
+        "earlier": "{count} this past month"
       }
     },
     {
@@ -11049,6 +11049,8 @@
         "yesterday": "yesterday",
         "tomorrow": "tomorrow",
         "to": "to {who}",
+        "toTwo": "{one} and {other}",
+        "toMore": "{who} and {count} more",
         "readInGmail": "read in Gmail",
         "archivedInGmail": "archived in Gmail",
         "unimportant": "no longer important",

@@ -6,7 +6,6 @@
 // checks run them in Qt's own engine (tests/mail.qml). Times are
 // milliseconds since 1970, as the program gives them.
 .pragma library
-.import "Calendar.js" as Calendar
 .import "When.js" as When
 
 // As many as a Recent lists (launcher/Recent.js), so Mail's makes no row
@@ -28,51 +27,57 @@ function came(at, now, said) {
 // read in the last month (`had`, as the program keeps it), newest first,
 // a conversation once, by its newest (VKCF3Z, ccccbe5f), leaving out any
 // that still wants him (`wanting`), which Mail lists above it and is never
-// Recent (docs/design.md, Recent means one thing). A conversation is its
-// page in Gmail, or the mail itself where it has none. At most as many
-// as a Recent lists.
+// Recent (docs/design.md, Recent means one thing), and with it the rest
+// of its conversation, which Mail's row already stands for. A
+// conversation is its page in Gmail, or the mail itself where it has
+// none. At most as many as a Recent lists.
 function lately(had, wanting) {
-    const wants = new Set(wanting.map(mail => mail.id));
-    const seen = new Set();
     const talk = mail => mail.page || `mail:${mail.id}`;
+    const seen = new Set(wanting.map(talk));
     return had.slice().sort((one, other) => other.at - one.at)
-        .filter(mail => !wants.has(mail.id) && !seen.has(talk(mail)) && seen.add(talk(mail)))
+        .filter(mail => !seen.has(talk(mail)) && seen.add(talk(mail)))
         .slice(0, MOST);
 }
 
 // When something was, as a drawer's fact says it beside a row that says
-// when in its own side: its time today, "06:06", and before today its day
-// as When.js says any, then its time, "yesterday 14:10", "Wednesday
-// 09:30", "28 Oct 09:30", as a call's note says when it was
-// (Transcripts.js). It's never "12 min ago", which the row's side says,
-// so a drawer's moment never reads as the side said twice. Nor is it the
+// when in its own side, When.js's moment: "06:06", "yesterday 14:10",
+// "28 Oct 09:30". It's never "12 min ago", which the row's side says, so
+// a drawer's moment never reads as the side said twice. Nor is it the
 // long date `dated` gives, so a Drive file's drawer says when as the
 // launcher does everywhere else (VKCF3Z, 2026-11-08).
 function moment(at, now, said) {
-    const day = When.day(at, now, said);
-    const time = Calendar.clock(new Date(at));
-    return day === "" ? time : `${day} ${time}`;
+    return When.moment(at, now, said);
 }
 
-// What a meeting's row notes after its name: its times and his answer
-// while it's to come or on, "14:00 to 14:30, maybe", and nothing once
-// it's over, where its right alone says when it was and its drawer keeps
-// When and Your Answer (VKCF3Z, c7d9e2bd). It's here, as Calendar.js is
-// full.
-function noted(meeting, now) {
-    return meeting.end <= now ? "" : Calendar.about(meeting);
+// How many of those it went to a sent mail's row names before saying how
+// many more, so twenty never make a long side.
+const NAMED = 2;
+
+// Who a mail Joel sent went to, as its row names them: "Ada Lovelace",
+// "Ada Lovelace and Grace Hopper", "Ada Lovelace, Grace Hopper and 3
+// more", from the program's `went`, which is never him; or nothing when
+// it names nobody.
+function wentTo(went, said) {
+    const named = went.slice(0, NAMED);
+    if (went.length > NAMED) {
+        return String(said.toMore).replace("{who}", named.join(", "))
+            .replace("{count}", went.length - NAMED);
+    }
+    return named.length === NAMED
+        ? String(said.toTwo).replace("{one}", named[0]).replace("{other}", named[1])
+        : named.join("");
 }
 
 // What its row says beside it: who it's from and when it came, "Ada
-// Lovelace · 14:02", or only when it came where the sender gives no name.
-// Mail Joel sent names who it went to, "to Ada Lovelace · 13:17", never
-// him (VKCF3Z, c7d9e2bd).
+// Lovelace \u00b7 14:02", or only when it came where the sender gives no name.
+// Mail Joel sent names who it went to, "to Ada Lovelace \u00b7 13:17", or
+// only when it went where it names nobody, never him (VKCF3Z, c7d9e2bd).
 function beside(mail, now, said) {
     const when = came(mail.at, now, said);
-    const who = mail.sent === true && (mail.to ?? "") !== ""
-        ? String(said.to).replace("{who}", mail.to)
-        : mail.from;
-    return who === "" ? when : `${who} · ${when}`;
+    const went = wentTo(mail.went ?? [], said);
+    const who = mail.sent !== true ? mail.from
+        : went === "" ? "" : String(said.to).replace("{who}", went);
+    return who === "" ? when : `${who} \u00b7 ${when}`;
 }
 
 // When it came, in full, as its details say it and a meeting's say when
@@ -81,7 +86,7 @@ function beside(mail, now, said) {
 function dated(at, now, said) {
     const date = new Date(at);
     const day = said.date(date, sameYear(at, now) ? "dddd d MMMM" : "dddd d MMMM yyyy");
-    return `${day}, ${Calendar.clock(date)}`;
+    return `${day}, ${When.clock(at)}`;
 }
 
 // Who sent it, as its details say it: by name and address, as mail writes

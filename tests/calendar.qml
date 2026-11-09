@@ -4,11 +4,12 @@
 // which Meet call a window is and whose, from meetings like the google
 // program's, run in Qt's own JavaScript engine,
 // the one the shell runs it in. The
-// `the-desktop-tells-the-next-meeting` check copies Calendar.js and Meet.js beside this
-// file and runs `qml -platform offscreen calendar.qml`. Times are made on
+// `the-desktop-tells-the-next-meeting` check copies Calendar.js, Repeats.js
+// and Meet.js beside this file and runs `qml -platform offscreen calendar.qml`. Times are made on
 // the local clock, so the cases hold in whatever zone the check runs in.
 import QtQuick
 import "Calendar.js" as Calendar
+import "Repeats.js" as Repeats
 import "Meet.js" as Meet
 
 QtObject {
@@ -223,6 +224,12 @@ QtObject {
             "14:00 to 14:30, maybe");
         check("a meeting he holds says its times alone", Calendar.about(
             meeting("m", at(26, 14, 0), at(26, 14, 30), { answer: null })), "14:00 to 14:30");
+        // A meeting's row notes its times and answer until it's over, then nothing.
+        check("a meeting to come notes its times and answer", Calendar.noted(
+            meeting("m", at(26, 16, 0), at(26, 16, 30), { answer: "maybe" }), now),
+            "16:00 to 16:30, maybe");
+        check("a meeting that's over notes nothing", Calendar.noted(
+            meeting("m", at(25, 16, 0), at(25, 16, 30), { answer: "maybe" }), now), "");
 
         // Its details, as the drawer shows them beside its row.
         check("an invitation's details in full", Calendar.details(meeting("m", at(26, 14, 0),
@@ -278,11 +285,11 @@ QtObject {
         ]);
         check("one of a series a Recent lists once says how many came before",
             Calendar.details(meeting("m", at(26, 14, 0), at(26, 14, 30), { answer: null,
-                link: null, repeats: rule({ days: [day(1)] }) }), "Untitled", "8 this month")
+                link: null, repeats: rule({ days: [day(1)] }) }), "Untitled", "8 this past month")
                 .facts, [
                 { label: "When", value: "Monday 26 October, 14:00 to 14:30" },
                 { label: "Repeats", value: "Every week on Monday" },
-                { label: "Earlier", value: "8 this month" }
+                { label: "Earlier", value: "8 this past month" }
             ]);
         check("how a series repeats, in words", [
             rule({ days: [1, 2, 3, 4, 5].map(n => day(n)) }),
@@ -296,7 +303,7 @@ QtObject {
             rule({ days: [day(1), day(3), day(5)] }),
             null,
             rule({ every: "hour" })
-        ].map(Calendar.repeated), [
+        ].map(Repeats.repeated), [
             "Every weekday",
             "Every 2 weeks on Monday and Wednesday",
             "Every day",

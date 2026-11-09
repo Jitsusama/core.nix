@@ -11,9 +11,9 @@
 // each started, a series once at its latest (Calendar.had), each that
 // same row, which says at its side when it was held, as the launcher
 // says when anywhere ("yesterday 15:00", "14:00"), and notes nothing,
-// its drawer saying how many of a series came before. Return does what it does on any meeting
-// over: it steps in to Show in Calendar, since it can't be joined; the
-// right arrow lists every act. It stands, "none" while it holds nothing
+// its drawer saying how many of a series came before. Return does what
+// it does on any meeting over: it steps in to Show in Calendar, since it
+// can't be joined; the right arrow lists every act. It stands, "none" while it holds nothing
 // (keepsRecentOf), since the program keeps a month of them.
 import qs
 import QtQuick
