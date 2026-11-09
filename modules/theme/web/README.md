@@ -7,7 +7,9 @@ What the theme module gives a website, on every machine:
   and the two faces, cut small by `fonts.py`.
 - `skill/`: the web-design skill, installed for every agent beside the
   aesthetic skill. `SKILL.md` says how a site is built to Joel's taste and why;
-  `writing.md`, `craft.md` and `checks.md` are what it refers to.
+  `writing.md`, `craft.md` and `checks.md` are what it refers to, and
+  `parts.js` is the probe `checks.md` runs in a page before it's published,
+  naming each part the page lacks.
 
 A rule every site would need goes in `base.css`; a value every site would
 need goes in `theme.css` through `web.nix`; a verdict of his on a site goes in

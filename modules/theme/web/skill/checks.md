@@ -9,6 +9,24 @@ site, so it runs on every publish and a fault can't come back.
 Gates aren't taste: the docs site that "looks like shit" passed AAA contrast
 and a keyboard walk. Pass the gates, then look ([Looking](#looking)).
 
+## The Parts
+
+First, before every publish and again on the live page after it: run
+`parts.js`, beside this file, in the page. Read the file and pass it whole as
+the browser tool's eval expression (`browser_do` with `kind: "eval"`), or
+paste it into the console. It answers with a list of what the page lacks,
+each saying what to add: the favicon, the head's names, the mark in the
+masthead, the switch, the twin, and a figure for each part that explains.
+
+- **An empty list, or it doesn't publish.** Add what it names. A part with
+  nothing to picture gets `data-figure="why"` on its section, the reason in
+  words; never one to quiet the probe.
+- **Then hold the page beside its model** ([Judging Without
+  Him](SKILL.md#judging-without-him)): every figure, ornament and fold the
+  model page has, this one has too, or says why not.
+- **Say what it found.** A page published with any part missing is reported
+  as unfinished, naming each, never as done.
+
 ## The Widths
 
 Check at 320, 390, 640, 768, 1024, 1280, 1440, 1512 and 1920 px wide, and on an
