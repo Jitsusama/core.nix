@@ -179,18 +179,24 @@ same change, by git's patch id of a diff without context lines, so an
 edit of main's beside the change leaves it the same, and main has since
 moved none of its files. A file either side moved that names a path the
 other renamed or deleted counts as one of them, since a list naming a
-script the branch renamed breaks main as surely as a shared edit. When main
-moved some, `changed-checks` runs again at the rebased head, never a single
-check chosen by hand, since which checks read a file shows only in their
-derivations; Nix builds only what the rebase moved and takes the rest from
-the builders. The one exception is a list every change adds to, which main
-moves faster than a run takes: when each shared file is one, the run at the
-head is that list's own check (`every-check-says-what-it-proves` for
-`check-descriptions.nix`, the check a `tests/<check>-waiting.nix` is named
-for) with `nix-offload there . checks.x86_64-linux.<check>`, and the
-quarantine list needs only to read as a list of tests, each once. A machine
-switches only to merged main, and a bad switch is undone by switching
-back to the generation before it.
+script the branch renamed breaks main as surely as a shared edit. A JSON
+file both changed at different keys counts as two files, as though split
+by key: an array of objects each with its own `id` is read by it, a change
+of its order or of any other array's length changes it whole, and the
+rebased head may differ from each side only where the other changed it.
+The launcher's `words.json` is the one this is for, which a quarter of
+main's merges change. When main moved some, `changed-checks` runs again at
+the rebased head, never a single check chosen by hand, since which checks
+read a file shows only in their derivations; Nix builds only what the
+rebase moved and takes the rest from the builders. The one exception is a
+list every change adds to, which main moves faster than a run takes: when
+each shared file is one, the run at the head is that list's own check
+(`every-check-says-what-it-proves` for `check-descriptions.nix`, the check
+a `tests/<check>-waiting.nix` is named for) with
+`nix-offload there . checks.x86_64-linux.<check>`, and the quarantine list
+needs only to read as a list of tests, each once. A machine switches only
+to merged main, and a bad switch is undone by switching back to the
+generation before it.
 
 The rest run after the merge, on the net: `merge-net watch`, which
 `modules/merge-net` runs as a daemon, follows main and runs each check

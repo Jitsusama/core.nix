@@ -304,7 +304,11 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
                 gone: &taken_away,
                 text: &at_main,
             };
-            Some(ready::shared(&branch, &main_side))
+            let mut shared = ready::shared(&branch, &main_side);
+            let (at_base, checked) = (|f: &str| at(&base, f), |f: &str| at(candidate, f));
+            shared
+                .retain(|file| !ready::stands_apart(file, &branch, &main_side, &at_base, &checked));
+            Some(shared)
         };
         let before =
             ready::checked_before(&ready::recent_records(), &ready::record, &on_main, &same);
