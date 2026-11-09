@@ -14,7 +14,8 @@ pragma ComponentBehavior: Bound
 // node says has ended, parked, is held apart from those running while its marker stands,
 // and only then, however its record reads, and never once its boot is over; Wake, or talking to it, writes
 // the file its marker names. What an earlier boot's end took away is
-// offered whole, reopened held in its own folder, until put off, one pi
+// offered whole, but one that ran hosted, which its host brings back,
+// reopened held in its own folder, until put off, one pi
 // never saved started under its own id with its quest, and Reopen Them
 // All reopens even when niri never answers its ask for the screens; what
 // another machine carried here is offered after it, the newest first, and
@@ -24,7 +25,8 @@ pragma ComponentBehavior: Bound
 // but its quest's start folder, never the home folder. What the node tells
 // of sessions on the realm's other machines is held too: each says its
 // machine, after this machine's; Go To joins one by the words its node
-// gives; one out of reach stays, saying so, and isn't joined; one last
+// gives; one out of reach stays, saying so, and isn't joined; one pi's
+// host runs with no window is said and never opened; one last
 // heard of before this boot is passed over; and a steer to one is asked
 // of the node, its refusal said. One the node says is gone goes; a
 // change saying only what differs keeps the rest of what the node said;
@@ -187,6 +189,14 @@ ShellRoot {
             Niri.spawned.join(" "));
         Sessions.goTo(out);
         expect("one out of reach isn't joined", root.unjoined === "OUTRCH", root.unjoined);
+        // One pi's host runs, here and held, with no window: Go To says so
+        // and neither attaches it nor raises anything.
+        const opened = `${Niri.spawned.join(" ")} ${JSON.stringify(Niri.acted)}`;
+        Sessions.goTo({ address: "HOSTED", here: true, window: null, kitty: null,
+            held: "h-hosted", presence: { hosted: { unit: "pi-host" }, addresses: ["HOSTED"] } });
+        expect("a hosted one with no window is said, never opened", root.unhosted === "HOSTED"
+            && `${Niri.spawned.join(" ")} ${JSON.stringify(Niri.acted)}` === opened,
+            `${root.unhosted} ${Niri.spawned.join(" ")} ${JSON.stringify(Niri.acted)}`);
         Sessions.steer("farawy", { act: "pause" });
     }
 
@@ -272,7 +282,7 @@ ShellRoot {
     // home folder; one whose folder is gone starts its quest afresh in
     // the quest's start folder, or nowhere when it has none.
     function lastBoot() {
-        expect("only the whole ones of another boot",
+        expect("only the whole ones of another boot, none hosted",
             Sessions.lastBoot.map(one => one.id).join(" ")
                 === "s-before s-fresh s-given-back s-far",
             JSON.stringify(Sessions.lastBoot));
@@ -434,6 +444,7 @@ ShellRoot {
     }
 
     property string unjoined: ""
+    property string unhosted: ""
     property bool steered: false
     // Each steer the node was asked, and whether the one parked had been
     // woken by then.
@@ -445,6 +456,10 @@ ShellRoot {
 
         function onUnjoined(session) {
             root.unjoined = session.address;
+        }
+
+        function onUnhosted(session) {
+            root.unhosted = session.address;
         }
 
         function onUnsteered(session, why) {
