@@ -1,12 +1,16 @@
 diff --git a/mshw0231-raw.c b/mshw0231-raw.c
-index aee6dad..4a9aa31 100644
+index aee6dad..380e9c0 100644
 --- a/mshw0231-raw.c
 +++ b/mshw0231-raw.c
-@@ -2165,6 +2165,16 @@ static void mshw0231_raw_process_samples(struct spi_hid *shid, const u8 *data,
+@@ -2165,6 +2165,20 @@ static void mshw0231_raw_process_samples(struct spi_hid *shid, const u8 *data,
  		if (sorted_count || touched_count)
  			seq_dbg(shid, 2, "CALIB: blobs=%u cells_touched=%d\n",
  				 sorted_count, touched_count);
 +		shid->stat_heat_frames++;
++		/* Each touch counted once, as it lands, so taps counted by hand
++		 * against this show whether a rest lost any. */
++		if (sorted_count && shid->heat_empty_frames)
++			shid->stat_touches++;
 +		shid->heat_empty_frames = sorted_count ? 0 : shid->heat_empty_frames + 1;
 +		if (sorted_count) {
 +			shid->stat_heat_contact_frames++;
@@ -20,7 +24,7 @@ index aee6dad..4a9aa31 100644
  		/* ── Stage 6: Hungarian global assignment ── */
  		{
 diff --git a/spi-hid-core.c b/spi-hid-core.c
-index 54b0f39..c92d7b0 100644
+index 54b0f39..975e125 100644
 --- a/spi-hid-core.c
 +++ b/spi-hid-core.c
 @@ -2611,6 +2611,86 @@ static int spi_hid_seq_write_setfeat(struct spi_hid *shid)
@@ -131,7 +135,7 @@ index 54b0f39..c92d7b0 100644
  
  		if (rl >= 3 && rl - 3 <= avail) {
  			if (shid->raw_mode_active && body[7] == 0x40 && rl - 2 >= 6) {
-@@ -4536,6 +4628,52 @@ static ssize_t lifecycle_status_show(struct device *dev,
+@@ -4536,6 +4628,53 @@ static ssize_t lifecycle_status_show(struct device *dev,
  }
  static DEVICE_ATTR_RO(lifecycle_status);
  
@@ -143,8 +147,9 @@ index 54b0f39..c92d7b0 100644
 +
 +	mutex_lock(&shid->seq_lock);
 +	off = sysfs_emit(buf,
-+			 "heat_frames=%u\ncontact_frames=%u\nrests=%u\nresting=%u\nother_frames=%u\nlast_other_id=0x%02x\nlast_contacts=%u\n",
++			 "heat_frames=%u\ncontact_frames=%u\ntouches=%u\nrests=%u\nresting=%u\nother_frames=%u\nlast_other_id=0x%02x\nlast_contacts=%u\n",
 +			 shid->stat_heat_frames, shid->stat_heat_contact_frames,
++			 shid->stat_touches,
 +			 shid->stat_heat_rests,
 +			 shid->heat_rest_phase == HEAT_RESTING,
 +			 shid->stat_other_frames, shid->stat_last_other_id,
@@ -184,7 +189,7 @@ index 54b0f39..c92d7b0 100644
  static const struct attribute *const spi_hid_attributes[] = {
  	&dev_attr_ready.attr,
  	&dev_attr_bus_error_count.attr,
-@@ -4547,6 +4685,8 @@ static const struct attribute *const spi_hid_attributes[] = {
+@@ -4547,6 +4686,8 @@ static const struct attribute *const spi_hid_attributes[] = {
  	&dev_attr_baseline_status.attr,
  	&dev_attr_build_info.attr,
  	&dev_attr_lifecycle_status.attr,
@@ -193,7 +198,7 @@ index 54b0f39..c92d7b0 100644
  	NULL	/* Terminator */
  };
  
-@@ -4607,6 +4747,10 @@ static void spi_hid_cancel_workers(struct spi_hid *shid)
+@@ -4607,6 +4748,10 @@ static void spi_hid_cancel_workers(struct spi_hid *shid)
  	cancel_delayed_work_sync(&shid->feat_delay_work);
  	cancel_delayed_work_sync(&shid->stream_watchdog);
  	cancel_delayed_work_sync(&shid->wait_reset_watchdog);
@@ -204,7 +209,7 @@ index 54b0f39..c92d7b0 100644
  	cancel_work_sync(&shid->create_device_work);
  	cancel_work_sync(&shid->error_work);
  }
-@@ -5012,6 +5156,7 @@ static int spi_hid_probe(struct spi_device *spi)
+@@ -5012,6 +5157,7 @@ static int spi_hid_probe(struct spi_device *spi)
  	shid->stream_watchdog_active = false;
  
  	INIT_DELAYED_WORK(&shid->poll_work, spi_hid_poll_work);
@@ -213,10 +218,10 @@ index 54b0f39..c92d7b0 100644
  	shid->poll_active = false;
  	shid->poll_interval_ms = 0;
 diff --git a/spi-hid-core.h b/spi-hid-core.h
-index 5a17f55..3b4ab83 100644
+index 5a17f55..c601b40 100644
 --- a/spi-hid-core.h
 +++ b/spi-hid-core.h
-@@ -406,6 +406,23 @@ struct spi_hid {
+@@ -406,6 +406,24 @@ struct spi_hid {
  	u32 stat_getfeat_resp;
  	u32 stat_frames_dropped;
  	u32 stat_irq_count;
@@ -232,6 +237,7 @@ index 5a17f55..3b4ab83 100644
 +	u8 heat_rest_phase;
 +	struct delayed_work heat_rest_work;
 +	u32 stat_heat_rests;
++	u32 stat_touches;
 +	u32 stat_other_frames;
 +	u8 stat_last_other_id;
 +	u8 stat_last_contacts;
