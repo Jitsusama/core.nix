@@ -45,13 +45,14 @@ Piece {
     value: lasting ? `waiting on ${what}` : "nothing waits"
     title: "Lag"
     // What lag-watch said of its last ten seconds, under Now's row
-    // (Drawers.js): what keeps them waiting and how much, how each slice
-    // stalled, the swap held, and its own sentences, which the row leaves
-    // to it, saying what waits once (VKCF3Z, 2026-11-08).
+    // (Drawers.js): how long they waited, how each slice stalled, the swap
+    // held, and who waited on what in our own sentence, never lag-watch's
+    // (VKCF3Z, 2026-11-08).
     drawer: window === null ? null : () => Object.assign({ title: piece.title },
         Drawers.lag(piece.window, piece.lasting ? piece.what : "", {
             named: id => Words.name(id),
-            said: Words.of("on:lag").said
+            said: Words.of("on:lag").said,
+            tells: Words.of("on:lag").tells
         }))
     // Held and lasting change one after the other, so each is asked.
     hint: lasting && held !== null ? `${who} waited on ${what} for ${Math.round((Date.now()

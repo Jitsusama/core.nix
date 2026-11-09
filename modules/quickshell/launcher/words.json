@@ -6481,16 +6481,20 @@
       "in": "on",
       "said": {
         "eyebrow": "on this machine \u00b7 lag",
-        "over": "{what} \u00b7 over the last {seconds} s",
+        "over": "{share} of the last {seconds} s",
         "stall:cpu": "processor",
         "stall:memory": "memory",
         "stall:io": "disk"
+      },
+      "tells": {
+        "desktop": "The desktop waited on {what}.",
+        "programs": "Programs waited on {what}."
       }
     },
     {
-      "id": "on:lag:waiting",
+      "id": "on:lag:waited",
       "in": "on",
-      "name": "Waiting On"
+      "name": "Time Waited"
     },
     {
       "id": "on:lag:session",
@@ -7813,9 +7817,7 @@
       "said": {
         "none": "none",
         "in": "in {folder}",
-        "screenshot": "screenshot",
-        "recording": "recording",
-        "photo": "photo",
+        "picture": "picture",
         "video": "video"
       }
     },
@@ -11177,7 +11179,30 @@
     {
       "id": "file-chooser:where",
       "in": "path:file",
-      "name": "Where"
+      "name": "Where",
+      "said": {
+        "in": "in {folder}"
+      }
+    },
+    {
+      "id": "file-chooser:length",
+      "in": "path:file",
+      "name": "Length"
+    },
+    {
+      "id": "file-chooser:dimensions",
+      "in": "path:file",
+      "name": "Dimensions"
+    },
+    {
+      "id": "file-chooser:pages",
+      "in": "path:file",
+      "name": "Pages"
+    },
+    {
+      "id": "file-chooser:lines",
+      "in": "path:file",
+      "name": "Lines"
     },
     {
       "id": "file-chooser:items",
@@ -11201,7 +11226,8 @@
       "said": {
         "one": "{count} line",
         "many": "{count} lines",
-        "more": "over {count} lines"
+        "more": "over {count} lines",
+        "over": "over {count}"
       }
     },
     {

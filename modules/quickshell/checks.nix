@@ -3940,6 +3940,7 @@ onLinux {
       cp ${./Finding.js} Finding.js
       cp ${./Confirm.js} Confirm.js
       cp ${./DrawerPage.js} DrawerPage.js
+      cp ${./Identifier.js} Identifier.js
       cp ${./Search.js} Search.js
       cp ${./Reading.js} Reading.js
       cp ${./LineEditing.js} LineEditing.js

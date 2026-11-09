@@ -78,7 +78,7 @@ Provider {
             // the drawer's title, then the body, rather than the row's
             // name, which already holds both, over both again (VKCF3Z,
             // 2026-11-02). With no body it would only repeat the name, so
-            // there's no drawer (Launcher.qml's drawerAdds). Over them,
+            // there's no drawer (Showing.js's adds). Over them,
             // who sent it and what kind it is. Its words read in the face its card
             // reads them in, so they don't change face between the two
             // (VKCF3Z, 2026-11-03). Its sender is a name from the world,

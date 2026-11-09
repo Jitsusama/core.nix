@@ -16,6 +16,7 @@
 // view may scroll to (tops, below); and `xOf(line, letter)` and `letterAt(line, x)`, which ask the drawn lines
 // where a letter is and which letter is nearest a place.
 .pragma library
+.import "Identifier.js" as Identifier
 .import "Reading.js" as Reading
 .import "Search.js" as Search
 
@@ -356,34 +357,43 @@ const DOTTED = " \u00b7 ";
 // than going a beat on, as Drawer.qml's onBeat does.
 const BEAT_ROUNDING = 0.001;
 
-// A value given as items, each `{ said, path }`, as lines no wider than
-// `wide` by `width(text)`: as many items to a line as fit, `between` them
-// (a command's arguments a space apart, a list's a dot), the dot ending
-// the line it leaves, and never one broken across two. Every item but the
-// last is measured with that dot, since any of them may end a line. An
-// item too wide for a line of its own that names its `path` gives way
-// from the path's middle, "/nix/\u2026/firefox", its last part whole, as a
-// folder does (Reading.pathTries); one still too wide, or naming none,
-// gives way from its own middle. Nothing draws past its frame (VKCF3Z,
-// 2026-11-08).
+
+// A value given as items, each `{ said, path, whole }`, as lines no wider
+// than `wide` by `width(text)`: as many items to a line as fit, `between`
+// them (a command's arguments a space apart, a list's a dot), the dot
+// ending the line it leaves, and never one broken across two while it
+// fits a line alone. Every item but the last is measured with that dot,
+// since any of them may end a line. An item too wide for a line of its
+// own that's `whole`, an identifier, is shown whole on as many lines as
+// it needs, broken at its own marks, and a short last one joins the line
+// before rather than stand alone (Identifier.js). Any other that names its
+// `path` gives way from the path's middle, "/nix/\u2026/firefox", its last
+// part whole, as a folder does (Reading.pathTries); one still too wide, or
+// naming none, gives way from its own middle. Nothing draws past its frame
+// (VKCF3Z, 2026-11-08).
 function valueLines(items, between, wide, width) {
     const ends = between.replace(TRAILING, "");
     const saying = items.filter(item => item.said !== "");
     const lines = [];
     saying.forEach((item, at) => {
         const closing = at === saying.length - 1 ? "" : ends;
-        const said = fitted(item, wide - width(closing), width);
+        const room = wide - width(closing);
         const last = lines.length - 1;
+        const said = item.whole ? item.said : fitted(item, room, width);
         if (last >= 0 && width(`${lines[last]}${between}${said}${closing}`) <= wide) {
             lines[last] = `${lines[last]}${between}${said}`;
-        } else {
-            if (last >= 0) {
-                lines[last] = `${lines[last]}${ends}`;
-            }
-            lines.push(said);
+            return;
         }
+        if (last >= 0) {
+            lines[last] = `${lines[last]}${ends}`;
+        }
+        lines.push(...(item.whole && width(said) > room
+            ? Identifier.wholeLines(said, room, width) : [said]));
     });
-    return lines;
+    const final = saying[saying.length - 1];
+    return final?.whole && lines.length > 1 && lines[lines.length - 1] === final.said
+        && Identifier.short(final.said)
+        ? Identifier.joinedDown(lines, between, wide, width) : lines;
 }
 
 // A list alone in a value, as its one line no wider than `wide`: every

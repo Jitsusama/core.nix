@@ -131,6 +131,7 @@ let
     "StatusLine.js"
     "Drawer.qml"
     "DrawerPage.js"
+    "Identifier.js"
     "Pictures.js"
     "Launcher.qml"
     "Choice.qml"

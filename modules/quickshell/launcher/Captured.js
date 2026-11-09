@@ -1,6 +1,6 @@
 // What Capture's Recent says of each thing taken (launcher/Capture.qml): the
 // mark its row wears, a picture's or a video's as files wear them, and the
-// drawer under it, where it is and what kind of capture above, the picture
+// drawer under it, where it is and what kind of file above, the picture
 // itself, then when it was taken, how big it is, and a picture's dimensions
 // or a recording's length (VKCF3Z, 2026-11-08). A fact nothing has said yet
 // is left out rather than said as unknown. Plain JavaScript, held to it by
@@ -15,9 +15,6 @@ const KEPT = "\u00a0";
 const BETWEEN = " \u00b7 ";
 const PICTURE = /\.(png|jpe?g|webp|avif|gif)$/i;
 const VIDEO = /\.(mp4|mkv|webm|mov)$/i;
-// What Capture calls what lands in each of its folders, each a word the
-// vocabulary says.
-const KINDS = ["screenshot", "recording", "photo", "video"];
 
 function twoFigures(number) {
     return String(number).padStart(2, "0");
@@ -73,16 +70,19 @@ function preview(file, shown) {
     return PICTURE.test(file.path) ? { picture: file.path, across: 0, down: 0 } : null;
 }
 
-// The drawer for one thing taken: `file` its { path, name, where, kind, at,
-// size }, where its folder from ~ and kind what Capture calls what lands
-// there; `shown` what file-preview said of it, or null; and `told` the
-// moment it's drawn (now), the label of each fact by its id (named), the
-// vocabulary's words (said) and how days are said (days, FileFacts.js's).
-// Its eyebrow is the one Recent's pictures wear (Recent.takenEyebrow),
-// giving way from the folder's middle, never two of them.
+// The drawer for one thing taken: `file` its { path, name, where, at, size },
+// where its folder from ~; `shown` what file-preview said of it, or null;
+// and `told` the moment it's drawn (now), the label of each fact by its id
+// (named), the vocabulary's words (said) and how days are said (days,
+// FileFacts.js's). Its eyebrow is the one Recent's pictures wear
+// (Recent.takenEyebrow), where, then the kind of file it is, a picture or
+// a video, as the folder already says what took it: "in
+// ~/Pictures/Screenshots \u00b7 picture" (VKCF3Z, 2026-11-08). Short of
+// room the kind gives way first, then the folder from its middle.
 function drawer(file, shown, told) {
     const { now, named, said, days } = told;
-    const kind = KINDS.includes(file.kind) ? said[file.kind] ?? "" : "";
+    const kind = said[PICTURE.test(file.path) ? "picture" : VIDEO.test(file.path) ? "video"
+        : ""] ?? "";
     return Object.assign(Recent.takenEyebrow(file.where, kind, said), {
         title: file.name,
         preview: preview(file, shown),

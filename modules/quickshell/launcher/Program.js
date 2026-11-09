@@ -155,17 +155,17 @@ function opensFact(kinds, named, said) {
     };
 }
 
-// Its command, in the Name face as an identifier, each argument an item
-// the drawer wraps between, never inside, one naming a path giving way
-// from its middle where alone it's too wide (VKCF3Z, 2026-11-08: nothing
-// draws past its frame).
+// Its command, in the Name face as an identifier, shown whole, never
+// elided: each argument an item the drawer wraps between, one too long for
+// a line alone broken at its own marks, and a short last one kept beside
+// the one before (VKCF3Z, 2026-11-08: "mpv" / "--player-operation-mode="
+// / "pseudo-gui --" where it's narrow).
 function commandFact(command, named) {
     const words = Array.from(command);
     return {
         label: named("command"),
         value: words.join(" "),
-        valueItems: words.map(word => (word.includes("/") ? { said: word, path: word }
-            : { said: word })),
+        valueItems: words.map(word => ({ said: word, whole: true })),
         between: " ",
         identifies: true
     };

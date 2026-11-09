@@ -1811,24 +1811,30 @@ def asked_in(desktop: Desktop, place: str, rows: set[str]) -> None:
     assert drawn[-1]["said"].endswith(place.rsplit("/", 1)[-1]), f"{place} isn't named: {drawn}"
 
 
+# Each file's eyebrow, where then kind, its preview, and the facts its row doesn't say, its
+# size or count and when it changed being its row's (VKCF3Z, 2026-11-08). The note comes
+# before the pictures, since the facts below its lines say how far they stand below one.
 PICKED = {
-    "drafts": ("Folder", "lines"),
-    "archive.zip": ("ZIP", None),
-    "clip.mp4": ("MP4 \u00b7 0:20", "picture"),
-    "notes.md": ("Markdown \u00b7 5\u00a0lines", "lines"),
-    "plan.pdf": ("PDF \u00b7 1\u00a0page", "picture"),
-    "wide.png": ("PNG \u00b7 1600\u00a0\u00d7\u00a01000", "picture"),
+    "drafts": ("Folder", "lines", []),
+    "archive.zip": ("ZIP", None, []),
+    "notes.md": ("Markdown", "lines", ["Lines"]),
+    "clip.mp4": ("MP4", "picture", ["Length"]),
+    "plan.pdf": ("PDF", "picture", ["Pages"]),
+    "wide.png": ("PNG", "picture", ["Dimensions"]),
 }
 
 
-def previewed(shown: Json, name: str, preview: str | None) -> bool:
-    """Say whether the plate is out for the file named, its facts known and its preview in.
+def previewed(shown: Json, name: str, kind: str, preview: str | None) -> bool:
+    """Say whether the plate is out for the file named, its kind said and its preview in.
 
     Its row says its size, or a folder its count, and when it changed, rather than its folder,
-    even though the folder was read before the ask was shown.
+    even though the folder was read before the ask was shown. Its eyebrow says its folder at
+    once, and its kind once file-preview has said.
     """
     drawer = shown["drawer"]
     if drawer["out"] is not True or drawer["title"] != name or None in drawer["values"]:
+        return False
+    if drawer["eyebrow"] != f"in ~/picked \u00b7 {kind}":
         return False
     if "\u00b7" not in (shown["selected"] or {}).get("side", ""):
         return False
@@ -1838,6 +1844,12 @@ def previewed(shown: Json, name: str, preview: str | None) -> bool:
     if preview == "lines":
         return bool(held.get("lines"))
     return drawer["preview"] is None
+
+
+def shut(shown: Json, name: str) -> bool:
+    """Say whether the file named is selected with no plate out, having none to say more."""
+    selected = shown["selected"] or {}
+    return selected.get("name") == name and shown["drawer"]["out"] is not True
 
 
 def facts_follow(drawer: Json, body: float, preview: str | None, after: float) -> float:
@@ -1858,6 +1870,23 @@ def facts_follow(drawer: Json, body: float, preview: str | None, after: float) -
         f"{drawer['title']}'s facts are off the beat: {drawer}"
     )
     return facts[0] - drawer["lines"]["previewEnd"] if preview == "lines" else after
+
+
+def facts_held(drawer: Json, placed: tuple[float, str | None, float], whose: str) -> float:
+    """Hold a plate's facts to the pitch, below its preview and above its foot; say `after`.
+
+    `placed` is the body's line, the kind of preview and how far facts stand below a picture.
+    """
+    body, preview, after = placed
+    facts = drawer["lines"]["facts"]
+    after = facts_follow(drawer, body, preview, after)
+    assert things_apart(facts, drawer["factsWrapped"] > 0), (
+        f"{whose} facts are off the pitch: {drawer}"
+    )
+    if preview is not None:
+        assert facts[0] > drawer["lines"]["preview"], f"{whose} facts lead: {drawer}"
+    assert facts[-1] < drawer["foot"], f"{whose} facts are cut: {drawer}"
+    return after
 
 
 def test_the_file_pickers_plate_previews_each_kind_on_the_cards_lines(
@@ -1889,14 +1918,18 @@ def test_the_file_pickers_plate_previews_each_kind_on_the_cards_lines(
                 f" {values['choose_a_file']} open {folder}"
             )
             asked_in(desktop, "~/picked", set(PICKED))
-            # How far the facts stand below lines of preview, the first file's a folder's.
+            # How far the facts stand below lines of preview, the note's.
             after = 0.0
-            for name, (eyebrow, preview) in PICKED.items():
+            for name, (kind, preview, told) in PICKED.items():
                 desktop.down_to(name)
-                desktop.launcher_until(partial(previewed, name=name, preview=preview))
+                if preview is None and not told:
+                    # Its kind is its name's ending and its folder the one listed, so a
+                    # plate would only repeat its row, and none comes out.
+                    desktop.launcher_until(partial(shut, name=name))
+                    continue
+                desktop.launcher_until(partial(previewed, name=name, kind=kind, preview=preview))
                 drawer = plate_shown(desktop, scale)
-                assert drawer["eyebrow"] == eyebrow, f"{name}'s eyebrow: {drawer}"
-                assert drawer["drawnFacts"][1:] == ["Changed", "Where"], drawer
+                assert drawer["drawnFacts"] == told, drawer
                 facts = drawer["lines"]["facts"]
                 shown = drawer["lines"]["previewLines"]
                 body = body_line(drawer["lines"], drawer["cardLines"])
@@ -1904,13 +1937,8 @@ def test_the_file_pickers_plate_previews_each_kind_on_the_cards_lines(
                 assert all(on_the_pitch(line, body) for line in shown), (
                     f"at {scale} {name}'s preview is off the pitch: {drawer}"
                 )
-                after = facts_follow(drawer, body, preview, after)
-                assert things_apart(facts, drawer["factsWrapped"] > 0), (
-                    f"at {scale} {name}'s facts are off the pitch: {drawer}"
-                )
-                if preview is not None:
-                    assert facts[0] > drawer["lines"]["preview"], f"{name}'s facts lead: {drawer}"
-                assert facts[-1] < drawer["foot"], f"at {scale} {name}'s facts are cut: {drawer}"
+                if facts:
+                    after = facts_held(drawer, (body, preview, after), f"at {scale} {name}'s")
                 said = name.replace(".", "-")
                 desktop.shoot(f"file-picker-{said}-at-{scale.replace('.', '-')}")
             # :q refuses the ask from any folder, Escape closing nothing.
@@ -3612,7 +3640,7 @@ def recent_drawer(desktop: Desktop, shot: str) -> None:
     desktop.launcher_until(
         lambda shown: (
             shown["drawer"]["out"] is True
-            and shown["drawer"]["eyebrow"] == "in ~/Pictures/Screenshots \u00b7 screenshot"
+            and shown["drawer"]["eyebrow"] == "in ~/Pictures/Screenshots \u00b7 picture"
             and "Dimensions" in shown["drawer"]["facts"]
         )
     )
