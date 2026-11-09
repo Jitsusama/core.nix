@@ -188,7 +188,9 @@ impl Fixture {
         std::os::unix::fs::symlink(&self.upstream, &twin).expect("a second name");
         let url = format!("file://{}", twin.display());
         let mut config = self.alone();
-        config.packages.push(Package::new(&url, "main").expect("a package"));
+        config
+            .packages
+            .push(Package::new(&url, "main").expect("a package"));
         config
     }
 
@@ -666,7 +668,7 @@ fn a_swap_waits_an_hour_after_the_last() {
     assert_eq!(fixture.place().current_commit(), Some(first.clone()));
     assert_eq!(
         fixture.versions(),
-        [first.clone()],
+        std::slice::from_ref(&first),
         "a held update built a version"
     );
 
