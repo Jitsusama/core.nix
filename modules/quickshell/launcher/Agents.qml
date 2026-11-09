@@ -915,8 +915,9 @@ Provider {
     // step in, All AI Spend in billed dollars first, then each budget
     // nearest its limit first, as spend-watch orders them, a budget with
     // windows stepping in to a row for each, and every one opening the
-    // drawer AI spend's opens (SpendDrawer.js). Its glyph wears the
-    // nearest budget's warning, as AI spend's does. None where AI spend
+    // drawer AI spend's opens (SpendDrawer.js). Its glyph is AI spend's
+    // row's, wearing the nearest budget's warning, so it reads as the
+    // same thing rather than as a session. None where AI spend
     // lists no budgets: with one budget, which its periods already say,
     // with no spend-watch, or while the screen is shared, when AI spend
     // lists only what holds no amount (KP0L6A, 2026-11-08 [f566a31a]).
@@ -929,7 +930,7 @@ Provider {
             key: "agents:budgets",
             name: Words.name("agents:budgets"),
             side: spent.side,
-            glyph: Words.glyph("agents:budgets"),
+            glyph: spent.glyph,
             hue: spent.hue
         }, spent.verbs), {
             ask: "which?"
