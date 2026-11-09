@@ -364,6 +364,13 @@ Provider {
             returns: provider.sessionAct(session,
                 SessionRow.returns(state, windowedOf(session))),
             verbs: () => provider.verbs(session, quest, spent, family),
+            // Its parts, its acts and facts, are read as they're made, the
+            // queue's jobs and its talks among them, and found only from
+            // inside it, so the walk for where rows live never makes them
+            // (Catalogue.js's followsInto): walked on each change, it made
+            // every session's, about nine rows each, 6,733 in twelve seconds
+            // at home over 300 sessions (2026-11-09).
+            parted: true,
             // What y takes: the first of its facts, as its verbs list them.
             operands: () => [quest !== "" ? copyOperand("fact:agent:quest", quest)
                 : copyOperand("fact:agent:address",
@@ -907,7 +914,13 @@ Provider {
     // Reopen's alone. It always stands, after Landed and before Start, its
     // names after its own and how many at its right, and Return on one
     // reopens it where it left off, by its id (VKCF3Z, 2026-11-08).
-    readonly property var recent: {
+    // Made again only when what it lists reads otherwise, said as a string,
+    // which tells its readers only when it changes: Sessions makes every
+    // session anew as any one changes, and a new Recent each time was a
+    // change to Agents' things, which has the launcher walk again where
+    // every row lives (Launcher.qml's stale). What it lists is kept beside
+    // it, plain, so keeping it notifies nothing.
+    readonly property string recentFrom: {
         const closed = Sessions.closed;
         const live = Sessions.running.concat(Sessions.parked);
         const addresses = (source("orchestrators")?.closed ?? []).map(one => one.address)
@@ -915,6 +928,12 @@ Provider {
         const quests = live.map(one => one.presence?.questInfo?.id ?? one.presence?.quest ?? "");
         const listed = Recent.listed([SessionRow.closedRecent(closed)],
             SessionRow.shownElsewhere(closed, Sessions.toReopen, addresses, quests));
+        recentListed.rows = listed;
+        return JSON.stringify([listed.map(one => one.row), new Date().toDateString()]);
+    }
+    readonly property var recentListed: ({ rows: [] })
+    readonly property var recent: {
+        const listed = recentFrom === "" ? [] : recentListed.rows;
         const words = Words.of("agents:recent");
         const stands = Recent.said(listed.map(one => String(one.row.title || one.row.address
             || one.row.id)), false, words.said ?? {});
