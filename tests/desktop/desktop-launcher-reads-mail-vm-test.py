@@ -257,13 +257,10 @@ def slack_holds_each_message(desktop: Desktop, conversations: list[Json]) -> Non
     for_you_rows(desktop)
     # Its side counts what it lists: Ada's two, Grace's and Threads' three
     # replies, never the conversations the messages are in.
-    desktop.launcher_until(
-        lambda shown: any(
-            thing["name"] == "Slack" and re.fullmatch(r"6\sto\sread", thing["side"])
-            for thing in shown["things"]
-        )
-    )
     desktop.down_to("Slack")
+    desktop.launcher_until(
+        lambda shown: re.fullmatch(r"6\sto\sread", shown["selected"]["side"]) is not None
+    )
     machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: (
