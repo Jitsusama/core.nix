@@ -13,22 +13,25 @@ already captured, and over a still screen the only frame was the first,
 of no length, so nothing played. The writer now encodes every captured
 frame before it leaves, and a stop takes one last frame without damage,
 which the compositor draws at once, so the recording runs to the stop
-and ends on what was shown then. Laid over
+and ends on what was shown then. That frame is given a second at most,
+so a compositor that never draws it costs the frame rather than leaving
+the recording hung and unsaved. Laid over
 wf-recorder-dmabuf-version.patch.
 
 --- a/src/main.cpp
 +++ b/src/main.cpp
-@@ -17,6 +17,9 @@
+@@ -17,6 +17,10 @@
  #include <sys/stat.h>
  #include <signal.h>
  #include <unistd.h>
 +#include <errno.h>
++#include <chrono>
 +#include <poll.h>
 +#include <sys/eventfd.h>
  #include <gbm.h>
  #include <fcntl.h>
  #include <xf86drm.h>
-@@ -198,6 +201,17 @@
+@@ -198,6 +202,17 @@
  
  std::atomic<bool> exit_main_loop{false};
  
@@ -46,7 +49,7 @@ wf-recorder-dmabuf-version.patch.
  buffer_pool<wf_buffer, 16> buffers;
  
  bool buffer_copy_done = false;
-@@ -629,13 +643,13 @@
+@@ -629,13 +644,13 @@
  
      std::optional<uint64_t> first_frame_ts;
  
@@ -63,7 +66,7 @@ wf-recorder-dmabuf-version.patch.
              break;
          }
  
-@@ -731,11 +745,65 @@
+@@ -731,11 +746,68 @@
      pr = nullptr;
  #endif
      frame_writer = nullptr;
@@ -90,8 +93,11 @@ wf-recorder-dmabuf-version.patch.
 + * way at once to a termination signal. wl_display_dispatch polls again
 + * when a signal breaks in, and a frame asked for with damage comes only
 + * once something on the screen moves, so a recording stopped over a still
-+ * screen went on, and wasn't saved, until something did. */
-+static int dispatch_or_stop(struct wl_display *display)
++ * screen went on, and wasn't saved, until something did. With `within`
++ * at or past 0 it waits that many milliseconds at most, and returns 0 if
++ * nothing came; without `hear_stop` it waits for the display alone, as
++ * the stop's last frame does once the signal has been heard. */
++static int dispatch_within(struct wl_display *display, int within, bool hear_stop)
 +{
 +    while (wl_display_prepare_read(display) != 0)
 +    {
@@ -108,8 +114,8 @@ wf-recorder-dmabuf-version.patch.
 +    };
 +    int polled;
 +    do {
-+        polled = poll(fds, stop_fd >= 0 ? 2 : 1, -1);
-+    } while (polled == -1 && errno == EINTR && !exit_main_loop);
++        polled = poll(fds, hear_stop && stop_fd >= 0 ? 2 : 1, within);
++    } while (polled == -1 && errno == EINTR && !(hear_stop && exit_main_loop));
 +
 +    if (polled > 0 && fds[0].revents != 0)
 +    {
@@ -129,7 +135,7 @@ wf-recorder-dmabuf-version.patch.
  }
  
  static bool user_specified_overwrite(std::string filename)
-@@ -1378,6 +1446,7 @@
+@@ -1378,6 +1450,7 @@
      bool spawned_thread = false;
      std::thread writer_thread;
  
@@ -137,26 +143,36 @@ wf-recorder-dmabuf-version.patch.
      for (auto signo : GRACEFUL_TERMINATION_SIGNALS)
      {
          signal(signo, handle_graceful_termination);
-@@ -1393,7 +1462,7 @@
+@@ -1393,7 +1466,7 @@
          buffer_copy_done = false;
          request_next_frame();
  
 -        while (!buffer_copy_done && !exit_main_loop && wl_display_dispatch(display) != -1) {
-+        while (!buffer_copy_done && !exit_main_loop && dispatch_or_stop(display) != -1) {
++        while (!buffer_copy_done && !exit_main_loop && dispatch_within(display, -1, true) != -1) {
              // This space is intentionally left blank
          }
  
-@@ -1417,6 +1486,41 @@
+@@ -1417,6 +1490,52 @@
          buffers.next_capture();
      }
  
 +    /* A stop takes one last frame, drawn at once rather than at the screen's
 +     * next change, so the recording runs to the moment it was stopped and
-+     * ends on what was shown then, even over a still screen. */
++     * ends on what was shown then, even over a still screen. It's given a
++     * second at most, so a compositor that never draws it, or keeps failing
++     * it, costs the recording its last frame rather than hanging it
++     * unsaved. */
 +    if (stopped)
 +    {
 +        use_damage = false;
-+        while (buffers.capture().ready_capture() != true && !writer_left) {
++        const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(1);
++        // Never below 0, since poll waits for ever on a negative time.
++        const auto left = [&] () {
++            const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
++                until - std::chrono::steady_clock::now()).count();
++            return ms > 0 ? (int)ms : 0;
++        };
++        while (buffers.capture().ready_capture() != true && !writer_left && left() > 0) {
 +            std::this_thread::sleep_for(std::chrono::microseconds(500));
 +        }
 +
@@ -165,7 +181,8 @@ wf-recorder-dmabuf-version.patch.
 +            request_next_frame();
 +        }
 +        while (buffers.capture().ready_capture() && !buffer_copy_done &&
-+            frame_failed_cnt <= MAX_FRAME_FAILURES && wl_display_dispatch(display) != -1) {
++            frame_failed_cnt <= MAX_FRAME_FAILURES && left() > 0 &&
++            dispatch_within(display, left(), false) != -1) {
 +            // This space is intentionally left blank
 +        }
 +
