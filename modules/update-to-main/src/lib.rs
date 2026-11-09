@@ -17,6 +17,8 @@
 //! - `follows`: the flake's inputs that follow their own signed main.
 //! - `follow`: the asker that asks whenever main moves.
 //! - `system`: building, switching, the health checks and going back.
+//! - `batches`: a system built here a batch of pieces at a time, each
+//!   once there's the memory for it.
 //! - `power`: whether the machine is on a battery too low to start.
 //! - `line`: what an asker hears.
 //! - `run`: the programs it runs, in a clean environment.
@@ -26,6 +28,7 @@
 //! - `ask`: the asking end, for the node and for a person.
 
 pub mod ask;
+pub mod batches;
 pub mod config;
 pub mod follow;
 pub mod follows;

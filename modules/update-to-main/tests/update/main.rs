@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
 use update_to_main::config::{
-    Busy, Config, Follow, Here, Holds, Hosted, Kept, Kind, Session, Signers, Tools,
+    Batches, Busy, Config, Follow, Here, Holds, Hosted, Kept, Kind, Session, Signers, Tools,
 };
 use update_to_main::line::{Applied, Line};
 use update_to_main::{ask, serve, update};
@@ -102,7 +102,8 @@ impl World {
         // big is there, a big piece and modules built from it are needed
         // too; while big-fails is, the big one fails at once, and while
         // big-waits is, it waits up to five seconds for the heavy piece to
-        // be sent beside it, failing if it never is. A system's
+        // be sent beside it, failing if it never is. A batch built here is
+        // written in batched. A system's
         // build starts a call while call-starts is there. Each input
         // overridden is written down, and a system made for a commit with
         // its input at a rev, as COMMIT+REV, is what they build.
@@ -134,6 +135,7 @@ impl World {
                  \"t-secret-tool.drv\": {{\"name\": \"secret-tool-2\", \"env\": {{}}}}\
                  '\"$secret$big\"'}}}}'; exit 0;;\n\
                  *' --cores '*) echo \"$*\" >> {here}; exit 0;;\n\
+                 *' build --no-link -L '*) echo \"$*\" >> {batched}; exit 0;;\n\
                  *' --builders @/etc/kept-builders '*) if [ -e {no_kept_builder} ]; then \
                  echo 'no kept builder answers' >&2; exit 1; fi; echo \"$*\" >> {away}; exit 0;;\n\
                  *' --max-jobs 0 '*) case \" $* \" in *e-big*)\n\
@@ -175,6 +177,7 @@ impl World {
                 big_waits = root.join("big-waits").display(),
                 no_kept_builder = root.join("no-kept-builder").display(),
                 here = root.join("here").display(),
+                batched = root.join("batched").display(),
                 call_starts = root.join("call-starts").display(),
                 call = root.join("call").display(),
                 away = root.join("away").display(),
@@ -220,6 +223,8 @@ impl World {
             holds: None,
             power_supplies: root.join("power"),
             cpu_pressure: root.join("pressure"),
+            batches: None,
+            memory: root.join("meminfo"),
             silent_for: 2,
             tools: Tools {
                 git: program("git"),
@@ -1494,6 +1499,88 @@ fn building_elsewhere_with_no_builder_builds_nothing_here() {
     assert!(why.contains("on the machine's builders"), "{why}");
     assert_eq!(lines, ["local builds are disabled"]);
     assert_eq!(world.builds(), 0);
+}
+
+/// Builds here in batches of `pieces`, once 1,000 MiB is free, with
+/// `free_kib` of memory available and as much swap free.
+fn in_batches(world: &mut World, pieces: usize, free_kib: u64) {
+    world.config.batches = Some(Batches {
+        pieces,
+        room_mib: 1000,
+        within: 0,
+    });
+    fs::write(
+        &world.config.memory,
+        format!("MemTotal: 8000000 kB\nMemAvailable: {free_kib} kB\nSwapFree: {free_kib} kB\n"),
+    )
+    .unwrap();
+}
+
+#[test]
+fn a_system_of_more_pieces_than_a_batch_builds_a_batch_at_a_time() {
+    let mut world = World::new();
+    in_batches(&mut world, 3, 600_000);
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(
+        world.update().1,
+        done(&head),
+        "with room, the batches and the system build"
+    );
+    let batched = world.read("batched");
+    let builds: Vec<&str> = batched.lines().collect();
+    assert_eq!(
+        builds.len(),
+        2,
+        "four pieces in batches of three: {batched}"
+    );
+    assert!(
+        builds[0].contains("/nix/store/a-light.drv^*")
+            && builds[0].contains("/nix/store/c-wrapper.drv^*")
+            && !builds[0].contains("t-secret-tool"),
+        "the first batch takes the first three by name: {batched}"
+    );
+    assert!(
+        builds[1].contains("/nix/store/t-secret-tool.drv^*"),
+        "the second takes the last: {batched}"
+    );
+    assert_eq!(
+        world.builds(),
+        1,
+        "the system is built once the batches are"
+    );
+}
+
+#[test]
+fn a_system_a_batch_holds_builds_in_one() {
+    let mut world = World::new();
+    in_batches(&mut world, 4, 600_000);
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(
+        world.update().1,
+        done(&head),
+        "with room, the system builds"
+    );
+    assert_eq!(world.read("batched"), "", "no batch is built apart");
+    assert_eq!(world.builds(), 1, "the system's own build builds it");
+}
+
+#[test]
+fn a_build_with_no_room_for_it_never_starts() {
+    let mut world = World::new();
+    in_batches(&mut world, 3, 400_000);
+    let head = world.signed("one");
+    world.system(&head);
+    let Line::Failed { why, .. } = world.update().1 else {
+        panic!("an update with too little memory didn't fail")
+    };
+    assert!(
+        why.contains("only 781 MiB of memory and swap was free here, not the 1000"),
+        "{why}"
+    );
+    assert_eq!(world.read("batched"), "", "no batch started");
+    assert_eq!(world.builds(), 0, "nor the system's build");
 }
 
 #[test]

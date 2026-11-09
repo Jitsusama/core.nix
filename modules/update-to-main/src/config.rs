@@ -86,6 +86,15 @@ pub struct Config {
     /// says whether `here` may build; a Mac has none, so nothing builds
     /// there.
     pub cpu_pressure: PathBuf,
+    /// When set, a system built here of more pieces than a batch holds is
+    /// built a batch at a time, each started only once the machine has the
+    /// memory for it.
+    #[serde(default)]
+    pub batches: Option<Batches>,
+    /// Where Linux says how much memory is available and how much swap is
+    /// free; a Mac has none, so a batch there never finds room.
+    #[serde(default = "meminfo")]
+    pub memory: PathBuf,
     /// How many seconds a build may say nothing, its pieces' logs
     /// included, before it's stopped as one waiting on a builder that
     /// doesn't answer: four minutes unless given.
@@ -129,6 +138,24 @@ pub struct Here {
     /// The share of the last minute, in percent, that some runnable task
     /// waited for a CPU, at or above which they wait.
     pub busy_at: f64,
+}
+
+/// How a system built here is built a batch at a time.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Batches {
+    /// How many pieces one build is given at most.
+    pub pieces: usize,
+    /// How much memory available and swap free together, in MiB, Linux has
+    /// to say there is before a batch starts.
+    pub room_mib: u64,
+    /// How many seconds an update waits for that room before it fails,
+    /// leaving the machine as it is.
+    pub within: u64,
+}
+
+fn meminfo() -> PathBuf {
+    PathBuf::from("/proc/meminfo")
 }
 
 /// Daemons whose restart waits for a hold: whoever asks puts the machine's
