@@ -2600,7 +2600,8 @@ onLinux {
       # Its tabs open now, as chrome-recent-sites open lists them: one page
       # open in two windows, the older page open again, another in front
       # of the second window, and in a third one left out, told of by its
-      # title alone, in front of a page behind it.
+      # title alone, in front of a page behind it; and one with no id, as
+      # Chrome's session file says each tab, behind in the second window.
       export OPENED_LIST=${pkgs.writeShellScript "opened-list" ''
         printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
           7 1 true 3000 https://open.example.com/a 'Open A' \
@@ -2608,7 +2609,8 @@ onLinux {
           9 2 false 1000 https://open.example.com/a 'Open A' \
           10 2 true 500 https://another.example.com/b Another \
           11 3 true 400 "" 'Left out' \
-          12 3 false 450 https://behind.example.com/ Behind
+          12 3 false 450 https://behind.example.com/ Behind \
+          "" 2 false 100 https://filed.example.com/ Filed
       ''}
       # What the viewer has open now, as mpv's opened lists what each mpv
       # plays: one file in two of its processes, one also on the list

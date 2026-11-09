@@ -1176,7 +1176,9 @@ Provider {
     // of two the one used last. Go To asks the source to bring the tab
     // forward (`go`) when it can, and brings its window forward either
     // way. Close It is there only when the source can close a tab
-    // (`close`); it keeps the launcher, its foot saying how many tabs it
+    // (`close`) and every tab of the page has an id to close it by, as a
+    // tab Chrome's session file says has none, since a running Chrome may
+    // give that run's ids to other tabs; it keeps the launcher, its foot saying how many tabs it
     // closes when it's more than one, and the page stays where it was,
     // said closed and holding only Copy the Link, until the launcher opens
     // again.
@@ -1192,8 +1194,9 @@ Provider {
             .find(one => titled(one, entry) === front.title) ?? null;
         const open = page.length > 1 ? counted(words.tabs) : words.open ?? "";
         const ask = (command, id) => (command ?? []).map(part => part.replace("{id}", id));
+        const named = one => String(one.id ?? "") !== "";
         const go = () => {
-            if (source.go)
+            if (source.go && named(tab))
                 Niri.spawn(ask(source.go, tab.id));
             if (window)
                 Niri.act({ FocusWindow: { id: window.id } });
@@ -1204,7 +1207,7 @@ Provider {
             side: window ? titled(window, entry) : "",
             run: go
         });
-        const closes = !source.close ? [] : [said("verb:recent:site:close", "", {
+        const closes = !source.close || !page.every(named) ? [] : [said("verb:recent:site:close", "", {
             key: `verb:recent:site:close:${tab.address}`,
             hue: "action",
             stays: true,
