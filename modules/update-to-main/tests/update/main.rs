@@ -98,7 +98,11 @@ impl World {
         // wrapper built from a secret piece built already, and sends the
         // heavy ones away, which fails while no-builder is there; kept ones
         // go to their own builders, failing while no-kept-builder is there.
-        // Either may be built here, small, which writes them in here. A system's
+        // Either may be built here, small, which writes them in here. While
+        // big is there, a big piece and modules built from it are needed
+        // too; while big-fails is, the big one fails at once, and while
+        // big-waits is, it waits up to five seconds for the heavy piece to
+        // be sent beside it, failing if it never is. A system's
         // build starts a call while call-starts is there. Each input
         // overridden is written down, and a system made for a commit with
         // its input at a rev, as COMMIT+REV, is what they build.
@@ -114,10 +118,13 @@ impl World {
                  *' --dry-run '*) printf 'these 4 derivations will be built:\\n  \
                  /nix/store/a-light.drv\\n  /nix/store/b-heavy.drv\\n  \
                  /nix/store/c-wrapper.drv\\n  /nix/store/t-secret-tool.drv\\n' >&2; \
-                 if [ -e {big} ]; then printf '  /nix/store/e-big.drv\\n' >&2; fi; exit 0;;\n\
+                 if [ -e {big} ]; then printf '  /nix/store/e-big.drv\\n  \
+                 /nix/store/d-modules.drv\\n' >&2; fi; exit 0;;\n\
                  *' derivation show '*) secret=\n\
                  big=; [ -e {big} ] && big=', \"e-big.drv\": {{\"name\": \"big-1\", \
-                 \"env\": {{\"requiredSystemFeatures\": \"big-parallel\"}}}}'\n\
+                 \"env\": {{\"requiredSystemFeatures\": \"big-parallel\"}}}}, \
+                 \"d-modules.drv\": {{\"name\": \"modules\", \"env\": {{}}, \
+                 \"inputs\": {{\"drvs\": {{\"e-big.drv\": {{}}}}}}}}'\n\
                  case \" $* \" in *' --recursive '*) secret=', \"s-secret.drv\": \
                  {{\"name\": \"secret-1.0\", \"env\": {{}}}}';; esac\n\
                  echo '{{\"derivations\": {{\"a-light.drv\": \
@@ -129,7 +136,13 @@ impl World {
                  *' --cores '*) echo \"$*\" >> {here}; exit 0;;\n\
                  *' --builders @/etc/kept-builders '*) if [ -e {no_kept_builder} ]; then \
                  echo 'no kept builder answers' >&2; exit 1; fi; echo \"$*\" >> {away}; exit 0;;\n\
-                 *' --max-jobs 0 '*) if [ -e {hung} ]; then sleep 30; fi\n\
+                 *' --max-jobs 0 '*) case \" $* \" in *e-big*)\n\
+                 if [ -e {big_fails} ]; then echo 'error: e-big failed' >&2; exit 1; fi\n\
+                 if [ -e {big_waits} ]; then n=0; while :; do \
+                 case $(cat {away} 2>/dev/null) in *b-heavy*) break;; esac; n=$((n+1)); \
+                 if [ $n -gt 50 ]; then echo 'nothing was built beside it' >&2; exit 1; fi; \
+                 sleep 0.1; done; fi;; esac\n\
+                 if [ -e {hung} ]; then sleep 30; fi\n\
                  if [ -e {no_builder} ] || {{ [ -e {no_small_builder} ] \
                  && [ \"${{*#*e-big}}\" = \"$*\" ]; }}; then \
                  echo 'local builds are disabled' >&2; exit 1; fi; echo \"$*\" >> {away}; exit 0;;\n\
@@ -158,6 +171,8 @@ impl World {
                 hung = root.join("hung").display(),
                 no_small_builder = root.join("no-small-builder").display(),
                 big = root.join("big").display(),
+                big_fails = root.join("big-fails").display(),
+                big_waits = root.join("big-waits").display(),
                 no_kept_builder = root.join("no-kept-builder").display(),
                 here = root.join("here").display(),
                 call_starts = root.join("call-starts").display(),
@@ -1628,6 +1643,63 @@ fn the_small_pieces_are_built_here_once_the_builders_build_the_big() {
     assert!(!away.contains("b-heavy"), "{away}");
     let here = world.read("here");
     assert!(here.contains("/nix/store/b-heavy.drv^*"), "{here}");
+}
+
+#[test]
+fn the_small_pieces_build_beside_the_big_and_what_is_built_from_it_after() {
+    let mut world = World::new();
+    elsewhere_with_here(&mut world, "14.99");
+    fs::write(world.root.join("big"), "").unwrap();
+    // The big piece builds only once the heavy one is sent beside it.
+    fs::write(world.root.join("big-waits"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    let away = world.read("away");
+    let sent: Vec<&str> = away.lines().collect();
+    assert_eq!(sent.len(), 3, "{away}");
+    let big = sent
+        .iter()
+        .position(|s| s.contains("e-big"))
+        .expect("the big piece sent");
+    assert!(!sent[big].contains("b-heavy"), "{away}");
+    let heavy = sent
+        .iter()
+        .position(|s| s.contains("b-heavy"))
+        .expect("the heavy piece sent");
+    assert!(!sent[heavy].contains("d-modules"), "{away}");
+    // The modules, built from the big piece, go only once it's built.
+    let modules = sent
+        .iter()
+        .position(|s| s.contains("d-modules"))
+        .expect("the modules sent");
+    assert!(modules > big, "{away}");
+    assert_eq!(world.read("here"), "");
+}
+
+#[test]
+fn a_big_piece_that_fails_ends_what_builds_beside_it() {
+    let mut world = World::new();
+    elsewhere_with_here(&mut world, "14.99");
+    // Every build but the big one hangs, and nothing is stopped for
+    // saying nothing before the test would end.
+    world.config.silent_for = 60;
+    fs::write(world.root.join("hung"), "").unwrap();
+    fs::write(world.root.join("big"), "").unwrap();
+    fs::write(world.root.join("big-fails"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    let started = std::time::Instant::now();
+    let Line::Failed { why, .. } = world.update().1 else {
+        panic!("not failed")
+    };
+    assert!(why.contains("building the big pieces"), "{why}");
+    // The hung build beside it was ended rather than waited on for its
+    // 30 seconds.
+    let took = started.elapsed();
+    assert!(took < std::time::Duration::from_secs(20), "{took:?}");
+    assert_eq!(world.read("away"), "");
+    assert_eq!(world.read("here"), "");
 }
 
 #[test]

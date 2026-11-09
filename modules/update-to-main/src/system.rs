@@ -125,26 +125,16 @@ fn build_elsewhere(config: &Config, flake: &str, overrides: &[String]) -> Result
     }
     if !rest.is_empty() {
         let builders = config.builders.as_deref();
-        // A big piece, such as the kernel, goes to the builders first and
-        // alone when the rest may build here, since built here as another
-        // piece's input it held the machine's CPUs for over an hour on 8
-        // November while the lent builders were down.
+        // A big piece, such as the kernel, goes to the builders before
+        // anything is built here when the rest may build here, since built
+        // here as another piece's input it held the machine's CPUs for over
+        // an hour on 8 November while the lent builders were down.
         let (big, small): (Vec<String>, Vec<String>) = rest
             .iter()
             .cloned()
             .partition(|drv| pieces.get(drv).is_some_and(|p| p.big));
         let rest = if config.here.is_some() && !big.is_empty() {
-            away(
-                config,
-                &big,
-                builders,
-                "building the big pieces on the machine's builders",
-            )
-            .map_err(|failed| Failure {
-                why: format!("{}, which never build here", failed.why),
-                lines: failed.lines,
-            })?;
-            small
+            beside_the_big(config, &pieces, &big, small, builders)?
         } else {
             rest
         };
@@ -162,6 +152,89 @@ fn build_elsewhere(config: &Config, flake: &str, overrides: &[String]) -> Result
         }
     }
     Ok(())
+}
+
+/// Builds the big pieces on the builders and, beside them, the small ones
+/// none of them is built from, giving what's left to build: the small
+/// pieces built from a big one, and those beside it if they didn't build.
+/// Neither may build here, so a builder that is down leaves the kernel for
+/// another rather than this machine. On 8 November a switch built the
+/// kernel alone for 94 minutes, then OpenVINO and ONNX Runtime, which
+/// need nothing of it, for an hour more after.
+fn beside_the_big(
+    config: &Config,
+    pieces: &BTreeMap<String, Piece>,
+    big: &[String],
+    small: Vec<String>,
+    builders: Option<&str>,
+) -> Result<Vec<String>, Failure> {
+    let mut known = BTreeMap::new();
+    let (after, beside): (Vec<String>, Vec<String>) = small
+        .into_iter()
+        .partition(|drv| built_from_big(drv, pieces, &mut known));
+    let update = thread::current().id();
+    let (big_built, beside_built) = thread::scope(|scope| {
+        let alongside = (!beside.is_empty()).then(|| {
+            scope.spawn(|| {
+                run::helps(update);
+                away(
+                    config,
+                    &beside,
+                    builders,
+                    "building the small pieces beside the big on the machine's builders",
+                )
+            })
+        });
+        let big_built = away(
+            config,
+            big,
+            builders,
+            "building the big pieces on the machine's builders",
+        );
+        let beside_built = alongside.map(|building| {
+            let helper = building.thread().id();
+            // Nothing more is built once a big piece fails, so what builds
+            // beside it is stopped rather than waited on.
+            if big_built.is_err() {
+                run::stop(helper);
+            }
+            let built = building
+                .join()
+                .unwrap_or_else(|_| Err(Failure::new("building beside the big pieces panicked")));
+            run::helped(update, helper);
+            built
+        });
+        (big_built, beside_built)
+    });
+    big_built.map_err(|failed| Failure {
+        why: format!("{}, which never build here", failed.why),
+        lines: failed.lines,
+    })?;
+    Ok(match beside_built {
+        Some(Err(_)) => beside.into_iter().chain(after).collect(),
+        _ => after,
+    })
+}
+
+/// Whether a derivation asks for `big-parallel` or is built from one that
+/// does, remembering each answer in `known` as `is_kept` does.
+fn built_from_big(
+    drv: &str,
+    pieces: &BTreeMap<String, Piece>,
+    known: &mut BTreeMap<String, bool>,
+) -> bool {
+    if let Some(answer) = known.get(drv) {
+        return *answer;
+    }
+    let answer = pieces.get(drv).is_some_and(|piece| {
+        piece.big
+            || piece
+                .inputs
+                .iter()
+                .any(|input| built_from_big(input, pieces, known))
+    });
+    known.insert(drv.to_owned(), answer);
+    answer
 }
 
 /// Builds pieces on builders, the daemon's when none are given, with no
@@ -880,6 +953,32 @@ mod tests {
         let (kept, rest) = heavy(&pieces(older).unwrap(), &needed, &["secret".to_owned()]);
         assert_eq!(kept, ["/nix/store/s-secret.drv"]);
         assert!(rest.is_empty());
+    }
+
+    #[test]
+    fn what_is_built_from_a_big_piece_even_at_one_remove_waits_for_it() {
+        // The kernel's modules are built from it, and the initrd from them;
+        // OpenVINO needs nothing of it, so it builds beside the kernel.
+        let shown = r#"{"derivations": {
+            "k-linux.drv": {"name": "linux",
+                "env": {"requiredSystemFeatures": "big-parallel"}},
+            "m-modules.drv": {"name": "modules", "env": {},
+                "inputs": {"drvs": {"k-linux.drv": {}}}},
+            "i-initrd.drv": {"name": "initrd", "env": {},
+                "inputs": {"drvs": {"m-modules.drv": {}, "z-zlib.drv": {}}}},
+            "v-openvino.drv": {"name": "openvino", "env": {},
+                "inputs": {"drvs": {"z-zlib.drv": {}}}}}}"#;
+        let pieces = pieces(shown).unwrap();
+        let mut known = BTreeMap::new();
+        let waits = |drv: &str, known: &mut BTreeMap<String, bool>| {
+            built_from_big(&stored(drv), &pieces, known)
+        };
+        assert!(waits("i-initrd.drv", &mut known));
+        assert!(waits("m-modules.drv", &mut known));
+        assert!(!waits("v-openvino.drv", &mut known));
+        // What nothing shows, as a piece built already, is built from
+        // nothing big.
+        assert!(!waits("z-zlib.drv", &mut known));
     }
 
     #[test]
