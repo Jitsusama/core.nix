@@ -115,7 +115,7 @@ mod tests {
         let bound = Duration::from_millis(300);
         let grace = Duration::from_millis(300);
         let ended = run(sh(script), bound, grace).unwrap();
-        assert!(ended.status.is_none());
+        assert!(ended.status.is_none(), "a command stopped has no status");
         assert!(ended.took < Duration::from_secs(5), "took {:?}", ended.took);
         assert_eq!(ended.output, b"started\n");
     }

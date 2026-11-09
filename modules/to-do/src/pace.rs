@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn a_run_says_when_the_next_is_and_counts_each() {
         let mut pace = Pace::new("false", 1000);
-        assert!(pace.due(1000));
+        assert!(pace.due(1000), "a new check is due at once");
         let failed = Run {
             exit: Some(1),
             took_ms: 5,
@@ -187,9 +187,9 @@ mod tests {
             (pace.ran, pace.first_at, pace.last_at),
             (2, Some(1000), Some(1030))
         );
-        assert!(!pace.due(1089));
+        assert!(!pace.due(1089), "not due before its wait is over");
         pace.hurry(1050);
-        assert!(pace.due(1050));
+        assert!(pace.due(1050), "a signal makes it due at once");
     }
 
     #[test]
@@ -197,7 +197,7 @@ mod tests {
         let found = run("echo one; echo two >&2; echo; exit 3");
         assert_eq!(found.exit, Some(3));
         assert_eq!(found.said, "two");
-        assert!(run("true").passed());
+        assert!(run("true").passed(), "true passes");
     }
 
     #[test]
@@ -209,7 +209,7 @@ mod tests {
             Duration::from_millis(200),
         );
         assert_eq!(found.exit, None);
-        assert!(!found.passed());
+        assert!(!found.passed(), "a check stopped never passes");
         assert!(found.said.starts_with("stopped after "), "{}", found.said);
     }
 

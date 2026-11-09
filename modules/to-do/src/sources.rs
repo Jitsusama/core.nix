@@ -238,10 +238,14 @@ mod tests {
     #[test]
     fn a_switch_names_the_core_it_built_over_the_one_asked() {
         let mut follower = Follower::default();
-        assert!(!follower.read("1794200000.5 update-to-main: asking at @abc core@aaa"));
+        assert!(
+            !follower.read("1794200000.5 update-to-main: asking at @abc core@aaa"),
+            "asking is no switch"
+        );
         assert!(
             follower
-                .read(r#"1794200100.1 update-to-main: {"step":"done","followed":{"core":"bbb"}}"#)
+                .read(r#"1794200100.1 update-to-main: {"step":"done","followed":{"core":"bbb"}}"#),
+            "a switch done is one"
         );
         assert_eq!(follower.core.as_deref(), Some("bbb"));
         assert_eq!(
@@ -264,8 +268,14 @@ mod tests {
     #[test]
     fn an_unchanged_look_says_the_core_running_without_a_switch() {
         let mut follower = Follower::default();
-        assert!(follower.read(r#"5 x: {"step":"unchanged","followed":{"core":"ccc"}}"#));
-        assert!(!follower.read(r#"6 x: {"step":"unchanged","followed":{"core":"ccc"}}"#));
+        assert!(
+            follower.read(r#"5 x: {"step":"unchanged","followed":{"core":"ccc"}}"#),
+            "a switch to another core is one"
+        );
+        assert!(
+            !follower.read(r#"6 x: {"step":"unchanged","followed":{"core":"ccc"}}"#),
+            "the same core again is none"
+        );
         assert_eq!(follower.switches, Vec::<Switch>::new());
         assert_eq!(follower.core.as_deref(), Some("ccc"));
     }
@@ -273,9 +283,15 @@ mod tests {
     #[test]
     fn other_lines_say_nothing() {
         let mut follower = Follower::default();
-        assert!(!follower.read(r#"7 x: {"step":"building"}"#));
-        assert!(!follower.read("not a line"));
-        assert!(!follower.read(r#"8 x: {"step":"failed","why":"no room"}"#));
+        assert!(
+            !follower.read(r#"7 x: {"step":"building"}"#),
+            "building is no switch"
+        );
+        assert!(!follower.read("not a line"), "a line it can't read is none");
+        assert!(
+            !follower.read(r#"8 x: {"step":"failed","why":"no room"}"#),
+            "a failed switch is none"
+        );
         assert_eq!(follower, Follower::default());
     }
 
@@ -305,7 +321,13 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         fs::write(folder.path().join("google"), "").unwrap();
         let found = signins(folder.path());
-        assert!(found.get("google").is_some_and(|at| *at > 1_700_000_000));
-        assert!(signins(&folder.path().join("none")).is_empty());
+        assert!(
+            found.get("google").is_some_and(|at| *at > 1_700_000_000),
+            "a sign-in says when it was touched"
+        );
+        assert!(
+            signins(&folder.path().join("none")).is_empty(),
+            "no folder holds no sign-ins"
+        );
     }
 }

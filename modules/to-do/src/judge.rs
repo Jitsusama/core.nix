@@ -190,7 +190,10 @@ mod tests {
     #[test]
     fn a_boot_counts_only_after_the_to_do_was_raised() {
         let line = Line(vec![]);
-        assert!(heard(&Signal::Boot, Some(90), &facts(), &line).is_ok());
+        assert!(
+            heard(&Signal::Boot, Some(90), &facts(), &line).is_ok(),
+            "a boot after it was raised counts"
+        );
         assert_eq!(
             heard(&Signal::Boot, Some(110), &facts(), &line),
             Err(Some(("boot_at", "100".into())))
@@ -204,8 +207,14 @@ mod tests {
         assert_eq!(found.at, Some(200));
         let mut by_hand = facts();
         by_hand.switches.clear();
-        assert!(heard(&Signal::Switch(None), Some(140), &by_hand, &line).is_ok());
-        assert!(heard(&Signal::Switch(None), Some(201), &facts(), &line).is_err());
+        assert!(
+            heard(&Signal::Switch(None), Some(140), &by_hand, &line).is_ok(),
+            "a profile made after it counts"
+        );
+        assert!(
+            heard(&Signal::Switch(None), Some(201), &facts(), &line).is_err(),
+            "no switch came after it"
+        );
     }
 
     #[test]
@@ -224,7 +233,10 @@ mod tests {
             Err(Some(("core", "bbb".into())))
         );
         // A commit the history doesn't have isn't past yet.
-        assert!(heard(&Signal::Switch(Some("zzz".into())), None, &facts(), &line).is_err());
+        assert!(
+            heard(&Signal::Switch(Some("zzz".into())), None, &facts(), &line).is_err(),
+            "a commit not in the history isn't past"
+        );
     }
 
     #[test]
@@ -244,21 +256,48 @@ mod tests {
         found.signins.insert("google".into(), 300);
         found.devices.push("Thunderbolt Dock TB4".into());
         found.files.insert("/run/x".into(), 400);
-        assert!(heard(&Signal::Signin("google".into()), Some(250), &found, &line).is_ok());
-        assert!(heard(&Signal::Signin("google".into()), Some(350), &found, &line).is_err());
-        assert!(heard(&Signal::Signin("slack".into()), None, &found, &line).is_err());
+        assert!(
+            heard(&Signal::Signin("google".into()), Some(250), &found, &line).is_ok(),
+            "signed in after it was raised"
+        );
+        assert!(
+            heard(&Signal::Signin("google".into()), Some(350), &found, &line).is_err(),
+            "signed in before it was raised"
+        );
+        assert!(
+            heard(&Signal::Signin("slack".into()), None, &found, &line).is_err(),
+            "never signed in"
+        );
         let dock = heard(&Signal::Device("dock".into()), None, &found, &line).unwrap();
         assert_eq!(dock.figure, ("device", "Thunderbolt Dock TB4".into()));
-        assert!(heard(&Signal::Device("Keyboard".into()), None, &found, &line).is_err());
+        assert!(
+            heard(&Signal::Device("Keyboard".into()), None, &found, &line).is_err(),
+            "no keyboard is plugged in"
+        );
         let spelled = heard(&Signal::Device("dock-tb4".into()), None, &found, &line);
-        assert!(spelled.is_ok());
+        assert!(
+            spelled.is_ok(),
+            "a device matches by its letters and digits"
+        );
         assert_eq!(
             heard(&Signal::Signin("slack".into()), None, &found, &line),
             Err(Some(("signed_in", "never".into())))
         );
-        assert!(heard(&Signal::File("/run/x".into()), None, &found, &line).is_ok());
-        assert!(heard(&Signal::File("/run/x".into()), Some(400), &found, &line).is_ok());
-        assert!(heard(&Signal::File("/run/x".into()), Some(401), &found, &line).is_err());
-        assert!(heard(&Signal::File("/run/y".into()), None, &found, &line).is_err());
+        assert!(
+            heard(&Signal::File("/run/x".into()), None, &found, &line).is_ok(),
+            "the file is there"
+        );
+        assert!(
+            heard(&Signal::File("/run/x".into()), Some(400), &found, &line).is_ok(),
+            "changed the second it was raised"
+        );
+        assert!(
+            heard(&Signal::File("/run/x".into()), Some(401), &found, &line).is_err(),
+            "changed before it was raised"
+        );
+        assert!(
+            heard(&Signal::File("/run/y".into()), None, &found, &line).is_err(),
+            "the file isn't there"
+        );
     }
 }

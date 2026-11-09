@@ -196,7 +196,7 @@ mod tests {
         assert_eq!(found.len(), 3);
         assert_eq!(found[0].key, "QEST-1:a");
         assert_eq!(found[0].raised, Some(1_794_200_400));
-        assert!(found[0].ready);
+        assert!(found[0].ready, "a to-do marked ready reads as ready");
         assert_eq!(found[0].done_when, Some(Knowing::Check("true".into())));
         assert_eq!(found[1].key, "QEST-2:b");
         assert_eq!(found[1].done_when, Some(Knowing::Person));
