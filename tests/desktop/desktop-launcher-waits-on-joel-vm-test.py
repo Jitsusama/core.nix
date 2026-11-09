@@ -855,22 +855,16 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
             )
         )
         desktop.close_launcher()
-        # Calm, home's Now says nothing at its right, and its drawer, out
-        # on it as home opens, names what's on without For You (VKCF3Z,
-        # bd5cb965).
+        # Calm, with Keep Awake on, home's Now says nothing at its right,
+        # neither For You nor how many are on (VKCF3Z, bd5cb965).
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.launcher_until(
-            lambda shown: (
-                (shown["selected"] or {}).get("is") == "collection:on"
-                and (shown.get("drawer") or {}).get("out") is True
-                and "Keep Awake" in (shown["drawer"].get("body") or "")
+            lambda shown: any(
+                thing["is"] == "collection:on" and thing["reads"] == "Now"
+                for thing in shown["things"]
             )
         )
-        shown = desktop.showing()
-        now = next(thing for thing in shown["things"] if thing["is"] == "collection:on")
-        assert now["reads"] == "Now", now
-        assert "For You" not in shown["drawer"]["body"], shown["drawer"]
         desktop.close_launcher()
     finally:
         desktop.as_account("systemctl --user stop keep-awake.service")

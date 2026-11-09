@@ -959,11 +959,6 @@ def shoot_home_at_joels_scales(desktop: Desktop, home: list[str]) -> None:
             lambda shown: (shown["selected"] or {}).get("is") == "collection:keyboard"
         )
         desktop.shoot(f"launcher-home-categories-at-{scale.replace('.', '-')}")
-        # Machine with its drawer out, naming what it holds (VKCF3Z, dae7fb67).
-        desktop.previous_row()
-        desktop.previous_row()
-        desktop.launcher_until(lambda shown: holds(shown, "Machine", "Power, "))
-        desktop.shoot(f"launcher-home-machine-drawn-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
@@ -974,6 +969,16 @@ def shoot_home_at_joels_scales(desktop: Desktop, home: list[str]) -> None:
         desktop.shoot(f"launcher-machine-places-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
     desktop.as_account("niri msg output winit scale 1")
+    # Machine with its drawer out, naming what it holds (VKCF3Z, dae7fb67), at 1, since
+    # this screen at 1.5 or 2 has no room beside the card, where the drawer waits for the
+    # keys to go in.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.launcher_until(lambda shown: shown["rows"] == home)
+    desktop.down_to("Machine")
+    desktop.launcher_until(lambda shown: holds(shown, "Machine", "Power, "))
+    desktop.shoot("launcher-home-machine-drawn")
+    desktop.close_launcher()
 
 
 def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds(

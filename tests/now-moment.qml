@@ -186,8 +186,10 @@ ShellRoot {
         expect("and each holds its parts, as it does anywhere",
             rows[0].verbs()[0].name === "Zone" && rows[1].verbs()[0].name === "Week",
             JSON.stringify(rows.slice(0, 2)));
-        expect("nothing counted while only they are there", now.counted() === "nothing",
-            now.counted());
+        // Calm, home's Now says nothing at its right (VKCF3Z, bd5cb965).
+        expect("nothing said at home while only they are there",
+            now.counted() === "" && now.homeSays() === "",
+            JSON.stringify([now.counted(), now.homeSays()]));
         expect("the weather isn't asked before the launcher opens", weather.asked === 0,
             weather.asked);
 
