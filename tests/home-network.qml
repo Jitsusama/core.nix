@@ -107,22 +107,35 @@ QtObject {
             ["Hall", "Den", "Study", "Attic"]);
 
         // The head: the internet, how it stands and everything at a glance.
-        expect("the internet's row", Home.internetRow(model, now), {
+        // Its day said as HomeNetwork.qml has it said, by When.js.
+        const internetRow = (said) => Home.internetRow(said, now, undefined, History.dayOn);
+        expect("the internet's row", internetRow(model), {
             name: "Internet",
             side: "connected \u00b7 370 Mb/s down",
-            note: "11.9 Mb/s up \u00b7 on 5 Nov \u00b7 conferencing and gaming on \u00b7 1 outage in 30 days \u00b7 3 nodes online \u00b7 "
-                + "15 devices on now"
+            note: "11.9 Mb/s up \u00b7 on Thursday \u00b7 conferencing and gaming on \u00b7 "
+                + "1 outage in 30 days \u00b7 3 nodes online \u00b7 15 devices on now"
         });
+        // The last speed test's day, as every day the launcher shows.
+        const testedAt = (at) => internetRow(Object.assign({}, model, {
+            internet: Object.assign({}, model.internet, {
+                speed_test: Object.assign({}, model.internet.speed_test, { at: at })
+            })
+        })).note.split(" \u00b7 ")[1];
+        expect("a speed test today", testedAt("2026-11-07T10:00:00Z"), "today");
+        expect("a speed test yesterday", testedAt("2026-11-06T10:00:00Z"), "yesterday");
+        expect("a speed test past six days", testedAt("2026-10-28T10:00:00Z"), "on 28 Oct");
+        expect("a speed test another year", testedAt("2025-11-13T10:00:00Z"),
+            "on 13 Nov 2025");
         const unkept = Object.assign({}, model, { internet: Object.assign({}, model.internet,
             { history: undefined }) });
-        expect("eero's outages where no history is kept", Home.internetRow(unkept, now).note
+        expect("eero's outages where no history is kept", internetRow(unkept).note
             .split(" \u00b7 ")[3], "no outages");
         expect("the home network's state where it isn't connected",
-            Home.internetRow(Object.assign({}, model, { internet: Object.assign({},
-                model.internet, { mesh: "degraded" }) }), now).note.split(" \u00b7 ")[0],
+            internetRow(Object.assign({}, model, { internet: Object.assign({},
+                model.internet, { mesh: "degraded" }) })).note.split(" \u00b7 ")[0],
             "home network degraded");
-        expect("the internet unreachable", Home.internetRow(Object.assign({}, model,
-            { cloud: { state: "unreachable", since: model.read } }), now).side,
+        expect("the internet unreachable", internetRow(Object.assign({}, model,
+            { cloud: { state: "unreachable", since: model.read } })).side,
             "eero unreachable");
         expect("the place's holding", Home.holding(model), "3 nodes \u00b7 15 devices");
 

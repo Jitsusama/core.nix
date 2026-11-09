@@ -31,6 +31,7 @@ import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "HomeNetwork.js" as Home
 import "HomeNetworkDrawers.js" as Drawers
+import "HomeNetworkHistory.js" as History
 import "Order.js" as Order
 
 Provider {
@@ -117,7 +118,7 @@ Provider {
     // of it, so the row's side reads as its neighbours' do (VKCF3Z,
     // 2026-11-08).
     function internetRow() {
-        const said = Home.internetRow(model, now(), settings);
+        const said = Home.internetRow(model, now(), settings, History.dayOn);
         return thingRow({
             thing: true,
             noteInDrawer: true,
