@@ -68,5 +68,12 @@
     "owner_pr": 2526,
     "reason": "failed, then passed, at 2101c92b6828",
     "test": "the-command-line-lists-every-command"
+  },
+  {
+    "at": 1794254778,
+    "commit": "1ac453f5ffca40fabfada0d0090e076c17482c43",
+    "owner_pr": 2575,
+    "reason": "failed, then passed, at 1ac453f5ffca",
+    "test": "vm-disk-guard-keeps-the-disk"
   }
 ]
