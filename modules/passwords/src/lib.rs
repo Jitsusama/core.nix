@@ -20,7 +20,12 @@
 //! An audit, asked only by Joel (`asked`), reads every password of every
 //! manager at once to find those shared and those breached (audit.rs);
 //! what it keeps of each entry is its `health`, two counts laid on its
-//! record, until a list says the entry changed.
+//! record, until a list says the entry changed. What the checks found
+//! outlives the daemon ([`Held::kept`]): when the last ended, since when
+//! they've found trouble, and when one found none after there had been
+//! some, with each troubled entry's two counts, so For You's one to-do
+//! for them (Passwords.qml) stands through a reboot. Never a hash and
+//! never a password.
 
 use std::collections::{BTreeMap, HashMap};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -432,6 +437,20 @@ fn text<'a>(map: &'a Map<String, Value>, name: &str) -> Option<&'a str> {
     map.get(name).and_then(Value::as_str)
 }
 
+/// The version of what's kept of the checks this writes and reads.
+pub const KEPT: u64 = 1;
+
+/// What the checks of every password found over time, each a time in
+/// milliseconds since the epoch: when the last ended, when one first found
+/// a password breached or reused while that has gone on, and when one
+/// found none after there had been some. Never a secret.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Checked {
+    pub at: Option<u64>,
+    pub since: Option<u64>,
+    pub cleared: Option<u64>,
+}
+
 /// What's held of one manager: its entries by id, in the order it gave
 /// them, when each was heard, and how it stands.
 #[derive(Clone, Debug)]
@@ -442,13 +461,16 @@ struct Kept {
     standing: Standing,
 }
 
-/// Every manager's entries, none with a secret, how each stands, and each
-/// entry's health as the last audit found it, by its key.
+/// Every manager's entries, none with a secret, how each stands, each
+/// entry's health as the last audit found it, by its key, what the checks
+/// found over time, and whether that's changed since it was last kept.
 #[derive(Clone, Debug)]
 pub struct Held {
     managers: Vec<String>,
     kept: HashMap<String, Kept>,
     health: HashMap<String, Health>,
+    checked: Checked,
+    unsaved: bool,
 }
 
 impl Held {
@@ -471,6 +493,8 @@ impl Held {
                 })
                 .collect(),
             health: HashMap::new(),
+            checked: Checked::default(),
+            unsaved: false,
         }
     }
 
@@ -514,8 +538,9 @@ impl Held {
                 .entries
                 .get(&id)
                 .is_some_and(|(was, _)| was.0.get("version") != entry.0.get("version"))
+                && self.health.remove(&key(manager, &id)).is_some()
             {
-                self.health.remove(&key(manager, &id));
+                self.unsaved = true;
             }
             let kept_whole = kept.entries.get(&id).filter(|(was, _)| {
                 was.detailed()
@@ -535,10 +560,17 @@ impl Held {
         }
         for id in kept.entries.keys() {
             if !entries.contains_key(id) {
-                self.health.remove(&key(manager, id));
                 changes.gone.push(key(manager, id));
             }
         }
+        // What a check found of an entry its manager no longer lists goes,
+        // whether it was held before or only kept from before the daemon
+        // started.
+        let before = self.health.len();
+        self.health.retain(|held, _| {
+            named(held).is_none_or(|(of, id)| of != manager || entries.contains_key(id))
+        });
+        self.unsaved |= self.health.len() != before;
         kept.entries = entries;
         kept.order = order;
         kept.listed = true;
@@ -557,8 +589,9 @@ impl Held {
             .entries
             .get(&id)
             .is_some_and(|(was, _)| was.0.get("version") != entry.0.get("version"))
+            && self.health.remove(&key(manager, &id)).is_some()
         {
-            self.health.remove(&key(manager, &id));
+            self.unsaved = true;
         }
         if !kept.entries.contains_key(&id) {
             kept.order.push(id.clone());
@@ -594,9 +627,19 @@ impl Held {
         record
     }
 
-    /// Takes what an audit of these managers found, in place of what the
-    /// last one did, and says each key whose health changed.
-    pub fn audited(&mut self, managers: &[String], found: HashMap<String, Health>) -> Vec<String> {
+    /// Takes what an audit of these managers found, ending `at`, in place
+    /// of what the last one did, and says each key whose health changed.
+    /// One finding any entry breached or reused starts what's been found
+    /// since, or keeps it; one finding none after there had been some
+    /// clears it, unless it couldn't ask about breaches (`whole` false),
+    /// since then it can't say none is breached.
+    pub fn audited(
+        &mut self,
+        managers: &[String],
+        found: HashMap<String, Health>,
+        at: u64,
+        whole: bool,
+    ) -> Vec<String> {
         let of_these = |key: &str| {
             named(key).is_some_and(|(manager, _)| managers.iter().any(|one| one == manager))
         };
@@ -612,7 +655,88 @@ impl Held {
             self.health.insert(key, health);
         }
         changed.sort();
+        self.checked.at = Some(at);
+        if self.health.values().any(Health::troubled) {
+            self.checked.since.get_or_insert(at);
+            self.checked.cleared = None;
+        } else if whole && self.checked.since.is_some() {
+            self.checked.since = None;
+            self.checked.cleared = Some(at);
+        }
+        self.unsaved = true;
         changed
+    }
+
+    /// What the checks found, as the `health` ask answers it: when the
+    /// last ended, since when trouble's been found and when it cleared,
+    /// each null where it hasn't, and how many entries are breached, how
+    /// many reused and how many either, by what's held of each now, which
+    /// falls as a list finds entries changed.
+    pub fn checked(&self) -> Value {
+        let counted =
+            |which: fn(&Health) -> bool| self.health.values().filter(|h| which(h)).count();
+        json!({
+            "at": self.checked.at,
+            "since": self.checked.since,
+            "cleared": self.checked.cleared,
+            "breached": counted(Health::breached),
+            "reused": counted(|health| health.reused > 0),
+            "troubled": counted(Health::troubled),
+        })
+    }
+
+    /// What's kept of the checks between one run of the daemon and the
+    /// next: their times, and each troubled entry's health by its key.
+    /// Nothing else of an entry, and never a hash or a password.
+    pub fn kept(&self) -> Value {
+        let health: Map<String, Value> = self
+            .health
+            .iter()
+            .filter(|(_, health)| health.troubled())
+            .map(|(key, health)| (key.clone(), health.said()))
+            .collect();
+        json!({
+            "version": KEPT,
+            "at": self.checked.at,
+            "since": self.checked.since,
+            "cleared": self.checked.cleared,
+            "health": health,
+        })
+    }
+
+    /// What's kept, once it has changed since it was last taken, so it's
+    /// written only when it differs.
+    pub fn unsaved(&mut self) -> Option<Value> {
+        std::mem::take(&mut self.unsaved).then(|| self.kept())
+    }
+
+    /// Takes what was kept of the checks as the daemon starts, saying
+    /// whether it could be read: of an entry of a manager no longer named,
+    /// nothing, and of one its manager no longer lists, nothing past its
+    /// manager's first list, so it never dresses a record.
+    pub fn load(&mut self, kept: &Value) -> bool {
+        if kept.get("version").and_then(Value::as_u64) != Some(KEPT) {
+            return false;
+        }
+        let time = |name: &str| kept.get(name).and_then(Value::as_u64);
+        self.checked = Checked {
+            at: time("at"),
+            since: time("since"),
+            cleared: time("cleared"),
+        };
+        let managers = &self.managers;
+        self.health = kept
+            .get("health")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+            .filter(|(key, _)| {
+                named(key).is_some_and(|(manager, _)| managers.iter().any(|one| one == manager))
+            })
+            .filter_map(|(key, said)| Some((key.clone(), Health::heard(said)?)))
+            .filter(|(_, health)| health.troubled())
+            .collect();
+        true
     }
 
     /// An entry's health, as the last audit found it.
@@ -1000,7 +1124,7 @@ mod tests {
                 },
             ),
         ]);
-        let changed = held.audited(&["1password".to_owned()], found);
+        let changed = held.audited(&["1password".to_owned()], found, 10, true);
         assert_eq!(changed, ["entry:1password:a", "entry:1password:b"]);
         let a = held.record("entry:1password:a").unwrap();
         assert_eq!(a["health"], json!({"reused": 1, "breached": 3}));
@@ -1020,9 +1144,110 @@ mod tests {
                 .is_none()
         );
         // An audit finding nothing of an entry takes what the last found.
-        let changed = held.audited(&["1password".to_owned()], HashMap::new());
+        let changed = held.audited(&["1password".to_owned()], HashMap::new(), 20, true);
         assert_eq!(changed, ["entry:1password:a"]);
         assert!(held.health("entry:1password:a").is_none());
+    }
+
+    fn troubled(reused: u64, breached: Option<u64>) -> Health {
+        Health { reused, breached }
+    }
+
+    #[test]
+    fn what_checks_found_starts_holds_and_clears() {
+        let managers = ["1password".to_owned()];
+        let mut held = Held::of(&managers);
+        held.list("1password", &[login("a", "GitHub", 1)], 1);
+        assert_eq!(held.checked()["at"], Value::Null);
+        let a = "entry:1password:a".to_owned();
+        held.audited(
+            &managers,
+            HashMap::from([(a.clone(), troubled(0, Some(0)))]),
+            5,
+            true,
+        );
+        // A check finding nothing before any found trouble clears nothing.
+        assert_eq!(
+            held.checked(),
+            json!({"at": 5, "since": null, "cleared": null,
+                   "breached": 0, "reused": 0, "troubled": 0})
+        );
+        held.audited(
+            &managers,
+            HashMap::from([(a.clone(), troubled(1, Some(3)))]),
+            10,
+            true,
+        );
+        held.audited(
+            &managers,
+            HashMap::from([(a.clone(), troubled(1, Some(0)))]),
+            20,
+            true,
+        );
+        // Trouble found at 10 is still what's been found since, at 20.
+        assert_eq!(
+            held.checked(),
+            json!({"at": 20, "since": 10, "cleared": null,
+                   "breached": 0, "reused": 1, "troubled": 1})
+        );
+        // One that couldn't ask about breaches can't say none is breached.
+        held.audited(
+            &managers,
+            HashMap::from([(a.clone(), troubled(0, None))]),
+            30,
+            false,
+        );
+        assert_eq!(held.checked()["since"], 10);
+        held.audited(
+            &managers,
+            HashMap::from([(a, troubled(0, Some(0)))]),
+            40,
+            true,
+        );
+        assert_eq!(held.checked()["since"], Value::Null);
+        assert_eq!(held.checked()["cleared"], 40);
+    }
+
+    #[test]
+    fn what_checks_found_is_kept_without_a_secret_and_read_back() {
+        let managers = ["1password".to_owned()];
+        let mut held = Held::of(&managers);
+        held.list(
+            "1password",
+            &[login("a", "GitHub", 1), login("b", "Bank", 1)],
+            1,
+        );
+        assert!(held.unsaved().is_none(), "nothing was checked yet");
+        let found = HashMap::from([
+            ("entry:1password:a".to_owned(), troubled(2, Some(1204))),
+            ("entry:1password:b".to_owned(), troubled(0, Some(0))),
+        ]);
+        held.audited(&managers, found, 10, true);
+        let kept = held.unsaved().expect("a check is kept");
+        // Only the troubled entry, by its two counts.
+        assert_eq!(
+            kept,
+            json!({"version": 1, "at": 10, "since": 10, "cleared": null,
+                   "health": {"entry:1password:a": {"reused": 2, "breached": 1204}}})
+        );
+        assert!(held.unsaved().is_none(), "it was kept already");
+        // A daemon starting again reads it, and dresses the entry once its
+        // manager lists it; one of a manager no longer named it leaves out.
+        let mut again = Held::of(&managers);
+        let mut with_another = kept.clone();
+        with_another["health"]["entry:gone:z"] = json!({"reused": 1});
+        assert!(again.load(&with_another));
+        assert_eq!(again.checked()["troubled"], 1);
+        again.list("1password", &[login("a", "GitHub", 1)], 2);
+        assert_eq!(
+            again.record("entry:1password:a").unwrap()["health"],
+            json!({"reused": 2, "breached": 1204})
+        );
+        // A list no longer giving it lets it go, and says it's to be kept.
+        again.list("1password", &[login("b", "Bank", 1)], 3);
+        assert_eq!(again.checked()["troubled"], 0);
+        assert_eq!(again.unsaved().unwrap()["health"], json!({}));
+        assert!(!again.load(&json!({"version": 2})));
     }
 
     #[test]

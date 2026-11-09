@@ -293,6 +293,24 @@ function looks(files) {
     };
 }
 
+// What the launcher's sources give For You beside its own, each source's
+// `forYou` a list, as Passwords gives its one to-do for what its last
+// check found: { waiting, done }, each still to do { row, thing } with the
+// thing weigh reads, and each done { row, done: { how, at } }, its time a
+// number. One saying neither, or a source giving no list, is left out.
+function given(sources) {
+    // Qt's engine has no flatMap, so the lists are joined by concat.
+    const lists = (sources ?? []).map(one => Array.isArray(one?.forYou) ? one.forYou : []);
+    const each = [].concat(...lists)
+        .filter(one => one !== null && typeof one === "object" && one.row);
+    return {
+        waiting: each.filter(one => !one.done && one.thing),
+        done: each.filter(one => one.done && when(one.done.at) !== null)
+            .map(one => ({ row: one.row, done: { how: String(one.done.how ?? ""),
+                at: when(one.done.at) } }))
+    };
+}
+
 // The to-dos Joel said were done, for History, newest first: each
 // { item, resolved }, when he said it, as settled.json keeps it. What's
 // kept of an item's words goes with its quest's file, so it's there only

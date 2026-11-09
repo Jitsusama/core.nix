@@ -27,7 +27,13 @@
 //! manager for its passwords (`audit`, answered `{"passwords": [{"entry",
 //! "value"}]}`), hashes each as it's taken, and asks Have I Been Pwned, at
 //! `$PASSWORDS_BREACHES` or its own address, by each hash's first five
-//! characters alone (audit.rs). Only each entry's two counts outlive it.
+//! characters alone (audit.rs). Only each entry's two counts outlive it:
+//! the troubled entries' counts, and when the checks found trouble and
+//! cleared, are kept in `$XDG_STATE_HOME/passwords/checked.json`, else
+//! `~/.local/state`'s, readable by Joel alone and written whole through a
+//! file beside it, so what the last check found stands through a reboot
+//! (lib.rs's `Held::kept`). The `health` ask answers it as `checked`, and
+//! each watch is told it as it changes.
 //!
 //! Run with any other word, it's the command line, asking the daemon at
 //! `$PASSWORDS_SOCKET`, else `$XDG_RUNTIME_DIR/daemons/passwords.sock`, its
@@ -41,9 +47,9 @@
 use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, IsTerminal, Write};
 use std::os::fd::FromRawFd;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
@@ -101,6 +107,9 @@ struct Daemon {
     /// Whether an audit is running, so a second is refused rather than
     /// reading every password again beside it.
     auditing: bool,
+    /// Where what the checks found is kept, or none where the account
+    /// names no state folder.
+    kept: Option<PathBuf>,
 }
 
 /// The daemon's state, and what wakes an ask waiting on a manager to start.
@@ -143,9 +152,14 @@ fn daemon(socket: &std::path::Path, managers: &str) {
         .iter()
         .map(|manager| manager.name.clone())
         .collect();
+    let kept = kept_at();
+    let mut held = Held::of(&names);
+    if let Some(kept) = &kept {
+        load(&mut held, kept);
+    }
     let shared: Shared = Arc::new((
         Mutex::new(Daemon {
-            held: Held::of(&names),
+            held,
             inputs: HashMap::new(),
             pending: HashMap::new(),
             next: 1,
@@ -154,6 +168,7 @@ fn daemon(socket: &std::path::Path, managers: &str) {
             since: now(),
             copied: None,
             auditing: false,
+            kept,
         }),
         Condvar::new(),
     ));
@@ -165,6 +180,78 @@ fn daemon(socket: &std::path::Path, managers: &str) {
         let Ok(stream) = stream else { continue };
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || serve(&shared, stream, connection));
+    }
+}
+
+/// Where what the checks found is kept: the account's state folder's
+/// `passwords/checked.json`, `$XDG_STATE_HOME`, else `~/.local/state`.
+fn kept_at() -> Option<PathBuf> {
+    let absolute = |name: &str| {
+        std::env::var_os(name)
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+    };
+    let state = absolute("XDG_STATE_HOME")
+        .or_else(|| absolute("HOME").map(|home| home.join(".local/state")))?;
+    Some(state.join("passwords/checked.json"))
+}
+
+/// Takes what was kept of the checks before the daemon started, saying why
+/// where it couldn't; none kept yet says nothing.
+fn load(held: &mut Held, kept: &Path) {
+    let text = match std::fs::read_to_string(kept) {
+        Ok(text) => text,
+        Err(why) if why.kind() == std::io::ErrorKind::NotFound => return,
+        Err(why) => {
+            eprintln!("<4>couldn't read what the checks found: {why}");
+            return;
+        }
+    };
+    let read = serde_json::from_str::<Value>(&text).is_ok_and(|kept| held.load(&kept));
+    if !read {
+        eprintln!(
+            "<4>what the checks found, at {}, couldn't be read",
+            kept.display()
+        );
+    }
+}
+
+/// Writes what the checks found whole, readable by Joel alone: to a file
+/// beside it first, renamed over it, so nothing reads half of one.
+fn write_kept(kept: &Path, said: &Value) -> std::io::Result<()> {
+    if let Some(folder) = kept.parent() {
+        std::fs::create_dir_all(folder)?;
+        std::fs::set_permissions(folder, std::fs::Permissions::from_mode(0o700))?;
+    }
+    let writing = kept.with_extension("json.writing");
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&writing)?;
+    // One left by a write that never ended keeps the mode it was made with.
+    file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    file.write_all(format!("{said}\n").as_bytes())?;
+    file.sync_all()?;
+    std::fs::rename(&writing, kept)
+}
+
+/// Keeps what the checks found once it has changed, and tells each watch,
+/// so the shell's For You moves with it.
+fn keep(daemon: &mut Daemon) {
+    let Some(said) = daemon.held.unsaved() else {
+        return;
+    };
+    if let Some(kept) = &daemon.kept
+        && let Err(why) = write_kept(kept, &said)
+    {
+        eprintln!("<4>couldn't keep what the checks found: {why}");
+    }
+    let checked = daemon.held.checked();
+    for watch in &daemon.watches {
+        let line = json!({"id": watch.id, "checked": checked});
+        let _ = watch.told.send(line.to_string());
     }
 }
 
@@ -315,6 +402,9 @@ fn took_in(shared: &Shared, manager: &str, line: &str) {
                     let _ = watch.told.send(line.to_string());
                 }
             }
+            // A list finding an entry changed or gone takes what a check
+            // found of it.
+            keep(&mut daemon);
             if let Some((_, waiting)) = daemon.pending.remove(&id) {
                 let _ = waiting.send(answer);
             }
@@ -447,7 +537,8 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
             json!({"id": id, "version": VERSION, "domain": DOMAIN,
                    "state": daemon.held.state(), "since": daemon.since,
                    "sources": daemon.held.standings(),
-                   "entries": daemon.held.records().len(), "took": daemon.took})
+                   "entries": daemon.held.records().len(), "took": daemon.took,
+                   "checked": daemon.held.checked()})
         }
         Ask::List {
             id,
@@ -874,7 +965,8 @@ fn audit_read(shared: &Shared, id: &Value) -> Value {
         std::env::var("PASSWORDS_BREACHES").unwrap_or_else(|_| audit::BREACHES.to_owned());
     let found = audit::audit(passwords, &asked_at);
     let mut daemon = lock(shared);
-    let changed = daemon.held.audited(&read, found.health);
+    let whole = found.unreached.is_none();
+    let changed = daemon.held.audited(&read, found.health, now(), whole);
     let records: Vec<Value> = changed
         .iter()
         .filter_map(|key| daemon.held.record(key))
@@ -885,6 +977,7 @@ fn audit_read(shared: &Shared, id: &Value) -> Value {
             let _ = watch.told.send(line.to_string());
         }
     }
+    keep(&mut daemon);
     let troubled: Vec<Value> = daemon
         .held
         .records()

@@ -6953,6 +6953,11 @@
       }
     },
     {
+      "id": "for-you:source:passwords",
+      "in": "on:waiting",
+      "name": "Passwords"
+    },
+    {
       "id": "on:waiting:history",
       "in": "on",
       "name": "History",
@@ -8574,6 +8579,29 @@
       "name": "Needing Attention",
       "verb": "more",
       "glyph": "caution"
+    },
+    {
+      "id": "passwords:todo",
+      "in": "on:waiting",
+      "name": "Change the Passwords the Check Found",
+      "verb": "more",
+      "glyph": "passwords",
+      "empty": "No login is breached or reused now.",
+      "said": {
+        "breached": "{count} breached",
+        "reused": "{count} reused",
+        "and": " and ",
+        "breachedLogin": "{count} breached login",
+        "breachedLogins": "{count} breached logins",
+        "reusedLogin": "{count} reused login",
+        "reusedLogins": "{count} reused logins",
+        "how": "checked clear",
+        "clears": "a later check finds none breached or reused"
+      },
+      "tells": {
+        "why": "The check at {at} found {found}.",
+        "steps": "Step in for each login the check found breached or reused. Change each one's password where you sign in, and save it in its password manager. Then check every password again, and this clears once none is breached or reused."
+      }
     },
     {
       "id": "passwords:vault",

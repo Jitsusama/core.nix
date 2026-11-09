@@ -570,8 +570,9 @@
   for-you-weighs-what-needs-joel = ''
     For You weighs what needs Joel by what it blocks, what's due, what he can do now, its kind
     and how long it has waited, the heaviest first and ties as they came, says each row's
-    strongest reason at its side, and reads the looks folder's files into what waits and what's
-    history, newest first, leaving out any it can't read
+    strongest reason at its side, reads the looks folder's files into what waits and what's
+    history, newest first, leaving out any it can't read, and gathers what other sources give it,
+    as Passwords' one to-do, into what waits, weighed beside the rest, and what's done
   '';
   formatting = ''
     everything is formatted and passes the linters
@@ -1265,6 +1266,9 @@
     counting the entries that share one and matching each hash's suffix against a stand-in Have I
     Been Pwned's range, padding counting nothing, sending it five characters alone and saying no
     secret in an answer or a log;
+    keeps what an audit found in the state folder for Joel alone, holding no secret nor any hash,
+    dresses the entries with it again once the daemon starts again, holds since when trouble was
+    found until a check finds none, and tells a watch each change;
     and the passwords command sets each answer in columns under a header for a person and
     tab-separated for a program, gives the daemon's answer with --json and no secret but show's,
     finds an entry by its title and a detail by its label, lists an audit's entries with a
@@ -1280,8 +1284,9 @@
   '';
   passwords-runs-each-password-manager = ''
     on a machine with 1Password, the passwords daemon runs 1Password's manager through the system's
-    op on the daemons' socket systemd holds, copies with wl-copy and writes no core dump, and the
-    launcher's Passwords knows 1Password's program
+    op on the daemons' socket systemd holds, copies with wl-copy, writes no core dump and has a
+    state folder of its own for what the checks found, and the launcher's Passwords knows
+    1Password's program
   '';
   pause-for-calls-follows-the-calls = ''
     pause-for-calls pauses Spotify two seconds into a call, as calls counts one, and plays it five
@@ -2284,8 +2289,11 @@
     its username and its password, the design's first in its order, a hidden detail as hidden and
     never its value, a website sent in the clear as its health and a weak password as its strength,
     each in the warning's role, its password reused or breached as its health once every password
-    is checked, its figures grouped, and nothing before, those needing attention by title, and the
-    foot counts a copy down to its clearing, or a one-time code to its lapsing
+    is checked, its figures grouped, and nothing before, those needing attention by title, the
+    foot counts a copy down to its clearing, or a one-time code to its lapsing, and For You's one
+    to-do for what the last check found stands while some login is breached or reused, is done
+    once a later check finds none, says how many are breached then reused at its side, each left
+    out at none, and is weighed as a thing to do ready now
   '';
   the-people-are-one-person-each = ''
     every source's people join into one person per email address, a source that knows two

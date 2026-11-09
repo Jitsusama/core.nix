@@ -25,7 +25,10 @@ onLinux {
   # otherwise or by a manager signed out, counts the entries sharing a
   # password and matches each hash's suffix against a stand-in Have I Been
   # Pwned's range, padding counting nothing, sending it five characters
-  # alone and saying no secret in an answer or a log. The command's tests
+  # alone and saying no secret in an answer or a log; what it found is kept
+  # in the state folder for Joel alone, holding no secret nor any hash,
+  # outlives the daemon, and holds since when trouble was found until a
+  # check finds none, each told to a watch. The command's tests
   # run too: each answer set
   # in columns under a header for a person and tab-separated for a
   # program, its --json the daemon's answer with no secret but show's, a
@@ -94,9 +97,10 @@ onLinux {
     pkgs.callPackage ./package.nix { }
   );
   # On a machine with 1Password, the daemon runs it as a password manager
-  # on the daemons' socket, which systemd holds, with wl-copy to copy and
-  # no core dump to write a secret in, and the launcher's Passwords
-  # provider knows its program.
+  # on the daemons' socket, which systemd holds, with wl-copy to copy, no
+  # core dump to write a secret in and a state folder of its own to keep
+  # what the checks found, and the launcher's Passwords provider knows its
+  # program.
   passwords-runs-each-password-manager =
     let
       home = account graphical;
@@ -110,6 +114,7 @@ onLinux {
         lib.hasInfix "%t/daemons/passwords.sock" started
         && (home.systemd.user.sockets.passwords.Socket.ListenStream or "") == "%t/daemons/passwords.sock"
         && (service.Service.LimitCORE or null) == 0
+        && (service.Service.StateDirectory or null) == "passwords"
         && lib.elem "graphical-session.target" (service.Unit.PartOf or [ ])
         && lib.any (lib.hasInfix "PASSWORDS_COPIER=") (lib.toList (service.Service.Environment or [ ]))
         && home.jitsusama.passwords.managers ? "1password"
@@ -121,11 +126,12 @@ onLinux {
   # manager fills only on a web page, its link in its manager's program, its drawer's eyebrow, and its facts saying every
   # figure and never a secret, its health and a weak strength warning,
   # its password reused and breached once every password is checked and
-  # nothing before, those needing attention, and the foot counting a copy
-  # down are Passwords.js's, and a manager's entries by vault Managers.js's,
-  # run in Qt's own engine (tests/passwords.qml),
-  # beside the launcher's own wording of how long ago (Ago.js) and of a
-  # figure (Numbers.js).
+  # nothing before, those needing attention and the foot counting a copy
+  # down are Passwords.js's, a manager's entries by vault Managers.js's,
+  # and For You's one to-do for what the last check found, whether it
+  # stands or is done, its side and its weight, Checked.js's, run in Qt's
+  # own engine (tests/passwords.qml), beside the launcher's own wording of
+  # how long ago (Ago.js) and of a figure (Numbers.js).
   the-passwords-show-every-figure-but-the-secret =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -134,6 +140,7 @@ onLinux {
       cp ${../../tests/passwords.qml} passwords.qml
       cp ${./Passwords.js} Passwords.js
       cp ${./Managers.js} Managers.js
+      cp ${./Checked.js} Checked.js
       cp ${../quickshell/launcher/Ago.js} Ago.js
       cp ${../quickshell/launcher/Numbers.js} Numbers.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

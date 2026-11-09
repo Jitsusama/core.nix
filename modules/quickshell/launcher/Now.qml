@@ -946,11 +946,12 @@ Provider {
             row: () => provider.lookRow(one, now) }))
             .concat(doneItems.map(one => ({ at: one.resolved, row: () => provider.doneRow(one) })),
                 cameDone.map(one => ({ at: one.at,
-                    row: () => provider.cameDoneRow(one, notices) })));
+                    row: () => provider.cameDoneRow(one, notices) })),
+                given.done.map(one => ({ at: one.done.at, row: () => one.row })));
         return Order.sorted(rows, Order.stream(one => one.at)).map(one => one.row());
     }
     readonly property int resolvedCount: looks.history.length + doneItems.length
-        + cameDone.length
+        + cameDone.length + given.done.length
     readonly property var historyRow: resolvedCount === 0 ? null : member({
         key: "on:waiting:history",
         verb: "more",
@@ -990,12 +991,18 @@ Provider {
     // twice (2026-10-31: four items read as eight).
     readonly property var sessions: Sessions.wanting
         .filter(session => session.presence?.wants?.kind !== "action")
+    // What the launcher's other sources give For You, each its own row
+    // made as its figures change (ForYou.js's given), as Passwords gives
+    // its one to-do for what its last check found: read once as each
+    // changes, those to do weighed beside the rest, those done in History.
+    readonly property var given: ForYou.given(provider.launcher?.sources ?? [])
     readonly property int waitsNow: sessions.length + WaitingOnYou.now.length
-        + looks.waiting.length
+        + looks.waiting.length + given.waiting.length
     readonly property string first: sessions.length > 0
         ? `${sessions[0].title} ${Sessions.wanted(sessions[0].presence.wants)}`
         : WaitingOnYou.foremost ? WaitingOnYou.titled(WaitingOnYou.foremost)
-        : looks.waiting.length > 0 ? looks.waiting[0].title : ""
+        : looks.waiting.length > 0 ? looks.waiting[0].title
+        : given.waiting.length > 0 ? given.waiting[0].row.name : ""
     // What's inside, made and weighed as it's stepped into, so the order
     // is the one it had then; Steady.js keeps the rows still while it's
     // open. A session wanting him blocks one, itself.
@@ -1056,7 +1063,8 @@ Provider {
             : [];
         const rows = wanting.concat(
             WaitingOnYou.now.map(each => weighed(provider.item(each, now), itemThing(each))),
-            looks.waiting.map(one => weighed(provider.lookRow(one, now), lookThing(one))));
+            looks.waiting.map(one => weighed(provider.lookRow(one, now), lookThing(one))),
+            given.waiting.map(one => weighed(one.row, one.thing)));
         return ForYou.ordered(rows).map(one => one.row).concat(latelyRows(now),
             laterRow === null ? [] : [laterRow], historyRow === null ? [] : [historyRow]);
     }
