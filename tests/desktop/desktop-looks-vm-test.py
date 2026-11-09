@@ -1742,6 +1742,12 @@ def reading(shown: Json, start: str) -> str:
     return next((read for read in reads if read.startswith(start)), "")
 
 
+def warp_error_drawn(shown: Json) -> bool:
+    """Whether WARP's drawer is out, warp-cli's error as written its last fact."""
+    drawer = shown["drawer"]
+    return bool(drawer["shown"]) and drawer["title"] == "WARP" and drawer["facts"][-1:] == ["Error"]
+
+
 def warp_answers(desktop: Desktop, *answers: tuple[str, str]) -> None:
     """Have the stand-in warp-cli answer as the contract's files say, each (file, question).
 
@@ -1842,17 +1848,24 @@ def warp_stands_in_network(desktop: Desktop, scale: str) -> None:
             lambda shown: reading(shown, "WARP ").startswith("WARP \u00b7 degraded")
         )
         desktop.shoot(f"launcher-warp-degraded-in-network-at-{at}")
-        # Its service gone, WARP says so in its place, and why beside it.
+        # Its service gone, WARP says so in its place, and why beside it, its drawer
+        # out with warp-cli's error as written once the row has rested (VKCF3Z,
+        # 2026-11-09).
         desktop.as_account("rm -f ~/warp-cli/status.json")
         warp_answers(desktop, ("daemon-down.json", "status.error.json"))
         desktop.launcher_until(
-            lambda shown: reading(shown, "WARP ").startswith("WARP \u00b7 not answering")
+            lambda shown: (
+                reading(shown, "WARP ").startswith("WARP \u00b7 not answering")
+                and warp_error_drawn(shown)
+            )
         )
         desktop.shoot(f"launcher-warp-not-answering-in-network-at-{at}")
         desktop.close_launcher()
         desktop.answer("vpn")
         desktop.launcher_until(
-            lambda shown: (shown["selected"] or {}).get("name") == "not answering"
+            lambda shown: (
+                (shown["selected"] or {}).get("name") == "not answering" and warp_error_drawn(shown)
+            )
         )
         desktop.shoot(f"launcher-warp-not-answering-at-{at}")
         desktop.close_launcher()
