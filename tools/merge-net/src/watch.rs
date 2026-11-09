@@ -980,6 +980,11 @@ impl<'a, F: Fn(&str) -> bool> Breaking<'a, F> {
     /// 8 November six tests failed at once at 06fc027e, and their searches
     /// ran one after another from 10:30 to past 15:00, though five of the six
     /// were fixed forward and each was found so within one search step.
+    ///
+    /// A test whose turn comes asks again whether it's left be, since the
+    /// search before it can take an hour: on 9 November main listed
+    /// launcher tests at 09:22 that had been waiting since 08:06 behind
+    /// other searches, each decided to be searched as it failed.
     fn heard(&self, test: &str, outcome: Outcome) {
         let searched = outcome == Outcome::Failed && !(self.left_be)(test);
         let mut done = match self.done.try_lock() {
@@ -1003,7 +1008,7 @@ impl<'a, F: Fn(&str) -> bool> Breaking<'a, F> {
             return;
         }
         *done = clear_if_reverted(self.world, self.state);
-        if done.is_ok() && searched {
+        if done.is_ok() && searched && !(self.left_be)(test) {
             *done = broke(self.world, self.state, self.base, self.head, test);
         }
         drop(done);
@@ -1356,6 +1361,9 @@ mod tests {
         quarantined: Vec<String>,
         /// Tests main's newest head lists as quarantined besides those.
         listed_since: Vec<String>,
+        /// Tests main's newest head lists too once a search has reverted a
+        /// merge.
+        listed_once_reverted: Vec<String>,
         /// What every fetch of main fails with, as before the network is
         /// up, so only its head as last fetched is known.
         fetch_fails: Option<String>,
@@ -1370,6 +1378,10 @@ mod tests {
         /// has run one at an older merge, or after a while without, when
         /// it's put in `waited_out`.
         newest_waits_for_search: bool,
+        /// Checks whose each run at the round's last merge ends only once a
+        /// search has run one at an older merge, or after a while without,
+        /// when it's put in `waited_out`.
+        waits_for_search: Vec<String>,
         /// Commits whose each run waits for a second run there to start,
         /// or after a while without, when it's put in `waited_out`.
         pairs: Vec<String>,
@@ -1475,6 +1487,24 @@ mod tests {
                     self.waited_out.lock().unwrap().push(check.to_owned());
                 }
             }
+            if self.merges.last().is_some_and(|last| last == commit)
+                && self.waits_for_search.iter().any(|waits| waits == check)
+            {
+                let unsearched = |built: &mut Vec<(String, String)>| {
+                    !built
+                        .iter()
+                        .any(|(at, _)| self.merges[..self.merges.len() - 1].contains(at))
+                };
+                let built = self.built.lock().unwrap();
+                let (built, waited) = self
+                    .build_seen
+                    .wait_timeout_while(built, Duration::from_secs(10), unsearched)
+                    .unwrap();
+                drop(built);
+                if waited.timed_out() {
+                    self.waited_out.lock().unwrap().push(check.to_owned());
+                }
+            }
             if commit == self.head && self.together_at_newest.iter().any(|one| one == check) {
                 let apart = |built: &mut Vec<(String, String)>| {
                     !self
@@ -1534,6 +1564,9 @@ mod tests {
             let mut listed = self.quarantined.clone();
             if commit == self.head {
                 listed.extend(self.listed_since.iter().cloned());
+                if !self.reverted.lock().unwrap().is_empty() {
+                    listed.extend(self.listed_once_reverted.iter().cloned());
+                }
             }
             listed
         }
@@ -2307,6 +2340,41 @@ mod tests {
         assert!(
             !world.built().contains(&("n".into(), "vm-a".into())),
             "main's newest head builds vm-a as h does, so it fails there too"
+        );
+    }
+
+    #[test]
+    fn a_test_main_lists_while_it_waits_for_a_search_is_not_searched() {
+        let state = state("listed-while-waiting");
+        state.set_heads("s", "s").unwrap();
+        state.begin("h").unwrap();
+        let world = Stand {
+            head: "n".into(),
+            merges: names("a b h"),
+            changed: changed("vm-a vm-b"),
+            listed_once_reverted: names("vm-a vm-b"),
+            waits_for_search: names("vm-b"),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1])
+        .exits("h", "vm-b", &[1])
+        .exits("n", "vm-a", &[1])
+        .exits("n", "vm-b", &[1]);
+        round(&world, &state, "s").unwrap();
+        let searched: std::collections::BTreeSet<String> = world
+            .built()
+            .into_iter()
+            .filter(|(at, _)| at == "a" || at == "b")
+            .map(|(_, test)| test)
+            .collect();
+        assert_eq!(
+            searched.len(),
+            1,
+            "the test whose turn came after main listed it isn't searched: {searched:?}"
+        );
+        assert!(
+            world.waited_out.lock().unwrap().is_empty(),
+            "the second test failed while the first one's search ran"
         );
     }
 
