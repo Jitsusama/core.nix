@@ -261,7 +261,8 @@ fn done(steps: &[String], said: &str, yes: bool, words: &Words) -> ExitCode {
             return ExitCode::from(MISUSED);
         }
         if answer.get("failed").and_then(Value::as_bool) == Some(true) {
-            fail(&errors(), &words.failed());
+            let name = steps.last().map_or("", String::as_str);
+            fail(&errors(), &words.failed(name));
             return ExitCode::from(SHELL_SILENT);
         }
         return ExitCode::SUCCESS;

@@ -88,9 +88,10 @@ impl Words {
         self.word("silent", &[])
     }
 
-    /// The shell failing at what it was asked, which its log says more of.
-    pub fn failed(&self) -> String {
-        self.word("failed", &[])
+    /// The shell failing at the act it was asked, as a refusal naming the
+    /// act and where its log says why (VKCF3Z, 2026-11-08).
+    pub fn failed(&self, name: &str) -> String {
+        self.word("failed", &[("name", name)])
     }
 
     /// An argument it doesn't take.
@@ -104,8 +105,8 @@ impl Words {
     }
 
     /// An act that takes words, given none, and what it asks for; one
-    /// that asks nothing in words of its own is said without it, never
-    /// with an empty item between two dots.
+    /// that asks nothing in words of its own is refused without it, never
+    /// with an empty item between two dots (VKCF3Z, 2026-11-08).
     pub fn takes(&self, name: &str, ask: &str) -> String {
         if ask.trim().is_empty() {
             return self.word("takesWords", &[("name", name)]);
@@ -164,7 +165,8 @@ mod tests {
                     "meant":"did you mean {names}?","or":"or","apart":"\u00b7",
                     "silent":"the shell isn't answering","usage":"launcher show",
                     "takes":"{name} takes words \u00b7 {ask} \u00b7 give them after --",
-                    "takesWords":"{name} takes words \u00b7 give them after --"}}"#,
+                    "takesWords":"{name} not done \u00b7 give its words after --",
+                    "failed":"{name} not done \u00b7 the shell failed \u00b7 its log says why"}}"#,
             )
             .expect("the words parse"),
         )
@@ -182,7 +184,15 @@ mod tests {
         );
         assert_eq!(
             words().takes("Talk", ""),
-            "Talk takes words \u{b7} give them after --"
+            "Talk not done \u{b7} give its words after --"
+        );
+    }
+
+    #[test]
+    fn a_failure_is_a_refusal_naming_the_act_and_its_log() {
+        assert_eq!(
+            words().failed("Reboot"),
+            "Reboot not done \u{b7} the shell failed \u{b7} its log says why"
         );
     }
 
