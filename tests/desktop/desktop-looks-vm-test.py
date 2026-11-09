@@ -1416,9 +1416,43 @@ def devices_plates_lie_on_the_lines(desktop: Desktop, scale: str) -> None:
         kept = [fact for fact in drawer["facts"] if fact in keeping]
         assert kept == keeping, f"at {scale} {typed}'s timing is out of order: {drawer}"
         desktop.shoot(f"launcher-plate-{typed or 'screen'}-at-{scale.replace('.', '-')}")
+        if keeping:
+            a_programs_plate_lies_on_the_lines(desktop, scale, keeping)
         desktop.close_launcher()
         if keeping:
             desktop.as_account("systemctl --user stop plays")
+
+
+def a_programs_plate_lies_on_the_lines(desktop: Desktop, scale: str, keeping: list[str]) -> None:
+    """Hold the plate of the program playing through the speakers to the lines.
+
+    pw-cat plays them silence, so its stream runs in their cycle and says how it keeps time as
+    theirs does, and what identifies it ends its plate (VKCF3Z, 2026-11-09).
+    """
+    desktop.follow()
+    desktop.down_to("Playing")
+    desktop.follow()
+    desktop.down_to("Pw-cat")
+
+    def plated(shown: Json) -> bool:  # As launcher_until calls it.
+        """Say whether pw-cat's plate is out, its timing heard, laid on the pitch."""
+        drawer = shown["drawer"]
+        return (
+            drawer["out"] is True
+            and drawer["title"] == "Pw-cat"
+            and all(fact in drawer["facts"] for fact in keeping)
+            and things_apart(drawer["lines"]["facts"], drawer["factsWrapped"] > 0)
+            and drawer["labelsWhole"] is True
+            and drawer["laidOneWay"] is True
+        )
+
+    desktop.launcher_until(plated)
+    drawer = plate_shown(desktop, scale)
+    assert str(drawer["eyebrow"]).lower() == "playing", f"at {scale}: {drawer}"
+    kept = [fact for fact in drawer["facts"] if fact in keeping]
+    assert kept == keeping, f"at {scale} pw-cat's timing is out of order: {drawer}"
+    assert "Graph ID" in drawer["facts"], f"at {scale} pw-cat isn't identified: {drawer}"
+    desktop.shoot(f"launcher-plate-program-at-{scale.replace('.', '-')}")
 
 
 @pytest.mark.usefixtures("google")
