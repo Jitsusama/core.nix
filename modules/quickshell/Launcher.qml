@@ -6344,22 +6344,8 @@ Scope {
         const own = typeof row.drawer === "function" ? row.drawer() : row.drawer;
         const drawer = own ? own : { title: row.name, body: row.reads ?? "",
             picture: row.picture ?? "", across: row.across ?? 0, down: row.down ?? 0 };
-        return drawerAdds(drawer, row) ? drawer : null;
-    }
-    // Whether a drawer says anything its row doesn't: a fact, a picture, or
-    // words, its title among them, other than the row's own name, side and
-    // note. One that would only repeat the row is never shown, for any kind
-    // (Joel, 2026-10-29: "we should never show the side panel when it is
-    // just repeating the currently selected text").
-    function drawerAdds(drawer, row) {
-        // A plate of the moment says what no row does, the time large.
-        if (drawer.now === true)
-            return true;
-        if ((drawer.facts ?? []).some(fact => fact) || (drawer.picture ?? "") !== "")
-            return true;
-        const own = [row.name, row.side, row.note].map(words => String(words ?? "").trim());
-        return [drawer.title, drawer.body].map(words => String(words ?? "").trim())
-            .some(words => words !== "" && !own.includes(words));
+        // One that would only repeat its row is never shown (Showing.adds).
+        return Showing.adds(drawer, row) ? drawer : null;
     }
 
     // Whether a row is a thing with details, by its kind rather than by

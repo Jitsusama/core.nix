@@ -1846,6 +1846,12 @@ def previewed(shown: Json, name: str, kind: str, preview: str | None) -> bool:
     return drawer["preview"] is None
 
 
+def shut(shown: Json, name: str) -> bool:
+    """Say whether the file named is selected with no plate out, having none to say more."""
+    selected = shown["selected"] or {}
+    return selected.get("name") == name and shown["drawer"]["out"] is not True
+
+
 def facts_follow(drawer: Json, body: float, preview: str | None, after: float) -> float:
     """Hold a plate's facts to where its preview leaves them; say how far lines leave them.
 
@@ -1916,6 +1922,11 @@ def test_the_file_pickers_plate_previews_each_kind_on_the_cards_lines(
             after = 0.0
             for name, (kind, preview, told) in PICKED.items():
                 desktop.down_to(name)
+                if preview is None and not told:
+                    # Its kind is its name's ending and its folder the one listed, so a
+                    # plate would only repeat its row, and none comes out.
+                    desktop.launcher_until(partial(shut, name=name))
+                    continue
                 desktop.launcher_until(partial(previewed, name=name, kind=kind, preview=preview))
                 drawer = plate_shown(desktop, scale)
                 assert drawer["drawnFacts"] == told, drawer

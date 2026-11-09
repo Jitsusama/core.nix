@@ -87,6 +87,25 @@ QtObject {
             body: "<b>Joel</b> &amp; Ada<br>said hi" }),
             { title: "Mail", body: "Joel & Ada\nsaid hi" });
         expect("a drawer saying nothing is none", Showing.drawer({ title: "", body: " " }), null);
+        // Whether it's shown at all: only while it says more than its row.
+        const folder = { name: "drafts", side: "2 items \u00b7 just now" };
+        expect("a folder's plate with only a preview opens", Showing.adds({ title: "drafts",
+            eyebrow: "in ~/picked \u00b7 Folder", facts: [],
+            preview: { lines: ["older", "one.md"], quiet: true } }, folder), true);
+        expect("as one with only a picture in its preview does", Showing.adds({ title: "a.png",
+            preview: { picture: "/n/a.png" } }, { name: "a.png" }), true);
+        expect("a plate with only its kind beside its row's name doesn't",
+            Showing.adds({ title: "archive.zip", eyebrow: "in ~/picked \u00b7 ZIP", facts: [] },
+                { name: "archive.zip", side: "48.0 kB \u00b7 just now" }), false);
+        expect("nor does one whose body is its row's side", Showing.adds({ title: "drafts",
+            body: folder.side, preview: { lines: [] } }, folder), false);
+        expect("a fact, a picture or words the row doesn't say open it", [
+            Showing.adds({ title: "drafts", facts: [null, { label: "Owner", value: "Ada" }] },
+                folder),
+            Showing.adds({ title: "drafts", picture: "/n/a.png" }, folder),
+            Showing.adds({ title: "drafts", body: "Kept for later." }, folder),
+            Showing.adds({ now: true }, folder)
+        ], [true, true, true, true]);
         if (failed > 0) {
             console.warn(`${failed} failed`);
             Qt.exit(1);

@@ -2,9 +2,9 @@
 // program in ../in-a-terminal/, over `qs ipc call launcher show`): which
 // row each step of a path names, the names nearest a step that names
 // none, and each row and its drawer as plain JSON, so the terminal prints
-// what the launcher would say and nothing a provider doesn't. Launcher.qml
-// walks its own rows by these rules; tests/showing.qml holds them in Qt's
-// own engine.
+// what the launcher would say and nothing a provider doesn't; and whether
+// a row's drawer says enough to be shown. Launcher.qml walks its own rows
+// by these rules; tests/showing.qml holds them in Qt's own engine.
 .pragma library
 .import "Order.js" as Order
 
@@ -178,6 +178,28 @@ function drawer(plate) {
         out.picture = picture;
     }
     return Object.keys(out).length > 0 ? out : null;
+}
+
+// Whether a drawer says anything its row doesn't: a fact, a picture, a
+// preview (a picture, or a file's first lines), or words, its title
+// among them, other than the row's own name, side and note. One that
+// would only repeat the row is never shown, for any kind (Joel,
+// 2026-10-29: "we should never show the side panel when it is just
+// repeating the currently selected text"), as a picked zip's plate,
+// saying only its kind, would.
+function adds(plate, row) {
+    // A plate of the moment says what no row does, the time large.
+    if (plate.now === true) {
+        return true;
+    }
+    const preview = plate.preview ?? {};
+    if ((plate.facts ?? []).some(one => one) || (plate.picture ?? "") !== ""
+        || (preview.picture ?? "") !== "" || (preview.lines ?? []).length > 0) {
+        return true;
+    }
+    const own = [row.name, row.side, row.note].map(said => String(said ?? "").trim());
+    return [plate.title, plate.body].map(said => String(said ?? "").trim())
+        .some(said => said !== "" && !own.includes(said));
 }
 
 // One fact: a heading, or a label and its value, with its qualifier where
