@@ -57,7 +57,8 @@ class Values(TypedDict):
     # The ErgoDox's layout, as its module describes it for the shell.
     ergodox_layout: str
     # warp-cli's answers as warp's own tests read them (modules/warp/contract), all made up, for
-    # the stand-in warp-cli to give: the looks area's alone, so no other area moves with them.
+    # the stand-in warp-cli to give: only the areas that show WARP, so no other area moves with
+    # them.
     warp_contract: str
     # The packages whose programs the test runs by their paths.
     coreutils: str

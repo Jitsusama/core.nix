@@ -1891,6 +1891,24 @@
         "hosts": "{count} hosts",
         "network": "{count} network",
         "networks": "{count} networks",
+        "address": "{count} address",
+        "addresses": "{count} addresses",
+        "domain": "{count} domain",
+        "domains": "{count} domains",
+        "firewallOpens": "opens its firewall for {minutes}",
+        "left": "{minutes} left",
+        "prefix": "/{size}",
+        "emergency": "every device disconnected",
+        "eyebrow": "via WARP \u00b7 tunnel",
+        "range": "{low} to {high}",
+        "steady": "{figure} \u00b7 steady",
+        "reads": "{count} over {span}",
+        "seconds": "{figure} s",
+        "holds": "{organisation} holds the switch",
+        "theOrganisation": "the organisation",
+        "comesBack": "comes back by itself in {minutes}",
+        "comesBackNow": "comes back by itself at once",
+        "couldntSwitch": "warp couldn't switch it",
         "answered": "{success} of {total} answered",
         "proxyOff": "proxy off",
         "by": "set by {who}",
@@ -1925,7 +1943,7 @@
     {
       "id": "warp:settings:mode",
       "in": "warp:settings",
-      "name": "Mode"
+      "name": "Tunnel Mode"
     },
     {
       "id": "warp:settings:always-on",
@@ -1961,6 +1979,95 @@
       "id": "warp:settings:post-quantum",
       "in": "warp:settings",
       "name": "Post-Quantum"
+    },
+    {
+      "id": "warp:settings:doh",
+      "in": "warp:settings",
+      "name": "DoH Server"
+    },
+    {
+      "id": "warp:settings:local-domains",
+      "in": "warp:settings",
+      "name": "Local Domains"
+    },
+    {
+      "id": "warp:settings:sign-in-pages",
+      "in": "warp:settings",
+      "name": "Sign-In Pages",
+      "term": "Network/sign-in page"
+    },
+    {
+      "id": "warp:settings:path-mtu",
+      "in": "warp:settings",
+      "name": "Path MTU Discovery"
+    },
+    {
+      "id": "warp:settings:mode-switch",
+      "in": "warp:settings",
+      "name": "Mode Switch Allowed"
+    },
+    {
+      "id": "warp:settings:may-leave",
+      "in": "warp:settings",
+      "name": "Leaving Allowed"
+    },
+    {
+      "id": "warp:settings:support",
+      "in": "warp:settings",
+      "name": "Support"
+    },
+    {
+      "id": "warp:settings:local-network",
+      "in": "warp:settings",
+      "name": "Local Network Reach"
+    },
+    {
+      "id": "warp:settings:override",
+      "in": "warp:settings",
+      "name": "Override"
+    },
+    {
+      "id": "warp:emergency",
+      "in": "warp",
+      "name": "Emergency Disconnect"
+    },
+    {
+      "id": "warp:range",
+      "in": "warp",
+      "name": "Range"
+    },
+    {
+      "id": "warp:reads",
+      "in": "warp",
+      "name": "Reads"
+    },
+    {
+      "id": "warp:in",
+      "in": "warp:traffic",
+      "name": "In"
+    },
+    {
+      "id": "warp:out",
+      "in": "warp:traffic",
+      "name": "Out"
+    },
+    {
+      "id": "warp:power",
+      "command": "disconnect",
+      "in": "warp",
+      "name": "Disconnect WARP",
+      "verb": "disconnect",
+      "glyph": "tunnelOff",
+      "act": "ending",
+      "ends": "disconnect",
+      "states": {
+        "off": {
+          "command": "connect",
+          "name": "Connect WARP",
+          "verb": "connect",
+          "glyph": "tunnelOn"
+        }
+      }
     },
     {
       "id": "warp:tunnel",
@@ -11926,6 +12033,7 @@
         "recording": "Recording"
       },
       "did": {
+        "connect": "connected",
         "disconnect": "disconnected",
         "distrust": "untrusted",
         "forget": "forgotten",

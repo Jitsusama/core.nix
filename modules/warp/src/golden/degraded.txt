@@ -17,14 +17,31 @@ TLS
   server name   masque.example.com
 
 settings
-  mode                warp+doh · the tunnel, with DNS over HTTPS · by local policy
-  always on           on · by default
-  switch locked       off · by override
-  auto-connect after  2 min · by local policy
-  organisation        example · by local policy
-  tunnel protocol     masque · by network policy
-  post-quantum        enabled with downgrades · by network policy
-  split tunnel        include · 2 hosts · 2 networks · by network policy
+  mode                  warp+doh · the tunnel, with DNS over HTTPS · by local policy
+  always on             on · by default
+  switch locked         off · by override
+  auto-connect after    2 min · by local policy
+  organisation          example · by local policy
+  tunnel protocol       masque · by network policy
+  post-quantum          enabled with downgrades · by network policy
+  split tunnel          include · 2 domains · 2 networks · by network policy
+  DoH server            0000.doh.example.com
+  DoH resolvers         192.0.2.53 · 192.0.2.54 · 2001:db8::53 · 2001:db8::54
+  local domains         home.arpa · local · example.com at 192.0.2.1
+  sign-in pages         found · firewall open 5 min 0 s to sign in
+  path MTU discovery    on
+  mode switch allowed   on
+  may leave             off
+  support               –
+  local network         /24 at most, by override
+  emergency disconnect  off
+  override              none
+
+split tunnel
+  domain   intranet.example.com · example
+  domain   *.corp.example.com · example
+  network  10.0.0.0/8 · lan
+  network  2001:db8:1::/48 · lan
 
 DNS
   proxy      on

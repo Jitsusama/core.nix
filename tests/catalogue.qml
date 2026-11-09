@@ -250,7 +250,11 @@ QtObject {
                 run: does }],
             ["one gone", { verb: "disconnect", command: "disconnect", gone: true, run: does }],
             ["a row asking its words first", { verb: "disconnect", command: "disconnect",
-                given: does, run: does }]
+                given: does, run: does }],
+            // A switch someone else holds is refused before it's asked, so
+            // Return runs it and says why (VKCF3Z, 2026-11-08).
+            ["a disconnect someone else holds", { verb: "disconnect", command: "disconnect",
+                heldBy: "example", run: does }]
         ];
         for (const [what, row] of lasting)
             expect(`${what} ends nothing`, ending(row), false);

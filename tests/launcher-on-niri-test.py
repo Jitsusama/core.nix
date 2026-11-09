@@ -1304,6 +1304,171 @@ def test_warp_says_how_its_link_stands_in_network_and_when_it_isnt_answering(
         shutil.rmtree(said)
 
 
+def warp_said(**settings: object) -> Path:
+    """Write the contract's answers where the stand-in warp-cli reads them, settings changed.
+
+    Its disconnect answers as warp-cli's does, and the stand-in, asked it, says WARP is
+    disconnected after, as WARP's service would; nothing here reaches a real WARP.
+    """
+    said = Path(os.environ["HOME"]) / "warp-cli"
+    contract = Path(os.environ["WARP_CONTRACT"])
+    said.mkdir()
+    for question in ("status", "tunnel-stats", "settings", "dns-stats", "override-show"):
+        shutil.copyfile(contract / f"{question}.json", said / f"{question}.json")
+    written = json.loads((said / "settings.json").read_text())
+    written["settings"].update(settings)
+    (said / "settings.json").write_text(json.dumps(written))
+    (said / "disconnect.json").write_text('"Success"\n')
+    return said
+
+
+def asked(said: Path) -> list[str]:
+    """Give each question the stand-in warp-cli was asked, in turn."""
+    where = said / "asked"
+    return where.read_text().splitlines() if where.exists() else []
+
+
+def disconnect_from_its_switch(shell: Shell, *, held: bool = False) -> None:
+    """Step into WARP and run :disconnect on its switch, as Joel types it.
+
+    Held by the organisation, the switch teaches no d and writes no line, since the foot
+    teaches only what works and it ends nothing, and says who holds it (VKCF3Z, 2026-11-08).
+    """
+    shell.answer("warp")
+    shell.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name") == "connected \u00b7 127 ms"
+    )
+    shell.step_in()
+    shell.launcher_until(lambda shown: shown["rows"][:1] == ["Disconnect WARP"])
+    shell.down_to("Disconnect WARP")
+    shell.normal()
+    if held:
+        shell.launcher_until(
+            lambda shown: (
+                "holds the switch" in shown["footer"]
+                and "d disconnect" not in shown["footer"]
+                and ":disconnect" not in shown["footer"]
+            )
+        )
+    shell.send_chars(":disconnect")
+    shell.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "disconnect")
+    shell.send_key("ret")
+
+
+def test_warps_disconnect_runs_warp_and_says_when_it_comes_back(shell: Shell) -> None:
+    """WARP's :disconnect has warp disconnect it, and says when WARP, always on, comes back.
+
+    The stand-in warp-cli writes each question it's asked, so the check sees the switch reach
+    warp-cli through warp (tests/warp-cli-stand-in.sh).
+    """
+    said = warp_said()
+    try:
+        disconnect_from_its_switch(shell)
+        shell.launcher_until(lambda _: "disconnect" in asked(said))
+        shell.launcher_until(lambda shown: "comes back by itself in 2 min" in shown["footer"])
+        shell.close_launcher()
+    finally:
+        shutil.rmtree(said)
+
+
+def test_a_switch_the_organisation_holds_is_left_and_says_who_holds_it(shell: Shell) -> None:
+    """A WARP switch the organisation holds says who holds it, and warp-cli is never asked."""
+    said = warp_said(switch_locked=True)
+    try:
+        with shell.told("not become warp:power: example holds the switch"):
+            disconnect_from_its_switch(shell, held=True)
+        assert "settings" in asked(said), asked(said)
+        assert "disconnect" not in asked(said), asked(said)
+        shell.close_launcher()
+    finally:
+        shutil.rmtree(said)
+
+
+# How often a person might ask a terminal again: more often than WARP is read afresh while
+# shown (Warp.qml's fresh), so a read kept from outside is said before it's asked again.
+ASKED_AGAIN = 0.5
+
+
+def terminal_shown_until(shell: Shell, test: Callable[[Json], object], *steps: str) -> Json:
+    """Ask `launcher show` again, as a person would, until what it's told passes the test.
+
+    A terminal's ask is answered at once, so a provider still asking says so, and what it
+    hears is said to the next ask (Warp.qml's askedOutside).
+    """
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    shown = shown_to_terminal(shell, *steps)
+    while not test(shown):
+        assert time.monotonic() < deadline, f"a terminal was never shown what's wanted: {shown}"
+        time.sleep(ASKED_AGAIN)
+        shown = shown_to_terminal(shell, *steps)
+    return shown
+
+
+def test_a_terminal_is_shown_warps_state_health_and_round_trips_drawer(shell: Shell) -> None:
+    """`launcher show network warp` says WARP's state and Health, and Round Trip's drawer.
+
+    What warp prints for a terminal's ask is kept for the next while the launcher stays
+    closed, and each read after sparks as it does while shown, so once two are in, Round
+    Trip's drawer says whose figures they are. The launcher never opens.
+    """
+    said = warp_said()
+    try:
+        warp = terminal_shown_until(
+            shell,
+            lambda shown: "connected" in (shown["row"] or {}).get("side", ""),
+            "network",
+            "warp",
+        )
+        assert warp["in"] == ["Network", "WARP"], warp
+        health = next(row for row in warp["rows"] if row["name"] == "Health")
+        assert health["side"] == "healthy", health
+        trip = terminal_shown_until(
+            shell, lambda shown: "drawer" in (shown["row"] or {}), "network", "warp", "round trip"
+        )
+        assert trip["row"]["drawer"]["eyebrow"] == "via WARP \u00b7 tunnel", trip["row"]
+        assert not shell.showing()["open"]
+    finally:
+        shutil.rmtree(said)
+
+
+def test_a_terminal_disconnects_warp_once_sure_and_connects_it_unasked(shell: Shell) -> None:
+    """`launcher do` asks before WARP's Disconnect, as its card does, and connects it unasked.
+
+    Disconnect WARP ends the link, so the terminal is asked the launcher's own question and
+    warp-cli hears nothing until it's sure; Connect WARP ends nothing, so it's done at once.
+    The shell walks the same rows the card draws (Launcher.qml's doneFromTerminal), so there's
+    nothing of WARP's own to wire; this proves it reaches warp-cli through warp.
+    """
+
+    def done(*steps: str, path: list[str] | None = None, sure: bool = False) -> Json:
+        said = {"steps": steps, "path": path or [], "words": "", "sure": sure}
+        asked_for = shlex.quote(json.dumps(said))
+        answer = shell.as_account(f"qs -p {shell.folder} ipc call -- launcher doing {asked_for}")
+        return cast("Json", json.loads(answer))
+
+    def rows_say(name: str) -> Callable[[Json], bool]:
+        return lambda shown: name in [row["name"] for row in shown.get("rows", [])]
+
+    said = warp_said()
+    (said / "connect.json").write_text('"Success"\n')
+    try:
+        terminal_shown_until(shell, rows_say("Disconnect WARP"), "network", "warp")
+        asking = done("network", "warp", "disconnect warp")
+        assert asking["asks"].startswith("Disconnect WARP"), asking
+        assert asking["asks"].endswith("? (y/n)"), asking
+        assert "disconnect" not in asked(said), "warp-cli was told before the terminal was sure"
+        disconnected = done(path=asking["path"], sure=True)
+        assert disconnected["done"] is True, disconnected
+        assert disconnected["in"] == ["Network", "WARP", "Disconnect WARP"], disconnected
+        shell.launcher_until(lambda _: "disconnect" in asked(said))
+        terminal_shown_until(shell, rows_say("Connect WARP"), "network", "warp")
+        connected = done("network", "warp", "connect warp")
+        assert connected == {"done": True, "in": ["Network", "WARP", "Connect WARP"]}, connected
+        shell.launcher_until(lambda _: "connect" in asked(said))
+    finally:
+        shutil.rmtree(said)
+
+
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
     """No answer raised an error, and Quickshell warned of nothing it drew."""
     log = shell.log.read_text(errors="replace").splitlines()

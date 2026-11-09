@@ -1070,6 +1070,18 @@ in
     console = "-";
     means = "letting a connected device go";
   };
+  # A tunnel's own pair, so WARP's switch never reads as Bluetooth's
+  # (VKCF3Z, 2026-11-08).
+  tunnelOn = {
+    glyph = nerd "f0318";
+    console = "+";
+    means = "connecting a tunnel such as WARP";
+  };
+  tunnelOff = {
+    glyph = nerd "f0319";
+    console = "-";
+    means = "letting a tunnel go";
+  };
   password = {
     glyph = nerd "f0306";
     console = "k";

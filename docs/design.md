@@ -1614,13 +1614,21 @@ works the same way everywhere.
   (what the cards carry In and Out now, the Connection as the shaper last
   measured it and how full it is, the Round Trip while it's quiet, each
   server a step in, what's Dropped, and each of the Connections, VPNs
-  too), "warp" or "vpn" (WARP's State and why, the network's Health as
-  WARP judges it, its state alone at the side and its note saying it's
-  "WARP's measure" before the figures, so whose gives way last, its
-  Settings a step in, the Mode, Always On and Split
-  Tunnel first, each saying who set it, the tunnel's Round Trip and Loss
+  too), "warp" or "vpn" (its switch first, Disconnect WARP or Connect
+  WARP, which :disconnect and :connect name and which leave a switch the
+  organisation holds as it is, saying who holds it, and say when WARP
+  always on comes back; then WARP's State and why, an Emergency Disconnect
+  while one holds, the network's Health as WARP judges it, its state
+  alone at the side and its note saying it's "WARP's measure" before the
+  figures, so whose gives way last, its Settings a step in, the Mode,
+  Always On and Split Tunnel first, each saying who set it, the split
+  tunnel's every host and network a step further, then where names are
+  looked up, sign-in pages and what the organisation allows, an override
+  among them, the tunnel's Round Trip and Loss
   as WARP estimates them, its Protocol, Data Centre, Endpoint and Last
-  Handshake, its Traffic each way ("1.52 GB in · 312 MB out"), its TLS a
+  Handshake, its Traffic each way ("1.52 GB in · 312 MB out"), Round
+  Trip, Loss and Traffic sparked while shown, each with a drawer whose
+  eyebrow says once whose figures they are ("via WARP · tunnel"), its TLS a
   step in, and what its DNS proxy answered, each count a step in, listed
   in Network after Speed where the system runs WARP) and "uptime". The
   queue is Agents', beside the sessions whose heavy work it holds, and

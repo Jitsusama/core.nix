@@ -33,6 +33,8 @@ import "Sounds.js" as Sounds
 import "Cameras.js" as Cameras
 import "Firmware.js" as Firmware
 import "Warp.js" as Warp
+import "WarpSeen.js" as WarpSeen
+import "WarpSwitch.js" as WarpSwitch
 import "Interfaces.js" as Interfaces
 import "Networkd.js" as Networkd
 import "WifiLink.js" as WifiLink
@@ -2300,6 +2302,8 @@ QtObject {
         const warpSaid = vocabulary.find(thing => thing.id === "warp").said;
         const warpTold = record => Warp.told(record, {}, warpSaid);
         const figure = (id, side, note, copy) => ({ id, side, note, copy, warns: false });
+        // An entry of a list, a host or an address, named by itself.
+        const entry = (id, name, side) => ({ id, name, side, note: "", copy: name, warns: false });
         const linked = warpTold(warp);
         machine("WARP connected, as its row says it", linked && [linked.headline, linked.warns],
             ["connected \u00b7 127 ms", false]);
@@ -2311,14 +2315,37 @@ QtObject {
                 figure("settings:mode", "warp+doh",
                     "the tunnel with DNS over HTTPS \u00b7 set by local policy", "warp+doh"),
                 figure("settings:always-on", "on", "the default", "on"),
-                figure("settings:split-tunnel", "include",
-                    "2 hosts \u00b7 2 networks \u00b7 set by network policy", "include"),
+                Object.assign(figure("settings:split-tunnel", "include",
+                    "2 hosts \u00b7 2 networks \u00b7 set by network policy", "include"), { parts: [
+                    entry("settings:split-tunnel:host", "intranet.example.com", "example"),
+                    entry("settings:split-tunnel:host", "*.corp.example.com", "example"),
+                    entry("settings:split-tunnel:network", "10.0.0.0/8", "lan"),
+                    entry("settings:split-tunnel:network", "2001:db8:1::/48", "lan")
+                ] }),
                 figure("settings:switch-locked", "off", "set by an override", "off"),
                 figure("settings:auto-connect", "2 min", "set by local policy", "2"),
                 figure("settings:organisation", "example", "set by local policy", "example"),
                 figure("settings:tunnel-protocol", "masque", "set by network policy", "masque"),
                 figure("settings:post-quantum", "enabled with downgrades",
-                    "set by network policy", "enabled_with_downgrades")
+                    "set by network policy", "enabled_with_downgrades"),
+                Object.assign(figure("settings:doh", "0000.doh.example.com", "4 addresses",
+                    "0000.doh.example.com"), { parts: [
+                    entry("settings:doh:address", "192.0.2.53", ""),
+                    entry("settings:doh:address", "192.0.2.54", ""),
+                    entry("settings:doh:address", "2001:db8::53", ""),
+                    entry("settings:doh:address", "2001:db8::54", "")
+                ] }),
+                Object.assign(figure("settings:local-domains", "3 domains", "", "3"), { parts: [
+                    entry("settings:local-domains:domain", "home.arpa", ""),
+                    entry("settings:local-domains:domain", "local", ""),
+                    entry("settings:local-domains:domain", "example.com", "192.0.2.1")
+                ] }),
+                figure("settings:sign-in-pages", "on", "opens its firewall for 5 min", "on"),
+                figure("settings:path-mtu", "on", "", "on"),
+                figure("settings:mode-switch", "on", "", "on"),
+                figure("settings:may-leave", "off", "", "off"),
+                figure("settings:local-network", "/24", "", "24"),
+                figure("settings:override", "off", "", "off")
             ] }),
             figure("latency", "127 ms", "", "127"),
             figure("loss", "1.24%", "", "0.012355098"),
@@ -2351,8 +2378,9 @@ QtObject {
         const nameless = [];
         const partsNamed = (parts, within) => {
             for (const part of parts ?? []) {
+                // An entry of a list is named by itself, as a host is.
                 const word = vocabulary.find(thing => thing.id === `warp:${part.id}`);
-                if (!word || !word.name || word.in !== within)
+                if (part.name === undefined && (!word || !word.name || word.in !== within))
                     nameless.push(part.id);
                 partsNamed(part.parts, `warp:${part.id}`);
             }
@@ -2419,7 +2447,8 @@ QtObject {
         ]);
         const policed = warpTold(Object.assign({}, warp, { settings: { mode: "tunnel_only",
             always_on: false, split_tunnel: { mode: "exclude", hosts: 1, ips: 0 },
-            set_by: { mode: "someone_else" } }, dns: { proxy_enabled: false, average_ms: null,
+            set_by: { mode: "someone_else" } }, override: null,
+            dns: { proxy_enabled: false, average_ms: null,
             total: 0, success: 0, no_records_found: 0, timed_out: 0, other_error: 0 } }));
         machine("settings warp gave some of, each said as it's set",
             policed && policed.parts.find(part => part.id === "settings"),
@@ -2430,6 +2459,18 @@ QtObject {
                     figure("settings:always-on", "off", "", "off"),
                     figure("settings:split-tunnel", "exclude", "1 host", "exclude")
                 ] }));
+        // An organisation disconnecting every device says so right after
+        // the state, warning; an override in force says how long it has.
+        const emergency = warpTold(Object.assign({}, warp, {
+            settings: Object.assign({}, warp.settings, { emergency_disconnect: true }),
+            override: { set: true, ends_in_secs: 700 } }));
+        machine("an emergency disconnect said after the state, warning",
+            emergency && emergency.parts[1], Object.assign(figure("emergency", "on",
+                "every device disconnected", "on"), { warns: true }));
+        machine("an override in force, with the minutes it has left",
+            emergency && emergency.parts.find(part => part.id === "settings").parts
+                .find(part => part.id === "settings:override"),
+            figure("settings:override", "on", "12 min left", "on"));
         machine("a DNS proxy that's off says so in its place",
             policed && (policed.parts.find(part => part.id === "dns") ?? {}).side, "proxy off");
         machine("WARP's service not answering", Warp.failed({ error: "not-answering",
@@ -2442,6 +2483,93 @@ QtObject {
         machine("no warp-cli, so no WARP", Warp.failed({ error: "not-installed", said: "warp-cli" },
             warpSaid), null);
         machine("warp-cli's words as said", Warp.spoken("NetworkHealthy"), "network healthy");
+        // What the shell keeps of WARP's reads while it's shown, two seconds
+        // apart, sparks the tunnel's Round Trip, Loss and Traffic, each with
+        // a drawer saying once whose figures they are (VKCF3Z, 2026-11-08).
+        const warpRead = (latency, loss, received, sent) => Object.assign({}, warp, {
+            tunnel: Object.assign({}, warp.tunnel, { latency_ms: latency, loss_fraction: loss,
+                received_bytes: received, sent_bytes: sent }) });
+        const reads = [warpRead(120, 0.01, 1000, 500), warpRead(140, 0.02, 3000, 1500),
+            warpRead(130, 0.015, 7000, 2500)];
+        const seen = reads.reduce((kept, each, at) => WarpSeen.saw(kept, each, at * 2000), null);
+        machine("WARP keeps what it read while shown, and the speed each way between",
+            [seen.latency, seen.loss, seen.inward, seen.outward],
+            [[120, 140, 130], [0.01, 0.02, 0.015], [1000, 2000], [500, 500]]);
+        const spark = values => ({ shape: "spark", values, warn: false });
+        const over = (values, least) => values.map(value => value / Math.max(least, ...values));
+        const sparked = WarpSeen.drawn(Warp.told(reads[2], {}, warpSaid).parts, seen, {}, warpSaid);
+        const drawn = id => (sparked.find(part => part.id === id) ?? {});
+        const tunnel = "via WARP \u00b7 tunnel";
+        const trip = spark(over([120, 140, 130], 100));
+        machine("Round Trip sparks what was read, its drawer saying whose",
+            [drawn("latency").graph, drawn("latency").drawer], [trip, { eyebrow: tunnel, facts: [
+                { id: "range", value: "120 ms to 140 ms", figure: trip },
+                { id: "reads", value: "3 over 4 s" }] }]);
+        // A range whose low and high read the same at three digits says it's
+        // steady, as a run, rather than "127 ms to 127 ms" (VKCF3Z, 2026-11-08).
+        const still = [warpRead(127, 0.01, 1000, 500), warpRead(127.2, 0.01, 2000, 1000)];
+        const steadily = still.reduce((kept, each, at) => WarpSeen.saw(kept, each, at * 2000), null);
+        const steady = WarpSeen.drawn(Warp.told(still[1], {}, warpSaid).parts, steadily, {}, warpSaid)
+            .find(part => part.id === "latency") ?? {};
+        machine("a Round Trip that reads the same throughout says it's steady",
+            steady.drawer?.facts?.[0]?.value, "127 ms \u00b7 steady");
+        const lost = spark(over([0.01, 0.02, 0.015], 0.05));
+        machine("Loss sparks against five percent at least, so a calm link reads small",
+            [drawn("loss").graph, drawn("loss").drawer], [lost, { eyebrow: tunnel, facts: [
+                { id: "range", value: "1.00% to 2.00%", figure: lost },
+                { id: "reads", value: "3 over 4 s" }] }]);
+        machine("Traffic sparks both ways together, its drawer the speed each way now",
+            [drawn("traffic").graph, drawn("traffic").drawer], [spark(over([1500, 2500], 0)), {
+                eyebrow: tunnel, facts: [
+                    { id: "in", value: "16.0 kb/s", figure: spark(over([1000, 2000], 0)) },
+                    { id: "out", value: "4.00 kb/s", figure: spark(over([500, 500], 0)) }] }]);
+        machine("one read sparks nothing, so no drawer says only the row again",
+            WarpSeen.drawn(Warp.told(reads[0], {}, warpSaid).parts, WarpSeen.saw(null, reads[0], 0),
+                {}, warpSaid).filter(part => part.graph !== undefined || part.drawer !== undefined),
+            []);
+        const anew = WarpSeen.saw(seen, { status: { state: "Disconnected", reason: "Manual" },
+            tunnel: null }, 6000);
+        machine("a state changed starts the reads again",
+            [anew.latency, anew.loss, anew.inward], [[], [], []]);
+        const back = WarpSeen.saw(seen, warpRead(125, 0.01, 10, 5), 6000);
+        machine("a counter gone back, as a link made again starts it, gives no speed",
+            [back.latency.length, back.inward], [4, [1000, 2000]]);
+        // WARP's switch, :connect and :disconnect: who holds it, where the
+        // organisation does, and when WARP always on comes back, as warp's
+        // own switch says it (modules/warp/src/switch.rs).
+        const locked = Object.assign({}, warp, {
+            settings: Object.assign({}, warp.settings, { switch_locked: true }) });
+        machine("WARP's switch says when, always on, it comes back, who holds it, or nothing",
+            [WarpSwitch.switchNote(warp, true, warpSaid),
+                WarpSwitch.switchNote(locked, true, warpSaid),
+                WarpSwitch.switchNote(warp, false, warpSaid)],
+            ["comes back by itself in 2 min", "example holds the switch", ""]);
+        // A switch the organisation holds draws no chord, since the foot
+        // teaches only what works; Return stays and is refused with why
+        // (VKCF3Z, 2026-11-08).
+        machine("WARP's switch ends the link while up, unless the organisation holds it",
+            [WarpSwitch.ends(warp, true), WarpSwitch.ends(locked, true),
+                WarpSwitch.ends(warp, false)], [true, false, false]);
+        machine("WARP's switch names who holds it, so it ends nothing, or nobody",
+            [WarpSwitch.holder(locked), WarpSwitch.holder(warp)], ["example", ""]);
+        machine("WARP up or on its way, so its switch takes it down",
+            ["Connected", "Connecting", "Disconnected"].map(state =>
+                WarpSwitch.up({ status: { state } })), [true, true, false]);
+        machine("a switch done, held, refused or unread, as warp says each", [
+            WarpSwitch.switched({ act: "disconnect", done: true, refused: null,
+                comes_back_after_min: 2 }, warpSaid),
+            WarpSwitch.switched({ act: "disconnect", done: false, refused: "held",
+                organisation: "example" }, warpSaid),
+            WarpSwitch.switched({ act: "connect", done: false, refused: "refused",
+                said: "warp-cli wouldn't connect: Invalid account type." }, warpSaid),
+            WarpSwitch.switched({ error: "not-answering", said: "its service didn't answer" },
+                warpSaid)
+        ], [
+            { refused: "", note: "comes back by itself in 2 min" },
+            { refused: "example holds the switch", note: "" },
+            { refused: "warp-cli wouldn't connect: Invalid account type.", note: "" },
+            { refused: "its service didn't answer", note: "" }
+        ]);
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)
