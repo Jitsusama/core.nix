@@ -179,12 +179,6 @@ pub fn found(said: &Value, me: &str) -> Result<Vec<Found>, Failed> {
         .collect())
 }
 
-/// A person's name in Slack from `users.info`, their handle when their
-/// profile names nobody, or Slack's own word when it says nothing.
-pub(crate) fn named_in(user: &Value) -> String {
-    name_in(user).unwrap_or_else(|| "Slack".to_owned())
-}
-
 /// A person's name in Slack from `users.info`, or their handle when their
 /// profile names nobody; none when it says neither, as a refusal doesn't.
 pub(crate) fn name_in(user: &Value) -> Option<String> {
@@ -354,8 +348,7 @@ mod tests {
             ("", "U7", true)
         );
         let ada = json!({"ok": true, "user": {"name": "ada", "profile": {"real_name": "Ada L"}}});
-        assert_eq!(named_in(&ada), "Ada L");
-        assert_eq!(named_in(&json!({"ok": false})), "Slack");
+        assert_eq!(name_in(&ada).as_deref(), Some("Ada L"));
         assert_eq!(
             name_in(&json!({"ok": false})),
             None,
