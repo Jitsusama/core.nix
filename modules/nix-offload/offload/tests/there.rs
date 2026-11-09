@@ -327,6 +327,48 @@ fn a_build_asked_to_outlive_its_caller_is_sent_to_go_on_alone() {
     );
 }
 
+// On 9 November a switch's build was stopped for printing nothing for 12
+// minutes, so how far a remote build has got is asked of its builder.
+#[test]
+fn a_lent_builders_progress_is_its_processor_time_and_bytes_written() {
+    let folder = tempfile::tempdir().unwrap();
+    let more = lending(folder.path(), "offload-more", "nix-offload-more");
+    stand_ins(folder.path(), 0);
+    fs::write(folder.path().join("says"), "17\n4\n").unwrap();
+    let progress = |host: &str| {
+        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+            .args(["progress", host])
+            .env(
+                "PATH",
+                format!(
+                    "{}:{}",
+                    folder.path().display(),
+                    std::env::var("PATH").unwrap()
+                ),
+            )
+            .env("NIX_OFFLOAD_DIR", folder.path().join("none"))
+            .env("NIX_OFFLOAD_MORE_DIR", &more)
+            .envs(no_vm_builders(folder.path()))
+            .env("XDG_RUNTIME_DIR", folder.path())
+            .output()
+            .unwrap()
+    };
+    let ran = progress("nix-offload-more");
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said: serde_json::Value = serde_json::from_slice(&ran.stdout).unwrap();
+    assert_eq!(
+        (said["cpuUsec"].as_u64(), said["writtenBytes"].as_u64()),
+        (Some(17), Some(2048))
+    );
+    assert_eq!(said["host"], "nix-offload-more");
+    let sent = fs::read_to_string(folder.path().join("ssh-was-given")).unwrap();
+    assert!(sent.contains("nix-daemon.service/cpu.stat"), "{sent}");
+
+    assert_eq!(progress("nowhere").status.code(), Some(75));
+    fs::write(folder.path().join("unreached-nix-offload-more"), "").unwrap();
+    assert_eq!(progress("nix-offload-more").status.code(), Some(255));
+}
+
 #[test]
 fn derivations_go_up_to_the_lent_builder_alone_and_build_there() {
     // A build tool's targets come as derivations evaluated here, with no
