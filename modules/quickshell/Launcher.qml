@@ -6324,13 +6324,16 @@ Scope {
 
         // How many rows each source has made since the shell started, by
         // its name, and how many times the open launcher has refreshed,
-        // how many changes it took as a key's own, and the rows Ctrl+]'s
-        // looks for where a row lives made (livesMade), for the check that a source
-        // nobody sees makes none, the list refreshes at most four times a
-        // second, and an arrow takes no change as its own.
+        // how many changes it took as a key's own, the rows Ctrl+]'s looks
+        // for where a row lives made (livesMade), and how often the list was
+        // composed and how many rows were drawn afresh, for the check that a
+        // source nobody sees makes none, the list refreshes at most four
+        // times a second, and an arrow takes no change as its own, composes
+        // nothing and draws no row afresh.
         function made(): string {
             return JSON.stringify({ rows: root.tallies(), refreshes: root.refreshesDone,
-                keyed: root.refreshesKeyed, walked: root.livesMade });
+                keyed: root.refreshesKeyed, walked: root.livesMade, composed: root.rowsMade,
+                drawn: root.rowsDrawn });
         }
 
         // How many frames the card has drawn since this was first asked,
