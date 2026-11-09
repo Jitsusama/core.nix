@@ -87,6 +87,7 @@ let
       cp ${../neovim/NeovimProgram.qml} qs/launcher/neovim.qml
       cp ${../neovim/NeovimOpening.js} qs/launcher/NeovimOpening.js
       cp ${../chrome/ChromeProgram.qml} qs/launcher/chrome.qml
+      cp ${../chrome/ChromeDownloads.js} qs/launcher/ChromeDownloads.js
       # The greeter runs beside the account's files, as greetd's module lays
       # them out, with what it's built with standing in.
       cp ${
@@ -4134,7 +4135,11 @@ onLinux {
   # shell's one watcher of the clipboard, through Quickshell itself, over
   # repositories made here and read once for both programs by the real fd,
   # stat and grep (launcher/Repositories.qml), with niri and the
-  # clipboard's history stood in (tests/program-acts.qml).
+  # clipboard's history stood in (tests/program-acts.qml), and Chrome's
+  # downloads, read from Chrome's ChromeDownloads.js in Qt's engine and
+  # through its provider from a stand-in for chrome-recent-sites once
+  # Chrome is stepped into: file rows in its Recent, and Open the Latest
+  # Download only while there's one.
   the-launcher-acts-only-on-what-it-can =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -4182,6 +4187,7 @@ onLinux {
       cp ${./Copied.js} Copied.js
       cp ${./launcher/Repositories.js} Repositories.js
       cp ${../neovim/NeovimOpening.js} NeovimOpening.js
+      cp ${../chrome/ChromeDownloads.js} ChromeDownloads.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -4208,6 +4214,7 @@ onLinux {
       cp ${../neovim/NeovimProgram.qml} launcher/NeovimProgram.qml
       cp ${../neovim/NeovimOpening.js} launcher/NeovimOpening.js
       cp ${../chrome/ChromeProgram.qml} launcher/ChromeProgram.qml
+      cp ${../chrome/ChromeDownloads.js} launcher/ChromeDownloads.js
       cp ${../reader/ReaderProgram.qml} launcher/ReaderProgram.qml
       cp ${../gimp/CopiedPicture.qml} launcher/CopiedPicture.qml
       cp ${../../tests/program-acts.qml} shell.qml
@@ -4222,6 +4229,13 @@ onLinux {
       }:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
       ${repositories}
+      # Chrome's downloads, as chrome-recent-sites prints them: one from a
+      # page, finished at a time of its own, and one Chrome kept no time
+      # or page for.
+      export DOWNLOADS_LIST=${pkgs.writeShellScript "downloads-list" ''
+        printf '%s\t%s\t%s\t%s\n' "$HOME/Downloads/report.pdf" 2048 1800000100 \
+          'https://docs.example.com/q3?x=1' "$HOME/Downloads/undated.zip" 10 "" ""
+      ''}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
       touch $out

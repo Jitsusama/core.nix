@@ -23,7 +23,8 @@
       through the process behind the window used last ({pid}) while one is
       open, and while none is, a site opening by the program's own command.
       A site source may say what's open now too: `opened`, the command
-      printing a tab a line (its id, its window, whether it's in front
+      printing a tab a line (its id, which `go` and `close` are given, or
+      nothing where neither can act on it, its window, whether it's in front
       there, when it was last looked at, its address and its title, a tab
       between each), read as the program is stepped into; and where it
       can, `go` and `close`, the commands going to and closing one ({id}).

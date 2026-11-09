@@ -207,6 +207,7 @@ be read, marked unread and archived.
 | podcast | a series of spoken episodes a player plays, such as one on Spotify | | Spotify's `show` |
 | episode | one part of a podcast | | Spotify's `episode` |
 | speed | how fast a player plays its track against the track's own pace, such as one and a half times | | MPRIS's `Rate` |
+| download | a file the browser saved from the web, listed in its Recent while it's still where it was saved | | Chrome's `downloads` table, `chrome-recent-sites downloads` |
 
 ## People
 

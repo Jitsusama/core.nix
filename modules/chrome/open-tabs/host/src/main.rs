@@ -18,6 +18,11 @@
 //! - `chrome-open-tabs go ID` brings that tab to the front of its window;
 //! - `chrome-open-tabs close ID` closes it.
 //!
+//! An ID is one `list` gave, the id Chrome's tabs have for an extension;
+//! one missing or not a number is refused, so a tab told of by Chrome's
+//! session file, which `chrome-recent-sites open` gives no id, is never
+//! gone to or closed by another's.
+//!
 //! With Chrome closed, or the extension not answering in time, it prints
 //! nothing and succeeds, so the launcher lists what was open lately alone.
 
@@ -321,7 +326,18 @@ mod tests {
         assert_eq!(Ask::from_line("list\n"), Some(Ask::List));
         assert_eq!(Ask::from_line("go 12"), Some(Ask::Go(12)));
         assert_eq!(Ask::from_line("close 7\n"), Some(Ask::Close(7)));
-        for line in ["", "go", "go twelve", "close -1", "list all", "open 3"] {
+        // An empty id is how chrome-recent-sites says a tab it read from
+        // Chrome's session file, whose ids aren't the extension's.
+        for line in [
+            "",
+            "go",
+            "go ",
+            "close ",
+            "go twelve",
+            "close -1",
+            "list all",
+            "open 3",
+        ] {
             assert_eq!(Ask::from_line(line), None, "{line}");
         }
     }

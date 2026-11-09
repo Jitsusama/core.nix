@@ -11,13 +11,29 @@
 // since it comes and goes: it's there only while the clipboard holds one
 // web address and nothing else, said beside it (Copied.qml). Either opens
 // its page in a new window.
+//
+// Its Recent holds the files Chrome downloaded (`recentOf`, which
+// Applications.qml asks every provider that has it), each still where
+// Chrome saved it, as chrome-recent-sites lists them from its history
+// (`downloads`) as Chrome is stepped into, once each time the launcher
+// opens, never on a timer. Each is the one row every surface shows of a
+// file (Files.qml), keyed by its path, so the list programs share never
+// lists it twice, dated by when it finished, so Recent orders it among
+// the sites by when, newest first (Recent.js), and opened as the desktop
+// opens a file. Beside it are its size and when, as the file chooser says
+// them (FileFacts.js), and its drawer says where it came from. Open the
+// Latest Download comes last, there only while the last reading found
+// one, its name beside it, and found from the top by its name then too.
 pragma ComponentBehavior: Bound
 
 import qs
 import Quickshell
+import Quickshell.Io
 import QtQuick
 import "../Copied.js" as Copying
+import "../FileFacts.js" as FileFacts
 import "Ago.js" as Ago
+import "ChromeDownloads.js" as Downloads
 import "Repositories.js" as Repos
 
 Provider {
@@ -34,13 +50,53 @@ Provider {
     // the one whose git last wrote first.
     readonly property var pages: Repos.onGitHubAll(Repositories.listed, Repositories.remotes)
     readonly property bool onGitHub: pages.length > 0
-    // So Programs › Chrome, held while either comes or goes, draws it.
+    // The files Chrome downloaded, as the last reading listed them, each
+    // { path, size, at, from }, and the newest of them, or null.
+    property var downloads: []
+    readonly property var latest: Downloads.latest(downloads)
+    // So Programs › Chrome, held while any comes or goes, draws it.
     onLinkChanged: changed()
     onOnGitHubChanged: changed()
+    onLatestChanged: changed()
 
     // Found from the top by their names, each only while it's listed.
     foundActs: (onGitHub ? [{ program: program, key: "verb:chrome:repository" }] : [])
         .concat(link !== "" ? [{ program: program, key: "verb:chrome:link" }] : [])
+        .concat(latest !== null ? [{ program: program, key: "verb:chrome:download" }] : [])
+
+    // What a download's row says, as the file chooser says a file's size
+    // and when (FileFacts.js), in the launcher's words.
+    readonly property var fileWords: FileFacts.wordsOf(id => Words.of(id),
+        (at, format) => Qt.formatDate(at, format))
+
+    // Whether Chrome's own step is held, from Programs or from the top,
+    // and whether its downloads were read since the launcher opened.
+    readonly property bool steppedIn: (launcher?.open ?? false)
+        && (launcher?.held ?? []).some(step => step.row?.key === `program:${provider.program}`)
+    property bool lookedSince: false
+
+    onSteppedInChanged: {
+        if (!steppedIn || lookedSince || (settings.downloads ?? []).length === 0)
+            return;
+        lookedSince = true;
+        listing.running = true;
+    }
+
+    Process {
+        id: listing
+
+        command: provider.settings.downloads ?? []
+        running: false
+        stdout: StdioCollector {
+            id: listed
+
+            onStreamFinished: {
+                provider.downloads = Downloads.listed(listed.text.split("\n")
+                    .filter(line => line !== ""));
+                provider.changed();
+            }
+        }
+    }
 
     Component.onCompleted: {
         Repositories.want(provider.settings, true);
@@ -59,15 +115,77 @@ Provider {
     Connections {
         target: provider.launcher
 
+        // The next opening reads the downloads again, as they may have
+        // changed since.
         function onOpenChanged() {
             Repositories.opened(provider.launcher.open);
+            if (!provider.launcher.open)
+                provider.lookedSince = false;
         }
     }
 
     function programActs(asked) {
         if (asked !== program)
             return [];
-        return (onGitHub ? [repositories()] : []).concat(link !== "" ? [copied()] : []);
+        return (onGitHub ? [repositories()] : []).concat(link !== "" ? [copied()] : [],
+            latest !== null ? [newest()] : []);
+    }
+
+    function recentOf(asked) {
+        if (asked !== program)
+            return [];
+        const now = Date.now();
+        return downloads.map(one => downloaded(one, now));
+    }
+
+    // Open, as the desktop opens the file, Return's on its row.
+    function opens(one) {
+        const key = "verb:path:file:open";
+        return thing({
+            key: `${key}:${one.path}`,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            run: () => Niri.spawn(Downloads.opening(one))
+        });
+    }
+
+    // A download as its Recent's row: the file's own, its size and when
+    // beside it, and its drawer where it is and the site it came from.
+    function downloaded(one, now) {
+        const row = Files.file(one.path, thing, [opens(one)]);
+        const from = Downloads.cameFrom(one.from);
+        return Object.assign(row, {
+            // Its size, and when where Chrome kept it, as a file whose
+            // place said both is said (FileFacts.js).
+            side: FileFacts.sideElsewhere({ size: one.size, modified: one.at }, now, fileWords),
+            at: one.at,
+            drawer: Object.assign(FileFacts.placed(Files.within(one.path), "", fileWords), {
+                title: row.name,
+                facts: from === "" ? [] : [{ label: Words.name("chrome:download:from"),
+                    value: from }]
+            })
+        });
+    }
+
+    // Open the Latest Download, saying its name.
+    function newest() {
+        const key = "verb:chrome:download";
+        return thing({
+            key: key,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            side: Files.named(latest.path),
+            // What's newest when it runs, which a row found from the top,
+            // made as the act came, may not have changed with.
+            run: () => {
+                if (provider.latest !== null)
+                    Niri.spawn(Downloads.opening(provider.latest));
+            }
+        });
     }
 
     // Open a Repository on GitHub, saying how many there are, and, stepped

@@ -2,10 +2,12 @@
 
 Chrome's open tabs, live, for its Recent in the launcher, through an
 extension of ours, which Chrome installs by itself from the file
-`../nixos.nix` names. Chrome's own session file says every tab too, and
-is what the launcher reads (`../recent-sites`), since a managed Chrome may
-refuse an extension its policy doesn't list; only an extension can go to
-the very tab or close one, which is what this is for where it's allowed.
+`../nixos.nix` names. The launcher asks it through `../recent-sites`,
+which lists its tabs where it answers, and Go To and Close It hand it the
+ids it gave; only an extension can go to the very tab or close one.
+Chrome's own session file says every tab too, and is what's read when
+this lists nothing, since a managed Chrome may refuse an extension its
+policy doesn't list.
 
 - `extension/`: the extension itself, as Chrome unpacks it. It asks for the
   tabs, to say which are open and go to or close one, and for native

@@ -14,10 +14,12 @@
 # The extension answers chrome-open-tabs (open-tabs/host), its
 # native-messaging host, which Chrome starts from the file named for the
 # host in /etc/opt/chrome/native-messaging-hosts, allowed to this extension
-# alone. A managed Chrome may refuse every extension its policy doesn't
-# list, so the launcher reads Chrome's own session file instead (home.nix),
-# which gives every tab but can't go to one or close it; the host, on the
-# path, is what a Chrome that allows the extension would answer through.
+# alone. The account's Chrome module (home.nix) finds the host by that
+# file, so its launcher lists the host's tabs, goes to one and closes one
+# by the ids it gives. A managed Chrome may refuse every extension its
+# policy doesn't list, and then the host lists nothing, so the launcher
+# reads Chrome's own session file instead, which gives every tab but can't
+# go to one or close it.
 { lib, pkgs, ... }:
 let
   host = pkgs.callPackage ./open-tabs/host/package.nix { };

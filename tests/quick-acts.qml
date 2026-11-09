@@ -12,10 +12,15 @@
 // page on GitHub from its remotes, origin's first, however git names the
 // host, those listed that have one, and a file's folder said within its
 // repository (Repositories.js); and Neovim opened at a line and column, in the
-// kitty used last or a new one (NeovimOpening.js). The
-// `the-launcher-acts-only-on-what-it-can` check copies the three beside
+// kitty used last or a new one (NeovimOpening.js); and Chrome's
+// downloads read from the lines chrome-recent-sites prints, those
+// without a path or a size left out and one with no time undated, the
+// latest the first, said by the host it came from and opened as the
+// desktop opens a file (ChromeDownloads.js). The
+// `the-launcher-acts-only-on-what-it-can` check copies the four beside
 // this file and runs `qml quick-acts.qml`.
 import QtQuick
+import "ChromeDownloads.js" as Downloads
 import "Copied.js" as Copying
 import "Repositories.js" as Repos
 import "NeovimOpening.js" as Opening
@@ -240,6 +245,34 @@ QtObject {
                 "nvim", "/r/a.rs"]);
         check("in a new kitty", Opening.inKitty(0, "/r", ["nvim", "/r/a.rs"]),
             ["kitty", "--directory", "/r", "nvim", "/r/a.rs"]);
+
+        // Chrome's downloads as chrome-recent-sites prints them: a path,
+        // its size, when in seconds and where from, each line its own.
+        const downloads = Downloads.listed([
+            "/h/Downloads/report.pdf\t2048\t1800000100\thttps://docs.example.com/q3?x=1",
+            "/h/Downloads/undated.zip\t10\t\t",
+            "/h/Downloads/bare.txt\t3",
+            "\t5\t1\t",
+            "/h/Downloads/no-size\t\t1\t",
+            "/h/Downloads/odd\tbig\t1\t"
+        ]);
+        check("each with a path and a size, when in milliseconds", downloads, [
+            { path: "/h/Downloads/report.pdf", size: 2048, at: 1800000100000,
+                from: "https://docs.example.com/q3?x=1" },
+            { path: "/h/Downloads/undated.zip", size: 10, at: null, from: "" },
+            { path: "/h/Downloads/bare.txt", size: 3, at: null, from: "" }
+        ]);
+        check("the latest the first printed", Downloads.latest(downloads)?.path,
+            "/h/Downloads/report.pdf");
+        check("none while there's none", Downloads.latest([]), null);
+        check("where it came from by its host",
+            Downloads.cameFrom("https://docs.example.com/q3?x=1"), "docs.example.com");
+        check("a host with no path", Downloads.cameFrom("http://files.example.org"),
+            "files.example.org");
+        check("nothing from nowhere", Downloads.cameFrom(""), "");
+        check("nothing from what isn't an address", Downloads.cameFrom("about:blank"), "");
+        check("opened as the desktop opens a file", Downloads.opening(downloads[0]),
+            ["xdg-open", "/h/Downloads/report.pdf"]);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
