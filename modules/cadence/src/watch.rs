@@ -93,6 +93,9 @@ pub fn breaches(s: &Snapshot) -> Vec<Breach> {
     if let Some(breach) = not_on(s) {
         out.push(breach);
     }
+    if let Some(breach) = switch_failing(s) {
+        out.push(breach);
+    }
     let waits: Vec<f64> = s
         .runs
         .iter()
@@ -208,6 +211,40 @@ fn not_on(s: &Snapshot) -> Option<Breach> {
             "{} merged {} min ago and isn't on the machine yet{held}",
             oldest.merge.name(),
             (s.now - oldest.merge.at) / 60
+        ),
+    })
+}
+
+/// How long updates may keep failing with a merge waiting before it's
+/// said, in minutes: past the follower's quick tries after a builder goes
+/// away, which mostly get a switch on within that. On 8 November a switch
+/// Joel waited on failed at 12:57 and 13:12 and nothing said so, since
+/// the merge it carried had already been said not on during a hold.
+pub const FAILING_MIN: i64 = 5;
+
+/// Updates failing since one first failed `FAILING_MIN` ago, with a merge
+/// that should go on waiting, said once for each run of failures.
+fn switch_failing(s: &Snapshot) -> Option<Breach> {
+    let (first, why) = s.follower.failed.as_ref()?;
+    if s.now - first < FAILING_MIN * 60 {
+        return None;
+    }
+    let waiting = s
+        .landings
+        .iter()
+        .filter(|l| l.on.is_none() && !l.merge.tests_only())
+        .count();
+    if waiting == 0 {
+        return None;
+    }
+    let why: String = why.chars().take(240).collect();
+    let merges = if waiting == 1 { "merge" } else { "merges" };
+    Some(Breach {
+        key: format!("failing:{first}"),
+        text: format!(
+            "updating the machine has failed since {} min ago, with {waiting} {merges} waiting \
+             to go on; the newest failure: {why}",
+            (s.now - first) / 60
         ),
     })
 }
@@ -421,6 +458,39 @@ mod tests {
         assert!(breaches(&s).is_empty());
         s.follower.going = None;
         s.follower.meeting = true;
+        assert!(breaches(&s).is_empty());
+    }
+
+    #[test]
+    fn updates_failing_with_a_merge_waiting_are_said_once_after_five_minutes() {
+        let mut s = calm(100_000);
+        s.landings = vec![Landing {
+            merge: merge("abc", 100_000 - 8 * 60),
+            on: None,
+        }];
+        s.follower.failed = Some((100_000 - 4 * 60, "the builders went away".into()));
+        assert!(breaches(&s).is_empty());
+        s.follower.failed = Some((100_000 - FAILING_MIN * 60, "the builders went away".into()));
+        let mut state = State::default();
+        let said = tick(&s, &mut state);
+        assert_eq!(said.len(), 1, "{said:?}");
+        assert!(
+            said[0]
+                .text
+                .contains("failed since 5 min ago, with 1 merge waiting"),
+            "{}",
+            said[0].text
+        );
+        assert!(
+            said[0]
+                .text
+                .ends_with("the newest failure: the builders went away."),
+            "{}",
+            said[0].text
+        );
+        assert!(tick(&s, &mut state).is_empty());
+        // With nothing waiting, a failure isn't said.
+        s.landings.clear();
         assert!(breaches(&s).is_empty());
     }
 

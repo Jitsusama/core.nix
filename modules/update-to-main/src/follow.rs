@@ -13,7 +13,8 @@
 //! a hold, a low battery, a daemon whose restart needs a hold, and asks
 //! that come while an update runs join it. The asker only chooses when to
 //! ask: again soon after a refusal for being busy, not again at heads that
-//! failed until they move or a while has passed, and not at all after a
+//! failed until they move or a while has passed, sooner when what failed
+//! was a builder going away mid-build, and not at all after a
 //! refusal for a held daemon until the machine's last ending changes,
 //! since only a person's ask, with a hold sent, gets that one through.
 
@@ -35,6 +36,35 @@ const BUSY_AGAIN: Duration = Duration::from_secs(60);
 /// How long heads whose update failed wait before they're asked for
 /// again, in case what failed was the builders and not the commit.
 const FAILED_AGAIN: Duration = Duration::from_mins(30);
+
+/// How soon heads whose build lost its builders are asked for again, and
+/// how many times in a row before they wait `FAILED_AGAIN` like any other
+/// failure. On 8 November a lent builder's tunnel dropped and its service
+/// restarted in the middle of a switch Joel waited on, and nothing asked
+/// again for 30 minutes, though a builder stood again within one.
+const DROPPED_AGAIN: Duration = Duration::from_mins(2);
+const DROPPED_TRIES: u32 = 5;
+
+/// What a build that lost its builders, rather than one that failed on its
+/// own, says: no builder could be reached, or the one it was on went away.
+/// A piece that fails to compile says none of these.
+const DROPPED: [&str; 5] = [
+    "Failed to find a machine for remote build",
+    "disconnected unexpectedly",
+    "Connection reset by peer",
+    "closed by remote host",
+    "said nothing for",
+];
+
+/// Whether a failed update failed because its builders went away, which
+/// asking again soon may get past, rather than for something in the
+/// commit.
+pub fn builders_dropped(why: &str, lines: &[String]) -> bool {
+    why.contains("builders")
+        && std::iter::once(why)
+            .chain(lines.iter().map(String::as_str))
+            .any(|line| DROPPED.iter().any(|said| line.contains(said)))
+}
 
 /// How long an update may build heads main has since moved past before
 /// it's stopped, so the next ask builds the new ones. Shorter would throw
@@ -63,8 +93,11 @@ pub struct Follower {
     asked: Option<Instant>,
     /// The heads its last ask was made at.
     last: Option<Followed>,
-    /// The heads whose update failed, and when.
-    failed: Option<(Followed, Instant)>,
+    /// The heads whose update failed, when, and how long they wait.
+    failed: Option<(Followed, Instant, Duration)>,
+    /// How many updates in a row lost their builders at the heads that
+    /// failed.
+    dropped: u32,
     /// Whether the last ask was refused for being busy.
     busy: bool,
     /// The machine's last ending when an ask was refused for a held
@@ -92,10 +125,10 @@ impl Follower {
             return true;
         };
         let since = now.duration_since(asked);
-        if let Some((failed, when)) = &self.failed
+        if let Some((failed, when, wait)) = &self.failed
             && failed == heads
         {
-            return now.duration_since(*when) >= FAILED_AGAIN;
+            return now.duration_since(*when) >= *wait;
         }
         self.last.as_ref() != Some(heads) || since >= every || (self.busy && since >= BUSY_AGAIN)
     }
@@ -116,10 +149,22 @@ impl Follower {
         match ending {
             Line::Done { .. } | Line::Unchanged { .. } => {
                 self.failed = None;
+                self.dropped = 0;
                 None
             }
-            Line::Failed { .. } => {
-                self.failed = Some((heads, now));
+            Line::Failed { why, lines, .. } => {
+                let same = self.failed.as_ref().is_some_and(|(h, _, _)| *h == heads);
+                self.dropped = if builders_dropped(why, lines) {
+                    if same { self.dropped + 1 } else { 1 }
+                } else {
+                    0
+                };
+                let wait = if (1..=DROPPED_TRIES).contains(&self.dropped) {
+                    DROPPED_AGAIN
+                } else {
+                    FAILED_AGAIN
+                };
+                self.failed = Some((heads, now, wait));
                 None
             }
             Line::Refused { why, .. } if why.starts_with(NEEDS_HOLD) => {
@@ -377,6 +422,58 @@ mod tests {
         assert!(!f.should_ask(&at("a"), "", t + EVERY, EVERY));
         assert!(f.should_ask(&at("a"), "", t + FAILED_AGAIN, EVERY));
         assert!(f.should_ask(&at("b"), "", t + LOOK_EVERY, EVERY));
+    }
+
+    fn dropped(line: &str) -> Line {
+        Line::Failed {
+            commit: None,
+            why: "building the system on the machine's builders failed (exit status: 1), and \
+                  CPU pressure here is 32.7%, not below 15%, so they wait"
+                .to_owned(),
+            lines: vec!["copying 1 paths...".to_owned(), line.to_owned()],
+        }
+    }
+
+    #[test]
+    fn heads_whose_builders_went_away_are_asked_for_again_soon_a_few_times() {
+        let mut f = Follower::default();
+        let mut t = Instant::now();
+        let lost = dropped("error: Nix daemon disconnected unexpectedly (maybe it crashed?)");
+        for _ in 0..DROPPED_TRIES {
+            f.asked(at("a"), &lost, "", t);
+            assert!(!f.should_ask(&at("a"), "", t + LOOK_EVERY, EVERY));
+            t += DROPPED_AGAIN;
+            assert!(f.should_ask(&at("a"), "", t, EVERY));
+        }
+        // Past its tries, it waits like any failure.
+        f.asked(at("a"), &lost, "", t);
+        assert!(!f.should_ask(&at("a"), "", t + DROPPED_AGAIN, EVERY));
+        assert!(f.should_ask(&at("a"), "", t + FAILED_AGAIN, EVERY));
+    }
+
+    #[test]
+    fn a_piece_that_fails_on_a_builder_isnt_asked_for_again_soon() {
+        let mut f = Follower::default();
+        let t = Instant::now();
+        let broke =
+            dropped("error: Cannot build '/nix/store/x-a.drv'. builder failed with exit code 1.");
+        f.asked(at("a"), &broke, "", t);
+        assert!(!f.should_ask(&at("a"), "", t + DROPPED_AGAIN, EVERY));
+    }
+
+    #[test]
+    fn what_says_its_builders_went_away() {
+        let none = "Failed to find a machine for remote build!".to_owned();
+        assert!(builders_dropped(
+            "building the system on the machine's builders failed",
+            std::slice::from_ref(&none)
+        ));
+        assert!(!builders_dropped("it didn't evaluate", &[none]));
+        assert!(builders_dropped(
+            "building the big pieces on the machine's builders said nothing for 4 minutes, so it \
+             was stopped, which never build here",
+            &[]
+        ));
     }
 
     #[test]

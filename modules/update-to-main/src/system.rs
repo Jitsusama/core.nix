@@ -16,6 +16,13 @@ use std::time::{Duration, Instant};
 /// How long between tries of the health commands.
 const HEALTH_EVERY: Duration = Duration::from_secs(2);
 
+/// How long the machine may be behind main before what its builders
+/// didn't build is built here whatever the CPU pressure, still small. On 8
+/// November a switch Joel waited on failed twice when the builders went
+/// away, and each time the pieces left waited on pressure that sessions'
+/// work kept over 30%, though they were small enough to build in minutes.
+const OVERDUE: Duration = Duration::from_mins(20);
+
 /// What a switch did.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Switched {
@@ -272,7 +279,8 @@ fn build_kept(config: &Config, kept: &[String]) -> Result<(), Failure> {
 }
 
 /// Builds pieces their builders didn't here, small, when `here` lets the
-/// machine and only while it's quiet; otherwise gives why they weren't.
+/// machine and only while it's quiet or once it has been behind main for
+/// `OVERDUE`; otherwise gives why they weren't.
 fn here(
     config: &Config,
     pieces: &[String],
@@ -283,7 +291,16 @@ fn here(
     let Some(here) = &config.here else {
         return Err(apart);
     };
+    let overdue = behind_for(config).filter(|behind| *behind >= OVERDUE);
+    if let Some(behind) = overdue {
+        eprintln!(
+            "the machine has been behind main for {} minutes, so the rest builds here \
+             whatever the CPU pressure",
+            behind.as_secs() / 60
+        );
+    }
     let busy = match cpu_pressure(&config.cpu_pressure) {
+        _ if overdue.is_some() => None,
         Some(waited) if waited < here.busy_at => None,
         Some(waited) => Some(format!(
             "CPU pressure here is {waited:.1}%, not below {}%",
@@ -305,6 +322,16 @@ fn here(
     local.args(["--max-jobs", &here.max_jobs.to_string()]);
     local.args(["--cores", &here.cores.to_string()]);
     told(config, local, what, pieces)
+}
+
+/// How long the machine has been behind main, from when an update first
+/// built a main it doesn't run.
+fn behind_for(config: &Config) -> Option<Duration> {
+    fs::metadata(config.behind_file())
+        .and_then(|meta| meta.modified())
+        .ok()?
+        .elapsed()
+        .ok()
 }
 
 /// The share of the last minute that some runnable task waited for a CPU,
