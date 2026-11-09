@@ -5183,6 +5183,10 @@
         "over": "over {share}",
         "cycle": "{frames} frames \u00b7 {ms} ms",
         "chosen": "chosen",
+        "the-default": "the default",
+        "sent-to": "{program} plays on {device}",
+        "sent-from": "{program} records from {device}",
+        "not-sent": "{program} didn't move to {device}",
         "muted": "muted",
         "none": "none",
         "on": "on",
@@ -5553,6 +5557,19 @@
       "in": "sound",
       "name": "Use {port}",
       "verb": "use"
+    },
+    {
+      "id": "verb:sound-sent",
+      "command": "setlocal",
+      "argument": "output={value}",
+      "in": "program:sound",
+      "name": "{device}",
+      "verb": "set",
+      "states": {
+        "input": {
+          "argument": "input={value}"
+        }
+      }
     },
     {
       "id": "keyboard",

@@ -264,6 +264,7 @@ let
     "launcher/Links.js"
     "launcher/Nearby.js"
     "launcher/Sounds.js"
+    "launcher/Targets.js"
     "launcher/Plate.js"
     "launcher/Screens.js"
     "launcher/Backlight.js"
@@ -1513,8 +1514,10 @@ in
         weight = 0.9;
         # What reads a card's ports, what moves one onto another, and what
         # reads how a device keeps time while its drawer is out, a line at
-        # a time through stdbuf.
+        # a time through stdbuf, and what hears and sets where each
+        # program's streams are sent.
         pwDump = lib.getExe' pkgs.pipewire "pw-dump";
+        pwMetadata = lib.getExe' pkgs.pipewire "pw-metadata";
         pwTop = lib.getExe' pkgs.pipewire "pw-top";
         stdbuf = lib.getExe' pkgs.coreutils "stdbuf";
         wpctl = lib.getExe' pkgs.wireplumber "wpctl";
