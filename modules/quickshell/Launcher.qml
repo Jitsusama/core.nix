@@ -939,6 +939,22 @@ Scope {
     // for the walk too.
     property bool cataloguing: false
 
+    // The rows a terminal's `launcher show` last walked through (`walked`)
+    // and listed (`listed`), held a few seconds after it asks, so a
+    // provider that reads only while its rows are seen, as Machine reads
+    // its daemon and its disks, reads for a terminal with the launcher
+    // closed, and the terminal's next ask has the figures (Y2YBTS's
+    // review of #2404). Let go once nothing has asked for a while, so a
+    // daemon read for one show isn't read for ever.
+    property var terminalSees: ({ walked: [], listed: [] })
+
+    Timer {
+        id: terminalSeeing
+
+        interval: 3000
+        onTriggered: root.terminalSees = { walked: [], listed: [] }
+    }
+
     function catalogue() {
         cataloguing = true;
         try {
@@ -1247,17 +1263,20 @@ Scope {
     // asked starting with a step's mark, since qs takes no empty argument,
     // so home is that mark alone and an empty step is no step.
     // `everyDrawer`, for `launcher show --drawers`, gives each row's
-    // drawer too, which is only built where it's asked for.
-    function shownToTerminal(path, everyDrawer) {
+    // drawer too, which is only built where it's asked for. `namesOnly`,
+    // for completion, leaves terminalSees as it was, so a Tab starts no
+    // daemon reading for figures it never shows (design.md: nothing
+    // polled that needn't be).
+    function shownToTerminal(path, everyDrawer, namesOnly) {
         cataloguing = true;
         try {
-            return shownWalked(path, everyDrawer === true);
+            return shownWalked(path, everyDrawer === true, namesOnly === true);
         } finally {
             cataloguing = false;
         }
     }
 
-    function shownWalked(path, everyDrawer) {
+    function shownWalked(path, everyDrawer, namesOnly) {
         freshen();
         const walked = walkedByName(String(path ?? "").split(catalogueStep));
         if (walked.missing !== undefined)
@@ -1285,7 +1304,17 @@ Scope {
         const isAct = one => String(one.key ?? "").startsWith("return:")
             || verbs.includes(steadyId(one));
         const sayable = rows.filter(one => !!one && !one.gone && (one.name ?? "") !== "");
+        if (!namesOnly) {
+            terminalSees = { walked: trail, listed: sayable };
+            terminalSeeing.restart();
+        }
+        const seen = trail.concat(sayable);
         return {
+            // Whether a provider of a row shown is still reading it for this
+            // look, so the terminal asks again for its figures; another's
+            // reading never holds it up.
+            reading: sources.some(source => source.stillReading === true
+                && seen.some(one => one?.live === source)),
             in: trail.map(one => one.name),
             path: ids,
             row: last === null ? null : entry(last, ids.slice(0, -1), true),
@@ -1359,7 +1388,10 @@ Scope {
             return doneWalked(path.length > 0 ? walkedById(path, steps) : walkedByName(steps),
                 said.words ?? "", said.sure === true);
         } catch (error) {
-            return { error: String(error) };
+            // The shell's own failure, said in its log in the engine's words;
+            // the terminal says it in words.json's (Y2YBTS's review of #2421).
+            console.warn(`launcher: a terminal's do failed: ${error}`);
+            return { failed: true };
         } finally {
             cataloguing = false;
         }
@@ -2163,12 +2195,10 @@ Scope {
         return typeof asked === "string" ? asked : "";
     }
 
-    // What an act asked from its own row is an act of, for its ask: the
-    // thing holding it, as Disconnect's is the Keychron, but never a place,
-    // so Power's Reboot asks of itself rather than "Reboot Power" (VKCF3Z,
-    // 2026-11-08).
+    // What an act asked from its own row is an act of, for its ask
+    // (Confirm.actOf): the thing holding it, never a place.
     function askedOfHolder(holder, act) {
-        return holder && Catalogue.kindOf(holder) !== "place" ? holder : act;
+        return Confirm.actOf(holder, act, holder ? Catalogue.kindOf(holder) : "");
     }
 
     // The command a row is named by (Catalogue.js's named), from its words
@@ -6087,19 +6117,27 @@ Scope {
         // What a place or a row shows, its drawer and the rows inside it,
         // for `launcher show` in a terminal, as JSON: the path's steps
         // joined by a "\u203a", each a row's name or its steady id, and
-        // none for home.
-        // Does what a terminal names, as launcher do asks it.
-        function doing(asked: string): string {
-            return JSON.stringify(root.doneFromTerminal(asked));
+        // none for home. Its `reading` says a provider of a row shown is
+        // still reading it, as `--json` prints it, and the program asks
+        // again while it's true.
+        function show(path: string): string {
+            return JSON.stringify(root.shownToTerminal(path, false, false));
         }
 
-        function show(path: string): string {
-            return JSON.stringify(root.shownToTerminal(path, false));
+        // The same for completion, which wants names alone, so it's read
+        // for nothing (shownToTerminal's namesOnly).
+        function names(path: string): string {
+            return JSON.stringify(root.shownToTerminal(path, false, true));
         }
 
         // The same, with each row's drawer, for `launcher show --drawers`.
         function drawers(path: string): string {
-            return JSON.stringify(root.shownToTerminal(path, true));
+            return JSON.stringify(root.shownToTerminal(path, true, false));
+        }
+
+        // Does what a terminal names, as launcher do asks it.
+        function doing(asked: string): string {
+            return JSON.stringify(root.doneFromTerminal(asked));
         }
 
         // Where every word on the card is drawn, for the check that nothing

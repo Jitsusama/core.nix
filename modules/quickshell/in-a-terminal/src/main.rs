@@ -181,9 +181,10 @@ fn main() -> ExitCode {
                 fail(&errors(), &words.blank_step());
                 return ExitCode::from(MISUSED);
             }
-            done(&steps, &said, yes, &words)
+            done(&qs(), &steps, &said, yes, &words)
         }
-        Asked::Names { steps } => match ask(&steps, false, &words) {
+        // Completion wants only names, so it doesn't wait for figures.
+        Asked::Names { steps } => match ask(&steps, Ask::Names, &words) {
             Ok(shown) => {
                 print!("{}", names::for_zsh(&shown));
                 ExitCode::SUCCESS
@@ -194,7 +195,7 @@ fn main() -> ExitCode {
             steps,
             json,
             drawers,
-        } => match ask(&steps, drawers, &words) {
+        } => match ask(&steps, Ask::Settled { drawers }, &words) {
             Ok(shown) => {
                 let out = if json {
                     format!(
@@ -221,12 +222,11 @@ fn main() -> ExitCode {
 /// start. Once asked, it's the row asked about that's done, by the
 /// steady ids the shell gave with its question, so rows moving between
 /// the question and the y can't put another in its place.
-fn done(steps: &[String], said: &str, yes: bool, words: &Words) -> ExitCode {
-    let qs = env::var("LAUNCHER_QS").unwrap_or_else(|_| "qs".to_string());
+fn done(qs: &str, steps: &[String], said: &str, yes: bool, words: &Words) -> ExitCode {
     let mut sure = yes;
     let mut path = Vec::new();
     loop {
-        let answer = match heard(asking::doing(&qs, steps, &path, said, sure), words) {
+        let answer = match heard(asking::doing(qs, steps, &path, said, sure), words) {
             Ok(answer) => answer,
             Err(code) => return code,
         };
@@ -259,8 +259,9 @@ fn done(steps: &[String], said: &str, yes: bool, words: &Words) -> ExitCode {
             fail(&errors(), &words.takes(name, &ask));
             return ExitCode::from(MISUSED);
         }
-        if let Some(why) = text("error") {
-            fail(&errors(), &why);
+        if answer.get("failed").and_then(Value::as_bool) == Some(true) {
+            let name = steps.last().map_or("", String::as_str);
+            fail(&errors(), &words.failed(name));
             return ExitCode::from(SHELL_SILENT);
         }
         return ExitCode::SUCCESS;
@@ -292,11 +293,28 @@ fn errors() -> Look {
     Look::read(env::var_os("LAUNCHER_LOOK").as_deref(), Ink::for_stderr())
 }
 
+/// How a place is asked: for its names alone, or settled, with every
+/// row's drawer where `drawers` says.
+#[derive(Clone, Copy)]
+enum Ask {
+    Names,
+    Settled { drawers: bool },
+}
+
 /// What the shell shows at the steps, or how to exit, said on stderr,
 /// where a step names nothing or the shell doesn't answer.
-fn ask(steps: &[String], drawers: bool, words: &Words) -> Result<Value, ExitCode> {
-    let qs = env::var("LAUNCHER_QS").unwrap_or_else(|_| "qs".to_string());
-    heard(asking::show(&qs, steps, drawers), words)
+fn ask(steps: &[String], how: Ask, words: &Words) -> Result<Value, ExitCode> {
+    let qs = qs();
+    let answer = match how {
+        Ask::Names => asking::names(&qs, steps),
+        Ask::Settled { drawers } => asking::settled(&qs, steps, drawers),
+    };
+    heard(answer, words)
+}
+
+/// The qs that asks the shell: Quickshell's, or a stand-in's in a check.
+fn qs() -> String {
+    env::var("LAUNCHER_QS").unwrap_or_else(|_| "qs".to_string())
 }
 
 /// What the shell answered, or how to exit, said on stderr, where a step
@@ -343,6 +361,22 @@ mod tests {
 
     fn words(of: &[&str]) -> Vec<String> {
         of.iter().map(ToString::to_string).collect()
+    }
+
+    #[test]
+    fn a_do_the_shell_failed_at_exits_as_the_shell_silent() {
+        let said = Words::from_value(&serde_json::json!({"terminal": {
+            "failed": "{name} not done \u{b7} the shell failed"}}));
+        assert_eq!(
+            done(
+                &asking::stand_in::qs("failed"),
+                &words(&["Reboot"]),
+                "",
+                true,
+                &said
+            ),
+            ExitCode::from(SHELL_SILENT)
+        );
     }
 
     #[test]

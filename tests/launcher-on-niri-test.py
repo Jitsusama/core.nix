@@ -30,6 +30,12 @@ if TYPE_CHECKING:
 
     from launcher_on_niri import Json, Shell
 
+# How long a place asked cold may take to be read: a daemon's first answer, well under one.
+READ = timedelta(seconds=5)
+# How long a terminal's show counts as seeing its rows (Launcher.qml's terminalSeeing), and a
+# second past it. Nothing says the window closed, so the case waits it out.
+SEEING_ENDS = timedelta(seconds=4)
+
 
 @pytest.fixture(scope="module")
 def shell() -> Iterator[Shell]:
@@ -89,6 +95,49 @@ def answer_is_whole(shell: Shell, answer: str) -> None:
     words = json.loads(shell.as_account(shell.ipc("laidOut")))["rows"][0]["words"]
     name = next(word for word in words if re.sub("<[^>]*>", "", word["text"]) == answer)
     assert not name["cut"], words
+
+
+def shown_to_terminal(shell: Shell, *steps: str) -> Json:
+    """Give what `launcher show` is answered at these steps, asked as the program asks."""
+    # Each step after the mark, since qs takes no empty argument, and after `--`, since
+    # `show` is also qs ipc's own command otherwise.
+    path = shlex.quote("".join(f"\u203a{step}" for step in steps) or "\u203a")
+    asked = f"qs -p {shell.folder} ipc call -- launcher show {path}"
+    return cast("Json", json.loads(shell.as_account(asked)))
+
+
+def test_a_place_asked_cold_from_a_terminal_is_read_for_it(shell: Shell) -> None:
+    """A place nothing has shown yet is read for a terminal, with the launcher closed.
+
+    Machine asks its daemon only while its rows are seen (launcher/Machine.qml's shown), and
+    a terminal's walk counts as seeing them for a few seconds (Launcher.qml's terminalSees),
+    so the answer says `reading` until the daemon's first answer comes and the next ask has
+    the figures. It runs first, before anything opens Machine, so the first ask meets the
+    placeholder. Once the window ends, Machine stops watching, so a second cold ask is read
+    afresh rather than said from what the first left, which may be hours old.
+    """
+
+    def processor(answer: Json) -> object:
+        return next(row.get("side") for row in answer["rows"] if row["name"] == "Processor")
+
+    def read_after(first: Json) -> Json:
+        answer = first
+        deadline = time.monotonic() + READ.total_seconds()
+        while answer["reading"] and time.monotonic() < deadline:
+            time.sleep(launcher_on_niri.POLL)
+            answer = shown_to_terminal(shell, "machine")
+        assert not answer["reading"], answer
+        return answer
+
+    first = shown_to_terminal(shell, "machine")
+    assert first["reading"], first
+    assert processor(first) == "\u2026", first["rows"]
+    assert processor(read_after(first)) not in {None, "\u2026"}
+    time.sleep(SEEING_ENDS.total_seconds())
+    again = shown_to_terminal(shell, "machine")
+    assert again["reading"], "the window never ended, or the watch kept its first answer"
+    assert processor(read_after(again)) not in {None, "\u2026"}
+    assert not shell.showing()["open"]
 
 
 def test_units_zones_colours_and_whats_offline_are_answered(shell: Shell) -> None:
@@ -1010,11 +1059,7 @@ def test_a_terminal_is_shown_a_place_by_its_names_and_a_miss_the_nearest(shell: 
     """
 
     def shown(*steps: str) -> Json:
-        # Asked as the program asks: each step after the mark, since qs takes no empty
-        # argument, and after `--`, since `show` is also qs ipc's own command otherwise.
-        path = shlex.quote("".join(f"\u203a{step}" for step in steps) or "\u203a")
-        asked = f"qs -p {shell.folder} ipc call -- launcher show {path}"
-        return cast("Json", json.loads(shell.as_account(asked)))
+        return shown_to_terminal(shell, *steps)
 
     home = shown()
     names = [row["name"] for row in home["rows"]]
@@ -1163,6 +1208,7 @@ def test_a_terminal_does_an_act_unasked_and_an_ending_one_once_sure(shell: Shell
         until(lambda: "Plover Notes" in windows_listed(), "Plover Notes in Windows")
         floating = done("desktop", "windows", "plover notes", "float")
         assert floating["asks"] == "Float Plover Notes? (y/n)", floating
+        assert (listed("Plover Notes") or {}).get("is_floating") is False, "Float was done"
         closing = done("desktop", "windows", "plover notes", "close")
         assert closing["asks"] == "Close Plover Notes? (y/n)", closing
         assert listed("Plover Notes") is not None, "Close was done before it was sure"

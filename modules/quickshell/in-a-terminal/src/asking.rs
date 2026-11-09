@@ -1,6 +1,6 @@
 //! Asking the running shell what the launcher shows, and to do what it
-//! offers, through Quickshell's `qs ipc call launcher show` and `doing`, as
-//! pi-ask's tool asks it for the catalogue.
+//! offers, through Quickshell's `qs ipc call launcher show`, `names` and
+//! `doing`, as pi-ask's tool asks it for the catalogue.
 
 use std::io::Read;
 use std::process::{Command, Stdio};
@@ -35,11 +35,46 @@ pub enum Answer {
     },
 }
 
+/// How long what a place shows may still be reading once it's first asked:
+/// a provider asks its daemon only when it's seen, as Machine does, so a
+/// place asked cold is read only from the terminal's first ask on.
+const SETTLING: Duration = Duration::from_millis(1500);
+
+/// How long between asking again while it settles.
+const ASK_AGAIN: Duration = Duration::from_millis(150);
+
+/// Asks as `show` does, again while the shell says what it shows is still
+/// being read (`reading`, a provider's daemon not yet answered), until it's
+/// read or `SETTLING` has passed, when it says what it has. A fact that's
+/// simply unknown never waits, since only the shell knows whether it's coming.
+pub fn settled(qs: &str, steps: &[String], drawers: bool) -> Result<Answer, String> {
+    let began = Instant::now();
+    loop {
+        let answer = show(qs, steps, drawers)?;
+        let reading = matches!(&answer, Answer::Shown(shown) if still_reading(shown));
+        if !reading || began.elapsed() >= SETTLING {
+            return Ok(answer);
+        }
+        thread::sleep(ASK_AGAIN);
+    }
+}
+
+/// Whether the shell said what it shows is still being read.
+pub fn still_reading(shown: &Value) -> bool {
+    shown.get("reading").and_then(Value::as_bool) == Some(true)
+}
+
 /// Asks the shell through `qs` what the steps show, with each row's drawer
 /// where `drawers` asks, since the shell builds them only then. An error is
 /// the shell not answering, with what qs said where it said anything.
 pub fn show(qs: &str, steps: &[String], drawers: bool) -> Result<Answer, String> {
     call(qs, if drawers { "drawers" } else { "show" }, &path(steps))
+}
+
+/// Asks the shell what the steps hold for their names alone, as completion
+/// wants them, so nothing is read for figures a Tab never shows.
+pub fn names(qs: &str, steps: &[String]) -> Result<Answer, String> {
+    call(qs, "names", &path(steps))
 }
 
 /// Asks the shell through `qs` to do what the steps name, with the words
@@ -182,6 +217,45 @@ fn plain(said: &str) -> String {
 mod tests {
     use super::*;
 
+    /// What a stand-in's process takes to start and answer, at most.
+    const LEEWAY: Duration = Duration::from_millis(500);
+
+    #[test]
+    fn a_place_still_reading_is_asked_again_only_until_its_time_is_up() {
+        let began = Instant::now();
+        let answer = settled(&stand_in::qs("reading"), &[], false).expect("the stand-in answers");
+        let took = began.elapsed();
+        assert!(matches!(&answer, Answer::Shown(shown) if still_reading(shown)));
+        assert!(took >= SETTLING, "it gave up after {took:?}");
+        assert!(
+            took < SETTLING + ASK_AGAIN + LEEWAY,
+            "it asked for {took:?}"
+        );
+    }
+
+    #[test]
+    fn a_place_read_is_said_from_its_first_answer() {
+        let began = Instant::now();
+        let answer = settled(&stand_in::qs("read"), &[], false).expect("the stand-in answers");
+        assert!(matches!(&answer, Answer::Shown(shown) if !still_reading(shown)));
+        assert!(
+            began.elapsed() < SETTLING,
+            "it waited {:?}",
+            began.elapsed()
+        );
+    }
+
+    #[test]
+    fn a_place_is_still_reading_only_where_the_shell_says_so() {
+        let read = serde_json::json!({"reading": false,
+            "rows": [{"name": "Disk", "side": null}]});
+        assert!(!still_reading(&read));
+        assert!(!still_reading(&serde_json::json!({"rows": []})));
+        assert!(still_reading(
+            &serde_json::json!({"reading": true, "rows": []})
+        ));
+    }
+
     #[test]
     fn home_is_asked_as_the_mark_alone_and_a_place_after_it() {
         assert_eq!(path(&[]), "\u{203a}");
@@ -246,5 +320,67 @@ mod tests {
             plain("\u{1b}[31mERROR\u{1b}[0m:  no\n running"),
             "ERROR: no running"
         );
+    }
+}
+
+/// Stand-ins for qs, each a script giving one answer whatever it's asked,
+/// so what the program does with an answer is tested without a shell.
+#[cfg(test)]
+pub mod stand_in {
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::{Path, PathBuf};
+    use std::sync::OnceLock;
+    use std::{env, fs, process};
+
+    /// Each stand-in's name and the answer it prints.
+    const ANSWERS: [(&str, &str); 3] = [
+        (
+            "reading",
+            r#"{"reading":true,"in":[],"path":[],"row":null,"rows":[]}"#,
+        ),
+        (
+            "read",
+            r#"{"reading":false,"in":[],"path":[],"row":null,"rows":[]}"#,
+        ),
+        ("failed", r#"{"failed":true}"#),
+    ];
+
+    /// The stand-in giving the answer `name` names, to run as qs.
+    pub fn qs(name: &str) -> String {
+        written().join(name).to_string_lossy().into_owned()
+    }
+
+    /// Where the stand-ins are, every one written and closed before the
+    /// first runs: a script still open for writing in one test while
+    /// another starts a process can't be run (ETXTBSY).
+    fn written() -> &'static Path {
+        static FOLDER: OnceLock<PathBuf> = OnceLock::new();
+        FOLDER.get_or_init(|| {
+            let folder = env::temp_dir().join(format!("launcher-qs-{}", process::id()));
+            fs::create_dir_all(&folder).expect("a folder for the stand-ins");
+            let shell = shell();
+            for (name, answer) in ANSWERS {
+                let script = folder.join(name);
+                fs::write(&script, format!("#!{shell}\necho '{answer}'\n"))
+                    .expect("a stand-in written");
+                fs::set_permissions(&script, fs::Permissions::from_mode(0o755))
+                    .expect("a stand-in made runnable");
+            }
+            folder
+        })
+    }
+
+    /// The shell running the tests, as the build sandbox has no /bin/sh.
+    fn shell() -> String {
+        env::var("SHELL")
+            .ok()
+            .filter(|shell| Path::new(shell).is_file())
+            .or_else(|| {
+                env::split_paths(&env::var_os("PATH")?)
+                    .map(|folder| folder.join("sh"))
+                    .find(|sh| sh.is_file())
+                    .map(|sh| sh.to_string_lossy().into_owned())
+            })
+            .expect("a shell to run the stand-ins")
     }
 }

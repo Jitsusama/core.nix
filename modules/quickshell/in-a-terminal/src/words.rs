@@ -88,6 +88,12 @@ impl Words {
         self.word("silent", &[])
     }
 
+    /// The shell failing at the act it was asked, as a refusal naming the
+    /// act and where its log says why (VKCF3Z, 2026-11-08).
+    pub fn failed(&self, name: &str) -> String {
+        self.word("failed", &[("name", name)])
+    }
+
     /// An argument it doesn't take.
     pub fn unknown(&self, what: &str) -> String {
         self.word("unknown", &[("what", what)])
@@ -98,8 +104,13 @@ impl Words {
         self.word("unsure", &[("question", question)])
     }
 
-    /// An act that takes words, given none, and what it asks for.
+    /// An act that takes words, given none, and what it asks for; one
+    /// that asks nothing in words of its own is refused without it, never
+    /// with an empty item between two dots (VKCF3Z, 2026-11-08).
     pub fn takes(&self, name: &str, ask: &str) -> String {
+        if ask.trim().is_empty() {
+            return self.word("takesWords", &[("name", name)]);
+        }
         self.word("takes", &[("name", name), ("ask", ask)])
     }
 
@@ -152,7 +163,10 @@ mod tests {
                 r#"{"terminal":{"missing":"nothing called {step}",
                     "missingIn":"nothing called {step} in {place}",
                     "meant":"did you mean {names}?","or":"or","apart":"\u00b7",
-                    "silent":"the shell isn't answering","usage":"launcher show"}}"#,
+                    "silent":"the shell isn't answering","usage":"launcher show",
+                    "takes":"{name} takes words \u00b7 {ask} \u00b7 give them after --",
+                    "takesWords":"{name} not done \u00b7 give its words after --",
+                    "failed":"{name} not done \u00b7 the shell failed \u00b7 its log says why"}}"#,
             )
             .expect("the words parse"),
         )
@@ -160,6 +174,26 @@ mod tests {
 
     fn names(of: &[&str]) -> Vec<String> {
         of.iter().map(ToString::to_string).collect()
+    }
+
+    #[test]
+    fn an_act_that_asks_nothing_of_its_own_is_said_without_it() {
+        assert_eq!(
+            words().takes("Talk", "what to say?"),
+            "Talk takes words \u{b7} what to say? \u{b7} give them after --"
+        );
+        assert_eq!(
+            words().takes("Talk", ""),
+            "Talk not done \u{b7} give its words after --"
+        );
+    }
+
+    #[test]
+    fn a_failure_is_a_refusal_naming_the_act_and_its_log() {
+        assert_eq!(
+            words().failed("Reboot"),
+            "Reboot not done \u{b7} the shell failed \u{b7} its log says why"
+        );
     }
 
     #[test]
