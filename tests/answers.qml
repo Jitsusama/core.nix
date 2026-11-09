@@ -583,6 +583,9 @@ QtObject {
                 unusable: "set aside", aside: "set aside: {why}",
                 "standing:chosen": "chosen", "standing:tooVariable": "set aside: too variable",
                 "why:tooFewSamples": "too few samples yet",
+                "why:chosen": "the clock is kept by it",
+                "why:combined": "combined with the chosen one",
+                silent: "not answering", unsampled: "no sample yet",
                 "kind:reference": "reference clock", interleaved: "interleaved",
                 basic: "basic", authenticated: "authenticated",
                 unauthenticated: "unauthenticated", exchange: "{mode} \u00b7 {authentication}",
@@ -698,6 +701,27 @@ QtObject {
                 "set aside: too few samples yet"],
             ["a server too variable", Keeping.standing({ standing: "tooVariable", reach: 255 },
                 KeepingCases.servers), "set aside: too variable"],
+            // Why is said only where the note doesn't say it (VKCF3Z, 2026-11-08).
+            ["a chosen server's why, which its note says", Keeping.whyUnsaid({ standing: "chosen",
+                reach: 255, chosen: { why: "chosen" } }, KeepingCases.servers), ""],
+            ["a server set aside's why, which its note says", Keeping.whyUnsaid({
+                standing: "unusable", reach: 3, chosen: { why: "tooFewSamples" } },
+                KeepingCases.servers), ""],
+            ["an agreeing server's why, which its note doesn't say", Keeping.whyUnsaid({
+                standing: "combined", reach: 255, chosen: { why: "combined" } },
+                KeepingCases.servers), "combined with the chosen one"],
+            // A server's side is never empty, and its note gives way where
+            // the side says it's out of reach.
+            ["a server's side, sampled", Keeping.side({ lastSample: 12, offset: 0.000012,
+                reach: 255 }, KeepingCases.servers), "+12.0 \u00b5s"],
+            ["a server's side, silent", Keeping.side({ lastSample: null, reach: 0 },
+                KeepingCases.servers), "not answering"],
+            ["a server's side, answering with no sample yet", Keeping.side({ lastSample: null,
+                reach: 1 }, KeepingCases.servers), "no sample yet"],
+            ["a silent server's note", Keeping.note({ standing: "unusable", lastSample: null,
+                reach: 0 }, KeepingCases.servers), ""],
+            ["a server once heard, now out of reach", Keeping.note({ standing: "unusable",
+                lastSample: 900, reach: 0 }, KeepingCases.servers), "out of reach"],
             // The screen's Warmth, from what the backlight daemon says: what
             // holds it, by night, by day, waiting for a place, or the room;
             // and its figures, the room's white where a sensor sees it, then

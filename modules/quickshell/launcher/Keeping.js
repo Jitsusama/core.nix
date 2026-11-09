@@ -10,6 +10,8 @@
 .import "Numbers.js" as Numbers
 
 const MINUS = "\u2212";
+// The standings whose own words say why chronyd took the server or not.
+const STANDINGS_SAYING_WHY = ["chosen", "tooVariable"];
 
 const NANOSECONDS = 1e9;
 const MICROSECONDS = 1e6;
@@ -163,6 +165,42 @@ function standing(server, said) {
 // Why chronyd chose a server or set it aside, in a sentence's words.
 function why(server, said) {
     return server.chosen ? (said[`why:${server.chosen.why}`] ?? "") : "";
+}
+
+// Whether a server's standing already says why chronyd chose it or set it
+// aside: chosen, too variable, or set aside with its reason after it.
+function standingSaysWhy(server) {
+    if (server.standing === "unusable") {
+        return answered(server.reach) > 0;
+    }
+    return STANDINGS_SAYING_WHY.includes(server.standing);
+}
+
+// Why, as a server's drawer says it: only where its note doesn't, so no
+// fact repeats the note (VKCF3Z, 2026-11-08: "the server drawer's Why goes
+// when the side says chosen").
+function whyUnsaid(server, said) {
+    return standingSaysWhy(server) ? "" : why(server, said);
+}
+
+// Whether a server has answered at all, so has an offset to say.
+function sampled(server) {
+    return server.lastSample !== null && server.lastSample !== undefined;
+}
+
+// A server's side, never empty (VKCF3Z, 2026-11-08): its last offset, or
+// that it isn't answering, or that no sample's in yet from one that is.
+function side(server, said) {
+    if (sampled(server)) {
+        return seconds(server.offset, true, said.point);
+    }
+    return answered(server.reach) === 0 ? said.silent : said.unsampled;
+}
+
+// A server's note: where it stands, unless its side already says it's out
+// of reach.
+function note(server, said) {
+    return !sampled(server) && answered(server.reach) === 0 ? "" : standing(server, said);
 }
 
 // A figure as a plate says it, its note after its side as an item of its
