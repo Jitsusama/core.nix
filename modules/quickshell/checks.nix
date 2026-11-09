@@ -2416,7 +2416,11 @@ onLinux {
         property var waiting: []
         property bool gathered: false
         property var marked: []
-        function pictureOf(notice) { return ""; }
+        // The newest still open, its picture held in memory as a sender's
+        // image data is; the oldest's kept as a file.
+        function pictureOf(notice) {
+          return ({ 3: "image://qsimage/3/0", 1: "file:///kept/oldest.png" })[notice.id] ?? "";
+        }
         function mark(id, read) { marked = marked.concat([id]); }
         function seen() {}
         // Who signs a notice, as its card says it: here by the name it
