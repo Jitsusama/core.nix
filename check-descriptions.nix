@@ -1312,6 +1312,14 @@
     pi's settings take core's at a switch and keep pi's own keys; a file holding them isn't
     rewritten, a missing one is made, and one not JSON is refused untouched
   '';
+  pi-carry-is-on-the-path = ''
+    pi-carry, the harness's program mycelium carry runs to carry a quest to another machine and put it
+    back, is on the path of every account with pi, run by the store's node
+  '';
+  pi-keeps-its-folder-private = ''
+    pi's own folder and its session logs' folder are the account's alone on every machine with pi, so a
+    token a tool printed into a log isn't readable by another account
+  '';
   pi-loads-its-packages = ''
     pi's package list is the harness and neovim.pi on every machine, a package a machine adds comes
     after them rather than in their place, and pi is given each git package as its current link

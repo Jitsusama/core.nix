@@ -10,6 +10,29 @@
   ...
 }:
 {
+  # pi's folder, its session logs among what it holds, is the account's
+  # alone, set as the account is switched to, on every machine with pi.
+  pi-keeps-its-folder-private =
+    let
+      home = account workstation;
+      mac = account macWorkstation;
+      keeps = account: account.home.activation.piKeepsItsFolderPrivate.data or "";
+      closes = script: lib.hasInfix "chmod 0700" script && lib.hasInfix "/.pi/agent/sessions" script;
+    in
+    holds "pi-keeps-its-folder-private"
+      "pi's folder or its session logs' folder is left readable by other accounts on a machine with pi."
+      (closes (keeps home) && closes (keeps mac));
+
+  # pi-carry is on the account's path on every machine with pi, running the
+  # harness's own program with the store's node, for mycelium carry.
+  pi-carry-is-on-the-path =
+    let
+      carries = home: lib.any (package: lib.getName package == "pi-carry") home.home.packages;
+    in
+    holds "pi-carry-is-on-the-path"
+      "pi-carry, which mycelium carry runs, isn't on the path of an account with pi."
+      (carries (account workstation) && carries (account macWorkstation));
+
   # The harness's measure runs each morning in the background, catching up
   # on a morning slept through, with the store's node, and only where the
   # harness is installed; a Mac, with no systemd, gets none.
