@@ -25,7 +25,7 @@ import launcher_on_niri
 import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from launcher_on_niri import Json, Shell
 
@@ -1077,6 +1077,49 @@ def test_a_terminal_is_asked_before_an_ending_act_and_a_place_opens(shell: Shell
     assert machine == {"done": True, "opened": True, "in": ["Machine"]}, machine
     assert shell.showing()["open"]
     shell.close_launcher()
+
+
+def test_a_terminal_does_an_act_unasked_and_an_ending_one_once_sure(shell: Shell) -> None:
+    """`launcher do` does an act that ends nothing at once, and one that ends only once sure.
+
+    A window's Float ends nothing, so it's done unasked; its Close ends the window, so it's
+    asked of the window first and done only by the sure ask, which walks the steady ids the
+    question gave (`path`) rather than the names again, so a row moved since is never closed
+    in its place (Y2YBTS's review of #2421).
+    """
+
+    def done(*steps: str, path: list[str] | None = None, sure: bool = False) -> Json:
+        said = {"steps": steps, "path": path or [], "words": "", "sure": sure}
+        asked = shlex.quote(json.dumps(said))
+        answer = shell.as_account(f"qs -p {shell.folder} ipc call -- launcher doing {asked}")
+        return cast("Json", json.loads(answer))
+
+    def listed() -> Json | None:
+        """Give the window as niri lists it, or None once it's gone."""
+        titled = [one for one in shell.windows() if one["title"] == "Kestrel Notes"]
+        return titled[0] if titled else None
+
+    def until(test: Callable[[Json | None], bool], what: str) -> None:
+        deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+        while not test(listed()):
+            assert time.monotonic() < deadline, f"the window was never {what}: {listed()}"
+            time.sleep(launcher_on_niri.POLL)
+
+    window = shell.opened("Kestrel Notes")
+    steps = ("desktop", "windows", "kestrel notes")
+    try:
+        floated = done(*steps, "float")
+        assert floated == {"done": True, "in": ["Desktop", "Windows", "Kestrel Notes", "Float"]}
+        until(lambda one: one is not None and one["is_floating"], "floated")
+        closing = done(*steps, "close")
+        assert closing["asks"] == "Close Kestrel Notes? (y/n)", closing
+        assert listed() is not None, "Close was done before it was sure"
+        closed = done(*steps, "close", path=closing["path"], sure=True)
+        assert closed == {"done": True, "in": ["Desktop", "Windows", "Kestrel Notes", "Close"]}
+        until(lambda one: one is None, "closed")
+    finally:
+        if listed() is not None:
+            shell.close(window)
 
 
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:

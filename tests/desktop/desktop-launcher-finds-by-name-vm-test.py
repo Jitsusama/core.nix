@@ -1611,6 +1611,11 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
     )
     assert status == not_sure, (status, said)
     assert "--yes does it" in said, said
+    # One that ends nothing needs no terminal: Machine opens in the launcher.
+    status, said = machine.execute(desktop.in_session("launcher do machine </dev/null 2>&1"))
+    assert status == 0, (status, said)
+    desktop.launcher_until(lambda shown: shown["open"])
+    desktop.close_launcher()
     if not desktop.values["shots"]:
         return
     for scale in ("1.5", "2"):
