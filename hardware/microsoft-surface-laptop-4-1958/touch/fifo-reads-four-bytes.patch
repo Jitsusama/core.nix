@@ -1,0 +1,44 @@
+diff --git a/spi-amd.c b/spi-amd.c
+index 8f8d090..77ad6dc 100644
+--- a/spi-amd.c
++++ b/spi-amd.c
+@@ -8,9 +8,29 @@
+ #include <linux/module.h>
+ #include <linux/platform_device.h>
+ #include <linux/spi/spi.h>
++#include <linux/unaligned.h>
+ #include <linux/version.h>
+ #include "spi-amd.h"
+ 
++/*
++ * Copies a read's bytes out of the FIFO four at a time where it can. Each
++ * read of the controller's registers costs the CPU about a microsecond, and
++ * a touchscreen's heat map is 4,302 bytes, about a hundred times a second,
++ * so reading it a byte at a time kept a core 70% busy. Mainline's spi-amd
++ * reads the same FIFO eight bytes at a time (amd_spi_mem_data_in).
++ */
++static void amd_spi_read_fifo(const void __iomem *from, u8 *to, u32 len)
++{
++	u32 i = 0;
++
++	for (; i < len && !IS_ALIGNED((unsigned long)(from + i), 4); i++)
++		to[i] = readb(from + i);
++	for (; i + 4 <= len; i += 4)
++		put_unaligned_le32(readl(from + i), to + i);
++	for (; i < len; i++)
++		to[i] = readb(from + i);
++}
++
+ #define AMD_SPI_CTRL0_REG	0x00
+ #define AMD_SPI_EXEC_CMD	BIT(16)
+ #define AMD_SPI_FIFO_CLEAR	BIT(20)
+@@ -552,8 +572,7 @@ static int amd_spi_exec_segment(struct amd_spi *amd_spi, u8 opcode,
+ 				pr_info("spi-amd: GATE3 GET6 reconstructed first60=[%*ph]\\n",
+ 					32, dst);
+ 		} else {
+-			for (i = 0; i < rmax; i++)
+-				dst[i] = readb(base + read_off + i);
++			amd_spi_read_fifo(base + read_off, dst, rmax);
+ 		}
+ 		if (debug_trace >= 3)
+ 			pr_info("spi-amd: TRACE segment data op=0x%02x rx=[%*ph]\n",

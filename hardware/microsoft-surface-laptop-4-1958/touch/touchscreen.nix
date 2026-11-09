@@ -11,17 +11,21 @@
 { config, pkgs, ... }:
 let
   touchscreen = config.boot.kernelPackages.callPackage ./package.nix { };
+  parameters = "/sys/module/sl4a_spi_hid/parameters";
+  trial = "/sys/bus/spi/devices/spi-MSHW0231:00/heat_scan ${parameters}/heat_rest_after ${parameters}/heat_rest_ms ${parameters}/heat_rest_scan";
 in
 {
   boot.extraModulePackages = [ touchscreen ];
 
   # The panel's settings as the installer writes them for this model (its
-  # Gate5 profile), the ones the driver was qualified with: standard HID
-  # reports rather than raw heat maps, and its feature reads left out. Its
-  # stream watchdog is off too: in raw mode it re-inits a stalled stream,
-  # but in standard mode it only logs, and each heat map re-arms it, so once
-  # the panel streamed them it wrote a line every 2 s, 1822 in three hours
-  # with the lid shut and nothing touching.
+  # Gate5 profile), the ones the driver was qualified with: the standard HID
+  # start, then a switch to the panel's heat maps, from which the driver
+  # tracks every finger (std_raw_transition, raw_input_beta), and its feature
+  # reads left out. The panel sends those about 95 times a second, touched or
+  # not, while the lid is open. Its stream watchdog is off too: in raw mode
+  # it re-inits a stalled stream, but in standard mode it only logs, and each
+  # heat map re-arms it, so once the panel streamed them it wrote a line
+  # every 2 s, 1822 in three hours with the lid shut and nothing touching.
   boot.extraModprobeConfig = ''
     options sl4a_spi_hid raw_mode=N raw_input_beta=Y wire_double_opcode=1 gate3_observe_only=1 skip_std_getfeat=1 std_raw_transition=1 get_noread=0 getfeat_delay_ms=0 std_liveness_ms=0 std_liveness_recover=0 wait_reset_kick_ms=0 stream_watchdog_ms=0
   '';
@@ -49,6 +53,13 @@ in
       Type = "oneshot";
       RemainAfterExit = true;
       ExecStart = "${pkgs.kmod}/bin/modprobe --all sl4a_spi_amd sl4a_spi_hid";
+      # For the idle rest's trial (package.nix): wheel may stop or start the
+      # heat maps and set the rest without root. Taken out once the trial
+      # settles the rest's values.
+      ExecStartPost = [
+        "${pkgs.coreutils}/bin/chgrp wheel ${trial}"
+        "${pkgs.coreutils}/bin/chmod g+w ${trial}"
+      ];
     };
   };
 }

@@ -21,6 +21,19 @@ stdenv.mkDerivation {
   };
   sourceRoot = "source/driver";
 
+  patches = [
+    # The panel sends a 4,302-byte heat map about 95 times a second, touched
+    # or not, and its controller's FIFO was read a byte at a time: 7.6 ms of
+    # a core for each, about 70% of one while the lid is open.
+    ./fifo-reads-four-bytes.patch
+    # After a second with no contact the panel rests, looking for three
+    # frames after each 100 ms, about a quarter of the heat maps it sent.
+    # touch_stats says without root how many heat maps held a contact,
+    # how often it rested, where the last contacts were and what else the
+    # panel sent; heat_scan stops or starts the heat maps by hand.
+    ./heat-rests-when-untouched.patch
+  ];
+
   nativeBuildInputs = kernel.moduleBuildDependencies;
   makeFlags = kernelModuleMakeFlags ++ [
     "KDIR=${kernel.dev}/lib/modules/${kernel.modDirVersion}/build"
