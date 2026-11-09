@@ -472,11 +472,17 @@ in
           # reclaims for itself until the OOM killer ends one.
           "--revive"
           "jobs.slice"
-          # A Nix evaluation agents start waits, frozen as it starts, while
-          # under 16 GiB is available, and they come in 30 s apart once
-          # there's room, so a few at once no longer fill memory together.
+          # A Nix evaluation or build agents start waits, frozen as it
+          # starts, unless a quarter of memory stays available once it has
+          # grown by a sixteenth, counting those let in the last two
+          # minutes as growing, so thirteen at once come in as many as
+          # there's room for. Through a call, which pw-dump hears as a
+          # program recording a microphone, three eighths stay, and nothing
+          # held comes into the call.
           "--door"
           "jobs.slice"
+          "--calls"
+          (lib.getExe' pkgs.pipewire "pw-dump")
           # A window holding a session others report to, as the harness's
           # mesh says, keeps a memory floor and is the last systemd-oomd
           # ends, and every other pi gives way first to the OOM killer.

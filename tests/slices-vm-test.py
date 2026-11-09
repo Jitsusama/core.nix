@@ -50,6 +50,15 @@ MOST_RATIO = 6.5
 APPEARING = dt.timedelta(seconds=30)
 # The scopes held below jobs.slice by work an agent writes there, as the sorter names them.
 WORK_SCOPE = "jobs-work.slice/work-.*\\.scope$"
+# How many heavy starts come at once, as about thirteen sessions' builds did when a hold ended
+# on 9 November, and how late the foreground may wake beside them, in microseconds: a tenth
+# of a second, past which typing and a call's sound are seen to stall.
+STARTS = 13
+LATEST_WAKE = 100_000
+# How many tenths of a second the foreground waits through, while they start and grow.
+WAKES = 150
+# The stand-in builds, as the door knows them by their words.
+BUILDS = "^nix-build -v RS=x"
 
 
 class Account:
@@ -62,6 +71,8 @@ class Account:
         self.bash: str = values["bash"]
         self.chrt: str = values["chrt"]
         self.taskset: str = values["taskset"]
+        self.wakes: str = values["wakes"]
+        self.awk: str = values["awk"]
 
     def hold(self, name: str) -> None:
         """Hold the account's slice open, since its cgroup exists only while something runs."""
@@ -419,6 +430,57 @@ def test_agents_lose_real_time_and_joel_keeps_it(jobs: Account) -> None:
     assert rt_limit(1005) == ["0", "0"]
     assert "SCHED_RR" in jobs.machine.succeed(f"{jobs.chrt} -p {jobs.sleeping(1006)}")
     assert rt_limit(1006) == ["10", "10"]
+
+
+def test_heavy_starts_at_once_come_in_as_there_is_room_and_the_foreground_wakes_on_time(
+    jobs: Account,
+) -> None:
+    """Heavy starts at once come in as memory has room for them, beside a foreground on time."""
+    machine = jobs.machine
+    coreutils = jobs.sleep.rsplit("/", 1)[0]
+    # Each grows a little less than the door counts it to, a sixteenth of memory, so those it
+    # lets in fit; all of them together would take more than the machine has.
+    grows = jobs.memory() // 16 - 4 * MIB
+    machine.succeed(
+        f"systemd-run -M alice@ --user --slice=app.slice --unit=foreground {jobs.bash}"
+        f" {jobs.wakes} {jobs.sleep} {WAKES} /tmp/foreground-late"
+    )
+    # Each waits a moment before it grows, as an evaluation reads its flake first, and holds
+    # what it grew to in awk, whose one record runs to the end of the zeros, which have no x.
+    # Not tail: coreutils is one program here, which goes by the name it's run as.
+    for n in range(STARTS):
+        jobs.write_into_jobs(
+            f"grows-{n}",
+            f"{JOBS}/jobs.service",
+            f"{{ {jobs.sleep} 3; {coreutils}/head -c {grows} /dev/zero; {jobs.sleep} 1007; }}"
+            f' | exec -a nix-build {jobs.awk} -v RS=x "BEGIN {{ getline held }}"',
+        )
+    machine.wait_until_succeeds(
+        "test -s /tmp/foreground-late", timeout=dt.timedelta(seconds=WAKES / 10) + APPEARING
+    )
+    late = int(machine.succeed("cat /tmp/foreground-late"))
+    resident = machine.succeed(
+        f"for p in $(pgrep -f '{BUILDS}'); do awk '/VmRSS/ {{print $2 * 1024}}' /proc/$p/status;"
+        " done"
+    ).split()
+    grown = sum(int(size) >= grows // 2 for size in resident)
+    frozen = int(
+        machine.succeed(
+            f"find {WORK} -path '*work-*' -name cgroup.events -exec cat {{}} +"
+            " | awk '/^frozen 1/ { n++ } END { print n + 0 }'"
+        )
+    )
+    # Every one is still there, none ended for want of memory, and some still wait, frozen
+    # before they grew. One the door has just let in may be neither yet.
+    assert len(resident) == STARTS, resident
+    assert 0 < grown < STARTS, (grown, resident)
+    assert 0 < frozen <= STARTS - grown, (frozen, grown)
+    assert late < LATEST_WAKE, f"the foreground woke {late} us late"
+    machine.succeed(
+        f"for p in $(pgrep -f '{BUILDS}'); do"
+        " echo 1 > /sys/fs/cgroup$(sed -n 's/^0:://p' /proc/$p/cgroup)/cgroup.kill; done"
+    )
+    machine.wait_until_fails(f"pgrep -f '{BUILDS}'", timeout=APPEARING)
 
 
 def test_on_the_disk_slices_weigh_as_on_the_cpu(jobs: Account) -> None:
