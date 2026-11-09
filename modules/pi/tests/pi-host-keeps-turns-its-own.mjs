@@ -3,8 +3,9 @@
 // built package with a faux provider, so no credential or request leaves it.
 // Run as: node THIS PI_ROOT [dist|src], where src reads the patched TypeScript.
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { test as it } from "node:test";
 import { pathToFileURL } from "node:url";
 
@@ -124,6 +125,42 @@ it("the host can tell both seams are there before it opens a conversation", asyn
   for (const phase of ["committedTurn", "turnBoundary"]) {
     assert.equal(typeof GenerationTask.definition.phases[phase], "function", `${phase} is a phase`);
   }
+});
+
+it("the host builds the session's agent from the options pi gives its own", async () => {
+  const extension = codeDirectory === "src" ? "ts" : "js";
+  const core = dirname(sessionModule);
+  const { createAgentSession } = await import(pathToFileURL(`${core}/sdk.${extension}`).href);
+  const { SessionManager } = await import(
+    pathToFileURL(`${core}/session-manager.${extension}`).href
+  );
+  const { SettingsManager } = await import(
+    pathToFileURL(`${core}/settings-manager.${extension}`).href
+  );
+  const { Agent } = await import(
+    pathToFileURL(`${root}/node_modules/@earendil-works/pi-agent-core/dist/index.js`).href
+  );
+  const cwd = mkdtempSync(join(tmpdir(), "pi-host-agent-"));
+  let given;
+  let built;
+  const { session } = await createAgentSession({
+    cwd,
+    agentDir: join(cwd, "agent"),
+    sessionManager: SessionManager.inMemory(cwd),
+    settingsManager: SettingsManager.inMemory(),
+    noTools: "all",
+    createAgent: (options) => {
+      given = options;
+      built = new Agent(options);
+      return built;
+    },
+  });
+  assert.equal(session.agent, built, "the session drives the agent the host built");
+  for (const name of ["streamFn", "convertToLlm", "transformContext", "onPayload"]) {
+    assert.equal(typeof given[name], "function", `pi's own ${name} reaches the host`);
+  }
+  assert.equal(given.sessionId, session.sessionManager.getSessionId(), "the session id is pi's");
+  session.dispose();
 });
 
 it("legacy answer and idle continue remain unchanged without the hook", async () => {

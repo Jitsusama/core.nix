@@ -313,6 +313,11 @@
           "-p1"
           "--fuzz=0"
         ];
+        # nixpkgs keeps the libraries pi's command loads and drops pi-schema, which
+        # the durable runtime a host drives imports through chord.
+        postInstall = old.postInstall + ''
+          cp -r packages/schema "$out/lib/node_modules/pi-monorepo/node_modules/@earendil-works/pi-schema"
+        '';
       });
     in
     pkgs.runCommandLocal "pi-host-keeps-turns-its-own" { } ''

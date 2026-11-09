@@ -1,6 +1,10 @@
 A hosted execution adapter implements Agent's public methods and state, not
 its private fields. AgentSession already accepts that object at runtime;
 make its type structural and expose a version for fail-closed host startup.
+createAgentSession builds the Agent itself, from options that carry pi's
+request settings, provider hooks, cache warming and context transform, so a
+host that rebuilt the session by hand would drift from pi. Let a host build
+the agent from those same options instead.
 
 Offered upstream as the structural AgentSession execution seam. Apply only
 to the host's private pi build; ordinary interactive pi stays unchanged.
@@ -31,3 +35,36 @@ to the host's private pi build; ordinary interactive pi stays unchanged.
  	readonly sessionManager: SessionManager;
  	readonly settingsManager: SettingsManager;
  
+--- a/packages/coding-agent/src/core/sdk.ts
++++ b/packages/coding-agent/src/core/sdk.ts
+@@ -4,7 +4,8 @@
+ import { clampThinkingLevel, type Message, type Model, streamSimple } from "@earendil-works/pi-ai/compat";
+ import { getAgentDir } from "../config.ts";
+ import { resolvePath } from "../utils/paths.ts";
+-import { AgentSession, markRuntimeStreamFunction } from "./agent-session.ts";
++import type { AgentOptions } from "@earendil-works/pi-agent-core";
++import { AgentSession, markRuntimeStreamFunction, type SessionAgent } from "./agent-session.ts";
+ import { formatNoModelsAvailableMessage } from "./auth-guidance.ts";
+ import { CacheWarmer } from "./cache-warmer.ts";
+ import { getClientIdentity } from "./client-identity.ts";
+@@ -103,6 +104,11 @@
+ 	settingsManager?: SettingsManager;
+ 	/** Session start event metadata for extension runtime startup. */
+ 	sessionStartEvent?: SessionStartEvent;
++	/**
++	 * Build the agent the session drives from the options pi would give its own. A host that runs
++	 * turns elsewhere returns an agent of the same shape. Default: `new Agent(options)`.
++	 */
++	createAgent?: (options: AgentOptions) => SessionAgent;
+ }
+ 
+ /** Result from createAgentSession */
+@@ -400,7 +406,7 @@
+ 		});
+ 	};
+ 
+-	const agent = new Agent({
++	const agent = (options.createAgent ?? ((agentOptions: AgentOptions) => new Agent(agentOptions)))({
+ 		initialState: {
+ 			systemPrompt: "",
+ 			model,
