@@ -40,6 +40,7 @@
     "*/rules.mk"
     # Settings in a program's own format, read by the program they set.
     "*.conf"
+    "*/kernel/*.config"
     "*.ini"
     "*.kdl"
     "*.quirk"
@@ -60,10 +61,17 @@
     # Word lists, one per line: a dictionary, glyphs, paths and check names.
     "*.txt"
     "*.add"
+    # The licences that came with code taken from another project, kept
+    # beside it word for word.
+    "*/LICENSE.*"
     # The launcher's matcher, being redesigned, comes under biome as it's
     # rewritten (as qt-javascript-lint says).
     "modules/quickshell/Fuzzy.js"
   ];
+
+  # A stand-in program for a test, named as the program it stands in for,
+  # so its kind isn't in its name.
+  settings.formatter.shellcheck.includes = [ "modules/quickshell/in-a-terminal/tests/qs" ];
 
   # The libraries core's own Python imports.
   jitsusama.mypy.packages =
