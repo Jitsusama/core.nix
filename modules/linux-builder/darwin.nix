@@ -66,6 +66,18 @@ let
           '';
         };
       })
+      # nixpkgs' guest collects garbage only once 1 GiB is free, and stops
+      # at 3: on 9 November a 60 GiB store sat 90 to 93% full and builds
+      # there failed for disk, with no account but root able to collect.
+      # So a changed guest starts at a sixth of its disk free and collects
+      # back to five twelfths, 10 and 25 GiB of 60, as shares so a bigger
+      # disk keeps as much room for its bigger builds.
+      (lib.mkIf (cfg.features != [ ] || cfg.authorizedKeys != [ ]) {
+        virtualisation.darwin-builder = {
+          min-free = cfg.disk * 1024 * 1024 / 6;
+          max-free = cfg.disk * 1024 * 1024 * 5 / 12;
+        };
+      })
       (lib.mkIf (cfg.features != [ ]) {
         # Added to what the guest's Nix already offers, so it builds a piece
         # asking for one rather than refuse it.
@@ -135,8 +147,9 @@ in
       type = lib.types.ints.positive;
       default = 60 * 1024;
       description = ''
-        The VM's store in MiB, a sparse file it collects once under a GiB is
-        free, so it grows towards this.
+        The VM's store in MiB, a sparse file, so it grows towards this. A
+        guest given keys or features collects garbage once a sixth of it is
+        free; the cached one, once under a GiB is.
       '';
     };
     features = lib.mkOption {
