@@ -2505,6 +2505,14 @@ QtObject {
             [drawn("latency").graph, drawn("latency").drawer], [trip, { eyebrow: tunnel, facts: [
                 { id: "range", value: "120 ms to 140 ms", figure: trip },
                 { id: "reads", value: "3 over 4 s" }] }]);
+        // A range whose low and high read the same at three digits says it's
+        // steady, as a run, rather than "127 ms to 127 ms" (VKCF3Z, 2026-11-08).
+        const still = [warpRead(127, 0.01, 1000, 500), warpRead(127.2, 0.01, 2000, 1000)];
+        const steadily = still.reduce((kept, each, at) => WarpSeen.saw(kept, each, at * 2000), null);
+        const steady = WarpSeen.drawn(Warp.told(still[1], {}, warpSaid).parts, steadily, {}, warpSaid)
+            .find(part => part.id === "latency") ?? {};
+        machine("a Round Trip that reads the same throughout says it's steady",
+            steady.drawer?.facts?.[0]?.value, "127 ms \u00b7 steady");
         const lost = spark(over([0.01, 0.02, 0.015], 0.05));
         machine("Loss sparks against five percent at least, so a calm link reads small",
             [drawn("loss").graph, drawn("loss").drawer], [lost, { eyebrow: tunnel, facts: [
@@ -2536,6 +2544,12 @@ QtObject {
                 WarpSwitch.switchNote(locked, true, warpSaid),
                 WarpSwitch.switchNote(warp, false, warpSaid)],
             ["comes back by itself in 2 min", "example holds the switch", ""]);
+        // A switch the organisation holds draws no chord, since the foot
+        // teaches only what works; Return stays and is refused with why
+        // (VKCF3Z, 2026-11-08).
+        machine("WARP's switch ends the link while up, unless the organisation holds it",
+            [WarpSwitch.ends(warp, true), WarpSwitch.ends(locked, true),
+                WarpSwitch.ends(warp, false)], [true, false, false]);
         machine("WARP up or on its way, so its switch takes it down",
             ["Connected", "Connecting", "Disconnected"].map(state =>
                 WarpSwitch.up({ status: { state } })), [true, true, false]);

@@ -12,6 +12,19 @@ function up(record) {
     return ["Connected", "Connecting"].includes(record?.status?.state ?? "");
 }
 
+// Whether the organisation holds WARP's switch, so neither way is asked.
+function held(record) {
+    return record?.settings?.switch_locked === true;
+}
+
+// Whether the switch, drawn as up or not, ends the link: while up, unless
+// the organisation holds it, since a held switch draws no chord and the
+// foot teaches only what works (VKCF3Z, 2026-11-08). Return stays and is
+// refused with why.
+function ends(record, isUp) {
+    return isUp && !held(record);
+}
+
 // Who holds a switch the organisation holds, by its name.
 function holds(organisation, said) {
     return Warp.worded(said, "holds", { organisation: Warp.text(organisation)
@@ -34,7 +47,7 @@ function comesBack(minutes, settings, said) {
 // taken down; nothing otherwise.
 function switchNote(record, isUp, said) {
     const set = record?.settings ?? {};
-    if (set.switch_locked === true) {
+    if (held(record)) {
         return holds(set.organisation, said);
     }
     return isUp && set.always_on === true ? comesBack(set.auto_connect_after_min, {}, said) : "";

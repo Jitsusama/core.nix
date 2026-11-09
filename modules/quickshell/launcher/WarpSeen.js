@@ -87,11 +87,17 @@ function drawn(parts, seen, settings, said) {
         count: Warp.count(values.length, settings),
         span: Warp.worded(said, "seconds", { figure: Warp.count(Math.round(span), settings) }),
     }) });
+    // Its low and high, or once they read the same, steady at that.
+    const between = (values, say) => {
+        const low = say(Math.min(...values));
+        const high = say(Math.max(...values));
+        return low === high ? Warp.worded(said, "steady", { figure: low })
+            : Warp.worded(said, "range", { low, high });
+    };
     const ranged = (values, least, say) => {
         const spark = sparkOf(values, least);
-        return { graph: spark, drawer: { eyebrow, facts: [{ id: "range", value: Warp.worded(said,
-            "range", { low: say(Math.min(...values)), high: say(Math.max(...values)) }),
-        figure: spark }, reads(values)] } };
+        return { graph: spark, drawer: { eyebrow, facts: [{ id: "range",
+            value: between(values, say), figure: spark }, reads(values)] } };
     };
     const percent = (value) => Warp.worded(said, "percent",
         { figure: HomeNetwork.significant(value * PERCENT, settings) });

@@ -175,7 +175,7 @@ Provider {
             state: () => provider.switchSaid !== "" ? provider.switchSaid : note,
             run: () => provider.turn(!up),
             undo: () => provider.turn(up)
-        }, up ? Words.ending("warp:power") : {}));
+        }, WarpSwitch.ends(said, up) ? Words.ending("warp:power") : {}));
     }
 
     // Has warp switch WARP, its row drawn as it will be until warp reads

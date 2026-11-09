@@ -1328,8 +1328,12 @@ def asked(said: Path) -> list[str]:
     return where.read_text().splitlines() if where.exists() else []
 
 
-def disconnect_from_its_switch(shell: Shell) -> None:
-    """Step into WARP and run :disconnect on its switch, as Joel types it."""
+def disconnect_from_its_switch(shell: Shell, *, held: bool = False) -> None:
+    """Step into WARP and run :disconnect on its switch, as Joel types it.
+
+    Held by the organisation, the switch teaches no d, since the foot teaches only what
+    works, and says who holds it (VKCF3Z, 2026-11-08).
+    """
     shell.answer("warp")
     shell.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "connected \u00b7 127 ms"
@@ -1338,6 +1342,12 @@ def disconnect_from_its_switch(shell: Shell) -> None:
     shell.launcher_until(lambda shown: shown["rows"][:1] == ["Disconnect WARP"])
     shell.down_to("Disconnect WARP")
     shell.normal()
+    if held:
+        shell.launcher_until(
+            lambda shown: (
+                "holds the switch" in shown["footer"] and "d disconnect" not in shown["footer"]
+            )
+        )
     shell.send_chars(":disconnect")
     shell.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "disconnect")
     shell.send_key("ret")
@@ -1364,7 +1374,7 @@ def test_a_switch_the_organisation_holds_is_left_and_says_who_holds_it(shell: Sh
     said = warp_said(switch_locked=True)
     try:
         with shell.told("not become warp:power: example holds the switch"):
-            disconnect_from_its_switch(shell)
+            disconnect_from_its_switch(shell, held=True)
         assert "settings" in asked(said), asked(said)
         assert "disconnect" not in asked(said), asked(said)
         shell.close_launcher()

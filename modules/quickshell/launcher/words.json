@@ -1906,6 +1906,7 @@
         "emergency": "every device disconnected",
         "eyebrow": "via WARP \u00b7 tunnel",
         "range": "{low} to {high}",
+        "steady": "{figure} \u00b7 steady",
         "reads": "{count} over {span}",
         "seconds": "{figure} s",
         "holds": "{organisation} holds the switch",
@@ -1947,7 +1948,7 @@
     {
       "id": "warp:settings:mode",
       "in": "warp:settings",
-      "name": "Mode"
+      "name": "Tunnel Mode"
     },
     {
       "id": "warp:settings:always-on",
@@ -2061,7 +2062,7 @@
       "in": "warp",
       "name": "Disconnect WARP",
       "verb": "disconnect",
-      "glyph": "disconnect",
+      "glyph": "tunnelOff",
       "act": "ending",
       "ends": "disconnect",
       "states": {
@@ -2069,7 +2070,7 @@
           "command": "connect",
           "name": "Connect WARP",
           "verb": "connect",
-          "glyph": "connect"
+          "glyph": "tunnelOn"
         }
       }
     },
