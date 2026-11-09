@@ -688,6 +688,7 @@ fn write(path: &Path, text: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::executable;
     use std::net::TcpListener;
 
     #[test]
@@ -1134,16 +1135,13 @@ mod tests {
     // once more when one does; once each, however many ticks pass.
     #[test]
     fn no_builder_answering_is_told_once_and_one_answering_again_once() {
-        use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().expect("a folder");
         let folder = |name: &str| dir.path().join(name);
         let (program, told) = (folder("tell"), folder("told"));
-        fs::write(
+        executable(
             &program,
-            format!("#!/bin/sh\necho \"$1: $2\" >> '{}'\n", told.display()),
-        )
-        .expect("write");
-        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).expect("chmod");
+            &format!("#!/bin/sh\necho \"$1: $2\" >> '{}'\n", told.display()),
+        );
         let mut machines = Machines::new(
             folder("machines"),
             folder("machines-with-standing"),
@@ -1214,22 +1212,12 @@ mod tests {
 
     /// A stand-in for nix that exits as the `status` file beside it says.
     fn nix_in(dir: &Path) -> String {
-        use std::os::unix::fs::PermissionsExt;
         let nix = dir.join("nix");
-        let draft = dir.join("nix.draft");
         let status = dir.join("status");
-        fs::write(
-            &draft,
-            format!("#!/bin/sh\nexit \"$(cat '{}')\"\n", status.display()),
-        )
-        .expect("write");
-        let copied = std::process::Command::new("cp")
-            .arg(&draft)
-            .arg(&nix)
-            .status()
-            .expect("cp");
-        assert!(copied.success());
-        fs::set_permissions(&nix, fs::Permissions::from_mode(0o755)).expect("executable");
+        executable(
+            &nix,
+            &format!("#!/bin/sh\nexit \"$(cat '{}')\"\n", status.display()),
+        );
         nix.display().to_string()
     }
 
