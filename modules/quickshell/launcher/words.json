@@ -3102,7 +3102,7 @@
     {
       "id": "eero:internet:devices-off",
       "in": "eero:internet",
-      "name": "Known, Not on Now"
+      "name": "Not on Now"
     },
     {
       "id": "eero:node:model",

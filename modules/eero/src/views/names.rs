@@ -48,7 +48,7 @@ pub fn devices(model: &HomeNetwork) -> Vec<Named> {
         .iter()
         .map(|device| {
             let name = device_name(device);
-            let found = find_device(model, name).is_ok_and(|found| found.mac == device.mac);
+            let found = find_device(model, name, None).is_ok_and(|found| found.mac == device.mac);
             let on = location(model, device.node.as_deref());
             if found {
                 (name.to_owned(), format!("on {on}"))
