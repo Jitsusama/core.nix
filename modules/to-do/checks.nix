@@ -35,7 +35,8 @@ onLinux {
     let
       home = account (bareNixos [ { home-manager.sharedModules = [ self.homeModules.to-do ]; } ]);
       service = home.systemd.user.services.to-do;
-      # Home Manager keeps a unit's ExecStart as a list of its lines.
+      # Home Manager keeps a unit's ExecStart as a list of its lines, and
+      # gives every unit an Environment, empty unless something sets it.
       started = lib.concatStringsSep " " (lib.toList service.Service.ExecStart);
     in
     holds "to-do-runs-in-each-account"
@@ -43,7 +44,7 @@ onLinux {
       (
         lib.hasInfix "--git /nix/store/" started
         && lib.hasInfix "--journalctl /nix/store/" started
-        && !(service.Service ? Environment)
+        && service.Service.Environment == [ ]
         && service.Unit.X-SwitchMethod == "restart"
       );
 }
