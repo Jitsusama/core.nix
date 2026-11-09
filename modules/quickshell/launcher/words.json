@@ -126,6 +126,7 @@
       ],
       "ask": "which session?",
       "empty": "No sessions running.",
+      "none": "none running",
       "said": {
         "today": "{spent} today",
         "needs": "needs you",
@@ -7960,7 +7961,8 @@
       "glyph": "people",
       "parts": ["transcripts"],
       "ask": "who?",
-      "empty": "Nobody you've met or written lately."
+      "empty": "Nobody you've met or written lately.",
+      "none": "nobody lately"
     },
     {
       "id": "verb:person:call",

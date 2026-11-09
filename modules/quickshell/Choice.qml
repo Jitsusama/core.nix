@@ -132,6 +132,9 @@ Rectangle {
             - Theme.space.rung.apart - around;
         return Reading.keptItems(countItems, room, width).join(" \u00b7 ");
     }
+    // Whether its count is a run of names, as a home row's is, which gives
+    // way by whole names rather than by items.
+    property bool names: false
     // What kind of thing it is, for a noun; empty for an act or a set.
     property string kind
     // The other word it was found by, when not its name: said in quotes
@@ -262,6 +265,12 @@ Rectangle {
     // How far its words stand from its name.
     readonly property real detailGap: countText.x - nameBox.x - nameBox.width
     readonly property string detailFace: countText.font.family
+    // How wide words are drawn in the detail's face, as detailWide
+    // measures them, so the room kept for it and the fit agree to the pixel.
+    function heldWidth(words) {
+        void wordsFace.font;
+        return Math.ceil(wordsFace.advanceWidth(words)) + 1;
+    }
     readonly property bool nameCut: nameBox.over > 0
     readonly property bool sideCut: right.sided && sideText.over > 0
     property bool sidesTurn: false
@@ -272,7 +281,7 @@ Rectangle {
         id: nameBox
         x: Theme.space.rung.inset + row.glyphColumn + row.indent
         width: Math.max(0, Math.min(implicitWidth, row.ends - x - Theme.space.rung.groups
-            - (row.detail === "" ? 0 : Math.min(countText.implicitWidth, row.width * 0.3)
+            - (!row.detailed ? 0 : Math.min(row.detailWide, row.width * 0.3)
                 + Theme.space.rung.apart)))
         // On the mono's line, so the voice sits where the mono's name
         // would, the faces' line boxes differing.
@@ -317,19 +326,28 @@ Rectangle {
         x: nameBox.x + nameBox.width + Theme.space.rung.apart
         // As much as the name leaves, and never less than its share, so a
         // short name's detail (what a category holds) says all it can.
-        width: Math.min(implicitWidth, Math.max(row.width * 0.3,
-            row.ends - x - Theme.space.rung.groups))
+        readonly property real room: Math.max(row.width * 0.3,
+            row.ends - x - Theme.space.rung.groups)
+        // What a home row holds gives way by whole names from its end,
+        // ending on the last that fits, never an ellipsis (VKCF3Z,
+        // 2026-11-08); any other row's words give way by whole items, so
+        // a side such as "370 Mb/s down, 20 up" is never cut at its comma.
+        // The elision below is only a last guard.
+        readonly property string whole: row.names
+            ? Reading.wholeNamesFromEnd(row.detail, room, words => row.heldWidth(words))
+            : Reading.wholeItemsFromEnd(row.detail, room, words => row.heldWidth(words))
+        width: Math.min(implicitWidth, room)
         elide: Text.ElideRight
         anchors.baseline: monoLine.baseline
-        visible: row.detail !== ""
-        text: row.detail
+        visible: whole !== ""
+        text: whole
         color: row.flashed ? row.flashInk : row.selected ? Theme.text : Theme.muted
         font.family: Theme.level.words.family
         font.pointSize: Theme.level.words.pointSize
         font.variableAxes: Theme.level.words.variableAxes
     }
 
-    // The note's face, to fit a note of items to its room.
+    // The note's face, to fit a note of items, or of names, to its room.
     FontMetrics {
         id: wordsFace
         font: countText.font

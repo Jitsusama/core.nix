@@ -1603,16 +1603,16 @@ Scope {
         return source?.stands?.() ?? "";
     }
 
-    // Names as one line, as many whole as fit in `room` characters, then
-    // an ellipsis for the rest.
+    // Names as one line, as many whole as fit in `room` characters, ending
+    // on the last that fits with nothing after it (VKCF3Z, 2026-11-08: "no
+    // ellipsis anywhere"). The row gives way by whole names again where
+    // its face is wider than a character a letter (Reading.wholeNamesFromEnd).
     function listed(cased, room) {
-        const more = ", \u2026";
         let said = "";
         for (let at = 0; at < cased.length; at++) {
             const next = said === "" ? cased[at] : `${said}, ${cased[at]}`;
-            const last = at === cased.length - 1;
-            if (next.length + (last ? 0 : more.length) > room)
-                return said === "" ? "" : `${said}${more}`;
+            if (next.length > room)
+                return said;
             said = next;
         }
         return said;
@@ -3013,8 +3013,13 @@ Scope {
         const rest = says !== null ? says
             : names.length > 0 && fitted === "" ? source.counted() : fitted;
         const placed = Object.assign({}, row, {
-            count: lead === "" && rest === "" ? source.collection.empty ?? ""
+            // Holding none, it says so as a run, never the sentence an
+            // empty place says inside (VKCF3Z, 2026-11-08).
+            count: lead === "" && rest === "" ? source.collection.none ?? ""
                 : [lead, rest].filter(part => part !== "").join(" \u00b7 "),
+            // Its count is a run of what it holds, given way by whole names;
+            // any other row's words are items, which a comma doesn't part.
+            names: true,
             // A home row never draws its chord: the foot teaches it as the
             // next time's way while it's the cursor row, furthest from
             // Return, and the row's far end is its say's. Drawn on Now,
@@ -8388,6 +8393,7 @@ Scope {
                                     count: entry.modelData.count ?? ""
                                     countItems: entry.modelData.countItems ?? []
                                     sideWhole: !!entry.modelData.sideWhole
+                                    names: entry.modelData.names === true
                                     kind: root.held.length === 0 ? root.kindOf(entry.modelData) : ""
                                     landed: selected && root.landedOn(entry.modelData)
                                         ? `\u21b5 ${root.verbOf(entry.modelData)}` : ""

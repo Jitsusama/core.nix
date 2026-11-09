@@ -139,7 +139,11 @@ Singleton {
             title: entry.name,
             glyph: glyph(id),
             ask: entry.ask ?? words.anyAsk,
-            empty: entry.empty ?? `No ${noun} yet.`
+            empty: entry.empty ?? `No ${noun} yet.`,
+            // What home's row notes while it holds none: a lowercase run,
+            // never the sentence an empty place says inside (VKCF3Z,
+            // 2026-11-08: "none running", "nobody lately").
+            none: entry.none ?? "none"
         }, extra ?? {});
     }
 }
