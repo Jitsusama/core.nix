@@ -1206,7 +1206,8 @@ Floating {
     // report when asked. An identifier's words are its parts between its
     // own marks, its hyphens among them, since it breaks there as a
     // typesetter breaks a path (DrawerPage.identifierWords), so a UUID
-    // broken at its hyphens keeps each of its words whole.
+    // broken at its hyphens keeps each of its words whole; a hash's are
+    // its letters, since it has no words of its own.
     function valuesWhole() {
         const fits = row => word => faceOf(row.modelData).advanceWidth(word) <= row.valueWide;
         return drawnRows().every(row => !row.known || (row.modelData.identifies === true
