@@ -48,6 +48,11 @@ struct Google {
     expire: usize,
     /// Refuse every Drive call as a login made without a Drive scope is.
     no_drive_scope: bool,
+    /// Refuse every Drive call naming no quota project, as Drive does for
+    /// a login made with gcloud's application-default client.
+    needs_project: bool,
+    /// The quota project each Drive call named.
+    projects: Vec<Option<String>>,
     tokens: usize,
 }
 
@@ -147,6 +152,10 @@ fn answer(
     google.calls.push(format!("{method} {path}"));
     let authorized = headers.get("authorization").map(String::as_str)
         == Some(&format!("Bearer token-{}", google.tokens) as &str);
+    let project = headers.get("x-goog-user-project").cloned();
+    if path != "/token" {
+        google.projects.push(project.clone());
+    }
     match (method, path) {
         ("POST", "/token") => {
             let form = String::from_utf8(body).unwrap();
@@ -158,6 +167,11 @@ fn answer(
             (200, String::new(), token.to_string().into())
         }
         _ if !authorized => (401, String::new(), "{}".into()),
+        _ if google.needs_project && project.is_none() => {
+            let refusal = json!({ "error": { "code": 403, "message":
+                "The drive.googleapis.com API requires a quota project, which is not set by default." } });
+            (403, String::new(), refusal.to_string().into())
+        }
         _ if google.expire > 0 => {
             google.expire -= 1;
             (401, String::new(), "{}".into())
@@ -613,6 +627,44 @@ fn says_how_to_sign_in_when_the_login_may_not_use_drive() {
         why.contains("may not use Drive") && why.contains("https://www.googleapis.com/auth/drive"),
         "{why}"
     );
+    assert!(google.names().is_empty());
+}
+
+#[test]
+fn names_the_logins_quota_project_on_every_drive_call() {
+    let google = StandIn::start();
+    let account = owning(&google, "pi sessions");
+    let credentials = account.root.join("adc.json");
+    let mut login: Value =
+        serde_json::from_str(&fs::read_to_string(&credentials).unwrap()).unwrap();
+    login["quota_project_id"] = json!("the-project");
+    fs::write(&credentials, login.to_string()).unwrap();
+    account.log("--a--", "one.jsonl", "one\n", 3 * DAY);
+    google.google.lock().unwrap().needs_project = true;
+
+    assert_eq!(account.run().unwrap().sent, 1);
+
+    let projects = google.google.lock().unwrap().projects.clone();
+    assert!(!projects.is_empty());
+    assert!(
+        projects
+            .iter()
+            .all(|project| project.as_deref() == Some("the-project")),
+        "{projects:?}"
+    );
+    only_backup_calls(&google);
+}
+
+#[test]
+fn says_how_to_name_a_quota_project_when_drive_asks_for_one() {
+    let google = StandIn::start();
+    let account = owning(&google, "pi sessions");
+    account.log("--a--", "one.jsonl", "one\n", 3 * DAY);
+    google.google.lock().unwrap().needs_project = true;
+
+    let why = account.run().unwrap_err();
+
+    assert!(why.contains("set-quota-project"), "{why}");
     assert!(google.names().is_empty());
 }
 

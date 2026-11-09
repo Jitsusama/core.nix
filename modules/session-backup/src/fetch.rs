@@ -33,7 +33,7 @@ pub fn fetch(config: &Config, name: &str, to: &Path) -> Result<u64, String> {
     let ledger = Ledger::open(&config.ledger)?;
     let sign_in = token::sign_in(&config.folder);
     let mut login = Login::read(&config.credentials, &config.token, sign_in)?;
-    let agent = drive::agent();
+    let agent = drive::agent(login.project())?;
     let folder = drive::folder_id(
         &config.folder,
         &agent,
