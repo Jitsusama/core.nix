@@ -891,6 +891,16 @@ def left_lantern(desktop: Desktop) -> int:
     return int(desktop.machine.succeed(LEFT_LANTERN).strip() or "0")
 
 
+def stands(thing: Json, side: str) -> bool:
+    """Say whether a row is Lantern's, standing as `side` says, whatever bars it has.
+
+    How a network stands leads its side, and its bars follow, as they move (VKCF3Z,
+    2026-11-09), so the row reads as "Lantern \u00b7 connected \u00b7 4 of 4 bars \u00b7 network".
+    """
+    reads = str(thing["reads"])
+    return reads.startswith(f"Lantern \u00b7 {side}") and reads.endswith(" \u00b7 network")
+
+
 def disconnects_and_takes_back(desktop: Desktop) -> None:
     """End Lantern by dd, unasked; u joins it again, Ctrl+R leaves it again, and u once more.
 
@@ -901,9 +911,7 @@ def disconnects_and_takes_back(desktop: Desktop) -> None:
     machine = desktop.machine
 
     def lantern_reads(side: str) -> Callable[[Json], bool]:
-        return lambda shown: (
-            f"Lantern \u00b7 {side} \u00b7 network" in [thing["reads"] for thing in shown["things"]]
-        )
+        return lambda shown: any(stands(thing, side) for thing in shown["things"])
 
     desktop.as_account("qs ipc call launcher collection wifi")
     desktop.launcher_ready()
@@ -1257,7 +1265,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
             shown["open"]
             and not shown["asking"]
             and (shown["selected"] or {}).get("name") == "Lantern"
-            and (shown["selected"] or {}).get("side") == "connected"
+            and str((shown["selected"] or {}).get("side")).startswith("connected")
         )
     )
     desktop.close_launcher()
@@ -1546,9 +1554,7 @@ def test_a_network_left_reads_so_on_its_key_and_wi_fi_off_unanswered_is_put_back
     joins_lantern(machine)
 
     def lantern_reads(side: str) -> Callable[[Json], bool]:
-        return lambda shown: (
-            f"Lantern \u00b7 {side} \u00b7 network" in [thing["reads"] for thing in shown["things"]]
-        )
+        return lambda shown: any(stands(thing, side) for thing in shown["things"])
 
     desktop.as_account("qs ipc call launcher collection wifi")
     desktop.launcher_ready()
