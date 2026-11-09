@@ -87,6 +87,22 @@ fn a_call_app_still_recording_two_seconds_on_is_a_call() {
 }
 
 #[test]
+fn a_call_app_recording_through_pipewire_itself_is_a_call() {
+    // Tuple records through PipeWire's own API, so its node names no
+    // program and only its client says it's Tuple.
+    let world = World::new();
+    world.account(
+        "1000",
+        r#"[{"id": 59, "type": "PipeWire:Interface:Client",
+             "info": {"props": {"application.process.binary": "tuple"}}},
+            {"id": 60, "type": "PipeWire:Interface:Node", "info": {"state": "running",
+             "props": {"media.class": "Stream/Input/Audio", "node.name": "TupleAudio",
+                        "client.id": 59}}}]"#,
+    );
+    assert_eq!(world.asked().0, 0);
+}
+
+#[test]
 fn a_moment_of_recording_is_no_call() {
     let world = World::new();
     let folder = world.account("1000", &recording(40, "chrome"));

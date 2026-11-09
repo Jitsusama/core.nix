@@ -49,7 +49,12 @@ impl Graph {
     /// id, so the same one is found each time while several record.
     pub fn call(&self) -> Option<u64> {
         self.of_type("PipeWire:Interface:Node")
-            .filter(|(_, node)| calls::records(node))
+            .filter(|(_, node)| {
+                calls::records(
+                    node,
+                    calls::client_of(node).and_then(|c| self.objects.get(&c)),
+                )
+            })
             .map(|(id, _)| id)
             .min()
     }

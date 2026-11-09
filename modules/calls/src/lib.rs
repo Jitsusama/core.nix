@@ -9,7 +9,7 @@
 //! whatever mustn't cut one.
 
 use serde_json::Value;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 /// How long a program has to record before it counts as a call.
@@ -82,50 +82,102 @@ pub const NOT_CALLS: [&str; 7] = [
     "quickshell",
 ];
 
-/// Whether a node, as pw-dump prints it, is a program recording from a
-/// microphone right now.
-pub fn records(node: &Value) -> bool {
+/// Whether a node, as pw-dump prints it, is a stream recording from a
+/// microphone right now, whatever program it is.
+fn captures(node: &Value) -> bool {
     let info = &node["info"];
     let props = &info["props"];
-    let text = |key: &str| props[key].as_str().unwrap_or_default();
     node["type"] == "PipeWire:Interface:Node"
-        && text("media.class") == "Stream/Input/Audio"
+        && props["media.class"] == "Stream/Input/Audio"
         && info["state"] == "running"
         && props["stream.capture.sink"] != true
-        && !text("application.process.binary").is_empty()
-        && !NOT_CALLS.contains(&text("application.process.binary"))
+}
+
+/// The client a node belongs to, the object pw-dump prints as
+/// `PipeWire:Interface:Client`.
+pub fn client_of(node: &Value) -> Option<u64> {
+    node["info"]["props"]["client.id"].as_u64()
+}
+
+/// The program a node is part of, empty when nothing says. A stream made
+/// through PipeWire's own API, as Tuple's is, names its program only on its
+/// client, so the client's name stands in for the node's. A program Nix
+/// wrapped is named for its wrapper, `.quickshell-wrapped`, so that is
+/// taken back to the program's own name.
+pub fn program(node: &Value, client: Option<&Value>) -> String {
+    let binary = |object: &Value| {
+        object["info"]["props"]["application.process.binary"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned()
+    };
+    let named = Some(binary(node))
+        .filter(|name| !name.is_empty())
+        .or_else(|| client.map(binary))
+        .unwrap_or_default();
+    let unwrapped = named
+        .strip_suffix("-wrapped")
+        .map_or(named.as_str(), |name| {
+            name.strip_prefix('.').unwrap_or(name)
+        });
+    unwrapped.to_owned()
+}
+
+/// Whether a node, as pw-dump prints it beside its client, is a program
+/// recording from a microphone right now.
+pub fn records(node: &Value, client: Option<&Value>) -> bool {
+    let program = program(node, client);
+    captures(node) && !program.is_empty() && !NOT_CALLS.contains(&program.as_str())
 }
 
 /// The nodes recording from a microphone, kept up to date from pw-dump's
 /// arrays: each object it prints is the whole of what changed, and one
-/// printed with no info is gone.
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
-pub struct Recording(HashSet<u64>);
+/// printed with no info is gone. The clients are kept too, since a node
+/// may name its program only there, and may come before its client.
+#[derive(Default, Debug, Clone, PartialEq)]
+pub struct Recording {
+    streams: HashMap<u64, Value>,
+    clients: HashMap<u64, Value>,
+}
 
 impl Recording {
     /// Takes in one of pw-dump's arrays.
     pub fn take(&mut self, array: &Value) {
-        for node in array.as_array().into_iter().flatten() {
-            let Some(id) = node["id"].as_u64() else {
+        for object in array.as_array().into_iter().flatten() {
+            let Some(id) = object["id"].as_u64() else {
                 continue;
             };
-            if records(node) {
-                self.0.insert(id);
-            } else if node["info"].is_null() || node["type"] == "PipeWire:Interface:Node" {
-                self.0.remove(&id);
+            if object["info"].is_null() {
+                self.streams.remove(&id);
+                self.clients.remove(&id);
+            } else if object["type"] == "PipeWire:Interface:Client" {
+                self.clients.insert(id, object.clone());
+            } else if captures(object) {
+                self.streams.insert(id, object.clone());
+            } else if object["type"] == "PipeWire:Interface:Node" {
+                self.streams.remove(&id);
             }
         }
     }
 
+    /// The nodes recording that are calling programs.
+    fn calling(&self) -> HashSet<u64> {
+        self.streams
+            .iter()
+            .filter(|(_, node)| records(node, client_of(node).and_then(|c| self.clients.get(&c))))
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
     /// Whether anything records.
     pub fn any(&self) -> bool {
-        !self.0.is_empty()
+        !self.calling().is_empty()
     }
 
     /// Whether a node that records here records in `later` too, the same
     /// node, as a call that went on does.
     pub fn goes_on_in(&self, later: &Recording) -> bool {
-        !self.0.is_disjoint(&later.0)
+        !self.calling().is_disjoint(&later.calling())
     }
 }
 
@@ -182,6 +234,64 @@ mod tests {
         playing["info"]["props"]["media.class"] = json!("Stream/Output/Audio");
         recording.take(&json!([playing]));
         assert!(!recording.any());
+    }
+
+    fn native(id: u64, client: u64) -> Value {
+        let mut stream = node(id, "", "running");
+        stream["info"]["props"] = json!({
+            "media.class": "Stream/Input/Audio",
+            "node.name": "TupleAudio",
+            "client.id": client,
+        });
+        stream
+    }
+
+    fn client(id: u64, binary: &str) -> Value {
+        json!({
+            "id": id,
+            "type": "PipeWire:Interface:Client",
+            "info": { "props": { "application.process.binary": binary } }
+        })
+    }
+
+    #[test]
+    fn a_native_stream_is_named_by_its_client() {
+        let mut recording = Recording::default();
+        recording.take(&json!([native(60, 59)]));
+        assert!(!recording.any(), "a stream nothing names isn't a call yet");
+        recording.take(&json!([client(59, "tuple")]));
+        assert!(
+            recording.any(),
+            "Tuple's stream, named by its client, is a call"
+        );
+        recording.take(&json!([{ "id": 59, "info": null }]));
+        assert!(
+            !recording.any(),
+            "a stream whose client went is named by nothing"
+        );
+    }
+
+    #[test]
+    fn a_native_stream_of_what_records_without_calling_is_left_out() {
+        let of_client = |binary: &str| of(&json!([native(60, 59), client(59, binary)]));
+        assert!(
+            !of_client("pipewire").any(),
+            "PipeWire's own filter isn't a call"
+        );
+        assert!(
+            !of_client("pw-cat").any(),
+            "a transcript's recorder isn't a call"
+        );
+        assert!(
+            !of_client(".quickshell-wrapped").any(),
+            "the shell's meter, named for Nix's wrapper, isn't a call"
+        );
+    }
+
+    #[test]
+    fn a_wrapped_program_is_named_for_itself() {
+        assert_eq!(program(&node(1, ".zoom-wrapped", "running"), None), "zoom");
+        assert_eq!(program(&node(1, "slack", "running"), None), "slack");
     }
 
     #[test]
