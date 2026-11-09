@@ -260,7 +260,7 @@ Provider {
             name: device.name,
             glyph: kind(device),
             hue: "machine",
-            side: warns ? `${charge}%, running low` : stood,
+            side: warns ? `${charge}% \u00b7 running low` : stood,
             warns: warns,
             note: note,
             device: device,

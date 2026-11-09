@@ -359,7 +359,7 @@ ShellRoot {
     // Now lists it too.
     function lowHolds() {
         const low = bluetooth.made(headphones);
-        expect("one running low says so at its side", low.side === "15%, running low"
+        expect("one running low says so at its side", low.side === "15% \u00b7 running low"
             && low.note === "connected", `${low.side}; ${low.note}`);
         expect("one running low warns", low.warns === true, String(low.warns));
         const fine = bluetooth.made(mouse);

@@ -70,6 +70,7 @@
     {
       "id": "energy",
       "name": "Power",
+      "glyph": "power",
       "stands": "power",
       "holds": [
         "power",

@@ -160,6 +160,9 @@ Provider {
             .filter(part => part !== "").join(" \u00b7 ");
     }
 
+    // The charge and what it's doing, a run of parts with a middle dot
+    // between each, never a comma (VKCF3Z, 2026-11-09), as it reads at
+    // Power's right at home and in Machine.
     function doing() {
         return Power.doing(battery, Interfaces.lasted, Words.of("power").said ?? {});
     }

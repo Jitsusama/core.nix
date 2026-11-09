@@ -654,6 +654,13 @@ in
     console = "n";
     means = "the network: what this machine is joined to, and what's on it";
   };
+  # A plug rather than a bolt, since the bolt is energy as a unit and the
+  # battery is the one thing Power holds (VKCF3Z, 2026-11-09).
+  power = {
+    glyph = nerd "f06a5";
+    console = "p";
+    means = "power: the battery, the profile, and how a session ends";
+  };
   command = {
     glyph = nerd "f018d";
     console = ">";
