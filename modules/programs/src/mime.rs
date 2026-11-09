@@ -137,8 +137,9 @@ mod tests {
 
     #[test]
     fn only_a_types_own_shape_names_its_file() {
-        assert!(well_formed("application/vnd.oasis.opendocument.text"));
-        assert!(well_formed("image/svg+xml"));
+        for good in ["application/vnd.oasis.opendocument.text", "image/svg+xml"] {
+            assert!(well_formed(good), "{good} is a type's own shape");
+        }
         for bad in [
             "../../etc/passwd",
             "text/..",

@@ -244,6 +244,6 @@ mod tests {
             ])
         );
         let shared = source(json!({"list": ["x"]}));
-        assert!(opened(&shared, "").is_none());
+        assert!(opened(&shared, "").is_none(), "no name opens nothing");
     }
 }

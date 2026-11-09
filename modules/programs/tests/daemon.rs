@@ -266,7 +266,9 @@ fn an_entry_is_said_whole_from_the_nearest_folder() {
         viewer["entry_path"]
             .as_str()
             .unwrap()
-            .ends_with("near/applications/viewer.desktop")
+            .ends_with("near/applications/viewer.desktop"),
+        "the viewer's entry is the nearer one: {}",
+        viewer["entry_path"]
     );
 }
 

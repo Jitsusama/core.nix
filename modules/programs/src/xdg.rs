@@ -173,7 +173,8 @@ mod tests {
         assert!(
             links_toward(&built)
                 .iter()
-                .all(|(folder, _)| !folder.starts_with(&root))
+                .all(|(folder, _)| !folder.starts_with(&root)),
+            "no link is followed out of the folders it was built from"
         );
         std::fs::remove_dir_all(&root).unwrap();
     }

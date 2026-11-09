@@ -249,7 +249,8 @@ mod tests {
                 &mut mime,
                 ""
             )
-            .is_none()
+            .is_none(),
+            "a hidden entry is no program"
         );
     }
 }
