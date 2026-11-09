@@ -4,9 +4,9 @@
 # at each start (unpack.sh) and copies it into the running system, rather
 # than reading it while evaluating, which a machine built anywhere but on
 # itself, or by a pure evaluation, can't do. It needs systemd in the
-# initrd. It follows nixos-apple-silicon's peripheral-firmware module (MIT,
-# under the notice in LICENSE.nixos-apple-silicon), the path that reads it
-# at boot.
+# initrd, which is the only initrd nixpkgs builds now. It follows
+# nixos-apple-silicon's peripheral-firmware module (MIT, under the notice
+# in LICENSE.nixos-apple-silicon), the path that reads it at boot.
 { lib, pkgs, ... }:
 {
   # To mount the EFI system partition.
@@ -17,7 +17,6 @@
   ];
 
   boot.initrd.systemd = {
-    enable = true;
     extraBin.cpio = lib.getExe pkgs.cpio;
 
     mounts = [
