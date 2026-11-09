@@ -2,7 +2,7 @@ pragma ComponentBehavior: Bound
 // Drives pi's sessions (modules/quickshell/Sessions.qml) through Quickshell
 // itself, with the machine's mycelium node stood in for over the daemon
 // interface it speaks, and niri, kitty's kitten and the notices stood in
-// too, over what tests/sessions-state.sh lays out. The sessions are the
+// too, over what sessions-state.sh lays out. The sessions are the
 // node's and nothing else's: a node not listening as the shell starts, as
 // when a switch restarts it, is said as not answering, with no session
 // guessed in its place, and is watched once it listens. Every window niri
@@ -31,6 +31,7 @@ pragma ComponentBehavior: Bound
 // one the node says has ended goes; and a node lost leaves what it said
 // shown. It exits 0 once every case holds, and otherwise 1, saying which
 // didn't.
+// Its stand-ins are in modules/quickshell/tests/stand-ins.
 import qs
 import Quickshell
 import Quickshell.Io
