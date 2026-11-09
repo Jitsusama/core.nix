@@ -1922,6 +1922,13 @@ onLinux {
       niri = singleton "Niri.qml" ''
         function spawn(command) {}
       '';
+      # For You's Desktop row holds the notices unread, none of which the
+      # moment needs.
+      notices = singleton "Notices.qml" ''
+        property var history: []
+        function markRead(ids) {}
+        function seen() {}
+      '';
       timedatectl = pkgs.writeShellScriptBin "timedatectl" "echo America/Halifax";
     in
     pkgs.runCommandLocal "the-launcher-shows-the-moment-in-now" { } ''
@@ -1941,6 +1948,7 @@ onLinux {
       cp ${./launcher/Order.js} launcher/Order.js
       cp ${./launcher/ForYou.js} launcher/ForYou.js
       cp ${./launcher/ForYouFilter.js} launcher/ForYouFilter.js
+      cp ${./launcher/Lately.js} launcher/Lately.js
       cp ${./launcher/Ago.js} launcher/Ago.js
       cp ${./launcher/Here.js} launcher/Here.js
       cp ${./When.js} When.js
@@ -1951,6 +1959,7 @@ onLinux {
       cp ${waiting} WaitingOnYou.qml
       cp ${sessions} Sessions.qml
       cp ${niri} Niri.qml
+      cp ${notices} Notices.qml
       cp ${./Location.qml} Location.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export PATH=${timedatectl}/bin:$PATH
@@ -3667,6 +3676,24 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml notice-body.qml
+      touch $out
+    '';
+
+  # For You's Lately holds what's unread from each source until that source
+  # says it's done, and History says how, as tests/lately.qml holds
+  # Lately.js.
+  lately-follows-each-source =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "lately-follows-each-source" { } ''
+      cp ${../../tests/lately.qml} lately.qml
+      cp ${./launcher/Lately.js} Lately.js
+      cp ${./launcher/Order.js} Order.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml lately.qml
       touch $out
     '';
 

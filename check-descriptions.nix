@@ -805,6 +805,11 @@
     records the microphone, and in an idle window nothing,
     reads a stand-in's named thread from the kernel, and sums each generation by its load
   '';
+  lately-follows-each-source = ''
+    For You's Lately counts what's unread from the mail, Slack and the desktop's other notices,
+    each until its own source says it's done, never the shell's own notice for a Needs You
+    item or a session's want, and History says how each went, newest first
+  '';
   launcher-completes-in-zsh = ''
     launcher completes in zsh, typed in a real line editor against a stand-in shell: its command,
     each row as its step is typed, the rows inside the steps typed so far, its flags anywhere, and

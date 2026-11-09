@@ -87,7 +87,7 @@ Singleton {
         }
         for (const notice of Notices.history) {
             if (!notice.read && Said.failedOf(notice, path))
-                Notices.mark(notice.id, true);
+                Notices.mark(notice.id, true, "withdrawn");
         }
     }
 

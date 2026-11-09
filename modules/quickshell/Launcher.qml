@@ -4269,6 +4269,11 @@ Scope {
         const pushed = Date.now();
         if (row.from)
             row.from.opened();
+        // A row that marks what it holds once Joel's looked inside, as
+        // For You's notices count as seen, says so only on a step in,
+        // never when `:` lists its acts (Now.qml's noticesRow).
+        if (typeof row.stepped === "function")
+            row.stepped();
         const opened = Date.now();
         // What was typed found the row, so it goes: inside, everything the row
         // holds shows, and the left arrow puts it back on the way out. Stepped

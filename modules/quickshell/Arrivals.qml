@@ -116,7 +116,7 @@ Scope {
                 const notice = Notices.live[id];
                 const mark = notice.hints["x-arrival"];
                 if (mark !== undefined && !marks.includes(mark)) {
-                    Notices.mark(notice.id, true);
+                    Notices.mark(notice.id, true, "withdrawn");
                     notice.dismiss();
                 }
             }
@@ -163,7 +163,7 @@ Scope {
         for (const id in Notices.live) {
             const notice = Notices.live[id];
             if (notice.hints["x-arrival"] === mark) {
-                Notices.mark(notice.id, true);
+                Notices.mark(notice.id, true, "withdrawn");
                 notice.dismiss();
             }
         }

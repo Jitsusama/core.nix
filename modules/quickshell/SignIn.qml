@@ -51,7 +51,7 @@ Singleton {
                 Notices.live[id].dismiss();
         for (const notice of Notices.history)
             if (notice.app === "Wi-Fi" && notice.summary === summary && !notice.read)
-                Notices.mark(notice.id, true);
+                Notices.mark(notice.id, true, "withdrawn");
         Report.say(`withdrew sign-in ${network}`);
     }
 

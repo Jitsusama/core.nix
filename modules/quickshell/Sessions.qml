@@ -1899,7 +1899,7 @@ Singleton {
                 const notice = Notices.live[id];
                 const want = notice.hints["x-pi-want"];
                 if (notice.appName === "pi" && want !== undefined && !standing[want]) {
-                    Notices.mark(notice.id, true);
+                    Notices.mark(notice.id, true, "withdrawn");
                     notice.dismiss();
                 }
             }

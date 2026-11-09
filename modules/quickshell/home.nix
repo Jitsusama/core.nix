@@ -309,6 +309,7 @@ let
     "launcher/NeedsYou.js"
     "launcher/Here.js"
     "launcher/Notice.js"
+    "launcher/Lately.js"
   ];
 
   # A service holding one of logind's locks for as long as it runs, with a

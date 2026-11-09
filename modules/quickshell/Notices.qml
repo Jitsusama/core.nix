@@ -1,8 +1,8 @@
 pragma Singleton
 // Every notification, newest first, for the launcher's collection of them
 // (launcher/PastNotices.qml), kept on disk in the shell's state so a restart
-// loses none: a read one for a week, an unread one for a month, and never
-// more than `keep`.
+// loses none: a read one for a week, an unread one until it's read, and
+// never more than `keep` (launcher/Lately.js's kept).
 //
 // One leaves the screen in one of three ways: clicked away; withdrawn by its
 // program, as a chat app does once the message is read there; or by itself
@@ -29,15 +29,16 @@ import QtQuick
 import "Forward.js" as Forward
 import "NoticeBody.js" as NoticeBody
 import "ProgramGlyphs.js" as ProgramGlyphs
+import "launcher/Lately.js" as Lately
 
 Singleton {
     id: root
 
-    // How many are kept, and for how long; the oldest go first.
+    // How many are kept, and how long one read is; one unread stays until
+    // it's read or forgotten.
     readonly property int keep: 200
     readonly property real day: 24 * 60 * 60 * 1000
     readonly property real readFor: 7 * day
-    readonly property real unreadFor: 30 * day
 
     // { id, at, app, entry, summary, body, styled, links, picture, glyph,
     // hue, urgency, category, low, urgent, held, missed, read, waits, left,
@@ -202,11 +203,10 @@ Singleton {
         return still ? picture(still) : notice.picture ?? "";
     }
 
-    // Those still young enough to keep, at most `keep` of them.
+    // Those kept: every one unread, and those read for `readFor`, at most
+    // `keep` of them, the oldest read going first (Lately.js's kept).
     function fresh(notices) {
-        const now = Date.now();
-        return notices.filter(notice => now - notice.at < (notice.read ? readFor : unreadFor))
-            .slice(0, keep);
+        return Lately.kept(notices, Date.now(), readFor, keep);
     }
 
     // Keeps a notification as it arrives, missed until it's seen unless
@@ -358,10 +358,23 @@ Singleton {
         }
     }
 
-    // Marks one read, or unread again.
-    function mark(id, read) {
+    // Marks one read, or unread again. The shell marks one `withdrawn`
+    // once what it said no longer stands, an arrival gone or a want
+    // answered, so History never says Joel read what he never saw.
+    function mark(id, read, how) {
+        const now = read ? { missed: false, readAt: Date.now() } : { readAt: null };
         history = history.map(notice => notice.id !== id ? notice
-            : Object.assign({}, notice, { read: read }, read ? { missed: false } : {}));
+            : Object.assign({}, notice, { read: read, withdrawn: read && how === "withdrawn" },
+                now));
+    }
+
+    // Marks read every notice of `ids` at once, as For You's Desktop row's
+    // Mark Them Read does (launcher/Now.qml).
+    function markRead(ids) {
+        if (history.some(notice => ids.includes(notice.id) && !notice.read))
+            history = history.map(notice => !ids.includes(notice.id) ? notice
+                : Object.assign({}, notice, { read: true, missed: false,
+                    readAt: notice.read ? notice.readAt ?? null : Date.now() }));
     }
 
     // Marks read every notice of a to-do that no longer stands, so
