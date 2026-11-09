@@ -276,9 +276,15 @@ ShellRoot {
     }
 
     // Whether the folders it needs have been read: notes, and those on the
-    // way, and, once it's read, the files opened lately.
+    // way, and, once it's read, the files opened lately; and the kinds
+    // known, both the endings and the kinds each is one of, since the
+    // Markdown filter passes a file by its kind. Under a loaded builder the
+    // folders came first, and the case read notes with no files in it
+    // (Y9XISP, 2026-11-09: "sub, | Markdown (chosen), All Files").
     function ready(paths) {
         return paths.every(path => theChooser.listed[path] !== undefined)
+            && Object.keys(theChooser.kinds.endings).length > 0
+            && Object.keys(theChooser.kinds.broader).length > 0
             && (theChooser.settings.recent.length === 0 || theChooser.lately.length > 0);
     }
 
@@ -299,6 +305,10 @@ ShellRoot {
         }
 
         function onPreviewsChanged() {
+            Qt.callLater(root.step);
+        }
+
+        function onKindsChanged() {
             Qt.callLater(root.step);
         }
     }
