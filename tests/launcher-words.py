@@ -299,9 +299,10 @@ def unsaid(vocabulary: Entry) -> list[str]:
                    if unit.search(text))  # fmt: skip
         if key == "name" and text[:1].isdigit():
             out.append(f"{thing}'s name {text!r} reads its value first.")
-        # An initialism keeps its capitals ("LE Audio", "USB"), so only a
-        # word cased as a name is refused.
-        if key == "said" and text[:1].isupper() and not text.split()[0].isupper():
+        # An initialism keeps its capitals ("LE Audio", "USB"), its own too
+        # ("WARP's measure"), so only a word cased as a name is refused.
+        first = text.split()[0].removesuffix("'s") if text.strip() else ""
+        if key == "said" and text[:1].isupper() and not first.isupper():
             out.append(f"{thing} says {text!r} beside it with a capital, as no value starts.")
         # What a drawer tells is a sentence of its own, read as one.
         if key == "tells" and not (text[:1].isupper() and text.endswith(".")):

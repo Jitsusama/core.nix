@@ -1,0 +1,9 @@
+WARP · disconnected · manual
+
+tunnel  –, warp-cli gave no stats for it
+
+settings
+  –, warp-cli gave none
+
+DNS
+  –, warp-cli gave no counts

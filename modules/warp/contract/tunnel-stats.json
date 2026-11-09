@@ -1,0 +1,22 @@
+{
+  "v4_endpoint": "198.51.100.2",
+  "v6_endpoint": "::",
+  "warp_is_on": true,
+  "secs_since_last_handshake": 8751,
+  "bytes_sent": 9257621853,
+  "bytes_received": 10242929366,
+  "estimated_latency_ms": 127,
+  "estimated_loss": 0.012355098,
+  "protocol": "MASQUE (HTTPS via UDP)",
+  "tls": {
+    "version": "TLSv1.3",
+    "curve": "P256Kyber768Draft00",
+    "cipher": "TLS_AES_256_GCM_SHA384",
+    "post_quantum_enabled": true,
+    "sni": "masque.example.com"
+  },
+  "edge": {
+    "colo": "YYZ",
+    "metal": "0a1b2c"
+  }
+}

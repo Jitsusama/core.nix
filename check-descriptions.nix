@@ -1881,7 +1881,10 @@
   '';
   the-launcher-answers-what-is-asked = ''
     sums, bases and bits, addresses, subnets, characters, measures, zones, colours, the machine's
-    figures and its parts' heat answer
+    figures and its parts' heat answer, and WARP says how its link stands from the record warp
+    prints, connected, degraded, down, not answering or unreadable, and nothing with no warp-cli,
+    every figure of the record a part in its own unit and in words.json's words, its settings
+    saying who set each, its TLS and DNS a step in
   '';
   the-screens-go-off-on-niri = ''
     on niri, Turn Every Screen Off closes the launcher and then asks niri to power its monitors
@@ -1912,6 +1915,8 @@
     rows above it change, reads on a long name while it's selected, tells the meaning daemon the
     parts its places hold and adds one meant below what the letters found, saying where it lives,
     and warns of nothing it drew;
+    WARP, read by the real warp from a stand-in warp-cli, says how its link stands in Network
+    after Speed, and its service not answering;
     and the notices it holds, taken as Super+N takes them, turn, forget and step into their cards
     by vi's keys
   '';
@@ -2783,7 +2788,9 @@
     up to 520, and every line of it lies on one of the card's to a hundredth of a pixel: its
     eyebrow on the field's centre, its title on the first row's baseline, and its facts and words
     a whole number of half rows below; and a row's words, home's lists and a found row's note,
-    are in the serif a step after its name and on its baseline to half a device pixel
+    are in the serif a step after its name and on its baseline to half a device pixel; and WARP,
+    from the real warp over a stand-in warp-cli, stands in Network connected, degraded and not
+    answering, for its gallery to shoot
   '';
   vm-desktop-looks-machine = ''
     on the laptop's screen at 1.5 and at 2, Machine's processor, memory, disk and uptime step
@@ -3091,6 +3098,16 @@
     said in decimal units from its bytes and in use only while it's on, each state is said in the
     launcher's own words rather than libvirt's, each state offers its own acts and tells virsh its
     own command, and the VMs are ordered and counted as Programs shows them
+  '';
+  warp-passes-clippy = ''
+    clippy finds nothing in warp or its tests
+  '';
+  warp-reads-what-warp-cli-says = ''
+    warp draws WARP from every answer in its contract exactly as warp.json holds it, keeping a
+    reason's own figures, an endpoint given as no address as none and a figure left out as unknown;
+    tells no warp-cli, a service not answering or hanging, and a status refused or garbled apart,
+    each said in a line with a code of its own and with --json as a record; still reads the rest
+    when a part besides the status isn't given; and draws each page as its golden one
   '';
   what-vm-tests-share-does-what-it-says = ''
     the helpers VM tests share run a command as the account asked, with its runtime folder and

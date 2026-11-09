@@ -1,0 +1,62 @@
+{
+  "status": {
+    "state": "Connected",
+    "reason": "NetworkHealthy",
+    "reason_figures": null
+  },
+  "tunnel": {
+    "on": true,
+    "protocol": "MASQUE (HTTPS via UDP)",
+    "v4_endpoint": "198.51.100.2",
+    "v6_endpoint": null,
+    "last_handshake_s": 8751,
+    "sent_bytes": 9257621853,
+    "received_bytes": 10242929366,
+    "latency_ms": 127,
+    "loss_fraction": 0.012355098,
+    "tls": {
+      "version": "TLSv1.3",
+      "curve": "P256Kyber768Draft00",
+      "cipher": "TLS_AES_256_GCM_SHA384",
+      "post_quantum": true,
+      "sni": "masque.example.com"
+    },
+    "edge": {
+      "colo": "YYZ",
+      "metal": "0a1b2c"
+    }
+  },
+  "settings": {
+    "mode": "warp+doh",
+    "always_on": true,
+    "switch_locked": false,
+    "auto_connect_after_min": 2,
+    "organisation": "example",
+    "tunnel_protocol": "masque",
+    "post_quantum": "enabled_with_downgrades",
+    "split_tunnel": {
+      "mode": "include",
+      "hosts": 2,
+      "ips": 2
+    },
+    "set_by": {
+      "mode": "local_policy",
+      "always_on": "default",
+      "switch_locked": "override",
+      "auto_connect_after_min": "local_policy",
+      "organisation": "local_policy",
+      "tunnel_protocol": "network_policy",
+      "post_quantum": "network_policy",
+      "split_tunnel": "network_policy"
+    }
+  },
+  "dns": {
+    "proxy_enabled": true,
+    "average_ms": 134.08333333333334,
+    "total": 12,
+    "success": 8,
+    "no_records_found": 4,
+    "timed_out": 0,
+    "other_error": 0
+  }
+}

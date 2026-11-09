@@ -949,6 +949,19 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           enable = lib.mkForce true;
           fwupdmgr = lib.mkForce "${standInFwupdmgr}";
         };
+        # WARP's warp-cli isn't in the VM, so where its looks are shot a
+        # stand-in answers with what the test writes, as the contract's files
+        # say it (warp-cli-stand-in.sh), the real warp reading it.
+        jitsusama.quickshell.launcher.providers.warp = lib.mkIf (area == "looks") {
+          enable = lib.mkForce true;
+          warpCli = lib.mkForce (
+            toString (
+              pkgs.writeShellScript "warp-cli" ''
+                PATH=${pkgs.coreutils}/bin exec ${lib.getExe pkgs.bash} ${./warp-cli-stand-in.sh} "$@"
+              ''
+            )
+          );
+        };
         # The Ask row's model would need the network and an account.
         jitsusama.quickshell.launcher.providers.ask = {
           enable = lib.mkForce true;
@@ -1112,9 +1125,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           # BlueZ's emulator, for the looks area to hear a device in Nearby
           # by: two controllers of the machine's own, each seen as Buds, so
           # whichever the launcher looks from hears the other. Only there, so
-          # no other area's test moves with it.
+          # no other area's test moves with it. WARP's contract is there too,
+          # for the stand-in warp-cli to answer with.
           // pkgs.lib.optionalAttrs (area == "looks") {
             btvirt = "${import ./btvirt.nix { inherit pkgs; }}/bin/btvirt";
+            warp_contract = "${../modules/warp/contract}";
           }
         )
       );

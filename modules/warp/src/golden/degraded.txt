@@ -1,0 +1,36 @@
+WARP · connected · network degraded · 5.37% loss · 170 ms round trip
+
+latency         127 ms, estimated
+loss            1.24%, estimated
+protocol        MASQUE (HTTPS via UDP)
+colo            YYZ · metal 0a1b2c
+endpoints       198.51.100.2 · IPv6 none
+last handshake  2 h 25 min ago
+sent            9.3 GB
+received        10.2 GB
+
+TLS
+  version       TLSv1.3
+  curve         P256Kyber768Draft00
+  cipher        TLS_AES_256_GCM_SHA384
+  post-quantum  on
+  server name   masque.example.com
+
+settings
+  mode                warp+doh · the tunnel, with DNS over HTTPS · by local policy
+  always on           on · by default
+  switch locked       off · by override
+  auto-connect after  2 min · by local policy
+  organisation        example · by local policy
+  tunnel protocol     masque · by network policy
+  post-quantum        enabled with downgrades · by network policy
+  split tunnel        include · 2 hosts · 2 networks · by network policy
+
+DNS
+  proxy      on
+  asked      12
+  answered   8
+  no record  4
+  timed out  0
+  failed     0
+  average    134.1 ms

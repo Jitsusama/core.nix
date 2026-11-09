@@ -251,6 +251,7 @@ let
     "launcher/HomeNetworkHistory.js"
     "launcher/Cameras.js"
     "launcher/Firmware.js"
+    "launcher/Warp.js"
     "launcher/Interfaces.js"
     "launcher/Networkd.js"
     "launcher/WifiLink.js"
@@ -709,6 +710,7 @@ let
     traffic = ./launcher/Traffic.qml;
     waits = ./launcher/Waits.qml;
     firmware = ./launcher/Firmware.qml;
+    warp = ./launcher/Warp.qml;
     today = ./launcher/Today.qml;
     light = ./launcher/Light.qml;
     keyboards = ./launcher/Keyboards.qml;
@@ -751,6 +753,12 @@ let
 
   # The program that hears every copy, for the clipboard collection.
   clipboardHistory = pkgs.callPackage ./clipboard/package.nix { };
+
+  # The package the system installs warp-cli by, WARP's own client, found by
+  # the program it says it is, or null where the system installs none.
+  systemWarpCli = lib.findFirst (
+    package: lib.isDerivation package && (package.meta.mainProgram or "") == "warp-cli"
+  ) null (osConfig.environment.systemPackages or [ ]);
   keepsCopies = launcher.providers.clipboard.enable or false;
 
   # The program that says where the laptop is, for the weather's here. It
@@ -1428,6 +1436,16 @@ in
             lib.getExe' osConfig.services.fwupd.package "fwupdmgr"
           else
             "";
+      };
+      # How WARP's link stands, from warp (modules/warp) asking the warp-cli
+      # the system installs, only where it installs one, so a machine without
+      # WARP has no WARP in Network.
+      warp = {
+        order = 89;
+        source = "warp";
+        enable = systemWarpCli != null;
+        warp = lib.getExe (pkgs.callPackage ../warp/package.nix { });
+        warpCli = if systemWarpCli != null then lib.getExe systemWarpCli else "";
       };
       # The date's week, day of the year, UTC, zone and epoch.
       today = {

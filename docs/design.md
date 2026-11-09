@@ -1602,10 +1602,18 @@ works the same way everywhere.
   (what the cards carry In and Out now, the Connection as the shaper last
   measured it and how full it is, the Round Trip while it's quiet, each
   server a step in, what's Dropped, and each of the Connections, VPNs
-  too) and "uptime". The queue is Agents', beside the sessions whose
-  heavy work it holds, and "queue" finds it: each job named in words,
-  its time against its last run or what it waits for, and its quest and
-  memory below. The devices hold as much: "heat"
+  too), "warp" or "vpn" (WARP's State and why, the network's Health as
+  WARP judges it, its state alone at the side and its note saying it's
+  "WARP's measure" before the figures, so whose gives way last, its
+  Settings a step in, the Mode, Always On and Split
+  Tunnel first, each saying who set it, the tunnel's Round Trip and Loss
+  as WARP estimates them, its Protocol, Data Centre, Endpoint and Last
+  Handshake, its Traffic each way ("1.52 GB in · 312 MB out"), its TLS a
+  step in, and what its DNS proxy answered, each count a step in, listed
+  in Network after Speed where the system runs WARP) and "uptime". The
+  queue is Agents', beside the sessions whose heavy work it holds, and
+  "queue" finds it: each job named in words, its time against its last
+  run or what it waits for, and its quest and memory below. The devices hold as much: "heat"
   (each part against its critical point, the processor's Cores, the fans
   against what they're rated for, and how often it Throttled), Bluetooth
   (each device's Battery, Signal and Link Quality, Codec and Connection,
