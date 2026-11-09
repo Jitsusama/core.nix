@@ -935,19 +935,20 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
             )
         )
         desktop.shoot("launcher-displays")
-        # A scale is said as a multiple, "1.5\u00d7", and typed as one inside,
-        # or found from outside by its share, "scale 150", as niri says it.
+        # A scale is said as a multiple, "1.5\u00d7", by its value alone, and
+        # typed as one inside, or found from outside by its setting and its
+        # share, "scale 150", as niri says it.
         # A whole one starts every other too, and what was picked last leads
         # them, so the row is gone down to.
         multiple = f"{wanted:g}"
         if inside:
             desktop.type_in("scale", selecting="Scale")
             desktop.step_in("ret")
-            desktop.launcher_until(lambda shown: "Scale to 1.5\u00d7" in shown["rows"])
+            desktop.launcher_until(lambda shown: "1.5\u00d7" in shown["rows"])
             desktop.type_in(multiple)
         else:
             desktop.type_in(f"scale {round(wanted * 100)}")
-        desktop.down_to(f"Scale to {multiple}\u00d7")
+        desktop.down_to(f"{multiple}\u00d7")
         desktop.land()
         machine.send_key("ret")
 

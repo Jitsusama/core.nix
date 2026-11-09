@@ -658,6 +658,13 @@ Provider {
         return partSaid("rotation", transform);
     }
 
+    // The vocabulary as Screens.js says a screen in it.
+    readonly property var screenWords: ({
+        named: id => provider.partName(id),
+        said: (id, key) => provider.partSaid(id, key),
+        turned: transform => provider.turnedSaid(transform)
+    })
+
     // A screen's drawer: its connector and what it is over its name, both
     // as written, since a connector is a name from the world (VKCF3Z,
     // 2026-11-07); then what moves most, the light where it lights this
@@ -716,11 +723,8 @@ Provider {
             eyebrowNames: true,
             title: named(output),
             // Its serial, from niri or the EDID, identifies it, so ends it.
-            facts: Plate.identified(facts.concat(Screens.facts(output, {
-                named: id => provider.partName(id),
-                said: (id, key) => provider.partSaid(id, key),
-                turned: transform => provider.turnedSaid(transform)
-            }, settings), edid,
+            facts: Plate.identified(facts.concat(Screens.facts(output, screenWords, settings),
+                edid,
                 physical === "" ? [] : [{ label: partName("size"), value: physical }]),
                 [partName("serial")])
         };
@@ -747,14 +751,19 @@ Provider {
 
     // A choice wears the theme's mark of the setting it's for, by name.
     // Setting it keeps the launcher, the setting saying what it's at now.
-    function choice(key, name, mark, chosen, run, keywords) {
+    // A setting's choice, said by its value alone, its setting named in the
+    // path above (design.md), with what it is beside it, as a mode the
+    // screen prefers, muted in its note. Its setting's name is a hidden
+    // word, so "scale 1.5" still finds 1.5\u00d7 from outside.
+    function choice(key, name, mark, chosen, run, keywords, note) {
         return thing({
             key: `verb:display-${key}`,
             name: name,
-            keywords: keywords ?? "",
+            keywords: [partName(mark), keywords ?? ""].join(" ").trim(),
+            note: note ?? "",
             glyph: Theme.glyph[mark],
             hue: "action",
-            side: chosen ? "chosen" : "",
+            side: chosen ? partSaid("", "chosen") : "",
             stays: true,
             run: run
         });
@@ -812,7 +821,7 @@ Provider {
     // A display's right arrow: turning it on while it's off or dark; while
     // it's lit, each of its settings as a part saying how it's set, whose
     // step in offers the others (and whose choices what's typed finds from
-    // here, so "scale 1.5" is Scale to 1.5\u00d7), then the ways it turns
+    // here, so "scale 1.5" is Scale's 1.5\u00d7), then the ways it turns
     // off that Screens.js gives, then what its EDID says.
     function verbs(output) {
         const ways = Screens.ways(output, shown, Niri.powersOffEach).map(way => powerRow(way));
@@ -870,16 +879,34 @@ Provider {
             () => choices);
     }
 
-    // How niri turns a display, as a part says it and as its choice does,
-    // in the vocabulary's words; niri turns "90" counter-clockwise.
-    readonly property var turns: ["Normal", "90", "180", "270"].map(transform => {
-        const side = (Words.of("displays:rotation").said ?? {})[transform] ?? transform;
-        return {
-            transform: transform,
-            side: side,
-            name: Words.name("displays:rotate", "", { way: side })
-        };
-    })
+    // How niri turns a display, its four turns then its four mirrored, as a
+    // part says it and as its choice does, in the vocabulary's words; niri
+    // turns "90" counter-clockwise.
+    readonly property var turns: Screens.transforms().map(transform => ({
+        transform: transform,
+        name: turnedSaid(transform)
+    }))
+
+    // Variable Refresh, a switch keeping its name as it flips, saying on or
+    // off, Return flipping it and the launcher staying (VKCF3Z,
+    // 2026-11-09). niri's on-demand variable refresh, on only while a
+    // window rule asks, would make it a setting of three; nothing here
+    // sets that, so it's on or off.
+    function variableSwitch(output) {
+        const on = output.vrr_enabled === true;
+        return thing({
+            key: `displays:${output.name}:variable`,
+            wordsId: "displays:variable",
+            wordState: on ? "" : "off",
+            name: partName("variable"),
+            verb: Words.verb("displays:variable", on ? "" : "off"),
+            glyph: Theme.glyph.refresh,
+            hue: "machine",
+            side: partSaid("variable", on ? "on" : "off"),
+            stays: true,
+            run: () => change(output, { Vrr: { vrr: { vrr: !on, on_demand: false } } })
+        });
+    }
 
     readonly property var scales: [1, 1.25, 1.5, 1.75, 2, 2.5, 3]
 
@@ -894,43 +921,36 @@ Provider {
         // and other systems say it, still finds 1.5\u00d7.
         const rows = lightRows(output).concat([setting(output, "scale", Screens.scale(scale),
             "scale", scales.map(each => choice(`scale-${each}`,
-                `Scale to ${Screens.scale(each)}`, "scale",
+                Screens.scale(each), "scale",
                 Math.abs(each - scale) < 0.01,
                 () => change(output, { Scale: { scale: { Specific: each } } }),
                 `${Math.round(each * 100)}%`)))]);
         if (now !== null) {
-            const rates = output.modes.filter(m => m.width === now.width && m.height === now.height);
-            const refreshes = rates.length < 2 ? [] : rates.map(each =>
-                choice(`rate-${hertz(each)}`, `Refresh at ${hertz(each)} Hz`, "refresh",
-                    each === now, () => change(output, { Mode: { mode: { Specific: {
-                        width: each.width,
-                        height: each.height,
-                        refresh: each.refresh_rate / 1000
-                    } } } })));
-            if (output.vrr_supported) {
-                const vrr = { vrr: !output.vrr_enabled, on_demand: false };
-                refreshes.push(choice("vrr", output.vrr_enabled ? "Stop variable refresh"
-                    : "Use variable refresh", "refresh", false,
-                    () => change(output, { Vrr: { vrr } })));
-            }
-            const variable = output.vrr_enabled ? ", variable" : "";
-            rows.push(setting(output, "refresh", `${hertz(now)} Hz${variable}`, "refresh",
-                refreshes));
-            const sizes = [];
-            for (const each of output.modes)
-                if (!sizes.some(size => size.width === each.width && size.height === each.height))
-                    sizes.push(each);
+            // Each by its value, every digit niri gives, the mode the
+            // screen prefers noted so, as a custom one is (VKCF3Z,
+            // 2026-11-09).
+            const rates = Screens.refreshes(output, screenWords);
+            rows.push(setting(output, "refresh", `${hertz(now)} Hz`, "refresh",
+                rates.length < 2 ? [] : rates.map(each =>
+                    choice(`rate-${each.mode.refresh_rate}`, each.value, "refresh",
+                        each.chosen, () => change(output, { Mode: { mode: { Specific: {
+                            width: each.mode.width,
+                            height: each.mode.height,
+                            refresh: each.mode.refresh_rate / 1000
+                        } } } }), "", each.note))));
+            if (output.vrr_supported)
+                rows.push(variableSwitch(output));
+            const sizes = Screens.sizes(output, screenWords);
             rows.push(setting(output, "resolution", `${now.width} \u00d7 ${now.height}`,
                 "resolution",
                 sizes.length < 2 ? [] : sizes.map(each =>
-                    choice(`size-${each.width}x${each.height}`,
-                        `Use ${each.width} \u00d7 ${each.height}`, "resolution",
-                        each.width === now.width && each.height === now.height,
+                    choice(`size-${each.mode.width}x${each.mode.height}`, each.value,
+                        "resolution", each.chosen,
                         () => change(output, { Mode: { mode: { Specific: {
-                            width: each.width,
-                            height: each.height,
+                            width: each.mode.width,
+                            height: each.mode.height,
                             refresh: null
-                        } } } })))));
+                        } } } }), "", each.note))));
         }
         rows.push(setting(output, "rotation", turnedSaid(output.logical.transform), "rotation",
             turns.map(each => choice(`turn-${each.transform}`, each.name, "rotation",

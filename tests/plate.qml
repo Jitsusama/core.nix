@@ -160,6 +160,43 @@ QtObject {
         };
     }
 
+    // A screen's settings' choices, each said by its value alone: Refresh's
+    // every rate at the size it runs, with every digit, Resolution's each
+    // size once, the mode it prefers and a custom one noted so; and
+    // Rotation's eight turns, the mirrored after the four (VKCF3Z,
+    // 2026-11-09).
+    function settings(check) {
+        const said = choices => choices.map(each => `${each.value}`
+            + `${each.note === "" ? "" : ` (${each.note})`}${each.chosen ? "*" : ""}`).join(", ");
+        const monitor = panel();
+        monitor.modes = [
+            { width: 2560, height: 1440, refresh_rate: 59951, is_preferred: true },
+            { width: 2560, height: 1440, refresh_rate: 60000, is_preferred: false },
+            { width: 1920, height: 1080, refresh_rate: 60000, is_preferred: false },
+            { width: 1920, height: 1080, refresh_rate: 59940, is_preferred: false }
+        ];
+        monitor.current_mode = 1;
+        check("Refresh offers each rate at its size, every digit, the preferred noted",
+            said(Screens.refreshes(monitor, words)) === "59.951 Hz (preferred), 60 Hz*",
+            said(Screens.refreshes(monitor, words)));
+        check("Resolution offers each size once",
+            said(Screens.sizes(monitor, words)) === "2560 \u00d7 1440 (preferred)*, "
+            + "1920 \u00d7 1080", said(Screens.sizes(monitor, words)));
+        monitor.current_mode = 3;
+        monitor.is_custom_mode = true;
+        check("a custom mode is noted where it's chosen",
+            said(Screens.refreshes(monitor, words)) === "60 Hz, 59.94 Hz (custom)*"
+            && said(Screens.sizes(monitor, words)) === "2560 \u00d7 1440 (preferred), "
+            + "1920 \u00d7 1080 (custom)*", said(Screens.sizes(monitor, words)));
+        monitor.current_mode = null;
+        check("a screen running no mode offers no rate",
+            Screens.refreshes(monitor, words).length === 0
+            && !Screens.sizes(monitor, words).some(each => each.chosen), "it did");
+        check("Rotation offers the four turns, then the four mirrored",
+            Screens.transforms().join(" ") === "Normal 90 180 270 "
+            + "Flipped Flipped90 Flipped180 Flipped270", Screens.transforms().join(" "));
+    }
+
     function run() {
         const failures = [];
         const check = (what, holds, got) => {
@@ -226,7 +263,7 @@ QtObject {
         const on = panel();
         check("a screen on says what it runs past its row, where it sits and what it offers",
             said(Screens.facts(on, words)) === "mode=preferred; "
-            + "refresh=120.001 Hz; variable=supported \u00b7 off; "
+            + "refresh=120.001 Hz; "
             + "logical=1440 \u00d7 900; position=560, 1440; rotation=upright; "
             + "modes=2 \u00b7 preferred 2880 \u00d7 1800 at 120.001 Hz; density=244 ppi",
             said(Screens.facts(on, words)));
@@ -236,13 +273,17 @@ QtObject {
         on.modes[0].is_preferred = false;
         check("variable, custom and a serial say so",
             said(Screens.facts(on, words)).startsWith("mode=custom; "
-                + "refresh=120.001 Hz; variable=supported \u00b7 on;")
+                + "refresh=120.001 Hz; logical=")
             && said(Screens.facts(on, words)).endsWith("serial=0x1234"),
             said(Screens.facts(on, words)));
         on.modes[0].refresh_rate = 60000;
         on.is_custom_mode = false;
         check("a whole refresh and a mode neither preferred nor custom are the row's",
-            said(Screens.facts(on, words)).startsWith("variable="), said(Screens.facts(on, words)));
+            said(Screens.facts(on, words)).startsWith("logical="), said(Screens.facts(on, words)));
+        on.vrr_supported = false;
+        check("variable refresh is its switch's to say, and only its lack the drawer's",
+            said(Screens.facts(on, words)).startsWith("variable=unsupported; logical="),
+            said(Screens.facts(on, words)));
         const off = panel();
         off.logical = null;
         off.current_mode = null;
@@ -253,6 +294,7 @@ QtObject {
             && Screens.physical({ physical_size: [0, 0] }) === "", Screens.physical(on));
 
         backlight(check);
+        settings(check);
 
         if (failures.length > 0) {
             for (const failure of failures)
