@@ -33,15 +33,17 @@ Singleton {
     // { latitude, longitude, accuracy in metres, when in seconds, place,
     // zone, country, hand, and altitude, speed and heading where GeoClue
     // knows them }, place and zone null while they couldn't be asked; or
-    // null where it isn't known.
-    readonly property var here: hereOf(record)
+    // null where it isn't known. It's bound rather than read-only, so the
+    // moment's check can say here is nowhere for a case and put it back
+    // (tests/now-moment.qml).
+    property var here: hereOf(record)
     // Whether whereabouts has said once, or is known not to answer, so
     // "unknown" is said only once it's known to be.
     readonly property bool read: daemon.answered || daemon.state === "not answering"
 
     // The zone the clock keeps, "America/Toronto", or "" until whereabouts
-    // has said.
-    readonly property string clockZone: record?.clock_zone ?? ""
+    // has said; bound rather than read-only, as here is.
+    property string clockZone: record?.clock_zone ?? ""
 
     // Whether the place keeps another zone than the clock does.
     readonly property bool zoneDiffers: here !== null && (here.zone ?? "") !== ""
