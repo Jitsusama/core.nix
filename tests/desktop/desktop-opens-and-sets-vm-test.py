@@ -798,8 +798,12 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
         shown_as: [
             {"name": "EDID", "value": "1.4"},
             {"name": "depth", "value": "8 bit"},
-            {"name": "white", "value": "6462 0.3135 0.3291"},
-            {"name": "primaries", "value": "0.6396 0.3301 0.2998 0.5996 0.1504 0.0596"},
+            {"name": "white", "value": "6462 0.3134765625 0.3291015625"},
+            {
+                "name": "primaries",
+                "value": "0.6396484375 0.330078125 0.2998046875 0.599609375 "
+                "0.150390625 0.0595703125",
+            },
         ]
     }
     desktop.as_account(

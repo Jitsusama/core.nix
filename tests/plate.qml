@@ -47,12 +47,13 @@ QtObject {
             said: (id, key) => ({ point: "x {x} y {y}", red: "red x {x} y {y}",
                 green: "green x {x} y {y}", blue: "blue x {x} y {y}" })[key]
         };
-        const z27k = "0.6396 0.3301 0.2998 0.5996 0.1504 0.0596";
-        const white = Screens.whitePoint("6462 0.3135 0.3291", words, {});
+        const z27k = "0.6396484375 0.330078125 0.2998046875 0.599609375 0.150390625 "
+            + "0.0595703125";
+        const z27kWhite = "6462 0.3134765625 0.3291015625";
+        const white = Screens.whitePoint(z27kWhite, words, {});
         check("a white is its temperature, then its point",
             white === "6,460 K \u00b7 x 0.313 y 0.329", white);
-        const pointed = Screens.whitePoint("6462 0.3135 0.3291", words,
-            { group: ".", point: "," });
+        const pointed = Screens.whitePoint(z27kWhite, words, { group: ".", point: "," });
         check("a white is grouped and pointed as Joel says",
             pointed === "6.460 K \u00b7 x 0,313 y 0,329", pointed);
         const primaries = Screens.primaries(z27k, words, {});

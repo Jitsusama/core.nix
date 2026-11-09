@@ -250,10 +250,11 @@ fn gamut(edid: &[u8]) -> String {
     format!("{covers:.2} \u{d7} sRGB's area")
 }
 
-/// An xy point as figures, x then y, to four places: ten bits a coordinate
-/// hold it to about a thousandth, which the launcher says to three.
+/// An xy point as figures, x then y, each exactly as its ten bits give it,
+/// so the launcher rounds it once, to three places: 0.3134765625, never
+/// 0.3135 and then 0.314.
 fn figures((x, y): (f64, f64)) -> String {
-    format!("{x:.4} {y:.4}")
+    format!("{x} {y}")
 }
 
 /// `McCamy`'s cubic for a white's correlated colour temperature from its xy,
@@ -278,7 +279,8 @@ fn kelvin((x, y): (f64, f64)) -> Option<f64> {
 
 /// The white an EDID gives, as figures for the launcher to say by Joel's
 /// grouping and decimal point: its colour temperature in whole kelvin, then
-/// its x and y, "6462 0.3135 0.3291"; nothing where it gives none.
+/// its x and y, "6462 0.3134765625 0.3291015625"; nothing where it gives
+/// none.
 fn white_point(edid: &[u8]) -> String {
     let [.., white] = chromaticity(edid);
     if white.1 <= 0.0 {
@@ -290,8 +292,8 @@ fn white_point(edid: &[u8]) -> String {
 }
 
 /// The red, green and blue an EDID gives, as the figures of each point in
-/// turn, "0.6396 0.3301 0.2998 0.5996 0.1504 0.0596"; nothing where it
-/// gives none.
+/// turn, red's "0.6396484375 0.330078125" first; nothing where it gives
+/// none.
 fn primaries(edid: &[u8]) -> String {
     let [red, green, blue, _] = chromaticity(edid);
     if [red, green, blue]
@@ -300,9 +302,7 @@ fn primaries(edid: &[u8]) -> String {
     {
         return String::new();
     }
-    [red, green, blue]
-        .map(figures)
-        .join(" ")
+    [red, green, blue].map(figures).join(" ")
 }
 
 /// Its native mode, from the first detailed timing.
@@ -2548,10 +2548,13 @@ mod tests {
         assert_eq!(named(&facts, "input"), Some("DisplayPort"));
         // sRGB's own primaries, which its Primaries' figures say.
         assert_eq!(named(&facts, "colours"), None);
-        assert_eq!(named(&facts, "white"), Some("6462 0.3135 0.3291"));
+        assert_eq!(
+            named(&facts, "white"),
+            Some("6462 0.3134765625 0.3291015625")
+        );
         assert_eq!(
             named(&facts, "primaries"),
-            Some("0.6396 0.3301 0.2998 0.5996 0.1504 0.0596")
+            Some("0.6396484375 0.330078125 0.2998046875 0.599609375 0.150390625 0.0595703125")
         );
         assert_eq!(named(&facts, "HDR"), Some("none"));
         assert_eq!(named(&facts, "EDID"), Some("1.4"));
@@ -2589,7 +2592,9 @@ mod tests {
     #[test]
     fn an_edid_without_its_colours_says_nothing_of_them() {
         let mut edid = bytes(Z27K_G3);
-        let given = edid[25..35].iter().fold(0u8, |sum, byte| sum.wrapping_add(*byte));
+        let given = edid[25..35]
+            .iter()
+            .fold(0u8, |sum, byte| sum.wrapping_add(*byte));
         edid[25..35].fill(0);
         edid[127] = edid[127].wrapping_add(given);
         let facts = display(&edid).unwrap();

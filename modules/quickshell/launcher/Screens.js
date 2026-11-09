@@ -30,6 +30,8 @@ const KELVIN = " K";
 const COORDINATE_PLACES = 3;
 // The primaries desk-facts gives figures for, in its order.
 const PRIMARIES = ["red", "green", "blue"];
+// What sets desk-facts' figures apart.
+const BETWEEN_FIGURES = /\s+/;
 
 // A rate as niri gives it, in millihertz, said in hertz with every digit
 // it has, since it names a mode rather than measuring one: 120001 is
@@ -65,7 +67,7 @@ function density(pixels, millimetres, group, point) {
 // The figures desk-facts writes for the launcher to say, as numbers, or
 // null where there aren't `count` of them.
 function figuresOf(given, count) {
-    const all = String(given ?? "").trim().split(/\s+/).map(Number);
+    const all = String(given ?? "").trim().split(BETWEEN_FIGURES).map(Number);
     return all.length === count && all.every(Number.isFinite) ? all : null;
 }
 
