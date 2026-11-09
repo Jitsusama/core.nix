@@ -7,7 +7,7 @@ GLOSSARY is docs/glossary.md, WORDS the launcher's vocabulary
 a place or a command is read: its name, noun, what, ask, empty, said, sure,
 asked, part and verb, each state's name, and a command's form and what it says. Any
 that says a name the glossary replaces fails, printed with the word that
-replaces it, matched as tests/names.py matches names, unless its thing is
+replaces it, matched as tests/repository/names.py matches names, unless its thing is
 listed below: as another sense of the word, or as a rename the launcher
 hasn't made yet. A listed thing that no longer says one fails too, so the
 lists only shrink. The words that only find a thing, never shown, are left

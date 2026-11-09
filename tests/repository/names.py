@@ -5,7 +5,7 @@
 GLOSSARY is docs/glossary.md, read as glossary.py reads it. NAMES is a JSON
 list of names: every check's, and every option's. KEPT is a JSON list of the
 names the repository keeps, each another sense of its word or a rename its
-owner hasn't made yet, as tests/names.nix is given them. A name is split into
+owner hasn't made yet, as tests/repository/names.nix is given them. A name is split into
 words at hyphens, dots and capitals, and a name it says that the glossary
 replaces fails, printed with the word that replaces it, unless one of the
 glossary's terms holds it there ("line" inside "status line"), the row that

@@ -1224,7 +1224,7 @@
   '';
   no-name-says-a-replaced-word = ''
     no check's name and no jitsusama.* option's says a name docs/glossary.md replaces, but the
-    other senses and the renames still waiting that tests/names-kept.nix keeps, each printed with
+    other senses and the renames still waiting that tests/repository/names-kept.nix keeps, each printed with
     its word, and the check refuses a stand-in name breaking each of its rules
   '';
   noise-cancelled-cleans-a-noisy-clip = ''

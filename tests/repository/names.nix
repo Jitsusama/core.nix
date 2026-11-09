@@ -29,6 +29,6 @@ runCommandLocal "no-name-says-a-replaced-word"
   ''
     cp ${./glossary.py} glossary.py
     cp ${./names.py} names.py
-    ${lib.getExe python3} names.py ${../docs/glossary.md} "$namesPath" "$keptPath"
+    ${lib.getExe python3} names.py ${../../docs/glossary.md} "$namesPath" "$keptPath"
     touch $out
   ''

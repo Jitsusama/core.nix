@@ -681,9 +681,9 @@ let
 
           # Every check's name and every jitsusama.* option's says the
           # glossary's words, never a name it replaces, held as a repository
-          # built on core holds its own (tests/names.nix).
+          # built on core holds its own (tests/repository/names.nix).
           no-name-says-a-replaced-word = self.lib.namesSayTheGlossary pkgs (
-            { names = named ++ optionNames; } // import ./tests/names-kept.nix
+            { names = named ++ optionNames; } // import ./tests/repository/names-kept.nix
           );
         };
     in
@@ -1062,7 +1062,7 @@ gather (
       # pointing at nothing fails here rather than misleading the next reader:
       # every relative link, and every backticked path from a top folder. Those
       # below name something deliberately absent, and fail once they're gone.
-      docs-name-what-exists = pkgs.callPackage ./tests/docs-name-what-exists.nix { } {
+      docs-name-what-exists = pkgs.callPackage ./tests/repository/docs-name-what-exists.nix { } {
         src = ./.;
         exempt = [
           # A module a reader would add, as an example.
@@ -1112,20 +1112,20 @@ gather (
         '';
 
       # The glossary gives each thing one word and each word one thing within
-      # its context, and writes no name it replaces (tests/glossary.py),
-      # printing each word to settle.
+      # its context, and writes no name it replaces
+      # (tests/repository/glossary.py), printing each word to settle.
       the-glossary-names-each-thing-once =
         pkgs.runCommandLocal "the-glossary-names-each-thing-once" { }
           ''
-            ${lib.getExe pkgs.python3} ${./tests/glossary.py} ${./docs/glossary.md}
+            ${lib.getExe pkgs.python3} ${./tests/repository/glossary.py} ${./docs/glossary.md}
             touch $out
           '';
 
       # No VM test grows past twenty subtests, where docs/testing.md says one
-      # splits by area (tests/every-vm-test-keeps-to-the-pyramid.py). Those past it
-      # today are listed with their counts, which may only fall, and each
-      # comes off once it's within the limit, so the list only shrinks. It
-      # reads the VM tests' files alone, so no other change reruns it.
+      # splits by area (tests/repository/every-vm-test-keeps-to-the-pyramid.py).
+      # Those past it today are listed with their counts, which may only
+      # fall, and each comes off once it's within the limit, so the list only
+      # shrinks. It reads the VM tests' files alone, so no other change reruns it.
       every-vm-test-keeps-to-the-pyramid =
         let
           over = [
@@ -1139,14 +1139,14 @@ gather (
           };
         in
         pkgs.runCommandLocal "every-vm-test-keeps-to-the-pyramid" { } ''
-          ${lib.getExe pkgs.python3} ${./tests/every-vm-test-keeps-to-the-pyramid.py} ${tests} \
+          ${lib.getExe pkgs.python3} ${./tests/repository/every-vm-test-keeps-to-the-pyramid.py} ${tests} \
             ${pkgs.writeText "over" (lib.concatLines over)}
           touch $out
         '';
 
       # Every path pattern merge-net's must-run.txt, ruff.toml's per-file
       # ignores and what treefmt leaves unread give still names a file
-      # (tests/every-pattern-names-a-file.py), since none of the tools says
+      # (tests/repository/every-pattern-names-a-file.py), since none of the tools says
       # when one matches nothing, and a file moved from under one would
       # quietly drop its VM tests from the net or its ignores from ruff, and
       # the next file to take its name would go unlinted. It's given the files' paths, not what they hold,
@@ -1156,7 +1156,7 @@ gather (
           paths = map (file: lib.removePrefix "./" (lib.path.removePrefix ./. file)) (lib.fileset.toList ./.);
         in
         pkgs.runCommandLocal "every-pattern-names-a-file" { } ''
-          ${lib.getExe pkgs.python3} ${./tests/every-pattern-names-a-file.py} \
+          ${lib.getExe pkgs.python3} ${./tests/repository/every-pattern-names-a-file.py} \
             ${./tools/merge-net/must-run.txt} ${./ruff.toml} \
             ${pkgs.writeText "unread" (lib.concatLines formatterExcludes)} \
             ${pkgs.writeText "paths" (lib.concatLines paths)}

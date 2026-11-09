@@ -86,8 +86,6 @@
   "tests/desktop/front-desk.py" = 1;
   "tests/desktop/stand-in-meaning.py" = 3;
   "tests/desktop/stand-in-screen-text.py" = 3;
-  "tests/docs-name-what-exists.sh" = 1;
-  "tests/every-folder-says-what-it-holds.sh" = 1;
   "tests/ex.qml" = 1;
   "tests/file-chooser.qml" = 2;
   "tests/file-facts.qml" = 1;
@@ -123,6 +121,8 @@
   "tests/quests.qml" = 2;
   "tests/queue.qml" = 2;
   "tests/recent.qml" = 1;
+  "tests/repository/docs-name-what-exists.sh" = 1;
+  "tests/repository/every-folder-says-what-it-holds.sh" = 1;
   "tests/rows.qml" = 1;
   "tests/runs.qml" = 2;
   "tests/screens.qml" = 1;
