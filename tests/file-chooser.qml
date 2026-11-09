@@ -8,7 +8,7 @@
 // name, then the program's filters, each group apart; a file is one row,
 // though it was opened lately too, and the hidden ones show once a "." is
 // typed; a file in the folder shown says its size and when it changed
-// rather than its folder, and its plate its facts before it's previewed,
+// rather than its folder, and its plate where it is before it's previewed,
 // it and those selected after it asked of the one file-preview kept for
 // the ask (the check's script reads which); a kind the filter names passes
 // its narrower kinds too; another filter picked shows what it passes; and a
@@ -507,10 +507,11 @@ ShellRoot {
             named(rows, "sub").side === "just now", named(rows, "sub").side);
         const plate = own.drawer();
         const facts = plate.facts.map(fact => `${fact.label} ${fact.value}`).join(", ");
-        expect("a file's plate says its name and its facts at once, before it's previewed",
+        expect("a file's plate says where it is and its name at once, before it's previewed,"
+            + " its size and day its row's",
             plate.title === "a.md" && plate.preview === undefined
-            && facts === "Size 0\u00a0B, Changed just now, Where ~/notes",
-            `${plate.title}: ${facts}`);
+            && plate.eyebrow === "in ~/notes" && facts === "",
+            `${plate.eyebrow}: ${plate.title}: ${facts}`);
         expect("each file is drawn as every file is", rows.every(row => row.component
             || row.key.startsWith("file-chooser:")), rows.map(row => row.key).join(" "));
         const typed = launcher.held[launcher.held.length - 1].row.typed(".");
