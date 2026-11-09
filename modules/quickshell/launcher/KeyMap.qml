@@ -338,7 +338,7 @@ Provider {
 
     // Home counts every chord, not the layers.
     function counted() {
-        return all.length === 0 ? "empty" : String(all.length).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        return countedAs(all.length);
     }
 
     // The window read as Shortcuts opened is that opening's alone: once the

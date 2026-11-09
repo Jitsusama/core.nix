@@ -324,6 +324,16 @@ QtObject {
                 failures.push(`${value} to ${places} places was written "${got}", `
                     + `not "${written}"`);
         }
+        // A collection's count: its own one and many, grouped in threes, the
+        // bare figure where it has none, and none held said as empty.
+        const keys = { one: "{count} key", many: "{count} keys" };
+        for (const [count, said, written] of [[0, keys, "empty"], [1, keys, "1 key"],
+                [1204, keys, "1,204 keys"], [3, {}, "3"], [1, undefined, "1"]]) {
+            asked++;
+            const got = Numbers.counted(count, said);
+            if (got !== written)
+                failures.push(`${count} was counted "${got}", not "${written}"`);
+        }
         // Places in a line, the teens apart.
         for (const [place, said] of [[1, "1st"], [2, "2nd"], [3, "3rd"], [4, "4th"], [11, "11th"],
                 [12, "12th"], [13, "13th"], [21, "21st"], [22, "22nd"], [111, "111th"]]) {

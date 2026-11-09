@@ -127,12 +127,19 @@ Singleton {
     // the provider.
     function collection(id, extra) {
         const entry = of(id);
+        const noun = entry.noun ?? entry.name.toLowerCase();
         return Object.assign({
-            noun: entry.noun ?? entry.name.toLowerCase(),
+            noun: noun,
+            // How it says how many it holds, as its own words say one and
+            // many where the noun adds what its name doesn't ("78 keys" on
+            // Keyboard), else the bare figure, since "Windows \u00b7 3
+            // windows" says the row's name again (VKCF3Z, 2026-11-08).
+            one: entry.said?.one ?? "{count}",
+            many: entry.said?.many ?? "{count}",
             title: entry.name,
             glyph: glyph(id),
             ask: entry.ask ?? words.anyAsk,
-            empty: entry.empty ?? `No ${entry.noun ?? entry.name.toLowerCase()} yet.`
+            empty: entry.empty ?? `No ${noun} yet.`
         }, extra ?? {});
     }
 }

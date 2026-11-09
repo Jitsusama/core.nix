@@ -15,6 +15,7 @@
       "id": "desktop",
       "name": "Desktop",
       "term": "Desktop",
+      "glyph": "desktop",
       "holds": [
         "windows:this",
         "windows",
@@ -46,6 +47,7 @@
       "id": "computer",
       "name": "Machine",
       "term": "Machine",
+      "glyph": "computer",
       "holds": [
         "energy",
         "bluetooth",
@@ -89,6 +91,7 @@
       "id": "network",
       "name": "Network",
       "term": "Network",
+      "glyph": "network",
       "holds": [
         "wifi",
         "wifi:sign-in",
@@ -4895,6 +4898,7 @@
       "name": "Keyboard",
       "term": "Keyboards/keyboard",
       "noun": "keys",
+      "said": { "one": "{count} key", "many": "{count} keys" },
       "lead": "parts",
       "glyph": "keyboard",
       "parts": [
@@ -6489,6 +6493,7 @@
       "name": "Clipboard",
       "term": "Desktop/clipboard",
       "noun": "copies",
+      "said": { "one": "{count} copy", "many": "{count} copies" },
       "glyph": "clipboard",
       "ask": "which copy?"
     },

@@ -879,6 +879,56 @@ def test_every_row_has_a_return_act(desktop: Desktop) -> None:
     )
 
 
+def home_holds_still_as_the_queue_changes(desktop: Desktop) -> None:
+    """Home holds still while the machine's queue changes, and the launcher closes after.
+
+    A busy machine writes its queue all the time: it once made home again and moved it
+    from under the selection. Nothing of the machine's shows at home, so the queue asks
+    nothing again there at all.
+    """
+    scrolled = desktop.showing()
+    since = desktop.mark()
+    heartbeat = float(desktop.machine.succeed("date +%s"))
+    queued = {"v": 1, "heartbeat": heartbeat, "machine": {}, "jobs": []}
+    desktop.as_account(
+        f"echo '{json.dumps(queued)}' > $XDG_RUNTIME_DIR/jobs/.q"
+        " && mv $XDG_RUNTIME_DIR/jobs/.q $XDG_RUNTIME_DIR/jobs/queue.json"
+    )
+    still = desktop.showing()
+    assert (still["scrolled"], still["selected"]) == (scrolled["scrolled"], scrolled["selected"]), (
+        f"home moved as the queue changed: from {scrolled} to {still}"
+    )
+    desktop.shoot("launcher-home-categories")
+    desktop.close_launcher()
+    said = desktop.as_account(
+        f"journalctl --user --unit=quickshell --no-pager --output=cat --after-cursor='{since}'"
+    )
+    assert "asked again by jobs" not in said, f"the queue asked home again: {said}"
+
+
+def shoot_home_at_joels_scales(desktop: Desktop, home: list[str]) -> None:
+    """Shoot home at 1.5 and 2, where each place's own mark is judged, for the gallery.
+
+    The launcher opens afresh at each, as an open one keeps the size it opened at, and
+    steps down to its last row, so the places stand in view where only a few rows fit.
+    """
+    if not desktop.values["shots"]:
+        return
+    for scale in ("1.5", "2"):
+        desktop.as_account(f"niri msg output winit scale {scale}")
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.launcher_until(lambda shown: shown["rows"] == home)
+        for _row in home[1:]:
+            desktop.next_row()
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("is") == "collection:keyboard"
+        )
+        desktop.shoot(f"launcher-home-categories-at-{scale.replace('.', '-')}")
+        desktop.close_launcher()
+    desktop.as_account("niri msg output winit scale 1")
+
+
 def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds(
     desktop: Desktop,
 ) -> None:
@@ -931,27 +981,9 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     )
     assert reads["collection:on"].startswith("Now \u00b7 "), f"now reads {reads['collection:on']!r}"
     assert reads["collection:applications"].startswith("Programs \u00b7 "), reads
-    # Home holds still while the machine's queue changes, which a busy
-    # machine writes all the time: it once made home again and moved it
-    # from under the selection. Nothing of the machine's shows at home,
-    # so the queue asks nothing again there at all.
-    scrolled = desktop.showing()
-    since = desktop.mark()
-    queued = {"v": 1, "heartbeat": float(machine.succeed("date +%s")), "machine": {}, "jobs": []}
-    desktop.as_account(
-        f"echo '{json.dumps(queued)}' > $XDG_RUNTIME_DIR/jobs/.q"
-        " && mv $XDG_RUNTIME_DIR/jobs/.q $XDG_RUNTIME_DIR/jobs/queue.json"
-    )
-    still = desktop.showing()
-    assert (still["scrolled"], still["selected"]) == (scrolled["scrolled"], scrolled["selected"]), (
-        f"home moved as the queue changed: from {scrolled} to {still}"
-    )
-    desktop.shoot("launcher-home-categories")
-    desktop.close_launcher()
-    said = desktop.as_account(
-        f"journalctl --user --unit=quickshell --no-pager --output=cat --after-cursor='{since}'"
-    )
-    assert "asked again by jobs" not in said, f"the queue asked home again: {said}"
+    home_holds_still_as_the_queue_changes(desktop)
+    # After the journal's read, so a gallery run and a plain one read the same.
+    shoot_home_at_joels_scales(desktop, home)
     # Ctrl+Y, which completes, does nothing and says nothing with nothing
     # typed, since the arrows reach every category; Return on one steps
     # into it. The foot names no key for completing either.

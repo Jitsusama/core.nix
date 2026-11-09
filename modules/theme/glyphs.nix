@@ -596,6 +596,13 @@ in
     console = "#";
     means = "a category of the launcher's things, such as computer or ai";
   };
+  # A place of the launcher's wears its own mark, as Desktop wears the
+  # desktop's and Machine the computer's, so three at home aren't one tag.
+  network = {
+    glyph = nerd "f0317";
+    console = "n";
+    means = "the network: what this machine is joined to, and what's on it";
+  };
   command = {
     glyph = nerd "f018d";
     console = ">";
@@ -672,7 +679,7 @@ in
   desktop = {
     glyph = nerd "f01c4";
     console = "d";
-    means = "the desktop: its windows, columns, workspaces and screens";
+    means = "the desktop: its windows, columns, workspaces and screens, and the place holding them";
   };
   touchscreen = {
     glyph = nerd "f0d76";
@@ -983,7 +990,7 @@ in
   computer = {
     glyph = nerd "f0322";
     console = "l";
-    means = "a computer: the screen built into this one, or another paired";
+    means = "a computer: this one, as Machine, or another paired";
     # A tower, its two bays and its light cut out.
     drawn = drawing [
       "M3.5 0 L3.1 0.1 L2.8 0.3 L2.6 0.6 L2.5 1 L2.5 11 L2.6 11.4 L2.8 11.7 L3.1 11.9 L3.5 12"

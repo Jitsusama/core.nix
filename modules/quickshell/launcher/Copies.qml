@@ -250,7 +250,7 @@ Provider {
 
     // How many copies it keeps, its Forget not among them.
     function counted() {
-        return all.length === 0 ? "empty" : String(all.length);
+        return countedAs(all.length);
     }
 
     // A fresh connection each time, since one refused or dropped doesn't

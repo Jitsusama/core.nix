@@ -1446,19 +1446,23 @@ Scope {
     // in lists what it holds; its word and a space step in from anywhere,
     // and what's typed after searches only inside it.
     readonly property var categories: Words.categories.map(category => {
+        // A place wears its own mark, as Machine wears the computer's, so
+        // home's places aren't one tag three times over (VKCF3Z,
+        // 2026-11-08); one the vocabulary gives none wears the tag.
+        const mark = Theme.glyph[category.glyph ?? ""] ?? Theme.glyph.category;
         const row = {
             key: `category:${category.id}`,
             name: category.name ?? category.id,
             verb: "open",
             plain: true,
             category: category,
-            glyph: Theme.glyph.category,
+            glyph: mark,
             hue: "voice",
             chord: [],
             side: "",
             chip: category.id,
             ask: "what in it?",
-            lead: Theme.glyph.category,
+            lead: mark,
             leadHue: "voice",
             // What it holds are things with verbs of their own, as a
             // collection's are.

@@ -429,7 +429,7 @@ Provider {
 
     function counted() {
         return Notices.waiting.length > 0 ? `${Notices.waiting.length} missed`
-            : all.length === 0 ? "none" : String(all.length);
+            : all.length === 0 ? "none" : countedAs(all.length);
     }
 
     function opened() {
