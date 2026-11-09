@@ -1942,7 +1942,7 @@ QtObject {
             { key: "camera:camera:sensor", name: "Sensor", side: "OmniVision OV08X40" },
             { key: "camera:camera:where", name: "Where", side: "front, centre" },
             { key: "camera:camera:powered", name: "Powered", side: "on", active: 192400 },
-            { key: "camera:camera:modes", name: "Modes", side: "MJPEG, YUYV",
+            { key: "camera:camera:modes", name: "Formats", side: "MJPEG, YUYV",
                 listed: ["MJPEG", "YUYV"] },
             { key: "fact:cameras:camera:usb", name: "Connection", side: "5 Gbit/s" },
             { key: "fact:cameras:camera:field of view", name: "Field of View", side: "90\u00b0" },
@@ -1953,7 +1953,7 @@ QtObject {
         const cameraDrawn = Cameras.drawer(cameraParts,
             { name: "Built-In Camera", builtIn: true, said: cameraWords });
         machine("a camera's drawer, in its order", cameraDrawn.facts.map(fact => fact.label),
-            ["Streaming", "Privacy Light", "Powered", "Modes", "Sensor", "Where",
+            ["Streaming", "Privacy Light", "Powered", "Formats", "Sensor", "Where",
                 "Field of View", "Connection"]);
         machine("a camera's drawer, as it says each", [cameraDrawn.eyebrow,
             cameraDrawn.facts[2].value, cameraDrawn.facts[3].value],

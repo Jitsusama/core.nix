@@ -227,6 +227,7 @@ or a copy, can be opened, copied or forgotten.
 | ---- | ----- | --- | ------- |
 | desktop | the screen and everything on it around the windows: the launcher, notices, the margin and niri's workspaces | | niri, Quickshell |
 | screen | a monitor, built in or plugged in | display, monitor | niri's outputs |
+| screen mode | a size and refresh rate a screen can run at: the one it runs at now, and the ones it offers | | niri's `modes` |
 | brightness | how bright a screen is, which follows the room's light | | the `backlight` program |
 | warmth | how warm a light's white is, in kelvin: a screen's, which follows the room's light or the night light, or the desk light's | | the `backlight` program's colour temperature |
 | night light | a screen warmed to a set white from sunset to sunrise, wherever the machine is, whatever the room's light | | the `backlight` program's night |
@@ -301,7 +302,7 @@ off.
 | processor | what runs every program | CPU | |
 | cache | memory inside the processor holding what it used last, nearer to it than the machine's memory, in levels one to three | | `L{level}` caches |
 | model | a device's maker's name for what it is, such as a processor's, a disk's, a battery's or a keyboard's | | |
-| version | which release of a device's firmware is in it, or which Bluetooth its radio speaks, as its maker numbers them | | fwupd's `version` |
+| version | which release of Linux or of a device's firmware is in it, or which Bluetooth or TLS a link speaks, as its makers number them | | fwupd's `version` |
 | Linux name | the name Linux gives a part of the machine, such as a sensor's chip or a battery | kernel name | hwmon's `name`, power_supply's name |
 | graphics | the processor's part that draws what the screens show | | the GPU, Xe |
 | NPU | the processor's part that runs models on the machine | | the `intel_vpu` driver |
@@ -325,6 +326,7 @@ off.
 | job | work Joel or an agent starts, run below the desktop so it gives way to it | | `jobs.slice` |
 | kind of work | what a job is, which says how much the machine favours it: what Joel waits on at a terminal, timed work or agents' work | job class | the slices `jobs-awaited`, `jobs-timed` and `jobs-work` |
 | shared work | a job other sessions wait on, such as a push holding one of a repository's walk slots, run beside jobs at the sessions' own disk target | | `shared.slice`, `SHARED_SLICE` |
+| backlog | the requests waiting on a disk at once, on average and at most, apart from the machine's queue | | the disk's queue depth |
 | queue | heavy work, such as builds and VM tests, waiting its turn on the machine | machine queue | |
 | warm | of an offload builder for VM tests, holding what they need, having built it as it stood; a fresh one is cold | primed | `there::warm`, `--warm` |
 | offload builder | a builder elsewhere lent to the machine while its queue has builds one could take, and given back once idle | remote builder | `nix-offload` |
@@ -356,6 +358,7 @@ off.
 | level | how loud a sound device plays or hears at this moment, as its meter draws it, apart from its volume | | `sound:level` |
 | channel | one of the separate signals a sound device carries at once, such as left and right | | `sound:channels` |
 | graph | how the machine's sound joins each device to each program playing or recording, where a device's Graph ID says which it is and its Graph Format the audio it moves | | PipeWire's graph, its node id |
+| format | how a device lays out the sound or picture it carries: a stream's rate and sample type, or a camera's encoding, such as MJPEG | | PipeWire's format, V4L2's pixel formats |
 | stream | what one program plays through a sound device or records from one, each with a panel of its own in Sound | | a PipeWire stream node |
 | role | what a stream is for, as its program says: music, a film, a call and the like | | PipeWire's `media.role` |
 | process ID | the number Linux gives a running program, which says whose a stream is | | `application.process.id` |
