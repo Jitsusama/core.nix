@@ -632,8 +632,11 @@ adapter warnings off. The firmware's power profile stays
 Performance, which the power limits were measured in; SAGV stays on, so the
 memory slows when idle, for the battery; the keyboard's light stays dim; the
 adapter warnings stay off, so a charger the firmware thinks too weak doesn't
-hold the boot; and downgrades stay allowed, so a bad firmware release can be
-rolled back.
+hold the boot; and downgrades stay refused, so nothing running can write back
+an older release with a known flaw, which fwupd's security level asks for at
+its level 2. A bad release is rolled back by allowing them first, at F2 or
+with `run0 firmware-settings set AllowBiosDowngrade Enabled`, both behind the
+admin password, and `run0 firmware-settings apply` after.
 Secure Boot's settings stay out: recovering those is the enrolment's job.
 
 ### Dell's Hourly Event
