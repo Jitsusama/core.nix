@@ -8,7 +8,8 @@
 // marker stands and its boot does; one that ended this boot is closed;
 // anything older, or with no address, is passed over. Each is said as the
 // contract's record, with OpenTelemetry's gen_ai names and pi's own under
-// `pi.`, leaving out what pi didn't say. It exits 0 once every case holds,
+// `pi.`, leaving out what pi didn't say. With the launcher shut, a change
+// only to what the launcher alone shows tells nothing new. It exits 0 once every case holds,
 // and otherwise 1, saying which didn't.
 import QtQuick
 import "PiSource.js" as Pi
@@ -110,6 +111,28 @@ QtObject {
             !("title" in away) && !("step" in away) && !("usage" in away)
                 && !("cost.usd" in away) && !("pi.quest" in away) && away.machine === "lantern",
             JSON.stringify(away));
+
+        // A session working on: its step, usage and when it was heard move,
+        // as most of Joel's sessions' changes do, then it stops being busy.
+        const working = held();
+        const busyAt = working["session:s-busy"];
+        busyAt.presence = Object.assign({}, busyAt.presence, {
+            at: "2026-11-08T01:00:09Z", heard: "2026-11-08T01:00:09Z", step: "edit",
+            stepDetail: { kind: "tool", name: "edit", detail: "PiSource.js" },
+            usage: { last: { "gen_ai.usage.input_tokens": 9 } }
+        });
+        const moved = Pi.sorted(working, place);
+        expect("with the launcher shut, a step moving alone tells nothing new",
+            Pi.told(moved, false) === Pi.told(sorted, false), Pi.told(moved, false));
+        expect("with the launcher showing it, a step moving tells it",
+            Pi.told(moved, true) !== Pi.told(sorted, true), Pi.told(moved, true));
+        busyAt.presence = Object.assign({}, busyAt.presence, { busy: false });
+        expect("with the launcher shut, a session's standing moving still tells it",
+            Pi.told(Pi.sorted(working, place), false) !== Pi.told(sorted, false),
+            Pi.told(Pi.sorted(working, place), false));
+        expect("what's told never changes what's held",
+            Pi.sorted(working, place).live.find(one => one.file === "s-busy")
+                .presence.stepDetail.name === "edit", "its step was taken out");
 
         const states2 = [null, { state: "starting" }, { state: "not answering" },
             { state: "running" }].map(link => Pi.state(link)).join(" ");

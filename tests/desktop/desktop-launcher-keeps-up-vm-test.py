@@ -9,7 +9,8 @@ rows and the list refreshes at most four times a second; and an arrow composes t
 often than it refreshes, and draws no row afresh with the changes frozen. Those are counts, since
 this machine draws in software on a shared builder, far slower than Joel's, so the keys' times
 are said rather than held. Why a source's rows are wanted is proven in Qt's own engine, in
-tests/pacing.qml.
+tests/pacing.qml. First, with the launcher shut, Joel's 113 sessions moving only their steps
+cost the shell no sorting until it opens; which changes those are is proven in tests/pi-source.qml.
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and leaves it as it found it.
@@ -52,6 +53,10 @@ SESSIONS = 300
 CHANGING = 10
 BEAT = 0.3
 PEOPLE = 2000
+# As many sessions as Joel's on 2026-11-09, working on with one moving its step each beat, and
+# how many such moves the shut launcher hears before saying it took none.
+WORKING = 113
+STEPS = 20
 CROWD = "/run/user/1000/crowd"
 # Design.md holds a key's own work within 4 ms, and its frame within one frame of its press. Here
 # the VM drawing 2880 by 1800 in software took 6.8 ms a handler at home and 35 ms in Agents at
@@ -312,6 +317,44 @@ class Turns:
         assert self.afresh[True] == 0, (
             f"{at}, arrows with nothing changing drew {self.afresh[True]} rows afresh"
         )
+
+
+def sorts(desktop: Desktop) -> Json:
+    """Give how many sortings of pi's sessions the shell has made, and how many it took."""
+    return cast("Json", json.loads(desktop.as_account("qs ipc call pi sorts")))
+
+
+def test_a_shut_launcher_takes_no_step_only_it_shows(desktop: Desktop) -> None:
+    """With the launcher shut, sessions moving only their steps cost the shell no sorting.
+
+    Joel's 113 sessions changed 26 times in 30 s, 21 of them only in their step and usage, and
+    each cost his closed shell's main thread 20 to 370 ms (2026-11-09). Opened, it takes them.
+    It runs before the arrows, whose sessions flip between working and listening.
+    """
+    machine = desktop.machine
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    working = f"{desktop.values['stand_in_sessions']} {PI_PRESENCE} {WORKING} 1 {BEAT} steps"
+    desktop.as_account(f"systemd-run --user --collect --quiet --unit=working-sessions {working}")
+    try:
+        # Every session is heard of before counting, since a new one is taken as it comes: they're
+        # all written before the first step, and the node tells of them within a beat or two.
+        start = sorts(desktop)
+        retry(lambda _: sorts(desktop)["heard"] >= start["heard"] + STEPS, REACHING)
+        before = sorts(desktop)
+        retry(lambda _: sorts(desktop)["heard"] >= before["heard"] + STEPS, REACHING)
+        after = sorts(desktop)
+        assert after["taken"] == before["taken"], (
+            f"the shut launcher took {after['taken'] - before['taken']} of"
+            f" {after['heard'] - before['heard']} sortings that moved only steps"
+        )
+        desktop.as_account("qs ipc call launcher toggle")
+        try:
+            desktop.launcher_ready()
+            retry(lambda _: sorts(desktop)["taken"] > after["taken"], REACHING)
+        finally:
+            desktop.close_launcher()
+    finally:
+        desktop.as_account("systemctl --user stop working-sessions")
 
 
 @pytest.mark.usefixtures("keyboard", "changing")

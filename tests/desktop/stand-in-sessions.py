@@ -5,11 +5,13 @@ with its own session and address, and an owner that is this process on this boot
 start, which is all mycelium's node asks of a record to call it live. Each beat it writes CHANGING
 of them again, in turn, each flipping between working and listening, so the shell hears
 sessions change as often as Joel's own do (2026-11-08: his openings heard Agents change 27 to
-75 times in their first three seconds, and made 3,424 to 8,291 of its rows). It says when it has
+75 times in their first three seconds, and made 3,424 to 8,291 of its rows). Told `steps`, each
+keeps working and moves only its step and what it has used, as 21 of 26 changes of Joel's 113
+sessions did in 30 s (2026-11-09). It says when it has
 written them on its standard output, and takes its records away when it's stopped, so no later
 test finds them.
 
-Usage: stand-in-sessions FOLDER COUNT CHANGING BEAT_SECONDS
+Usage: stand-in-sessions FOLDER COUNT CHANGING BEAT_SECONDS [steps]
 """
 
 import json
@@ -38,10 +40,13 @@ def owner() -> dict[str, object]:
     }
 
 
-def record(at: int, *, busy: bool, whose: dict[str, object]) -> dict[str, object]:
-    """Give one stand-in session's record, numbered `at`, working or listening."""
+def record(at: int, *, busy: bool, whose: dict[str, object], step: int = 0) -> dict[str, object]:
+    """Give one stand-in session's record, numbered `at`, working or listening, at its `step`."""
     address = f"LD{at:04d}"
     return {
+        "step": "tool",
+        "stepDetail": {"kind": "tool", "name": "bash", "detail": f"step {step}"},
+        "usage": {"last": {"gen_ai.usage.input_tokens": step}},
         "session": f"01a1face-load-{at:04d}",
         "addresses": [address],
         "title": f"Stand-in session {at}",
@@ -70,6 +75,7 @@ def main() -> None:
     )
     folder.mkdir(parents=True, exist_ok=True)
     whose = owner()
+    steps = sys.argv[5:6] == ["steps"]
     busy = [at % 2 == 0 for at in range(count)]
     for at in range(count):
         write(folder, at, record(at, busy=busy[at], whose=whose))
@@ -87,8 +93,8 @@ def main() -> None:
             time.sleep(beat)
             for _ in range(changing):
                 at = turn % count
-                busy[at] = not busy[at]
-                write(folder, at, record(at, busy=busy[at], whose=whose))
+                busy[at] = busy[at] if steps else not busy[at]
+                write(folder, at, record(at, busy=busy[at], whose=whose, step=turn))
                 turn += 1
     finally:
         for at in range(count):

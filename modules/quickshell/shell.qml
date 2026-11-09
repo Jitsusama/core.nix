@@ -55,6 +55,14 @@ ShellRoot {
         value: theLauncher.open
     }
 
+    // A session's step and what it has used are shown only in the launcher,
+    // so they're taken only while it's open or walked (PiSource.qml).
+    Binding {
+        target: PiSource
+        property: "showing"
+        value: theLauncher.open || theLauncher.cataloguing
+    }
+
     // Sessions opened behind the lock are placed once it's let go, since
     // niri refuses every move while locked (Sessions.qml).
     Binding {
