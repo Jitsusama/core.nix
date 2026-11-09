@@ -279,25 +279,38 @@ ShellRoot {
             .join("; ");
         sound.timings = { 90: { id: 90, quantum: 1024, rate: 48000, ms: 21.333, busy: 0.098,
             errors: 0 } };
-        const one = sound.programDrawn(speakers,
+        const one = sound.programPlate(speakers,
             { name: "Firefox", streams: [stream(90, "Big Buck Bunny - YouTube", 0.8)] });
         expect("a program's one stream", one.eyebrow === "Playing" && one.title === "Firefox"
             && said(one) === "Stream=Big Buck Bunny - YouTube; Dropouts=none; "
             + "Load=9.80% of each cycle; Cycle=1,024 frames \u00b7 21.3 ms; "
             + "Format=48 kHz \u00b7 32 bit float; Delay=21.3 ms; Role=Movie; "
-            + "Process=4123*; Graph ID=90*; Client=77*",
+            + "Process ID=4123*; Graph ID=90*; Client ID=77*",
             `${one.eyebrow} ${one.title}: ${said(one)}`);
         const asking = stream(91, "Ad", 0.4);
         asking.properties["node.rate"] = "1/44100";
-        const two = sound.programDrawn(speakers,
+        const two = sound.programPlate(speakers,
             { name: "Firefox", streams: [asking, stream(90, "Big Buck Bunny - YouTube", 0.8)] });
         expect("each of its streams a group, the loudest first, its rate where it differs",
             said(two) === "# Big Buck Bunny - YouTube; Dropouts=none; "
             + "Load=9.80% of each cycle; Cycle=1,024 frames \u00b7 21.3 ms; "
             + "Format=48 kHz \u00b7 32 bit float; Delay=21.3 ms; Role=Movie; "
-            + "Process=4123*; Graph ID=90*; Client=77*; # Ad; "
+            + "Process ID=4123*; Graph ID=90*; Client ID=77*; # Ad; "
             + "Format=48 kHz \u00b7 32 bit float; Sample Rate=44.1 kHz; Delay=21.3 ms; "
-            + "Role=Movie; Process=4123*; Graph ID=91*; Client=77*", said(two));
+            + "Role=Movie; Process ID=4123*; Graph ID=91*; Client ID=77*", said(two));
+        // One of several that names nothing goes unheaded, never an empty
+        // heading.
+        const nameless = stream(92, "", 0.2);
+        nameless.name = "";
+        const three = sound.programPlate(speakers, { name: "Firefox",
+            streams: [stream(90, "Big Buck Bunny - YouTube", 0.8), nameless] });
+        expect("a stream that names nothing has no heading",
+            three.facts.filter(fact => fact.heading !== undefined).length === 1, said(three));
+        // A program gone from the device, its streams perhaps gone with
+        // it, draws none of them, so its drawer shuts.
+        const gone = sound.programDrawn(speakers,
+            { name: "Firefox", streams: [stream(90, "Big Buck Bunny - YouTube", 0.8)] });
+        expect("a program gone has nothing to draw", gone.facts.length === 0, said(gone));
         sound.timings = {};
     }
 

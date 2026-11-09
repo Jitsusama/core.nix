@@ -952,11 +952,17 @@ Provider {
     // parts, the rate only where its Format doesn't open with it; its
     // Role, in pipewire's word as given; the device it plays on or
     // records from; and what identifies it, ending its group: its
-    // Process, Graph ID and Client. Its name is the row's, and so is
+    // Process ID, Graph ID and Client ID. Its name is the row's, and so is
     // whether it's paused or muted, so neither is said again. It's read
-    // as it's drawn, its streams as the device has them now.
+    // as it's drawn, its streams as the device has them now; a program
+    // gone has none, its old streams' nodes perhaps gone with it, so its
+    // drawer shuts.
     function programDrawn(node, program) {
-        const live = programsOf(node).find(each => each.name === program.name) ?? program;
+        return programPlate(node, programsOf(node).find(each => each.name === program.name)
+            ?? { name: program.name, streams: [] });
+    }
+
+    function programPlate(node, live) {
         const key = `sound:${node.name}:program:${live.name}`;
         const loudness = stream => stream.audio ? stream.audio.volume : 0;
         const streams = Order.sorted(live.streams.slice(),
@@ -973,8 +979,14 @@ Provider {
     function streamFacts(node, key, stream, headed) {
         const properties = stream.properties;
         const plays = String(properties["media.name"] ?? "");
-        const head = headed ? [{ heading: plays || String(stream.name ?? "") }]
-            : plays === "" ? [] : [{ label: Words.name("sound:stream"), value: plays }];
+        // One of several is headed by what it plays, else its own name, and
+        // goes unheaded where it has neither; one alone says it as Stream.
+        const called = plays || String(stream.name ?? "");
+        let head = [];
+        if (headed && called !== "")
+            head = [{ heading: called }];
+        else if (!headed && plays !== "")
+            head = [{ label: Words.name("sound:stream"), value: plays }];
         const format = Sounds.graphFormat(stream.audio?.format);
         const rate = Sounds.rate(properties["node.rate"]);
         const opensWithRate = format !== ""

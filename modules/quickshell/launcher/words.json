@@ -5447,12 +5447,12 @@
     {
       "id": "sound:process",
       "in": "sound",
-      "name": "Process"
+      "name": "Process ID"
     },
     {
       "id": "sound:client",
       "in": "sound",
-      "name": "Client"
+      "name": "Client ID"
     },
     {
       "id": "sound:alsa-device",
