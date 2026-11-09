@@ -183,7 +183,7 @@
         ];
       }
       ''
-        ${lib.getExe pkgs.bash} ${../../tests/pi-rings-low.sh} ${sound}
+        ${lib.getExe pkgs.bash} ${./tests/pi-rings-low.sh} ${sound}
         touch $out
       '';
 
@@ -223,7 +223,7 @@
       builtins.unsafeDiscardStringContext home.home.activation.piTakesCoresSettings.data
     )) "pi's activation doesn't run the settings program the check tests.";
     pkgs.runCommandLocal "pi-keeps-its-own-settings" { nativeBuildInputs = [ pkgs.jq ]; } ''
-      ${lib.getExe pkgs.bash} ${../../tests/pi-keeps-its-own-settings.sh} ${program} ${machines}
+      ${lib.getExe pkgs.bash} ${./tests/pi-keeps-its-own-settings.sh} ${program} ${machines}
       touch $out
     '';
 
@@ -283,7 +283,7 @@
       refused (naming false) && !refused (naming true)
     ) "pi-claude's realm isn't held to a further realm the machine joins.";
     pkgs.runCommandLocal "pi-claude-keeps-to-the-plan" { } ''
-      ${lib.getExe pkgs.bash} ${../../tests/pi-claude-keeps-to-the-plan.sh} ${program} \
+      ${lib.getExe pkgs.bash} ${./tests/pi-claude-keeps-to-the-plan.sh} ${program} \
         ${lib.getExe claude} ${onOwnLogin} ${inOther}
       touch $out
     '';
@@ -293,9 +293,7 @@
   # usage, in words pi never retries.
   pi-says-when-the-plan-runs-out = pkgs.runCommandLocal "pi-says-when-the-plan-runs-out" { } ''
     ${lib.getExe pkgs.nodejs} --experimental-strip-types --no-warnings \
-      ${../../tests/pi-says-when-the-plan-runs-out.mjs} ${
-        import ./claude-provider.nix { inherit pkgs; }
-      }
+      ${./tests/pi-says-when-the-plan-runs-out.mjs} ${import ./claude-provider.nix { inherit pkgs; }}
     touch $out
   '';
 
@@ -303,7 +301,7 @@
   # from the machine's own files alone, leaving out what it doesn't have.
   pi-ask-knows-the-machine = pkgs.runCommandLocal "pi-ask-knows-the-machine" { } ''
     ${lib.getExe pkgs.nodejs} --experimental-strip-types --no-warnings \
-      ${../../tests/pi-ask-knows-the-machine.mjs} ${./ask-digest.ts}
+      ${./tests/pi-ask-knows-the-machine.mjs} ${./ask-digest.ts}
     touch $out
   '';
 
@@ -311,7 +309,7 @@
   # passing on what was done, or that a disruptive one waits for Return.
   pi-ask-runs-the-launcher = pkgs.runCommandLocal "pi-ask-runs-the-launcher" { } ''
     ${lib.getExe pkgs.nodejs} --experimental-strip-types --no-warnings \
-      ${../../tests/pi-ask-runs-the-launcher.mjs} ${./ask-launcher.ts}
+      ${./tests/pi-ask-runs-the-launcher.mjs} ${./ask-launcher.ts}
     touch $out
   '';
 
@@ -321,7 +319,7 @@
     pkgs.runCommandLocal "pi-asks-claude-code-its-login-once" { }
       ''
         ${lib.getExe pkgs.nodejs} --experimental-transform-types --no-warnings \
-          ${../../tests/pi-asks-claude-code-its-login-once.mjs} ${
+          ${./tests/pi-asks-claude-code-its-login-once.mjs} ${
             import ./claude-provider.nix { inherit pkgs; }
           }
         touch $out
@@ -334,7 +332,7 @@
     pkgs.runCommandLocal "pi-answers-a-tool-it-has-not-loaded" { }
       ''
         ${lib.getExe pkgs.nodejs} --experimental-transform-types --no-warnings \
-          ${../../tests/pi-answers-a-tool-it-has-not-loaded.mjs} ${
+          ${./tests/pi-answers-a-tool-it-has-not-loaded.mjs} ${
             import ./claude-provider.nix { inherit pkgs; }
           }
         touch $out
@@ -498,7 +496,7 @@
       home.jitsusama.pi.ask.plan == "pi"
     ) "pi-ask's plan isn't pi's own by default.";
     pkgs.runCommandLocal "pi-ask-answers-on-the-machines-plan" { } ''
-      ${lib.getExe pkgs.bash} ${../../tests/pi-ask-answers-on-the-machines-plan.sh} \
+      ${lib.getExe pkgs.bash} ${./tests/pi-ask-answers-on-the-machines-plan.sh} \
         ${onPi} ${onClaude} ${lib.getExe piClaude}
       touch $out
     '';
