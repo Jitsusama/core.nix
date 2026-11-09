@@ -156,14 +156,16 @@ function dayOf(time, now) {
 // it's on, "in 12 min" within the hour, else its time, with "tomorrow" or
 // the day of the week in front past today. An all-day meeting is "today",
 // "tomorrow" or its day. One over says when it was held, from its start,
-// as the launcher says when anywhere (When.js's came, in `said`'s words),
-// so a meeting in a Recent reads as a mail there does, never "now".
+// today as When.js's came says it, before today its day and its time,
+// "yesterday 15:00", in `said`'s words, never "now" (VKCF3Z, ccccbe5f).
 function when(meeting, now, said) {
-    if (meeting.end <= now) {
-        return When.came(meeting.start, now, said);
+    const held = meeting.end <= now ? When.day(meeting.start, now, said) : null;
+    if (held !== null && !meeting.allDay) {
+        const at = clock(new Date(meeting.start));
+        return held === "" ? When.came(meeting.start, now, said) : `${held} ${at}`;
     }
     const start = new Date(meeting.start);
-    const day = dayOf(meeting.start, now);
+    const day = held ?? dayOf(meeting.start, now);
     if (meeting.allDay) {
         return day === "" ? "today" : day;
     }
@@ -240,12 +242,13 @@ function tallied(guests) {
 // by, his answer, who holds it, how many of those asked answered each
 // way and who they are, the files on it by their titles, and what it's
 // about, every one plain text, since the description is someone else's
-// words.
-function details(meeting, untitled) {
+// words; and, said, how many of its series came before (Google.js's).
+function details(meeting, untitled, earlier = "") {
     const attachments = meeting.attachments ?? [];
     const facts = [
         { label: "When", value: dated(meeting) },
         { label: "Repeats", value: repeated(meeting.repeats) },
+        { label: "Earlier", value: earlier },
         { label: "Where", value: meeting.place ?? "" },
         { label: "Call", value: meeting.link ?? "" },
         { label: "Dial In", value: dialled(meeting.dial) },

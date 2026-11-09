@@ -26,13 +26,17 @@ function came(at, now, said) {
 
 // The mail Joel had lately, as Mail's Recent lists it: what he sent or
 // read in the last month (`had`, as the program keeps it), newest first,
-// each once, leaving out any that still wants him (`wanting`), which Mail
-// lists above it and is never Recent (docs/design.md, Recent means one
-// thing). At most as many as a Recent lists.
+// a conversation once, by its newest (VKCF3Z, ccccbe5f), leaving out any
+// that still wants him (`wanting`), which Mail lists above it and is never
+// Recent (docs/design.md, Recent means one thing). A conversation is its
+// page in Gmail, or the mail itself where it has none. At most as many
+// as a Recent lists.
 function lately(had, wanting) {
-    const seen = new Set(wanting.map(mail => mail.id));
+    const wants = new Set(wanting.map(mail => mail.id));
+    const seen = new Set();
+    const talk = mail => mail.page || `mail:${mail.id}`;
     return had.slice().sort((one, other) => other.at - one.at)
-        .filter(mail => !seen.has(mail.id) && seen.add(mail.id))
+        .filter(mail => !wants.has(mail.id) && !seen.has(talk(mail)) && seen.add(talk(mail)))
         .slice(0, MOST);
 }
 
@@ -50,20 +54,34 @@ function moment(at, now, said) {
     return day === "" ? time : `${day} ${time}`;
 }
 
-// What its row says beside it: who it's from and when it came, "Ada
-// Lovelace · 14:02", or only when it came where the sender gives no name.
-function beside(mail, now, said) {
-    const when = came(mail.at, now, said);
-    return mail.from === "" ? when : `${mail.from} · ${when}`;
+// What a meeting's row notes after its name: its times and his answer
+// while it's to come or on, "14:00 to 14:30, maybe", and nothing once
+// it's over, where its right alone says when it was and its drawer keeps
+// When and Your Answer (VKCF3Z, c7d9e2bd). It's here, as Calendar.js is
+// full.
+function noted(meeting, now) {
+    return meeting.end <= now ? "" : Calendar.about(meeting);
 }
 
-// When it came, in full, as its details say it and the launcher says any
-// full date: "Monday 26 October · 14:02", with the year only when it
-// isn't this one.
+// What its row says beside it: who it's from and when it came, "Ada
+// Lovelace · 14:02", or only when it came where the sender gives no name.
+// Mail Joel sent names who it went to, "to Ada Lovelace · 13:17", never
+// him (VKCF3Z, c7d9e2bd).
+function beside(mail, now, said) {
+    const when = came(mail.at, now, said);
+    const who = mail.sent === true && (mail.to ?? "") !== ""
+        ? String(said.to).replace("{who}", mail.to)
+        : mail.from;
+    return who === "" ? when : `${who} · ${when}`;
+}
+
+// When it came, in full, as its details say it and a meeting's say when
+// it is: "Monday 26 October, 14:02", with the year only when it isn't
+// this one (VKCF3Z, c7d9e2bd: one form for both).
 function dated(at, now, said) {
     const date = new Date(at);
     const day = said.date(date, sameYear(at, now) ? "dddd d MMMM" : "dddd d MMMM yyyy");
-    return `${day} · ${Calendar.clock(date)}`;
+    return `${day}, ${Calendar.clock(date)}`;
 }
 
 // Who sent it, as its details say it: by name and address, as mail writes

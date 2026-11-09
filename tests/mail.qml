@@ -38,6 +38,7 @@ QtObject {
             minutes: "{minutes} min ago",
             yesterday: "yesterday",
             tomorrow: "tomorrow",
+            to: "to {who}",
             date: (date, format) => Qt.formatDate(date, format)
         };
         const standup = {
@@ -201,17 +202,31 @@ QtObject {
             "Ada Lovelace \u00b7 14:02");
         check("its side, when alone, with no name",
             Mail.beside({ from: "", at: at(9, 26, 9, 0) }, now, said), "09:00");
-        check("when it came, in full", Mail.dated(lunch.at, now, said),
-            "Monday 26 October \u00b7 14:02");
+        check("its side, when Joel sent it, who it went to",
+            Mail.beside(Object.assign({}, lunch, { from: "Joel Gerber", sent: true }), now,
+                said), "to Joel Gerber, Grace Hopper \u00b7 14:02");
+        check("its side, when Joel sent it to nobody named, him",
+            Mail.beside({ from: "Joel Gerber", to: "", sent: true, at: lunch.at }, now, said),
+            "Joel Gerber \u00b7 14:02");
+        check("when it came, in full, as a meeting's day is", Mail.dated(lunch.at, now, said),
+            "Monday 26 October, 14:02");
+        // A meeting's row notes its times and answer until it's over, then nothing.
+        const invited = { start: at(9, 26, 16, 0), end: at(9, 26, 16, 30), allDay: false,
+            answer: "maybe" };
+        check("a meeting to come notes its times and answer", Mail.noted(invited, now),
+            "16:00 to 16:30, maybe");
+        check("a meeting that's over notes nothing",
+            Mail.noted(Object.assign({}, invited, { start: at(9, 25, 16, 0),
+                end: at(9, 25, 16, 30) }), now), "");
         check("when it came last year, in full",
             Mail.dated(new Date(2025, 9, 28, 9, 0).getTime(), now, said),
-            "Tuesday 28 October 2025 \u00b7 09:00");
+            "Tuesday 28 October 2025, 09:00");
         check("its details", Mail.details(lunch, "No Subject", now, said), {
             title: "Lunch & a walk?",
             facts: [
                 { label: "From", value: "Ada Lovelace <ada@example.com>" },
                 { label: "To", value: "Joel Gerber, Grace Hopper" },
-                { label: "Date", value: "Monday 26 October \u00b7 14:02" }
+                { label: "Date", value: "Monday 26 October, 14:02" }
             ],
             body: "Friday?\n\nAda"
         });
@@ -272,7 +287,7 @@ QtObject {
             title: "No Subject",
             facts: [
                 { label: "From", value: "ada@example.com" },
-                { label: "Date", value: "Monday 26 October \u00b7 14:02" }
+                { label: "Date", value: "Monday 26 October, 14:02" }
             ],
             body: ""
         });
@@ -410,6 +425,24 @@ QtObject {
         check("one held ends just now", ids(Google.heldLately([], [
             held("ended", at(9, 26, 15, 0), now)], now)), ["ended"]);
         check("none held with nothing kept", Google.heldLately(undefined, [], now), []);
+        // As Calendar's Recent lists them, a series once at its latest, with how
+        // many of it came before (VKCF3Z, ccccbe5f).
+        const series = [
+            held("s_20261026T130000Z", at(9, 26, 9, 0), at(9, 26, 9, 15)),
+            held("lunch", at(9, 25, 12, 0), at(9, 25, 13, 0)),
+            held("h_20261025", at(9, 25, 0, 0), at(9, 26, 0, 0), { allDay: true }),
+            held("s_20261023T130000Z", at(9, 23, 9, 0), at(9, 23, 9, 15)),
+            held("s_20261022T130000Z", at(9, 22, 9, 0), at(9, 22, 9, 15))
+        ];
+        check("a series once, at its latest", Google.seriesOnce(series)
+            .map(one => [one.id, one.earlier]),
+            [["s_20261026T130000Z", 2], ["lunch", 0], ["h_20261025", 0]]);
+        check("no series with none held", Google.seriesOnce(undefined), []);
+        check("a series by its id", ["s_20261026T130000Z", "h_20261025", "once", "a_b"]
+            .map(id => Google.seriesOf({ id: id })), ["s", "h", "once", "a_b"]);
+        const before = { earlier: "{count} this month" };
+        check("how many came before, in its words", Google.earlier(8, before), "8 this month");
+        check("none came before", Google.earlier(0, before), "");
 
         const mail = (id, came) => ({ id: id, from: "Ada", subject: id, at: came });
         const wanting = [mail("lunch", at(9, 26, 15, 18))];
@@ -421,6 +454,17 @@ QtObject {
         ];
         check("the mail had, newest first, none still wanting him",
             Mail.lately(had, wanting).map(one => one.id), ["read", "sent", "old"]);
+        // A conversation once, by its newest; mail with no page is each its own.
+        const thread = "https://mail.google.com/mail/u/0/#inbox/t1";
+        const talks = [
+            Object.assign(mail("a", at(9, 26, 14, 2)), { page: thread }),
+            Object.assign(mail("c", at(9, 26, 10, 0)), { page: `${thread}x` }),
+            Object.assign(mail("b", at(9, 26, 15, 0)), { page: thread }),
+            Object.assign(mail("d", at(9, 26, 9, 0)), { page: "" }),
+            Object.assign(mail("e", at(9, 26, 8, 0)), { page: "" })
+        ];
+        check("a conversation once, by its newest",
+            Mail.lately(talks, []).map(one => one.id), ["b", "c", "d", "e"]);
         check("at most nine", Mail.lately(Array.from({ length: 12 },
             (_, hour) => mail(`m${hour}`, at(9, 26, hour, 0))), []).length, 9);
         check("the newest of them first", Mail.lately(Array.from({ length: 12 },

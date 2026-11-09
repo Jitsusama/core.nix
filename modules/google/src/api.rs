@@ -311,8 +311,8 @@ impl Google {
         )
     }
 
-    /// One piece of mail: who sent it, its subject and when it came, and
-    /// nothing of what it says.
+    /// One piece of mail: who sent it, its subject, when it came and its
+    /// labels, which say whether Joel sent it, and what it says.
     pub fn mail(&self, token: &str, id: &str) -> Result<Value, Refused> {
         self.get(
             token,
@@ -321,7 +321,7 @@ impl Google {
                 ("format", "full"),
                 (
                     "fields",
-                    "id,threadId,internalDate,payload(headers,mimeType,filename,body,\
+                    "id,threadId,labelIds,internalDate,payload(headers,mimeType,filename,body,\
                      parts(mimeType,filename,body,parts(mimeType,filename,body,\
                      parts(mimeType,filename,body))))",
                 ),

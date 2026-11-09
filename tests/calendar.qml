@@ -276,6 +276,14 @@ QtObject {
             { label: "When", value: "Monday 26 October, 14:00 to 14:30" },
             { label: "Repeats", value: "Every week on Monday" }
         ]);
+        check("one of a series a Recent lists once says how many came before",
+            Calendar.details(meeting("m", at(26, 14, 0), at(26, 14, 30), { answer: null,
+                link: null, repeats: rule({ days: [day(1)] }) }), "Untitled", "8 this month")
+                .facts, [
+                { label: "When", value: "Monday 26 October, 14:00 to 14:30" },
+                { label: "Repeats", value: "Every week on Monday" },
+                { label: "Earlier", value: "8 this month" }
+            ]);
         check("how a series repeats, in words", [
             rule({ days: [1, 2, 3, 4, 5].map(n => day(n)) }),
             rule({ days: [day(1), day(3)], interval: 2 }),
@@ -525,15 +533,16 @@ QtObject {
             two: "{first} and {second}", others: "{first} and {count} others"
         };
         // When one over was held, from its start, as the launcher says when
-        // anywhere, never "now": [the meeting, said]
+        // anywhere, never "now", and before today with its time (VKCF3Z,
+        // ccccbe5f): [the meeting, said]
         const whens = [
             [meeting("ended now", at(26, 15, 0), now), "20 min ago"],
             [meeting("short", at(26, 15, 10), at(26, 15, 15)), "10 min ago"],
             [meeting("just", now - 30 * 1000, now - 10 * 1000), "just now"],
             [meeting("lunch", at(26, 12, 0), at(26, 13, 0)), "12:00"],
-            [meeting("yesterday", at(25, 9, 0), at(25, 9, 30)), "yesterday"],
-            [meeting("thursday", at(22, 9, 0), at(22, 9, 30)), "Thursday"],
-            [meeting("long ago", at(12, 9, 0), at(12, 9, 30)), "12 Oct"],
+            [meeting("yesterday", at(25, 9, 0), at(25, 9, 30)), "yesterday 09:00"],
+            [meeting("thursday", at(22, 9, 0), at(22, 9, 30)), "Thursday 09:00"],
+            [meeting("long ago", at(12, 9, 0), at(12, 9, 30)), "12 Oct 09:00"],
             [meeting("holiday", at(25, 0, 0), at(26, 0, 0), { allDay: true }), "yesterday"]
         ];
         for (const [one, meant] of whens)
@@ -561,7 +570,7 @@ QtObject {
                 fields), said), meant);
         check("a call's side, who and when", Meet.heldSide(meeting("retro", at(25, 9, 0),
             at(25, 9, 30), theirs({ guests: [grace] })), now, said),
-            "Ada Lovelace and Grace Hopper \u00b7 yesterday");
+            "Ada Lovelace and Grace Hopper \u00b7 yesterday 09:00");
         check("a call's side with nobody else, when alone", Meet.heldSide(meeting("alone",
             at(26, 12, 0), at(26, 12, 30), { holds: true }), now, said), "12:00");
 

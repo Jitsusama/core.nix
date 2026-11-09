@@ -220,6 +220,7 @@ fn gmail(path: &str, body: &str) -> (u16, String) {
         return (
             200,
             r#"{"id": "sent", "threadId": "t3", "internalDate": "1793030000000",
+                "labelIds": ["SENT"],
                 "payload": {"headers": [{"name": "From", "value": "Joel <joel@example.com>"},
                 {"name": "To", "value": "Ada <ada@example.com>"},
                 {"name": "Subject", "value": "Lunch"}]}}"#
@@ -312,11 +313,18 @@ fn a_months_meetings_held_and_mail_sent_or_read_are_told_a_while_apart() {
     let lately: Vec<_> = state
         .lately
         .iter()
-        .map(|mail| (mail.id.as_str(), mail.subject.as_str(), mail.others.clone()))
+        .map(|mail| {
+            (
+                mail.id.as_str(),
+                mail.subject.as_str(),
+                mail.sent,
+                mail.others.clone(),
+            )
+        })
         .collect();
     assert_eq!(
         lately,
-        [("sent", "Lunch", vec!["ada@example.com".to_owned()])]
+        [("sent", "Lunch", true, vec!["ada@example.com".to_owned()])]
     );
     assert_eq!(state.held.len(), 1);
     let events = |stand_in: &StandIn| -> Vec<String> {
