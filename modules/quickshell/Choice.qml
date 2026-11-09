@@ -456,10 +456,11 @@ Rectangle {
         // title is what Joel looks for, its program and place only help
         // (Joel, 2026-10-25: titles "get elipsed really quick"). It's
         // reckoned from where a name starts at no depth, so a row a step in
-        // says as much at its right as the row above it.
+        // says as much at its right as the row above it. That start already
+        // holds the glyph's column, so only the right's inset is taken here.
         readonly property real share: Math.min(row.width * 0.45, Math.max(row.width * 0.2,
             row.width - nameBox.x + row.indent - nameBox.implicitWidth
-            - Theme.space.rung.groups - row.glyphColumn - Theme.space.rung.inset
+            - Theme.space.rung.groups - Theme.space.rung.inset
             - (!row.detailed ? 0
                 : Math.min(row.detailWide, row.width * 0.3) + Theme.space.rung.apart)))
         // As wide as the widest beside a graph in the list, so the graphs
