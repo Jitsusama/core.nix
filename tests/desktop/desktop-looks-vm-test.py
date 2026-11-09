@@ -1460,7 +1460,22 @@ def a_programs_plate_lies_on_the_lines(desktop: Desktop, scale: str, keeping: li
     kept = [fact for fact in drawer["facts"] if fact in keeping]
     assert kept == keeping, f"at {scale} pw-cat's timing is out of order: {drawer}"
     assert "Graph ID" in drawer["facts"], f"at {scale} pw-cat isn't identified: {drawer}"
-    desktop.shoot(f"launcher-plate-program-at-{scale.replace('.', '-')}")
+    at = scale.replace(".", "-")
+    desktop.shoot(f"launcher-plate-program-at-{at}")
+    # Its part says where it plays, and steps in to where else it could:
+    # the default first, then each output, the one it's on chosen (VKCF3Z,
+    # 2026-11-09).
+    desktop.follow()
+    desktop.launcher_until(lambda shown: "Plays On" in shown["rows"])
+    desktop.down_to("Plays On")
+    desktop.shoot(f"launcher-program-plays-on-at-{at}")
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"][:1] == ["the default"] and "stand-in-headphones" in shown["rows"]
+        )
+    )
+    desktop.shoot(f"launcher-program-plays-on-choices-at-{at}")
 
 
 @pytest.mark.usefixtures("google")
