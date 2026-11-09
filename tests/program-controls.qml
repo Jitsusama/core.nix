@@ -652,7 +652,9 @@ ShellRoot {
             same("Notices counts its own, at its right", told.side, "2 \u00b7 1 unread");
             same("and holds more", told.nested, true);
             const sent = told.targets();
-            same("its notices, newest first", names(sent), "Newest, Oldest \u00b7 said");
+            // Each is named by its title alone, as every notice row is (VKCF3Z,
+            // 2026-11-08); what it said is its note.
+            same("its notices, newest first", names(sent), "Newest, Oldest");
             Niri.acted = [];
             sent[0].run();
             same("Return on one reads it", Notices.marked.join(" "), "3");

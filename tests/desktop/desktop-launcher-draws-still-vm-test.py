@@ -312,8 +312,8 @@ def test_dd_on_a_notice_shows_on_the_frame_after_its_key(desktop: Desktop) -> No
     print(f"dd's frame after its key, and its refresh after the key's work, in ms: {took}")
 
 
-# Peter's notice, as its row in Notices names it.
-LUNCH = "Peter \u00b7 lunch at noon?"
+# Peter's notice, as its row in Notices names it: by its title alone (VKCF3Z, 2026-11-08).
+LUNCH = "Peter"
 
 # A frame at 60 Hz, in whole ms: what an act's refresh may wait once the key's own work is
 # done. Held behind a queue changing ten times a second, it waits anywhere up to the quarter

@@ -77,6 +77,15 @@ QtObject {
         const where = "Tokyo, Japan \u00b7 Open-Meteo";
         expect("no separator dangling", cut(where, 200) === "Tokyo, Japan\u2026", cut(where, 200));
         expect("no comma dangling", cut(where, 120) === "Tokyo\u2026", cut(where, 120));
+        // A note gives way by whole words from its end with no ellipsis,
+        // a separator left at its end going too.
+        const line = "line 7 of the deploy, went by";
+        const noteIn = (words, room) => Reading.wordsFromEnd(words, room, width);
+        expect("a note whole where it fits", noteIn(line, 290) === line, noteIn(line, 290));
+        expect("a note a word short", noteIn(line, 250) === "line 7 of the deploy",
+            noteIn(line, 250));
+        expect("a note to its first word", noteIn(line, 40) === "line", noteIn(line, 40));
+        expect("a note with no room", noteIn(line, 30) === "", noteIn(line, 30));
         // A note of items gives way by whole items from its end, never
         // inside one (VKCF3Z, 2026-11-07: never "11.9 Mb/s\u2026").
         const note = "Example ISP \u00b7 370 Mb/s down \u00b7 11.9 Mb/s up";
