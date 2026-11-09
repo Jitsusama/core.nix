@@ -193,32 +193,31 @@ QtObject {
         expect("and with nothing said of it, nothing",
             FileFacts.sideElsewhere({ name: "Team", folder: true }, now, words), "");
         const owner = { label: "Owner", value: "Ada Lovelace" };
-        expect("its plate is a file's here, by its ending, its place's facts after",
+        expect("its plate is a file's here, where then its kind by its ending, its size and"
+            + " day the row's, its place's facts after",
             FileFacts.plateElsewhere({ name: "menu.pdf", where: "My Drive/Trips", entry: away,
-                facts: [owner] }, now, words), {
-                eyebrow: "PDF", title: "menu.pdf", facts: [
-                    { label: "Size", value: kept("2.40_MB") },
-                    { label: "Changed", value: kept("28_Oct") },
-                    { label: "Where", value: "My Drive/Trips" }, owner]
+                facts: [owner] }, words), {
+                eyebrow: "in My Drive/Trips \u00b7 PDF",
+                eyebrowItems: [
+                    { said: "in My Drive/Trips", keep: 2, path: "My Drive/Trips" },
+                    { said: "PDF", keep: 1 }
+                ],
+                eyebrowNames: true,
+                title: "menu.pdf",
+                facts: [owner]
             });
         expect("what its place doesn't say is left out, never awaited",
             FileFacts.plateElsewhere({ name: "Trips", where: "My Drive",
-                entry: { name: "Trips", folder: true } }, now, words), {
-                eyebrow: "Folder", title: "Trips", facts: [{ label: "Where", value: "My Drive" }]
-            });
-        expect("where its place says it is leads its eyebrow, in place of Where",
+                entry: { name: "Trips", folder: true } }, words).facts, []);
+        expect("where its place says it is, in its own words, leads its eyebrow",
             FileFacts.plateElsewhere({ name: "menu.pdf", where: "My Drive/Trips",
-                within: "in My Drive/Trips", entry: away, facts: [owner] }, now, words), {
-                eyebrow: "in My Drive/Trips \u00b7 PDF", title: "menu.pdf",
-                facts: [{ label: "Size", value: kept("2.40_MB") },
-                    { label: "Changed", value: kept("28_Oct") }, owner],
-                eyebrowNames: true
-            });
+                within: "in My Drive/Trips", entry: away, facts: [owner] }, words).eyebrow,
+            "in My Drive/Trips \u00b7 PDF");
         expect("and a folder's, its kind its folder", FileFacts.plateElsewhere({ name: "Trips",
             where: "My Drive", within: "in My Drive", entry: { name: "Trips", folder: true } },
-            now, words).eyebrow, "in My Drive \u00b7 Folder");
+            words).eyebrow, "in My Drive \u00b7 Folder");
         expect("a file with no ending is a file", FileFacts.plateElsewhere({ name: "notes",
-            where: "", entry: { name: "notes", size: 3 } }, now, words).eyebrow, "File");
+            where: "", entry: { name: "notes", size: 3 } }, words).eyebrow, "File");
 
         const entries = [
             { name: "note 10.md", path: "/n/note 10.md", size: 5, modified: 3 },

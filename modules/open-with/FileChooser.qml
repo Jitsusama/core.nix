@@ -625,7 +625,7 @@ Provider {
             return fields;
         return Object.assign({}, fields, {
             side: FileFacts.sideElsewhere(fields.entry, Date.now(), factWords),
-            drawer: () => FileFacts.plateElsewhere(fields, Date.now(), factWords)
+            drawer: () => FileFacts.plateElsewhere(fields, factWords)
         });
     }
 
