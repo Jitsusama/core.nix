@@ -1533,7 +1533,10 @@
   '';
   reader-sets-its-pages = ''
     the reader's tests pass as it builds: tables from their words and on the text's pitch, pictures
-    by their first bytes, places kept and read back, saves heard and the watch moved to another file,
+    by their first bytes, places kept and read back with the heading each sits under, how far down
+    it is and when it was left, an old place without them still read, the places listed newest
+    first without a file gone, a mark opened by its letter, saves heard and the watch moved to
+    another file,
     the file shown said, the theme read, search across a hyphen, an equation shown as written
     without MiTeX, links to markdown set in place, labels on their links' baselines, Neovim's
     counts and keys, visual mode's motions, text objects and copies of the file's markdown, where
@@ -2210,6 +2213,14 @@
     where it is and its kind, then what's still to play, what mpv kept, its size and its path;
     and Play the Copied Link is offered only while the clipboard's one web address is one mpv
     plays, a video site's page or a media file
+  '';
+  the-launcher-reads-on-where-the-reader-left = ''
+    the reader's Recent merges each file the reader kept a place in by when it was left, newest
+    first, with the files the shared list gives, each once and none open now, read once the reader
+    is stepped into, each opening; one left part way has "Installing · 40% · 12 min ago" at its
+    side, Return reading on and each mark inside reading from its letter, one read to its end says
+    so, each drawer says where it is and its kind, the heading, how far down, each mark and its
+    path, and the reader's drawer says how many files are still to finish
   '';
   the-launcher-remakes-only-the-windows-that-changed = ''
     the launcher's windows list This Window, then the rest the one used last first, and when the
