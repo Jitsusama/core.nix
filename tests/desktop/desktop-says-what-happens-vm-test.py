@@ -1461,6 +1461,53 @@ def test_a_notice_whose_time_is_up_still_does_what_it_offers_from_the_launcher(
     machine.send_key("ret")
     assert desktop.answered() == "play", "a notice whose time was up lost what it offered"
     desktop.tokened()
+    # Every row at once reaches each sender as one row does (FUW70D, 2026-11-09): :%forget
+    # lets each still open go unanswered, and :%delete reads each at its sender, where it
+    # offers Read, as d does.
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    every_row_reaches_its_sender(desktop, "forget", "")
+    every_row_reaches_its_sender(desktop, "delete", "read")
+
+
+def every_row_reaches_its_sender(desktop: Desktop, command: str, answer: str) -> None:
+    """Rest two notices offering Read, run a command on every row, and hear each sender's answer.
+
+    notify-send waits on its notice until it closes and then says the action done, if any, so
+    both ending says the command reached the bus for each, and what they said, "" for none,
+    says which it was.
+    """
+    machine = desktop.machine
+    titles = [f"Kiln {command} one", f"Kiln {command} two"]
+    with desktop.told(f"rests {titles[0]}"), desktop.told(f"rests {titles[1]}"):
+        for title in titles:
+            desktop.as_account(
+                f"notify-send --expire-time=0 --action=read='Mark as read' '{title}' 'fired'"
+                f" > '/tmp/{title}' 2>&1 < /dev/null &"
+            )
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=10))
+    machine.send_key("meta_l-n")
+    desktop.launcher_ready()
+    # Escape gives normal from the find, where : begins a command, and never closes.
+    machine.send_key("esc")
+    machine.send_chars(f":%{command}\n", delay=KEY_PACE)
+
+    # Every notice Desktop holds can, a forgotten one still unread too, but not Mark Them Read
+    # or History, so it asks first, as Vim's :confirm does.
+    def asked(shown: Json) -> bool:
+        count = cast("int", shown["count"])
+        can = f"{count - 2} of {count} can {command}"
+        return shown["question"] == f"{can}; {command} them? (y/n)" and bool(shown["takesAnswer"])
+
+    desktop.launcher_until(asked)
+    machine.send_chars("y")
+    desktop.launcher_until(lambda shown: shown["question"] == "")
+    # What d is done with is let go as the launcher closes, so u can bring it back till then.
+    desktop.close_launcher()
+    machine.wait_until_fails(
+        f"pgrep -f '[n]otify-send .*Kiln {command}'", timeout=timedelta(seconds=15)
+    )
+    said = [machine.succeed(f"cat '/tmp/{title}'").strip() for title in titles]
+    assert said == [answer, answer], f":%{command} gave its senders {said}, not {answer!r}"
 
 
 def test_the_notices_sit_the_frames_rung_inside_the_window_under_them(desktop: Desktop) -> None:
