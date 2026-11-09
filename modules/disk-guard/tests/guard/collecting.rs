@@ -696,9 +696,16 @@ fn a_nearly_full_store_is_listed_at_full_priority_however_overloaded_the_machine
     step_later_until(&store, &mut guard, 0.0, &OVERLOADED, |store, _| {
         lists(store) == 1
     });
+    // While it lists, an urgent store may already be collected by `nix
+    // store gc`, which then comes first in the log, so the listing is
+    // found by what it says.
+    let listed = store
+        .log()
+        .into_iter()
+        .find(|line| line.starts_with("list "));
     assert_eq!(
-        store.log()[0],
-        format!("list {}", own_policy()),
+        listed,
+        Some(format!("list {}", own_policy())),
         "at full priority, as the guard's own"
     );
 }

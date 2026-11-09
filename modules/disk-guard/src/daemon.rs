@@ -2101,12 +2101,18 @@ impl Guard {
         }
         self.note_actions(here, &report.actions, tick.wall);
         let end = ending(&report.end);
+        let seconds = started.elapsed().as_secs_f64();
+        // Said where people look, the journal or the Mac's log file, since
+        // the guard's own journal is read only by the guard.
+        if let Some(line) = crate::pass::told(&report, seconds, &crate::clock::stamp(tick.wall)) {
+            eprintln!("{line}");
+        }
         self.journal.write(&Line::Pass {
             at: tick.wall,
             band: report.band,
             end: end.clone(),
             freed: report.freed,
-            seconds: started.elapsed().as_secs_f64(),
+            seconds,
         })?;
         self.last = Some(LastPass {
             at: tick.wall,

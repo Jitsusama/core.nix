@@ -112,6 +112,34 @@ pub struct Report {
     pub actions: Vec<(PathBuf, Outcome)>,
 }
 
+/// The line a pass leaves in the guard's log once it has tried to take
+/// something, said at `when`; a pass that only judged and kept says nothing.
+pub fn told(report: &Report, seconds: f64, when: &str) -> Option<String> {
+    let tried = report
+        .actions
+        .iter()
+        .filter(|(_, outcome)| !matches!(outcome, Outcome::Kept(_)))
+        .count();
+    let took = report
+        .actions
+        .iter()
+        .filter(|(_, outcome)| *outcome == Outcome::Reclaimed)
+        .count();
+    let band = match report.band {
+        Band::Healthy => "while healthy",
+        Band::Filling => "while filling",
+        Band::NearlyFull => "while nearly full",
+        Band::CriticallyFull => "while critically full",
+    };
+    (tried > 0).then(|| {
+        format!(
+            "disk-guard: at {when} a pass {band} took {took} of the {tried} it tried, \
+             freeing {} in {seconds:.1} s",
+            crate::units::shown(report.freed)
+        )
+    })
+}
+
 /// Takes what the plan says until free space reaches the target, nothing
 /// is left to take, or deletes stop freeing anything. Each batch is
 /// settled and measured before the next is planned, so a writer filling
