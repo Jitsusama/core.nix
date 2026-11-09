@@ -28,6 +28,7 @@ import "Ago.js" as Ago
 import "ForYou.js" as ForYou
 import "ForYouFilter.js" as Filter
 import "NowGroups.js" as Groups
+import "Showing.js" as Showing
 import "Order.js" as Order
 import "Moment.js" as Moment
 import "NeedsYou.js" as NeedsYou
@@ -1139,10 +1140,12 @@ Provider {
     // drawnBy), as that place draws it, or none while it doesn't list it:
     // a place keeps its rows in `all` where it works them out, as Sound
     // does, else in a provider's `things`, as Cameras does.
-    function borrowed(drawnBy) {
+    // The drawer of the row a piece stands for, without what the piece's
+    // own row says (Showing.besides), as `by` gives it.
+    function borrowed(drawnBy, by) {
         const place = source(drawnBy.place);
         const row = (place?.all ?? place?.things ?? []).find(each => each.key === drawnBy.key);
-        return row?.drawer?.() ?? null;
+        return Showing.besides(row?.drawer?.() ?? null, by ?? {});
     }
 
     function made(fact) {
@@ -1181,7 +1184,10 @@ Provider {
             }
         } : piece.drawnBy ? {
             thing: true,
-            drawer: () => provider.borrowed(piece.drawnBy)
+            drawer: () => provider.borrowed(piece.drawnBy, {
+                side: piece.value,
+                note: piece.context
+            })
         } : {};
         return member(Object.assign({
             key: `on:${fact.entry.mark}`,

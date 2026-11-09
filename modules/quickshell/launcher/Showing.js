@@ -202,6 +202,22 @@ function adds(plate, row) {
         .some(said => said !== "" && !own.includes(said));
 }
 
+// A drawer made for one row, drawn under another that stands for the same
+// thing, as Now's Keyboard Layer draws the keyboard's: the facts saying
+// only what that row's own side or note says are left out, since a
+// drawer never repeats its row (VKCF3Z, 2026-11-08). None stays none.
+function besides(plate, row) {
+    if (!plate) {
+        return null;
+    }
+    const own = [row.side, row.note].map(said => String(said ?? "").trim())
+        .filter(said => said !== "");
+    const facts = (plate.facts ?? []).filter(one =>
+        !one || one.value === null || one.value === undefined
+        || !own.includes(String(one.value).trim()));
+    return Object.assign({}, plate, { facts });
+}
+
 // One fact: a heading, or a label and its value, with its qualifier where
 // it has one; null for none, as a fact left out is.
 function fact(one) {

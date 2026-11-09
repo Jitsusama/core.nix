@@ -106,6 +106,18 @@ QtObject {
             Showing.adds({ title: "drafts", body: "Kept for later." }, folder),
             Showing.adds({ now: true }, folder)
         ], [true, true, true, true]);
+        // A drawer borrowed by another row leaves out what that row says.
+        const keyboard = { title: "ErgoDox EZ", eyebrow: "on USB \u00b7 keyboard", facts: [
+            { label: "Layer", value: "Numb \u00b7 locked" }, { label: "Locks", value: "none" },
+            null, { heading: "Light" }] };
+        expect("a borrowed drawer drops the fact its row's side says",
+            Showing.besides(keyboard, { side: "Numb \u00b7 locked ", note: "" }).facts,
+            [{ label: "Locks", value: "none" }, null, { heading: "Light" }]);
+        expect("and keeps the rest of it, and every fact when the row says none", [
+            Showing.besides(keyboard, { side: "Numb" }).facts.length,
+            Showing.besides(keyboard, {}).eyebrow
+        ], [4, "on USB \u00b7 keyboard"]);
+        expect("none borrowed stays none", Showing.besides(null, { side: "on" }), null);
         if (failed > 0) {
             console.warn(`${failed} failed`);
             Qt.exit(1);
