@@ -6775,7 +6775,6 @@
         "doneByYou": "done by you",
         "clearsLook": "you open or clear it",
         "clearsPr": "it merges or closes",
-        "today": "today",
         "yesterday": "yesterday",
         "tomorrow": "tomorrow",
         "moment": "{day} {time}"
@@ -6840,12 +6839,6 @@
       "id": "on:waiting:resolved",
       "in": "on:waiting",
       "name": "Resolved"
-    },
-    {
-      "id": "on:waiting:quest",
-      "in": "on:waiting",
-      "name": "Quest",
-      "term": "Agents/quest"
     },
     {
       "id": "on:waiting:session",

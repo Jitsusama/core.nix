@@ -772,6 +772,8 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
                 and shown["drawer"]["body"] == steps
                 and [fact for fact in shown["drawer"]["facts"] if fact in owned] == owned
                 and "Due" not in shown["drawer"]["facts"]
+                # Its quest is the eyebrow's, so no fact says it again.
+                and "Quest" not in shown["drawer"]["facts"]
                 and shown["drawer"]["eyebrow"] == "from Reef Quest \u00b7 to-do"
             )
         )

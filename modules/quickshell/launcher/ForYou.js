@@ -191,15 +191,28 @@ function weightSaid(thing, now, say) {
 }
 
 // A moment as For You says every one, its day as When.js says a day,
-// back or forward, then its time: "today 15:00", "tomorrow 15:00",
-// "Wednesday 14:10", "28 Nov 09:30" (VKCF3Z, 2026-11-08: one moment
-// reads one way everywhere). `at` is milliseconds or an ISO time; "" for
-// none. `say` holds its words, with `day(ms, now)` as When.js says a day,
-// "" today, and `time(ms)` as the clock does.
+// back or forward, then its time, and today its time alone: "15:00",
+// "tomorrow 15:00", "Wednesday 14:10", "28 Nov 09:30" (VKCF3Z,
+// 2026-11-08: one moment reads one way everywhere, as When.js writes it).
+// `at` is milliseconds or an ISO time; "" for none. `say` holds its
+// words, with `day(ms, now)` as When.js says a day, "" today, and
+// `time(ms)` as the clock does.
 function moment(at, now, say) {
     const read = when(at);
-    return read === null ? "" : filled(say.moment,
-        { day: say.day(read, now) || say.today, time: say.time(read) });
+    if (read === null) {
+        return "";
+    }
+    const day = say.day(read, now);
+    return day === "" ? say.time(read) : filled(say.moment, { day, time: say.time(read) });
+}
+
+// A drawer's session, and how its quest stands where it isn't active,
+// as Agents says it (SessionDrawer.js): "pi \u00b7 core \u00b7 paused". Its
+// quest is the eyebrow's, so no fact names it again (VKCF3Z, 2026-11-08);
+// with no session, how it stands has no line to go on.
+function sessionSaid(title, status) {
+    const stands = status && status !== "active" ? status : "";
+    return title === "" ? "" : [title, stands].filter(part => part !== "").join(" \u00b7 ");
 }
 
 // Whether an item's deadline is said already, by its row's side, as its
@@ -215,7 +228,7 @@ function dueSaidElsewhere(item, sideSaysDue, now) {
 // where neither the row's side nor its weight says it (no fact repeats
 // another), and when it's set for, each a moment; the machine it's done
 // on, as its owner names it; the window it's done in, by its title, its
-// quest and session being facts of their own; and, as written, its
+// session being a fact of its own; and, as written, its
 // owner's address and the command that checks it's done. Each is ""
 // where nothing says it. `told` holds `now`, whether its row's side
 // says its deadline (`sideSaysDue`), as a weighed row's does while it

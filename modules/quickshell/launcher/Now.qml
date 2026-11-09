@@ -419,7 +419,7 @@ Provider {
 
     // Its drawer: where it's from and that it's a thing to do, its title,
     // then its facts, what it weighs and why, since when it has waited, how
-    // it'll be known done, its quest and session, and who it is last; then
+    // it'll be known done, its session, and who it is last; then
     // its steps, numbered, and why only Joel can do it (VKCF3Z, 2026-10-31
     // and 2026-11-08), each only when it says it. How it's known done is a
     // fact now, so the words don't say it again.
@@ -461,8 +461,8 @@ Provider {
             Object.assign(fact("clears", knownSaid(each)), { words: true }),
             fact("machine", owner.machine),
             fact("where", owner.where),
-            fact("quest", quest),
-            fact("session", session?.title ?? ""),
+            fact("session", ForYou.sessionSaid(session?.title ?? "",
+                WaitingOnYou.owners[each.quest]?.status)),
             identifier("address", owner.address, false),
             identifier("check", owner.check, true),
             Object.assign(fact("item", WaitingOnYou.identity(each)), { identifies: true })
@@ -793,24 +793,25 @@ Provider {
         return { kind: "look", since: one.since };
     }
 
-    // A look's drawer: where it's from and that it's to look at, its title,
-    // what it weighs while it waits, since when, what clears it, how it
-    // went once it has, its quest and session, then who it is and what it
-    // points at; and why, whole.
+    // A look's drawer: its quest, by its title in the index, and that it's
+    // to look at, its title, what it weighs while it waits, since when,
+    // what clears it, how it went once it has, its session, then who it is
+    // and what it points at; and why, whole.
     function lookDrawer(one) {
         const now = Date.now();
         const say = forYouSaid(now);
         const waits = one.state === "waiting";
         const session = lookSession(one);
-        const from = session?.title || one.quest || one.session || "";
+        const quest = one.quest ? WaitingOnYou.ownerOf(one.quest) : null;
+        const from = quest?.title || one.quest || session?.title || one.session || "";
         const identified = (id, value) => Object.assign(fact(id, value), { identifies: true });
         const facts = [
             fact("weight", waits ? ForYou.weightSaid(lookThing(one), now, say) : ""),
             fact("since", one.since === null ? "" : say.clock(one.since)),
             fact("clears", !waits ? "" : one.kind === "pr" ? say.clearsPr : say.clearsLook),
             fact("resolved", waits ? "" : ForYou.historySide(one, say)),
-            fact("quest", one.quest ?? ""),
-            fact("session", session?.title ?? one.session ?? ""),
+            fact("session", ForYou.sessionSaid(session?.title ?? one.session ?? "",
+                quest?.status)),
             identified("look", one.id),
             identified("target", ["pr", "page", "diff"].includes(one.kind) ? one.target : "")
         ].filter(each => each.value !== "");

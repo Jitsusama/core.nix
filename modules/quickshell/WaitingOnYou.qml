@@ -128,6 +128,17 @@ Singleton {
         return owners[item.quest]?.title || item.quest;
     }
 
+    // Any quest's status and title as the index says, by its id, as a look
+    // names the quest that pointed at it: null where the index doesn't
+    // hold it, and absent until the node has answered. Read as a drawer
+    // is shown, so the index needn't be weighed for each look. The index
+    // changes in place, so its revision is read first, as owners does, and
+    // a drawer held open follows a quest's new title or status.
+    function ownerOf(quest) {
+        questKind?.revision;
+        return Waiting.owners(questKind?.answered ? questKind.held : null, [quest])[quest];
+    }
+
     // Joel's word on an item, "done" or "notNow", kept at once.
     function settle(item, how) {
         settled = Waiting.settle(settled, item, how, Date.now());
