@@ -114,13 +114,29 @@ const ANSWER: Duration = Duration::from_secs(2);
 /// A Neovim in a kitty window: niri's window it shows in, where its server
 /// listens, what Go To is given to bring it forward inside kitty (`go`),
 /// and the processes running Neovim in front there, one of which answers
-/// at its server unless what it said is stale.
+/// at its server, or runs the editor that does, unless what it said is
+/// stale.
 #[derive(Debug, PartialEq, Eq)]
 pub struct InKitty {
     pub window: u64,
     pub server: String,
     pub go: String,
     pub pids: Vec<u64>,
+}
+
+impl InKitty {
+    /// Whether what its server said came from a Neovim running in front in
+    /// this window, so a server another window's Neovim holds now is passed
+    /// over: the process itself, or the one it was started by, since a
+    /// Neovim drawing in a terminal (0.12 on) is a client there that runs
+    /// the editor, the process answering, as its embedded child.
+    #[must_use]
+    pub fn answers(&self, held: &Value) -> bool {
+        ["pid", "parent"]
+            .iter()
+            .filter_map(|key| held[key].as_u64())
+            .any(|pid| self.pids.contains(&pid))
+    }
 }
 
 /// Where a kitty listens for its remote control: the `--listen-on` its
@@ -451,6 +467,41 @@ mod tests {
                     pids: vec![107]
                 },
             ]
+        );
+    }
+
+    fn in_front(pids: Vec<u64>) -> InKitty {
+        InKitty {
+            window: 31,
+            server: "/run/user/1/nvim.105.0".into(),
+            go: "10:5".into(),
+            pids,
+        }
+    }
+
+    #[test]
+    fn a_neovim_answers_for_its_window_as_the_process_in_front_or_its_embedded_editor() {
+        let one = in_front(vec![105]);
+        assert!(
+            one.answers(&json!({ "pid": 105, "parent": 1 })),
+            "a Neovim that runs in front itself answers for its window"
+        );
+        assert!(
+            one.answers(&json!({ "pid": 106, "parent": 105 })),
+            "an editor embedded by the client in front answers for its window"
+        );
+    }
+
+    #[test]
+    fn a_neovim_running_elsewhere_or_saying_no_process_is_passed_over() {
+        let one = in_front(vec![105]);
+        assert!(
+            !one.answers(&json!({ "pid": 107, "parent": 106 })),
+            "a server now held by a Neovim in another window is stale here"
+        );
+        assert!(
+            !one.answers(&json!({ "folder": "/" })),
+            "an answer naming no process is never taken as this window's"
         );
     }
 

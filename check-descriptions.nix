@@ -3056,8 +3056,9 @@
     edited on the line and a name taken asked once, and Google Drive through it, a Google
     document saying the file it comes as and gx opening a file in its own program, a picture in
     swayimg, where : opens the launcher's command line alone and low, aimed at the picture by its
-    name, and :q there closes it, a document in zathura, markdown in the reader, and a folder from
-    kitty's Recent, while the launcher's home keeps its shape
+    name, and :q there closes it, a document in zathura, markdown in the reader, a folder from
+    kitty's Recent, and a buffer of a Neovim in kitty from Neovim's page, which lists every file
+    each one holds, while the launcher's home keeps its shape
   '';
   vm-desktop-reopens-under-orchestrators = ''
     sessions come back, or start, on their orchestrator's workspace by themselves: a reboot's list
