@@ -1356,9 +1356,9 @@ mod tests {
         quarantined: Vec<String>,
         /// Tests main's newest head lists as quarantined besides those.
         listed_since: Vec<String>,
-        /// Whether main can't be fetched, as before the network is up, so
-        /// only its head as last fetched is known.
-        unreachable: bool,
+        /// What every fetch of main fails with, as before the network is
+        /// up, so only its head as last fetched is known.
+        fetch_fails: Option<String>,
         /// Whether every revert conflicts with main.
         reverts_conflict: bool,
         reverted: Mutex<Vec<String>>,
@@ -1408,8 +1408,8 @@ mod tests {
             self.held.clone()
         }
         fn head(&self) -> Result<String, String> {
-            if self.unreachable {
-                return Err("could not resolve host: github.com".to_owned());
+            if let Some(error) = &self.fetch_fails {
+                return Err(error.clone());
             }
             *self.fetched_since_revert.lock().unwrap() = true;
             Ok(self.head.clone())
@@ -2129,7 +2129,7 @@ mod tests {
             merges: names("a b h"),
             changed: changed("vm-a"),
             listed_since: names("vm-a"),
-            unreachable: true,
+            fetch_fails: Some("could not resolve host: github.com".into()),
             ..Stand::default()
         }
         .exits("h", "vm-a", &[1, 1]);
