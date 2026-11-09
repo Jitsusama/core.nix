@@ -214,8 +214,12 @@ const NOTICE = /^\[[^\]]*\] (from|in) (.+)$/;
 // An emoji as Slack's markup names it, ":heart:", which the daemon keeps
 // and the notice shows as the emoji itself, so neither is a word.
 const SHORTCODE = /:[a-z0-9_+'-]+:/g;
-// What a word is made of: a letter or a digit in any script.
-const WORDLY = /[\p{L}\p{N}]/u;
+// What a word is made of besides a letter with case: a digit, or a
+// letter of a script without one, by its block (Hebrew, Arabic, the
+// Indic scripts, Thai and Lao, Hangul, kana and CJK). Qt's engine has no
+// \p{L}, so a letter beyond these, as of CJK's rarest, splits words.
+const UNCASED = /[0-9\u0590-\u06ff\u0900-\u0d7f\u0e00-\u0eff\u1100-\u11ff\u3040-\u30ff]/;
+const HAN_OR_HANGUL = /[\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff]/;
 // A notice's text Slack cut short ends so, maybe within a word.
 const ELLIPSIS = /\u2026\s*$/;
 // The daemon cuts a message's text at a space to 400 characters (LONGEST
@@ -265,7 +269,7 @@ function words(text) {
     const all = [];
     let word = "";
     for (const each of String(text ?? "").toLowerCase().replace(SHORTCODE, " ")) {
-        if (WORDLY.test(each)) {
+        if (each.toUpperCase() !== each || UNCASED.test(each) || HAN_OR_HANGUL.test(each)) {
             word += each;
         } else if (word !== "") {
             all.push(word);
