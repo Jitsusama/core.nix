@@ -4238,6 +4238,7 @@ onLinux {
       cp ${../reader/ReaderProgram.qml} launcher/ReaderProgram.qml
       cp ${../zathura/ZathuraProgram.qml} launcher/ZathuraProgram.qml
       cp ${../zathura/Zathura.js} launcher/Zathura.js
+      cp ${../reader/Reader.js} launcher/Reader.js
       cp ${../gimp/CopiedPicture.qml} launcher/CopiedPicture.qml
       cp ${../../tests/program-acts.qml} shell.qml
       export XDG_RUNTIME_DIR=$TMPDIR/runtime

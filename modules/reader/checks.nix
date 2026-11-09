@@ -7,6 +7,7 @@
   onLinux,
   passesClippy,
   pkgs,
+  shellFolderLint,
   ...
 }:
 let
@@ -35,13 +36,27 @@ let
       channel = index: toString (lib.fromHexString (builtins.substring (index * 2) 2 hex));
     in
     "srgb(${channel 0},${channel 1},${channel 2})";
+
+  # A stand-in for one of the shell's singletons, holding only what a check
+  # needs of it.
+  singleton =
+    name: body:
+    pkgs.writeText name ''
+      pragma Singleton
+      import Quickshell
+      import QtQuick
+      Singleton { ${body} }
+    '';
 in
 # The reader draws through Wayland and EGL, on the Linux desktop.
 onLinux {
   # The reader's tests run as it builds: a table's columns from the words
   # in them, every line of a table and of records on the text's pitch, a
   # picture known by its first bytes, a place kept as a block and a way into
-  # it and read back as it was, a save heard whether written in place or
+  # it and read back as it was, with the heading it sits under, how far down
+  # the page it is and when it was left, a place kept before those still
+  # read, the places listed newest left first without a file gone, a mark
+  # asked for by its letter opened at, a save heard whether written in place or
   # moved over and another file's not, and the new file's once the watch
   # moves, a link to markdown set in place, a label's letters on its link's
   # baseline within a pixel, the file shown said for the launcher
@@ -56,6 +71,130 @@ onLinux {
   # motion's curve, and a worker let go only once its job in hand and its
   # thread have ended, the rest skipped.
   reader-sets-its-pages = pkgs.callPackage ./package.nix { };
+  # The reader's step in the launcher, its provider's as Applications.qml
+  # holds it (../../tests/reader-program.qml), over the reader's desktop
+  # entry, with niri, the shortcuts and what's playing stood in, the
+  # shell's own watch of the clipboard over a wl-paste that says nothing,
+  # and reader --places by a script that counts its runs: its Recent merges
+  # each file the reader left by when, newest first, with the shared list's,
+  # each once, none open now; one left part way says "Installing · 40% · 12
+  # min ago" beside it and Return reads on, with a row for each mark by its
+  # letter reading from there, and one read to its end says so; each drawer
+  # says where it is and its kind, the heading, how far down, each mark
+  # and its path, and the reader's what's still to finish; each listed
+  # once the reader is stepped into, once an opening; with Reader.js's own
+  # cases run first in Qt's engine.
+  the-launcher-reads-on-where-the-reader-left =
+    let
+      home = account graphical;
+      qs = lib.getExe' graphical.pkgs.quickshell "qs";
+      # The launcher's own files the step is made from, each by itself so
+      # no other change there builds this again.
+      launcher = ../quickshell/launcher;
+      launched = [
+        "Provider.qml"
+        "Asking.js"
+        "Numbers.js"
+        "Applications.qml"
+        "Order.js"
+        "Program.js"
+        "Media.js"
+        "Recents.qml"
+        "Recents.js"
+        "Recent.js"
+        "Ago.js"
+        "words.json"
+      ];
+      # A reader's window, its process showing now.md.
+      niri = singleton "Niri.qml" ''
+        property int revision: 0
+        property var windows: ({
+          "21": { id: 21, app_id: "reader", pid: 5151, title: "now.md", workspace_id: 1,
+            focus_timestamp: { secs: 200, nanos: 0 } }
+        })
+        property var workspaces: ({
+          "1": { id: 1, idx: 1, is_focused: true, active_window_id: 21 }
+        })
+        readonly property int current: 21
+        property var acted: []
+        property var spawned: []
+        function workspace(id) { return workspaces[id ?? "1"] ?? null; }
+        function act(action) { acted = acted.concat([action]); }
+        function spawn(command) { spawned = command; }
+      '';
+      playing = singleton "Playing.qml" ''
+        property var players: []
+        property var streams: []
+        property var recorders: []
+      '';
+      entry = pkgs.writeText "reader.desktop" ''
+        [Desktop Entry]
+        Type=Application
+        Name=Reader
+        Comment=Read a markdown file as a page
+        Exec=reader %f
+      '';
+      # The clipboard's watcher, which hears nothing.
+      paste = pkgs.writeShellScriptBin "wl-paste" "exec sleep 300";
+    in
+    pkgs.runCommandLocal "the-launcher-reads-on-where-the-reader-left" { } ''
+      mkdir -p launcher share/applications
+      cp ${entry} share/applications/reader.desktop
+      cp ${home.xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${../quickshell/Fuzzy.js} Fuzzy.js
+      cp ${../quickshell/ProgramGlyphs.js} ProgramGlyphs.js
+      cp ${../quickshell/Music.js} Music.js
+      cp ${../quickshell/Words.qml} Words.qml
+      cp ${../quickshell/Files.qml} Files.qml
+      cp ${../quickshell/Daemon.qml} Daemon.qml
+      cp ${../quickshell/FileFacts.js} FileFacts.js
+      cp ${../quickshell/When.js} When.js
+      ${lib.concatMapStrings (file: ''
+        cp ${launcher + "/${file}"} launcher/${file}
+      '') launched}
+      cp ${./ReaderProgram.qml} launcher/ReaderProgram.qml
+      cp ${./Reader.js} launcher/Reader.js
+      cp ${../../tests/reader-program.qml} shell.qml
+      cp ${niri} Niri.qml
+      cp ${playing} launcher/Playing.qml
+      cp ${singleton "Shortcuts.qml" "property var actions: []"} Shortcuts.qml
+      cp ${../quickshell/Copied.qml} Copied.qml
+      cp ${../quickshell/Copied.js} Copied.js
+      export PATH=${paste}/bin:$PATH
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export XDG_DATA_HOME=$TMPDIR/data XDG_DATA_DIRS=$PWD/share NOW=$(date +%s)
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      # The list programs share, as recent-files prints it: a file the
+      # reader left part way, and one it kept no place in.
+      printf 'reader\t%s\n' "$HOME/notes/guide.md" "$HOME/notes/shared.md" > $HOME/shared
+      export SHARED_LIST=${pkgs.writeShellScript "shared-list" ''cat "$HOME/shared"''}
+      # What each reader shows now, as the reader keeps it.
+      export SHOWING_LIST=${pkgs.writeShellScript "showing-list" ''
+        printf '5151\t%s\n' "$HOME/notes/now.md"
+      ''}
+      # What reader --places prints, newest left first: what a reader shows
+      # now, a file left under a heading with two marks, one under none, one
+      # read to its end two days ago, and a line it never would, counting
+      # each run.
+      export PLACES_LIST=${pkgs.writeShellScript "places-list" ''
+        echo $(( $(cat "$HOME/listed" 2> /dev/null || echo 0) + 1 )) > "$HOME/listed"
+        place() {
+          printf '{"file":"%s","left":%s,"at_end":%s%s,"marks":[%s]}\n' \
+            "$HOME/notes/$1.md" "$2" "$3" "$4" "$5"
+        }
+        place now $((NOW - 60)) false ',"heading":"Now","through":0.1' ""
+        place guide $((NOW - 720)) false ',"heading":"Installing","through":0.4' \
+          '{"letter":"b"},{"letter":"a","heading":"Using It","through":0.625}'
+        place old $((NOW - 3000)) false ',"through":0.25' ""
+        place done $((NOW - 172800)) true ',"heading":"Last Words","through":1' ""
+        echo 'not a place'
+      ''}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
   # clippy finds nothing in the reader, its tests included.
   reader-passes-clippy = passesClippy "reader-passes-clippy" (pkgs.callPackage ./package.nix { });
 

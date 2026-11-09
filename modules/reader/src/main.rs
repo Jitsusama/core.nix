@@ -8,9 +8,13 @@
 //!
 //! reader                   shows a page of markdown files to read
 //! reader FILE              shows the file
+//! reader --at LETTER FILE  shows the file at the mark kept under LETTER,
+//!                          or where it was left without one
 //! reader --measure FILE    runs the frame-time script and prints what
 //!                          each phase took, then closes
 //! reader --keys            prints every chord it takes, for the launcher
+//! reader --places          prints where each file was left, newest
+//!                          first, for the launcher's Recent
 //!
 //! The measure reads when each frame reached the screen from the
 //! compositor's presentation feedback, and holds the worst 1% of intervals
@@ -331,6 +335,10 @@ struct App {
     /// the view: until then the view shows the first screen's page as it
     /// was, so the page grows only into what is drawn.
     held_pt: Option<f64>,
+    /// Whether the page shown is the whole file, rather than the first
+    /// screen's page waiting for the rest, so how far down it the view is
+    /// can be said.
+    whole: bool,
     stale: HashSet<Key>,
     jump: Option<motion::Jump>,
     /// Under reduced motion a move cuts straight there.
@@ -3582,6 +3590,8 @@ impl App {
         self.arrived.clear();
         self.held_pt = None;
         self.settled_pt = f64::NEG_INFINITY;
+        // A saved or followed file's page is set whole.
+        self.whole = true;
         self.reloaded = true;
         self.jump = None;
         self.fresh.extend(incoming.textures.keys().copied());
@@ -3638,7 +3648,7 @@ impl App {
         self.aim = None;
         self.marks.clear();
         self.kept_marks = place::read(&file)
-            .map(|kept| kept.marks)
+            .map(|kept| kept_marks(&kept))
             .unwrap_or_default();
         self.take_kept_marks();
         self.last_jump = None;
@@ -3681,24 +3691,43 @@ impl App {
     }
 
     /// Keeps where the view is on the file shown, and its marks, for the
-    /// next time it opens.
+    /// next time it opens, each with the heading it sits under and how far
+    /// down the page it is, for the launcher to say.
     fn keep_place(&self) {
         if let Err(error) = place::keep_window(f64::from(self.size.0) * PT_A_PX) {
             eprintln!("reader: can't keep the window's width: {error}");
         }
         let file = self.file.as_path();
-        let starts = place::starts(&self.painter.page().frame);
+        let blocks = place::blocks(&self.painter.page().frame);
+        let starts: Vec<(usize, f64)> = blocks
+            .iter()
+            .map(|block| (block.number, block.top_pt))
+            .collect();
+        let px_per_pt = self.px_per_pt();
         // Closed while a jump moves, it keeps where the keys sent it.
-        let here = self.jump.as_ref().map_or(self.offset, |jump| jump.to);
-        let (block, into_pt) = place::at(&starts, here / self.px_per_pt());
-        let marks = self
+        let here = self.jump.as_ref().map_or(self.offset, |jump| jump.to) / px_per_pt;
+        // How far down is said only of the whole file's page: the first
+        // screen's ends where its setting stopped, not where the file does.
+        let most = self.whole.then(|| self.most() / px_per_pt);
+        let said = |block: usize, pt: f64| place::Said {
+            heading: place::heading_of(&blocks, block),
+            through: most.map(|most| place::through(pt, most)),
+        };
+        let (block, into_pt) = place::at(&starts, here);
+        let mut marks: Vec<place::Mark> = self
             .marks
             .iter()
             .map(|(letter, pt)| {
                 let (block, into_pt) = place::at(&starts, *pt);
-                (*letter, block, into_pt)
+                place::Mark {
+                    letter: *letter,
+                    block,
+                    into_pt,
+                    said: said(block, *pt),
+                }
             })
             .collect();
+        marks.sort_by_key(|mark| mark.letter);
         let at_end = self.at_end();
         if let Err(error) = place::write(
             file,
@@ -3707,6 +3736,8 @@ impl App {
                 into_pt,
                 at_end,
                 marks,
+                said: said(block, here),
+                left: place::now(),
             },
         ) {
             eprintln!("reader: can't keep where {} was: {error}", file.display());
@@ -3727,6 +3758,7 @@ impl App {
         self.held_pt = Some(self.painter.height_pt());
         self.settled_pt = self.painter.height_pt() - page::bottom_pt() - 1.0;
         self.painter.replace(page);
+        self.whole = true;
         let settled = self.settled_pt;
         let below: Vec<Key> = self
             .textures
@@ -4459,12 +4491,72 @@ impl Dispatch2<WpPresentationFeedback, App> for Feedback {
 /// Where on the first page the view opens for a place kept, in points.
 /// Kept at the end, it opens at the end, however the window or the page
 /// has changed since: the first frame clamps it there.
-fn start_at(place: &place::Place, starts: &[(usize, f64)]) -> Option<f64> {
-    if place.at_end {
+fn start_at(block: usize, into_pt: f64, at_end: bool, starts: &[(usize, f64)]) -> Option<f64> {
+    if at_end {
         Some(f64::INFINITY)
     } else {
-        place::pt_of(starts, place.block, place.into_pt)
+        place::pt_of(starts, block, into_pt)
     }
+}
+
+/// What a place kept says of its marks, as the page takes them back.
+fn kept_marks(place: &place::Place) -> Vec<(char, usize, f64)> {
+    place
+        .marks
+        .iter()
+        .map(|mark| (mark.letter, mark.block, mark.into_pt))
+        .collect()
+}
+
+/// Where the view opens: the mark asked for, or where the file was left.
+/// A letter with no mark kept says so, as Vim does, and opens where the
+/// file was left, as a file opened plainly does.
+fn opening_at(kept: Option<&place::Place>, letter: Option<char>) -> Option<(usize, f64, bool)> {
+    let (opens, unmarked) = place::opening(kept, letter);
+    if let Some(letter) = unmarked {
+        eprintln!("reader: E20: Mark not set: {letter}");
+    }
+    opens
+}
+
+/// What the reader was started with: whether it measures, the mark it
+/// opens at and the file; or nothing, once it has printed what was asked.
+fn started_with(args: &[String]) -> Result<Option<(bool, Option<char>, String)>, String> {
+    let usage = || "usage: reader [--measure | --at LETTER] FILE, reader --keys or reader --places";
+    Ok(Some(match args {
+        [flag] if flag == "--keys" => {
+            print_keys();
+            return Ok(None);
+        }
+        [flag] if flag == "--places" => {
+            // A reader of the list that stops early, as head does, ends it
+            // quietly.
+            let mut out = std::io::stdout().lock();
+            for line in place::listed() {
+                if writeln!(out, "{line}").is_err() {
+                    break;
+                }
+            }
+            return Ok(None);
+        }
+        [flag, file] if flag == "--measure" => (true, None, file.clone()),
+        [flag, letter, file] if flag == "--at" => match place::letter(letter) {
+            Some(letter) => (false, Some(letter), file.clone()),
+            None => return Err(usage().to_string()),
+        },
+        [file] => (false, None, file.clone()),
+        // Started with nothing to show, as from the launcher's Programs, it
+        // shows what there is to read.
+        [] => (
+            false,
+            None,
+            start::page()
+                .map_err(|error| error.to_string())?
+                .to_string_lossy()
+                .into_owned(),
+        ),
+        _ => return Err(usage().to_string()),
+    }))
 }
 
 fn first_width(measuring: bool) -> page::Width {
@@ -4477,17 +4569,8 @@ fn first_width(measuring: bool) -> page::Width {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let (measuring, file) = match args.as_slice() {
-        [flag] if flag == "--keys" => {
-            print_keys();
-            return Ok(());
-        }
-        [flag, file] if flag == "--measure" => (true, file.clone()),
-        [file] => (false, file.clone()),
-        // Started with nothing to show, as from the launcher's Programs, it
-        // shows what there is to read.
-        [] => (false, start::page()?.to_string_lossy().into_owned()),
-        _ => return Err("usage: reader [--measure] FILE, or reader --keys".into()),
+    let Some((measuring, letter, file)) = started_with(&args)? else {
+        return Ok(());
     };
     let born = Instant::now();
     let scale: f64 = std::env::var("READER_SCALE")
@@ -4502,10 +4585,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         place::read(std::path::Path::new(&file))
     };
     let width = first_width(measuring);
-    let first = page::set_first(&file, kept.as_ref().map(|place| place.block), width)?;
+    let opens_at = opening_at(kept.as_ref(), letter);
+    let first = page::set_first(&file, opens_at.map(|(block, _, _)| block), width)?;
     let starts = place::starts(&first.page.frame);
-    let start_pt = kept.as_ref().and_then(|place| start_at(place, &starts));
-    let kept_marks = kept.map(|place| place.marks).unwrap_or_default();
+    let start_pt =
+        opens_at.and_then(|(block, into_pt, at_end)| start_at(block, into_pt, at_end, &starts));
+    let kept_marks = kept.as_ref().map(kept_marks).unwrap_or_default();
     let page::First {
         page,
         ms: set_ms,
@@ -4549,6 +4634,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         set_ms,
         set_parts,
         width,
+        whole: rest.is_none(),
     };
     let mut app = App::new(
         &globals,
@@ -4766,6 +4852,8 @@ struct Opening {
     set_ms: f64,
     set_parts: Vec<(&'static str, f64, f64)>,
     width: page::Width,
+    /// Whether the first set was the whole file.
+    whole: bool,
 }
 
 impl Measure {
@@ -4834,6 +4922,7 @@ impl App {
             opened: opening.born,
             settled_pt: f64::INFINITY,
             held_pt: None,
+            whole: opening.whole,
             stale: HashSet::new(),
             jump: None,
             reduced_motion: std::env::var_os("READER_REDUCED_MOTION").is_some_and(|v| v == "1"),

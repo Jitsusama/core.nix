@@ -1047,7 +1047,9 @@ def test_a_markdown_file_opens_in_the_reader_and_takes_neovims_keys(desktop: Des
 
     Where the reader was when it closed is kept beside its state, so what each key did is
     read back from there: G and ZZ keep it at the end, opening again comes back to the end,
-    and gg then Ctrl+D then ZZ keep it half a screen down.
+    and gg then Ctrl+D then ZZ keep it half a screen down. The launcher's Recent in the
+    reader's page then leads with the file, saying beside it the heading it was left under,
+    how far down and when, as reader --places lists it on the machine.
     """
     machine = desktop.machine
     page = f"/home/{desktop.account}/page.md"
@@ -1074,6 +1076,23 @@ def test_a_markdown_file_opens_in_the_reader_and_takes_neovims_keys(desktop: Des
     kept = reader_closed_at(desktop, reader)
     assert not kept["at_end"], kept
     assert kept["block"] != 0 or kept["into_pt"] != 0, "Ctrl+D didn't move from the top"
+    assert kept.get("heading") == "A Page", kept
+
+    left = re.compile("^A Page \u00b7 \\d{1,2}% \u00b7 (just now|\\d+\u00a0min ago)$")
+    try:
+        desktop.answer("reader")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("is") == "program:reader"
+        )
+        desktop.into_program()
+        desktop.type_in("recent", selecting="Recent")
+        desktop.step_in()
+        desktop.launcher_until(
+            lambda shown: bool(left.match(str((shown["selected"] or {}).get("side", ""))))
+        )
+        assert desktop.showing()["selected"]["name"] == "page.md", desktop.showing()
+    finally:
+        desktop.close_launcher()
     machine.succeed(f"rm {page}")
 
 

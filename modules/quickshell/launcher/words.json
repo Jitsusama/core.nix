@@ -9770,6 +9770,63 @@
       }
     },
     {
+      "id": "verb:reader:on",
+      "command": "edit",
+      "in": "path:file",
+      "name": "Read On",
+      "verb": "read",
+      "glyph": "book",
+      "said": {
+        "share": "{share}%",
+        "end": "read to the end",
+        "whole": "all of it",
+        "kept": "kept",
+        "eyebrow": "in {folder} \u00b7 {kind}",
+        "markdown": "markdown",
+        "file1": "1 file",
+        "files": "{count} files",
+        "now": "just now",
+        "minutes": "{minutes} min ago",
+        "yesterday": "yesterday",
+        "tomorrow": "tomorrow"
+      }
+    },
+    {
+      "id": "verb:reader:mark",
+      "command": "edit",
+      "argument": "'{letter}",
+      "in": "path:file",
+      "name": "Read From Mark",
+      "verb": "read",
+      "glyph": "book"
+    },
+    {
+      "id": "reader:left:heading",
+      "in": "verb:reader:on",
+      "name": "Heading"
+    },
+    {
+      "id": "reader:left:read",
+      "in": "verb:reader:on",
+      "name": "Read"
+    },
+    {
+      "id": "reader:left:mark",
+      "in": "verb:reader:on",
+      "name": "Mark",
+      "term": "Keyboards/mark"
+    },
+    {
+      "id": "reader:left:path",
+      "in": "verb:reader:on",
+      "name": "Path"
+    },
+    {
+      "id": "reader:to-finish",
+      "in": "applications",
+      "name": "Still to Finish"
+    },
+    {
       "id": "swayimg",
       "in": "applications",
       "name": "Screenshots"
@@ -13198,6 +13255,14 @@
         "verb:stopwatch:lap"
       ],
       "why": "Inside the stopwatch, Lap marks one and each lap it marked is named by its number, so lap finds the act and the laps together."
+    },
+    {
+      "word": "still to finish",
+      "things": [
+        "mpv:to-finish",
+        "reader:to-finish"
+      ],
+      "why": "The video player's drawer and the reader's each say what was left part way, and each is said only in its own program's drawer."
     }
   ],
   "terminal": {

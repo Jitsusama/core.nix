@@ -65,9 +65,12 @@
 # Each file it's started with is said to the desktop's list of files opened
 # lately (../open-with/says-what-it-opens.nix), and each reader keeps the
 # file it shows under the state home's reader/showing, so its Recent in the
-# launcher is led by the files open now. While the clipboard holds a
-# markdown file's path, Read the Copied Markdown opens it from the
-# launcher (ReaderProgram.qml).
+# launcher is led by the files open now. After them come the files it kept
+# a place in, each saying the heading it was left under, how far down and
+# when, Return reading on there and each mark reading from its letter
+# (reader --places and --at). While the clipboard holds a markdown file's
+# path, Read the Copied Markdown opens it from the launcher
+# (ReaderProgram.qml).
 {
   config,
   lib,
@@ -441,13 +444,21 @@ in
     jitsusama.keys.reader = keys;
     jitsusama.surfaces.reader = [ "page" ];
 
-    # The reader's own act in the launcher, reading the markdown file whose
-    # path was copied, after every other provider, as it adds no rows of
-    # its own.
+    # The reader's own in the launcher: its Recent, each file left where
+    # it was read to, and its act reading the markdown file whose path was
+    # copied, after every other provider, as it adds no rows of its own
+    # but in the reader's step. Its places are listed by the reader
+    # itself, unwrapped, since listing them opens no file to say to the
+    # desktop's list.
+    xdg.configFile."quickshell/launcher/Reader.js".source = ./Reader.js;
     jitsusama.quickshell.launcher.providers.reader = {
       order = 52;
       source = ./ReaderProgram.qml;
       reader = "${reader}/bin/reader";
+      places = [
+        "${reader.unwrapped}/bin/reader"
+        "--places"
+      ];
     };
   };
 }
