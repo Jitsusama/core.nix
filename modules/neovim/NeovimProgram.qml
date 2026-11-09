@@ -68,6 +68,9 @@ Provider {
     // asked since the launcher opened.
     property var neovims: []
     property bool looked: false
+    // What open-now last said, word for word, so an answer the same as the
+    // last draws nothing again.
+    property string lastHeard: ""
 
     Component.onCompleted: {
         Repositories.want(provider.settings, false);
@@ -89,7 +92,8 @@ Provider {
         provider.start([asking]);
     }
 
-    // Asked again as Neovim is stepped into, once an opening.
+    // Asked again once an opening, as the launcher opens or Neovim is
+    // stepped into, whichever comes first.
     function look() {
         if (looked)
             return;
@@ -116,6 +120,9 @@ Provider {
             id: asked
 
             onStreamFinished: {
+                if (asked.text === provider.lastHeard)
+                    return;
+                provider.lastHeard = asked.text;
                 provider.neovims = Neovim.heard(asked.text);
                 provider.heard();
             }
@@ -131,14 +138,19 @@ Provider {
         }
     }
 
-    // The launcher closed, so the next step into Neovim asks it again, and
-    // what's open is read for the next opening.
+    // The launcher opened, so each Neovim is asked at once, since one may
+    // have started since it closed and Neovim's row counts what's open
+    // (RTOIMQ, 2026-11-09, seen on the desktop); what was read ahead draws
+    // until it answers. Closed, the next step into Neovim asks it again,
+    // and what's open is read for the next opening.
     Connections {
         target: provider.launcher
 
         function onOpenChanged() {
             Repositories.opened(provider.launcher.open);
-            if (!provider.launcher.open) {
+            if (provider.launcher.open) {
+                provider.look();
+            } else {
                 provider.looked = false;
                 provider.readAhead();
             }
