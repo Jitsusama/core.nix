@@ -2341,10 +2341,13 @@ in
 
     # Its socket, held by systemd whether or not the daemon runs, so the
     # shell asking while it starts, or starts again, waits on it rather
-    # than finding no socket.
+    # than finding no socket. It's named for its domain, so it names the
+    # daemon it hands its listener to, which systemd would otherwise look
+    # for as location.service and refuse.
     systemd.user.sockets.location = {
       Unit.Description = "Where the shell asks where the laptop is";
       Socket = {
+        Service = "whereabouts.service";
         ListenStream = "%t/daemons/location.sock";
         SocketMode = "0600";
         DirectoryMode = "0700";
