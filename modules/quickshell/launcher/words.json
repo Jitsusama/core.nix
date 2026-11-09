@@ -2880,6 +2880,7 @@
       "answers": ["machines"],
       "said": {
         "here": "this machine",
+        "yesterday": "yesterday",
         "ready": "ready",
         "busy": "busy",
         "unreachable": "out of reach",

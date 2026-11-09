@@ -71,6 +71,11 @@ QtObject {
             said: said, named: named, now: now, realms: realms,
             core: "a97eea75cc7a243aca68875c9c510674a1d7bbdd",
             ago: (at, at2) => `${Math.round((at2 - at) / 60000)} min ago`,
+            // When.js's day, which its own case holds: nothing today, else
+            // the day before.
+            day: (moment, today) => (new Date(moment).getDate() === new Date(today).getDate()
+                ? "" : "yesterday"),
+            clock: moment => Qt.formatDateTime(new Date(moment), "HH:mm"),
             band: band => (band === "healthy" ? "" : band === "pressure" ? "filling" : band)
         };
     }
@@ -93,6 +98,7 @@ QtObject {
                 pressure: { cpu: 0.1, memory: 0, io: 0.12 }, takes: { builds: 1, vm_tests: 1 } },
             reached: { internet: true, office: false },
             updated: { commit: "7307356ee17f4d4afc4ae1ca9b2962a491ae8632", step: "done",
+                at: new Date(2026, 10, 7, 23, 40).toISOString(),
                 followed: { core: "a97eea75cc7a243aca68875c9c510674a1d7bbdd" },
                 restart: "its kernel changed" } },
         { name: "lantern", realm: "personal", state: "ready", system: "macos",
@@ -102,8 +108,8 @@ QtObject {
             power: { on_battery: false, charge: 100 },
             room: { memory_available: 8.6 * 2 ** 30, over: ["memory", "cpu"],
                 pressure: { cpu: 88.8, memory: 10, io: 0 }, takes: { builds: 0, vm_tests: 0 } },
-            updated: { commit: "e1e4aadc4f0172ddb6e8f0cd8f5f36fafc448a4a", step: "done",
-                restart: null } },
+            updated: { commit: "e1e4aadc4f0172ddb6e8f0cd8f5f36fafc448a4a", step: "failed",
+                at: at(1, 30), restart: null } },
         { name: "hermit", realm: "personal", state: "unreachable", system: "linux", os: "NixOS",
             model: "Dell Inc. XPS 13", measured_at: at(1, 20), memory: 16 * 2 ** 30,
             room: { memory_available: 2 ** 30, over: [],
@@ -157,7 +163,8 @@ QtObject {
             "Memory: 3.2 GiB free of 8 GiB", "Charge: 62% \u00b7 on battery",
             "Takes: 1 build, 1 VM test", "Disk: 128 GiB", "internet: reached",
             "office: not reached", "Commit: 7307356", "Core: a97eea7, as this machine's",
-            "Last Update: done", "Reboot: its kernel changed", "Measured: 2 min ago",
+            "Last Update: done \u00b7 yesterday 23:40", "Reboot: its kernel changed",
+            "Measured: 2 min ago",
             "Processor: AMD Ryzen 5, 12 cores", "Accelerators: amdgpu graphics",
             "System: NixOS 26.11 (Zokor) \u00b7 x86_64",
             "Model: Microsoft Corporation Surface Laptop 4"];
@@ -169,8 +176,16 @@ QtObject {
                 + (fact.figure.warn ? "!" : ""));
         expect("each pressure carries its stroke, warning past its queue's limit",
             strokes.join(" ") === "0.888! 0.1! 0", strokes.join(" "));
-        const macFacts = Machines.drawer(byName("lantern"), one).facts
-            .map(fact => fact.label ?? "");
+        const macDrawn = Machines.drawer(byName("lantern"), one).facts;
+        const lastUpdate = macDrawn.find(fact => fact.label === "Last Update")?.value;
+        expect("an update ended today says only its time",
+            lastUpdate === "failed \u00b7 01:30", lastUpdate);
+        const unsaid = Machines.drawer(Object.assign({}, byName("lantern"), {
+            updated: { step: "done" } }), one).facts
+            .find(fact => fact.label === "Last Update")?.value;
+        expect("one whose node says no time says how it ended alone", unsaid === "done",
+            unsaid);
+        const macFacts = macDrawn.map(fact => fact.label ?? "");
         expect("a Mac's identifier is last, and nothing unsaid is made up",
             macFacts[macFacts.length - 1] === "Model" && !macFacts.includes("Accelerators")
                 && !macFacts.includes("Reboot") && !macFacts.includes("Core"),
