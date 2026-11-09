@@ -1323,13 +1323,11 @@ def at_scale_shooting_now(desktop: Desktop, scale: str) -> str:
     desktop.launcher_ready()
     desktop.type_in("now", selecting="Now")
     desktop.machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["path"][-1:] == ["Now"])
+    desktop.normal()
+    desktop.down_to("For You")
     desktop.launcher_until(
-        lambda shown: (
-            shown["path"][-1:] == ["Now"]
-            and any(
-                thing["reads"].startswith("For You \u00b7 1 to do") for thing in shown["things"]
-            )
-        )
+        lambda shown: (shown["selected"] or {}).get("side") == "1 to do \u00b7 1 to look at"
     )
     desktop.shoot(f"launcher-now-bands-at-{named}")
     desktop.close_launcher()
