@@ -696,7 +696,23 @@ fn an_urgent_store_is_listed_at_full_priority_however_overloaded_the_machine() {
     step_later_until(&store, &mut guard, 0.0, &OVERLOADED, |store, _| {
         lists(store) == 1
     });
-    assert_ne!(store.log()[0], "list 5", "at full priority");
+    assert_eq!(
+        store.log()[0],
+        format!("list {}", own_policy()),
+        "at full priority, as the guard's own"
+    );
+}
+
+/// This process's scheduling policy, as /proc gives it, which what the
+/// guard runs at full priority inherits: a machine whose Nix daemon runs
+/// builds at idle priority runs this suite there too, so a listing at
+/// full priority read as idle and the test failed on 9 November.
+fn own_policy() -> String {
+    let stat = fs::read_to_string("/proc/self/stat").unwrap();
+    let (_, fields) = stat.rsplit_once(") ").unwrap();
+    // The fields after the name start at the state, field 3, so policy,
+    // field 41, is the 39th of them.
+    fields.split_whitespace().nth(38).unwrap().to_owned()
 }
 
 #[test]
