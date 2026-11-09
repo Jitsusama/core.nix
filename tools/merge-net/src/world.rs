@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 
 use crate::holds;
 use crate::state::{now, short};
-use crate::watch::{Bad, Changed, Merged, UNCHECKED, UNSENT, World};
+use crate::watch::{Bad, Changed, DROPPED, Merged, UNCHECKED, UNSENT, World};
 
 /// What the net's changed-checks runs ask, so a builder lets them ahead of
 /// sessions' runs waiting for a turn: on 8 November the net's comparison
@@ -149,18 +149,21 @@ impl Real {
     /// Land a change on main through a PR merged on its own checks: a
     /// branch from main, `change` made in the checkout and committed as
     /// `message`, pushed, changed-checks passing on it, then a PR merged
-    /// only at the commit checked.
+    /// only at the commit checked, and only if `still`, asked with the main
+    /// its checks ran on, says it's still wanted.
     fn land(
         &self,
         branch: &str,
         message: &str,
         title: &str,
         body: &str,
+        still: &dyn Fn(&str) -> bool,
         change: impl FnOnce() -> Result<(), String>,
     ) -> Result<Merged, String> {
         let followed = self.followed();
         self.git(&["fetch", "--quiet", "origin", &self.branch])?;
-        self.git(&["checkout", "--quiet", "--force", "-B", branch, &followed])?;
+        let cut_from = self.git(&["rev-parse", &followed])?;
+        self.git(&["checkout", "--quiet", "--force", "-B", branch, &cut_from])?;
         change()?;
         let (subject, rest) = message.split_once("\n\n").unwrap_or((message, ""));
         let mut commit = vec!["commit", "--quiet", "-m", subject];
@@ -175,7 +178,7 @@ impl Real {
             .join("logs")
             .join(format!("land-{}.log", branch.replace('/', "-")));
         let checked = Command::new("changed-checks")
-            .args(["--base", &followed, FIRST])
+            .args(["--base", &cut_from, FIRST])
             .current_dir(self.checkout())
             .stdout(file(&log)?)
             .stderr(file(&log)?)
@@ -187,11 +190,10 @@ impl Real {
             return Err(format!("{UNCHECKED}, {}", log.display()));
         }
         if !checked.success() {
-            let before = self.git(&["rev-parse", &followed])?;
             let failed = unbuilt(&fs::read_to_string(&log).unwrap_or_default());
             let new: Vec<&String> = failed
                 .iter()
-                .filter(|check| !self.fails_at(&before, check))
+                .filter(|check| !self.fails_at(&cut_from, check))
                 .collect();
             if failed.is_empty() || !new.is_empty() {
                 return Err(format!("its checks failed, {}", log.display()));
@@ -203,6 +205,11 @@ impl Real {
                     failed.join(" ")
                 ),
             );
+        }
+        // Main may move in the minutes the checks take, and a merge in them
+        // may have fixed what this change is for.
+        if !still(&cut_from) {
+            return Err(format!("{DROPPED}, {}", log.display()));
         }
         let slug = self.slug();
         let made = run(Command::new("gh").args([
@@ -472,7 +479,7 @@ impl World for Real {
             .unwrap_or_default()
     }
 
-    fn revert(&self, bad: &Bad) -> Result<Merged, String> {
+    fn revert(&self, bad: &Bad, still: &dyn Fn(&str) -> bool) -> Result<Merged, String> {
         let what = bad
             .pr
             .map_or_else(|| short(&bad.commit).to_owned(), |pr| format!("#{pr}"));
@@ -491,6 +498,7 @@ impl World for Real {
             &message,
             &format!("Revert {what}, Which Breaks {}", bad.test),
             &body,
+            still,
             || {
                 let mut reverting = vec!["revert", "--no-commit"];
                 if merge {
@@ -518,6 +526,7 @@ impl World for Real {
             &format!("test(merge-net): quarantine a flaky check\n\n{test} {reason}, so the net reverts nothing for it\nuntil its owner makes it steady."),
             &format!("Quarantine {test}, Which Failed Then Passed"),
             &body,
+            &|_| true,
             || {
                 let mut list = fs::read_to_string(&path)
                     .ok()

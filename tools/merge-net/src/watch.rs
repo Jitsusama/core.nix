@@ -38,6 +38,10 @@ pub const UNSENT: i32 = 75;
 /// net tries it again next round rather than leave its hold for a person.
 pub const UNCHECKED: &str = "no builder took its checks";
 
+/// How a revert fails that main's newest head made needless while its
+/// checks ran, so it's neither merged nor tried again.
+pub const DROPPED: &str = "main's newest head passes its test, so it was dropped";
+
 /// How many times a run the builder never took is sent again, two minutes
 /// apart, before the round leaves it for the next.
 const SENDS: u32 = 15;
@@ -159,8 +163,10 @@ pub trait World: Sync {
     fn build(&self, commit: &str, check: &str, log: &Path) -> Option<i32>;
     /// The tests quarantined at `head`.
     fn quarantined(&self, head: &str) -> Vec<String>;
-    /// Revert a bad merge on main through a PR merged on its own checks.
-    fn revert(&self, bad: &Bad) -> Result<Merged, String>;
+    /// Revert a bad merge on main through a PR merged on its own checks,
+    /// once `still`, asked with the main they ran on, says it's still
+    /// needed.
+    fn revert(&self, bad: &Bad, still: &dyn Fn(&str) -> bool) -> Result<Merged, String>;
     /// Put a flaky test on the quarantine list through a merged PR.
     fn quarantine(
         &self,
@@ -766,8 +772,11 @@ fn revert_again(world: &dyn World, state: &State) -> Result<(), String> {
         test: test.clone(),
         log: state.log(&commit, &test, 2).display().to_string(),
     };
-    let reverted = world.revert(&found);
+    let reverted = world.revert(&found, &still_broken(world, state, &found));
     keep_revert(state, &mut hold, &reverted)?;
+    if dropped(state, &found, &reverted)? {
+        return Ok(());
+    }
     state.say(&match &reverted {
         Ok(merged) => format!(
             "reverted {} for {test} in #{}, its checks taken this time",
@@ -1271,8 +1280,11 @@ fn revert_and_tell(
         "revert_commit": Value::Null, "at": now(),
     });
     state.set_hold(&hold)?;
-    let reverted = world.revert(found);
+    let reverted = world.revert(found, &still_broken(world, state, found));
     keep_revert(state, &mut hold, &reverted)?;
+    if dropped(state, found, &reverted)? {
+        return Ok(());
+    }
     let listed: Option<Result<Merged, String>> = match &reverted {
         Err(why) if !why.starts_with(UNCHECKED) => Some(list_broken(world, state, found, head)),
         _ => None,
@@ -1302,6 +1314,39 @@ fn revert_and_tell(
             Ok(())
         }
     }
+}
+
+/// Whether a revert whose checks ran on main at the commit it's asked with
+/// is still needed: main hasn't moved since, or its test still fails at
+/// main's newest head. On 9 November the net's #2621 reverted #2597 at
+/// 12:47, its checks run on the main of 12:37, a minute after #2617 had
+/// fixed the test forward, and so broke main again.
+fn still_broken<'a>(
+    world: &'a dyn World,
+    state: &'a State,
+    found: &'a Bad,
+) -> impl Fn(&str) -> bool + 'a {
+    move |checked_on: &str| match world.head() {
+        Ok(newest) if newest != checked_on => {
+            fixed_forward(world, state, checked_on, &found.test, Some(&found.commit)) != Ok(true)
+        }
+        _ => true,
+    }
+}
+
+/// Whether a revert was dropped as needless, clearing its hold, since
+/// `fixed_forward` has said why and kept the finding.
+fn dropped(state: &State, found: &Bad, reverted: &Result<Merged, String>) -> Result<bool, String> {
+    if !matches!(reverted, Err(why) if why.starts_with(DROPPED)) {
+        return Ok(false);
+    }
+    state.clear_hold()?;
+    state.say(&format!(
+        "the revert of {} for {} is dropped, so the hold is cleared",
+        short(&found.commit),
+        found.test
+    ));
+    Ok(true)
 }
 
 /// A merge pinned for breaking a test whose revert won't apply has its test
@@ -1400,6 +1445,9 @@ mod tests {
         held: Option<String>,
         /// How many reverts to come find no builder for their checks.
         unchecked_reverts: Mutex<u32>,
+        /// The head main moves to while a revert's checks run.
+        moves_while_reverting: Option<String>,
+        moved: Mutex<Option<String>>,
     }
 
     impl Stand {
@@ -1424,7 +1472,12 @@ mod tests {
                 return Err(error.clone());
             }
             *self.fetched_since_revert.lock().unwrap() = true;
-            Ok(self.head.clone())
+            Ok(self
+                .moved
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap_or_else(|| self.head.clone()))
         }
         fn fetched(&self) -> Option<String> {
             Some(self.head.clone())
@@ -1570,7 +1623,7 @@ mod tests {
             }
             listed
         }
-        fn revert(&self, bad: &Bad) -> Result<Merged, String> {
+        fn revert(&self, bad: &Bad, still: &dyn Fn(&str) -> bool) -> Result<Merged, String> {
             if self.reverts_conflict {
                 return Err("the revert doesn't apply to main".to_owned());
             }
@@ -1578,6 +1631,16 @@ mod tests {
             if *unchecked > 0 {
                 *unchecked -= 1;
                 return Err(format!("{UNCHECKED}, land.log"));
+            }
+            drop(unchecked);
+            // Its checks ran on main as it was when the revert was cut.
+            let cut_from = self.head()?;
+            self.moved
+                .lock()
+                .unwrap()
+                .clone_from(&self.moves_while_reverting);
+            if !still(&cut_from) {
+                return Err(format!("{DROPPED}, land.log"));
             }
             *self.fetched_since_revert.lock().unwrap() = false;
             self.reverted.lock().unwrap().push(bad.commit.clone());
@@ -1715,6 +1778,58 @@ mod tests {
         );
         assert_eq!(*world.reverted.lock().unwrap(), names("h"));
         assert_eq!(state.hold().unwrap()["test"], "each-mark-means-one-thing");
+    }
+
+    #[test]
+    fn a_revert_made_needless_while_its_checks_ran_is_dropped() {
+        // 9 November: #2621's checks ran on the main of 12:37, and it merged
+        // at 12:47, a minute after #2617 fixed the test forward.
+        let state = state("needless-revert");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("every-script-meets-shellcheck"),
+            moves_while_reverting: Some("m".into()),
+            ..Stand::default()
+        }
+        .exits("h", "every-script-meets-shellcheck", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert!(
+            world.reverted.lock().unwrap().is_empty(),
+            "the revert merged though main's newest head passes"
+        );
+        assert_eq!(state.hold(), None);
+        let found = findings(&state);
+        assert!(
+            found
+                .iter()
+                .any(|it| it["kind"] == "fixed-forward" && it["fixed_at"] == "m"),
+            "{found:?}"
+        );
+        assert!(
+            world.put_in_quarantine.lock().unwrap().is_empty(),
+            "a dropped revert lists nothing"
+        );
+
+        // Still failing at the head main moved to, it merges as before.
+        let state = super::tests::state("still-needed-revert");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("every-script-meets-shellcheck"),
+            moves_while_reverting: Some("m".into()),
+            ..Stand::default()
+        }
+        .exits("h", "every-script-meets-shellcheck", &[1, 1])
+        .exits("m", "every-script-meets-shellcheck", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert_eq!(*world.reverted.lock().unwrap(), names("h"));
     }
 
     #[test]
