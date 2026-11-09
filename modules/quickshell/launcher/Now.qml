@@ -975,7 +975,9 @@ Provider {
 
     // History narrowed to what came from one source, the last row inside
     // its row, there with nothing in it too, so the way to what's read
-    // never moves (VKCF3Z, 2026-11-09).
+    // never moves (VKCF3Z, 2026-11-09). It's a way elsewhere, so a place
+    // holding only it says it holds nothing above it (Showing.js's
+    // saysNothing).
     function historyOf(from) {
         const count = cameDone.filter(one => one.source === from).length;
         const row = member({
@@ -987,6 +989,7 @@ Provider {
             hue: "muted",
             side: String(count),
             empty: Words.of("on:waiting:history").empty,
+            elsewhere: true,
             nested: true,
             verbs: () => provider.historyRows(from),
             targets: () => provider.historyRows(from),
@@ -1198,7 +1201,9 @@ Provider {
     // piece can't speak: how many to read, and from whom, and its drawer
     // who sent how many. Return steps in to each, the row it is in
     // Notices, then Mark Them Read, and last its History, what's read.
-    // With none unread it says so, over its History alone. Stepping in
+    // With none unread it says so where an empty place does, over its
+    // History alone, the cursor on it: a row Return does nothing on would
+    // be a fake one (VKCF3Z, 2026-11-09). Stepping in
     // counts them seen, so the margin no longer says any were missed; `:`
     // listing its acts doesn't. It's after the step, so the history isn't
     // changed while it's read.
@@ -1221,14 +1226,7 @@ Provider {
                     stays: true,
                     run: () => Notices.markRead(ids)
                 })])
-            : none === "" ? [] : [thing({
-                key: `on:waiting:${from}:none`,
-                name: none,
-                glyph: Words.glyph(`for-you:source:${from}`),
-                hue: "muted",
-                gone: true,
-                run: () => {}
-            })]).concat([provider.historyOf(from)]);
+            : []).concat([provider.historyOf(from)]);
         const row = member({
             key: `on:waiting:${from}`,
             forYou: forYou,
@@ -1239,6 +1237,7 @@ Provider {
             hue: "muted",
             side: ForYou.filled(said.count ?? "{count}", { count: ids.length }),
             note: note,
+            empty: none,
             nested: true,
             thing: true,
             drawer: () => ({

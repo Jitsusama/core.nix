@@ -161,6 +161,21 @@ QtObject {
             Showing.noted({ title: "Lag" }, "waiting on memory!").body,
             Showing.noted(null, "on")
         ], ["Waiting on memory!", null]);
+        // The empty line says a place holds nothing, over its ways elsewhere too.
+        const history = { name: "History", elsewhere: true };
+        const none = "Nothing unread from the desktop.";
+        expect("an empty place says so, and so does nothing found", [
+            Showing.saysNothing("", [], ""),
+            Showing.saysNothing("zz", [], none)
+        ], [true, true]);
+        expect("over only a way elsewhere it says so, the row still there",
+            Showing.saysNothing("", [history], none), true);
+        expect("but not with nothing to say it with, nor beside a row of its own", [
+            Showing.saysNothing("", [history], ""),
+            Showing.saysNothing("", [{ name: "Peter" }, history], none)
+        ], [false, false]);
+        expect("and with something typed, only when nothing answers",
+            Showing.saysNothing("hist", [history], none), false);
         if (failed > 0) {
             console.warn(`${failed} failed`);
             Qt.exit(1);

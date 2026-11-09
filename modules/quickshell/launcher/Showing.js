@@ -60,6 +60,19 @@ function unique(names) {
     return names.filter((name, at) => names.indexOf(name) === at);
 }
 
+// Whether the launcher's empty line shows over `rows`: with something
+// typed, when nothing answers; with nothing typed, when the place holds
+// nothing, or nothing but ways elsewhere and words (`said`) to say it
+// holds nothing with, as For You's Desktop holds only its History with
+// nothing unread, the line above it and the cursor on History (VKCF3Z,
+// 2026-11-09: a row Return does nothing on is a fake one).
+function saysNothing(typed, rows, said) {
+    if (typed !== "" || rows.length === 0) {
+        return rows.length === 0;
+    }
+    return (said ?? "") !== "" && rows.every(row => row?.elsewhere === true);
+}
+
 // The names within a few letters of what was typed, nearest first: a
 // letter added, dropped, changed or two swapped each count one, and a
 // name is near when its start is within a third of the typed letters,

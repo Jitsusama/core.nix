@@ -3566,7 +3566,7 @@ Scope {
             const entry = shown.itemAtIndex(at);
             if (!entry || entry.y - from >= shown.height)
                 break;
-            placed.push({ at, base: entry.y - from + entry.nameBaseline });
+            placed.push({ at, base: shown.y + entry.y - from + entry.nameBaseline });
         }
         rowsGutter.rows = placed;
     }
@@ -8119,6 +8119,7 @@ Scope {
                             function onContentYChanged() { root.placeNumbers(); }
                             function onContentHeightChanged() { root.placeNumbers(); }
                             function onOriginYChanged() { root.placeNumbers(); }
+                            function onYChanged() { root.placeNumbers(); }
                         }
 
                         ListView {
@@ -8131,6 +8132,9 @@ Scope {
                             x: root.textAreaAt
                             width: parent.width - x
                             anchors.top: parent.top
+                            // Below the empty line, where it says a place
+                            // holds nothing but ways elsewhere.
+                            anchors.topMargin: nothingShown.visible ? root.rowTall : 0
                             anchors.bottom: parent.bottom
                             // How many characters the widest of what graphed rows
                             // have said at their right in this step, as Choice
@@ -8602,16 +8606,18 @@ Scope {
                         }
 
                         // With nothing typed, the shell says what it can do, or an
-                        // empty collection says it's empty in its own words; with
-                        // nothing found, it says so. A field asking for words has
-                        // only space below it.
+                        // empty collection says it's empty in its own words, above
+                        // its ways elsewhere if it holds them (Showing.js's
+                        // saysNothing); with nothing found, it says so. A field
+                        // asking for words has only space below it.
                         Choice {
                             id: nothingShown
 
                             readonly property var holder: root.held.length > 0
                                 ? root.held[root.held.length - 1].row : null
                             readonly property var inside: holder?.from ?? null
-                            visible: root.matches.length === 0 && root.answer === null
+                            visible: Showing.saysNothing(root.typed, root.matches,
+                                holder?.empty) && root.answer === null
                                 && root.asking === null && root.commanding === null
                             glyph: root.typed === "" ? Theme.glyph.greeting
                                 : Theme.glyph.nothingFound
