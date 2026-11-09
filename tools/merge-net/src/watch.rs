@@ -1361,9 +1361,9 @@ mod tests {
         quarantined: Vec<String>,
         /// Tests main's newest head lists as quarantined besides those.
         listed_since: Vec<String>,
-        /// Tests main's newest head lists too once a search has run a test
-        /// at a merge before the last.
-        listed_once_searched: Vec<String>,
+        /// Tests main's newest head lists too once a search has reverted a
+        /// merge.
+        listed_once_reverted: Vec<String>,
         /// What every fetch of main fails with, as before the network is
         /// up, so only its head as last fetched is known.
         fetch_fails: Option<String>,
@@ -1378,6 +1378,10 @@ mod tests {
         /// has run one at an older merge, or after a while without, when
         /// it's put in `waited_out`.
         newest_waits_for_search: bool,
+        /// Checks whose each run at the round's last merge ends only once a
+        /// search has run one at an older merge, or after a while without,
+        /// when it's put in `waited_out`.
+        waits_for_search: Vec<String>,
         /// Commits whose each run waits for a second run there to start,
         /// or after a while without, when it's put in `waited_out`.
         pairs: Vec<String>,
@@ -1483,6 +1487,24 @@ mod tests {
                     self.waited_out.lock().unwrap().push(check.to_owned());
                 }
             }
+            if self.merges.last().is_some_and(|last| last == commit)
+                && self.waits_for_search.iter().any(|waits| waits == check)
+            {
+                let unsearched = |built: &mut Vec<(String, String)>| {
+                    !built
+                        .iter()
+                        .any(|(at, _)| self.merges[..self.merges.len() - 1].contains(at))
+                };
+                let built = self.built.lock().unwrap();
+                let (built, waited) = self
+                    .build_seen
+                    .wait_timeout_while(built, Duration::from_secs(10), unsearched)
+                    .unwrap();
+                drop(built);
+                if waited.timed_out() {
+                    self.waited_out.lock().unwrap().push(check.to_owned());
+                }
+            }
             if commit == self.head && self.together_at_newest.iter().any(|one| one == check) {
                 let apart = |built: &mut Vec<(String, String)>| {
                     !self
@@ -1542,12 +1564,8 @@ mod tests {
             let mut listed = self.quarantined.clone();
             if commit == self.head {
                 listed.extend(self.listed_since.iter().cloned());
-                let searched = self
-                    .built()
-                    .iter()
-                    .any(|(at, _)| self.merges.iter().rev().skip(1).any(|older| older == at));
-                if searched {
-                    listed.extend(self.listed_once_searched.iter().cloned());
+                if !self.reverted.lock().unwrap().is_empty() {
+                    listed.extend(self.listed_once_reverted.iter().cloned());
                 }
             }
             listed
@@ -2334,8 +2352,8 @@ mod tests {
             head: "n".into(),
             merges: names("a b h"),
             changed: changed("vm-a vm-b"),
-            listed_once_searched: names("vm-a vm-b"),
-            pairs: names("h"),
+            listed_once_reverted: names("vm-a vm-b"),
+            waits_for_search: names("vm-b"),
             ..Stand::default()
         }
         .exits("h", "vm-a", &[1])
@@ -2353,6 +2371,10 @@ mod tests {
             searched.len(),
             1,
             "the test whose turn came after main listed it isn't searched: {searched:?}"
+        );
+        assert!(
+            world.waited_out.lock().unwrap().is_empty(),
+            "the second test failed while the first one's search ran"
         );
     }
 
