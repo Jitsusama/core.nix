@@ -1,9 +1,11 @@
-// The host-only InteractiveMode patch closes one screen without terminating
-// its process. The real methods run against two fake runtimes; no TTY, model
-// request or extension is started. Ordinary signal and suspend paths retain
-// their process semantics. Arguments name the package and, optionally, source.
+// The host-only InteractiveMode patch keeps a hosted screen inside its own
+// session: closing it never ends the process, a copy reaches its viewers'
+// terminals rather than the host's, and every screen hears a theme change.
+// The real methods run against fake runtimes; no TTY, model request or
+// extension is started. Ordinary signal and suspend paths retain their
+// process semantics. Arguments name the package and, optionally, source.
 import assert from "node:assert/strict";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, mock, test as it } from "node:test";
 
 const [
@@ -14,15 +16,21 @@ const [
 ] = process.argv;
 // Production checks read rebuilt JavaScript. A source override supports the
 // red/green prototype against the installed package's own TypeScript loader.
-async function loadMode() {
-  if (!source.endsWith(".ts")) {
-    return import(source);
-  }
-  const loader = join(agentPackage, "../../node_modules/jiti/lib/jiti.mjs");
-  const { createJiti } = await import(loader);
-  return createJiti(import.meta.url, { moduleCache: false }).import(source);
+const jiti = source.endsWith(".ts")
+  ? (await import(join(agentPackage, "../../node_modules/jiti/lib/jiti.mjs"))).createJiti(
+      import.meta.url,
+    )
+  : undefined;
+function loadModule(path) {
+  return jiti ? jiti.import(path) : import(path);
+}
+function loadMode() {
+  return loadModule(source);
 }
 const { InteractiveMode } = await loadMode();
+const themeSource = join(dirname(source), `theme/theme${source.endsWith(".ts") ? ".ts" : ".js"}`);
+const { onThemeChange, setThemeInstance } = await loadModule(themeSource);
+const osc52 = (text) => `\u001b]52;c;${Buffer.from(text).toString("base64")}\u0007`;
 
 afterEach(() => mock.restoreAll());
 
@@ -45,19 +53,87 @@ function screen() {
       session: {
         sessionManager: { isPersisted: () => false },
         modelRuntime: { getError: () => undefined },
+        settingsManager: {
+          getExternalEditorCommand: () => "false",
+          getFullscreenExitOutput: () => "transcript",
+          getShowTerminalProgress: () => false,
+        },
         prompt: mock.fn(),
       },
     },
+    editor: { getText: () => "draft", setText: mock.fn() },
     themeController: { disableAutoSync: mock.fn() },
     ui: {
       stop: mock.fn(),
       start: mock.fn(),
       requestRender: mock.fn(),
-      terminal: { drainInput: mock.fn() },
+      terminal: { drainInput: mock.fn(), write: mock.fn() },
     },
   });
   return { mode, exits, notices };
 }
+
+it("every screen hears a theme change until it stops", () => {
+  const heard = [];
+  const stopFirst = onThemeChange(() => heard.push("first"));
+  const stopSecond = onThemeChange(() => heard.push("second"));
+  // An instance rather than a named theme, so no theme file is read.
+  setThemeInstance({});
+  assert.deepEqual(heard, ["first", "second"]);
+  stopFirst();
+  setThemeInstance({});
+  assert.deepEqual(heard, ["first", "second", "second"]);
+  stopSecond();
+});
+
+it("stopping a screen stops its theme listener", () => {
+  const { mode } = screen();
+  const unsubscribe = mock.fn();
+  Object.assign(mode, {
+    themeChangeUnsubscribe: unsubscribe,
+    disposeActiveSelector: mock.fn(),
+    clearStatusIndicator: mock.fn(),
+    clearExtensionTerminalInputListeners: mock.fn(),
+    footer: { dispose: mock.fn() },
+    footerDataProvider: { dispose: mock.fn() },
+    isInitialized: false,
+  });
+  // The real stop, over a screen that never initialised its renderer.
+  InteractiveMode.prototype.stop.call(mode);
+  assert.equal(unsubscribe.mock.callCount(), 1);
+  assert.equal(mode.themeChangeUnsubscribe, undefined);
+});
+
+it("a hosted copy reaches its viewers' terminals and never the host's output", async () => {
+  const { mode, notices } = screen();
+  mode.runtimeHost.session.getLastAssistantText = () => "hello";
+  const hostOutput = mock.method(process.stdout, "write", () => true);
+  await mode.handleCopyCommand();
+  const hostWrites = hostOutput.mock.callCount();
+  mock.restoreAll();
+  assert.deepEqual(
+    mode.ui.terminal.write.mock.calls.map((call) => call.arguments[0]),
+    [osc52("hello")],
+  );
+  assert.equal(hostWrites, 0);
+  assert.deepEqual(notices, ["Copied last agent message to clipboard"]);
+});
+
+it("a hosted copy too large for the terminal says so and writes nothing", async () => {
+  const { mode, notices } = screen();
+  mode.runtimeHost.session.getLastAssistantText = () => "x".repeat(80_000);
+  await mode.handleCopyCommand();
+  assert.equal(mode.ui.terminal.write.mock.callCount(), 0);
+  assert.deepEqual(notices, ["Clipboard unavailable: text exceeds the OSC 52 size limit"]);
+});
+
+it("a hosted screen refuses the external editor without leaving its viewers' screen", async () => {
+  const { mode, notices } = screen();
+  await mode.handleOpenExternalEditor();
+  assert.equal(mode.ui.stop.mock.callCount(), 0);
+  assert.equal(mode.editor.setText.mock.callCount(), 0);
+  assert.deepEqual(notices, ["The external editor is unavailable in a hosted session"]);
+});
 
 it("the host can check patch version before constructing a screen", () => {
   assert.equal(InteractiveMode.hostedLifecycleVersion, 1);
