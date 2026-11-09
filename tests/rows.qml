@@ -80,6 +80,15 @@ ShellRoot {
                 side: "Kitty · workspace 2, 3rd column, 2nd down"
                 glyph: "$"
             }
+            // A side that fits beside its name, as Inkscape's copied picture's
+            // does, with less room to spare than a glyph's column, which the
+            // side's share once took from it a second time.
+            Choice {
+                id: sideFits
+                name: "New Drawing From the Copied Picture"
+                side: "64 \u00d7 64 \u00b7 PNG \u00b7 70 B"
+                glyph: "$"
+            }
             // A side of words too long for its room, as Slack Theme's how-to
             // is: it gives way at a whole word, never through one (VKCF3Z,
             // 2026-11-05: "pick Aubergine, then Custom the\u2026").
@@ -820,6 +829,9 @@ ShellRoot {
             texts = apart(nameLong, nameLong.width);
             expect("a long name cut, its side whole", cut(texts).length === 1
                 && cut(texts)[0] === nameLong.name, said(texts));
+            texts = apart(sideFits, sideFits.width);
+            expect("a side that fits beside its name is said whole", cut(texts).length === 0,
+                said(texts));
             texts = apart(titled, titled.width);
             expect("a window's title kept whole, its program and place cut first",
                 cut(texts).length === 1 && cut(texts)[0] === titled.side, said(texts));
