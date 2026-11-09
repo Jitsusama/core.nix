@@ -294,8 +294,9 @@ def slack_holds_each_message(desktop: Desktop, conversations: list[Json]) -> Non
     desktop.step_in("ret")
     desktop.down_to("Grace Hopper")
     desktop.launcher_until(
-        lambda shown: re.fullmatch(r"read\sin\sSlack\s\d\d:\d\d", shown["selected"]["side"])
-        is not None
+        lambda shown: (
+            re.fullmatch(r"read\sin\sSlack\s\d\d:\d\d", shown["selected"]["side"]) is not None
+        )
     )
     desktop.close_launcher()
 
