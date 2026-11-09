@@ -1311,12 +1311,13 @@ Scope {
         // A thing's own acts, Return's act (an emoji's Copy) and its verbs, are
         // what `launcher do` does rather than rows to read, so they're said
         // apart (VKCF3Z, 2026-11-08); a place's or a collection's rows are
-        // its things.
+        // its things, and so is a verb that holds more, as a device Nearby
+        // heard is, since stepping in shows it as a row (VKCF3Z, 2026-11-09).
         const acting = last !== null && asThing(last, among) && !last.category
             && !collects({ row: last });
         const verbs = acting ? led(last, last.verbs?.() ?? []).map(one => steadyId(one)) : [];
         const isAct = one => String(one.key ?? "").startsWith("return:")
-            || verbs.includes(steadyId(one));
+            || verbs.includes(steadyId(one)) && !showsMore(one);
         const sayable = rows.filter(one => !!one && !one.gone && (one.name ?? "") !== "");
         // Built before `reading` is reckoned, since building a drawer may
         // start its read.
