@@ -1502,8 +1502,11 @@ def test_a_held_arrow_makes_one_drawer_once_it_rests(shell: Shell) -> None:
         shell.reported("drawer follows ", lambda _: True, typed)
         shell.held_still()
         since = shell.mark()
-        # Three in one go, as a held arrow's repeat sends them, quicker than the drawer follows.
-        shell.as_account("wtype -k Down -k Down -k Down")
+        # Three in one go, as a held arrow's repeat sends them, quicker than the drawer follows:
+        # sent while the shell is held stopped, so a loaded builder spacing wtype's keys apart
+        # can't make them three rests (two of RTOIMQ's runs, 2026-11-09).
+        with shell.frozen():
+            shell.as_account("wtype -k Down -k Down -k Down")
         rested = shell.showing()["selected"]
         shell.reported("drawer follows ", lambda _: True, since)
         shell.held_still()
