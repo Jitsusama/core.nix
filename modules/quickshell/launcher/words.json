@@ -287,6 +287,7 @@
       "command": "delete",
       "in": "agents:landed",
       "name": "Read",
+      "term": "Agents/read",
       "verb": "mark",
       "glyph": "read"
     },
@@ -7128,6 +7129,7 @@
       "command": "pause",
       "in": "on",
       "name": "Pause",
+      "term": "Programs/pause",
       "verb": "pause",
       "glyph": "pause"
     },
@@ -7235,6 +7237,7 @@
       "command": "pause",
       "in": "timer",
       "name": "Pause",
+      "term": "Desktop/pause",
       "verb": "pause",
       "glyph": "pause",
       "states": {
@@ -8069,6 +8072,7 @@
       "command": "pause",
       "in": "media",
       "name": "Pause",
+      "term": "Programs/pause",
       "verb": "pause",
       "glyph": "pause",
       "states": {
@@ -10136,6 +10140,7 @@
       "command": "delete",
       "in": "mail:message",
       "name": "Read",
+      "term": "Programs/read",
       "verb": "read",
       "glyph": "readMail",
       "states": {
@@ -10224,6 +10229,7 @@
       "command": "resume",
       "in": "path:file",
       "name": "Resume",
+      "term": "Programs/resume",
       "verb": "resume",
       "glyph": "resume",
       "said": {
@@ -11279,6 +11285,7 @@
       "id": "file-chooser:question",
       "in": "path:folder",
       "name": "Question",
+      "term": "Desktop/question",
       "said": {
         "file": "{verb} which file?",
         "files": "{verb} which files?",

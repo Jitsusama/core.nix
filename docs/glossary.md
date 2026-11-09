@@ -97,6 +97,7 @@ the queue and conclude.
 | report | a quest's document on what happened, its outcomes and lessons | | |
 | landing | what a session finished and handed Joel: a merged change, a built plan or a hand-off, at its ref, with a line saying what to try | | presence `landings` |
 | Landed | the group of landings in Agents, named for its state as Unread and Recent are | | `agents:landed` |
+| read | a landing Joel has seen and marked so, which leaves Landed, as mail he has opened is read | | `agents:landed`'s mark |
 | Journey | a quest's dated log of what happened | | `quest journal` |
 | session | a pi working for Joel on a quest, in a window of its own | | `agents` in the launcher |
 | carry | moving a quest's work and its session to another machine | | `carry` |
@@ -201,6 +202,8 @@ be read, marked unread and archived.
 | player | a program playing sound or video that the desktop can pause, skip and go to, such as Spotify or a browser's tab | | MPRIS, `Playing.qml` |
 | track | what a player is playing: one song, episode or video, with its artist and album | | MPRIS's `xesam` metadata |
 | link | the web address a track, a page or a message opens at, which Copy the Link copies | | MPRIS's `xesam:url` |
+| pause | a player holding what it plays where it is, until it plays on, apart from a session's pause | | MPRIS's `Pause` |
+| resume | a video or song file playing on from where Joel stopped it last | | mpv's `watch_later` |
 | podcast | a series of spoken episodes a player plays, such as one on Spotify | | Spotify's `show` |
 | episode | one part of a podcast | | Spotify's `episode` |
 | speed | how fast a player plays its track against the track's own pace, such as one and a half times | | MPRIS's `Rate` |
@@ -239,7 +242,7 @@ or a copy, can be opened, copied or forgotten.
 | notice | a card at the top right saying what a program said | notification | `Notifications.qml`, `org.freedesktop.Notifications` |
 | notice kind | what a notice is about, as its program files it, said in its drawer's eyebrow: message, mail, device, network, status or transfer, with failed or bounced after it when it went wrong | | `notices:kind`, the notification's `category` hint |
 | Do Not Disturb | the setting that holds notices back while it's on | dnd, quiet | `session:quiet` |
-| question | a centred box asking Joel something, such as a password or a yes | | `Polkit.qml`, `Askpass.qml` |
+| question | what the desktop asks Joel: a centred box for a password or a yes, or the file chooser's which file, or where to save | | `Polkit.qml`, `Askpass.qml`, the file chooser's `said` |
 | mark | one drawn symbol, such as each one in the margin | glyph, icon | `glyphs.nix` |
 | margin | the row of marks at the top of the screen saying what's true now | corner | `Margin.qml`, `margin.pieces`, `Pieces.qml` |
 | meter | a level shown while it changes, such as the volume | overlay | `Meter.qml` |
@@ -276,6 +279,7 @@ or a copy, can be opened, copied or forgotten.
 | timer | a span Joel sets counting down, which rings as a notice when it ends, kept by its daemon so it rings with the launcher closed; Timers is the place holding them | countdown, alarm | `HeldTimers.qml`, the `timers` program |
 | stopwatch | the one count up from when Joel starts it, which keeps its laps; it's listed last in Timers | | `HeldTimers.qml`, the `timers` program |
 | lap | one stretch of the stopwatch, from its start or the lap before to when Joel marks it | | `Timers.qml` |
+| pause | a timer or the stopwatch held where it is, until Joel resumes it, apart from a session's pause | | the `timers` program's `pause` |
 | capture | taking a screenshot or a recording of the screen, or a photo or a video with the camera, and the place holding them | | |
 | screenshot | a picture Joel takes of the screen | screen shot | |
 | recording | a video Joel takes of the screen, of all of it, a window or a region | | |
