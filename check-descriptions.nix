@@ -931,8 +931,9 @@
     as bulk where nix-offload there takes it, sends again only what no builder took, never runs
     one again where it passed, reverts the merge it finds broke a test that failed twice and
     holds switching until the revert is on main, runs a held test first at a new head and lifts
-    the hold the moment it passes, quarantines one that failed then passed,
-    reverts nothing for one quarantined, starts nothing while the machine is held, says
+    the hold the moment it passes, quarantines one that failed then passed, or whose revert
+    won't apply with its breaker as owner, reverts nothing for one quarantined at the round's
+    head or main's newest, starts nothing while the machine is held, says
     which changes run their VM tests before merging, and lets a head merge whose same change
     passed before a rebase that moved none of its files
   '';
