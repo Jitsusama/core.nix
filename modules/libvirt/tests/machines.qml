@@ -235,6 +235,9 @@ QtObject {
             "State:          paused"))[0];
         check("one paused still says its memory in use",
             Machines.figures(held, said).find(one => one.id === "memory")?.value, "2.15 GB");
+        check("what names a machine is set as an identifier",
+            Machines.figures(web, said).filter(one => Machines.identifies(one.id))
+                .map(one => one.id), ["security-label", "uuid"]);
         const unread = Machines.described(running.replace(/Used memory:.*\n/, ""))[0];
         check("one running that didn't say its memory in use lacks it as unknown",
             Machines.leftOut(unread, said), { stopped: [], unsaid: ["memory"] });

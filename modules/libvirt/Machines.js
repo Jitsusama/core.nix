@@ -401,6 +401,17 @@ function everyFigure(machine, said) {
     ];
 }
 
+// The figures that name a machine rather than measure it, its UUID and
+// the label its security model gave it, which its drawer sets as
+// identifiers, whole on as many lines as they take, breaking at their
+// hyphens, rather than one word running past the drawer's edge.
+const IDENTIFIERS = ["uuid", "security-label"];
+
+// Whether a figure, by its id, names a machine (IDENTIFIERS).
+function identifies(id) {
+    return IDENTIFIERS.includes(id);
+}
+
 // Every figure dominfo gave for a machine, each { id, value }, in the
 // plate's order. One it left out is left out, never guessed, and named by
 // leftOut instead.

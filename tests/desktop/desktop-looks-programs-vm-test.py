@@ -85,6 +85,12 @@ def drawer_on(title: str, shown: Json) -> bool:
     return bool(drawer["out"] is True and drawer["title"] == title)
 
 
+def whole_on(title: str, shown: Json) -> bool:
+    """Say whether the drawer draws the thing titled whole: every value, none cut or left over."""
+    drawer = shown["drawer"]
+    return drawer_on(title, shown) and drawer["valuesWhole"] is True and not drawer["more"]
+
+
 def named(name: str, shown: Json) -> bool:
     """Say whether the selected row is the one named."""
     return (shown["selected"] or {}).get("name") == name
@@ -225,7 +231,9 @@ def test_the_vms_are_shot_at_each_scale(desktop: Desktop, at_each_scale: list[st
         desktop.answer("vms")
         desktop.launcher_until(partial(named, "VMs"))
         desktop.into_program()
-        desktop.launcher_until(partial(drawer_on, "web"))
+        # Its UUID and security label are identifiers, so they're whole on as many lines as
+        # they take rather than one word running past the drawer's edge.
+        desktop.launcher_until(partial(whole_on, "web"))
         desktop.shoot(f"launcher-vms-at-{at}")
         desktop.close_launcher()
     # The stand-in virsh notes each run it's asked (tests/desktop.nix).
