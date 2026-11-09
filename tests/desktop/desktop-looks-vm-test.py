@@ -3914,6 +3914,7 @@ def buds(shown: dict[str, Any]) -> list[bool]:
 # across the restart, Buds stays in Nearby, still open, gone, as Steady keeps a row, rather than
 # heard on with its last signal, while Nearby looks again; shown once more, Buds is heard afresh,
 # by whichever radio the shell now takes for its own, so as the same row or beside the one gone.
+# A terminal's `launcher show` of Nearby, with the launcher closed, has the radio look too.
 # Run last of the area's, since BlueZ starting moves what the launcher holds.
 
 
@@ -3974,6 +3975,16 @@ def nearby_heard(desktop: Desktop, at_each_scale: list[str], values: dict[str, A
         radios_seen(desktop, seen=True)
         desktop.launcher_until(lambda shown: False in buds(shown), timeout=timedelta(seconds=60))
         desktop.close_launcher()
+        # Asked for by a terminal with the launcher closed, Nearby looks too, and says Buds: both
+        # at once, since the radio looks only for a few seconds after each show.
+        desktop.launcher_left_closed()
+        shown = desktop.in_session("launcher show bluetooth nearby | grep -q Buds")
+        machine.wait_until_succeeds(
+            f"{shown} && ( "
+            + " || ".join(f"{discovering(adapter)} | grep -qx 'b true'" for adapter in ADAPTERS)
+            + " )",
+            timeout=timedelta(seconds=60),
+        )
     finally:
         machine.succeed("systemctl stop bluetooth.service btvirt || true")
 

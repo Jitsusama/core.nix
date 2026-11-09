@@ -82,12 +82,23 @@ Provider {
 
     // Looking for devices costs the radio's power, and has BlueZ keep every
     // stranger it hears, so it looks only while Nearby is open to show
-    // them.
+    // them, or while a terminal's `launcher show` walked into it
+    // (Launcher.qml's terminalSees), so Nearby asked for cold lists what's
+    // heard.
     readonly property bool looksNearby: {
         const launcher = provider.launcher;
-        return on && launcher !== null && launcher.open
-            && (launcher.held ?? []).some(step => step.row.key === "bluetooth:nearby");
+        return on && launcher !== null && (launcher.open
+            && (launcher.held ?? []).some(step => step.row.key === "bluetooth:nearby")
+            || terminalLooks);
     }
+    readonly property bool terminalLooks: (launcher?.terminalSees.walked ?? [])
+        .some(row => row?.key === "bluetooth:nearby")
+
+    // A terminal walked into Nearby waits while nothing's heard yet, as
+    // before the radio's first look: BlueZ says what it hears as it hears
+    // it, never that a look is done, so the program's own wait bounds it
+    // (Provider.stillReading).
+    stillReading: terminalLooks && on && nearby.length === 0 && nameless.length === 0
 
     Binding {
         target: provider.adapter
