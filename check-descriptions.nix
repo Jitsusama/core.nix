@@ -2889,8 +2889,8 @@
   vm-desktop-looks-programs = ''
     on the laptop's screen at 1.5 and at 2, Drive's places and Recent, Spotify and its podcasts,
     what mpv stopped, Tuple's Recent, the VMs, kitty's repositories and machines, Shortcuts over
-    Mail and a Docs tab, and Passwords, an entry and its copy in the margin, each drawn for a
-    person to judge
+    Mail and a Docs tab, Passwords, an entry and its copy in the margin, and 1Password's program
+    holding Check Every Password after its vaults, each drawn for a person to judge
   '';
   vm-desktop-minds-the-margin = ''
     the margin shows keeping awake, lid shut too, a camera opened, tokens running out, do not

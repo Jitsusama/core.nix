@@ -28,7 +28,8 @@
 // The daemon's watch keeps what's held current after. While a manager
 // can't read, the place's first row lets the launcher in, as Let the
 // Launcher In leads Programs › 1Password, which, once it's let in, holds
-// its entries by vault beside Quick Access and Lock.
+// its entries by vault beside Quick Access and Lock, then the place's own
+// Needing Attention and Check Every Password.
 //
 // Check Every Password, last in the place, has the daemon read every
 // password to find those reused and those breached (`audit`), only as
@@ -731,7 +732,10 @@ Provider {
 
     // A manager's program leads with Let the Launcher In while it can't
     // read (VKCF3Z, 347abdb7), and once it can, holds its entries by vault,
-    // each a part beside Quick Access and Lock.
+    // each a part beside Quick Access and Lock. After them come the place's
+    // own Needing Attention, only while a check has found something, and
+    // Check Every Password last, the same rows Passwords holds, so its
+    // health is a key away from its program too (VKCF3Z, 04d3db68).
     function programActs(asked) {
         const manager = managerOf(asked);
         if (manager === null)
@@ -769,6 +773,6 @@ Provider {
                     run: () => provider.launcher?.enter(part)
                 });
                 return part;
-            });
+            }).concat(attention, [checkRow]);
     }
 }

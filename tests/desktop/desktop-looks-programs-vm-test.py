@@ -321,7 +321,7 @@ def test_shortcuts_over_google_are_shot_at_each_scale(
 def test_passwords_and_a_copy_are_shot_at_each_scale(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """Shoot Passwords, an entry's drawer read in full, and the margin's mark once it's copied.
+    """Shoot Passwords, an entry read in full, the margin's mark once copied, and 1Password.
 
     1Password is asked through the stand-in op (tests/desktop.nix) as the place opens, and
     until it answers the place leads with 1Password locked, so it's opened again once it has.
@@ -356,3 +356,12 @@ def test_passwords_and_a_copy_are_shot_at_each_scale(
         desktop.launcher_until(lambda shown: not shown["open"])
         desktop.reported("holds margin ", lambda marks: "clipboard" in marks.split(), since)
         desktop.shoot(f"margin-password-copied-at-{at}")
+        # 1Password's program, let in, holds the place's Check Every Password after its vaults,
+        # and Needing Attention only once a check has found something, which none has here.
+        desktop.answer("1password")
+        desktop.launcher_until(partial(named, "1Password"))
+        desktop.into_program()
+        desktop.launcher_until(lambda shown: "Check Every Password" in shown["rows"])
+        assert "Needing Attention" not in desktop.showing()["rows"], desktop.showing()["rows"]
+        desktop.shoot(f"launcher-onepassword-at-{at}")
+        desktop.close_launcher()
