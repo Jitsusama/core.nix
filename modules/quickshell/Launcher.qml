@@ -4470,6 +4470,24 @@ Scope {
         reshow(steps.length);
     }
 
+    // Each place held said again from its members, as a provider whose
+    // rows it holds first hears its daemon: a row it couldn't make before
+    // its records came, as Heat's, comes in place, and a place's own row
+    // says how it stands now, as Power's charge in Machine. Before, each
+    // read its source as it was asked, so the place was whole at once.
+    function placesRead() {
+        if (!open || asking || !held.some(step => !!step.row.category))
+            return;
+        const steps = held.map(step => step.row.category ? Object.assign({}, step, {
+            rows: Steady.kept(step.rows, members(step.row.category), steadyId)
+                .map(row => heldBack(step.row.category, row))
+        }) : step);
+        if (!remade(steps, held.length))
+            return;
+        held = steps;
+        reshow(steps.length);
+    }
+
     // A row a condition holds back now, dimmed, saying why in the place's
     // words; any other as it is. It's judged by the row's id alone, so a
     // row said again from a new reading is held back the same as one

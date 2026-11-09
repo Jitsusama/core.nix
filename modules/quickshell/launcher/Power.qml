@@ -48,8 +48,13 @@ Provider {
     // changed. Unsaid, Battery's Health was never found from the root
     // (the net's goes-places run, 2026-11-07). Its key is followed rather
     // than its record, which is new with every read.
+    // Machine's Power row says the charge too, so the places held are
+    // said again as the battery first comes from the daemon.
     readonly property string batteryKey: battery?.key ?? ""
-    onBatteryKeyChanged: provider.answered()
+    onBatteryKeyChanged: {
+        provider.answered();
+        provider.launcher?.placesRead?.();
+    }
 
     function number(value, decimals) {
         return Numbers.format(value, decimals, settings.group, settings.point);

@@ -643,6 +643,9 @@ Provider {
                 provider.heardSinceOpen = true;
                 provider.reads = null;
                 provider.answered();
+                // Machine's Heat row is made only from the records, so the
+                // places held are said again with it.
+                provider.launcher?.placesRead?.();
             } else if (provider.shown) {
                 provider.answered();
             }
