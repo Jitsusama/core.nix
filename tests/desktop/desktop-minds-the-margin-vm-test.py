@@ -400,21 +400,18 @@ def test_a_missed_notice_shows_its_glyph_and_now_shows_the_notices(desktop: Desk
     desktop.reported("sets margin ", margin_sets(("waiting", "wants", "strong")), since)
     desktop.shoot("margin-waiting")
     # Now opens on For You, its first row, however much the notices
-    # want Joel; they're reached by moving down to them.
+    # want Joel. The time and the date are among Now's own rows, each its
+    # own answer as it's placed anywhere; the VM has no forecast and no
+    # calendar, so the location follows them. The notices aren't a row of
+    # Now's: they're For You's, among what came for Joel.
     machine.send_key("meta_l-o")
     desktop.in_now("For You")
-    desktop.down_to("Notices")
-    # The time and the date are among Now's own rows, at its top before
-    # what comes and goes, the notices among them, each its own answer as
-    # it's placed anywhere; the VM has no forecast and no calendar, so the
-    # location follows them.
     things = desktop.showing()["things"]
     kinds = [thing["is"] for thing in things]
     at = kinds.index("answer:time")
     time, today = things[at : at + 2]
     assert kinds[at + 2] == "on:location", things
-    notices = next(n for n, thing in enumerate(things) if thing["reads"].startswith("Notices"))
-    assert at < notices, things
+    assert not any(thing["reads"].startswith("Notices") for thing in things), things
     # This year's date, which says no year; ISO Date inside says it.
     date = machine.succeed("date '+%A %-d %B'").strip()
     assert time["is"] == "answer:time", time
@@ -422,7 +419,14 @@ def test_a_missed_notice_shows_its_glyph_and_now_shows_the_notices(desktop: Desk
     assert today["is"] == "answer:today", today
     assert today["reads"].startswith(f"Date \u00b7 {date}"), today
     machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notices"])
+    desktop.launcher_until(lambda shown: "Desktop" in shown["rows"])
+    desktop.down_to("Desktop")
+    # For You's Lately band, Desktop's row on, for the design's look.
+    desktop.shoot("launcher-for-you-lately")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: shown["keys"] and shown["held"] == ["now", "For You", "Desktop"]
+    )
     desktop.shoot("launcher-from-margin")
     forgets_then_brings_back(desktop)
     desktop.close_launcher()

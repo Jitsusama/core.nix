@@ -418,6 +418,14 @@ Provider {
             []);
     }
 
+    // The notices of `ids`, newest first, each as it is here, so For You's
+    // Desktop row (Now.qml) holds the unread ones, and its History the
+    // read, as they're listed here.
+    function rowsOf(ids) {
+        return lined(aged(all.filter((row, index) => ids.includes(Notices.history[index]?.id))),
+            []);
+    }
+
     // Whether a text holds a word typed, as search finds it.
     function holds(text, word) {
         return Fuzzy.match(Fuzzy.prepare(text), [word], false).score >= 0;
