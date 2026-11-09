@@ -203,13 +203,21 @@ class FadingGuest:
 
     LOOKING = 0.05
 
-    def __init__(self, frames: int, apart: float, *, other: bool = False) -> None:
-        """Start the fade at nought, its frames this far apart; other moves a window of its own."""
+    def __init__(
+        self, frames: int, apart: float, *, other: bool = False, asked: bool = False
+    ) -> None:
+        """Start the fade at nought, its frames this far apart.
+
+        Other moves a window of its own; asked draws the launcher a frame, which changes
+        nothing on screen, each time its frames are asked for.
+        """
         self.now = 0.0
         self.frames = frames
         self.apart = apart
         self.other = other
+        self.asked = asked
         self.counted = 0
+        self.owed = 0
 
     @property
     def faded_by(self) -> float:
@@ -237,13 +245,20 @@ class FadingGuest:
     def drawn(self) -> dict[str, int]:
         """Give the shell's frames since it was last asked, as `qs ipc call frames` says them."""
         drawn, self.counted = self.drawn_by_now() - self.counted, self.drawn_by_now()
+        drawn, self.owed = drawn + self.owed, int(self.asked)
         return {"launcher": drawn} if drawn else {}
 
 
-def settled(guest: FadingGuest, span: float, within: float) -> str | None:
+def settled(guest: FadingGuest, span: float, within: float, asking: int = 0) -> str | None:
     """Wait on the guest's screen to stand still."""
     return vm_helpers.settled(
-        guest.screen, guest.drawn, span, within, clock=guest.clock, wait=guest.wait
+        guest.screen,
+        guest.drawn,
+        span,
+        within,
+        asking=asking,
+        clock=guest.clock,
+        wait=guest.wait,
     )
 
 
@@ -267,6 +282,20 @@ def test_a_screen_still_drawing_at_the_bound_says_so() -> None:
     why = settled(guest, 0.5, 5) or ""
     said = "the screen never stood still for 2 spans of 0.5 s in 5 s: the shell was still drawing"
     assert why.startswith(said), why
+
+
+def test_the_frame_asking_costs_a_still_launcher_is_rest() -> None:
+    # Every gallery's launcher shots on 2026-11-09 counted one frame a span, however long.
+    assert settled(FadingGuest(frames=0, apart=1.0, asked=True), 0.5, 5, asking=1) is None
+    why = settled(FadingGuest(frames=0, apart=1.0, asked=True), 0.5, 5) or ""
+    assert why.endswith("the shell was still drawing, last {'launcher': 1}"), why
+
+
+def test_a_fade_is_waited_out_past_the_frames_asking_costs() -> None:
+    guest = FadingGuest(frames=5, apart=0.6, asked=True)
+    pace = vm_helpers.pace(2.0)
+    assert settled(guest, 0.5 * pace, 10 * pace, asking=1) is None
+    assert guest.now >= guest.faded_by, f"still at {guest.now:.2f} s, the fade ends at 3 s"
 
 
 def test_another_programs_window_moving_is_no_rest_either() -> None:

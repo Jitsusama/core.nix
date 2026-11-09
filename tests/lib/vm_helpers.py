@@ -150,17 +150,19 @@ def settled(  # noqa: PLR0913 # The clock and the wait are the stand-ins' way in
     span: float,
     within: float,
     *,
+    asking: int = 0,
     clock: Callable[[], float] = time.monotonic,
     wait: Callable[[float], None] = time.sleep,
 ) -> str | None:
     """Wait for the screen to stand still, giving None once it has, or why it never did.
 
-    Still is by evidence, twice over, for STILL_SPANS spans in a row: no window the shell
-    counts drew a frame across the span (drawn gives what drew since it was last called), and
-    the screen's picture didn't change across it, which catches another program's window
-    moving. A picture alike for a while alone isn't enough: a busy host leaves a drawer's fade
-    on one frame longer than any fixed span (ZJ62K2, 2026-11-09), and the shell still counts
-    that frame's next.
+    Still is by evidence, twice over, for STILL_SPANS spans in a row: the windows the shell
+    counts drew no more frames across the span than asking drawn for them costs (drawn gives
+    what drew since it was last called), and the screen's picture didn't change across it,
+    which catches another program's window moving. A picture alike for a while alone isn't
+    enough: a busy host leaves a drawer's fade on one frame longer than any fixed span (ZJ62K2,
+    2026-11-09), and the shell still counts that frame's next. A fade's every frame changes
+    the picture, so the frames asking costs, which change nothing, never hide one.
     """
     deadline = clock() + within
     drawn()
@@ -173,10 +175,17 @@ def settled(  # noqa: PLR0913 # The clock and the wait are the stand-ins' way in
         wait(span)
         frames = drawn()
         now = screen()
-        if frames:
+        if sum(frames.values()) > asking:
             quiet, why = 0, f"the shell was still drawing, last {frames}"
         elif now != before:
-            quiet, why = 0, "the screen changed with no frame of the shell's"
+            quiet, why = (
+                0,
+                (
+                    f"the screen changed as the shell drew {frames}"
+                    if frames
+                    else "the screen changed with no frame of the shell's"
+                ),
+            )
         else:
             quiet += 1
             if quiet == STILL_SPANS:

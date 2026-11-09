@@ -443,6 +443,9 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         in a row. Half a second is twice the theme's longest movement; both it and the bound
         stretch with how busy the host is, since a busy host draws a fade slower than that.
         Shell only waits on the count alone, for a screen where something else always moves.
+        An open launcher draws a frame, which changes nothing on screen, for being asked (every
+        gallery's launcher shots counted one a span on 2026-11-09, however long the span), so
+        one a span is rest; what each span drew is printed, to show it holds.
         """
         pace = vm_helpers.pace(vm_helpers.busyness())
         with tempfile.TemporaryDirectory() as folder:
@@ -454,19 +457,24 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
                 self.machine.send_monitor_command(f"screendump {shot}")
                 return shot.read_bytes()
 
+            seen: list[dict[str, int]] = []
+
             def drawn() -> dict[str, int]:
                 # Before the shell runs, or after it's gone, nothing of its own is drawing.
                 status, said = self.machine.execute(
                     self.in_session("qs ipc call frames said && qs ipc call frames start")
                 )
                 lines = said.strip().splitlines()
-                return cast("dict[str, int]", json.loads(lines[0])) if status == 0 and lines else {}
+                frames = json.loads(lines[0]) if status == 0 and lines else {}
+                seen.append(frames)
+                return cast("dict[str, int]", frames)
 
             try:
                 return vm_helpers.settled(
-                    screen, drawn, span * pace, timeout.total_seconds() * pace
+                    screen, drawn, span * pace, timeout.total_seconds() * pace, asking=1
                 )
             finally:
+                print(f"the shell drew {seen[1:]} in spans of {span * pace:.1f} s")
                 # Counting stops, so a shell between checks pays nothing for it.
                 self.machine.execute(self.in_session("qs ipc call frames said"))
 
