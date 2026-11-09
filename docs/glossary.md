@@ -300,6 +300,8 @@ off.
 | firmware | the program in a chip that runs it: the machine's, which starts it and keeps its settings, or a device's, such as a keyboard's or a sound card's | BIOS, UEFI | |
 | revive | sending a Mac that won't start Apple's firmware again from another machine over USB-C, keeping its files; a restore does the same and erases it | DFU restore | `idevicerestore`, without and with `--erase` |
 | processor | what runs every program | CPU | |
+| core | one of the processor's parts that each run a program's work at once, beside the others | | Linux's `cpu{n}` |
+| clock speed | how many cycles a second the processor runs at now, which it raises and lowers with its work | | `scaling_cur_freq` |
 | cache | memory inside the processor holding what it used last, nearer to it than the machine's memory, in levels one to three | | `L{level}` caches |
 | model | a device's maker's name for what it is, such as a processor's, a disk's, a battery's or a keyboard's | | |
 | version | which release of Linux or of a device's firmware is in it, or which Bluetooth or TLS a link speaks, as its makers number them | | fwupd's `version` |
@@ -327,6 +329,7 @@ off.
 | kind of work | what a job is, which says how much the machine favours it: what Joel waits on at a terminal, timed work or agents' work | job class | the slices `jobs-awaited`, `jobs-timed` and `jobs-work` |
 | shared work | a job other sessions wait on, such as a push holding one of a repository's walk slots, run beside jobs at the sessions' own disk target | | `shared.slice`, `SHARED_SLICE` |
 | backlog | the requests waiting on a disk at once, on average and at most, apart from the machine's queue | | the disk's queue depth |
+| speed | how fast a disk reads and writes now, in data and in requests a second, as the network's speed is for the connection | | the disk's `stat` |
 | queue | heavy work, such as builds and VM tests, waiting its turn on the machine | machine queue | |
 | warm | of an offload builder for VM tests, holding what they need, having built it as it stood; a fresh one is cold | primed | `there::warm`, `--warm` |
 | offload builder | a builder elsewhere lent to the machine while its queue has builds one could take, and given back once idle | remote builder | `nix-offload` |
@@ -353,7 +356,9 @@ off.
 | Sound | the place holding what the machine plays through and hears with, built in or plugged in, and what each program plays and records | | `Sound.qml`, PipeWire |
 | volume | how loud a device or a program plays, as a share of its full level | | |
 | microphone | what the machine hears with: built in, a headset's or plugged in, chosen in Sound | | |
+| hardware | a device's own chips and what they carry, as the kernel reports them: its card, its USB ID and its resolution | | ALSA's and USB's properties |
 | card | the chip a sound device plays through or hears with, as the kernel lists it | | ALSA's card |
+| connection | how a device is joined to the machine: USB and how fast it runs, or Bluetooth, apart from the network's connection | | the device's bus |
 | profile | what a headset carries now: music one way, or both ways for a call | | Bluetooth's A2DP and HFP |
 | level | how loud a sound device plays or hears at this moment, as its meter draws it, apart from its volume | | `sound:level` |
 | channel | one of the separate signals a sound device carries at once, such as left and right | | `sound:channels` |
@@ -389,7 +394,8 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | out | of data at this machine's own links, leaving it, as its traffic and a link's speed count it; the internet's speed says up | | `traffic:out`, `wifi:out` |
 | down | of the internet's speed, what it carries to the home network, as a speed test measures it; this machine's links say in | | `eero:internet:down` |
 | up | of the internet's speed, what it carries out of the home network, as a speed test measures it; this machine's links say out | | `eero:internet:up` |
-| address | an address the machine has on a network | network address, IP | `networks` |
+| address | an address on a network: one the machine has, or the one a node, a device, a server or another machine is reached at | network address, IP | `networks` |
+| hardware address | the fixed address a network card or radio carries from where it was made, apart from the addresses a network gives it | | MAC addresses, a BSSID |
 | lease | an address a network's server lends for a while, to the machine or to the gateway node, with the name servers and domain that come with it | | DHCP, `leases` |
 | subnet | the run of addresses one of the home network's networks hands out, the main one or the guest one, as its address and prefix | | `subnets_config`, `Subnet` |
 | reserved address | an address the home network keeps for one device, so it has the same one each time it joins | static IP | `reservations`, `Reservation` |

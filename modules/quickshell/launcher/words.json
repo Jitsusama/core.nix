@@ -311,6 +311,7 @@
       "id": "agents:address",
       "in": "agents",
       "name": "Address",
+      "term": "Agents/address",
       "states": {
         "several": {
           "name": "Addresses"
@@ -1095,7 +1096,8 @@
     {
       "id": "machine:cpu:cores",
       "in": "machine:cpu",
-      "name": "Cores"
+      "name": "Cores",
+      "term": "Machine/core"
     },
     {
       "id": "machine:cpu:core",
@@ -1113,7 +1115,8 @@
     {
       "id": "machine:cpu:clock",
       "in": "machine:cpu",
-      "name": "Clock",
+      "name": "Clock Speed",
+      "term": "Machine/clock speed",
       "answers": [
         "clock speed"
       ]
@@ -1329,7 +1332,8 @@
     {
       "id": "machine:cpu:kept-by-cores",
       "in": "machine:cpu:kept-from-resting",
-      "name": "Cores"
+      "name": "Cores",
+      "term": "Machine/core"
     },
     {
       "id": "machine:cpu:kept-by-power-controller",
@@ -1533,6 +1537,7 @@
       "id": "machine:disk:speed",
       "in": "machine:disk",
       "name": "Speed",
+      "term": "Machine/speed",
       "answers": [
         "disk speed"
       ],
@@ -2374,7 +2379,8 @@
     {
       "id": "heat:cores",
       "in": "heat:processor",
-      "name": "Cores"
+      "name": "Cores",
+      "term": "Machine/core"
     },
     {
       "id": "heat:core",
@@ -2398,7 +2404,8 @@
     {
       "id": "heat:throttled-cores",
       "in": "heat:throttled",
-      "name": "Cores"
+      "name": "Cores",
+      "term": "Machine/core"
     },
     {
       "id": "heat:throttled-core",
@@ -3195,7 +3202,8 @@
     {
       "id": "keyboards:connection",
       "in": "keyboards",
-      "name": "Connection"
+      "name": "Connection",
+      "term": "Machine/connection"
     },
     {
       "id": "keyboards:maker",
@@ -3694,7 +3702,8 @@
     {
       "id": "eero:node:address",
       "in": "eero:node",
-      "name": "Address"
+      "name": "Address",
+      "term": "Network/address"
     },
     {
       "id": "eero:node:ipv6",
@@ -3704,7 +3713,8 @@
     {
       "id": "eero:node:mac",
       "in": "eero:node",
-      "name": "Hardware Address"
+      "name": "Hardware Address",
+      "term": "Network/hardware address"
     },
     {
       "id": "eero:node:light",
@@ -3825,7 +3835,8 @@
     {
       "id": "eero:device:address",
       "in": "eero:device",
-      "name": "Address"
+      "name": "Address",
+      "term": "Network/address"
     },
     {
       "id": "eero:device:reserved",
@@ -3841,7 +3852,8 @@
     {
       "id": "eero:device:mac",
       "in": "eero:device",
-      "name": "Hardware Address"
+      "name": "Hardware Address",
+      "term": "Network/hardware address"
     },
     {
       "id": "eero:device:hostname",
@@ -4019,7 +4031,8 @@
     {
       "id": "networks:hardware",
       "in": "networks",
-      "name": "Hardware Address"
+      "name": "Hardware Address",
+      "term": "Network/hardware address"
     },
     {
       "id": "networks:mtu",
@@ -5111,7 +5124,8 @@
     {
       "id": "time:server:address",
       "in": "time:server",
-      "name": "Address"
+      "name": "Address",
+      "term": "Network/address"
     },
     {
       "id": "time:server:reference",
@@ -5259,7 +5273,8 @@
     {
       "id": "sound:hardware",
       "in": "sound",
-      "name": "Hardware"
+      "name": "Hardware",
+      "term": "Machine/hardware"
     },
     {
       "id": "sound:card",
@@ -5367,7 +5382,8 @@
     {
       "id": "sound:usb",
       "in": "sound",
-      "name": "Connection"
+      "name": "Connection",
+      "term": "Machine/connection"
     },
     {
       "id": "sound:firmware",
@@ -6840,7 +6856,8 @@
     {
       "id": "on:waiting:address",
       "in": "on:waiting",
-      "name": "Address"
+      "name": "Address",
+      "term": "Agents/address"
     },
     {
       "id": "on:waiting:check",
@@ -8166,6 +8183,7 @@
       "id": "media:speed",
       "in": "media",
       "name": "Speed",
+      "term": "Programs/speed",
       "glyph": "playSpeed"
     },
     {
@@ -8280,7 +8298,8 @@
     {
       "id": "cameras:usb",
       "in": "cameras",
-      "name": "Connection"
+      "name": "Connection",
+      "term": "Machine/connection"
     },
     {
       "id": "cameras:firmware",
@@ -9588,7 +9607,8 @@
     {
       "id": "wifi:bssid",
       "in": "wifi:point",
-      "name": "Hardware Address"
+      "name": "Hardware Address",
+      "term": "Network/hardware address"
     },
     {
       "id": "bluetooth:radio",
@@ -9657,7 +9677,8 @@
     {
       "id": "bluetooth:held",
       "in": "bluetooth",
-      "name": "Connection"
+      "name": "Connection",
+      "term": "Machine/connection"
     },
     {
       "id": "bluetooth:input",
@@ -9682,7 +9703,8 @@
     {
       "id": "bluetooth:address",
       "in": "bluetooth",
-      "name": "Address"
+      "name": "Hardware Address",
+      "term": "Network/hardware address"
     },
     {
       "id": "bluetooth:nearby",
@@ -10889,7 +10911,8 @@
     {
       "id": "kitty:machine:address",
       "in": "kitty:machine",
-      "name": "Address"
+      "name": "Address",
+      "term": "Network/address"
     },
     {
       "id": "kitty:machine:also",
