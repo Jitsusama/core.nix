@@ -325,7 +325,7 @@ Provider {
             yesterday: provider.hereSaid.yesterday ?? "",
             date: (date, format) => Qt.formatDate(date, format)
         }),
-        clock: at => Qt.formatDateTime(new Date(at), "HH:mm"),
+        clock: at => When.clock(at),
         number: (value, decimals) => Qt.locale().toString(value, "f", decimals)
     })
 
@@ -541,7 +541,9 @@ Provider {
             }),
             time: at => When.clock(at)
         });
-        // Every moment For You says, one way (ForYou.js's moment).
+        // Every moment For You says, one way (ForYou.js's moment): When's
+        // rule, with When's day and clock handed in, which its UTC case gives
+        // in their place.
         say.clock = at => ForYou.moment(at, now, say);
         return say;
     }

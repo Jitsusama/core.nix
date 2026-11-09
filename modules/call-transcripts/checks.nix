@@ -35,7 +35,7 @@ onLinux {
   # How the shell says each call written down, when it was and for how
   # long, its drawer's words set from the markdown they're written in, and
   # which calls are with someone or of a meeting (tests/transcripts.qml,
-  # over Transcripts.js).
+  # over Transcripts.js and the When.js it reads).
   the-desktop-reads-the-transcripts =
     let
       qt = pkgs.qt6.qtdeclarative;

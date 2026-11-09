@@ -2,8 +2,9 @@
 // when and how long, its drawer's words set from markdown, and which
 // calls are with someone or of a meeting, run in Qt's own JavaScript
 // engine, the one the shell runs it in. The
-// `the-desktop-reads-the-transcripts` check copies Transcripts.js beside
-// this file and runs `qml -platform offscreen transcripts.qml`.
+// `the-desktop-reads-the-transcripts` check copies Transcripts.js, and the
+// When.js it reads, beside this file and runs
+// `qml -platform offscreen transcripts.qml`.
 import QtQuick
 import "Transcripts.js" as Transcripts
 
@@ -33,6 +34,7 @@ QtObject {
             writing: "being written down",
             on: "not written down",
             yesterday: "yesterday",
+            tomorrow: "tomorrow",
             under: "under a minute",
             minutes: "{minutes} min",
             hours: "{hours} h",
@@ -71,6 +73,11 @@ QtObject {
             [{}, "14:00 \u00b7 32 min"],
             [{ started: at(3, 16, 0), ended: at(3, 16, 5) }, "16:00 \u00b7 5 min"],
             [{ started: at(2, 9, 5), ended: at(2, 10, 10) }, "yesterday 09:05 \u00b7 1 h 5 min"],
+            // A call stamped ahead of now, by a wrong clock, says its day as
+            // When does, forward as back.
+            [{ started: at(4, 9, 0), ended: at(4, 9, 30) }, "tomorrow 09:00 \u00b7 30 min"],
+            [{ started: at(5, 9, 0), ended: at(5, 9, 30) }, "Thursday 09:00 \u00b7 30 min"],
+            [{ started: at(11, 9, 0), ended: at(11, 9, 30) }, "11 Nov 09:00 \u00b7 30 min"],
             [{ started: new Date(2026, 9, 30, 9, 0).getTime(),
                 ended: new Date(2026, 9, 30, 10, 0).getTime() }, "Friday 09:00 \u00b7 1 h"],
             [{ started: new Date(2026, 9, 20, 9, 0).getTime(),
