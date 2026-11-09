@@ -376,8 +376,11 @@ ShellRoot {
             offset?.note === "measured \u2212391 \u00b5s \u00b7 within 20.0 \u00b5s", offset?.note);
         const figures = chosen.verbs().map(each => each.name);
         const plate = chosen.drawer();
-        expect("the chosen server holds every figure the vocabulary names for one",
-            figures.join(", ") === ids("time:server").join(", "), figures.join(", "));
+        // All but Why, which its note, "chosen", already says.
+        const why = Words.name("time:server:why");
+        expect("the chosen server holds every figure the vocabulary names for one but Why",
+            figures.join(", ") === ids("time:server").filter(name => name !== why).join(", "),
+            figures.join(", "));
         expect("its plate says the same figures",
             plate.facts.map(fact => fact.label).join(", ") === figures.join(", "),
             JSON.stringify(plate.facts));
