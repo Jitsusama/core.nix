@@ -179,8 +179,9 @@ impl Zone {
         day - i64::from(date_of(day).weekday().to_monday_zero_offset())
     }
 
-    /// How a local instant reads to a person: "14:00", or "Thu 14:00" when
-    /// it isn't today.
+    /// How a local instant reads to a person: "14:00", or "Thursday 14:00"
+    /// when it isn't today, its weekday in full as the launcher's own days
+    /// are said (When.js; VKCF3Z, 2026-11-09).
     pub fn clock(&self, at: f64, now: f64) -> String {
         let zoned = self.zoned(at);
         let time = format!("{:02}:{:02}", zoned.hour(), zoned.minute());
@@ -192,7 +193,7 @@ impl Zone {
         } else if days.abs() < 7 {
             format!(
                 "{} {time}",
-                weekday_name(index(zoned.weekday().to_monday_zero_offset()))
+                weekday_in_full(index(zoned.weekday().to_monday_zero_offset()))
             )
         } else {
             // A weekday alone would name the wrong week.
@@ -233,6 +234,18 @@ fn date_of(day: i64) -> Date {
 
 pub fn weekday_name(weekday: usize) -> &'static str {
     ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][weekday % 7]
+}
+
+fn weekday_in_full(weekday: usize) -> &'static str {
+    [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    ][weekday % 7]
 }
 
 fn month_name(month: usize) -> &'static str {
@@ -276,7 +289,7 @@ mod tests {
         let now = parse("2026-10-14T16:00:00Z").unwrap();
         assert_eq!(toronto.clock(now + 2.0 * HOUR, now), "14:00");
         assert_eq!(toronto.clock(now + DAY, now), "12:00 tomorrow");
-        assert_eq!(toronto.clock(now + 2.0 * DAY, now), "Fri 12:00");
+        assert_eq!(toronto.clock(now + 2.0 * DAY, now), "Friday 12:00");
         assert_eq!(toronto.clock(now - 23.0 * DAY, now), "Mon 21 Sep 12:00");
     }
 

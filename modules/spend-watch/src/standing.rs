@@ -158,13 +158,15 @@ pub struct Budget {
 /// what it is, as its drawer's eyebrow says it, whose money and what kind
 /// after a dot as every eyebrow's where and kind are ("your own \u{b7}
 /// plan"); what it spent over each period, what a plan's turns were worth
-/// at list over each, and how its feeds read.
+/// at list over each, how its feeds read, and the providers it always
+/// draws for, each as it names itself ("Claude Code").
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct BudgetSaid {
     pub what: String,
     pub spent: String,
     pub worth: String,
     pub reading: String,
+    pub providers: String,
 }
 
 /// One session's spend and the budget it draws on, when asked for.
@@ -334,6 +336,14 @@ fn budget(picture: &Picture, config: &Config, spans: &Spans, name: &str) -> Budg
             .as_ref()
             .map_or_else(String::new, |value| periods(value, fresh)),
         reading: health.as_deref().map_or_else(String::new, reading),
+        providers: declared.map_or_else(String::new, |budget| {
+            budget
+                .providers
+                .iter()
+                .map(|id| config.provider_names.get(id).unwrap_or(id).as_str())
+                .collect::<Vec<_>>()
+                .join(" \u{b7} ")
+        }),
     };
     Budget {
         name: name.to_owned(),
@@ -765,6 +775,7 @@ mod tests {
             ],
             "feeds": [{"name": "plan", "label": "Claude", "command": ["f"],
                        "budget": "claude"}],
+            "providerNames": {"claude-code": "Claude Code"},
         }))
         .unwrap()
     }
@@ -904,6 +915,9 @@ mod tests {
         );
         assert_eq!(claude["said"]["spent"], "");
         assert_eq!(claude["said"]["what"], "your own \u{b7} plan");
+        // Its providers as each names itself, its id kept for the harness.
+        assert_eq!(claude["said"]["providers"], "Claude Code");
+        assert_eq!(claude["providers"][0], "claude-code");
         assert_eq!(claude["words"], "your own plan");
         assert_eq!(claude["said"]["reading"], "");
         // The watch counts the proxy's week itself, so nobody read it.

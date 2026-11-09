@@ -48,6 +48,7 @@ import Quickshell
 import QtQuick
 import QtQuick.Effects
 import "launcher/Moment.js" as Moment
+import "DrawerFigure.js" as Figure
 import "DrawerPage.js" as Page
 import "Pictures.js" as Pictures
 import "Search.js" as Search
@@ -1975,10 +1976,12 @@ Floating {
                                 : drawer.apartIn(factRows.wraps, index === 0
                                     || drawer.facts[index - 1]?.heading !== undefined)
                             // How many lines it takes as it's laid out.
+                            // A figure under its value takes a line more.
                             readonly property int lines: heading ? Math.max(1, headingText.lineCount)
-                                : under
+                                : (under
                                 ? label.lineCount + value.lineCount
-                                : Math.max(1, label.lineCount, value.lineCount)
+                                : Math.max(1, label.lineCount, value.lineCount))
+                                + (figureBelow ? 1 : 0)
                             readonly property Item over: headingText
                             readonly property Item name: label
                             readonly property Item value: value
@@ -2119,7 +2122,8 @@ Floating {
                             // follows its value on the value's line, its
                             // least room counted in whether the drawer's facts
                             // stand beside their names (laying); where it
-                            // still won't fit, it gives way before the value.
+                            // still won't fit, it takes the line under the
+                            // value rather than going (DrawerFigure.place).
                             // It's no line for the cursor, as a picture isn't.
                             readonly property var figure: !heading && known
                                 ? modelData.figure ?? null : null
@@ -2137,22 +2141,32 @@ Floating {
                             // leaves, as Meter's does, up to as wide, and
                             // down to three of them, short of which a share
                             // no longer reads.
-                            readonly property real figureRoom: width - figureFrom
-                            readonly property real figureWide: figure?.shape === "stroke"
-                                ? Math.min(figureInk.advanceWidth, figureRoom)
-                                : figureInk.advanceWidth
-                            readonly property real figureLeast: drawer.figureLeast(modelData)
-                            readonly property bool figureShown: figure !== null
-                                && value.lineCount <= 1 && figureWide <= figureRoom
-                                && figureWide + Theme.space.rung.apart >= figureLeast
+                            readonly property var figureLaid: {
+                                void figureInk.advanceWidth;
+                                const usual = figureInk.advanceWidth;
+                                return Figure.place(figure === null ? null : {
+                                    shape: figure.shape,
+                                    usual,
+                                    least: drawer.figureLeast(modelData)
+                                        - Theme.space.rung.apart
+                                }, value.lineCount, width - figureFrom, valueWide);
+                            }
+                            readonly property bool figureShown: figureLaid.place !== "none"
+                            readonly property bool figureBelow: figureLaid.place === "under"
+                            readonly property real figureWide: figureLaid.wide
+                            readonly property real figureX: figureBelow ? valueFrom : figureFrom
                             // The value's baseline, down from the fact's top.
                             readonly property real valueBase: value.y + value.baselineOffset
+                            // The figure's: the value's, or a line under
+                            // its last where it stands under it.
+                            readonly property real figureBase: valueBase
+                                + (figureBelow ? value.lineCount * drawer.pitch : 0)
                             readonly property real share: Math.max(0, Math.min(1,
                                 Number(figure?.values?.[0] ?? 0) || 0))
 
                             Graph {
-                                x: fact.figureFrom
-                                y: fact.valueBase - baselineOffset
+                                x: fact.figureX
+                                y: fact.figureBase - baselineOffset
                                 reading: fact.figureShown && fact.figure.shape === "spark"
                                     ? fact.figure : null
                                 // In the values' ink, its newest a step
@@ -2165,10 +2179,10 @@ Floating {
                             // on whole pixels, the warning's where it warns.
                             Rectangle {
                                 visible: fact.figureShown && fact.figure.shape === "stroke"
-                                x: Math.round(fact.figureFrom)
+                                x: Math.round(fact.figureX)
                                 width: Math.floor(fact.figureWide)
                                 height: 4 * Theme.border
-                                y: Math.round(fact.valueBase
+                                y: Math.round(fact.figureBase
                                     - figureCapital.tightBoundingRect.height / 2 - height / 2)
                                 color: Theme.edge
 
