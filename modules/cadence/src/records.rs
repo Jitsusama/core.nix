@@ -127,7 +127,16 @@ pub struct Follower {
     /// When the first of the updates failing since the last that ended
     /// well failed, and why the newest did, while none has ended well.
     pub failed: Option<(i64, String)>,
+    /// When an update was refused for a daemon whose restart waits for a
+    /// hold, and why, until an update ends otherwise. The follower asks no
+    /// more after one, so only a person's ask with a hold sent moves the
+    /// machine on.
+    pub held: Option<(i64, String)>,
 }
+
+/// How update-to-main's refusal for a daemon whose restart waits for a hold
+/// begins, as its update.rs says it (`NEEDS_HOLD`).
+pub const NEEDS_HOLD: &str = "switching would change";
 
 /// A line update-to-main writes as it goes, saying the step it reached.
 #[derive(Deserialize)]
@@ -178,10 +187,19 @@ pub fn parse_follower(journal: &str) -> Follower {
             continue;
         };
         match step.step.as_deref() {
-            Some("done" | "unchanged") => follower.failed = None,
+            Some("done" | "unchanged") => {
+                follower.failed = None;
+                follower.held = None;
+            }
             Some("failed") => {
                 let first = follower.failed.as_ref().map_or(at, |(first, _)| *first);
                 follower.failed = Some((first, step.why.clone().unwrap_or_default()));
+                follower.held = None;
+            }
+            Some("refused") => {
+                if let Some(why) = step.why.as_ref().filter(|why| why.starts_with(NEEDS_HOLD)) {
+                    follower.held = Some((at, why.clone()));
+                }
             }
             _ => {}
         }
@@ -438,6 +456,24 @@ mod tests {
         );
         journal.push_str("30.0 h u[1]: {\"step\":\"done\",\"commit\":\"ab\"}\n");
         assert_eq!(parse_follower(&journal).failed, None);
+    }
+
+    #[test]
+    fn a_refusal_for_a_held_daemon_stands_until_an_update_ends() {
+        let refused = |at: u32, why: &str| {
+            format!("{at}.0 h u[1]: {{\"step\":\"refused\",\"why\":\"{why}\"}}\n")
+        };
+        let held = "switching would change jitsusama's sessions-kitty.service, which waits";
+        let mut journal = refused(10, held);
+        assert_eq!(parse_follower(&journal).held, Some((10, held.to_owned())));
+        journal.push_str(&refused(20, "a call is on"));
+        assert_eq!(
+            parse_follower(&journal).held,
+            Some((10, held.to_owned())),
+            "a refusal for being busy leaves the hold standing"
+        );
+        journal.push_str("30.0 h u[1]: {\"step\":\"done\",\"commit\":\"ab\"}\n");
+        assert_eq!(parse_follower(&journal).held, None);
     }
 
     #[test]
