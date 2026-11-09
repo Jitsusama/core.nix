@@ -2017,6 +2017,7 @@ onLinux {
       cp ${./launcher/ForYou.js} launcher/ForYou.js
       cp ${./launcher/ForYouFilter.js} launcher/ForYouFilter.js
       cp ${./launcher/Lately.js} launcher/Lately.js
+      cp ${./launcher/PlaceRow.js} launcher/PlaceRow.js
       cp ${./launcher/Ago.js} launcher/Ago.js
       cp ${./launcher/Here.js} launcher/Here.js
       cp ${./When.js} When.js
