@@ -28,6 +28,9 @@ Beside this file:
 - `craft.md`: the measured facts about his faces and colours on the web, and
   the CSS that does each rule here.
 - `checks.md`: what to measure and look at before anyone sees a site.
+- `gate.js`: the probe that opens the gate before every publish, finding
+  what a page lacks of its parts ([Every Page Has Its
+  Parts](#every-page-has-its-parts)) and what its words get wrong.
 
 The theme itself, ready for a site, is the kit at `~/.local/share/jitsusama/web/`
 ([The Kit](#the-kit)). Never retype a colour, a size or a face.
@@ -39,6 +42,33 @@ The theme itself, ready for a site, is the kit at `~/.local/share/jitsusama/web/
   `modules/theme/web/skill/`.
 - **Say what's unfinished.** Whatever fails a check below is shown as
   unfinished, never as done.
+
+## What Matters, and How Much
+
+Five things are gates, not polish. A page that fails any of them isn't
+published, however good it looks, and none is traded for another or for a
+deadline. A model reading this cold weighs them first, before the craft
+that follows; `checks.md` runs them in this order before every publish.
+
+1. **Accessibility, with WCAG 2.2 AA as the floor, measured.** A page some
+   readers can't use is broken for them, whatever it looks like to the rest:
+   "accessibility cannot be a third class person" (2026-10-22). It's proven
+   by the browser's checks, never by eye.
+2. **The writing.** His voice, plain words for a reader who wasn't there,
+   Title Case or whole sentences for headings, Canadian spelling and no
+   emdash (`writing.md`). A page that isn't understood on its first read has
+   failed at its one job.
+3. **The parts.** The mark, the favicon, a figure for each part that
+   explains, the head's names and the twin
+   ([Every Page Has Its Parts](#every-page-has-its-parts)).
+4. **The ways to move.** omni-ref's key line, Keys list and three-way switch,
+   a keyboard reaching everything, and nothing moving that the reader didn't
+   move.
+5. **The style.** The kit's faces, colour roles and space ladder, never a
+   value retyped, and the layout's measure and edges.
+
+Then the look, judged against [The Spirit](#the-spirit): the gates make a
+page fit to show, and only the look makes it his.
 
 ## The Spirit
 
@@ -182,6 +212,42 @@ many.": "i like how [it] updated itself with different light styles and the
   its own keys after these.
 - **The three-way switch sits in the head**, under that line, Match System
   chosen until the reader picks, and remembered across visits.
+
+## Every Page Has Its Parts
+
+A page built from this skill by a model that drafts plainly kept its type and
+its keys and dropped everything drawn: no figure, no favicon, no mark in its
+head. Set beside the page it followed, "all imagery is gone, no icon, a lot
+missing" (2026-11-09). Words are what a model writes first, and pictures are
+what it leaves out, so the parts are listed here, whoever builds the page,
+and `gate.js` finds each one missing before it's published (`checks.md`).
+
+- **The site's mark, drawn once and shown twice.** A small drawing in the
+  site's own metaphor (a bottle, a crest, a spring), inline in the masthead
+  above the title, and again as `favicon.svg`, so the tab says which site it
+  is. The favicon is the mark's simplest form on a 32 grid at 2 px strokes,
+  since a hairline vanishes at 16 px, in the tint of each look (`craft.md`).
+- **A head that names it wherever it's shared**: a `<title>` that is the
+  pithy title, the lede as `description`, `og:title`, `og:description` and
+  `og:type`, and a `theme-color` per look, so a link in a chat or a tab
+  strip reads as the page does.
+- **A figure for every part that explains.** Each part under a heading holds
+  a drawing or a table that carries its point ([Figures carry the
+  explanation](#a-page-to-read)). A part with nothing to picture, a
+  changelog or a list of links, says so on its section in `data-figure`,
+  as a suppression says why, and every page to read draws at least one.
+- **Ornament at the joins**: a fleuron or rule drawn between parts, a drop
+  cap or a crest at the threshold, in the story's own metaphor. The probe
+  can't judge these; holding the page beside its model can ([Judging
+  Without Him](#judging-without-him)).
+- **The twin for agents**: `index.md` linked as the page's Markdown
+  alternate, and `llms.txt` at the root.
+- **The key line, the Keys list and the switch**, as omni-ref has them
+  (above), with a skip link the first thing focus reaches and one `<h1>`,
+  the title.
+
+An interface keeps every part but the figures, which its rows and charts
+replace.
 
 ## What Holds on Every Site
 
@@ -496,6 +562,8 @@ Each is a verdict on a real site; the rule it gave is above.
   to be clearer. Clear means plain and short together.
 - A page that grows by accretion until it's a hodgepodge, and a changelog that
   takes it over.
+- A page of words alone, with no figure, no favicon and no mark: "all imagery
+  is gone, no icon, a lot missing" (2026-11-09).
 - A section in a different style, and text running over text.
 - Branches that don't look openable; "open" and "close" words on them.
 - Scroll animations that finish off screen, rush past, or snap past the text.
@@ -522,6 +590,11 @@ Each is a verdict on a real site; the rule it gave is above.
 - **Judge the whole page after every fix.** One site swung from crowded to
   cramped in an afternoon because each fix was checked on its own and nobody
   judged the whole page.
+- **Hold it beside its model.** Open the page beside the one it's built like
+  (omni-ref, his best page of its kind, or its own last good version), part
+  by part, and list what that one has that this one lacks: a figure, an
+  ornament, a mark, a fold. Add each, or say why it's gone. A probe finds
+  a part missing; only this finds one done thinly.
 - **Readers before Joel.** Cold readers who weren't there say in a sentence
   what each section means and where they stumbled (`checks.md`). They find
   words; they don't find space or craft, so they never replace looking.

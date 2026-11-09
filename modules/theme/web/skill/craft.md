@@ -392,6 +392,42 @@ const mod = mac ? "⌘" : "Ctrl";
 - **Idle means zero**: no frames, timers or polling while nothing changes; a
   hidden tab (`document.visibilityState`) checks but draws nothing.
 
+## The Head and the Mark
+
+Every page's head names it for a tab, a shared link and an agent, and points
+at its mark:
+
+```html
+<title>World in a bottle.</title>
+<meta name="description" content="The lede, in one or two sentences.">
+<meta property="og:title" content="World in a bottle.">
+<meta property="og:description" content="The lede, in one or two sentences.">
+<meta property="og:type" content="website">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="...">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="...">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="alternate" type="text/markdown" href="index.md">
+```
+
+The mark is drawn once, in the page's way of drawing ornament (strokes in
+`--tint`, never filled), inline at the masthead's top with
+`aria-hidden="true"`, since the title beside it names the page. The favicon
+is the same drawing reduced to its plainest lines on a 32 grid, at 2 px
+strokes, so it holds at 16 px. A favicon can't read the page's properties,
+so it and `theme-color` are the one place a site writes a colour's value:
+each look's `--tint` and `--background`, copied from `kit/theme.css`, and
+copied again when the theme moves.
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    * { fill: none; stroke: #...; stroke-width: 2; stroke-linecap: round; }
+    @media (prefers-color-scheme: dark) { * { stroke: #...; } }
+  </style>
+  <path d="..."/>
+</svg>
+```
+
 ## The Twin for Agents
 
 Beside every page for people: the same facts as Markdown and JSON (`/page.md`,

@@ -1,0 +1,193 @@
+// The first step of the gate every one of Joel's pages passes before it's
+// published (checks.md), asked of the page as published: run whole as one
+// expression in the page (the browser tool's eval, or the console), and it
+// answers with what the page lacks or gets wrong, each in a line saying what
+// to do. An empty answer passes this step; anything else and the page isn't
+// published. It finds the parts every page has, the switch and keys of its
+// head, and the faults a guard on the writing catches. SKILL.md says why
+// each is there; this file only finds them, so a page built by any model,
+// from any first draft, is held to the same bar. It ends without a
+// semicolon, since an eval asked for one expression answers nothing for a
+// statement.
+(async () => {
+  const missing = [];
+  const page = document;
+  const root = page.documentElement;
+  const toRead = root.dataset.kind !== "interface";
+
+  const meta = (selector) =>
+    page.querySelector(selector)?.getAttribute("content")?.trim() ?? "";
+  const loads = async (address, drawing) => {
+    try {
+      const answer = await fetch(address, { cache: "no-store" });
+      const text = await answer.text();
+      return answer.ok && (drawing ? text.includes("<svg") : text.trim() !== "");
+    } catch {
+      return false;
+    }
+  };
+  const named = (element) =>
+    element.textContent
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "")
+      .join(" ");
+
+  // The head: what names the page in a tab, a shared link and a reader.
+  if (page.characterSet !== "UTF-8") {
+    missing.push('<meta charset="utf-8"> first in the head, or every accent reads wrong');
+  }
+  if (root.lang !== "en-CA") {
+    missing.push('lang="en-CA" on <html>, for Canadian English');
+  }
+  if (page.title.trim() === "") {
+    missing.push("a <title>, the page's pithy title");
+  }
+  const icon = page.querySelector('link[rel~="icon"]');
+  if (icon === null || !new URL(icon.href).pathname.endsWith(".svg")) {
+    missing.push('a favicon of the site\'s mark: <link rel="icon" href="favicon.svg">');
+  } else if (!(await loads(icon.href, true))) {
+    missing.push(`a favicon that loads: ${icon.href} doesn't answer with an SVG`);
+  }
+  for (const [selector, part] of [
+    ['meta[name="description"]', '<meta name="description">, the lede'],
+    ['meta[property="og:title"]', '<meta property="og:title">, for a shared link'],
+    ['meta[property="og:description"]', '<meta property="og:description">, for a shared link'],
+    ['meta[property="og:type"]', '<meta property="og:type" content="website">'],
+    ['meta[name="theme-color"]', '<meta name="theme-color">, the ground round the page'],
+  ]) {
+    if (meta(selector) === "") {
+      missing.push(part);
+    }
+  }
+
+  // The masthead: the site's mark, drawn inline (not one of the switch's
+  // icons), one title, the key line, the switch and a skip link first.
+  const head = page.querySelector("header");
+  const marks = [...(head?.querySelectorAll("svg") ?? [])].filter(
+    (drawing) => drawing.closest('[role="radiogroup"]') === null,
+  );
+  if (marks.length === 0) {
+    missing.push("the site's mark, drawn as inline SVG in the first <header>");
+  }
+  const titles = page.querySelectorAll("h1").length;
+  if (titles !== 1) {
+    missing.push(`one <h1>, the page's title: it has ${titles}`);
+  }
+  if (page.querySelector('[role="radiogroup"][aria-label="Theme"]') === null) {
+    missing.push('the switch in the head: role="radiogroup" aria-label="Theme"');
+  }
+  const keysList = [...page.querySelectorAll("h2, h3")].find(
+    (heading) => named(heading) === "Keys",
+  );
+  if (keysList === undefined) {
+    missing.push("a Keys list, headed Keys, that ? opens");
+  }
+  const keyLine = [...page.querySelectorAll("kbd")].find(
+    (key) => key.textContent.trim() === "?" && !keysList?.parentElement?.contains(key),
+  );
+  if (keyLine === undefined) {
+    missing.push("the key line under the head, naming ? for the keys");
+  }
+  const first = page.querySelector("a[href], button, input, select, textarea, [tabindex]");
+  const skipsTo = first?.getAttribute("href")?.startsWith("#") ? first.getAttribute("href") : "";
+  if (skipsTo === "" || page.querySelector(skipsTo) === null) {
+    missing.push("a skip link, the first thing focus reaches, to the page's main part");
+  }
+
+  // The twin for agents.
+  const twin = page.querySelector('link[rel="alternate"][type="text/markdown"]');
+  if (twin === null || !(await loads(twin.href, false))) {
+    missing.push('a Markdown twin that loads: <link rel="alternate" type="text/markdown">');
+  }
+  if (!(await loads(new URL("/llms.txt", location.href).href, false))) {
+    missing.push("an llms.txt at the site's root, saying what it holds and where");
+  }
+
+  // A page to read explains with figures. Each part under a heading holds
+  // a drawing (an inline SVG with role="img", as craft.md draws one) or a
+  // table, or says in data-figure why it has none, as a suppression says
+  // why. A page with no drawing at all, only words and tables, is a page
+  // with its imagery gone.
+  if (toRead) {
+    const pictures = "svg[role='img'], table";
+    const headings = [...page.querySelectorAll("h2")].filter(
+      (heading) => heading.closest("dialog, [role='dialog'], aside") === null,
+    );
+    for (const heading of new Set(headings)) {
+      const part = heading.closest("section") ?? heading.parentElement;
+      const why = part.closest("[data-figure]")?.dataset.figure?.trim() ?? "";
+      if (part.querySelector(pictures) === null && why === "") {
+        missing.push(`a figure for "${named(heading)}", or data-figure="why" on its section`);
+      }
+    }
+    if (page.querySelector("svg[role='img']") === null) {
+      missing.push('a drawing: no SVG with role="img", so nothing is pictured');
+    }
+  }
+
+  // The writing's guard, over every word a reader reads (code, keys and
+  // samples are names, not prose): no emdash or Unicode ellipsis, Canadian
+  // spelling, and nothing private that an agent's work left behind.
+  const prose = [];
+  const walker = page.createTreeWalker(page.body, NodeFilter.SHOW_TEXT);
+  for (let text = walker.nextNode(); text !== null; text = walker.nextNode()) {
+    if (text.parentElement.closest("code, kbd, pre, samp, script, style, template") === null) {
+      prose.push(text.textContent);
+    }
+  }
+  const words = `${page.title} ${meta('meta[name="description"]')} ${prose.join(" ")}`;
+  const faults = [
+    ["\u2014", "an emdash: a comma, colon or full stop instead"],
+    ["\u2026", "a Unicode ellipsis: three full stops, or say it whole"],
+  ];
+  for (const [mark, fault] of faults) {
+    if (words.includes(mark)) {
+      missing.push(fault);
+    }
+  }
+  const american = new RegExp(
+    [
+      "colors?",
+      "colored",
+      "behaviors?",
+      "favorites?",
+      "honors?",
+      "labors?",
+      "neighbors?",
+      "centers?",
+      "centered",
+      "gray",
+      "canceled",
+      "canceling",
+      "traveled",
+      "traveling",
+      "modeling",
+      "labeled",
+      "labeling",
+      "catalogs?",
+      "defense",
+      "theaters?",
+    ]
+      .map((word) => `\\b${word}\\b`)
+      .join("|"),
+    "giu",
+  );
+  const spelled = [...new Set((words.match(american) ?? []).map((word) => word.toLowerCase()))];
+  if (spelled.length > 0) {
+    missing.push(`Canadian spelling for: ${spelled.join(", ")}`);
+  }
+  const traces = [
+    ["QEST-", "a quest's id"],
+    ["PLAN-", "a plan's id"],
+    ["/home/", "a path on a machine"],
+    ["~/.", "a path on a machine"],
+  ];
+  for (const [trace, what] of traces) {
+    if (words.includes(trace)) {
+      missing.push(`nothing private: the page names ${what} ("${trace}")`);
+    }
+  }
+
+  return missing;
+})()
