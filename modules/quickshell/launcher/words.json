@@ -247,6 +247,14 @@
       }
     },
     {
+      "id": "agents:budgets",
+      "in": "agents",
+      "name": "Budgets",
+      "term": "Agents/budget",
+      "verb": "more",
+      "glyph": "agent"
+    },
+    {
       "id": "verb:agents:landed:change",
       "command": "open",
       "in": "agents:landed",
