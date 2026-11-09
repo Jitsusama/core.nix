@@ -1,0 +1,149 @@
+v4l2-relayd: Start the camera again when a client gets no frames
+
+Starting and stopping the camera both run on the relay's one main loop,
+and starting blocks it for as long as the camera takes to set up. When
+the machine is under pressure that took 38 s, against 75 ms when idle,
+and a client that gave up and came back had its stop and start handled
+late. The camera was left running with nothing asking it for frames,
+and nothing noticed until the service was restarted by hand. An error
+on the camera's pipeline leaves a waiting client the same way.
+
+A client that has waited 10 s with no frame now gets the camera's
+pipeline made again, and if that gives none either, the relay ends for
+its service to start it afresh. A main loop blocked for 90 s ends it
+too. Each says so on standard error.
+
+--- a/src/v4l2-relayd.c
++++ b/src/v4l2-relayd.c
+@@ -59,6 +59,24 @@
+ static GstElement *output_pipeline = NULL;
+ static GstElement *splash_pipeline = NULL;
+ 
++/* How long a client may wait with no frame before the input pipeline is
++ * made again, how often that's looked at, and how long the main loop may
++ * stay blocked, as in a camera that won't stop, before the relay ends so
++ * its service starts it afresh. */
++#define STALL_SECONDS 10
++#define STALL_CHECK_SECONDS 2
++#define HUNG_SECONDS 90
++
++/* Whether a client wants frames, when one last asked or the input
++ * pipeline last gave one, whether it has given any since it was started,
++ * how many times it has been made again without a frame, and when the
++ * main loop last ran, all in seconds of the monotonic clock. */
++static gboolean input_wanted = FALSE;
++static gint input_heard = 0;
++static gint input_framed = 0;
++static guint input_remade = 0;
++static gint loop_heard = 0;
++
+ static gboolean    backend_pipeline_bus_call (GstBus      *bus,
+                                               GstMessage  *msg,
+                                               gpointer     data);
+@@ -172,6 +190,12 @@
+ 
+   sample = gst_app_sink_pull_sample (appsink);
+   buffer = gst_sample_get_buffer (sample);
++  if (input_pipeline != NULL &&
++      GST_OBJECT_PARENT (appsink) == GST_OBJECT (input_pipeline)) {
++    g_atomic_int_set (&input_heard,
++                      (gint) (g_get_monotonic_time () / G_USEC_PER_SEC));
++    g_atomic_int_set (&input_framed, 1);
++  }
+   /* gst_app_src_push_buffer wants to take the ownership of the buffer,
+    * so it must hold an additional reference first. */
+   gst_buffer_ref (buffer);
+@@ -273,16 +297,82 @@
+   return splash_pipeline;
+ }
+ 
++static gint
++now_seconds ()
++{
++  return (gint) (g_get_monotonic_time () / G_USEC_PER_SEC);
++}
++
+ static void
+ input_pipeline_enable ()
+ {
++  input_wanted = TRUE;
++  g_atomic_int_set (&input_framed, 0);
+   gst_element_set_state (splash_pipeline_get (), GST_STATE_NULL);
+   gst_element_set_state (input_pipeline_get (), GST_STATE_PLAYING);
++  /* Starting can block for as long as the camera takes to set up, so
++   * the wait for a frame is counted from when it returns. */
++  g_atomic_int_set (&input_heard, now_seconds ());
++}
++
++/* A client that waits with no frame, as when a camera's setup outlasted
++ * a client that gave up and came back, or an error stopped the input
++ * pipeline, gets the input pipeline made again once; if that gives no
++ * frame either, the relay ends, saying so, for its service to start it
++ * afresh. Each says why on standard error. */
++static gboolean
++input_pipeline_watch (gpointer user_data G_GNUC_UNUSED)
++{
++  g_atomic_int_set (&loop_heard, now_seconds ());
++  if (g_atomic_int_get (&input_framed))
++    input_remade = 0;
++  if (!input_wanted ||
++      now_seconds () - g_atomic_int_get (&input_heard) < STALL_SECONDS)
++    return G_SOURCE_CONTINUE;
++  if (input_remade > 0) {
++    g_printerr ("v4l2-relayd: the camera still gives no frames; "
++                "ending so it starts afresh\n");
++    /* The camera's library may hang tearing down, so nothing of it runs
++     * on the way out. */
++    _exit (1);
++  }
++  input_remade++;
++  g_printerr ("v4l2-relayd: a client waited %d s with no frame from the "
++              "camera; starting it again\n", STALL_SECONDS);
++  if (input_pipeline != NULL) {
++    gst_element_set_state (input_pipeline, GST_STATE_NULL);
++    if (input_bus_watch_id > 0)
++      g_source_remove (input_bus_watch_id);
++    input_bus_watch_id = 0;
++    gst_object_unref (input_pipeline);
++    input_pipeline = NULL;
++  }
++  input_pipeline_enable ();
++  return G_SOURCE_CONTINUE;
++}
++
++/* The main loop blocked past any camera's setup, as in a camera that
++ * won't stop, so nothing it runs can recover: end, for the service to
++ * start the relay afresh. */
++static gpointer
++loop_watch (gpointer data G_GNUC_UNUSED)
++{
++  for (;;) {
++    g_usleep (STALL_CHECK_SECONDS * G_USEC_PER_SEC);
++    if (now_seconds () - g_atomic_int_get (&loop_heard) > HUNG_SECONDS) {
++      g_printerr ("v4l2-relayd: stuck for %d s waiting on the camera; "
++                  "ending so it starts afresh\n", HUNG_SECONDS);
++      _exit (1);
++    }
++  }
++  return NULL;
+ }
+ 
+ static void
+ input_pipeline_disable ()
+ {
++  input_wanted = FALSE;
++  input_remade = 0;
+   if (input_pipeline != NULL)
+     gst_element_set_state (input_pipeline, GST_STATE_NULL);
+   if (input_pipeline != NULL)
+@@ -460,6 +550,10 @@
+   output_pipeline = output_pipeline_create ();
+   gst_element_set_state (output_pipeline, GST_STATE_PLAYING);
+ 
++  g_atomic_int_set (&loop_heard, now_seconds ());
++  g_timeout_add_seconds (STALL_CHECK_SECONDS, input_pipeline_watch, NULL);
++  g_thread_unref (g_thread_new ("loop-watch", loop_watch, NULL));
++
+   GST_INFO ("Running...");
+   g_main_loop_run (loop);
+ 
