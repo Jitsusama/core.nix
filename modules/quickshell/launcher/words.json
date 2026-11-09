@@ -6112,7 +6112,8 @@
     {
       "id": "on:lag:swap",
       "in": "on",
-      "name": "Swap"
+      "name": "Swap",
+      "term": "Machine/swap"
     },
     {
       "id": "on:sharing",
@@ -6156,7 +6157,7 @@
     {
       "id": "on:recording:showing",
       "in": "on",
-      "name": "Showing"
+      "name": "Records"
     },
     {
       "id": "on:quiet",
@@ -7283,7 +7284,7 @@
     {
       "id": "capture:camera-picture",
       "in": "capture",
-      "name": "A Picture From the Camera"
+      "name": "A Photo From the Camera"
     },
     {
       "id": "capture:camera-video",

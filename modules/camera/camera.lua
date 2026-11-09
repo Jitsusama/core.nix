@@ -1,12 +1,12 @@
 -- The camera's viewfinder, inside mpv (home.nix): the picture mirrored, as a
 -- mirror shows Joel to himself, and a panel below saying what the keys do.
--- Return takes a picture, or starts a video and then stops it, and either
+-- Return takes a photo, or starts a video and then stops it, and either
 -- way the viewfinder goes once it's done, as a screenshot's would; Tab
 -- changes which; ZZ closes it, finishing a video first. Escape and q close
 -- nothing, as in all of Joel's programs. Nothing else is bound, so no
 -- stray key seeks or pauses a camera.
 --
--- A picture is the frame on screen, turned back the way others see it, as
+-- A photo is the frame on screen, turned back the way others see it, as
 -- the camera gives it, and is saved and copied. A video is recorded from the
 -- camera with the default microphone by a program of its own, which outlives
 -- this window, so closing it mid-video loses nothing. A camera gives its
@@ -177,7 +177,7 @@ local function draw()
       or (mode == 'picture' and options.picture or options.video)
     local timing = recording and not recording.stopping
     local word = recording and (recording.stopping and 'Saving' or elapsed())
-      or (mode == 'picture' and 'Picture' or 'Video')
+      or (mode == 'picture' and 'Photo' or 'Video')
     left = string.format(
       '{%s\\1c%s}%s  {%s\\1c%s}%s',
       marks,
@@ -326,7 +326,7 @@ local function save(frame, file, tries)
     table.concat({
       'failed() {',
       '    rm -f "$1"',
-      '    notify-send --app-name=Camera "The picture could not be saved" "$2"',
+      '    notify-send --app-name=Camera "The photo could not be saved" "$2"',
       '    exit 1',
       '}',
       'folder=$(dirname "$2")',
@@ -342,7 +342,7 @@ local function save(frame, file, tries)
       '    { rm -f "$file"; failed "$1" "$(printf %s "$said" | tail -n 1)"; }',
       'rm -f "$1"',
       'wl-copy --type image/jpeg < "$file"',
-      'notify-send --app-name=Camera --transient "Picture copied" "${file#"$HOME"/}"',
+      'notify-send --app-name=Camera --transient "Photo copied" "${file#"$HOME"/}"',
     }, '\n'),
     frame,
     file
