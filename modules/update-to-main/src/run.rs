@@ -438,11 +438,47 @@ fn is_log(line: &str) -> bool {
     })
 }
 
-/// The last lines of what a command said, blank ones left out.
+/// The lines of what a command said that tell why it failed, blank ones
+/// left out: from Nix's first error that is a piece's own, or else the
+/// last lines.
 pub fn tail(said: &str) -> Vec<String> {
     let lines: Vec<&str> = said.lines().filter(|l| !l.trim().is_empty()).collect();
-    let from = lines.len().saturating_sub(TAIL);
-    lines[from..].iter().map(|l| (*l).to_owned()).collect()
+    let from = first_cause(&lines).unwrap_or_else(|| lines.len().saturating_sub(TAIL));
+    lines[from..]
+        .iter()
+        .take(TAIL)
+        .map(|l| (*l).to_owned())
+        .collect()
+}
+
+/// Where the first error that isn't only another piece's failing starts.
+/// Nix gives each error as an `error:` line and the indented lines under
+/// it, the piece that failed first and then every piece waiting on it, so
+/// on 9 November a system's last 20 lines named five waiting pieces and
+/// never the one that failed, for ten updates in a row.
+fn first_cause(lines: &[&str]) -> Option<usize> {
+    lines
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| line.starts_with("error:"))
+        .map(|(start, _)| start)
+        .find(|&start| {
+            let under = lines[start + 1..]
+                .iter()
+                .take_while(|line| line.starts_with(char::is_whitespace));
+            !std::iter::once(&lines[start])
+                .chain(under)
+                .copied()
+                .any(is_waiting)
+        })
+}
+
+/// Whether a line of a Nix error says its piece failed only because one
+/// it needs did, in the words of Nix before 2.29 and after.
+fn is_waiting(line: &str) -> bool {
+    let line = line.trim();
+    (line.starts_with("Reason:") && line.contains(" failed") && line.contains("dependenc"))
+        || (line.starts_with("error:") && line.contains("dependencies of derivation"))
 }
 
 #[cfg(test)]
@@ -562,5 +598,50 @@ mod tests {
         assert_eq!(kept.len(), TAIL);
         assert_eq!(kept.first().map(String::as_str), Some("11"));
         assert_eq!(kept.last().map(String::as_str), Some("30"));
+    }
+
+    /// One of Nix's errors for a piece, its reason and its output.
+    fn cannot_build(piece: &str, reason: &str) -> String {
+        format!(
+            "error: Cannot build '/nix/store/{piece}.drv'.\n       Reason: {reason}.\n       \
+             Output paths:\n         /nix/store/{piece}\n"
+        )
+    }
+
+    #[test]
+    fn a_tail_starts_at_the_piece_that_failed_not_those_waiting_on_it() {
+        let mut said = "building the system\n".to_owned();
+        said.push_str(&cannot_build("guard", "builder failed with exit code 101"));
+        said.push_str("       Last 25 log lines:\n       > test a_guard_holds ... FAILED\n");
+        for piece in ["guard-user", "home-path", "system-path", "unit", "system"] {
+            said.push_str(&cannot_build(piece, "1 dependency failed"));
+        }
+        let kept = tail(&said);
+        assert_eq!(
+            kept.first().map(String::as_str),
+            Some("error: Cannot build '/nix/store/guard.drv'.")
+        );
+        assert!(kept.iter().any(|l| l.contains("a_guard_holds ... FAILED")));
+        assert_eq!(kept.len(), TAIL);
+    }
+
+    #[test]
+    fn a_tail_starts_at_an_older_nix_builder_failing() {
+        let said = "error: builder for '/nix/store/guard.drv' failed with exit code 1;\n       \
+                    last 25 log lines:\n       > it broke\n\
+                    error: 1 dependencies of derivation '/nix/store/system.drv' failed to build\n";
+        let kept = tail(said);
+        assert_eq!(kept.len(), 4);
+        assert!(kept[0].starts_with("error: builder for '/nix/store/guard.drv'"));
+    }
+
+    #[test]
+    fn a_tail_of_only_waiting_pieces_keeps_the_last_lines() {
+        let said = (0..8).fold(String::new(), |said, n| {
+            said + &cannot_build(&format!("piece{n}"), "1 dependency failed")
+        });
+        let kept = tail(&said);
+        assert_eq!(kept.len(), TAIL);
+        assert_eq!(kept.last().map(String::as_str), Some("/nix/store/piece7"));
     }
 }
