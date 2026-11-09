@@ -97,9 +97,10 @@
     # A PIN prompt nobody answered also held up every request to the agent, for
     # every key, since the PIN was asked for inside locks every signature
     # shares: one program using a key whose PIN wasn't typed this session froze
-    # every SSH login and signed commit for 21 minutes one night. The third
-    # patch asks for it outside them, stops a prompt nobody answers after a
-    # minute, and refuses that key for ten minutes without another, naming it.
+    # every SSH login and signed commit for 21 minutes one night, and a
+    # confirmation does the same. The third patch asks for both outside them,
+    # stops a prompt nobody answers after a minute, and refuses that key for ten
+    # minutes without another, naming it.
     #
     # Patched, it builds here rather than coming from the cache, and four of its
     # tests check which error the kernel's keyring gives for a missing key. That

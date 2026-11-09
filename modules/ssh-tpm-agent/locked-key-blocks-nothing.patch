@@ -11,16 +11,25 @@ Ask for the PIN, and the confirmation, before taking either lock, and hand
 the signer what came back. The agent's lock is held only to find the key.
 
 Stop an askpass nobody answers after a minute, with a TERM it can take
-its prompt down on, and count it as unanswered. Ask for one key's PIN one
-prompt at a time, and refuse a key whose prompt went unanswered for ten
-minutes without another, saying which key and until when, so a program
-trying it all night puts up one prompt rather than one a minute. The
-journal names the key each prompt is for.
+its prompt down on, and count it as unanswered. Ask for one key's PIN or
+confirmation one prompt at a time, and refuse a key whose prompt, either
+kind, went unanswered for ten minutes without another, saying which key
+and until when, so a program trying it all night puts up one prompt
+rather than one a minute. The journal names the key each prompt is for,
+and for a confirmation the process asking.
 
 diff -ruN a/agent/agent.go b/agent/agent.go
 --- a/agent/agent.go	2026-11-09 00:35:25.888004806 -0500
-+++ b/agent/agent.go	2026-11-09 00:50:01.121051579 -0500
-@@ -167,15 +167,67 @@
++++ b/agent/agent.go	2026-11-09 03:24:46.896573328 -0500
+@@ -43,6 +43,7 @@
+ 	tpm      func() transport.TPMCloser
+ 	op       func() ([]byte, error)
+ 	pin      func(key.SSHTPMKeys) ([]byte, error)
++	confirms func(key.SSHTPMKeys, func() error) error
+ 	listener *net.UnixListener
+ 	quit     chan any
+ 	wg       sync.WaitGroup
+@@ -167,15 +168,74 @@
  	return a.signWithFlags(key, data, flags, "")
  }
  
@@ -40,6 +49,7 @@ diff -ruN a/agent/agent.go b/agent/agent.go
 +	// only the request that needs it, never the other keys, a listing
 +	// or an added key.
 +	a.mu.Lock()
++	gate := a.confirms
 +	var found, confirming key.SSHTPMKeys
 +	for _, k := range a.keys {
 +		if !bytes.Equal(unwrappedKey(k), wantKey) {
@@ -61,7 +71,13 @@ diff -ruN a/agent/agent.go b/agent/agent.go
 +		// shares, so it is asked for here, before any lock, and the
 +		// signer is handed what came back.
 +		if confirming != nil {
-+			if err := confirmKeyUse(confirming, peer); err != nil {
++			confirm := func() error { return confirmKeyUse(confirming, peer) }
++			if gate != nil {
++				err = gate(confirming, confirm)
++			} else {
++				err = confirm()
++			}
++			if err != nil {
 +				return nil, err
 +			}
 +		}
@@ -92,7 +108,7 @@ diff -ruN a/agent/agent.go b/agent/agent.go
  	var wantKey []byte
  	wantKey = key.Marshal()
  	alg := key.Type()
-@@ -184,7 +236,7 @@
+@@ -184,7 +244,7 @@
  	if strings.Contains(alg, "cert") {
  		parsedCert, err := ssh.ParsePublicKey(wantKey)
  		if err != nil {
@@ -101,7 +117,7 @@ diff -ruN a/agent/agent.go b/agent/agent.go
  		}
  		cert, ok := parsedCert.(*ssh.Certificate)
  		if ok {
-@@ -199,17 +251,23 @@
+@@ -199,17 +259,23 @@
  	case alg == ssh.KeyAlgoRSA && flags&agent.SignatureFlagRsaSha512 != 0:
  		alg = ssh.KeyAlgoRSASHA512
  	}
@@ -132,7 +148,7 @@ diff -ruN a/agent/agent.go b/agent/agent.go
  	slog.Debug("trying to sign as proxy...")
  	for _, agent := range a.agents {
  		signers, err := agent.Signers()
-@@ -233,42 +291,23 @@
+@@ -233,42 +299,30 @@
  	return a.SignWithFlags(key, data, 0)
  }
  
@@ -170,8 +186,6 @@ diff -ruN a/agent/agent.go b/agent/agent.go
 -		}
 -		if !ok {
 -			return ErrUserDeniedConfirm
--		}
--		return nil
 +// confirmKeyUse prompts the user via SSH_ASKPASS for a key added with the
 +// confirm constraint (ssh-tpm-add -c). Mirrors ssh-agent(1) behaviour.
 +// peer (from peerChain) is appended to the prompt when non-empty. It is
@@ -182,9 +196,17 @@ diff -ruN a/agent/agent.go b/agent/agent.go
 +	if peer != "" {
 +		prompt += "\nRequested by " + peer
 +	}
++	slog.Info("asking to confirm a key's use", slog.String("key", k.GetDescription()),
++		slog.String("fp", k.Fingerprint()), slog.String("peer", peer))
 +	ok, err := askpass.AskPermission(prompt)
 +	if err != nil {
 +		slog.Info("askpass confirmation failed", slog.String("error", err.Error()))
++		// A gate counting unanswered prompts needs to tell silence
++		// from a refusal.
++		if errors.Is(err, askpass.ErrNoAnswer) {
++			return fmt.Errorf("%w: %w", ErrUserDeniedConfirm, err)
+ 		}
+-		return nil
 +		return ErrUserDeniedConfirm
 +	}
 +	if !ok {
@@ -192,13 +214,27 @@ diff -ruN a/agent/agent.go b/agent/agent.go
  	}
  	return nil
  }
+@@ -541,3 +595,12 @@
+ 	go a.serve()
+ 	return a
+ }
++
++// GateConfirmations has every confirmation the agent asks for go through
++// gate, which is handed the key and the prompt to run, so it can ask one
++// prompt per key at a time or refuse a key without asking.
++func (a *Agent) GateConfirmations(gate func(k key.SSHTPMKeys, confirm func() error) error) {
++	a.mu.Lock()
++	defer a.mu.Unlock()
++	a.confirms = gate
++}
 diff -ruN a/agent/locked_key_test.go b/agent/locked_key_test.go
 --- a/agent/locked_key_test.go	1969-12-31 19:00:00.000000000 -0500
-+++ b/agent/locked_key_test.go	2026-11-09 00:47:31.041186188 -0500
-@@ -0,0 +1,96 @@
++++ b/agent/locked_key_test.go	2026-11-09 03:26:37.723224871 -0500
+@@ -0,0 +1,165 @@
 +package agent_test
 +
 +import (
++	"errors"
 +	"net"
 +	"path"
 +	"testing"
@@ -217,23 +253,93 @@ diff -ruN a/agent/locked_key_test.go b/agent/locked_key_test.go
 +// A key whose PIN prompt nobody answers holds up only the request that
 +// needs it: the other keys still sign, and the keys can still be listed.
 +func TestAPromptHoldsUpOnlyItsOwnKey(t *testing.T) {
++	tpm := openSimulator(t)
++	locked := makeKey(t, tpm, "1234", "locked")
++	open := makeKey(t, tpm, "", "open")
++
++	asked := make(chan struct{})
++	answer := make(chan struct{})
++	ag := startAgent(t, tpm,
++		// The PIN prompt: it waits until the test answers it.
++		func(k key.SSHTPMKeys) ([]byte, error) {
++			close(asked)
++			<-answer
++			return []byte("1234"), nil
++		},
++		locked, open,
++	)
++
++	waiting := signInBackground(ag, locked, "waits for its PIN")
++	within(t, asked, "signing with the key that has a PIN never asked for it")
++	listAndSign(t, ag, open, "listing and signing with another key waited on the unanswered PIN prompt")
++
++	close(answer)
++	if err := <-waiting; err != nil {
++		t.Fatalf("the key signed with the PIN it was given: %v", err)
++	}
++}
++
++// A key confirmed on every use whose confirmation nobody answers holds up
++// only its own request too, and its gate's refusal is what the asker gets.
++func TestAConfirmationHoldsUpOnlyItsOwnKey(t *testing.T) {
++	tpm := openSimulator(t)
++	confirmed := makeKey(t, tpm, "", "confirmed")
++	confirmed.ConfirmBeforeUse = true
++	open := makeKey(t, tpm, "", "open")
++
++	asked := make(chan string, 1)
++	answer := make(chan struct{})
++	refusal := errors.New("refused by the gate")
++	ag := startAgent(t, tpm,
++		func(k key.SSHTPMKeys) ([]byte, error) { return nil, nil },
++		confirmed, open,
++	)
++	// The gate stands in for the confirmation prompt: it waits until the
++	// test answers, then refuses.
++	ag.GateConfirmations(func(k key.SSHTPMKeys, confirm func() error) error {
++		asked <- k.GetDescription()
++		<-answer
++		return refusal
++	})
++
++	waiting := signInBackground(ag, confirmed, "waits for its confirmation")
++	select {
++	case description := <-asked:
++		if description != "confirmed" {
++			t.Fatalf("the gate was asked about %q, not the key confirmed on use", description)
++		}
++	case <-time.After(10 * time.Second):
++		t.Fatal("signing with the key confirmed on use never asked the gate")
++	}
++	listAndSign(t, ag, open, "listing and signing with another key waited on the unanswered confirmation")
++
++	close(answer)
++	if err := <-waiting; !errors.Is(err, refusal) {
++		t.Fatalf("the refused key's signature ended with %v, not the gate's refusal", err)
++	}
++}
++
++func openSimulator(t *testing.T) transport.TPMCloser {
++	t.Helper()
 +	tpm, err := simulator.OpenSimulator()
 +	if err != nil {
 +		t.Fatal(err)
 +	}
-+	defer tpm.Close()
++	t.Cleanup(func() { tpm.Close() })
++	return tpm
++}
 +
-+	locked, err := keytest.MkKey(t, tpm, tpm2.TPMAlgECC, 256, []byte("1234"), "locked")
++func makeKey(t *testing.T, tpm transport.TPMCloser, pin, description string) *key.SSHTPMKey {
++	t.Helper()
++	k, err := keytest.MkKey(t, tpm, tpm2.TPMAlgECC, 256, []byte(pin), description)
 +	if err != nil {
-+		t.Fatalf("making the key with a PIN: %v", err)
++		t.Fatalf("making the %s key: %v", description, err)
 +	}
-+	open, err := keytest.MkKey(t, tpm, tpm2.TPMAlgECC, 256, []byte(""), "open")
-+	if err != nil {
-+		t.Fatalf("making the key without one: %v", err)
-+	}
++	return k
++}
 +
-+	asked := make(chan struct{})
-+	answer := make(chan struct{})
++func startAgent(t *testing.T, tpm transport.TPMCloser, pin func(key.SSHTPMKeys) ([]byte, error), keys ...key.SSHTPMKeys) *agent.Agent {
++	t.Helper()
 +	unixList, err := net.ListenUnix("unix", &net.UnixAddr{Net: "unix", Name: path.Join(t.TempDir(), "socket")})
 +	if err != nil {
 +		t.Fatalf("failed listening: %v", err)
@@ -243,53 +349,51 @@ diff -ruN a/agent/locked_key_test.go b/agent/locked_key_test.go
 +		func() *keyring.ThreadKeyring { return &keyring.ThreadKeyring{} },
 +		func() transport.TPMCloser { return tpm },
 +		func() ([]byte, error) { return []byte(""), nil },
-+		// The PIN prompt: it waits until the test answers it.
-+		func(k key.SSHTPMKeys) ([]byte, error) {
-+			close(asked)
-+			<-answer
-+			return []byte("1234"), nil
-+		},
-+		locked, open,
++		pin,
++		keys...,
 +	)
-+	defer ag.Stop()
++	t.Cleanup(ag.Stop)
++	return ag
++}
 +
-+	waiting := make(chan error, 1)
++func signInBackground(ag *agent.Agent, k *key.SSHTPMKey, data string) <-chan error {
++	done := make(chan error, 1)
 +	go func() {
-+		_, err := ag.Sign(*locked.PublicKey, []byte("waits for its PIN"))
-+		waiting <- err
++		_, err := ag.Sign(*k.PublicKey, []byte(data))
++		done <- err
 +	}()
-+	select {
-+	case <-asked:
-+	case <-time.After(10 * time.Second):
-+		t.Fatal("signing with the key that has a PIN never asked for it")
-+	}
++	return done
++}
 +
++func within(t *testing.T, happened <-chan struct{}, failure string) {
++	t.Helper()
++	select {
++	case <-happened:
++	case <-time.After(10 * time.Second):
++		t.Fatal(failure)
++	}
++}
++
++// listAndSign lists the agent's keys and signs with k, failing with failure
++// when that doesn't finish within ten seconds.
++func listAndSign(t *testing.T, ag *agent.Agent, k *key.SSHTPMKey, failure string) {
++	t.Helper()
 +	done := make(chan error, 1)
 +	go func() {
 +		if _, err := ag.List(); err != nil {
 +			done <- err
 +			return
 +		}
-+		_, err := ag.Sign(*open.PublicKey, []byte("needs no PIN"))
++		_, err := ag.Sign(*k.PublicKey, []byte("needs nothing asked"))
 +		done <- err
 +	}()
 +	select {
 +	case err := <-done:
 +		if err != nil {
-+			t.Fatalf("the key with no PIN failed to sign while another waited: %v", err)
++			t.Fatalf("the key needing nothing asked failed to sign while another waited: %v", err)
 +		}
 +	case <-time.After(10 * time.Second):
-+		t.Fatal("listing and signing with another key waited on the unanswered PIN prompt")
-+	}
-+
-+	close(answer)
-+	select {
-+	case err := <-waiting:
-+		if err != nil {
-+			t.Fatalf("the key signed with the PIN it was given: %v", err)
-+		}
-+	case <-time.After(10 * time.Second):
-+		t.Fatal("the answered prompt's signature never finished")
++		t.Fatal(failure)
 +	}
 +}
 diff -ruN a/askpass/askpass.go b/askpass/askpass.go
@@ -410,7 +514,7 @@ diff -ruN a/askpass/timeout_test.go b/askpass/timeout_test.go
 +}
 diff -ruN a/cmd/ssh-tpm-agent/main.go b/cmd/ssh-tpm-agent/main.go
 --- a/cmd/ssh-tpm-agent/main.go	2026-11-09 00:35:25.895004846 -0500
-+++ b/cmd/ssh-tpm-agent/main.go	2026-11-09 00:49:12.104768942 -0500
++++ b/cmd/ssh-tpm-agent/main.go	2026-11-09 03:25:32.801843202 -0500
 @@ -13,6 +13,7 @@
  	"path/filepath"
  	"slices"
@@ -496,10 +600,27 @@ diff -ruN a/cmd/ssh-tpm-agent/main.go b/cmd/ssh-tpm-agent/main.go
  		},
  
  		// Keys, in place before the agent serves the connection that
+@@ -288,6 +299,16 @@
+ 		keys...,
+ 	)
+ 
++	// Confirmations go through the same gate as PINs: one prompt per key
++	// at a time, and a key whose prompt went unanswered refused without
++	// another for a while, whichever prompt it was.
++	agent.GateConfirmations(func(k key.SSHTPMKeys, confirm func() error) error {
++		_, err := pinPrompts.ask(k.Fingerprint(), k.GetDescription(), func() ([]byte, error) {
++			return nil, confirm()
++		})
++		return err
++	})
++
+ 	// Signal handling
+ 	c := make(chan os.Signal, 1)
+ 	signal.Notify(c, syscall.SIGHUP)
 diff -ruN a/cmd/ssh-tpm-agent/prompts.go b/cmd/ssh-tpm-agent/prompts.go
 --- a/cmd/ssh-tpm-agent/prompts.go	1969-12-31 19:00:00.000000000 -0500
-+++ b/cmd/ssh-tpm-agent/prompts.go	2026-11-09 00:45:31.523497025 -0500
-@@ -0,0 +1,74 @@
++++ b/cmd/ssh-tpm-agent/prompts.go	2026-11-09 03:25:32.801843202 -0500
+@@ -0,0 +1,75 @@
 +package main
 +
 +import (
@@ -512,8 +633,9 @@ diff -ruN a/cmd/ssh-tpm-agent/prompts.go b/cmd/ssh-tpm-agent/prompts.go
 +	"github.com/foxboron/ssh-tpm-agent/askpass"
 +)
 +
-+// promptTimeout is how long a PIN prompt waits for an answer. Typing a PIN
-+// takes seconds; a prompt still up after a minute has nobody in front of it.
++// promptTimeout is how long a PIN or confirmation prompt waits for an
++// answer. Answering takes seconds; a prompt still up after a minute has
++// nobody in front of it.
 +const promptTimeout = time.Minute
 +
 +// quietAfterUnanswered is how long a key whose prompt went unanswered is
@@ -524,8 +646,8 @@ diff -ruN a/cmd/ssh-tpm-agent/prompts.go b/cmd/ssh-tpm-agent/prompts.go
 +// errNotAsked is a refusal made without a prompt.
 +var errNotAsked = errors.New("not asked")
 +
-+// prompts asks for each key's PIN one prompt at a time, and remembers when a
-+// key's prompt went unanswered.
++// prompts asks for each key's PIN or confirmation one prompt at a time, and
++// remembers when a key's prompt went unanswered.
 +type prompts struct {
 +	mu    sync.Mutex
 +	keys  map[string]*keyPrompts
@@ -559,7 +681,7 @@ diff -ruN a/cmd/ssh-tpm-agent/prompts.go b/cmd/ssh-tpm-agent/prompts.go
 +	k.mu.Lock()
 +	defer k.mu.Unlock()
 +	if !k.unanswered.IsZero() && p.now().Sub(k.unanswered) < p.quiet {
-+		err := fmt.Errorf("%w: nobody answered the PIN prompt for %s at %s, so it isn't asked for again until %s",
++		err := fmt.Errorf("%w: nobody answered a prompt for %s at %s, so it isn't asked for again until %s",
 +			errNotAsked, description, k.unanswered.Format("15:04"), k.unanswered.Add(p.quiet).Format("15:04"))
 +		slog.Warn("refused a key without a prompt", slog.String("key", description), slog.String("error", err.Error()))
 +		return nil, err
@@ -568,7 +690,7 @@ diff -ruN a/cmd/ssh-tpm-agent/prompts.go b/cmd/ssh-tpm-agent/prompts.go
 +	switch {
 +	case errors.Is(err, askpass.ErrNoAnswer):
 +		k.unanswered = p.now()
-+		slog.Warn("nobody answered a key's PIN prompt", slog.String("key", description), slog.String("error", err.Error()))
++		slog.Warn("nobody answered a key's prompt", slog.String("key", description), slog.String("error", err.Error()))
 +	case err == nil:
 +		k.unanswered = time.Time{}
 +	}
@@ -576,7 +698,7 @@ diff -ruN a/cmd/ssh-tpm-agent/prompts.go b/cmd/ssh-tpm-agent/prompts.go
 +}
 diff -ruN a/cmd/ssh-tpm-agent/prompts_test.go b/cmd/ssh-tpm-agent/prompts_test.go
 --- a/cmd/ssh-tpm-agent/prompts_test.go	1969-12-31 19:00:00.000000000 -0500
-+++ b/cmd/ssh-tpm-agent/prompts_test.go	2026-11-09 00:47:31.041186188 -0500
++++ b/cmd/ssh-tpm-agent/prompts_test.go	2026-11-09 03:25:32.804843219 -0500
 @@ -0,0 +1,125 @@
 +package main
 +
@@ -627,7 +749,7 @@ diff -ruN a/cmd/ssh-tpm-agent/prompts_test.go b/cmd/ssh-tpm-agent/prompts_test.g
 +	if !errors.Is(err, errNotAsked) {
 +		t.Fatalf("the refusal wasn't one made without a prompt: %v", err)
 +	}
-+	want := "nobody answered the PIN prompt for gce (tpm) at 23:30, so it isn't asked for again until 23:40"
++	want := "nobody answered a prompt for gce (tpm) at 23:30, so it isn't asked for again until 23:40"
 +	if got := err.Error(); got != "not asked: "+want {
 +		t.Fatalf("the refusal says %q, not which key and until when (%q)", got, want)
 +	}
