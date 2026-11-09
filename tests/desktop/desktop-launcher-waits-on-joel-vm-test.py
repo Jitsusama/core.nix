@@ -224,9 +224,11 @@ def test_super_tab_finds_a_pi_window_by_its_work_and_puts_one_waiting_next(
         "said": "Which way?",
     }
     # The shell hears it from the node, a moment after pi writes it, so the
-    # windows are opened once it has: as its For You notice shows.
-    with desktop.told("shows card A quest of its own & whole needs you"):
-        desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
+    # windows are opened once it has: as the margin hangs pi's mark, since a
+    # want posts no notice of its own.
+    since = desktop.mark()
+    desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
+    desktop.reported("holds margin ", lambda rest: "agent" in rest.split(), since)
     tabbed()
     desktop.launcher_until(lambda shown: shown["selected"]["name"] == "Notes for Tuesday")
     desktop.next_row()
