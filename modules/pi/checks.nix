@@ -377,10 +377,27 @@
         && !(lib.elem "pi-claude" (names onClaude))
         && onClaude.jitsusama.pi.ask.plan == "claude"
         && !(onPi.home.file ? ".pi/agent/extensions/claude-code")
-        && !(onPi.jitsusama.pi.settings ? defaultProvider)
+        && onPi.jitsusama.pi.settings.defaultProvider != "claude-code"
         && lib.elem "pi-claude" (names onPi)
         && onPi.jitsusama.pi.ask.plan == "pi"
       );
+
+  # Off the Claude plan pi starts on Opus 5.5 at high thinking, on Linux and
+  # on a Mac: the settings every switch writes into pi's file say so.
+  pi-starts-on-opus =
+    let
+      starts =
+        home:
+        let
+          inherit (home.jitsusama.pi) settings;
+        in
+        settings.defaultProvider == "anthropic"
+        && settings.defaultModel == "claude-opus-5-5"
+        && settings.defaultThinkingLevel == "high";
+    in
+    holds "pi-starts-on-opus"
+      "pi off the Claude plan doesn't start on anthropic/claude-opus-5-5 at high thinking."
+      (starts (account workstation) && starts (account macWorkstation));
 
   # pi tells mycelium what its sessions start with in each realm: plain pi
   # at home, pi-claude in the plan's realm, plain pi alone on a machine on
