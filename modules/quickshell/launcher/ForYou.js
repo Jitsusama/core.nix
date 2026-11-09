@@ -47,6 +47,14 @@ function glyphOf(kind) {
     return GLYPHS[kind] ?? "path";
 }
 
+// The theme's name for For You's own mark, an in-tray, by how many it
+// holds now and later: emptied only when it holds neither. Never the
+// person with a clock its to-dos wear, since a place and a kind of thing
+// in it are two meanings (VKCF3Z, 2026-11-08).
+function markOf(now, later) {
+    return now > 0 || later > 0 ? "forYou" : "forYouEmpty";
+}
+
 // A time as milliseconds, from a number or an ISO time, or null.
 function when(at) {
     if (typeof at === "number") {

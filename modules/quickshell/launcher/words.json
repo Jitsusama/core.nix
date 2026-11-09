@@ -6490,7 +6490,7 @@
       "name": "For You",
       "term": "Desktop/For You",
       "verb": "go to",
-      "glyph": "waitsOnJoel",
+      "glyph": "forYou",
       "empty": "Nothing needs you.",
       "tells": {
         "known": "Known done {how}.",
