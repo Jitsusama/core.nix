@@ -1450,7 +1450,8 @@ def a_programs_plate_lies_on_the_lines(desktop: Desktop, scale: str, keeping: li
     desktop.launcher_until(plated)
     drawer = plate_shown(desktop, scale)
     eyebrow = str(drawer["eyebrow"])
-    assert eyebrow.startswith("on ") and eyebrow.endswith(" \u00b7 stream"), f"at {scale}: {drawer}"
+    assert eyebrow.startswith("on "), f"at {scale} it doesn't say where it plays: {drawer}"
+    assert eyebrow.endswith(" \u00b7 stream"), f"at {scale} it doesn't say it's a stream: {drawer}"
     kept = [fact for fact in drawer["facts"] if fact in keeping]
     assert kept == keeping, f"at {scale} pw-cat's timing is out of order: {drawer}"
     assert "Graph ID" in drawer["facts"], f"at {scale} pw-cat isn't identified: {drawer}"

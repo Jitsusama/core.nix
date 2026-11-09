@@ -286,7 +286,7 @@ ShellRoot {
             errors: 0 } };
         const one = sound.programPlate(speakers,
             { name: "Firefox", streams: [stream(90, "Big Buck Bunny - YouTube", 0.8)] });
-        expect("a program's one stream", one.eyebrow === "on Built-In Speakers \u00b7 stream"
+        expect("a program's one stream", one.eyebrow === "on alsa_output.pci.speakers \u00b7 stream"
             && one.eyebrowNames === true && one.title === "Firefox"
             && said(one) === "Stream=Big Buck Bunny - YouTube; Dropouts=none; "
             + "Load=9.80% of each cycle; Cycle=1,024 frames \u00b7 21.3 ms; "
