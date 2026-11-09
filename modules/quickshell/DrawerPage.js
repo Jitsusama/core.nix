@@ -348,9 +348,6 @@ function moved(act, count, page) {
     }
 }
 
-// The space a line's joiner leaves at a line's end, which goes, since Qt's
-// engine has no trimEnd.
-const TRAILING = /\s+$/u;
 // What a dotted list's items run on.
 const DOTTED = " \u00b7 ";
 // A line already on a beat, to within the sums' rounding, keeps it rather
@@ -361,9 +358,9 @@ const BEAT_ROUNDING = 0.001;
 // A value given as items, each `{ said, path, whole }`, as lines no wider
 // than `wide` by `width(text)`: as many items to a line as fit, `between`
 // them (a command's arguments a space apart, a list's a dot), the dot
-// ending the line it leaves, and never one broken across two while it
-// fits a line alone. Every item but the last is measured with that dot,
-// since any of them may end a line. An item too wide for a line of its
+// going with a break, so no line ends or starts on one, as a plain run's
+// does (DrawerFigure.runLines; VKCF3Z, 2026-11-09), and never one broken
+// across two while it fits a line alone. An item too wide for a line of its
 // own that's `whole`, an identifier, is shown whole on as many lines as
 // it needs, broken at its own marks, and a short last one joins the line
 // before rather than stand alone (Identifier.js). Any other that names its
@@ -372,24 +369,18 @@ const BEAT_ROUNDING = 0.001;
 // naming none, gives way from its own middle. Nothing draws past its frame
 // (VKCF3Z, 2026-11-08).
 function valueLines(items, between, wide, width) {
-    const ends = between.replace(TRAILING, "");
     const saying = items.filter(item => item.said !== "");
     const lines = [];
-    saying.forEach((item, at) => {
-        const closing = at === saying.length - 1 ? "" : ends;
-        const room = wide - width(closing);
+    for (const item of saying) {
         const last = lines.length - 1;
-        const said = item.whole ? item.said : fitted(item, room, width);
-        if (last >= 0 && width(`${lines[last]}${between}${said}${closing}`) <= wide) {
+        const said = item.whole ? item.said : fitted(item, wide, width);
+        if (last >= 0 && width(`${lines[last]}${between}${said}`) <= wide) {
             lines[last] = `${lines[last]}${between}${said}`;
-            return;
+        } else {
+            lines.push(...(item.whole && width(said) > wide
+                ? Identifier.wholeLines(said, wide, width) : [said]));
         }
-        if (last >= 0) {
-            lines[last] = `${lines[last]}${ends}`;
-        }
-        lines.push(...(item.whole && width(said) > room
-            ? Identifier.wholeLines(said, room, width) : [said]));
-    });
+    }
     const final = saying[saying.length - 1];
     return final?.whole && lines.length > 1 && lines[lines.length - 1] === final.said
         && Identifier.short(final.said)
