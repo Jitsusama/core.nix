@@ -43,6 +43,27 @@
       "lanzaboote can remove the booted generation, which drops PCR 4 from the disk's policy."
       (machine.config.boot.lanzaboote.protectedSystem == "/run/booted-system");
 
+  # The kernel lanzaboote signs is the one carrying the modules' certificates,
+  # named both where lanzaboote reads it and where the system links it.
+  # vm-secure-boot-installs shows the booted kernel checking its modules, in
+  # minutes; this holds that both name it, in seconds.
+  the-kernel-boots-with-its-modules-keys =
+    let
+      machine = bareNixos [ self.nixosModules.lanzaboote ];
+      inherit (machine.config.system.boot.loader) kernelFile;
+      image = machine.config.boot.kernelPackages.rebuildImage {
+        target = kernelFile;
+        inherit (machine.config.system) modulesTree;
+      };
+      kernel = "${image}/${kernelFile}";
+    in
+    holds "the-kernel-boots-with-its-modules-keys"
+      "the kernel booted carries no certificate for its modules' keys, so it loads each module unchecked."
+      (
+        lib.hasInfix kernel machine.config.boot.bootspec.writer
+        && lib.hasInfix kernel machine.config.system.systemBuilderCommands
+      );
+
   # The wrappers unit stays active once it's run, so the units measured
   # boot's wait for sysinit.target pulls in again can't run it past its
   # start limit and leave it failed.

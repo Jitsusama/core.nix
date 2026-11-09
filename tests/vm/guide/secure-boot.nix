@@ -4,6 +4,7 @@
 # measured-boot policy with a PIN, a recovery key is added and the install
 # passphrase wiped, and the disk opens with the PIN alone. A changed PCR makes
 # the TPM refuse. The TPM keeps no NvPCRs, so no boot or login waits on them.
+# Its kernel checks each module it loads against the module's signature.
 # Each generation is counted as it boots and blessed once it's up, and one
 # whose tries are spent is passed over for the last good one, the TPM still
 # opening the disk, with a word to the session. Shut down with fwupd's

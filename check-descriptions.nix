@@ -1988,6 +1988,10 @@
     a node's, a device's and a profile's drawer, each in its own unit, none eero didn't give, the
     internet's timeline setting each notice the daemon told among eero's events, newest first
   '';
+  the-kernel-boots-with-its-modules-keys = ''
+    a machine with Secure Boot boots a kernel image carrying the certificates of the keys its
+    modules are signed with, in bootspec and the system's kernel link alike
+  '';
   the-keyboard-light-is-heard = ''
     the shell finds the keyboard's light among the kernel's and hears each change its firmware
     makes, once, with its level, off as dark
