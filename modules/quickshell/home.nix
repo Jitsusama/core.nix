@@ -267,6 +267,7 @@ let
     "launcher/Targets.js"
     "launcher/Plate.js"
     "launcher/Screens.js"
+    "launcher/ScreenAnswers.js"
     "launcher/Backlight.js"
     "launcher/Numbers.js"
     "launcher/Addresses.js"

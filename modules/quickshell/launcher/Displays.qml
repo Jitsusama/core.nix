@@ -54,6 +54,7 @@ import "Numbers.js" as Numbers
 import "Order.js" as Order
 import "Plate.js" as Plate
 import "Power.js" as Power
+import "ScreenAnswers.js" as ScreenAnswers
 import "Screens.js" as Screens
 import "Warmth.js" as Warmth
 
@@ -140,8 +141,16 @@ Provider {
     }
 
     // Tells niri what to change, then asks again how things stand.
-    function change(output, action) {
-        Niri.request({ Output: { output: output.name, action: action } }, () => provider.refresh());
+    // `refusal` is what the row did, as { thing, done }, for the words
+    // should niri refuse it (ask).
+    function change(output, action, refusal) {
+        ask({ Output: { output: output.name, action: action } }, refusal, output);
+    }
+
+    // Says a word on the launcher's warning line, where there's one.
+    function warn(word) {
+        if (word !== "")
+            provider.launcher?.operatorSays(word);
     }
 
     function builtIn(output) {
@@ -595,7 +604,8 @@ Provider {
         const focused = lit.length > 1 && output.name === focusedOutput;
         const turnsOn = stands === "dark" ? () => provider.ask({
             Action: { PowerOnMonitor: { output: output.name } }
-        }) : () => provider.change(output, "On");
+        }, { thing: named(output), done: "on" }, output)
+            : () => provider.change(output, "On", { thing: named(output), done: "on" });
         return member({
             thing: true,
             key: `display:${output.name}`,
@@ -647,7 +657,10 @@ Provider {
                         screenWords, named(output));
                     if (asked.refused !== undefined)
                         return asked.refused;
-                    change(output, asked.asks);
+                    change(output, asked.asks, {
+                        thing: Screens.typedSaid(id, String(to)),
+                        done: "set"
+                    });
                     return "";
                 }
             };
@@ -657,7 +670,8 @@ Provider {
                 kind: "switch",
                 now: () => output.vrr_enabled === true,
                 set: on => {
-                    change(output, { Vrr: { vrr: { vrr: on, on_demand: false } } });
+                    change(output, { Vrr: { vrr: { vrr: on, on_demand: false } } },
+                        { thing: partName("variable"), done: on ? "on" : "off" });
                     return "";
                 }
             };
@@ -681,7 +695,7 @@ Provider {
                 if (way.waits)
                     provider.darkenLast(way.asks);
                 else
-                    provider.ask(way.asks);
+                    provider.ask(way.asks, { thing: named(output), done: way.word }, output);
                 return "";
             }
         };
@@ -890,7 +904,8 @@ Provider {
     // here, so "scale 1.5" is Scale's 1.5\u00d7), then the ways it turns
     // off that Screens.js gives, then what its EDID says.
     function verbs(output) {
-        const ways = Screens.ways(output, shown, Niri.powersOffEach).map(way => powerRow(way));
+        const ways = Screens.ways(output, shown, Niri.powersOffEach)
+            .map(way => powerRow(way, output));
         if (Screens.standing(output) !== "lit")
             return ways.concat(factRows(output));
         return setUp(output).concat(ways, factRows(output));
@@ -903,7 +918,7 @@ Provider {
     // vocabulary's, its note why it matters, and the last lit screen's
     // darkening closing the launcher, since nothing would show it, and
     // waiting for the key to come up, which would light every screen.
-    function powerRow(way) {
+    function powerRow(way, output) {
         const id = `verb:display-${way.word}`;
         return thing({
             key: id,
@@ -912,14 +927,27 @@ Provider {
             hue: "action",
             note: way.note === "" ? "" : Words.of(id).said?.[way.note] ?? "",
             stays: !way.waits,
-            run: way.waits ? () => provider.darkenLast(way.asks) : () => provider.ask(way.asks)
+            run: way.waits ? () => provider.darkenLast(way.asks)
+                : () => provider.ask(way.asks, { thing: named(output), done: way.word }, output)
         });
     }
 
     // Asks niri to change a screen, then asks again how they stand, so a
-    // screen dark by name says so at once.
-    function ask(asked) {
-        Niri.request(asked, () => provider.refresh());
+    // screen dark by name says so at once. A change niri refuses says so
+    // on the warning line, in niri's words for why, and one to a screen
+    // gone before it came says it's unplugged (VKCF3Z, 2026-11-09), where
+    // Return would otherwise look done (ScreenAnswers.js). Where nothing
+    // is there to say it, as the last lit screen darkening once the
+    // launcher has closed, `refusal` is null and the shell's log has it.
+    function ask(asked, refusal, output) {
+        Niri.request(asked, answer => {
+            if (output)
+                warn(ScreenAnswers.answerSaid(answer, named(output), screenWords));
+            provider.refresh();
+        }, refusal ? why => {
+            warn(ScreenAnswers.refusalSaid(refusal, why, screenWords));
+            provider.refresh();
+        } : null);
     }
 
     function darkenLast(asked) {
@@ -972,7 +1000,8 @@ Provider {
             hue: "machine",
             side: partSaid("variable", on ? "on" : "off"),
             stays: true,
-            run: () => change(output, { Vrr: { vrr: { vrr: !on, on_demand: false } } })
+            run: () => change(output, { Vrr: { vrr: { vrr: !on, on_demand: false } } },
+                { thing: partName("variable"), done: on ? "off" : "on" })
         });
     }
 
@@ -1004,7 +1033,8 @@ Provider {
                 name: Screens.scale(each),
                 mark: "scale",
                 chosen: Math.abs(each - scale) < 0.01,
-                run: () => change(output, { Scale: { scale: { Specific: each } } }),
+                run: () => change(output, { Scale: { scale: { Specific: each } } },
+                    { thing: Screens.scale(each), done: "set" }),
                 keywords: `${Math.round(each * 100)}%`,
                 fill: lineFill("scale", typedScales[at])
             })))]);
@@ -1028,7 +1058,7 @@ Provider {
                         width: each.mode.width,
                         height: each.mode.height,
                         refresh: each.mode.refresh_rate / 1000
-                    } } } }),
+                    } } } }, { thing: each.value, done: "set" }),
                     note: each.note,
                     fill: lineFill("refresh", typedRates[at])
                 }))));
@@ -1047,7 +1077,7 @@ Provider {
                         width: each.mode.width,
                         height: each.mode.height,
                         refresh: null
-                    } } } }),
+                    } } } }, { thing: each.value, done: "set" }),
                     note: each.note,
                     fill: lineFill("resolution", typedSizes[at])
                 }))));
@@ -1058,7 +1088,8 @@ Provider {
                 name: each.name,
                 mark: "rotation",
                 chosen: output.logical.transform === each.transform,
-                run: () => change(output, { Transform: { transform: each.transform } }),
+                run: () => change(output, { Transform: { transform: each.transform } },
+                    { thing: each.name, done: "set" }),
                 fill: lineFill("rotation", partSaid("rotation", `typed-${each.transform}`))
             }))));
         return rows;

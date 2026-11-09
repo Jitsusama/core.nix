@@ -18,6 +18,7 @@
 // the figures desk-facts gives. Its settings' choices of mode and turn
 // are said here too, each by its value, the mode it prefers noted so,
 // and what each takes typed on the : line's :setl, as scale=1.5.
+// What niri answers a change is said in ScreenAnswers.js.
 
 // Two items of one value, as a figure's runs are set apart.
 const APART = " \u00b7 ";

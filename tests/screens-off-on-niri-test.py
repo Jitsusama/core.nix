@@ -14,6 +14,13 @@ The shell is started as on a niri that powers one output off by name
 its name (Joel, 2026-11-07: "i want to be able to control the screen that gets shut off, one,
 the other, all"). What each screen offers is held in Qt's engine (tests/screens.qml); here, only
 that the act reaches niri.
+
+A change to a screen niri refuses says so on the launcher's warning line, in niri's own words for
+why, where Return otherwise looked done and only the shell's log said otherwise. niri refuses a
+screen's change only where it can't read it or won't make its mode, which the shell never asks
+for, so the proxy turns the shell's request into niri's own ReturnError, which niri answers with
+its example error. What the line says of each refusal, and of a screen
+gone, is held in Qt's engine (tests/screen-answers.qml); here, only that niri's words reach it.
 """
 
 from __future__ import annotations
@@ -22,6 +29,7 @@ import os
 import socket
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -37,16 +45,23 @@ if TYPE_CHECKING:
 ASKED = 10.0
 POLL = 0.05
 CHUNK = 65536
+# What niri answers its ReturnError request with, as its src/ipc/server.rs says it.
+NIRIS_EXAMPLE_ERROR = "example compositor error"
 
 
 class Proxy:
-    """niri's socket, passed through, keeping every byte a client sent it."""
+    """niri's socket, passed through, keeping every byte a client sent it.
+
+    While a test has it refusing what a request holds, that request reaches niri as ReturnError,
+    which niri refuses, so it answers in the request's place in line.
+    """
 
     def __init__(self, niri: str, path: Path) -> None:
         """Listen at the path, passing each connection on to niri's own socket."""
         self.niri = niri
         self.path = path
         self.sent = bytearray()
+        self.refused: bytes | None = None
         self.lock = threading.Lock()
         self.server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.server.bind(str(path))
@@ -60,12 +75,32 @@ class Proxy:
             upstream = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             upstream.connect(self.niri)
             threading.Thread(target=carry, args=(client, upstream, self.keep), daemon=True).start()
-            threading.Thread(target=carry, args=(upstream, client, ignore), daemon=True).start()
+            threading.Thread(target=carry, args=(upstream, client, unchanged), daemon=True).start()
 
-    def keep(self, chunk: bytes) -> None:
-        """Keep what a client sent niri."""
+    def keep(self, chunk: bytes) -> bytes:
+        """Keep what a client sent niri, and give what goes on to it.
+
+        Each request is a line of its own, sent whole, so a chunk holds whole lines.
+        """
         with self.lock:
             self.sent.extend(chunk)
+            refused = self.refused
+        if refused is None:
+            return chunk
+        return b"\n".join(
+            b'"ReturnError"' if refused in line else line for line in chunk.split(b"\n")
+        )
+
+    @contextmanager
+    def refusing(self, asked: bytes) -> Iterator[None]:
+        """Have niri refuse each request holding what's asked, until the block ends."""
+        with self.lock:
+            self.refused = asked
+        try:
+            yield
+        finally:
+            with self.lock:
+                self.refused = None
 
     def since(self, mark: int) -> bytes:
         """Give what clients have sent niri since the mark."""
@@ -78,16 +113,16 @@ class Proxy:
             return len(self.sent)
 
 
-def carry(source: socket.socket, sink: socket.socket, heard: Callable[[bytes], None]) -> None:
-    """Pass what one end says to the other, each chunk heard on its way."""
+def carry(source: socket.socket, sink: socket.socket, heard: Callable[[bytes], bytes]) -> None:
+    """Pass what one end says to the other, each chunk heard on its way and passed as heard."""
     while chunk := source.recv(CHUNK):
-        heard(chunk)
-        sink.sendall(chunk)
+        sink.sendall(heard(chunk))
     sink.shutdown(socket.SHUT_WR)
 
 
-def ignore(_chunk: bytes) -> None:
-    """Hear what niri answers, and keep none of it."""
+def unchanged(chunk: bytes) -> bytes:
+    """Hear what niri answers, and pass it on as it is, keeping none of it."""
+    return chunk
 
 
 @pytest.fixture(scope="module")
@@ -117,8 +152,8 @@ def screens_back_on(shell: Shell) -> Iterator[None]:
     shell.launcher_left_closed()
 
 
-def asked_to_power_off(proxy: Proxy, mark: int, asked: bytes = b'"PowerOffMonitors"') -> None:
-    """Wait until a client has asked niri to power its monitors off since the mark."""
+def niri_asked(proxy: Proxy, mark: int, asked: bytes = b'"PowerOffMonitors"') -> None:
+    """Wait until a client has asked niri for what's asked since the mark: power off, unsaid."""
     deadline = time.monotonic() + ASKED
     while time.monotonic() < deadline:
         if asked in proxy.since(mark):
@@ -141,7 +176,7 @@ def test_turn_every_screen_off_powers_niris_monitors_off(shell: Shell, proxy: Pr
     mark = proxy.mark()
     shell.send_key("ret")
     shell.launcher_closed()
-    asked_to_power_off(proxy, mark)
+    niri_asked(proxy, mark)
 
 
 def test_a_screens_turn_it_off_powers_that_one_off_by_name(shell: Shell, proxy: Proxy) -> None:
@@ -159,7 +194,7 @@ def test_a_screens_turn_it_off_powers_that_one_off_by_name(shell: Shell, proxy: 
     # The nested niri's one screen is the last lit, so the launcher closes, nothing being left
     # to show it, and asks once the key is up.
     shell.launcher_closed()
-    asked_to_power_off(proxy, mark, b'"PowerOffMonitor":{"output":')
+    niri_asked(proxy, mark, b'"PowerOffMonitor":{"output":')
     assert b'"PowerOffMonitors"' not in proxy.since(mark), f"{screen} asked for every screen"
 
 
@@ -171,4 +206,22 @@ def test_set_noscreens_powers_niris_monitors_off(shell: Shell, proxy: Proxy) -> 
     shell.launcher_until(lambda shown: shown["command"] is not None)
     mark = proxy.mark()
     shell.send_key("ret")
-    asked_to_power_off(proxy, mark)
+    niri_asked(proxy, mark)
+
+
+def test_a_scale_niri_refuses_says_niris_why(shell: Shell, proxy: Proxy) -> None:
+    """:setl scale=1.25 that niri refuses says on the warning line it wasn't set, and why."""
+    shell.answer("screens")
+    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Screens")
+    shell.step_in()
+    shell.step_in("tab")
+    shell.normal()
+    shell.launcher_until(lambda shown: "Scale" in shown["rows"])
+    shell.send_chars(":setl scale=1.25")
+    shell.launcher_until(lambda shown: shown["command"] is not None)
+    mark = proxy.mark()
+    with proxy.refusing(b'"Scale":'):
+        shell.send_key("ret")
+        niri_asked(proxy, mark, b'"Scale":{"scale":{"Specific":1.25}}')
+        wanted = f"1.25\u00d7 not set \u00b7 {NIRIS_EXAMPLE_ERROR}"
+        shell.launcher_until(lambda shown: str(shown["operated"]).endswith(wanted))
