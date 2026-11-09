@@ -75,12 +75,5 @@
     "owner_pr": 2526,
     "reason": "failed, then passed, at 2101c92b6828",
     "test": "the-command-line-lists-every-command"
-  },
-  {
-    "at": 1794250030,
-    "commit": "02441a7caa657f05c30d4af3cf9c006b9ccd40a4",
-    "owner_pr": 2541,
-    "reason": "failed in 3 of 3 runs at 02441a7ca and passed at 2101c92b6828, before #2541: at scale 2 a program's value breaks a word in 1Password's drawer; the programs drawer's session fixes it forward and takes it off this list",
-    "test": "vm-desktop-looks"
   }
 ]
