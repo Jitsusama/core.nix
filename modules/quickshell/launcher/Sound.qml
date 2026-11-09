@@ -513,7 +513,12 @@ Provider {
             }));
         const identified = fact => Object.assign({}, fact, { identifies: true });
         return {
-            eyebrow: Plate.runs([joinedBy(node), said(node.isSink ? "plate-out" : "plate-in")]),
+            // Where it is and what it is, in Note as it's written, never
+            // in Label's capitals (VKCF3Z, 2026-11-09): one the machine
+            // makes, joined by nothing, is on this machine.
+            eyebrow: Plate.runs([joinedBy(node) || said("joined-here"),
+                said(node.isSink ? "plate-out" : "plate-in")]),
+            eyebrowNames: true,
             title: named(node),
             facts: doing.concat(facts, keeping, format,
                 known([["priority", String(properties["priority.session"] ?? "")]], false),
@@ -830,7 +835,9 @@ Provider {
         if (!(given in entries)) {
             const entry = given === "" ? null : DesktopEntries.heuristicLookup(given);
             entries[given] = {
-                name: entry ? entry.name : given.charAt(0).toUpperCase() + given.slice(1),
+                // Named as it names itself, "pw-cat" as "pw-cat": nothing
+                // capitalises a name (VKCF3Z, 2026-11-09).
+                name: entry ? entry.name : given,
                 id: entry ? entry.id : given
             };
         }
@@ -950,13 +957,16 @@ Provider {
     // or that said as its Stream where it has one. Under it, how it keeps
     // time, which moves most; its Format; its Sample Rate and Delay, its
     // parts, the rate only where its Format doesn't open with it; its
-    // Role, in pipewire's word as given; the device it plays on or
-    // records from; and what identifies it, ending its group: its
-    // Process ID, Graph ID and Client ID. Its name is the row's, and so is
-    // whether it's paused or muted, so neither is said again. It's read
-    // as it's drawn, its streams as the device has them now; a program
-    // gone has none, its old streams' nodes perhaps gone with it, so its
-    // drawer shuts.
+    // Role, in pipewire's word as given; the filter it plays through or
+    // records from, where one stands in front of the device; and what
+    // identifies it, ending its group: its Process ID, Graph ID and Client
+    // ID. Its name is the row's, and so is whether it's paused or muted,
+    // so neither is said again; its eyebrow says where it plays and that
+    // it's a stream, in Note since it names the device, as Media's "on
+    // Spotify \u00b7 track" does (VKCF3Z, 2026-11-09). It's read as it's
+    // drawn, its streams as the device has them now; a program gone has
+    // none, its old streams' nodes perhaps gone with it, so its drawer
+    // shuts.
     function programDrawn(node, program) {
         return programPlate(node, programsOf(node).find(each => each.name === program.name)
             ?? { name: program.name, streams: [] });
@@ -969,16 +979,27 @@ Provider {
             (a, b) => loudness(b) - loudness(a) || b.id - a.id);
         const headed = streams.length > 1;
         return {
-            eyebrow: Words.name(node.isSink ? "sound:programs" : "sound:recorders"),
+            eyebrow: Plate.runs([said(node.isSink ? "stream-on" : "stream-from",
+                { device: named(node) }), said("plate-stream")]),
+            eyebrowNames: true,
             title: live.name,
             facts: [].concat(...streams.map(stream => provider.streamFacts(node, key, stream,
-                headed)))
+                headed, live.name)))
         };
     }
 
-    function streamFacts(node, key, stream, headed) {
+    // What a stream plays says something only where it isn't empty, "-"
+    // (pw-cat's, playing what it's given), or the program's own name
+    // again (VKCF3Z, 2026-11-09); a group goes by the stream's own name
+    // then. Its end is said only where it's a filter in front of the
+    // device, since the eyebrow names the device.
+    function streamFacts(node, key, stream, headed, program) {
         const properties = stream.properties;
-        const plays = String(properties["media.name"] ?? "");
+        const given = String(properties["media.name"] ?? "").trim();
+        const programNames = [program, String(properties["application.name"] ?? "")]
+            .map(name => name.toLowerCase());
+        const plays = given === "-" || programNames.includes(given.toLowerCase()) ? ""
+            : given;
         // One of several is headed by what it plays, else its own name, and
         // goes unheaded where it has neither; one alone says it as Stream.
         const called = plays || String(stream.name ?? "");
@@ -1006,10 +1027,11 @@ Provider {
                 ["client", String(properties["client.id"] ?? "")]], true));
     }
 
-    // What a stream is linked to: the device, by its name, or the filter
-    // in front of it, by the filter's; "" while it's linked to neither.
+    // The filter in front of the device a stream is linked to, by the
+    // filter's name; "" while it's linked to the device itself, which the
+    // eyebrow names, or to neither.
     function endOf(stream, node) {
-        const ends = [node].concat(filtersOf(node));
+        const ends = filtersOf(node);
         for (const group of Pipewire.linkGroups.values) {
             const from = node.isSink ? group.source : group.target;
             const end = node.isSink ? group.target : group.source;
