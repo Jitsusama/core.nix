@@ -2,9 +2,41 @@
 # check holds it to: every linter core shares (treefmtModules.treefmt, from
 # modules/treefmt/treefmt.nix), at its strictest, test code's included, and
 # what only core has besides. ruff.toml and mypy.ini say how for Python,
-# .luacheckrc for Lua, biome.jsonc for JavaScript and TypeScript and
+# .luacheckrc for Lua, biome.jsonc for JavaScript, TypeScript and JSON, and
 # .rumdl.toml for Markdown.
 { pkgs, ... }:
+let
+  # TOML and JSON laid out by hand before taplo and biome read them, each in
+  # the source of a package a machine runs, so laying one out builds that
+  # package and every machine and VM test holding it again. Each is linted as
+  # it stands, and is laid out with the next change made to it, which builds
+  # them again anyway: taking it off its list is part of that change.
+  tomlLaidOutByHand = [
+    "modules/eero/Cargo.toml"
+    "modules/reader/Cargo.toml"
+    "modules/theme/flexoki-light.toml"
+  ];
+  jsonLaidOutByHand = [
+    "modules/eero/contract/device.02:00:00:00:00:01.json"
+    "modules/eero/contract/eero.2001.connections.json"
+    "modules/eero/contract/eero.2001.json"
+    "modules/eero/contract/eero.2002.connections.json"
+    "modules/eero/contract/eero.2002.json"
+    "modules/eero/contract/eero.2003.connections.json"
+    "modules/eero/contract/eero.2003.json"
+    "modules/eero/contract/net.devices.json"
+    "modules/eero/contract/net.eeros.json"
+    "modules/eero/contract/net.profiles.json"
+    "modules/eero/contract/network.json"
+    "modules/eero/home-network.json"
+    "modules/quickshell/launcher/words.json"
+    "modules/spend-watch/feeds/claude/tests/logins/expired.json"
+    "modules/spend-watch/feeds/claude/tests/logins/no-profile-scope.json"
+    "modules/spend-watch/feeds/claude/tests/logins/pro.json"
+    "modules/spend-watch/feeds/claude/tests/logins/ultra.json"
+    "modules/spotify/spotify-recent/fixtures/token.json"
+  ];
+in
 {
   # A file no formatter reads stops `nix fmt` and the formatting check, so a
   # new kind of file can't slip past every linter unseen. What no linter
@@ -16,13 +48,10 @@
     # The shell's QML is read by quickshell-passes-qmllint as the account
     # installs it; the QML cases in tests/ run in Qt's own engine, unlinted.
     "*.qml"
-    # Cargo reads each crate's manifest as the crate builds, refusing a
-    # malformed one; no TOML linter reads it, nor the other TOML, yet.
-    "*.toml"
-    # JSON, read by the programs and tests that load it; none formats it yet.
-    "*.json"
-    "*.jsonc"
+    # JSON Lines, a record a line, which biome doesn't read, and a login
+    # file broken on purpose for the test that reads it.
     "*.jsonl"
+    "modules/spend-watch/feeds/claude/tests/logins/garbled.json"
     # What programs and devices answered, recorded for the tests to compare
     # byte for byte, and the stand-in keys and signatures they sign with.
     "modules/eero/src/views/golden/*"
@@ -130,8 +159,24 @@
     includes = [ "*.css" ];
   };
 
-  # biome formats and lints Node's JavaScript, the .mjs tests and pi's
-  # TypeScript extensions, as biome.jsonc's overrides for them say.
+  # taplo lints every TOML file, and lays out all but those laid out by hand.
+  programs.taplo.excludes = tomlLaidOutByHand;
+
+  # biome lints the JSON laid out by hand as it stands.
+  settings.formatter.json-lint = {
+    command = pkgs.lib.getExe pkgs.biome;
+    options = [
+      "lint"
+      "--error-on-warnings"
+      "--max-diagnostics=none"
+      "--config-path=biome.jsonc"
+    ];
+    includes = jsonLaidOutByHand;
+  };
+
+  # biome formats and lints Node's JavaScript, the .mjs tests, pi's
+  # TypeScript extensions and the rest of the JSON, as biome.jsonc's overrides
+  # for them say.
   settings.formatter.biome = {
     command = pkgs.lib.getExe pkgs.biome;
     options = [
@@ -142,8 +187,11 @@
       "--config-path=biome.jsonc"
     ];
     includes = [
+      "*.json"
+      "*.jsonc"
       "*.mjs"
       "*.ts"
     ];
+    excludes = jsonLaidOutByHand;
   };
 }

@@ -96,6 +96,14 @@ in
       includes = [ "*.md" ];
     };
 
+    # taplo lints every TOML file, refusing one that doesn't parse or sets a
+    # key twice, without fetching a schema; programs.taplo lays it out.
+    settings.formatter.taplo-lint = {
+      command = lib.getExe pkgs.taplo;
+      options = [ "lint" ];
+      includes = [ "*.toml" ];
+    };
+
     # zsh reads each of its files for what it can't parse, one at a time, as
     # it takes them; nothing lints zsh further.
     settings.formatter.zsh-parses = {
@@ -157,6 +165,11 @@ in
         ];
       };
       statix.enable = true;
+      # taplo lays TOML out at the code style's width.
+      taplo = {
+        enable = true;
+        settings.formatting.column_width = 100;
+      };
       stylua = {
         enable = true;
         settings = {
