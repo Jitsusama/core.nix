@@ -57,6 +57,23 @@ function when(iso, now) {
     return at.getFullYear() === new Date(now).getFullYear() ? `${day} ${time}` : day;
 }
 
+// A day alone, as a row's note says when a thing was: "today",
+// "yesterday", "on Thursday" within six days, then "on 5 Nov" and "on 13
+// Nov 2020", by When.js's rule as the drawers' moments are. HomeNetwork.js
+// is laid out flat by checks where When.js isn't, so its internet row is
+// given this rather than reaching When.js itself.
+function dayOn(iso, now) {
+    const at = new Date(iso ?? "");
+    if (!iso || Number.isNaN(at.getTime())) {
+        return "";
+    }
+    const day = When.day(at.getTime(), now, DAYS);
+    if (day === "") {
+        return "today";
+    }
+    return day === DAYS.yesterday ? day : `on ${day}`;
+}
+
 function known(value) {
     return value !== null && value !== undefined && value !== "";
 }

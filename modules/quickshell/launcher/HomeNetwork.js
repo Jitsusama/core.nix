@@ -15,7 +15,6 @@
 const KILO = 1000;
 const BARS = 5;
 const SECOND = 1000;
-const DAY_MS = 86_400_000;
 // Past this many seconds ago, a moment is said in minutes and hours.
 const SECONDS_SAID = 100;
 // Every figure takes three significant digits, so 369.9 reads 370 and
@@ -334,14 +333,15 @@ function outagesOf(internet) {
 // many devices are on now. Who carries it is the drawer's eyebrow's and
 // its Provider's, so the row doesn't say it again (VKCF3Z, 2026-11-08),
 // and while eero isn't answering, its side says that alone. Asked at
-// `now`, in milliseconds, for when. Each is an item, so the row gives
-// them way whole from the end (Choice.qml).
-function internetRow(model, now, settings) {
+// `now`, in milliseconds, for when, and said by `dayOn`, the day as
+// HomeNetworkHistory.js says one by When.js. Each is an item, so the row
+// gives them way whole from the end (Choice.qml).
+function internetRow(model, now, settings, dayOn) {
     const internet = model?.internet ?? {};
     const test = internet.speed_test ?? null;
     const down = eachWay(test?.down_mbps, null, settings);
     const up = eachWay(null, test?.up_mbps, settings);
-    const day = test?.at ? dayOf(test.at, now) : "";
+    const day = test?.at ? dayOn(test.at, now) : "";
     const sqm = typeof internet.sqm === "boolean" ? (internet.sqm ? "on" : "off") : "";
     const answering = !["signed-out", "unreachable"].includes(model?.cloud?.state);
     const onNow = (model?.devices ?? []).length;
@@ -378,28 +378,6 @@ function stateWords(model) {
         return "eero unreachable";
     }
     return String(model?.internet?.state ?? "").toLowerCase();
-}
-
-// A day as the launcher says one beside the time it is now: "today",
-// "yesterday", "on 5 Nov", or "on 13 Nov 2020" in another year.
-function dayOf(iso, now) {
-    const at = new Date(iso);
-    const today = new Date(now);
-    const days = Math.round((startOf(today) - startOf(at)) / DAY_MS);
-    if (days === 0) {
-        return "today";
-    }
-    if (days === 1) {
-        return "yesterday";
-    }
-    return at.getFullYear() === today.getFullYear()
-        ? `on ${Qt.formatDate(at, "d MMM")}`
-        : `on ${Qt.formatDate(at, "d MMM yyyy")}`;
-}
-
-// A day's first moment, in milliseconds.
-function startOf(date) {
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
 // How long ago a moment was, as the launcher says it elsewhere.
