@@ -87,12 +87,29 @@ pub fn checked_before(
         if shared.is_empty() {
             return Before::Clean(candidate.clone());
         }
-        if rechecked(head_record) {
+        if rechecked(head_record) || rechecked_since(candidates, files, record, same) {
             return Before::Rechecked(candidate.clone(), shared);
         }
         first_shared.get_or_insert(Before::Shares(candidate.clone(), shared));
     }
     first_shared.unwrap_or(Before::Unchecked)
+}
+
+/// Whether a check passed at an earlier commit of the same change, since
+/// whose base main moved none of the change's files. On 9 November two
+/// branches sharing a busy file reran its checks after one rebase, rebased
+/// again over commits that touched none of their files, and were asked to
+/// rerun them once more, since only the head's own runs counted.
+fn rechecked_since(
+    candidates: &[String],
+    files: &[String],
+    record: &dyn Fn(&str) -> String,
+    same: &dyn Fn(&str) -> Option<Vec<String>>,
+) -> bool {
+    candidates.iter().any(|candidate| {
+        rechecked(&record(candidate))
+            && same(candidate).is_some_and(|moved| !moved.iter().any(|file| files.contains(file)))
+    })
 }
 
 /// Whether a record holds a check or subtests that passed, sent from the
@@ -215,6 +232,41 @@ mod tests {
             checked_before(&candidates, &files, rerun, &record, &on_main, &moved),
             Before::Rechecked("old".to_owned(), vec!["b.md".to_owned()])
         );
+        // A recheck at an earlier commit of the same change counts while
+        // main has moved none of its files since that commit's base.
+        let record_rechecked = |commit: &str| match commit {
+            "old" => passed.to_owned(),
+            "rebased" => rerun.to_owned(),
+            _ => String::new(),
+        };
+        let candidates = vec!["rebased".to_owned(), "old".to_owned()];
+        let moved = |commit: &str| match commit {
+            "old" => Some(vec!["b.md".to_owned(), "c.nix".to_owned()]),
+            "rebased" => Some(vec!["c.nix".to_owned()]),
+            _ => None,
+        };
+        assert_eq!(
+            checked_before(&candidates, &files, "", &record_rechecked, &on_main, &moved),
+            Before::Rechecked("old".to_owned(), vec!["b.md".to_owned()])
+        );
+        let moved_again = |commit: &str| match commit {
+            "old" => Some(vec!["b.md".to_owned()]),
+            "rebased" => Some(vec!["b.md".to_owned()]),
+            _ => None,
+        };
+        assert_eq!(
+            checked_before(
+                &candidates,
+                &files,
+                "",
+                &record_rechecked,
+                &on_main,
+                &moved_again
+            ),
+            Before::Shares("old".to_owned(), vec!["b.md".to_owned()]),
+            "main moved the file again since the recheck"
+        );
+        let candidates = vec!["other".to_owned(), "old".to_owned(), "older".to_owned()];
         // An earlier commit of another change, or the same change that
         // never passed, says nothing.
         let moved = |commit: &str| (commit == "other").then(Vec::new);
