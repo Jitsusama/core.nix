@@ -377,12 +377,16 @@ Rectangle {
 
     // The note after the detail, across a dot as the detail's items are,
     // or after the name where there's none, as the detail would stand. It
-    // ends a groups' rung short of the say, or of the side or a graph.
+    // ends a groups' rung short of the say, or of a graph, or of the ink
+    // said at the right, not of its column, which the list's widest side
+    // sets; or on the inset where nothing's said there.
     readonly property real noteFrom: countText.visible ? countText.x + countText.width
         : nameBox.x + nameBox.width + Theme.space.rung.apart
     readonly property string noteApart: countText.visible ? " \u00b7 " : ""
-    readonly property real noteEnd: (sayText.visible ? sayText.x : row.ends)
-        - Theme.space.rung.groups
+    readonly property real noteEnd: sayText.visible ? sayText.x - Theme.space.rung.groups
+        : graphed ? drawing.x - Theme.space.rung.groups
+        : atRight.inked === 0 ? atRight.x + atRight.width
+        : atRight.x + atRight.width - atRight.inked - Theme.space.rung.groups
     readonly property string noteWhole: {
         if (row.note === "")
             return "";
