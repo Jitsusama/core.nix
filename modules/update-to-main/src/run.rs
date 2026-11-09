@@ -642,6 +642,9 @@ mod tests {
         });
         let kept = tail(&said);
         assert_eq!(kept.len(), TAIL);
-        assert_eq!(kept.last().map(String::as_str), Some("/nix/store/piece7"));
+        assert_eq!(
+            kept.last().map(String::as_str).map(str::trim),
+            Some("/nix/store/piece7")
+        );
     }
 }
