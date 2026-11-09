@@ -192,3 +192,113 @@ def test_a_wait_that_succeeds_describes_nothing(retry: StandInRetry) -> None:
     waits = vm_helpers.paced(retry, busy=lambda: 1.0, describe=lambda: described.append("shown"))
     waits(nothing, timeout_seconds=10)
     assert described == []
+
+
+class FadingGuest:
+    """A guest whose drawer fades in a frame at a time, on a clock of its own.
+
+    Its frames come as far apart as a busy host lets it draw them, each changing the screen,
+    and looking at the screen takes a moment, as QEMU's screendump does.
+    """
+
+    LOOKING = 0.05
+
+    def __init__(
+        self, frames: int, apart: float, *, other: bool = False, asked: bool = False
+    ) -> None:
+        """Start the fade at nought, its frames this far apart.
+
+        Other moves a window of its own; asked draws the launcher a frame, which changes
+        nothing on screen, each time its frames are asked for.
+        """
+        self.now = 0.0
+        self.frames = frames
+        self.apart = apart
+        self.other = other
+        self.asked = asked
+        self.counted = 0
+        self.owed = 0
+
+    @property
+    def faded_by(self) -> float:
+        """Give when the fade's last frame is drawn."""
+        return self.frames * self.apart
+
+    def drawn_by_now(self) -> int:
+        """Give how many of the fade's frames are drawn."""
+        return min(self.frames, int(self.now / self.apart))
+
+    def clock(self) -> float:
+        """Give the guest's time."""
+        return self.now
+
+    def screen(self) -> bytes:
+        """Give the screen's picture, which another window moving changes each time."""
+        self.now += self.LOOKING
+        moved = int(self.now / self.LOOKING) if self.other else 0
+        return f"{self.drawn_by_now()} {moved}".encode()
+
+    def drawn(self) -> dict[str, int]:
+        """Give the shell's frames since it was last asked, as `qs ipc call frames` says them."""
+        drawn, self.counted = self.drawn_by_now() - self.counted, self.drawn_by_now()
+        drawn, self.owed = drawn + self.owed, int(self.asked)
+        return {"launcher": drawn} if drawn else {}
+
+
+def settled(
+    guest: FadingGuest,
+    span: float,
+    within: float,
+    where: Callable[[bytes, bytes], str] = vm_helpers.nowhere,
+) -> str | None:
+    """Wait on the guest's screen to stand still."""
+    return vm_helpers.settled(
+        guest.screen, guest.drawn, span, within, clock=guest.clock, where=where
+    )
+
+
+def test_a_drawer_fading_slower_than_half_a_second_a_frame_is_waited_out() -> None:
+    # A host twice as busy as it has processors, its fade's frames 0.6 s apart (ZJ62K2).
+    guest = FadingGuest(frames=5, apart=0.6)
+    pace = vm_helpers.pace(2.0)
+    assert settled(guest, 0.5 * pace, 10 * pace) is None
+    assert guest.now >= guest.faded_by, f"still at {guest.now:.2f} s, the fade ends at 3 s"
+
+
+def test_a_screen_already_still_settles_in_two_spans() -> None:
+    guest = FadingGuest(frames=0, apart=1.0)
+    two_spans_and_their_looks = 1.5
+    assert settled(guest, 0.5, 10) is None
+    assert guest.now < two_spans_and_their_looks, f"a still screen took {guest.now:.2f} s"
+
+
+def test_a_screen_still_drawing_at_the_bound_says_so() -> None:
+    guest = FadingGuest(frames=100, apart=0.3)
+    why = settled(guest, 0.5, 5) or ""
+    said = (
+        "the screen never stood still for 2 spans of 0.5 s in 5 s:"
+        " it last changed, the shell drawing {'launcher': "
+    )
+    assert why.startswith(said), why
+
+
+def test_frames_that_change_nothing_are_rest() -> None:
+    # Every gallery's open launcher on 2026-11-09 drew frames the picture never showed.
+    assert settled(FadingGuest(frames=0, apart=1.0, asked=True), 0.5, 5) is None
+
+
+def test_another_programs_window_moving_is_no_rest_either() -> None:
+    guest = FadingGuest(frames=0, apart=1.0, other=True)
+    why = settled(guest, 0.5, 5)
+    assert why == (
+        "the screen never stood still for 2 spans of 0.5 s in 5 s:"
+        " it last changed, the shell drawing nothing meanwhile"
+    ), why
+
+
+def test_the_reason_says_where_the_picture_last_changed() -> None:
+    def at_the_corner(_before: bytes, _now: bytes) -> str:
+        return " at 0,0 to 8,8"
+
+    why = settled(FadingGuest(frames=0, apart=1.0, other=True), 0.5, 5, at_the_corner) or ""
+    assert why.endswith("it last changed at 0,0 to 8,8, the shell drawing nothing meanwhile"), why

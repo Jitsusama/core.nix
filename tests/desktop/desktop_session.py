@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import functools
+import io
 import itertools
 import json
 import re
@@ -22,7 +23,7 @@ from typing import TYPE_CHECKING, Any, TypedDict, cast
 import pytest
 import test_driver.machine
 import vm_helpers
-from PIL import Image, ImageStat
+from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -195,6 +196,14 @@ def margin_points(pointed: str) -> Callable[[str], bool]:
         )
 
     return points
+
+
+def changed_where(before: bytes, now: bytes) -> str:
+    """Say where two of QEMU's pictures of the screen differ, as the box around it all."""
+    box = ImageChops.difference(
+        Image.open(io.BytesIO(before)).convert("RGB"), Image.open(io.BytesIO(now)).convert("RGB")
+    ).getbbox()
+    return f" from {box[0]},{box[1]} to {box[2]},{box[3]}" if box else ""
 
 
 def drawn_at(window: Json) -> tuple[int, int, int, int]:
@@ -429,37 +438,80 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         yield
         self.reported(what, lambda rest: rest == "", since, timeout)
 
-    def held_still(self, timeout: timedelta = timedelta(seconds=10), span: float = 0.5) -> bool:
-        """Say whether the screen holds still for half a second before the time is up.
+    def unsettled(
+        self,
+        timeout: timedelta = timedelta(seconds=10),
+        span: float = 0.5,
+        *,
+        shell_only: bool = False,
+    ) -> str | None:
+        """Wait for the screen to stand still, giving None once it has, or why it never did.
 
-        Half a second is twice the theme's longest movement: niri composes a frame a moment
-        after it's asked to, windows and surfaces move as they come, and a busy host can draw
-        two frames in a row the same mid-motion.
+        Still is the screen's picture staying the same for two spans (vm_helpers.settled).
+        Half a second is twice the theme's longest movement; both it and the bound stretch
+        with how busy the host is, since a busy host draws a fade slower than that. The
+        shell's own count of its frames (Frames.qml) says, when it never stands still, whether
+        the shell drew meanwhile, and the pictures say where the screen last changed. Shell
+        only reads the count in place of the picture, for a screen where something else
+        always moves: still is then the shell drawing the same between looks.
         """
         pace = vm_helpers.pace(vm_helpers.busyness())
-        deadline = time.monotonic() + timeout.total_seconds() * pace
+        began = time.monotonic()
         with tempfile.TemporaryDirectory() as folder:
             shot = Path(folder) / "shot.ppm"
-            last: bytes | None = None
-            since = time.monotonic()
-            while time.monotonic() < deadline:
+
+            def counted() -> dict[str, int]:
+                # Before the shell runs, or after it's gone, nothing of its own is drawing.
+                status, said = self.machine.execute(
+                    self.in_session("qs ipc call frames said && qs ipc call frames start")
+                )
+                lines = said.strip().splitlines()
+                return cast("dict[str, int]", json.loads(lines[0]) if status == 0 and lines else {})
+
+            def screen() -> bytes:
+                if shell_only:
+                    return json.dumps(counted(), sort_keys=True).encode()
                 self.machine.send_monitor_command(f"screendump {shot}")
-                now = shot.read_bytes()
-                if now != last:
-                    last, since = now, time.monotonic()
-                elif time.monotonic() - since >= span:
-                    return True
-        return False
+                return shot.read_bytes()
 
-    def shoot(self, name: str, timeout: timedelta = timedelta(seconds=10)) -> None:
-        """Shoot the screen once it holds still, for a person to look at, in the gallery.
+            def drawn() -> dict[str, int]:
+                return {} if shell_only else counted()
 
-        One that never holds still is kept as it is. Outside the gallery it takes nothing and
-        waits for nothing, so a test must never lean on it to let the screen settle.
+            try:
+                return vm_helpers.settled(
+                    screen,
+                    drawn,
+                    span * pace,
+                    timeout.total_seconds() * pace,
+                    where=(vm_helpers.nowhere if shell_only else changed_where),
+                )
+            finally:
+                # Counting stops, so a shell between checks pays nothing for it.
+                _, said = self.machine.execute(self.in_session("qs ipc call frames said"))
+                print(
+                    f"the screen looked at for {time.monotonic() - began:.1f} s, in spans of"
+                    f" {span * pace:.1f} s, the shell drawing {said.strip()} at the last"
+                )
+
+    def held_still(self, timeout: timedelta = timedelta(seconds=10), span: float = 0.5) -> bool:
+        """Say whether the screen stands still before the time is up (unsettled)."""
+        return self.unsettled(timeout, span) is None
+
+    def shoot(
+        self, name: str, timeout: timedelta = timedelta(seconds=10), *, moving: str = ""
+    ) -> None:
+        """Shoot the screen once it stands still, for a person to look at, in the gallery.
+
+        One that never stands still is shot as it is, then fails saying why, so a picture caught
+        mid-motion never reaches the person judging the gallery as if it were the design.
+        Moving says what in the picture moves by itself, as a camera's view does, so the shot
+        waits on the shell's frames alone. Outside the gallery it takes nothing and waits for
+        nothing, so a test must never lean on it to let the screen settle.
         """
         if self.values["shots"]:
-            self.held_still(timeout)
+            why = self.unsettled(timeout, shell_only=bool(moving))
             self.machine.screenshot(name)
+            assert why is None, f"{name} was shot moving: {why}"
 
     def screen_now(self) -> Image.Image:
         """Give the screen as it is, from QEMU's own picture of it."""

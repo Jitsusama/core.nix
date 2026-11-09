@@ -620,7 +620,9 @@ def test_dictation_says_what_its_doing_and_when_it_heard_nothing(desktop: Deskto
     desktop.as_account("dictation toggle")
     desktop.reported("says dictation listening", lambda rest: rest == "", since)
     desktop.wait_for_surface("dictation")
-    desktop.shoot("dictation-listening")
+    # While it listens, its wave takes each peak the microphone hears and its clock reads
+    # each second, so it never stands still by design.
+    desktop.shoot("dictation-listening", moving="dictation's wave and clock, while it listens")
     # Typing shows once it lasts, and a press meanwhile says it's still
     # writing; the stand-in types for five seconds.
     desktop.as_account("dictation toggle")

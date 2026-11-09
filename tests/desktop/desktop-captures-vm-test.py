@@ -586,7 +586,7 @@ def test_the_camera_takes_a_picture_and_a_video_by_the_keys(desktop: Desktop) ->
     machine.send_key("tab")
     machine.send_key("ret")
     retry(lambda last: camera.recording(1, last), timeout=WAKING)
-    desktop.shoot("camera")
+    desktop.shoot("camera", moving="the stand-in camera's test pattern")
     camera.saved("ret")
     camera.gone()
     # ZZ while recording saves the video, then closes. The arrows choose that way, so Right

@@ -8,6 +8,7 @@ takes the machine it acts on, since a module can't see the driver's globals.
 import datetime as dt
 import os
 import shlex
+import time
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
@@ -135,3 +136,52 @@ def pace_the_driver(script: dict[str, Any], describe: Callable[[], None] | None 
     retry = paced(test_driver.machine.retry, describe=describe)
     test_driver.machine.retry = retry
     script["retry"] = retry
+
+
+# How many spans in a row the screen must stand still for. A guest a busy host gives no time
+# through one span draws nothing in it because it runs nothing, so one still span isn't rest;
+# a fade that guest draws slowly still draws across the next.
+STILL_SPANS = 2
+
+
+def nowhere(_before: bytes, _now: bytes) -> str:
+    """Say nothing of where two pictures differ, for a screen with no picture to read."""
+    return ""
+
+
+def settled(  # noqa: PLR0913 # The clock is the stand-ins' way in; where reads a picture.
+    screen: Callable[[], bytes],
+    drawn: Callable[[], dict[str, int]],
+    span: float,
+    within: float,
+    *,
+    clock: Callable[[], float] = time.monotonic,
+    where: Callable[[bytes, bytes], str] = nowhere,
+) -> str | None:
+    """Wait for the screen to stand still, giving None once it has, or why it never did.
+
+    Still is the screen's picture, looked at over and over, staying the same for STILL_SPANS
+    spans, each stretched with how busy the host is, since a busy host draws a fade slower
+    than any fixed span (ZJ62K2, 2026-11-09). The picture, not the shell's count of frames,
+    says it: an open launcher draws frames that change nothing (every gallery's launcher shots
+    on 2026-11-09 counted some), and a fade changes the picture with every frame. The count
+    says, when the screen never stands still, whether the shell drew as it changed, and
+    where says where the picture last changed.
+    """
+    deadline = clock() + within
+    drawn()
+    before = screen()
+    since = clock()
+    last = before
+    while clock() < deadline:
+        now = screen()
+        if now != before:
+            last, before, since = before, now, clock()
+        elif clock() - since >= span * STILL_SPANS:
+            return None
+    frames = drawn()
+    shell = f"the shell drawing {frames}" if frames else "the shell drawing nothing"
+    return (
+        f"the screen never stood still for {STILL_SPANS} spans of {span:.1f} s"
+        f" in {within:.0f} s: it last changed{where(last, before)}, {shell} meanwhile"
+    )
