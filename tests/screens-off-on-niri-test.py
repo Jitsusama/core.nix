@@ -8,6 +8,12 @@ display off without shutting down its hub or network card or anything? i want th
 able to keep going without blinding me in my sleep"). A nested niri draws nothing once its
 monitors are off and says nothing of it, so the shell's requests are read on their way to niri,
 through a proxy on niri's socket that the shell is started on.
+
+The shell is started as on a niri that powers one output off by name
+(modules/niri/powers-off-each-output.patch), so a screen's own Turn It Off asks for that one by
+its name (Joel, 2026-11-07: "i want to be able to control the screen that gets shut off, one,
+the other, all"). What each screen offers is held in Qt's engine (tests/screens.qml); here, only
+that the act reaches niri.
 """
 
 from __future__ import annotations
@@ -95,8 +101,9 @@ def proxy() -> Proxy:
 
 @pytest.fixture(scope="module")
 def shell(proxy: Proxy) -> Iterator[Shell]:
-    """Give the shell, started once a run on the proxy."""
+    """Give the shell, started once a run on the proxy, as on a niri powering each screen."""
     assert os.environ["NIRI_SOCKET"] == str(proxy.path)
+    os.environ["NIRI_POWERS_OFF_EACH_OUTPUT"] = "1"
     started = launcher_on_niri.started()
     yield started
     started.stop()
@@ -110,14 +117,14 @@ def screens_back_on(shell: Shell) -> Iterator[None]:
     shell.launcher_left_closed()
 
 
-def asked_to_power_off(proxy: Proxy, mark: int) -> None:
+def asked_to_power_off(proxy: Proxy, mark: int, asked: bytes = b'"PowerOffMonitors"') -> None:
     """Wait until a client has asked niri to power its monitors off since the mark."""
     deadline = time.monotonic() + ASKED
     while time.monotonic() < deadline:
-        if b'"PowerOffMonitors"' in proxy.since(mark):
+        if asked in proxy.since(mark):
             return
         time.sleep(POLL)
-    failed = f"the shell never asked niri to power its monitors off: {proxy.since(mark)!r}"
+    failed = f"the shell never asked niri for {asked!r}: {proxy.since(mark)!r}"
     raise AssertionError(failed)
 
 
@@ -135,6 +142,25 @@ def test_turn_every_screen_off_powers_niris_monitors_off(shell: Shell, proxy: Pr
     shell.send_key("ret")
     shell.launcher_closed()
     asked_to_power_off(proxy, mark)
+
+
+def test_a_screens_turn_it_off_powers_that_one_off_by_name(shell: Shell, proxy: Proxy) -> None:
+    """A screen's Turn It Off, a step inside it, asks niri to power that one off by name."""
+    shell.answer("screens")
+    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Screens")
+    shell.step_in()
+    # The nested niri's one screen leads Screens, and Tab steps inside it.
+    screen = (shell.showing()["selected"] or {}).get("name")
+    shell.step_in("tab")
+    shell.normal()
+    shell.down_to("Turn It Off")
+    mark = proxy.mark()
+    shell.send_key("ret")
+    # The nested niri's one screen is the last lit, so the launcher closes, nothing being left
+    # to show it, and asks once the key is up.
+    shell.launcher_closed()
+    asked_to_power_off(proxy, mark, b'"PowerOffMonitor":{"output":')
+    assert b'"PowerOffMonitors"' not in proxy.since(mark), f"{screen} asked for every screen"
 
 
 def test_set_noscreens_powers_niris_monitors_off(shell: Shell, proxy: Proxy) -> None:

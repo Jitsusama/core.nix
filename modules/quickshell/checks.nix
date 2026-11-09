@@ -1157,6 +1157,25 @@ onLinux {
       touch $out
     '';
 
+  # A screen darkens by name where niri powers one output off, docked with
+  # its hub powered, and unplugs only as the bigger step; the last one lit
+  # waits for the key that asked to come up; an older niri only unplugs, as
+  # tests/screens.qml holds launcher/Screens.js to it in Qt's own engine.
+  the-launcher-turns-each-screen-off =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-turns-each-screen-off" { } ''
+      cp ${../../tests/screens.qml} screens.qml
+      cp ${./launcher/Screens.js} Screens.js
+      cp ${./launcher/Numbers.js} Numbers.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml screens.qml
+      touch $out
+    '';
+
   # Every list of pi sessions keeps one order of how they stand, and Agents
   # lays each under the session orchestrating it, a step in, at most two,
   # an orchestration standing where its most urgent row would, as
