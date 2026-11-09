@@ -35,7 +35,9 @@
   # provider, reading through the daemon's own virsh, the library beside
   # it, and the program's entry, hidden, which the launcher lists only
   # while a VM exists. A workstation without the shell gets none of it,
-  # so nothing on it lists a program nobody can open.
+  # so nothing on it lists a program nobody can open. It may still hold
+  # the providers option, which Neovim's, Chrome's and Reader's modules
+  # declare so they can give the launcher their acts without the shell.
   vms-reach-the-launcher =
     let
       machine = bareNixos [
@@ -57,7 +59,7 @@
         && home.xdg.configFile ? "quickshell/launcher/Machines.js"
         && lib.hasInfix "\nNoDisplay=true\n" entry
         && !(bare.xdg.dataFile ? "applications/vms.desktop")
-        && !(bare ? jitsusama.quickshell.launcher.providers)
+        && !((bare.jitsusama.quickshell.launcher.providers or { }) ? vms)
       );
 
   # How Programs › VMs reads what virsh says, its lists, the one batch
