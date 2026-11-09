@@ -1603,7 +1603,7 @@ QtObject {
             ["strong", "good", "broken", "weak"]);
         // The connected network's drawer: where then what, what moves first, the
         // access point's hardware address last.
-        const drawerSaid = { eyebrow: "on {band} \u00b7 Wi-Fi network",
+        const drawerSaid = { eyebrow: "on {band} \u00b7 network",
             kind: "on Wi-Fi \u00b7 network",
             over: "{margin} dB over the noise", since: "since {time}" };
         const drawerNamed = id => id;
@@ -1616,7 +1616,7 @@ QtObject {
             since: "21:10", bssid: "aa:bb:cc:dd:ee:ff" };
         const linkDrawer = WifiLink.drawer(linkKnown, drawerNamed, drawerSaid);
         machine("a network's drawer says its band, then what it is",
-            [linkDrawer.eyebrow, linkDrawer.title], ["on 5 GHz \u00b7 Wi-Fi network", "Home"]);
+            [linkDrawer.eyebrow, linkDrawer.title], ["on 5 GHz \u00b7 network", "Home"]);
         machine("what moves first, its identifier last", linkDrawer.facts.map(one => one.label),
             ["signal", "speed", "expected", "carried", "retries", "generation", "coding",
                 "streams", "width", "channel", "heard", "protection", "standard",

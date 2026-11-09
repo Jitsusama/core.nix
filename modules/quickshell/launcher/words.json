@@ -9780,7 +9780,7 @@
       "id": "wifi:drawer",
       "in": "wifi",
       "said": {
-        "eyebrow": "on {band} \u00b7 Wi-Fi network",
+        "eyebrow": "on {band} \u00b7 network",
         "kind": "on Wi-Fi \u00b7 network",
         "over": "{margin} dB over the noise",
         "since": "since {time}"

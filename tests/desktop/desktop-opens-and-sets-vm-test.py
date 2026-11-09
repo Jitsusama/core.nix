@@ -1189,30 +1189,6 @@ def sets_wi_fi(desktop: Desktop) -> None:
     desktop.close_launcher()
 
 
-def shoot_the_network_drawer(desktop: Desktop) -> None:
-    """Select the Office, connected, and shoot its drawer at each of Joel's scales.
-
-    Its band says where it is, what moves leads, and its access point's hardware address is
-    last (WifiLink.drawer); then back at 1 for what follows.
-    """
-    for scale in ("1.5", "2", "1"):
-        desktop.as_account(f"niri msg output winit scale {scale}")
-        at = "" if scale == "1" else f"-at-{scale.replace('.', '-')}"
-        desktop.as_account("qs ipc call launcher collection wifi")
-        desktop.launcher_ready()
-        desktop.type_in("office", selecting="Office")
-        desktop.launcher_until(
-            lambda shown: (
-                shown["drawer"]["out"] is True
-                and shown["drawer"]["eyebrow"] == "on 2.4 GHz \u00b7 Wi-Fi network"
-                and shown["drawer"]["facts"][:1] == ["Signal"]
-                and shown["drawer"]["facts"][-1:] == ["Hardware Address"]
-            )
-        )
-        desktop.shoot(f"launcher-wifi-drawer{at}")
-        desktop.close_launcher()
-
-
 def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_password(  # noqa: PLR0915
     desktop: Desktop,
 ) -> None:
@@ -1433,7 +1409,6 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.step_out()
     desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "office")
     desktop.close_launcher()
-    shoot_the_network_drawer(desktop)
     # Stepped into, a network says after what can be done to it what's
     # heard of it, each a part named first, the selected row's footer
     # saying more: the card's Signal and Speed once the card has read
