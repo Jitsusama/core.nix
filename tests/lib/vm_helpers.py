@@ -6,6 +6,7 @@ takes the machine it acts on, since a module can't see the driver's globals.
 """
 
 import datetime as dt
+import operator
 import os
 import shlex
 import time
@@ -149,7 +150,7 @@ def nowhere(_before: bytes, _now: bytes) -> str:
     return ""
 
 
-def settled(  # noqa: PLR0913 # The clock is the stand-ins' way in; where reads a picture.
+def settled(  # noqa: PLR0913 # The clock is the stand-ins' way in; where and alike read pictures.
     screen: Callable[[], bytes],
     drawn: Callable[[], dict[str, int]],
     span: float,
@@ -157,6 +158,7 @@ def settled(  # noqa: PLR0913 # The clock is the stand-ins' way in; where reads 
     *,
     clock: Callable[[], float] = time.monotonic,
     where: Callable[[bytes, bytes], str] = nowhere,
+    alike: Callable[[bytes, bytes], bool] = operator.eq,
 ) -> str | None:
     """Wait for the screen to stand still, giving None once it has, or why it never did.
 
@@ -166,7 +168,8 @@ def settled(  # noqa: PLR0913 # The clock is the stand-ins' way in; where reads 
     says it: an open launcher draws frames that change nothing (every gallery's launcher shots
     on 2026-11-09 counted some), and a fade changes the picture with every frame. The count
     says, when the screen never stands still, whether the shell drew as it changed, and
-    where says where the picture last changed.
+    where says where the picture last changed. Alike says when two pictures are the same, for
+    a screen where something changes by itself by design, as a running clock's figures do.
     """
     deadline = clock() + within
     drawn()
@@ -175,7 +178,7 @@ def settled(  # noqa: PLR0913 # The clock is the stand-ins' way in; where reads 
     last = before
     while clock() < deadline:
         now = screen()
-        if now != before:
+        if not alike(before, now):
             last, before, since = before, now, clock()
         elif clock() - since >= span * STILL_SPANS:
             return None

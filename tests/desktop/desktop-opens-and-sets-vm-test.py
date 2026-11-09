@@ -1975,7 +1975,7 @@ def shoot_the_timers(desktop: Desktop) -> None:
         desktop.as_account("qs ipc call launcher collection timers")
         desktop.launcher_ready()
         desktop.launcher_until(lambda shown: len(shown["rows"]) == listed)
-        desktop.shoot(f"launcher-timers-at-{scale.replace('.', '-')}")
+        desktop.shoot(f"launcher-timers-at-{scale.replace('.', '-')}", ticking="Bread's clock")
         desktop.close_launcher()
     desktop.as_account("niri msg output winit scale 1")
     shoot_now_through_the_timers(desktop)
@@ -2118,7 +2118,9 @@ def shoot_now_holding_timers(desktop: Desktop, standing: str) -> None:
             return ImageChops.difference(before, desktop.screen_now()).getbbox() is not None
 
         retry(moved, timeout=timedelta(seconds=30))
-        desktop.shoot(f"launcher-now-timers-{standing}-at-{scale.replace('.', '-')}")
+        desktop.shoot(
+            f"launcher-now-timers-{standing}-at-{scale.replace('.', '-')}", ticking="Bread's clock"
+        )
         desktop.close_launcher()
     desktop.as_account("niri msg output winit scale 1")
 

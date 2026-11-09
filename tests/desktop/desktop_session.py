@@ -12,6 +12,7 @@ import functools
 import io
 import itertools
 import json
+import operator
 import re
 import shlex
 import tempfile
@@ -204,6 +205,23 @@ def changed_where(before: bytes, now: bytes) -> str:
         Image.open(io.BytesIO(before)).convert("RGB"), Image.open(io.BytesIO(now)).convert("RGB")
     ).getbbox()
     return f" from {box[0]},{box[1]} to {box[2]},{box[3]}" if box else ""
+
+
+# How much of the screen a running clock may change and the picture still count as at rest: a
+# hundredth of its pixels. A timer's figures change a few hundred each second, two clocks
+# under ten thousand at 2, while a fade changes every pixel of what fades, the launcher's
+# hundreds of thousands.
+TICKS_SHARE = 0.01
+
+
+def but_the_ticks(before: bytes, now: bytes) -> bool:
+    """Say two of QEMU's pictures of the screen are alike but for what a clock changed."""
+    was, then = Image.open(io.BytesIO(before)), Image.open(io.BytesIO(now))
+    if was.size != then.size:
+        return False
+    changed = ImageChops.difference(was.convert("RGB"), then.convert("RGB")).convert("L")
+    moved = changed.point(lambda level: 255 if level else 0).histogram()[255]
+    return moved < TICKS_SHARE * was.width * was.height
 
 
 def drawn_at(window: Json) -> tuple[int, int, int, int]:
@@ -444,6 +462,7 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         span: float = 0.5,
         *,
         shell_only: bool = False,
+        ticking: bool = False,
     ) -> str | None:
         """Wait for the screen to stand still, giving None once it has, or why it never did.
 
@@ -453,7 +472,9 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         shell's own count of its frames (Frames.qml) says, when it never stands still, whether
         the shell drew meanwhile, and the pictures say where the screen last changed. Shell
         only reads the count in place of the picture, for a screen where something else
-        always moves: still is then the shell drawing the same between looks.
+        always moves: still is then the shell drawing the same between looks. Ticking allows
+        a running clock's figures to change, the rest of the picture holding still
+        (but_the_ticks), since a clock's own frames would change the count with it.
         """
         pace = vm_helpers.pace(vm_helpers.busyness())
         began = time.monotonic()
@@ -484,6 +505,7 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
                     span * pace,
                     timeout.total_seconds() * pace,
                     where=(vm_helpers.nowhere if shell_only else changed_where),
+                    alike=(but_the_ticks if ticking else operator.eq),
                 )
             finally:
                 # Counting stops, so a shell between checks pays nothing for it.
@@ -498,18 +520,25 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         return self.unsettled(timeout, span) is None
 
     def shoot(
-        self, name: str, timeout: timedelta = timedelta(seconds=10), *, moving: str = ""
+        self,
+        name: str,
+        timeout: timedelta = timedelta(seconds=10),
+        *,
+        moving: str = "",
+        ticking: str = "",
     ) -> None:
         """Shoot the screen once it stands still, for a person to look at, in the gallery.
 
         One that never stands still is shot as it is, then fails saying why, so a picture caught
         mid-motion never reaches the person judging the gallery as if it were the design.
         Moving says what in the picture moves by itself, as a camera's view does, so the shot
-        waits on the shell's frames alone. Outside the gallery it takes nothing and waits for
-        nothing, so a test must never lean on it to let the screen settle.
+        waits on the shell's frames alone. Ticking says what clock runs in it, as a timer's
+        does, so the shot waits for the rest of the picture to hold still. Outside the gallery
+        it takes nothing and waits for nothing, so a test must never lean on it to let the
+        screen settle.
         """
         if self.values["shots"]:
-            why = self.unsettled(timeout, shell_only=bool(moving))
+            why = self.unsettled(timeout, shell_only=bool(moving), ticking=bool(ticking))
             self.machine.screenshot(name)
             assert why is None, f"{name} was shot moving: {why}"
 

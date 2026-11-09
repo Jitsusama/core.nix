@@ -7,6 +7,7 @@ from a machine that only records it, which keeps these tests to milliseconds.
 from __future__ import annotations
 
 import datetime as dt
+import operator
 import shlex
 from typing import TYPE_CHECKING, Any, cast
 
@@ -204,18 +205,26 @@ class FadingGuest:
     LOOKING = 0.05
 
     def __init__(
-        self, frames: int, apart: float, *, other: bool = False, asked: bool = False
+        self,
+        frames: int,
+        apart: float,
+        *,
+        other: bool = False,
+        asked: bool = False,
+        ticking: bool = False,
     ) -> None:
         """Start the fade at nought, its frames this far apart.
 
         Other moves a window of its own; asked draws the launcher a frame, which changes
-        nothing on screen, each time its frames are asked for.
+        nothing on screen, each time its frames are asked for; ticking runs a clock on screen,
+        its figures changing each second, as a running timer's do.
         """
         self.now = 0.0
         self.frames = frames
         self.apart = apart
         self.other = other
         self.asked = asked
+        self.ticking = ticking
         self.counted = 0
         self.owed = 0
 
@@ -236,7 +245,8 @@ class FadingGuest:
         """Give the screen's picture, which another window moving changes each time."""
         self.now += self.LOOKING
         moved = int(self.now / self.LOOKING) if self.other else 0
-        return f"{self.drawn_by_now()} {moved}".encode()
+        ticked = int(self.now) if self.ticking else 0
+        return f"{self.drawn_by_now()} {moved} {ticked}".encode()
 
     def drawn(self) -> dict[str, int]:
         """Give the shell's frames since it was last asked, as `qs ipc call frames` says them."""
@@ -250,11 +260,17 @@ def settled(
     span: float,
     within: float,
     where: Callable[[bytes, bytes], str] = vm_helpers.nowhere,
+    alike: Callable[[bytes, bytes], bool] = operator.eq,
 ) -> str | None:
     """Wait on the guest's screen to stand still."""
     return vm_helpers.settled(
-        guest.screen, guest.drawn, span, within, clock=guest.clock, where=where
+        guest.screen, guest.drawn, span, within, clock=guest.clock, where=where, alike=alike
     )
+
+
+def but_the_clock(before: bytes, now: bytes) -> bool:
+    """Say two of the guest's pictures are alike but for its clock's figures."""
+    return before.split()[:2] == now.split()[:2]
 
 
 def test_a_drawer_fading_slower_than_half_a_second_a_frame_is_waited_out() -> None:
@@ -294,6 +310,25 @@ def test_another_programs_window_moving_is_no_rest_either() -> None:
         "the screen never stood still for 2 spans of 0.5 s in 5 s:"
         " it last changed, the shell drawing nothing meanwhile"
     ), why
+
+
+def test_a_clock_ticking_on_screen_is_never_rest_by_the_picture_alone() -> None:
+    # Bread's running clock in opens-and-sets' timer shots, every second (PI3KKD, 2026-11-09).
+    why = settled(FadingGuest(frames=0, apart=1.0, ticking=True), 0.5, 5) or ""
+    assert why.startswith("the screen never stood still"), why
+
+
+def test_a_clock_ticking_is_rest_where_its_ticks_are_allowed() -> None:
+    guest = FadingGuest(frames=0, apart=1.0, ticking=True)
+    two_spans_and_their_looks = 1.5
+    assert settled(guest, 0.5, 5, alike=but_the_clock) is None
+    assert guest.now < two_spans_and_their_looks, f"a still screen took {guest.now:.2f} s"
+
+
+def test_a_fade_beside_a_ticking_clock_is_still_waited_out() -> None:
+    guest = FadingGuest(frames=5, apart=0.3, ticking=True)
+    assert settled(guest, 0.5, 10, alike=but_the_clock) is None
+    assert guest.now >= guest.faded_by, f"still at {guest.now:.2f} s, the fade ends at 1.5 s"
 
 
 def test_the_reason_says_where_the_picture_last_changed() -> None:
