@@ -429,37 +429,56 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         yield
         self.reported(what, lambda rest: rest == "", since, timeout)
 
-    def held_still(self, timeout: timedelta = timedelta(seconds=10), span: float = 0.5) -> bool:
-        """Say whether the screen holds still for half a second before the time is up.
+    def unsettled(
+        self, timeout: timedelta = timedelta(seconds=10), span: float = 0.5
+    ) -> str | None:
+        """Wait for the screen to stand still, giving None once it has, or why it never did.
 
-        Half a second is twice the theme's longest movement: niri composes a frame a moment
-        after it's asked to, windows and surfaces move as they come, and a busy host can draw
-        two frames in a row the same mid-motion.
+        Still is by evidence (vm_helpers.settled): the shell's windows drew no frame, as its
+        own count says (Frames.qml), and the screen's picture stayed the same, for two spans
+        in a row. Half a second is twice the theme's longest movement; both it and the bound
+        stretch with how busy the host is, since a busy host draws a fade slower than that.
         """
         pace = vm_helpers.pace(vm_helpers.busyness())
-        deadline = time.monotonic() + timeout.total_seconds() * pace
         with tempfile.TemporaryDirectory() as folder:
             shot = Path(folder) / "shot.ppm"
-            last: bytes | None = None
-            since = time.monotonic()
-            while time.monotonic() < deadline:
+
+            def screen() -> bytes:
                 self.machine.send_monitor_command(f"screendump {shot}")
-                now = shot.read_bytes()
-                if now != last:
-                    last, since = now, time.monotonic()
-                elif time.monotonic() - since >= span:
-                    return True
-        return False
+                return shot.read_bytes()
+
+            def drawn() -> dict[str, int]:
+                # Before the shell runs, or after it's gone, nothing of its own is drawing.
+                status, said = self.machine.execute(
+                    self.in_session("qs ipc call frames said && qs ipc call frames start")
+                )
+                lines = said.strip().splitlines()
+                return cast("dict[str, int]", json.loads(lines[0])) if status == 0 and lines else {}
+
+            try:
+                return vm_helpers.settled(
+                    screen, drawn, span * pace, timeout.total_seconds() * pace
+                )
+            finally:
+                # Counting stops, so a shell between checks pays nothing for it.
+                self.machine.execute(self.in_session("qs ipc call frames said"))
+
+    def held_still(self, timeout: timedelta = timedelta(seconds=10), span: float = 0.5) -> bool:
+        """Say whether the screen stands still before the time is up (unsettled)."""
+        return self.unsettled(timeout, span) is None
 
     def shoot(self, name: str, timeout: timedelta = timedelta(seconds=10)) -> None:
-        """Shoot the screen once it holds still, for a person to look at, in the gallery.
+        """Shoot the screen once it stands still, for a person to look at, in the gallery.
 
-        One that never holds still is kept as it is. Outside the gallery it takes nothing and
-        waits for nothing, so a test must never lean on it to let the screen settle.
+        One that never stands still is shot as it is, then fails saying why, so a picture caught
+        mid-motion never reaches the person judging the gallery as if it were the design.
+        Outside the gallery it takes nothing and waits for nothing, so a test must never lean on
+        it to let the screen settle.
         """
         if self.values["shots"]:
-            self.held_still(timeout)
+            why = self.unsettled(timeout)
             self.machine.screenshot(name)
+            assert why is None, f"{name} was shot moving: {why}"
 
     def screen_now(self) -> Image.Image:
         """Give the screen as it is, from QEMU's own picture of it."""

@@ -8,6 +8,7 @@ takes the machine it acts on, since a module can't see the driver's globals.
 import datetime as dt
 import os
 import shlex
+import time
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
@@ -135,3 +136,53 @@ def pace_the_driver(script: dict[str, Any], describe: Callable[[], None] | None 
     retry = paced(test_driver.machine.retry, describe=describe)
     test_driver.machine.retry = retry
     script["retry"] = retry
+
+
+# How many spans in a row the screen must stand still for. A guest a busy host gives no time
+# through one span draws nothing in it because it runs nothing, so one quiet span isn't rest;
+# a fade that guest draws slowly still draws across the next.
+STILL_SPANS = 2
+
+
+def settled(  # noqa: PLR0913 # The clock and the wait are the stand-ins' way in.
+    screen: Callable[[], bytes],
+    drawn: Callable[[], dict[str, int]],
+    span: float,
+    within: float,
+    *,
+    clock: Callable[[], float] = time.monotonic,
+    wait: Callable[[float], None] = time.sleep,
+) -> str | None:
+    """Wait for the screen to stand still, giving None once it has, or why it never did.
+
+    Still is by evidence, twice over, for STILL_SPANS spans in a row: no window the shell
+    counts drew a frame across the span (drawn gives what drew since it was last called), and
+    the screen's picture didn't change across it, which catches another program's window
+    moving. A picture alike for a while alone isn't enough: a busy host leaves a drawer's fade
+    on one frame longer than any fixed span (ZJ62K2, 2026-11-09), and the shell still counts
+    that frame's next.
+    """
+    deadline = clock() + within
+    drawn()
+    before = screen()
+    quiet = 0
+    why = "no span was looked at"
+    while clock() < deadline:
+        # The span measured, not a guess at how long a motion takes: what's counted is what's
+        # drawn while nothing is asked of the screen.
+        wait(span)
+        frames = drawn()
+        now = screen()
+        if frames:
+            quiet, why = 0, f"the shell was still drawing, last {frames}"
+        elif now != before:
+            quiet, why = 0, "the screen changed with no frame of the shell's"
+        else:
+            quiet += 1
+            if quiet == STILL_SPANS:
+                return None
+        before = now
+    return (
+        f"the screen never stood still for {STILL_SPANS} spans of {span:.1f} s"
+        f" in {within:.0f} s: {why}"
+    )
