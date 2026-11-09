@@ -1688,16 +1688,32 @@ def reads_cold_for_a_terminal(desktop: Desktop) -> None:
 
     Wi-Fi looks for networks, Firmware asks fwupd, and a keyboard's and a camera's drawers
     read their files, each only while something sees them: here a terminal's show does.
-    A look for networks takes as long as the cards do, so it's asked until it's heard.
+    The cards first forget what their look at boot heard, and wifid says none nearby, so
+    Office is heard only by a look a show starts; that takes as long as the cards do, so
+    it's asked until it's heard.
     """
     desktop.launcher_left_closed()
+    machine = desktop.machine
+    machine.succeed(
+        "for card in $(busctl tree --list fi.w1.wpa_supplicant1"
+        " | grep -E '/Interfaces/[0-9]+$'); do busctl call fi.w1.wpa_supplicant1"
+        ' "$card" fi.w1.wpa_supplicant1.Interface FlushBSS u 0; done'
+    )
+    # Its nearby alone, since a network saved or joined is named elsewhere in what it says,
+    # and only once wifid has answered, so a wifid that won't isn't taken for one hearing none.
+    wifi = "varlinkctl --json=short call /run/wifid/io.jitsusama.Wifi io.jitsusama.Wifi"
+    machine.wait_until_succeeds(
+        f"said=$({wifi}.Describe '{{}}')"
+        ' && ! printf %s "$said" | grep -qE \'"nearby":\\[[^]]*"Office"\'',
+        timeout=dt.timedelta(seconds=30),
+    )
 
     def rows(*steps: str) -> dict[str, Json]:
         words = " ".join(shlex.quote(step) for step in steps)
         shown = json.loads(desktop.as_account(f"launcher show --json --drawers {words}"))
         return {row["name"]: row for row in shown["rows"]}
 
-    desktop.machine.wait_until_succeeds(
+    machine.wait_until_succeeds(
         desktop.in_session("launcher show network wi-fi | grep -q Office"),
         timeout=dt.timedelta(seconds=30),
     )
