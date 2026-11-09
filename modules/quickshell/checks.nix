@@ -1545,7 +1545,7 @@ onLinux {
   # and the states tests/spend.qml writes by hand, through Quickshell
   # itself, with niri, do not disturb, the shortcuts and the sessions stood
   # in for.
-  the-shell-reads-the-spend-watch =
+  the-desktop-reads-the-spend-watch =
     let
       watch = pkgs.callPackage ../spend-watch/package.nix { };
       niri = singleton "Niri.qml" ''
@@ -1565,7 +1565,7 @@ onLinux {
         property var actions: [{ opens: "spend", chord: [{ text: "Super" }, { text: "U" }] }]
       '';
     in
-    pkgs.runCommandLocal "the-shell-reads-the-spend-watch" { } ''
+    pkgs.runCommandLocal "the-desktop-reads-the-spend-watch" { } ''
       mkdir -p runtime/written runtime/spend-watch sessions/thing state launcher && chmod 700 runtime
       ${lib.getExe pkgs.bash} ${../../tests/spend-session.sh} sessions/thing/session.jsonl
       cat > config.json <<EOF
@@ -1611,11 +1611,11 @@ onLinux {
   # tests/daemon.qml; and over one connection, records of two kinds from a
   # daemon holding both, and kinds told as the mycelium node tells them
   # (tests/daemon-kinds.py).
-  the-shell-holds-a-daemons-records =
+  the-desktop-holds-a-daemons-records =
     let
       people = pkgs.callPackage ../people/package.nix { };
     in
-    pkgs.runCommandLocal "the-shell-holds-a-daemons-records" { } ''
+    pkgs.runCommandLocal "the-desktop-holds-a-daemons-records" { } ''
       mkdir -p runtime/daemons && chmod 700 runtime
       cat > sources.json <<EOF
       {"sources": [{"name": "slack",
@@ -1641,13 +1641,13 @@ onLinux {
   # one, and finds a few thousand files by name within a frame, as
   # tests/taken.qml holds it to, with what each screenshot says in
   # tests/taken-texts.json.
-  the-shell-finds-screenshots-by-their-words =
+  the-desktop-finds-screenshots-by-their-words =
     let
       standIn = pkgs.writers.writePython3 "stand-in-screen-text" {
         doCheck = false;
       } (builtins.readFile ../../tests/desktop/stand-in-screen-text.py);
     in
-    pkgs.runCommandLocal "the-shell-finds-screenshots-by-their-words" { } ''
+    pkgs.runCommandLocal "the-desktop-finds-screenshots-by-their-words" { } ''
       mkdir -p runtime/daemons shots && chmod 700 runtime
       touch shots/2026-10-{29,30,31}\ 09-00-00.png
       substitute ${../../tests/taken-texts.json} texts.json --subst-var-by shots "$PWD/shots"
@@ -3928,11 +3928,11 @@ onLinux {
   # How the shell says a Tuple call, who's in it and for how long, a
   # call's link in what was copied, and Tuple's Recent, its order and each
   # call's words (tests/tuple.qml, over Tuple.js and the When.js it reads).
-  the-shell-follows-tuple-calls =
+  the-desktop-follows-tuple-calls =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
-    pkgs.runCommandLocal "the-shell-follows-tuple-calls" { } ''
+    pkgs.runCommandLocal "the-desktop-follows-tuple-calls" { } ''
       cp ${../../tests/tuple.qml} tuple.qml
       cp ${../tuple/Tuple.js} Tuple.js
       cp ${./When.js} When.js
@@ -4048,7 +4048,7 @@ onLinux {
   # shell tells who comes and goes through a stand-in notify-send that keeps
   # what it's asked. The daemon's own reading of Tuple is its tests', run as
   # it builds (tuple-call-holds-the-call).
-  the-shell-hears-tuples-call =
+  the-desktop-hears-tuples-call =
     let
       calls = pkgs.callPackage ../tuple/call/package.nix { };
       niri = pkgs.writeText "Niri.qml" ''
@@ -4107,7 +4107,7 @@ onLinux {
       };
       paste = pkgs.writeShellScriptBin "wl-paste" "exec sleep 300";
     in
-    pkgs.runCommandLocal "the-shell-hears-tuples-call" { } ''
+    pkgs.runCommandLocal "the-desktop-hears-tuples-call" { } ''
       cp ${../tuple/Tuple.qml} Tuple.qml
       cp ${./Daemon.qml} Daemon.qml
       # The copied link Tuple offers to join is read from the shell's one
@@ -4244,7 +4244,7 @@ onLinux {
   # stands in for it): each state said, a service that stops watched again
   # once its socket starts it, and a socket nothing listens on tried once,
   # never in a loop.
-  the-shell-follows-dictation =
+  the-desktop-follows-dictation =
     let
       niri = pkgs.writeText "Niri.qml" ''
         pragma Singleton
@@ -4258,7 +4258,7 @@ onLinux {
         }
       '';
     in
-    pkgs.runCommandLocal "the-shell-follows-dictation" { } ''
+    pkgs.runCommandLocal "the-desktop-follows-dictation" { } ''
       cp ${../dictation/Dictation.qml} Dictation.qml
       cp ${../../tests/dictation.qml} shell.qml
       cp ${niri} Niri.qml

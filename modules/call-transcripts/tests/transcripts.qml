@@ -2,7 +2,7 @@
 // when and how long, its drawer's words set from markdown, and which
 // calls are with someone or of a meeting, run in Qt's own JavaScript
 // engine, the one the shell runs it in. The
-// `the-shell-reads-the-transcripts` check copies Transcripts.js beside
+// `the-desktop-reads-the-transcripts` check copies Transcripts.js beside
 // this file and runs `qml -platform offscreen transcripts.qml`.
 import QtQuick
 import "Transcripts.js" as Transcripts

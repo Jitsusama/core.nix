@@ -2309,27 +2309,27 @@
   the-session-goes-idle-as-the-screens-go-off = ''
     swayidle tells logind the session is idle at the same moment it turns the screens off
   '';
-  the-shell-follows-dictation = ''
+  the-desktop-follows-dictation = ''
     the shell follows each dictation state, watches again a service its socket restarts, and tries a
     socket nothing listens on once, never looping
   '';
-  the-shell-follows-tuple-calls = ''
+  the-desktop-follows-tuple-calls = ''
     the shell says who a Tuple call is with and how long it's gone on, finds a call's link in what
     was copied, and lists Tuple's Recent newest first, each call by who, how long or missed, and
     when
   '';
-  the-shell-finds-screenshots-by-their-words = ''
+  the-desktop-finds-screenshots-by-their-words = ''
     what was taken lately finds screenshots by their words from the screen-text daemon, on one
     connection made only at the first search and let go at rest, each text asked once and the last
     four answers kept, each screenshot found with the line that matched; and finds a few thousand
     files by name, newest first, each key within a frame
   '';
-  the-shell-hears-tuples-call = ''
+  the-desktop-hears-tuples-call = ''
     the shell's Tuple holds the call through the real tuple-call: who's in it, since when, mutes,
     screens and cameras, Joel's room, comings and goings told, a ring and a missed call from
     Tuple's log, and muting and opening the room asked of the daemon
   '';
-  the-shell-holds-a-daemons-records = ''
+  the-desktop-holds-a-daemons-records = ''
     the shell holds a daemon's records over one connection it keeps: a daemon that's down is said and
     never waited on, one that starts is connected to by itself, a watch narrowed to those listed
     holds them alone, a search's answer is never held, keys watched ahead and a get's answer land by
@@ -2337,20 +2337,20 @@
     kinds names both in every watch, a kind with none is known to hold none once answered, and a
     whole answer after a gap lets go what went in it
   '';
-  the-shell-reads-the-spend-watch = ''
+  the-desktop-reads-the-spend-watch = ''
     the AI spend piece and collection draw what the watch wrote, put what wants a look first, step
     into each figure's parts, hide amounts while sharing, and answer reports by their words; a
     budget's row, a window's and a cap's open a drawer of every fact budgets.json holds of it,
     and a period's its days and what its cuts went to most; the tokens piece is there only while the watch's tokens warn, with its acts for a running session
   '';
-  the-shell-speaks-its-javascript = ''
+  the-desktop-speaks-its-javascript = ''
     the shell calls no method Quickshell's JavaScript lacks
   '';
   the-shell-starts-nothing = ''
     the account's zsh starts only git-engine, its fifo and direnv, and each prompt after runs direnv
     alone
   '';
-  the-shell-reads-the-documents = ''
+  the-desktop-reads-the-documents = ''
     the shell reads the documents from the google program's state, none from one saying none,
     knows which Google program opens each kind, and says only when Joel last opened a document
     beside its title, with its details for the drawer; reads the Drive folders
@@ -2368,7 +2368,7 @@
     in as its drawer's eyebrow, and the figures the program read of it in its drawer, what
     changes most first and its id last
   '';
-  the-shell-reads-the-mail = ''
+  the-desktop-reads-the-mail = ''
     the shell gathers the google program's whole state from its daemon's records, each kind in
     its order, a signed-out account alone, and no account once the daemon stops answering; says
     when mail came in words, and a moment as a drawer says one, and what its row and its details
@@ -2378,13 +2378,13 @@
     it or fetch a file it carries; says how that fetch stands; and writes the line making a Meet
     meeting and says how one asked for stands
   '';
-  the-shell-reads-the-transcripts = ''
+  the-desktop-reads-the-transcripts = ''
     the shell says what each call written down was, when it was in words and how long it went on,
     or that it's being written down; sets its summary or its transcript's opening from markdown as
     styled text, nothing it said read as markup; says who it was with; and lists the calls newest
     first, those with someone by any of their addresses, and a meeting's own
   '';
-  the-shell-tells-the-next-meeting = ''
+  the-desktop-tells-the-next-meeting = ''
     the shell names as next the meeting about to start or going on, never one over, all day or said
     no to, says when it is in words, when it's about to start and when it's said as a notice,
     whether Return joins it or shows it, whether it's today's and how Joel answered it, gives its
