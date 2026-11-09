@@ -27,6 +27,7 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import "launcher" as Launcher
+import "Expect.js" as Expect
 import "launcher/Reader.js" as Reader
 
 ShellRoot {
@@ -38,15 +39,9 @@ ShellRoot {
     readonly property string notes: `${home}/notes`
     readonly property real now: Number(Quickshell.env("NOW")) * 1000
 
-    function expect(what, holds, said) {
-        if (!holds)
-            throw new Error(`${what}: ${said}`);
-    }
+    function expect(what, holds, said) { Expect.expect(what, holds, said); }
 
-    function fail(message) {
-        console.warn(`FAIL ${message}`);
-        Qt.callLater(() => Qt.exit(1));
-    }
+    function fail(message) { Expect.fail(message); }
 
     function same(what, got, wanted) {
         expect(what, got === wanted, got);
