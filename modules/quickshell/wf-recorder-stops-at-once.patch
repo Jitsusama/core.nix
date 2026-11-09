@@ -1,0 +1,190 @@
+Stops a recording the moment it's asked to, and keeps what it took.
+wf-recorder asks the compositor for each frame with damage, which comes
+only once something on the screen moves, and waits for it in
+wl_display_dispatch, whose poll goes on waiting when a signal breaks in.
+So SIGINT set the flag to stop, but nothing read it until the next
+frame: over a still screen, up to a minute later, and the recording
+wasn't saved until then. The signal now also writes to an eventfd the
+wait polls beside the display, so the wait gives way at once whichever
+thread took the signal, and even when it came just before the wait
+began. Stopping at once left two more gaps, each of which emptied a
+short recording: the writer left at the stop without encoding frames
+already captured, and over a still screen the only frame was the first,
+of no length, so nothing played. The writer now encodes every captured
+frame before it leaves, and a stop takes one last frame without damage,
+which the compositor draws at once, so the recording runs to the stop
+and ends on what was shown then. Laid over
+wf-recorder-dmabuf-version.patch.
+
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -17,6 +17,9 @@
+ #include <sys/stat.h>
+ #include <signal.h>
+ #include <unistd.h>
++#include <errno.h>
++#include <poll.h>
++#include <sys/eventfd.h>
+ #include <gbm.h>
+ #include <fcntl.h>
+ #include <xf86drm.h>
+@@ -198,6 +201,17 @@
+ 
+ std::atomic<bool> exit_main_loop{false};
+ 
++/* Set by a termination signal alone, so a stop takes a last frame where a
++ * failure doesn't. */
++std::atomic<bool> stopped{false};
++
++/* Set once the main loop has captured its last frame, so the writer encodes
++ * every frame captured before it leaves rather than dropping them. */
++std::atomic<bool> capture_done{false};
++
++/* Set once the writer has left, so nothing waits on it for a buffer. */
++std::atomic<bool> writer_left{false};
++
+ buffer_pool<wf_buffer, 16> buffers;
+ 
+ bool buffer_copy_done = false;
+@@ -629,13 +643,13 @@
+ 
+     std::optional<uint64_t> first_frame_ts;
+ 
+-    while(!exit_main_loop)
++    while(true)
+     {
+         // wait for frame to become available
+-        while(buffers.encode().ready_encode() != true && !exit_main_loop) {
++        while(buffers.encode().ready_encode() != true && !capture_done) {
+             std::this_thread::sleep_for(std::chrono::microseconds(1000));
+         }
+-        if (exit_main_loop) {
++        if (buffers.encode().ready_encode() != true) {
+             break;
+         }
+ 
+@@ -731,11 +745,65 @@
+     pr = nullptr;
+ #endif
+     frame_writer = nullptr;
++    writer_left = true;
+ }
+ 
++/* Readable once a termination signal has come, so the wait for a frame
++ * hears it whichever thread took it, and even when it came just before
++ * the wait began. */
++static int stop_fd = -1;
++
+ void handle_graceful_termination(int)
+ {
++    stopped = true;
+     exit_main_loop = true;
++    if (stop_fd >= 0)
++    {
++        uint64_t one = 1;
++        (void)!write(stop_fd, &one, sizeof(one));
++    }
++}
++
++/* Dispatches the display's events as wl_display_dispatch does, but gives
++ * way at once to a termination signal. wl_display_dispatch polls again
++ * when a signal breaks in, and a frame asked for with damage comes only
++ * once something on the screen moves, so a recording stopped over a still
++ * screen went on, and wasn't saved, until something did. */
++static int dispatch_or_stop(struct wl_display *display)
++{
++    while (wl_display_prepare_read(display) != 0)
++    {
++        if (wl_display_dispatch_pending(display) == -1)
++        {
++            return -1;
++        }
++    }
++    wl_display_flush(display);
++
++    struct pollfd fds[2] = {
++        { wl_display_get_fd(display), POLLIN, 0 },
++        { stop_fd, POLLIN, 0 },
++    };
++    int polled;
++    do {
++        polled = poll(fds, stop_fd >= 0 ? 2 : 1, -1);
++    } while (polled == -1 && errno == EINTR && !exit_main_loop);
++
++    if (polled > 0 && fds[0].revents != 0)
++    {
++        if (wl_display_read_events(display) == -1)
++        {
++            return -1;
++        }
++    } else
++    {
++        wl_display_cancel_read(display);
++        if (polled == -1 && errno != EINTR)
++        {
++            return -1;
++        }
++    }
++    return wl_display_dispatch_pending(display);
+ }
+ 
+ static bool user_specified_overwrite(std::string filename)
+@@ -1378,6 +1446,7 @@
+     bool spawned_thread = false;
+     std::thread writer_thread;
+ 
++    stop_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+     for (auto signo : GRACEFUL_TERMINATION_SIGNALS)
+     {
+         signal(signo, handle_graceful_termination);
+@@ -1393,7 +1462,7 @@
+         buffer_copy_done = false;
+         request_next_frame();
+ 
+-        while (!buffer_copy_done && !exit_main_loop && wl_display_dispatch(display) != -1) {
++        while (!buffer_copy_done && !exit_main_loop && dispatch_or_stop(display) != -1) {
+             // This space is intentionally left blank
+         }
+ 
+@@ -1417,6 +1486,41 @@
+         buffers.next_capture();
+     }
+ 
++    /* A stop takes one last frame, drawn at once rather than at the screen's
++     * next change, so the recording runs to the moment it was stopped and
++     * ends on what was shown then, even over a still screen. */
++    if (stopped)
++    {
++        use_damage = false;
++        while (buffers.capture().ready_capture() != true && !writer_left) {
++            std::this_thread::sleep_for(std::chrono::microseconds(500));
++        }
++
++        buffer_copy_done = false;
++        if (buffers.capture().ready_capture()) {
++            request_next_frame();
++        }
++        while (buffers.capture().ready_capture() && !buffer_copy_done &&
++            frame_failed_cnt <= MAX_FRAME_FAILURES && wl_display_dispatch(display) != -1) {
++            // This space is intentionally left blank
++        }
++
++        if (buffer_copy_done) {
++            if (!spawned_thread)
++            {
++                writer_thread = std::thread([=] () {
++                    write_loop(params);
++                });
++                spawned_thread = true;
++            }
++
++            auto& buffer = buffers.capture();
++            buffer.base_usec = timespec_to_usec(buffer.presented);
++            buffers.next_capture();
++        }
++    }
++    capture_done = true;
++
+     if (writer_thread.joinable())
+     {
+         writer_thread.join();

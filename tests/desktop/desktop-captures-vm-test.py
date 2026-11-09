@@ -36,6 +36,10 @@ ZZ = ("shift-z", "shift-z")
 KEPT = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
 # How long a camera may take to wake, or a recording to start, stop or be saved.
 WAKING = timedelta(seconds=60)
+# How long a stopped recording may take to be saved. Over a still screen, wf-recorder went
+# on until something moved, 58 s later on the net (2026-11-09), so the bound keeps well
+# under that.
+STOPPED = timedelta(seconds=15)
 # How far apart, from 0 to 255, the screen with the launcher and without it are where the
 # card is drawn, past what the clock and a cursor change; and the least of the screen the
 # card covers for a picture to be judged by it.
@@ -123,16 +127,18 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
     with desktop.told("holds margin recording", timeout=WAKING):
         machine.send_key("ctrl-sysrq")
     still_shown(desktop, shown)
+    # The mark drawn is a redraw since niri began to cast, and niri gives a recording, which
+    # asks for each frame with damage, a frame at each redraw, so the video holds one; and
+    # its stop takes one last frame, so the video ends on what was shown then. Its file fills
+    # only once the encoder has a buffer's worth, which over a still screen took up to a
+    # minute (2026-11-09), so it isn't waited for.
     marked = the_mark_drawn(desktop, seen)
     videos = f"-newer {mark} -type f -name '*.mp4'"
-    # Something recorded before it's stopped, so the video holds a frame.
-    machine.wait_until_succeeds(
-        desktop.in_session(f"find ~/Videos/Recordings {videos} -size +0 | grep -q ."),
-        timeout=WAKING,
-    )
     # Its notice comes once the file is finished, which its process outlives, waiting on
-    # the notice's Play It.
-    with desktop.told("shows card Recording saved", timeout=WAKING):
+    # the notice's Play It. The screen is still as it stops, so this is the stop heard at
+    # once rather than at something's next move, nor its frames dropped
+    # (wf-recorder-stops-at-once.patch).
+    with desktop.told("shows card Recording saved", timeout=STOPPED):
         machine.send_key("ctrl-sysrq")
     still_shown(desktop, shown)
     # Named by the time it began, so with a space in it.

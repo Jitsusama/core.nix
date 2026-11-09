@@ -34,7 +34,10 @@
 # error where it offers less, as niri nested in a window does;
 # wf-recorder-dmabuf-version.patch binds what's offered, so the VM tests can
 # record the screen too. Where 4 is offered, as on a machine's own screen,
-# it does as before.
+# it does as before. Stopped over a still screen, it went on until something
+# moved, up to a minute, since its wait for a frame heard no signal;
+# wf-recorder-stops-at-once.patch has that wait give way to one at once, and
+# the stop keep every frame taken and one last of the screen as it stopped.
 #
 # The launcher works out sums and measures with libqalculate, in the shell's
 # own process rather than a calculator program started for each key, as a
@@ -113,7 +116,10 @@ in
         ];
       });
       wf-recorder = prev.wf-recorder.overrideAttrs (old: {
-        patches = (old.patches or [ ]) ++ [ ./wf-recorder-dmabuf-version.patch ];
+        patches = (old.patches or [ ]) ++ [
+          ./wf-recorder-dmabuf-version.patch
+          ./wf-recorder-stops-at-once.patch
+        ];
       });
     })
   ];
