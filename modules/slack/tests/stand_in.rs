@@ -1064,7 +1064,7 @@ fn the_messages_are_said_whole_only_once_every_history_wanted_was_read() {
     );
     // A conversation never read has no mark to read on from, and none to
     // say.
-    assert!(listed(&run, "slack-read").is_empty());
+    assert_eq!(listed(&run, "slack-read"), Vec::<serde_json::Value>::new());
     assert!(
         stand_in
             .heard()

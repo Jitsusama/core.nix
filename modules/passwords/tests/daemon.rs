@@ -341,7 +341,7 @@ fn an_audit_unasked_by_joel_is_refused() {
     assert_eq!(refused["error"]["code"], "refused", "{refused}");
     // Nothing was read and nothing sent, and no list says a health.
     assert!(!running.asked_of("auditing").contains("audit"));
-    assert!(breaches.requests().is_empty());
+    assert_eq!(breaches.requests(), Vec::<String>::new());
     let listed = client.ask(&json!({"id": 4, "ask": "list", "held": true}));
     assert!(
         listed["records"]
@@ -364,7 +364,7 @@ fn an_audit_of_a_manager_signed_out_is_refused() {
     let mut client = running.client();
     let refused = client.ask(&json!({"id": 1, "ask": "audit", "asked": true}));
     assert_eq!(refused["error"]["code"], "signed-out", "{refused}");
-    assert!(breaches.requests().is_empty());
+    assert_eq!(breaches.requests(), Vec::<String>::new());
 }
 
 #[test]

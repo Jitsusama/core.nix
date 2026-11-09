@@ -528,7 +528,10 @@ fn a_call_followed_says_who_is_in_it_once_the_sign_in_grants_reading_meet() {
     // The call's window closed: nothing followed, nothing asked.
     watch.follow(vec!["abc-defg-hij".into()], &now());
     let before = asked(&stand_in);
-    assert!(watch.follow(Vec::new(), &now()).calls.is_empty());
+    assert_eq!(
+        watch.follow(Vec::new(), &now()).calls,
+        Vec::<google::meet::Call>::new()
+    );
     assert!(!watch.following(&now()));
     assert_eq!(asked(&stand_in), before);
 }
@@ -1400,7 +1403,7 @@ fn mail_read_elsewhere_or_tidied_here_says_how_it_went_and_a_meeting_its_end() {
     let path = credentials("done", now().timestamp().as_millisecond() + 3_600_000);
     let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
     let state = watch.look(&now()).clone();
-    assert!(state.finished.is_empty());
+    assert_eq!(state.finished, Vec::<google::mail::Mail>::new());
     assert_eq!(state.meetings[0].done, None, "the meeting is still to come");
     // Joel reads the newer one in Gmail: it's done, read there.
     read_elsewhere.store(true, Ordering::SeqCst);
