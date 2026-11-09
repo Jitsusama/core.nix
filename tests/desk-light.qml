@@ -202,8 +202,10 @@ ShellRoot {
             steps.map(verb => verb.verb).join(" "));
         const chosen = brighter.concat(warmer).filter(choice => choice.side === "chosen")
             .map(choice => choice.name);
-        expect("the levels chosen", chosen.join(", ") === "Brightness to 60%", chosen.join(", "));
-        expect("a warmth to choose", warmer.some(choice => choice.name === "Warmth to 2700 K"),
+        // Each said by its value alone, as every choice is (VKCF3Z,
+        // 2026-11-09).
+        expect("the levels chosen", chosen.join(", ") === "60%", chosen.join(", "));
+        expect("a warmth to choose", warmer.some(choice => choice.name === "2,700 K"),
             warmer.map(choice => choice.name).join(", "));
         brighter[0].run();
         root.step("a verb's step", () => root.lit(70, 4100), root.stepped);

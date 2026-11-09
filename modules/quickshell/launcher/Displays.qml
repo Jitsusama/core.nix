@@ -216,19 +216,24 @@ Provider {
         if (light === null)
             return [];
         const rows = [Object.assign(setting(output, "brightness", `${light.share}%`, "brightness",
+            // Each by its value, as every choice is (VKCF3Z, 2026-11-09),
+            // :set brightness= its command.
             levels.map(each => choice({
                 key: `brightness-${each}`,
                 name: Words.name("displays:brightness:level", "", { n: each }),
                 mark: "brightness",
                 chosen: light.share === each,
-                run: () => provider.brighten(each)
+                run: () => provider.brighten(each),
+                words: "displays:brightness:level",
+                fill: { n: each }
             }))), {
             graph: level(light.now, light.most),
             // With the lid shut nothing hears the room, and a monitor has
             // no steps of the panel's, so it only says what sets it.
             note: inTheRoom(output)
-                ? `${light.now} of ${light.most} steps; it follows the room, and the keys set it`
-                : "every screen follows it, and the keys set it"
+                ? partSaid("brightness", "followsRoom").replace("{now}", light.now)
+                    .replace("{most}", light.most)
+                : partSaid("brightness", "everyFollows")
         })];
         if (inTheRoom(output) && room !== null)
             rows.push(copyRow({
@@ -599,11 +604,55 @@ Provider {
                 : turnsOn,
             verbs: () => provider.verbs(output),
             drawer: () => provider.drawerOf(output),
-            options: {
+            options: Object.assign({
                 power: provider.screenOption(output, "power"),
                 unplugged: provider.screenOption(output, "unplugged")
-            }
+            }, stands === "lit" && output.logical !== null ? provider.lineOptions(output) : {})
         });
+    }
+
+    // A setting's option on the : line, its name lowercased and joined, as
+    // Vim's are (shiftwidth): Scale's scale, Variable Refresh's
+    // variablerefresh (VKCF3Z, 2026-11-09).
+    function lineName(id) {
+        return partName(id).toLowerCase().split(" ").join("");
+    }
+
+    // A lit screen's settings as :setl takes them, as their choices set
+    // them: scale=1.5, refresh=59.951 (or 60, where one mode rounds to
+    // it), resolution=2560x1440 and rotation=upright, each completing
+    // from its screen's own choices with their words beside, and one it
+    // doesn't offer saying what it does (Screens.lineSet). Variable
+    // Refresh is a switch, :setl variablerefresh and novariablerefresh,
+    // as power is, where the screen has it.
+    function lineOptions(output) {
+        const options = {};
+        for (const id of Screens.lineSettings(output)) {
+            options[lineName(id)] = {
+                kind: "choice",
+                choices: () => Screens.lineValues(output, id, screenWords)
+                    .map(each => ({ value: each.value, note: each.note })),
+                now: () => Screens.lineNow(output, id, screenWords),
+                set: to => {
+                    const asked = Screens.lineSet(output, id, String(to), screenWords,
+                        named(output));
+                    if (asked.refused !== undefined)
+                        return asked.refused;
+                    change(output, asked.asks);
+                    return "";
+                }
+            };
+        }
+        if (output.vrr_supported)
+            options[lineName("variable")] = {
+                kind: "switch",
+                now: () => output.vrr_enabled === true,
+                set: on => {
+                    change(output, { Vrr: { vrr: { vrr: on, on_demand: false } } });
+                    return "";
+                }
+            };
+        return options;
     }
 
     // A screen's option for the : line's :setl, which turns it as its Turn
@@ -757,10 +806,14 @@ Provider {
     // word, so "scale 1.5" still finds 1.5\u00d7 from outside. Setting it
     // keeps the launcher, the setting saying what it's at now. `made`
     // holds its key, name, mark, whether it's chosen, its run, and its
-    // hidden words and note where it has them.
+    // hidden words and note where it has them. Its command is its words'
+    // (`words`, verb:display-set's :setl scale=1.5 unless it names its
+    // own), `fill` filling it in.
     function choice(made) {
         return thing({
             key: `verb:display-${made.key}`,
+            wordsId: made.words ?? "verb:display-set",
+            fill: made.fill,
             name: made.name,
             verb: partSaid("", "set"),
             keywords: [partName(made.mark), made.keywords ?? ""].join(" ").trim(),
@@ -914,7 +967,17 @@ Provider {
         });
     }
 
-    readonly property var scales: [1, 1.25, 1.5, 1.75, 2, 2.5, 3]
+    // How a setting's choices are typed on the : line, in their order
+    // (Screens.lineValues), so each choice's command is :setl's.
+    function typedOf(output, id) {
+        return Screens.lineValues(output, id, screenWords).map(each => each.value);
+    }
+
+    // What a setting's choice fills its command with, :setl's option and
+    // its value as typed.
+    function lineFill(id, typed) {
+        return { setting: lineName(id), value: typed };
+    }
 
     // How it's set: Brightness and the Room light where the backlight
     // lights it, then Scale, Refresh, Resolution, Rotation.
@@ -925,24 +988,27 @@ Provider {
         // the row, the part and the drawer call it one way (VKCF3Z,
         // 2026-11-07). Its share is a hidden word, so "scale 150", as niri
         // and other systems say it, still finds 1.5\u00d7.
+        const typedScales = typedOf(output, "scale");
         const rows = lightRows(output).concat([setting(output, "scale", Screens.scale(scale),
-            "scale", scales.map(each => choice({
+            "scale", Screens.scales().map((each, at) => choice({
                 key: `scale-${each}`,
                 name: Screens.scale(each),
                 mark: "scale",
                 chosen: Math.abs(each - scale) < 0.01,
                 run: () => change(output, { Scale: { scale: { Specific: each } } }),
-                keywords: `${Math.round(each * 100)}%`
+                keywords: `${Math.round(each * 100)}%`,
+                fill: lineFill("scale", typedScales[at])
             })))]);
         if (now !== null) {
             // Each by its value, every digit niri gives, the mode the
             // screen prefers noted so, as a custom one is (VKCF3Z,
             // 2026-11-09).
             const rates = Screens.refreshes(output, screenWords);
+            const typedRates = typedOf(output, "refresh");
             // Its side says the rate as its choices do, every digit, so
             // 59.94 Hz running isn't said as the 60 Hz beside it.
             rows.push(setting(output, "refresh", Screens.hertz(now.refresh_rate), "refresh",
-                rates.length < 2 ? [] : rates.map(each => choice({
+                rates.length < 2 ? [] : rates.map((each, at) => choice({
                     // By the mode's place in niri's list, the one key a
                     // mode has even where two share a size and a rate.
                     key: `mode-${output.modes.indexOf(each.mode)}`,
@@ -954,14 +1020,16 @@ Provider {
                         height: each.mode.height,
                         refresh: each.mode.refresh_rate / 1000
                     } } } }),
-                    note: each.note
+                    note: each.note,
+                    fill: lineFill("refresh", typedRates[at])
                 }))));
             if (output.vrr_supported)
                 rows.push(variableSwitch(output));
             const sizes = Screens.sizes(output, screenWords);
+            const typedSizes = typedOf(output, "resolution");
             rows.push(setting(output, "resolution", `${now.width} \u00d7 ${now.height}`,
                 "resolution",
-                sizes.length < 2 ? [] : sizes.map(each => choice({
+                sizes.length < 2 ? [] : sizes.map((each, at) => choice({
                     key: `size-${each.mode.width}x${each.mode.height}`,
                     name: each.value,
                     mark: "resolution",
@@ -971,7 +1039,8 @@ Provider {
                         height: each.mode.height,
                         refresh: null
                     } } } }),
-                    note: each.note
+                    note: each.note,
+                    fill: lineFill("resolution", typedSizes[at])
                 }))));
         }
         rows.push(setting(output, "rotation", turnedSaid(output.logical.transform), "rotation",
@@ -980,7 +1049,8 @@ Provider {
                 name: each.name,
                 mark: "rotation",
                 chosen: output.logical.transform === each.transform,
-                run: () => change(output, { Transform: { transform: each.transform } })
+                run: () => change(output, { Transform: { transform: each.transform } }),
+                fill: lineFill("rotation", partSaid("rotation", `typed-${each.transform}`))
             }))));
         return rows;
     }

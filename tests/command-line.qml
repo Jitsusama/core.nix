@@ -741,6 +741,12 @@ QtObject {
             SetWords.shown("kbdlevel", null, options.kbdlevel), null);
         holds("nor where it stands in the list",
             SetWords.setArguments("kb", options), [{ value: "kbdlevel", note: "" }]);
+        const turns = { rotation: { kind: "choice", now: () => "upright",
+            choices: () => [{ value: "upright", note: "upright" },
+                { value: "mirrored-left", note: "mirrored, a quarter turn left" }] } };
+        holds("a choice given with its words says them beside it",
+            SetWords.setArguments("rotation=mi", turns),
+            [{ value: "rotation=mirrored-left", note: "mirrored, a quarter turn left" }]);
     }
 
     // What a line asks before it runs, once, by the rule d asks by

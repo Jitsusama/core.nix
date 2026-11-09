@@ -960,6 +960,32 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
         # Scaling changes something, so the launcher stays until it's closed.
         desktop.close_launcher()
 
+    # :setl scales the screen the cursor is in, as Scale's choice does; a
+    # scale it doesn't offer says what it does, the screen named as its row
+    # is, and sets nothing (VKCF3Z, 2026-11-09).
+    was = scale()
+    desktop.as_account("qs ipc call launcher collection displays")
+    desktop.launcher_ready()
+    desktop.follow()
+    desktop.launcher_until(lambda shown: "Scale" in shown["rows"])
+    desktop.normal()
+    for typed, wanted in [("1.25", 1.25), (f"{was:g}", was)]:
+        machine.send_chars(f":setl scale={typed}\n", delay=KEY_PACE)
+
+        def scaled_by_line(_: bool, wanted: float = wanted) -> bool:  # As retry calls it.
+            """Say whether the display is at the scale the line set."""
+            return scale() == wanted
+
+        retry(scaled_by_line, timeout=timedelta(seconds=15))
+    machine.send_chars(":setl scale=1.3\n", delay=KEY_PACE)
+    desktop.launcher_until(
+        lambda shown: shown["command"] is None
+        and str(shown["commandSaid"]).startswith("1.3\u00d7 not set \u00b7 ")
+        and str(shown["commandSaid"]).endswith(" offers 1\u00d7 to 3\u00d7")
+    )
+    assert scale() == was, f"a scale not offered was set: {scale()}"
+    desktop.close_launcher()
+
     # A part is asked by its words from the top: the refresh rate.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()

@@ -83,16 +83,24 @@ Provider {
     // A choice a step into a setting, as the vocabulary names it, keyed by
     // what it chooses too, so each level is a row of its own to hold as it
     // becomes chosen.
-    function choice(key, fill, chosen, glyph, run) {
+    // Said by its value alone, as every choice is (VKCF3Z, 2026-11-09):
+    // "60%", "4,000 K", its setting's name a hidden word so "warmth 4000"
+    // still finds it, and its words' :set deskbrightness= its command.
+    // `made` holds its words' id, the value it's keyed by, what fills its
+    // words, whether it's chosen, its mark, its run and its setting.
+    function choice(made) {
         return thing({
-            key: `${key}:${Object.values(fill).join(":")}`,
-            verb: Words.verb(key),
-            name: Words.name(key, "", fill),
-            glyph: glyph,
+            key: `${made.key}:${made.value}`,
+            wordsId: made.key,
+            fill: made.fill,
+            verb: Words.verb(made.key),
+            name: Words.name(made.key, "", made.fill),
+            keywords: `${Words.name(made.setting)} ${made.value}`,
+            glyph: made.glyph,
             hue: "action",
-            side: chosen ? "chosen" : "",
+            side: made.chosen ? said("chosen") : "",
             stays: true,
-            run: run
+            run: made.run
         });
     }
 
@@ -152,8 +160,15 @@ Provider {
         return [
             deskStep("verb:brighter", "", () => provider.brighten(at() + brightnessStep)),
             deskStep("verb:dimmer", "", () => provider.brighten(at() - brightnessStep))
-        ].concat(levels.map(each => choice("light:desk:level", { n: each },
-            light.percent === each, Theme.glyph.brightness, () => provider.brighten(each))));
+        ].concat(levels.map(each => choice({
+            key: "light:desk:level",
+            value: each,
+            fill: { n: each },
+            chosen: light.percent === each,
+            glyph: Theme.glyph.brightness,
+            run: () => provider.brighten(each),
+            setting: "light:desk:brightness"
+        })));
     }
 
     // A step into its Warmth: a step warmer or cooler, then each warmth.
@@ -162,8 +177,15 @@ Provider {
         return [
             deskStep("verb:warmer", "", () => provider.warm(at() - warmthStep)),
             deskStep("verb:cooler", "", () => provider.warm(at() + warmthStep))
-        ].concat(warmths.map(each => choice("light:desk:kelvin", { k: each },
-            light.kelvin === each, Theme.glyph.lamp, () => provider.warm(each))));
+        ].concat(warmths.map(each => choice({
+            key: "light:desk:kelvin",
+            value: each,
+            fill: { k: each, warmth: kelvins(each) },
+            chosen: light.kelvin === each,
+            glyph: Theme.glyph.lamp,
+            run: () => provider.warm(each),
+            setting: "light:desk:warmth"
+        })));
     }
 
     // Every row that says how the light is lit, made as `light` lights it:

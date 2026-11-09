@@ -16,7 +16,8 @@
 // Displays.qml reads niri and lays the plate, the light and what the
 // EDID says around these, its white point and primaries said here from
 // the figures desk-facts gives. Its settings' choices of mode and turn
-// are said here too, each by its value, the mode it prefers noted so.
+// are said here too, each by its value, the mode it prefers noted so,
+// and what each takes typed on the : line's :setl, as scale=1.5.
 
 // Two items of one value, as a figure's runs are set apart.
 const APART = " \u00b7 ";
@@ -331,4 +332,150 @@ function toldOf(output, outputs, each, asked) {
 // while out of niri's outputs.
 function optionNow(output, option) {
     return option === "power" ? standing(output) === "lit" : standing(output) === "off";
+}
+
+// The scales Scale offers, as multiples.
+const SCALES = [1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+
+function scales() {
+    return SCALES.slice();
+}
+
+// A rate's figure as it's typed, its hertz with every digit and no unit:
+// 59951 is "59.951".
+function hertzTyped(millihertz) {
+    return hertz(millihertz).slice(0, -" Hz".length);
+}
+
+// What's typed after a figure's own unit, a multiple's "\u00d7" or a
+// rate's "Hz", so either way is taken.
+const SCALE_UNIT = /\s*[x\u00d7]$/i;
+const HERTZ_UNIT = /\s*hz$/i;
+const SIZE_TYPED = /^([0-9]+)\s*[x\u00d7]\s*([0-9]+)$/i;
+const WHOLE = /^[0-9]+$/;
+
+// The settings a lit screen takes on the : line's :setl, by its row's
+// id (VKCF3Z, 2026-11-09): its mode's where niri says which it runs.
+function lineSettings(output) {
+    return modeOf(output) === null ? ["scale", "rotation"]
+        : ["scale", "refresh", "resolution", "rotation"];
+}
+
+// A setting's values as :setl takes them, each { value, note, asks }:
+// scale=1.5, refresh=59.951 with every digit, resolution=2560x1440 and
+// rotation= in the vocabulary's typed words (displays:rotation's
+// typed-Normal is "upright"), never niri's names, since nothing shows
+// those. Each notes its choice's words, so completing says what it is,
+// and asks niri what its choice's row does.
+function lineValues(output, setting, words) {
+    const dotted = (value, note) => [value, note].filter(part => part !== "").join(APART);
+    if (setting === "scale") {
+        return SCALES.map(multiple => ({
+            value: String(Number(multiple.toFixed(2))),
+            note: scale(multiple),
+            asks: { Scale: { scale: { Specific: multiple } } }
+        }));
+    }
+    if (setting === "refresh") {
+        return refreshes(output, words).map(each => ({
+            value: hertzTyped(each.mode.refresh_rate),
+            note: dotted(each.value, each.note),
+            asks: { Mode: { mode: { Specific: { width: each.mode.width,
+                height: each.mode.height, refresh: each.mode.refresh_rate / MILLIHERTZ } } } }
+        }));
+    }
+    if (setting === "resolution") {
+        return sizes(output, words).map(each => ({
+            value: `${each.mode.width}x${each.mode.height}`,
+            note: dotted(each.value, each.note),
+            asks: { Mode: { mode: { Specific: { width: each.mode.width,
+                height: each.mode.height, refresh: null } } } }
+        }));
+    }
+    return TRANSFORMS.map(transform => ({
+        value: words.said("rotation", `typed-${transform}`),
+        note: words.turned(transform),
+        asks: { Transform: { transform } }
+    }));
+}
+
+// Where a setting stands, as :setl scale? says it, in its typed words.
+function lineNow(output, setting, words) {
+    const now = modeOf(output);
+    if (setting === "scale") {
+        return String(Number(output.logical.scale.toFixed(2)));
+    }
+    if (setting === "refresh") {
+        return now === null ? null : hertzTyped(now.refresh_rate);
+    }
+    if (setting === "resolution") {
+        return now === null ? null : `${now.width}x${now.height}`;
+    }
+    return words.said("rotation", `typed-${output.logical.transform}`);
+}
+
+// The value a setting's typed words name, or null: a multiple or a rate
+// with its unit or without, a size by x or \u00d7, a turn by its typed
+// word in any case, and a whole rate the one mode at its size that rounds
+// to it, so refresh=60 sets 59.951 where none runs at 60 (VKCF3Z,
+// 2026-11-09).
+function lineFound(values, setting, typed) {
+    const given = typed.trim();
+    if (setting === "scale") {
+        const multiple = Number(given.replace(SCALE_UNIT, ""));
+        return values.find(each => Math.abs(Number(each.value) - multiple) < 0.001) ?? null;
+    }
+    if (setting === "refresh") {
+        const rate = given.replace(HERTZ_UNIT, "");
+        const exact = values.find(each => each.value === rate);
+        if (exact !== undefined || !WHOLE.test(rate)) {
+            return exact ?? null;
+        }
+        const near = values.filter(each => Math.round(Number(each.value)) === Number(rate));
+        return near.length === 1 ? near[0] : null;
+    }
+    if (setting === "resolution") {
+        const found = given.match(SIZE_TYPED);
+        return found === null ? null
+            : values.find(each => each.value === `${found[1]}x${found[2]}`) ?? null;
+    }
+    return values.find(each => each.value === given.toLowerCase()) ?? null;
+}
+
+// A value typed as its setting says one, for the words refusing it: 1.3
+// as "1.3\u00d7", 75 as "75 Hz", a size as "2560 \u00d7 1440".
+function typedSaid(setting, typed) {
+    const given = typed.trim();
+    const multiple = Number(given.replace(SCALE_UNIT, ""));
+    const sized = given.match(SIZE_TYPED);
+    if (setting === "scale" && given !== "" && Number.isFinite(multiple)) {
+        return scale(multiple);
+    }
+    if (setting === "refresh" && given !== "") {
+        return `${given.replace(HERTZ_UNIT, "")} Hz`;
+    }
+    return setting === "resolution" && sized !== null ? size(sized[1], sized[2]) : given;
+}
+
+// What a setting's value typed on the line asks: { asks }, niri's action,
+// or { refused }, the words saying it wasn't set and what the screen,
+// named as its row is, offers instead, in the foot's form: "1.3\u00d7 not
+// set \u00b7 HP offers 1\u00d7 to 3\u00d7" (VKCF3Z, 2026-11-09). A
+// setting of figures says its first to its last; Rotation, whose eight
+// have no order between, says each.
+function lineSet(output, setting, typed, words, named) {
+    const values = lineValues(output, setting, words);
+    const found = lineFound(values, setting, typed);
+    if (found !== null) {
+        return { asks: found.asks };
+    }
+    const said = values.map(each => setting === "rotation" ? each.value
+        : each.note.split(APART)[0]);
+    const offers = setting === "rotation" || said.length < 2 ? said.join(", ")
+        : words.said("", "offers-range").replace("{first}", said[0])
+            .replace("{last}", said[said.length - 1]);
+    return {
+        refused: words.said("", "not-offered").replace("{value}", typedSaid(setting, typed))
+            .replace("{screen}", named).replace("{offers}", offers)
+    };
 }
