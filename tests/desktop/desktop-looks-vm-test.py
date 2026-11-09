@@ -1437,7 +1437,8 @@ def the_screens_plate_says_what_sets_it(desktop: Desktop, scale: str) -> None:
 
     The backlight daemon says what it settled, whole by a rename, in backlight-now, and keeps
     its curve in learned; the VM's stand-in backlight and sensor give it no real figures, so
-    both are written here as it writes them. With the lid shut, Follows is gone and the Room
+    both are written here as it writes them, the daemon stopped so it writes neither over
+    them, and started again after. With the lid shut, Follows is gone and the Room
     Light still says the stand-in sensor's live reading; following the room on its way to
     what it asks, with a curve, it says both, the Curve last of the light, every point
     dimmest first (VKCF3Z, 2026-11-08).
@@ -1467,32 +1468,35 @@ def the_screens_plate_says_what_sets_it(desktop: Desktop, scale: str) -> None:
         return laid
 
     at = scale.replace(".", "-")
-    desktop.as_account(f"rm -f {learned}")
-    settled("level\\t0.600\\nlux\\t28\\nasks\\t0.950\\nfollowing\\tno\\n")
-    desktop.launcher_until(lambda shown: not shown["open"])
-    desktop.as_account("qs ipc call launcher collection displays")
-    desktop.launcher_ready()
-    desktop.launcher_until(shown_with(["Brightness", "Room Light"], "Follows"))
-    drawer = plate_shown(desktop, scale)
-    room = drawer["values"][drawer["facts"].index("Room Light")]
-    assert room.endswith(" lx"), f"at {scale}: {drawer}"
-    desktop.shoot(f"launcher-plate-screen-lid-shut-at-{at}")
-    curve = "0 0.150\\n6 0.377\\n28 0.950\\n10000 1.000\\n"
-    desktop.as_account(
-        f"mkdir -p $(dirname {learned}) && printf '{curve}'"
-        f" > {learned}.writing && mv {learned}.writing {learned}"
-    )
-    settled("level\\t0.600\\nlux\\t28\\nasks\\t0.950\\nfollowing\\tyes\\n")
-    desktop.launcher_until(shown_with(["Brightness", "Follows", "Curve"], ""))
-    drawer = plate_shown(desktop, scale)
-    facts = drawer["facts"]
-    assert facts.index("Follows") < facts.index("Curve"), f"at {scale}: {drawer}"
-    assert drawer["values"][facts.index("Follows")] == "the room \u00b7 on its way to 95%", (
-        f"at {scale}: {drawer}"
-    )
-    desktop.shoot(f"launcher-plate-screen-following-at-{at}")
-    desktop.close_launcher()
-    desktop.as_account(f"rm -f {now} {learned}")
+    desktop.as_account("systemctl --user stop backlight.service")
+    try:
+        desktop.as_account(f"rm -f {learned}")
+        settled("level\\t0.600\\nlux\\t28\\nasks\\t0.950\\nfollowing\\tno\\n")
+        desktop.launcher_until(lambda shown: not shown["open"])
+        desktop.as_account("qs ipc call launcher collection displays")
+        desktop.launcher_ready()
+        desktop.launcher_until(shown_with(["Brightness", "Room Light"], "Follows"))
+        drawer = plate_shown(desktop, scale)
+        room = drawer["values"][drawer["facts"].index("Room Light")]
+        assert room.endswith(" lx"), f"at {scale}: {drawer}"
+        desktop.shoot(f"launcher-plate-screen-lid-shut-at-{at}")
+        curve = "0 0.150\\n6 0.377\\n28 0.950\\n10000 1.000\\n"
+        desktop.as_account(
+            f"mkdir -p $(dirname {learned}) && printf '{curve}'"
+            f" > {learned}.writing && mv {learned}.writing {learned}"
+        )
+        settled("level\\t0.600\\nlux\\t28\\nasks\\t0.950\\nfollowing\\tyes\\n")
+        desktop.launcher_until(shown_with(["Brightness", "Follows", "Curve"], ""))
+        drawer = plate_shown(desktop, scale)
+        facts = drawer["facts"]
+        assert facts.index("Follows") < facts.index("Curve"), f"at {scale}: {drawer}"
+        follows = drawer["values"][facts.index("Follows")]
+        assert follows == "the room \u00b7 on its way to 95%", f"at {scale}: {drawer}"
+        desktop.shoot(f"launcher-plate-screen-following-at-{at}")
+        desktop.close_launcher()
+    finally:
+        desktop.as_account(f"rm -f {now} {learned}")
+        desktop.as_account("systemctl --user start backlight.service")
 
 
 def warmth_shown(desktop: Desktop, scale: str) -> None:
@@ -3029,8 +3033,10 @@ def a_thing_found_by_its_meaning(desktop: Desktop, at_each_scale: list[str]) -> 
     """
     desktop.as_account("rm -f $XDG_RUNTIME_DIR/meaning-means.json $XDG_RUNTIME_DIR/meaning-asked")
     desktop.answer(MEANT)
+    # The spots are told a moment after the things, once the launcher makes them, so it waits
+    # for the part the shot lands on rather than for the first things told.
     desktop.machine.wait_until_succeeds(
-        desktop.in_session("grep -q '^know [1-9]' $XDG_RUNTIME_DIR/meaning-asked"),
+        desktop.in_session("grep -q '^spot:.*brightness$' $XDG_RUNTIME_DIR/meaning-known"),
         timeout=timedelta(seconds=10),
     )
     typed = [row["is"] for row in desktop.showing()["things"]]

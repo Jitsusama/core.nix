@@ -1,7 +1,8 @@
-# The net under core's main: a daemon that runs the VM tests each merge
-# changed once it lands, and reverts a merge that breaks one
-# (tools/merge-net). A merge lands on its own checks, VM tests aside, and
-# the net catches what they would have. It keeps its state, its logs and
+# The net under core's main: a daemon that runs the checks each merge
+# changed once it lands, VM tests and the rest, and reverts a merge that
+# breaks one (tools/merge-net). A merge lands on its own checks, VM tests
+# aside, and the net catches what they would have, and what a branch built
+# before its rebase missed. It keeps its state, its logs and
 # its own checkout in ~/.local/state/net, so it carries on across restarts
 # and reboots, and it starts nothing while the machine is held.
 #

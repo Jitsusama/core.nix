@@ -178,9 +178,13 @@ QtObject {
             Meaning.rows(records([bright.key, "category:desktop"]), placesKeyed, new Set(),
                 inside).map(row => row.key),
             [bright.key, "category:desktop"]);
-        expect("a spot's name is meant once, the nearest",
-            Meaning.rows(records([loud.key, louder.key]), placesKeyed, new Set(), inside)
-                .map(row => row.key), [loud.key]);
+        expect("a spot's name is told once, the first in the launcher's order",
+            Meaning.things([], [loud, louder]).map(told => told.key), [loud.key]);
+        const firefox = thing("program:firefox", "Firefox", "Firefox browser");
+        const stream = spot(["category:desktop", "collection:sound", "sink:speakers"],
+            "named:Firefox", "Firefox");
+        expect("a spot named as a thing told is left to the thing",
+            Meaning.things([firefox], [stream]).map(told => told.key), ["program:firefox"]);
         expect("a spot found by its letters isn't added again",
             Meaning.rows(records([bright.key]), placesKeyed, new Set([bright.key]), inside),
             []);

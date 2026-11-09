@@ -31,6 +31,7 @@ _passwords() {
       "code:an entry's one-time code now"
       'let-in:ask a password manager to let passwords in'
       'health:how each password manager stands'
+      'audit:every password checked for reuse and breaches'
       "keys:the keys 1Password's SSH agent holds"
       'help:what each command does, and the exit statuses'
     )

@@ -3,7 +3,7 @@
 // row says beside its title and what the drawer says, and Drive's own
 // places, which it lists and what each counts, run in Qt's own
 // JavaScript engine, the one the shell runs it in. The
-// `the-shell-reads-the-documents` check copies Drive.js, DrivePlaces.js,
+// `the-desktop-reads-the-documents` check copies Drive.js, DrivePlaces.js,
 // Mail.js, When.js, Calendar.js, Google.js and Saves.js beside this file
 // and runs `qml
 // -platform offscreen drive.qml`. Times are made on the local clock, so

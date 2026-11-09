@@ -263,6 +263,22 @@ function joinsAndLeaves(model, now) {
     }));
 }
 
+// The devices eero knows that aren't on now, the last on first, each by
+// name, with the node and band it was last on and when: "Study \u00b7
+// 5 GHz \u00b7 21:38". eero counts them in its devices, so the drawer
+// names each rather than leave the count bare.
+function devicesOff(model, now) {
+    const off = model?.devices_off ?? [];
+    if (off.length === 0) {
+        return [];
+    }
+    return [{ heading: "devices-off" }].concat(off.map((one) => ({
+        label: Home.nameOf(one),
+        value: joined([known(one.node) ? nodeNamed(model, one.node) : "",
+            one.ethernet ? "Ethernet" : one.band, Home.when(one.last_active, now)]),
+    })));
+}
+
 // What happened over the last 30 days as one list, newest first: eero's
 // activity in its own words, and each change the daemon told as a notice,
 // its summary then what the notice said, a sentence as eero's are, so the

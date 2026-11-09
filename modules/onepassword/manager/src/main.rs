@@ -12,12 +12,17 @@
 //! makes on its own, which is answered as signed out until op has
 //! answered here once. 1Password's prompt only ever answers what he just
 //! did.
+//!
+//! An audit (`audit`, asked by Joel alone) gives every login's password at
+//! once, `{"passwords": [{"entry", "value"}]}`, from the cheapest op can
+//! give them: its list of logins and passwords piped to one `op item get -
+//! --reveal`, which reads every item named on its input in one run.
 
 use std::io::{BufRead, Write};
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use onepassword_manager::{account, entry, in_account, period, reason, value};
+use onepassword_manager::{account, entry, in_account, passwords, period, reason, value};
 use serde_json::{Value, json};
 
 /// What Joel reads while 1Password hasn't let the launcher in.
@@ -77,6 +82,7 @@ impl Manager {
             Some("get") => self.get(item, joels),
             Some("reveal") => self.reveal(item, asked.get("detail").and_then(Value::as_str)),
             Some("code") => self.code(item),
+            Some("audit") => self.audit(joels),
             Some("let-in") => self
                 .run(&["vault", "list", "--format", "json"])
                 .map(|_| json!({})),
@@ -182,6 +188,42 @@ impl Manager {
         Ok(json!({"value": value}))
     }
 
+    /// Every login's password, for an audit, only as Joel's own ask: the
+    /// logins and passwords op lists, each read in full by one op run fed
+    /// that list, and nothing kept of what it said but each id and its
+    /// password, which go in the answer and are dropped with it.
+    fn audit(&mut self, joels: bool) -> Result<Value, Failed> {
+        if !joels {
+            return Err(Failed {
+                signed_out: false,
+                reason: "passwords are audited only when you ask".to_owned(),
+            });
+        }
+        let listed = self.run(&[
+            "item",
+            "list",
+            "--categories",
+            "Login,Password",
+            "--format",
+            "json",
+        ])?;
+        // op refuses an empty list on its input, and there's nothing to read.
+        if serde_json::from_str::<Value>(&listed)
+            .is_ok_and(|items| items.as_array().is_some_and(Vec::is_empty))
+        {
+            return Ok(json!({"passwords": []}));
+        }
+        let said = self.run_with(
+            &["item", "get", "-", "--reveal", "--format", "json"],
+            Some(&listed),
+        )?;
+        let given: Vec<Value> = passwords(&said)
+            .into_iter()
+            .map(|(entry, value)| json!({"entry": entry, "value": value}))
+            .collect();
+        Ok(json!({"passwords": given}))
+    }
+
     /// The one-time code now, as op works it out (`--otp`), with its
     /// period and the seconds left in it by this machine's clock.
     fn code(&mut self, item: &str) -> Result<Value, Failed> {
@@ -206,16 +248,37 @@ impl Manager {
     /// leave not given from anything else, and is never logged, since an
     /// answer may carry a secret.
     fn run(&mut self, args: &[&str]) -> Result<String, Failed> {
-        let ran = Command::new(&self.op)
+        self.run_with(args, None)
+    }
+
+    /// Runs op as [`Manager::run`] does, given `input` on its own input,
+    /// written as op reads it so neither waits on the other.
+    fn run_with(&mut self, args: &[&str], input: Option<&str>) -> Result<String, Failed> {
+        let unran = |why: std::io::Error| Failed {
+            signed_out: false,
+            reason: format!("couldn't run 1Password's command: {why}"),
+        };
+        let mut child = Command::new(&self.op)
             .args(args)
-            .stdin(Stdio::null())
+            .stdin(if input.is_some() {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .output()
-            .map_err(|why| Failed {
-                signed_out: false,
-                reason: format!("couldn't run 1Password's command: {why}"),
-            })?;
+            .spawn()
+            .map_err(unran)?;
+        let writing = child.stdin.take().zip(input).map(|(mut stdin, input)| {
+            let input = input.to_owned();
+            std::thread::spawn(move || {
+                let _ = stdin.write_all(input.as_bytes());
+            })
+        });
+        let ran = child.wait_with_output().map_err(unran)?;
+        if let Some(writing) = writing {
+            let _ = writing.join();
+        }
         if ran.status.success() {
             self.let_in = true;
             return Ok(String::from_utf8_lossy(&ran.stdout).into_owned());

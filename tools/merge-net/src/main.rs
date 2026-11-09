@@ -1,11 +1,11 @@
 //! The net under main: merges land on their own checks, VM tests aside,
-//! and the net runs the VM tests each one changed after it lands.
+//! and the net runs every check each one changed after it lands.
 //!
 //! `merge-net watch` follows origin's main from its own checkout. For each
 //! new head it asks changed-checks which checks moved since the last head
-//! whose VM tests all passed, and runs each VM test among them through
-//! `nix-offload there`, which sends it to the VM builders, twelve at once, as
-//! bulk where nix-offload takes it, so sessions' VM tests go first. A
+//! whose checks all passed, and runs each of them, the VM tests last,
+//! through `nix-offload there`, which sends it to the builders, twelve at
+//! once, as bulk where nix-offload takes it, so sessions' runs go first. A
 //! test that fails twice at a commit fails for real: the net finds which
 //! merge broke it, holds switching on it (`hold.json`), reverts it through
 //! a PR merged on its own checks, and writes a finding for its owner. A
@@ -20,6 +20,10 @@
 //! what can leave a machine unable to boot, unlock or sign in, which a
 //! revert after the fact comes too late for (`must-run.txt`).
 //!
+//! `merge-net ready COMMIT`, asked before a branch's head merges, exits 0
+//! only when the head sits on origin's main as it is now and changed-checks
+//! built what it named there (`ready.rs`), and otherwise says what to run.
+//!
 //! `merge-net status` says where the net is.
 //!
 //! `watch --branch` follows another branch than main, and lands its reverts
@@ -32,9 +36,10 @@
 //! mid-round and losing every run in flight.
 //!
 //! Usage: `merge-net watch [--from COMMIT] [--branch NAME] [--once] [--follow PATH]
-//! | merge-net needs [--base REF] | merge-net status`
+//! | merge-net needs [--base REF] | merge-net ready COMMIT | merge-net status`
 
 mod holds;
+mod ready;
 mod rules;
 mod state;
 mod watch;
@@ -51,7 +56,8 @@ use watch::Round;
 use world::Real;
 
 const USED: &str = "Usage: merge-net watch [--from COMMIT] [--branch NAME] [--once] \
-                    [--follow PATH] | merge-net needs [--base REF] | merge-net status";
+                    [--follow PATH] | merge-net needs [--base REF] | merge-net ready COMMIT \
+                    | merge-net status";
 
 /// What a run asked for is refused with, as sysexits.h numbers it.
 const USAGE: u8 = 64;
@@ -69,6 +75,7 @@ fn main() -> ExitCode {
         ["watch", rest @ ..] => watching(rest),
         ["needs"] => needs("refs/remotes/origin/main"),
         ["needs", "--base", base] => needs(base),
+        ["ready", commit] => ready(commit),
         ["status"] => Ok(status()),
         ["--help"] => {
             println!("{USED}");
@@ -246,6 +253,43 @@ fn needs(base: &str) -> Result<ExitCode, String> {
     Ok(ExitCode::SUCCESS)
 }
 
+/// Say whether `commit` may merge: on origin's main as it is now, with what
+/// changed-checks named there built.
+fn ready(commit: &str) -> Result<ExitCode, String> {
+    let commit = git(&["rev-parse", "--verify", &format!("{commit}^{{commit}}")])?;
+    git(&["fetch", "--quiet", "origin", "main"])?;
+    let main = git(&["rev-parse", "refs/remotes/origin/main"])?;
+    let holds = |older: &str, newer: &str| {
+        Command::new("git")
+            .args(["merge-base", "--is-ancestor", older, newer])
+            .status()
+            .is_ok_and(|status| status.success())
+    };
+    if !holds(&main, &commit) {
+        eprintln!(
+            "merge-net: {} doesn't sit on origin's main as it is now, {}, so what it was \
+             checked against isn't what it merges onto; rebase onto origin/main, push, run \
+             changed-checks, and merge again",
+            short(&commit),
+            short(&main)
+        );
+        return Ok(ExitCode::FAILURE);
+    }
+    if !ready::built_there(&ready::record(&commit), &|base| holds(base, &main)) {
+        eprintln!(
+            "merge-net: no changed-checks run that built what it named passed at {}; run \
+             changed-checks there, committed so it's sent, and merge again",
+            short(&commit)
+        );
+        return Ok(ExitCode::FAILURE);
+    }
+    println!(
+        "ready: {} sits on origin's main and changed-checks built what it named there",
+        short(&commit)
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
 /// What `changed-checks --name-only` says moved between `base` and the
 /// working copy, or nothing when it couldn't compare.
 fn moved_from(base: &str) -> Option<String> {
@@ -286,6 +330,8 @@ fn status() -> ExitCode {
     println!("passed  {}", name(passed));
     println!("seen    {}", name(seen));
     match state.hold() {
+        // One its search couldn't settle leaves switches alone, and says so.
+        Some(hold) if hold["unsettled"] == true => println!("unsettled {hold}, switches go on"),
         Some(hold) => println!("hold    {hold}"),
         None => println!("hold    none"),
     }

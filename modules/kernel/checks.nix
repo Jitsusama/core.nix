@@ -64,7 +64,7 @@
       (nixpkgs.lib.nixosSystem {
         modules = [
           self.nixosModules.apple-macbook-air-m2-a2681
-          { hardware.asahi.pkgsSystem = "x86_64-linux"; }
+          { nixpkgs.buildPlatform = "x86_64-linux"; }
         ];
       }).config.boot.kernelPackages.kernel;
 

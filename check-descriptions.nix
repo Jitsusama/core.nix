@@ -877,11 +877,11 @@
   '';
   meaning-adds-only-below = ''
     the launcher's search by meaning, in Qt's engine, tells the daemon only the things that stay, by
-    the words each is known by, and the parts places hold by their names, and adds at most three
-    rows below what typing found, none found already and none the launcher no longer holds, each
-    saying in the foot how it was found, a part meant standing where its place would and each
-    part's name meant once, and at most three pictures below those Recent found by their names and
-    words, none listed already
+    the words each is known by, and the parts places hold by their names, each name once and none
+    a thing has, and adds at most three rows below what typing found, none found already and none
+    the launcher no longer holds, each saying in the foot how it was found, a part meant standing
+    where every place past its category would, and at most three pictures below those Recent
+    found by their names and words, none listed already
   '';
   meaning-finds-a-picture-by-what-it-shows = ''
     the meaning daemon, on the CPU with the service's SigLIP 2 towers, looks at each picture in its
@@ -1205,8 +1205,9 @@
   onepassword-manager-passes-no-secret-on = ''
     1Password's manager for Passwords says an item op gives as an entry with no hidden detail's
     value and no password's history, reads a secret only for the one detail asked, says
-    1Password's categories and kinds in Passwords' own words, and names each entry's account from
-    op's own, for 1Password's link to it
+    1Password's categories and kinds in Passwords' own words, names each entry's account from
+    op's own, for 1Password's link to it, and reads each login's password alone from op's many
+    items for an audit
   '';
   onepassword-offers-its-quick-acts = ''
     the account's 1Password entry offers Quick Access and then Lock 1Password, through switches the
@@ -1226,9 +1227,9 @@
     clippy finds nothing in the portal's chooser or its tests
   '';
   passwords-completes-in-zsh = ''
-    passwords completes in zsh with its commands, each entry the daemon holds by its title, a held
-    entry's details by their labels, each password manager and --json, and no Tab asks a password
-    manager anything
+    passwords completes in zsh with its commands, audit among them, each entry the daemon holds by
+    its title, a held entry's details by their labels, each password manager and --json, and no
+    Tab asks a password manager anything
   '';
   passwords-holds-no-secret = ''
     the passwords daemon holds every entry each password manager lists without a secret, even one
@@ -1236,9 +1237,14 @@
     only to the client that asked to see it or to the clipboard marked sensitive and cleared when
     its time is up, says a one-time code's period, gives a one-time code's detail as its code and
     never its seed, says a manager signed out and gives no secret from it, tells a watch of entries as they arrive, and refuses an ask or a kind it doesn't know;
+    audits every password only when Joel asks, refusing otherwise and for a manager signed out,
+    counting the entries that share one and matching each hash's suffix against a stand-in Have I
+    Been Pwned's range, padding counting nothing, sending it five characters alone and saying no
+    secret in an answer or a log;
     and the passwords command sets each answer in columns under a header for a person and
     tab-separated for a program, gives the daemon's answer with --json and no secret but show's,
-    finds an entry by its title and a detail by its label, and exits as its usage says
+    finds an entry by its title and a detail by its label, lists an audit's entries with a
+    problem, and exits as its usage says
   '';
   passwords-lists-1passwords-ssh-keys = ''
     passwords keys lists the keys an SSH agent holds at 1Password's socket, each by its type, size,
@@ -1312,6 +1318,14 @@
     pi's settings take core's at a switch and keep pi's own keys; a file holding them isn't
     rewritten, a missing one is made, and one not JSON is refused untouched
   '';
+  pi-carry-is-on-the-path = ''
+    pi-carry, the harness's program mycelium carry runs to carry a quest to another machine and put it
+    back, is on the path of every account with pi, run by the store's node
+  '';
+  pi-keeps-its-folder-private = ''
+    pi's own folder and its session logs' folder are the account's alone on every machine with pi, so a
+    token a tool printed into a log isn't readable by another account
+  '';
   pi-loads-its-packages = ''
     pi's package list is the harness and neovim.pi on every machine, a package a machine adds comes
     after them rather than in their place, and pi is given each git package as its current link
@@ -1344,6 +1358,14 @@
     fifteen minutes in background.slice on Linux and by a launchd agent on a Mac, and a pi's start
     or end, watched in each package's loaded folder, removes the versions no pi runs, however many
     pis start or end at once
+  '';
+  pi-rings-low-and-says-it = ''
+    the account's ding rings loud for seconds, and its piper speaks a line in its voice that sox
+    lowers, near full scale, as the harness's done chime plays them
+  '';
+  pi-rings-when-a-run-is-done = ''
+    pi's done chime is told a ding, the store's pw-play and sox, piper and its voice, and a pitch
+    that lowers the line, on Linux, and a Mac is told nothing, ringing with its own
   '';
   pi-runs-on-the-machines-plan = ''
     a machine on the Claude plan has one pi, starting on the claude-code provider and Sonnet with
@@ -2198,8 +2220,9 @@
     says every part, its drawer's eyebrow says its vault and kind, and its facts every figure but
     its username and its password, the design's first in its order, a hidden detail as hidden and
     never its value, a website sent in the clear as its health and a weak password as its strength,
-    each in the warning's role, and the foot counts a copy down to its clearing, or a one-time code
-    to its lapsing
+    each in the warning's role, its password reused or breached as its health once every password
+    is checked, its figures grouped, and nothing before, those needing attention by title, and the
+    foot counts a copy down to its clearing, or a one-time code to its lapsing
   '';
   the-people-are-one-person-each = ''
     every source's people join into one person per email address, a source that knows two
@@ -2286,27 +2309,27 @@
   the-session-goes-idle-as-the-screens-go-off = ''
     swayidle tells logind the session is idle at the same moment it turns the screens off
   '';
-  the-shell-follows-dictation = ''
+  the-desktop-follows-dictation = ''
     the shell follows each dictation state, watches again a service its socket restarts, and tries a
     socket nothing listens on once, never looping
   '';
-  the-shell-follows-tuple-calls = ''
+  the-desktop-follows-tuple-calls = ''
     the shell says who a Tuple call is with and how long it's gone on, finds a call's link in what
     was copied, and lists Tuple's Recent newest first, each call by who, how long or missed, and
     when
   '';
-  the-shell-finds-screenshots-by-their-words = ''
+  the-desktop-finds-screenshots-by-their-words = ''
     what was taken lately finds screenshots by their words from the screen-text daemon, on one
     connection made only at the first search and let go at rest, each text asked once and the last
     four answers kept, each screenshot found with the line that matched; and finds a few thousand
     files by name, newest first, each key within a frame
   '';
-  the-shell-hears-tuples-call = ''
+  the-desktop-hears-tuples-call = ''
     the shell's Tuple holds the call through the real tuple-call: who's in it, since when, mutes,
     screens and cameras, Joel's room, comings and goings told, a ring and a missed call from
     Tuple's log, and muting and opening the room asked of the daemon
   '';
-  the-shell-holds-a-daemons-records = ''
+  the-desktop-holds-a-daemons-records = ''
     the shell holds a daemon's records over one connection it keeps: a daemon that's down is said and
     never waited on, one that starts is connected to by itself, a watch narrowed to those listed
     holds them alone, a search's answer is never held, keys watched ahead and a get's answer land by
@@ -2314,20 +2337,20 @@
     kinds names both in every watch, a kind with none is known to hold none once answered, and a
     whole answer after a gap lets go what went in it
   '';
-  the-shell-reads-the-spend-watch = ''
+  the-desktop-reads-the-spend-watch = ''
     the AI spend piece and collection draw what the watch wrote, put what wants a look first, step
     into each figure's parts, hide amounts while sharing, and answer reports by their words; a
     budget's row, a window's and a cap's open a drawer of every fact budgets.json holds of it,
     and a period's its days and what its cuts went to most; the tokens piece is there only while the watch's tokens warn, with its acts for a running session
   '';
-  the-shell-speaks-its-javascript = ''
+  the-desktop-speaks-its-javascript = ''
     the shell calls no method Quickshell's JavaScript lacks
   '';
   the-shell-starts-nothing = ''
     the account's zsh starts only git-engine, its fifo and direnv, and each prompt after runs direnv
     alone
   '';
-  the-shell-reads-the-documents = ''
+  the-desktop-reads-the-documents = ''
     the shell reads the documents from the google program's state, none from one saying none,
     knows which Google program opens each kind, and says only when Joel last opened a document
     beside its title, with its details for the drawer; reads the Drive folders
@@ -2345,7 +2368,7 @@
     in as its drawer's eyebrow, and the figures the program read of it in its drawer, what
     changes most first and its id last
   '';
-  the-shell-reads-the-mail = ''
+  the-desktop-reads-the-mail = ''
     the shell gathers the google program's whole state from its daemon's records, each kind in
     its order, a signed-out account alone, and no account once the daemon stops answering; says
     when mail came in words, and a moment as a drawer says one, and what its row and its details
@@ -2355,13 +2378,13 @@
     it or fetch a file it carries; says how that fetch stands; and writes the line making a Meet
     meeting and says how one asked for stands
   '';
-  the-shell-reads-the-transcripts = ''
+  the-desktop-reads-the-transcripts = ''
     the shell says what each call written down was, when it was in words and how long it went on,
     or that it's being written down; sets its summary or its transcript's opening from markdown as
     styled text, nothing it said read as markup; says who it was with; and lists the calls newest
     first, those with someone by any of their addresses, and a meeting's own
   '';
-  the-shell-tells-the-next-meeting = ''
+  the-desktop-tells-the-next-meeting = ''
     the shell names as next the meeting about to start or going on, never one over, all day or said
     no to, says when it is in words, when it's about to start and when it's said as a notice,
     whether Return joins it or shows it, whether it's today's and how Joel answered it, gives its

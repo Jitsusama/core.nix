@@ -304,6 +304,29 @@ fn a_name_two_devices_share_is_refused_with_each_ones_address() {
 }
 
 #[test]
+fn a_device_not_on_now_says_where_and_when_it_last_was() {
+    let refused = text(
+        &View::Device("phone 2".into()),
+        &model(),
+        &soon(),
+        &Ink::plain(),
+    );
+    assert_eq!(
+        refused.unwrap_err(),
+        "phone 2 isn't on now; it was last on Den, 2026-11-06 18:58, 22 h 56 min ago"
+    );
+}
+
+#[test]
+fn as_json_a_device_not_on_now_says_eeros_own_time() {
+    let refused = json(&View::Device("phone 2".into()), &model());
+    assert_eq!(
+        refused.unwrap_err(),
+        "phone 2 isn't on now; it was last on Den, 2026-11-06T23:58:58.114Z"
+    );
+}
+
+#[test]
 fn on_a_terminal_every_line_keeps_its_text_and_only_gains_colour() {
     let palette = Palette {
         text: None,

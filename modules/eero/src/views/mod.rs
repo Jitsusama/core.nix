@@ -143,7 +143,7 @@ pub fn text(view: &View, model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Resul
         View::Mesh => mesh::page(model, clock),
         View::Radio => radio::page(model, clock, ink),
         View::Devices => devices::all(model, clock),
-        View::Device(name) => devices::one(model, find_device(model, name)?, clock),
+        View::Device(name) => devices::one(model, find_device(model, name, Some(clock))?, clock),
         View::Speeds => speeds::page(model, clock, ink),
         View::Internet => internet::page(model, clock, ink),
         View::Firmware => firmware::page(model, clock),
@@ -165,7 +165,7 @@ pub fn json(view: &View, model: &HomeNetwork) -> Result<String, String> {
         View::Mesh => mesh::json(model),
         View::Radio => radio::json(model),
         View::Devices => devices::all_json(model),
-        View::Device(name) => devices::one_json(model, find_device(model, name)?),
+        View::Device(name) => devices::one_json(model, find_device(model, name, None)?),
         View::Speeds => speeds::json(model),
         View::Internet => internet::json(model),
         View::Firmware => firmware::json(model),
@@ -303,7 +303,14 @@ fn find_profile<'a>(model: &'a HomeNetwork, name: &str) -> Result<&'a Profile, S
         })
 }
 
-fn find_device<'a>(model: &'a HomeNetwork, name: &str) -> Result<&'a Device, String> {
+/// The device on now that a name or hardware address names. One not on now
+/// is refused with where and when it last was: by the clock when there is
+/// one, as every page says a time, and as eero's own time when not.
+fn find_device<'a>(
+    model: &'a HomeNetwork,
+    name: &str,
+    clock: Option<&Clock>,
+) -> Result<&'a Device, String> {
     if let Some(device) = model
         .devices
         .iter()
@@ -320,7 +327,8 @@ fn find_device<'a>(model: &'a HomeNetwork, name: &str) -> Result<&'a Device, Str
     let matches: Vec<&Device> = model.devices.iter().filter(called).collect();
     match matches.as_slice() {
         [one] => Ok(one),
-        [] => Err(format!("no device on now is called {name}")),
+        [] => Err(off_now(model, name, clock)
+            .unwrap_or_else(|| format!("no device on now is called {name}"))),
         many => {
             let each: Vec<String> = many
                 .iter()
@@ -334,6 +342,33 @@ fn find_device<'a>(model: &'a HomeNetwork, name: &str) -> Result<&'a Device, Str
             ))
         }
     }
+}
+
+/// Why a device eero knows isn't shown: it isn't on now, and where and
+/// when it last was.
+fn off_now(model: &HomeNetwork, name: &str, clock: Option<&Clock>) -> Option<String> {
+    let off = model.devices_off.iter().find(|device| {
+        device.mac.eq_ignore_ascii_case(name)
+            || [&device.name, &device.nickname, &device.hostname]
+                .into_iter()
+                .flatten()
+                .any(|said| said.eq_ignore_ascii_case(name))
+    })?;
+    let mut last = Vec::new();
+    if let Some(node) = off.node.as_deref() {
+        last.push(location(model, Some(node)).to_owned());
+    }
+    if let Some(at) = off.last_active.as_deref().and_then(clock::parse) {
+        last.push(match clock {
+            Some(clock) => format!("{}, {}", clock.minute(at), clock.ago(at)),
+            None => at.to_string(),
+        });
+    }
+    Some(if last.is_empty() {
+        format!("{name} isn't on now")
+    } else {
+        format!("{name} isn't on now; it was last on {}", last.join(", "))
+    })
 }
 
 /// A count and its noun, the noun made plural past one: 1 device, 15 devices.

@@ -1,7 +1,7 @@
 // What the shell says of the documents Joel looked at lately (src/drive.rs):
 // which Google program each kind is, its words, and what its row and the
 // drawer say, in the same words a mail's say when. Drive.qml makes each
-// one's row from these, and the-shell-reads-the-documents runs them in Qt's
+// one's row from these, and the-desktop-reads-the-documents runs them in Qt's
 // own engine (tests/drive.qml). It also says a Drive folder's files as the
 // launcher's picker lists them.
 .pragma library

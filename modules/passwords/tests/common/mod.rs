@@ -1,8 +1,10 @@
 //! What the daemon's tests and the command's share: the daemon running
-//! with stand-in password managers of its own, a client on its socket, and
-//! a wait on something coming to hold.
+//! with stand-in password managers of its own, a client on its socket, a
+//! stand-in for Have I Been Pwned on a local port, and a wait on
+//! something coming to hold.
 
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::TcpListener;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -20,6 +22,34 @@ echo '{"state":"signed-out","reason":"Let the launcher in"}'
 while read -r line; do
   [[ $line =~ \"id\":([0-9]+) ]] && id=${BASH_REMATCH[1]}
   printf '{"id":%s,"error":{"code":"signed-out","message":"Let the launcher in"}}\n' "$id"
+done
+"#;
+
+/// A manager whose logins share passwords, for an audit: GitHub, Gist and
+/// Mail share one, which Have I Been Pwned's stand-in has seen in breaches,
+/// and Bank keeps its own, which it hasn't. Its secrets are made up and
+/// look it; it answers an audit only as Joel's own ask, as 1Password's
+/// manager does.
+pub const AUDITING: &str = r#"
+log=$1
+entry() { printf '{"id":"%s","title":"%s","category":"login","version":1}' "$1" "$2"; }
+echo '{"state":"answering"}'
+while read -r line; do
+  printf '%s\n' "$line" >> "$log"
+  [[ $line =~ \"id\":([0-9]+) ]] && id=${BASH_REMATCH[1]}
+  [[ $line =~ \"ask\":\"([a-z-]+)\" ]] && ask=${BASH_REMATCH[1]}
+  case $ask in
+    list) printf '{"id":%s,"entries":[%s,%s,%s,%s]}\n' "$id" "$(entry gh GitHub)" \
+      "$(entry gist Gist)" "$(entry mail Mail)" "$(entry bank Bank)" ;;
+    audit)
+      if [[ $line != *'"asked":true'* ]]; then
+        printf '{"id":%s,"error":{"code":"refused","message":"not asked"}}\n' "$id"
+        continue
+      fi
+      printf '{"id":%s,"passwords":[' "$id"
+      printf '{"entry":"gh","value":"password"},{"entry":"gist","value":"password"},'
+      printf '{"entry":"mail","value":"password"},{"entry":"bank","value":"abc"}]}\n' ;;
+  esac
 done
 "#;
 
@@ -41,6 +71,12 @@ pub struct Running {
 
 impl Running {
     pub fn with(test: &str, managers: &[(&str, &str)]) -> Running {
+        Running::with_env(test, managers, &[])
+    }
+
+    /// The daemon with these managers, and these variables set beside the
+    /// tests' own, as `PASSWORDS_BREACHES` points it at a stand-in.
+    pub fn with_env(test: &str, managers: &[(&str, &str)], set: &[(&str, &str)]) -> Running {
         let folder = std::env::temp_dir().join(format!("passwords-{test}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).unwrap();
@@ -68,7 +104,11 @@ impl Running {
             .env("PASSWORDS_COPIER", &copier)
             .env("PASSWORDS_CLEARS_MS", "700")
             .env("COPIED", folder.join("copied"))
+            .envs(set.iter().copied())
             .stdin(Stdio::null())
+            // What it and its managers log, kept so a test can say no
+            // secret was logged.
+            .stderr(std::fs::File::create(folder.join("logged")).unwrap())
             .spawn()
             .unwrap();
         let running = Running {
@@ -98,6 +138,11 @@ impl Running {
     /// What a manager was asked so far, a line an ask.
     pub fn asked_of(&self, manager: &str) -> String {
         std::fs::read_to_string(self.folder.join(format!("{manager}.log"))).unwrap_or_default()
+    }
+
+    /// What the daemon and its managers logged so far.
+    pub fn logged(&self) -> String {
+        std::fs::read_to_string(self.folder.join("logged")).unwrap_or_default()
     }
 }
 
@@ -135,6 +180,58 @@ impl Client {
                 return heard;
             }
         }
+    }
+}
+
+/// A stand-in for Have I Been Pwned's range API on a local port, answering
+/// each range it's asked with `ranges`' answer for its five characters, or
+/// with padding alone, and keeping every request it's sent, whole, so a
+/// test can say what left the machine.
+pub struct Breaches {
+    pub address: String,
+    requests: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+impl Breaches {
+    pub fn answering(ranges: Vec<(String, String)>) -> Breaches {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = format!("http://{}/range/", listener.local_addr().unwrap());
+        let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let kept = std::sync::Arc::clone(&requests);
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                let mut request = Vec::new();
+                let mut byte = [0u8; 1];
+                while !request.ends_with(b"\r\n\r\n")
+                    && stream.read(&mut byte).is_ok_and(|n| n == 1)
+                {
+                    request.push(byte[0]);
+                }
+                let request = String::from_utf8_lossy(&request).into_owned();
+                let path = request.split_whitespace().nth(1).unwrap_or("").to_owned();
+                kept.lock().unwrap().push(request);
+                let prefix = path.rsplit('/').next().unwrap_or("");
+                let mut body = ranges
+                    .iter()
+                    .find(|(asked, _)| asked == prefix)
+                    .map(|(_, range)| range.clone())
+                    .unwrap_or_default();
+                body.push_str("0000000000000000000000000000000000F:0\r\n");
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\
+                     Connection: close\r\n\r\n{body}",
+                    body.len()
+                );
+            }
+        });
+        Breaches { address, requests }
+    }
+
+    /// Every request it was sent, whole.
+    pub fn requests(&self) -> Vec<String> {
+        self.requests.lock().unwrap().clone()
     }
 }
 

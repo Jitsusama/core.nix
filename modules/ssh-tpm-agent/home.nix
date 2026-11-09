@@ -67,6 +67,13 @@
   config = {
     services.ssh-tpm-agent.enable = true;
 
+    # The agent keeps the login key's PIN only for as long as it runs, so a
+    # switch that restarted it would ask for the PIN again, and every SSH login
+    # and signed commit would wait until someone typed it, the person often
+    # away. A changed agent starts at the next login instead, when they're
+    # there to type it.
+    systemd.user.services.ssh-tpm-agent.Unit.X-SwitchMethod = "keep-old";
+
     # The login key, which the agent loads from ~/.ssh when it starts and
     # which asks for its PIN once a session.
     jitsusama.tpmKeys = [

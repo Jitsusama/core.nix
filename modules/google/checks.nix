@@ -69,11 +69,11 @@ onLinux {
   # Which meeting is next, when it is in words and whether it's about to
   # start are Calendar.js's, and which Meet call a window is Meet.js's, run
   # in Qt's own engine over meetings like the program's (tests/calendar.qml).
-  the-shell-tells-the-next-meeting =
+  the-desktop-tells-the-next-meeting =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
-    pkgs.runCommandLocal "the-shell-tells-the-next-meeting" { } ''
+    pkgs.runCommandLocal "the-desktop-tells-the-next-meeting" { } ''
       cp ${../../tests/calendar.qml} calendar.qml
       cp ${./Calendar.js} Calendar.js
       cp ${./Meet.js} Meet.js
@@ -90,11 +90,11 @@ onLinux {
   # more a Drive file's drawer says are DrivePlaces.js's, and which saves
   # into Drive are told and how is Saves.js's, run in Qt's own engine
   # (tests/drive.qml).
-  the-shell-reads-the-documents =
+  the-desktop-reads-the-documents =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
-    pkgs.runCommandLocal "the-shell-reads-the-documents" { } ''
+    pkgs.runCommandLocal "the-desktop-reads-the-documents" { } ''
       cp ${../../tests/drive.qml} drive.qml
       cp ${./Drive.js} Drive.js
       cp ${./DrivePlaces.js} DrivePlaces.js
@@ -113,11 +113,11 @@ onLinux {
   # Reading the daemon's records is Google.js's, and when mail came and the
   # lines marking it read or archiving it Mail.js's, run in Qt's own engine
   # (tests/mail.qml).
-  the-shell-reads-the-mail =
+  the-desktop-reads-the-mail =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
-    pkgs.runCommandLocal "the-shell-reads-the-mail" { } ''
+    pkgs.runCommandLocal "the-desktop-reads-the-mail" { } ''
       cp ${../../tests/mail.qml} mail.qml
       cp ${./Google.js} Google.js
       cp ${./Mail.js} Mail.js

@@ -800,8 +800,8 @@ gather (
       # shell's code calls none of them, in Quickshell's module and in every
       # module that gives the shell a file. Spotify's Escape script runs in
       # Spotify's own browser, which has them, so it alone is left out.
-      the-shell-speaks-its-javascript =
-        pkgs.runCommandLocal "the-shell-speaks-its-javascript" { nativeBuildInputs = [ pkgs.ripgrep ]; }
+      the-desktop-speaks-its-javascript =
+        pkgs.runCommandLocal "the-desktop-speaks-its-javascript" { nativeBuildInputs = [ pkgs.ripgrep ]; }
           ''
             cd ${./.}
             # ripgrep answers 0 for a match, 1 for none and 2 when it can't

@@ -1,14 +1,10 @@
-# The M2 Air runs core's own Asahi kernel (package.nix), in place of the one
-# nixos-apple-silicon's kernel module gives, which the hardware module leaves
-# out. What that module set beside its kernel is kept here, from its
-# modules/kernel at the commit core pins (MIT), each with its reason.
-{ config, lib, ... }:
+# The M2 Air runs core's own Asahi kernel (package.nix). What
+# nixos-apple-silicon's kernel module set beside its kernel is kept here,
+# from its modules/kernel (MIT), each with its reason.
+{ lib, pkgs, ... }:
 {
-  # Built from hardware.asahi.pkgs, so a machine that cross-compiles its
-  # Apple packages cross-compiles this too.
-  boot.kernelPackages = config.hardware.asahi.pkgs.linuxPackagesFor (
-    config.hardware.asahi.pkgs.callPackage ./package.nix { }
-  );
+  # A machine built elsewhere (nixpkgs.buildPlatform) cross-compiles it.
+  boot.kernelPackages = pkgs.linuxPackagesFor (pkgs.callPackage ./package.nix { });
 
   # schedutil, for the kernel's energy model, which knows the efficiency
   # cores from the performance ones.

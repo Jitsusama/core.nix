@@ -16,13 +16,21 @@
 //! holds the entry ([`Entry::without_secrets`]), so nothing a client
 //! lists, gets, searches or watches holds a secret. A secret is asked of
 //! its manager only to copy or show it, and handed on as it comes.
+//!
+//! An audit, asked only by Joel (`asked`), reads every password of every
+//! manager at once to find those shared and those breached (audit.rs);
+//! what it keeps of each entry is its `health`, two counts laid on its
+//! record, until a list says the entry changed.
 
 use std::collections::{BTreeMap, HashMap};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Map, Value, json};
 
+pub mod audit;
 pub mod cli;
+
+use audit::Health;
 
 /// The interface's version this speaks.
 pub const VERSION: u64 = 1;
@@ -119,6 +127,12 @@ pub enum Ask {
     },
     Health {
         id: Value,
+    },
+    /// Every password audited for reuse and breaches, only when `asked`
+    /// says Joel asked: it reads every secret, so nothing else may.
+    Audit {
+        id: Value,
+        asked: bool,
     },
     /// A kind this daemon doesn't keep.
     UnknownKind {
@@ -218,6 +232,10 @@ pub fn ask(line: &str) -> Ask {
             manager: text("manager").unwrap_or_default(),
         },
         "health" => Ask::Health { id },
+        "audit" => Ask::Audit {
+            id,
+            asked: flag("asked"),
+        },
         other => Ask::Unknown {
             id,
             ask: other.to_owned(),
@@ -424,11 +442,13 @@ struct Kept {
     standing: Standing,
 }
 
-/// Every manager's entries, none with a secret, and how each stands.
+/// Every manager's entries, none with a secret, how each stands, and each
+/// entry's health as the last audit found it, by its key.
 #[derive(Clone, Debug)]
 pub struct Held {
     managers: Vec<String>,
     kept: HashMap<String, Kept>,
+    health: HashMap<String, Health>,
 }
 
 impl Held {
@@ -450,6 +470,7 @@ impl Held {
                     )
                 })
                 .collect(),
+            health: HashMap::new(),
         }
     }
 
@@ -487,6 +508,15 @@ impl Held {
             if entries.contains_key(&id) {
                 continue;
             }
+            // An entry whose version moved may have a new password, so
+            // what an audit found of the old one goes.
+            if kept
+                .entries
+                .get(&id)
+                .is_some_and(|(was, _)| was.0.get("version") != entry.0.get("version"))
+            {
+                self.health.remove(&key(manager, &id));
+            }
             let kept_whole = kept.entries.get(&id).filter(|(was, _)| {
                 was.detailed()
                     && was.0.get("version") == entry.0.get("version")
@@ -505,6 +535,7 @@ impl Held {
         }
         for id in kept.entries.keys() {
             if !entries.contains_key(id) {
+                self.health.remove(&key(manager, id));
                 changes.gone.push(key(manager, id));
             }
         }
@@ -521,6 +552,13 @@ impl Held {
         let id = entry.id().to_owned();
         if kept.entries.get(&id).map(|(was, _)| was) == Some(&entry) {
             return None;
+        }
+        if kept
+            .entries
+            .get(&id)
+            .is_some_and(|(was, _)| was.0.get("version") != entry.0.get("version"))
+        {
+            self.health.remove(&key(manager, &id));
         }
         if !kept.entries.contains_key(&id) {
             kept.order.push(id.clone());
@@ -543,7 +581,43 @@ impl Held {
     pub fn record(&self, key: &str) -> Option<Value> {
         let (manager, id) = named(key)?;
         let (entry, heard) = self.kept.get(manager)?.entries.get(id)?;
-        Some(entry.record(manager, *heard))
+        Some(self.dressed(entry, manager, *heard))
+    }
+
+    /// An entry as a client reads it, with its health where an audit
+    /// found it.
+    fn dressed(&self, entry: &Entry, manager: &str, heard: u64) -> Value {
+        let mut record = entry.record(manager, heard);
+        if let Some(health) = self.health.get(&key(manager, entry.id())) {
+            record["health"] = health.said();
+        }
+        record
+    }
+
+    /// Takes what an audit of these managers found, in place of what the
+    /// last one did, and says each key whose health changed.
+    pub fn audited(&mut self, managers: &[String], found: HashMap<String, Health>) -> Vec<String> {
+        let of_these = |key: &str| {
+            named(key).is_some_and(|(manager, _)| managers.iter().any(|one| one == manager))
+        };
+        let mut changed: Vec<String> = self
+            .health
+            .keys()
+            .filter(|key| of_these(key.as_str()) && !found.contains_key(*key))
+            .cloned()
+            .collect();
+        self.health.retain(|key, _| !of_these(key.as_str()));
+        for (key, health) in found {
+            changed.push(key.clone());
+            self.health.insert(key, health);
+        }
+        changed.sort();
+        changed
+    }
+
+    /// An entry's health, as the last audit found it.
+    pub fn health(&self, key: &str) -> Option<&Health> {
+        self.health.get(key)
     }
 
     /// Every entry held, manager by manager in their order, each in the
@@ -556,7 +630,7 @@ impl Held {
             };
             for id in &kept.order {
                 if let Some((entry, heard)) = kept.entries.get(id) {
-                    records.push(entry.record(manager, *heard));
+                    records.push(self.dressed(entry, manager, *heard));
                 }
             }
         }
@@ -582,9 +656,9 @@ impl Held {
                 };
                 let title = entry.0.get("title").and_then(Value::as_str).unwrap_or("");
                 if finds(title, &words) {
-                    titled.push(entry.record(manager, *heard));
+                    titled.push(self.dressed(entry, manager, *heard));
                 } else if finds(&entry.words().join(" "), &words) {
-                    rest.push(entry.record(manager, *heard));
+                    rest.push(self.dressed(entry, manager, *heard));
                 }
             }
         }
@@ -885,6 +959,70 @@ mod tests {
         held.stand("b", Standing::Answering);
         assert_eq!(held.state(), "answering");
         assert_eq!(held.standings()["a"]["state"], "signed-out");
+    }
+
+    #[test]
+    fn an_audit_is_asked_only_as_joels_own() {
+        assert_eq!(
+            ask(r#"{"id":1,"ask":"audit","asked":true}"#),
+            Ask::Audit {
+                id: json!(1),
+                asked: true
+            }
+        );
+        assert!(matches!(
+            ask(r#"{"id":2,"ask":"audit"}"#),
+            Ask::Audit { asked: false, .. }
+        ));
+    }
+
+    #[test]
+    fn an_entrys_health_is_kept_until_its_version_moves() {
+        let mut held = Held::of(&["1password".to_owned()]);
+        held.list(
+            "1password",
+            &[login("a", "GitHub", 1), login("b", "Bank", 1)],
+            1,
+        );
+        let found = HashMap::from([
+            (
+                "entry:1password:a".to_owned(),
+                Health {
+                    reused: 1,
+                    breached: Some(3),
+                },
+            ),
+            (
+                "entry:1password:b".to_owned(),
+                Health {
+                    reused: 1,
+                    breached: None,
+                },
+            ),
+        ]);
+        let changed = held.audited(&["1password".to_owned()], found);
+        assert_eq!(changed, ["entry:1password:a", "entry:1password:b"]);
+        let a = held.record("entry:1password:a").unwrap();
+        assert_eq!(a["health"], json!({"reused": 1, "breached": 3}));
+        assert_eq!(held.records()[1]["health"], json!({"reused": 1}));
+        // Listed again unchanged, it keeps its health; its version moved,
+        // it may hold another password, so it holds none.
+        held.list(
+            "1password",
+            &[login("a", "GitHub", 1), login("b", "Bank", 2)],
+            2,
+        );
+        assert!(held.health("entry:1password:a").is_some());
+        assert!(
+            held.record("entry:1password:b")
+                .unwrap()
+                .get("health")
+                .is_none()
+        );
+        // An audit finding nothing of an entry takes what the last found.
+        let changed = held.audited(&["1password".to_owned()], HashMap::new());
+        assert_eq!(changed, ["entry:1password:a"]);
+        assert!(held.health("entry:1password:a").is_none());
     }
 
     #[test]

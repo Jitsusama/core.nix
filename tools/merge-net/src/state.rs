@@ -2,12 +2,14 @@
 //! (`~/.local/state/net` unless `MERGE_NET_STATE` names another), so it
 //! carries on where it was after a restart or a reboot:
 //!
-//! - `state.json`: the last head every changed VM test passed at, which the
+//! - `state.json`: the last head every changed check passed at, which the
 //!   next head is compared with, and the last head it finished looking at.
 //! - `results.jsonl`: a line for each run of a check at a commit, with its
 //!   exit and its log, so no check that passed at a commit runs there again.
 //! - `hold.json`: while a merge broke a test and its revert isn't on main,
 //!   the bad commit and the revert, which a switch reads to stay put.
+//! - `unsettled.json`: a held test whose search couldn't tell which merge
+//!   broke it, kept like a hold but leaving switches alone.
 //! - `findings/`: a file for each failure, for a session to tell its owner.
 //! - `logs/`: each run's log, and the net's own in `net.log`.
 //! - `core/`: the net's own checkout of the repository it watches.
@@ -135,21 +137,33 @@ impl State {
     }
 
     /// The hold a broken merge put on switching, if one stands.
+    /// Where a hold marked `unsettled` is kept. Its search couldn't tell
+    /// which merge broke its test, because runs stalled or no builder took
+    /// them, so nothing is known to be broken. On 8 November a hold like
+    /// that kept every switch off the machine while each run of the test
+    /// had only waited in a builder's queue. So it's run again like a hold
+    /// but kept apart from `hold.json`, which is all a switch reads.
+    fn unsettled_file(&self) -> PathBuf {
+        self.root.join("unsettled.json")
+    }
+
     pub fn hold(&self) -> Option<Value> {
-        read_json(&self.hold_file())
+        read_json(&self.hold_file()).or_else(|| read_json(&self.unsettled_file()))
     }
 
     pub fn set_hold(&self, hold: &Value) -> Result<(), String> {
-        write_json(&self.hold_file(), hold)
+        let (kept, other) = if hold["unsettled"] == true {
+            (self.unsettled_file(), self.hold_file())
+        } else {
+            (self.hold_file(), self.unsettled_file())
+        };
+        write_json(&kept, hold)?;
+        remove(&other)
     }
 
     pub fn clear_hold(&self) -> Result<(), String> {
-        match fs::remove_file(self.hold_file()) {
-            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-                Err(format!("clearing the hold: {error}"))
-            }
-            _ => Ok(()),
-        }
+        remove(&self.hold_file())?;
+        remove(&self.unsettled_file())
     }
 
     /// Write a finding for whoever owns what failed, as a file of its own.
@@ -218,6 +232,16 @@ pub fn runs_in(text: &str, commit: &str, check: &str) -> Vec<Ran> {
 /// A commit's first twelve characters, as names and logs give it.
 pub fn short(commit: &str) -> &str {
     commit.get(..12).unwrap_or(commit)
+}
+
+/// Remove a file the hold is kept in, which may not be there.
+fn remove(path: &Path) -> Result<(), String> {
+    match fs::remove_file(path) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+            Err(format!("clearing the hold: {error}"))
+        }
+        _ => Ok(()),
+    }
 }
 
 fn read_json(path: &Path) -> Option<Value> {

@@ -1,6 +1,6 @@
 // How the shell puts a Tuple call in words, finds a call's link in text,
 // and orders and words Tuple's Recent, run in Qt's own JavaScript engine,
-// the one the shell runs it in. The `the-shell-follows-tuple-calls` check
+// the one the shell runs it in. The `the-desktop-follows-tuple-calls` check
 // copies Tuple.js and When.js beside this file and runs `qml -platform
 // offscreen tuple.qml`.
 import QtQuick

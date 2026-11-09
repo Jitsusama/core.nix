@@ -82,7 +82,7 @@ in
     kernelPackages = lib.mkDefault pkgs.linuxPackages_latest;
     # The stick's own disk, and the keyboards that reach the system through
     # a controller of their own, such as the Surface Laptop 4's. On a Mac,
-    # nixos-apple-silicon names the controllers and usb_storage, and NixOS's
+    # the Air's kernel module names the controllers and usb_storage, and NixOS's
     # own defaults sd_mod, so only UAS, which a USB SSD speaks, is added:
     # Asahi's kernel has none of the Surface's modules.
     initrd.availableKernelModules =

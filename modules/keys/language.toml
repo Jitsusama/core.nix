@@ -1126,8 +1126,8 @@ command = "search"
 short = "sea"
 kinds = ["list"]
 
-# The same asked again: Try Again, Check It Again, and a timer's Start
-# Again.
+# The same asked again: Try Again, Check It Again, a timer's Start Again,
+# and Passwords' Check Every Password, which asks afresh each time.
 [acts.retry]
 command = "retry"
 short = "retr"

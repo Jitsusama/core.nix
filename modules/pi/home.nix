@@ -11,6 +11,8 @@
 # row on the plan a machine names in jitsusama.pi.ask (ask.nix). A personal
 # machine sets jitsusama.pi.plan to "claude", and then plain pi is on that
 # plan, with no pi-claude beside it: Joel wants one pi that just works.
+# On Linux a run Joel typed rings when it's done, a low ding and then a
+# voice on the machine saying which session (chime.nix).
 # Each morning, on Linux, the installed harness writes its measure in the
 # background: what the day cost and which mistakes recurred.
 {
@@ -126,6 +128,14 @@ let
   measure = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/measure.ts";
   restoreFile = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/restore-file.ts";
   windowsElsewhere = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/windows-elsewhere.ts";
+  carryScript = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/pi-carry.ts";
+
+  # What mycelium carry runs to carry a quest's trees and sessions to
+  # another machine, and to put them back on arriving: the harness's
+  # program, run by the store's node.
+  piCarry = pkgs.writeShellScriptBin "pi-carry" ''
+    exec ${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${carryScript} "$@"
+  '';
 
   # On the Claude plan, the machine's own Claude Code login is the plan's.
   piClaude = import ./claude.nix {
@@ -187,6 +197,20 @@ in
       a package installed by hand and not named here is dropped from it.
       Each `git:` one is installed by pi-packages, which follows its branch
       and swaps each new commit in whole, and pi is given its current link.
+    '';
+  };
+
+  options.jitsusama.pi.chime = lib.mkOption {
+    type = lib.types.attrsOf (lib.types.either lib.types.str lib.types.int);
+    readOnly = true;
+    default = import ./chime.nix { inherit pkgs lib; };
+    defaultText = lib.literalExpression "import ./chime.nix { inherit pkgs lib; }";
+    description = ''
+      What pi rings with on Linux when a run is done, for anything else
+      that wants the same loud, low, dog-safe sound: `ding`, a WAV of a
+      bell on G3 that dies away over about three seconds, and `player`,
+      PipeWire's pw-play, which plays it as `player ding`. Read it rather
+      than setting it; a Mac rings with its own sound and has no use for it.
     '';
   };
 
@@ -313,6 +337,7 @@ in
           inherit (config.jitsusama.pi) ask;
         })
       ]
+      ++ [ piCarry ]
       ++ lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.landrun;
 
     # On the Claude plan every pi starts on it: the provider is one of the
@@ -373,6 +398,17 @@ in
           } ${lib.escapeShellArg "${config.home.homeDirectory}/.pi/agent/settings.json"}
         '';
 
+    # pi writes its session logs readable by anyone on the machine, and a
+    # tool's output in them can hold a token: on 7 November 84 of 625 logs
+    # did. pi's own folder is kept to its account alone, which closes every
+    # file under it whatever mode pi writes it with; a umask for pi would
+    # also make every file an agent writes private, which this doesn't.
+    home.activation.piKeepsItsFolderPrivate = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      run mkdir -p ${lib.escapeShellArg "${config.home.homeDirectory}/.pi/agent/sessions"}
+      run chmod 0700 ${lib.escapeShellArg "${config.home.homeDirectory}/.pi/agent"} \
+        ${lib.escapeShellArg "${config.home.homeDirectory}/.pi/agent/sessions"}
+    '';
+
     # Where the harness's status line learns the folder and git; its README
     # says what each field means.
     xdg.configFile."pi/agentic-harness.pi/status-line/where.json".text = builtins.toJSON {
@@ -389,6 +425,16 @@ in
           ;
       };
     };
+
+    # What a run Joel typed rings with when it's done, where the harness's
+    # done-chime-widget reads it: the ding, the voice and the tools that play
+    # and speak them (chime.nix). A Mac rings with its own sound and voice,
+    # which the harness knows.
+    xdg.configFile."pi/agentic-harness.pi/done-chime-widget/sound.json" =
+      lib.mkIf pkgs.stdenv.hostPlatform.isLinux
+        {
+          text = builtins.toJSON config.jitsusama.pi.chime;
+        };
 
     home.file.".pi/agent/keybindings.json".text = builtins.toJSON (
       { "$schema" = "https://pi.dev/schemas/keybindings.schema.json"; } // keybindings
