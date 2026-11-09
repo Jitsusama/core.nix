@@ -1442,6 +1442,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.type_in("hardware", selecting="Hardware Address")
     assert desktop.showing()["selected"]["side"] == "02:00:00:00:02:00"
     desktop.close_launcher()
+    reads_a_network_in_a_terminal(desktop)
     # Wi-Fi holds its own off, last, so stepping in never lands on it;
     # Network lists Wi-Fi alone.
     desktop.as_account("qs ipc call launcher toggle")
@@ -1491,6 +1492,18 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.close_launcher()
     # And it's an option, :set wifi, as Vim's are.
     sets_wi_fi(desktop)
+
+
+def reads_a_network_in_a_terminal(desktop: Desktop) -> None:
+    """With the launcher closed, a terminal steps into the Office's Speed.
+
+    The launcher closed holding the Office, which asks wifid nothing now; the terminal's own
+    walk has wifid say the Office's detail, which Speed is made from, so the step into it is
+    asked again until it's there. How long it waits is in-a-terminal's own tests'.
+    """
+    assert not desktop.showing()["open"], desktop.showing()
+    speed = json.loads(desktop.as_account("launcher show --json network wi-fi office speed"))
+    assert {"In", "Retries"} <= {row["name"] for row in speed["rows"]}, speed
 
 
 def test_a_network_left_reads_so_on_its_key_and_wi_fi_off_unanswered_is_put_back(

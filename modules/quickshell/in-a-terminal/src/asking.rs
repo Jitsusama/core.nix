@@ -26,13 +26,27 @@ pub enum Answer {
     /// What a place or a row shows, as launcher/Showing.js shapes it, or
     /// what came of doing it.
     Shown(Value),
-    /// A step named nothing: the step, the names it might have meant and
-    /// the names of the steps before it.
+    /// A step named nothing: the step, the names it might have meant, the
+    /// names of the steps before it, and whether what it was looked among
+    /// is still being read, as a joined network's Speed is made only once
+    /// wifid has said its detail.
     Missing {
         step: String,
         near: Vec<String>,
         within: Vec<String>,
+        reading: bool,
     },
+}
+
+impl Answer {
+    /// Whether the shell said what it shows, or looked among, is still
+    /// being read.
+    fn reading(&self) -> bool {
+        match self {
+            Answer::Shown(shown) => still_reading(shown),
+            Answer::Missing { reading, .. } => *reading,
+        }
+    }
 }
 
 /// How long what a place shows may still be reading once it's first asked:
@@ -46,13 +60,13 @@ const ASK_AGAIN: Duration = Duration::from_millis(150);
 /// Asks as `show` does, again while the shell says what it shows is still
 /// being read (`reading`, a provider's daemon not yet answered), until it's
 /// read or `SETTLING` has passed, when it says what it has. A fact that's
-/// simply unknown never waits, since only the shell knows whether it's coming.
+/// simply unknown never waits, since only the shell knows whether it's coming,
+/// and a step missed among rows still being read is asked again the same way.
 pub fn settled(qs: &str, steps: &[String], drawers: bool) -> Result<Answer, String> {
     let began = Instant::now();
     loop {
         let answer = show(qs, steps, drawers)?;
-        let reading = matches!(&answer, Answer::Shown(shown) if still_reading(shown));
-        if !reading || began.elapsed() >= SETTLING {
+        if !answer.reading() || began.elapsed() >= SETTLING {
             return Ok(answer);
         }
         thread::sleep(ASK_AGAIN);
@@ -179,6 +193,7 @@ pub fn answer_of(printed: &str) -> Option<Answer> {
             step: step.to_string(),
             near: strings(value.get("near")),
             within: strings(value.get("in")),
+            reading: value.get("reading").and_then(Value::as_bool) == Some(true),
         });
     }
     Some(Answer::Shown(value))
@@ -230,6 +245,32 @@ mod tests {
         assert!(
             took < SETTLING + ASK_AGAIN + LEEWAY,
             "it asked for {took:?}"
+        );
+    }
+
+    #[test]
+    fn a_step_missed_among_rows_still_reading_is_asked_again_until_its_time_is_up() {
+        let began = Instant::now();
+        let answer =
+            settled(&stand_in::qs("missed-reading"), &[], false).expect("the stand-in answers");
+        let took = began.elapsed();
+        assert!(matches!(answer, Answer::Missing { reading: true, .. }));
+        assert!(took >= SETTLING, "it gave up after {took:?}");
+        assert!(
+            took < SETTLING + ASK_AGAIN + LEEWAY,
+            "it asked for {took:?}"
+        );
+    }
+
+    #[test]
+    fn a_step_missed_among_rows_read_is_said_at_once() {
+        let began = Instant::now();
+        let answer = settled(&stand_in::qs("missed"), &[], false).expect("the stand-in answers");
+        assert!(matches!(answer, Answer::Missing { reading: false, .. }));
+        assert!(
+            began.elapsed() < SETTLING,
+            "it waited {:?}",
+            began.elapsed()
         );
     }
 
@@ -300,6 +341,7 @@ mod tests {
                 step: "mahcine".to_string(),
                 near: vec!["Machine".to_string()],
                 within: vec![],
+                reading: false,
             })
         );
     }
@@ -333,7 +375,15 @@ pub mod stand_in {
     use std::{env, fs, process};
 
     /// Each stand-in's name and the answer it prints.
-    const ANSWERS: [(&str, &str); 3] = [
+    const ANSWERS: [(&str, &str); 5] = [
+        (
+            "missed-reading",
+            r#"{"missing":"speed","near":[],"in":["Network","Office"],"reading":true}"#,
+        ),
+        (
+            "missed",
+            r#"{"missing":"speed","near":[],"in":["Network","Office"],"reading":false}"#,
+        ),
         (
             "reading",
             r#"{"reading":true,"in":[],"path":[],"row":null,"rows":[]}"#,

@@ -322,7 +322,9 @@ fn qs() -> String {
 fn heard(answer: Result<Answer, String>, words: &Words) -> Result<Value, ExitCode> {
     match answer {
         Ok(Answer::Shown(shown)) => Ok(shown),
-        Ok(Answer::Missing { step, near, within }) => {
+        Ok(Answer::Missing {
+            step, near, within, ..
+        }) => {
             fail(&errors(), &words.missing(&step, &within, &near));
             Err(ExitCode::from(NOTHING_CALLED))
         }
