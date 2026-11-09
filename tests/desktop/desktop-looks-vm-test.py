@@ -1201,11 +1201,16 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         desktop.follow()
         desktop.launcher_until(lambda shown: "time.harbour.test" in shown["rows"])
         desktop.down_to("time.harbour.test")
+        # Its facts placed, each under the last: one read while its rows are still being laid
+        # holds them all on one line.
         desktop.launcher_until(
             lambda shown: (
                 shown["drawer"]["out"] is True
                 and shown["drawer"]["title"] == "time.harbour.test"
                 and len(shown["drawer"]["lines"]["facts"]) > 1
+                and all(
+                    above < below for above, below in pairwise(shown["drawer"]["lines"]["facts"])
+                )
             )
         )
         drawer = plate_shown(desktop, scale)
