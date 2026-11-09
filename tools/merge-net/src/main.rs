@@ -268,8 +268,8 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
     if !holds(&main, &commit) {
         eprintln!(
             "merge-net: {} doesn't sit on origin's main as it is now, {}, so what it was \
-             checked against isn't what it merges onto; rebase onto origin/main, push, run \
-             changed-checks, and merge again",
+             checked against isn't what it merges onto; rebase onto origin/main, push, and \
+             merge again, which needs no new run where main moved none of its files",
             short(&commit),
             short(&main)
         );
