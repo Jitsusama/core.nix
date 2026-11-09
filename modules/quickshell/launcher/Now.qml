@@ -1350,9 +1350,11 @@ Provider {
             verbs: listed,
             targets: listed,
             stepped: () => Qt.callLater(() => Notices.seen()),
-            // Held, it lists the notices the screen shows, so the cards step
-            // aside while it's open (PastNotices.qml), each in one place.
-            gathers: true,
+            // Held, the desktop's lists the notices the screen shows, so the
+            // cards step aside while it's open (PastNotices.qml), each in one
+            // place; Slack's, standing in while its daemon doesn't answer,
+            // lists Slack's alone, so the rest stay on screen.
+            gathers: from === "desktop",
             run: () => provider.launcher?.enter(row)
         });
         return row;

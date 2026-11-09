@@ -295,9 +295,10 @@ def test_the_launcher_lists_each_thing_once_for_everything_joel_types(desktop: D
 def finds_where_the_notices_went(desktop: Desktop) -> None:
     """Find where the notices went, For You's Desktop, by their place's words.
 
-    Said where it is, Return steps in as Super+N does, unread or not, and - climbs back out
-    the way it stepped in, through For You (VKCF3Z, 2026-11-09: a rename never loses a row).
+    Said where it is, Tab and Return step in as Super+N does, unread or not, and - climbs back
+    out the way it stepped in, through For You (VKCF3Z, 2026-11-09: a rename never loses a row).
     """
+    into = ["now", "For You", "Desktop"]
     for typed in ["notices", "notifications"]:
         desktop.answer(typed)
         desktop.launcher_until(lambda shown: "Desktop" in shown["rows"])
@@ -306,9 +307,11 @@ def finds_where_the_notices_went(desktop: Desktop) -> None:
             lambda shown: (shown["selected"] or {}).get("side") == "Now \u203a For You"
         )
         if typed == "notices":
+            desktop.machine.send_key("tab")
+            desktop.launcher_until(lambda shown: shown["held"] == into)
             desktop.close_launcher()
     desktop.machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["held"] == ["now", "For You", "Desktop"])
+    desktop.launcher_until(lambda shown: shown["held"] == into)
     desktop.normal()
     desktop.machine.send_key("minus")
     desktop.launcher_until(lambda shown: shown["held"] == ["now", "For You"])
