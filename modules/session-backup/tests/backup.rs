@@ -645,7 +645,7 @@ fn names_the_logins_quota_project_on_every_drive_call() {
     assert_eq!(account.run().unwrap().sent, 1);
 
     let projects = google.google.lock().unwrap().projects.clone();
-    assert!(!projects.is_empty());
+    assert_ne!(projects, Vec::<Option<String>>::new());
     assert!(
         projects
             .iter()
