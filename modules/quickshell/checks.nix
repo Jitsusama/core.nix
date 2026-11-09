@@ -972,8 +972,8 @@ onLinux {
   # A file in the launcher's chooser of files says its size and when it
   # changed as VKCF3Z set them, and its plate its kind, preview and facts,
   # one kept elsewhere, as in Google Drive, alike from what its place
-  # listed, as tests/file-facts.qml holds FileFacts.js to it in Qt's own
-  # engine.
+  # listed, and a file in the Nix store goes by its own name past its hash,
+  # as tests/file-facts.qml holds FileFacts.js to it in Qt's own engine.
   a-file-says-its-size-and-when-it-changed =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -4110,6 +4110,8 @@ onLinux {
       cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./Words.qml} Words.qml
       cp ${./Files.qml} Files.qml
+      cp ${./FileFacts.js} FileFacts.js
+      cp ${./When.js} When.js
       cp ${./Copied.qml} Copied.qml
       cp ${./Copied.js} Copied.js
       cp ${niri} Niri.qml

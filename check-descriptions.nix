@@ -30,7 +30,8 @@
     folder's entries order by name, change or size, folders first, 2 before 10; a save's name puts
     the caret before its extension; and one kept elsewhere, as in Google Drive, says the same on
     its row and plate from what its place listed, its place's facts after, leaving out what isn't
-    given
+    given; a file in the Nix store goes by its own name past its hash, kept whole where the store's
+    own listing holds it
   '';
   a-firmware-update-frees-pcr-0-only-for-fwupds-entry = ''
     the shutdown step takes PCR 0 out of the TPM's policy only when BootNext names fwupd's
@@ -1947,10 +1948,12 @@
   the-launcher-chooses-files-as-asked = ''
     the launcher chooses the files a program opens or saves in the folder it asks for, the files
     opened lately first, then its folders and files, then its filters, and answers what was picked;
-    a place kept elsewhere, as Google's Drive, is listed after home's files, and its files are
-    fetched before they're answered; saving, the line holds the name, kept from folder to folder,
-    each folder leading with it unnarrowed, a name already there asking once, no saving nothing;
-    saving there, its folders take the name, ask once before replacing one, and answer the path
+    a file in the Nix store opened lately goes by its own name past its hash, and keeps the hash
+    where the store lists it; a place kept elsewhere, as Google's Drive, is listed after home's
+    files, and its files are fetched before they're answered; saving, the line holds the name,
+    kept from folder to folder, each folder leading with it unnarrowed, a name already there
+    asking once, no saving nothing; saving there, its folders take the name, ask once before
+    replacing one, and answer the path
     the place stages it at once its folder is made, marked beside it with the program that asked;
     the files selected in one ask are previewed by one file-preview; where several may be opened,
     :arga gathers the cursor row's file or a range's, each once, Return answers what's gathered,
