@@ -14,13 +14,6 @@
     "test": "vm-desktop-starts-clean"
   },
   {
-    "at": 1794225341,
-    "commit": "06483ebf3aeabbe56e49f2c96bb3cd53e1a8f4b0",
-    "owner_pr": null,
-    "reason": "failed twice at 06483ebf3aea and once of two at 2fbe8a97ae9f, and 7 of 10 runs on branches in three hours; owned by the shell's session, which fixes it forward and takes it off this list",
-    "test": "vm-desktop-captures"
-  },
-  {
     "at": 1794225655,
     "commit": "06483ebf3aeabbe56e49f2c96bb3cd53e1a8f4b0",
     "owner_pr": 2497,
