@@ -147,9 +147,9 @@
       );
 
   # A run Joel typed rings with what chime.nix names, in the file the
-  # harness's done-chime-widget reads, on Linux alone: the store's pw-play,
-  # a ding, piper and its voice, sox, and a pitch that lowers the line. A Mac
-  # rings with its own sound and voice, so it gets no file.
+  # harness's done-chime-widget reads, on Linux alone: the store's pw-play
+  # and a ding, and no voice, since Joel kept only the bell on 9 November.
+  # A Mac rings with its own sound, so it gets no file.
   pi-rings-when-a-run-is-done =
     let
       home = account workstation;
@@ -159,28 +159,23 @@
       store = path: builtins.unsafeDiscardStringContext path;
     in
     holds "pi-rings-when-a-run-is-done"
-      "pi's ring names no ding, a player or sox other than the store's, no piper voice, a pitch that doesn't lower it, or reaches a Mac."
+      "pi's ring names no ding, a player other than the store's, a voice, or reaches a Mac."
       (
         lib.hasPrefix builtins.storeDir sound.ding
         && sound.player == store (lib.getExe' pkgs.pipewire "pw-play")
-        && sound.sox == store (lib.getExe' pkgs.sox "sox")
-        && lib.hasSuffix "/bin/piper" sound.piper
-        && lib.hasSuffix ".onnx" sound.voice
-        && sound.pitch < 0
+        && !(sound ? voice)
         && !(mac.xdg.configFile ? ${file})
       );
 
-  # The account's ding rings for seconds, loud, and its piper speaks with its
-  # voice, sox lowering the line, as the harness rings them; a voice piper
-  # can't load is only silence at a ring, so it's caught here.
-  pi-rings-low-and-says-it =
+  # The account's ding rings for seconds, loud, as the harness plays it.
+  pi-rings-low =
     let
       home = account workstation;
       sound =
         pkgs.writeText "sound.json"
           home.xdg.configFile."pi/agentic-harness.pi/done-chime-widget/sound.json".text;
     in
-    pkgs.runCommand "pi-rings-low-and-says-it"
+    pkgs.runCommand "pi-rings-low"
       {
         nativeBuildInputs = [
           pkgs.jq
@@ -188,7 +183,7 @@
         ];
       }
       ''
-        ${lib.getExe pkgs.bash} ${../../tests/pi-rings-low-and-says-it.sh} ${sound}
+        ${lib.getExe pkgs.bash} ${../../tests/pi-rings-low.sh} ${sound}
         touch $out
       '';
 
