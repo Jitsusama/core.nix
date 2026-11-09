@@ -2368,8 +2368,8 @@
     listed and the downloads, finding each folder asked together, writes the lines that list a
     folder and download a file, a save alone saying where, and says how the newest download asked
     stands; and says a Drive file in the picker by what a folder's read would, its size and when
-    it changed, and its owner, or what Google's own kind comes as, picked by that name and kind, adopting its document row, with why a file or
-    a folder couldn't be had; and reads the saves into Drive, writes the line that sends one again,
+    it changed, and its owner, or what Google's own kind comes as, picked by that name and kind,
+    adopting its document row, with why a file or a folder couldn't be had; and reads the saves into Drive, writes the line that sends one again,
     tells each settled since the shell started once, oldest first, by its folder's name, sent as an
     answer with Open in Drive and failed with why and what mends it, a copy that couldn't be read
     going back to the program that saved it while it's open, and finds a failure's notice by its
