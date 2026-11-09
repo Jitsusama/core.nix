@@ -13,8 +13,8 @@
 # afresh; the daemon's own git, journalctl and systemctl are named
 # outright instead. A check runs only for a session the harness says is
 # outside every sandbox, since here it runs as Joel. Each is stopped, with
-# all it started, after 90 seconds, and nothing it started outlives it. A switch's core is read from
-# update-to-main's follower's journal, and whether it's past a commit
+# all it started, after 90 seconds, and nothing it started outlives it. A
+# switch's core is read from update-to-main's follower's journal, and whether it's past a commit
 # from a bare clone of core of the daemon's own, fetched only while a
 # to-do waits on a commit it lacks. A switch restarts it, so it runs the
 # daemon it was switched to; what it found done stays done.

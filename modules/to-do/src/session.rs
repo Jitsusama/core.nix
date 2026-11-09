@@ -10,7 +10,9 @@ use std::time::Duration;
 
 use crate::bounded;
 
-/// How long the user manager has to say its environment.
+/// How long the user manager has to say its environment. With bounded's
+/// grace and a second for each of its two outputs, a check waits at
+/// worst about 17 s for it before it starts.
 const ASKING: Duration = Duration::from_secs(10);
 
 /// The user manager's environment now, or none where it can't be asked,
@@ -41,7 +43,8 @@ pub fn parsed(text: &str) -> Vec<(String, String)> {
 }
 
 /// A `$'...'` value's insides with its escapes taken out, or none where
-/// one isn't one systemd writes.
+/// one isn't one systemd writes: `cescape_char`'s letters, a quote or
+/// backslash, and three octal digits for every other control byte.
 fn unquoted(quoted: &str) -> Option<String> {
     let mut bytes = Vec::new();
     let mut chars = quoted.chars();
@@ -54,17 +57,19 @@ fn unquoted(quoted: &str) -> Option<String> {
         let escaped = match chars.next()? {
             'a' => 0x07,
             'b' => 0x08,
-            'e' => 0x1b,
             'f' => 0x0c,
             'n' => b'\n',
             'r' => b'\r',
             't' => b'\t',
             'v' => 0x0b,
-            'x' => {
-                let hex: String = chars.by_ref().take(2).collect();
-                u8::from_str_radix(&hex, 16).ok()?
+            first @ '0'..='3' => {
+                let rest: String = chars.by_ref().take(2).collect();
+                if rest.len() != 2 {
+                    return None;
+                }
+                u8::from_str_radix(&format!("{first}{rest}"), 8).ok()?
             }
-            other @ ('\\' | '\'' | '"' | '?') => u8::try_from(other).ok()?,
+            other @ ('\\' | '\'' | '"') => u8::try_from(other).ok()?,
             _ => return None,
         };
         bytes.push(escaped);
@@ -95,13 +100,18 @@ mod tests {
 
     #[test]
     fn a_quoted_value_has_its_escapes_taken_out() {
-        let text = "SAID=$'two words\\nand a \\'quote\\' \\x41\\\\'\n";
-        assert_eq!(parsed(text), [pair("SAID", "two words\nand a 'quote' A\\")]);
+        let text = "SAID=$'two words\\nand a \\'quote\\' \\033[0m\\\\'\n";
+        assert_eq!(
+            parsed(text),
+            [pair("SAID", "two words\nand a 'quote' \u{1b}[0m\\")],
+            "systemd's letters, quotes and octal bytes should be read as it writes them"
+        );
     }
 
     #[test]
     fn a_line_it_cant_read_is_left_out() {
-        let text = "no equals\nOPEN=$'never closed\nODD=$'\\q'\nKEPT=yes\n";
+        let text =
+            "no equals\nOPEN=$'never closed\nODD=$'\\q'\nHEX=$'\\x41'\nSHORT=$'\\03'\nKEPT=yes\n";
         assert_eq!(parsed(text), [pair("KEPT", "yes")]);
     }
 }

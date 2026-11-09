@@ -1,6 +1,7 @@
 # The to-do daemon, built from this directory, its tests run as it builds.
-# They run checks in sh, as the daemon does, with coreutils' sleep and rm
-# standing for checks that take a while or pass only once.
+# They run checks in sh, as the daemon does, with coreutils' sleep, rm and
+# touch standing for checks that take a while, pass only once or leave a
+# mark, and git for a switch's commit.
 {
   bash,
   coreutils,
