@@ -178,8 +178,10 @@ fn given_to(folder: &Path) -> String {
 /// A command sent far, without what makes it end with its caller.
 fn within_far(command: &str) -> &str {
     command
-        .split_once("trap 'exit 143' HUP TERM; ")
-        .and_then(|(_, rest)| rest.strip_suffix("; exit $?"))
+        .split_once("trap 'kill $watching 2>/dev/null; exit 143' HUP TERM; ")
+        .and_then(|(_, rest)| {
+            rest.strip_suffix("; status=$?; kill $watching 2>/dev/null; exit $status")
+        })
         .unwrap_or_else(|| panic!("it doesn't end with its caller: {command}"))
 }
 

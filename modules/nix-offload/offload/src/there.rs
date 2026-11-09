@@ -1525,9 +1525,9 @@ const ROOM_SAID: &str = "(said=0; while kill -0 $$ 2>/dev/null; do sleep 1; \
      running=$(ps -eo uid= 2>/dev/null | awk '$1 >= 872415232 \
      { print int(($1 - 872415232) / 65536) } $1 > 30000 && $1 < 31000 { print \"b\" $1 }' \
      | sort -u | wc -l); \
-     [ -n \"$most\" ] && [ \"$running\" -ge \"$most\" ] 2>/dev/null && echo \"nix-offload: \
-     the builder runs $running builds, as many as it runs at once, so this may wait there \
-     for room\" >&2; done) </dev/null >/dev/null &";
+     if [ -n \"$most\" ] && [ \"$running\" -ge \"$most\" ] 2>/dev/null; then \
+     echo \"nix-offload: the builder runs $running builds, as many as it runs at once, \
+     so this may wait there for room\" >&2; fi; done) </dev/null >/dev/null &";
 
 /// ssh to `host`, never asking anything, logging where `said` names, whose
 /// verbose log ends with what it sent, which is what a build put on the
