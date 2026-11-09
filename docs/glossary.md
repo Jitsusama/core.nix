@@ -300,6 +300,7 @@ off.
 | firmware | the program in a chip that runs it: the machine's, which starts it and keeps its settings, or a device's, such as a keyboard's or a sound card's | BIOS, UEFI | |
 | revive | sending a Mac that won't start Apple's firmware again from another machine over USB-C, keeping its files; a restore does the same and erases it | DFU restore | `idevicerestore`, without and with `--erase` |
 | processor | what runs every program | CPU | |
+| core | one of the processor's parts that each run a program's work at once, beside the others | | Linux's `cpu{n}` |
 | clock speed | how many cycles a second the processor runs at now, which it raises and lowers with its work | | `scaling_cur_freq` |
 | cache | memory inside the processor holding what it used last, nearer to it than the machine's memory, in levels one to three | | `L{level}` caches |
 | model | a device's maker's name for what it is, such as a processor's, a disk's, a battery's or a keyboard's | | |
@@ -355,7 +356,9 @@ off.
 | Sound | the place holding what the machine plays through and hears with, built in or plugged in, and what each program plays and records | | `Sound.qml`, PipeWire |
 | volume | how loud a device or a program plays, as a share of its full level | | |
 | microphone | what the machine hears with: built in, a headset's or plugged in, chosen in Sound | | |
+| hardware | a device's own chips and what they carry, as the kernel reports them: its card, its USB ID and its resolution | | ALSA's and USB's properties |
 | card | the chip a sound device plays through or hears with, as the kernel lists it | | ALSA's card |
+| connection | how a device is joined to the machine: USB and how fast it runs, or Bluetooth, apart from the network's connection | | the device's bus |
 | profile | what a headset carries now: music one way, or both ways for a call | | Bluetooth's A2DP and HFP |
 | level | how loud a sound device plays or hears at this moment, as its meter draws it, apart from its volume | | `sound:level` |
 | channel | one of the separate signals a sound device carries at once, such as left and right | | `sound:channels` |

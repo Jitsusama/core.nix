@@ -1096,7 +1096,8 @@
     {
       "id": "machine:cpu:cores",
       "in": "machine:cpu",
-      "name": "Cores"
+      "name": "Cores",
+      "term": "Machine/core"
     },
     {
       "id": "machine:cpu:core",
@@ -1331,7 +1332,8 @@
     {
       "id": "machine:cpu:kept-by-cores",
       "in": "machine:cpu:kept-from-resting",
-      "name": "Cores"
+      "name": "Cores",
+      "term": "Machine/core"
     },
     {
       "id": "machine:cpu:kept-by-power-controller",
@@ -2377,7 +2379,8 @@
     {
       "id": "heat:cores",
       "in": "heat:processor",
-      "name": "Cores"
+      "name": "Cores",
+      "term": "Machine/core"
     },
     {
       "id": "heat:core",
@@ -2401,7 +2404,8 @@
     {
       "id": "heat:throttled-cores",
       "in": "heat:throttled",
-      "name": "Cores"
+      "name": "Cores",
+      "term": "Machine/core"
     },
     {
       "id": "heat:throttled-core",
@@ -3198,7 +3202,8 @@
     {
       "id": "keyboards:connection",
       "in": "keyboards",
-      "name": "Connection"
+      "name": "Connection",
+      "term": "Machine/connection"
     },
     {
       "id": "keyboards:maker",
@@ -5268,7 +5273,8 @@
     {
       "id": "sound:hardware",
       "in": "sound",
-      "name": "Hardware"
+      "name": "Hardware",
+      "term": "Machine/hardware"
     },
     {
       "id": "sound:card",
@@ -5376,7 +5382,8 @@
     {
       "id": "sound:usb",
       "in": "sound",
-      "name": "Connection"
+      "name": "Connection",
+      "term": "Machine/connection"
     },
     {
       "id": "sound:firmware",
@@ -8291,7 +8298,8 @@
     {
       "id": "cameras:usb",
       "in": "cameras",
-      "name": "Connection"
+      "name": "Connection",
+      "term": "Machine/connection"
     },
     {
       "id": "cameras:firmware",
@@ -9669,7 +9677,8 @@
     {
       "id": "bluetooth:held",
       "in": "bluetooth",
-      "name": "Connection"
+      "name": "Connection",
+      "term": "Machine/connection"
     },
     {
       "id": "bluetooth:input",
