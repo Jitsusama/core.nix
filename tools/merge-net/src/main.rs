@@ -268,19 +268,71 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
     if !holds(&main, &commit) {
         eprintln!(
             "merge-net: {} doesn't sit on origin's main as it is now, {}, so what it was \
-             checked against isn't what it merges onto; rebase onto origin/main, push, run \
-             changed-checks, and merge again",
+             checked against isn't what it merges onto; rebase onto origin/main, push, and \
+             merge again, which needs no new run where main moved none of its files",
             short(&commit),
             short(&main)
         );
         return Ok(ExitCode::FAILURE);
     }
-    if !ready::built_there(&ready::record(&commit), &|base| holds(base, &main)) {
-        eprintln!(
-            "merge-net: no changed-checks run that built what it named passed at {}; run \
-             changed-checks there, committed so it's sent, and merge again",
-            short(&commit)
+    let on_main = |base: &str| holds(base, &main);
+    if !ready::built_there(&ready::record(&commit), &on_main) {
+        let files = lines(&git(&["diff", "--name-only", &main, &commit])?);
+        let change = patch_id(&main, &commit);
+        let same = |candidate: &str| {
+            if candidate == commit || change.is_none() {
+                return None;
+            }
+            let base = git(&["merge-base", candidate, &main]).ok()?;
+            (patch_id(&base, candidate) == change)
+                .then(|| git(&["diff", "--name-only", &base, &main]).ok())
+                .flatten()
+                .map(|moved| lines(&moved))
+        };
+        let before = ready::checked_before(
+            &ready::recent_records(),
+            &files,
+            &ready::record(&commit),
+            &ready::record,
+            &on_main,
+            &same,
         );
+        match before {
+            ready::Before::Clean(checked) => {
+                println!(
+                    "ready: {} sits on origin's main, and changed-checks built what it named at \
+                     {}, the same change, whose files main hasn't moved since",
+                    short(&commit),
+                    short(&checked)
+                );
+                return Ok(ExitCode::SUCCESS);
+            }
+            ready::Before::Rechecked(checked, shared) => {
+                println!(
+                    "ready: {} sits on origin's main, changed-checks built what it named at {}, \
+                     the same change, and since main moved {} a check has passed at the head",
+                    short(&commit),
+                    short(&checked),
+                    shared.join(", ")
+                );
+                return Ok(ExitCode::SUCCESS);
+            }
+            ready::Before::Shares(checked, shared) => {
+                eprintln!(
+                    "merge-net: the same change passed at {}, but main has since moved {}; run \
+                     the checks covering them at {}, committed so it's sent, and merge again",
+                    short(&checked),
+                    shared.join(", "),
+                    short(&commit)
+                );
+            }
+            ready::Before::Unchecked => eprintln!(
+                "merge-net: no changed-checks run that built what it named passed at {}, or at \
+                 an earlier commit of the same change; run changed-checks there, committed so \
+                 it's sent, and merge again",
+                short(&commit)
+            ),
+        }
         return Ok(ExitCode::FAILURE);
     }
     println!(
@@ -344,6 +396,39 @@ fn status() -> ExitCode {
         println!("paused");
     }
     ExitCode::SUCCESS
+}
+
+fn lines(text: &str) -> Vec<String> {
+    text.lines()
+        .filter(|line| !line.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// The stable patch id of the change from `base` to `head`, which stays
+/// the same when a rebase moves the change without changing it.
+fn patch_id(base: &str, head: &str) -> Option<String> {
+    let diff = Command::new("git")
+        .args(["diff", base, head])
+        .output()
+        .ok()
+        .filter(|ran| ran.status.success())?
+        .stdout;
+    let mut id = Command::new("git")
+        .args(["patch-id", "--stable"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .ok()?;
+    {
+        use std::io::Write;
+        id.stdin.take()?.write_all(&diff).ok()?;
+    }
+    let said = id.wait_with_output().ok()?;
+    String::from_utf8_lossy(&said.stdout)
+        .split_whitespace()
+        .next()
+        .map(str::to_owned)
 }
 
 fn git(arguments: &[&str]) -> Result<String, String> {

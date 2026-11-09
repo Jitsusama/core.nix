@@ -160,7 +160,11 @@ change to nix-offload, which moves none, sends one VM test's subtests
 through itself with `run-subtests --there` instead. `merge-net ready COMMIT`,
 asked before a head merges, refuses one that doesn't sit on origin's main
 as it is now, or at which no `changed-checks` run that built what it named
-passed, from nix-offload's record of what passed at each commit. A machine
+passed, from nix-offload's record of what passed at each commit. A rebase
+needs no run of its own when that run passed at an earlier commit of the
+same change, by git's patch id, and main has since moved none of its
+files; when main moved some, a check passed at the rebased head, covering
+them, is enough. A machine
 switches only to merged main, and a bad switch is undone by switching
 back to the generation before it.
 
