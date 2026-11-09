@@ -274,7 +274,7 @@ Singleton {
                 const notice = Notices.live[id];
                 const said = notice.hints["x-waiting"];
                 if (notice.appName === "waiting" && said !== undefined && !standing[said]) {
-                    Notices.mark(notice.id, true);
+                    Notices.mark(notice.id, true, "withdrawn");
                     notice.dismiss();
                 }
             }

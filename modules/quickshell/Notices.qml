@@ -358,10 +358,12 @@ Singleton {
         }
     }
 
-    // Marks one read, or unread again.
-    function mark(id, read) {
+    // Marks one read, or unread again. The shell marks one `withdrawn`
+    // once what it said no longer stands, an arrival gone or a want
+    // answered, so History never says Joel read what he never saw.
+    function mark(id, read, how) {
         history = history.map(notice => notice.id !== id ? notice
-            : Object.assign({}, notice, { read: read },
+            : Object.assign({}, notice, { read: read, withdrawn: read && how === "withdrawn" },
                 read ? { missed: false, readAt: Date.now() } : { readAt: null }));
     }
 

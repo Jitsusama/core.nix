@@ -1,9 +1,11 @@
 // Lately, For You's band below what needs Joel (Now.qml): what came for
 // him and is still unread, one row for each source, the mail, Slack and
-// the desktop's other notices, each done once its source says so, so a
-// message read in Slack leaves here by itself (Joel, 2026-11-08: "i
-// shouldn't be required to mark a notice as read if I looked at the slack
-// message in slack"). What's done goes to For You's History, saying how.
+// the desktop's other notices, each done once its source says so (Joel,
+// 2026-11-08: "i shouldn't be required to mark a notice as read if I
+// looked at the slack message in slack"). What's done goes to For You's
+// History, saying how. Mail says when it's done once Google's daemon
+// does, and Slack's messages once the shell reads Slack's daemon's, which
+// `done` is ready for; until then only notices are done here.
 // Kept apart from the QML so Qt's own engine holds it (tests/lately.qml).
 .pragma library
 .import "Order.js" as Order
@@ -53,18 +55,26 @@ function doneOf(thing) {
         ? ended : null;
 }
 
+// Whether a notice is kept until it's read: one of the desktop's, whose
+// only record it is. Slack's are kept as read ones are, whether read or
+// not, since Slack holds its own and says what's read there, so those
+// Joel never clicked neither wait for good nor fill the history.
+function awaits(notice) {
+    return notice.read !== true && sourceOf(notice) !== "slack";
+}
+
 // The notices the history keeps, in their order, newest first: every one
-// unread whatever its age, since one stays until it's read or forgotten
-// (Y2YBTS, 2026-11-08), and those read for `readFor`. Past `most`, the
-// oldest read go first, and the oldest unread only once none read are
-// left, so what Joel hasn't seen outlasts what he has.
+// awaiting Joel whatever its age, since one stays until it's read or
+// forgotten (Y2YBTS, 2026-11-08), and the rest for `readFor`. Past
+// `most`, the oldest of the rest go first, and the oldest awaiting only
+// once none else are left, so what Joel hasn't seen outlasts what he has.
 function kept(notices, now, readFor, most) {
-    const young = notices.filter(notice => notice.read !== true || now - notice.at < readFor);
+    const young = notices.filter(notice => awaits(notice) || now - notice.at < readFor);
     let over = young.length - most;
     const gone = new Set();
-    for (const read of [true, false]) {
+    for (const waits of [false, true]) {
         for (let at = young.length - 1; at >= 0 && over > 0; at--) {
-            if ((young[at].read === true) === read) {
+            if (awaits(young[at]) === waits) {
                 gone.add(at);
                 over--;
             }
@@ -73,21 +83,14 @@ function kept(notices, now, readFor, most) {
     return young.filter((_notice, at) => !gone.has(at));
 }
 
-// What each source holds now, as { mail, slack, desktop }, each in the
-// order its source gives, newest first. `given` is { notices, mail,
-// messages }: Notices' history, the mail that wants him (Google's, which
-// leaves done mail out), and the messages Slack's daemon holds, or null
-// while it doesn't answer. While it answers, Slack's row is its messages
-// still unread, and Slack's own notices are cards only, since they say no
-// conversation to follow; while it doesn't, Slack's unread notices stand
-// for them (Y2YBTS, 2026-11-08, 2abd047a).
-function held(given) {
-    const unread = (given.notices ?? []).filter(notice => ours(notice) && notice.read !== true);
-    const messages = Array.isArray(given.messages) ? given.messages : null;
+// The unread notices of each source, as { slack, desktop }, newest first
+// as Notices' history holds them. Slack's stand for Slack's row only
+// while Slack's own piece can't, its daemon away or not there, since
+// they say no conversation to follow (Y2YBTS, 2026-11-08, 2abd047a).
+function held(notices) {
+    const unread = (notices ?? []).filter(notice => ours(notice) && notice.read !== true);
     return {
-        mail: Array.isArray(given.mail) ? given.mail : [],
-        slack: messages === null ? unread.filter(notice => sourceOf(notice) === "slack")
-            : messages.filter(message => doneOf(message) === null),
+        slack: unread.filter(notice => sourceOf(notice) === "slack"),
         desktop: unread.filter(notice => sourceOf(notice) === "desktop")
     };
 }
@@ -118,16 +121,39 @@ function members(things, nameOf) {
     return named;
 }
 
+// Who sent a source's unread notices, each with how many, the one that
+// sent last first, as its row's drawer says them, as the missed notices'
+// did (pieces/Drawers.js's notices).
+function senders(notices) {
+    const counts = new Map();
+    for (const notice of notices) {
+        counts.set(notice.app, (counts.get(notice.app) ?? 0) + 1);
+    }
+    return [...counts].map(([app, count]) => ({ label: String(app), value: String(count) }));
+}
+
+// How a notice read was done with: withdrawn, by its sender or the shell;
+// read, here, when the history says when; or read before it kept when.
+function readHow(notice) {
+    if (notice.withdrawn === true || notice.left === "withdrawn") {
+        return "withdrawn";
+    }
+    return when(notice.readAt) === null ? "earlier" : "read";
+}
+
 // What's been done with, for History, each { title, how, at, source, of },
 // newest first: `of` is what it was, `how` its source's word for how it
 // went, worded by `say` ({ mail, slack, notice }, words.json's, each keyed
 // by the source's own id for it), or as the source said it where `say`
-// has no word. `given` is held's, with `finished` the mail done with
-// (Google's). A notice read is done; one withdrawn by its sender is read
-// too (Notices.qml's left), and says so. Each is when it was read, else
-// when it left, else when it came. While Slack's daemon answers,
-// its read messages are Slack's history and its notices aren't, so none
-// is told twice.
+// has no word. `given` is { notices, messages, finished }: Notices'
+// history, the messages Slack's daemon holds or null while it can't say,
+// and the mail done with (Google's). A notice read is done; one withdrawn,
+// by its sender or by the shell once what it said no longer stands, is
+// read too (Notices.qml's left and withdraw), and says so; one read before
+// the history kept when says only that it was read. Each is when it was
+// read, else when it left, else when it came. While Slack's daemon
+// answers, its read messages are Slack's history and its notices aren't,
+// so none is told twice.
 function done(given, say) {
     const worded = (words, how) => words?.[how] ?? how;
     const messages = Array.isArray(given.messages) ? given.messages : null;
@@ -141,12 +167,10 @@ function done(given, say) {
     const notices = (given.notices ?? [])
         .filter(notice => ours(notice) && notice.read === true
             && (messages === null || sourceOf(notice) !== "slack"))
-        .map(notice => {
-            const how = notice.left === "withdrawn" ? "withdrawn" : "read";
-            return { title: String(notice.summary ?? ""), how: worded(say.notice, how),
-                at: when(notice.readAt) ?? when(notice.leftAt) ?? when(notice.at),
-                source: sourceOf(notice),
-                of: notice };
-        });
+        .map(notice => ({ title: String(notice.summary ?? ""),
+            how: worded(say.notice, readHow(notice)),
+            at: when(notice.readAt) ?? when(notice.leftAt) ?? when(notice.at),
+            source: sourceOf(notice),
+            of: notice }));
     return Order.sorted(mail.concat(slack, notices), Order.stream(one => one.at));
 }

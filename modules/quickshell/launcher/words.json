@@ -6922,8 +6922,16 @@
       "said": {
         "count": "{count} to read",
         "read": "read here",
-        "withdrawn": "withdrawn"
+        "withdrawn": "withdrawn",
+        "earlier": "read"
       }
+    },
+    {
+      "id": "on:waiting:slack",
+      "in": "on:waiting",
+      "name": "Slack",
+      "verb": "more",
+      "glyph": "notifications"
     },
     {
       "id": "verb:on:waiting:desktop:read",

@@ -302,7 +302,7 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
         for_you_rows(desktop)
         desktop.launcher_until(lambda shown: "Slack" in shown["rows"])
         desktop.down_to("Slack")
-        # Its note names each conversation, as many whole as fit (VKCF3Z, 2026-11-08).
+        # Its note names each conversation, the newest first (VKCF3Z, 2026-11-08).
         desktop.launcher_until(
             lambda shown: (
                 shown["selected"]["side"] == "6 to read"
