@@ -148,8 +148,8 @@ function banded(items, now) {
         try: Order.sorted(bands.try, order) };
 }
 
-// How many each band holds, as items for a row's side: "1 to do · 44
-// to look at · 2 to try", a band holding none left out, what needs Joel
+// How many each band holds, as items for a row's side: "1 to do \u00b7 44
+// to look at \u00b7 2 to try", a band holding none left out, what needs Joel
 // now needed most, so short of room To Try gives way first, then To Look
 // At. For You's own row counts all three; home's Now row says the last
 // two only while nothing needs him now, since then it leads with what
