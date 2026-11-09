@@ -350,29 +350,31 @@ function moved(act, count, page) {
 // The space a line's joiner leaves at a line's end, which goes, since Qt's
 // engine has no trimEnd.
 const TRAILING = /\s+$/u;
+// What a dotted list's items run on.
+const DOTTED = " \u00b7 ";
+// A line already on a beat, to within the sums' rounding, keeps it rather
+// than going a beat on, as Drawer.qml's onBeat does.
+const BEAT_ROUNDING = 0.001;
 
 // A value given as items, each `{ said, path }`, as lines no wider than
 // `wide` by `width(text)`: as many items to a line as fit, `between` them
 // (a command's arguments a space apart, a list's a dot), the dot ending
-// the line it leaves, and never one broken across two. An item too wide
-// for a line of its own that names its `path` gives way from the path's
-// middle, "/nix/\u2026/firefox", its last part whole, as a folder does
-// (Reading.pathTries); any other runs on by its words. Nothing draws past
-// its frame (VKCF3Z, 2026-11-08).
+// the line it leaves, and never one broken across two. Every item but the
+// last is measured with that dot, since any of them may end a line. An
+// item too wide for a line of its own that names its `path` gives way
+// from the path's middle, "/nix/\u2026/firefox", its last part whole, as a
+// folder does (Reading.pathTries); one still too wide, or naming none,
+// gives way from its own middle. Nothing draws past its frame (VKCF3Z,
+// 2026-11-08).
 function valueLines(items, between, wide, width) {
     const ends = between.replace(TRAILING, "");
-    const fitted = items.filter(item => item.said !== "").map(item => {
-        if (!item.path || width(item.said) <= wide) {
-            return item.said;
-        }
-        const ways = Reading.pathTries(item.path, true)
-            .map(way => item.said.replace(item.path, way));
-        return ways.find(way => width(way) <= wide) ?? ways[ways.length - 1];
-    });
+    const saying = items.filter(item => item.said !== "");
     const lines = [];
-    for (const said of fitted) {
+    saying.forEach((item, at) => {
+        const closing = at === saying.length - 1 ? "" : ends;
+        const said = fitted(item, wide - width(closing), width);
         const last = lines.length - 1;
-        if (last >= 0 && width(`${lines[last]}${between}${said}`) <= wide) {
+        if (last >= 0 && width(`${lines[last]}${between}${said}${closing}`) <= wide) {
             lines[last] = `${lines[last]}${between}${said}`;
         } else {
             if (last >= 0) {
@@ -380,16 +382,81 @@ function valueLines(items, between, wide, width) {
             }
             lines.push(said);
         }
-    }
+    });
     return lines;
 }
 
-// How tall a preview stands: a picture its own height, so what follows it
-// is the groups' gap below the picture rather than below a band rounded
-// up to the pitch (VKCF3Z, 2026-11-08); lines whole lines of the pitch, so
-// the words after them stay on the card's.
-function previewHeight(picture, lines, pitch) {
-    return picture > 0 ? Math.ceil(picture) : lines * pitch;
+// A list alone in a value, as its one line no wider than `wide`: every
+// item a dot apart where they fit, else whole items giving way from the
+// end to `tail`, "{count} more", saying how many went, "PDF \u00b7 HTML \u00b7
+// 87 more" (VKCF3Z, 2026-11-08); the tail alone when not one fits beside it.
+function valueLine(items, tail, wide, width) {
+    const saying = items.map(item => item.said).filter(said => said !== "");
+    const more = count => tail.replace("{count}", String(count));
+    for (let whole = saying.length; whole > 0; whole--) {
+        const gone = saying.length - whole;
+        const line = saying.slice(0, whole).concat(gone > 0 ? [more(gone)] : []).join(DOTTED);
+        if (width(line) <= wide) {
+            return [line];
+        }
+    }
+    return saying.length === 0 ? [] : [fitted({ said: more(saying.length) }, wide, width)];
+}
+
+// What of a fact's value stands beside its name, measured to choose
+// whether a drawer reads as a table: a list with a `tail` is the one line
+// valueLine draws in `room`, never every item it holds, so a browser
+// opening dozens of kinds keeps its table (Y2YBTS, 2026-11-08); any other
+// its value whole. `value` stays what's copied either way.
+function besideText(fact, room, width) {
+    if (fact.valueItems && fact.tail) {
+        return valueLine(fact.valueItems, fact.tail, room, width).join("");
+    }
+    return String(fact.value);
+}
+
+// An item's words no wider than `room`: whole where they fit, else its
+// path from the path's middle, else its narrowest form from its middle.
+function fitted(item, room, width) {
+    if (width(item.said) <= room) {
+        return item.said;
+    }
+    const ways = item.path ? Reading.pathTries(item.path, true)
+        .map(way => item.said.replace(item.path, way)) : [];
+    const narrowest = ways.reduce((least, way) => (width(way) < width(least) ? way : least),
+        item.said);
+    return ways.find(way => width(way) <= room) ?? middled(narrowest, room, width);
+}
+
+// Words given way from their middle, "--a-ver\u2026ument", keeping as much of
+// each end as fits in `room`.
+function middled(words, room, width) {
+    // By characters, never halves of one, so an emoji is kept whole or not:
+    // spread, since Qt's Array.from takes a string's UTF-16 units.
+    const each = [...words];
+    for (let keep = each.length - 1; keep > 0; keep--) {
+        const head = Math.ceil(keep / 2);
+        const tried = `${each.slice(0, head).join("")}\u2026`
+            + each.slice(each.length - (keep - head)).join("");
+        if (width(tried) <= room) {
+            return tried;
+        }
+    }
+    return "\u2026";
+}
+
+// How tall a preview stands, in a column that sets `grid.pitch` after it:
+// a picture so what follows starts on the first of the card's beats at
+// least the groups' `grid.gap` below it, never a band rounded up to the
+// pitch (VKCF3Z, 2026-11-08), and never off the beat the facts keep
+// (2026-11-05); lines whole lines of the pitch; nothing while a picture's
+// size isn't known yet.
+function previewHeight(picture, lines, grid) {
+    if (picture <= 0) {
+        return lines * grid.pitch;
+    }
+    const beats = Math.ceil((Math.ceil(picture) + grid.gap) / grid.beat - BEAT_ROUNDING);
+    return beats * grid.beat - grid.pitch;
 }
 
 // The face a fact's value is set in, given the script its plate is in, ""

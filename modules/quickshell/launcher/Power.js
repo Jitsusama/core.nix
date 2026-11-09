@@ -3,13 +3,15 @@
 // run it in Qt's own engine, as the shell does: which of a list the kernel
 // marks as in use, what a USB-C port's protocol is called, what each port
 // gives, the date a battery was made, the order a charge limit's two files
-// are written in, how bright a room is, and what the power profile's drawer
-// says. Power.qml, Light.qml and Session.qml read the files and say the
-// figures.
+// are written in, how bright a room is, what the power profile's drawer
+// says, and why a profile picked didn't take. Power.qml, Light.qml and
+// Session.qml read the files and say the figures.
 .pragma library
 
 // The one of a kernel's list in brackets: "Trickle Fast [Custom]".
 const MARKED = /\[([^\]]+)\]/;
+// A string D-Bus property as busctl prints it: s "balanced".
+const BUS_STRING = /^s "([^"]*)"$/;
 const BRACKETS = /^\[|\]$/g;
 const SPACES = /\s+/;
 
@@ -43,6 +45,32 @@ function profileDrawer(known, named, said) {
             fact("firmware-driver", (known.firmwareDrivers ?? []).join(" \u00b7 "))
         ].filter(each => (each.value ?? "") !== "")
     };
+}
+
+// The profile power-profiles-daemon says it's on, from busctl's answer to
+// its ActiveProfile, by the daemon's own name ("power-saver", "balanced",
+// "performance"); "" when it didn't answer.
+function activeProfile(text) {
+    return BUS_STRING.exec(String(text ?? "").trim())?.[1] ?? "";
+}
+
+// Why a profile picked by the daemon's name, `wanted`, didn't take, from
+// the one it said back, `heard`: "" when it did. `told` holds the daemon's
+// `holds`, each { profile, app }, `named`, each profile's name as the
+// launcher says it, by the daemon's, and `said`, words.json's
+// session:profile words: nothing heard, a program holding the one heard,
+// or the daemon keeping it for its own reasons.
+function profileRefusal(wanted, heard, told) {
+    if (heard === wanted) {
+        return "";
+    }
+    if (heard === "") {
+        return told.said.silent;
+    }
+    const profile = told.named[heard] ?? heard;
+    const holding = (told.holds ?? []).find(hold => hold.profile === heard);
+    return holding ? filled(told.said.held, { profile, app: holding.app })
+        : filled(told.said.kept, { profile });
 }
 
 // What a list the kernel marks one of says: the one in use and all of
@@ -89,59 +117,55 @@ function protocols(usbType) {
     return each.filter((one, at) => each.indexOf(one) === at).join(" \u00b7 ");
 }
 
-// The figures a value is said to: three, "45.0", "3.00", "100".
-const SIGNIFICANT = 3;
-
-// A figure to three significant figures, written by `number` to so many
-// places.
-function significant(value, number) {
-    const whole = Math.floor(Math.log10(Math.max(Math.abs(value), 1))) + 1;
-    return number(value, Math.max(0, SIGNIFICANT - whole));
-}
-
 // What a USB-C port gives, in a few words: its watts, volts, amps and
 // protocol while it charges the machine, each figure its own part
 // (VKCF3Z, 2026-11-08: "45.0 W \u00b7 15.0 V \u00b7 3.00 A", never a comma),
 // that it's the machine powering what's plugged in, that something's
-// plugged in giving nothing, or that it's empty. `number` writes a figure
-// to so many places.
-function port(said, number) {
+// plugged in giving nothing, or that it's empty, in the vocabulary's
+// `words` (words.json's power:port). `measured` writes a figure to three
+// significant digits, its zeros kept (Numbers.significant).
+function port(said, measured, words) {
     if (said.online && said.volts > 0 && said.amps > 0) {
-        return [`${significant(said.volts * said.amps, number)} W`,
-            `${significant(said.volts, number)} V`, `${significant(said.amps, number)} A`,
-            said.protocol].filter(part => part !== "").join(" \u00b7 ");
+        return [`${measured(said.volts * said.amps)} W`, `${measured(said.volts)} V`,
+            `${measured(said.amps)} A`, said.protocol].filter(part => part !== "").join(" \u00b7 ");
     }
     if (said.online) {
-        return ["charging", said.protocol].filter(part => part !== "").join(" \u00b7 ");
+        return [words.charging, said.protocol].filter(part => part !== "").join(" \u00b7 ");
     }
     if (said.giving) {
-        return "powering what's plugged in";
+        return words.giving;
     }
     if (said.partner) {
-        return "plugged in, giving nothing";
+        return words.plugged;
     }
-    return "empty";
+    return words.empty;
 }
 
-// Volts as a power source offers them: whole, or to a tenth ("3.3").
-function volts(value) {
-    return String(Math.round(value * 10) / 10);
+// A figure a power source offers by name, never measured: as many digits
+// as it has, to the hundredth power delivery counts in, and no zeros it
+// hasn't (VKCF3Z, 2026-11-08: "5 V \u00b7 20 V at 3 A"), "3.3", "2.25",
+// written by `number` in the machine's own mark (Numbers.format).
+function offered(value, number) {
+    return number(value, 2);
 }
 
 // What a charger offers, from its source capabilities, each { volts, amps }
 // or a programmable one's { volts, to, amps }: "5 V \u00b7 9 V \u00b7 20 V at
-// 3.00 A" when every one gives the same current, or each with its own.
-function offers(capabilities, number) {
-    const each = offer => offer.to === undefined ? `${volts(offer.volts)} V`
-        : `${volts(offer.volts)} to ${volts(offer.to)} V`;
-    const at = offer => `at ${significant(offer.amps, number)} A`;
+// 3 A" when every one gives the same current, or each with its own, in
+// the vocabulary's `said` (words.json's power:port:drawer).
+function offers(capabilities, said, number) {
+    const each = offer => offer.to === undefined ? `${offered(offer.volts, number)} V`
+        : filled(said.range, { from: offered(offer.volts, number),
+            to: offered(offer.to, number) });
+    const at = (what, offer) => filled(said.at,
+        { offers: what, amps: offered(offer.amps, number) });
     if (capabilities.length === 0) {
         return "";
     }
     if (capabilities.every(offer => offer.amps === capabilities[0].amps)) {
-        return `${capabilities.map(each).join(" \u00b7 ")} ${at(capabilities[0])}`;
+        return at(capabilities.map(each).join(" \u00b7 "), capabilities[0]);
     }
-    return capabilities.map(offer => `${each(offer)} ${at(offer)}`).join(" \u00b7 ");
+    return capabilities.map(offer => at(each(offer), offer)).join(" \u00b7 ");
 }
 
 // A USB-C port's drawer, from what the kernel's USB-C class says of it:
@@ -151,8 +175,9 @@ function offers(capabilities, number) {
 // holds the port's number (`n`), its `power` and `data` roles as the
 // kernel lists them, its `mode`, the partner's `accessory` mode,
 // `capabilities` (offers' input), its supply's `usbType` and `supply`
-// name, and the `revision` and `partnerRevision`.
-function portDrawer(known, number, named, said) {
+// name, and the `revision` and `partnerRevision`; `number` writes what it
+// offers.
+function portDrawer(known, named, said, number) {
     const fact = (id, value) => ({ label: named(`power:port:${id}`), value });
     const accessory = known.accessory ?? "";
     const partnerRevision = known.partnerRevision ?? "";
@@ -162,7 +187,7 @@ function portDrawer(known, number, named, said) {
             fact("power-role", chosen(known.power).now),
             fact("data-role", chosen(known.data).now),
             fact("mode", known.mode ? said[`mode:${known.mode}`] ?? known.mode : ""),
-            fact("offers", offers(known.capabilities ?? [], number)),
+            fact("offers", offers(known.capabilities ?? [], said, number)),
             fact("protocols", protocols(known.usbType ?? "")),
             fact("partner", accessory === "" || accessory === "none" ? ""
                 : filled(said.accessory, { mode: accessory })),

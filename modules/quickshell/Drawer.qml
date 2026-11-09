@@ -1078,19 +1078,24 @@ Floating {
         void figureInk.advanceWidth;
         const room = column.width - labelsGap;
         const most = room - valueFace.advanceWidth("00000000");
-        const measured = fact => ({
-            name: Math.ceil(nameWidth(fact)),
-            value: fact.value === null || fact.value === undefined ? 0
-                : faceOf(fact).advanceWidth(unbroken(fact.value)) + figureLeast(fact)
-        });
-        const named = facts.filter(fact => fact && fact.heading === undefined && !proseFact(fact))
-            .map(measured);
-        const moment = [].concat(...groups.map(group => group.facts)).map(measured);
-        const widest = Math.max(0, ...named.concat(moment).map(one => one.name));
+        // Its value as it would stand in `beside`, a list with a tail as the
+        // line it's drawn on there (DrawerPage.besideText).
+        const valueWidth = (fact, beside) => {
+            if (fact.value === null || fact.value === undefined)
+                return 0;
+            const face = faceOf(fact);
+            const said = Page.besideText(fact, beside, text => face.advanceWidth(text));
+            return face.advanceWidth(unbroken(said)) + figureLeast(fact);
+        };
+        const named = facts.filter(fact => fact && fact.heading === undefined && !proseFact(fact));
+        const moment = [].concat(...groups.map(group => group.facts));
+        const widest = Math.max(0, ...named.concat(moment)
+            .map(fact => Math.ceil(nameWidth(fact))));
         const wide = Math.min(most, widest);
         return {
             wide,
-            beside: listsKeys || widest <= most && named.every(one => one.value <= room - wide)
+            beside: listsKeys || widest <= most
+                && named.every(fact => valueWidth(fact, room - wide) <= room - wide)
         };
     }
     // The names' column: as wide as the widest name, short of a value's
@@ -1197,9 +1202,14 @@ Floating {
     }
     // Whether every value drawn keeps each of its words whole, none so
     // wide where it's drawn that it breaks partway, for the launcher to
-    // report when asked.
+    // report when asked. An identifier's words are its parts between
+    // slashes too, since Qt breaks a line after a slash, as a typesetter
+    // breaks a path, and a check's command is mostly paths.
     function valuesWhole() {
-        return drawnRows().every(row => !row.known || unbroken(row.modelData.value).split(" ")
+        const words = row => (row.modelData.identifies === true
+            ? unbroken(row.modelData.value).replace(/\//g, "/ ")
+            : unbroken(row.modelData.value)).split(" ");
+        return drawnRows().every(row => !row.known || words(row)
             .every(word => faceOf(row.modelData).advanceWidth(word) <= row.valueWide
                 && !breaksAtItsHyphen.test(word)));
     }
@@ -1806,8 +1816,8 @@ Floating {
                 // lines in the mono at body size, each whole or cut short,
                 // a folder's items quiet. Lines take whole lines of the
                 // pitch, so everything after them stays on the card's; a
-                // picture its own height, what follows a gap below it
-                // (DrawerPage.previewHeight).
+                // picture its own height, what follows a gap below it on
+                // the next of the card's beats (DrawerPage.previewHeight).
                 Item {
                     id: previewBox
                     readonly property string picture: drawer.preview?.picture ?? ""
@@ -1823,17 +1833,29 @@ Floating {
                         + drawer.pitch : 0) - drawer.pitch)
 
                     width: parent.width
-                    visible: picture !== "" || lines.length > 0
+                    // A picture waits for its size, held empty rather than
+                    // drawn square and then jumping to its shape.
+                    visible: (picture !== "" && previewFrame.height > 0) || lines.length > 0
                     height: Page.previewHeight(picture !== "" ? previewFrame.height : 0,
-                        lines.length, drawer.pitch)
+                        lines.length, {
+                            pitch: drawer.pitch,
+                            beat: Theme.space.beat,
+                            gap: Theme.space.rung.groups
+                        })
 
                     Rectangle {
                         id: previewFrame
                         readonly property real across: drawer.preview?.across > 0
                             ? drawer.preview.across : parent.width
+                        // Its size as given, else its shape once it's read;
+                        // nothing before either.
                         readonly property real down: drawer.preview?.down > 0
-                            ? drawer.preview.down : across
-                        readonly property real shrunk: Math.min(1, parent.width / across,
+                            ? drawer.preview.down
+                            : previewDrawn.status === Image.Ready && previewDrawn.implicitWidth > 0
+                                ? across * previewDrawn.implicitHeight / previewDrawn.implicitWidth
+                                : 0
+                        readonly property real shrunk: down <= 0 ? 0 : Math.min(1,
+                            parent.width / across,
                             Math.floor(previewBox.room / drawer.pitch) * drawer.pitch / down)
 
                         visible: previewBox.picture !== ""
@@ -1852,8 +1874,10 @@ Floating {
                             source: Pictures.source(previewBox.picture)
                             asynchronous: true
                             fillMode: Image.PreserveAspectFit
-                            sourceSize.width: 2 * width
-                            sourceSize.height: 2 * height
+                            // Read at the width it may take, never its
+                            // drawn size, which waits on its shape, so it's
+                            // read once rather than again as it's sized.
+                            sourceSize.width: 2 * previewFrame.across
                             opacity: status === Image.Ready ? 1 : 0
                             layer.enabled: true
                             layer.effect: MultiEffect {
@@ -2051,7 +2075,8 @@ Floating {
                             // at, a long one breaking onto the pitch: one
                             // given as items (`valueItems`, `between`) on
                             // the lines DrawerPage.valueLines lays them on,
-                            // its `value` still what's copied.
+                            // or with a `tail` on the one line valueLine
+                            // gives way on, its `value` still what's copied.
                             PageText {
                                 id: value
                                 sought: drawer.washing
@@ -2061,6 +2086,11 @@ Floating {
                                 y: fact.base - baselineOffset
                                     + (fact.under ? label.lineCount * drawer.pitch : 0)
                                 plain: !fact.known ? "\u2026"
+                                    : fact.modelData.valueItems && fact.modelData.tail
+                                    ? Page.valueLine(fact.modelData.valueItems,
+                                        fact.modelData.tail, fact.valueWide,
+                                        text => drawer.faceOf(fact.modelData).advanceWidth(text))
+                                        .join("\n")
                                     : fact.modelData.valueItems
                                     ? Page.valueLines(fact.modelData.valueItems,
                                         fact.modelData.between ?? " \u00b7 ", fact.valueWide,
@@ -2184,16 +2214,17 @@ Floating {
                 // A picture in its own shape, as wide as the drawer at
                 // most, its corners a part's, the raised colour until it's
                 // drawn. One whose size isn't given is as wide as the
-                // drawer, square until it's read and then in its own
-                // shape, so a wide picture isn't drawn in a square's middle
-                // with empty bands above and below it.
+                // drawer, a screen's 16:10 until it's read, the shape most
+                // it shows are, and then its own, so a wide picture isn't
+                // drawn in a taller box's middle with bands above and below.
                 Rectangle {
                     id: frame
                     readonly property real across: drawer.shown?.across > 0
                         ? drawer.shown.across : parent.width
                     readonly property real down: drawer.shown?.down > 0 ? drawer.shown.down
                         : drawn.status === Image.Ready && drawn.implicitWidth > 0
-                            ? across * drawn.implicitHeight / drawn.implicitWidth : across
+                            ? across * drawn.implicitHeight / drawn.implicitWidth
+                            : across * 10 / 16
                     readonly property real shrunk: Math.min(1, parent.width / across)
 
                     visible: drawer.picture !== ""

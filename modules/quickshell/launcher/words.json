@@ -15,6 +15,7 @@
       "id": "desktop",
       "name": "Desktop",
       "term": "Desktop",
+      "glyph": "desktop",
       "holds": [
         "windows:this",
         "windows",
@@ -46,6 +47,7 @@
       "id": "computer",
       "name": "Machine",
       "term": "Machine",
+      "glyph": "computer",
       "holds": [
         "energy",
         "bluetooth",
@@ -89,6 +91,7 @@
       "id": "network",
       "name": "Network",
       "term": "Network",
+      "glyph": "network",
       "holds": [
         "wifi",
         "wifi:sign-in",
@@ -1473,6 +1476,19 @@
       "glyph": "offer"
     },
     {
+      "id": "verb:disk:talk",
+      "command": "talk",
+      "in": "machine:disk:filling",
+      "name": "Talk to Its Session",
+      "verb": "talk",
+      "glyph": "reply",
+      "ask": "what to tell {name}?",
+      "said": {
+        "about": "(The disk guard says {path} holds {size}.)",
+        "sent": "told {name}"
+      }
+    },
+    {
       "id": "verb:disk:keep",
       "command": "snooze",
       "in": "machine:disk:filling",
@@ -1845,7 +1861,13 @@
     {
       "id": "power:port",
       "in": "power:charger",
-      "name": "Port {n}"
+      "name": "Port {n}",
+      "said": {
+        "charging": "charging",
+        "giving": "powering what's plugged in",
+        "plugged": "plugged in, giving nothing",
+        "empty": "empty"
+      }
     },
     {
       "id": "power:port:drawer",
@@ -1853,10 +1875,12 @@
       "said": {
         "eyebrow": "on port {n} \u00b7 charger",
         "accessory": "{mode} accessory",
+        "range": "{from} to {to} V",
+        "at": "{offers} at {amps} A",
         "mode:usb_power_delivery": "USB Power Delivery",
         "mode:default": "USB default",
-        "mode:1.5A": "USB-C at 1.50 A",
-        "mode:3.0A": "USB-C at 3.00 A"
+        "mode:1.5A": "USB-C at 1.5 A",
+        "mode:3.0A": "USB-C at 3 A"
       }
     },
     {
@@ -4246,13 +4270,23 @@
         "by": "by {server}",
         "next": "in {span}",
         "every": "every {span}",
-        "running": "running"
+        "running": "running",
+        "average": "the long-run average",
+        "between": "between the last two updates",
+        "samples": "{samples} over {span}",
+        "runs": "{runs} runs of one sign",
+        "via": "via {server}"
       }
     },
     {
       "id": "time:clock:offset",
       "in": "time:clock",
       "name": "Offset"
+    },
+    {
+      "id": "time:clock:rms-offset",
+      "in": "time:clock",
+      "name": "RMS Offset"
     },
     {
       "id": "time:clock:frequency",
@@ -4263,6 +4297,11 @@
       "id": "time:clock:skew",
       "in": "time:clock",
       "name": "Skew"
+    },
+    {
+      "id": "time:clock:stratum",
+      "in": "time:clock",
+      "name": "Stratum"
     },
     {
       "id": "time:clock:root-delay",
@@ -4285,6 +4324,11 @@
       "name": "Last Sync"
     },
     {
+      "id": "time:clock:update-interval",
+      "in": "time:clock",
+      "name": "Update Interval"
+    },
+    {
       "id": "time:clock:next-poll",
       "in": "time:clock",
       "name": "Next Poll"
@@ -4300,6 +4344,16 @@
       "name": "Hardware Clock Drift"
     },
     {
+      "id": "time:clock:hardware-samples",
+      "in": "time:clock",
+      "name": "Hardware Clock Samples"
+    },
+    {
+      "id": "time:clock:hardware-measured",
+      "in": "time:clock",
+      "name": "Hardware Clock Measured"
+    },
+    {
       "id": "time:clock:service",
       "in": "time:clock",
       "name": "Service"
@@ -4310,6 +4364,20 @@
       "name": "Servers",
       "said": {
         "outOfReach": "{count} out of reach",
+        "offline": "{count} offline",
+        "burst": "{count} in a burst",
+        "unresolved": "{count} unresolved",
+        "kind:server": "time server",
+        "kind:peer": "time peer",
+        "kind:reference": "reference clock",
+        "interleaved": "interleaved",
+        "basic": "basic",
+        "authenticated": "authenticated",
+        "unauthenticated": "unauthenticated",
+        "exchange": "{mode} \u00b7 {authentication}",
+        "measured": "measured {offset} \u00b7 within {error}",
+        "allGood": "{sent} sent, all good",
+        "runs": "{runs} runs of one sign",
         "standing:chosen": "chosen",
         "standing:combined": "agrees",
         "standing:notCombined": "agrees, not combined",
@@ -4342,7 +4410,7 @@
         "interval": "{low} to {high}",
         "samples": "{samples} over {span}",
         "tests": "{passed} of 10",
-        "packets": "{sent} sent, {received} received, {good} good"
+        "packets": "{sent} sent \u00b7 {received} received \u00b7 {valid} valid \u00b7 {good} good"
       }
     },
     {
@@ -4350,11 +4418,6 @@
       "in": "time:servers",
       "name": "Time Server",
       "term": "Desktop/time server"
-    },
-    {
-      "id": "time:server:address",
-      "in": "time:server",
-      "name": "Address"
     },
     {
       "id": "time:server:why",
@@ -4392,6 +4455,11 @@
       "name": "Error Bounds"
     },
     {
+      "id": "time:server:score",
+      "in": "time:server",
+      "name": "Score"
+    },
+    {
       "id": "time:server:samples",
       "in": "time:server",
       "name": "Samples"
@@ -4417,14 +4485,24 @@
       "name": "Skew"
     },
     {
-      "id": "time:server:reference",
+      "id": "time:server:leap",
       "in": "time:server",
-      "name": "Reference"
+      "name": "Leap Second"
+    },
+    {
+      "id": "time:server:reference-time",
+      "in": "time:server",
+      "name": "Reference Time"
     },
     {
       "id": "time:server:ntp-version",
       "in": "time:server",
       "name": "NTP Version"
+    },
+    {
+      "id": "time:server:exchange",
+      "in": "time:server",
+      "name": "Exchange"
     },
     {
       "id": "time:server:precision",
@@ -4457,6 +4535,11 @@
       "name": "Response Time"
     },
     {
+      "id": "time:server:jitter-asymmetry",
+      "in": "time:server",
+      "name": "Jitter Asymmetry"
+    },
+    {
       "id": "time:server:tests",
       "in": "time:server",
       "name": "Tests Passed"
@@ -4465,6 +4548,21 @@
       "id": "time:server:packets",
       "in": "time:server",
       "name": "Packets"
+    },
+    {
+      "id": "time:server:address",
+      "in": "time:server",
+      "name": "Address"
+    },
+    {
+      "id": "time:server:reference",
+      "in": "time:server",
+      "name": "Reference"
+    },
+    {
+      "id": "time:server:local-address",
+      "in": "time:server",
+      "name": "Local Address"
     },
     {
       "id": "sound",
@@ -4800,6 +4898,7 @@
       "name": "Keyboard",
       "term": "Keyboards/keyboard",
       "noun": "keys",
+      "said": { "one": "{count} key", "many": "{count} keys" },
       "lead": "parts",
       "glyph": "keyboard",
       "parts": [
@@ -5926,7 +6025,10 @@
       "in": "on",
       "said": {
         "eyebrow": "on this machine \u00b7 lag",
-        "over": "{what} \u00b7 over the last {seconds} s"
+        "over": "{what} \u00b7 over the last {seconds} s",
+        "stall:cpu": "processor",
+        "stall:memory": "memory",
+        "stall:io": "disk"
       }
     },
     {
@@ -6391,6 +6493,7 @@
       "name": "Clipboard",
       "term": "Desktop/clipboard",
       "noun": "copies",
+      "said": { "one": "{count} copy", "many": "{count} copies" },
       "glyph": "clipboard",
       "ask": "which copy?"
     },
@@ -8009,10 +8112,9 @@
       "glyph": "program",
       "said": {
         "on": "on {places}",
-        "and": "and",
+        "workspaces": "on {count} workspaces",
         "program": "program",
-        "kind": "1 kind",
-        "kinds": "{count} kinds"
+        "more": "{count} more"
       }
     },
     {
@@ -8093,7 +8195,13 @@
       "id": "session:profile",
       "name": "Power Profile",
       "term": "Machine/power profile",
-      "glyph": "balanced"
+      "glyph": "balanced",
+      "said": {
+        "set": "power profile set to {profile}",
+        "silent": "the profile daemon didn't answer",
+        "held": "{app} holds {profile}",
+        "kept": "the daemon kept {profile}"
+      }
     },
     {
       "id": "session:profile:drawer",
@@ -8194,7 +8302,8 @@
       "term": "Machine/log out",
       "verb": "log out",
       "glyph": "logout",
-      "sure": "Log Out Now"
+      "sure": "Log Out Now",
+      "asked": "Log Out of the Desktop"
     },
     {
       "id": "session:Reboot",
@@ -8204,7 +8313,8 @@
       "term": "Machine/reboot",
       "verb": "reboot",
       "glyph": "reboot",
-      "sure": "Reboot Now"
+      "sure": "Reboot Now",
+      "asked": "Reboot the Machine"
     },
     {
       "id": "session:Power Off",
@@ -8214,7 +8324,8 @@
       "term": "Machine/power off",
       "verb": "off",
       "glyph": "poweroff",
-      "sure": "Power Off Now"
+      "sure": "Power Off Now",
+      "asked": "Power Off the Machine"
     },
     {
       "id": "wifi:radio",
@@ -8986,7 +9097,13 @@
       "said": {
         "now": "just now",
         "minutes": "{minutes} min ago",
-        "yesterday": "yesterday"
+        "yesterday": "yesterday",
+        "readInGmail": "read in Gmail",
+        "archivedInGmail": "archived in Gmail",
+        "unimportant": "no longer important",
+        "gone": "gone from Gmail",
+        "readHere": "read here",
+        "archivedHere": "archived here"
       }
     },
     {
@@ -11104,6 +11221,7 @@
   "terminal": {
     "usage": [
       "launcher show [--drawers] [--json] [step ...] [-- step ...]",
+      "launcher do [--yes] step ... [-- words]",
       "",
       "Shows a place or a row the launcher holds, its drawer and what is inside it,",
       "as the launcher would: launcher show machine disk. Each step is a row's name,",
@@ -11112,11 +11230,18 @@
       "what the launcher says as JSON, with every row's drawer given --drawers.",
       "After --, every word is a step, so one starting with a hyphen can be named.",
       "",
+      "launcher do does what a row does on Return, and any act a place offers among",
+      "its rows, as : offers it: launcher do programs kitty. One that ends something",
+      "asks first, as the launcher does, and with no terminal to answer on it's done",
+      "only with --yes. Words an act asks for follow --. A place opens in the",
+      "launcher.",
+      "",
       "launcher completion zsh writes zsh's completion, which offers each place's",
       "rows as you type."
     ],
     "offers": {
-      "show": "any place, row or drawer the launcher holds"
+      "show": "any place, row or drawer the launcher holds",
+      "do": "what a row does, or an act a place offers"
     },
     "missing": "nothing called {step}",
     "missingIn": "nothing called {step} in {place}",
@@ -11125,6 +11250,10 @@
     "apart": "\u00b7",
     "silent": "the shell isn't answering",
     "unknown": "launcher doesn't take {what}",
-    "waiting": "\u2026"
+    "waiting": "\u2026",
+    "unsure": "{question} \u00b7 nothing to answer on, so --yes does it",
+    "takes": "{name} takes words \u00b7 {ask} \u00b7 give them after --",
+    "nothingToDo": "launcher do needs a row to do",
+    "blankStep": "a blank step names no row"
   }
 }

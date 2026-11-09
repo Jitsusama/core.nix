@@ -17,6 +17,12 @@ use crate::holds;
 use crate::state::{now, short};
 use crate::watch::{Bad, Changed, Merged, UNCHECKED, UNSENT, World};
 
+/// What the net's changed-checks runs ask, so a builder lets them ahead of
+/// sessions' runs waiting for a turn: on 8 November the net's comparison
+/// waited an hour behind sessions' gates and tested nothing meanwhile. Its
+/// VM tests stay bulk, behind sessions', as `there_args` says.
+const FIRST: &str = "--first";
+
 /// Where the quarantine list is in the repository.
 pub const QUARANTINE: &str = "tools/merge-net/quarantine.json";
 
@@ -169,7 +175,7 @@ impl Real {
             .join("logs")
             .join(format!("land-{}.log", branch.replace('/', "-")));
         let checked = Command::new("changed-checks")
-            .args(["--base", &followed])
+            .args(["--base", &followed, FIRST])
             .current_dir(self.checkout())
             .stdout(file(&log)?)
             .stderr(file(&log)?)
@@ -370,7 +376,14 @@ impl World for Real {
             .join("logs")
             .join(format!("changed-{}.log", short(head)));
         let ran = Command::new("changed-checks")
-            .args(["--base", base, "--name-only", "--system", &self.system])
+            .args([
+                "--base",
+                base,
+                "--name-only",
+                "--system",
+                &self.system,
+                FIRST,
+            ])
             .current_dir(self.checkout())
             .stderr(file(&log)?)
             .output()

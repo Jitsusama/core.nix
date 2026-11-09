@@ -37,12 +37,18 @@ Singleton {
 
     // "none", "signedOut", "unreachable" or "ready", as the program says.
     property string account: "none"
-    // Each { id, title, start, end, allDay, answer, link, kind, page },
-    // in milliseconds since 1970, from today's start to a week on.
+    // Each { id, title, start, end, allDay, answer, link, kind, page,
+    // done }, in milliseconds since 1970, from today's start to a week on;
+    // `done` is { how, at } once it has ended or Joel declined it, else
+    // null (src/done.rs).
     property var meetings: []
     // The mail that wants Joel, newest first: each { id, from, subject,
     // at, page }.
     property var mail: []
+    // The mail that wanted Joel and no longer does, the latest done first,
+    // each as `mail` says it with a `done` of { how, at }: read or archived
+    // in Gmail or here, no longer important, or gone (src/done.rs).
+    property var finished: []
     // How many in the inbox are unread, or null until Gmail says.
     property var unread: null
     // The documents Joel looked at lately, each kind's last first: each

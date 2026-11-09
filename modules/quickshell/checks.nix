@@ -1136,6 +1136,7 @@ onLinux {
     in
     pkgs.runCommandLocal "the-launcher-lays-sessions-under-their-orchestrators" { } ''
       cp ${../../tests/session-row.qml} session-row.qml
+      cp ${./launcher/Holders.js} Holders.js
       cp ${./launcher/SessionRow.js} SessionRow.js
       cp ${./launcher/Order.js} Order.js
       cp ${./launcher/SessionDrawer.js} SessionDrawer.js
@@ -1844,6 +1845,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Now.qml} launcher/Now.qml
+      cp ${./launcher/NeedsYou.js} launcher/NeedsYou.js
       cp ${./launcher/Moment.js} launcher/Moment.js
       cp ${./launcher/NowGroups.js} launcher/NowGroups.js
       cp ${./launcher/Order.js} launcher/Order.js
@@ -2057,6 +2059,9 @@ onLinux {
         cp ${./launcher/Machine.js} launcher/Machine.js
         cp ${./launcher/Machine.qml} launcher/Machine.qml
         cp ${./launcher/Order.js} launcher/Order.js
+        cp ${./launcher/HomeNetwork.js} launcher/HomeNetwork.js
+        cp ${./launcher/Holders.js} launcher/Holders.js
+        cp ${./launcher/SessionRow.js} launcher/SessionRow.js
         cp ${./launcher/Sensors.qml} launcher/Sensors.qml
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
         cp ${./Words.qml} Words.qml
@@ -3661,6 +3666,8 @@ onLinux {
     pkgs.runCommandLocal "needs-you-is-true" { } ''
       cp ${../../tests/waiting-on-you.qml} waiting-on-you.qml
       cp ${./Waiting.js} Waiting.js
+      cp ${./launcher/NeedsYou.js} NeedsYou.js
+      cp ${./launcher/Ago.js} Ago.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

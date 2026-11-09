@@ -144,6 +144,8 @@ def misplaced(vocabulary: Entry, glyphs: set[str]) -> list[str]:
     for category in vocabulary["categories"]:
         placed.update(category.get("holds", []))
         out.extend(stray(category, things, categories))
+        if "glyph" in category and category["glyph"] not in glyphs:
+            out.append(f"{category['id']} wears {category['glyph']}, a glyph the theme hasn't got.")
     for entry in things.values():
         for part in entry.get("parts", []):
             placed.add(part)
@@ -209,7 +211,7 @@ def miscased(vocabulary: Entry) -> list[str]:
         out.extend(
             f"{entry['id']}'s {field} {state[field]!r} isn't in Title Case."
             for state in [entry, *entry.get("states", {}).values()]
-            for field in ("name", "part", "sure")
+            for field in ("name", "part", "sure", "asked")
             if state.get(field) and not titled(state[field])
         )
         empty = entry.get("empty", "")
@@ -273,7 +275,7 @@ def shown(entry: Entry) -> list[tuple[str, str]]:
     """Give every string of a thing Joel reads, in any state, with what it is."""
     said: list[tuple[str, str]] = []
     for state in [entry, *entry.get("states", {}).values()]:
-        said.extend((key, state[key]) for key in ("name", "empty", "sure", "ask")
+        said.extend((key, state[key]) for key in ("name", "empty", "sure", "asked", "ask")
                     if isinstance(state.get(key), str))  # fmt: skip
         words = state.get("said", {})
         said.extend(("said", word) for word in
@@ -413,6 +415,9 @@ def refuses() -> list[str]:
         out.append(f"The check doesn't find the one key given twice in {TWICE}.")
     if len(unsaid({"things": [], "commands": [REFUSED_COMMAND]})) != 1:
         out.append(f"The check lets a command's program through: {REFUSED_COMMAND}.")
+    markless = {"categories": [{"id": "bad:place", "glyph": "nowhere"}], "things": []}
+    if not any("a glyph the theme hasn't got" in said for said in misplaced(markless, set())):
+        out.append(f"The check lets a place wear a mark the theme hasn't got: {markless}.")
     out.extend(f"The check refuses what it shouldn't: {said}" for said in unsaid(ALLOWED))
     out.extend(f"The check takes {name!r} for Title Case." for name in SENTENCES if titled(name))
     out.extend(

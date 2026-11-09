@@ -3,7 +3,9 @@
 //! drawer watches its own process's tree, so what it started (a
 //! terminal's shells, a browser's tabs) counts as its own: the share of
 //! the whole processor they used between two reads, the memory they hold,
-//! and how many processes and threads they are.
+//! and how many processes and threads they are, and which: every pid in
+//! it, so a drawer summing several trees counts once a process two hold,
+//! as one window's is when it was started from another's.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -64,6 +66,8 @@ pub fn records(
             pages += process.resident_pages;
         }
         let share = (all > 0).then(|| rounded(float(used) / float(all), 4));
+        let mut held = tree.clone();
+        held.sort_unstable();
         records.push(json!({
             "key": format!("tree:{pid}"),
             "kind": "tree",
@@ -72,6 +76,7 @@ pub fn records(
             "share_ratio": share,
             "resident_b": pages * page_b,
             "processes": tree.len(),
+            "pids": held,
             "threads": threads,
             "over_ms": over_ms,
             "since": since(over_ms),
@@ -132,6 +137,7 @@ mod tests {
         assert_eq!(tree["key"], "tree:10");
         assert_eq!(tree["name"], "kitty");
         assert_eq!(tree["processes"], json!(3));
+        assert_eq!(tree["pids"], json!([10, 11, 12]));
         assert_eq!(tree["threads"], json!(6));
         assert_eq!(tree["resident_b"], json!(30 * 4096));
         // 40 + 20 + all 100 of the process started since, of 400 ticks.

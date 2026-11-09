@@ -1579,7 +1579,12 @@
     merely unread, each named once a run and opening in Slack, and what Joel read last and how
     Slack stands, as records listed and watched, each said to a watch only as it changes and as
     gone once read, only the account held, as signed out, while Slack refuses the sign-in, and
-    with no sign-in nothing held and nothing asked; and says each message a search finds by
+    with no sign-in nothing held and nothing asked; holds each message wanting Joel, those
+    unread in a direct message, one never opened too, and those in a channel mentioning him,
+    never his own nor a thread's reply, each read from its conversation's history once as its
+    unreads come, page by page, with its web link, and said done, read in Slack, once Slack's
+    read mark passes it, beside that mark, the account saying them whole only once every
+    history wanted was read; and says each message a search finds by
     where it is, who said it and its first words, the messages around one oldest first, and
     Slack too busy apart from signed out or out of reach
   '';

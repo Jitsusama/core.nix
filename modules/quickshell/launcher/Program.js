@@ -9,10 +9,10 @@
 .pragma library
 .import "../FileFacts.js" as FileFacts
 
-// How many kinds of file the drawer names beside their count.
-const NAMED = 3;
-// A share under this is said with a place after its point.
-const SMALL = 0.1;
+// How many significant figures a measured share is said to.
+const SIGNIFICANT = 3;
+// Parts of a value, and a list alone in one, run on a dot.
+const DOT = " \u00b7 ";
 // A file's kind by the name its files end in, a glob as `*.pdf`.
 const ENDING = /^\*\.([a-z0-9]+)$/i;
 // A link's scheme a program handles, as its desktop entry lists it.
@@ -33,40 +33,41 @@ function filled(template, fields) {
         fields[name] === undefined ? whole : String(fields[name]));
 }
 
-// Several said as one: "1", "1 and 4", "1, 2 and 4".
-function listed(each, and) {
-    if (each.length < 2) {
-        return each.join("");
-    }
-    return `${each.slice(0, -1).join(", ")} ${and} ${each[each.length - 1]}`;
-}
-
-// Where its windows are and what it is, "on 1 and 4 · web browser", from
-// the numbers of the workspaces they're on; what it is alone with none.
+// Where its windows are and what it is, one where: "on 4 · web browser"
+// while one workspace holds them, "on 3 workspaces · web browser" for
+// more, never a list beside the dot (VKCF3Z, 2026-11-08); what it is alone
+// with none.
 function eyebrow(places, kind, said) {
     const numbers = Array.from(new Set(places.filter(place => place !== null
-        && place !== undefined))).sort((a, b) => a - b);
+        && place !== undefined)));
     if (numbers.length === 0) {
         return kind;
     }
-    const on = filled(said.on, { places: listed(numbers, said.and) });
-    return kind === "" ? on : `${on} \u00b7 ${kind}`;
+    const on = numbers.length === 1 ? filled(said.on, { places: numbers[0] })
+        : filled(said.workspaces, { count: numbers.length });
+    return kind === "" ? on : `${on}${DOT}${kind}`;
 }
 
-// A share of the whole machine, from 0 to 1, as a percentage, with a place
-// after its point under a tenth: 4.5%, 37%.
+// A share of the whole machine, from 0 to 1, as a percentage to three
+// significant figures, as every measured figure is: 4.50%, 37.0%; none
+// at all reads "0%", as the machine's Using It says it, since nothing has
+// no places to read it to.
 function percent(share) {
-    const places = share < SMALL ? 1 : 0;
-    return `${Number((share * 100).toFixed(places))}%`;
+    return share === 0 ? "0%" : `${(share * 100).toPrecision(SIGNIFICANT)}%`;
 }
 
 // What a program's processes use, from what the machine daemon says of
 // each of its windows' processes and every one it started (its `tree`
-// kind, each { share_ratio, resident_b, processes }): their share of the
-// processors, the memory they hold and how many there are, summed; null
-// while it says nothing.
+// kind, each { pid, share_ratio, resident_b, processes, pids }): their
+// share of the processors, the memory they hold and how many there are,
+// summed; null while it says nothing. A window's process started from
+// another's is in that one's tree, its `pids`, so it's counted there
+// alone rather than twice.
 function usage(trees) {
-    const said = trees.filter(tree => tree !== null && tree !== undefined);
+    const known = trees.filter(tree => tree !== null && tree !== undefined);
+    const within = (tree, other) => other !== tree && other.pid !== tree.pid
+        && Array.from(other.pids ?? []).includes(tree.pid);
+    const said = known.filter(tree => !known.some(other => within(tree, other)));
     if (said.length === 0) {
         return null;
     }
@@ -123,25 +124,34 @@ function kindName(type, named) {
     return own.length <= 4 ? own.toUpperCase() : own;
 }
 
-// What a program opens, "42 kinds · PDF, HTML, PNG", naming the first few
-// whole, and the links it handles, "http, https"; each empty for none.
-function opens(types, named, said) {
-    const kinds = Array.from(new Set(types.filter(type => !type.startsWith(SCHEME))
-        .map(type => kindName(type, named)).filter(name => name !== "")));
-    const schemes = types.filter(type => type.startsWith(SCHEME))
-        .map(type => type.slice(SCHEME.length));
-    const count = kinds.length === 1 ? said.kind : filled(said.kinds, { count: kinds.length });
+// The kinds of file a program opens, ["PDF", "HTML", "PNG"], each once, and
+// the links it handles, ["http", "https"].
+function opens(types, named) {
     return {
-        kinds: kinds.length === 0 ? "" : `${count} \u00b7 ${kinds.slice(0, NAMED).join(", ")}`,
-        schemes: schemes.join(", ")
+        kinds: Array.from(new Set(types.filter(type => !type.startsWith(SCHEME))
+            .map(type => kindName(type, named)).filter(name => name !== ""))),
+        schemes: types.filter(type => type.startsWith(SCHEME))
+            .map(type => type.slice(SCHEME.length))
     };
 }
 
-// A desktop entry's categories as words, "Network, Web Browser", leaving
-// out a vendor's own (X-).
+// A desktop entry's categories as words, "Network \u00b7 Web Browser",
+// leaving out a vendor's own (X-).
 function categories(each) {
     return Array.from(new Set(Array.from(each ?? []).filter(one => !one.startsWith("X-"))
-        .map(one => one.replace(WORDS, "$1 $2")))).join(", ");
+        .map(one => one.replace(WORDS, "$1 $2")))).join(DOT);
+}
+
+// The kinds it opens on one line, "PDF \u00b7 HTML \u00b7 PNG", whole kinds
+// giving way from the end to a tail of "2 more" where they don't all fit
+// (VKCF3Z, 2026-11-08: a list alone in a value is a dotted run).
+function opensFact(kinds, named, said) {
+    return {
+        label: named("opens"),
+        value: kinds.join(DOT),
+        valueItems: kinds.map(kind => ({ said: kind })),
+        tail: said.more ?? ""
+    };
 }
 
 // Its command, in the Name face as an identifier, each argument an item
@@ -163,20 +173,24 @@ function commandFact(command, named) {
 // A program's facts, as { label, value }, in the drawer's order, what it
 // doesn't say left out. Its usage, { processor, memory, count }, is what
 // its windows' processes and all they started use, which the machine
-// daemon says; without it, those three are left out.
+// daemon says. While it's `asking`, those three hold their places with no
+// value yet, so they don't push in above the rest once it answers; with
+// no window to ask of, they're left out.
 function facts(known, named, said) {
     const used = known.usage ?? null;
-    const opened = opens(known.types ?? [], known.endings ?? {}, said);
+    const opened = opens(known.types ?? [], known.endings ?? {});
     const own = id => value => ({ label: named(id), value: String(value ?? "") });
+    const figure = (id, say) => (used ? own(id)(say(used))
+        : { label: named(id), value: known.asking ? null : "" });
     return [
-        own("processor")(used ? percent(used.processor) : ""),
-        own("memory")(used ? FileFacts.weighed(used.memory) : ""),
-        own("processes")(used ? String(used.count) : ""),
+        figure("processor", one => percent(one.processor)),
+        figure("memory", one => FileFacts.weighed(one.memory)),
+        figure("processes", one => String(one.count)),
         own("playing")(known.playing ?? "")
     ].concat((known.given ?? []).map(fact => ({ label: fact.label,
         value: String(fact.value ?? "") })), [
-        own("opens")(opened.kinds),
-        own("handles")(opened.schemes),
+        opensFact(opened.kinds, named, said),
+        own("handles")(opened.schemes.join(DOT)),
         own("categories")(categories(known.categories)),
         commandFact(known.command ?? [], named),
         Object.assign(own("desktop-id")(known.id ?? ""), { identifies: true })

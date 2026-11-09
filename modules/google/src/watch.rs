@@ -16,6 +16,7 @@ use serde_json::Value;
 use crate::account::{self, Missing};
 use crate::api::{Google, MAKES_MEETINGS, Put, READS_MEETINGS, Refused};
 use crate::calendar::{self, Answer};
+use crate::done::{self, Done, Went};
 use crate::drive::{
     self, Document, Downloaded, Folder, Kind, Listed, Place, Unlisted, Unsaved, Uploaded,
 };
@@ -55,6 +56,13 @@ pub struct Watch {
     followed_at: i64,
     /// How many times running Meet couldn't be asked about a call.
     calls_failed: u32,
+    /// When Joel was first heard to decline each meeting he declined. It's
+    /// held in memory alone, so a restart moves a declined meeting's
+    /// `done.at` to the first look after it.
+    declined: HashMap<String, i64>,
+    /// Mail gone from what wants Joel whose labels Gmail couldn't be asked
+    /// for, and when it went, to ask again on the next look (done.rs).
+    departed: Vec<(Mail, i64)>,
 }
 
 /// How long a follow lasts unless the shell says it again: a little over
@@ -100,6 +108,8 @@ impl Watch {
             followed: Vec::new(),
             followed_at: 0,
             calls_failed: 0,
+            declined: HashMap::new(),
+            departed: Vec::new(),
         }
     }
 
@@ -202,6 +212,7 @@ impl Watch {
                 self.state.account = Standing::Ready;
                 self.state.meet.granted = self.makes_meetings();
                 self.state.meetings = calendar::meetings(&answer, now.time_zone());
+                self.meetings_done(now.timestamp().as_millisecond());
                 self.state.heard = Some(now.timestamp().as_millisecond());
             }
             Err(looked) => {
@@ -212,11 +223,23 @@ impl Watch {
         let held = std::mem::take(&mut self.state.mail);
         match self.asking(now, |google, token| wanted(google, token, &held)) {
             Ok((found, unread)) => {
+                // What left before and couldn't be asked about is asked
+                // again, unless it wants Joel again.
+                let went = now.timestamp().as_millisecond();
+                let left: Vec<(Mail, i64)> = held
+                    .into_iter()
+                    .map(|mail| (mail, went))
+                    .chain(std::mem::take(&mut self.departed))
+                    .filter(|(was, _)| !found.iter().any(|mail| mail.id == was.id))
+                    .collect();
                 self.state.mail = found;
                 self.state.unread = unread;
                 // What Gmail lists now says what's unread, any marked
                 // unread again from elsewhere included.
                 self.read.clear();
+                if !self.left(left, now) {
+                    return &self.state;
+                }
             }
             Err(Looked::Refused(Refused::Unreachable(why))) => {
                 eprintln!("<4>{why}");
@@ -228,6 +251,11 @@ impl Watch {
             }
         }
         let at = now.timestamp().as_millisecond();
+        let wanting = &self.state.mail;
+        self.state.finished.retain(|mail| {
+            mail.done.is_some_and(|done| at - done.at < done::KEPT)
+                && !wanting.iter().any(|wants| wants.id == mail.id)
+        });
         if self
             .documented
             .is_none_or(|heard| at - heard >= DOCUMENTS_EVERY)
@@ -438,6 +466,11 @@ impl Watch {
                 if let Some(at) = self.state.mail.iter().position(|mail| mail.id == id) {
                     let gone = self.state.mail.remove(at);
                     self.state.unread = self.state.unread.map(|unread| unread.saturating_sub(1));
+                    let done = match how {
+                        Tidy::Read => Went::ReadHere,
+                        Tidy::Archive => Went::ArchivedHere,
+                    };
+                    self.finish(gone.clone(), done, now.timestamp().as_millisecond());
                     if how == Tidy::Read {
                         self.read.retain(|mail| mail.id != id);
                         self.read.push(gone);
@@ -457,6 +490,8 @@ impl Watch {
     pub fn unread(&mut self, id: &str, now: &Zoned) -> &State {
         match self.asking(now, |google, token| google.label(token, id, "UNREAD")) {
             Ok(()) => {
+                self.state.finished.retain(|mail| mail.id != id);
+                self.departed.retain(|(mail, _)| mail.id != id);
                 if let Some(at) = self.read.iter().position(|mail| mail.id == id) {
                     let back = self.read.remove(at);
                     if !self.state.mail.iter().any(|mail| mail.id == id) {
@@ -471,6 +506,76 @@ impl Watch {
             Err(looked) => self.fell(looked, self.state.account),
         }
         &self.state
+    }
+
+    /// Asks Gmail once how each piece of mail gone from what wants Joel
+    /// left it, and holds those done as done when they went, which a
+    /// mail asked about again after an outage still says (done.rs). Once
+    /// Gmail refuses, with a 429 or a 5xx, that mail and the rest aren't
+    /// asked about this look but on the next, for as long as a thing done
+    /// is told. False where the account fell while asking, which lets
+    /// them go with the rest of what it held (`fell`).
+    fn left(&mut self, left: Vec<(Mail, i64)>, now: &Zoned) -> bool {
+        let at = now.timestamp().as_millisecond();
+        let mut left = left.into_iter();
+        while let Some((mail, went)) = left.next() {
+            match self.asking(now, |google, token| google.labels(token, &mail.id)) {
+                Ok(labels) => {
+                    if let Some(how) = done::left(labels.as_ref()) {
+                        self.finish(mail, how, went);
+                    }
+                }
+                Err(Looked::Refused(Refused::Unreachable(why))) => {
+                    eprintln!("<4>{why}");
+                    self.departed.extend(
+                        std::iter::once((mail, went))
+                            .chain(left)
+                            .filter(|(_, went)| at - went < done::KEPT),
+                    );
+                    break;
+                }
+                Err(looked) => {
+                    self.fell(looked, Standing::Unreachable);
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    /// Holds mail as done, `how` and `at`, newest first, once.
+    fn finish(&mut self, mut mail: Mail, how: Went, at: i64) {
+        mail.done = Some(Done { how, at });
+        self.state.finished.retain(|was| was.id != mail.id);
+        self.state.finished.insert(0, mail);
+    }
+
+    /// Says of each meeting held whether it's done: declined, since Joel
+    /// was first heard to decline it, or ended, at its end.
+    fn meetings_done(&mut self, at: i64) {
+        let declined = &mut self.declined;
+        for meeting in &mut self.state.meetings {
+            meeting.done = if meeting.answer == Some(Answer::No) {
+                let since = *declined.entry(meeting.id.clone()).or_insert(at);
+                Some(Done {
+                    how: Went::Declined,
+                    at: since,
+                })
+            } else if meeting.end <= at {
+                Some(Done {
+                    how: Went::Ended,
+                    at: meeting.end,
+                })
+            } else {
+                None
+            };
+        }
+        let meetings = &self.state.meetings;
+        self.declined.retain(|id, _| {
+            meetings
+                .iter()
+                .any(|meeting| &meeting.id == id && meeting.answer == Some(Answer::No))
+        });
     }
 
     /// Whether Joel's sign-in lets this program make a Meet meeting, read
@@ -852,14 +957,22 @@ impl Watch {
         // account's, so the shell can say why one didn't go up.
         let uploads = std::mem::take(&mut self.state.drive.uploads);
         match looked {
+            // What was held may not be Joel's to see once the account is
+            // back, maybe as another, so mail waiting to be asked about
+            // goes too, since its ids would read as gone, and so do the
+            // meetings he declined, which another account may not share.
             Looked::Missing => {
                 self.state = State::without(Standing::None);
+                self.departed.clear();
+                self.declined.clear();
                 self.documented = None;
                 self.placed = None;
                 self.recalled = None;
             }
             Looked::Refused(Refused::SignedOut) => {
                 self.state = State::without(Standing::SignedOut);
+                self.departed.clear();
+                self.declined.clear();
                 self.documented = None;
                 self.placed = None;
                 self.recalled = None;

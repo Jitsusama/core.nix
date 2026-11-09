@@ -36,8 +36,18 @@ let
     "serve --helper ${cfg.helper} --rate ${cfg.rate}"
     "--first-start ${cfg.firstStart} --last-start ${cfg.lastStart}"
     "--deadline ${cfg.deadline}"
+    "--outlasting ${outlasting}"
   ]
   ++ lib.optional (cfg.longest != null) "--longest ${cfg.longest}";
+  # What a helper holding a builder runs through: a scope of its own, which
+  # the unit's end leaves, so a lender that restarts after a switch hands
+  # its builder over and the builds on its way finish. Waiting for none to
+  # use it instead, lenders ran the old binary for hours under load on
+  # 8 November, and restarting them by hand cut a switch's build.
+  outlasting = pkgs.writeShellScript "nix-offload-outlasting" ''
+    exec ${lib.getExe' pkgs.systemd "systemd-run"} --user --scope --quiet --collect \
+      --slice=${stopping.Slice} -- "$@"
+  '';
   # What warms a VM builder for core's own VM tests: the driver of a desktop
   # one, whose machine nearly every VM run since 6 November shares,
   # run-subtests' included, built from core's main as the builder stands.
@@ -62,15 +72,22 @@ let
     KillMode = "mixed";
     TimeoutStopSec = "10s";
     Restart = "on-failure";
-    Slice = "background.slice";
+    Slice = "offload.slice";
     # A switch that changes it reloads it rather than restarting it: its
     # end ends the way to its builder, and every build reaching it with
     # that, which cut 8.1 hours of builds at three switches on 3 November.
-    # Told so, it ends once no build uses or waits on its builder, exiting
-    # 100, which systemd counts as a success to start the new unit after.
+    # Told so, it ends at once, exiting 100, which systemd counts as a
+    # success to start the new unit after; a builder a build reaches is
+    # handed over, its way outlasting the unit (`outlasting`).
+    # It waits only while a builder it handed to a successor finishes.
     ExecReload = "${lib.getExe' pkgs.coreutils "kill"} -HUP $MAINPID";
     SuccessExitStatus = "100";
     RestartForceExitStatus = "100";
+    # Its builders are reached with keys of their own, never the account's
+    # agent, which ssh would ask first: on 8 November an agent waiting on
+    # its person stalled the helpers' ssh at login, and every builder was
+    # lost.
+    UnsetEnvironment = "SSH_AUTH_SOCK";
   };
   # Where home-manager's sd-switch reads that a changed unit is reloaded,
   # in [Unit], for the reason `stopping` gives.
@@ -147,6 +164,19 @@ in
         machines line once ready and running while it's there), gives one back
         (`down NAME`), and names those there (`alive PREFIX`). Without one,
         none is lent, and only the standing builders are named.
+      '';
+    };
+    whenNoneAnswers = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      description = ''
+        A program the lender runs the moment no builder answers any work: the
+        one lent failed two proofs in a row and nothing stands in. Its first
+        argument is `none`, its second a sentence saying why; once a builder
+        answers again, or none is wanted, it runs once more with `back` and who.
+        It's waited on, so it must be quick, such as one writing a file for
+        whoever keeps the machine's builds moving. Without one, the lender
+        only says so in its journal.
       '';
     };
     prefix = lib.mkOption {
@@ -478,6 +508,17 @@ in
       ) cfg.nearby;
     };
 
+    # The lenders, their tunnels and relays carry every build sent away, so
+    # they weigh as much as a session does rather than background's 30: on
+    # 8 November, at 48% CPU pressure, a tunnel in background was so slow to
+    # answer that its relay hung up on 11 callers in 9 minutes. Their CPU is a few
+    # percent, so the weight buys them time when they need it and little
+    # else. The disk stays background's, since an upload's reads can wait.
+    systemd.user.slices.offload.Slice = {
+      CPUWeight = 100;
+      IOWeight = 1;
+    };
+
     systemd.user.services.nix-offload = lib.mkIf (cfg.helper != null || names) {
       Unit = {
         Description = "Names this machine's builders, lending one while its queue has builds one could take";
@@ -492,7 +533,9 @@ in
                 "stand"
               ]
             else
-              serving ++ [ "--prefix ${cfg.prefix}" ]
+              serving
+              ++ [ "--prefix ${cfg.prefix}" ]
+              ++ lib.optional (cfg.whenNoneAnswers != null) "--tell ${cfg.whenNoneAnswers}"
           )
           ++ lib.optional names "--standing ${listed "standing"} --beside ${listed "beside"}"
         );

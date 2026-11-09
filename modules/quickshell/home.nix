@@ -285,6 +285,7 @@ let
     "launcher/Recents.js"
     "launcher/SessionRow.js"
     "launcher/SessionDrawer.js"
+    "launcher/Holders.js"
     "launcher/SpendDrawer.js"
     "launcher/Trials.js"
     "launcher/Traces.js"
@@ -298,6 +299,7 @@ let
     "launcher/ForYou.js"
     "launcher/Program.js"
     "launcher/Captured.js"
+    "launcher/NeedsYou.js"
     "launcher/Notice.js"
   ];
 

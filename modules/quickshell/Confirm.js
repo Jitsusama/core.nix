@@ -62,7 +62,10 @@ function answer(ask, key, now, guard) {
 // they are (VKCF3Z, 2026-11-05). One row that says what its ending
 // leaves (`leaves`) says it before y/n, as "Close Lamplight? Its worktree
 // stays. (y/n)", so ending a session never reads as losing its work,
-// begun as the sentence it is.
+// begun as the sentence it is. One row with words of its own for the
+// ask (`asked`) is asked in them whole: the act on its thing, then what it
+// ends, as "Reboot the Machine, Closing 12 Windows? (y/n)", never a
+// place's name joined to the act's (VKCF3Z, 2026-11-08).
 function question(rows, words) {
     return joined(questionParts(rows, words));
 }
@@ -78,9 +81,10 @@ function questionParts(rows, words) {
         const many = (words.asks ?? "").replace("{what}", listed(parts(rows, words), words));
         return { head: capital(many), clause: "", tail: "" };
     }
+    const own = String(rows[0].asked ?? "");
     const filled = text => text
-        .replace("{ends}", saysItself(rows[0], words) ? "" : verbOf(rows[0], words))
-        .replace("{name}", rows[0].name ?? "").trim();
+        .replace("{ends}", own !== "" || saysItself(rows[0], words) ? "" : verbOf(rows[0], words))
+        .replace("{name}", own !== "" ? own : rows[0].name ?? "").trim();
     if (clause === "") {
         return { head: capital(filled(words.ask ?? "")), clause: "", tail: "" };
     }

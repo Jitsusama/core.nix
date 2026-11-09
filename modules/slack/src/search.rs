@@ -166,7 +166,7 @@ pub fn found(said: &Value, me: &str) -> Result<Vec<Found>, Failed> {
 
 /// A person's name in Slack from `users.info`, their handle when their
 /// profile names nobody, or Slack's own word when it says nothing.
-fn named_in(user: &Value) -> String {
+pub(crate) fn named_in(user: &Value) -> String {
     let said = |at: &str| {
         user.pointer(at)
             .and_then(Value::as_str)

@@ -1,8 +1,8 @@
 // How the launcher says where a pi session stands and lays a list of them
 // out, run in Qt's own JavaScript engine, the one the shell runs it in.
 // The `the-launcher-lays-sessions-under-their-orchestrators` check copies
-// modules/quickshell/launcher/SessionRow.js and SessionDrawer.js beside
-// this file and runs
+// modules/quickshell/launcher/SessionRow.js, SessionDrawer.js and
+// Holders.js beside this file and runs
 // `qml -platform offscreen session-row.qml`. Each list of sessions keeps
 // one order of how they stand (needs you, working, in line, listening,
 // paused, parked), and Agents sits each session under the one orchestrating it, a
@@ -11,6 +11,7 @@
 // and what it spent at its right, and its drawer the rest.
 import QtQuick
 import "SessionDrawer.js" as SessionDrawer
+import "Holders.js" as Holders
 import "SessionRow.js" as SessionRow
 import "Reading.js" as Reading
 
@@ -531,6 +532,58 @@ QtObject {
             .concat([SessionRow.closedAt("", ended, closing, () => "Sat")]).join(" | ");
         if (at !== "closed 23:41 | closed Sat 23:41 | closed")
             failures.push(`when each closed: "${at}"`);
+
+        // The sessions whose folder the disk guard measured, to talk to
+        // about it: those at work on a quest's workspace, or working in a
+        // tree or inside it, the one that worked last first (VKCF3Z,
+        // 2026-11-08).
+        const working = [
+            { address: "EARLIER", folder: "kelp", changed: 10,
+                presence: { quest: "REEF", cwd: "/home/ada/src/kelp" } },
+            { address: "LAST", folder: "reef", changed: 30,
+                presence: { quest: "REEF", cwd: "/home/ada/src/reef" } },
+            // A session's folder is only its last part, so its record's
+            // cwd is what says where it works.
+            { address: "TREE", folder: "modules", changed: 20,
+                presence: { questInfo: { id: "TIDE" }, cwd: "/home/ada/trees/tidepool/modules/" } }
+        ];
+        const owns = holder => Holders.owners(working, holder).map(one => one.address)
+            .join(" ");
+        const cases = [
+            ["a quest's workspace, the session that worked last first",
+                { path: "/home/ada/.cache/scratch/REEF", owner: { kind: "quest", name: "REEF" } },
+                "LAST EARLIER"],
+            ["a quest whose id its record names whole",
+                { path: "/home/ada/.cache/scratch/TIDE", owner: { kind: "quest", name: "TIDE" } },
+                "TREE"],
+            ["a tree a session works inside",
+                { path: "/home/ada/trees/tidepool", owner: { kind: "worktree", name: "tidepool" } },
+                "TREE"],
+            ["a folder only sharing its name's start",
+                { path: "/home/ada/trees/tide", owner: { kind: "worktree", name: "tide" } }, ""],
+            ["a quest no session is on",
+                { path: "/home/ada/.cache/scratch/SKERRY",
+                    owner: { kind: "quest", name: "SKERRY" } },
+                ""],
+            ["a cache", { path: "/home/ada/.cache/cargo", owner: { kind: "cache", name: "cargo" } },
+                ""]
+        ];
+        for (const [what, holder, want] of cases) {
+            if (owns(holder) !== want)
+                failures.push(`${what}: talked to "${owns(holder)}", not "${want}"`);
+        }
+
+        // Who a talk goes to outlasts how it stands, so a narrow row keeps
+        // "Listening Quest" whole rather than cutting it to "Quest".
+        const talking = Holders.talkSide("Listening Quest", "listening");
+        const keeps = Reading.keptItems(talking, 15, words => words.length).join(" | ");
+        if (keeps !== "Listening Quest")
+            failures.push(`a narrow talk row keeps "${keeps}", not its session's title`);
+        const roomy = Reading.keptItems(talking, 40, words => words.length).join(" \u00b7 ");
+        if (roomy !== "Listening Quest \u00b7 listening")
+            failures.push(`a roomy talk row says "${roomy}"`);
+        if (Holders.talkSide("Reef", "").length !== 1)
+            failures.push("a talk row with no state says an empty item");
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);

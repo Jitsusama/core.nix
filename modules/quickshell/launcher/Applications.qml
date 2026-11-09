@@ -448,6 +448,7 @@ Provider {
         return Program.drawer({
             name: entry.name,
             usage: Program.usage(treesOf(pids)),
+            asking: pids.length > 0,
             places: (running[entry.id] ?? [])
                 .map(window => Niri.workspaces[window.workspace_id]?.idx)
                 .filter(place => place !== undefined),
@@ -760,6 +761,15 @@ Provider {
                 provider.recents.forget();
                 provider.treesWanted = [];
             }
+        }
+
+        // Off a program's row, nothing shows its figures, so the daemon
+        // stops reading its trees rather than reading on until the
+        // launcher closes.
+        function onSelectedChanged() {
+            const is = String(provider.launcher.selected?.is ?? "");
+            if (!is.startsWith("program:") && provider.treesWanted.length > 0)
+                provider.treesWanted = [];
         }
     }
 

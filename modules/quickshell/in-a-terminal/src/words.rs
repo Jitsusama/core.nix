@@ -93,6 +93,26 @@ impl Words {
         self.word("unknown", &[("what", what)])
     }
 
+    /// An act that asks first, with no terminal to answer on.
+    pub fn unsure(&self, question: &str) -> String {
+        self.word("unsure", &[("question", question)])
+    }
+
+    /// An act that takes words, given none, and what it asks for.
+    pub fn takes(&self, name: &str, ask: &str) -> String {
+        self.word("takes", &[("name", name), ("ask", ask)])
+    }
+
+    /// `do` given no steps.
+    pub fn nothing_to_do(&self) -> String {
+        self.word("nothingToDo", &[])
+    }
+
+    /// `do` given a blank step, which names no row.
+    pub fn blank_step(&self) -> String {
+        self.word("blankStep", &[])
+    }
+
     /// A value the shell hasn't read yet, as the drawer's placeholder.
     pub fn waiting(&self) -> String {
         self.word("waiting", &[])

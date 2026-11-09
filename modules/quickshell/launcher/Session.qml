@@ -3,7 +3,6 @@
 // session by accident. While the machine is kept awake or notices are held,
 // undoing it leads the home screen, since a mode should never hold unseen.
 import qs
-import Qt.labs.folderlistmodel
 import Quickshell.Io
 import Quickshell.Services.UPower
 import QtQuick
@@ -107,13 +106,8 @@ Provider {
         power: {
             kind: "choice",
             values: profileChoices.map(choice => choice.option),
-            now: () => profileChoices.find(choice => choice.profile === PowerProfiles.profile)
-                ?.option ?? "",
-            set: to => {
-                PowerProfiles.profile = profileChoices.find(choice => choice.option === to)
-                    .profile;
-                return "";
-            }
+            now: () => profileChoices.find(choice => provider.profileOn(choice))?.option ?? "",
+            set: to => provider.pickProfile(profileChoices.find(choice => choice.option === to))
         }
     }, !KeepAwake.lidHolds ? {} : {
         awake: {
@@ -177,25 +171,143 @@ Provider {
     // the whole's name. The charger's coming and going picks one again.
     // What's learned knows each by the name it had first (was), so a
     // rename keeps it.
+    // Each is named too as power-profiles-daemon names it (`daemon`).
     readonly property var profileChoices: [
-        { profile: PowerProfile.PowerSaver, was: "Power Saver", option: "saver" },
-        { profile: PowerProfile.Balanced, was: "Balanced Power", option: "balanced" },
-        { profile: PowerProfile.Performance, was: "Performance", option: "performance" }
+        { profile: PowerProfile.PowerSaver, was: "Power Saver", option: "saver",
+            daemon: "power-saver" },
+        { profile: PowerProfile.Balanced, was: "Balanced Power", option: "balanced",
+            daemon: "balanced" },
+        { profile: PowerProfile.Performance, was: "Performance", option: "performance",
+            daemon: "performance" }
     ].filter(choice => choice.profile !== PowerProfile.Performance
         || PowerProfiles.hasPerformanceProfile)
+    // Return on one never closes the launcher, from a step into it too
+    // (`alwaysStays`), since it changes something where Joel is and its
+    // row says so (2026-11-08: a pick from a step closed the launcher and
+    // was lost on a laptop, unsaid). They're made again once the daemon's
+    // said what it's on, so a pick held chosen is let go of, and one it
+    // didn't take says why on its own row until the next pick.
     readonly property var profiles: profileChoices.map(choice => {
+        void provider.profileHeard;
         const key = `session:power:${choice.was}`;
+        const refusal = provider.profileRefused;
         return said(key, "", {
-            side: PowerProfiles.profile === choice.profile ? "chosen" : "",
+            side: refusal.daemon === choice.daemon ? refusal.why
+                : provider.profileOn(choice) ? "chosen" : "",
             hue: "machine",
             of: Words.of(key).of,
             part: Words.of(key).part,
             stays: true,
-            run: () => PowerProfiles.profile = choice.profile
+            alwaysStays: true,
+            run: () => provider.pickProfile(choice)
         });
     })
+
+    // The profile last picked, while the daemon's asked what it's on, and
+    // what it said, by its own name; "" until it's said.
+    property var profilePicked: null
+    property string profileHeard: ""
+    // The last pick the daemon didn't take, by its name, and why.
+    property var profileRefused: ({ daemon: "", why: "" })
+    // The pick a read of the daemon was started for, so its answer is
+    // judged against that pick, never one made while it ran.
+    property var profileReadFor: null
+
+    // Whether the daemon's on a profile: as it said when it last refused a
+    // pick, until the next, since Quickshell's copy says what was asked;
+    // else as Quickshell's copy says.
+    function profileOn(choice) {
+        return provider.profileRefused.daemon !== "" ? provider.profileHeard === choice.daemon
+            : PowerProfiles.profile === choice.profile;
+    }
+
+    // Picks a profile, by Return or :set power=: said in the journal, its
+    // row chosen at once and held so until the daemon says it's on it, then
+    // asked a moment later; one it isn't on says why, in the foot and on
+    // its row, and
+    // one never said back says so once the hold's run out. Gives what :set
+    // says of it.
+    function pickProfile(choice) {
+        const key = `session:power:${choice.was}`;
+        const name = Words.of(key).part;
+        console.info(`launcher: set power profile ${choice.option}`);
+        provider.profilePicked = choice;
+        provider.profileRefused = { daemon: "", why: "" };
+        provider.profileHeard = "";
+        becomes(key, { side: "chosen" }, name, "set", {
+            // One a newer pick overtook is let go of, unsaid.
+            done: () => provider.profilePicked !== choice
+                || provider.profileHeard === choice.daemon
+        });
+        PowerProfiles.profile = choice.profile;
+        profileAsking.restart();
+        return Power.filled(Words.of("session:profile").said.set, { profile: name });
+    }
+
+    // How long after a pick the daemon's asked what it's on: a second, so
+    // a refusal is said within two, well inside the launcher's wait for
+    // any act to be agreed, so a slow answer's why still reaches the foot.
+    readonly property int profileAsksAfter: 1000
+
+    // The daemon's answer for the pick it was asked about; one a newer
+    // pick has overtaken is let be, its own read already timed.
+    function profileToldBack(text) {
+        const picked = provider.profileReadFor;
+        provider.profileReadFor = null;
+        if (picked === null || picked !== provider.profilePicked)
+            return;
+        const heard = Power.activeProfile(text);
+        const why = Power.profileRefusal(picked.daemon, heard, {
+            holds: Array.from(PowerProfiles.holds ?? []).map(hold => ({
+                profile: profileChoices.find(choice => choice.profile === hold.profile)?.daemon
+                    ?? "",
+                app: hold.applicationId
+            })),
+            named: profileChoices.reduce((names, choice) => Object.assign(names, {
+                [choice.daemon]: Words.of(`session:power:${choice.was}`).part
+            }), {}),
+            said: Words.of("session:profile").said
+        });
+        provider.profileHeard = heard;
+        if (why === "") {
+            console.info(`launcher: power profile ${picked.option} taken`);
+        } else {
+            console.warn(`launcher: power profile ${picked.option} not taken: ${why}`);
+            provider.profileRefused = { daemon: picked.daemon, why };
+            // Said while the pick's still held, so the foot says it too.
+            refused(`session:power:${picked.was}`, why);
+        }
+        provider.profilePicked = null;
+    }
+
+    Timer {
+        id: profileAsking
+        interval: provider.profileAsksAfter
+        onTriggered: {
+            if (profileDaemon.running) {
+                profileAsking.restart();
+                return;
+            }
+            provider.profileReadFor = provider.profilePicked;
+            profileDaemon.running = true;
+        }
+    }
+
+    // What power-profiles-daemon says it's on, asked of it on the system
+    // bus rather than read from Quickshell's copy, so what's said back is
+    // the daemon's own. One short busctl runs per pick, a key Joel
+    // pressed, never on a clock, so it costs nothing while he's away.
+    Process {
+        id: profileDaemon
+        command: ["busctl", "get-property", "org.freedesktop.UPower.PowerProfiles",
+            "/org/freedesktop/UPower/PowerProfiles", "org.freedesktop.UPower.PowerProfiles",
+            "ActiveProfile"]
+        stdout: StdioCollector {
+            onStreamFinished: provider.profileToldBack(text)
+        }
+    }
     readonly property var profileChosen: {
-        const choice = profileChoices.find(each => each.profile === PowerProfiles.profile);
+        const choice = profileChoices.find(each => provider.profileOn(each));
         return choice ? `session:power:${choice.was}` : "";
     }
     readonly property var profile: thingRow({
@@ -236,10 +348,20 @@ Provider {
             Words.of("session:profile:drawer").said));
     }
 
+    // How many firmware platform profile drivers are looked for, the kernel
+    // naming each platform-profile-<n> from 0.
+    readonly property int profileDrivers: 8
+
+    // What the power profile's drawer reads, only while it's asked: sysfs
+    // says nothing of a change, so nothing is watched while it isn't.
     function readProfile() {
         const drivers = [];
-        for (let i = 0; i < platformProfiles.count; i++)
-            drivers.push(sysfs(`${platformProfiles.get(i, "filePath")}/name`));
+        for (let n = 0; n < profileDrivers; n++) {
+            const name = sysfs(`/sys/class/platform-profile/platform-profile-${n}/name`);
+            if (name === "")
+                break;
+            drivers.push(name);
+        }
         const policy = "/sys/devices/system/cpu/cpufreq/policy0";
         const read = {
             firmware: sysfs("/sys/firmware/acpi/platform_profile"),
@@ -285,14 +407,6 @@ Provider {
         printErrors: false
     }
 
-    // The firmware's platform profile drivers, listed by Qt as they change.
-    FolderListModel {
-        id: platformProfiles
-        folder: "file:///sys/class/platform-profile"
-        showFiles: false
-        showDotAndDotDot: false
-    }
-
     // Starting a recording is Capture's (Capture.qml). While anything
     // records, stopping it leads the home screen, so it never runs unseen.
     readonly property var recording: said("session:recording", "", {
@@ -330,6 +444,7 @@ Provider {
     ].map(action => {
         const key = `session:${action.was}`;
         const sure = Words.of(key).sure ?? "";
+        const asked = Words.of(key).asked ?? "";
         return said(key, "", {
             chord: action.does ? bound(action.does) : [],
             hue: "machine",
@@ -337,6 +452,9 @@ Provider {
             // Those that end the session ask once, as a second Return, since
             // everyday words now find them.
             confirm: sure !== "",
+            // Asked, it says what it does to what, then what it closes, as
+            // "Reboot the Machine, Closing 12 Windows" (Confirm.question).
+            asked: asked !== "" ? () => asked + provider.closing : undefined,
             verbs: sure !== "" ? () => [provider.thing({
                 key: `${key}:sure`,
                 // The step that asks Joel to be sure, so its Return does it (Launcher.lands).

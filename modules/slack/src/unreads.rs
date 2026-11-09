@@ -14,9 +14,12 @@
 //! named by `conversations.info`, a direct message by whose it is through
 //! `users.info`, asked once a run. It only ever reads.
 
+use std::collections::BTreeMap;
+
 use serde::Serialize;
 use serde_json::{Value, json};
 
+use crate::messages::{Mark, Raised};
 use crate::{Account, Refused, Slack};
 
 /// What one round of asking Slack found: how asking went, what's unread
@@ -29,6 +32,13 @@ pub struct Said {
     pub conversations: Vec<Conversation>,
     /// What he read last, newest first, at most `RECENT`.
     pub recent: Vec<Conversation>,
+    /// Each message wanting him, newest first (lib's `messages`).
+    pub messages: Vec<Raised>,
+    /// Slack's read mark for each conversation holding one.
+    pub marks: Vec<Mark>,
+    /// Whether `messages` holds every message wanting him, so one missing
+    /// from them was read (lib's `messages::Messages::whole`).
+    pub whole: bool,
 }
 
 /// How many conversations Slack's Recent holds, as every program's does,
@@ -99,6 +109,10 @@ pub struct Counted {
 pub struct Counts {
     pub unread: Vec<Counted>,
     pub recent: Vec<Counted>,
+    /// Each conversation's read mark, its `last_read`, by its id, empty for
+    /// one never read, so one Slack no longer lists is told from one he
+    /// hasn't opened.
+    pub read: BTreeMap<String, String>,
 }
 
 /// What's unread in an answer of `client.counts`: direct messages first,
@@ -155,7 +169,23 @@ pub fn counted(said: &Value) -> Result<Counts, Refused> {
     Ok(Counts {
         unread: wanting,
         recent: lately(said),
+        read: marks(said),
     })
+}
+
+/// Each conversation's read mark, empty for one never read, whose
+/// `last_read` is all noughts or missing.
+fn marks(said: &Value) -> BTreeMap<String, String> {
+    listed(said, "ims")
+        .chain(listed(said, "mpims"))
+        .chain(listed(said, "channels"))
+        .filter_map(|each| {
+            let id = each.get("id").and_then(Value::as_str)?;
+            let read = stamp(each, "last_read");
+            let ever = read.chars().any(|c| c.is_ascii_digit() && c != '0');
+            Some((id.to_owned(), if ever { read } else { "" }.to_owned()))
+        })
+        .collect()
 }
 
 /// The conversations of one of the answer's lists.
@@ -265,7 +295,7 @@ pub fn link(team: &str, counted: &Counted) -> String {
 }
 
 /// Slack's answer, unless it refused.
-fn answered(said: &Value) -> Result<&Value, Refused> {
+pub(crate) fn answered(said: &Value) -> Result<&Value, Refused> {
     if said.get("ok").and_then(Value::as_bool) == Some(true) {
         return Ok(said);
     }
@@ -485,6 +515,29 @@ mod tests {
                 ("C1", Kind::Channel, 0),
                 ("D2", Kind::Dm, 0),
                 ("D1", Kind::Dm, 0)
+            ]
+        );
+    }
+
+    #[test]
+    fn each_conversation_has_its_read_mark_one_never_read_an_empty_one() {
+        let counts = counted(&counts()).unwrap();
+        let marks: Vec<(&str, &str)> = counts
+            .read
+            .iter()
+            .map(|(id, read)| (id.as_str(), read.as_str()))
+            .collect();
+        assert_eq!(
+            marks,
+            [
+                ("C1", "1730700000.000100"),
+                ("C2", ""),
+                ("C3", ""),
+                ("C4", ""),
+                ("C5", ""),
+                ("D1", "1730100000.000100"),
+                ("D2", "1730600000.000100"),
+                ("G1", "")
             ]
         );
     }

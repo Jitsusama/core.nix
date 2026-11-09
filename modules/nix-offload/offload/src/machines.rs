@@ -196,6 +196,46 @@ fn say_named(was: Named, named: Named) {
     eprintln!("nix-offload: {said}");
 }
 
+/// What a program told of the file for any work hears as it changes from
+/// `was` to `named`: `none` and why, once no builder answers any work, and
+/// `back` and who, once one does or none is wanted; nothing otherwise.
+fn told(was: Named, named: Named) -> Option<(&'static str, String)> {
+    let back = |who: &str| Some(("back", format!("a builder answers again: {who}")));
+    match (was, named) {
+        (Named::Unanswered, Named::Unanswered) => None,
+        (_, Named::Unanswered) => Some((
+            "none",
+            format!(
+                "no builder answers: the lent one failed {} proofs in a row and none stands \
+                 in, so another is asked for",
+                proof::FAILS
+            ),
+        )),
+        (Named::Unanswered, Named::Lent) => back("a newly lent one takes any work"),
+        (Named::Unanswered, Named::Second) => back("the second lent builder stands in"),
+        (Named::Unanswered, Named::Vm(1)) => back("1 VM builder stands in"),
+        (Named::Unanswered, Named::Vm(count)) => back(&format!("{count} VM builders stand in")),
+        (Named::Unanswered, Named::Nothing) => {
+            Some(("back", "none is lent, and no build waits on one".to_owned()))
+        }
+        _ => None,
+    }
+}
+
+/// Run `program` with `word` and `sentence`, waiting for it, and say in the
+/// journal when it couldn't run or failed.
+fn tell(program: &Path, word: &str, sentence: &str) {
+    let ran = std::process::Command::new(program)
+        .args([word, sentence])
+        .stdin(std::process::Stdio::null())
+        .status();
+    match ran {
+        Ok(status) if status.success() => {}
+        Ok(status) => eprintln!("nix-offload: {} ended {status}", program.display()),
+        Err(error) => eprintln!("nix-offload: running {}: {error}", program.display()),
+    }
+}
+
 /// The lines for any work of the builders that may stand in, the `second`
 /// lent builder's while it passed its last proof, and each warm VM
 /// builder's of `vm` that did, as of `at`.
@@ -416,6 +456,9 @@ pub struct Machines {
     stand_ins: Option<(PathBuf, Vec<PathBuf>)>,
     /// Who the file for any work named last.
     named: Named,
+    /// The program told when no builder answers any work, and again once
+    /// one does, once `telling` gives it.
+    telling: Option<PathBuf>,
     /// Each builder beside's proofs, by its line.
     kept: Vec<(String, Keeper)>,
     /// The nix the builders beside are proven through.
@@ -447,6 +490,7 @@ impl Machines {
             proven: (None, State::None),
             stand_ins: None,
             named: Named::Nothing,
+            telling: None,
             kept: Vec::new(),
             nix: "nix".to_owned(),
         }
@@ -459,6 +503,16 @@ impl Machines {
     pub fn stand_ins_from(self, second: PathBuf, vm: Vec<PathBuf>) -> Self {
         Self {
             stand_ins: Some((second, vm)),
+            ..self
+        }
+    }
+
+    /// With `program` told, as [`told`] says, when no builder answers any
+    /// work, and again once one does.
+    #[must_use]
+    pub fn telling(self, program: Option<PathBuf>) -> Self {
+        Self {
+            telling: program,
             ..self
         }
     }
@@ -585,6 +639,11 @@ impl Machines {
             let (said, named) = for_anything(any.as_deref(), state, &second, &vm);
             if self.stand_ins.is_some() {
                 say_named(self.named, named);
+            }
+            if let Some((word, sentence)) = told(self.named, named)
+                && let Some(program) = &self.telling
+            {
+                tell(program, word, &sentence);
             }
             self.named = named;
             anything.say(said);
@@ -1068,6 +1127,89 @@ mod tests {
         machines.proven(None, State::Dropped);
         machines.show(None);
         assert_eq!(read(&anything), "", "no builder answers at all");
+    }
+
+    // Whoever keeps the machine's builds moving hears the moment no
+    // builder answers, rather than finding a switch stalled, and hears
+    // once more when one does; once each, however many ticks pass.
+    #[test]
+    fn no_builder_answering_is_told_once_and_one_answering_again_once() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("a folder");
+        let folder = |name: &str| dir.path().join(name);
+        let (program, told) = (folder("tell"), folder("told"));
+        fs::write(
+            &program,
+            format!("#!/bin/sh\necho \"$1: $2\" >> '{}'\n", told.display()),
+        )
+        .expect("write");
+        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).expect("chmod");
+        let mut machines = Machines::new(
+            folder("machines"),
+            folder("machines-with-standing"),
+            folder("store"),
+            folder("lending"),
+            vec![],
+        )
+        .for_anything(folder("machines-for-anything"))
+        .stand_ins_from(folder("more"), vec![folder("vm")])
+        .telling(Some(program));
+        let heard = || fs::read_to_string(&told).unwrap_or_default();
+        let line = "ssh-ng://lent x86_64-linux /k 8 1 big-parallel - K";
+        machines.proven(Some(line), State::Passing);
+        machines.show(Some(Lending { line, store: None }));
+        assert_eq!(heard(), "", "nothing to tell while the lent one answers");
+        machines.proven(None, State::Dropped);
+        machines.show(None);
+        machines.show(None);
+        assert_eq!(
+            heard(),
+            "none: no builder answers: the lent one failed 2 proofs in a row and none \
+             stands in, so another is asked for\n",
+            "told once"
+        );
+        let next = "ssh-ng://next x86_64-linux /k 8 1 big-parallel - K";
+        machines.show(Some(Lending {
+            line: next,
+            store: None,
+        }));
+        machines.show(Some(Lending {
+            line: next,
+            store: None,
+        }));
+        assert_eq!(
+            heard().lines().skip(1).collect::<Vec<_>>(),
+            ["back: a builder answers again: a newly lent one takes any work"],
+            "told once more"
+        );
+    }
+
+    #[test]
+    fn each_way_back_from_no_builder_answering_says_which() {
+        assert_eq!(
+            told(Named::Lent, Named::Unanswered).map(|(word, _)| word),
+            Some("none")
+        );
+        assert_eq!(told(Named::Unanswered, Named::Unanswered), None);
+        assert_eq!(told(Named::Lent, Named::Second), None, "a stand-in answers");
+        assert_eq!(
+            told(Named::Unanswered, Named::Second),
+            Some((
+                "back",
+                "a builder answers again: the second lent builder stands in".into()
+            ))
+        );
+        assert_eq!(
+            told(Named::Unanswered, Named::Vm(2)),
+            Some((
+                "back",
+                "a builder answers again: 2 VM builders stand in".into()
+            ))
+        );
+        assert_eq!(
+            told(Named::Unanswered, Named::Nothing),
+            Some(("back", "none is lent, and no build waits on one".into()))
+        );
     }
 
     /// A stand-in for nix that exits as the `status` file beside it says.

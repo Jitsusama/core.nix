@@ -1671,8 +1671,19 @@ pub fn reach(
     let said = mine(scratch, "ssh.log");
     let alias = lent.host.rsplit('@').next().unwrap_or(&lent.host);
     let mut command = reaching(ssh, &said);
+    // A builder with a key of its own is never reached through the agent:
+    // ssh asks the agent first even then, and on 8 November an agent
+    // waiting on its person stalled every lender's ssh at login for 18
+    // minutes, so each builder failed its proofs and was given back.
     if let Some(key) = &lent.key {
-        command.args(["-o", "IdentitiesOnly=yes", "-i", key]);
+        command.args([
+            "-o",
+            "IdentitiesOnly=yes",
+            "-o",
+            "IdentityAgent=none",
+            "-i",
+            key,
+        ]);
     }
     if let Some(host_key) = &lent.host_key {
         fs::write(&known, format!("{alias} {host_key}\n"))
@@ -3667,6 +3678,22 @@ mod tests {
         );
         assert_eq!(builder("daemon"), None);
         assert_eq!(builder("ssh-ng://?ssh-key=/k"), None);
+    }
+
+    #[test]
+    fn a_builder_with_a_key_of_its_own_is_reached_without_the_agent() {
+        let scratch = tempfile::tempdir().unwrap();
+        let lent = builder("ssh-ng://nix-offload?ssh-key=/k").unwrap();
+        let (command, _, _) = reach(&lent, scratch.path(), "ssh").unwrap();
+        let args: Vec<_> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy())
+            .collect();
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["-o", "IdentityAgent=none"]),
+            "{args:?}"
+        );
     }
 
     #[test]

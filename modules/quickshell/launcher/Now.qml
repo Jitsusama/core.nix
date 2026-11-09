@@ -28,6 +28,7 @@ import "ForYou.js" as ForYou
 import "NowGroups.js" as Groups
 import "Order.js" as Order
 import "Moment.js" as Moment
+import "NeedsYou.js" as NeedsYou
 
 Provider {
     id: provider
@@ -359,22 +360,28 @@ Provider {
         return waitingSaid(waits.check ? "check" : waits.signal, { value: waits.value ?? "" });
     }
 
-    // Where and by when it's done, each where its owner said, and that
-    // nobody's watching it when only Joel can say it's done and the session
-    // that raised it has gone (VKCF3Z, 2026-10-30). An item that says none
-    // of it says why it waits, as one from a file older than that does.
-    function noteOf(each) {
+    // What an item's note tells beyond its title, worked out apart from the
+    // view (NeedsYou.js) from what this says in words: its times as the
+    // clock says them, the machine it's done on, whether anything will see
+    // it done, and its side, so its note never says the side again.
+    function toldOf(each) {
         const time = at => Number.isNaN(Date.parse(at ?? "")) ? "" : clocked(at);
-        const parts = [
-            time(each.at) === "" ? "" : waitingSaid("at", { time: time(each.at) }),
-            time(each.deadline) === "" ? "" : waitingSaid("by", { time: time(each.deadline) }),
-            typeof each.where?.machine === "string" && each.where.machine !== ""
-                ? waitingSaid("on", { machine: each.where.machine }) : "",
-            WaitingOnYou.watched(each) ? "" : waitingSaid("nobody", {})
-        ].filter(part => part !== "");
-        if (parts.length === 0 && each.v !== 2 && typeof each.why === "string")
-            return each.why;
-        return parts.join(" \u00b7 ");
+        return {
+            at: time(each.at),
+            by: time(each.deadline),
+            machine: typeof each.where?.machine === "string" ? each.where.machine : "",
+            watched: WaitingOnYou.watched(each),
+            side: sideOf(each),
+            now: Date.now()
+        };
+    }
+
+    // Where and by when it's done, each where its owner said, that nobody's
+    // watching it when only Joel can say it's done and the session that
+    // raised it has gone (VKCF3Z, 2026-10-30), led by its owner's words for
+    // when and ended by how long it's waited (VKCF3Z, 2026-11-07).
+    function noteOf(each) {
+        return NeedsYou.note(each, Words.of("on:waiting").said ?? {}, toldOf(each));
     }
 
     // Its drawer: where it's from and that it's a thing to do, its title,
@@ -480,6 +487,15 @@ Provider {
             return tells.person ?? "";
         const how = waitingSaid(done.check ? "check" : done.signal, { value: done.value ?? "" });
         return how === "" ? "" : (tells.known ?? "").replace("{how}", how);
+    }
+
+    // What its side says: for one not ready, what it waits for, else how
+    // long it takes.
+    function sideOf(each) {
+        const now = each.ready && !each.putOff;
+        return !now && waitsSaid(each) !== "" ? waitsSaid(each)
+            : typeof each.minutes === "number"
+            ? waitingSaid("minutes", { minutes: each.minutes }) : "";
     }
 
     // Where an item is done, by name: the session its window is, else the

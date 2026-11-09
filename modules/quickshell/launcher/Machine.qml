@@ -57,13 +57,21 @@ import QtQuick
 import "Heat.js" as Heat
 import "Interfaces.js" as Interfaces
 import "Machine.js" as Machine
+// Bytes as decimal to three digits, "12.3 GB", as what's told to a session
+// says them; it's the launcher's one such reading, kept there for networks.
+import "HomeNetwork.js" as HomeNetwork
 import "Numbers.js" as Numbers
 import "Order.js" as Order
+import "Holders.js" as Holders
+import "SessionRow.js" as SessionRow
 
 Provider {
     id: provider
 
     examples: ["cpu", "memory", "uptime", "disk speed"]
+
+    // What talking to a holder's session said, for the foot.
+    property string talked: ""
 
     // Each answer by the thing the vocabulary names it as (Words.qml),
     // whose words ask it, best first, whole and by their start
@@ -1030,6 +1038,37 @@ Provider {
             hue: "action"
         }, fields));
         const rows = [act("open", { run: () => Niri.spawn(["xdg-open", holder.path]) })];
+        // Each session it belongs to, at work on its quest or in its
+        // folder, the one that worked last first, told what Joel types and
+        // which folder and how much it's about, so it can clear its own
+        // (Joel: "talk to its session"); at its right its title and how it
+        // stands, as Agents says them, and absent where none is, never
+        // dimmed (VKCF3Z, 2026-11-08).
+        const talk = Words.of("verb:disk:talk");
+        const standing = Words.of("agents").said ?? {};
+        // The folder as the guard names it, "~/src/reef/target", as Joel reads it too.
+        const about = (talk.said?.about ?? "").replace("{path}", holder.name || holder.path)
+            .replace("{size}", HomeNetwork.bytes(holder.bytes, settings));
+        for (const session of Holders.owners(Sessions.running.concat(Sessions.parked),
+            holder)) {
+            const state = SessionRow.state(session.presence, Sessions.asks(session), false);
+            const sided = Holders.talkSide(session.title, String(standing[state] ?? ""));
+            rows.push(act("talk", {
+                key: `verb:disk:talk:${holder.path}:${session.address}`,
+                side: sided.map(item => item.said).join(" \u00b7 "),
+                sideItems: sided,
+                // The ask names who it's told to (VKCF3Z, 2026-11-08).
+                ask: (talk.ask ?? "").replace("{name}", session.title),
+                chip: session.title,
+                state: () => provider.talked,
+                given: words => {
+                    const said = `${words.trim()} ${about}`;
+                    if (words.trim() !== "" && Sessions.talk(session.address, said))
+                        provider.talked = (talk.said?.sent ?? "")
+                            .replace("{name}", session.title);
+                }
+            }));
+        }
         if (holder.ours) {
             const kept = holder.kept ?? null;
             const keeping = {

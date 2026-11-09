@@ -372,8 +372,7 @@ Provider {
     }
 
     function counted() {
-        const held = HeldTimers.timers.length;
-        return held === 0 ? "empty" : String(held);
+        return countedAs(HeldTimers.timers.length);
     }
 
     // What's typed after "timer", read, or null for anything else.

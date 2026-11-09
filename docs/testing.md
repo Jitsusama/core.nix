@@ -107,6 +107,11 @@ a minute is under 15%, and otherwise fails saying to run it again; the
 net tries its round again two minutes later. On 2026-11-07, with no
 builder answering, the net's evaluations and a session's ran here at up
 to 6.3 GB each, and held CPU pressure near 70% with Joel at the machine.
+The net's runs pass `--first`, which `nix-offload there` marks so a builder
+lets them into a free turn or one of two it keeps for them, ahead of
+sessions' runs waiting: on 2026-11-08 the net's comparison waited an hour
+behind sessions' gates and tested nothing. Only the net's own unit,
+`merge-net.service`, may ask; anyone else's `--first` is said and dropped.
 
 A check that passed at a commit isn't built again there, wherever it would
 go: each builder nix-offload lends starts with an empty store, so a check

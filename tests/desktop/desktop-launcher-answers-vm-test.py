@@ -1204,8 +1204,8 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
         assert any(it.startswith(read) for it in reads), (read, reads)
     # The clock steps into its figures, in order, each read from chronyd.
     clock = [
-        "Offset", "Frequency", "Skew", "Root Delay", "Root Dispersion", "Leap Second",
-        "Last Sync", "Next Poll",
+        "Offset", "RMS Offset", "Frequency", "Skew", "Stratum", "Root Delay",
+        "Root Dispersion", "Leap Second", "Last Sync", "Update Interval", "Next Poll",
     ]  # fmt: skip
     desktop.down_to("Clock")
     desktop.follow()
@@ -1223,7 +1223,8 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: shown["rows"][: len(servers)] == servers)
     desktop.down_to("time.harbour.test")
     assert desktop.showing()["selected"]["note"] == "chosen", desktop.showing()["selected"]
-    inside = ["Address", "Why", "Stratum", "Poll Interval", "Reach", "Last Sample", "Offset"]
+    # Its identifiers, its address among them, come last (Y2YBTS's review of #2303).
+    inside = ["Why", "Stratum", "Poll Interval", "Reach", "Last Sample", "Offset"]
     desktop.launcher_until(
         lambda shown: (
             shown["drawer"]["out"] is True
@@ -1231,6 +1232,8 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
             and shown["drawer"]["facts"][: len(inside)] == inside
         )
     )
+    facts = desktop.showing()["drawer"]["facts"]
+    assert facts.index("Address") > facts.index("Packets"), facts
     desktop.down_to("far.harbour.test")
     assert desktop.showing()["selected"]["note"] == "out of reach", desktop.showing()["selected"]
     desktop.down_to("time.harbour.test")
@@ -1238,7 +1241,6 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: shown["rows"][: len(inside)] == inside)
     reads = [str(thing["reads"]) for thing in desktop.showing()["things"]]
     for read in (
-        "Address \u00b7 127.0.0.1",
         "Why \u00b7 the clock is kept by it",
         "Stratum \u00b7 2",
         "NTP Version \u00b7 4",

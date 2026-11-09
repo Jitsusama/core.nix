@@ -1261,21 +1261,10 @@ Scope {
 
     function shownWalked(path, everyDrawer) {
         freshen();
-        const steps = String(path ?? "").split(catalogueStep).filter(said => said.trim() !== "");
-        let rows = home();
-        let things = true;
-        let among = true;
-        const trail = [];
-        for (const said of steps) {
-            const found = Showing.step(rows.filter(one => !!one && !one.gone), said,
-                one => steadyId(one));
-            if (!found.row)
-                return { missing: said, near: found.near, in: trail.map(one => one.name) };
-            trail.push(found.row);
-            among = things;
-            rows = catalogueHolds(found.row, things);
-            things = collects({ row: found.row });
-        }
+        const walked = walkedByName(String(path ?? "").split(catalogueStep));
+        if (walked.missing !== undefined)
+            return walked;
+        const { trail, rows, among } = walked;
         const ids = trail.map(one => steadyId(one));
         // Only the row the path names says its drawer, since a listed row's
         // would be built for every row a long place holds, for one show;
@@ -1307,6 +1296,137 @@ Scope {
         };
     }
 
+    // The rows steps name from home, each by its steady id or its name as
+    // Showing.step finds it, with what the last holds (`trail`, `rows`);
+    // or, where a step names nothing, that step, the names it might have
+    // meant and where it was looked for. An empty step is no step. `among`
+    // says whether the last was found among things, as asThing reads it.
+    function walkedByName(steps) {
+        let rows = home();
+        let things = true;
+        let among = true;
+        const trail = [];
+        for (const said of steps.filter(one => String(one).trim() !== "")) {
+            const found = Showing.step(rows.filter(one => !!one && !one.gone), said,
+                one => steadyId(one));
+            if (!found.row)
+                return { missing: said, near: found.near, in: trail.map(one => one.name) };
+            trail.push(found.row);
+            among = things;
+            rows = catalogueHolds(found.row, things);
+            things = collects({ row: found.row });
+        }
+        return { trail, rows, among };
+    }
+
+    // The rows a path of steady ids names from home, as walkedByName walks
+    // names, for the y a terminal gives (launcher do): each found by its id
+    // alone, so a row moved or gone since it was asked about is missed,
+    // said by the step it was typed as, and never done in another's place
+    // (Y2YBTS's review of #2421).
+    function walkedById(ids, steps) {
+        let rows = home();
+        let things = true;
+        let among = true;
+        const trail = [];
+        for (let at = 0; at < ids.length; at++) {
+            const found = rows.find(one => !!one && !one.gone && steadyId(one) === ids[at]);
+            if (!found)
+                return { missing: String(steps[at] ?? ids[at]), near: [],
+                    in: trail.map(one => one.name) };
+            trail.push(found);
+            among = things;
+            rows = catalogueHolds(found, things);
+            things = collects({ row: found });
+        }
+        return { trail, rows, among };
+    }
+
+    // Does what a terminal names (launcher do), asked as JSON, { steps,
+    // path, words, sure }, since qs takes no empty argument: its steps
+    // walked by name as show walks them, so it offers what : offers, each
+    // act of what it's in. One the line would ask about first, or that
+    // ends something, isn't done until the terminal says it's sure: it
+    // answers with the launcher's own question (`asks`), asked as the line
+    // asks it, naming what it's an act of, and the steady ids of what it
+    // asked about (`path`), which the sure ask walks instead. A place opens
+    // in the launcher, as the catalogue's run opens one.
+    function doneFromTerminal(asked) {
+        cataloguing = true;
+        try {
+            const said = JSON.parse(asked);
+            const steps = said.steps ?? [];
+            const path = Array.isArray(said.path) ? said.path : [];
+            freshen();
+            return doneWalked(path.length > 0 ? walkedById(path, steps) : walkedByName(steps),
+                said.words ?? "", said.sure === true);
+        } catch (error) {
+            return { error: String(error) };
+        } finally {
+            cataloguing = false;
+        }
+    }
+
+    // Does what's walked, as doneFromTerminal says; none walked, it's
+    // `nothing`, which the terminal says in its own words.
+    function doneWalked(walked, words, sure) {
+        if (walked.missing !== undefined)
+            return walked;
+        const trail = walked.trail;
+        if (trail.length === 0)
+            return { nothing: true };
+        const target = trail[trail.length - 1];
+        const holder = trail.length > 1 ? trail[trail.length - 2] : null;
+        const names = trail.map(one => one.name);
+        const ids = trail.map(one => steadyId(one));
+        console.info(`launcher: asked from a terminal to ${Catalogue.kindOf(target)}`
+            + ` ${names.join(" \u203a ")}`);
+        if (Catalogue.kindOf(target) === "place") {
+            open = true;
+            goTo({ trail: ids, spot: "" });
+            return { done: true, opened: true, in: names };
+        }
+        const act = returnOf(target);
+        const asking = CommandBinding.asking({ command: commandNamed(act).command }, [act],
+            { all: 1, bang: false }, Options.commands ?? {});
+        if (!sure && (asking.ask !== "" || Catalogue.disruptive(target) || actEnds(target))) {
+            // As the line asks it (commandAsked): a row that's its own act,
+            // as a window's Close, is an act of what holds it; any other is
+            // its own act's thing.
+            const of = act === target ? askedOfHolder(holder, target) : target;
+            return {
+                asks: Confirm.question([{ ends: act.ends || verbOf(act), asked: askedOf(act),
+                    name: act.askedAs || of.name, kind: kindOf(of), leaves: act.leaves ?? "" }],
+                    Words.field.operators ?? {}),
+                in: names,
+                path: ids
+            };
+        }
+        if (act.given) {
+            if (words === "")
+                return { takes: act.ask ?? "", in: names };
+            act.given(words);
+            return { done: true, in: names };
+        }
+        // As the catalogue's run does it, as Return would.
+        trials.picked(target, "", trail.length - 1);
+        if (act.stays) {
+            act.run();
+            return { done: true, in: names };
+        }
+        if (act.now)
+            act.run();
+        const shown = open;
+        open = false;
+        if (act.now)
+            return { done: true, in: names };
+        if (act.later)
+            runOnceGone(act, shown);
+        else
+            act.run();
+        return { done: true, in: names };
+    }
+
     // Whether a row holds more to show a step into, by what it is rather
     // than by making what it holds, so a place's rows are said without
     // asking each for its own, as a processor's would list every process.
@@ -1326,19 +1446,23 @@ Scope {
     // in lists what it holds; its word and a space step in from anywhere,
     // and what's typed after searches only inside it.
     readonly property var categories: Words.categories.map(category => {
+        // A place wears its own mark, as Machine wears the computer's, so
+        // home's places aren't one tag three times over (VKCF3Z,
+        // 2026-11-08); one the vocabulary gives none wears the tag.
+        const mark = Theme.glyph[category.glyph ?? ""] ?? Theme.glyph.category;
         const row = {
             key: `category:${category.id}`,
             name: category.name ?? category.id,
             verb: "open",
             plain: true,
             category: category,
-            glyph: Theme.glyph.category,
+            glyph: mark,
             hue: "voice",
             chord: [],
             side: "",
             chip: category.id,
             ask: "what in it?",
-            lead: Theme.glyph.category,
+            lead: mark,
             leadHue: "voice",
             // What it holds are things with verbs of their own, as a
             // collection's are.
@@ -2033,6 +2157,22 @@ Scope {
         return row?.returns ?? row;
     }
 
+    // An act's own words for its ask, where it has them (Confirm.question),
+    // as Reboot's "Reboot the Machine, Closing 12 Windows", read as it's
+    // asked, since what it closes changes.
+    function askedOf(act) {
+        const asked = typeof act?.asked === "function" ? act.asked() : act?.asked;
+        return typeof asked === "string" ? asked : "";
+    }
+
+    // What an act asked from its own row is an act of, for its ask: the
+    // thing holding it, as Disconnect's is the Keychron, but never a place,
+    // so Power's Reboot asks of itself rather than "Reboot Power" (VKCF3Z,
+    // 2026-11-08).
+    function askedOfHolder(holder, act) {
+        return holder && Catalogue.kindOf(holder) !== "place" ? holder : act;
+    }
+
     // The command a row is named by (Catalogue.js's named), from its words
     // or its verb, as the command line names its act, and the key
     // language's flags for it.
@@ -2081,8 +2221,12 @@ Scope {
     // whose off ends what it holds (its `ends`, Provider.qml), as Wi-Fi
     // Off's :set nowifi drops the network, where :set nomic ends nothing.
     function endsSomething(choice) {
-        if (!choice || !prompt.modal)
-            return false;
+        return !!choice && prompt.modal && actEnds(choice);
+    }
+
+    // Whether a row's act ends something, wherever it's asked from: a
+    // terminal's `launcher do` asks it with no line in normal mode.
+    function actEnds(choice) {
         const act = returnOf(choice);
         const named = commandNamed(act);
         const set = named.command === "set"
@@ -3807,9 +3951,10 @@ Scope {
             // The ask says the act's own verb, never the line's command,
             // and for an act the cursor is on, what it's an act of.
             const of = one => one.act === one.thing && held.length > 0
-                ? held[held.length - 1].row : one.thing;
+                ? askedOfHolder(held[held.length - 1].row, one.thing) : one.thing;
             const question = asked.ask === "some" ? fill(words.some)
                 : Confirm.questionParts(found.map(one => ({ ends: one.act.ends || verbOf(one.act),
+                    asked: askedOf(one.act),
                     name: one.act.askedAs || (of(one)?.name ?? ""), kind: kindOf(of(one)),
                     leaves: one.act.leaves ?? "" })),
                     Words.field.operators ?? {});
@@ -5526,6 +5671,7 @@ Scope {
         }
         const rowAt = at => at === -1 ? headline : matches[at];
         const named = endings.map(ending => ({ ends: ending.action.ends,
+            asked: askedOf(ending.action),
             name: ending.action.askedAs || (rowAt(ending.at)?.name ?? ""),
             kind: kindOf(rowAt(ending.at)),
             leaves: ending.action.leaves ?? "" }));
@@ -5927,6 +6073,11 @@ Scope {
         // for `launcher show` in a terminal, as JSON: the path's steps
         // joined by a "\u203a", each a row's name or its steady id, and
         // none for home.
+        // Does what a terminal names, as launcher do asks it.
+        function doing(asked: string): string {
+            return JSON.stringify(root.doneFromTerminal(asked));
+        }
+
         function show(path: string): string {
             return JSON.stringify(root.shownToTerminal(path, false));
         }

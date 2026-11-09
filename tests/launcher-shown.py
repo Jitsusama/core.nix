@@ -5,7 +5,7 @@
 GLOSSARY is docs/glossary.md, WORDS the launcher's vocabulary
 (modules/quickshell/launcher/words.json). Everything a row shows of a thing,
 a place or a command is read: its name, noun, what, ask, empty, said, sure,
-part and verb, each state's name, and a command's form and what it says. Any
+asked, part and verb, each state's name, and a command's form and what it says. Any
 that says a name the glossary replaces fails, printed with the word that
 replaces it, matched as tests/names.py matches names, unless its thing is
 listed below: as another sense of the word, or as a rename the launcher
@@ -32,7 +32,20 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 # Fields a row shows as they're written.
-SHOWN = ("name", "noun", "what", "ask", "empty", "said", "sure", "part", "verb", "form", "says")
+SHOWN = (
+    "name",
+    "noun",
+    "what",
+    "ask",
+    "empty",
+    "said",
+    "sure",
+    "asked",
+    "part",
+    "verb",
+    "form",
+    "says",
+)
 
 # Things whose word means something the glossary doesn't replace.
 OTHER_SENSE = {

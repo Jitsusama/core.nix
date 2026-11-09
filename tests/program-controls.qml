@@ -77,6 +77,9 @@ ShellRoot {
         id: theLauncher
 
         property bool open: false
+        // The row chosen, whose drawer shows; Applications ends a program's
+        // watch once it's off the program's row.
+        property var selected: null
         property var held: []
         property var belowChord: []
         property var sources: [notices, keys, giver]
@@ -569,13 +572,23 @@ ShellRoot {
             applications.readDesktop("tester");
             const described = program("tester").drawer();
             same("a program's drawer says where and what it is",
-                `${described.eyebrow}: ${described.title}`, "on 1 and 2 \u00b7 program: Tester");
+                `${described.eyebrow}: ${described.title}`,
+                "on 2 workspaces \u00b7 program: Tester");
             same("what it plays, then opens, then how it starts",
                 described.facts.map(fact => fact.label).join(", "),
                 "Playing, Opens, Handles, Categories, Command, Desktop ID");
-            same("what it opens, from its desktop file", described.facts[1].value,
-                "1 kind \u00b7 HTML");
-            same("its categories, as words", described.facts[3].value, "Office, Text Editor");
+            same("what it opens, from its desktop file", described.facts[1].value, "HTML");
+            same("its categories, as words", described.facts[3].value,
+                "Office \u00b7 Text Editor");
+            // Its processes are watched only while a program's row is the
+            // one selected (Applications.qml).
+            applications.treesWanted = [5151];
+            launcher.selected = program("tester");
+            same("a program's row keeps its processes watched",
+                applications.treesWanted.join(", "), "5151");
+            launcher.selected = { is: "media:playing" };
+            same("moving off it ends the watch", applications.treesWanted.join(", "), "");
+            launcher.selected = null;
             const played = media.targets();
             same("Media's acts, then what's playing", names(played),
                 "Pause, Next, Previous, Song of the test");

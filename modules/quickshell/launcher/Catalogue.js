@@ -276,14 +276,18 @@ function leading(row, inside, copyMark) {
 // no chord with Ctrl is needed for it (Joel, 2026-11-02: "all of those
 // ctrl keys do not feel very vim to me"). One already inside, by its verb
 // or its name, is moved first and closes rather than being said twice.
+// A row that always stays (`alwaysStays`), as a power profile does, keeps
+// the launcher from its step too: Return there never closes (Joel,
+// 2026-11-08, a profile picked from its step closed and was lost).
 function closingFirst(row, inside, copyMark) {
     const verb = verbOf(row);
     const said = verb.toLowerCase();
     const already = said === "" ? -1 : inside.findIndex(one => saysAct(one, said));
-    // It no longer keeps the launcher, but it changes what the row did.
+    // It no longer keeps the launcher, unless the row always does, but it
+    // changes what the row did.
     const act = Object.assign({}, already >= 0 ? inside[already]
         : ownAct(row, verb, copyMark),
-        { stays: false, changes: true });
+        { stays: row.alwaysStays === true, changes: true });
     return [act].concat(inside.filter((_one, at) => at !== already));
 }
 

@@ -11,6 +11,13 @@
 //! is one. ORIGIN is Slack's and PACE, in milliseconds, half a minute,
 //! unless a test names a stand-in and a quicker pace.
 //!
+//! In the same round, each message wanting Joel is read from its
+//! conversation's history once its unreads change, and said done once
+//! Slack's read mark passes it (lib's `messages`), so nothing more is
+//! asked of Slack than once a round, and nothing while nothing comes.
+//! The account says when those held are all there are, so one missing
+//! after a restart is known read.
+//!
 //! While Slack refuses the sign-in, signing in again waits on Joel in
 //! Needs You, through WAITING, a file of what waits on him as each
 //! quest's is (lib's `sign_in_waits`): written once Slack refuses, and
@@ -28,6 +35,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use slack_people::messages::Messages;
 use slack_people::unreads::{
     Conversation, Counted, Counts, Kind, Said, State, link, sign_in_waits,
 };
@@ -61,6 +69,7 @@ fn main() {
         .map_or(EVERY, Duration::from_millis);
     let credentials = PathBuf::from(credentials);
     let mut names = HashMap::new();
+    let mut messages = Messages::default();
     let mut misses = 0;
     loop {
         // The file is read each time, so signing in again from pi is
@@ -72,18 +81,28 @@ fn main() {
             continue;
         };
         let checked = millis();
-        let asked = slack
-            .counts(&account)
-            .and_then(|Counts { unread, recent }| {
-                Ok((
-                    named(&slack, &account, &mut names, unread)?,
-                    named(&slack, &account, &mut names, recent)?,
-                ))
-            });
+        let asked = slack.counts(&account).and_then(
+            |Counts {
+                 unread,
+                 recent,
+                 read,
+             }| {
+                let conversations = named(&slack, &account, &mut names, unread)?;
+                let recent = named(&slack, &account, &mut names, recent)?;
+                messages.heard(&slack, &account, &conversations, &read, checked)?;
+                Ok((conversations, recent))
+            },
+        );
+        // The messages wanting Joel are kept through Slack refusing or out
+        // of reach, since none was seen read (lib's `daemon::records`), but
+        // not said whole, since what came meanwhile isn't known.
         let none = |state| Said {
             state,
             conversations: Vec::new(),
             recent: Vec::new(),
+            messages: messages.raised(),
+            marks: messages.marks(),
+            whole: false,
         };
         let said = match asked {
             Ok((conversations, recent)) => {
@@ -92,6 +111,9 @@ fn main() {
                     state: State::Ok,
                     conversations,
                     recent,
+                    messages: messages.raised(),
+                    marks: messages.marks(),
+                    whole: messages.whole(),
                 })
             }
             Err(Refused::SignedOut) => Some(none(State::SignedOut)),

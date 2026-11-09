@@ -87,6 +87,15 @@ in
   MEM_ALLOC_PROFILING = no;
   MEM_ALLOC_PROFILING_ENABLED_BY_DEFAULT = option no;
 
+  # Check every indirect call in the kernel against the type of function
+  # it was meant to reach, so a corrupted function pointer can't send it
+  # elsewhere. On a processor with IBT, the kernel rewrites these checks
+  # into FineIBT as it boots, which costs less than kCFI's own. A failed
+  # check only warns for now, so a driver built outside the kernel that
+  # breaks the rule logs it rather than stopping the machine.
+  CFI = yes;
+  CFI_PERMISSIVE = yes;
+
   # Reboot ten seconds after a panic, rather than freeze until the power
   # button is held. The panic's record is in pstore by then.
   PANIC_TIMEOUT = freeform "10";

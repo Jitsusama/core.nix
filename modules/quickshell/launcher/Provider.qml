@@ -307,8 +307,14 @@ Scope {
     // What a collection's row at home says after its title: how many it
     // holds, grouped by thousands.
     function counted() {
-        const size = everything().length;
-        return size === 0 ? "empty" : String(size).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        return countedAs(everything().length);
+    }
+
+    // A count as the collection says one, grouped by thousands, with what
+    // it counts where its name doesn't say it (VKCF3Z, 2026-11-08: "78
+    // keys"), as Numbers.js's counted says it.
+    function countedAs(size) {
+        return Numbers.counted(size, collection);
     }
 
     // What a collection's row says below it while it's picked, as the

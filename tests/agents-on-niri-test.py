@@ -18,7 +18,9 @@ together and what they spent today, as spend-watch sums it. Two orchestrators th
 closed, stand dimmed at the tree's end, the one last live first, each saying what its
 orchestration spent today only where it spent anything, Return reopening it. A session closed
 this boot, its owner gone, stands alone in Recent, after Landed and before Start a Session,
-saying when it closed and where it ran.
+saying when it closed and where it ran. A folder the disk guard measured offers to talk to the
+session working in it, by its title and how it stands, and what Joel tells it reaches its inbox
+with the folder and its size.
 """
 
 from __future__ import annotations
@@ -653,3 +655,91 @@ def test_recent_holds_the_sessions_closed_this_boot_after_landed_and_before_star
     # Its note never says its name again, but where it ran.
     assert row["note"].endswith("\u00b7 tidepool"), row
     assert (row["verb"], row["told"][:1]) == ("reopen", ["\u21b5 reopen"]), row
+
+
+def guard_holds(status: Path, holder: Json) -> None:
+    """Write what the disk guard says, holding this one folder, whole, by rename as it does."""
+    filling = {"path": "/", "band": "pressure", "free": 5 * 2**30, "total": 30 * 2**30}
+    status.parent.mkdir(parents=True, exist_ok=True)
+    laid = status.with_suffix(".new")
+    laid.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "heartbeat": time.time() + 3600,
+                "filesystems": [filling],
+                "frozen": [],
+                "holders": [holder],
+                "holders_at": time.time(),
+            }
+        )
+    )
+    laid.rename(status)
+
+
+def test_a_folder_filling_the_disk_offers_to_talk_to_the_session_working_in_it(
+    shell: Shell,
+) -> None:
+    """A folder the guard measured offers its session, by title and state, told with its size."""
+    folder = STATE / "listen"
+    folder.mkdir(parents=True, exist_ok=True)
+    named = f"~/{folder.relative_to(Path.home())}"
+    status = Path(os.environ["XDG_RUNTIME_DIR"]) / "disk-guard" / "status.json"
+    guard_holds(
+        status,
+        {
+            "path": str(folder),
+            "name": named,
+            "bytes": 12_300_000_000,
+            "clears": 0,
+            "grew": None,
+            "owner": {"kind": "worktree", "name": "listen"},
+            "clearable": False,
+            "why": None,
+            "kept": None,
+            "says": f"{named} holds 11.5 GiB.",
+        },
+    )
+    inbox = STEER / "LISTEN"
+    try:
+        shell.answer("disk")
+        shell.step_in()
+        shell.type_in("filling", selecting="What's Filling It")
+        shell.step_in()
+        # The folder's row, named for what owns it, holds its parts.
+        held = f"machine:disk:holder:{folder}"
+        shell.launcher_until(lambda shown: shown["things"][0]["is"] == held)
+        shell.step_in()
+        shell.normal()
+        shell.launcher_until(lambda shown: "Talk to Its Session" in shown["rows"])
+        shell.down_to("Talk to Its Session")
+        assert shell.showing()["selected"]["side"] == "Listening Quest \u00b7 listening"
+        # Return asks what to tell it, by its name, and it's told that with the folder and
+        # its size.
+        shell.send_key("ret")
+        shell.launcher_until(lambda shown: shown["asking"])
+        asked = shell.showing()["hint"]
+        assert asked == "what to tell Listening Quest?", asked
+        shell.send_chars("clear what you built")
+        shell.send_key("ret")
+        shell.launcher_until(lambda shown: shown["footer"] == "told Listening Quest")
+        # The node names each steer's file itself, so what was told is found by its words.
+        deadline = time.monotonic() + 10
+        while not (told := talks(inbox)):
+            assert time.monotonic() < deadline, "nothing reached the session's inbox"
+            time.sleep(0.1)
+        said = f"clear what you built (The disk guard says {named} holds 12.3 GB.)"
+        assert [json.loads(one.read_text())["text"] for one in told] == [said]
+    finally:
+        status.unlink()
+        for one in talks(inbox):
+            one.unlink()
+
+
+def talks(inbox: Path) -> list[Path]:
+    """Give the steers in an inbox that told the session what the disk guard says."""
+    return [
+        one
+        for one in inbox.glob("*.json")
+        if "The disk guard says" in str(json.loads(one.read_text()).get("text", ""))
+    ]

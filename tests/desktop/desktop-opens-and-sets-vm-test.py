@@ -538,12 +538,15 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
 
 
 def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
-    """The launcher sets the power profile, staying to say so, or closing from a step in."""
+    """The launcher sets the power profile, staying to say so, from a step in too."""
     machine = desktop.machine
     # By its name, power saver last, where what follows starts from. Setting
     # it changes something, so Return keeps the launcher, the row saying
-    # it's chosen, and Ctrl+] then Return sets it and closes, with
-    # no other chord with Ctrl said anywhere.
+    # it's chosen, and Ctrl+] then Return does the same, never closing
+    # (Joel, 2026-11-08: a pick that closed the launcher was lost), with
+    # no other chord with Ctrl said anywhere. Each pick is said in the
+    # journal, and so is the daemon, read back, agreeing it's taken.
+    journal = "journalctl --user --unit=quickshell --no-pager --output=cat --since=-30s"
     for typed, profile, name, stepping in [
         ("balanced power", "balanced", "Balanced Power", False),
         ("power saver", "power-saver", "Power Saver", True),
@@ -568,11 +571,20 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
         machine.wait_until_succeeds(
             f"powerprofilesctl get | grep -qx {profile}", timeout=timedelta(seconds=10)
         )
-        if not stepping:
-            desktop.launcher_until(
-                lambda shown: shown["open"] and (shown["selected"] or {}).get("side") == "chosen"
+
+        # In the step, its act selected says nothing of its own, and stays.
+        def stays_open(shown: Json, stepped: bool = stepping) -> bool:
+            chosen = (shown["selected"] or {}).get("side") == "chosen"
+            return bool(shown["open"]) and (stepped or chosen)
+
+        desktop.launcher_until(stays_open)
+        option = profile.removeprefix("power-")
+        for line in [f"set power profile {option}", f"power profile {option} taken"]:
+            machine.wait_until_succeeds(
+                desktop.in_session(f"{journal} | grep -aqF 'launcher: {line}'"),
+                timeout=timedelta(seconds=10),
             )
-            desktop.close_launcher()
+        desktop.close_launcher()
         machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     # A profile that isn't balanced is a mode left on, so Now lists it,
     # saying which.
@@ -589,7 +601,8 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
     desktop.close_launcher()
     # And as the setting it is: one part saying which is chosen, its
     # choices a step in by Return or Ctrl+], each named there as
-    # the part reads it.
+    # the part reads it. Balanced is reached by the arrows, as Joel does,
+    # and Return on it stays.
     for follows, profile, name, was in [
         (False, "balanced", "Balanced", "Power Saver"),
         (True, "power-saver", "Power Saver", "Balanced"),
@@ -604,8 +617,13 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
         else:
             desktop.follow()
         desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Power Saver", "Balanced"])
-        desktop.type_in(name.split()[0][:3].lower(), selecting=name)
-        desktop.land()
+        # Typed, Return on the find lands first; by the arrows, in normal,
+        # it does it at once.
+        if follows:
+            desktop.type_in(name.split()[0][:3].lower(), selecting=name)
+            desktop.land()
+        else:
+            desktop.down_to(name)
         machine.send_key("ret")
         machine.wait_until_succeeds(
             f"powerprofilesctl get | grep -qx {profile}", timeout=timedelta(seconds=10)

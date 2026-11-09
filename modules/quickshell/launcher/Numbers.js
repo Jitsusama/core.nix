@@ -111,6 +111,17 @@ function significant(value, group, point) {
     return `${whole}${point ?? "."}${(fraction ?? "").padEnd(places, "0")}`;
 }
 
+// How many a collection holds, as its words say one and many, the figure
+// grouped in threes: "1 key", "1,204 keys", or the bare figure where they
+// say it so (Provider.qml's countedAs). Holding none, it's "empty".
+function counted(count, said) {
+    if (count === 0) {
+        return "empty";
+    }
+    const way = (count === 1 ? said?.one : said?.many) ?? "{count}";
+    return way.replace("{count}", format(count, 0));
+}
+
 // A place in a line as it's said: 1 as "1st", 12 as "12th", 22 as "22nd".
 function ordinal(place) {
     const tens = place % HUNDREDS;

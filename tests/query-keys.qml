@@ -272,6 +272,12 @@ QtObject {
         holds("and one whose name begins with its verb by its name alone",
             Confirm.question([{ ends: "forget", name: "Forget the Clipboard" }], asking),
             "Forget the Clipboard? (y/n)");
+        // An act with words of its own is asked in them, its thing and
+        // what it ends, never the place it's in (VKCF3Z, 2026-11-08).
+        holds("and one with its own words in them whole",
+            Confirm.question([{ ends: "reboot", name: "Power", kind: "place",
+                asked: "Reboot the Machine, Closing 12 Windows" }], asking),
+            "Reboot the Machine, Closing 12 Windows? (y/n)");
         holds("and one that says what it leaves says so before y/n, as a sentence",
             Confirm.question([Object.assign({ leaves: "its worktree stays." },
                 closing("Lamplight"))], asking), "Close Lamplight? Its worktree stays. (y/n)");
@@ -1001,9 +1007,10 @@ QtObject {
 
     // A value given as items laid on lines no wider than the drawer's
     // measure, each letter ten wide here: wrapped between items, never
-    // inside one, the dot ending the line it leaves; a path too wide for a
-    // line of its own giving way from its middle; any other item running on
-    // (VKCF3Z, 2026-11-08: nothing draws past its frame).
+    // inside one, the dot ending the line it leaves and measured with it; a
+    // path too wide for a line of its own giving way from its middle; any
+    // other item from its own (VKCF3Z, 2026-11-08: nothing draws past its
+    // frame).
     function drawerValueLines(holds) {
         const width = text => text.length * 10;
         const disk = [
@@ -1018,33 +1025,64 @@ QtObject {
                 ["/nix +9.66 GB \u00b7 /var +537 MB"]],
             ["items too wide together wrap between them, the dot ending the first", disk,
                 " \u00b7 ", 150, ["/nix +9.66 GB \u00b7", "/var +537 MB"]],
+            ["an item that fits only without the dot ending its line gives way to hold it",
+                disk, " \u00b7 ", 140, ["/nix +\u202666 GB \u00b7", "/var +537 MB"]],
+            ["the last item needs no room for a dot", [{ said: "on" }, { said: "/var +537 MB" }],
+                " \u00b7 ", 120, ["on \u00b7", "/var +537 MB"]],
             ["a command's arguments wrap at the space between them, a path from its middle",
                 command, " ", 200, ["/\u2026/firefox", "--private-window"]],
             ["a path inside an item gives way and leaves the rest whole",
                 [{ said: `${store} +9.66 GB`, path: store }], " \u00b7 ", 150,
                 ["/\u2026/def +9.66 GB"]],
-            ["an item naming no path runs on by its words",
-                [{ said: "--a-very-long-argument" }], " ", 100, ["--a-very-long-argument"]],
-            ["an empty item is left out", [{ said: "" }, { said: "on" }], " ", 100, ["on"]]
+            ["an item naming no path gives way from its own middle",
+                [{ said: "--a-very-long-argument" }], " ", 100, ["--a-v\u2026ment"]],
+            ["a path still too wide in its shortest form gives way from its middle too",
+                [{ said: firefox, path: firefox }], " ", 80, ["\u2026/fi\u2026fox"]],
+            ["an empty item is left out", [{ said: "" }, { said: "on" }], " ", 100, ["on"]],
+            ["an emoji in its middle is kept whole or left out, never split",
+                [{ said: "ab\ud83c\udf89cdefgh" }], " ", 60, ["ab\u2026gh"]]
         ];
         for (const [what, items, between, wide, want] of cases)
             holds(`a drawer's value: ${what}`, Page.valueLines(items, between, wide, width), want);
+        // A list alone in a value, on one line, giving way to a tail.
+        const kinds = ["PDF", "HTML", "PNG", "JPEG"].map(said => ({ said }));
+        const lines = [
+            ["a list that fits is every item a dot apart", kinds, 300,
+                ["PDF \u00b7 HTML \u00b7 PNG \u00b7 JPEG"]],
+            ["one that doesn't gives way by whole items from its end to the tail", kinds, 200,
+                ["PDF \u00b7 HTML \u00b7 2 more"]],
+            ["where not one item fits beside it, the tail alone", kinds, 60, ["4 more"]],
+            ["nothing to list is no line", [], 200, []]
+        ];
+        for (const [what, items, wide, want] of lines)
+            holds(`a drawer's list: ${what}`, Page.valueLine(items, "{count} more", wide, width),
+                want);
+        // What's measured beside a name, to choose a table or a list.
+        const opens = { value: kinds.map(kind => kind.said).join(" \u00b7 "), valueItems: kinds,
+            tail: "{count} more" };
+        holds("a list with a tail is measured as the line it's drawn on, never whole",
+            Page.besideText(opens, 200, width), "PDF \u00b7 HTML \u00b7 2 more");
+        holds("any other value is measured whole", Page.besideText({ value: 42,
+            valueItems: kinds, between: " " }, 60, width), "42");
     }
 
-    // How tall a drawer's preview stands, on a pitch of 24: a picture its
-    // own height, so the facts start the groups' gap below it rather than
-    // below a band rounded up to the pitch (VKCF3Z, 2026-11-08); lines
-    // whole lines of the pitch.
+    // How tall a drawer's preview stands, on a pitch of 24, two beats of
+    // 12, with groups 20 apart: so the facts after it start on the first
+    // beat at least the groups' gap below a picture, never a band rounded up
+    // to the pitch (VKCF3Z, 2026-11-08); lines whole lines of the pitch.
     function drawerPreviewHeights(holds) {
+        const grid = { pitch: 24, beat: 12, gap: 20 };
         // [what, the picture's height, lines of words, what it stands]
         const previews = [
-            ["a picture shorter than a pitch line stands its own height", 12, 0, 12],
-            ["a picture stands its own height, never rounded up to the pitch", 100.2, 0, 101],
+            ["a picture and its gap ending on a beat stand no more", 100, 0, 96],
+            ["a picture whose gap ends past a beat stands to the next", 100.2, 0, 108],
+            ["a picture is never rounded up to the pitch", 105, 0, 108],
+            ["a short picture keeps the whole gap", 12, 0, 12],
             ["lines stand whole lines of the pitch", 0, 3, 72],
             ["nothing yet stands nothing", 0, 0, 0]
         ];
         for (const [what, picture, lines, want] of previews)
-            holds(`a drawer's preview: ${what}`, Page.previewHeight(picture, lines, 24), want);
+            holds(`a drawer's preview: ${what}`, Page.previewHeight(picture, lines, grid), want);
     }
 
     function drawerRefusals(holds) {

@@ -1251,6 +1251,7 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
         desktop.shoot(f"launcher-plate-zone-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
         warmth_shown(desktop, scale)
+        clock_plate_shown(desktop, scale)
 
 
 def home_network_plate(desktop: Desktop, scale: str, title: str) -> None:
@@ -1549,6 +1550,31 @@ def warmth_shown(desktop: Desktop, scale: str) -> None:
             desktop.close_launcher()
     finally:
         desktop.as_account(f"echo '{{}}' > {note}")
+
+
+def clock_plate_shown(desktop: Desktop, scale: str) -> None:
+    """See the clock's plate: via the server it's kept by, titled Clock, its state left out.
+
+    Its eyebrow is the server it's kept via, set as written, and its title its name; its state
+    stays its row's side (VKCF3Z, 2026-11-07).
+    """
+    desktop.answer("time")
+    desktop.follow()
+    desktop.launcher_until(lambda shown: "Clock" in shown["rows"])
+    desktop.down_to("Clock")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["drawer"]["out"] is True
+            and shown["drawer"]["title"] == "Clock"
+            and len(shown["drawer"]["lines"]["facts"]) > 1
+        )
+    )
+    drawer = plate_shown(desktop, scale)
+    assert drawer["eyebrow"] == "via time.harbour.test", f"at {scale} the clock: {drawer}"
+    assert drawer["eyebrowNames"] is True, f"at {scale} the server is re-cased: {drawer}"
+    assert drawer["laidOneWay"], f"at {scale} its facts mix beside and under: {drawer}"
+    desktop.shoot(f"launcher-plate-clock-at-{scale.replace('.', '-')}")
+    desktop.close_launcher()
 
 
 def test_nows_plate_sets_its_head_and_groups_as_every_plate(
