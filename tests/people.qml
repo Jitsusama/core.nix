@@ -210,6 +210,12 @@ ShellRoot {
                     return row.drawer !== shown;
                 });
                 expect("no drawer made with everyone", eager.length === 0, names(eager));
+                // A person's insides ask every source, so Ctrl+]'s look for
+                // where a row lives never goes inside one (Catalogue.js's
+                // followsInto), which a person's row says by being parted.
+                const whole = people.everyone().filter(row => row.parted !== true);
+                expect("everyone's row is parted, so no look makes their insides",
+                    whole.length === 0, names(whole));
             }
         },
         seeking("hal", "one with no email", () => {

@@ -34,9 +34,12 @@ MANY_ROWS = 20
 # How long a program's Return may take from the launcher hearing it to handing it on: less than
 # the 300 ms a doubled Return is waited out (Options.keyTiming.wait), so none is.
 FRESH_RETURN_MS = 300
-# How long a slice of the walk for where every row lives may run, in ms (Launcher.qml's
-# livesSlice): a walk no longer than one may be made in one.
-SLICE = 3
+# How many rows Ctrl+]'s look for where a row lives may list before it gives up (Launcher.qml's
+# livesMost).
+LIVES_MOST = 3000
+# The Ctrl+] presses walk_the_rows_follows makes, each a look: two from home and one in Lock's
+# own place. Ctrl+I follows the jump list, not the row, so it looks for nothing.
+FOLLOWS = 3
 
 
 @pytest.fixture(scope="module")
@@ -1155,15 +1158,6 @@ def walk_the_rows_follows(desktop: Desktop) -> None:
             ": commands" in shown["selected"]["told"] and "Tab in" not in shown["selected"]["told"]
         )
     )
-    # Where every row lives is walked once the launcher is quiet, off every key, and kept
-    # until a provider's rows change: its time is said here for the reviewer to read. It's
-    # walked in slices a frame apart, so a key typed meanwhile waits on one slice, never the
-    # whole walk, which on Joel's rows landed as he typed his first letters.
-    desktop.launcher_until(lambda shown: shown["livesWalked"] is not None)
-    shown = desktop.showing()
-    walked, longest = shown["livesWalked"], shown["livesLongest"]
-    print(f"Where every row lives was walked in {walked} ms, its longest slice {longest} ms")
-    assert walked <= SLICE or longest < walked, f"the walk took {walked} ms in one slice"
     # Where it lives is read from the first follow and held to after, so the walk says the
     # place is the same each time without naming the catalogue's crumbs.
     lives: list[object] = []
@@ -1217,9 +1211,10 @@ def walk_the_rows_follows(desktop: Desktop) -> None:
         lambda shown: shown["command"] is None and shown["commandSaid"] == "E73: Tag stack empty"
     )
     desktop.close_launcher()
-    # Each Ctrl+] with no parts to go into looks for the row's own place, or none, in where
-    # every row lives, walked before any press: the trace holds how long each look took,
-    # said here for the reviewer to read, and that none made the walk on its key.
+    # Each Ctrl+] with no parts to go into looks for the row's own place from home on its key,
+    # nothing walked before: the trace holds each look's ms and the rows it listed and made,
+    # said here for the reviewer to read. Lock lives deepest of the kinds Ctrl+] looks for,
+    # found from home two places down, and each look found it within its budget.
     spans: list[Json] = json.loads(desktop.as_account("qs ipc call launcher traced"))
     opening = [span for span in spans if span["name"] == "open"][-1]
     looks = [
@@ -1227,13 +1222,14 @@ def walk_the_rows_follows(desktop: Desktop) -> None:
         for span in spans
         if span["trace"] == opening["trace"]
         and span["name"] == "follow"
-        and "walked" in span["about"]
+        and "took" in span["about"]
     ]
-    walks = [look["walked"] for look in looks]
-    print(f"Ctrl+] looked for its place in {walks} ms")
-    assert all(isinstance(walked, int) for walked in walks), walks
-    made = [look["indexed"] for look in looks]
-    assert made == [False, False, False], f"a look made the walk on its key: {made}"
+    said = [(look["took"], look["listed"], look["made"]) for look in looks]
+    print(f"Ctrl+] looked for its place in (ms, rows listed, rows made): {said}")
+    assert len(looks) == FOLLOWS, looks
+    assert all(isinstance(look["took"], int) for look in looks), looks
+    assert all(0 < look["listed"] <= LIVES_MOST for look in looks), looks
+    assert not any(look["spent"] for look in looks), f"a look gave up: {looks}"
 
 
 def walk_a_found_program_follows(desktop: Desktop) -> None:

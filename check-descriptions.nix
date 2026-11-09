@@ -2981,11 +2981,10 @@
   '';
   vm-desktop-launcher-keeps-up = ''
     an arrow held at 30 a second at home, in Agents and in Programs, at scales 2 and 1.5, while
-    300 sessions and 2,000 people change, makes no rows for a source the place doesn't show and
-    none at all while they're frozen, but for the walk of where rows live, which makes at most
-    one laying out of the sessions a turn; refreshes the list at most four times a second and
-    never on a key's path; and keeps nineteen handlers in twenty, and its middle key to its
-    frame, within twice their times with the changes frozen and a little more
+    300 sessions and 2,000 people change, makes no rows for a source the place doesn't show,
+    none at all while they're frozen, and none looking for where rows live with no Ctrl+]
+    pressed; refreshes the list at most four times a second and never on a key's path; and
+    composes it no more often than it refreshes, drawing no row afresh while they're frozen
   '';
   vm-desktop-launcher-moves-windows = ''
     the launcher opens kitty and learns it was meant, frames the focused window, switches to and

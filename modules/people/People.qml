@@ -272,6 +272,12 @@ Provider {
             later: true,
             verb: "more",
             stays: true,
+            // A person's insides ask every source and are found only from
+            // inside them, so Ctrl+]'s look for where a row lives never
+            // makes them (Catalogue.js's followsInto): the walk that kept
+            // where every row lived made 18,693 of People's 19,461 rows at
+            // home in Joel's morning (2026-11-09).
+            parted: true,
             run: () => provider.launcher?.enter(row),
             verbs: () => provider.inside(person),
             targets: () => provider.inside(person)

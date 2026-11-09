@@ -680,7 +680,6 @@ Scope {
     property int choicesJoined: 0
     function stale() {
         choicesStale = true;
-        forgetLives();
         if (open)
             Qt.callLater(freshen);
     }
@@ -3413,79 +3412,52 @@ Scope {
         tagsBack = [];
     }
 
-    // Where every row lives, by its steady id, so Ctrl+] only looks its
-    // row up: the walk took 20 to 85 ms in the VM, against a key's 4 ms
-    // (Y2YBTS, 2026-11-05). It's walked while the launcher is open, once
-    // the list has been quiet a moment, and kept until a provider's rows
-    // change. Joel's rows change on most openings, so it's walked in
-    // slices of a few ms a frame apart: walked whole, it landed just as he
-    // typed his first letters, and keys 0.3 to 1 s after an opening took a
-    // median 33 to 51 ms, against 14 to 25 before it (2026-11-07, from his
-    // traces). A press before it's done walks the rest on its key, which
-    // its trace says (`indexed`).
-    property var followIndex: null
-    // The walk under way, or null.
-    property var livesWalk: null
-    // How long the last walk took, its slices together, and its longest
-    // slice, in ms, or null while it's to be made.
-    property var livesWalked: null
-    property var livesLongest: null
-    // How long a slice of the walk may run, in ms, inside a key's 4.
-    readonly property int livesSlice: 3
-    // The rows each source has made for the walk, by its name, for the
-    // check that tells them from what a key made: the walk lays out a
-    // place it walks, as Agents' sessions, once the list is quiet, never
-    // on a key. A plain object, so adding to it notifies nothing.
+    // The rows each source has made looking for where a row lives, by its
+    // name, for the check that tells them from what a key made: only a
+    // Ctrl+] press looks (livesOf), so with none pressed it's none. A
+    // plain object, so adding to it notifies nothing.
     readonly property var livesMade: ({})
+    // How many rows one look may list before it gives up, saying the row
+    // isn't found here: the look is the key's own work, so it's bounded
+    // rather than left to hold the key (Y2YBTS, 2026-11-09). Joel's home
+    // places listed 344 rows between them, People's 117 the most (the
+    // `names` call, 2026-11-09), and a count rather than a time keeps the
+    // VM's slow drawing from cutting it short.
+    readonly property int livesMost: 3000
 
-    function livesFor(id) {
-        if (followIndex === null)
-            walkLives(Infinity);
-        return followIndex[id] ?? null;
-    }
-
-    // Carries the walk on until `until`, in ms since the epoch, beginning
-    // it if none is under way; true once it's done.
-    function walkLives(until) {
-        const walking = Date.now();
+    // Where the row `id` lives, looked for on the press that asks
+    // (Catalogue.js's livesOf) rather than kept for every row: kept, it was
+    // walked again on most openings and after each provider's change, and
+    // made 18,693 of People's 19,461 rows and 5,876 of Agents' 9,865 at
+    // home in Joel's morning, so keys landed behind it (2026-11-09). The
+    // look goes through places first, what home's categories and
+    // collections list, where a notice's program or Do Not Disturb lives,
+    // and only then on into the things it set aside, each row listed and
+    // counted against the budget once. It never goes into a place
+    // that says itself at home, as Agents does, whose rows wait to be
+    // wanted (Wanted.js), nor a person's insides, which ask every source
+    // (People.qml's `parted`). It says `path`, by steady ids from home or
+    // null, the rows it listed and made and its ms, and whether it gave up.
+    function livesOf(id) {
+        const looking = Date.now();
         const before = tallies();
-        const ways = {
+        const said = Catalogue.livesOf(home(), id, {
             idOf: one => steadyId(one),
             holds: (one, above) => catalogueHolds(one,
                 above === null || collects({ row: above })),
-            spent: () => Date.now() >= until
-        };
-        if (livesWalk === null)
-            livesWalk = Object.assign(Catalogue.livesBegun(home(), ways), { took: 0, longest: 0 });
-        const walk = livesWalk;
-        const done = Catalogue.livesOn(walk, ways);
+            enters: one => one.from?.saysAtHome !== true,
+            first: one => Catalogue.isPlace(one),
+            spent: listed => listed > livesMost
+        });
         const after = tallies();
-        for (const name of Object.keys(after))
-            livesMade[name] = (livesMade[name] ?? 0) + after[name] - (before[name] ?? 0);
-        const took = Date.now() - walking;
-        walk.took += took;
-        walk.longest = Math.max(walk.longest, took);
-        if (done) {
-            followIndex = walk.at;
-            livesWalk = null;
-            livesWalked = walk.took;
-            livesLongest = walk.longest;
+        let made = 0;
+        for (const name of Object.keys(after)) {
+            const more = after[name] - (before[name] ?? 0);
+            livesMade[name] = (livesMade[name] ?? 0) + more;
+            made += more;
         }
-        return done;
-    }
-
-    function walkSlice() {
-        if (open && followIndex === null && !walkLives(Date.now() + livesSlice))
-            livesSliced.restart();
-    }
-
-    function forgetLives() {
-        followIndex = null;
-        livesWalk = null;
-        livesWalked = null;
-        livesLongest = null;
-        if (open)
-            livesLater.restart();
+        return { path: said.path, listed: said.listed, made: made, took: Date.now() - looking,
+            spent: said.spent };
     }
 
     // A row whose side runs on, as a running stopwatch's count, says it as
@@ -3505,21 +3477,6 @@ Scope {
         onTriggered: root.tenth = Date.now()
     }
 
-    Timer {
-        id: livesLater
-
-        interval: 300
-        onTriggered: root.walkSlice()
-    }
-
-    // A frame between slices, so what's drawn and typed comes between.
-    Timer {
-        id: livesSliced
-
-        interval: 16
-        onTriggered: root.walkSlice()
-    }
-
     // Ctrl+] goes to the row's own place, as Vim follows a tag (VKCF3Z,
     // 2026-11-05): first wherever followed() takes it, as the old step in
     // by l did, so a row that holds more goes into its parts, as the
@@ -3528,10 +3485,11 @@ Scope {
     // commands, not parts (VKCF3Z, 13:07), goes to that place, onto it
     // there. A row Return takes elsewhere, a spot or a program's act found
     // from home, keeps where it lives; a notice lives as its sender, its
-    // program's row; any other is walked for from home (Catalogue.js's
-    // lives). The place left goes on the tags' way back, as Vim's tag
-    // stack keeps it, and goTo puts it once on the jump list, as a tag is
-    // one jump in Vim, not one a step (oneJump). A row with none says so.
+    // program's row; any other is looked for from home, on the key
+    // (livesOf), saying it isn't here if the look gives up. The place left
+    // goes on the tags' way back, as Vim's tag stack keeps it, and goTo
+    // puts it once on the jump list, as a tag is one jump in Vim, not one
+    // a step (oneJump). A row with none says so.
     function follow(row) {
         const live = row && !row.gone ? row : null;
         const came = { held: held, here: here() };
@@ -3540,15 +3498,15 @@ Scope {
             tagsBack = tagsBack.concat([came]);
             return;
         }
-        // The look's own time goes in the trace, found or not, since it
-        // runs on the key, and whether it made the walk, which the first
-        // an open does.
-        const walking = Date.now();
-        const unwalked = followIndex === null;
-        const spot = live ? followedTo(live) : null;
+        // The look goes in the trace, found or not, since it runs on the
+        // key: its ms, the rows it listed and made, and whether it gave up.
+        const to = live ? followedTo(live) : { spot: null, look: null };
+        const spot = to.spot;
         if (live)
-            traces.began("follow", { from: held.length, to: spot ? spot.trail.length : null,
-                walked: Date.now() - walking, indexed: unwalked && followIndex !== null });
+            traces.began("follow", Object.assign({ from: held.length,
+                to: spot ? spot.trail.length : null }, to.look === null ? {} : {
+                took: to.look.took, listed: to.look.listed, made: to.look.made,
+                spent: to.look.spent }));
         if (spot === null) {
             say([[hintKey("follow"), (Words.field.hints ?? {}).notHere ?? ""]]);
             return;
@@ -3557,13 +3515,14 @@ Scope {
         tagsBack = tagsBack.concat([came]);
     }
 
-    // Where Ctrl+] goes from a row, by steady ids, or null where it lives
-    // nowhere but here.
+    // Where Ctrl+] goes from a row (`spot`), by steady ids, or null where it
+    // lives nowhere but here or the look gave up, and the look made for it
+    // (`look`, as livesOf says), or null where the row says where it lives.
     function followedTo(row) {
         const own = row.trail !== undefined ? { trail: row.trail, spot: row.spot } : row.inside;
-        const path = own ? own.trail.concat([own.spot])
-            : livesFor(row.follows || steadyId(row));
-        return Catalogue.followed(path, held.map(step => steadyId(step.row)));
+        const look = own ? null : livesOf(row.follows || steadyId(row));
+        const path = own ? own.trail.concat([own.spot]) : look.path;
+        return { spot: Catalogue.followed(path, held.map(step => steadyId(step.row))), look };
     }
 
     // Ctrl+T: back to the place Ctrl+] left last, as it was left, as Vim's
@@ -4622,15 +4581,26 @@ Scope {
             for (const source of due)
                 Report.say(`refresh of ${source.settings.name} began ${refreshedAt}`);
         refreshing = [];
-        // Each a span of the opening (Traces.qml), saying which source
-        // changed, how long its refresh took by the shell's clock, and how
-        // many rows the list held after (Y2YBTS, 2026-11-07).
-        for (const source of due) {
+        // The list is shown again once for every source that changed it,
+        // not once each: at home, sessions and people changing together
+        // composed it twice a refresh (keeps-up, 48 times in 46 refreshes,
+        // 2026-11-09).
+        const done = due.map(source => {
             const startedAt = Date.now();
             const started = KeyTimes.now();
-            refreshNow(source);
-            traces.did("refresh", startedAt, { source: source.settings.name,
-                tookMs: KeyTimes.now() - started, rows: matches.length, depth: held.length });
+            const shown = refreshNow(source);
+            return { source, startedAt, shown, tookMs: KeyTimes.now() - started };
+        });
+        if (done.some(one => one.shown))
+            reshow(held.length);
+        // Each a span of the opening (Traces.qml), saying which source
+        // changed, how long its own work took by the shell's clock, and how
+        // many rows the list held after (Y2YBTS, 2026-11-07).
+        for (const one of done) {
+            if (one.shown)
+                Report.say(`refreshed ${one.source.settings.name}`);
+            traces.did("refresh", one.startedAt, { source: one.source.settings.name,
+                tookMs: one.tookMs, rows: matches.length, depth: held.length });
         }
         actsRefreshed(due, begun);
         heldAgreed(due);
@@ -4779,9 +4749,12 @@ Scope {
         id: becomingDue
         onTriggered: root.becameLate()
     }
+    // Whether what's shown is to be said again for the source, which
+    // refreshDue does once for all of them; the steps held are made again
+    // here, each source's on the last's.
     function refreshNow(source) {
         if (!open || asking)
-            return;
+            return false;
         // Out at the top, a row the search found from it is said again in
         // place, so a setting Return changed shows how it stands now
         // (Joel, 2026-10-26: an act that changes something stays open and
@@ -4800,13 +4773,9 @@ Scope {
             // never showed until they changed (2026-11-07, the picker's
             // Drive save in vm-desktop-opens-files, core #2148).
             const home = typed.trim() === "" && collections.includes(source);
-            if (home || typed.trim() !== "" && (matches.some(row => row.endedBy === source
+            return home || typed.trim() !== "" && (matches.some(row => row.endedBy === source
                 || row.key === `collection:${source.settings.name}`
-                || source.things.some(own => own.key === row.key)) || reaches(source))) {
-                reshow(0);
-                Report.say(`refreshed ${source.settings.name}`);
-            }
-            return;
+                || source.things.some(own => own.key === row.key)) || reaches(source));
         }
         const from = held.findIndex(step => step.row.from === source);
         const ofSource = step => !!step.row.category && holdsFrom(step.row.category, source);
@@ -4830,17 +4799,16 @@ Scope {
             : source.things.some(found) ? source.things : source.looksThrough();
         const top = fromTop && own.some(found);
         if (from < 0 && !top && !held.some(ofSource))
-            return;
+            return false;
         const steps = held.map(step => ofSource(step) ? Object.assign({}, step, {
             rows: Steady.kept(step.rows, members(step.row.category), pairedId)
                 .map(row => heldBack(step.row.category, row))
         }) : step);
         const above = top ? own : from < 0 ? [] : source.everything();
         if (!remade(steps, top ? 0 : from < 0 ? held.length : from + 1, above))
-            return;
+            return false;
         held = steps;
-        reshow(steps.length);
-        Report.say(`refreshed ${source.settings.name}`);
+        return true;
     }
 
     // Each step from `from` on made again from the rows the one above it
@@ -5096,8 +5064,6 @@ Scope {
     // The list has settled: the spans waiting on it end, with how it's laid.
     function settledNow() {
         traces.settled(laidNow());
-        if (open && followIndex === null)
-            livesLater.restart();
     }
 
     // Where the list lays its rows now, for the spans waiting on it to
@@ -6367,13 +6333,16 @@ Scope {
 
         // How many rows each source has made since the shell started, by
         // its name, and how many times the open launcher has refreshed,
-        // how many changes it took as a key's own, and the rows made for the
-        // walk of where rows live (livesMade), for the check that a source
-        // nobody sees makes none, the list refreshes at most four times a
-        // second, and an arrow takes no change as its own.
+        // how many changes it took as a key's own, the rows Ctrl+]'s looks
+        // for where a row lives made (livesMade), and how often the list was
+        // composed and how many rows were drawn afresh, for the check that a
+        // source nobody sees makes none, the list refreshes at most four
+        // times a second, and an arrow takes no change as its own, composes
+        // nothing and draws no row afresh.
         function made(): string {
             return JSON.stringify({ rows: root.tallies(), refreshes: root.refreshesDone,
-                keyed: root.refreshesKeyed, walked: root.livesMade });
+                keyed: root.refreshesKeyed, walked: root.livesMade, composed: root.rowsMade,
+                drawn: root.rowsDrawn });
         }
 
         // How many frames the card has drawn since this was first asked,
@@ -6754,10 +6723,6 @@ Scope {
             jumps: { back: root.jumpsBack.length, ahead: root.jumpsAhead.length },
             // And those Ctrl+] left, which Ctrl+T comes back through.
             tags: root.tagsBack.length,
-            // How long where every row lives took to walk, and its longest
-            // slice, or null.
-            livesWalked: root.livesWalked,
-            livesLongest: root.livesLongest,
             caret: prompt.caret,
             // A question asked once in the line's place, or "", and
             // whether it takes keys yet: those in its first moment don't.

@@ -5,9 +5,11 @@ many sessions and people as his machine knows keep changing: 300 stand-in sessio
 changing each beat, and 2,000 people said anew every 0.3 s. Joel felt it (2026-11-08 19:58):
 "weird lag can happen, and it just feels hacky and without polish", and one opening on his shell
 made 6,933 rows, most for places nobody looked at. In each place a source nobody sees makes no
-rows and the list refreshes at most four times a second; and the keys' handlers and frames take
-hardly longer than with the changes frozen, since this machine draws in software, far slower than
-Joel's. Why a source's rows are wanted is proven in Qt's own engine, in tests/pacing.qml.
+rows and the list refreshes at most four times a second; and an arrow composes the list no more
+often than it refreshes, and draws no row afresh with the changes frozen. Those are counts, since
+this machine draws in software on a shared builder, far slower than Joel's, so the keys' times
+are said rather than held. Why a source's rows are wanted is proven in Qt's own engine, in
+tests/pacing.qml.
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and leaves it as it found it.
@@ -53,24 +55,17 @@ PEOPLE = 2000
 CROWD = "/run/user/1000/crowd"
 # Design.md holds a key's own work within 4 ms, and its frame within one frame of its press. Here
 # the VM drawing 2880 by 1800 in software took 6.8 ms a handler at home and 35 ms in Agents at
-# the median, and 0.8 to 1.8 s a key to its frame, changes running or frozen (2026-11-09), so the
-# changes are judged by what they add, as desktop-keeps-pace-vm-test.py judges its load: nineteen
-# handlers in twenty, and the middle key to its frame, at most twice their time frozen and a
-# little more. Four runs' handlers in Agents swung from 21 ms faster changing than frozen to 7 ms
-# slower, so a bare 4 ms more would fail on the builder's noise alone.
-HANDLED_MORE = 4.0
-FRAME_MORE = 50.0
-SLOWER_MOST = 2
+# the median, and 0.8 to 1.8 s a key to its frame (2026-11-09), and held to twice their frozen
+# times it failed on the builder alone: in Programs at 2 the middle key took 2,246 ms to its frame
+# changing against 1,032 frozen, with one refresh and no row made in the turn and handlers alike
+# (112.6 against 105.1 ms), and at home at 2 a stalled frozen turn's frames took 8.8 s (net and
+# #2602, 2026-11-09). So the times are said, nineteen in twenty and the middle, and what the
+# changes cost the keys is held by what the launcher did instead.
 TAIL = 0.95
 # How often the list may be made again while things change: its pace (Launcher.qml's Pacing).
 # This and taking no change on a key's path held on main too once #2495 landed, so they guard
 # against a return rather than prove this change.
 REFRESHES = 4.0
-# The rows the walk of where rows live may make for each turn things changed in, frozen turns
-# aside: one laying out of every session, a row and its Return each, as it makes once the list
-# is quiet. Making each session's acts and
-# facts too, it made 6,733 in two turns at home (2026-11-09).
-WALKED_MOST = 2 * SESSIONS
 # Each place an arrow is held in, and the sources it doesn't show: home names People but says
 # how the sessions stand itself, Agents shows only its own, and Programs neither.
 PLACES = {"home": ["agents"], "Agents": ["people"], "Programs": ["agents", "people"]}
@@ -178,6 +173,10 @@ class Turns:
         self.seconds = 0.0
         self.handled: dict[bool, list[float]] = {True: [], False: []}
         self.drawn: dict[bool, list[float]] = {True: [], False: []}
+        # How often the list was composed, refreshed and drew a row afresh, frozen and not.
+        self.composed: dict[bool, int] = {True: 0, False: 0}
+        self.refreshed: dict[bool, int] = {True: 0, False: 0}
+        self.afresh: dict[bool, int] = {True: 0, False: 0}
 
     def freeze(self, *, frozen: bool) -> None:
         """Freeze the stand-ins where they stand, or let them change again."""
@@ -241,9 +240,9 @@ class Turns:
             self.handled[self.frozen].append(done - heard)
             self.drawn[self.frozen].append(frame - down)
 
-        # Rows a source made in the turn, those made for the walk of where rows live aside, which
-        # lays out what it walks once the list is quiet, never on a key (Launcher.qml's
-        # livesMade), and is kept apart to say.
+        # Rows a source made in the turn, those Ctrl+]'s looks for where a row lives made aside
+        # (Launcher.qml's livesMade), kept apart to say: no arrow presses Ctrl+], so a look's row
+        # is one made with nobody asking.
         def walked_of(name: str) -> int:
             return int(after["walked"].get(name, 0) - before["walked"].get(name, 0))
 
@@ -254,8 +253,12 @@ class Turns:
         for name in ("agents", "people"):
             self.walked[name] = self.walked.get(name, 0) + walked_of(name)
 
-        # An arrow only moves, so none of it is a key's own change to refresh at once.
+        # An arrow only moves, so none of it is a key's own change to refresh at once, nor a
+        # composing of the list but a refresh's, nor a row drawn afresh but for one that came.
         self.keyed += after["keyed"] - before["keyed"]
+        self.composed[self.frozen] += after["composed"] - before["composed"]
+        self.refreshed[self.frozen] += after["refreshes"] - before["refreshes"]
+        self.afresh[self.frozen] += after["drawn"] - before["drawn"]
         if self.frozen:
             for name in ("agents", "people"):
                 self.keys_made[name] = self.keys_made.get(name, 0) + rows_of(name)
@@ -275,32 +278,39 @@ class Turns:
         print(
             f"{at}: while things changed the unseen made {self.unseen_made} rows and Agents "
             f"{self.agents_made} a turn, and while frozen the keys made {self.keys_made}, "
-            f"and the walk of where rows live {self.walked}; "
+            f"and the look for where rows live {self.walked}; "
             f"{self.refreshes} refreshes in {self.seconds / 1000:.1f} s, {rate:.1f} a second, "
             f"{self.keyed} taken on a key's path; handlers 95% within {handled[False]:.1f} ms "
             f"changing against {handled[True]:.1f} ms frozen, the slowest "
             f"{max(self.handled[False]):.1f} against {max(self.handled[True]):.1f} ms; keys to "
             f"their frames half within {middle[False]:.0f} ms changing against "
             f"{middle[True]:.0f} ms frozen, 95% within {ranked(self.drawn[False], TAIL):.0f} "
-            f"against {ranked(self.drawn[True], TAIL):.0f} ms"
+            f"against {ranked(self.drawn[True], TAIL):.0f} ms; the list composed "
+            f"{self.composed[False]} times in {self.refreshed[False]} refreshes changing and "
+            f"{self.composed[True]} in {self.refreshed[True]} frozen, drawing "
+            f"{self.afresh[False]} and {self.afresh[True]} rows afresh"
         )
         assert not any(self.unseen_made.values()), f"{at}, unseen, {self.unseen_made} rows made"
         assert not any(self.keys_made.values()), (
             f"{at}, arrows that only move made {self.keys_made} rows"
         )
-        walked, changed = sum(self.walked.values()), len(self.agents_made)
-        assert walked <= WALKED_MOST * changed, (
-            f"{at}, the walk of where rows live made {self.walked} rows in {changed} changing turns"
+        # Where a row lives is looked for only on Ctrl+]'s press, which no turn makes, so none
+        # is: the walk that kept it for every row was made again on most openings and after each
+        # change, 18,693 of People's 19,461 rows at home in Joel's morning (2026-11-09).
+        assert not any(self.walked.values()), (
+            f"{at}, with no Ctrl+] pressed the look for where rows live made {self.walked} rows"
         )
         assert self.keyed == 0, f"{at}, {self.keyed} refreshes were taken on a key's path"
         assert rate <= REFRESHES, f"{at}, the list refreshed {rate:.1f} a second"
-        assert handled[False] <= SLOWER_MOST * handled[True] + HANDLED_MORE, (
-            f"{at}, 95% of handlers took {handled[False]:.1f} ms while things changed, against "
-            f"{handled[True]:.1f} ms frozen"
-        )
-        assert middle[False] <= SLOWER_MOST * middle[True] + FRAME_MORE, (
-            f"{at}, half the keys took {middle[False]:.0f} ms to their frames while things "
-            f"changed, against {middle[True]:.0f} ms frozen"
+        # A key that composed the list, or drew rows afresh with nothing changing, did the work a
+        # change costs on its own path, which the times a loaded builder stretches can't tell.
+        for frozen in (False, True):
+            assert self.composed[frozen] <= self.refreshed[frozen], (
+                f"{at}, the list was composed {self.composed[frozen]} times in "
+                f"{self.refreshed[frozen]} refreshes, {'frozen' if frozen else 'changing'}"
+            )
+        assert self.afresh[True] == 0, (
+            f"{at}, arrows with nothing changing drew {self.afresh[True]} rows afresh"
         )
 
 
