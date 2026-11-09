@@ -3136,7 +3136,16 @@
         "usb": "on USB",
         "plate": "desk light",
         "of": "of {least} to {most}",
-        "chosen": "chosen"
+        "chosen": "chosen",
+        "off": "off",
+        "outOnceLit": "out, {percent}% once lit",
+        "is": "the desk light is {lit}",
+        "cameraLights": "a camera lights it",
+        "turnOn": "turn the desk light on",
+        "turnOff": "turn the desk light off",
+        "setTo": "set the desk light to {to}",
+        "make": "make the desk light {way} \u00b7 {warmth}",
+        "now": "now {lit}"
       }
     },
     {
@@ -8101,7 +8110,14 @@
         "notUnplugged": "{name} not unplugged \u00b7 the last lit screen",
         "notOff": "{name} not turned off \u00b7 the last lit screen",
         "not-offered": "{value} not set \u00b7 {screen} offers {offers}",
-        "offers-range": "{first} to {last}"
+        "offers-range": "{first} to {last}",
+        "off": "off",
+        "focused": "focused",
+        "focus": "focus",
+        "turnOn": "turn on",
+        "scaleAt": "scale {scale}",
+        "setTo": "set the screen to {share}%",
+        "now": "now {share}%"
       }
     },
     {
@@ -8252,7 +8268,10 @@
       "name": "Room Light",
       "answers": [
         "room light"
-      ]
+      ],
+      "said": {
+        "hears": "as the screen's sensor hears it, from dark to daylight"
+      }
     },
     {
       "id": "displays:scale",

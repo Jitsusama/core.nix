@@ -136,7 +136,8 @@ Provider {
         const brightness = setting({
             key: "light:desk:brightness",
             name: Words.name("light:desk:brightness"),
-            side: light.on ? `${light.percent}%` : `out, ${light.percent}% once lit`,
+            side: light.on ? `${light.percent}%`
+                : said("outOnceLit").replace("{percent}", light.percent),
             glyph: Theme.glyph.brightness,
             graph: level(light.on ? light.percent : 0, 100)
         }, () => provider.brightnesses());
@@ -245,7 +246,7 @@ Provider {
     // How the desk light is lit, in a few words, set apart by a dot.
     function deskLit() {
         const light = DeskLight.light;
-        return light.on ? `${light.percent}% \u00b7 ${kelvins(light.kelvin)}` : "off";
+        return light.on ? `${light.percent}% \u00b7 ${kelvins(light.kelvin)}` : said("off");
     }
 
     // A word the desk light's drawer says, as the vocabulary has it.
@@ -257,9 +258,9 @@ Provider {
         if (DeskLight.light === null)
             return null;
         return {
-            headline: `the desk light is ${deskLit()}`,
+            headline: said("is").replace("{lit}", deskLit()),
             rows: deskParts(),
-            note: "a camera lights it",
+            note: said("cameraLights"),
             thing: true,
             drawer: () => provider.deskDrawer()
         };
@@ -304,20 +305,20 @@ Provider {
         if (shown === null)
             return null;
         const done = power !== undefined ? {
-            headline: power === "on" ? "turn the desk light on" : "turn the desk light off",
+            headline: said(power === "on" ? "turnOn" : "turnOff"),
             run: () => provider.turn(power === "on")
         } : share !== undefined ? {
-            headline: `set the desk light to ${Math.min(100, Number(share))}%`,
+            headline: said("setTo").replace("{to}", `${Math.min(100, Number(share))}%`),
             run: () => provider.brighten(Number(share))
         } : {
-            headline: `set the desk light to ${kelvins(Number(kelvin))}`,
+            headline: said("setTo").replace("{to}", kelvins(Number(kelvin))),
             run: () => provider.warm(Number(kelvin))
         };
         return Object.assign(done, {
             verb: Words.command("command:desk").verb,
             stays: true,
             rows: shown.rows,
-            note: `now ${deskLit()}`
+            note: said("now").replace("{lit}", deskLit())
         });
     }
 
@@ -328,12 +329,12 @@ Provider {
         const kelvin = DeskLight.light.kelvin + (way === "warmer" ? -warmthStep : warmthStep);
         const kept = Math.max(DeskLight.warmest, Math.min(DeskLight.coolest, kelvin));
         return {
-            headline: `make the desk light ${way} \u00b7 ${kelvins(kept)}`,
+            headline: said("make").replace("{way}", way).replace("{warmth}", kelvins(kept)),
             verb: Words.command("command:desk").verb,
             run: () => provider.warm(kept),
             stays: true,
             rows: shown.rows,
-            note: `now ${deskLit()}`
+            note: said("now").replace("{lit}", deskLit())
         };
     }
 

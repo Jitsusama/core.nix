@@ -244,7 +244,7 @@ Provider {
                 glyph: "",
                 hue: "machine",
                 graph: level(Power.roomLevel(room), 1),
-                note: "as the screen's sensor hears it, from dark to daylight"
+                note: partSaid("room", "hears")
             }));
         // Warmth sits right after Brightness, found by its key, so a row
         // put above Brightness later can't move it.
@@ -448,12 +448,12 @@ Provider {
             return null;
         const kept = Math.max(1, share);
         return {
-            headline: `set the screen to ${kept}%`,
+            headline: partSaid("", "setTo").replace("{share}", kept),
             verb: Words.command("command:brightness").verb,
             stays: true,
             run: () => provider.brighten(kept),
             rows: [],
-            note: `now ${light.share}%`
+            note: partSaid("", "now").replace("{share}", light.share)
         };
     }
 
@@ -559,10 +559,10 @@ Provider {
     function described(output) {
         const now = mode(output);
         if (now === null || output.logical === null)
-            return "off";
+            return partSaid("", "off");
         // The scale as its part and its drawer say it, "1.75\u00d7".
-        return `${now.width} \u00d7 ${now.height} \u00b7 ${Screens.hertz(now.refresh_rate)} `
-            + `\u00b7 scale ${Screens.scale(output.logical.scale)}`;
+        return `${now.width} \u00d7 ${now.height} \u00b7 ${Screens.hertz(now.refresh_rate)} \u00b7 `
+            + partSaid("", "scaleAt").replace("{scale}", Screens.scale(output.logical.scale));
     }
 
     // Screens are choices: the built-in first, as it's always there, then by
@@ -589,7 +589,7 @@ Provider {
         return member({
             thing: true,
             key: `display:${output.name}`,
-            verb: stands === "lit" ? "focus" : "turn on",
+            verb: partSaid("", stands === "lit" ? "focus" : "turnOn"),
             name: named(output),
             keywords: output.name,
             // A screen, built in or not, wears the screen's mark, its
@@ -598,7 +598,7 @@ Provider {
             glyph: Theme.glyph.display,
             hue: "machine",
             side: stands === "dark" ? screenSaid.dark
-                : stands === "off" ? "off" : focused ? "focused" : "",
+                : stands === "off" ? partSaid("", "off") : focused ? partSaid("", "focused") : "",
             note: stands === "dark" ? screenSaid.hubOn : described(output),
             run: stands === "lit" ? () => Niri.act({ FocusMonitor: { output: output.name } })
                 : turnsOn,
@@ -634,8 +634,8 @@ Provider {
                     .map(each => ({ value: each.value, note: each.note })),
                 now: () => Screens.lineNow(output, id, screenWords),
                 set: to => {
-                    const asked = Screens.lineSet(output, id, String(to), screenWords,
-                        named(output));
+                    const asked = Screens.lineSet(output, { setting: id, typed: String(to) },
+                        screenWords, named(output));
                     if (asked.refused !== undefined)
                         return asked.refused;
                     change(output, asked.asks);
