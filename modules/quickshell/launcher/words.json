@@ -1897,6 +1897,10 @@
       ],
       "said": {
         "notAnswering": "not answering",
+        "notRunning": "its service isn't running",
+        "shutOut": "its service won't let you in",
+        "tooSlow": "its service is too slow to answer",
+        "unreached": "its service can't be reached",
         "unreadable": "unreadable",
         "printedNothing": "warp printed nothing it could read",
         "measure": "WARP's measure",
@@ -1961,6 +1965,11 @@
       "id": "warp:health",
       "in": "warp",
       "name": "Health"
+    },
+    {
+      "id": "warp:error",
+      "in": "warp",
+      "name": "Error"
     },
     {
       "id": "warp:settings",

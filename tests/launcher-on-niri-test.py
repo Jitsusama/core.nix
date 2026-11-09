@@ -1294,11 +1294,28 @@ def test_warp_says_how_its_link_stands_in_network_and_when_it_isnt_answering(
         rows = shell.showing()["rows"]
         assert rows.index("WARP") == rows.index("Speed") + 1, rows
         shell.close_launcher()
-        # Its service gone, WARP says so in its place, as "vpn" asks it too.
+        # Its service gone, WARP says so in its place, as "vpn" asks it too, and
+        # what warp-cli's error means beside it rather than the error itself.
         (said / "status.json").unlink()
         shutil.copyfile(contract / "daemon-down.json", said / "status.error.json")
         shell.answer("vpn")
-        shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "not answering")
+        shell.launcher_until(
+            lambda shown: (
+                (
+                    (shown["selected"] or {}).get("name"),
+                    (shown["selected"] or {}).get("note"),
+                )
+                == ("not answering", "its service isn't running")
+            )
+        )
+        # Its drawer comes out, warp-cli's error as written its last fact (VKCF3Z, 2026-11-09).
+        shell.launcher_until(
+            lambda shown: (
+                shown["drawer"]["shown"]
+                and shown["drawer"]["title"] == "WARP"
+                and shown["drawer"]["facts"][-1:] == ["Error"]
+            )
+        )
         shell.close_launcher()
     finally:
         shutil.rmtree(said)

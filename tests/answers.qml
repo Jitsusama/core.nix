@@ -2809,9 +2809,24 @@ QtObject {
             figure("settings:override", "on", "12 min left", "on"));
         machine("a DNS proxy that's off says so in its place",
             policed && (policed.parts.find(part => part.id === "dns") ?? {}).side, "proxy off");
-        machine("WARP's service not answering", Warp.failed({ error: "not-answering",
-            said: "No such file or directory (os error 2)" }, warpSaid), { headline: "not answering",
-            warns: true, note: "No such file or directory (os error 2)" });
+        // Not answering, its note says what warp-cli's error means, and the
+        // error as written is kept for the drawer (VKCF3Z, 2026-11-09).
+        const notAnswering = said => Warp.failed({ error: "not-answering", said: said }, warpSaid);
+        machine("WARP's service not answering, with no socket to reach",
+            notAnswering("No such file or directory (os error 2)"), { headline: "not answering",
+                warns: true, note: "its service isn't running",
+                error: "No such file or directory (os error 2)" });
+        machine("WARP's service not answering, its socket refusing",
+            notAnswering("Connection refused (os error 111)").note, "its service isn't running");
+        machine("WARP's service not answering, its socket shut to this account",
+            notAnswering("Permission denied (os error 13)").note, "its service won't let you in");
+        machine("WARP's service not answering in time",
+            notAnswering("warp-cli status didn't answer within 5 s").note,
+            "its service is too slow to answer");
+        machine("WARP's service not answering for a reason warp has no words for",
+            notAnswering("Address not available (os error 99)"), { headline: "not answering",
+                warns: true, note: "its service can't be reached",
+                error: "Address not available (os error 99)" });
         machine("warp-cli saying what warp can't read", Warp.failed({ error: "unreadable",
             said: "warp-cli status said InvalidAccountType: Invalid account type." }, warpSaid),
         { headline: "unreadable", warns: true,
