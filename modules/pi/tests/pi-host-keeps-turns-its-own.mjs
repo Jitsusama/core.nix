@@ -1,5 +1,9 @@
-// Exercise the opt-in turn boundary against the patched runtime, without real credentials or provider requests.
+// pi as the host runs it: the patched seams are there to detect, and a turn its
+// durable generation commits is the host's to end or continue, run against the
+// built package with a faux provider, so no credential or request leaves it.
+// Run as: node THIS PI_ROOT [dist|src], where src reads the patched TypeScript.
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { test as it } from "node:test";
 import { pathToFileURL } from "node:url";
@@ -14,10 +18,22 @@ assert.ok(
   ["src", "dist"].includes(codeDirectory),
   "Choose src for a source proof or dist for the host build",
 );
-const extension = codeDirectory === "src" ? "ts" : "js";
-const durable = await import(
-  pathToFileURL(`${root}/packages/durable/${codeDirectory}/index.${extension}`).href
-);
+const durableEntry =
+  codeDirectory === "src"
+    ? `${root}/packages/durable/src/index.ts`
+    : `${root}/node_modules/@earendil-works/pi-durable/dist/index.js`;
+const durable = await import(pathToFileURL(durableEntry).href);
+// The coding agent sits beside its libraries in an installed tree, or is the
+// tree itself where the package was installed from its own workspace.
+const sessionModule = (
+  codeDirectory === "src"
+    ? [`${root}/packages/coding-agent/src/core/agent-session.ts`]
+    : [
+        `${root}/node_modules/@earendil-works/pi-coding-agent/dist/core/agent-session.js`,
+        `${root}/packages/coding-agent/dist/core/agent-session.js`,
+        `${root}/dist/core/agent-session.js`,
+      ]
+).find((path) => existsSync(path));
 const ai = await import(
   pathToFileURL(`${root}/node_modules/@earendil-works/pi-ai/dist/index.js`).href
 );
@@ -95,6 +111,20 @@ function deadline(promise) {
     }),
   ]);
 }
+
+it("the host can tell both seams are there before it opens a conversation", async () => {
+  assert.ok(sessionModule, "the built coding agent's session module is in the tree");
+  const { AgentSession } = await import(pathToFileURL(sessionModule).href);
+  assert.equal(
+    AgentSession.hostAgentInterfaceVersion,
+    1,
+    "the session takes any agent by its shape",
+  );
+  assert.equal(GenerationTask.definition.version, 3, "the generation keeps the committed turn");
+  for (const phase of ["committedTurn", "turnBoundary"]) {
+    assert.equal(typeof GenerationTask.definition.phases[phase], "function", `${phase} is a phase`);
+  }
+});
 
 it("legacy answer and idle continue remain unchanged without the hook", async () => {
   const { harness, conversation, faux } = await open({});

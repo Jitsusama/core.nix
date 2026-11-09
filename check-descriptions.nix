@@ -1430,6 +1430,10 @@
     or end, watched in each package's loaded folder, removes the versions no pi runs, however many
     pis start or end at once
   '';
+  pi-host-keeps-turns-its-own = ''
+    pi built with the host's patches, applied exactly, shows both seams a host detects, and a turn
+    its durable generation commits waits for the host to end or continue it, once, across recovery
+  '';
   pi-rings-low = ''
     the account's ding rings loud for seconds, as the harness's done chime plays it
   '';
