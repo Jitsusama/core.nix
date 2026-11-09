@@ -1,4 +1,5 @@
-use disk_guard::clock::{Awake, Tick};
+use disk_guard::clock::{Awake, Tick, stamp};
+use std::process::Command;
 
 fn tick(wall: f64, monotonic: f64, suspended: f64, boot: &str) -> Tick {
     Tick {
@@ -7,6 +8,17 @@ fn tick(wall: f64, monotonic: f64, suspended: f64, boot: &str) -> Tick {
         suspended,
         boot: boot.to_string(),
     }
+}
+
+#[test]
+fn a_stamp_reads_the_local_time_as_date_does() {
+    let wall = 1_794_242_000.75;
+    let out = Command::new("date")
+        .args(["-d", "@1794242000", "+%Y-%m-%d %H:%M:%S"])
+        .output()
+        .expect("date runs");
+    let said = String::from_utf8(out.stdout).expect("date says text");
+    assert_eq!(stamp(wall), said.trim());
 }
 
 #[test]

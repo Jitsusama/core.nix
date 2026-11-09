@@ -29,6 +29,32 @@ pub(crate) fn local(fields: [i32; 6]) -> Option<f64> {
     (seconds != -1).then_some(crate::units::wall(seconds, 0))
 }
 
+/// A wall time as the local date and time to the second, as a log reads,
+/// through the C library as `local` goes the other way. The Mac's log file
+/// stamps nothing itself, so the guard's own lines carry the time.
+pub fn stamp(wall: f64) -> String {
+    // Whole seconds without a cast, which the Mac's lints and Linux's read
+    // differently; a wall time before 1970 or past time_t reads as 0.
+    let whole = std::time::Duration::try_from_secs_f64(wall).map_or(0, |since| since.as_secs());
+    let seconds = libc::time_t::try_from(whole).unwrap_or(0);
+    // SAFETY: tm is plain data, zeroed is a valid value, and localtime_r
+    // writes only the struct it's given.
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    // SAFETY: as above; seconds lives for the call.
+    if unsafe { libc::localtime_r(&raw const seconds, &raw mut tm) }.is_null() {
+        return format!("{seconds}");
+    }
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+        tm.tm_year + 1900,
+        tm.tm_mon + 1,
+        tm.tm_mday,
+        tm.tm_hour,
+        tm.tm_min,
+        tm.tm_sec
+    )
+}
+
 /// One reading of the clocks, in seconds: wall time, time since boot
 /// without suspends, time spent suspended since boot, and the boot's id.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

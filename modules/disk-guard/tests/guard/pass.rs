@@ -1,5 +1,5 @@
 use disk_guard::band::{Band, Space, Thresholds};
-use disk_guard::pass::{Disk, End, Goal, Learned, Outcome, Reclaimer, pass};
+use disk_guard::pass::{Disk, End, Goal, Learned, Outcome, Reclaimer, Report, pass, told};
 use disk_guard::plan::{Candidate, Class};
 use disk_guard::units::float;
 use std::collections::BTreeMap;
@@ -7,6 +7,62 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 const GIB: u64 = 1 << 30;
+
+/// A finished pass's report, with what came of each path it tried.
+fn report(freed: u64, outcomes: Vec<Outcome>) -> Report {
+    Report {
+        end: End::Reached,
+        band: Band::Filling,
+        freed,
+        actions: outcomes
+            .into_iter()
+            .enumerate()
+            .map(|(number, outcome)| (PathBuf::from(format!("/tmp/taken-{number}")), outcome))
+            .collect(),
+    }
+}
+
+#[test]
+fn a_pass_that_took_something_says_when_how_many_and_how_much_it_freed() {
+    let report = report(
+        8 * GIB + GIB / 4,
+        vec![
+            Outcome::Reclaimed,
+            Outcome::Kept("in use".to_string()),
+            Outcome::Reclaimed,
+            Outcome::Failed("refused".to_string()),
+        ],
+    );
+    assert_eq!(
+        told(&report, 12.34, "2026-11-09 10:33:05").as_deref(),
+        Some(
+            "disk-guard: at 2026-11-09 10:33:05 a pass while filling took 2 of the 3 it \
+             tried, freeing 8.2 GiB in 12.3 s"
+        )
+    );
+}
+
+#[test]
+fn a_pass_whose_tries_all_failed_says_so_too() {
+    let report = report(0, vec![Outcome::Failed("refused".to_string())]);
+    assert_eq!(
+        told(&report, 0.5, "2026-11-09 10:33:05").as_deref(),
+        Some(
+            "disk-guard: at 2026-11-09 10:33:05 a pass while filling took 0 of the 1 it \
+             tried, freeing 0 B in 0.5 s"
+        )
+    );
+}
+
+#[test]
+fn a_pass_that_only_judged_says_nothing() {
+    let kept = report(0, vec![Outcome::Kept("in use".to_string())]);
+    assert_eq!(told(&kept, 3.0, "2026-11-09 10:33:05"), None);
+    assert_eq!(
+        told(&report(0, Vec::new()), 3.0, "2026-11-09 10:33:05"),
+        None
+    );
+}
 const HOUR: f64 = 3600.0;
 
 const PRODUCER: Class = Class::Producer {
