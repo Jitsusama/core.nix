@@ -38,12 +38,12 @@ function side(stands, counted, none = "") {
 }
 
 // A place's members as the run they are, joined by middle dots (VKCF3Z,
-// 00ca9231: "Power · Bluetooth · Sound"). Each name's own spaces don't
-// break and the space before each dot doesn't either, so a line breaks
-// only between members, after a dot, as Desk Light stays whole.
-const within = / /g;
+// 00ca9231: "Power · Bluetooth · Sound"). The drawer lays it
+// as a run (`runs`), wrapping between two members with the dot going
+// with the break, so no line ends or starts on one and Desk Light stays
+// whole (VKCF3Z, 8e0712aa).
 function run(names) {
-    return names.map(name => String(name).replace(within, "\u00a0")).join("\u00a0\u00b7 ");
+    return names.map(String).join(" \u00b7 ");
 }
 
 // A place's drawer: its eyebrow saying it's a place, as Programs' says
@@ -56,5 +56,6 @@ function drawer(name, names, eyebrow, holding = "") {
     if (holding !== "") {
         return { eyebrow, title: name, body: holding };
     }
-    return names.length === 0 ? null : { eyebrow, title: name, body: run(names) };
+    return names.length === 0 ? null
+        : { eyebrow, title: name, body: run(names), runs: true };
 }

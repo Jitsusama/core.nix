@@ -1425,8 +1425,10 @@ works the same way everywhere.
   right beside the title than most do"; VKCF3Z, dae7fb67). What it holds
   is in its drawer, which comes out as it's selected, so one key shows
   it: its eyebrow "place", then its members by their own names in its
-  own order, a run of middle dots that breaks only between members
-  ("Power · Bluetooth · Sound"). Its members are what it holds, never
+  own order, a run of middle dots laid as a fact's run is, breaking
+  only between members with the dot going with the break, so no line
+  ends or starts on one ("Power · Bluetooth · Sound"; VKCF3Z,
+  8e0712aa). Its members are what it holds, never
   what it does: Passwords holds "1Password", not Check Every Password. A
   place holding things of one kind says what they are in a sentence
   instead: Keyboard's "Every key on the keyboards plugged in, by its

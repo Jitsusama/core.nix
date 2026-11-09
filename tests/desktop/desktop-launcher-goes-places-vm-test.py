@@ -933,17 +933,20 @@ def home_holds_still_as_the_queue_changes(desktop: Desktop) -> None:
 def holds(shown: Json, name: str, first: list[str]) -> bool:
     """Say whether the place named is selected, its drawer out naming what it holds.
 
-    Its members are a run of dots, each name and the space before each dot unbroken, so a
-    line breaks only between members (VKCF3Z, 00ca9231).
+    Its members are a run of dots, laid as a run is: where it wraps, the dot goes with the
+    break, so no line it draws ends or starts on one (VKCF3Z, 00ca9231 and 8e0712aa).
     """
     drawer = shown.get("drawer") or {}
-    run = "\u00a0\u00b7 ".join(each.replace(" ", "\u00a0") for each in first)
+    run = " \u00b7 ".join(first)
+    lines = [line.strip(" \u00a0") for line in str(drawer.get("bodyDrawn", "")).split("\n")]
     return bool(
         (shown["selected"] or {}).get("name") == name
         and drawer.get("out") is True
         and drawer.get("title") == name
         and drawer.get("eyebrow") == "place"
-        and str(drawer.get("body", "")).startswith(f"{run}\u00a0\u00b7 ")
+        and str(drawer.get("body", "")).startswith(f"{run} \u00b7 ")
+        and all(line and not line.startswith("\u00b7") for line in lines)
+        and not any(line.endswith("\u00b7") for line in lines)
     )
 
 

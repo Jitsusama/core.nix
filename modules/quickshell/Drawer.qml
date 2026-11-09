@@ -287,6 +287,14 @@ Floating {
     // Whether its words are prose to read, set as the reader sets its text,
     // rather than lines in the mono.
     readonly property bool prose: shown?.prose === true
+    // Whether its words are a run of items a dot apart (`runs: true`), as a
+    // place's members are, laid as a fact's run is (itemsKept): where it
+    // wraps, the break falls between two and the dot goes with it, so no
+    // line ends or starts on one (VKCF3Z, 2026-11-09, 8e0712aa).
+    readonly property bool runs: shown?.runs === true
+    // Its words as they're drawn, for the launcher to report.
+    readonly property string bodySaid: runs
+        ? itemsKept(body, valueFace, wordsBox.width) : body
     // Its groups of facts that hold any: a group with nothing to show
     // gives up its place, so a day with no weather or meeting leaves no
     // empty lines in the middle of the plate (docs/design.md, Space
@@ -2237,7 +2245,7 @@ Floating {
                         sought: drawer.washing
                         width: parent.width
                         y: drawer.pitch / 2 + drawer.dropped - baselineOffset
-                        plain: drawer.body
+                        plain: drawer.bodySaid
                         styled: drawer.shown?.styled === true
                         leading: drawer.pitch
                         ink: Theme.text

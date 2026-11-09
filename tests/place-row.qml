@@ -42,13 +42,17 @@ QtObject {
             PlaceRow.side(null, ""), "");
 
         // Its drawer names what it holds, in its own order, under its name,
-        // as a run of dots that breaks only after a dot, between members.
+        // as a run of dots, which the drawer lays as a run, breaking between
+        // members with the dot going with the break.
         const machine = ["Power", "Desk Light", "Sound"];
         const drawn = PlaceRow.drawer("Machine", machine, "place");
         check(failures, "its drawer is titled with its name", drawn.title, "Machine");
         check(failures, "and its eyebrow says it's a place", drawn.eyebrow, "place");
         check(failures, "and names its members in their order", drawn.body,
-            "Power\u00a0\u00b7 Desk\u00a0Light\u00a0\u00b7 Sound");
+            "Power \u00b7 Desk Light \u00b7 Sound");
+        check(failures, "which the drawer lays as a run", drawn.runs, true);
+        check(failures, "a sentence is no run",
+            PlaceRow.drawer("Keyboard", ["A"], "place", "Every key.").runs, undefined);
         check(failures, "holding one kind, it says what they are instead",
             PlaceRow.drawer("Keyboard", ["A", "B"], "place", "Every key.").body, "Every key.");
         check(failures, "holding nothing to name, no drawer", PlaceRow.drawer("Media", []),
