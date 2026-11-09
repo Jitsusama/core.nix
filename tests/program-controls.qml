@@ -431,11 +431,17 @@ ShellRoot {
         Niri.revision += 1;
         root.waiting = "the viewer";
         program("org.example.viewer").verbs();
+        // What it has open was read as it was stepped into before, and
+        // the daemon says a list again only once it changes, so it may be
+        // here already rather than heard.
+        Qt.callLater(root.viewed);
     }
 
     function viewed() {
-        if (applications.recents.openIn("org.example.viewer").length === 0)
+        if (root.waiting !== "the viewer"
+                || applications.recents.openIn("org.example.viewer").length === 0)
             return;
+        root.waiting = "the viewer's files";
         try {
             const rows = program("org.example.viewer").verbs();
             same("what it has open comes before Recent, no window it stands for listed again",
