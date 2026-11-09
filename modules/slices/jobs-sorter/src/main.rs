@@ -49,8 +49,9 @@
 //! every pi is marked there as one nobody is at runs at `--low-weight`
 //! until a mark goes, as `src/low.rs` says why and how.
 //!
-//! With `--door`, a new Nix evaluation under a cgroup waits while memory is
-//! short, as `src/door.rs` says why and how.
+//! With `--door`, a new Nix evaluation or build under a cgroup waits while
+//! memory is short, and through a call `--calls`' pw-dump hears, as
+//! `src/door.rs` and `src/calls.rs` say why and how.
 //!
 //! With `--revive`, a cgroup gives memory back when the kernel's reclaim
 //! thread gives up, as `src/revive.rs` says why and how.
@@ -69,8 +70,10 @@
 //!        [--no-real-time jobs.slice/jobs-work.slice]...
 //!        [--by-quest jobs-work.slice]... [--quests FILE]
 //!        [--background DIR] [--low-weight 10] [--weigh PREFIX]...
-//!        [--revive jobs.slice] [--door jobs.slice] [--orchestrators DIR]
+//!        [--revive jobs.slice] [--door jobs.slice] [--calls pw-dump]
+//!        [--orchestrators DIR]
 
+mod calls;
 mod door;
 mod keep;
 mod low;
@@ -109,6 +112,7 @@ struct Settings {
     revive: Option<String>,
     orchestrators: Option<PathBuf>,
     door: Option<String>,
+    calls: Option<PathBuf>,
 }
 
 /// One process, as /proc/<pid>/stat describes it.
@@ -876,6 +880,7 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
         revive: None,
         orchestrators: None,
         door: None,
+        calls: None,
     };
     while let Some(flag) = args.next() {
         let mut value = || args.next().ok_or(format!("{flag} needs a value"));
@@ -892,6 +897,7 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
             "--weigh" => settings.weigh.push(value()?),
             "--revive" => settings.revive = Some(value()?),
             "--door" => settings.door = Some(value()?),
+            "--calls" => settings.calls = Some(PathBuf::from(value()?)),
             "--orchestrators" => settings.orchestrators = Some(PathBuf::from(value()?)),
             "--low-weight" => {
                 settings.low_weight = value()?.parse().map_err(|_| "--low-weight is a weight")?;
@@ -1001,7 +1007,7 @@ fn run() -> Result<(), String> {
     let watch = settings.background.as_deref().and_then(watch_marks);
     let mut weighing = low::Weighing::default();
     let mut keeping = keep::Keeping::default();
-    let mut door = door::Door::default();
+    let mut doorway = Doorway::new(settings.calls.as_deref());
     loop {
         match (&watch, &settings.background) {
             (Some(watch), Some(dir)) => {
@@ -1055,23 +1061,44 @@ fn run() -> Result<(), String> {
                 oom::raise(Path::new("/proc"), &work, &mut warned);
             }
         }
-        watch_door(&mut door, &root, settings.door.as_deref(), now);
+        watch_door(&mut doorway, &root, settings.door.as_deref(), now);
         pass = pass.wrapping_add(1);
         sorter.finish(&alive, now);
     }
 }
 
-/// Holds new evaluations under `cgroup` in `root`, when there's a door,
-/// while memory is short, as src/door.rs says, `uptime` ticks since boot.
-fn watch_door(door: &mut door::Door, root: &Path, cgroup: Option<&str>, uptime: u64) {
+/// The door, and the calls it keeps more room through when it hears them.
+struct Doorway {
+    door: door::Door,
+    calls: Option<calls::Calls>,
+}
+
+impl Doorway {
+    /// A door that hears calls through `pw_dump`, when there's one.
+    fn new(pw_dump: Option<&Path>) -> Doorway {
+        Doorway {
+            door: door::Door::default(),
+            calls: pw_dump.map(calls::Calls::follow),
+        }
+    }
+}
+
+/// Holds new heavy starts under `cgroup` in `root`, when there's a door,
+/// while memory is short or a call is on, as src/door.rs says, `uptime`
+/// ticks since boot.
+fn watch_door(doorway: &mut Doorway, root: &Path, cgroup: Option<&str>, uptime: u64) {
     let Some(cgroup) = cgroup.map(|cgroup| root.join(cgroup)) else {
         return;
     };
-    let free = fs::read_to_string("/proc/meminfo")
-        .ok()
-        .and_then(|meminfo| door::available(&meminfo));
-    let Some(free) = free else {
+    let meminfo = fs::read_to_string("/proc/meminfo").unwrap_or_default();
+    let (Some(total), Some(free)) = (door::total(&meminfo), door::available(&meminfo)) else {
         return;
+    };
+    let now = std::time::Instant::now();
+    let machine = door::Machine {
+        total,
+        free,
+        calling: doorway.calls.as_mut().is_some_and(|calls| calls.on(now)),
     };
     let read: Vec<(u32, u64, String, PathBuf)> = real_time::processes_under(&cgroup)
         .into_iter()
@@ -1092,21 +1119,25 @@ fn watch_door(door: &mut door::Door, root: &Path, cgroup: Option<&str>, uptime: 
             start: *start,
             words: words.split_whitespace().collect(),
             scope: scope.clone(),
+            // Only heavy work is weighed by what its scope holds.
+            memory: if door::heavy(&words.split_whitespace().collect::<Vec<_>>()) {
+                door::memory(scope)
+            } else {
+                0
+            },
         })
         .collect();
-    for done in door.look(
-        &coming,
-        free,
-        std::time::Instant::now(),
-        uptime,
-        door::freeze,
-    ) {
+    for done in doorway
+        .door
+        .look(&coming, machine, now, uptime, door::freeze)
+    {
         match done {
             door::Done::Held(pid) => {
-                door::tell(pid, free);
-                eprintln!("Held evaluation {pid} at the door, with {free} bytes available.");
+                door::tell(pid, machine);
+                let call = if machine.calling { ", a call on" } else { "" };
+                eprintln!("Held {pid} at the door, with {free} bytes available{call}.");
             }
-            door::Done::LetIn(pid) => eprintln!("Let evaluation {pid} in."),
+            door::Done::LetIn(pid) => eprintln!("Let {pid} in."),
         }
     }
 }
@@ -1141,6 +1172,7 @@ mod tests {
             revive: None,
             orchestrators: None,
             door: None,
+            calls: None,
         }
     }
 

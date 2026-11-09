@@ -15,14 +15,19 @@ let
       bash = "${pkgs.bash}/bin/bash";
       chrt = "${pkgs.util-linux}/bin/chrt";
       taskset = "${pkgs.util-linux}/bin/taskset";
+      wakes = "${./slices-foreground-wakes.sh}";
+      awk = "${pkgs.gawk}/bin/awk";
     }
   );
 in
 import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "slices";
 
+  # Room enough for the door to let a few of thirteen heavy starts in, and
+  # too little for all of them at once.
   nodes.machine = {
     imports = [ self.nixosModules.slices ];
+    virtualisation.memorySize = 2048;
     users.users.alice = {
       isNormalUser = true;
       linger = true;
