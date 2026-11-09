@@ -856,9 +856,30 @@ Singleton {
     // A session's kin among `others`: the session that asked for it
     // (`from`), since an orchestrator starts its sessions where it is
     // (Joel, 2026-11-07), else one on its own quest.
+    // Its orchestrator comes first, by the address the harness hands it
+    // over with, else the one a session on its own quest says: one an
+    // orchestrator starts for another's tree goes with that tree, never with
+    // the starter (P9R1KI, 2026-11-08 [38061f98]).
     function kinOf(others, one) {
-        return others.find(session => one.from !== "" && session.presence.session === one.from)
+        const by = root.orchestratorOf(others, one);
+        return others.find(session => by !== "" && session.presence.orchestrates === by)
+            ?? others.find(session => one.from !== "" && session.presence.session === one.from)
             ?? others.find(session => one.quest !== "" && session.presence.quest === one.quest);
+    }
+    function orchestratorOf(others, one) {
+        if (typeof one.orchestratedBy === "string" && one.orchestratedBy !== "")
+            return one.orchestratedBy;
+        const sibling = others.find(session => one.quest !== ""
+            && session.presence.quest === one.quest
+            && typeof session.presence.orchestratedBy === "string");
+        return sibling?.presence.orchestratedBy ?? "";
+    }
+    // Where a session sits, as underOrchestrator reads it: its workspace's
+    // id, its column and its quest's title, as its window names it.
+    function standing(session) {
+        return { workspace: session.window.workspace_id,
+            column: session.window.layout?.pos_in_scrolling_layout?.[0] ?? 0,
+            title: root.named(session.presence).title };
     }
     // Where a session reopened or handed over opens, { workspace, column }
     // by the workspace's id and the column from 1, or null to leave it to
@@ -892,9 +913,19 @@ Singleton {
         const others = root.running.filter(session => session.here
             && (session.window !== null || session.kitty !== null)
             && session.presence.session !== one.id);
-        const kin = root.kinOf(others, { from: one.from ?? "", quest: one.quest ?? "" });
-        return kin?.window && Niri.workspace(kin.window.workspace_id)
-            ? { workspace: kin.window.workspace_id, column: null } : null;
+        const asked = { from: one.from ?? "", quest: one.quest ?? "",
+            orchestratedBy: one.orchestratedBy ?? "" };
+        const kin = root.kinOf(others, asked);
+        if (!kin?.window || !Niri.workspace(kin.window.workspace_id))
+            return null;
+        // Under its orchestrator, at its place in title order there.
+        const by = root.orchestratorOf(others, asked);
+        if (by !== "" && kin.presence.orchestrates === by) {
+            const under = others.filter(session => session.window
+                && session.presence.orchestratedBy === by).map(root.standing);
+            return Places.underOrchestrator(one.title ?? "", root.standing(kin), under);
+        }
+        return { workspace: kin.window.workspace_id, column: null };
     }
     function placeQuietly(id, waiting) {
         const window = Niri.windows[id];
@@ -1276,6 +1307,12 @@ Singleton {
             .map(one => ({ id: String(one.id), cwd: one.cwd, fresh: one.fresh === true,
                 quest: typeof one.quest === "string" ? one.quest : "",
                 from: typeof one.from === "string" ? one.from : "",
+                // Who orchestrates it and its title, as its record will say
+                // them, so it opens with its orchestrator's sessions in
+                // title order (85PKB2, 2026-11-08 [051e6eea]).
+                orchestratedBy: typeof one.orchestratedBy === "string"
+                    && /^[A-Z0-9]+$/.test(one.orchestratedBy) ? one.orchestratedBy : "",
+                title: typeof one.title === "string" ? one.title : "",
                 // The model a restart asks for (the harness's quest spawn), passed
                 // to pi as it's said, and dropped when it's anything but a name.
                 model: typeof one.model === "string" && /^[A-Za-z0-9._:/-]+$/.test(one.model)
@@ -1351,7 +1388,8 @@ Singleton {
             }
             reopening.waiting = { classed: null, at, opened: null, said: false,
                 away: next.at?.away ?? null, kept: next.kept ?? null, quiet,
-                quest: next.one.quest ?? "", from: next.one.from ?? "", id: next.one.id };
+                quest: next.one.quest ?? "", from: next.one.from ?? "", id: next.one.id,
+                orchestratedBy: next.one.orchestratedBy ?? "" };
             // The pace is counted from once it's begun and said, so the next
             // is said two seconds after however long this one took to start.
             // Its window's app id, which niri says as it opens, after this.
