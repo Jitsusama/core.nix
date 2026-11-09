@@ -854,11 +854,10 @@ QtObject {
             ["located days ago", Here.located(1000, 1000 * 1000 + 3 * 86_400_000,
                 { day: () => "Saturday", clock: () => "06:46" }), "Saturday 06:46"],
             ["how near goes from the plate while the note says it",
-                JSON.stringify(Here.besideNote(nearAndWhen, "within 26 km").map(fact => fact.id)),
+                JSON.stringify(Here.besideNote(nearAndWhen, true).map(fact => fact.id)),
                 JSON.stringify(["located"])],
             ["and stays while the note says the zone instead",
-                JSON.stringify(Here.besideNote(nearAndWhen,
-                    "keeps America/Toronto \u00b7 not following").map(fact => fact.id)),
+                JSON.stringify(Here.besideNote(nearAndWhen, false).map(fact => fact.id)),
                 JSON.stringify(["located", "accuracy"])]
         ];
         for (const [what, got, expected] of figures) {

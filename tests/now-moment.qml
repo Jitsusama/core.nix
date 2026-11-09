@@ -218,6 +218,25 @@ ShellRoot {
             plate.facts[2].value === "12.3\u00b0 N \u00b7 98.8\u00b0 W"
                 && plate.facts[1].value === "within 26 km",
             JSON.stringify(plate.facts));
+        // Where the place keeps the clock's own zone, the note says how near
+        // it is and the plate leaves Accuracy to it; with no fix once
+        // Location has read, it's not found yet (Y2YBTS's review of #2493).
+        const clockKept = Location.clockZone;
+        const found = Location.here;
+        Location.clockZone = found.zone;
+        const matching = now.location;
+        expect("where the zones match, the note says how near",
+            matching.note === "within 26 km" && matching.hue === "voice",
+            `${matching.note} ${matching.hue}`);
+        expect("and its plate leaves Accuracy to the note",
+            JSON.stringify(matching.drawer().facts.map(fact => fact.label))
+                === JSON.stringify(["Located", "Coordinates", "Country", "Zone"]),
+            JSON.stringify(matching.drawer().facts));
+        Location.here = null;
+        expect("with no fix, not found yet", now.location.note === "not found yet",
+            now.location.note);
+        Location.here = found;
+        Location.clockZone = clockKept;
         expect("it's found by its name too, Now being its home",
             now.things.some(row => row.key === "on:location"),
             JSON.stringify(now.things.map(row => row.key)));

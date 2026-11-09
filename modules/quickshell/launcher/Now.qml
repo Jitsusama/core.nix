@@ -231,7 +231,9 @@ Provider {
         const elsewhere = differs ? said.elsewhere.replace("{zone}", here.zone) : "";
         // How near it is, its source being the plate's eyebrow, and the
         // machinery that found it named nowhere (VKCF3Z, 2026-11-09).
-        const note = !here ? (Location.read ? said.notFound : "") : differs ? elsewhere : within;
+        const unfound = Location.read ? said.notFound : "";
+        const placed = differs ? elsewhere : within;
+        const note = here ? placed : unfound;
         const now = clock.date.getTime();
         const inside = () => {
             const figure = (id, value) => copyRow({
@@ -292,11 +294,12 @@ Provider {
             // Its town, the place's first part, as the plate names the
             // thing it's about.
             title: (here.place ?? "").split(",")[0] || Words.name("location"),
-            facts: Here.besideNote(Here.facts(here, now, hereSaid, hereTold), note).map(fact => ({
-                label: Words.name(`location:${fact.id}`),
-                value: fact.value,
-                identifies: fact.identifies === true
-            })),
+            facts: Here.besideNote(Here.facts(here, now, hereSaid, hereTold), !differs)
+                .map(fact => ({
+                    label: Words.name(`location:${fact.id}`),
+                    value: fact.value,
+                    identifies: fact.identifies === true
+                })),
             // What GeoClue can't say of a place found by Wi-Fi, and why.
             body: byHand ? "" : Words.of("location").tells?.leftOut ?? ""
         });
