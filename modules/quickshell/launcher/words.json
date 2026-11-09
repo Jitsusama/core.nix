@@ -9678,6 +9678,7 @@
         "eyebrow": "on this machine \u00b7 switch",
         "after": "{does} {lasted} after the screens go off",
         "at": "{does} at {time}",
+        "atDay": "{does} {moment}",
         "locks": "never \u00b7 it only locks",
         "locksCharging": "never on the charger \u00b7 it only locks",
         "never": "never",

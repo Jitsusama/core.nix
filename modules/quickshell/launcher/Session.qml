@@ -11,6 +11,7 @@ import "Power.js" as Power
 import "Interfaces.js" as Interfaces
 import "Awake.js" as Awake
 import "Captured.js" as Captured
+import "../When.js" as When
 
 Provider {
     id: provider
@@ -83,6 +84,7 @@ Provider {
             now,
             plugged: !UPower.onBattery,
             when: at => Captured.taken(at, now, provider.days),
+            day: at => When.day(at, now, provider.days),
             lasted: Interfaces.lasted,
             named: programNamed
         });
@@ -99,9 +101,10 @@ Provider {
     }
 
     // The words for a day a file's row says (FileFacts.js), so Last Slept
-    // says its day as a thing taken does.
+    // and Idle Sleep say a day as a thing taken does.
     readonly property var days: ({
         yesterday: (Words.of("file-chooser:changed").said ?? {}).yesterday,
+        tomorrow: (Words.of("file-chooser:changed").said ?? {}).tomorrow,
         date: (at, format) => Qt.formatDate(at, format)
     })
 

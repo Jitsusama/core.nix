@@ -2975,7 +2975,7 @@ QtObject {
                 { what: ["sleep"], who: "1password", why: "Locking", mode: "delay" }],
             last_sleep: { began_at_ms: awakeAt - 7_200_000 - 21_780_000,
                 ended_at_ms: awakeAt - 7_200_000 } };
-        const awakeTold = plugged => ({ now: awakeAt, plugged, when: clock,
+        const awakeTold = plugged => ({ now: awakeAt, plugged, when: clock, day: () => "",
             lasted: Interfaces.lasted, named: who => ({ "1password": "1Password" })[who] ?? who });
         machine("keep awake's drawer, others' locks first, its own left out",
             Awake.facts(logind, awakeWords, awakeTold(false)), [
@@ -2991,6 +2991,11 @@ QtObject {
         machine("an idle machine says when it sleeps, a sleep still going says nothing",
             Awake.facts(idleNow, awakeWords, awakeTold(false)),
             [{ id: "awake:idle-sleep", value: "suspends at 4 min" }]);
+        const pastMidnight = Object.assign(awakeTold(false),
+            { when: () => "tomorrow 00:10", day: () => "tomorrow" });
+        machine("an idle machine sleeping past midnight says its day, with no at",
+            Awake.facts(idleNow, awakeWords, pastMidnight),
+            [{ id: "awake:idle-sleep", value: "suspends tomorrow 00:10" }]);
         const idleSaid = (action, plugged) => Awake.facts({ idle_action: action,
             idle_action_ms: 300_000 }, awakeWords, awakeTold(plugged))[0]?.value ?? "";
         machine("idle sleep as logind is set", [idleSaid("lock", true), idleSaid("lock", false),

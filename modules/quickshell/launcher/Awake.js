@@ -44,7 +44,8 @@ function holding(logind, mode, what) {
 // and how long it lasted. `said` gives the words (words.json's Keep
 // Awake), and `told` the moment it is (`now`), whether it's on the charger
 // (`plugged`), how a moment (`when(at)`, as Captured.js's taken says
-// one) and a time (`lasted(seconds)`) are said, and how a holder is
+// one) and its day alone (`day(at)`, as When.js says one, "" today) and
+// a time (`lasted(seconds)`) are said, and how a holder is
 // named (`named(who)`): as its program names itself where the desktop
 // knows it, "1Password" for 1password (VKCF3Z, 2026-11-08). Left out: `preparing`,
 // never true while the launcher is drawn, `idle` itself, since a launcher
@@ -66,8 +67,10 @@ function facts(logind, said, told) {
 }
 
 // When an idle machine sleeps, as logind's IdleAction and IdleActionUSec
-// say: "suspends 5 min after the screens go off", or at a time once the
-// session is idle; "never on the charger \u00b7 it only locks" where it
+// say: "suspends 5 min after the screens go off", or once the session is
+// idle at a moment, "suspends at 15:20" today and "suspends tomorrow
+// 00:10" past midnight, since "at" goes before a bare time and never a
+// day (VKCF3Z, 2026-11-08); "never on the charger \u00b7 it only locks" where it
 // only locks, as idle-sleep has it on the charger; "never" where it
 // ignores idling. An action `said` has no verb for is said as logind
 // names it. The screens go off as the session goes idle (idle-sleep's
@@ -87,7 +90,9 @@ function idleSleep(logind, said, told) {
     const after = logind.idle_action_ms ?? 0;
     const since = logind.idle_since_ms;
     if (logind.idle === true && typeof since === "number" && since + after > told.now) {
-        return filled(said.at, { does, time: told.when(since + after) });
+        const at = since + after;
+        return told.day(at) === "" ? filled(said.at, { does, time: told.when(at) })
+            : filled(said.atDay, { does, moment: told.when(at) });
     }
     return filled(said.after, { does, lasted: told.lasted(after / MILLISECONDS) });
 }
