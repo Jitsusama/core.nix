@@ -1732,10 +1732,8 @@ def each_read_cold(desktop: Desktop) -> None:
 
     networks = rows("network", "wi-fi")
     if "Office" not in networks:
-        # What wifid and the shell said of the look, to say why.
+        # What wifid said of the look, to say why.
         print(machine.execute("journalctl -b --unit=wifid --lines=15 --no-pager")[1])
-        shell = "journalctl --user --unit=quickshell --no-pager"
-        print(desktop.as_account(f"{shell} | grep wifi || true"))
         print(machine.execute(f"{wifi}.Describe '{{}}'")[1])
     assert "Office" in networks, networks
     firmware = rows("machine", "firmware")

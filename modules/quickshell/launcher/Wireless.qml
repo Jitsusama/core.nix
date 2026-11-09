@@ -98,10 +98,8 @@ Provider {
         running: provider.on && provider.launcher !== null
             && (provider.launcher.open || provider.terminalLooks)
         onTriggered: {
-            if (provider.terminalLooks && !provider.launcher.open) {
+            if (provider.terminalLooks && !provider.launcher.open)
                 provider.lookedFrom = Wifi.looks;
-                Report.say(`wifi looks for a terminal from ${Wifi.looks}`);
-            }
             Wifi.scan();
         }
     }
