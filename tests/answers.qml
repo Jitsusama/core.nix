@@ -1593,9 +1593,10 @@ QtObject {
         machine("idle for seconds", WifiLink.idle(2430, tenths), "2.4 s");
         machine("idle for tens of seconds", WifiLink.idle(42000, tenths), "42 s");
         machine("idle for minutes", WifiLink.idle(3 * 60000, tenths), "3 min");
-        const counted = value => String(value);
-        machine("nothing sent again", WifiLink.retried(0, null, counted), "none");
-        machine("what was sent again and never sent, dotted", WifiLink.retried(12, 1, counted),
+        const retriesSaid = value => String(value);
+        machine("nothing sent again", WifiLink.retried(0, null, retriesSaid), "none");
+        machine("what was sent again and never sent, dotted",
+            WifiLink.retried(12, 1, retriesSaid),
             "12 sent again \u00b7 1 never sent");
         machine("protection's strength by its standard",
             ["WPA3-SAE", "WPA2-PSK", "WEP", "WPA-PSK"].map(WifiLink.strength),
