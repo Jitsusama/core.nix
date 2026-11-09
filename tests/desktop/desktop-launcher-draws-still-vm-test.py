@@ -11,9 +11,11 @@ opening comment says what the test proves. Every test asks for the desktop, star
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import itertools
 import json
+import math
 import re
 import shlex
 import unicodedata
@@ -691,6 +693,26 @@ def test_the_foots_marks_never_give_way_and_are_there_as_the_shell_starts(
     desktop.close_launcher()
 
 
+# How often one Return composes the list as it steps into a place.
+COMPOSED_MOST = 1
+
+
+@dataclasses.dataclass(frozen=True)
+class Step:
+    """What stepping into a place did: the list composed and rows drawn afresh, and its reach."""
+
+    composed: int
+    drawn: int
+    # The rows in reach of the view, those shown and those the list builds
+    # ahead of it, and every row the place holds.
+    reach: int
+    listed: int
+
+    def within(self) -> bool:
+        """Say whether it composed the list once and drew no rows out of reach."""
+        return self.composed <= COMPOSED_MOST and self.drawn <= self.reach
+
+
 def test_programs_is_drawn_the_moment_return_steps_into_it(desktop: Desktop) -> None:
     """Programs is drawn the moment Return steps into it, from home."""
     machine = desktop.machine
@@ -706,12 +728,13 @@ def test_programs_is_drawn_the_moment_return_steps_into_it(desktop: Desktop) -> 
         # utime and stime, the stat's 14th and 15th, counted past its name.
         return (int(fields[11]) + int(fields[12])) * 1000 / tick
 
-    def stepped() -> tuple[float, str]:
-        """Step into Programs from home, saying the shell's work across it and its timing."""
+    def stepped() -> Step:
+        """Step into Programs from home, saying what it composed and drew, and its timing."""
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.down_to("Programs")
         since = desktop.mark()
+        was = laid_out(desktop)
         before = worked()
         machine.send_key("ret")
         # Its programs drawn, not only the step taken: a step that threw
@@ -721,36 +744,52 @@ def test_programs_is_drawn_the_moment_return_steps_into_it(desktop: Desktop) -> 
             lambda shown: shown["held"] == ["programs"] and len(shown["rows"]) > 0
         )
         cost = worked() - before
+        now = laid_out(desktop)
+        # Qt's ListView builds rows a cache's height past the view as well as
+        # those shown: 15 where 8 are shown, on main (2026-11-09). A step
+        # into a fresh place builds every row in reach, so it draws exactly
+        # this many and the bound is met with nothing to spare; a row more is
+        # one built out of reach, which is what it's there to catch.
+        reach = math.ceil((now["inside"]["height"] + now["ahead"]) / now["rowTall"])
         # The launcher times a step to its frame as it does a key, and says
         # it once it's felt (Trials.js).
         said = desktop.as_account(
             "journalctl --user --unit=quickshell --no-pager --output=cat"
             f" --after-cursor={shlex.quote(since)} | grep -a -F '\u2192 Programs'; true"
         ).strip()
-        print(f"stepping into Programs: {said or 'within a frame'}, {cost:.0f} ms worked")
+        step = Step(
+            composed=int(now["made"]) - int(was["made"]),
+            drawn=int(now["drawn"]) - int(was["drawn"]),
+            reach=reach,
+            listed=int(now["listed"]),
+        )
+        print(
+            f"stepping into Programs: {said or 'within a frame'}, composed {step.composed}"
+            f" times, {step.drawn} of its {step.listed} rows drawn afresh where {reach} are in"
+            f" reach, {cost:.0f} ms worked"
+        )
         desktop.close_launcher()
-        return cost, said
+        return step
 
-    # The VM draws in software, several times slower than a laptop, and
-    # takes about 130 ms to step in and draw; this holds it to a few times
-    # that, so a step that throws or grows slower in kind fails, and the
-    # laptop's own time is read from its journal. What's held is the
-    # shell's own work across the step, not the time to its frame, which a
-    # builder short of processors stretched past it with the step no slower
-    # (566 ms to its frame on 2026-11-03). A loaded builder stretches the
-    # work too, a processor shared with other machines doing less in the
-    # same time: 460 ms, its parts each three times their usual, beside a
-    # key taking 467 ms to its frame (2026-11-04). So the step is taken up
-    # to three times and held by its least, which load seldom reaches every
-    # time and a step slower in kind always does.
-    most = 400
+    # What's held is what the step does, which a loaded builder can't
+    # stretch: the list composed once for the place stepped into, and no
+    # more rows drawn afresh than are in reach of its view. The shell's
+    # processor time across it, which held it before, is said only: a
+    # builder shared with other machines stretched it to 470 to 1220 ms
+    # against a bound of 400, with the step no slower in kind, four times
+    # by 2026-11-09. A step that threw once left Programs blank, and one
+    # that composes again or draws every row it holds fails here. A source
+    # refreshing within the step composes the list once more on its own,
+    # so the step is taken up to three times and passes if one keeps to it.
     tries = []
     for _ in range(3):
         tries.append(stepped())
-        if tries[-1][0] <= most:
+        if tries[-1].within():
             break
-    least = min(cost for cost, _ in tries)
-    assert least <= most, f"stepping into Programs worked at least {least:.0f} ms: {tries}"
+    # Programs holds more rows than are in reach, so a step drawing every
+    # one would fail.
+    assert all(step.listed > step.reach for step in tries), tries
+    assert any(step.within() for step in tries), f"stepping into Programs did more: {tries}"
 
 
 # Joel, 2026-10-25: "text alignment and shit constantly shifting around".
