@@ -77,7 +77,9 @@ pub fn records(state: &State) -> Vec<(String, Value)> {
     for meeting in &state.meetings {
         made.push(record("meeting", &meeting.id, as_value(meeting)));
     }
-    for mail in &state.mail {
+    // Mail done is still a mail record, its `done` saying how it went,
+    // so a watch hears the one it held change rather than vanish.
+    for mail in state.mail.iter().chain(&state.finished) {
         made.push(record("mail", &mail.id, as_value(mail)));
     }
     for document in &state.documents {

@@ -32,6 +32,9 @@ pub struct State {
     pub meetings: Vec<Meeting>,
     /// The mail that wants Joel, newest first.
     pub mail: Vec<Mail>,
+    /// The mail that wanted him and no longer does, each with how and
+    /// when, for `done::KEPT` after (done.rs).
+    pub finished: Vec<Mail>,
     /// How many in the inbox are unread, or none until Gmail says.
     pub unread: Option<u64>,
     /// The documents Joel looked at lately, each kind's last first.

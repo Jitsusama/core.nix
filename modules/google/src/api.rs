@@ -300,6 +300,17 @@ impl Google {
         )
     }
 
+    /// The labels on the mail `id`, which say whether it's read, in the
+    /// inbox and important, or none where Gmail has no such mail.
+    pub fn labels(&self, token: &str, id: &str) -> Result<Option<Value>, Refused> {
+        self.found(
+            token,
+            &format!("/gmail/v1/users/me/messages/{id}"),
+            &[("format", "minimal"), ("fields", "labelIds")],
+            "a piece of mail's labels",
+        )
+    }
+
     /// One piece of mail: who sent it, its subject and when it came, and
     /// nothing of what it says.
     pub fn mail(&self, token: &str, id: &str) -> Result<Value, Refused> {

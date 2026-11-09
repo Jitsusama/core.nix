@@ -23,6 +23,7 @@ use jiff::{Timestamp, ToSpan, Zoned};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::done::Done;
 use crate::drive;
 use crate::link::{self, Kind};
 
@@ -74,6 +75,10 @@ pub struct Meeting {
     /// start, furthest first: its own reminders, or the calendar's when it
     /// keeps those, and only those that pop up, since one by email is mail.
     pub reminders: Vec<i64>,
+    /// How and when it stopped wanting Joel, ended or declined, or none
+    /// while it still does (done.rs; watch.rs says it).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub done: Option<Done>,
 }
 
 /// Someone on a meeting, by the name the calendar gives, or their address
@@ -487,6 +492,7 @@ fn meeting(event: &Value, zone: &TimeZone, defaults: &[i64], writable: &[&str]) 
         organizer: organizer.filter(|_| !holds).map(person),
         guests,
         reminders: reminded(event, defaults),
+        done: None,
     })
 }
 
@@ -811,6 +817,7 @@ mod tests {
                     answer: Answer::Yes,
                 }],
                 reminders: vec![],
+                done: None,
             }]
         );
     }

@@ -9092,7 +9092,13 @@
       "said": {
         "now": "just now",
         "minutes": "{minutes} min ago",
-        "yesterday": "yesterday"
+        "yesterday": "yesterday",
+        "readInGmail": "read in Gmail",
+        "archivedInGmail": "archived in Gmail",
+        "unimportant": "no longer important",
+        "gone": "gone from Gmail",
+        "readHere": "read here",
+        "archivedHere": "archived here"
       }
     },
     {
