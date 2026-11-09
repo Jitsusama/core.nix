@@ -34,11 +34,16 @@ pub struct Quiet {
 }
 
 impl Quiet {
-    /// Reads one from a presence, given the boot running now and whether a
-    /// pid is a pi.
+    /// Reads one from a presence, given when its session's log was last
+    /// written, the boot running now and whether a pid is a pi. A
+    /// presence's last turn is gone once its day's usage starts again at
+    /// midnight, so the log, written at each turn, counts too: on 9
+    /// November one was said to have taken no turn since 22:32 when its
+    /// last ended at 23:57.
     #[must_use]
     pub fn from(
         p: &Presence,
+        logged: Option<i64>,
         boot: Option<&str>,
         parked: bool,
         is_pi: impl Fn(u32) -> bool,
@@ -47,7 +52,7 @@ impl Quiet {
         let owner = p.owner.as_ref();
         let this_boot = boot.is_some() && owner.and_then(|o| o.boot_id.as_deref()) == boot;
         let started = owner.and_then(|o| o.started_at).map(|ms| ms / 1000);
-        let turned = p.last_turn_ended();
+        let turned = p.last_turn_ended().max(logged);
         Some(Self {
             address,
             session: p.session.clone(),
@@ -248,19 +253,38 @@ mod tests {
         };
         // 1_000_000 s is 1970-01-12T13:46:40Z.
         let turned_later = presence("1970-01-12T13:46:40Z", 900_000_000);
-        let q = Quiet::from(&turned_later, Some("b"), false, |pid| pid == 7).unwrap();
+        let q = Quiet::from(&turned_later, None, Some("b"), false, |pid| pid == 7).unwrap();
         assert_eq!(q.since, Some(1_000_060));
         assert!(!q.unstarted);
         assert!(q.running && q.listening);
 
         let started_later = presence("1970-01-12T13:46:40Z", 1_100_000_000);
-        let q = Quiet::from(&started_later, Some("b"), false, |_| true).unwrap();
+        let q = Quiet::from(&started_later, None, Some("b"), false, |_| true).unwrap();
         assert_eq!(q.since, Some(1_100_000));
         assert!(q.unstarted);
 
-        let other_boot = Quiet::from(&started_later, Some("c"), false, |_| true).unwrap();
+        let other_boot = Quiet::from(&started_later, None, Some("c"), false, |_| true).unwrap();
         assert!(!other_boot.running);
-        let parked = Quiet::from(&started_later, Some("b"), true, |_| true).unwrap();
+        let parked = Quiet::from(&started_later, None, Some("b"), true, |_| true).unwrap();
         assert!(!parked.listening);
+    }
+
+    #[test]
+    fn a_presence_whose_day_began_again_counts_from_its_log() {
+        // Past midnight a presence's usage holds no last turn.
+        let presence: Presence = serde_json::from_value(serde_json::json!({
+            "session": "s-1",
+            "addresses": ["1H56ZJ"],
+            "state": "listening",
+            "orchestratedBy": "WCJQSG",
+            "owner": {"pid": 7, "startedAt": 1_000_000_000, "bootId": "b"},
+            "usage": {"day": "1970-01-13", "turns": {"today": 0}},
+        }))
+        .unwrap();
+        let q = Quiet::from(&presence, Some(1_005_100), Some("b"), false, |_| true).unwrap();
+        assert_eq!(q.since, Some(1_005_100));
+        assert!(!q.unstarted, "it took turns after its start");
+        let q = Quiet::from(&presence, None, Some("b"), false, |_| true).unwrap();
+        assert!(q.unstarted);
     }
 }

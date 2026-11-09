@@ -5,6 +5,7 @@
 //! the way the harness's own folder transport does: one JSON file per
 //! message, renamed into place whole.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -194,6 +195,48 @@ pub fn stamped_at(id: &str) -> Option<i64> {
     id.split('-').next()?.parse().ok()
 }
 
+/// When each session's log under `logs` was last written, in seconds, by
+/// session id. pi keeps one log a session, in a folder for its working
+/// directory, named `<started>_<session>.jsonl`, and writes to it at
+/// every turn.
+#[must_use]
+pub fn logs_written(logs: &Path) -> BTreeMap<String, i64> {
+    let mut written = BTreeMap::new();
+    for folder in fs::read_dir(logs)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+    {
+        for log in fs::read_dir(folder.path())
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+        {
+            let name = log.file_name();
+            let Some(session) = name
+                .to_str()
+                .and_then(|name| name.strip_suffix(".jsonl"))
+                .and_then(|name| name.rsplit_once('_'))
+                .map(|(_, session)| session.to_owned())
+            else {
+                continue;
+            };
+            let Some(at) = log
+                .metadata()
+                .ok()
+                .and_then(|meta| meta.modified().ok())
+                .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
+                .and_then(|at| i64::try_from(at.as_secs()).ok())
+            else {
+                continue;
+            };
+            let newest = written.entry(session).or_insert(at);
+            *newest = (*newest).max(at);
+        }
+    }
+    written
+}
+
 fn json_files(folder: &Path) -> impl Iterator<Item = PathBuf> {
     fs::read_dir(folder)
         .into_iter()
@@ -210,6 +253,29 @@ fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_session_s_log_says_when_it_was_last_written() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("--home-joel-src--");
+        fs::create_dir_all(&folder).unwrap();
+        let log = folder.join("2026-11-09T03-32-08-305Z_01a1be5c-fff0.jsonl");
+        fs::write(&log, "{}\n").unwrap();
+        let at = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_794_197_847);
+        fs::File::options()
+            .write(true)
+            .open(&log)
+            .unwrap()
+            .set_modified(at)
+            .unwrap();
+        fs::write(folder.join("notes.txt"), "").unwrap();
+        let written = logs_written(dir.path());
+        assert_eq!(
+            written.into_iter().collect::<Vec<_>>(),
+            [("01a1be5c-fff0".to_owned(), 1_794_197_847)]
+        );
+        assert!(logs_written(&dir.path().join("none")).is_empty());
+    }
 
     fn mesh() -> (tempfile::TempDir, Mesh) {
         let dir = tempfile::tempdir().unwrap();

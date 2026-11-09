@@ -130,7 +130,10 @@ fn run(args: &Args) -> io::Result<()> {
     if args.steward.is_some() {
         // Like reviving, this doesn't wait on the card, and a line that
         // can't be sent mustn't keep the card from being written.
-        if let Err(err) = tell_idle(&mesh, &folder, now) {
+        // pi's own folder, where it keeps each session's log.
+        let agent = env::var_os("PI_CODING_AGENT_DIR")
+            .map_or_else(|| home.join(".pi/agent"), PathBuf::from);
+        if let Err(err) = tell_idle(&mesh, &agent.join("sessions"), &folder, now) {
             eprintln!("cadence: telling of idle sessions: {err}");
         }
     }
@@ -177,7 +180,7 @@ fn run(args: &Args) -> io::Result<()> {
 
 /// Tells each orchestrator of its sessions that have sat idle two hours,
 /// remembering in `idle.json` which spells were told.
-fn tell_idle(mesh: &Mesh, folder: &Path, now: i64) -> io::Result<()> {
+fn tell_idle(mesh: &Mesh, logs: &Path, folder: &Path, now: i64) -> io::Result<()> {
     let path = folder.join("idle.json");
     let mut told: idle::Told = fs::read(&path)
         .ok()
@@ -186,11 +189,18 @@ fn tell_idle(mesh: &Mesh, folder: &Path, now: i64) -> io::Result<()> {
     let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id")
         .ok()
         .map(|id| id.trim().to_owned());
+    let logged = mesh::logs_written(logs);
     let sessions: Vec<idle::Quiet> = mesh
         .all()
         .iter()
         .filter_map(|p| {
-            idle::Quiet::from(p, boot.as_deref(), mesh.is_parked(&p.session), start::is_pi)
+            idle::Quiet::from(
+                p,
+                logged.get(&p.session).copied(),
+                boot.as_deref(),
+                mesh.is_parked(&p.session),
+                start::is_pi,
+            )
         })
         .collect();
     let tells = idle::due(&sessions, &mut told, now, clock);
