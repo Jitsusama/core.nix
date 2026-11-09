@@ -45,25 +45,30 @@ function figureDot(letters, at) {
         && DIGIT.test(letters[at + 1] ?? "");
 }
 
-// Words cut after each letter `breaksAfter` says, each piece keeping its
-// marks at its end, a run of them together: "mode=pseudo-gui" at "=" is
-// "mode=" and "pseudo-gui", "fe80::8a2e" at ":" is "fe80::" and "8a2e",
-// so no piece but the first opens with a mark (Y2YBTS, 2026-11-09). Marks
-// opening the words stay with what follows them, so "--player-" is one.
+// Words cut after each letter `breaksAfter` says, each piece keeping the
+// marks it ends on, a run of any of them together: "mode=pseudo-gui" at
+// "=" is "mode=" and "pseudo-gui", "fe80::8a2e" at ":" is "fe80::" and
+// "8a2e", and "LDFLAGS=-lfoo" is "LDFLAGS=-" and "lfoo", so no piece but
+// the first opens with a mark (Y2YBTS, 2026-11-09). After a space the next
+// piece opens at once, as a command's next argument "--verbose" does, and
+// marks opening a piece stay with what follows them, so "--player-" is one.
 function cutWhere(words, breaksAfter) {
     const pieces = [""];
     const letters = [...words];
     let worded = false;
     let broke = false;
+    let spaced = false;
     for (const [at, letter] of letters.entries()) {
         const mark = breaksAfter(letters, at);
-        if (!mark && broke) {
+        if (broke && !(spaced ? letter === " " : mark || MARKS.includes(letter))) {
             pieces.push("");
             broke = false;
+            worded = false;
         }
         pieces[pieces.length - 1] += letter;
-        if (mark && worded) {
+        if (broke || (mark && worded)) {
             broke = true;
+            spaced = letter === " ";
         } else if (!mark) {
             worded = true;
         }
@@ -84,12 +89,17 @@ function cutAtFigures(words) {
     return cutWhere(words, figureDot);
 }
 
-// Words cut to their letters, each mark kept with the letter before it, so
-// a line broken anywhere still opens with no mark.
-function markedLetters(words) {
-    return [...words].reduce((all, letter) => all.length > 0 && MARKS.includes(letter)
-        ? all.slice(0, -1).concat([`${all[all.length - 1]}${letter}`])
-        : all.concat([letter]), []);
+// Words cut to their letters, each mark kept with the letter before it
+// while the two fit `room`, so a line broken anywhere opens with no mark,
+// and a run of marks too long for a line still breaks rather than draw
+// past the frame (Y2YBTS, 2026-11-09).
+function markedLetters(words, room, width) {
+    return [...words].reduce((all, letter) => {
+        const before = all[all.length - 1];
+        return before !== undefined && MARKS.includes(letter)
+            && fitting(`${before}${letter}`, room, width)
+            ? all.slice(0, -1).concat([`${before}${letter}`]) : all.concat([letter]);
+    }, []);
 }
 
 // Whether `said` fits `room`, the spaces it ends on left out, since they
@@ -111,8 +121,29 @@ function opensOnMark(line) {
 function piecesOf(words, room, width) {
     const finer = (pieces, cutting) => pieces.reduce((all, piece) => all.concat(
         fitting(piece, room, width) ? [piece] : cutting(piece)), []);
-    return [piece => cutAfter(piece, WEAK_MARKS), cutAtFigures, markedLetters]
+    return [piece => cutAfter(piece, WEAK_MARKS), cutAtFigures,
+        piece => markedLetters(piece, room, width)]
         .reduce(finer, cutAfter(words, STRONG_MARKS));
+}
+
+// Whether no line laid from `said` after its first opens on a mark, but one
+// a space comes before, as a command's next argument "--verbose" may or an
+// item after a run's dot (Y2YBTS, 2026-11-09). Each line is found in
+// `said` after the one before, its kept spaces and joiners read as they
+// are; one that isn't, given way from its middle, opens on its item's own
+// start.
+function laidWell(said, lines) {
+    const whole = String(said);
+    let from = 0;
+    return lines.every((line, at) => {
+        const plain = line.replace(/\u00a0/gu, " ").replace(/\u2060/gu, "");
+        const found = whole.indexOf(plain, from);
+        if (found < 0) {
+            return true;
+        }
+        from = found + plain.length;
+        return at === 0 || !opensOnMark(plain) || whole[found - 1] === " ";
+    });
 }
 
 // An identifier too wide for a line, whole on as many lines as it needs:
