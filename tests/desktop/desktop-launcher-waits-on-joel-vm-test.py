@@ -1157,6 +1157,10 @@ def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desk
                     and shown["rows"] == ["Read the plan"]
                 )
             )
+            # - is the one way back out of a filter, so its foot keeps it and the commands
+            # wherever the look's d and y give way (VKCF3Z, 2026-11-08).
+            hints = desktop.showing()["hints"]
+            assert {"- up", ": commands"} <= set(hints), (scale, hints)
             if scale != "1":
                 desktop.shoot(f"launcher-for-you-filtered-at-{named}")
             desktop.machine.send_chars("-")
