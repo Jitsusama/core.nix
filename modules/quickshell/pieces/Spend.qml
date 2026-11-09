@@ -43,6 +43,10 @@ Piece {
     title: said?.title ?? "AI Spend"
     hint: silent ? "Nothing is watching AI spend" : shown?.hint ?? value
     context: silent ? "the spend-watch unit says why" : shown?.context ?? ""
+    // The Spend row it stands for draws its drawer, as the daemon names it:
+    // the top finding's, else today's, the quiet one's while the screen is
+    // shared. None while nothing watches.
+    drawnBy: !silent && shown?.row ? { place: "spend", key: `spend:${shown.row}` } : null
     actions: (silent ? [] : (said?.actions ?? []).map(action => ({
         glyph: Theme.glyph[marks[action.kind] ?? "ask"],
         name: action.name,
