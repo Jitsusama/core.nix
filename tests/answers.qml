@@ -630,7 +630,11 @@ QtObject {
         // Location's words, as words.json says them, and its numbers in an
         // English locale's marks.
         const hereSaid = { metres: "within {n} m", kilometres: "within {n} km", north: "N",
-            south: "S", east: "E", west: "W" };
+            south: "S", east: "E", west: "W", nearEdge: "near a time zone's edge",
+            foundWithin: "found {within}" };
+        // A fix in another zone, by its width and whether its zone holds.
+        const unfollowed = (accuracy, zoneHolds) => Here.unfollowed({ accuracy, zoneHolds },
+            hereSaid, hereTold);
         const hereTold = { number: (value, decimals) => Qt.locale("en_CA").toString(value, "f",
             decimals) };
         // A plate's first two facts, when it was found and how near.
@@ -860,7 +864,16 @@ QtObject {
                 JSON.stringify(["located"])],
             ["and stays while the note says the zone instead",
                 JSON.stringify(Here.besideNote(nearAndWhen, false).map(fact => fact.id)),
-                JSON.stringify(["located", "accuracy"])]
+                JSON.stringify(["located", "accuracy"])],
+            ["a circle a zone's line crosses isn't followed", unfollowed(3000, false),
+                "near a time zone's edge"],
+            ["one wider than a region says its width", unfollowed(80_000, true),
+                "found within 80 km"],
+            ["one that's followed, or held put back, says nothing more",
+                unfollowed(26_000, true), ""],
+            ["one unsaid round its circle is followed only within 10 km",
+                `${unfollowed(9000, null)}|${unfollowed(26_000, null)}`, "|found within 26 km"],
+            ["one of no width says nothing", unfollowed(null, true), ""]
         ];
         for (const [what, got, expected] of figures) {
             asked++;

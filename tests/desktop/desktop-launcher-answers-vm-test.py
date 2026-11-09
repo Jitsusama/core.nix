@@ -969,9 +969,9 @@ def test_the_clock_follows_the_laptop_into_another_zone_and_is_put_back(desktop:
         # Somewhere else lets it go, and the clock follows again.
         found("America/Vancouver", 300, "Harbour, Farshore")
         keeps("America/Vancouver")
-        # Found only from the network's address, tens of kilometres wide,
-        # as through WARP, it never moves the clock.
-        found("Asia/Tokyo", 26000, "Shibuya, Tokyo")
+        # Found only to a country's width, wider than a zone needs, it never
+        # moves the clock.
+        found("Asia/Tokyo", 300000, "Shibuya, Tokyo")
         assert machine.succeed(zone).strip() == "America/Vancouver"
     finally:
         machine.succeed(f"timedatectl set-timezone {shlex.quote(began)}")

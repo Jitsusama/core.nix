@@ -21,6 +21,11 @@ const MOST = BANDS.length;
 // The significant figures a distance is said to, rounded up.
 const FIGURES = 3;
 const TEN = 10;
+// The widest a fix may be for its zone to move the clock, where its zone
+// holds round its circle and where nothing says, as clock-follows decides
+// (clock-follows/src/main.rs's TRUSTED and NEAR).
+const TRUSTED = 50_000;
+const NEAR = 10_000;
 
 // The decimals a position may claim for its accuracy, in metres: four
 // under 35 m, none from 35 km.
@@ -68,6 +73,22 @@ function within(metres, said, told) {
     return said.kilometres.replace("{n}", figured(metres / KILOMETRE).text);
 }
 
+
+// Why the clock isn't following a place in another zone, the last item of
+// Now's note, which gives way first: near a time zone's edge where its
+// circle keeps another time, the fix's own width where it's too wide, and
+// nothing where the clock would follow it, as while Put It Back holds the
+// zone, which the drawer leads with (VKCF3Z, 2026-11-09).
+function unfollowed(here, said, told) {
+    if (here.zoneHolds === false) {
+        return said.nearEdge;
+    }
+    const widest = here.zoneHolds === true ? TRUSTED : NEAR;
+    if (!Number.isFinite(here.accuracy) || here.accuracy <= widest) {
+        return "";
+    }
+    return said.foundWithin.replace("{within}", within(here.accuracy, said, told));
+}
 
 // When it was found, `when` in seconds since 1970: how long ago within a
 // day, else its day and time, as the launcher says a day ("Saturday 06:46",

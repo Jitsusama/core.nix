@@ -41,6 +41,11 @@ pub struct Fix {
     /// The time zone kept there, "America/Toronto", or null likewise.
     #[serde(default)]
     pub zone: Option<String>,
+    /// Whether every point on land round the fix's circle keeps the zone's
+    /// time now (named.rs), left out of the file while unknown, as a file
+    /// older than it never says it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zone_holds: Option<bool>,
     /// The country it's in, "Canada", left out of the file while it
     /// couldn't be asked, as a file older than it never says it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -73,6 +78,7 @@ impl Fix {
             when,
             place: None,
             zone: None,
+            zone_holds: None,
             country: None,
             hand: false,
             altitude: None,
@@ -94,6 +100,13 @@ impl Fix {
     pub fn named(mut self, place: Option<String>, zone: Option<String>) -> Fix {
         self.place = place.or(self.place);
         self.zone = zone.or(self.zone);
+        self
+    }
+
+    /// The fix with whether its zone holds round its circle, the one kept
+    /// where the new asking couldn't say.
+    pub fn zone_holding(mut self, holds: Option<bool>) -> Fix {
+        self.zone_holds = holds.or(self.zone_holds);
         self
     }
 

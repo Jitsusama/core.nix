@@ -11,11 +11,20 @@
 //! the clock's zone, and a zone Joel sets by hand, or puts back, mustn't
 //! be taken as the laptop moving and undone a moment later. The last fix
 //! decided is kept in the state folder (`decided.json`), so a restart, a
-//! switch or a login doesn't decide it again over his zone either. A fix
-//! moves the clock only when it names a zone and GeoClue found it to within
-//! ten kilometres, as the Wi-Fi networks in reach find it. A position read
-//! from the network's address alone, which WARP's exit sends anywhere, is
-//! one GeoClue is far less sure of, so it never moves the clock.
+//! switch or a login doesn't decide it again over his zone either.
+//!
+//! A fix moves the clock only when it names a zone and GeoClue found it
+//! to a region's width, fifty kilometres, as a time zone needs no nearer.
+//! Where `BeaconDB` knows none of the Wi-Fi in reach, it places the laptop
+//! from the network's address to about 25 km, and that's the fix the
+//! laptops get at home, which a rule of ten never once trusted. A circle
+//! that wide can cross a zone's line, so past ten kilometres it moves the
+//! clock only where whereabouts found every point on land round the circle
+//! keeping the zone's time (`zone_holds`), and within ten, unless it found
+//! one that doesn't. WARP's exit stands in for the network's address, so
+//! such a fix may be of the exit's region rather than the laptop's; should
+//! it name another zone, Put It Back holds Joel's until he moves. A
+//! fix wider than a region, a country's width, never moves the clock.
 //!
 //! Each move is written down (`moved.json` in the state folder) for the
 //! launcher's Now to say, and `put-back` sets the clock back to the zone it
@@ -45,9 +54,16 @@ const HERE: &str = "here:laptop";
 const AGAIN: Duration = Duration::from_secs(2);
 
 /// How near, in metres, GeoClue has to say the laptop is before its zone
-/// moves the clock. Wi-Fi finds a laptop to within a few hundred metres;
-/// an address alone, to a city's or a country's width.
-const TRUSTED: f64 = 10_000.0;
+/// moves the clock: its own region's width, `GCLUE_LOCATION_ACCURACY_REGION`.
+/// Wi-Fi finds a laptop to within a few hundred metres, or `BeaconDB`'s
+/// coarser answer to some tens of kilometres; an address alone, to a
+/// country's width.
+const TRUSTED: f64 = 50_000.0;
+
+/// How near a fix has to be for its zone to move the clock while nobody
+/// could say whether it holds round the circle, as for a place Joel named
+/// or an older whereabouts: ten kilometres, the rule this was before.
+const NEAR: f64 = 10_000.0;
 
 /// What of whereabouts' record the clock needs, each null while unknown,
 /// and when it was found, which tells a fix found again from the same.
@@ -61,6 +77,8 @@ struct Fix {
     place: Option<String>,
     #[serde(default)]
     zone: Option<String>,
+    #[serde(default)]
+    zone_holds: Option<bool>,
 }
 
 /// The move the launcher says: from which zone to which, and where the
@@ -93,9 +111,14 @@ enum Decision {
 
 /// What a fix asks, given the clock's zone and the one held, if any.
 fn decide(fix: &Fix, clock: &str, held: Option<&str>) -> Decision {
-    let trusted = fix
-        .accuracy_m
-        .is_some_and(|metres| metres.is_finite() && metres <= TRUSTED);
+    let trusted = fix.accuracy_m.is_some_and(|metres| {
+        metres.is_finite()
+            && match fix.zone_holds {
+                Some(true) => metres <= TRUSTED,
+                Some(false) => false,
+                None => metres <= NEAR,
+            }
+    });
     let Some(zone) = fix
         .zone
         .as_deref()
@@ -340,6 +363,7 @@ mod tests {
             accuracy_m: Some(accuracy),
             place: Some("Kelpwater, Highreach".into()),
             zone: zone.map(Into::into),
+            zone_holds: Some(true),
         }
     }
 
@@ -418,12 +442,66 @@ mod tests {
     }
 
     #[test]
-    fn a_fix_found_from_an_address_alone_never_moves_the_clock() {
-        // BeaconDB's answer from the network's address, as at a hotel or
-        // through WARP, is tens of kilometres wide.
+    fn a_fix_to_beacondbs_width_in_another_zone_moves_the_clock() {
+        // BeaconDB places a laptop from the Wi-Fi in reach to about 26 km.
         assert_eq!(
-            decide(&fix(26_000.0, Some("Asia/Tokyo")), "America/Toronto", None),
+            decide(
+                &fix(26_000.0, Some("America/Halifax")),
+                "America/Toronto",
+                None
+            ),
+            Decision::Move("America/Halifax".into())
+        );
+    }
+
+    #[test]
+    fn a_fix_whose_circle_crosses_a_zones_line_never_moves_the_clock() {
+        let crossed = Fix {
+            zone_holds: Some(false),
+            ..fix(26_000.0, Some("America/Winnipeg"))
+        };
+        assert_eq!(decide(&crossed, "America/Toronto", None), Decision::Stay);
+        let near = Fix {
+            zone_holds: Some(false),
+            ..fix(3_000.0, Some("America/Winnipeg"))
+        };
+        assert_eq!(
+            decide(&near, "America/Toronto", None),
+            Decision::Stay,
+            "however near, where its edge keeps another time"
+        );
+    }
+
+    #[test]
+    fn a_fix_unsaid_round_its_circle_moves_the_clock_only_when_near() {
+        let named = Fix {
+            zone_holds: None,
+            ..fix(1_000.0, Some("America/Edmonton"))
+        };
+        assert_eq!(
+            decide(&named, "America/Toronto", None),
+            Decision::Move("America/Edmonton".into()),
+            "a town Joel named"
+        );
+        let wide = Fix {
+            zone_holds: None,
+            ..fix(26_000.0, Some("America/Edmonton"))
+        };
+        assert_eq!(decide(&wide, "America/Toronto", None), Decision::Stay);
+    }
+
+    #[test]
+    fn a_fix_found_from_an_address_alone_never_moves_the_clock() {
+        // GeoClue's answer from the network's address, as through WARP's
+        // exit, is a country's width.
+        assert_eq!(
+            decide(&fix(300_000.0, Some("Asia/Tokyo")), "America/Toronto", None),
             Decision::Stay
+        );
+        assert_eq!(
+            decide(&fix(50_001.0, Some("Asia/Tokyo")), "America/Toronto", None),
+            Decision::Stay,
+            "past a region's width"
         );
         assert_eq!(
             decide(&fix(f64::NAN, Some("Asia/Tokyo")), "America/Toronto", None),

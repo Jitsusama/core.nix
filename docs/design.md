@@ -1678,9 +1678,11 @@ works the same way everywhere.
   "umbrella" or "when will it rain", here or in a place, answers with the
   next rain, its hours a step in. The time
   here is the clock's, which follows the laptop into another zone once a
-  Wi-Fi fix says it's there to within ten kilometres, never for a fix from
-  the network's address alone; the time then says so ("clock moved to
-  Edmonton time, as the laptop is in Kelpwater"), and Put It Back leads
+  fix says it's there to within a region's fifty kilometres and the zone
+  keeps its time all round the fix's circle, never for a fix a country
+  wide, nor one whose circle crosses a zone's line; the time then says
+  so ("clock moved to Edmonton time, as the laptop is in Kelpwater"), and
+  Put It Back leads
   what's inside, holding the zone it kept until the laptop is somewhere
   else. The time here holds the clock and never the date: its Zone, a
   thing saying its offset, abbreviation, next change and tzdata's

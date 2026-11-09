@@ -9,6 +9,12 @@
 //! is all either needs. Nominatim asks that a program say who it is, and
 //! ask no more than once a second; this asks once each time here moves.
 //!
+//! The zone is asked at the edge of where the laptop may be too, eight
+//! points round the fix's circle in the same asking, so the clock moves
+//! only where the whole circle keeps the zone's time: a fix to a region's
+//! width near a zone's line could name either side, and a clock moved to
+//! the wrong one is worse than one left (clock-follows/).
+//!
 //! A place Joel names himself is found the other way, from its name, by
 //! Open-Meteo's geocoding, which says its town, province and zone at once.
 
@@ -22,31 +28,102 @@ const USER_AGENT: &str = "whereabouts (core.nix, the launcher's here)";
 /// How long either may take before here goes unnamed for now.
 const PATIENCE: Duration = Duration::from_secs(10);
 
+/// How many points round a fix's circle its zone is asked at besides its
+/// middle, a bearing apart each: eight, so a zone's line has to cut off
+/// less than an eighth of the circle to pass between them.
+const EDGE: u32 = 8;
+
+/// The Earth's mean radius, in metres, for the points on a fix's edge.
+const EARTH: f64 = 6_371_000.0;
+
+/// What the oceans' zones are named under, "Etc/GMT+4": a point at sea is
+/// nowhere Joel's laptop is, so it says nothing of whether the circle
+/// keeps the zone's time.
+const AT_SEA: &str = "Etc/";
+
 /// The name, the country and the zone of a position, each missing when its
-/// service couldn't be reached or didn't know.
+/// service couldn't be reached or didn't know, and whether every point on
+/// its circle that's on land keeps the zone's time now, missing likewise.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Named {
     pub place: Option<String>,
     pub country: Option<String>,
     pub zone: Option<String>,
+    pub zone_holds: Option<bool>,
 }
 
 /// Asks both services about the position, on a thread of its own, since
 /// each waits on the network.
-pub async fn name(latitude: f64, longitude: f64) -> Named {
-    let (latitude, longitude) = (hundredths(latitude), hundredths(longitude));
+pub async fn name(latitude: f64, longitude: f64, accuracy: f64) -> Named {
+    let points = circle(latitude, longitude, accuracy);
+    let (latitude, longitude) = points[0];
     tokio::task::spawn_blocking(move || {
         let agent = agent();
         // The place and its country are one answer of Nominatim's.
         let placed = asked(&agent, &place_url(latitude, longitude));
+        let zoned = asked(&agent, &zone_url(&points));
+        let (zone, zone_holds) = zoned.as_ref().map_or((None, None), held);
         Named {
             place: placed.as_ref().and_then(place),
             country: placed.as_ref().and_then(country),
-            zone: asked(&agent, &zone_url(latitude, longitude)).and_then(|said| zone(&said)),
+            zone,
+            zone_holds,
         }
     })
     .await
     .unwrap_or_default()
+}
+
+/// The fix's middle, then the points on its edge, `accuracy` metres from it
+/// a bearing apart, each to a hundredth of a degree.
+fn circle(latitude: f64, longitude: f64, accuracy: f64) -> Vec<(f64, f64)> {
+    let angle = accuracy.max(0.0) / EARTH;
+    let (from, along) = (latitude.to_radians(), longitude.to_radians());
+    let edge = (0..EDGE).map(|at| {
+        let bearing = f64::from(at) * std::f64::consts::TAU / f64::from(EDGE);
+        let to = (from.sin() * angle.cos() + from.cos() * angle.sin() * bearing.cos()).asin();
+        let across = along
+            + (bearing.sin() * angle.sin() * from.cos()).atan2(angle.cos() - from.sin() * to.sin());
+        // Back within a half turn of Greenwich, as a longitude is said.
+        let across = (across + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU)
+            - std::f64::consts::PI;
+        (hundredths(to.to_degrees()), hundredths(across.to_degrees()))
+    });
+    std::iter::once((hundredths(latitude), hundredths(longitude)))
+        .chain(edge)
+        .collect()
+}
+
+/// The zone Open-Meteo says the middle keeps, and whether every point on
+/// the edge it places on land keeps the same time now. It answers one
+/// point alone, not a list of one, and two zones may keep the same time
+/// by other names, as Toronto's and New York's do, so it's the offset
+/// from UTC that's held alike.
+fn held(said: &Value) -> (Option<String>, Option<bool>) {
+    let answers: Vec<&Value> = match said {
+        Value::Array(each) => each.iter().collect(),
+        one => vec![one],
+    };
+    let Some((middle, edge)) = answers.split_first() else {
+        return (None, None);
+    };
+    let Some(zone) = zone(middle) else {
+        return (None, None);
+    };
+    let offset = |said: &Value| said.get("utc_offset_seconds").and_then(Value::as_i64);
+    let Some(kept) = offset(middle) else {
+        return (Some(zone), None);
+    };
+    let on_land = |said: &&&Value| {
+        said.get("timezone")
+            .and_then(Value::as_str)
+            .is_some_and(|zone| zone.contains('/') && !zone.starts_with(AT_SEA))
+    };
+    let holds = edge
+        .iter()
+        .filter(on_land)
+        .all(|said| offset(said) == Some(kept));
+    (Some(zone), Some(holds))
 }
 
 /// A place found by its name: where it is, what it's called and its zone.
@@ -130,10 +207,21 @@ fn place_url(latitude: f64, longitude: f64) -> String {
     )
 }
 
-fn zone_url(latitude: f64, longitude: f64) -> String {
+/// Open-Meteo's forecast at each point, asked at once, for the zone it
+/// says each keeps.
+fn zone_url(points: &[(f64, f64)]) -> String {
+    let listed = |each: fn(&(f64, f64)) -> f64| {
+        points
+            .iter()
+            .map(|point| each(point).to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    };
     format!(
-        "https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}\
-         &timezone=auto&forecast_days=1"
+        "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}\
+         &timezone=auto&forecast_days=1",
+        listed(|point| point.0),
+        listed(|point| point.1)
     )
 }
 
@@ -283,6 +371,80 @@ mod tests {
             place_url(hundredths(43.674_846), hundredths(-79.379_4))
                 .contains("lat=43.67&lon=-79.38")
         );
-        assert!(zone_url(1.0, 2.5).contains("latitude=1&longitude=2.5&timezone=auto"));
+        assert!(zone_url(&[(1.0, 2.5)]).contains("latitude=1&longitude=2.5&timezone=auto"));
+    }
+
+    #[test]
+    fn the_zone_is_asked_at_the_middle_and_round_the_edge() {
+        let points = circle(43.674_846, -79.379_4, 26_000.0);
+        assert_eq!(points.len(), 9, "the middle and eight on the edge");
+        assert_eq!(points[0], (43.67, -79.38), "the middle comes first");
+        // 26 km north is about 0.23 degrees of latitude; east, at this
+        // latitude, about 0.32 of longitude.
+        assert_eq!(points[1], (43.91, -79.38), "north first");
+        assert_eq!(points[3], (43.67, -79.06), "east a quarter turn on");
+        let url = zone_url(&points);
+        assert!(
+            url.contains("latitude=43.67,43.91,"),
+            "every point in one asking: {url}"
+        );
+    }
+
+    #[test]
+    fn an_edge_across_the_date_line_stays_a_longitude() {
+        let points = circle(0.0, 179.9, 50_000.0);
+        assert!(
+            points
+                .iter()
+                .all(|point| (-180.0..=180.0).contains(&point.1)),
+            "each longitude within a half turn: {points:?}"
+        );
+    }
+
+    fn at(zone: &str, offset: i64) -> Value {
+        json!({"timezone": zone, "utc_offset_seconds": offset})
+    }
+
+    #[test]
+    fn a_zone_holds_where_every_point_keeps_its_time() {
+        let said = json!([
+            at("America/Toronto", -18_000),
+            at("America/Toronto", -18_000),
+            at("America/New_York", -18_000),
+            at("Etc/GMT+4", -14_400),
+        ]);
+        assert_eq!(
+            held(&said),
+            (Some("America/Toronto".into()), Some(true)),
+            "another zone's name at the same time holds, and a point at sea says nothing"
+        );
+    }
+
+    #[test]
+    fn a_zone_doesnt_hold_where_its_edge_keeps_another_time() {
+        let said = json!([
+            at("America/Toronto", -18_000),
+            at("America/Winnipeg", -21_600),
+        ]);
+        assert_eq!(
+            held(&said),
+            (Some("America/Toronto".into()), Some(false)),
+            "a circle a zone's line crosses"
+        );
+    }
+
+    #[test]
+    fn one_point_answered_alone_is_its_zone() {
+        assert_eq!(
+            held(&at("America/Halifax", -14_400)),
+            (Some("America/Halifax".into()), Some(true)),
+            "a fix with no edge to ask, its zone holding"
+        );
+        assert_eq!(held(&json!([])), (None, None), "nothing answered");
+        assert_eq!(
+            held(&json!({"timezone": "America/Halifax"})),
+            (Some("America/Halifax".into()), None),
+            "a zone without its offset can't be held alike"
+        );
     }
 }

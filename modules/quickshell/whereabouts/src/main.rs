@@ -390,9 +390,12 @@ async fn geoclue_followed(
                 last.clone().filter(Fix::unnamed)
             };
             if let Some(fix) = renamed {
-                let said = named::name(fix.latitude, fix.longitude).await;
+                let said = named::name(fix.latitude, fix.longitude, fix.accuracy).await;
                 let answered = said.place.is_some() || said.zone.is_some();
-                let fix = fix.named(said.place, said.zone).countried(said.country);
+                let fix = fix
+                    .named(said.place, said.zone)
+                    .zone_holding(said.zone_holds)
+                    .countried(said.country);
                 if last.as_ref().is_some_and(|was| was.distance(&fix) < 1.0) {
                     println!("<6>here named");
                 } else {

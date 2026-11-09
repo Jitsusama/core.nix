@@ -113,6 +113,7 @@ pub fn record(known: &Known) -> Value {
         "place": here.and_then(|fix| fix.place.as_deref()),
         "country": here.and_then(|fix| fix.country.as_deref()),
         "zone": here.and_then(|fix| fix.zone.as_deref()),
+        "zone_holds": here.and_then(|fix| fix.zone_holds),
         "hand": here.map(|fix| fix.hand),
         "clock_zone": known.clock_zone,
         "moved": known.moved,

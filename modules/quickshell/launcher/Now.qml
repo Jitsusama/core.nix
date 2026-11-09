@@ -230,8 +230,11 @@ Provider {
         const differs = Location.zoneDiffers;
         // Said plainly where it's unknown, never guessed, as a run that
         // gives way by whole items: the zone it keeps, then that the
-        // clock isn't following it.
-        const elsewhere = differs ? said.elsewhere.replace("{zone}", here.zone) : "";
+        // clock isn't following it, then why.
+        const elsewhere = !differs ? "" : [
+            said.elsewhere.replace("{zone}", here.zone),
+            Here.unfollowed(here, said, hereTold)
+        ].filter(item => item !== "").join(" \u00b7 ");
         // How near it is, its source being the plate's eyebrow, and the
         // machinery that found it named nowhere (VKCF3Z, 2026-11-09).
         const unfound = Location.read ? said.notFound : "";

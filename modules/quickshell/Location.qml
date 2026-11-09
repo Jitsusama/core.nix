@@ -83,6 +83,7 @@ Singleton {
             when: known(said.at_s),
             place: said.place ?? null,
             zone: said.zone ?? null,
+            zoneHolds: typeof said.zone_holds === "boolean" ? said.zone_holds : null,
             country: said.country ?? null,
             hand: said.hand === true,
             altitude: known(said.altitude_m),
