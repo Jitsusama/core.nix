@@ -315,10 +315,10 @@ mod tests {
         let said = record(&known);
         assert_eq!(said["key"], HERE);
         assert_eq!(said["kind"], "here");
-        assert!(said["latitude"].is_null());
-        assert!(said["hand"].is_null());
+        assert_eq!(said["latitude"], Value::Null);
+        assert_eq!(said["hand"], Value::Null);
         assert_eq!(said["clock_zone"], "America/Halifax");
-        assert!(said["moved"].is_null());
+        assert_eq!(said["moved"], Value::Null);
     }
 
     #[test]
@@ -357,7 +357,10 @@ mod tests {
             stream: Arc::new(one),
         });
         shared.change(|known| known.clock_zone = None);
-        assert!(lines.try_recv().is_err());
+        assert!(
+            lines.try_recv().is_err(),
+            "a record unchanged is told to no watch"
+        );
         shared.change(|known| known.clock_zone = Some("UTC".into()));
         let line: Value = serde_json::from_str(&lines.try_recv().unwrap()).unwrap();
         assert_eq!(line["id"], "all");

@@ -220,7 +220,10 @@ fn a_pin_holds_until_it_is_taken_away() {
     std::fs::remove_file(running.path("state/pin.json")).unwrap();
     let record = client.changed_until(|record| record["latitude"].is_null());
     assert_eq!(record["hand"], Value::Null);
-    assert!(!running.path("kept/here.json").exists());
+    assert!(
+        !running.path("kept/here.json").exists(),
+        "a here set by hand is never kept"
+    );
 }
 
 #[test]

@@ -479,7 +479,10 @@ mod tests {
             when: 1_790_000_000,
         };
         write(&state.join("moved.json"), &moved).unwrap();
-        assert!(put_back(&state, "false").is_err());
+        assert!(
+            put_back(&state, "false").is_err(),
+            "a zone timedated refuses isn't put back"
+        );
         assert_eq!(
             read::<Held>(&state.join("held.json")),
             Some(Held::default())
@@ -492,7 +495,10 @@ mod tests {
                 refused: Some("America/Edmonton".into())
             })
         );
-        assert!(!state.join("moved.json").exists());
+        assert!(
+            !state.join("moved.json").exists(),
+            "a move put back is let go"
+        );
         fs::remove_dir_all(&state).unwrap();
     }
 }
