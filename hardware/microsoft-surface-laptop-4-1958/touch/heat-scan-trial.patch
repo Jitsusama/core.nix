@@ -1,0 +1,108 @@
+diff --git a/mshw0231-raw.c b/mshw0231-raw.c
+index aee6dad..5ec0b8e 100644
+--- a/mshw0231-raw.c
++++ b/mshw0231-raw.c
+@@ -2165,6 +2165,15 @@ static void mshw0231_raw_process_samples(struct spi_hid *shid, const u8 *data,
+ 		if (sorted_count || touched_count)
+ 			seq_dbg(shid, 2, "CALIB: blobs=%u cells_touched=%d\n",
+ 				 sorted_count, touched_count);
++		shid->stat_heat_frames++;
++		if (sorted_count) {
++			shid->stat_heat_contact_frames++;
++			shid->stat_last_contacts = sorted_count;
++			for (i = 0; i < sorted_count; i++) {
++				shid->stat_last_gx[i] = sorted[i].gx;
++				shid->stat_last_gy[i] = sorted[i].gy;
++			}
++		}
+ 
+ 		/* ── Stage 6: Hungarian global assignment ── */
+ 		{
+diff --git a/spi-hid-core.c b/spi-hid-core.c
+index 54b0f39..f8a4859 100644
+--- a/spi-hid-core.c
++++ b/spi-hid-core.c
+@@ -4536,6 +4536,55 @@ static ssize_t lifecycle_status_show(struct device *dev,
+ }
+ static DEVICE_ATTR_RO(lifecycle_status);
+ 
++static ssize_t touch_stats_show(struct device *dev,
++		struct device_attribute *attr, char *buf)
++{
++	struct spi_hid *shid = dev_get_drvdata(dev);
++	u32 off, i;
++
++	mutex_lock(&shid->seq_lock);
++	off = sysfs_emit(buf, "heat_frames=%u\ncontact_frames=%u\nlast_contacts=%u\n",
++			 shid->stat_heat_frames, shid->stat_heat_contact_frames,
++			 shid->stat_last_contacts);
++	for (i = 0; i < shid->stat_last_contacts && i < HEATMAP_MAX_BLOBS; i++)
++		off += sysfs_emit_at(buf, off, "contact=%u.%02u,%u.%02u\n",
++				     shid->stat_last_gx[i] / 100, shid->stat_last_gx[i] % 100,
++				     shid->stat_last_gy[i] / 100, shid->stat_last_gy[i] % 100);
++	mutex_unlock(&shid->seq_lock);
++	return off;
++}
++static DEVICE_ATTR_RO(touch_stats);
++
++/*
++ * Sends SET_FEATURE report 5 with the value written, 1 to start the heat
++ * maps and 0 to ask the panel to stop them, to find out by hand whether it
++ * stops scanning when nothing touches it. Only the doubled-opcode framing
++ * this panel takes (wire_double_opcode=1) is sent.
++ */
++static ssize_t heat_scan_store(struct device *dev,
++		struct device_attribute *attr, const char *buf, size_t count)
++{
++	struct spi_hid *shid = dev_get_drvdata(dev);
++	u8 frame[] = { 0x02, 0x02, 0x00, 0x00, 0x03, 0x82, 0x00, 0x03,
++		       0x04, 0x00, 0x05, 0x01, 0x00, 0x00, 0x00 };
++	bool on;
++	int ret;
++
++	ret = kstrtobool(buf, &on);
++	if (ret)
++		return ret;
++	frame[11] = on;
++	mutex_lock(&shid->seq_lock);
++	shid->read_resp_type = SPI_HID_CONTENT_TYPE_SET_FEATURE;
++	shid->read_resp_content_id = 5;
++	ret = spi_hid_seq_write_speed(shid, frame, sizeof(frame), NULL, 0,
++				      setfeat_speed_hz);
++	mutex_unlock(&shid->seq_lock);
++	dev_info(dev, "heat_scan: SET_FEATURE(5)=%u sent: %d\n", on, ret);
++	return ret ? ret : count;
++}
++static DEVICE_ATTR_WO(heat_scan);
++
+ static const struct attribute *const spi_hid_attributes[] = {
+ 	&dev_attr_ready.attr,
+ 	&dev_attr_bus_error_count.attr,
+@@ -4547,6 +4596,8 @@ static const struct attribute *const spi_hid_attributes[] = {
+ 	&dev_attr_baseline_status.attr,
+ 	&dev_attr_build_info.attr,
+ 	&dev_attr_lifecycle_status.attr,
++	&dev_attr_touch_stats.attr,
++	&dev_attr_heat_scan.attr,
+ 	NULL	/* Terminator */
+ };
+ 
+diff --git a/spi-hid-core.h b/spi-hid-core.h
+index 5a17f55..df948f0 100644
+--- a/spi-hid-core.h
++++ b/spi-hid-core.h
+@@ -406,6 +406,14 @@ struct spi_hid {
+ 	u32 stat_getfeat_resp;
+ 	u32 stat_frames_dropped;
+ 	u32 stat_irq_count;
++	/* Heat maps tracked, and those holding any contact, with where the
++	 * last contacts sat (grid x100): touch_stats reads them without root,
++	 * so a touch nobody made shows where it is. */
++	u32 stat_heat_frames;
++	u32 stat_heat_contact_frames;
++	u8 stat_last_contacts;
++	u32 stat_last_gx[HEATMAP_MAX_BLOBS];
++	u32 stat_last_gy[HEATMAP_MAX_BLOBS];
+ 	u32 stat_irq_edges;                       /* Hard-IRQ edges seen (top half) */
+ 	u32 stat_raw_observed; /* V0 0x0c heatmap bodies seen on any path
+ 				 * (envelope ce 10 0c, 4304B). Passive only:
