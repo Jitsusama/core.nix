@@ -98,7 +98,7 @@ client there, and Zoom's own links join their meetings in it.
 
 | Part     | Why it isn't here yet                                                  |
 | -------- | ---------------------------------------------------------------------- |
-| Keyboard | its IDs as keyd names them, for Colemak, are read on its first boot    |
+| Keyboard | its ID, 05ac:0351 from Asahi's kernel, is confirmed on its first boot  |
 | Devices  | where each driver binds, for device-check, is read on the machine too  |
 | Keys     | the TPM's SSH, signing and link keys need a YubiKey or another home    |
 | Install  | the guide's install beside macOS, proven in a VM, then on the Mac      |

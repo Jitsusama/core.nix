@@ -11,12 +11,21 @@
 { lib, pkgs, ... }:
 let
   # Every machine core describes, by the hardware module that says so, and
-  # each one's own keyboard as its hardware names it.
-  hardware = lib.filterAttrs (
-    _: module: builtins.isPath module && lib.hasInfix "/hardware/" (toString module)
-  ) nixosModules;
+  # each one's own keyboard as its hardware names it. A module given its
+  # inputs through flake.nix's moduleFrom is a set keyed by its file, so
+  # it's known by that key, as a plain one is by its path.
+  file = module: if builtins.isPath module then toString module else module.key or "";
+  hardware = lib.filterAttrs (_: module: lib.hasInfix "/hardware/" (file module)) nixosModules;
+  # The keyboard's option comes too, for a model that names no keyboard
+  # yet and so doesn't import it.
   builtIn =
-    module: (nixpkgs.lib.nixosSystem { modules = [ module ]; }).config.jitsusama.keyboard.builtIn;
+    module:
+    (nixpkgs.lib.nixosSystem {
+      modules = [
+        module
+        ../keyboard/nixos.nix
+      ];
+    }).config.jitsusama.keyboard.builtIn;
 
   guide = pkgs.callPackage ./package.nix { };
   theme = import ./theme.nix { inherit lib; };

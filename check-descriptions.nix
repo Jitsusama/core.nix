@@ -2491,6 +2491,10 @@
     after greetd starts rather than with the boot, so the console never shows between it and niri;
     a machine without the splash keeps greetd waiting for Plymouth to quit
   '';
+  the-stick-types-colemak-on-every-built-in-keyboard = ''
+    the install stick remaps the built-in keyboard of each of the four models core describes, its
+    Apple ones included, so a passphrase typed there is the one the owner meant
+  '';
   the-surface-boots-with-its-gpu-and-a-clock-that-reads = ''
     the Surface Laptop 4 loads its GPU's driver and the CMOS clock in the initrd, and keeps
     the firmware's unreadable clock from taking rtc0

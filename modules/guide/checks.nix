@@ -6,6 +6,7 @@
   clippyLints,
   holds,
   lib,
+  nixpkgs,
   onLinux,
   passesClippy,
   pkgs,
@@ -24,6 +25,32 @@ onLinux {
         (self.devShells.${pkgs.stdenv.hostPlatform.system}.guide.GUIDE_VM_TESTS_QEMU or null)
         == "${(import ../../tests/vm/guide/canokeys.nix { inherit pkgs; }).qemu}"
       );
+
+  # The stick types Colemak on the keyboard of every model core describes,
+  # named here by hand so a model its own gathering misses fails: a
+  # passphrase typed in the wrong layout locks its owner out of the disk.
+  the-stick-types-colemak-on-every-built-in-keyboard =
+    let
+      stick = (bareNixos [ self.nixosModules.guide-stick ]).config.jitsusama.keyboard.builtIn;
+      model =
+        name:
+        (nixpkgs.lib.nixosSystem {
+          modules = [
+            self.nixosModules.${name}
+            ../keyboard/nixos.nix
+          ];
+        }).config.jitsusama.keyboard.builtIn;
+      models = [
+        "apple-macbook-air-m2-a2681"
+        "apple-macbook-pro-m4-pro-a3401"
+        "dell-xps-14-da14260"
+        "microsoft-surface-laptop-4-1958"
+      ];
+      missed = lib.filter (id: !(lib.elem id stick)) (lib.concatMap model models);
+    in
+    holds "the-stick-types-colemak-on-every-built-in-keyboard"
+      "The stick doesn't remap these built-in keyboards: ${lib.concatStringsSep ", " missed}."
+      (missed == [ ]);
 
   # The keys an account's modules name in the TPM reach what the installed
   # guide reads, each with its account and a comment saying whose and
