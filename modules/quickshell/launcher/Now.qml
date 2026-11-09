@@ -213,9 +213,11 @@ Provider {
     // followed it is Time's (Clocks.qml), since the zone is the clock's.
     //
     // GeoClue's altitude, speed and heading are left out: found from the
-    // Wi-Fi networks in reach, as it is here, it gives none of them, only
-    // its "unknown" values. The plate says so, as design.md has what's
-    // left out named on screen with its reason.
+    // Wi-Fi networks in reach or the network's address, as it is here, it
+    // gives none of them, only its "unknown" values. The plate says so, as
+    // design.md has what's left out named on screen with its reason. Which
+    // of the two found it isn't in the record, so the row says only that
+    // it was found (VKCF3Z, 2026-11-09).
     readonly property var location: {
         const here = Location.here;
         const position = here ? `${here.latitude.toFixed(2)}, ${here.longitude.toFixed(2)}` : "";
@@ -300,7 +302,7 @@ Provider {
                     value: fact.value,
                     identifies: fact.identifies === true
                 })),
-            // What GeoClue can't say of a place found by Wi-Fi, and why.
+            // What GeoClue can't say of a place found from a network, and why.
             body: byHand ? "" : Words.of("location").tells?.leftOut ?? ""
         });
         return thingRow(Object.assign({
