@@ -75,7 +75,6 @@ function blank() {
         autostart: null,
         managedSave: null,
         securityModel: "",
-        securityDoi: "",
         securityLabel: "",
         messages: []
     };
@@ -109,8 +108,9 @@ function seconds(value) {
 
 // What each of dominfo's labels sets, given its value with the spaces
 // around it taken off; the name is set apart, as it's kept whole. Its OS
-// Type is left out, since it says only how libvirt runs it ("hvm"), which
-// is machinery (VKCF3Z, 2026-11-08).
+// Type is left out, since it says only how libvirt runs it ("hvm"), and
+// its Security DOI, the labelling domain its model's labels are read in
+// ("0"), since both are machinery (VKCF3Z, 2026-11-08 and 11-09).
 const TAKES = {
     "Id:": (machine, value) => { machine.id = whole(value); },
     "UUID:": (machine, value) => { machine.uuid = value; },
@@ -126,7 +126,6 @@ const TAKES = {
     "Autostart:": (machine, value) => { machine.autostart = answered(value); },
     "Managed save:": (machine, value) => { machine.managedSave = answered(value); },
     "Security model:": (machine, value) => { machine.securityModel = value; },
-    "Security DOI:": (machine, value) => { machine.securityDoi = value; },
     "Security label:": (machine, value) => { machine.securityLabel = value; },
     "Messages:": (machine, value) => { machine.messages.push(value); }
 };
@@ -373,7 +372,9 @@ function yesOrNo(value, said) {
 // plate runs (docs/design.md, the drawer): what moves most, its processor
 // time and memory in use, then what it's given to run with, whether it
 // starts by itself and keeps its definition, a saved state where it has
-// one, how it's kept apart from the machine, and what names it last.
+// one, how it's kept apart from the machine where it is, and what names it
+// last. A model of "none" says nothing, as a saved state that isn't does
+// (VKCF3Z, 2026-11-09), so a drawer holds every figure without a "more".
 // Its name is the plate's title and its state the row's side, so neither
 // is said again. A saved state is said only where there is one, since
 // most never have one and "no" would take a line for nothing (VKCF3Z,
@@ -392,13 +393,30 @@ function everyFigure(machine, said) {
         ["autostart", yesOrNo(machine.autostart, words)],
         ["persistent", yesOrNo(machine.persistent, words)],
         ["managed-save", machine.managedSave === true ? words.yes ?? "yes" : ""],
-        ["security-model", machine.securityModel],
-        ["security-doi", machine.securityDoi],
+        ["security-model", machine.securityModel === "none" ? "" : machine.securityModel],
         ["security-label", machine.securityLabel],
         ["messages", machine.messages.join("; ")],
         ["id", machine.id === null ? "" : String(machine.id)],
         ["uuid", machine.uuid]
     ];
+}
+
+// The figures that name a machine rather than measure it, its UUID and
+// the label its security model gave it, which its drawer sets as
+// identifiers, whole on as many lines as they take, breaking at their
+// hyphens, rather than one word running past the drawer's edge.
+const IDENTIFIERS = ["uuid", "security-label"];
+
+// A figure as its drawer's fact, `label` its name: one naming a machine
+// (IDENTIFIERS) is an identifier, one whole item the drawer lays on as
+// many lines as it needs, broken at its own marks (Identifier.js), as a
+// program's command is; any other, its value alone.
+function factOf(figure, label) {
+    const fact = { label, value: figure.value };
+    return IDENTIFIERS.includes(figure.id)
+        ? Object.assign(fact, { valueItems: [{ said: figure.value, whole: true }],
+            between: " ", identifies: true })
+        : fact;
 }
 
 // Every figure dominfo gave for a machine, each { id, value }, in the
@@ -416,9 +434,9 @@ const WHILE_RUNNING = ["processor-time", "memory", "security-label", "id"];
 
 // The figures that are a machine's own whether or not it runs, which
 // dominfo leaves out only where libvirt couldn't tell: an Autostart of
-// "no autostart", a Managed save of "unknown". A DOI and a label come
-// only with a security model, and messages only when there's something
-// to say, so none of those is missing when it's absent.
+// "no autostart", a Managed save of "unknown". A model and its label
+// come only with one, and messages only when there's something to say,
+// so none of those is missing when it's absent.
 const ALWAYS = ["processors", "most-memory", "autostart", "persistent",
     "managed-save", "uuid"];
 

@@ -85,6 +85,12 @@ def drawer_on(title: str, shown: Json) -> bool:
     return bool(drawer["out"] is True and drawer["title"] == title)
 
 
+def figures_on(title: str, shown: Json) -> bool:
+    """Say whether the drawer draws every fact of the thing titled, none left for its keys."""
+    drawer = shown["drawer"]
+    return drawer_on(title, shown) and len(drawer["lines"]["facts"]) == len(drawer["facts"])
+
+
 def named(name: str, shown: Json) -> bool:
     """Say whether the selected row is the one named."""
     return (shown["selected"] or {}).get("name") == name
@@ -225,7 +231,12 @@ def test_the_vms_are_shot_at_each_scale(desktop: Desktop, at_each_scale: list[st
         desktop.answer("vms")
         desktop.launcher_until(partial(named, "VMs"))
         desktop.into_program()
-        desktop.launcher_until(partial(drawer_on, "web"))
+        # Every figure fits, none left for its keys; its UUID and security label are
+        # identifiers, so they're whole on as many lines as they take, broken at their hyphens,
+        # rather than one word running past the drawer's edge, which the shot shows. At scale
+        # 2 that takes the line its note on what's known only while it runs had, so the note
+        # is what Ctrl+W l reaches there.
+        desktop.launcher_until(partial(figures_on, "web"))
         desktop.shoot(f"launcher-vms-at-{at}")
         desktop.close_launcher()
     # The stand-in virsh notes each run it's asked (tests/desktop.nix).

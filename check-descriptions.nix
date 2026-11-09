@@ -3166,7 +3166,8 @@
     gets none of it
   '';
   vms-read-as-virsh-says = ''
-    virsh's lists and every figure dominfo gives are read, every name asked of dominfo in one
+    virsh's lists and every figure dominfo gives are read, its OS type and security DOI aside and a
+    security model of none saying nothing, every name asked of dominfo in one
     batch and read back whole however it's spelled, each figure it left out named with why, memory
     said in decimal units from its bytes and in use only while it's on, each state is said in the
     launcher's own words rather than libvirt's, each state offers its own acts and tells virsh its

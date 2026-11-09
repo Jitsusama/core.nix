@@ -8898,7 +8898,6 @@
         "vm:id",
         "vm:uuid",
         "vm:security-model",
-        "vm:security-doi",
         "vm:security-label",
         "vm:messages"
       ],
@@ -8977,11 +8976,6 @@
       "id": "vm:security-model",
       "in": "vm",
       "name": "Security Model"
-    },
-    {
-      "id": "vm:security-doi",
-      "in": "vm",
-      "name": "Security DOI"
     },
     {
       "id": "vm:security-label",
