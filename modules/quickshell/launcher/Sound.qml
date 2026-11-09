@@ -505,40 +505,8 @@ Provider {
         const format = graph === "" || (card && Sounds.sameFormat(graph, card)) ? []
             : [{ label: Words.name(card ? "sound:graph-format" : "sound:format"), value: graph }];
         // How it keeps time moves each second, so it goes ahead of Format
-        // (VKCF3Z, 2026-11-08): its Dropouts, warned past none, as a glitch
-        // it recovers from rather than a failure; its Load, the share of
-        // each cycle it was busy; and its Cycle, the frames it moves each
-        // time and how long that takes. Only a running node has them. One
-        // that ran past its cycle has taken more than all of it, so its
-        // Load says so in its own form, its stroke full, both warned
         // (VKCF3Z, 2026-11-08).
-        const timed = timings[node.id] ?? null;
-        // A measure, a load or a cycle's milliseconds, keeps three
-        // significant digits with their zeros, as every measure does
-        // (VKCF3Z, 2026-11-08); a count, dropouts or frames, is whole.
-        const measure = value => Numbers.significant(value, settings.group, settings.point);
-        const count = value => Numbers.format(value, 0, settings.group, settings.point);
-        const load = timed === null ? [] : timed.unfinished ? [{
-            label: Words.name("sound:load"),
-            value: said("each-cycle", {
-                share: said("over", { share: `${measure(Sounds.load(1))}%` })
-            }),
-            warns: true,
-            figure: { shape: "stroke", values: [1], warn: true }
-        }] : timed.busy === null ? [] : [{
-            label: Words.name("sound:load"),
-            value: said("each-cycle", { share: `${measure(Sounds.load(timed.busy))}%` }),
-            figure: { shape: "stroke", values: [Math.min(timed.busy, 1)], warn: false }
-        }];
-        const keeping = timed === null ? [] : [{
-            label: Words.name("sound:dropouts"),
-            value: timed.errors === 0 ? said("none") : count(timed.errors),
-            warns: timed.errors > 0
-        }].concat(load, [{
-            label: Words.name("sound:cycle"),
-            value: said("cycle", { frames: count(timed.quantum),
-                ms: measure(Sounds.cycleMs(timed)) })
-        }]);
+        const keeping = keepingOf(node);
         const known = (ids, identifies) => ids.filter(([, value]) => value !== "")
             .map(([id, value]) => ({
                 label: Words.name(`sound:${id}`), value: value, identifies: identifies
@@ -553,6 +521,44 @@ Provider {
                 Plate.facts(hardware.filter(row => row.key === usb)).map(identified),
                 known([["graph-id", String(node.id ?? "")]], true))
         };
+    }
+
+    // How a node keeps time, as pw-top last said it (VKCF3Z, 2026-11-08):
+    // its Dropouts, warned past none, as a glitch it recovers from rather
+    // than a failure; its Load, the share of each cycle it was busy; and
+    // its Cycle, the frames it moves each time and how long that takes.
+    // Only a running node has them. One that ran past its cycle has taken
+    // more than all of it, so its Load says so in its own form, its stroke
+    // full, both warned. A measure, a load or a cycle's milliseconds,
+    // keeps three significant digits with their zeros, as every measure
+    // does; a count, dropouts or frames, is whole.
+    function keepingOf(node) {
+        const timed = timings[node.id] ?? null;
+        if (timed === null)
+            return [];
+        const measure = value => Numbers.significant(value, settings.group, settings.point);
+        const count = value => Numbers.format(value, 0, settings.group, settings.point);
+        const load = timed.unfinished ? [{
+            label: Words.name("sound:load"),
+            value: said("each-cycle", {
+                share: said("over", { share: `${measure(Sounds.load(1))}%` })
+            }),
+            warns: true,
+            figure: { shape: "stroke", values: [1], warn: true }
+        }] : timed.busy === null ? [] : [{
+            label: Words.name("sound:load"),
+            value: said("each-cycle", { share: `${measure(Sounds.load(timed.busy))}%` }),
+            figure: { shape: "stroke", values: [Math.min(timed.busy, 1)], warn: false }
+        }];
+        return [{
+            label: Words.name("sound:dropouts"),
+            value: timed.errors === 0 ? said("none") : count(timed.errors),
+            warns: timed.errors > 0
+        }].concat(load, [{
+            label: Words.name("sound:cycle"),
+            value: said("cycle", { frames: count(timed.quantum),
+                ms: measure(Sounds.cycleMs(timed)) })
+        }]);
     }
 
     // How a device is joined to the machine, in the vocabulary's words:
@@ -891,7 +897,8 @@ Provider {
             name: program.name,
             side: paused ? `${streamLevel(streams)} \u00b7 ${said("paused")}` : streamLevel(streams),
             graph: bar(hushed(streams) ? 0 : loudestOf(streams)),
-            glyph: programGlyph(programOf(first).id)
+            glyph: programGlyph(programOf(first).id),
+            drawer: () => provider.programDrawn(node, program)
         }, () => {
             const stepping = by => ({
                 glyph: Theme.glyph.volume,
@@ -907,27 +914,97 @@ Provider {
                         stream.audio.muted = muting;
                 }), act("verb:program:louder", "", stepping(step)),
             act("verb:program:quieter", "", stepping(-step))];
-            const rate = Sounds.rate(first.properties["node.rate"]);
-            if (rate !== "")
-                rows.push(figureRow({
-                    key: `${key}:rate`,
-                    name: Words.name("sound:rate"),
-                    side: rate
-                }));
-            // How long it waits, first; how that's asked for, in the footer.
-            const asked = Sounds.fraction(first.properties["node.latency"]);
-            if (asked)
-                rows.push(figureRow({
-                    key: `${key}:delay`,
-                    name: Words.name("sound:delay"),
-                    side: `${asked.ms.toFixed(1)} ms`,
-                    note: said("delay-note", {
-                        frames: asked.frames,
-                        rate: Sounds.kilohertz(asked.hertz)
-                    })
-                }));
-            return rows;
+            return rows.concat(provider.streamFigures(key, first));
         });
+    }
+
+    // A stream's Sample Rate, as it asks for one, and its Delay: how long
+    // it waits first, a measure by the one rule, and how that's asked for,
+    // in the footer.
+    function streamFigures(key, stream) {
+        const rows = [];
+        const rate = Sounds.rate(stream.properties["node.rate"]);
+        if (rate !== "")
+            rows.push(figureRow({
+                key: `${key}:rate`,
+                name: Words.name("sound:rate"),
+                side: rate
+            }));
+        const asked = Sounds.fraction(stream.properties["node.latency"]);
+        if (asked)
+            rows.push(figureRow({
+                key: `${key}:delay`,
+                name: Words.name("sound:delay"),
+                side: `${Numbers.significant(asked.ms, settings.group, settings.point)} ms`,
+                note: said("delay-note", {
+                    frames: asked.frames,
+                    rate: Sounds.kilohertz(asked.hertz)
+                })
+            }));
+        return rows;
+    }
+
+    // A program's drawer, playing through a device or recording from one
+    // (VKCF3Z, 2026-11-08): each of its streams, loudest then newest
+    // first, a group headed by what it plays where it has more than one,
+    // or that said as its Stream where it has one. Under it, how it keeps
+    // time, which moves most; its Format; its Sample Rate and Delay, its
+    // parts, the rate only where its Format doesn't open with it; its
+    // Role, in pipewire's word as given; the device it plays on or
+    // records from; and what identifies it, ending its group: its
+    // Process, Graph ID and Client. Its name is the row's, and so is
+    // whether it's paused or muted, so neither is said again. It's read
+    // as it's drawn, its streams as the device has them now.
+    function programDrawn(node, program) {
+        const live = programsOf(node).find(each => each.name === program.name) ?? program;
+        const key = `sound:${node.name}:program:${live.name}`;
+        const loudness = stream => stream.audio ? stream.audio.volume : 0;
+        const streams = Order.sorted(live.streams.slice(),
+            (a, b) => loudness(b) - loudness(a) || b.id - a.id);
+        const headed = streams.length > 1;
+        return {
+            eyebrow: Words.name(node.isSink ? "sound:programs" : "sound:recorders"),
+            title: live.name,
+            facts: [].concat(...streams.map(stream => provider.streamFacts(node, key, stream,
+                headed)))
+        };
+    }
+
+    function streamFacts(node, key, stream, headed) {
+        const properties = stream.properties;
+        const plays = String(properties["media.name"] ?? "");
+        const head = headed ? [{ heading: plays || String(stream.name ?? "") }]
+            : plays === "" ? [] : [{ label: Words.name("sound:stream"), value: plays }];
+        const format = Sounds.graphFormat(stream.audio?.format);
+        const rate = Sounds.rate(properties["node.rate"]);
+        const opensWithRate = format !== ""
+            && (format === rate || format.startsWith(`${rate} \u00b7`));
+        const known = (ids, identifies) => ids.filter(([, value]) => value !== "")
+            .map(([id, value]) => ({
+                label: Words.name(`sound:${id}`), value: value, identifies: identifies
+            }));
+        return head.concat(keepingOf(stream),
+            format === "" ? [] : [{ label: Words.name("sound:format"), value: format }],
+            Plate.facts(streamFigures(key, stream)
+                .filter(row => !(opensWithRate && row.key === `${key}:rate`))),
+            known([["role", String(properties["media.role"] ?? "")],
+                [node.isSink ? "plays-on" : "records-from", endOf(stream, node)]], false),
+            known([["process", String(properties["application.process.id"] ?? "")],
+                ["graph-id", String(stream.id ?? "")],
+                ["client", String(properties["client.id"] ?? "")]], true));
+    }
+
+    // What a stream is linked to: the device, by its name, or the filter
+    // in front of it, by the filter's; "" while it's linked to neither.
+    function endOf(stream, node) {
+        const ends = [node].concat(filtersOf(node));
+        for (const group of Pipewire.linkGroups.values) {
+            const from = node.isSink ? group.source : group.target;
+            const end = node.isSink ? group.target : group.source;
+            if (from === stream && ends.includes(end))
+                return named(end);
+        }
+        return "";
     }
 
     // The Tuning in front of an output, or the Voice processing in front of
@@ -1078,13 +1155,15 @@ Provider {
     // than being stopped, whose output is cut short.
     readonly property int normalExit: 0
 
-    // The device whose drawer is out, by its node's name, or "". pw-top
-    // runs only while one shows, since it asks the graph for its timing
-    // every cycle while it runs.
+    // The device whose drawer is out, or a program's playing through it or
+    // recording from it, by the device's node's name, or "". pw-top runs
+    // only while one shows, since it asks the graph for its timing every
+    // cycle while it runs.
     readonly property string timedDevice: {
         const key = launcher !== null && launcher.open && launcher.drawerOut
             ? String(launcher.selected?.key ?? "") : "";
-        const device = devices.find(node => `sound:${node.name}` === key);
+        const device = devices.find(node => key === `sound:${node.name}`
+            || key.startsWith(`sound:${node.name}:program:`));
         return device === undefined ? "" : device.name;
     }
 

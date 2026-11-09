@@ -5425,6 +5425,36 @@
       "name": "Graph ID"
     },
     {
+      "id": "sound:stream",
+      "in": "sound",
+      "name": "Stream"
+    },
+    {
+      "id": "sound:role",
+      "in": "sound",
+      "name": "Role"
+    },
+    {
+      "id": "sound:plays-on",
+      "in": "sound",
+      "name": "Plays On"
+    },
+    {
+      "id": "sound:records-from",
+      "in": "sound",
+      "name": "Records From"
+    },
+    {
+      "id": "sound:process",
+      "in": "sound",
+      "name": "Process"
+    },
+    {
+      "id": "sound:client",
+      "in": "sound",
+      "name": "Client"
+    },
+    {
       "id": "sound:alsa-device",
       "in": "sound",
       "name": "ALSA Device"
