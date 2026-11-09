@@ -12,7 +12,6 @@
 
 // A number keeps to its unit, and a dimension's two sides to the ×.
 const KEPT = "\u00a0";
-const BETWEEN = " \u00b7 ";
 const PICTURE = /\.(png|jpe?g|webp|avif|gif)$/i;
 const VIDEO = /\.(mp4|mkv|webm|mov)$/i;
 
@@ -30,15 +29,16 @@ function mark(path) {
 }
 
 // When it was taken, to the minute, its day as When.js says every day
-// and nothing today: "04:39", "yesterday \u00b7 23:05", "Thursday \u00b7
-// 12:00", "28 Oct \u00b7 08:01" (VKCF3Z, 2026-11-08). `days` gives the
-// launcher's word for yesterday and `date(date, format)`, Qt's formatDate
-// in the shell.
+// and nothing today: "04:39", "yesterday 23:05", "Thursday 12:00", "28
+// Oct 08:01", one moment read one way everywhere, with nothing between
+// its day and its time (VKCF3Z, 2026-11-08). `days` gives the launcher's
+// word for yesterday and `date(date, format)`, Qt's formatDate in the
+// shell; a thing taken is never tomorrow, so it needs no word for that.
 function taken(at, now, days) {
     const moment = new Date(at);
     const time = `${twoFigures(moment.getHours())}:${twoFigures(moment.getMinutes())}`;
     const day = When.day(at, now, days);
-    return day === "" ? time : `${day.replace(/ /g, KEPT)}${BETWEEN}${time}`;
+    return day === "" ? time : `${day.replace(/ /g, KEPT)} ${time}`;
 }
 
 // Its facts, each { id, value }, in order: when it was taken, its size,

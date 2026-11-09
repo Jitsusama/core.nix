@@ -57,10 +57,10 @@ QtObject {
             [new Date(2026, 10, 8, 4, 39, 15), new Date(2026, 10, 7, 23, 5, 9),
                 new Date(2026, 10, 5, 12, 0, 0), new Date(2026, 9, 28, 8, 1, 2)]
                 .map(at => Captured.taken(at.getTime(), now, days)),
-            ["04:39", "yesterday \u00b7 23:05",
-                `${Qt.formatDate(new Date(2026, 10, 5), "dddd")} \u00b7 12:00`,
+            ["04:39", "yesterday 23:05",
+                `${Qt.formatDate(new Date(2026, 10, 5), "dddd")} 12:00`,
                 `${Qt.formatDate(new Date(2026, 9, 28), "d MMM").replace(/ /g, "\u00a0")}`
-                    + " \u00b7 08:01"]);
+                    + " 08:01"]);
 
         const file = {
             path: shot,
@@ -108,7 +108,7 @@ QtObject {
         expect("a recording says its length, its frame previewed, never the frame's sides",
             [recording.eyebrow, recording.preview?.picture]
                 .concat(recording.facts.map(fact => `${fact.label} ${fact.value}`)),
-            ["in ~/Videos/Recordings \u00b7 video", frame, "[taken] yesterday \u00b7 22:10",
+            ["in ~/Videos/Recordings \u00b7 video", frame, "[taken] yesterday 22:10",
                 "[size] 48.0\u00a0MB", "[length] 3:41"]);
         expect("a recording says nothing of a picture before file-preview has",
             Captured.drawer({ path: video, name: "v.mp4", where: "~/Videos/Recordings" },

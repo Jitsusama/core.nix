@@ -9,6 +9,8 @@ import Quickshell.Services.UPower
 import QtQuick
 import "Power.js" as Power
 import "Interfaces.js" as Interfaces
+import "Awake.js" as Awake
+import "Captured.js" as Captured
 
 Provider {
     id: provider
@@ -43,15 +45,64 @@ Provider {
 
     // Keep Awake as it stands, or as it will once systemd has started or
     // stopped what keeps it so: kept, a shut lid goes on too wherever the
-    // machine's on the charger (KeepAwake.qml).
+    // machine's on the charger (KeepAwake.qml). A switch always says how
+    // it stands, so off says "off" (VKCF3Z, 2026-11-08).
     function awakeRow(kept, lidToo) {
-        return said("session:awake", kept ? "on" : "", {
-            side: !kept ? "" : lidToo ? "awake, lid shut too" : "awake while open",
+        const howKept = lidToo ? "awake, lid shut too" : "awake while open";
+        return said("session:awake", kept ? "on" : "", Object.assign({
+            side: kept ? howKept : "off",
             hue: "machine",
             stays: true,
             run: () => provider.keepAwake(!kept)
-        });
+        }, awakeFields()));
     }
+
+    // A lock's holder as its program names itself, where the desktop has
+    // an entry by the name logind was given ("1Password" for 1password),
+    // and otherwise as it was given: an entry by id rather than a
+    // heuristic, since a guess would rename NetworkManager for a settings
+    // program.
+    function programNamed(who) {
+        return (DesktopEntries.byId(who) ?? DesktopEntries.byId(who.toLowerCase()))?.name || who;
+    }
+
+    // What Keep Awake's drawer says once logind has answered: who else
+    // holds its locks, when an idle machine sleeps, who puts sleep off and
+    // when it last slept (Awake.js). A switch has no drawer
+    // (Launcher.qml's drawerOf), but Keep Awake holds what logind says
+    // keeps the machine up or lets it sleep, so while it has figures to
+    // show it is a thing, its act still keeping awake or letting it sleep
+    // (VKCF3Z, 2026-11-08).
+    function awakeFields() {
+        const logind = awakeWatch.revision >= 0 ? awakeWatch.held["awake:main"] ?? null : null;
+        if (!logind)
+            return {};
+        const words = Words.of("session:awake").said ?? {};
+        const now = Date.now();
+        const facts = Awake.facts(logind, words, {
+            plugged: !UPower.onBattery,
+            when: at => Captured.taken(at, now, provider.days),
+            lasted: Interfaces.lasted,
+            named: programNamed
+        });
+        return {
+            thing: facts.length > 0,
+            drawer: {
+                eyebrow: words.eyebrow ?? "",
+                eyebrowNames: true,
+                title: Words.name("session:awake"),
+                facts: facts.map(fact => ({ label: Words.name(fact.id), value: fact.value })),
+                body: ""
+            }
+        };
+    }
+
+    // The words for a day a file's row says (FileFacts.js), so Last Slept
+    // says a day as a thing taken does.
+    readonly property var days: ({
+        yesterday: (Words.of("file-chooser:changed").said ?? {}).yesterday,
+        date: (at, format) => Qt.formatDate(at, format)
+    })
 
     // Its row says so at once, until the services' files say so too
     // (launcher/Becoming.js).
@@ -423,23 +474,26 @@ Provider {
         }
     })
 
-    // Whether Sleep's row is listed, in Power or found by name, so the
-    // machine daemon is asked how sleep stands only while it can be seen:
-    // in the open launcher, or among the rows a terminal's show walked or
-    // listed (Launcher.qml's terminalSees), so a cold `launcher show` of
-    // Power has Sleep's figures.
-    readonly property bool sleepShown: {
+    // Whether a row of this key is listed, so the machine daemon is asked
+    // for its figures only while it can be seen: in the open launcher, or
+    // among the rows a terminal's show walked or listed (Launcher.qml's
+    // terminalSees), so a cold `launcher show` of Power has them.
+    function rowShown(key) {
         if (launcher === null)
             return false;
-        const sleep = row => row?.key === "session:Suspend";
+        const keyed = row => row?.key === key;
         const terminal = launcher.terminalSees ?? { walked: [], listed: [] };
-        return launcher.open && launcher.matches.some(sleep) || terminal.walked.some(sleep)
-            || terminal.listed.some(sleep);
+        return launcher.open && launcher.matches.some(keyed) || terminal.walked.some(keyed)
+            || terminal.listed.some(keyed);
     }
-    // Whether the sleep watch hasn't yet answered whole, so a terminal's
-    // show asks again (Provider.stillReading).
-    stillReading: sleepWatch.live && !sleepWatch.answeredThisWatch
-        && sleepWatch.state !== "not answering"
+    // Sleep's row, in Power or found by name: how sleep stands.
+    readonly property bool sleepShown: rowShown("session:Suspend")
+    // Keep Awake's row, in Power, at home or found by name: logind's locks.
+    readonly property bool awakeShown: rowShown("session:awake")
+    // Whether a watch hasn't yet answered whole, so a terminal's show
+    // asks again (Provider.stillReading).
+    stillReading: [sleepWatch, awakeWatch].some(watch => watch.live
+        && !watch.answeredThisWatch && watch.state !== "not answering")
     readonly property var sleeping: sleepWatch.revision >= 0
         ? Power.sleepOf(sleepWatch.held["sleep:main"] ?? null) : null
 
@@ -482,6 +536,18 @@ Provider {
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
         kind: "sleep"
         live: provider.sleepShown
+        keptThroughGap: false
+        answersWhole: true
+    }
+
+    // What logind says keeps the machine up or lets it sleep, the machine
+    // daemon's awake:main.
+    Daemon {
+        id: awakeWatch
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+        kind: "awake"
+        live: provider.awakeShown
         keptThroughGap: false
         answersWhole: true
     }

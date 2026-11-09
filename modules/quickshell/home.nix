@@ -246,6 +246,7 @@ let
     "launcher/Machine.js"
     "launcher/Heat.js"
     "launcher/Power.js"
+    "launcher/Awake.js"
     "launcher/Traffic.js"
     "launcher/HomeNetwork.js"
     "launcher/HomeNetworkAddresses.js"
