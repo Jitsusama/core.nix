@@ -406,8 +406,7 @@ def test_now_shows_the_notices_and_a_critical_one_unread_lights_for_yous_tray(
 ) -> None:
     """Now shows the notices, u undoes dd there, and a critical one unread lights the tray."""
     machine = desktop.machine
-    # Missed, a notice is what came lately, lighting nothing; it stays
-    # open to its sender, so d forgets it.
+    # Missed, a notice is what came lately, lighting nothing; open to its sender, d forgets it.
     with desktop.told("shows card Peter"):
         desktop.as_account("notify-send --expire-time=1000 'Peter' 'are you there?'")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
@@ -453,6 +452,9 @@ def test_now_shows_the_notices_and_a_critical_one_unread_lights_for_yous_tray(
     desktop.shoot("launcher-from-margin")
     forgets_then_brings_back(desktop)
     desktop.close_launcher()
+    # Peter's was read as Desktop showed it, so another, unopened, for Mark Them Read to read.
+    with desktop.told("rests Pat"):
+        desktop.as_account("notify-send --expire-time=1000 'Pat' 'call me'")
     reads_them_all(desktop)
     # A critical notice put away unread waits in For You's Desktop, whose tray
     # is then the margin's one mark, strong, since it wants Joel; read, it goes.
@@ -734,10 +736,8 @@ def test_for_yous_tray_is_shot_alone_calm_and_beside_a_timer_and_music(desktop: 
         for_you_read(desktop)
     desktop.as_account("niri msg output winit scale 1")
     with desktop.told("drawn notifications"):
-        desktop.as_account(
-            "systemd-run --user --unit=player mpv --ao=null --no-video --loop"
-            f" {desktop.values['track']}"
-        )
+        track = desktop.values["track"]
+        desktop.as_account(f"systemd-run --user -u player mpv --ao=null --no-video --loop {track}")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
     desktop.answer("timer 25m bread")
     desktop.land()
