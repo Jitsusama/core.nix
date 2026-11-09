@@ -78,7 +78,6 @@ onLinux {
     pkgs.runCommandLocal "the-desktop-tells-the-next-meeting" { } ''
       cp ${../../tests/calendar.qml} calendar.qml
       cp ${./Calendar.js} Calendar.js
-      cp ${../quickshell/When.js} When.js
       cp ${./Meet.js} Meet.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
@@ -115,8 +114,9 @@ onLinux {
     '';
 
   # Reading the daemon's records and what Mail's and Calendar's own Recent
-  # hold is Google.js's, and when mail came and the lines marking it read or
-  # archiving it Mail.js's, run in Qt's own engine (tests/mail.qml).
+  # hold is Google.js's, and when mail came, when a meeting over was and the
+  # lines marking mail read or archiving it Mail.js's, run in Qt's own engine
+  # (tests/mail.qml).
   the-desktop-reads-the-mail =
     let
       qt = pkgs.qt6.qtdeclarative;

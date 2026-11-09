@@ -94,30 +94,9 @@ QtObject {
         for (const [one, meant] of whens)
             check(`when ${one.id}`, Calendar.when(one, now), meant);
 
-        // When one that's over was, as a Recent says it: its day as When.js
-        // says any, then when it started, in the vocabulary's words and the
-        // locale's names, the check's being English. [the meeting, said]
-        const dates = {
-            yesterday: "yesterday",
-            tomorrow: "tomorrow",
-            earlier: "{count} this month",
-            date: (date, format) => Qt.formatDate(date, format)
-        };
-        const wases = [
-            [meeting("today", at(26, 14, 0), at(26, 14, 30)), "14:00"],
-            [meeting("ending", at(26, 15, 0), at(26, 15, 20)), "15:00"],
-            [meeting("yesterday", at(25, 15, 0), at(25, 15, 30)), "yesterday 15:00"],
-            [meeting("thursday", at(22, 9, 30), at(22, 10, 0)), "Thursday 09:30"],
-            [meeting("weeks", at(10, 9, 30), at(10, 10, 0)), "10 Oct 09:30"],
-            [meeting("day", at(25, 0, 0), at(26, 0, 0), { allDay: true }), "yesterday"]
-        ];
-        for (const [one, meant] of wases)
-            check(`when ${one.id} was`, Calendar.when(one, now, dates), meant);
-        check("one still on is now, words or not",
-            Calendar.when(meeting("on", at(26, 15, 0), at(26, 16, 0)), now, dates), "now");
-
         // One of a series a Recent lists once says how many came before it,
         // after how it repeats, and nothing of it when none did.
+        const dates = { earlier: "{count} this month" };
         const series = meeting("s", at(26, 9, 0), at(26, 9, 15), { answer: null, link: null });
         check("one of a series, with others before it", Calendar.details(
             Object.assign({}, series, { earlier: 8 }), "Untitled", dates).facts,
@@ -126,6 +105,8 @@ QtObject {
         check("one with none before it", Calendar.details(
             Object.assign({}, series, { earlier: 0 }), "Untitled", dates).facts,
             [{ label: "When", value: "Monday 26 October, 09:00 to 09:15" }]);
+        check("how many came before, in its words", Calendar.earlier(3, dates), "3 this month");
+        check("none came before", Calendar.earlier(0, dates), "");
 
         check("a span", Calendar.span(meeting("a", at(26, 14, 0), at(26, 14, 30))),
             "14:00 to 14:30");

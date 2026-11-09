@@ -181,6 +181,20 @@ QtObject {
         for (const [what, time, meant] of moments)
             check(`a moment ${what}`, Mail.moment(time, now, said), meant);
 
+        // When a meeting that's over was, as a Recent's row says it: when it
+        // started as any moment, a whole day's its day alone. [what, start,
+        // end, whole day, said]
+        const wases = [
+            ["this afternoon", at(9, 26, 14, 0), at(9, 26, 14, 30), false, "14:00"],
+            ["just ended", at(9, 26, 15, 0), at(9, 26, 15, 20), false, "15:00"],
+            ["yesterday", at(9, 25, 15, 0), at(9, 25, 15, 30), false, "yesterday 15:00"],
+            ["on Thursday", at(9, 22, 9, 30), at(9, 22, 10, 0), false, "Thursday 09:30"],
+            ["weeks ago", at(9, 10, 9, 30), at(9, 10, 10, 0), false, "10 Oct 09:30"],
+            ["all yesterday", at(9, 25, 0, 0), at(9, 26, 0, 0), true, "yesterday"]
+        ];
+        for (const [what, start, end, allDay, meant] of wases)
+            check(`a meeting ${what} was`, Mail.was({ start, end, allDay }, now, said), meant);
+
         check("the line marking it read", Mail.tidy(mail, "read"), '{"read":{"id":"m_1"}}\n');
         check("the line archiving it", Mail.tidy(mail, "archive"),
             '{"archive":{"id":"m_1"}}\n');

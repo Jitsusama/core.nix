@@ -141,6 +141,7 @@ def test_calendars_and_mails_own_recent_hold_what_joel_had_lately(desktop: Deskt
     assert str(retro["side"]).startswith("yesterday "), retro
     facts = (retro.get("drawer") or {}).get("facts") or []
     assert {"label": "Earlier", "value": "1 this month"} in facts, retro
+    desktop.shoot("launcher-calendar-recent")
     desktop.as_account("qs ipc call launcher toggle")
     desktop.answer("mail")
     desktop.launcher_until(lambda shown: "Mail" in shown["rows"])
@@ -155,6 +156,7 @@ def test_calendars_and_mails_own_recent_hold_what_joel_had_lately(desktop: Deskt
     desktop.launcher_until(lambda shown: shown["rows"] == ["Notes on the Plan"])
     notes = desktop.showing()["selected"]
     assert notes["is"] == "mail:notes", notes
+    desktop.shoot("launcher-mail-recent")
     desktop.close_launcher()
 
 

@@ -20,6 +20,7 @@ import qs
 import Quickshell
 import QtQuick
 import "Calendar.js" as Said
+import "Google.js" as Had
 import "Mail.js" as Written
 import "Meet.js" as Calls
 
@@ -64,10 +65,18 @@ Singleton {
         date: (date, format) => Qt.formatDate(date, format)
     })
 
+    // What Calendar's own Recent holds: the meetings he had in the month,
+    // those held before today and today's that are over, a series once
+    // (Google.js's hadMeetings), asked as Calendar's is drawn.
+    function had() {
+        return Had.hadMeetings(Google.held.concat(meetings), now);
+    }
+
     // When a meeting is, as its row says it: "in 12 min", "at 16:00", or
     // for one that's over, when it was, "yesterday 15:00".
     function when(meeting) {
-        return Said.when(meeting, now, root.dates);
+        return meeting.end <= now ? Written.was(meeting, now, root.dates)
+            : Said.when(meeting, now);
     }
 
     // Whether Return on a meeting joins its call, as it does only when the

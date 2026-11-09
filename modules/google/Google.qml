@@ -59,6 +59,12 @@ Singleton {
     // `mail` says each: what a person's Recent holds (GoogleSource.qml).
     property var held: []
     property var lately: []
+
+    // What Mail's own Recent holds of what he sent or read, a conversation
+    // once by its newest (Google.js's hadMail), asked as Mail's is drawn.
+    function hadMail() {
+        return Said.hadMail(lately);
+    }
     // The Meet calls followed, as Meet last said each: { code, granted,
     // started, people: [{ name, joined, left }] } (src/meet.rs).
     property var calls: []

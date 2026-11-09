@@ -2472,14 +2472,14 @@
   the-desktop-reads-the-mail = ''
     the shell gathers the google program's whole state from its daemon's records, each kind in
     its order, a signed-out account alone, and no account once the daemon stops answering; says
-    when mail came in words, and a moment as a drawer says one, and what its row and its details
-    say, who was copied and the files it carries among them, each file by its kind and size;
-    writes a reply to who sent it, and to all, copied to everyone else it went to, and a mail to
-    everyone else a meeting names; writes the lines that mark mail read or unread again or archive
-    it or fetch a file it carries; says how that fetch stands; writes the line making a Meet
-    meeting and says how one asked for stands; and lays out Calendar's own Recent, the meetings
-    over in the month, none said no to, a series once at its latest with how many came before, and
-    Mail's, what was sent or read, a conversation once by its newest
+    when mail came in words, a moment as a drawer says one and when a meeting over was, and what
+    its row and its details say, who was copied and the files it carries among them, each file by
+    its kind and size; writes a reply to who sent it, and to all, copied to everyone else it went
+    to, and a mail to everyone else a meeting names; writes the lines that mark mail read or
+    unread again or archive it or fetch a file it carries; says how that fetch stands; writes the
+    line making a Meet meeting and says how one asked for stands; and lays out Calendar's own
+    Recent, the meetings over in the month, none said no to, a series once at its latest with how
+    many came before, and Mail's, what was sent or read, a conversation once by its newest
   '';
   the-desktop-reads-the-transcripts = ''
     the shell says what each call written down was, when it was in words and how long it went on,
@@ -2489,8 +2489,7 @@
   '';
   the-desktop-tells-the-next-meeting = ''
     the shell names as next the meeting about to start or going on, never one over, all day or said
-    no to, says when it is in words, and when one over was, when it's about to start and when it's
-    said as a notice,
+    no to, says when it is in words, when it's about to start and when it's said as a notice,
     whether Return joins it or shows it, whether it's today's and how Joel answered it, gives its
     details for the drawer, how it repeats in words and how many of those asked answered each way
     among them, which may be moved and to what later or typed time, what that clashes with and who's

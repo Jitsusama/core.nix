@@ -6,10 +6,9 @@
 // lists its acts, and its details show beside it. Mail's own Recent is the
 // mail Joel sent or read in the last month (recentOf, which
 // Applications.qml asks every provider that has it), a conversation once,
-// as Google.js lays it out, each its one row too.
+// as Google.qml gives it, each its one row too.
 import qs
 import QtQuick
-import "Google.js" as Had
 
 Provider {
     id: provider
@@ -29,7 +28,7 @@ Provider {
     function recentOf(asked) {
         if (asked !== program)
             return [];
-        return Had.hadMail(Google.lately)
+        return Google.hadMail()
             .map(one => Object.assign(Mail.row(one.mail, provider.thing), { at: one.at }));
     }
 

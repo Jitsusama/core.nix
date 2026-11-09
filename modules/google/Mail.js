@@ -51,6 +51,19 @@ function moment(at, now, said) {
     return day === "" ? time : `${day} ${time}`;
 }
 
+// When a meeting that's over was, as its row says it at its right in a
+// Recent: when it started as `moment` says any moment, "15:00" today,
+// "yesterday 15:00", "28 Oct 09:30"; a whole day's is its day alone, or
+// "today" (VKCF3Z, ccccbe5f). It's here, beside `moment`, since Calendar.js
+// says only what's to come.
+function was(meeting, now, said) {
+    if (!meeting.allDay) {
+        return moment(meeting.start, now, said);
+    }
+    const day = When.day(meeting.start, now, said);
+    return day === "" ? "today" : day;
+}
+
 // What its row says beside it: who it's from and when it came, "Ada
 // Lovelace · 14:02", or only when it came where the sender gives no name.
 function beside(mail, now, said) {

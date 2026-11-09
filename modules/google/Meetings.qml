@@ -6,11 +6,10 @@
 // every other surface shows it, with the same acts and details. `next` is
 // the next meeting's row, which Now shows. Calendar's own Recent is the
 // meetings Joel had in the last month (recentOf, which Applications.qml
-// asks every provider that has it), as Google.js lays them out, each its
+// asks every provider that has it), as Calendar.qml gives them, each its
 // one row too.
 import qs
 import QtQuick
-import "Google.js" as Had
 
 Provider {
     id: provider
@@ -49,7 +48,7 @@ Provider {
     function recentOf(asked) {
         if (asked !== program)
             return [];
-        return Had.hadMeetings(Google.held.concat(Calendar.meetings), Calendar.now)
+        return Calendar.had()
             .map(one => Object.assign(Calendar.row(one.meeting, provider), { at: one.at }));
     }
 

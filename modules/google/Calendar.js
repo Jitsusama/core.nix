@@ -8,7 +8,6 @@
 // engine (tests/calendar.qml). Times are milliseconds since 1970, as the
 // program gives them.
 .pragma library
-.import "When.js" as When
 
 // In milliseconds.
 const MINUTE = 60_000;
@@ -155,12 +154,9 @@ function dayOf(time, now) {
 // When a meeting is, as the Today row says it after its title: "now" while
 // it's on, "in 12 min" within the hour, else its time, with "tomorrow" or
 // the day of the week in front past today. An all-day meeting is "today",
-// "tomorrow" or its day. One that's over says when it was (`was`), in
-// `said`'s words.
-function when(meeting, now, said) {
-    if (meeting.end <= now) {
-        return was(meeting, now, said);
-    }
+// "tomorrow" or its day. One that's over says when it was, as Mail.js's
+// `was` says it.
+function when(meeting, now) {
     const start = new Date(meeting.start);
     const day = dayOf(meeting.start, now);
     if (meeting.allDay) {
@@ -173,20 +169,6 @@ function when(meeting, now, said) {
         return `in ${Math.max(1, Math.ceil((meeting.start - now) / MINUTE))} min`;
     }
     return day === "" ? `at ${clock(start)}` : `${day} at ${clock(start)}`;
-}
-
-// When a meeting that's over was, as a Recent's row says it at its right:
-// its day as When.js says any, then the time it started, "15:00" today,
-// "yesterday 15:00", "Wednesday 09:30", "28 Oct 09:30", as a mail says
-// when it came in its drawer (Mail.js's moment); a whole day's is its day
-// alone, or "today" (VKCF3Z, ccccbe5f). `said` gives When.js its words.
-function was(meeting, now, said) {
-    const day = When.day(meeting.start, now, said);
-    if (meeting.allDay) {
-        return day === "" ? "today" : day;
-    }
-    const time = clock(new Date(meeting.start));
-    return day === "" ? time : `${day} ${time}`;
 }
 
 // A meeting's times, as its row says them: "14:00 to 14:30", or "all day".
@@ -261,11 +243,7 @@ function details(meeting, untitled, said) {
     const facts = [
         { label: "When", value: dated(meeting) },
         { label: "Repeats", value: repeated(meeting.repeats) },
-        {
-            label: "Earlier",
-            value: meeting.earlier > 0
-                ? String(said?.earlier ?? "").replace("{count}", meeting.earlier) : ""
-        },
+        { label: "Earlier", value: earlier(meeting.earlier, said) },
         { label: "Where", value: meeting.place ?? "" },
         { label: "Call", value: meeting.link ?? "" },
         { label: "Dial In", value: dialled(meeting.dial) },
@@ -283,6 +261,12 @@ function details(meeting, untitled, said) {
         facts: facts.filter(fact => fact.value !== ""),
         body: meeting.about ?? ""
     };
+}
+
+// How many of its series came before one a Recent lists, in `said`'s
+// words, "8 this month", or nothing when none did.
+function earlier(count, said) {
+    return count > 0 ? String(said?.earlier ?? "").replace("{count}", count) : "";
 }
 
 // What one of a series counts by, one and many.
