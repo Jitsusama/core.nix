@@ -1679,12 +1679,4 @@ Provider {
             return meeting.key;
         return "";
     }
-
-    // This moment's rows and Waiting on You are always there, so what's
-    // counted is what's on beside them, and what waits only when it does.
-    function counted() {
-        const waits = WaitingOnYou.foremost !== null || sessions.length > 0;
-        const on = all.length - moment.length - (waits ? 0 : 1);
-        return on === 0 ? "nothing" : String(on);
-    }
 }
