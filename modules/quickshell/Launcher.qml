@@ -701,7 +701,7 @@ Scope {
         for (const source of collections.filter(one => one.collection.placed !== false))
             out.push(withSynonyms(named(source)));
         for (const source of collections.filter(one => one.collection.placed === false)) {
-            const led = ledFound(source.settings.name);
+            const led = ledFound(source);
             if (led !== null)
                 out.push(led);
         }
@@ -712,19 +712,20 @@ Scope {
     }
 
     // Where a collection that's no place of its own leads, as one found row,
-    // found only by the names it once had: "notices" and "notifications"
-    // find For You's Desktop, where Super+N goes, whether or not For You
-    // lists it now, and never by its own name, which its row in For You
-    // answers, so there's never two (VKCF3Z, 2026-11-09: a rename never
-    // loses a row). It's the source's own row, its key and drawer, said
-    // where it is, and Return steps in as `into` does.
-    function ledFound(name) {
+    // found by the collection's own words, its name, noun and the names it
+    // once had: "notices" and "notifications" find For You's Desktop, where
+    // Super+N goes, whether or not For You lists it now, and never by the
+    // name it leads to, which that row answers, so there's never two
+    // (VKCF3Z, 2026-11-09: a rename never loses a row). It's the leading
+    // source's own row, its key and drawer, said where it is, and Return
+    // steps in as `into` does.
+    function ledFound(source) {
+        const name = source.settings.name;
         const leading = sources.find(one => typeof one.leadsTo === "function"
             && one.leadsTo(name) !== null) ?? null;
         const rows = leading === null ? [] : leading.leadsTo(name);
         const row = rows[rows.length - 1];
-        const olds = row === undefined ? [] : row.ledBy ?? [];
-        if (olds.length === 0)
+        if (row === undefined)
             return null;
         const found = Object.assign({}, row, {
             side: [leading.collection?.title ?? leading.settings.name]
@@ -733,7 +734,7 @@ Scope {
             stays: true,
             weight: 1,
             prepared: Fuzzy.prepare(""),
-            keywords: Fuzzy.prepare(olds.join(" ")),
+            keywords: withSynonyms(named(source)).keywords,
             named: true
         });
         found.run = () => root.into(name);

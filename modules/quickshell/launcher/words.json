@@ -7406,7 +7406,6 @@
     {
       "id": "for-you:source:desktop",
       "in": "on:waiting",
-      "once": ["Notices", "Notifications"],
       "name": "Desktop",
       "term": "Desktop/desktop",
       "verb": "more",
@@ -7838,6 +7837,7 @@
     {
       "id": "notices",
       "in": "for-you:source:desktop",
+      "once": ["Notifications"],
       "name": "Notices",
       "term": "Desktop/notice",
       "noun": "notices",

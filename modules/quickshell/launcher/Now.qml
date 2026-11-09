@@ -1233,10 +1233,6 @@ Provider {
             verb: "more",
             stays: true,
             name: Words.name(`for-you:source:${from}`),
-            // The names the notices' place had, which find where they went,
-            // Desktop, as one row whether or not For You lists it
-            // (Launcher.qml's ledFound), since a rename never loses a row.
-            ledBy: Words.of(`for-you:source:${from}`).once ?? [],
             glyph: Words.glyph(`for-you:source:${from}`),
             hue: "muted",
             side: ForYou.filled(said.count ?? "{count}", { count: ids.length }),
