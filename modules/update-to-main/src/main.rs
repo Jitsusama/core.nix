@@ -123,6 +123,9 @@ fn followed(file: &Path, every: Duration) -> ExitCode {
                 unread = None;
                 seen = Some(heads.clone());
                 let ended = fs::read_to_string(&config.ended).unwrap_or_default();
+                if let Some(at) = follow::profile_changed(&config.profile, Instant::now()) {
+                    follower.saw_switch(at);
+                }
                 if follower.should_ask(&heads, &ended, Instant::now(), every) {
                     let at: Vec<String> = heads
                         .iter()
