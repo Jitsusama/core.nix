@@ -297,6 +297,35 @@
     touch $out
   '';
 
+  # pi as a host runs it builds from pi's own source with the host's patches,
+  # which must apply exactly, never fuzzed, so a pi that moved under them fails
+  # here rather than in a host. Its seams are there to detect, and a turn its
+  # durable generation commits is the host's to end or continue. Every pi an
+  # account starts stays unpatched: only this check builds the patched one.
+  pi-hosted-keeps-turns-its-own =
+    let
+      hosted = pkgs.pi-coding-agent.overrideAttrs (old: {
+        patches = (old.patches or [ ]) ++ [
+          ./pi-host-agent-interface.patch
+          ./pi-host-committed-turn.patch
+        ];
+        patchFlags = [
+          "-p1"
+          "--fuzz=0"
+        ];
+        # nixpkgs keeps the libraries pi's command loads and drops pi-schema, which
+        # the durable runtime a host drives imports through chord.
+        postInstall = old.postInstall + ''
+          cp -r packages/schema "$out/lib/node_modules/pi-monorepo/node_modules/@earendil-works/pi-schema"
+        '';
+      });
+    in
+    pkgs.runCommandLocal "pi-hosted-keeps-turns-its-own" { } ''
+      HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+        ${./tests/pi-hosted-keeps-turns-its-own.mjs} ${hosted}/lib/node_modules/pi-monorepo
+      touch $out
+    '';
+
   # pi-ask's digest says what's true on the machine as each question starts,
   # from the machine's own files alone, leaving out what it doesn't have.
   pi-ask-knows-the-machine = pkgs.runCommandLocal "pi-ask-knows-the-machine" { } ''
