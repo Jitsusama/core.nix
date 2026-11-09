@@ -324,7 +324,7 @@ let
 
   # A picture and a document to open, as a download would be.
   picture = "${pkgs.nixos-icons}/share/icons/hicolor/256x256/apps/nix-snowflake.png";
-  page = import ./page.nix {
+  page = import ./lib/page.nix {
     inherit (pkgs) lib;
     inherit pkgs;
   };

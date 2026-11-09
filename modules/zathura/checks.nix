@@ -70,7 +70,7 @@ onLinux {
     let
       home = account graphical;
       opens = graphical.config.xdg.mime.defaultApplications."application/pdf" or "";
-      page = import ../../tests/page.nix { inherit lib pkgs; };
+      page = import ../../tests/lib/page.nix { inherit lib pkgs; };
       mono = home.jitsusama.theme.font.mono.family;
     in
     assert opens == "org.pwmt.zathura-pdf-mupdf.desktop";
@@ -113,7 +113,7 @@ onLinux {
   zathura-keys-go-where-they-say =
     let
       home = account graphical;
-      pages = import ../../tests/page.nix {
+      pages = import ../../tests/lib/page.nix {
         inherit lib pkgs;
         pages = 6;
         words = [
@@ -126,7 +126,7 @@ onLinux {
         ];
       };
       # Two documents beside it in its folder, for ]b and [b to go between.
-      page = import ../../tests/page.nix { inherit lib pkgs; };
+      page = import ../../tests/lib/page.nix { inherit lib pkgs; };
       # The launcher, which only has to say it was asked.
       launcher = pkgs.writeShellScriptBin "launcher-say" ''echo "$*" > asked'';
     in
@@ -167,12 +167,12 @@ onLinux {
   # its Recent in the launcher is led by, as its process and the whole
   # path of a document given by name in the folder it was started in, then
   # the page it's on, counted from one, and how many it has, and nothing
-  # once ZZ closes it (../../tests/says-what-it-has-open.sh), in a
+  # once ZZ closes it (../../tests/lib/says-what-it-has-open.sh), in a
   # compositor of its own.
   zathura-says-the-document-it-has-open =
     let
       home = account graphical;
-      pages = import ../../tests/page.nix {
+      pages = import ../../tests/lib/page.nix {
         inherit lib pkgs;
         pages = 3;
       };
@@ -199,7 +199,7 @@ onLinux {
         cp ${home.xdg.configFile."zathura/zathurarc".source} config/zathura/zathurarc
         cp ${pages} document.pdf
         dbus-run-session --config-file=${pkgs.dbus}/share/dbus-1/session.conf -- \
-          cage -- $BASH ${../../tests/says-what-it-has-open.sh} --closed-by ZZ \
+          cage -- $BASH ${../../tests/lib/says-what-it-has-open.sh} --closed-by ZZ \
           --then "$(printf '\t\t1\t3')" document.pdf \
           zathura -- ${lib.escapeShellArgs source.opened} > ran 2>&1 || true
         if [ ! -e passed ]; then cat ran; exit 1; fi

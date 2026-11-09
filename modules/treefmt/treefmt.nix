@@ -26,8 +26,8 @@ let
   # driver_names for type checkers alone, found on mypy's path wherever the
   # script lives.
   driverNames = lib.fileset.toSource {
-    root = ../../tests;
-    fileset = ../../tests/driver_names.pyi;
+    root = ../../tests/lib;
+    fileset = ../../tests/lib/driver_names.pyi;
   };
   # What VM tests' scripts share, which a script imports as vm_helpers and
   # vm_pytest in any repository that takes these linters, as its driver does

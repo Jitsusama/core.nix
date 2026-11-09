@@ -116,10 +116,10 @@ let
   # time, until one is fast enough. How fast the engine runs the same code
   # differs from one process to the next by as much as half, while a
   # slower search slows every process, so the fastest of five is what's
-  # judged (tests/qml-in-time.sh).
+  # judged (tests/lib/qml-in-time.sh).
   timedQml = file: ''
     ${shellFolderLint}
-    ${lib.getExe pkgs.bash} ${./tests/qml-in-time.sh} ${pkgs.qt6.qtdeclarative} ${file}
+    ${lib.getExe pkgs.bash} ${./tests/lib/qml-in-time.sh} ${pkgs.qt6.qtdeclarative} ${file}
   '';
 
   # The line a kernel setting leaves in the finished configuration.
@@ -220,9 +220,9 @@ let
 
   # Lints the shell an offscreen check has laid out in its build folder, its
   # own cases and stand-ins included, as the account's is linted
-  # (tests/shell-folder-lint.sh).
+  # (tests/lib/shell-folder-lint.sh).
   shellFolderLint = lib.concatStringsSep " " [
-    (lib.getExe (pkgs.callPackage ./tests/shell-folder-lint.nix { }))
+    (lib.getExe (pkgs.callPackage ./tests/lib/shell-folder-lint.nix { }))
     "${quickshellTypes}/lib/qt-6/qml"
     "${pkgs.kdePackages.qtdeclarative}/lib/qt-6/qml"
   ];

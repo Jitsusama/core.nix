@@ -54,7 +54,7 @@ its settings, and the `-passes-clippy` checks hold the code to both, which
 a bare `cargo clippy` doesn't. qmllint reads the account's desktop and the
 greeter (`quickshell-passes-qmllint`), and each offscreen check's own
 folder, its cases and stand-ins included, before running it
-(`tests/shell-folder-lint.sh`). A finding that's right as it is says so
+(`tests/lib/shell-folder-lint.sh`). A finding that's right as it is says so
 where it is, with its reason: `#[expect(..., reason = ...)]` in Rust, a
 `biome-ignore` comment in JavaScript, `qmllint disable` in QML. clippy and
 Biome refuse theirs without one, and `every-suppression-says-why` holds the

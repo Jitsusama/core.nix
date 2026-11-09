@@ -497,11 +497,11 @@ onLinux {
   # don't export (AuthFlow, BluetoothAdapter and the like), and a handler
   # whose parameter is a Qt enum QML can't see (QProcess::ExitStatus).
   # Every message qmllint counts is printed, as its own report can leave
-  # one out and fail showing only infos (tests/qmllint-counted.sh).
+  # one out and fail showing only infos (tests/lib/qmllint-counted.sh).
   quickshell-passes-qmllint =
     let
       qt = pkgs.kdePackages.qtdeclarative;
-      lint = lib.getExe (pkgs.callPackage ../../tests/qmllint-counted.nix { });
+      lint = lib.getExe (pkgs.callPackage ../../tests/lib/qmllint-counted.nix { });
     in
     # In UTF-8, which Qt otherwise switches to and says so.
     pkgs.runCommandLocal "quickshell-passes-qmllint" { LC_ALL = "C.UTF-8"; } ''

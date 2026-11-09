@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # Opens a file in a program, in a compositor of its own, and reads back what
 # the program has open by the command its Recent in the launcher is led by
-# (a file source's `opened`, ../modules/quickshell/recents.nix). Run inside
+# (a file source's `opened`, modules/quickshell/recents.nix). Run inside
 # cage, with a session bus where the program wants one and wtype on the
 # path, as `says-what-it-has-open.sh [--closed-by WTYPE] [--then FIELDS]
 # FILE PROGRAM... -- COMMAND...`, FILE named from the folder it's in. It

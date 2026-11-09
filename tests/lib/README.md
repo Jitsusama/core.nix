@@ -1,20 +1,33 @@
-# What VM Tests Share
+# What Checks Share
 
-The pieces every VM test is built from, so a test's own files say only its
-machines and what it checks. Each is proven by a check of its own, against
-stand-ins, without booting a machine.
+The pieces more than one check is built from, so a check's own files say
+only what it checks. Most are for VM tests, and those are proven by a check
+of their own, against stand-ins, without booting a machine. The rest are
+proven by the checks that use them.
 
-| File                             | Holds                                                         |
-| -------------------------------- | ------------------------------------------------------------- |
-| `pytest-vm-test.nix`             | a VM test whose checks are pytest tests, as each test calls it |
-| `vm_pytest.py`                   | the plugin that runs those tests inside the NixOS test driver |
-| `vm_helpers.py`                  | the helpers a test's script calls on its machines             |
-| `vm-helpers.nix`                 | both Python files, as a package the driver's Python takes     |
-| `qemu-after-its-sockets.nix`     | the qemu tests run, which waits for the sockets it connects to |
-| `qemu-after-its-sockets.sh`      | the wait itself, run before each qemu-system program          |
-| `Expect.js`                      | what a QML test says of its cases, as `expect` and `fail`     |
-| `*-test.py`                      | the tests of the files above, by the name of what they test   |
+For VM tests:
 
-What belongs here is shared by more than one VM test, or, as `Expect.js`,
-by more than one QML test. A helper one test
-needs stays in that test's own files.
+| File                         | Holds                                                          |
+| ---------------------------- | -------------------------------------------------------------- |
+| `pytest-vm-test.nix`         | a VM test whose checks are pytest tests, as each test calls it |
+| `vm_pytest.py`               | the plugin that runs those tests inside the NixOS test driver  |
+| `vm_helpers.py`              | the helpers a test's script calls on its machines              |
+| `vm-helpers.nix`             | both Python files, as a package the driver's Python takes      |
+| `driver_names.pyi`           | what the driver gives a test's script, for type checkers only  |
+| `qemu-after-its-sockets.nix` | the qemu tests run, which waits for the sockets it connects to |
+| `qemu-after-its-sockets.sh`  | the wait itself, run before each qemu-system program           |
+| `*-test.py`                  | the tests of the files above, by the name of what they test    |
+
+For other checks:
+
+| File                         | Holds                                                             |
+| ---------------------------- | ----------------------------------------------------------------- |
+| `Expect.js`                  | what a QML test says of its cases, as `expect` and `fail`         |
+| `qml-in-time.sh`             | a QML test that times itself, judged by its fastest of five runs  |
+| `qmllint-counted.{nix,sh}`   | qmllint, printing every message it counted                        |
+| `shell-folder-lint.{nix,sh}` | qmllint over a check's laid-out shell, against Quickshell's types |
+| `says-what-it-has-open.sh`   | a program opened on a file, asked what it has open                |
+| `page.nix`                   | the smallest PDF a viewer opens, for checks that open documents   |
+
+What belongs here is shared by more than one check. A helper one check needs
+stays in that check's own files.
