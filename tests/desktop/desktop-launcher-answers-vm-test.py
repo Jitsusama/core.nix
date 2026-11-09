@@ -661,7 +661,7 @@ def test_the_queue_the_processors_and_the_memory_say_what_holds_them(desktop: De
     desktop.launcher_until(
         lambda shown: (
             {"Command", "Class", "Needs", "Since"} <= set(shown["rows"])
-            and "Holds" not in shown["rows"]
+            and "Memory" not in shown["rows"]
         )
     )
     desktop.shoot("launcher-queue")

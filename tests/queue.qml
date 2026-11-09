@@ -149,7 +149,7 @@ ShellRoot {
 
             const parts = house.verbs();
             expect("a step in says what the queue knows of it",
-                names(parts) === "Quest, Session, Command, Class, Needs, Holds, Since, Last Run",
+                names(parts) === "Quest, Session, Command, Class, Needs, Memory, Since, Last Run",
                 names(parts));
             expect("its quest by its title", parts[0].side === "Make Tea", parts[0].side);
             parts[0].run();
@@ -161,7 +161,7 @@ ShellRoot {
                 `${parts[4].side} ${parts[5].side}`);
             expect("its last run", parts[7].side === "25 min", parts[7].side);
             expect("a waiting one holds nothing yet",
-                !names(zathura.verbs()).includes("Holds"), names(zathura.verbs()));
+                !names(zathura.verbs()).includes("Memory"), names(zathura.verbs()));
 
             const found = queue.search("zathura").rows;
             expect("found by its name", found.length === 1 && found[0] === zathura, names(found));

@@ -1,9 +1,10 @@
 // Drives the launcher's weather (modules/quickshell/launcher/Weather.qml)
 // through Quickshell itself, with what Open-Meteo would say already kept,
 // as if just asked, so nothing leaves the sandbox: "weather" answers what
-// it's like now, its parts Now, Rain, then seven days from today, all from
+// it's like now, its parts Conditions, Rain, then seven days from today, all from
 // the one request, which asks every figure of now, each hour and each day;
-// Now steps into every figure of this moment; a day steps into its own
+// Conditions steps into every figure of this moment, and elsewhere Local Time
+// follows it with the clock there; a day steps into its own
 // figures, then its hours, sharing none of them; an hour steps into its
 // figures, and is the same thing in Rain as in its day; Rain says when it
 // next rains, with a spark of the next twelve hours, and Return steps into
@@ -194,12 +195,12 @@ ShellRoot {
         expect("what it's like now", here.headline === "12\u00b0 \u00b7 mostly clear",
             here.headline);
         expect("the parts, flat, in order",
-            names(here.rows) === "Now, Rain, Today, Tomorrow, Monday, Tuesday, Wednesday, "
+            names(here.rows) === "Conditions, Rain, Today, Tomorrow, Monday, Tuesday, Wednesday, "
                 + "Thursday, Friday", names(here.rows));
         expect("where it is, and how that was found",
             here.note === "Toronto, from your time zone \u00b7 Open-Meteo", here.note);
         const [now, rain, today, tomorrow] = here.rows;
-        // Now is a thing, every figure of this moment a step in, each
+        // Conditions is a thing, every figure of this moment a step in, each
         // copied, and its drawer saying them all.
         const sides = rows => rows.map(row => `${row.name} ${row.side}`).join(", ");
         expect("now steps into what it's like",
@@ -293,16 +294,20 @@ ShellRoot {
 
         // Elsewhere, with its own clock and its own rain.
         const tokyo = weather.answer("weather in tokyo");
-        expect("the time there", tokyo.rows[0].name === "Now There, 22:45 Saturday", tokyo.rows[0].name);
+        expect("conditions there, as here", tokyo.rows[0].name === "Conditions",
+            tokyo.rows[0].name);
+        expect("the time there, a fact of its own", tokyo.rows[1].name === "Local Time"
+            && tokyo.rows[1].side === "22:45 Saturday" && tokyo.rows[1].verb === "copy",
+            `${tokyo.rows[1].name} ${tokyo.rows[1].side} ${tokyo.rows[1].verb}`);
         // No rain due there, so Rain gives up its place rather than say
         // there's none (VKCF3Z, 2026-11-04).
         expect("no rain, no Rain", !tokyo.rows.some(row => row.name === "Rain"),
             names(tokyo.rows));
         expect("where it is", tokyo.note === "Tokyo, Japan \u00b7 Open-Meteo", tokyo.note);
         expect("its hours run into tomorrow",
-            hoursOf(tokyo.rows[1]).pop().name === "23:00"
-                && hoursOf(tokyo.rows[2])[0].name === "00:00",
-            `${names(hoursOf(tokyo.rows[1]))} | ${names(hoursOf(tokyo.rows[2]))}`);
+            hoursOf(tokyo.rows[2]).pop().name === "23:00"
+                && hoursOf(tokyo.rows[3])[0].name === "00:00",
+            `${names(hoursOf(tokyo.rows[2]))} | ${names(hoursOf(tokyo.rows[3]))}`);
         const dry = weather.answer("rain in tokyo");
         expect("no rain there", dry.headline === "no rain in the next 12 hours", dry.headline);
         const wet = weather.answer("rain in paris?");
@@ -323,7 +328,8 @@ ShellRoot {
         for (const typed of ["weather tokyo", "weather for tokyo", "tokyo weather"]) {
             const said = weather.answer(typed);
             expect(`"${typed}" answers the weather`,
-                said?.rows.length === 8 && said.rows[1].name === "Today", said?.headline);
+                said?.rows.length === 9 && said.rows[1].name === "Local Time"
+                    && said.rows[2].name === "Today", said?.headline);
         }
         // And nothing else is read as rain, nor a place looked up by it.
         for (const typed of ["rainbow", "rain tomorrow", "train", "brain", "umbrella", "forecast"])
