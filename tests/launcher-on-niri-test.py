@@ -1082,10 +1082,11 @@ def test_a_terminal_is_asked_before_an_ending_act_and_a_place_opens(shell: Shell
 def test_a_terminal_does_an_act_unasked_and_an_ending_one_once_sure(shell: Shell) -> None:
     """`launcher do` does an act that ends nothing at once, and one that ends only once sure.
 
-    A window's Float ends nothing, so it's done unasked; its Close ends the window, so it's
-    asked of the window first and done only by the sure ask, which walks the steady ids the
-    question gave (`path`) rather than the names again, so a row moved since is never closed
-    in its place (Y2YBTS's review of #2421).
+    Going to a window ends nothing and the : line never asks it, so it's done unasked; Float
+    is asked, as :float is, since it changes the window with nothing to take it back. Close
+    ends the window, so it's asked of the window first and done only by the sure ask, which
+    walks the steady ids the question gave (`path`) rather than the names again, so a row
+    moved since is never closed in its place (Y2YBTS's review of #2421).
     """
 
     def done(*steps: str, path: list[str] | None = None, sure: bool = False) -> Json:
@@ -1094,15 +1095,15 @@ def test_a_terminal_does_an_act_unasked_and_an_ending_one_once_sure(shell: Shell
         answer = shell.as_account(f"qs -p {shell.folder} ipc call -- launcher doing {asked}")
         return cast("Json", json.loads(answer))
 
-    def listed() -> Json | None:
+    def listed(title: str) -> Json | None:
         """Give the window as niri lists it, or None once it's gone."""
-        titled = [one for one in shell.windows() if one["title"] == "Kestrel Notes"]
+        titled = [one for one in shell.windows() if one["title"] == title]
         return titled[0] if titled else None
 
-    def until(test: Callable[[Json | None], bool], what: str) -> None:
+    def until(test: Callable[[], bool], what: str) -> None:
         deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
-        while not test(listed()):
-            assert time.monotonic() < deadline, f"the window was never {what}: {listed()}"
+        while not test():
+            assert time.monotonic() < deadline, f"{what} never came: {shell.windows()}"
             time.sleep(launcher_on_niri.POLL)
 
     def windows_listed() -> list[str]:
@@ -1111,29 +1112,29 @@ def test_a_terminal_does_an_act_unasked_and_an_ending_one_once_sure(shell: Shell
         asked = f"qs -p {shell.folder} ipc call -- launcher show {path}"
         return [row["name"] for row in json.loads(shell.as_account(asked)).get("rows", [])]
 
-    window = shell.opened("Kestrel Notes")
-    # Windows lists every window but the focused one, Desktop's This Window, so another takes
-    # the focus from it.
-    other = shell.opened("Plover Notes")
-    steps = ("desktop", "windows", "kestrel notes")
+    # Windows lists every window but the focused one, Desktop's This Window, so each acted on
+    # is one the other took the focus from.
+    kestrel = shell.opened("Kestrel Notes")
+    plover = shell.opened("Plover Notes")
     try:
-        deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
-        while "Kestrel Notes" not in windows_listed():
-            assert time.monotonic() < deadline, f"Windows never listed it: {windows_listed()}"
-            time.sleep(launcher_on_niri.POLL)
-        floated = done(*steps, "float")
-        assert floated == {"done": True, "in": ["Desktop", "Windows", "Kestrel Notes", "Float"]}
-        until(lambda one: one is not None and one["is_floating"], "floated")
-        closing = done(*steps, "close")
-        assert closing["asks"] == "Close Kestrel Notes? (y/n)", closing
-        assert listed() is not None, "Close was done before it was sure"
-        closed = done(*steps, "close", path=closing["path"], sure=True)
-        assert closed == {"done": True, "in": ["Desktop", "Windows", "Kestrel Notes", "Close"]}
-        until(lambda one: one is None, "closed")
+        until(lambda: "Kestrel Notes" in windows_listed(), "Kestrel Notes in Windows")
+        went = done("desktop", "windows", "kestrel notes")
+        assert went == {"done": True, "in": ["Desktop", "Windows", "Kestrel Notes"]}, went
+        until(lambda: (listed("Kestrel Notes") or {}).get("is_focused") is True, "The focus")
+        until(lambda: "Plover Notes" in windows_listed(), "Plover Notes in Windows")
+        floating = done("desktop", "windows", "plover notes", "float")
+        assert floating["asks"] == "Float Plover Notes? (y/n)", floating
+        closing = done("desktop", "windows", "plover notes", "close")
+        assert closing["asks"] == "Close Plover Notes? (y/n)", closing
+        assert listed("Plover Notes") is not None, "Close was done before it was sure"
+        closed = done(path=closing["path"], sure=True)
+        assert closed["done"] is True, closed
+        assert closed["in"] == ["Desktop", "Windows", "Plover Notes", "Close"], closed
+        until(lambda: listed("Plover Notes") is None, "Its closing")
     finally:
-        shell.close(other)
-        if listed() is not None:
-            shell.close(window)
+        for window in (kestrel, plover):
+            if listed(window["title"]) is not None:
+                shell.close(window)
 
 
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
