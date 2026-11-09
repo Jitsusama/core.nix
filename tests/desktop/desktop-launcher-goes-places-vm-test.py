@@ -930,11 +930,13 @@ def home_holds_still_as_the_queue_changes(desktop: Desktop) -> None:
     assert "asked again by jobs" not in said, f"the queue asked home again: {said}"
 
 
-def holds(shown: Json, name: str, first: list[str]) -> bool:
+def holds(shown: Json, name: str, first: list[str], *, wraps: bool = False) -> bool:
     """Say whether the place named is selected, its drawer out naming what it holds.
 
     Its members are a run of dots, laid as a run is: where it wraps, the dot goes with the
-    break, so no line it draws ends or starts on one (VKCF3Z, 00ca9231 and 8e0712aa).
+    break, so no line it draws ends or starts on one (VKCF3Z, 00ca9231 and 8e0712aa). Qt
+    draws it in the lines it was laid in, wrapping none further, and one too long for a line,
+    as Machine's is, wraps.
     """
     drawer = shown.get("drawer") or {}
     run = " \u00b7 ".join(first)
@@ -945,6 +947,8 @@ def holds(shown: Json, name: str, first: list[str]) -> bool:
         and drawer.get("title") == name
         and drawer.get("eyebrow") == "place"
         and str(drawer.get("body", "")).startswith(f"{run} \u00b7 ")
+        and (len(lines) > 1 or not wraps)
+        and drawer.get("bodyLines") == len(lines)
         and all(line and not line.startswith("\u00b7") for line in lines)
         and not any(line.endswith("\u00b7") for line in lines)
     )
@@ -988,7 +992,7 @@ def shoot_home_at_joels_scales(desktop: Desktop, home: list[str]) -> None:
     desktop.launcher_ready()
     desktop.launcher_until(lambda shown: shown["rows"] == home)
     desktop.down_to("Machine")
-    desktop.launcher_until(lambda shown: holds(shown, "Machine", ["Power"]))
+    desktop.launcher_until(lambda shown: holds(shown, "Machine", ["Power"], wraps=True))
     desktop.shoot("launcher-home-machine-drawn")
     desktop.close_launcher()
 
@@ -1038,7 +1042,9 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     # it. A place names the places it holds by their names, never the words its typed
     # commands start with: Network once read "ip, is, split, mac".
     desktop.down_to("Machine")
-    desktop.launcher_until(lambda shown: holds(shown, "Machine", ["Power", "Bluetooth"]))
+    desktop.launcher_until(
+        lambda shown: holds(shown, "Machine", ["Power", "Bluetooth"], wraps=True)
+    )
     desktop.down_to("Network")
     desktop.launcher_until(lambda shown: holds(shown, "Network", ["Wi-Fi"]))
     home_holds_still_as_the_queue_changes(desktop)

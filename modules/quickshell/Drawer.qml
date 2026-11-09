@@ -292,9 +292,13 @@ Floating {
     // wraps, the break falls between two and the dot goes with it, so no
     // line ends or starts on one (VKCF3Z, 2026-11-09, 8e0712aa).
     readonly property bool runs: shown?.runs === true
-    // Its words as they're drawn, for the launcher to report.
+    // Its words as they're given to be drawn, a run measured in their own
+    // face, for the launcher to report.
     readonly property string bodySaid: runs
-        ? itemsKept(body, valueFace, wordsBox.width) : body
+        ? itemsKept(body, bodyFace, wordsBox.width) : body
+    // How many lines Qt draws its words in, for the launcher to report: a
+    // run laid as one is as many as bodySaid's, Qt wrapping none further.
+    readonly property int bodyLines: bodyText.lineCount
     // Its groups of facts that hold any: a group with nothing to show
     // gives up its place, so a day with no weather or meeting leaves no
     // empty lines in the middle of the plate (docs/design.md, Space
@@ -968,6 +972,11 @@ Floating {
     }
     // A value's face, measured and drawn: a key list's at Note, a script's
     // in its cut beside the mono, and the rest at Figure.
+    // The words' own face, a run among them measured by it.
+    FontMetrics {
+        id: bodyFace
+        font: bodyText.font
+    }
     FontMetrics {
         id: valueFace
         font.family: drawer.listsKeys ? Theme.level.note.family
@@ -1421,7 +1430,10 @@ Floating {
         if (from < 0 || !reader)
             return shownAndHidden.hidden;
         const at = reader.positionAt(0, reader.drop + from * bodyText.leading + 1);
-        return shownAndHidden.hidden + Page.paragraphs(reader.getText(at, reader.length));
+        // A run's lines are where it was laid to wrap, one paragraph still.
+        const left = reader.getText(at, reader.length);
+        return shownAndHidden.hidden
+            + Page.paragraphs(drawer.runs ? left.replace(/[\n\u2028]/g, " ") : left);
     }
     // Whether the words are cut at the foot, so their reader is made to
     // count their paragraphs. It's handed to the words once the cut is
