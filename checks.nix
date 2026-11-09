@@ -1022,6 +1022,15 @@ gather (
         waiting = import ./tests/every-test-runs-or-fails-waiting.nix;
       };
 
+      # A suppression is a judgement that the linter is wrong here, and one with
+      # no reason can't be checked again when the code or the linter changes.
+      # Those before the rule wait, counted by file, in
+      # tests/every-suppression-says-why-waiting.nix, and a count may only fall.
+      every-suppression-says-why = self.lib.everySuppressionSaysWhy pkgs {
+        src = ./.;
+        waiting = import ./tests/every-suppression-says-why-waiting.nix;
+      };
+
       # A doc names only what's there, so a move or a rename that leaves a guide
       # pointing at nothing fails here rather than misleading the next reader:
       # every relative link, and every backticked path from a top folder. Those

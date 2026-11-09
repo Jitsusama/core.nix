@@ -514,6 +514,13 @@
       # it waits with, and on one holding fewer until its count is lowered.
       lib.everyTestRunsOrFails = pkgs: pkgs.callPackage ./tests/every-test-runs-or-fails.nix { };
 
+      # How a repository built on core keeps each lint suppression saying why, as
+      # core does: `core.lib.everySuppressionSaysWhy pkgs { src = ./.; waiting =
+      # { ... }; }` is a check that fails on a file holding more `# noqa`s, `#
+      # type: ignore`s, shellcheck or qmllint disables without a reason than it
+      # waits with, and on one holding fewer until its count is lowered.
+      lib.everySuppressionSaysWhy = pkgs: pkgs.callPackage ./tests/every-suppression-says-why.nix { };
+
       # How a repository built on core holds its names to core's glossary:
       # `core.lib.namesSayTheGlossary pkgs { names = ...; otherSenses = ...;
       # waiting = ...; }` is a check that no name says a name the glossary
