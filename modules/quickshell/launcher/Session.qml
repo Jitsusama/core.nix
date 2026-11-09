@@ -48,8 +48,9 @@ Provider {
     // machine's on the charger (KeepAwake.qml). A switch always says how
     // it stands, so off says "off" (VKCF3Z, 2026-11-08).
     function awakeRow(kept, lidToo) {
+        const howKept = lidToo ? "awake, lid shut too" : "awake while open";
         return said("session:awake", kept ? "on" : "", Object.assign({
-            side: !kept ? "off" : lidToo ? "awake, lid shut too" : "awake while open",
+            side: kept ? howKept : "off",
             hue: "machine",
             stays: true,
             run: () => provider.keepAwake(!kept)

@@ -2986,9 +2986,9 @@ QtObject {
         ]);
         const idleNow = Object.assign({}, logind, { idle: true, idle_since_ms: awakeAt - 60_000,
             inhibitors: [], last_sleep: { began_at_ms: awakeAt, ended_at_ms: null } });
-        // Idle, its screens are off, so no drawer is seen: it says how long
-        // after they go off, as ever.
-        machine("an idle machine says its span alone, a sleep still going says nothing",
+        // Nobody else holding a lock says none, and a sleep still going
+        // says nothing: only how long after the screens go off it sleeps.
+        machine("with no other locks it says its span alone, a sleep still going nothing",
             Awake.facts(idleNow, awakeWords, awakeTold(false)),
             [{ id: "awake:idle-sleep", value: "suspends 5 min after the screens go off" }]);
         const idleSaid = (action, plugged) => Awake.facts({ idle_action: action,

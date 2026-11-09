@@ -32,8 +32,8 @@ function mark(path) {
 // and nothing today: "04:39", "yesterday 23:05", "Thursday 12:00", "28
 // Oct 08:01", one moment read one way everywhere, with nothing between
 // its day and its time (VKCF3Z, 2026-11-08). `days` gives the launcher's
-// words for yesterday and tomorrow and `date(date, format)`, Qt's
-// formatDate in the shell.
+// word for yesterday and `date(date, format)`, Qt's formatDate in the
+// shell; a thing taken is never tomorrow, so it needs no word for that.
 function taken(at, now, days) {
     const moment = new Date(at);
     const time = `${twoFigures(moment.getHours())}:${twoFigures(moment.getMinutes())}`;
