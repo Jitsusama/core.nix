@@ -356,10 +356,13 @@ ShellRoot {
         expect("the clock says its RMS offset, stratum and update interval",
             told === "200 \u00b5s, 3, 1 min 4 s", told);
         const servers = row("time:servers").verbs();
+        // A server never heard from says so on its side, so its note
+        // doesn't say it again.
+        const plates = servers.map(each => `${each.name} [${each.side}] ${each.note}`);
         expect("the servers are each a thing, the chosen first",
-            servers.map(each => `${each.name} ${each.note}`).join(", ")
-                === "time.harbour.test chosen, far.harbour.test out of reach",
-            servers.map(each => `${each.name} ${each.note}`).join(", "));
+            plates[0].startsWith("time.harbour.test [") && plates[0].endsWith("] chosen")
+                && plates[1] === "far.harbour.test [not answering] ",
+            plates.join(", "));
         // The launcher knows a row by what it is, or else its key, keeping
         // the selection on it as the reading changes and taking two it knows
         // alike as one, so two servers known alike would pull it back to the
@@ -373,11 +376,19 @@ ShellRoot {
             offset?.note === "measured \u2212391 \u00b5s \u00b7 within 20.0 \u00b5s", offset?.note);
         const figures = chosen.verbs().map(each => each.name);
         const plate = chosen.drawer();
-        expect("the chosen server holds every figure the vocabulary names for one",
-            figures.join(", ") === ids("time:server").join(", "), figures.join(", "));
+        // All but Why, which its note, "chosen", already says.
+        const why = Words.name("time:server:why");
+        expect("the chosen server holds every figure the vocabulary names for one but Why",
+            figures.join(", ") === ids("time:server").filter(name => name !== why).join(", "),
+            figures.join(", "));
         expect("its plate says the same figures",
             plate.facts.map(fact => fact.label).join(", ") === figures.join(", "),
             JSON.stringify(plate.facts));
+        // Its row's side is its offset, so the plate's Offset says only
+        // what was measured (Y2YBTS's review of #2489).
+        const offsetFact = plate.facts.find(fact => fact.label === offset?.name);
+        expect("its plate's offset doesn't say the side again",
+            offsetFact?.value === offset?.note, JSON.stringify(offsetFact));
     }
 
     // The time here and the date as Now shows them: each wearing its own

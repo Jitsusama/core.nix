@@ -1617,6 +1617,14 @@ in
     console = "o";
     means = "the time somewhere, and how far it's ahead of here or behind";
   };
+  # A server on its network, since the plain server is a password manager's
+  # sign-in for one, and this is one the clock asks the time of (VKCF3Z,
+  # 2026-11-08).
+  timeServer = {
+    glyph = nerd "f0631";
+    console = "s";
+    means = "a server the clock is kept by";
+  };
   # An alarm clock, since a timer is a span counted down to a ring, where
   # duration's stopwatch is only how long something takes.
   timer = {

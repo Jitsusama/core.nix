@@ -263,8 +263,9 @@
   '';
   cadence-asks-when-a-target-slips = ''
     cadence asks the session keeping the cycle fast once about each missed target or overdue card,
-    and the steward when that session doesn't answer or is gone, and revives a crashed orchestrator
-    while leaving one that was ended
+    tells the steward when that session doesn't answer or is gone, tells an orchestrator of a
+    session idle two hours by its log's last write, and revives a crashed orchestrator while
+    leaving one that was ended
   '';
   cadence-passes-clippy = ''
     clippy finds nothing in cadence or its tests
@@ -2490,6 +2491,10 @@
     the splash lets go of the screen as greetd starts, keeping the GPU open, and quits ten seconds
     after greetd starts rather than with the boot, so the console never shows between it and niri;
     a machine without the splash keeps greetd waiting for Plymouth to quit
+  '';
+  the-stick-types-colemak-on-every-built-in-keyboard = ''
+    the install stick remaps the built-in keyboard of each of the four models core describes, its
+    Apple ones included, so a passphrase typed there is the one the owner meant
   '';
   the-surface-boots-with-its-gpu-and-a-clock-that-reads = ''
     the Surface Laptop 4 loads its GPU's driver and the CMOS clock in the initrd, and keeps

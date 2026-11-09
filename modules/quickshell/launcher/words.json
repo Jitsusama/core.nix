@@ -4647,7 +4647,7 @@
       "in": "time",
       "name": "GPS Time",
       "said": {
-        "week": "week {week}, {seconds} s",
+        "week": "week {week} \u00b7 {seconds} s",
         "ahead": "UTC + 18 s"
       }
     },
@@ -4941,6 +4941,8 @@
         "standing:tooVariable": "set aside: too variable",
         "standing:disagrees": "set aside: disagrees",
         "unreachable": "out of reach",
+        "silent": "not answering",
+        "unsampled": "no sample yet",
         "unusable": "set aside",
         "aside": "set aside: {why}",
         "why:noSelect": "never to be chosen",

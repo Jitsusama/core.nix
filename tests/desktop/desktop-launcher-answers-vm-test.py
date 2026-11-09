@@ -1225,8 +1225,9 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: shown["rows"][: len(servers)] == servers)
     desktop.down_to("time.harbour.test")
     assert desktop.showing()["selected"]["note"] == "chosen", desktop.showing()["selected"]
-    # Its identifiers, its address among them, come last (Y2YBTS's review of #2303).
-    inside = ["Why", "Stratum", "Poll Interval", "Reach", "Last Sample", "Offset"]
+    # Its identifiers, its address among them, come last (Y2YBTS's review of #2303), and it
+    # has no Why, which its note "chosen" says (VKCF3Z, 2026-11-08).
+    inside = ["Stratum", "Poll Interval", "Reach", "Last Sample", "Offset"]
     desktop.launcher_until(
         lambda shown: (
             shown["drawer"]["out"] is True
@@ -1236,14 +1237,15 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
     )
     facts = desktop.showing()["drawer"]["facts"]
     assert facts.index("Address") > facts.index("Packets"), facts
+    # One never heard says so on its side, and its note doesn't say it again.
     desktop.down_to("far.harbour.test")
-    assert desktop.showing()["selected"]["note"] == "out of reach", desktop.showing()["selected"]
+    far = desktop.showing()["selected"]
+    assert (far["side"], far["note"]) == ("not answering", ""), far
     desktop.down_to("time.harbour.test")
     desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"][: len(inside)] == inside)
     reads = [str(thing["reads"]) for thing in desktop.showing()["things"]]
     for read in (
-        "Why \u00b7 the clock is kept by it",
         "Stratum \u00b7 2",
         "NTP Version \u00b7 4",
     ):

@@ -20,6 +20,8 @@
 //! - `power`: whether the machine is on a battery too low to start.
 //! - `line`: what an asker hears.
 //! - `run`: the programs it runs, in a clean environment.
+//! - `progress`: the work a quiet build's pieces are doing, here and on
+//!   its builders.
 //! - `session`: an account's command run in its login session, on a Mac.
 //! - `ask`: the asking end, for the node and for a person.
 
@@ -31,6 +33,7 @@ pub mod git;
 pub mod hosted;
 pub mod line;
 pub mod power;
+pub mod progress;
 pub mod run;
 pub mod serve;
 pub mod session;

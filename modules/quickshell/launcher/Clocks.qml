@@ -215,20 +215,18 @@ Provider {
             note: note ?? "",
             glyph: ""
         });
-        const gps = Moment.gps(now);
         const longitude = Location.here?.longitude;
         const known = typeof longitude === "number";
-        const degrees = known ? `${Numbers.format(Math.abs(longitude), 2, "", ".")}\u00b0 `
-            + (longitude < 0 ? "W" : "E") : "";
+        const marks = { group: settings.group ?? ",", point: settings.point ?? "." };
         return [
             figure("utc", Moment.utcClock(now)),
             figure("unix", String(Moment.unix(now)), timeWord("time:unix", "since")),
             figure("tai", Moment.tai(now), timeWord("time:tai", "ahead")),
-            figure("gps", timeWord("time:gps", "week").replace("{week}", String(gps.week))
-                .replace("{seconds}", Numbers.format(gps.seconds, 0, ",", ".")),
+            figure("gps", Moment.gpsSaid(now, timeWord("time:gps", "week"), marks),
                 timeWord("time:gps", "ahead")),
             figure("sidereal", Moment.sidereal(now, known ? longitude : 0),
-                known ? timeWord("time:sidereal", "local").replace("{longitude}", degrees)
+                known ? timeWord("time:sidereal", "local")
+                    .replace("{longitude}", Moment.longitudeSaid(longitude, marks.point))
                     : timeWord("time:sidereal", "greenwich"))
         ];
     }
@@ -359,14 +357,14 @@ Provider {
             part("frequency", Keeping.ppm(samples.residualFrequency, true, said.point)),
             part("skew", Keeping.ppm(samples.skew, false, said.point))
         ] : [];
-        const sampledNow = server.lastSample !== null && server.lastSample !== undefined;
+        const sampledNow = Keeping.sampled(server);
         const identifiers = [
             named("address", server.address !== server.name ? server.address : ""),
             named("reference", exchange?.reference ?? ""),
             named("local-address", exchange?.localAddress ?? "")
         ];
         return [
-            part("why", Keeping.why(server, said)),
+            part("why", Keeping.whyUnsaid(server, said)),
             part("stratum", server.stratum > 0 ? String(server.stratum) : ""),
             // Its name already says it's an interval, so the span stands alone.
             part("poll", Keeping.span(server.poll, said.point)),
@@ -389,28 +387,31 @@ Provider {
         ].concat(sampled, exchanged, identifiers).filter(each => each.side !== "");
     }
 
-    // One server chrony asks, a thing: its side its last offset, its note
-    // where it stands, its drawer and its inside every figure (VKCF3Z).
+    // One server chrony asks, a thing: its side its last offset or that it
+    // isn't answering, its note where it stands, its drawer and its inside
+    // every figure (VKCF3Z).
     function serverThing(server, now) {
         const parts = serverParts(server, now);
         const name = server.name || server.address;
-        const sampled = server.lastSample !== null && server.lastSample !== undefined;
         // Known by its address, since the launcher knows a row by what it
         // is or else its key, keeping the selection on it as the reading
         // changes and taking two known alike as one.
         return thingRow({
             key: `time-server:${server.address}`,
             name: name,
-            side: sampled ? Keeping.seconds(server.offset, true, serversSaid.point) : "",
-            note: Keeping.standing(server, serversSaid),
-            glyph: Theme.glyph.clock,
+            side: Keeping.side(server, serversSaid),
+            note: Keeping.note(server, serversSaid),
+            // A server the clock is kept by, its own mark rather than Time's
+            // clock (VKCF3Z, 2026-11-08).
+            glyph: Theme.glyph.timeServer,
             thing: true,
             drawer: () => ({
                 // What kind of thing it is, as chronyd asks it: a time
                 // server, a peer or a reference clock (VKCF3Z, 2026-11-08).
                 eyebrow: Keeping.mode(server, serversSaid) || Words.name("time:server"),
                 title: name,
-                facts: parts.map(each => Object.assign({
+                // Offset tells only its note, the row's side being the offset.
+                facts: Keeping.besideSide(parts, "offset").map(each => Object.assign({
                     label: Words.name(`time:server:${each.id}`),
                     value: Keeping.told(each)
                 }, each.identifies ? { identifies: true } : {}))

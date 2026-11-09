@@ -19,5 +19,12 @@
     "owner_pr": null,
     "reason": "known broken on main since 73351b75b04a and owned by the launcher's session, which fixes it forward and takes it off this list",
     "test": "vm-desktop-launcher-finds-by-name"
+  },
+  {
+    "at": 1794214380,
+    "commit": "f18ef97a16af01c795f58359e10e0671ec9f90b1",
+    "owner_pr": null,
+    "reason": "known broken on main since the looks fixes gave a machine's drawer one Address; the launcher's session fixes the test forward on jitsusama/kitty-machine-walk and takes it off this list",
+    "test": "vm-desktop-launcher-moves-windows"
   }
 ]

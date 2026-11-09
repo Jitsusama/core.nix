@@ -10,6 +10,12 @@
 .import "Numbers.js" as Numbers
 
 const MINUS = "\u2212";
+// The standings whose own words say why chronyd took the server or not,
+// each with the reason it says. A reason beyond it, a server disagreeing
+// with the trusted ones rather than the others, still adds something
+// (Y2YBTS's review of #2489).
+const WHY_EACH_STANDING_SAYS = { chosen: "chosen", tooVariable: "tooVariable",
+    disagrees: "disagrees" };
 
 const NANOSECONDS = 1e9;
 const MICROSECONDS = 1e6;
@@ -163,6 +169,55 @@ function standing(server, said) {
 // Why chronyd chose a server or set it aside, in a sentence's words.
 function why(server, said) {
     return server.chosen ? (said[`why:${server.chosen.why}`] ?? "") : "";
+}
+
+// Whether a server's standing already says why chronyd chose it or set it
+// aside: chosen, too variable or disagreeing for that reason, or set aside
+// with its reason after it.
+function standingSaysWhy(server) {
+    if (server.standing === "unusable") {
+        return answered(server.reach) > 0;
+    }
+    const reason = server.chosen?.why;
+    return reason !== undefined && reason === WHY_EACH_STANDING_SAYS[server.standing];
+}
+
+// Why, as a server's drawer says it: only where its note doesn't, so no
+// fact repeats the note (VKCF3Z, 2026-11-08: "the server drawer's Why goes
+// when the side says chosen").
+function whyUnsaid(server, said) {
+    return standingSaysWhy(server) ? "" : why(server, said);
+}
+
+// A server's parts as its drawer says them beside its row: the one the
+// row's side is made from, its offset, says only its note, and goes with
+// none, so no fact says the side again (Y2YBTS's review of #2489). A
+// figure that only happens to read the same is another fact, and stays.
+function besideSide(parts, fromId) {
+    return parts
+        .map(each => (each.id === fromId ? Object.assign({}, each, { side: each.note, note: "" })
+            : each))
+        .filter(each => each.side !== "");
+}
+
+// Whether a server has answered at all, so has an offset to say.
+function sampled(server) {
+    return server.lastSample !== null && server.lastSample !== undefined;
+}
+
+// A server's side, never empty (VKCF3Z, 2026-11-08): its last offset, or
+// that it isn't answering, or that no sample's in yet from one that is.
+function side(server, said) {
+    if (sampled(server)) {
+        return seconds(server.offset, true, said.point);
+    }
+    return answered(server.reach) === 0 ? said.silent : said.unsampled;
+}
+
+// A server's note: where it stands, unless its side already says it's out
+// of reach.
+function note(server, said) {
+    return !sampled(server) && answered(server.reach) === 0 ? "" : standing(server, said);
 }
 
 // A figure as a plate says it, its note after its side as an item of its
