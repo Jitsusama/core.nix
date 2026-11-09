@@ -583,12 +583,12 @@ ShellRoot {
             // Its processes are watched only while a program's row is the
             // one selected (Applications.qml).
             applications.treesWanted = [5151];
-            launcher.selected = program("tester");
+            theLauncher.selected = program("tester");
             same("a program's row keeps its processes watched",
                 applications.treesWanted.join(", "), "5151");
-            launcher.selected = { is: "media:playing" };
+            theLauncher.selected = { is: "media:playing" };
             same("moving off it ends the watch", applications.treesWanted.join(", "), "");
-            launcher.selected = null;
+            theLauncher.selected = null;
             const played = media.targets();
             same("Media's acts, then what's playing", names(played),
                 "Pause, Next, Previous, Song of the test");
