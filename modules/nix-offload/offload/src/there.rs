@@ -614,6 +614,97 @@ enum Untaken {
 /// builder. It sent a run of 93 checks round three times on 3 November.
 pub const STAYS: i32 = 64;
 
+/// The system a derivation's file, as Nix writes one, builds for: the
+/// string after its outputs, its inputs' derivations and its sources.
+pub fn derivation_system(written: &str) -> Option<String> {
+    let fields = written.strip_prefix("Derive(")?;
+    let (mut depth, mut commas, mut quoted, mut escaped) = (0_usize, 0, false, false);
+    let mut system: Option<String> = None;
+    for character in fields.chars() {
+        if let Some(read) = system.as_mut() {
+            match (escaped, character) {
+                (false, '\\') => escaped = true,
+                (false, '"') => return system,
+                _ => {
+                    read.push(character);
+                    escaped = false;
+                }
+            }
+            continue;
+        }
+        match (quoted, escaped, character) {
+            (true, false, '\\') => escaped = true,
+            (true, false, '"') => quoted = false,
+            (true, ..) => escaped = false,
+            (false, _, '"') if depth == 0 && commas == 3 => system = Some(String::new()),
+            (false, _, '"') => quoted = true,
+            (false, _, '[' | '(') => depth += 1,
+            (false, _, ']' | ')') => depth = depth.checked_sub(1)?,
+            (false, _, ',') if depth == 0 => commas += 1,
+            _ => {}
+        }
+    }
+    None
+}
+
+/// What the lent builder `dir`'s lender lends builds for, as its machines
+/// line says, and on Linux this machine's own system where none is lent
+/// yet, since the builder asked for then is built as this one is.
+pub fn lent_systems(dir: &Path) -> Vec<String> {
+    let store = fs::read_to_string(dir.join("store")).unwrap_or_default();
+    let store = store.lines().next().unwrap_or_default().trim();
+    let machines = fs::read_to_string(dir.join("machines")).unwrap_or_default();
+    let named = machines
+        .lines()
+        .filter(|_| !store.is_empty())
+        .find_map(|line| {
+            let (uri, rest) = line.split_once(' ')?;
+            (uri == store).then(|| rest.split_whitespace().next().map(str::to_owned))?
+        })
+        .map(|systems| systems.split(',').map(str::to_owned).collect());
+    named.unwrap_or_else(|| {
+        if cfg!(target_os = "linux") {
+            vec![format!("{}-linux", std::env::consts::ARCH)]
+        } else {
+            Vec::new()
+        }
+    })
+}
+
+/// For a run of derivations, the first that no lent builder builds for,
+/// what it builds for and what they build for instead.
+pub fn foreign_derivation(asked: &Asked, dir: &Path) -> Option<(String, String, Vec<String>)> {
+    if !asked.derivations {
+        return None;
+    }
+    let systems = lent_systems(dir);
+    let names: Vec<&str> = systems.iter().map(String::as_str).collect();
+    let (path, system) = foreign(&asked.attributes, &names, |path| {
+        fs::read_to_string(path).ok()
+    })?;
+    Some((path, system, systems))
+}
+
+/// The first of the derivations at `paths` that builds for none of the
+/// lent builders' `systems`, and what it builds for, read by `read`: on
+/// 9 November an aarch64 build was sent to a lender that builds x86_64
+/// alone, and began copying its kernel up. None when the systems aren't
+/// known or each derivation's can't be read.
+pub fn foreign(
+    paths: &[String],
+    systems: &[&str],
+    read: impl Fn(&str) -> Option<String>,
+) -> Option<(String, String)> {
+    if systems.is_empty() {
+        return None;
+    }
+    paths.iter().find_map(|word| {
+        let path = word.split('^').next().unwrap_or(word);
+        let system = derivation_system(&read(path)?)?;
+        (!systems.contains(&system.as_str())).then(|| (path.to_owned(), system))
+    })
+}
+
 /// A build no builder can take, `why`: built here only when asked to with
 /// `--here`, and otherwise refused with the ways it could go.
 fn stays(asked: &Asked, nix: &str, why: &str) -> Ran {
@@ -3220,6 +3311,43 @@ mod tests {
     use std::os::unix::process::CommandExt;
     use std::sync::mpsc;
     use std::time::Duration;
+
+    const AARCH64: &str = r#"Derive([("out","/nix/store/a-boot.bin","","")],[("/nix/store/b-m1n1.drv",["out"])],["/nix/store/c-builder.sh"],"aarch64-linux","/bin/sh",["-c","echo \"],\" > $out"],[("system","x86_64-linux")])"#;
+
+    #[test]
+    fn a_derivation_says_what_it_builds_for() {
+        assert_eq!(derivation_system(AARCH64).as_deref(), Some("aarch64-linux"));
+        assert_eq!(derivation_system("not a derivation"), None);
+    }
+
+    // On 9 November an aarch64 build of a boot chain was sent to a lender
+    // that builds x86_64 alone, and began copying its kernel up.
+    #[test]
+    fn a_derivation_no_lent_builder_builds_for_is_named() {
+        let paths = [
+            "/nix/store/x-native.drv".to_owned(),
+            "/nix/store/a-boot.bin.drv^*".to_owned(),
+        ];
+        let read = |path: &str| {
+            Some(if path.ends_with("a-boot.bin.drv") {
+                AARCH64.to_owned()
+            } else {
+                AARCH64.replace("\"aarch64-linux\",\"/bin", "\"x86_64-linux\",\"/bin")
+            })
+        };
+        assert_eq!(
+            foreign(&paths, &["x86_64-linux"], read),
+            Some((
+                "/nix/store/a-boot.bin.drv".to_owned(),
+                "aarch64-linux".to_owned()
+            ))
+        );
+        assert_eq!(
+            foreign(&paths, &["x86_64-linux", "aarch64-linux"], read),
+            None
+        );
+        assert_eq!(foreign(&paths, &[], read), None, "systems not known");
+    }
 
     #[test]
     fn only_what_the_builder_says_it_fetched_counts_as_fetched() {
