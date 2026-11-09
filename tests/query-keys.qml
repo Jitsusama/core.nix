@@ -1120,6 +1120,22 @@ QtObject {
                 { place: "none", wide: 0 }],
             ["no figure, nothing", null, 1, 140, 260, { place: "none", wide: 0 }]
         ];
+        // A value made of items, laid a dot apart, the dot going with a
+        // break, so no line ends or starts on one (VKCF3Z, 2026-11-09).
+        const runs = [
+            ["a run that fits is one line", "40% \u00b7 resets Monday 09:00", 300,
+                ["40% \u00b7 resets Monday 09:00"]],
+            ["a run that breaks leaves its dot behind", "40% \u00b7 resets Monday 09:00", 200,
+                ["40%", "resets Monday 09:00"]],
+            ["as many items to a line as fit", "38 s \u00b7 4.1k out \u00b7 0.9 s first token", 170,
+                ["38 s \u00b7 4.1k out", "0.9 s first token"]],
+            ["an item wider than a line stands alone, for its words to wrap",
+                "85% \u00b7 a reading far too long to stand on one line", 100,
+                ["85%", "a reading far too long to stand on one line"]],
+            ["one item is itself", "reading fine", 50, ["reading fine"]]
+        ];
+        for (const [what, words, wide, want] of runs)
+            holds(`a drawer's run: ${what}`, Figure.runLines(words, wide, width), want);
         for (const [what, figure, lines, room, under, want] of places)
             holds(`a figure's place: ${what}`,
                 JSON.stringify(Figure.place(figure, lines, room, under)),
