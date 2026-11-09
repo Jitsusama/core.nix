@@ -1441,6 +1441,10 @@
     a machine on the Claude plan has one pi, starting on the claude-code provider and Sonnet with
     no pi-claude beside it, and a work machine's pi is unchanged
   '';
+  pi-starts-on-opus = ''
+    off the Claude plan, pi's settings on Linux and on a Mac start every session on
+    anthropic/claude-opus-5-5 at high thinking, so each switch writes that default back
+  '';
   pi-says-what-starts-its-sessions = ''
     pi tells mycelium the command its sessions start with in each realm: plain pi at home, pi-claude
     in the Claude plan's realm, and plain pi alone on a machine on that plan
