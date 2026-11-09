@@ -1094,12 +1094,6 @@
     the account's entry for Neovim is named Neovim, not nixpkgs' "Neovim wrapper", and still runs
     nvim
   '';
-  neovim-keeps-a-session-of-its-folder = ''
-    Neovim keeps a session of the folder it's in as it's left with more than one file open, named
-    by the folder's whole path, never for a quick edit, comparing two files or leaving with an
-    error, and opening it with nvim -S goes back to the folder with its files in their tabs, a
-    space and a % in the folder's name escaped
-  '';
   neovim-keeps-its-numbers-in-one-column = ''
     Neovim's number column gives the cursor line its own number, marked, as wide as the relative
     counts beside it, and is blank with numbers off
@@ -1989,9 +1983,7 @@
     each came from in its drawer, with Open the Latest Download listed and found from the top
     only while there's one, opening it as the desktop opens a file; and Neovim lists every file
     each Neovim has open once, the one looked at last first, said modified and by its tab, going
-    to its buffer through open-now, counts them in its drawer, and lists its sessions in its
-    Recent as their folders, newest first, opening one in the kitty used last and forgetting one
-    at once
+    to its buffer through open-now, and counts them in its drawer
   '';
   the-launcher-answers-the-rain = ''
     the weather's parts and the rain by the hour come from one forecast, and "rain", "umbrella"

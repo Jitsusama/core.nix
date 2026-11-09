@@ -299,59 +299,6 @@ onLinux {
         touch $out
       '';
 
-  # Neovim keeps a session of the folder it's working in as it's left, under
-  # its state's folder, named by the folder's whole path (sessions.lua),
-  # only while more than one file is open: a quick edit leaves none and
-  # never replaces one, nor does comparing two files or leaving with an
-  # error, and opening the session with nvim -S goes back to the folder
-  # with its files in their tabs, a space and a % in its name escaped.
-  # Neovim runs headless, so nothing draws.
-  neovim-keeps-a-session-of-its-folder =
-    let
-      home = account workstation;
-    in
-    pkgs.runCommandLocal "neovim-keeps-a-session-of-its-folder"
-      { nativeBuildInputs = [ home.home.path ]; }
-      # Kept in Nix because it leaves Neovim through the account's own
-      # Neovim and probe, which Nix splices in, and each leaving is a line.
-      ''
-        ${neovimAt home}
-        # A folder whose name holds a space and a %, which a command line
-        # would read as the end of a name and the current file, so the
-        # session's name has to escape them for nvim -S to open it.
-        project="my project %1"
-        mkdir -p "$project" quick elsewhere
-        echo one > "$project/one.txt"
-        echo two > "$project/two.txt"
-        echo three > quick/three.txt
-        sessions=$PWD/state/nvim/sessions
-        session=$sessions/$(printf %s "$PWD/$project" | sed 's|/|=2F|g; s| |=20|g; s|%|=25|g').vim
-        # Neovim left as the arguments say, in a folder, failing on any
-        # complaint, whatever it exits with.
-        leave() {
-          (cd "$1" && shift && timeout 60 nvim --headless "$@" 2> "$OLDPWD/complaints") || true
-          if [ -s complaints ]; then
-            cat complaints
-            exit 1
-          fi
-        }
-        leave "$project" one.txt -c 'tabedit two.txt' -c 'qa'
-        [ -f "$session" ] || { echo "no session kept, only: $(ls "$sessions")"; exit 1; }
-        leave quick three.txt -c 'qa'
-        [ "$(ls "$sessions" | wc -l)" = 1 ] || { echo "kept: $(ls "$sessions")"; exit 1; }
-        # A session marked as written long ago, which none of these touch.
-        touch -d @1000 "$session"
-        leave "$project" one.txt -c 'qa'
-        leave "$project" -d one.txt two.txt -c 'qa'
-        leave "$project" one.txt two.txt -c 'cq'
-        [ "$(stat -c %Y "$session")" = 1000 ] || { echo "the session was replaced"; exit 1; }
-        cd elsewhere
-        ${probed} "$project 2 one.txt two.txt" -S "$session" \
-          -c 'luafile ${./probes/opens-its-session.lua}'
-        cd ..
-        touch $out
-      '';
-
   # The account's Neovim binds every key in the map, and only those: each
   # action a key names is one a file registered, or one a plugin that
   # waits provides, each key is bound as it says, a scope's in a buffer it

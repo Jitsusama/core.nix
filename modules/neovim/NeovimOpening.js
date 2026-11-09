@@ -1,6 +1,5 @@
 // How the launcher opens a file in Neovim (NeovimProgram.qml): the
-// command, at a line and a column where it's given them, or a session
-// kept on leaving, run in a new
+// command, at a line and a column where it's given them, run in a new
 // window of the kitty used last, through its remote control, in the
 // folder it's opened from, or in a new kitty there while none runs. Kept
 // apart from Quickshell's types, so the
@@ -15,11 +14,6 @@ function neovim(path, line, column) {
         return ["nvim", `+call cursor(${line}, ${column})`, path];
     }
     return line > 0 ? ["nvim", `+${line}`, path] : ["nvim", path];
-}
-
-// Neovim opening a session it kept, its files in their tabs and windows.
-function session(path) {
-    return ["nvim", "-S", path];
 }
 
 // The kitty process whose window was used last, by niri's windows, or 0

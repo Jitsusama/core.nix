@@ -108,11 +108,9 @@ vim.opt.foldenable = true
 -- on the fold's shade, rather than a count and a row of dots.
 vim.opt.foldtext = ''
 
--- What a session keeps, which the folder's session written on leaving
--- holds (sessions.lua).
+-- Session options
 vim.opt.sessionoptions =
   { 'buffers', 'curdir', 'tabpages', 'winsize', 'help', 'globals', 'skiprtp', 'folds' }
-require('sessions').setup()
 
 -- The status line, which holds the window's facts (status.lua).
 require('status').setup()

@@ -2,11 +2,10 @@
 # plugins/ as Neovim starts or once it's wanted (later.lua); its keys, from
 # keys.nix, bound by keys.lua and listed for the launcher; the theme as its
 # colour scheme; a status line that tells a file's place and git's state
-# as the prompt does; a session of its folder kept as it's left
-# (sessions.lua); and, on Linux, its place in the launcher
+# as the prompt does; and, on Linux, its place in the launcher
 # (NeovimProgram.qml): the files each Neovim has open, asked of it where it
-# tells its kitty window it listens (showing.lua), its sessions in its
-# Recent, and its own acts, a file opened by its name or the path copied.
+# tells its kitty window it listens (showing.lua), and its own acts, a file
+# opened by its name or the path copied.
 { neovim-pi }:
 {
   config,
@@ -240,7 +239,6 @@ in
         "lua/where.lua"
         "lua/status.lua"
         "lua/showing.lua"
-        "lua/sessions.lua"
         "lua/later.lua"
         "colors/jitsusama.lua"
       ];
@@ -282,11 +280,8 @@ in
   # Where this Neovim's own server listens, said to the kitty window it
   # runs in, which open-now reads to ask it what it has open.
   xdg.configFile."nvim/lua/showing.lua".source = ./showing.lua;
-  # The folder's session, kept as Neovim is left.
-  xdg.configFile."nvim/lua/sessions.lua".source = ./sessions.lua;
   # Its Recent in the launcher stands from the first, with the files it
-  # opened from the list programs share and its sessions beside them
-  # (NeovimProgram.qml's recentOf); what it has open now is its provider's
+  # opened from the list programs share; what it has open now is its provider's
   # own, since a Neovim's windows are kitty's.
   jitsusama.quickshell.launcher.recents = lib.mkIf pkgs.stdenv.hostPlatform.isLinux [
     {
@@ -297,10 +292,9 @@ in
   # Neovim's own in the launcher (NeovimProgram.qml): Open a File by Name,
   # through the git repositories under ~/src, which fd finds and stat
   # dates, Open the Copied Path, and the files each Neovim has open, which
-  # open-now asks of them; and in its Recent, the sessions kept under its
-  # state's folder, which find lists and rm forgets, each opening Neovim in
-  # kitty (NeovimOpening.js). After every other provider, as it adds no
-  # rows of its own.
+  # open-now asks of them, each file opening Neovim in kitty
+  # (NeovimOpening.js). After every other provider, as it adds no rows of
+  # its own.
   jitsusama.quickshell.launcher.providers.neovim = lib.mkIf linux {
     order = 52;
     source = ./NeovimProgram.qml;
@@ -308,9 +302,6 @@ in
     fd = lib.getExe pkgs.fd;
     stat = lib.getExe' pkgs.coreutils "stat";
     openNow = open-now;
-    sessions = "${config.xdg.stateHome}/nvim/sessions";
-    find = lib.getExe' pkgs.findutils "find";
-    rm = lib.getExe' pkgs.coreutils "rm";
   };
   xdg.configFile."quickshell/launcher/NeovimOpening.js" = lib.mkIf linux {
     source = ./NeovimOpening.js;

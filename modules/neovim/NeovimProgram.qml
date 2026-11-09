@@ -26,18 +26,13 @@
 // should ask about, not the launcher. open-now asks each Neovim over its
 // own server, where it told its kitty window it listens (showing.lua).
 //
-// And in its Recent, beside the files it opened from the list programs
-// share, the sessions it kept on leaving a folder with more than one file
-// open (sessions.lua): each the folder's row, saying when beside the
-// folder holding it, ordered among the rest by when, Return opening
-// Neovim on it in a new kitty window there, with Forget It inside, which
-// removes it and keeps the launcher. Its drawer in Programs says how many
-// files are open in how many windows, how many are modified, and how many
-// sessions are kept.
+// Its drawer in Programs says how many files are open in how many
+// windows, and how many are modified. It only reads what each Neovim
+// says over its own server and changes nothing of Neovim's, so the
+// editor stays the account's own.
 //
-// What's open and the sessions are read ahead, as the shell starts and
-// again as the launcher closes, and what's open again as Neovim is
-// stepped into for what changed since, as kitty's tabs are (Kitty.qml),
+// What's open is read ahead, as the shell starts and again as the
+// launcher closes, and again as Neovim is stepped into for what changed since, as kitty's tabs are (Kitty.qml),
 // so each row is there from the first frame Neovim's page draws, never
 // joining its end late. What each says is read in Neovim.js.
 pragma ComponentBehavior: Bound
@@ -70,15 +65,9 @@ Provider {
         .concat(place !== null ? [{ program: program, key: "verb:nvim:copied" }] : [])
 
     // What each Neovim holds, as open-now last said, and whether it was
-    // asked since the launcher opened; the sessions kept, as find last
-    // listed them, and those forgotten since, left out until the next
-    // listing no longer has them.
+    // asked since the launcher opened.
     property var neovims: []
     property bool looked: false
-    property var sessions: []
-    property var forgotten: []
-    // A forgetting asked for while one runs, run once it's done.
-    property bool forgetAgain: false
 
     Component.onCompleted: {
         Repositories.want(provider.settings, false);
@@ -97,7 +86,7 @@ Provider {
     }
 
     function readAhead() {
-        provider.start([asking, listing]);
+        provider.start([asking]);
     }
 
     // Asked again as Neovim is stepped into, once an opening.
@@ -133,40 +122,6 @@ Provider {
         }
     }
 
-    Process {
-        id: listing
-
-        command: [provider.settings.find ?? "", provider.settings.sessions ?? "", "-maxdepth",
-            "1", "-type", "f", "-name", "*.vim", "-printf", "%T@\\t%f\\n"]
-        running: false
-        stdout: StdioCollector {
-            id: listed
-
-            onStreamFinished: {
-                const read = Neovim.sessions(listed.text, provider.settings.sessions ?? "");
-                provider.sessions = read;
-                provider.forgotten = provider.forgotten.filter(path => read
-                    .some(one => one.path === path));
-                provider.heard();
-            }
-        }
-    }
-
-    Process {
-        id: forgetting
-
-        command: [provider.settings.rm ?? "", "-f", "--"].concat(provider.forgotten)
-        running: false
-        onExited: {
-            if (provider.forgetAgain) {
-                provider.forgetAgain = false;
-                forgetting.running = true;
-            } else {
-                provider.start([listing]);
-            }
-        }
-    }
-
     // What's read arrives while a repository's files may be shown.
     Connections {
         target: Repositories
@@ -177,7 +132,7 @@ Provider {
     }
 
     // The launcher closed, so the next step into Neovim asks it again, and
-    // what's open and the sessions are read for the next opening.
+    // what's open is read for the next opening.
     Connections {
         target: provider.launcher
 
@@ -198,23 +153,13 @@ Provider {
             provider.openNow().map(one => provider.openRow(one)));
     }
 
-    // Its sessions, for its Recent (Applications.qml asks every provider's
-    // recentOf), newest first, each dated so Recent orders them among the
-    // files it opened.
-    function recentOf(asked) {
-        if (asked !== program)
-            return [];
-        return provider.sessionsNow().map(one => provider.sessionRow(one));
-    }
-
     // What its drawer in Programs says it holds (Applications.qml asks
     // every provider's programFacts), from what was read ahead, never a
     // read of its own.
     function programFacts(asked) {
         if (asked !== program)
             return [];
-        return Neovim.held(provider.neovims, provider.openNow(), provider.sessionsNow(),
-            provider.said()).map(fact => ({ label: Words.name(fact.id), value: fact.value }));
+        return Neovim.held(provider.neovims, provider.openNow(), provider.said()).map(fact => ({ label: Words.name(fact.id), value: fact.value }));
     }
 
     // What its rows and drawer say of what's open.
@@ -253,50 +198,6 @@ Provider {
     function go(one) {
         Niri.spawn(Neovim.going(provider.settings.openNow ?? "", one));
         Niri.act({ FocusWindow: { id: one.neovim.window } });
-    }
-
-    function sessionsNow() {
-        return provider.sessions.filter(one => !provider.forgotten.includes(one.path));
-    }
-
-    // One of a session's acts, as the vocabulary says it, keyed by what
-    // it's done to, with its : command.
-    function sessionAct(id, one, fields) {
-        return thing(Object.assign({
-            key: `${id}:${one.path}`,
-            name: Words.name(id),
-            verb: Words.verb(id),
-            glyph: Words.glyph(id),
-            hue: "action"
-        }, Words.ending(id), fields));
-    }
-
-    // A session as the folder's row (Files.qml), saying when it was kept
-    // before the folder holding it; Return opens it, and Forget It inside
-    // takes it away.
-    function sessionRow(one) {
-        const opens = provider.sessionAct("verb:nvim:session:open", one, {
-            run: () => Niri.spawn(Opening.inKitty(Opening.kitty(Object.values(Niri.windows)),
-                one.folder, Opening.session(one.path)))
-        });
-        const forgets = provider.sessionAct("verb:nvim:session:forget", one, {
-            stays: true,
-            run: () => provider.forget(one)
-        });
-        const side = Neovim.sessionSide(one, Date.now(), Files.within(one.folder));
-        const sided = fields => thing(fields.what === "folder"
-            ? Object.assign(fields, { side: side }) : fields);
-        return Object.assign(Files.folder(one.folder, sided, [opens, forgets]), { at: one.at });
-    }
-
-    // Removes a session's file, leaving its row out at once.
-    function forget(one) {
-        provider.forgotten = provider.forgotten.concat([one.path]);
-        provider.changed();
-        if (forgetting.running)
-            provider.forgetAgain = true;
-        else
-            forgetting.running = true;
     }
 
     // Open a File by Name, saying how many repositories it holds, and,

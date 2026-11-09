@@ -171,14 +171,13 @@ What Joel runs, and the terminal he types commands into, and the mail,
 meetings and calls he has through them. A
 program can be opened, opened below, given a new window and quit. A meeting
 can be joined or shown in Calendar, and an invitation answered yes, maybe or no; mail can
-be read, marked unread and archived; an editor's session opened again or forgotten.
+be read, marked unread and archived.
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
 | program | something Joel runs, with or without a window | app, application | the `applications` provider |
 | shell | zsh, which Joel types commands into in a terminal | | zsh |
 | prompt | the line the shell writes before each command | | |
-| session | the files the editor had open in a folder, in their tabs and windows, kept as it was left with more than one open, to open again together; apart from an agent's session | | Neovim's `:mksession`, `sessions.lua` |
 | Google account | the account Joel's mail and calendar are kept in, which the desktop's own program holds | | the `google` program |
 | mail | Joel's messages in his Google account, and the place in Programs holding them | | Gmail |
 | wants you | mail waiting on Joel's answer | | |

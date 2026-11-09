@@ -1,12 +1,10 @@
-// What Programs › Neovim makes of what each Neovim holds and of the
-// sessions kept on leaving (NeovimProgram.qml): `open-now neovim`'s lines
-// read, every file open once, what each one's row says, the command going
-// to it, what the program's drawer says, and the sessions read from what
-// find lists of their folder. Kept apart from Quickshell's types, so the
+// What Programs › Neovim makes of what each Neovim holds
+// (NeovimProgram.qml): `open-now neovim`'s lines read, every file open
+// once, what each one's row says, the command going to it, and what the
+// program's drawer says. Kept apart from Quickshell's types, so the
 // `the-launcher-acts-only-on-what-it-can` check runs it in Qt's own engine
 // (tests/quick-acts.qml).
 .pragma library
-.import "Ago.js" as Ago
 
 // Between the parts of a side, as every side joins them.
 const BETWEEN = " \u00b7 ";
@@ -15,13 +13,6 @@ const BETWEEN = " \u00b7 ";
 // open-now to bring the Neovim forward inside kitty, where its server
 // listens, and what it holds as JSON.
 const FIELDS = 4;
-
-// A session's file ends so, and starts with the root folder's / written
-// as its name writes it (sessions.lua's name).
-const SESSION = ".vim";
-const ROOT = "=2F";
-
-const MILLISECONDS = 1000;
 
 // What `open-now neovim` printed, a Neovim a line, each { window, go,
 // server, held }, `held` its process, folder, tabs and files as
@@ -124,9 +115,8 @@ function going(openNow, one) {
 
 // What the program's drawer says Neovim holds (Applications.qml asks every
 // provider's programFacts): how many files in how many windows, how many
-// of them are modified, and how many sessions are kept, each only while
-// there are any.
-function held(neovims, files, kept, said) {
+// of them are modified, each only while there are any.
+function held(neovims, files, said) {
     const windows = neovims.length;
     const inWindows = (windows === 1 ? said.inWindow : said.inWindows) ?? "";
     const modified = files.filter(one => one.modified).length;
@@ -134,43 +124,6 @@ function held(neovims, files, kept, said) {
         ["nvim:files", files.length === 0 ? ""
             : inWindows.replace("{count}", String(files.length)).replace("{windows}",
                 String(windows))],
-        ["nvim:modified", modified > 0 ? String(modified) : ""],
-        ["nvim:sessions", kept.length > 0 ? String(kept.length) : ""]
+        ["nvim:modified", modified > 0 ? String(modified) : ""]
     ].filter(fact => fact[1] !== "").map(fact => ({ id: fact[0], value: fact[1] }));
-}
-
-// A session's folder, read back from its file's name (sessions.lua's
-// name), where = and two hex digits are a byte, read as UTF-8 as a URL's
-// %-escapes are; any % of its own is escaped first, so it stays itself.
-// A name that doesn't read back is "".
-function folderOf(name) {
-    const bare = name.endsWith(SESSION) ? name.slice(0, name.length - SESSION.length) : name;
-    try {
-        return decodeURIComponent(bare.split("%").join("%25").split("=").join("%"));
-    } catch (_malformed) {
-        return "";
-    }
-}
-
-// What find printed of the sessions' folder, a file a line: when it was
-// written, in seconds since 1970, a tab, and its name. Each session
-// { folder, path, at }, `at` in milliseconds, newest first; a file that
-// isn't one, such as one Neovim left half written, is passed over.
-function sessions(text, place) {
-    return text.split("\n").map(line => line.split("\t"))
-        .filter(parts => parts.length === 2 && parts[1].startsWith(ROOT)
-            && parts[1].endsWith(SESSION))
-        .map(([when, name]) => ({
-            folder: folderOf(name),
-            path: `${place}/${name}`,
-            at: Number(when) * MILLISECONDS
-        }))
-        .filter(one => Number.isFinite(one.at) && one.folder !== "")
-        .sort((a, b) => b.at - a.at);
-}
-
-// What a session's row says beside the folder's name: when it was kept,
-// then the folder holding it, as `within` gives it.
-function sessionSide(one, now, within) {
-    return [Ago.ago(one.at, now), within].filter(part => part !== "").join(BETWEEN);
 }
