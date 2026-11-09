@@ -1134,9 +1134,12 @@ def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desk
     look = {"v": 1, "id": "filtered", "title": "Read the plan", "target": "/etc/hostname",
             "kind": "file", "state": "waiting", "at": "2026-11-08T12:00:00Z"}  # fmt: skip
     desktop.as_account(f"mkdir -p {MISSION}/waiting {HARNESS}/looks")
-    kept(desktop, f"{MISSION}/waiting/QUEST2.json", asked)
-    kept(desktop, f"{HARNESS}/looks/filtered.json", look)
     try:
+        kept(desktop, f"{HARNESS}/looks/filtered.json", look)
+        # A to-do ready now is raised as a notice the moment it's heard, which would stand
+        # over the launcher in the shots, so it's left to rest first, ten seconds on.
+        with desktop.told("rests Answer the ask", timeout=dt.timedelta(seconds=60)):
+            kept(desktop, f"{MISSION}/waiting/QUEST2.json", asked)
         for scale in (*JOELS_SCALES, "1"):
             desktop.as_account(f"niri msg output winit scale {scale}")
             waiting_opened(desktop)
