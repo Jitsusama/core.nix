@@ -44,16 +44,17 @@ QtObject {
             link: "slack://channel?team=T1&id=C8", read: "1730000005.000100" };
         const older = { id: "D1", name: "Ada Lovelace", kind: "dm",
             link: "slack://channel?team=T1&id=D1", read: "1730000004.000100" };
-        // What the daemon holds, by key, as Daemon.qml holds it.
-        // `messages` are held each by its conversation and Slack's time,
-        // and `whole` says the daemon holds every one.
-        const held = (standing, unread, recent, messages, whole) => {
+        // What the daemon holds, by key, as Daemon.qml holds it, from what
+        // it `said`: { unread, recent, messages, whole }. `messages` are
+        // held each by its conversation and Slack's time, and `whole` says
+        // the daemon holds every one.
+        const held = (standing, said) => {
             const all = {
                 "slack-account:slack": { key: "slack-account:slack", kind: "slack-account",
                     heard: 1, "slack-account": Object.assign({ standing: standing },
-                        whole ? { messages: "whole" } : {}) }
+                        said?.whole ? { messages: "whole" } : {}) }
             };
-            for (const one of messages ?? []) {
+            for (const one of said?.messages ?? []) {
                 const key = `slack-message:${one.channel}:${one.ts}`;
                 all[key] = { key: key, kind: "slack-message", heard: 1, "slack-message": one };
             }
@@ -61,18 +62,18 @@ QtObject {
                 all[`${kind}:${one?.id}`] = { key: `${kind}:${one?.id}`, kind: kind, heard: 1,
                     [kind]: one };
             };
-            for (const one of unread ?? [])
+            for (const one of said?.unread ?? [])
                 add("slack-unread", one);
-            for (const one of recent ?? [])
+            for (const one of said?.recent ?? [])
                 add("slack-recent", one);
             return all;
         };
         const told = (standing, unread, recent) => Unreads.gathered(
-            held(standing, unread, recent), true);
+            held(standing, { unread: unread, recent: recent }), true);
 
         // Nothing gathered while the daemon isn't answering, whatever it
         // held, nor before it says how Slack stands.
-        check("not answering", Unreads.gathered(held("ok", [ada]), false), null);
+        check("not answering", Unreads.gathered(held("ok", { unread: [ada] }), false), null);
         check("nothing held", Unreads.gathered({}, true), null);
         check("no account yet", Unreads.gathered({ "slack-unread:D1": {
             key: "slack-unread:D1", kind: "slack-unread", "slack-unread": ada } }, true), null);
@@ -165,8 +166,8 @@ QtObject {
             who: "Grace Hopper", first: "@joel ship it", at: 1730000003000,
             done: { how: "readInSlack", at: 1730000004000 } };
         const nameless = { channel: "C1", ts: "1730000005.000100", at: 1730000005000 };
-        const whole = Unreads.gathered(held("ok", [ada, deploys, threads], [],
-            [second, nameless, first, mention], true), true);
+        const whole = Unreads.gathered(held("ok", { unread: [ada, deploys, threads],
+            messages: [second, nameless, first, mention], whole: true }), true);
         check("messages newest first", whole.messages.map(one => one.ts),
             [mention.ts, second.ts, first.ts]);
         check("whole", whole.whole, true);
@@ -176,17 +177,25 @@ QtObject {
         // messages stand for the conversations; else the conversations
         // stand, as they did before the daemon held messages.
         check("held unknown", Unreads.messages(whole, "unknown"), null);
-        const some = Unreads.gathered(held("ok", [ada], [], [first]), true);
+        const some = Unreads.gathered(held("ok", { unread: [ada], messages: [first] }), true);
         check("some held", some.whole, false);
         check("some stand for none", Unreads.messages(some, "ok"), null);
-        check("none held", Unreads.gathered(held("ok", [ada]), true).messages, []);
+        check("none held", Unreads.gathered(held("ok", { unread: [ada] }), true).messages, []);
         // Threads, whose replies the daemon never holds, stay beside them.
         check("unheld", Unreads.unheld(whole).map(one => one.id), ["threads"]);
         // What's counted is what's listed: each message still to read and
         // Threads' replies, never the conversations the messages are in.
         check("whole counts what it lists", Unreads.value(whole, "ok"), "5 to read");
         check("some counts conversations", Unreads.value(Unreads.gathered(
-            held("ok", [ada, deploys, threads], [], [first]), true), "ok"), "6 to read");
+            held("ok", { unread: [ada, deploys, threads], messages: [first] }), true), "ok"),
+            "6 to read");
+        // Slack's own Unread lists conversations, so it counts them, even
+        // while For You lists each message.
+        check("Unread counts its conversations", Unreads.conversationsCount(whole), 6);
+        // Two said in one millisecond read newest first by Slack's time.
+        const later = Object.assign({}, first, { ts: "1730000001.000200" });
+        check("a tie newest first", Unreads.gathered(held("ok", { messages: [first, later],
+            whole: true }), true).messages.map(one => one.ts), [later.ts, first.ts]);
 
         for (const failure of failures)
             console.warn(failure);

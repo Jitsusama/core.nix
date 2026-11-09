@@ -2,8 +2,8 @@ pragma Singleton
 // What in Slack is unread and what Joel read last, as Slack's daemon
 // serves it on its socket (src/daemon.rs): one connection, watching every
 // slack-unread, slack-recent, slack-message and slack-account record, each
-// change heard
-// as Slack's daemon hears it, so nothing here keeps a clock. What's held
+// change heard as Slack's daemon hears it, so nothing here keeps a clock.
+// What's held
 // is let go once the daemon stops answering, so no count outlives it.
 // What it says and how it stands are SlackUnreads.js's.
 import Quickshell
@@ -21,9 +21,9 @@ Singleton {
         keptThroughGap: false
     }
 
-    // What the daemon holds, { state, conversations, recent }, or null
-    // while it isn't answering; read beside `revision`, so it's gathered
-    // once a change.
+    // What the daemon holds, { state, conversations, recent, messages,
+    // whole }, or null while it isn't answering; read beside `revision`,
+    // so it's gathered once a change.
     readonly property var told: slack.revision >= 0
         ? Unreads.gathered(slack.held, slack.state === "answering") : null
     // "none", "ok", "signedOut" or "unknown" (SlackUnreads.js's standing).
@@ -31,8 +31,10 @@ Singleton {
     readonly property bool shown: Unreads.shown(told, stands)
     readonly property string value: Unreads.value(told, stands)
     // How many to read, bare, for a row whose name says what it counts, as
-    // Slack's own Unread (VKCF3Z, 2026-11-08).
-    readonly property string counted: stands === "ok" ? String(Unreads.count(told)) : ""
+    // Slack's own Unread (VKCF3Z, 2026-11-08), counted over the
+    // conversations it lists, never the messages For You lists.
+    readonly property string counted: stands === "ok"
+        ? String(Unreads.conversationsCount(told)) : ""
     readonly property string context: Unreads.context(told, stands)
     readonly property string hint: Unreads.hint(told, stands)
     // Why there's no count, for Slack's program row (SlackProgram.qml).

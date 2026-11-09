@@ -4809,9 +4809,13 @@ Scope {
 
     // What a row is, to hold it in place as it changes: what it says it
     // is, or for a part with no key, as an answer's figures have none, its
-    // name, so the Cores stay the Cores as their loads move.
+    // name, so the Cores stay the Cores as their loads move. A row taking
+    // the place a dimmed one held while it was asked for says so with
+    // `steadyAs`, the one it takes over from, and keeps its own key, as
+    // Search Slack's first message takes its stand-in's light and stays
+    // the message For You lists.
     function steadyId(row) {
-        return Rank.identity(row) || `named:${row.name ?? ""}`;
+        return row.steadyAs ?? (Rank.identity(row) || `named:${row.name ?? ""}`);
     }
 
     // Whether a row offered now is the one held: by its key, or else by

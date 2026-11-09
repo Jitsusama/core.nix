@@ -684,6 +684,9 @@ fn searching(line: &str) -> String {
         .into()
     } else if line.contains("conversations.history") {
         r#"{"ok": true, "messages": [{"ts": "1730300000.000100", "user": "U9", "text": "The launcher is fast"}]}"#.into()
+    } else if line.contains("users.info?user=U9") {
+        r#"{"ok": true, "user": {"id": "U9", "name": "ada", "profile": {"real_name": "Ada L"}}}"#
+            .into()
     } else {
         wanting(line)
     }
@@ -741,12 +744,15 @@ fn a_search_asked_over_the_socket_says_each_message_and_what_is_around_it() {
         (
             &record["key"],
             &record["place"],
+            &record["who"],
             &record["first"],
             &record["team"]
         ),
         (
             &serde_json::json!("slack-message:C1:1730300000.000100"),
             &serde_json::json!("#launcher"),
+            // Named as a message held for Joel is, never by a handle.
+            &serde_json::json!("Ada L"),
             &serde_json::json!("The launcher is fast"),
             // A match that doesn't say its workspace is the sign-in's.
             &serde_json::json!("T1")

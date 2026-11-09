@@ -26,6 +26,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -57,7 +58,7 @@ def found(now: int) -> list[dict[str, object]]:
             "key": "slack-message:C1:1730300000.000100",
             "kind": "slack-message",
             "place": "#launcher",
-            "who": "ada",
+            "who": "Ada Lovelace",
             "mine": False,
             "first": "The launcher is fast",
             "text": "The launcher is fast\nand never waits",
@@ -185,8 +186,11 @@ def messages(listed: list[dict[str, object]]) -> dict[str, dict[str, object]]:
         }
         done = cast("dict[str, object] | None", one.get("done"))
         if done is not None:
+            # The daemon says when it was done in ISO 8601, in UTC, where it
+            # says when it was said in milliseconds (src/messages.rs).
             ended = now - int(cast("int", done["minutes"])) * MINUTE
-            message["done"] = {"how": done["how"], "at": ended}
+            at = datetime.fromtimestamp(ended / 1000, tz=UTC).isoformat()
+            message["done"] = {"how": done["how"], "at": at.replace("+00:00", "Z")}
         held[f"slack-message:{one['channel']}:{one['ts']}"] = message
     return held
 

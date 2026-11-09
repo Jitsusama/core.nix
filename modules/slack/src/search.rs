@@ -1,8 +1,8 @@
 //! Search Slack, for the launcher's "Search Slack for ‹words›" (VKCF3Z,
 //! d7c0f933): one ask of `search.messages` for what Joel typed, each match
-//! a Slack message, and for one of them the few messages around it, read
-//! with `conversations.history`. Both answer the browser's sign-in on a
-//! grid. Only ever read.
+//! a Slack message whose people `users.info` names, and for one of them
+//! the few messages around it, read with `conversations.history`. All
+//! answer the browser's sign-in on a grid. Only ever read.
 
 use serde::Serialize;
 use serde_json::Value;
@@ -28,8 +28,13 @@ pub struct Found {
     /// The conversation it's in: `#name` for a channel, its members for a
     /// group, and for a direct message the other person's handle.
     pub place: String,
-    /// Who said it, by their handle.
+    /// Who said it, by their name as `users.info` gives it, as a message
+    /// held for Joel is named, so the one message has one name; their
+    /// handle until the search asks.
     pub who: String,
+    /// Who said it, by their id, by which the search names them.
+    #[serde(skip)]
+    pub user: String,
     /// Whether Joel said it.
     pub mine: bool,
     /// Its first words, which title it.
@@ -144,6 +149,7 @@ pub fn found(said: &Value, me: &str) -> Result<Vec<Found>, Failed> {
                 kind: "slack-message",
                 place,
                 who: text("username").to_owned(),
+                user: text("user").to_owned(),
                 mine: !me.is_empty() && text("user") == me,
                 first: cut(words.lines().next().unwrap_or_default(), FIRST_WORDS),
                 text: cut(&words, LONGEST),
@@ -233,17 +239,25 @@ impl Slack {
         for one in found.iter_mut().filter(|one| one.team.is_empty()) {
             one.team.clone_from(&account.team);
         }
-        // Each direct message's other person, asked once a search.
+        // Each person a search names, asked once a search: who said each
+        // message but Joel, and each direct message's other person.
         let mut names: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        let mut name = |id: &str| -> Result<String, Failed> {
+            if let Some(known) = names.get(id) {
+                return Ok(known.clone());
+            }
+            let user = self.ask(account, "users.info", &[("user", id)])?;
+            let named = named_in(&user);
+            names.insert(id.to_owned(), named.clone());
+            Ok(named)
+        };
         for one in &mut found {
-            if one.with.is_empty() {
-                continue;
+            if !one.mine && !one.user.is_empty() {
+                one.who = name(&one.user)?;
             }
-            if !names.contains_key(&one.with) {
-                let user = self.ask(account, "users.info", &[("user", &one.with)])?;
-                names.insert(one.with.clone(), named_in(&user));
+            if !one.with.is_empty() {
+                one.place = name(&one.with)?;
             }
-            one.place = names[&one.with].clone();
         }
         Ok(found)
     }
@@ -293,6 +307,7 @@ mod tests {
                 kind: "slack-message",
                 place: "#launcher".to_owned(),
                 who: "ada".to_owned(),
+                user: "U9".to_owned(),
                 mine: false,
                 first: "The launcher & its rows".to_owned(),
                 text: "The launcher & its rows\nmore".to_owned(),

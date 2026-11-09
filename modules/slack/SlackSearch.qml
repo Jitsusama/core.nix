@@ -5,8 +5,8 @@
 // daemon once (src/daemon.rs), a dimmed stand-in holding the place while
 // it's asked, as People's do (#1367), and the messages found light there.
 // Each is a Slack message's one row, as everywhere (SlackMessage.qml):
-// named by who said it, its note its first line, or from the first word
-// matched where the match is past it, its side when; Return opens it in
+// named by who said it, its first line after its name, or from the first
+// word matched where the match is past it, its side when; Return opens it in
 // Slack, and inside are Open in Slack, its drawer the messages around it,
 // then Copy the Link. Slack too busy says so over Try Again; Slack's
 // daemon gone says it isn't answering. Only ever read.
@@ -102,16 +102,17 @@ Provider {
         // until a key (Steady.js), had gone.
         if (search.records.length === 0)
             return [waiting("none", words)];
-        // The first lights where the placeholder stood, by its key, as a
-        // page found does (VKCF3Z, c3240f08); the rest follow it.
+        // The first lights where the placeholder stood, as a page found
+        // does (VKCF3Z, c3240f08), taking over its place while keeping its
+        // own key, so it's the one message For You lists; the rest follow.
         return search.records.map((record, at) => SlackMessage.row(record, provider.thing, {
-            words: words,
-            key: at === 0 ? first : undefined,
+            takesOver: at === 0 ? first : undefined,
             around: one => provider.around(one)
         }));
     }
 
-    // The key the placeholder holds, and the first message found takes.
+    // The key the placeholder holds, whose place the first message found
+    // takes.
     readonly property string first: "slack:search:first"
 
     // Asks Slack's daemon once for these words; Provider's own `ask` is
@@ -124,7 +125,12 @@ Provider {
             else if (answer.error)
                 provider.keep(words, { state: "failed", records: [], code: answer.error.code });
             else
-                provider.keep(words, { state: "found", records: answer.records ?? [], code: "" });
+                provider.keep(words, { state: "found", code: "",
+                    // Where each matched, worked out once as the answer
+                    // comes rather than each time the list is made.
+                    records: (answer.records ?? []).map(record => Object.assign({}, record, {
+                        matched: SlackMessage.noted(record, words)
+                    })) });
         });
     }
 

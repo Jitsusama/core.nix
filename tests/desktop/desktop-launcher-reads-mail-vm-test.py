@@ -1258,27 +1258,29 @@ def test_search_slack_ends_a_search_and_asks_slack_once_on_return_lighting_in_pl
     desktop.as_account(f"touch {slack}/slack-answers")
     # The first lights where the stand-in stood, selected, and the rest
     # follow it, each a Slack message's one row, as For You's are: named by
-    # who said it, Joel's own as You, its note its first line, its side
-    # when, and where it is in its drawer's eyebrow.
+    # who said it, by the same name, Joel's own as You, its first line after
+    # its name, its side when, and where it is in its drawer's eyebrow.
     desktop.launcher_until(
         lambda shown: (
-            shown["rows"] == ["ada", "You"]
+            shown["rows"] == ["Ada Lovelace", "You"]
             and not shown["things"][0]["gone"]
-            and (shown["selected"] or {}).get("name") == "ada"
+            and (shown["selected"] or {}).get("name") == "Ada Lovelace"
         )
     )
     selected = desktop.showing()["selected"]
-    assert selected["note"] == "The launcher is fast", selected
+    assert selected["count"] == "The launcher is fast", selected
     # An hour ago is said by its clock, or yesterday just past midnight.
     assert re.fullmatch(r"\d\d:\d\d|yesterday", selected["side"]) is not None, selected
     assert selected["drawer"]["eyebrow"] == "in #launcher \u00b7 message", selected
     assert selected["drawer"]["body"] == "The launcher is fast\nand never waits", selected
     desktop.next_row()
     desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("note") == "Launcher notes for Friday"
+        lambda shown: (shown["selected"] or {}).get("count") == "Launcher notes for Friday"
     )
     desktop.previous_row()
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "ada")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name") == "Ada Lovelace"
+    )
     # Inside, Open in Slack, whose drawer holds the messages around it once
     # asked, only Joel's named, then the link to copy last.
     desktop.follow()
@@ -1295,7 +1297,7 @@ def test_search_slack_ends_a_search_and_asks_slack_once_on_return_lighting_in_pl
     desktop.launcher_until(lambda shown: shown["rows"][-1:] == [search])
     desktop.down_to(search)
     desktop.step_in("ret")
-    desktop.launcher_until(lambda shown: shown["rows"][:1] == ["ada"])
+    desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Ada Lovelace"])
     assert machine.succeed(f"cat {searched}") == "launcher\n"
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))

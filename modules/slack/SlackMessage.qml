@@ -30,9 +30,17 @@ Singleton {
         return word.charAt(0).toUpperCase() + word.slice(1);
     }
 
-    // `one` is a message as the daemon says it (SlackMessage.js). `found`
-    // is what Search Slack gives: the `words` it was found by, the `key`
-    // it lights under, and `around(one)`, Open in Slack's drawer, the
+    // What a message found by `words` says after its name: from the first
+    // word matched, where the match is past its first line (SlackMessage.js).
+    // Search Slack works it out once, as its answer comes, as `matched`.
+    function noted(one, words) {
+        return Message.note(one, words);
+    }
+
+    // `one` is a message as the daemon says it (SlackMessage.js), and
+    // what it says after its name `matched` where a search found it.
+    // `found` is what Search Slack gives: the stand-in whose light it
+    // `takesOver`, and `around(one)`, Open in Slack's drawer, the
     // messages around it.
     function row(one, thing, found) {
         const said = Words.of("slack:message").said ?? {};
@@ -42,7 +50,10 @@ Singleton {
         const clock = FileFacts.clock(new Date(one.at));
         const name = Message.who(one, you(said));
         return thing({
-            key: found?.key ?? Message.key(one),
+            // One key wherever it's listed; the first found takes the
+            // light of the stand-in it follows by `steadyAs` alone.
+            key: Message.key(one),
+            steadyAs: found?.takesOver,
             what: "slack message",
             // Made here, which the launcher's walk holds every message
             // row to (Launcher.qml's components).
@@ -56,7 +67,7 @@ Singleton {
             hue: "program",
             side: FileFacts.when(one.at, now, whenWords),
             // Given way by whole words, never an ellipsis (Choice.qml).
-            count: Message.note(one, found?.words ?? ""),
+            count: one.matched ?? Message.note(one, ""),
             countWords: true,
             drawer: {
                 eyebrow: Message.eyebrow(one, said),

@@ -72,7 +72,7 @@ function gathered(held, answering) {
             .filter(record => record?.kind === "slack-message")
             .map(record => record["slack-message"])
             .filter(listable)
-            .sort((one, other) => (other.at - one.at) || one.ts.localeCompare(other.ts)),
+            .sort((one, other) => (other.at - one.at) || other.ts.localeCompare(one.ts)),
         whole: account.messages === "whole"
     };
 }
@@ -125,12 +125,21 @@ function standing(told) {
 // read and Threads' replies, as For You's Slack row lists them; else
 // what the conversations count.
 function count(told) {
-    const counted = (all, one) => all + one.count;
     if (told.whole) {
-        return told.messages.filter(one => !done(one)).length
-            + unheld(told).reduce(counted, 0);
+        return told.messages.filter(one => !done(one)).length + counted(unheld(told));
     }
-    return wanting(told).reduce(counted, 0);
+    return conversationsCount(told);
+}
+
+// How many the conversations wanting Joel hold, for a row listing them,
+// as Slack's own Unread does, so its count is what it lists whether or
+// not the daemon holds each message.
+function conversationsCount(told) {
+    return counted(wanting(told));
+}
+
+function counted(conversations) {
+    return conversations.reduce((all, one) => all + one.count, 0);
 }
 
 // Whether Now lists it: only with something to read, which wants Joel.
