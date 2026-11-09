@@ -16,6 +16,9 @@ import QtQuick
 
 Piece {
     active: SlackUnreads.shown
+    // Slack's daemon says what's unread whether or not there's any, so
+    // Slack's own notices stand for nothing while it answers.
+    answers: SlackUnreads.stands === "ok"
     kind: "wants"
     wants: true
     hue: "person"

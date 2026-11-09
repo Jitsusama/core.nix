@@ -118,6 +118,11 @@ Item {
     // its members (VKCF3Z, 2026-11-08). Empty for every other piece.
     property string lately: ""
     property var came: []
+    // Whether its source answers now, so it says by itself what's done
+    // with, even with nothing left to read: Slack while its daemon does.
+    // While it does, the notices its program sent stand for nothing in
+    // For You (launcher/Lately.js's held).
+    property bool answers: false
     // What it held that its source says is done with, for For You's
     // History, each with `done` { how, at }, its source's word for how and
     // when, and `row(thing)`, the row it is wherever it's shown; or null

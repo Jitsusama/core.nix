@@ -131,13 +131,15 @@ Provider {
                 provider.openedAt = Date.now();
                 provider.reweather();
                 provider.retime();
+            } else {
+                provider.openedAt = Number.POSITIVE_INFINITY;
             }
         }
     }
 
     // When the launcher last opened, so a notice read since stays where
     // Joel read it until it closes (latelyNotices).
-    property real openedAt: 0
+    property real openedAt: Number.POSITIVE_INFINITY
 
     // The time and the date as the launcher places them, read rather than
     // bound: the launcher's answers are made from every provider's rows,
@@ -1067,18 +1069,17 @@ Provider {
     // opened is still unread here, so Desktop holds still while Joel looks
     // at it (VKCF3Z, 2026-11-08) and u brings back what d did there; it
     // goes to History once the launcher closes. One withdrawn goes at once.
-    readonly property var latelyNotices: {
-        const since = provider.launcher?.open ? openedAt : Number.POSITIVE_INFINITY;
-        return Notices.history.map(notice => notice.read && (notice.readAt ?? 0) >= since
-            ? Object.assign({}, notice, { read: false }) : notice);
-    }
+    readonly property var latelyNotices: Lately.holdingStill(Notices.history, openedAt)
+    // The sources whose own piece says what's done with by itself, Slack
+    // while its daemon answers whether or not anything's unread, so their
+    // notices stand for nothing (Piece.qml's answers).
+    readonly property var answering: Facts.all.filter(fact => fact.piece?.present
+        && fact.piece.answers).map(fact => fact.piece.lately)
     // The unread notices of each source (Lately.js's held): the desktop's,
-    // and Slack's, which stand for Slack's row only while its piece can't.
-    readonly property var heldNotices: Lately.held(latelyNotices)
+    // and Slack's, which stand for Slack's row only while its daemon can't.
+    readonly property var heldNotices: Lately.held(latelyNotices, answering)
     readonly property var unreadNotices: heldNotices.desktop
-    readonly property bool slackSpeaks: latelyPieces.some(fact => fact.piece.lately === "slack")
-    readonly property var noticesOf: ({ desktop: unreadNotices,
-        slack: slackSpeaks ? [] : heldNotices.slack })
+    readonly property var noticesOf: heldNotices
 
     // Desktop and History are For You's, which is Now's, so a notice
     // forgotten, brought back or read is said again in them: the launcher
@@ -1138,17 +1139,14 @@ Provider {
     // piece can't speak: how many to read, and from whom, and its drawer
     // who sent how many. Return steps in to each, the row it is in
     // Notices, then Mark Them Read and Show Them, the Notices place with
-    // what's read and its search. Listing them counts them seen, as opening
-    // Notices does, so the margin no longer says any were missed; after the
-    // listing, so the history isn't changed while it's read.
+    // what's read and its search. Stepping in counts them seen, as opening
+    // Notices does, so the margin no longer says any were missed; `:`
+    // listing its acts doesn't. It's after the step, so the history isn't
+    // changed while it's read.
     function noticesRow(from, note, forYou) {
         const said = Words.of("on:waiting:desktop").said ?? {};
         const notices = noticesOf[from] ?? [];
         const ids = notices.map(notice => notice.id);
-        const inside = () => {
-            Qt.callLater(() => Notices.seen());
-            return listed();
-        };
         const act = (key, words, more) => thing(Object.assign({
             key: key,
             verb: Words.verb(words),
@@ -1186,8 +1184,9 @@ Provider {
                 title: Words.name(`on:waiting:${from}`),
                 facts: Lately.senders(notices)
             }),
-            verbs: inside,
+            verbs: listed,
             targets: listed,
+            stepped: () => Qt.callLater(() => Notices.seen()),
             run: () => provider.launcher?.enter(row)
         });
         return row;

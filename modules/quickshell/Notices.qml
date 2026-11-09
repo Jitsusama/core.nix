@@ -1,8 +1,8 @@
 pragma Singleton
 // Every notification, newest first, for the launcher's collection of them
 // (launcher/PastNotices.qml), kept on disk in the shell's state so a restart
-// loses none: a read one for a week, an unread one for a month, and never
-// more than `keep`.
+// loses none: a read one for a week, an unread one until it's read, and
+// never more than `keep` (launcher/Lately.js's kept).
 //
 // One leaves the screen in one of three ways: clicked away; withdrawn by its
 // program, as a chat app does once the message is read there; or by itself
@@ -362,9 +362,10 @@ Singleton {
     // once what it said no longer stands, an arrival gone or a want
     // answered, so History never says Joel read what he never saw.
     function mark(id, read, how) {
+        const now = read ? { missed: false, readAt: Date.now() } : { readAt: null };
         history = history.map(notice => notice.id !== id ? notice
             : Object.assign({}, notice, { read: read, withdrawn: read && how === "withdrawn" },
-                read ? { missed: false, readAt: Date.now() } : { readAt: null }));
+                now));
     }
 
     // Marks read every notice of `ids` at once, as For You's Desktop row's

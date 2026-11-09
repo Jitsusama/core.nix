@@ -85,15 +85,28 @@ function kept(notices, now, readFor, most) {
 }
 
 // The unread notices of each source, as { slack, desktop }, newest first
-// as Notices' history holds them. Slack's stand for Slack's row only
-// while Slack's own piece can't, its daemon away or not there, since
-// they say no conversation to follow (Y2YBTS, 2026-11-08, 2abd047a).
-function held(notices) {
-    const unread = (notices ?? []).filter(notice => ours(notice) && notice.read !== true);
+// as Notices' history holds them. A source in `answering`, one whose own
+// piece says what's done with by itself, holds none: Slack's notices
+// stand for Slack's row only while its daemon doesn't answer, away or not
+// there, never because it has nothing unread, since what Joel read in
+// Slack mustn't come back as notices (Y2YBTS, 2026-11-08).
+function held(notices, answering) {
+    const unread = (notices ?? []).filter(notice => ours(notice) && notice.read !== true
+        && !(answering ?? []).includes(sourceOf(notice)));
     return {
         slack: unread.filter(notice => sourceOf(notice) === "slack"),
         desktop: unread.filter(notice => sourceOf(notice) === "desktop")
     };
+}
+
+// The notices as For You holds them while the launcher is open, since
+// `since`, when it opened (Infinity while it's closed): one Joel read
+// since is unread still, so Desktop holds still while he looks at it
+// (VKCF3Z, 2026-11-08) and u brings back what d did there. One withdrawn
+// goes at once, since Joel never read it (Y2YBTS, 2026-11-08).
+function holdingStill(notices, since) {
+    return (notices ?? []).map(notice => notice.read === true && readHow(notice) === "read"
+        && when(notice.readAt) >= since ? Object.assign({}, notice, { read: false }) : notice);
 }
 
 // The rows Lately shows, { source, count, weight }, a source holding
@@ -150,7 +163,7 @@ function readHow(notice) {
 // history, the messages Slack's daemon holds or null while it can't say,
 // and the mail done with (Google's). A notice read is done; one withdrawn,
 // by its sender or by the shell once what it said no longer stands, is
-// read too (Notices.qml's left and withdraw), and says so; one read before
+// read too (Notices.qml's left and mark), and says so; one read before
 // the history kept when says only that it was read. Each is when it was
 // read, else when it left, else when it came. While Slack's daemon
 // answers, its read messages are Slack's history and its notices aren't,

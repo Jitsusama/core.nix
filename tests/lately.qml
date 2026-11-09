@@ -58,6 +58,24 @@ QtObject {
             summaries(held.desktop), ["Build finished"]);
         check(failures, "Slack's unread notices are Slack's, for its row while its piece can't",
             summaries(held.slack), ["from Ada"]);
+        check(failures, "while Slack's daemon answers, even with nothing unread, they're none",
+            summaries(Lately.held(notices, ["slack"]).slack), []);
+        check(failures, "Slack's answering takes nothing from the desktop's",
+            summaries(Lately.held(notices, ["slack"]).desktop), ["Build finished"]);
+
+        const opened = 5000;
+        const readSince = notice("Read just now", { read: true, readAt: 6000 });
+        const readBefore = notice("Read before", { read: true, readAt: 4000 });
+        const withdrawnSince = notice("Arrived at Home", { read: true, readAt: 6000,
+            withdrawn: true });
+        const still = [readSince, readBefore, withdrawnSince];
+        check(failures, "one read since the launcher opened is unread till it closes",
+            summaries(Lately.held(Lately.holdingStill(still, opened)).desktop), ["Read just now"]);
+        check(failures, "one withdrawn since it opened goes at once, as Joel never read it",
+            Lately.holdingStill(still, opened)[2].read, true);
+        check(failures, "with the launcher closed, nothing read is held",
+            summaries(Lately.held(Lately.holdingStill(still, Number.POSITIVE_INFINITY))
+                .desktop), []);
         check(failures, "who sent them, each with how many, the last to send first",
             Lately.senders([build, notice("Tests failed", { app: "CI" }), build]),
             [{ label: "Build", value: "2" }, { label: "CI", value: "1" }]);
