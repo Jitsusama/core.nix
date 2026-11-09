@@ -476,12 +476,30 @@ Provider {
         interval: 1000
         repeat: true
         triggeredOnStart: true
-        running: provider.launcher !== null && provider.launcher.open
+        running: provider.launcher !== null
+            && (provider.launcher.open || provider.terminalLooks)
         onTriggered: {
             provider.askRoom();
             provider.readLight();
+            provider.lightAsked = true;
         }
     }
+
+    // Whether a terminal's `launcher show` walked into Screens or to a
+    // screen (Launcher.qml's terminalSees), so its drawer's light is read
+    // with the launcher closed too.
+    readonly property bool terminalLooks: (launcher?.terminalSees.walked ?? [])
+        .some(row => row?.from === provider || String(row?.key ?? "").startsWith("display:"))
+    // Whether the light has been read since the terminal looked.
+    property bool lightAsked: false
+    onTerminalLooksChanged: {
+        if (!terminalLooks)
+            lightAsked = false;
+    }
+    // A terminal's look waits for the light's first read and the room's,
+    // as the launcher shows them once it opens (Provider.stillReading).
+    stillReading: terminalLooks && !(launcher?.open ?? false)
+        && (!lightAsked || roomPending && !roomTried)
 
     FolderListModel {
         id: backlights
