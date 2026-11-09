@@ -5,11 +5,15 @@
 # For You. Every session that needs him writes its to-dos beside it, in
 # mission/waiting, through mesh_wait.
 #
-# A check runs on the user manager's own PATH, the one every session's
-# shell starts from, so a to-do's check finds quick, ~/.local/bin and
-# the wrappers as a session's would; the daemon's own git and journalctl
-# are named outright instead. Each check is stopped, with all it
-# started, after 90 seconds. A switch's core is read from
+# A check runs with the user manager's environment as it is when the
+# check runs, read through systemctl, the one every session's shell
+# starts from. The daemon starts before the desktop imports the
+# session's PATH (~/.local/bin among it), so a to-do's check finds quick,
+# ~/.local/bin and the wrappers as a session's would only by reading it
+# afresh; the daemon's own git, journalctl and systemctl are named
+# outright instead. A check runs only for a session the harness says is
+# outside every sandbox, since here it runs as Joel. Each is stopped, with
+# all it started, after 90 seconds, and nothing it started outlives it. A switch's core is read from
 # update-to-main's follower's journal, and whether it's past a commit
 # from a bare clone of core of the daemon's own, fetched only while a
 # to-do waits on a commit it lacks. A switch restarts it, so it runs the
@@ -45,6 +49,8 @@ lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
         (lib.getExe pkgs.git)
         "--journalctl"
         "${pkgs.systemd}/bin/journalctl"
+        "--systemctl"
+        "${pkgs.systemd}/bin/systemctl"
       ];
       Restart = "always";
       RestartSec = 5;

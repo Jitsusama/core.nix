@@ -8,13 +8,17 @@
 //! mycelium node, says each as it stands.
 //!
 //! Usage: `to-do WAITING VERDICTS SIGNINS CORE [--root DIR] [--follower
-//! UNIT] [--git GIT] [--journalctl JOURNALCTL]`. WAITING is the folder of
+//! UNIT] [--git GIT] [--journalctl JOURNALCTL] [--systemctl SYSTEMCTL]`.
+//! WAITING is the folder of
 //! to-dos, SIGNINS the folder whose files each service's sign-in touches,
 //! CORE where core's bare clone is kept. ROOT, `/` by default, is where
 //! `/proc/stat`, `/sys` and the system profile are read, so a test can
 //! stand in for the machine; UNIT is update-to-main's follower, a user
 //! unit, `none` to read no journal. GIT and JOURNALCTL are the daemon's
-//! own, so the checks keep the account's PATH as a session has it.
+//! own; SYSTEMCTL, `none` to ask nothing, says the user manager's
+//! environment at each check, so a check has the PATH a session's shell
+//! has now, rather than the daemon's from before the desktop set it.
+//! A check runs only where its owner is said to be outside every sandbox.
 //!
 //! It wakes only for a change: a to-do file, a sign-in, the system
 //! profile, a file a to-do waits on, a journal line, a check falling
@@ -26,6 +30,7 @@
 mod bounded;
 mod judge;
 mod pace;
+mod session;
 mod sources;
 mod todo;
 mod verdicts;
@@ -43,7 +48,7 @@ use inotify::{Inotify, WatchDescriptor, WatchMask, Watches};
 
 use judge::Facts;
 use pace::{Pace, Run};
-use todo::{Knowing, Signal, ToDo};
+use todo::{Knowing, Sandbox, Signal, ToDo};
 use verdicts::{For, State, Verdict};
 
 /// How often the devices are read while a to-do waits on one, in seconds.
@@ -97,6 +102,8 @@ struct Daemon {
     /// What was last found of each to-do, a done one kept as it was.
     found: BTreeMap<String, Verdict>,
     written: Option<String>,
+    /// What says the user manager's environment at each check, if anything.
+    systemctl: Option<PathBuf>,
     /// Where each check's run is told as it ends.
     tell: Sender<Woken>,
 }
@@ -226,10 +233,13 @@ impl Daemon {
 
     /// Runs every check that's due at once, each on a thread of its own,
     /// so one slow check holds up no other. A to-do found done, or whose
-    /// owner is in the strict sandbox, runs none.
+    /// owner isn't said to be outside every sandbox, runs none.
     fn run_due(&mut self, todos: &[ToDo], at: i64) {
         let mut keys = Vec::new();
-        for todo in todos.iter().filter(|t| t.judged() && !t.strict) {
+        for todo in todos
+            .iter()
+            .filter(|t| t.judged() && t.sandbox == Sandbox::Open)
+        {
             if self
                 .found
                 .get(&todo.key)
@@ -261,8 +271,13 @@ impl Daemon {
             pace.start();
             let check = pace.check.clone();
             let tell = self.tell.clone();
+            let systemctl = self.systemctl.clone();
             thread::spawn(move || {
-                let run = pace::run(&check);
+                let session = systemctl
+                    .as_deref()
+                    .and_then(session::environment)
+                    .unwrap_or_default();
+                let run = pace::run(&check, &session);
                 let _ = tell.send(Woken::Ran { key, check, run });
             });
         }
@@ -286,7 +301,9 @@ impl Daemon {
     ) -> Option<(bool, serde_json::Value)> {
         match knowing {
             Knowing::Person => None,
-            Knowing::Check(check) if todo.strict => Some((false, verdicts::refused(of, check))),
+            Knowing::Check(check) if todo.sandbox != Sandbox::Open => {
+                Some((false, verdicts::refused(of, check, todo.sandbox)))
+            }
             Knowing::Check(check) => {
                 let key = format!("{}:{}", todo.key, of.name());
                 let pace = self
@@ -459,6 +476,7 @@ fn hear(mut inotify: Inotify, signals: Vec<WatchDescriptor>, woken: Sender<Woken
 struct Tools {
     git: PathBuf,
     journalctl: PathBuf,
+    systemctl: Option<PathBuf>,
 }
 
 fn run(paths: Paths, core: PathBuf, follower: Option<String>, tools: Tools) -> io::Result<()> {
@@ -506,6 +524,7 @@ fn run(paths: Paths, core: PathBuf, follower: Option<String>, tools: Tools) -> i
         fetch_again: None,
         found,
         written: None,
+        systemctl: tools.systemctl,
         tell,
     };
     let mut next = daemon.tick();
@@ -550,6 +569,7 @@ fn main() -> ExitCode {
     let mut tools = Tools {
         git: PathBuf::from("git"),
         journalctl: PathBuf::from("journalctl"),
+        systemctl: Some(PathBuf::from("systemctl")),
     };
     let mut rest = args.iter();
     while let Some(arg) = rest.next() {
@@ -558,6 +578,9 @@ fn main() -> ExitCode {
             "--git" => tools.git = rest.next().map_or(tools.git, PathBuf::from),
             "--journalctl" => {
                 tools.journalctl = rest.next().map_or(tools.journalctl, PathBuf::from);
+            }
+            "--systemctl" => {
+                tools.systemctl = rest.next().filter(|s| *s != "none").map(PathBuf::from);
             }
             "--follower" => {
                 follower = rest.next().filter(|u| *u != "none").cloned();
@@ -568,7 +591,7 @@ fn main() -> ExitCode {
     let [waiting, verdicts, signins, core] = positional.as_slice() else {
         eprintln!(
             "usage: to-do WAITING VERDICTS SIGNINS CORE [--root DIR] [--follower UNIT|none] \
-             [--git GIT] [--journalctl JOURNALCTL]"
+             [--git GIT] [--journalctl JOURNALCTL] [--systemctl SYSTEMCTL|none]"
         );
         return ExitCode::from(64);
     };

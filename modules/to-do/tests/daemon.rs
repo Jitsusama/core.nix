@@ -1,16 +1,18 @@
 //! The daemon itself, over a folder of to-dos and a stand-in machine: the
 //! verdicts it writes as checks pass, files come, a boot is newer than a
 //! to-do, and a to-do leaves its file; a check that hangs holding up no
-//! other; and a done to-do staying done through a failing check and a
-//! restart.
+//! other; a done to-do staying done through a failing check and a
+//! restart; a check run only for an owner outside every sandbox; and a
+//! check finding what the session's PATH holds.
 
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 struct Running {
     child: Child,
@@ -24,8 +26,15 @@ impl Drop for Running {
     }
 }
 
-/// Starts the daemon over `dir`, whose `root/proc/stat` says the boot.
+/// Starts the daemon over `dir`, whose `root/proc/stat` says the boot,
+/// asking no user manager for a session's environment.
 fn start(dir: &Path) -> Running {
+    start_with(dir, Path::new("none"))
+}
+
+/// Starts the daemon over `dir`, asking `systemctl` for a session's
+/// environment.
+fn start_with(dir: &Path, systemctl: &Path) -> Running {
     let root = dir.join("root");
     fs::create_dir_all(root.join("proc")).unwrap();
     fs::write(root.join("proc/stat"), "cpu 1\nbtime 1794200000\n").unwrap();
@@ -38,20 +47,41 @@ fn start(dir: &Path) -> Running {
         .arg(dir.join("core.git"))
         .args(["--follower", "none", "--root"])
         .arg(&root)
+        .arg("--systemctl")
+        .arg(systemctl)
         .spawn()
         .unwrap();
     Running { child, verdicts }
 }
 
+/// Writes `quest`'s file of `items`, each owned by a session outside
+/// every sandbox, as `mesh_wait` says one, unless it names its own owner.
 fn to_dos(dir: &Path, quest: &str, items: &str) {
+    let mut items: Vec<Value> = serde_json::from_str(&format!("[{items}]")).unwrap();
+    for item in &mut items {
+        if item.get("owner").is_none() {
+            item["owner"] = json!({"sandbox": "none"});
+        }
+    }
     let file = dir.join("waiting").join(format!("{quest}.json"));
     let writing = file.with_extension("writing");
-    fs::write(
-        &writing,
-        format!(r#"{{"v":2,"quest":"{quest}","items":[{items}]}}"#),
-    )
-    .unwrap();
+    let text = json!({"v": 2, "quest": quest, "items": items}).to_string();
+    fs::write(&writing, text).unwrap();
     fs::rename(writing, file).unwrap();
+}
+
+/// The shell on PATH, which runs a stand-in's script.
+fn shell() -> PathBuf {
+    std::env::split_paths(&std::env::var_os("PATH").unwrap())
+        .map(|folder| folder.join("sh"))
+        .find(|sh| sh.is_file())
+        .expect("PATH holds sh")
+}
+
+/// Makes `path` a program anyone may run.
+fn runnable(path: &Path, text: &str) {
+    fs::write(path, text).unwrap();
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
 }
 
 /// The verdicts once `wanted` holds of them, within five seconds.
@@ -208,4 +238,63 @@ fn a_done_to_do_stays_done_though_its_check_fails_after_and_across_a_restart() {
     );
     let found = until(&running, |v| state(v, "QEST-6:restarted").is_some());
     assert_eq!(state(&found, "QEST-6:once"), Some("done"));
+}
+
+#[test]
+fn a_check_runs_only_for_an_owner_said_to_be_outside_every_sandbox() {
+    let dir = tempfile::tempdir().unwrap();
+    let ran = dir.path().join("ran");
+    let running = start(dir.path());
+    let check = |id: &str, owner: &str| {
+        format!(
+            r#"{{"id":"{id}","title":"T","owner":{owner},
+                "doneWhen":{{"check":"touch {}"}}}}"#,
+            ran.display()
+        )
+    };
+    let open = r#"{"id":"open","title":"O","doneWhen":{"check":"true"}}"#;
+    to_dos(
+        dir.path(),
+        "QEST-7",
+        &format!(
+            "{},{},{open}",
+            check("strict", r#"{"sandbox":"strict"}"#),
+            check("unsaid", r#"{"address":"ABC123"}"#)
+        ),
+    );
+    // A refusal is said as its to-do is first judged, and the open one is
+    // done only once its check has run, so by then the others are said.
+    let found = until(&running, |v| state(v, "QEST-7:open") == Some("done"));
+    let refused = |id: &str| found["items"][format!("QEST-7:{id}")]["how"]["refused"].clone();
+    assert_eq!(refused("strict"), "strict sandbox");
+    assert_eq!(refused("unsaid"), "sandbox unsaid");
+    assert_eq!(state(&found, "QEST-7:strict"), Some("waiting"));
+    assert!(!ran.exists(), "a refused check never ran");
+}
+
+#[test]
+fn a_check_finds_what_the_sessions_path_holds_now() {
+    let dir = tempfile::tempdir().unwrap();
+    let session = dir.path().join("session-bin");
+    fs::create_dir_all(&session).unwrap();
+    runnable(&session.join("only-in-session"), "");
+    // The stand-in user manager says a session's PATH, as the desktop
+    // imports it after the daemon has started.
+    let systemctl = dir.path().join("systemctl");
+    runnable(
+        &systemctl,
+        &format!(
+            "#!{}\necho \"PATH={}:$PATH\"\n",
+            shell().display(),
+            session.display()
+        ),
+    );
+    let running = start_with(dir.path(), &systemctl);
+    to_dos(
+        dir.path(),
+        "QEST-8",
+        r#"{"id":"found","title":"F","doneWhen":{"check":"command -v only-in-session"}}"#,
+    );
+    let found = until(&running, |v| state(v, "QEST-8:found").is_some());
+    assert_eq!(state(&found, "QEST-8:found"), Some("done"), "{found}");
 }

@@ -119,10 +119,12 @@ pub fn heard(
                 })))
             }
         }
+        // A name of no letters or digits, as `--`, would be found in
+        // every device's, so it's found in none.
         Signal::Device(name) => facts
             .devices
             .iter()
-            .find(|d| plain(d).contains(&plain(name)))
+            .find(|d| !plain(name).is_empty() && plain(d).contains(&plain(name)))
             .map(|d| Heard {
                 at: None,
                 figure: ("device", d.clone()),
@@ -278,6 +280,10 @@ mod tests {
         assert!(
             spelled.is_ok(),
             "a device matches by its letters and digits"
+        );
+        assert!(
+            heard(&Signal::Device("--".into()), None, &found, &line).is_err(),
+            "a name of no letters or digits matches no device"
         );
         assert_eq!(
             heard(&Signal::Signin("slack".into()), None, &found, &line),

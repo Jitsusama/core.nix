@@ -12,6 +12,7 @@ use serde_json::{Map, Value, json};
 
 use crate::judge::Heard;
 use crate::pace::Pace;
+use crate::todo::Sandbox;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
@@ -71,14 +72,16 @@ pub fn by_check(of: For, pace: &Pace) -> Value {
     })
 }
 
-/// A check not run, since its owner is in the strict sandbox and here it
-/// would run outside it, as Joel with all he can reach.
-pub fn refused(of: For, check: &str) -> Value {
+/// A check not run, since its owner isn't known to be outside every
+/// sandbox and here it would run outside it, as Joel with all he can
+/// reach: `strict sandbox` where its owner is in the strict one, `sandbox
+/// unsaid` where nothing says.
+pub fn refused(of: For, check: &str, sandbox: Sandbox) -> Value {
     json!({
         "by": "check",
         "for": of.name(),
         "check": check,
-        "refused": "strict sandbox",
+        "refused": if sandbox == Sandbox::Strict { "strict sandbox" } else { "sandbox unsaid" },
     })
 }
 

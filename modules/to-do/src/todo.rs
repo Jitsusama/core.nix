@@ -44,9 +44,36 @@ pub struct ToDo {
     pub ready: bool,
     pub done_when: Option<Knowing>,
     pub ready_when: Option<Knowing>,
-    /// Whether its owner runs in the strict sandbox, whose checks would
-    /// run here outside it, and so aren't run.
-    pub strict: bool,
+    /// What the harness says of its owner's sandbox, which decides whether
+    /// its checks run here, outside any.
+    pub sandbox: Sandbox,
+}
+
+/// The sandbox a to-do's owner runs in, as `mesh_wait` writes it in
+/// `owner.sandbox`. A strict session's commands can't write
+/// `mission/waiting`, and its file tools are held to the same fence, so
+/// only `mesh_wait`, in pi's own process, writes its to-dos and says
+/// strict; a session outside the sandbox runs as Joel already.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sandbox {
+    /// None: its checks run here as they would in its own shell.
+    Open,
+    /// The strict sandbox, whose checks would run here outside it.
+    Strict,
+    /// Not said, as by a harness from before it said so, or anything else
+    /// written there; its checks don't run, since that can't be told from
+    /// strict.
+    Unsaid,
+}
+
+impl Sandbox {
+    fn of(item: &Value) -> Self {
+        match item.pointer("/owner/sandbox").and_then(Value::as_str) {
+            Some("none") => Self::Open,
+            Some("strict") => Self::Strict,
+            _ => Self::Unsaid,
+        }
+    }
 }
 
 impl ToDo {
@@ -118,7 +145,7 @@ pub fn in_file(text: &str) -> Vec<ToDo> {
                 ready: item.get("ready").and_then(Value::as_bool) == Some(true),
                 done_when: item.get("doneWhen").and_then(knowing),
                 ready_when: item.get("readyWhen").and_then(knowing),
-                strict: item.pointer("/owner/sandbox").and_then(Value::as_str) == Some("strict"),
+                sandbox: Sandbox::of(item),
             })
         })
         .collect()
@@ -217,6 +244,27 @@ mod tests {
             {"id":"d","doneWhen":{"check":"true"}}]}"#;
         let judged: Vec<bool> = in_file(file).iter().map(ToDo::judged).collect();
         assert_eq!(judged, [false, true, false, true]);
+    }
+
+    #[test]
+    fn only_an_owner_said_to_be_outside_any_sandbox_is_open() {
+        let file = r#"{"quest":"Q","items":[
+            {"id":"a","owner":{"sandbox":"none"}},
+            {"id":"b","owner":{"sandbox":"strict"}},
+            {"id":"c","owner":{"address":"ABC123"}},
+            {"id":"d","owner":{"sandbox":"loose"}},
+            {"id":"e"}]}"#;
+        let sandboxes: Vec<Sandbox> = in_file(file).iter().map(|t| t.sandbox).collect();
+        assert_eq!(
+            sandboxes,
+            [
+                Sandbox::Open,
+                Sandbox::Strict,
+                Sandbox::Unsaid,
+                Sandbox::Unsaid,
+                Sandbox::Unsaid
+            ]
+        );
     }
 
     #[test]

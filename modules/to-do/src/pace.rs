@@ -119,16 +119,22 @@ pub fn wait(failing: u32) -> i64 {
     doubled.min(LONGEST)
 }
 
-/// Runs `check` in `sh`, stopped after TIMEOUT seconds.
-pub fn run(check: &str) -> Run {
-    run_within(check, Duration::from_secs(TIMEOUT), bounded::GRACE)
+/// Runs `check` in `sh` with `session`'s variables set over the daemon's
+/// own, stopped after TIMEOUT seconds.
+pub fn run(check: &str, session: &[(String, String)]) -> Run {
+    run_within(check, session, Duration::from_secs(TIMEOUT), bounded::GRACE)
 }
 
-/// Runs `check` in `sh` for at most `bound`, then `grace` once asked to
-/// stop.
-pub fn run_within(check: &str, bound: Duration, grace: Duration) -> Run {
+/// Runs `check` in `sh` with `session`'s variables for at most `bound`,
+/// then `grace` once asked to stop.
+pub fn run_within(
+    check: &str,
+    session: &[(String, String)],
+    bound: Duration,
+    grace: Duration,
+) -> Run {
     let mut command = Command::new("sh");
-    command.args(["-c", check]);
+    command.args(["-c", check]).envs(session.iter().cloned());
     match bounded::run(command, bound, grace) {
         Ok(ended) => Run {
             exit: ended.status.and_then(|status| status.code()),
@@ -194,10 +200,16 @@ mod tests {
 
     #[test]
     fn a_check_says_its_exit_and_its_last_line() {
-        let found = run("echo one; echo two >&2; echo; exit 3");
+        let found = run("echo one; echo two >&2; echo; exit 3", &[]);
         assert_eq!(found.exit, Some(3));
         assert_eq!(found.said, "two");
-        assert!(run("true").passed(), "true passes");
+        assert!(run("true", &[]).passed(), "true passes");
+    }
+
+    #[test]
+    fn a_check_has_the_sessions_variables() {
+        let session = [("FROM_SESSION".to_owned(), "here".to_owned())];
+        assert_eq!(run("echo \"$FROM_SESSION\"", &session).said, "here");
     }
 
     #[test]
@@ -205,6 +217,7 @@ mod tests {
         // The sleep stands for a check that never answers.
         let found = run_within(
             "sleep 30",
+            &[],
             Duration::from_millis(200),
             Duration::from_millis(200),
         );
