@@ -387,11 +387,13 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
         for_you_rows(desktop)
         desktop.launcher_until(lambda shown: "Slack" in shown["rows"])
         desktop.down_to("Slack")
-        # Its note names each conversation, the newest first (VKCF3Z, 2026-11-08).
+        # Each conversation follows its name, the newest first, and its side
+        # is how many alone, as a place's row is (VKCF3Z, 2026-11-09).
         desktop.launcher_until(
             lambda shown: (
                 shown["selected"]["side"] == "6 to read"
-                and shown["selected"]["note"] == "Ada Lovelace, #deploys, Threads"
+                and shown["selected"]["count"] == "Ada Lovelace, #deploys, Threads"
+                and shown["selected"]["note"] == ""
             )
         )
         desktop.shoot("launcher-for-you-slack")
@@ -497,7 +499,7 @@ def test_slacks_program_holds_its_unread_then_its_recent_and_now_only_what_wants
         desktop.launcher_until(
             lambda shown: (
                 shown["selected"]["side"] == "6 to read"
-                and shown["selected"]["note"] == "Ada Lovelace, #deploys, Threads"
+                and shown["selected"]["count"] == "Ada Lovelace, #deploys, Threads"
             )
         )
         machine.send_key("ret")

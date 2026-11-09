@@ -301,15 +301,17 @@ def test_dd_on_a_notice_shows_on_the_frame_after_its_key(desktop: Desktop) -> No
         )
         desktop.down_to(LUNCH)
         desktop.normal()
+        # Desktop holds only the unread, which its head says once, so a
+        # row says its age alone until it's read.
         side = cast("str", desktop.showing()["selected"]["side"])
-        assert side.startswith("unread"), side
+        assert not side.startswith(("unread", "read")), side
         since = desktop.mark()
         desktop.machine.send_chars("dd")
         desktop.reported("act shown in ", timed, since)
         assert took[-1][1] <= FRAME, f"its refresh waited: {took}"
         selected = desktop.showing()["selected"]
         assert selected["name"] == LUNCH, selected
-        assert not cast("str", selected["side"]).startswith("unread"), selected
+        assert cast("str", selected["side"]).startswith("read \u00b7 "), selected
     finally:
         desktop.close_launcher()
     print(f"dd's frame after its key, and its refresh after the key's work, in ms: {took}")

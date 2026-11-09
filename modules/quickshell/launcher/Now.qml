@@ -962,7 +962,7 @@ Provider {
         name: Words.name("on:waiting:history"),
         glyph: Words.glyph("on:waiting:history"),
         hue: "muted",
-        side: String(resolvedCount),
+        side: provider.kept(resolvedCount),
         note: (Words.of("on:waiting:history").said ?? {}).note ?? "",
         empty: Words.of("on:waiting:history").empty,
         nested: true,
@@ -970,6 +970,13 @@ Provider {
         targets: () => provider.historyRows(),
         run: () => provider.launcher?.enter(provider.historyRow)
     })
+
+    // How many History keeps, said as what it counts, "1 kept", never a
+    // bare number (VKCF3Z, 2026-11-09).
+    function kept(count) {
+        return ForYou.filled((Words.of("on:waiting:history").said ?? {}).count ?? "{count}",
+            { count: count });
+    }
 
     // History narrowed to what came from one source, the last row inside
     // its row, there with nothing in it too, so the way to what's read
@@ -985,7 +992,7 @@ Provider {
             name: Words.name("on:waiting:history"),
             glyph: Words.glyph("on:waiting:history"),
             hue: "muted",
-            side: String(count),
+            side: provider.kept(count),
             empty: Words.of("on:waiting:history").empty,
             elsewhere: true,
             nested: true,
@@ -1272,15 +1279,18 @@ Provider {
     readonly property string latelyNames: latelyBands(Date.now()).bands
         .map(band => latelyName(band.source)).join(", ")
 
+    // Each is a place's row (VKCF3Z, 2026-11-09): who it holds is from
+    // follows its name, whole names given way from the end, and its side
+    // says how many alone, so the two never share the side.
     function latelyRows(now) {
         const { holding, bands } = latelyBands(now);
         return bands.map(band => {
-            const note = Lately.members(holding[band.source], one => one.who).join(", ");
+            const senders = Lately.members(holding[band.source], one => one.who).join(", ");
             const forYou = { kind: "notice", source: band.source };
             const fact = latelyPieces.find(one => one.piece.lately === band.source);
             if (fact === undefined)
-                return provider.noticesRow(band.source, note, forYou);
-            return made(fact, { forYou: forYou, note: note });
+                return provider.noticesRow(band.source, senders, forYou);
+            return made(fact, { forYou: forYou, count: senders, names: true, note: "" });
         });
     }
 
@@ -1294,7 +1304,7 @@ Provider {
     // counts them seen, so the margin no longer says any were missed; `:`
     // listing its acts doesn't. It's after the step, so the history isn't
     // changed while it's read.
-    function noticesRow(from, note, forYou) {
+    function noticesRow(from, senders, forYou) {
         const words = Words.of(`for-you:source:${from}`);
         const said = Words.of("for-you:source:desktop").said ?? {};
         const notices = noticesOf[from] ?? [];
@@ -1323,12 +1333,15 @@ Provider {
             glyph: Words.glyph(`for-you:source:${from}`),
             hue: "muted",
             side: ForYou.filled(said.count ?? "{count}", { count: ids.length }),
-            note: note,
+            count: senders,
+            names: true,
             empty: none,
             nested: true,
             thing: true,
             drawer: () => ({
-                eyebrow: (Words.of("on:notices").said ?? {}).eyebrow ?? "",
+                // What it is, a source of For You's, since its title names
+                // the desktop already (VKCF3Z, 2026-11-09).
+                eyebrow: said.eyebrow ?? "",
                 title: Words.name(`for-you:source:${from}`),
                 facts: Lately.senders(notices)
             }),
@@ -1375,7 +1388,8 @@ Provider {
             glyph: Words.glyph("for-you:source:desktop"),
             plain: true
         });
-        return Object.assign({}, row, { side: side, hue: "muted",
+        // Its side is how it went and when, never the notice's own items.
+        return Object.assign({}, row, { side: side, sideItems: [], hue: "muted",
             forYou: { kind: "notice", source: one.source } });
     }
     readonly property var waiting: member({

@@ -7448,6 +7448,7 @@
       "verb": "more",
       "glyph": "notifications",
       "said": {
+        "eyebrow": "on this machine \u00b7 source",
         "count": "{count} to read",
         "read": "read here",
         "withdrawn": "withdrawn",
@@ -7468,7 +7469,8 @@
       "glyph": "recent",
       "empty": "Nothing resolved yet.",
       "said": {
-        "note": "what no longer needs you"
+        "note": "what no longer needs you",
+        "count": "{count} kept"
       }
     },
     {
@@ -7886,7 +7888,10 @@
         "links": "only {count} links here",
         "from": "from {who}",
         "failed": "{kind} failed",
-        "bounced": "mail bounced"
+        "bounced": "mail bounced",
+        "unread": "unread",
+        "read": "read",
+        "notice": "notice"
       }
     },
     {
