@@ -99,7 +99,8 @@ Provider {
     // BlueZ says what it hears as it hears it, never that a look is done,
     // and a device near enough to pair says itself within a second or two,
     // so with nothing in range a show waits that long and no longer
-    // (Provider.stillReading).
+    // (Provider.stillReading), within the program's own longer wait
+    // (in-a-terminal's SETTLING, 10 s, for a Wi-Fi look).
     stillReading: terminalLooks && on && !listened
         && nearby.length === 0 && nameless.length === 0
 

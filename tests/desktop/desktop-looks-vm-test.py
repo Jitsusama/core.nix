@@ -3981,15 +3981,31 @@ def nearby_heard(desktop: Desktop, at_each_scale: list[str], values: dict[str, A
 
 
 def nearby_shown_to_a_terminal(desktop: Desktop) -> None:
-    """Have a terminal's show of Nearby, with the launcher closed, look and say Buds.
+    """Have one terminal show of Nearby, launcher closed, hear Buds, then let the radio rest.
 
-    Both at once, since the radio looks only for a few seconds after each show. A device heard
-    is one of Nearby's verbs that holds more, so it's said as a row, in words.
+    BlueZ forgets what it heard first, so Buds is heard by the show's own look, within the one
+    show's wait. A device heard is a thing of its own among Nearby's verbs, so it's said as a
+    row, in words. The look ends with the terminal's, three seconds after it last asked, and a
+    radio that's off is left off: its show finds no Nearby, and nothing turns it on to look.
     """
+    machine = desktop.machine
     desktop.launcher_left_closed()
-    shown = desktop.in_session("launcher show machine bluetooth nearby | grep -q Buds")
-    looked = " || ".join(f"{discovering(adapter)} | grep -qx 'b true'" for adapter in ADAPTERS)
-    desktop.machine.wait_until_succeeds(f"{shown} && ( {looked} )", timeout=timedelta(seconds=60))
+    for adapter in ADAPTERS:
+        heard = machine.succeed(f"busctl tree org.bluez --list | grep -x '{adapter}/dev_[^/]*' || true")
+        for device in heard.split():
+            machine.succeed(
+                f"busctl call org.bluez {adapter} org.bluez.Adapter1 RemoveDevice o {device}"
+            )
+    machine.succeed(desktop.in_session("launcher show machine bluetooth nearby | grep -q Buds"))
+    rested = " && ".join(f"{discovering(adapter)} | grep -qx 'b false'" for adapter in ADAPTERS)
+    machine.wait_until_succeeds(rested, timeout=timedelta(seconds=10))
+    for adapter in ADAPTERS:
+        bluez_set(desktop, adapter, "Powered", "b", "false")
+    machine.execute(desktop.in_session("launcher show machine bluetooth nearby"))
+    for adapter in ADAPTERS:
+        powered = f"busctl get-property org.bluez {adapter} org.bluez.Adapter1 Powered"
+        assert machine.succeed(powered).strip() == "b false", adapter
+        assert machine.succeed(discovering(adapter)).strip() == "b false", adapter
 
 
 # What's around the machine, on its network and in the air, as the places that list it lay it
