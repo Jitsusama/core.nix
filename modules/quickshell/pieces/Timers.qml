@@ -4,7 +4,8 @@
 // wants Joel now, leading Now in the alert; the rest are left on. It's a
 // place, stepped into for rows of its own, so it says nothing after its
 // name: at its right, the one on as its own row in Timers says it, or of
-// several how many run and the first's (Timing.nowItems), and in its
+// several how many run and the first's, what rang or is held leading
+// (Timing.nowItems, VKCF3Z 158ac71f), and in its
 // drawer each by name in Timers' order, the stopwatch last (VKCF3Z,
 // 5fa2cbda). Return goes into Timers, where each is the row it is there.
 // The daemon says a rung one's notice itself, so the mark waits while
@@ -34,7 +35,7 @@ Piece {
     // mark, which doesn't say the time, and the stopwatch alone is drawn
     // afresh by the launcher instead.
     readonly property bool counting: Timing.ticks(HeldTimers.timers, HeldTimers.showing)
-    readonly property bool watchAlone: standing.first === null && watch?.state === "running"
+    readonly property bool watchAlone: Timing.watchAlone(standing, watch)
 
     function named(record) {
         if (record.key === "stopwatch")
@@ -47,10 +48,12 @@ Piece {
     wants: standing.rung
     now: standing.rung
     title: Words.name("timers")
-    readonly property var items: Timing.nowItems(standing, watch, moment, said,
-        Words.of("timers").said?.several ?? "")
+    readonly property var items: Timing.nowItems(standing, watch, moment,
+        Object.assign({ several: Words.of("timers").said?.several ?? "" }, said))
     value: items.map(item => item.said).join(" \u00b7 ")
-    valueItems: items
+    // The stopwatch alone is counted from the side, so it gives no items,
+    // which a row reads before its side.
+    valueItems: watchAlone ? [] : items
     // The stopwatch alone counts to the tenth, drawn afresh by the
     // launcher (Launcher.qml's counts), as its row in Timers is.
     counts: watchAlone ? at => Timing.tenths(Timing.counted(watch, at)) : null

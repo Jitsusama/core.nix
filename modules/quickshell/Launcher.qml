@@ -6519,7 +6519,7 @@ Scope {
     function drawable(row) {
         return detailed(row) || row?.plated === true
             || (!!(row?.opens || row?.category) && !!row.drawer)
-            || heldDrawer(row) !== null;
+            || (Array.isArray(row?.heldNames) && row.heldNames.length > 0);
     }
 
     // The drawer of a place inside another, a Recent or an Unread, which

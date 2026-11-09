@@ -7763,7 +7763,7 @@
       "argument": "Timers",
       "in": "on",
       "name": "Show in Timers",
-      "verb": "show",
+      "verb": "open",
       "glyph": "timer"
     },
     {

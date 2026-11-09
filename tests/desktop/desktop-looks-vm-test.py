@@ -1516,6 +1516,12 @@ def test_a_persons_page_names_what_its_rows_hold_at_each_scale(
         # What it holds is named in its drawer, a place's, as on the nested niri's Agents'
         # Recent (VKCF3Z, dafc2199).
         assert (unread["count"], unread["side"]) == ("", "1"), unread
+        desktop.launcher_until(
+            lambda shown: (
+                (shown["drawer"]["title"], shown["drawer"]["eyebrow"], shown["drawer"]["body"])
+                == ("Unread", "place", "Lunch on Friday")
+            )
+        )
         desktop.shoot(f"launcher-person-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
 
