@@ -1,14 +1,14 @@
 pragma ComponentBehavior: Bound
 // Drives a session handed over while the screen is locked, beside its
 // sender in the sessions' kitty (modules/quickshell/Sessions.qml), with
-// the machine's node, niri and kitty's kitten stood in, the node telling of
-// the sender's session, in the second window of kitty 600, and the kitten
-// as tests/sessions-behind-the-lock-state.sh lays it out. Its window opens in
-// that kitty, which makes what kitty said of its windows stale, and the
-// lock is let go before kitty has said them again, so its sender's window
-// isn't known yet. It's held until kitty has, then goes to its sender's
-// workspace without the focus, rather than staying where it opened. It
-// exits 0 once that holds, and otherwise 1, saying what didn't.
+// the machine's node and niri stood in, the node telling of the sender's
+// session, held in kitty 600, which draws two windows, before it has said
+// which of them the sender is in. The handed-over session's window opens
+// with the app id the shell gave it, and the lock is let go while the
+// sender's window isn't known yet. It's held until the node says the
+// sender's window, by the app id it opened with, then goes to the
+// sender's workspace without the focus, rather than staying where it
+// opened. It exits 0 once that holds, and otherwise 1, saying what didn't.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -17,7 +17,6 @@ import QtQuick
 ShellRoot {
     id: root
 
-    readonly property string state: Quickshell.env("XDG_STATE_HOME")
     property string stage: "listed"
 
     function expect(what, holds, said) {
@@ -75,12 +74,15 @@ ShellRoot {
         }
     }
 
-    // The sender's window is known through kitty's first word on its two;
-    // the lock is taken, and a session is handed over beside the sender,
-    // as a quest's spawn hands one over.
+    // The sender is listed, in a kitty of two windows and none named, so
+    // its window isn't known; the lock is taken, and a session is handed
+    // over beside the sender, as a quest's spawn hands one over.
     function listed() {
-        if (sender()?.window?.id !== 21)
+        const listed = sender();
+        if (!listed)
             return;
+        expect("of a kitty's two windows, neither named, the sender's isn't known",
+            listed.window === null, JSON.stringify(listed.window));
         Sessions.behindTheLock = true;
         const handed = { sessions: [{ id: "s-handed", cwd: "/tmp", from: "s-sender" }] };
         const answer = Sessions.handedOver(JSON.stringify(handed));
@@ -89,12 +91,15 @@ ShellRoot {
     }
 
     // Its window opens in the sessions' kitty, on the workspace Joel was
-    // on, so kitty is asked of its windows again; the lock is let go
-    // before it answers.
+    // on, with the app id the shell gave it; the lock is let go.
     function opening() {
-        if (!Niri.spawns.some(command => command.includes("pi --session s-handed")))
+        const spawn = Niri.spawns.find(command => command.includes("pi --session s-handed"));
+        if (!spawn)
             return;
-        const window = { id: 22, pid: 600, workspace_id: 1, session: true };
+        const classed = (/ --class (\S+)/.exec(spawn) ?? [])[1];
+        expect("its window opens with an app id of its own, which its process is told",
+            spawn.includes(`MYCELIUM_APP_ID=${classed} `), spawn);
+        const window = { id: 22, pid: 600, workspace_id: 1, session: true, opened: classed };
         Niri.windows = Object.assign({}, Niri.windows, { "22": window });
         Niri.revision += 1;
         Niri.windowOpenedOrChanged(window);
@@ -103,30 +108,26 @@ ShellRoot {
     }
 
     // Once the lock is gone, with its sender's window not known yet, it
-    // waits where it opened; then kitty says its three windows.
+    // waits where it opened; then the node says the sender's window.
     function letGo() {
         if (!Sessions.lockLetGo)
             return;
-        expect("the sender's window not known until kitty says it again",
+        expect("the sender's window not known until the node says it",
             sender().window === null, JSON.stringify(sender().window));
         expect("not moved before its sender's window is known", moves().length === 0,
             JSON.stringify(moves()));
         stage = "told";
-        telling.running = true;
-    }
-    Process {
-        id: telling
-        command: ["sh", "-c", `echo '${JSON.stringify([
-            { id: 1, tabs: [{ windows: [{ id: 1 }] }] },
-            { id: 2, tabs: [{ windows: [{ id: 4 }] }] },
-            { id: 3, tabs: [{ windows: [{ id: 5 }] }] }
-        ])}' > "$0"`, `${root.state}/kitty-600-later`]
+        tell({ changed: [{ key: "session:s-sender", held: "h-sender",
+            window: { terminal: "kitty", id: "4", within: "unix:@kitty-600",
+                app_id: "pi-session.3" } }] });
     }
 
     // Then it goes to its sender's workspace, without the focus.
     function told() {
         if (moves().length === 0)
             return;
+        expect("the sender's window is the one opened with its app id",
+            sender().window?.id === 21, JSON.stringify(sender().window));
         expect("moved to its sender's workspace, without the focus",
             JSON.stringify(moves()) === JSON.stringify([{ MoveWindowToWorkspace: {
                 window_id: 22, reference: { Id: 2 }, focus: false } }]),
@@ -134,6 +135,17 @@ ShellRoot {
         expect("nothing focused", !Niri.acts.some(act => act.FocusWindow
             || act.FocusWorkspace || act.FocusMonitor), JSON.stringify(Niri.acts));
         Qt.exit(0);
+    }
+
+    // The node's end of the shell's watch of sessions, so it can tell more.
+    property var answering: null
+    property var watchId: null
+
+    // Tells the shell's watch a change, saying only what differs, as the
+    // node does.
+    function tell(change) {
+        answering.write(`${JSON.stringify(Object.assign({ id: root.watchId }, change))}\n`);
+        answering.flush();
     }
 
     // A stand-in for the machine's node, over the daemon interface, holding
@@ -153,11 +165,14 @@ ShellRoot {
                         machine: Sessions.machine, at: new Date().toISOString(),
                         window: null, held: null, presence: { session: "s-sender",
                             addresses: ["SENDER"], terminal: terminal } };
-                    // pi's source watches its runs and talks too, which
-                    // this node holds none of.
-                    const held = ask.kind === "session" ? [sender] : [];
-                    const answer = ask.ask === "watch" ? { id: ask.id, records: held }
-                        : { id: ask.id, version: 1, domain: "node", state: "running" };
+                    let answer = { id: ask.id, version: 1, domain: "node", state: "running" };
+                    if (ask.ask === "watch" && ask.kind === "session") {
+                        root.answering = asked;
+                        root.watchId = ask.id;
+                        answer = { id: ask.id, records: [sender] };
+                    } else if (ask.ask === "watch") {
+                        answer = { id: ask.id, records: [] };
+                    }
                     asked.write(`${JSON.stringify(answer)}\n`);
                     asked.flush();
                 }
