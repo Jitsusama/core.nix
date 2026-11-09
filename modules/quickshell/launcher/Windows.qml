@@ -23,6 +23,7 @@ import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "KeyLayers.js" as KeyLayers
+import "Order.js" as Order
 
 Provider {
     id: provider
@@ -103,8 +104,8 @@ Provider {
                     recency: recency, choice: window });
         });
         const grade = Math.min(3, ...found.map(f => f.grade));
-        const kept = found.filter(f => f.grade === grade)
-            .sort((a, b) => b.score - a.score || a.recency - b.recency);
+        const kept = Order.sorted(found.filter(f => f.grade === grade),
+            (a, b) => b.score - a.score || a.recency - b.recency);
         return { rows: kept.map(f => f.choice), grade: grade };
     }
 

@@ -27,6 +27,7 @@ import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Numbers.js" as Numbers
+import "Order.js" as Order
 
 Provider {
     id: provider
@@ -225,9 +226,10 @@ Provider {
         return out;
     }
 
-    // Running first, then in line.
+    // Running first, then in line, those at one place in the order the
+    // queue said them.
     readonly property var all: provider.launcher?.open ?? true
-        ? Jobs.running.concat(Jobs.waiting.slice().sort((a, b) => (a.place ?? 0) - (b.place ?? 0)))
+        ? Jobs.running.concat(Order.sorted(Jobs.waiting, (a, b) => (a.place ?? 0) - (b.place ?? 0)))
             .map(job => made(job))
         : []
     onAllChanged: changedTo(all)
@@ -277,8 +279,8 @@ Provider {
             if (best.score >= 0)
                 found.push({ score: best.score, grade: best.grade, row: row });
         }
-        found.sort((a, b) => b.score - a.score);
-        return { rows: found.map(f => f.row), grade: 0 };
+        const ranked = Order.sorted(found, (a, b) => b.score - a.score);
+        return { rows: ranked.map(f => f.row), grade: 0 };
     }
 
     // The memory each running job's slice holds now.
