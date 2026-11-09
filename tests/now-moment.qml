@@ -193,6 +193,18 @@ ShellRoot {
             JSON.stringify([now.counted(), now.homeSays()]));
         expect("the weather isn't asked before the launcher opens", weather.asked === 0,
             weather.asked);
+        // The plate holds only the moment: calm it says nothing, as the row
+        // does, and what waits is the row's to say (VKCF3Z, 2026-11-09).
+        expect("calm, the plate says nothing", (now.placePlate().say ?? "") === "",
+            now.placePlate().say);
+        const asking = { title: "Answer the ask", minutes: 2 };
+        WaitingOnYou.now = [asking];
+        WaitingOnYou.foremost = asking;
+        expect("what waits is the row's to say, and the plate's no more",
+            now.homeSays() !== "" && (now.placePlate().say ?? "") === "",
+            JSON.stringify([now.homeSays(), now.placePlate().say]));
+        WaitingOnYou.now = [];
+        WaitingOnYou.foremost = null;
 
         // The location says its town, and that the place keeps another zone
         // than the clock, in the colour of what wants a look.
