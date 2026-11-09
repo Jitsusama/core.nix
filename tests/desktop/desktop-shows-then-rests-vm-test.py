@@ -463,14 +463,14 @@ def test_diag_wakes_by_source(desktop: Desktop) -> None:
         top = dict(sorted(rates.items(), key=lambda r: -r[1])[:6])
         print(f"DIAG {name}: {top}")
         traced = machine.succeed(
-            f"timeout 8 strace -f -qq -p {pid} -o /tmp/st.{name} 2>/dev/null; "
+            f"timeout 8 strace -f -qq -p {pid} -o /tmp/st.{name} 2>/dev/null || true; "
             f"awk '{{print $1, $2}}' /tmp/st.{name} | sed -E 's/\\(.*//' | sort | uniq -c"
-            " | sort -rn | head -25; true"
+            " | sort -rn | head -25 || true"
         )
         print(f"DIAG {name} strace by thread and call:\n{traced}")
         main = machine.succeed(
             f"grep '^{pid} ' /tmp/st.{name} | grep -v -E '^{pid} +(futex|clock_gettime)'"
-            " | cut -c1-200 | head -40; true"
+            " | cut -c1-200 | head -40 || true"
         )
         print(f"DIAG {name} main thread:\n{main}")
         desktop.as_account(f"systemctl --user stop diag-{name}; true")
