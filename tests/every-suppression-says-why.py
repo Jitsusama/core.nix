@@ -43,7 +43,10 @@ def reasoned(lines: list[str], number: int, after: str, mark: str) -> bool:
     if after.strip(" ,;:#-").strip():
         return True
     above = lines[number - 2].strip() if number > 1 else ""
-    directive = re.match(r"(#|//)\s*(shellcheck|qmllint|noqa|type:)", above)
+    # Another directive above isn't a reason, but a sentence naming the linter is.
+    directive = re.match(
+        r"(#|//)\s*(shellcheck\s+\w+=|qmllint\s+(disable|enable)|noqa\b|type:\s*ignore)", above
+    )
     return above.startswith(mark) and not above.startswith("#!") and not directive
 
 
