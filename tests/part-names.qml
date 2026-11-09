@@ -384,6 +384,11 @@ ShellRoot {
         expect("its plate says the same figures",
             plate.facts.map(fact => fact.label).join(", ") === figures.join(", "),
             JSON.stringify(plate.facts));
+        // Its row's side is its offset, so the plate's Offset says only
+        // what was measured (Y2YBTS's review of #2489).
+        const offsetFact = plate.facts.find(fact => fact.label === offset?.name);
+        expect("its plate's offset doesn't say the side again",
+            offsetFact?.value === offset?.note, JSON.stringify(offsetFact));
     }
 
     // The time here and the date as Now shows them: each wearing its own

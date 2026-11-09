@@ -218,14 +218,16 @@ Provider {
         const gps = Moment.gps(now);
         const longitude = Location.here?.longitude;
         const known = typeof longitude === "number";
-        const degrees = known ? `${Numbers.format(Math.abs(longitude), 2, "", ".")}\u00b0 `
+        const degrees = known
+            ? `${Numbers.format(Math.abs(longitude), 2, "", settings.point ?? ".")}\u00b0 `
             + (longitude < 0 ? "W" : "E") : "";
         return [
             figure("utc", Moment.utcClock(now)),
             figure("unix", String(Moment.unix(now)), timeWord("time:unix", "since")),
             figure("tai", Moment.tai(now), timeWord("time:tai", "ahead")),
             figure("gps", timeWord("time:gps", "week").replace("{week}", String(gps.week))
-                .replace("{seconds}", Numbers.format(gps.seconds, 0, ",", ".")),
+                .replace("{seconds}", Numbers.format(gps.seconds, 0, settings.group ?? ",",
+                    settings.point ?? ".")),
                 timeWord("time:gps", "ahead")),
             figure("sidereal", Moment.sidereal(now, known ? longitude : 0),
                 known ? timeWord("time:sidereal", "local").replace("{longitude}", degrees)
@@ -412,7 +414,9 @@ Provider {
                 // server, a peer or a reference clock (VKCF3Z, 2026-11-08).
                 eyebrow: Keeping.mode(server, serversSaid) || Words.name("time:server"),
                 title: name,
-                facts: parts.map(each => Object.assign({
+                // Offset, which the row's side already says, tells only
+                // its note.
+                facts: Keeping.besideSide(parts, "offset").map(each => Object.assign({
                     label: Words.name(`time:server:${each.id}`),
                     value: Keeping.told(each)
                 }, each.identifies ? { identifies: true } : {}))

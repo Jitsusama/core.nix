@@ -582,6 +582,8 @@ QtObject {
             servers: { reach: "{count} of the last 8", unreachable: "out of reach",
                 unusable: "set aside", aside: "set aside: {why}",
                 "standing:chosen": "chosen", "standing:tooVariable": "set aside: too variable",
+                "standing:disagrees": "set aside: disagrees",
+                "why:tooVariable": "too variable", "why:disagrees": "disagrees with the others",
                 "why:tooFewSamples": "too few samples yet",
                 "why:chosen": "the clock is kept by it",
                 "why:combined": "combined with the chosen one",
@@ -710,6 +712,27 @@ QtObject {
             ["an agreeing server's why, which its note doesn't say", Keeping.whyUnsaid({
                 standing: "combined", reach: 255, chosen: { why: "combined" } },
                 KeepingCases.servers), "combined with the chosen one"],
+            ["a too variable server's why, which its note says", Keeping.whyUnsaid({
+                standing: "tooVariable", reach: 255, chosen: { why: "tooVariable" } },
+                KeepingCases.servers), ""],
+            ["a disagreeing server's why, which its note says", Keeping.whyUnsaid({
+                standing: "disagrees", reach: 255, chosen: { why: "disagrees" } },
+                KeepingCases.servers), ""],
+            ["a server set aside and out of reach keeps its why", Keeping.whyUnsaid({
+                standing: "unusable", reach: 0, chosen: { why: "tooFewSamples" } },
+                KeepingCases.servers), "too few samples yet"],
+            // The fact the row's side is made from tells only its note, and
+            // goes with none; one that only reads the same stays.
+            ["a server's facts beside its side", Keeping.besideSide([
+                { id: "offset", side: "+12.0 \u00b5s", note: "measured +11.0 \u00b5s" },
+                { id: "estimate", side: "+12.0 \u00b5s", note: "" },
+                { id: "stratum", side: "2", note: "" }], "offset")
+                .map(each => `${each.id} ${each.side}`).join(", "),
+                "offset measured +11.0 \u00b5s, estimate +12.0 \u00b5s, stratum 2"],
+            ["a server's side made from a fact with no note", Keeping.besideSide([
+                { id: "offset", side: "+12.0 \u00b5s", note: "" },
+                { id: "stratum", side: "2", note: "" }], "offset")
+                .map(each => each.id).join(", "), "stratum"],
             // A server's side is never empty, and its note gives way where
             // the side says it's out of reach.
             ["a server's side, sampled", Keeping.side({ lastSample: 12, offset: 0.000012,
@@ -722,6 +745,9 @@ QtObject {
                 reach: 0 }, KeepingCases.servers), ""],
             ["a server once heard, now out of reach", Keeping.note({ standing: "unusable",
                 lastSample: 900, reach: 0 }, KeepingCases.servers), "out of reach"],
+            ["a server answering with no sample yet still says where it stands", Keeping.note({
+                standing: "combined", lastSample: null, reach: 1 },
+                { "standing:combined": "agrees" }), "agrees"],
             // The screen's Warmth, from what the backlight daemon says: what
             // holds it, by night, by day, waiting for a place, or the room;
             // and its figures, the room's white where a sensor sees it, then

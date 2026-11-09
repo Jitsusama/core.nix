@@ -11,7 +11,7 @@
 
 const MINUS = "\u2212";
 // The standings whose own words say why chronyd took the server or not.
-const STANDINGS_SAYING_WHY = ["chosen", "tooVariable"];
+const STANDINGS_SAYING_WHY = ["chosen", "tooVariable", "disagrees"];
 
 const NANOSECONDS = 1e9;
 const MICROSECONDS = 1e6;
@@ -168,7 +168,8 @@ function why(server, said) {
 }
 
 // Whether a server's standing already says why chronyd chose it or set it
-// aside: chosen, too variable, or set aside with its reason after it.
+// aside: chosen, too variable, disagreeing, or set aside with its reason
+// after it.
 function standingSaysWhy(server) {
     if (server.standing === "unusable") {
         return answered(server.reach) > 0;
@@ -181,6 +182,17 @@ function standingSaysWhy(server) {
 // when the side says chosen").
 function whyUnsaid(server, said) {
     return standingSaysWhy(server) ? "" : why(server, said);
+}
+
+// A server's parts as its drawer says them beside its row: the one the
+// row's side is made from, its offset, says only its note, and goes with
+// none, so no fact says the side again (Y2YBTS's review of #2489). A
+// figure that only happens to read the same is another fact, and stays.
+function besideSide(parts, fromId) {
+    return parts
+        .map(each => (each.id === fromId ? Object.assign({}, each, { side: each.note, note: "" })
+            : each))
+        .filter(each => each.side !== "");
 }
 
 // Whether a server has answered at all, so has an offset to say.
