@@ -20,8 +20,10 @@
 //! its rows, as the launcher's `:` offers it (Launcher.qml's
 //! doneFromTerminal). One the launcher would ask about first, or that
 //! ends something, asks its question on the terminal, y doing it; with
-//! no terminal to answer on, it's done only with `--yes`. An act that asks
-//! for words takes them after `--`. It prints nothing once it's done.
+//! no terminal to answer on, it's done only with `--yes`. The y does the
+//! row asked about, by its steady ids, never another its names now find.
+//! An act that asks for words takes them after `--`. A blank step names
+//! no row, so it's refused. It prints nothing once it's done.
 //!
 //! For the shell: `launcher completion zsh` writes zsh's completion, and
 //! `launcher names [step ...]` the rows a place holds as it offers them.
@@ -175,6 +177,10 @@ fn main() -> ExitCode {
                 eprint!("{}", words.usage());
                 return ExitCode::from(MISUSED);
             }
+            if steps.iter().any(|one| one.trim().is_empty()) {
+                fail(&errors(), &words.blank_step());
+                return ExitCode::from(MISUSED);
+            }
             done(&steps, &said, yes, &words)
         }
         Asked::Names { steps } => match ask(&steps, false, &words) {
@@ -212,12 +218,15 @@ fn main() -> ExitCode {
 /// Does what the steps name: asked once unsure, and where the shell asks
 /// first, its question put on the terminal, y asking again, sure; with
 /// nothing to answer on, refused but for `--yes`, which was sure from the
-/// start.
+/// start. Once asked, it's the row asked about that's done, by the
+/// steady ids the shell gave with its question, so rows moving between
+/// the question and the y can't put another in its place.
 fn done(steps: &[String], said: &str, yes: bool, words: &Words) -> ExitCode {
     let qs = env::var("LAUNCHER_QS").unwrap_or_else(|_| "qs".to_string());
     let mut sure = yes;
+    let mut path = Vec::new();
     loop {
-        let answer = match heard(asking::doing(&qs, steps, said, sure), words) {
+        let answer = match heard(asking::doing(&qs, steps, &path, said, sure), words) {
             Ok(answer) => answer,
             Err(code) => return code,
         };
@@ -233,11 +242,16 @@ fn done(steps: &[String], said: &str, yes: bool, words: &Words) -> ExitCode {
                 fail(&errors(), &words.unsure(&question));
                 return ExitCode::from(NOT_SURE);
             }
-            if !answered_yes(&question) {
+            if !answered_yes(&question, &mut io::stdin().lock(), &mut io::stderr()) {
                 return ExitCode::from(NOTHING_CALLED);
             }
+            path = asking::strings(answer.get("path"));
             sure = true;
             continue;
+        }
+        if answer.get("nothing").and_then(Value::as_bool) == Some(true) {
+            fail(&errors(), &words.nothing_to_do());
+            return ExitCode::from(MISUSED);
         }
         if let Some(ask) = text("takes") {
             let names = asking::strings(answer.get("in"));
@@ -253,21 +267,24 @@ fn done(steps: &[String], said: &str, yes: bool, words: &Words) -> ExitCode {
     }
 }
 
-/// Puts the launcher's question on the terminal, as its line does, and
-/// whether the answer was y.
-fn answered_yes(question: &str) -> bool {
-    eprint!("{question} ");
-    let _ = io::stderr().flush();
+/// Puts the launcher's question where it's answered, as its line does,
+/// and whether the line read back was y; nothing read, as at the end of
+/// what's given, is no.
+fn answered_yes(question: &str, input: &mut impl BufRead, out: &mut impl Write) -> bool {
+    let _ = write!(out, "{question} ");
+    let _ = out.flush();
     let mut line = String::new();
-    if io::stdin().lock().read_line(&mut line).is_err() {
-        return false;
+    match input.read_line(&mut line) {
+        Ok(0) | Err(_) => false,
+        Ok(_) => is_yes(&line),
     }
-    is_yes(&line)
 }
 
-/// Whether a line typed back says yes: y, as the launcher takes it.
+/// Whether a line typed back says yes: y alone, as the launcher takes it
+/// (Confirm.js's answer), so neither " Y " nor "yes" does it.
 fn is_yes(line: &str) -> bool {
-    line.trim().eq_ignore_ascii_case("y")
+    let typed = line.strip_suffix('\n').unwrap_or(line);
+    typed.strip_suffix('\r').unwrap_or(typed) == "y"
 }
 
 /// How what goes to stderr is inked.
@@ -425,9 +442,36 @@ mod tests {
     #[test]
     fn only_y_is_yes() {
         assert!(is_yes("y\n"));
-        assert!(is_yes(" Y "));
+        assert!(is_yes("y\r\n"));
+        assert!(is_yes("y"));
+        assert!(!is_yes(" Y \n"));
+        assert!(!is_yes("Y\n"));
+        assert!(!is_yes(" y\n"));
         assert!(!is_yes("yes please\n"));
         assert!(!is_yes("n\n"));
         assert!(!is_yes(""));
+    }
+
+    /// What answering the question with this gives, and what was put before it.
+    fn answering(typed: &str) -> (bool, String) {
+        let mut out = Vec::new();
+        let yes = answered_yes(
+            "Close Kestrel Notes? (y/n)",
+            &mut io::Cursor::new(typed),
+            &mut out,
+        );
+        (yes, String::from_utf8(out).unwrap_or_default())
+    }
+
+    #[test]
+    fn the_question_is_put_and_only_a_y_does_it() {
+        assert_eq!(
+            answering("y\n"),
+            (true, "Close Kestrel Notes? (y/n) ".to_string())
+        );
+        assert!(!answering("n\n").0);
+        assert!(!answering(" Y \n").0);
+        // The end of what's given, as </dev/null is, before any answer.
+        assert!(!answering("").0);
     }
 }

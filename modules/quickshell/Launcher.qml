@@ -1319,19 +1319,47 @@ Scope {
         return { trail, rows, among };
     }
 
+    // The rows a path of steady ids names from home, as walkedByName walks
+    // names, for the y a terminal gives (launcher do): each found by its id
+    // alone, so a row moved or gone since it was asked about is missed,
+    // said by the step it was typed as, and never done in another's place
+    // (Y2YBTS's review of #2421).
+    function walkedById(ids, steps) {
+        let rows = home();
+        let things = true;
+        let among = true;
+        const trail = [];
+        for (let at = 0; at < ids.length; at++) {
+            const found = rows.find(one => !!one && !one.gone && steadyId(one) === ids[at]);
+            if (!found)
+                return { missing: String(steps[at] ?? ids[at]), near: [],
+                    in: trail.map(one => one.name) };
+            trail.push(found);
+            among = things;
+            rows = catalogueHolds(found, things);
+            things = collects({ row: found });
+        }
+        return { trail, rows, among };
+    }
+
     // Does what a terminal names (launcher do), asked as JSON, { steps,
-    // words, sure }, since qs takes no empty argument: its steps walked
-    // by name as show walks them, so it offers what : offers, each act of
-    // what it's in. One the line would ask about first, or that ends
-    // something, isn't done until the terminal says it's sure: it answers
-    // with the launcher's own question (`asks`), asked as the line asks
-    // it, naming what it's an act of. A place opens in the launcher, as
-    // the catalogue's run opens one.
+    // path, words, sure }, since qs takes no empty argument: its steps
+    // walked by name as show walks them, so it offers what : offers, each
+    // act of what it's in. One the line would ask about first, or that
+    // ends something, isn't done until the terminal says it's sure: it
+    // answers with the launcher's own question (`asks`), asked as the line
+    // asks it, naming what it's an act of, and the steady ids of what it
+    // asked about (`path`), which the sure ask walks instead. A place opens
+    // in the launcher, as the catalogue's run opens one.
     function doneFromTerminal(asked) {
         cataloguing = true;
         try {
             const said = JSON.parse(asked);
-            return doneWalked(said.steps ?? [], said.words ?? "", said.sure === true);
+            const steps = said.steps ?? [];
+            const path = Array.isArray(said.path) ? said.path : [];
+            freshen();
+            return doneWalked(path.length > 0 ? walkedById(path, steps) : walkedByName(steps),
+                said.words ?? "", said.sure === true);
         } catch (error) {
             return { error: String(error) };
         } finally {
@@ -1339,14 +1367,14 @@ Scope {
         }
     }
 
-    function doneWalked(steps, words, sure) {
-        freshen();
-        const walked = walkedByName(steps);
+    // Does what's walked, as doneFromTerminal says; none walked, it's
+    // `nothing`, which the terminal says in its own words.
+    function doneWalked(walked, words, sure) {
         if (walked.missing !== undefined)
             return walked;
         const trail = walked.trail;
         if (trail.length === 0)
-            return { error: "nothing named" };
+            return { nothing: true };
         const target = trail[trail.length - 1];
         const holder = trail.length > 1 ? trail[trail.length - 2] : null;
         const names = trail.map(one => one.name);
@@ -1362,12 +1390,16 @@ Scope {
         const asking = CommandBinding.asking({ command: commandNamed(act).command }, [act],
             { all: 1, bang: false }, Options.commands ?? {});
         if (!sure && (asking.ask !== "" || Catalogue.disruptive(target) || actEnds(target))) {
-            const of = askedOfHolder(holder, target);
+            // As the line asks it (commandAsked): a row that's its own act,
+            // as a window's Close, is an act of what holds it; any other is
+            // its own act's thing.
+            const of = act === target ? askedOfHolder(holder, target) : target;
             return {
                 asks: Confirm.question([{ ends: act.ends || verbOf(act), asked: askedOf(act),
                     name: act.askedAs || of.name, kind: kindOf(of), leaves: act.leaves ?? "" }],
                     Words.field.operators ?? {}),
-                in: names
+                in: names,
+                path: ids
             };
         }
         if (act.given) {

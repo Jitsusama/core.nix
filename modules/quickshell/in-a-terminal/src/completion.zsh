@@ -15,8 +15,9 @@ _launcher() {
     _describe -t commands command commands
     return
   fi
-  # After do's --, what's typed is an act's own words.
-  (( ${words[(I)--]} > 1 && ${words[(I)--]} < CURRENT )) && return 1
+  # After do's --, what's typed is an act's own words; after show's, the
+  # rest are steps, still offered.
+  [[ $typed[1] == do ]] && (( ${words[(I)--]} > 1 && ${words[(I)--]} < CURRENT )) && return 1
   case $typed[1] in
     show) [[ $PREFIX == -* ]] && { compadd -- --drawers --json; return; } ;;
     do) [[ $PREFIX == -* ]] && { compadd -- --yes --; return; } ;;

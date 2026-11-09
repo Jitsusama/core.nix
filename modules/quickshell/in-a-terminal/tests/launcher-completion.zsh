@@ -88,6 +88,8 @@ expect 'launcher show machine ' disk power
 # The flags are taken anywhere, so a step after one still walks.
 expect 'launcher show --json machine ' disk power
 expect 'launcher show machine -' --drawers --json
+# After show's --, every word is a step, so the rows are still offered.
+expect 'launcher show -- machine ' disk power
 # A step that names nothing offers nothing, and says nothing over the line.
 refuse 'launcher show zebra ' disk now
 # do walks the same rows, and after its -- what's typed is an act's words.

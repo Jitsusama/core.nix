@@ -11139,6 +11139,7 @@
     "waiting": "\u2026",
     "unsure": "{question} \u00b7 nothing to answer on, so --yes does it",
     "takes": "{name} takes words \u00b7 {ask} \u00b7 give them after --",
-    "nothingToDo": "launcher do needs a row to do"
+    "nothingToDo": "launcher do needs a row to do",
+    "blankStep": "a blank step names no row"
   }
 }

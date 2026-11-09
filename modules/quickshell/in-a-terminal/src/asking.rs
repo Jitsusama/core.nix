@@ -44,15 +44,24 @@ pub fn show(qs: &str, steps: &[String], drawers: bool) -> Result<Answer, String>
 
 /// Asks the shell through `qs` to do what the steps name, with the words
 /// an act asks for, and past its question once the terminal's sure. It
-/// answers with what it asks first (`asks`), the words an act takes
-/// (`takes`), or that it's done.
-pub fn doing(qs: &str, steps: &[String], words: &str, sure: bool) -> Result<Answer, String> {
-    call(qs, "doing", &asked(steps, words, sure))
+/// answers with what it asks first (`asks`, with the steady ids of the
+/// rows it asked about, `path`), the words an act takes (`takes`), or that
+/// it's done. Given a `path`, the shell walks those ids rather than the
+/// names, so a y does the row it was asked about even where rows moved
+/// since, or nothing.
+pub fn doing(
+    qs: &str,
+    steps: &[String],
+    path: &[String],
+    words: &str,
+    sure: bool,
+) -> Result<Answer, String> {
+    call(qs, "doing", &asked(steps, path, words, sure))
 }
 
 /// What `doing` is given, as JSON, which is never empty as qs needs.
-pub fn asked(steps: &[String], words: &str, sure: bool) -> String {
-    serde_json::json!({ "steps": steps, "words": words, "sure": sure }).to_string()
+pub fn asked(steps: &[String], path: &[String], words: &str, sure: bool) -> String {
+    serde_json::json!({ "steps": steps, "path": path, "words": words, "sure": sure }).to_string()
 }
 
 fn call(qs: &str, function: &str, argument: &str) -> Result<Answer, String> {
@@ -186,8 +195,19 @@ mod tests {
     fn what_to_do_is_asked_as_json() {
         let steps = ["machine".to_string(), "power".to_string()];
         assert_eq!(
-            asked(&steps, "", false),
-            r#"{"steps":["machine","power"],"sure":false,"words":""}"#
+            asked(&steps, &[], "", false),
+            r#"{"path":[],"steps":["machine","power"],"sure":false,"words":""}"#
+        );
+        let path = [
+            "category:computer".to_string(),
+            "category:power".to_string(),
+        ];
+        assert_eq!(
+            asked(&steps, &path, "", true),
+            concat!(
+                r#"{"path":["category:computer","category:power"],"#,
+                r#""steps":["machine","power"],"sure":true,"words":""}"#
+            )
         );
     }
 

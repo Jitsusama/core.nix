@@ -108,6 +108,11 @@ impl Words {
         self.word("nothingToDo", &[])
     }
 
+    /// `do` given a blank step, which names no row.
+    pub fn blank_step(&self) -> String {
+        self.word("blankStep", &[])
+    }
+
     /// A value the shell hasn't read yet, as the drawer's placeholder.
     pub fn waiting(&self) -> String {
         self.word("waiting", &[])
