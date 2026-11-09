@@ -488,8 +488,12 @@ Provider {
     property var previewAsked: ({})
     property string previewNext: ""
 
+    // Only the newest wanted waits, so one it replaces is no longer asked,
+    // and its drawer asks again when it's next shown rather than never.
     function preview(path) {
         if (previewing.running) {
+            if (provider.previewNext !== "" && provider.previewNext !== path)
+                delete provider.previewAsked[provider.previewNext];
             provider.previewNext = path;
             return;
         }

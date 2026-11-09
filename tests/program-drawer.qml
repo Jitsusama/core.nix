@@ -23,10 +23,9 @@ QtObject {
     // off.
     readonly property var said: ({
         on: "on {places}",
-        and: "and",
+        workspaces: "on {count} workspaces",
         program: "program",
-        kind: "1 kind",
-        kinds: "{count} kinds"
+        more: "{count} more"
     })
 
     function named(id) {
@@ -44,7 +43,9 @@ QtObject {
 
     function run() {
 
-        expect("a share", [0.045, 0.37, 0].map(Program.percent), ["4.5%", "37%", "0%"]);
+        expect("a share, to three significant figures", [0.045, 0.37, 1].map(Program.percent),
+            ["4.50%", "37.0%", "100%"]);
+        expect("none at all, as the machine says it", Program.percent(0), "0%");
         // Two windows' processes and all each started, as the daemon's
         // tree kind says them, and a window it hasn't said yet.
         expect("what its processes use, summed over its windows", Program.usage([
@@ -53,13 +54,18 @@ QtObject {
             null
         ]), { processor: 0.25, memory: 741376000, count: 4 });
         expect("nothing while the daemon says nothing", Program.usage([null, undefined]), null);
+        // A window's kitty started from another window's, so in its tree.
+        expect("a process another window's tree holds counted once", Program.usage([
+            { pid: 2, share_ratio: 0.1, resident_b: 300, processes: 3, pids: [2, 3, 4] },
+            { pid: 3, share_ratio: 0.05, resident_b: 200, processes: 2, pids: [3, 4] }
+        ]), { processor: 0.1, memory: 300, count: 3 });
         expect("no share past the whole", Program.usage([{ share_ratio: 0.8 },
             { share_ratio: 0.7 }]).processor, 1);
 
-        expect("its windows' workspaces", Program.eyebrow([4, 1, 4], "web browser", said),
-            "on 1 and 4 \u00b7 web browser");
-        expect("three workspaces", Program.eyebrow([3, 1, 2], "terminal", said),
-            "on 1, 2 and 3 \u00b7 terminal");
+        expect("windows on one workspace", Program.eyebrow([4, 4], "web browser", said),
+            "on 4 \u00b7 web browser");
+        expect("on several, how many", Program.eyebrow([3, 1, 2, 3], "terminal", said),
+            "on 3 workspaces \u00b7 terminal");
         expect("with no window, what it is", Program.eyebrow([], "web browser", said),
             "web browser");
 
@@ -75,14 +81,14 @@ QtObject {
         const endings = Program.endings(globs);
         expect("each kind's ending", [endings["text/html"], endings["image/png"]],
             ["HTML", "PNG"]);
-        expect("what it opens and handles", Program.opens(types, endings, said),
-            { kinds: "5 kinds \u00b7 PDF, HTML, PNG", schemes: "http, https" });
+        expect("what it opens and handles", Program.opens(types, endings),
+            { kinds: ["PDF", "HTML", "PNG", "XHTML", "ext-weird"], schemes: ["http", "https"] });
         expect("a kind with no ending known", Program.kindName("application/x-ext-weird", {}),
             "ext-weird");
-        expect("one kind", Program.opens(["text/html"], endings, said).kinds,
-            "1 kind \u00b7 HTML");
-        expect("categories as words", Program.categories(["Network", "WebBrowser",
-            "X-Vendor", "Network"]), "Network, Web Browser");
+        expect("each kind once", Program.opens(["text/html", "text/html"], endings).kinds,
+            ["HTML"]);
+        expect("categories as words, a dot apart", Program.categories(["Network",
+            "WebBrowser", "X-Vendor", "Network"]), "Network \u00b7 Web Browser");
 
         const drawn = Program.drawer({
             name: "Google Chrome",
@@ -98,17 +104,20 @@ QtObject {
             comment: " Access the Internet "
         }, named, said);
         expect("a program's drawer", [drawn.eyebrow, drawn.title, drawn.body],
-            ["on 1 and 4 \u00b7 program", "Google Chrome", "Access the Internet"]);
+            ["on 2 workspaces \u00b7 program", "Google Chrome", "Access the Internet"]);
         expect("what moves first, what others say, what describes, then its identifiers",
             drawn.facts, [
-                { label: "[processor]", value: "25%" },
+                { label: "[processor]", value: "25.0%" },
                 { label: "[memory]", value: "741\u00a0MB" },
                 { label: "[processes]", value: "4" },
                 { label: "[playing]", value: "Song of the test \u00b7 The Tester" },
                 { label: "Profiles", value: "2" },
-                { label: "[opens]", value: "5 kinds \u00b7 PDF, HTML, PNG" },
-                { label: "[handles]", value: "http, https" },
-                { label: "[categories]", value: "Network, Web Browser" },
+                { label: "[opens]",
+                    value: "PDF \u00b7 HTML \u00b7 PNG \u00b7 XHTML \u00b7 ext-weird",
+                    valueItems: ["PDF", "HTML", "PNG", "XHTML", "ext-weird"]
+                        .map(kind => ({ said: kind })), tail: "{count} more" },
+                { label: "[handles]", value: "http \u00b7 https" },
+                { label: "[categories]", value: "Network \u00b7 Web Browser" },
                 { label: "[command]", value: "google-chrome-stable %U",
                     valueItems: [{ said: "google-chrome-stable" }, { said: "%U" }],
                     between: " ", identifies: true },
@@ -124,6 +133,11 @@ QtObject {
         expect("a closed program says only what describes it",
             [closed.eyebrow].concat(closed.facts.map(fact => fact.label)),
             ["program", "[command]", "[desktop-id]"]);
+        const asking = Program.drawer({ name: "GIMP", places: [2], usage: null, asking: true,
+            id: "gimp", command: ["gimp"] }, named, said);
+        expect("while its figures are asked, they hold their places",
+            asking.facts.slice(0, 3), ["processor", "memory", "processes"]
+                .map(id => ({ label: `[${id}]`, value: null })));
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)

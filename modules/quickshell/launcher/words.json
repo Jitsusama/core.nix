@@ -1845,7 +1845,13 @@
     {
       "id": "power:port",
       "in": "power:charger",
-      "name": "Port {n}"
+      "name": "Port {n}",
+      "said": {
+        "charging": "charging",
+        "giving": "powering what's plugged in",
+        "plugged": "plugged in, giving nothing",
+        "empty": "empty"
+      }
     },
     {
       "id": "power:port:drawer",
@@ -1853,10 +1859,12 @@
       "said": {
         "eyebrow": "on port {n} \u00b7 charger",
         "accessory": "{mode} accessory",
+        "range": "{from} to {to} V",
+        "at": "{offers} at {amps} A",
         "mode:usb_power_delivery": "USB Power Delivery",
         "mode:default": "USB default",
-        "mode:1.5A": "USB-C at 1.50 A",
-        "mode:3.0A": "USB-C at 3.00 A"
+        "mode:1.5A": "USB-C at 1.5 A",
+        "mode:3.0A": "USB-C at 3 A"
       }
     },
     {
@@ -6000,7 +6008,10 @@
       "in": "on",
       "said": {
         "eyebrow": "on this machine \u00b7 lag",
-        "over": "{what} \u00b7 over the last {seconds} s"
+        "over": "{what} \u00b7 over the last {seconds} s",
+        "stall:cpu": "processor",
+        "stall:memory": "memory",
+        "stall:io": "disk"
       }
     },
     {
@@ -8083,10 +8094,9 @@
       "glyph": "program",
       "said": {
         "on": "on {places}",
-        "and": "and",
+        "workspaces": "on {count} workspaces",
         "program": "program",
-        "kind": "1 kind",
-        "kinds": "{count} kinds"
+        "more": "{count} more"
       }
     },
     {

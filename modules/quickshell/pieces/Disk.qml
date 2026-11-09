@@ -91,7 +91,7 @@ Piece {
     // which disk is its drawer's to say (VKCF3Z, 2026-11-08).
     valueItems: worst === null || frozen.length > 0 || !(short || !silent) ? []
         : (short ? [{ said: banded(worst.band), keep: 2 }] : []).concat([{
-            said: Drawers.filled((Words.of("on:disk").said ?? {}).free ?? "{amount} free",
+            said: Drawers.filled((Words.of("on:disk").said ?? {}).free,
                 { amount: shown(worst.free) }),
             keep: 1
         }])

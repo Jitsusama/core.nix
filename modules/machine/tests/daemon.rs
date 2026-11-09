@@ -479,13 +479,18 @@ fn programs_are_ranked_by_their_share_and_their_memory() {
 fn a_tree_is_watched_by_its_pid_and_counts_what_it_started() {
     let running = Running::new("tree");
     let mut client = running.client();
-    let said = client.ask(&json!({"id": "t", "ask": "watch", "keys": ["tree:2", "tree:99"]}));
+    let said = client.ask(&json!({"id": "t", "ask": "watch",
+        "keys": ["tree:2", "tree:3", "tree:99"]}));
     let records = &said["records"];
     assert_eq!(
         records.as_array().unwrap().len(),
-        1,
+        2,
         "no process 99: {records}"
     );
+    // The kitty the first started is a tree of its own too, and the first's
+    // pids say it holds it, so a drawer summing both counts it once.
+    assert_eq!(record(records, "tree:3")["pids"], json!([3]));
+    assert_eq!(record(records, "tree:2")["pids"], json!([2, 3]));
     let tree = record(records, "tree:2");
     assert_eq!(tree["name"], "kitty");
     assert_eq!(
@@ -506,6 +511,7 @@ fn a_tree_is_watched_by_its_pid_and_counts_what_it_started() {
             break tree;
         }
     };
+    assert_eq!(tree["pids"], json!([2, 3, 4]));
     assert_eq!(tree["threads"], json!(3));
     assert_eq!(tree["resident_b"].as_u64().unwrap() % 1600, 0, "1600 pages");
     std::fs::remove_dir_all(running.root().join("proc/2")).unwrap();

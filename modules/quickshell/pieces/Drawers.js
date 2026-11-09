@@ -23,8 +23,9 @@ const DAY = 86_400;
 // The slices lag-watch watches, in the order a drawer names them: the
 // desktop's own, the programs', then what runs on its own and builds.
 const SLICES = ["session", "app", "jobs", "build"];
-// Each kind of stall, as lag-watch counts it, by the word a drawer says it in.
-const STALLS = [["cpu", "processor"], ["memory", "memory"], ["io", "disk"]];
+// Each kind of stall, as lag-watch counts it, in the order a drawer names
+// them; words.json's on:lag says each as stall:<kind>.
+const STALLS = ["cpu", "memory", "io"];
 
 // A template's {fields} filled in.
 function filled(template, fields) {
@@ -139,7 +140,8 @@ function lag(window, what, told) {
     });
     const stalled = SLICES.filter(slice => window.stalls?.[slice])
         .map(slice => fact(named, `on:lag:${slice}`, STALLS
-            .map(([kind, word]) => [word, Number(window.stalls[slice][`${kind}_some`]) || 0])
+            .map(kind => [said[`stall:${kind}`] ?? kind,
+                Number(window.stalls[slice][`${kind}_some`]) || 0])
             .filter(([, share]) => share >= LEAST)
             .map(([word, share]) => `${word} ${percent(share)}`).join(" \u00b7 ")));
     const swapped = Object.values(window.memory ?? {})
