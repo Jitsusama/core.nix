@@ -1119,8 +1119,14 @@ def test_a_terminal_is_shown_a_place_by_its_names_and_a_miss_the_nearest(shell: 
     assert "Copy" in [row["name"] for row in grinning["acts"]], grinning
     assert "Copy" not in [row["name"] for row in grinning["rows"]], grinning
     assert all("drawer" not in row for row in machine["rows"]), machine["rows"]
-    # A miss says where, and the names it was nearest.
-    assert shown("mahcine") == {"missing": "mahcine", "near": ["Machine"], "in": []}
+    # A miss says where, the names it was nearest, and that nothing it was looked among is
+    # still being read, so the terminal says it at once rather than asking again.
+    assert shown("mahcine") == {
+        "missing": "mahcine",
+        "near": ["Machine"],
+        "in": [],
+        "reading": False,
+    }
     assert shown("machine", "zebra")["in"] == ["Machine"]
     assert not shell.showing()["open"]
 
