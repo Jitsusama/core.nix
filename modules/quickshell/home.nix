@@ -2243,6 +2243,12 @@ in
     systemd.user.services.sessions-kitty = {
       Unit = {
         Description = "The kitty every session's window opens in, kept between sessions";
+        # Every session's window is one of its windows, so a switch that
+        # restarted it closed them all: at 06:46 on 2026-11-09 kitty 0.50
+        # changed the unit and every session's window went, the sessions
+        # left running without one. A changed kitty is taken at the next
+        # login instead, as the SSH agent's is.
+        X-SwitchMethod = "keep-old";
         PartOf = [ "graphical-session.target" ];
         After = [ "graphical-session.target" ];
         # Kept trying while the session's display isn't there yet.

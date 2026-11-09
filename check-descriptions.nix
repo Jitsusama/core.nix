@@ -2000,6 +2000,9 @@
     Loss and Traffic, each with a drawer over the tunnel, one read sparking nothing; and its
     switch says who holds it, when WARP always on comes back, and a switch held or refused
   '';
+  the-sessions-kitty-outlives-a-switch = ''
+    a switch never restarts the kitty every session's window is in, so no switch closes them
+  '';
   the-screens-go-off-on-niri = ''
     on niri, Turn Every Screen Off closes the launcher and then asks niri to power its monitors
     off, and :set noscreens asks it too, as read on the way to niri's socket

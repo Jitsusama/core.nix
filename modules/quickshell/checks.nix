@@ -390,6 +390,15 @@ onLinux {
       "A Quickshell file isn't among its unit's restart triggers, so a switch would leave the old one on screen."
       (files != { } && lib.all (file: lib.elem "${file.source}" triggers) (lib.attrValues files));
 
+  # A switch never restarts the kitty every session's window is in, so no
+  # switch closes them.
+  the-sessions-kitty-outlives-a-switch =
+    holds "the-sessions-kitty-outlives-a-switch"
+      "A switch would restart the sessions' kitty, closing every session's window."
+      (
+        ((account graphical).systemd.user.services.sessions-kitty.Unit.X-SwitchMethod or null) == "keep-old"
+      );
+
   # A machine shapes what the overview shows in a line a change: a piece
   # moved, cut, shown only while true, a threshold changed and the rest kept,
   # and a piece of its own linked beside the built-in ones.
