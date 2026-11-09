@@ -28,9 +28,9 @@ Beside this file:
 - `craft.md`: the measured facts about his faces and colours on the web, and
   the CSS that does each rule here.
 - `checks.md`: what to measure and look at before anyone sees a site.
-- `parts.js`: the probe that finds what a page lacks of its parts
-  ([Every Page Has Its Parts](#every-page-has-its-parts)), run before every
-  publish.
+- `gate.js`: the probe that opens the gate before every publish, finding
+  what a page lacks of its parts ([Every Page Has Its
+  Parts](#every-page-has-its-parts)) and what its words get wrong.
 
 The theme itself, ready for a site, is the kit at `~/.local/share/jitsusama/web/`
 ([The Kit](#the-kit)). Never retype a colour, a size or a face.
@@ -42,6 +42,33 @@ The theme itself, ready for a site, is the kit at `~/.local/share/jitsusama/web/
   `modules/theme/web/skill/`.
 - **Say what's unfinished.** Whatever fails a check below is shown as
   unfinished, never as done.
+
+## What Matters, and How Much
+
+Five things are gates, not polish. A page that fails any of them isn't
+published, however good it looks, and none is traded for another or for a
+deadline. A model reading this cold weighs them first, before the craft
+that follows; `checks.md` runs them in this order before every publish.
+
+1. **Accessibility, with WCAG 2.2 AA as the floor, measured.** A page some
+   readers can't use is broken for them, whatever it looks like to the rest:
+   "accessibility cannot be a third class person" (2026-10-22). It's proven
+   by the browser's checks, never by eye.
+2. **The writing.** His voice, plain words for a reader who wasn't there,
+   Title Case or whole sentences for headings, Canadian spelling and no
+   emdash (`writing.md`). A page that isn't understood on its first read has
+   failed at its one job.
+3. **The parts.** The mark, the favicon, a figure for each part that
+   explains, the head's names and the twin
+   ([Every Page Has Its Parts](#every-page-has-its-parts)).
+4. **The ways to move.** omni-ref's key line, Keys list and three-way switch,
+   a keyboard reaching everything, and nothing moving that the reader didn't
+   move.
+5. **The style.** The kit's faces, colour roles and space ladder, never a
+   value retyped, and the layout's measure and edges.
+
+Then the look, judged against [The Spirit](#the-spirit): the gates make a
+page fit to show, and only the look makes it his.
 
 ## The Spirit
 
@@ -193,7 +220,7 @@ its keys and dropped everything drawn: no figure, no favicon, no mark in its
 head. Set beside the page it followed, "all imagery is gone, no icon, a lot
 missing" (2026-11-09). Words are what a model writes first, and pictures are
 what it leaves out, so the parts are listed here, whoever builds the page,
-and `parts.js` finds each one missing before it's published (`checks.md`).
+and `gate.js` finds each one missing before it's published (`checks.md`).
 
 - **The site's mark, drawn once and shown twice.** A small drawing in the
   site's own metaphor (a bottle, a crest, a spring), inline in the masthead
@@ -216,7 +243,8 @@ and `parts.js` finds each one missing before it's published (`checks.md`).
 - **The twin for agents**: `index.md` linked as the page's Markdown
   alternate, and `llms.txt` at the root.
 - **The key line, the Keys list and the switch**, as omni-ref has them
-  (above).
+  (above), with a skip link the first thing focus reaches and one `<h1>`,
+  the title.
 
 An interface keeps every part but the figures, which its rows and charts
 replace.

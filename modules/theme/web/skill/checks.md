@@ -9,23 +9,50 @@ site, so it runs on every publish and a fault can't come back.
 Gates aren't taste: the docs site that "looks like shit" passed AAA contrast
 and a keyboard walk. Pass the gates, then look ([Looking](#looking)).
 
-## The Parts
+## The Gate
 
-First, before every publish and again on the live page after it: run
-`parts.js`, beside this file, in the page. Read the file and pass it whole as
-the browser tool's eval expression (`browser_do` with `kind: "eval"`), or
-paste it into the console. It answers with a list of what the page lacks,
-each saying what to add: the favicon, the head's names, the mark in the
-masthead, the switch, the twin, and a figure for each part that explains.
+Every publish passes these steps, in this order, before the page goes out
+and again on the live page after it, whichever model built it. Each passes
+or fails; a page failing any isn't published, and is reported as
+unfinished, naming each failure, never as done. None is traded for another
+or for a deadline (SKILL.md's [gates](SKILL.md#what-matters-and-how-much)).
+The browser tool's names are given; another browser runs the same checks
+through axe-core and its own console.
 
-- **An empty list, or it doesn't publish.** Add what it names. A part with
-  nothing to picture gets `data-figure="why"` on its section, the reason in
-  words; never one to quiet the probe.
-- **Then hold the page beside its model** ([Judging Without
-  Him](SKILL.md#judging-without-him)): every figure, ornament and fold the
-  model page has, this one has too, or says why not.
-- **Say what it found.** A page published with any part missing is reported
-  as unfinished, naming each, never as done.
+1. **The parts and the guard.** Run `gate.js`, beside this file, in the
+   page: read the file and pass it whole as `browser_do`'s eval expression,
+   or paste it into the console. It answers with what the page lacks or gets
+   wrong: the favicon, the head's names, the mark, one title, the key line,
+   the Keys list, the switch, the skip link, the twin, a figure for each part
+   that explains, and the writing's guard (no emdash, no Unicode ellipsis,
+   Canadian spelling, nothing private). It passes on an empty list. A part
+   with nothing to picture gets `data-figure="why"` on its section, the
+   reason in words; never one to quiet the probe.
+2. **Accessibility, at WCAG 2.2 AA, measured.** `browser_check` with `kind:
+   "accessibility"` and `level: "AA"` at 320, 768 and 1440 px, in both looks
+   (`browser_go` emulate `colorScheme`), every fold open: no failure, and
+   each item it hands to a person looked at and named in the report. Then
+   `kind: "keyboard"` passes, and `kind: "contrast"` with `and` holds each
+   mark and edge against its ground at 3:1 (WCAG 1.4.11, which axe doesn't
+   judge). [Keys and Access](#keys-and-access) has the rest of the walk.
+3. **The writing.** Cold readers read each changed part (`writing.md`) and
+   say what it means; it's rewritten until each gets it on the first read.
+   Its voice, its plain words and its headings are judged against
+   `writing.md`, line by line, not by impression.
+4. **Layout and motion.** `kind: "visual"` at every width below,
+   `kind: "typography"` and `kind: "motion"` pass, and so do
+   [Layout](#layout), [Still Water](#still-water) and [Motion](#motion).
+5. **The style.** `kind: "design"` lists what the page is built from: every
+   colour, size and gap is one of the kit's properties, and two values close
+   enough to have been meant as one are a value retyped. The type is the
+   skill's: Fraunces for words, Monaspace for names, figures and labels, no
+   sans.
+6. **Speed.** `kind: "perf"` meets [Speed](#speed)'s budgets, and no request
+   leaves the site.
+7. **The look, beside its model.** Open the page beside the one it's built
+   like ([Judging Without Him](SKILL.md#judging-without-him)), part by part:
+   every figure, ornament and fold the model has, this one has too, or says
+   why not. Then [Looking](#looking).
 
 ## The Widths
 
