@@ -68,6 +68,7 @@
 //! (`runs.rs` says what it holds).
 
 mod checks;
+mod first;
 mod keep;
 mod pressure;
 mod quarantine;
@@ -95,7 +96,8 @@ const USAGE: u8 = 64;
 const UNSENT: u8 = 75;
 
 const USED: &str = "Usage: changed-checks [--base REF] [--system SYSTEM] [--build] [--no-vm] \
-                    [--name-only] [--keep-base] [--here]\n       changed-checks keep-main";
+                    [--name-only] [--keep-base] [--here] [--first]\n       \
+                    changed-checks keep-main";
 
 /// Where `keep-main` follows main unless `CHANGED_CHECKS_REPOSITORY` names
 /// another.
@@ -133,6 +135,9 @@ struct Options {
     keep_base: bool,
     /// Whether to run here even where another machine could.
     here: bool,
+    /// Whether a run sent elsewhere goes ahead of those waiting for a
+    /// builder's turn, which only the net may ask (`first.rs`).
+    first: bool,
     /// The arguments as given, for a run sent elsewhere.
     given: Vec<String>,
 }
@@ -149,6 +154,7 @@ impl Options {
             vm: false,
             keep_base: false,
             here: false,
+            first: false,
             given: Vec::new(),
         };
         let (mut whole, mut no_vm, mut name_only) = (false, false, false);
@@ -166,6 +172,7 @@ impl Options {
                 "--name-only" => name_only = true,
                 "--keep-base" => options.keep_base = true,
                 "--here" => options.here = true,
+                "--first" => options.first = true,
                 _ => return Err(format!("{argument} isn't something it takes")),
             }
         }
@@ -419,13 +426,13 @@ fn elsewhere(
     } else {
         &["changed"]
     };
-    let takes_it = takes.is_ok_and(|takes| {
-        let words = String::from_utf8_lossy(&takes.stdout);
-        takes.status.success()
-            && wanted
-                .iter()
-                .all(|word| words.lines().any(|line| line == *word))
-    });
+    let words = match &takes {
+        Ok(takes) if takes.status.success() => String::from_utf8_lossy(&takes.stdout).into_owned(),
+        _ => String::new(),
+    };
+    let takes_it = wanted
+        .iter()
+        .all(|word| words.lines().any(|line| line == *word));
     if !takes_it {
         return Ok(None);
     }
@@ -440,14 +447,27 @@ fn elsewhere(
     // A base is given as its merge base's commit, which a ref named only
     // here, such as a branch, wouldn't be on the far side.
     let mut given = Vec::new();
-    let mut words = options.given.iter();
-    while let Some(word) = words.next() {
+    let mut each = options.given.iter();
+    while let Some(word) = each.next() {
+        // Going first is asked of nix-offload, never of the far side's run.
+        if word == "--first" {
+            continue;
+        }
         given.push(word.clone());
         if word == "--base" {
-            words.next();
+            each.next();
             given.push(base.to_owned());
         }
     }
+    let cgroup = std::fs::read_to_string("/proc/self/cgroup").unwrap_or_default();
+    let first = match first::first(options.first, &words, &cgroup) {
+        first::First::Yes => true,
+        first::First::No => false,
+        first::First::Refused(why) => {
+            eprintln!("changed-checks: {why}");
+            false
+        }
+    };
     // The far side may be another system, which would name its own.
     if options.system.is_none() {
         given.extend(["--system".to_owned(), system.to_owned()]);
@@ -456,6 +476,7 @@ fn elsewhere(
     let status = Command::new("nix-offload")
         .arg("there")
         .args(options.keep_base.then_some("--never-ask"))
+        .args(first.then_some("--first"))
         .arg("--changed")
         .args(&given)
         .current_dir(root)

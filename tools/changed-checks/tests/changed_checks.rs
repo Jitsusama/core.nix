@@ -100,7 +100,8 @@ esac
 /// nix-offload as changed-checks asks it to build there: it records what
 /// it was given, and journals the build as sent from the lent builder, as
 /// `nix-offload there` does. Once a test writes `takes-changed`, it says
-/// it takes `--changed`, and `takes-never-ask` adds `--never-ask`. A run
+/// it takes `--changed`, `takes-never-ask` adds `--never-ask`, and
+/// `takes-first` adds `--first`. A run
 /// sent so is recorded with the folder it started in and exits with
 /// `changed-exit`'s number, or 0.
 const NIX_OFFLOAD: &str = r#"#!/bin/sh
@@ -109,9 +110,10 @@ const NIX_OFFLOAD: &str = r#"#!/bin/sh
 if [ "$2" = --takes ]; then
   [ -f "$STAND_IN/takes-changed" ] && printf 'tree\nchanged\n'
   [ -f "$STAND_IN/takes-never-ask" ] && printf 'never-ask\n'
+  [ -f "$STAND_IN/takes-first" ] && printf 'first\n'
   exit 0
 fi
-if [ "$2" = --changed ] || [ "$3" = --changed ]; then
+if [ "$2" = --changed ] || [ "$3" = --changed ] || [ "$4" = --changed ]; then
   { pwd; printf '%s\n' "$@"; } > "$STAND_IN/changed"
   exit "$(cat "$STAND_IN/changed-exit" 2>/dev/null || echo 0)"
 fi
@@ -806,6 +808,29 @@ fn keeping_a_base_elsewhere_never_asks_for_a_builder_nor_goes_where_it_must() {
     assert!(
         sent.ends_with("there\n--never-ask\n--changed\n--system\nx86_64-linux\n--keep-base\n"),
         "{sent}"
+    );
+}
+
+#[test]
+fn a_session_asking_to_go_first_waits_its_turn_and_says_so() {
+    let stand_in = StandIn::new("first");
+    fs::create_dir_all(stand_in.path("repo")).expect("the repository");
+    fs::write(stand_in.path("takes-changed"), "").expect("written");
+    fs::write(stand_in.path("takes-first"), "").expect("written");
+    fs::write(stand_in.path("clean"), "").expect("written");
+
+    // A test runs outside the net's unit, as any session does.
+    let ran = stand_in.run(&["--system", "x86_64-linux", "--name-only", "--first"]);
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(
+        text(&ran.stderr).contains("--first is the net's alone, so this run waits its turn"),
+        "{}",
+        text(&ran.stderr)
+    );
+    let sent = fs::read_to_string(stand_in.path("changed")).expect("it was sent");
+    assert!(
+        sent.ends_with("there\n--changed\n--system\nx86_64-linux\n--name-only\n"),
+        "neither nix-offload nor the far side is told to go first: {sent}"
     );
 }
 
