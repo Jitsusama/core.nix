@@ -66,7 +66,7 @@ mod tests {
         assert_eq!(moved(&file), None);
         fs::write(
             &file,
-            r#"{"from":"America/Toronto","to":"America/Edmonton","place":"Kelpwater, Alberta","when":1790000000}"#,
+            r#"{"from":"America/Toronto","to":"America/Edmonton","place":"Kelpwater, Highreach","when":1790000000}"#,
         )
         .unwrap();
         assert_eq!(
@@ -74,7 +74,7 @@ mod tests {
             Some(json!({
                 "from": "America/Toronto",
                 "to": "America/Edmonton",
-                "place": "Kelpwater, Alberta",
+                "place": "Kelpwater, Highreach",
                 "at_s": 1_790_000_000_u64,
             }))
         );

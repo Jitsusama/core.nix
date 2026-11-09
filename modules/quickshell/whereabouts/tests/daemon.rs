@@ -17,7 +17,7 @@ use serde_json::{Value, json};
 fn kept() -> Value {
     json!({
         "v": 2, "latitude": 52.34, "longitude": -115.67, "accuracy": 26000.0,
-        "when": 1_790_000_000, "place": "Kelpwater, Alberta", "zone": "America/Edmonton",
+        "when": 1_790_000_000, "place": "Kelpwater, Highreach", "zone": "America/Edmonton",
         "country": "Canada",
     })
 }
@@ -173,7 +173,7 @@ fn a_watch_is_answered_with_what_was_kept_and_the_clocks_zone() {
     assert_eq!(record["kind"], "here");
     assert_eq!(record["latitude"], 52.34);
     assert_eq!(record["accuracy_m"], 26000.0);
-    assert_eq!(record["place"], "Kelpwater, Alberta");
+    assert_eq!(record["place"], "Kelpwater, Highreach");
     assert_eq!(record["zone"], "America/Edmonton");
     assert_eq!(record["hand"], false);
     assert_eq!(record["altitude_m"], Value::Null);
@@ -188,11 +188,11 @@ fn the_clocks_zone_and_its_move_are_said_as_they_change() {
     client.ask(&json!({"id": "w", "ask": "watch", "kind": "here"}));
     zone_set(&running.folder, "America/Edmonton");
     let record = client.changed_until(|record| record["clock_zone"] == "America/Edmonton");
-    assert_eq!(record["place"], "Kelpwater, Alberta");
+    assert_eq!(record["place"], "Kelpwater, Highreach");
     written(
         &running.path("state/moved.json"),
         &json!({"from": "America/Halifax", "to": "America/Edmonton",
-                "place": "Kelpwater, Alberta", "when": 1_790_000_100}),
+                "place": "Kelpwater, Highreach", "when": 1_790_000_100}),
     );
     let record = client.changed_until(|record| !record["moved"].is_null());
     assert_eq!(record["moved"]["from"], "America/Halifax");

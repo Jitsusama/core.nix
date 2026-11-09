@@ -321,7 +321,7 @@ mod tests {
         let fix = Fix::new(12.3457, -98.7654, 26_000.0, 1_790_000_000)
             .unwrap()
             .named(
-                Some("Kelpwater, Ontario".into()),
+                Some("Kelpwater, Westmark".into()),
                 Some("America/Toronto".into()),
             )
             .countried(Some("Canada".into()));
@@ -332,7 +332,7 @@ mod tests {
         assert_eq!(said["latitude"], 12.3457);
         assert_eq!(said["accuracy_m"], 26_000.0);
         assert_eq!(said["at_s"], 1_790_000_000_u64);
-        assert_eq!(said["place"], "Kelpwater, Ontario");
+        assert_eq!(said["place"], "Kelpwater, Westmark");
         assert_eq!(said["country"], "Canada");
         assert_eq!(said["zone"], "America/Toronto");
         assert_eq!(said["hand"], false);
