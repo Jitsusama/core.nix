@@ -15,10 +15,14 @@
 //! every session of one whose pi died is started again on its own log, its window put back, and the
 //! steward told (revive.rs says which are left down).
 //!
+//! Given a steward, each tick also tells an orchestrator of any session of
+//! its that has sat idle two hours, once for each idle spell (idle.rs).
+//!
 //!     cadence tick [--watcher ADDRESS --steward ADDRESS]
 //!         [--restart WORDS [--orchestrator ADDRESS]... [--skip ADDRESS]...]
 
 mod card;
+mod idle;
 mod mesh;
 mod records;
 mod revive;
@@ -123,6 +127,13 @@ fn run(args: &Args) -> io::Result<()> {
             Err(err) => eprintln!("cadence: reviving: {err}"),
         }
     }
+    if args.steward.is_some() {
+        // Like reviving, this doesn't wait on the card, and a line that
+        // can't be sent mustn't keep the card from being written.
+        if let Err(err) = tell_idle(&mesh, &folder, now) {
+            eprintln!("cadence: telling of idle sessions: {err}");
+        }
+    }
     let snapshot = gather(&folder, &state_home, &mesh, args, now)?;
     let card = card::card(&snapshot, clock);
     write_whole(&folder.join("card.txt"), &card)?;
@@ -162,6 +173,44 @@ fn run(args: &Args) -> io::Result<()> {
         state.carded = Some(now);
     }
     write_whole(&path, &serde_json::to_string_pretty(&state)?)
+}
+
+/// Tells each orchestrator of its sessions that have sat idle two hours,
+/// remembering in `idle.json` which spells were told.
+fn tell_idle(mesh: &Mesh, folder: &Path, now: i64) -> io::Result<()> {
+    let path = folder.join("idle.json");
+    let mut told: idle::Told = fs::read(&path)
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default();
+    let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id")
+        .ok()
+        .map(|id| id.trim().to_owned());
+    let sessions: Vec<idle::Quiet> = mesh
+        .all()
+        .iter()
+        .filter_map(|p| {
+            idle::Quiet::from(p, boot.as_deref(), mesh.is_parked(&p.session), start::is_pi)
+        })
+        .collect();
+    let tells = idle::due(&sessions, &mut told, now, clock);
+    let mut failed = None;
+    for tell in &tells {
+        if failed.is_some() {
+            told.spells.remove(&tell.session);
+            continue;
+        }
+        match mesh.send(&message(&tell.to, "question", tell.text.clone())) {
+            Ok(()) => println!("{}", tell.text),
+            Err(err) => {
+                // Not told, so the next tick tells it again.
+                told.spells.remove(&tell.session);
+                failed = Some(err);
+            }
+        }
+    }
+    write_whole(&path, &serde_json::to_string_pretty(&told)?)?;
+    failed.map_or(Ok(()), Err)
 }
 
 /// Core's history, from a bare clone of its own kept beside the card and

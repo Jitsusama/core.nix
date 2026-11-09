@@ -39,11 +39,29 @@ pub struct Presence {
     /// `#orchestration/<its address>`.
     #[serde(default)]
     pub groups: Vec<String>,
+    /// What it has spent and when, its last turn under `turns.last`.
+    #[serde(default)]
+    pub usage: serde_json::Value,
+}
+
+impl Presence {
+    /// When its last turn ended, in seconds, by when it began and how long
+    /// it took, if it has taken one.
+    #[must_use]
+    pub fn last_turn_ended(&self) -> Option<i64> {
+        let last = &self.usage["turns"]["last"];
+        let began: jiff::Timestamp = last["at"].as_str()?.parse().ok()?;
+        let took = last["duration_ms"].as_i64().unwrap_or_default();
+        Some((began.as_millisecond() + took) / 1000)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Owner {
     pub pid: Option<u32>,
+    /// When its pi started, in milliseconds.
+    #[serde(default, rename = "startedAt")]
+    pub started_at: Option<i64>,
     /// The boot the pi ran in, as the kernel's boot id names it.
     #[serde(default, rename = "bootId")]
     pub boot_id: Option<String>,
@@ -271,12 +289,14 @@ mod tests {
             quest: None,
             title: String::new(),
             groups: vec![],
+            usage: serde_json::Value::Null,
         };
         assert!(alive(Some(&parked), |_| false));
         let gone = Presence {
             state: "listening".into(),
             owner: Some(Owner {
                 pid: Some(7),
+                started_at: None,
                 boot_id: None,
             }),
             ..parked
