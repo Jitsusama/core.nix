@@ -66,8 +66,9 @@ function span(seconds, said) {
 }
 
 // The disk short of room most, or the one Now names: how soon it's full and
-// how fast it fills, what's growing most, its room and size, and what the
-// guard last cleared. `told` holds the clock (`now`, in seconds), the
+// how fast it fills, what's growing most, its size, and what the guard
+// last cleared. Its room is the row's own side, "19.3 GB free", so it
+// isn't said again (VKCF3Z, 2026-11-08). `told` holds the clock (`now`, in seconds), the
 // vocabulary (`named`, `said`), and the guard's own ways of saying sizes,
 // durations, paths and times (`shown`, `duration`, `within`, `time`), so
 // every figure reads as the Disks place says it.
@@ -100,7 +101,6 @@ function disk(state, told) {
                 ? filled(said.hourly, { amount: shown(filling) }) : ""),
             Object.assign(fact(named, "on:disk:growing",
                 growing.map(item => item.said).join(" \u00b7 ")), { valueItems: growing }),
-            fact(named, "machine:disk:free", shown(worst.free)),
             fact(named, "machine:disk:size", shown(worst.size ?? worst.total)),
             fact(named, "on:disk:cleared", cleared ? filled(said.cleared, {
                 amount: shown(cleared.bytes),
