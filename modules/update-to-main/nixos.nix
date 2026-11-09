@@ -86,8 +86,9 @@ in
       # has touched a key or the pointer for two minutes, which swayidle
       # marks (../swayidle/home.nix). That evening no such gap came for two
       # hours while 26 merges waited, so after 45 minutes it waits only
-      # for the launcher to close, which the shell marks, and for no call.
-      # A machine without the marks never waits.
+      # for the launcher to close, which the shell writes in its
+      # quickshell-launcher file, and for no call. A machine without the
+      # marks never waits.
       {
         command = [
           "${pkgs.writeShellScript "update-to-main-someone-is-here" ''
@@ -104,8 +105,8 @@ in
       {
         command = [
           "${pkgs.writeShellScript "update-to-main-the-launcher-is-open" ''
-            for mark in /run/user/*/the-launcher-is-open; do
-              test -e "$mark" && exit 0
+            for mark in /run/user/*/quickshell-launcher; do
+              ${lib.getExe pkgs.gnugrep} -qx open "$mark" 2>/dev/null && exit 0
             done
             exit 1
           ''}"
