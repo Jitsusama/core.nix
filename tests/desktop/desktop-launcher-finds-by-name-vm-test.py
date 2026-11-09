@@ -293,7 +293,7 @@ def test_the_launcher_lists_each_thing_once_for_everything_joel_types(desktop: D
 
 
 def finds_where_the_notices_went(desktop: Desktop) -> None:
-    """The words of the notices' place find where they went, For You's Desktop.
+    """Find where the notices went, For You's Desktop, by their place's words.
 
     Said where it is, Return steps in as Super+N does, unread or not, and - climbs back out
     the way it stepped in, through For You (VKCF3Z, 2026-11-09: a rename never loses a row).
