@@ -451,7 +451,7 @@ mod tests {
         let branch = WORDS.replace("\"1\"", "\"one\"");
         let main = WORDS.replace("[\n", "[\n{\"id\": \"new\"}, ");
         let head = main.replace("\"1\"", "\"one\"");
-        assert!(apart(WORDS, &branch, &main, &head));
+        assert!(apart(WORDS, &branch, &main, &head), "main added a thing");
         let main = WORDS.replace("[\"on\"]", "[\"on\", \"off\"]");
         let head = main.replace("\"1\"", "\"one\"");
         assert!(
