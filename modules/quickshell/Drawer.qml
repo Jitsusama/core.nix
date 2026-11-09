@@ -1956,11 +1956,23 @@ Floating {
                     id: factsShown
                     width: parent.width
                     visible: drawer.facts.length > 0
+                    // Whole lines, however many beats its things stand
+                    // apart, so what follows starts on a line the view's
+                    // tops count from (stops, viewEnd): two facts a beat
+                    // apart left the words half a line off them, and the
+                    // keys could scroll none of the words into view.
+                    bottomPadding: Math.ceil(factRows.taken() / drawer.pitch - drawer.rounding)
+                        * drawer.pitch - factRows.taken()
 
                     Repeater {
                         id: factRows
                         model: drawer.facts
                         readonly property bool wraps: drawer.anyWraps(factRows)
+                        // How tall its facts stand together.
+                        function taken() {
+                            return Array.from({ length: count }, (_, at) => itemAt(at))
+                                .reduce((sum, row) => sum + (row?.height ?? 0), 0);
+                        }
                         // Every fact's name and value, for the keys' lines.
                         function texts() {
                             return [].concat(...Array.from({ length: count }, (_, at) => {
