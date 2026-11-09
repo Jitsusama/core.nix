@@ -54,6 +54,9 @@ SIGNED_OUT = os.environ.get("GOOGLE_STAND_IN_ACCOUNT") == "signedOut"
 AHEAD = 30 * MINUTE
 LATER = 120 * MINUTE
 LASTS = 30 * MINUTE
+# What Drive's copies kept here take, and the most they may before the oldest go, in bytes.
+KEPT_HELD = 412_000_000
+KEPT_MOST = 2_000_000_000
 
 
 def held(key: str, name: str, kind: str, mime: str, size: int | None) -> dict[str, object]:
@@ -319,6 +322,8 @@ class Account:
             "shared": {"files": documents[1:], "more": False},
             "drives": {"files": [team], "more": False},
         }
+        # What Drive's copies here take and may, in bytes (src/drive.rs's Kept).
+        self.kept = {"held": KEPT_HELD, "most": KEPT_MOST}
         self.heard = now
         # The file last asked to be fetched, as the program says it (src/files.rs).
         self.fetched: dict[str, object] | None = None
@@ -358,6 +363,7 @@ class Account:
                 "downloads": self.downloads,
                 "uploads": [],
                 "places": self.places,
+                "kept": self.kept,
             },
         }
 
