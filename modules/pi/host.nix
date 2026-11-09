@@ -46,7 +46,7 @@ let
         Type = "notify";
         NotifyAccess = "all";
         ExecStart = lib.escapeShellArgs [
-          "${host.runtime}/libexec/pi-host/node"
+          host.node
           # The harness's package.json names no module type, on purpose.
           "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON"
           entry
@@ -58,7 +58,7 @@ let
             MYCELIUM_REALM = realm;
             # pi reads its own files from here, and a subagent a hosted
             # conversation starts runs this pi too.
-            PI_PACKAGE_DIR = "${host.runtime}/lib/node_modules/pi-monorepo";
+            PI_PACKAGE_DIR = host.pi;
           }
           // lib.optionalAttrs (homeRealm != null) { PI_HOME_REALM = homeRealm; }
         );
@@ -84,11 +84,18 @@ in
     type = lib.types.attrsOf (
       lib.types.submodule {
         options = {
-          runtime = lib.mkOption {
-            type = lib.types.package;
+          pi = lib.mkOption {
+            type = lib.types.path;
             description = ''
-              pi built with the host's patches, with the node it was built with
-              linked at libexec/pi-host/node. The host refuses a pi without them.
+              The package directory of a pi built with the host's patches, where
+              its dist and node_modules are. The host refuses a pi without them.
+            '';
+          };
+          node = lib.mkOption {
+            type = lib.types.path;
+            description = ''
+              The node that pi was built with, which its native modules are
+              built for; the host runs on it.
             '';
           };
           environment = lib.mkOption {

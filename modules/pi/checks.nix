@@ -364,10 +364,11 @@ in
   # and a Mac, get no host.
   pi-hosts-start-with-the-session =
     let
-      runtime = pkgs.emptyDirectory;
+      pi = "${pkgs.emptyDirectory}/pi";
+      node = "${pkgs.emptyDirectory}/node";
       hosts = {
         one = {
-          inherit runtime;
+          inherit pi node;
           environment.PROXY_ORIGIN = "https://proxy.example.com";
         };
       };
@@ -392,11 +393,11 @@ in
         && unit.Service.Slice == "agents.slice"
         && unit.Unit.X-SwitchMethod == "keep-old"
         && unit.Install.WantedBy == [ "default.target" ]
-        && lib.hasPrefix "${runtime}/libexec/pi-host/node " (first unit.Service.ExecStart)
+        && lib.hasPrefix "${node} " (first unit.Service.ExecStart)
         && lib.hasSuffix "/scripts/pi-host.ts ${kind}" (first unit.Service.ExecStart)
         && lib.hasSuffix "/scripts/pi-host.ts" (first unit.Unit.ConditionPathExists)
         && lib.elem "MYCELIUM_REALM=one" environment
-        && lib.elem "PI_PACKAGE_DIR=${runtime}/lib/node_modules/pi-monorepo" environment
+        && lib.elem "PI_PACKAGE_DIR=${pi}" environment
         && lib.elem "PROXY_ORIGIN=https://proxy.example.com" environment;
       hostsIn = services: lib.filter (lib.hasPrefix "pi-host-") (lib.attrNames services);
     in

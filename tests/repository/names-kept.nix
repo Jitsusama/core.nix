@@ -15,10 +15,13 @@
     "jitsusama.kernel.cpu" = "the CPU Clang's -march and -mtune name, in Clang's word";
     "jitsusama.kernel.packageOverlays" = "an overlay is Nix's, not a meter";
     "jitsusama.keys.google-drive" = "Google Drive's keys, as Google names its file store, not a disk";
+    "jitsusama.pi.hosts" =
+      "a pi host is the harness's process holding many pi conversations, not a machine";
     "jitsusama.theme.icons" = "the icon theme is GTK's, named as it names it";
     "jitsusama.theme.palette" = "a theme's palette is its colours, not the launcher";
     "jitsusama.theme.syntax.operator" = "an operator is a code token, such as =, not a person";
     linux-builder-lets-only-those-named-restart-it = "a VM and a service restart; the Mac isn't rebooted";
+    pi-hosts-start-with-the-session = "a pi host is the harness's process holding many pi conversations, not a machine";
     platform-profiles-reach-the-legacy-file = "the kernel's platform_profile file, by its name";
     quickshell-restarts-with-its-files = "a program restarts; the machine isn't rebooted";
     the-panel-slows-on-a-low-battery = "the panel's refresh rate slows, not lag";
