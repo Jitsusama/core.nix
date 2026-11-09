@@ -1732,16 +1732,11 @@ def each_read_cold(desktop: Desktop) -> None:
 
     networks = rows("network", "wi-fi")
     if "Office" not in networks:
-        # What wifid, wpa_supplicant and the shell said of the look, and how long it took.
-        for unit in ("wifid", "wpa_supplicant"):
-            print(machine.execute(f"journalctl -b --unit={unit} --lines=15 --no-pager")[1])
+        # What wifid and the shell said of the look, to say why.
+        print(machine.execute("journalctl -b --unit=wifid --lines=15 --no-pager")[1])
         shell = "journalctl --user --unit=quickshell --no-pager"
         print(desktop.as_account(f"{shell} | grep wifi || true"))
         print(machine.execute(f"{wifi}.Describe '{{}}'")[1])
-        machine.wait_until_succeeds(
-            desktop.in_session("launcher show network wi-fi | grep -q Office"),
-            timeout=dt.timedelta(seconds=30),
-        )
     assert "Office" in networks, networks
     firmware = rows("machine", "firmware")
     assert "System Firmware" in firmware, firmware
