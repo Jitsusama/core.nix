@@ -29,9 +29,9 @@
 // how an input device's kernel side says it's carried, holding its
 // buttons, wheel or keys and ids (from desk-facts); whether it Reconnects
 // by itself and Wakes the machine, settings whose two choices are a step
-// in; and its Address, which Return copies. The Adapter holds its Radio,
+// in; and its Hardware Address, which Return copies. The Adapter holds its Radio,
 // whether it's Visible to others and Pairable, as settings, then its
-// Traffic as a spark, its Name, Address, Version and Chip.
+// Traffic as a spark, its Name, Hardware Address, Version and Chip.
 //
 // BlueZ says nothing of a link's signal, quality, channels or how it's
 // held, nor of an adapter's traffic, address or version, so they're from

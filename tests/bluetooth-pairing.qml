@@ -12,9 +12,10 @@
 // its Connection; a connected mouse's Input, from the bluetooth.json the
 // check puts where desk-facts would, holding its other facts as parts in
 // the file's order; whether it Reconnects by itself and Wakes the machine,
-// each a setting whose choices set it; and its Address, which Return
+// each a setting whose choices set it; and its Hardware Address, which Return
 // copies. The adapter holds its Radio, Visible to others and Pairable as
-// settings, its Traffic as a spark, and its Name, Address, Version and Chip.
+// settings, its Traffic as a spark, and its Name, Hardware Address, Version and
+// Chip.
 // A device the devices piece says is running low (the check's Facts.qml)
 // says so at its side, and one that isn't says it's connected.
 // How the links are doing is answered too; with no such file, neither the
@@ -282,7 +283,7 @@ ShellRoot {
         expect("a classic link's parts", said(parts) === ["Battery=15%", "Signal=in range",
             "Link Quality=90%", "Channels=61 of 79 clear",
             "Connection=Classic, central, encrypted", "Reconnects by Itself=yes",
-            `Address=${at}`].join(","), said(parts));
+            `Hardware Address=${at}`].join(","), said(parts));
         const figures = parts.slice(0, 5);
         expect("figures wear no glyph, and copy what they show", figures.every(row =>
             row.glyph === "" && row.verb === "copy"), "a figure wears a glyph or copies nothing");
@@ -370,7 +371,8 @@ ShellRoot {
     function adapterHolds() {
         const parts = bluetooth.adapterParts(radio);
         expect("the adapter's parts", said(parts) === ["Radio=on", "Visible to Others=no",
-            "Pairable=yes", "Traffic=12 kb/s", "Name=studio", "Address=02:00:00:00:00:01",
+            "Pairable=yes", "Traffic=12 kb/s", "Name=studio",
+            "Hardware Address=02:00:00:00:00:01",
             "Version=Bluetooth 6.0", "Model=Intel"].join(","), said(parts));
         expect("visible for a while", parts[1].note === "for 3 min once made visible",
             parts[1].note);
