@@ -2158,6 +2158,11 @@ QtObject {
         machine("unseen as words ask it with the launcher closed",
             Seen.seen(Object.assign({}, closed, { answer: null, typed: "heat" }), watcher, [],
                 asking), false);
+        machine("a question is asked whole", Seen.asks(["battery"], "battery"), true);
+        machine("a question is asked in the plural", Seen.asks(["fan"], "fans"), true);
+        machine("a question is asked by its start", Seen.asks(["battery"], "batt"), true);
+        machine("two letters start no question", Seen.asks(["battery"], "ba"), false);
+        machine("another word asks nothing", Seen.asks(["battery"], "heat"), false);
         machine("seen in a place holding it before its condition holds it back",
             Seen.seen(opened({ category: { holds: ["energy", "heat"] } }), watcher, ["heat"]),
             true);

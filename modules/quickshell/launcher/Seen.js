@@ -13,9 +13,17 @@ function isOf(row, provider, ids) {
     return !!row && (row.live === provider || ids.includes(row.category?.id ?? ""));
 }
 
+// Whether words typed, read plainly, ask one of `questions`, whole or in
+// the plural, or start one by three letters or more, as the launcher asks
+// "battery" of "batt" (Launcher.qml's answering).
+function asks(questions, text) {
+    return questions.some(question => question === text || `${question}s` === text
+        || (text.length >= 3 && question.startsWith(text)));
+}
+
 // Whether `provider`'s rows show in the open launcher: its answer, a row
 // of it stepped into or found, or a place shown holding one of `ids`, as
-// Machine holds Heat, or about to: what's typed asks it, by `asks`, a
+// Machine holds Heat, or about to: what's typed asks it, by `asking`, a
 // function of the words typed, since its answer is made only from what
 // its daemon says. A place's holdings count before their conditions
 // hold them back, since a row whose condition is what the daemon says,
@@ -23,7 +31,7 @@ function isOf(row, provider, ids) {
 // walked and listed as seen for a few seconds after it asks, where the
 // launcher keeps them (its `terminalSees`), so the terminal reads what
 // the open launcher would.
-function seen(launcher, provider, ids, asks) {
+function seen(launcher, provider, ids, asking) {
     if (!launcher) {
         return false;
     }
@@ -40,5 +48,5 @@ function seen(launcher, provider, ids, asks) {
         || launcher.matches.some(mine)
         || launcher.placed.some(id => ids.includes(id))
         || (launcher.category?.holds ?? []).some(id => ids.includes(id))
-        || (typeof asks === "function" && asks(launcher.typed ?? ""));
+        || (typeof asking === "function" && asking(launcher.typed ?? ""));
 }

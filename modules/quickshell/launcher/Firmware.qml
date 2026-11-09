@@ -52,7 +52,7 @@ Provider {
     // daemon asks fwupd only then and a change fwupd says is answered at
     // once.
     readonly property bool seen: Seen.seen(launcher, provider, ["firmware"],
-        typed => fwupdmgr !== "" && asks(typed) !== "")
+        typed => fwupdmgr !== "" && Seen.asks(questions, plainly(typed)))
 
     // Whether the daemon hasn't yet answered this watch whole, so a
     // terminal's show asks again for the figures rather than printing
@@ -83,8 +83,8 @@ Provider {
             rows: [],
             asking: true,
             glyph: Words.glyph("firmware"),
-            live: provider,
-            note: ""
+            note: "",
+            live: provider
         };
     }
 
@@ -100,8 +100,11 @@ Provider {
             glyph: Words.glyph("firmware"),
             rows: devices.map(device => provider.deviceRow(device))
                 .concat(host?.security ? [provider.securityRow(host)] : []),
-            live: provider,
-            note: ""
+            note: "",
+            // Its answer and each row are Firmware's, so the daemon is
+            // watched while one is stepped into (Seen.js), and an install's
+            // history is heard there.
+            live: provider
         };
     }
 
@@ -126,7 +129,8 @@ Provider {
             note: "",
             warns: device.offered !== null,
             glyph: Words.glyph("firmware"),
-            drawer: () => provider.drawerOf(device)
+            drawer: () => provider.drawerOf(device),
+            live: provider
         }, () => provider.inside(device));
     }
 
@@ -149,6 +153,7 @@ Provider {
             side: level,
             note: level.endsWith("!") ? said.running : said.level,
             glyph: Words.glyph("firmware"),
+            live: provider,
             drawer: () => ({ title: Words.name(id), facts: facts, body: "" })
         }, () => [copyRow({
             key: `${id}:level`,

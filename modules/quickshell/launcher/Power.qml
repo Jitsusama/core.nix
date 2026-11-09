@@ -113,7 +113,7 @@ Provider {
     // row that says how it stands, so the daemon reads the supplies only
     // then.
     readonly property bool seen: Seen.seen(launcher, provider, ["energy", "power"],
-        typed => asks(typed) !== "")
+        typed => Seen.asks(questions, plainly(typed)))
 
     // Whether the daemon hasn't yet answered this watch whole, so a
     // terminal's show asks again for the figures rather than printing
