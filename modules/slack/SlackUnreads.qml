@@ -3,9 +3,8 @@ pragma Singleton
 // serves it on its socket (src/daemon.rs): one connection, watching every
 // slack-unread, slack-recent, slack-message and slack-account record, each
 // change heard as Slack's daemon hears it, so nothing here keeps a clock.
-// What's held
-// is let go once the daemon stops answering, so no count outlives it.
-// What it says and how it stands are SlackUnreads.js's.
+// What's held is let go once the daemon stops answering, so no count
+// outlives it. What it says and how it stands are SlackUnreads.js's.
 import Quickshell
 import QtQuick
 import "SlackUnreads.js" as Unreads

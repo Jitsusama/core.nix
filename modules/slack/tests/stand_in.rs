@@ -667,6 +667,16 @@ fn what_wants_joel_is_held_whole_each_conversation_named_once() {
 fn searching(line: &str) -> String {
     if line.contains("search.messages") && line.contains("query=busy") {
         r#"{"ok": false, "error": "ratelimited"}"#.into()
+    } else if line.contains("search.messages") && line.contains("query=grace") {
+        concat!(
+            r#"{"ok": true, "messages": {"matches": [{"channel": {"id": "C1","#,
+            r#""is_channel": true, "name": "launcher"}, "ts": "1730300002.000100","#,
+            r#""user": "U8", "username": "grace", "text": "Grace was here","#,
+            r#""permalink": "https://slack/p2"}]}}"#
+        )
+        .into()
+    } else if line.contains("users.info?user=U8") {
+        r#"{"ok": false, "error": "user_not_found"}"#.into()
     } else if line.contains("search.messages") {
         concat!(
             r#"{"ok": true, "messages": {"matches": [{"channel": {"id": "C1","#,
@@ -779,6 +789,23 @@ fn a_search_asked_over_the_socket_says_each_message_and_what_is_around_it() {
         &serde_json::json!({"id": 4, "ask": "search", "words": "busy"}),
     );
     assert_eq!(busy["error"]["code"], "too-many");
+    // Someone Slack won't name keeps their handle, and the search answers.
+    let refused = asked(
+        &run,
+        &serde_json::json!({"id": 5, "ask": "search", "words": "grace"}),
+    );
+    assert_eq!(refused["records"][0]["who"], "grace", "{refused}");
+    // Ada, named once, is never asked for again.
+    asked(
+        &run,
+        &serde_json::json!({"id": 6, "ask": "search", "words": "launcher"}),
+    );
+    let asked_for_ada = stand_in
+        .heard()
+        .iter()
+        .filter(|heard| heard.line.contains("users.info?user=U9"))
+        .count();
+    assert_eq!(asked_for_ada, 1, "{:?}", stand_in.heard());
     program.kill().unwrap();
     program.wait().unwrap();
     // Still only reading.

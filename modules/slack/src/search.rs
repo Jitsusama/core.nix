@@ -1,12 +1,14 @@
 //! Search Slack, for the launcher's "Search Slack for ‹words›" (VKCF3Z,
 //! d7c0f933): one ask of `search.messages` for what Joel typed, each match
-//! a Slack message whose people `users.info` names, and for one of them
-//! the few messages around it, read with `conversations.history`. All
-//! answer the browser's sign-in on a grid. Only ever read.
+//! a Slack message whose people `users.info` names, once a run for the
+//! daemon's rounds and searches alike, and for one of them the few
+//! messages around it, read with `conversations.history`. All answer the
+//! browser's sign-in on a grid. Only ever read.
 
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::messages::People;
 use crate::{Account, FIRST_WORDS, LONGEST, Refused, Slack, cut, millis, plain};
 
 /// How many matches a search says.
@@ -30,7 +32,7 @@ pub struct Found {
     pub place: String,
     /// Who said it, by their name as `users.info` gives it, as a message
     /// held for Joel is named, so the one message has one name; their
-    /// handle until the search asks.
+    /// handle until the search asks, and where Slack can't say.
     pub who: String,
     /// Who said it, by their id, by which the search names them.
     #[serde(skip)]
@@ -144,12 +146,19 @@ pub fn found(said: &Value, me: &str) -> Result<Vec<Found>, Failed> {
             } else {
                 format!("#{name}")
             };
+            // A bot's message is named as a held one is, by the name Slack
+            // gives the bot, and asks nobody (messages.rs's `by`).
+            let bot = one
+                .pointer("/bot_profile/name")
+                .and_then(Value::as_str)
+                .filter(|name| !name.is_empty());
+            let by_bot = bot.is_some() || !text("bot_id").is_empty();
             Some(Found {
                 key: key(id, ts),
                 kind: "slack-message",
                 place,
-                who: text("username").to_owned(),
-                user: text("user").to_owned(),
+                who: bot.unwrap_or_else(|| text("username")).to_owned(),
+                user: if by_bot { "" } else { text("user") }.to_owned(),
                 mine: !me.is_empty() && text("user") == me,
                 first: cut(words.lines().next().unwrap_or_default(), FIRST_WORDS),
                 text: cut(&words, LONGEST),
@@ -173,6 +182,12 @@ pub fn found(said: &Value, me: &str) -> Result<Vec<Found>, Failed> {
 /// A person's name in Slack from `users.info`, their handle when their
 /// profile names nobody, or Slack's own word when it says nothing.
 pub(crate) fn named_in(user: &Value) -> String {
+    name_in(user).unwrap_or_else(|| "Slack".to_owned())
+}
+
+/// A person's name in Slack from `users.info`, or their handle when their
+/// profile names nobody; none when it says neither, as a refusal doesn't.
+pub(crate) fn name_in(user: &Value) -> Option<String> {
     let said = |at: &str| {
         user.pointer(at)
             .and_then(Value::as_str)
@@ -181,8 +196,7 @@ pub(crate) fn named_in(user: &Value) -> String {
     said("/user/profile/real_name")
         .or_else(|| said("/user/real_name"))
         .or_else(|| said("/user/name"))
-        .unwrap_or("Slack")
-        .to_owned()
+        .map(str::to_owned)
 }
 
 /// The messages of a conversation's history, newest first as Slack gives
@@ -223,12 +237,18 @@ pub fn around(before: &Value, after: &Value, ts: &str, me: &str) -> Result<Vec<N
 }
 
 impl Slack {
-    /// What Joel's words find in Slack.
+    /// What Joel's words find in Slack, naming people from `people`, which
+    /// the daemon's rounds fill too, and keeping there those it asks for.
     ///
     /// # Errors
     ///
     /// Why Slack said nothing.
-    pub fn search(&self, account: &Account, words: &str) -> Result<Vec<Found>, Failed> {
+    pub fn search(
+        &self,
+        account: &Account,
+        words: &str,
+        people: &People,
+    ) -> Result<Vec<Found>, Failed> {
         let said = self.ask(
             account,
             "search.messages",
@@ -239,24 +259,31 @@ impl Slack {
         for one in found.iter_mut().filter(|one| one.team.is_empty()) {
             one.team.clone_from(&account.team);
         }
-        // Each person a search names, asked once a search: who said each
-        // message but Joel, and each direct message's other person.
-        let mut names: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-        let mut name = |id: &str| -> Result<String, Failed> {
-            if let Some(known) = names.get(id) {
-                return Ok(known.clone());
+        // Who each person is, asked only of those no round or search has
+        // named yet: who said each message but Joel, and each direct
+        // message's other person.
+        let ask = |id: &str| -> Result<Option<String>, Failed> {
+            if let Some(known) = people.get(id) {
+                return Ok(Some(known));
             }
             let user = self.ask(account, "users.info", &[("user", id)])?;
-            let person = named_in(&user);
-            names.insert(id.to_owned(), person.clone());
+            let person = name_in(&user);
+            if let Some(person) = &person {
+                people.keep(id, person);
+            }
             Ok(person)
         };
         for one in &mut found {
-            if !one.mine && !one.user.is_empty() {
-                one.who = name(&one.user)?;
+            // A sender Slack can't say now, too busy or refusing, keeps
+            // their handle, so the search still answers.
+            if !one.mine
+                && !one.user.is_empty()
+                && let Ok(Some(person)) = ask(&one.user)
+            {
+                one.who = person;
             }
             if !one.with.is_empty() {
-                one.place = name(&one.with)?;
+                one.place = ask(&one.with)?.unwrap_or_else(|| "Slack".to_owned());
             }
         }
         Ok(found)
@@ -329,6 +356,30 @@ mod tests {
         let ada = json!({"ok": true, "user": {"name": "ada", "profile": {"real_name": "Ada L"}}});
         assert_eq!(named_in(&ada), "Ada L");
         assert_eq!(named_in(&json!({"ok": false})), "Slack");
+        assert_eq!(
+            name_in(&json!({"ok": false})),
+            None,
+            "a refusal names nobody"
+        );
+    }
+
+    #[test]
+    fn a_bots_message_is_named_by_the_bot_and_asks_nobody() {
+        let said = json!({"ok": true, "messages": {"matches": [
+            {"channel": {"id": "C1", "is_channel": true, "name": "deploys"},
+             "ts": "1730300000.000100", "user": "B9", "username": "deploys",
+             "bot_id": "B9", "bot_profile": {"name": "Merge Garden"}, "text": "merged"},
+            {"channel": {"id": "C1", "is_channel": true, "name": "deploys"},
+             "ts": "1730300001.000100", "user": "B8", "username": "pager",
+             "bot_id": "B8", "text": "paged"}
+        ]}});
+        let found = found(&said, "U0").unwrap();
+        let named: Vec<(&str, &str)> = found
+            .iter()
+            .map(|one| (one.who.as_str(), one.user.as_str()))
+            .collect();
+        // As a held one's `by`: its profile's name, else its handle.
+        assert_eq!(named, [("Merge Garden", ""), ("pager", "")]);
     }
 
     #[test]
