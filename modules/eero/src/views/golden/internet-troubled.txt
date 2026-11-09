@@ -22,7 +22,10 @@ settings
   NAT port randomization  off
   band steering           on
   WPA3                    off
+  security                2.4 GHz WPA2 · 5 GHz WPA2
   Wi-Fi mode              default
+  802.11ac compatibility  off
+  name clash              no
   MLO mode                disabled
   DDNS                    off
   backup internet         on
@@ -44,6 +47,14 @@ Thread
 guest network
   state  off
   name   name 49
+
+addresses
+  main           10.0.0.0/22 · DHCP 10.0.0.20 to 10.0.0.254
+  guest          10.0.0.0/21 · DHCP 10.0.0.20 to 10.0.0.254 · no internet · open
+  reserved       10.0.0.208 · network equipment 1
+  reserved       10.0.0.30 · printer 1 · label office printer
+  forwards       none
+  IPv6 pinholes  none
 
 counted
   nodes    2 online · 1 offline
