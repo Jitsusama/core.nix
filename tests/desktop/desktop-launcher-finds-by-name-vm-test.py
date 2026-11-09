@@ -1686,11 +1686,13 @@ def a_terminal_is_shown_warp(desktop: Desktop) -> None:
 def reads_cold_for_a_terminal(desktop: Desktop) -> None:
     """With the launcher closed, a terminal is shown what's read only once it's asked for.
 
-    Wi-Fi looks for networks, Firmware asks fwupd, and a keyboard's and a camera's drawers
-    read their files, each only while something sees them: here a terminal's show does.
+    Wi-Fi looks for networks, Firmware asks fwupd, and a keyboard's, a camera's and a
+    screen's drawers read their files, each only while something sees them: here a
+    terminal's show does.
     Each is asked once, so it's said within the terminal's own wait or not at all, and from
     nothing read: the cards first forget what earlier looks heard until wifid says none
-    nearby, and caps lock going on has a keyboard's drawer read again.
+    nearby, the backlight is set to a share nothing has read, and caps lock going on has a
+    keyboard's drawer read again.
     """
     desktop.launcher_left_closed()
     machine = desktop.machine
@@ -1719,6 +1721,18 @@ def reads_cold_for_a_terminal(desktop: Desktop) -> None:
     assert "System Firmware" in firmware, firmware
     cameras = rows("machine", "cameras")
     assert cameras["Built-In Camera"].get("drawer"), cameras
+    # The stand-in backlight set to a share nothing has read, which a screen's drawer says
+    # only from a read the show starts; it goes to 100, so a step is a share.
+    backlight = "/sys/class/backlight/stand-in/brightness"
+    before = machine.succeed(f"cat {backlight}").strip()
+    share = "38" if before == "37" else "37"
+    machine.succeed(f"echo {share} > {backlight}")
+    try:
+        drawer = rows("desktop", "screens")["Smithay Winit"].get("drawer") or {}
+        lit = {fact.get("label"): fact.get("value") for fact in drawer.get("facts", [])}
+        assert lit.get("Brightness") == f"{share}%", drawer
+    finally:
+        machine.succeed(f"echo {before} > {backlight}")
     # Keyboards' row says caps lock from the lights alone, never reading a drawer.
     machine.send_key("caps_lock")
     try:
