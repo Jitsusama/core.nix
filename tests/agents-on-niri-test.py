@@ -646,9 +646,15 @@ def test_recent_holds_the_sessions_closed_this_boot_after_landed_and_before_star
     rows = shell.showing()["rows"]
     assert rows.index("Landed") < rows.index("Recent") < rows.index("Start a Session"), rows
     shell.down_to("Recent")
-    # Its name after Recent's, how many at its right.
+    # Nothing after Recent's name, how many at its right, and its sessions in its drawer, a
+    # place's (VKCF3Z, dafc2199).
     recent = shell.showing()["selected"]
-    assert (recent["count"], recent["side"]) == ("Closed Quest", "1"), recent
+    assert (recent["count"], recent["side"]) == ("", "1"), recent
+    shell.launcher_until(
+        lambda shown: (
+            (shown["drawer"]["eyebrow"], shown["drawer"]["body"]) == ("place", "Closed Quest")
+        )
+    )
     shell.step_in()
     # Only the one closed: the last boot's are Sessions to Reopen's, and the closed
     # orchestrators stand at the tree's end.

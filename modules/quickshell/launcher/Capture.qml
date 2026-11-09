@@ -348,9 +348,9 @@ Provider {
             hue: "program",
             // How many at its right, where a row's figure stands (VKCF3Z,
             // 2026-11-05: one place for each kind of fact), and their names
-            // after its own, as every Recent says.
+            // in its drawer, as every Recent says (VKCF3Z, dafc2199).
             side: stands.side,
-            count: stands.note,
+            heldNames: stands.held,
             ask: "which?",
             empty: Words.of("capture:recent").empty
         }), () => provider.taken.map(path => provider.takenRow(path, ""))), {

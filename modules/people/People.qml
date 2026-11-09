@@ -444,20 +444,20 @@ Provider {
                 row: one.row }))), []).map(one => one.row);
         const stands = Recent.said(rows.map(row => row.name), false,
             Words.of("person:recent").said);
-        return [holding("person:recent", rows, stands.side, stands.note)];
+        return [holding("person:recent", rows, stands.side, stands.held)];
     }
 
     // Their Unread: what of theirs waits on Joel, unread mail, newest
     // first, standing only while there's any, how many at its side and
-    // their names after its name, as many whole as fit, as Recent's and
-    // Slack's Unread say theirs. It comes before Recent, which holds only
+    // their names in its drawer, as Recent's and Slack's Unread say
+    // theirs. It comes before Recent, which holds only
     // what he's had with them.
     function unread(person) {
         const rows = [].concat(...sources.map(source => source.unread(person, provider)))
             .sort((a, b) => b.at - a.at).map(one => one.row);
         const stands = Recent.said(rows.map(row => row.name), false, {});
         return rows.length === 0 ? []
-            : [holding("person:unread", rows, stands.side, stands.note)];
+            : [holding("person:unread", rows, stands.side, stands.held)];
     }
 
     // A row holding some of their things, by the words `key` names. Its
@@ -465,9 +465,10 @@ Provider {
     // Show in Calendar's are, so it steps in at any level: inside People, where a
     // row's insides are its verbs, and inside a person found from the top,
     // where they're its targets.
-    // Its note is drawn after its name, as what a row holds is (a row's
-    // `count`).
-    function holding(key, rows, side, note) {
+    // It's a place, stepped into and holding rows, so it says nothing
+    // after its name and names what it holds in its drawer, `held`, as a
+    // place does (the launcher's `heldNames`; VKCF3Z, dafc2199).
+    function holding(key, rows, side, held) {
         const had = () => rows;
         const row = thing({
             key: key,
@@ -476,7 +477,7 @@ Provider {
             glyph: Words.glyph(key),
             hue: "person",
             side: side,
-            count: note,
+            heldNames: held,
             empty: Words.of(key).empty,
             nested: true,
             stays: true,

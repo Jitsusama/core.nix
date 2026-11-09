@@ -2155,7 +2155,8 @@
   recent-means-one-thing = ''
     Recent lists at most nine things, newest first across its sources, each once where it's
     newest, none already shown above it, an undated source after the dated in its own order, and
-    its row says how many and the first one's name, none while empty and an ellipsis while waiting,
+    its row says how many and holds their names for its drawer, none while empty and an ellipsis
+    while waiting,
     and a source's lines are read with their times apart, the shared list's by each program
   '';
   for-you-narrows-by-kind-and-source = ''

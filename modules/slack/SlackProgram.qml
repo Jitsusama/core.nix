@@ -77,10 +77,10 @@ Provider {
     }
 
     // Unread, which steps in to each conversation as it stands when
-    // stepped into. Its row reads as every row holding things does: their
-    // names after its name, as many whole as fit, and how many to read at
-    // its side, bare, since its name says what's counted, nothing in the
-    // foot (VKCF3Z, 2026-11-07 and 2026-11-08).
+    // stepped into. Its row reads as every place holding things does:
+    // nothing after its name, their names in its drawer, and how many to
+    // read at its side, bare, since its name says what's counted, nothing
+    // in the foot (VKCF3Z, 2026-11-07, 2026-11-08 and dafc2199).
     function unread() {
         const key = "slack:unread";
         return thing({
@@ -89,7 +89,7 @@ Provider {
             verb: Words.verb(key),
             glyph: Words.glyph(key),
             hue: "program",
-            count: Recent.said(SlackUnreads.unread.map(one => one.name), false, {}).note,
+            heldNames: Recent.said(SlackUnreads.unread.map(one => one.name), false, {}).held,
             side: SlackUnreads.counted,
             ask: "which?",
             nested: true,

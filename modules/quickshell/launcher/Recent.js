@@ -52,29 +52,23 @@ function listed(sources, shown, most) {
     return rows;
 }
 
-// How many characters Recent's note may take beside its name and side on
-// the launcher's card, where a provider can't measure the row it makes.
-const ROOM = 40;
-
 // What Recent's own row says of what it holds, given their names, newest
-// first, whether a source it waits on hasn't answered yet, its words, and
-// the room its note has: at its side how many, its words' `none` while it
-// holds nothing, and an ellipsis while it's still waiting, so the row
-// stands in its place from the first and never arrives late at the
-// bottom; as its note, drawn after its name as what a row holds is
-// (a row's `count`), the names, as many whole as fit, giving way by
-// whole names and never saying how many more, which the side already
-// says (VKCF3Z, 2026-11-07). The first is always named, cut by the row
-// where it's longer than the room.
-function said(names, waiting, words, room) {
+// first, whether a source it waits on hasn't answered yet, and its words:
+// at its side how many, its words' `none` while it holds nothing, and an
+// ellipsis while it's still waiting, so the row stands in its place from
+// the first and never arrives late at the bottom. Nothing after its name,
+// as no row says there: it's a place, stepped into and holding rows, so
+// its names, `held`, go in its drawer as a place's do (the launcher's
+// `heldNames`; VKCF3Z, dae7fb67, dafc2199).
+function said(names, waiting, words) {
     const count = names.length;
     if (waiting && count === 0) {
-        return { side: "\u2026", note: "" };
+        return { side: "\u2026", held: [] };
     }
     if (count === 0) {
-        return { side: words?.none ?? "", note: "" };
+        return { side: words?.none ?? "", held: [] };
     }
-    return { side: String(count), note: noted(names, room ?? ROOM) };
+    return { side: String(count), held: names.slice() };
 }
 
 // What a thing taken says at its right in Capture's Recent: when it was
@@ -110,17 +104,4 @@ function takenEyebrow(folder, kind, words) {
         eyebrowItems: items,
         eyebrowNames: true
     };
-}
-
-// The names that fit in `room`, whole, the first always.
-function noted(names, room) {
-    let note = names[0];
-    for (let at = 1; at < names.length; at += 1) {
-        const next = `${note}, ${names[at]}`;
-        if (next.length > room) {
-            return note;
-        }
-        note = next;
-    }
-    return note;
 }

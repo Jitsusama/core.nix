@@ -6501,7 +6501,8 @@ Scope {
     function drawerOf(row, told) {
         if (!drawable(row))
             return null;
-        const own = typeof row.drawer === "function" ? row.drawer() : row.drawer;
+        const own = typeof row.drawer === "function" ? row.drawer()
+            : row.drawer ?? heldDrawer(row);
         if (told && typeof row.drawerUnread === "function" && row.drawerUnread())
             told.unread = true;
         const drawer = own ? own : { title: row.name, body: row.reads ?? "",
@@ -6513,10 +6514,21 @@ Scope {
     // Whether a row has a drawer: a thing, a plated row such as Now at
     // home, or a place, whose drawer names what it holds (PlaceRow.js), its
     // row saying nothing after its name, so one key onto it shows what's
-    // inside (VKCF3Z, dae7fb67). A place stays no thing (detailed).
+    // inside (VKCF3Z, dae7fb67), a Recent or an Unread inside another
+    // place included (heldDrawer). A place stays no thing (detailed).
     function drawable(row) {
         return detailed(row) || row?.plated === true
-            || (!!(row?.opens || row?.category) && !!row.drawer);
+            || (!!(row?.opens || row?.category) && !!row.drawer)
+            || heldDrawer(row) !== null;
+    }
+
+    // The drawer of a place inside another, a Recent or an Unread, which
+    // gives the names of what it holds as `heldNames` rather than after
+    // its name: a place's, with the same eyebrow, since whose it is is
+    // the head's path above it (VKCF3Z, dafc2199). Null for any other row.
+    function heldDrawer(row) {
+        const names = row?.heldNames;
+        return Array.isArray(names) ? PlaceRow.drawer(row.name, names, placeSaid) : null;
     }
 
     // Whether a row is a thing with details, by its kind rather than by

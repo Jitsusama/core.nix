@@ -66,24 +66,21 @@ QtObject {
         check(failures, "or as many as asked", read(Recent.listed([many], [], 2)), "a b");
 
         const words = { none: "none" };
-        check(failures, "its row says how many, and their names",
+        // Its names go in its drawer, as a place's do, never after its name
+        // (VKCF3Z, dafc2199).
+        check(failures, "its row says how many, and holds their names for its drawer",
             JSON.stringify(Recent.said(["Wikipedia", "Kayak"], false, words)),
-            JSON.stringify({ side: "2", note: "Wikipedia, Kayak" }));
+            JSON.stringify({ side: "2", held: ["Wikipedia", "Kayak"] }));
         const nine = ["Wikipedia", "Kayak", "Maps", "Mail", "Docs", "News", "Weather",
             "Photos", "Music"];
-        check(failures, "as many names whole as fit, never how many more",
-            Recent.said(nine, false, words, 30).note, "Wikipedia, Kayak, Maps, Mail");
-        check(failures, "every name where they all fit",
-            Recent.said(["Wikipedia", "Kayak", "Maps"], false, words, 22).note,
-            "Wikipedia, Kayak, Maps");
-        check(failures, "the first always named, though it alone is longer",
-            Recent.said(nine, false, words, 5).note, "Wikipedia");
+        check(failures, "every name, however many, in its own order",
+            Recent.said(nine, false, words).held.join(" "), nine.join(" "));
         check(failures, "it says none while it holds nothing",
             JSON.stringify(Recent.said([], false, words)),
-            JSON.stringify({ side: "none", note: "" }));
+            JSON.stringify({ side: "none", held: [] }));
         check(failures, "and waits while a source hasn't answered",
             JSON.stringify(Recent.said([], true, words)),
-            JSON.stringify({ side: "\u2026", note: "" }));
+            JSON.stringify({ side: "\u2026", held: [] }));
         check(failures, "what one source already gave is said while another is asked",
             Recent.said(["a", "b"], true, words).side, "2");
 
