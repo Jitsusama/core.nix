@@ -166,8 +166,22 @@ as two of his favourites did. Two properties do it, and nothing else should:
 **Dark and light.** Both looks are in `theme.css`, chosen by the reader's
 system, dark when it says nothing. Give every site the three-way switch he
 asked for, "a 3way with icons toggle, auto/dark/light, and make sure it looks
-spiffy" (2026-10-02): `craft.md` has it, applied before the first paint so
-nothing flashes. A site that is dark only sets `data-theme="dark"` on `<html>`.
+spiffy" (2026-10-02): Light, Match System and Dark, in the page's head,
+applied before the first paint so nothing flashes (`craft.md` has it). A site
+that is dark only sets `data-theme="dark"` on `<html>`.
+
+**The page to build like is omni-ref**, the proposal headed "From one ref to
+many.": "i like how [it] updated itself with different light styles and the
+? help, i think that should be good general guidance for any page we create"
+(2026-11-08). Every page, either kind, does what it does:
+
+- **One quiet line under its head says how to move**: "j and k step from part
+  to part, and ? lists every key", in Note, muted, the keys drawn as keycaps.
+- **? opens a Keys list** and closes it again: j next part, k previous, g
+  first, G last, ? this list, Escape closing it too. An interface's list adds
+  its own keys after these.
+- **The three-way switch sits in the head**, under that line, Match System
+  chosen until the reader picks, and remembered across visits.
 
 ## What Holds on Every Site
 
@@ -328,7 +342,7 @@ Each rule says why, in his words where he said it.
   and Ctrl+K (Cmd+K on a Mac) opens the same palette, the web's own key for
   it.
   Space ? and F1 open the keys, as on the desktop. On a page to read, j and k
-  step section to section.
+  step part to part, g and G go to the first and last, and ? lists them.
 - **? opens the keys too, a departure from Vim**, where it finds upward: a
   site's / narrows without a direction, which leaves ? free, and he reaches
   for it there: "? doesn't seem to work on every page and works differently
@@ -433,7 +447,10 @@ Each rule says why, in his words where he said it.
   read: a row keeps its facts beside its title, not at the window's far edge;
   prose keeps its measure. One row grammar for the same thing everywhere.
   Teaching aids, key hints and legends sit a step away, shown on approach, not
-  at rest on the working surface.
+  at rest on the working surface. The one key line in a page's head is no
+  such hint: it's said once, above the work and apart from it, so a reader
+  who wasn't told learns ? exists, and it wins over this rule there alone.
+  Beside a row, a chart or a control, a hint still waits to be approached.
 - **Layers kept apart.** Places always show, at the top, at every width, never
   behind a menu or in a bottom bar: "ANY WINDOW WIDTH!" (2026-11-04). A way of
   seeing (list or chart) is a layer below places, secondary pages a quieter

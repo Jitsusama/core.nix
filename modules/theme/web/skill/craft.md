@@ -204,6 +204,39 @@ asked for. The last one Joel kept: auto in the middle, the thumb on
 `cubic-bezier(0.3, 1.4, 0.5, 1)`, applied before paint, a sweep on change:
 "nope, this is good, thanks!" (2026-10-02).
 
+## The Key Line and the Keys List
+
+As omni-ref has them. The line sits in the head, under the parts it steps
+between and above the switch, in Note and muted:
+
+```html
+<p class="keys"><kbd>j</kbd> and <kbd>k</kbd> step from part to part, and
+  <kbd>?</kbd> lists every key</p>
+```
+
+? opens the list and ? closes it; Escape closes it too, since it holds no
+work, and focus goes back where it was. A native `<dialog>`, opened with
+`showModal()`, gives the focus and the Escape for free:
+
+```html
+<dialog class="keypanel" id="keys" aria-labelledby="keys-h">
+  <h2 id="keys-h">Keys</h2>
+  <dl>
+    <div><dt><kbd>j</kbd></dt><dd>Next part</dd></div>
+    <div><dt><kbd>k</kbd></dt><dd>Previous part</dd></div>
+    <div><dt><kbd>g</kbd></dt><dd>First part</dd></div>
+    <div><dt><kbd>G</kbd></dt><dd>Last part</dd></div>
+    <div><dt><kbd>?</kbd></dt><dd>Show or hide this list; Escape closes it</dd></div>
+  </dl>
+</dialog>
+```
+
+A part is each numbered section the head lists; j and k scroll its heading
+to the top and move focus to it, so a screen reader follows. Without script
+the keys do nothing, so the line shows only once the head's script has set
+`class="js"` on `<html>`, before the first paint, and never promises a key
+that won't answer.
+
 ## Disclosure That Looks Like a Door
 
 ```html
