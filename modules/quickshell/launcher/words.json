@@ -1831,7 +1831,15 @@
         "power:limit",
         "power:temperature",
         "power:made"
-      ]
+      ],
+      "said": {
+        "full": "{time} to full",
+        "charging": "charging",
+        "empty": "{time} to empty",
+        "battery": "on battery",
+        "whole": "full",
+        "holding": "on power, holding"
+      }
     },
     {
       "id": "traffic",
@@ -2209,7 +2217,15 @@
       "once": ["Mains"],
       "in": "power",
       "name": "Charger",
-      "term": "Machine/charger"
+      "term": "Machine/charger",
+      "said": {
+        "charging": "{watts} W on port {n}",
+        "on": "on port {n}",
+        "plugged": "plugged in",
+        "none": "none plugged in",
+        "port": "one USB-C port",
+        "ports": "{count} USB-C ports"
+      }
     },
     {
       "id": "power:port",
@@ -2226,7 +2242,7 @@
       "id": "power:port:drawer",
       "in": "power:port",
       "said": {
-        "eyebrow": "on port {n} \u00b7 charger",
+        "eyebrow": "on this machine \u00b7 charger",
         "accessory": "{mode} accessory",
         "range": "{from} to {to} V",
         "at": "{offers} at {amps} A",
@@ -2284,7 +2300,10 @@
     {
       "id": "power:charge",
       "in": "power",
-      "name": "Charge"
+      "name": "Charge",
+      "said": {
+        "level": "its level {level}"
+      }
     },
     {
       "id": "power:rate",
@@ -2297,12 +2316,48 @@
       },
       "answers": [
         "power draw"
-      ]
+      ],
+      "said": {
+        "into": "into the battery",
+        "from": "from the battery"
+      }
     },
     {
       "id": "power:energy",
       "in": "power",
-      "name": "Energy"
+      "name": "Energy",
+      "said": {
+        "eyebrow": "on this machine \u00b7 battery",
+        "of": "{now} of {full} Wh",
+        "note": "now, of what it holds full",
+        "full": "what it holds full"
+      }
+    },
+    {
+      "id": "power:device",
+      "in": "power:energy",
+      "name": "Linux Name",
+      "term": "Machine/Linux name"
+    },
+    {
+      "id": "power:energy:charge",
+      "in": "power:energy",
+      "name": "Charge Now"
+    },
+    {
+      "id": "power:energy:full",
+      "in": "power:energy",
+      "name": "Charge Full"
+    },
+    {
+      "id": "power:energy:design",
+      "in": "power:energy",
+      "name": "Charge Designed"
+    },
+    {
+      "id": "power:energy:designed",
+      "in": "power:energy",
+      "name": "Energy Designed"
     },
     {
       "id": "power:voltage",
@@ -2310,7 +2365,10 @@
       "name": "Voltage",
       "answers": [
         "battery voltage"
-      ]
+      ],
+      "said": {
+        "designed": "{volts} V as designed"
+      }
     },
     {
       "id": "power:health",
@@ -2318,7 +2376,13 @@
       "name": "Health",
       "answers": [
         "battery health"
-      ]
+      ],
+      "said": {
+        "design": "{pct}% of design",
+        "cycle": "1 cycle",
+        "cycles": "{count} cycles",
+        "says": "the battery says it's {health}"
+      }
     },
     {
       "id": "power:cycles",
@@ -2334,7 +2398,10 @@
       "name": "Charge Type",
       "answers": [
         "charge type"
-      ]
+      ],
+      "said": {
+        "of": "of {some} and {last}"
+      }
     },
     {
       "id": "power:limit",
@@ -2342,13 +2409,22 @@
       "name": "Charge Limit",
       "answers": [
         "charge limit"
-      ]
+      ],
+      "said": {
+        "full": "charges fully",
+        "stop": "stops at {stop}%",
+        "both": "stops at {stop}%, starts below {start}%",
+        "firmware": "set in the firmware's settings"
+      }
     },
     {
       "id": "power:limit:stop",
       "in": "power:limit",
       "name": "Stop at {n}%",
-      "verb": "set"
+      "verb": "set",
+      "said": {
+        "chosen": "chosen"
+      }
     },
     {
       "id": "power:temperature",
@@ -2356,13 +2432,24 @@
       "name": "Temperature",
       "answers": [
         "battery temperature"
-      ]
+      ],
+      "said": {
+        "of": "of the {most} \u00b0C it's made to run at"
+      }
     },
     {
       "id": "power:model",
       "in": "power",
       "name": "Model",
-      "term": "Machine/model"
+      "term": "Machine/model",
+      "said": {
+        "eyebrow": "from {maker} \u00b7 battery"
+      }
+    },
+    {
+      "id": "power:serial",
+      "in": "power:model",
+      "name": "Serial"
     },
     {
       "id": "power:made",
@@ -2378,7 +2465,14 @@
       "glyph": "heat",
       "answers": [
         "heat"
-      ]
+      ],
+      "said": {
+        "hottest": "{degrees} at the {part}",
+        "stopped": "fans stopped",
+        "turning": "a fan turning",
+        "turnings": "{count} fans turning",
+        "read": "read just now"
+      }
     },
     {
       "id": "heat:processor",
@@ -2390,7 +2484,10 @@
       "id": "heat:cores",
       "in": "heat:processor",
       "name": "Cores",
-      "term": "Machine/core"
+      "term": "Machine/core",
+      "said": {
+        "hottest": "the hottest, core {n} at {degrees}"
+      }
     },
     {
       "id": "heat:core",
@@ -2404,18 +2501,33 @@
       "term": "Machine/throttled",
       "answers": [
         "throttled"
-      ]
+      ],
+      "said": {
+        "never": "never",
+        "once": "once",
+        "times": "{count} times",
+        "for": "for {time} in all, since the machine started",
+        "since": "since the machine started"
+      }
     },
     {
       "id": "heat:package",
       "in": "heat:throttled",
-      "name": "Whole Processor"
+      "name": "Whole Processor",
+      "said": {
+        "for": "for {time} in all",
+        "longest": "the longest {time}"
+      }
     },
     {
       "id": "heat:throttled-cores",
       "in": "heat:throttled",
       "name": "Cores",
-      "term": "Machine/core"
+      "term": "Machine/core",
+      "said": {
+        "most": "the most, core {n}, {times}",
+        "alone": "each on its own"
+      }
     },
     {
       "id": "heat:throttled-core",
@@ -2461,7 +2573,10 @@
     {
       "id": "heat:sensor",
       "in": "heat:disk",
-      "name": "Sensor {n}"
+      "name": "Sensor {n}",
+      "said": {
+        "hotter": "{sensor} hotter at {degrees}"
+      }
     },
     {
       "id": "heat:memory",
@@ -2508,32 +2623,161 @@
     {
       "id": "heat:fan",
       "in": "heat",
-      "name": "Fan {n}"
+      "name": "Fan {n}",
+      "said": {
+        "stopped": "stopped",
+        "rated": "rated for {speed}",
+        "full": "at full power",
+        "share": "at {pct}% power"
+      }
     },
     {
       "id": "heat:lately",
       "in": "heat",
-      "name": "Last Reads"
+      "name": "Last Reads",
+      "said": {
+        "range": "{least} to {most}",
+        "one": "one read so far, one a second while it's shown",
+        "many": "the last {count} reads, one a second while it's shown"
+      }
     },
     {
       "id": "heat:high",
       "in": "heat",
-      "name": "High"
+      "name": "High",
+      "said": {
+        "below": "{by} \u00b0C below high",
+        "past": "{by} \u00b0C past high",
+        "note": "where it starts to warn"
+      }
     },
     {
       "id": "heat:critical",
       "in": "heat",
-      "name": "Critical"
+      "name": "Critical",
+      "said": {
+        "below": "{by} \u00b0C below critical",
+        "past": "{by} \u00b0C past critical",
+        "note": "the most it's meant to reach"
+      }
+    },
+    {
+      "id": "heat:emergency",
+      "in": "heat",
+      "name": "Emergency",
+      "said": {
+        "note": "where it shuts itself off"
+      }
+    },
+    {
+      "id": "heat:low",
+      "in": "heat",
+      "name": "Low",
+      "said": {
+        "note": "the least it's meant to read"
+      }
+    },
+    {
+      "id": "heat:alarm",
+      "in": "heat",
+      "name": "Chip's Warning",
+      "said": {
+        "raised": "raised",
+        "note": "its chip says a limit was crossed"
+      }
+    },
+    {
+      "id": "heat:trip:passive",
+      "in": "heat",
+      "name": "Throttles At"
+    },
+    {
+      "id": "heat:trip:active",
+      "in": "heat",
+      "name": "Fans Up At"
+    },
+    {
+      "id": "heat:trip:hot",
+      "in": "heat",
+      "name": "Hot At"
+    },
+    {
+      "id": "heat:trip:critical",
+      "in": "heat",
+      "name": "Powers Off At"
+    },
+    {
+      "id": "heat:cooling",
+      "in": "heat",
+      "name": "Cooling Step",
+      "said": {
+        "of": "{state} of {most}"
+      }
+    },
+    {
+      "id": "heat:voltage",
+      "in": "heat",
+      "name": "Voltage"
+    },
+    {
+      "id": "heat:current",
+      "in": "heat",
+      "name": "Current"
+    },
+    {
+      "id": "heat:drawing",
+      "in": "heat",
+      "name": "Drawing"
+    },
+    {
+      "id": "heat:chip",
+      "in": "heat",
+      "name": "Linux Name",
+      "term": "Machine/Linux name",
+      "said": {
+        "sensor": "on this machine \u00b7 sensor",
+        "zone": "on this machine \u00b7 zone"
+      }
+    },
+    {
+      "id": "heat:zone",
+      "in": "heat",
+      "name": "Zone"
     },
     {
       "id": "heat:power",
       "in": "heat",
-      "name": "Power"
+      "name": "Power",
+      "said": {
+        "note": "how hard it's driven"
+      }
     },
     {
       "id": "heat:aiming",
       "in": "heat",
-      "name": "Aiming For"
+      "name": "Aiming For",
+      "said": {
+        "note": "the speed it's asked for"
+      }
+    },
+    {
+      "id": "heat:least",
+      "in": "heat",
+      "name": "Least Speed",
+      "said": {
+        "note": "the slowest it turns while it turns"
+      }
+    },
+    {
+      "id": "heat:control",
+      "in": "heat",
+      "name": "Control",
+      "said": {
+        "automatic": "automatic",
+        "manual": "set by hand",
+        "full": "full speed",
+        "note": "what sets its speed"
+      }
     },
     {
       "id": "waits",
@@ -2591,7 +2835,14 @@
       "name": "Firmware",
       "term": "Machine/firmware",
       "glyph": "firmware",
-      "answers": ["firmware", "update", "updates"]
+      "answers": ["firmware", "update", "updates"],
+      "said": {
+        "current": "up to date",
+        "one": "1 update ready",
+        "many": "{count} updates ready",
+        "ready": "{version} ready \u00b7 from {was}",
+        "restart": "{version} at the restart \u00b7 from {was}"
+      }
     },
     {
       "id": "firmware:version",
@@ -2602,7 +2853,11 @@
     {
       "id": "firmware:vendor",
       "in": "firmware",
-      "name": "Vendor"
+      "name": "Vendor",
+      "said": {
+        "alone": "firmware",
+        "from": "from {vendor} \u00b7 firmware"
+      }
     },
     {
       "id": "machines",
@@ -2737,9 +2992,118 @@
       "name": "Last Updated"
     },
     {
-      "id": "firmware:offered",
+      "id": "firmware:lowest",
       "in": "firmware",
-      "name": "Offered"
+      "name": "Lowest Version"
+    },
+    {
+      "id": "firmware:bootloader",
+      "in": "firmware",
+      "name": "Bootloader Version"
+    },
+    {
+      "id": "firmware:branch",
+      "in": "firmware",
+      "name": "Branch"
+    },
+    {
+      "id": "firmware:urgency",
+      "in": "firmware",
+      "name": "Urgency"
+    },
+    {
+      "id": "firmware:size",
+      "in": "firmware",
+      "name": "Size"
+    },
+    {
+      "id": "firmware:released",
+      "in": "firmware",
+      "name": "Released"
+    },
+    {
+      "id": "firmware:takes",
+      "in": "firmware",
+      "name": "Takes",
+      "said": {
+        "minutes": "{count} min"
+      }
+    },
+    {
+      "id": "firmware:held",
+      "in": "firmware",
+      "name": "Held Back",
+      "said": {
+        "system-power-too-low": "system power is too low",
+        "unreachable": "device is unreachable, or out of wireless range",
+        "power-too-low": "device battery power is too low",
+        "update-pending": "device is waiting for the update to be applied",
+        "require-ac-power": "device requires AC power to be connected",
+        "lid-is-closed": "device cannot be updated while the lid is closed",
+        "is-emulated": "device is emulated",
+        "missing-license": "device requires a software license to update",
+        "system-inhibit": "all devices are prevented from update by system inhibit",
+        "update-in-progress": "an update is in progress",
+        "in-use": "device is in use",
+        "display-required": "device requires a display to be plugged in",
+        "lower-priority": "device is lower priority than an equivalent device",
+        "insecure-platform": "system has been signed with an insecure key",
+        "firmware-locked": "device firmware has been locked"
+      }
+    },
+    {
+      "id": "firmware:none",
+      "in": "firmware",
+      "name": "Nothing Offered"
+    },
+    {
+      "id": "firmware:failed",
+      "in": "firmware",
+      "name": "Last Install"
+    },
+    {
+      "id": "firmware:flashes",
+      "in": "firmware",
+      "name": "Flashes Left"
+    },
+    {
+      "id": "firmware:battery",
+      "in": "firmware",
+      "name": "Battery"
+    },
+    {
+      "id": "firmware:protocols",
+      "in": "firmware",
+      "name": "Protocols"
+    },
+    {
+      "id": "firmware:plugin",
+      "in": "firmware",
+      "name": "Plugin"
+    },
+    {
+      "id": "firmware:serial",
+      "in": "firmware",
+      "name": "Serial"
+    },
+    {
+      "id": "firmware:security",
+      "in": "firmware",
+      "name": "Security",
+      "said": {
+        "level": "how fwupd rates the firmware's defences",
+        "running": "how fwupd rates the firmware's defences, lowered by what's running"
+      }
+    },
+    {
+      "id": "firmware:product",
+      "in": "firmware",
+      "name": "Product"
+    },
+    {
+      "id": "firmware:rated",
+      "in": "firmware",
+      "name": "Rated By"
     },
     {
       "id": "verb:firmware:install",
@@ -2755,7 +3119,6 @@
         "installing": "installing",
         "waits": "restart to finish",
         "installed": "installed",
-        "charger": "needs the charger",
         "failed": "didn't install"
       }
     },
@@ -9457,7 +9820,82 @@
       "name": "Sleep",
       "term": "Machine/sleep",
       "verb": "sleep",
-      "glyph": "suspend"
+      "glyph": "suspend",
+      "said": {
+        "eyebrow": "on this machine \u00b7 sleep",
+        "failed": "failed while {step}",
+        "at": "{count} while {step}",
+        "time": "1 time",
+        "times": "{count} times",
+        "freeze": "freezing",
+        "prepare": "preparing",
+        "suspend": "suspending",
+        "suspend_late": "suspending late",
+        "suspend_noirq": "suspending without interrupts",
+        "resume_noirq": "resuming without interrupts",
+        "resume_early": "resuming early",
+        "resume": "resuming"
+      }
+    },
+    {
+      "id": "sleep:others",
+      "in": "session:Suspend",
+      "name": "Other Modes"
+    },
+    {
+      "id": "sleep:ways",
+      "in": "session:Suspend",
+      "name": "Ways to Sleep"
+    },
+    {
+      "id": "sleep:slept",
+      "in": "session:Suspend",
+      "name": "Slept"
+    },
+    {
+      "id": "sleep:failed",
+      "in": "session:Suspend",
+      "name": "Failed"
+    },
+    {
+      "id": "sleep:error",
+      "in": "session:Suspend",
+      "name": "Last Error",
+      "said": {
+        "EPERM": "it wasn't allowed",
+        "EIO": "a device couldn't read or write",
+        "EAGAIN": "a device asked to be tried again",
+        "ENOMEM": "memory ran out",
+        "EBUSY": "a device was busy",
+        "ENODEV": "a device was missing",
+        "EINVAL": "a device was asked what it can't do",
+        "ETIMEDOUT": "a device took too long"
+      }
+    },
+    {
+      "id": "sleep:hardware",
+      "in": "session:Suspend",
+      "name": "Last Hardware Sleep"
+    },
+    {
+      "id": "sleep:hardware-all",
+      "in": "session:Suspend",
+      "name": "All Hardware Sleep"
+    },
+    {
+      "id": "sleep:counts-to",
+      "in": "session:Suspend",
+      "name": "Hardware Counts To"
+    },
+    {
+      "id": "sleep:device",
+      "in": "session:Suspend",
+      "name": "Blocked By"
+    },
+    {
+      "id": "sleep:code",
+      "in": "session:Suspend",
+      "name": "Error Code"
     },
     {
       "id": "session:Log Out",

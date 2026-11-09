@@ -1406,6 +1406,7 @@ onLinux {
       cp ${./launcher/Machine.js} Machine.js
       cp ${./launcher/Heat.js} Heat.js
       cp ${./launcher/Power.js} Power.js
+      cp ${./launcher/Seen.js} Seen.js
       cp ${./launcher/Standing.js} Standing.js
       cp ${./launcher/Traffic.js} Traffic.js
       cp ${./launcher/Interfaces.js} Interfaces.js
@@ -2194,7 +2195,6 @@ onLinux {
         cp ${./launcher/HomeNetwork.js} launcher/HomeNetwork.js
         cp ${./launcher/Holders.js} launcher/Holders.js
         cp ${./launcher/SessionRow.js} launcher/SessionRow.js
-        cp ${./launcher/Sensors.qml} launcher/Sensors.qml
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
         cp ${./Words.qml} Words.qml
         cp ${./launcher/words.json} launcher/words.json
@@ -2321,6 +2321,7 @@ onLinux {
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Light.qml} launcher/Light.qml
       cp ${./launcher/Power.js} launcher/Power.js
+      cp ${./launcher/Order.js} launcher/Order.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/desk-light.qml} shell.qml

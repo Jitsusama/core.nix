@@ -3,10 +3,12 @@
 // session by accident. While the machine is kept awake or notices are held,
 // undoing it leads the home screen, since a mode should never hold unseen.
 import qs
+import Quickshell
 import Quickshell.Io
 import Quickshell.Services.UPower
 import QtQuick
 import "Power.js" as Power
+import "Interfaces.js" as Interfaces
 
 Provider {
     id: provider
@@ -421,6 +423,69 @@ Provider {
         }
     })
 
+    // Whether Sleep's row is listed, in Power or found by name, so the
+    // machine daemon is asked how sleep stands only while it can be seen:
+    // in the open launcher, or among the rows a terminal's show walked or
+    // listed (Launcher.qml's terminalSees), so a cold `launcher show` of
+    // Power has Sleep's figures.
+    readonly property bool sleepShown: {
+        if (launcher === null)
+            return false;
+        const sleep = row => row?.key === "session:Suspend";
+        const terminal = launcher.terminalSees ?? { walked: [], listed: [] };
+        return launcher.open && launcher.matches.some(sleep) || terminal.walked.some(sleep)
+            || terminal.listed.some(sleep);
+    }
+    // Whether the sleep watch hasn't yet answered whole, so a terminal's
+    // show asks again (Provider.stillReading).
+    stillReading: sleepWatch.live && !sleepWatch.answeredThisWatch
+        && sleepWatch.state !== "not answering"
+    readonly property var sleeping: sleepWatch.revision >= 0
+        ? Power.sleepOf(sleepWatch.held["sleep:main"] ?? null) : null
+
+    // What Sleep's row says of how sleep stands: the mode it sleeps in,
+    // the step it last failed at, and its drawer (Power.js's sleepSaid).
+    // An act has no drawer (Launcher.qml's drawerOf), but Sleep holds
+    // what Linux counts of every sleep, so while it has figures to show it
+    // is a thing whose act is Return (VKCF3Z, 2026-11-08). Its side says
+    // how sleep stands, so it carries no ":suspend"; the foot says that.
+    function sleepFields() {
+        if (sleeping === null)
+            return {};
+        const told = Power.sleepSaid(sleeping, Words.of("session:Suspend").said ?? {},
+            Interfaces.lasted, Words.of("sleep:error").said ?? {});
+        return {
+            thing: told.facts.length > 0,
+            carries: false,
+            side: told.side,
+            note: told.note,
+            // Its eyebrow says where its figures come from, then what
+            // kind of thing it is, as every drawer's does (VKCF3Z,
+            // 2026-11-08).
+            drawer: {
+                eyebrow: (Words.of("session:Suspend").said ?? {}).eyebrow ?? "",
+                eyebrowNames: true,
+                title: Words.name("session:Suspend"),
+                facts: told.facts.map(fact => ({
+                    label: Words.name(fact.id),
+                    value: fact.value,
+                    identifies: fact.identifies === true
+                })),
+                body: ""
+            }
+        };
+    }
+
+    Daemon {
+        id: sleepWatch
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+        kind: "sleep"
+        live: provider.sleepShown
+        keptThroughGap: false
+        answersWhole: true
+    }
+
     // What ending the session closes, said before it's done.
     readonly property string closing: {
         // Niri's windows are kept by id.
@@ -437,7 +502,7 @@ Provider {
     // what Joel taught it.
     things: [awake, quiet].concat(Recorder.recording ? [recording] : [], [profile], profiles, [
         { was: "Lock", does: locks, run: () => provider.launcher.lock.lock() },
-        { was: "Suspend", run: () => Niri.spawn(["systemctl", "suspend"]) },
+        { was: "Suspend", run: () => Niri.spawn(["systemctl", "suspend"]), fields: sleepFields() },
         { was: "Log Out", run: () => Niri.act({ Quit: { skip_confirmation: true } }) },
         { was: "Reboot", run: () => Niri.spawn(["systemctl", "reboot"]) },
         { was: "Power Off", run: () => Niri.spawn(["systemctl", "poweroff"]) }
@@ -445,7 +510,7 @@ Provider {
         const key = `session:${action.was}`;
         const sure = Words.of(key).sure ?? "";
         const asked = Words.of(key).asked ?? "";
-        return said(key, "", {
+        return said(key, "", Object.assign({
             chord: action.does ? bound(action.does) : [],
             hue: "machine",
             run: action.run,
@@ -465,6 +530,6 @@ Provider {
                 hue: "alert",
                 run: action.run
             })] : null
-        });
+        }, action.fields ?? {}));
     }))
 }

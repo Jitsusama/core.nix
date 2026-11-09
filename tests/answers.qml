@@ -35,6 +35,7 @@ import "Firmware.js" as Firmware
 import "Warp.js" as Warp
 import "WarpSeen.js" as WarpSeen
 import "WarpSwitch.js" as WarpSwitch
+import "Seen.js" as Seen
 import "Interfaces.js" as Interfaces
 import "Networkd.js" as Networkd
 import "WifiLink.js" as WifiLink
@@ -996,7 +997,7 @@ QtObject {
             "Core 8");
         machine("a processor's only sensor", Machine.processor([{ label: "", value: 1 }]).value, 1);
 
-        // Heat's parts, from the chips as Sensors.qml reads the laptop's,
+        // Heat's parts, from the chips as Heat.chipsOf gives the laptop's,
         // in degrees: the processor's, its cores numbered by the logical
         // processor each is, the disk's with its hidden second sensor,
         // dell_ddv's named sensors and fans, dell_smm's unnamed fans
@@ -1034,10 +1035,10 @@ QtObject {
             heatDisk.sensors.map(s => [s.label, s.value]),
             [["Sensor 1", 53.85], ["Sensor 2", 68.85]]);
         machine("the fans by name, with what the unnamed chip says of them", heatParts.fans,
-            [{ id: "video-fan", n: 1, label: "Video Fan", value: 5420, max: 4800, target: 4800,
-                power: 1 },
-                { id: "cpu-fan", n: 2, label: "CPU Fan", value: 5385, max: 4800, target: 4800,
-                    power: 0.5 }]);
+            [{ id: "video-fan", n: 1, label: "Video Fan", value: 5420, max: 4800, min: null,
+                target: 4800, power: 1, mode: null },
+                { id: "cpu-fan", n: 2, label: "CPU Fan", value: 5385, max: 4800, min: null,
+                    target: 4800, power: 0.5, mode: null }]);
         machine("fans no chip names, by number", Heat.fans([heatChips[3]]).map(f => [f.id, f.n]),
             [["fan", 1], ["fan", 2]]);
         machine("no fans", Heat.fans([heatChips[0]]), []);
@@ -1157,18 +1158,98 @@ QtObject {
         machine("a climbing temperature's spark", Heat.spark([80, 85, 90]), [0, 0.5, 1]);
         machine("a spark with nothing read", Heat.spark([]), []);
         machine("a fan's spark, drawn across its span", Heat.fanSpark([5000, 5250]), [0.25, 0.75]);
-        // The laptop's own counts: the package's events as each processor
-        // saw them, and two processors sharing a core, counting it once.
-        const heatThrottled = Heat.throttled([
-            { cpu: 0, core: 0, cores: 24, package: 3191 },
-            { cpu: 1, core: 22, cores: 8, package: 265 },
-            { cpu: 2, core: 0, cores: 0, package: 3202, packageMs: 19016, packageLongest: 125 }
-        ]);
+        // The laptop's own counts, as the machine daemon holds them: the
+        // package's from the processor that saw most, each core once.
+        const heatThrottled = Heat.throttledOf({ throttled: {
+            cores: [{ core: 22, cpu: 1, count: 8 }, { core: 0, cpu: 0, count: 24 }],
+            cores_count: 32, package_count: 3202, package_ms: 19016, package_longest_ms: 125
+        } });
         machine("the processor throttled, as the package", [heatThrottled.times, heatThrottled.ms,
             heatThrottled.longest], [3202, 19016, 125]);
         machine("each core throttled, once a core", [heatThrottled.cores, heatThrottled.total],
             [[{ cpu: 0, count: 24 }, { cpu: 1, count: 8 }], 32]);
-        machine("no throttling counted", Heat.throttled([]), null);
+        machine("no throttling counted", Heat.throttledOf({ throttled: null }), null);
+        // The chips as the machine daemon holds the laptop's: the fans'
+        // own chip and a USB-C port's stand for no part, so only labels
+        // name their sensors, and an unlabelled fan is null, not "fan2".
+        const heatHeld = Heat.chipsOf([
+            { key: "sensor:nvme", part: "disk", temperatures: [
+                { n: 1, label: "Composite", temperature_c: 52.9, high_c: 82.9, critical_c: 84.9 },
+                { n: 2, label: "Sensor 9", temperature_c: 65261.8, high_c: null }], fans: [] },
+            { key: "sensor:dell_smm", part: "fans", temperatures: [
+                { n: 1, label: "CPU", temperature_c: 61 },
+                { n: 2, label: "Ambient", temperature_c: 40, critical_c: -273 }], fans: [
+                { n: 1, label: null, rpm: 2400, max_rpm: 5900, min_rpm: 1200, target_rpm: 2400,
+                    power_ratio: 0.502, mode: "automatic" },
+                { n: 2, label: null, rpm: null }] },
+            { key: "sensor:coretemp", part: "processor", chip: "coretemp", temperatures: [
+                { n: 1, label: "Package id 0", temperature_c: 79, high_c: 100,
+                    critical_c: 100, low_c: -273, emergency_c: 105, alarm: true }], fans: [],
+                voltages: [{ n: 0, label: null, volts: 1.21 },
+                    { n: 1, label: "Vcore", volts: null }],
+                currents: [], power: [{ n: 1, label: "Package", watts: 12.5 }] }
+        ]);
+        machine("the daemon's chips, by key, each for its part", heatHeld.map(chip => chip.part),
+            ["processor", "", "disk"]);
+        machine("a chip of no part, only its labelled sensors", heatHeld[1].temps,
+            [{ n: 2, label: "Ambient", value: 40, high: null, crit: null, low: null,
+                emergency: null, alarm: false, chip: "" }]);
+        machine("a chip's limits past its high and critical, and its alarm",
+            heatHeld[0].temps.map(t => [t.low, t.emergency, t.alarm, t.chip]),
+            [[null, 105, true, "coretemp"]]);
+        machine("a chip's electricity, each figure it reads", heatHeld[0].electric,
+            { volts: [{ n: 0, label: "", value: 1.21 }], amps: [],
+                watts: [{ n: 1, label: "Package", value: 12.5 }] });
+        machine("electricity in the unit that fits it", [Heat.electricSaid(0.003, "V"),
+            Heat.electricSaid(-0.002, "A"), Heat.electricSaid(11.42, "V"),
+            Heat.electricSaid(0.9996, "V"), Heat.electricSaid(0, "W"),
+            Heat.electricSaid(1234, "W", " ", ","), Heat.electricSaid(11.42, "V", " ", ",")],
+            ["3.00 mV", "\u22122.00 mA", "11.4 V", "1.00 V", "0 W", "1 230 W", "11,4 V"]);
+        machine("a reading no part could reach, left out", heatHeld[2].temps.map(t => t.label),
+            ["Composite"]);
+        machine("an unlabelled fan, its speed read", heatHeld[1].fans,
+            [{ n: 1, label: "", value: 2400, max: 5900, min: 1200, target: 2400, power: 0.502,
+                mode: "automatic" }]);
+        const heatZones = Heat.zonesOf([
+            { type: "TCPU", temperature_c: 78.5, trips: [
+                { type: "critical", temperature_c: 110 }, { type: "passive", temperature_c: 95 },
+                { type: "active", temperature_c: -273 }] },
+            { type: "x86_pkg_temp", temperature_c: 79, trips: [
+                { type: "passive", temperature_c: 95 }, { type: "hot", temperature_c: 105 }] },
+            { type: "SEN1", temperature_c: 40 }, { type: "acpitz", temperature_c: null }]);
+        machine("the daemon's zones for a part, their trips within reach", heatZones,
+            [{ part: "processor", type: "TCPU", value: 78.5, trips: [
+                { type: "critical", value: 110 }, { type: "passive", value: 95 }] },
+                { part: "processor", type: "x86_pkg_temp", value: 79, trips: [
+                    { type: "passive", value: 95 }, { type: "hot", value: 105 }] }]);
+        machine("a part's trips, coolest first, one two zones share said once",
+            Heat.tripsFor(heatZones, "processor"),
+            [{ type: "passive", value: 95, zone: "TCPU" },
+                { type: "hot", value: 105, zone: "x86_pkg_temp" },
+                { type: "critical", value: 110, zone: "TCPU" }]);
+        machine("no trips for a part no zone stands for", Heat.tripsFor(heatZones, "disk"), []);
+        // A to Z with case alike, as Order.js reads names.
+        machine("each kind of cooling, stepped as far as any of it", Heat.coolingOf([
+            { type: "Processor", count: 16, states: [0, 2, 1], max_state: 3 },
+            { type: "iwlwifi", count: 1, states: [0], max_state: 19 },
+            { type: "LCD", count: 1, states: [0], max_state: 0 }]),
+            [{ type: "iwlwifi", count: 1, state: 0, max: 19 },
+                { type: "Processor", count: 16, state: 2, max: 3 }]);
+        machine("what's left to the high", Heat.leftTo(71, 100, 110),
+            { by: 29, limit: "high", past: false, hue: "" });
+        machine("past the high, what's left to the critical, warning", Heat.leftTo(102, 100, 110),
+            { by: 8, limit: "critical", past: false, hue: "warning" });
+        machine("past the critical, alerting", Heat.leftTo(112, 100, 110),
+            { by: 2, limit: "critical", past: true, hue: "alert" });
+        machine("a high that's the critical, warning ten degrees short", [Heat.leftTo(85, 100, 100),
+            Heat.leftTo(92, 100, 100)], [{ by: 15, limit: "critical", past: false, hue: "" },
+            { by: 8, limit: "critical", past: false, hue: "warning" }]);
+        machine("past a high with no critical", Heat.leftTo(83, 80, null),
+            { by: 3, limit: "high", past: true, hue: "warning" });
+        machine("no limit said", Heat.leftTo(50, null, null), null);
+        machine("each processor's core, from the daemon", Heat.cpusOf({ cores: [
+            { n: 0, core: 0 }, { n: 1, core: 0 }, { n: 2, core: null }] }),
+            [{ cpu: 0, core: 0 }, { cpu: 1, core: 0 }]);
         machine("each core's first processor", Heat.coreCpus([{ cpu: 0, core: 0 },
             { cpu: 1, core: 0 }, { cpu: 2, core: 4 }]), { 0: 0, 4: 2 });
         machine("a part's name in a sentence", ["Processor", "Wi-Fi Card", "Air Inside", "HDR"]
@@ -1934,73 +2015,159 @@ QtObject {
             Sounds.sameFormat("48 kHz \u00b7 16 bit", "44.1 kHz \u00b7 16 bit \u00b7 period 1024"),
             Sounds.sameFormat("48 kHz \u00b7 16 bit", "")], [true, false, true, false, false]);
 
-        // The firmware fwupd knows, as its three commands' --json say it: a
-        // device it hides, one with no version and one with no name are
+        // The firmware fwupd knows, as the machine daemon's records say it:
+        // a device it hides, one with no version and one with no name are
         // left out; the one with an update offered comes first; two of one
         // name are numbered; and when each was last updated is from the
         // history's update that went in.
-        const fwupdDevices = { Devices: [
-            { DeviceId: "ssd", Name: "PVC10 SK hynix 1024GB", Vendor: "SK hynix",
-                Version: "61001171", Flags: ["internal", "updatable", "needs-reboot"] },
-            { DeviceId: "bios", Name: "System Firmware", Vendor: "Dell", Version: "1.12.0",
-                Flags: ["internal", "updatable", "needs-reboot", "require-ac"] },
-            { DeviceId: "region", Name: "Internal SPI Controller (BIOS)", Version: "1.12.0",
-                Flags: ["internal", "updatable-hidden"] },
-            { DeviceId: "spi", Name: "Internal SPI Controller", Flags: ["internal"] },
-            { DeviceId: "nameless", Version: "1" },
-            { DeviceId: "pk", Name: "Platform Key", Vendor: "Unknown", Version: "2026" },
-            { DeviceId: "dock1", Name: "USB-C Controller", Vendor: "HP", Version: "69.52",
-                Flags: ["updatable"] },
-            { DeviceId: "dock2", Name: "USB-C Controller", Vendor: "HP", Version: "69.64",
-                Flags: ["updatable"] }
-        ] };
-        const fwupdOffered = { Devices: [{ DeviceId: "bios", Releases: [
-            { Version: "1.13.0",
-                Description: "<p>This release fixes:</p><ul><li>a &amp; b</li><li>c</li></ul>" },
-            { Version: "1.12.5" }] }] };
-        const fwupdHistory = { Devices: [
-            { DeviceId: "bios", UpdateState: 2, Created: 1793234644, Modified: 1793278224 },
-            { DeviceId: "ssd", UpdateState: 3, Created: 1793000000 }
-        ] };
-        const firmware = Firmware.devices(fwupdDevices, fwupdOffered, fwupdHistory);
+        const fw = (id, fields) => Object.assign({ key: `firmware:${id}`, kind: "firmware", id: id,
+            flags: [], problems: [], update: null, no_update: null, last_update: null }, fields);
+        const firmwareHeld = [
+            { key: "firmware:host", kind: "firmware", security: "HSI:3! (v2.1.6)",
+                product: "XPS", fwupd: "2.1.6" },
+            fw("ssd", { name: "PVC10 SK hynix 1024GB", vendor: "SK hynix", version: "61001171",
+                flags: ["internal", "updatable", "needs-reboot"],
+                no_update: "current version is 61001171: 61001171=same",
+                last_update: { state: "failed", at_s: 1793000000, version: "61001172",
+                    error: "device was not in supported mode", updated_at_s: null } }),
+            fw("bios", { name: "System Firmware", vendor: "Dell", version: "1.12.0",
+                version_lowest: "1.2.0", serial: "ABC123", plugin: "uefi_capsule",
+                protocols: ["org.uefi.capsule"],
+                flags: ["internal", "updatable", "needs-reboot", "require-ac"],
+                update: { version: "1.13.0", summary: "Dell System Firmware Update",
+                    description: "<p>This release fixes:</p><ul><li>a &amp; b</li><li>c</li></ul>",
+                    urgency: "high", size_b: 26518575, released_at_s: 1788150135,
+                    install_minutes: 2 },
+                last_update: { state: "success", at_s: 1793278224, version: "1.12.0",
+                    error: null, updated_at_s: 1793278224 } }),
+            fw("region", { name: "Internal SPI Controller (BIOS)", version: "1.12.0",
+                flags: ["internal", "updatable-hidden"] }),
+            fw("spi", { name: "Internal SPI Controller", version: null, flags: ["internal"] }),
+            fw("nameless", { name: null, version: "1" }),
+            fw("pk", { name: "Platform Key", vendor: "Unknown", version: "2026" }),
+            fw("dock1", { name: "USB-C Controller", vendor: "HP", version: "69.52",
+                flags: ["updatable"] }),
+            fw("dock2", { name: "USB-C Controller", vendor: "HP", version: "69.64",
+                flags: ["updatable"] })
+        ];
+        const firmware = Firmware.devicesOf(firmwareHeld);
         machine("the firmware listed, an update first", firmware.map(device => device.name),
             ["System Firmware", "PVC10 SK hynix 1024GB", "Platform Key", "USB-C Controller 1",
                 "USB-C Controller 2"]);
         machine("the firmware with an update offered", firmware[0], {
             id: "bios", name: "System Firmware", vendor: "Dell", version: "1.12.0",
             offered: "1.13.0", notes: "This release fixes:\na & b\nc", updated: 1793278224,
-            restarts: true, waits: null, charger: true
+            restarts: true, waits: null, problems: [], failed: null,
+            release: { urgency: "high", size: 26518575, released: 1788150135, minutes: 2,
+                summary: "Dell System Firmware Update" },
+            about: { lowest: "1.2.0", bootloader: null, branch: null, flashes: null,
+                battery: null, protocols: ["org.uefi.capsule"], plugin: "uefi_capsule",
+                serial: "ABC123", none: null }
         });
         machine("firmware never updated, or not successfully", firmware[1].updated, null);
-        machine("firmware's version with an update offered", Firmware.versionOf(firmware[0]),
-            "1.12.0, 1.13.0 ready");
-        machine("firmware's version alone", Firmware.versionOf(firmware[1]), "61001171");
-        machine("one firmware update ready", Firmware.standing(firmware), "1 update ready");
-        machine("firmware up to date", Firmware.standing(firmware.slice(1)), "up to date");
-        machine("nothing offered, said in words", Firmware.devices(fwupdDevices, {}, {})
-            .every(device => device.offered === null), true);
-        machine("fwupd with no devices", Firmware.devices({}, {}, {}), []);
+        machine("why the last install failed, in fwupd's words", firmware[1].failed,
+            "device was not in supported mode");
+        machine("why nothing's offered, in fwupd's words", firmware[1].about.none,
+            "current version is 61001171: 61001171=same");
+        const firmwareWords = { current: "up to date", one: "1 update ready",
+            many: "{count} updates ready", ready: "{version} ready \u00b7 from {was}",
+            restart: "{version} at the restart \u00b7 from {was}" };
+        machine("firmware's version with an update offered",
+            Firmware.versionOf(firmware[0], firmwareWords), "1.13.0 ready \u00b7 from 1.12.0");
+        machine("firmware's version alone", Firmware.versionOf(firmware[1], firmwareWords),
+            "61001171");
+        machine("one firmware update ready", Firmware.standing(firmware, firmwareWords),
+            "1 update ready");
+        machine("two firmware updates ready", Firmware.standing([firmware[0], firmware[0]],
+            firmwareWords), "2 updates ready");
+        machine("firmware up to date", Firmware.standing(firmware.slice(1), firmwareWords),
+            "up to date");
+        machine("fwupd with no devices", Firmware.devicesOf([firmwareHeld[0]]), []);
+        machine("the daemon with nothing held", Firmware.devicesOf([]), []);
         machine("a vendor fwupd doesn't know is none",
             firmware.find(device => device.id === "pk").vendor, "");
+        machine("an urgency fwupd doesn't know is none", Firmware.devicesOf([
+            fw("bios", { name: "System Firmware", version: "1",
+                update: { version: "2", urgency: "unknown" } })])[0].release.urgency, null);
+        machine("fwupd's rating of the machine", Firmware.hostOf(firmwareHeld),
+            { security: "HSI:3! (v2.1.6)", product: "XPS", fwupd: "2.1.6" });
+        machine("no rating before fwupd answers", Firmware.hostOf([]), null);
+        // What holds back an update that's offered, by fwupd's name: the
+        // charger's, unplugged; nothing, with nothing offered or once it
+        // waits for the restart.
+        const unplugged = Firmware.devicesOf([fw("bios", { name: "System Firmware",
+            version: "1.12.0", problems: ["require-ac-power"],
+            update: { version: "1.13.0" } })])[0];
+        machine("an update held back on battery", Firmware.heldBy(unplugged), "require-ac-power");
+        machine("nothing held back with nothing offered", Firmware.heldBy(Firmware.devicesOf([
+            fw("pk", { name: "Platform Key", version: "1", problems: ["firmware-locked"] })])[0]),
+            "");
+        machine("nothing held back with nothing amiss", Firmware.heldBy(firmware[0]), "");
         // An update in but finishing at the restart, as the history says a
         // capsule's is: offered until then, and said to wait for it; once
         // the restart has flashed it, nothing waits.
-        const waiting = state => ({ Devices: [{ DeviceId: "bios", UpdateState: state,
-            Releases: [{ Version: "1.13.0" }] }] });
-        const waits = Firmware.devices(fwupdDevices, {}, waiting(1))[0];
+        const waiting = (state, version) => Firmware.devicesOf([fw("bios", {
+            name: "System Firmware", version: version ?? "1.12.0",
+            problems: ["update-pending"],
+            last_update: { state: state, at_s: 1, version: "1.13.0", error: null,
+                updated_at_s: null } })])[0];
+        const waits = waiting("pending");
         machine("firmware waiting for the restart", [waits.offered, waits.waits],
             ["1.13.0", "1.13.0"]);
-        machine("firmware's version waiting for the restart", Firmware.versionOf(waits),
-            "1.12.0, 1.13.0 at the restart");
-        machine("firmware needing a reboot waits too",
-            Firmware.devices(fwupdDevices, {}, waiting(4))[0].waits, "1.13.0");
-        machine("firmware that failed doesn't wait",
-            Firmware.devices(fwupdDevices, {}, waiting(3)).find(device => device.id === "bios")
-                .waits, null);
-        const flashed = { Devices: [Object.assign({}, fwupdDevices.Devices[1],
-            { Version: "1.13.0" })] };
+        machine("firmware's version waiting for the restart",
+            Firmware.versionOf(waits, firmwareWords), "1.13.0 at the restart \u00b7 from 1.12.0");
+        machine("firmware waiting for the restart is held back by nothing",
+            Firmware.heldBy(waits), "");
+        machine("firmware needing a reboot waits too", waiting("needs-reboot").waits, "1.13.0");
+        machine("firmware that failed doesn't wait", waiting("failed").waits, null);
+        // Whether a provider's rows can be seen, so it watches its daemon
+        // only then: never once only asked, and never with the launcher
+        // closed unless a terminal just showed them.
+        const watcher = {};
+        const its = { live: watcher };
+        const closed = { open: false, answer: its, held: [], matches: [], placed: ["heat"] };
+        const opened = fields => Object.assign({ open: true, answer: null, held: [], matches: [],
+            placed: [] }, fields);
+        machine("unseen with the launcher closed, whatever it last held",
+            Seen.seen(closed, watcher, ["heat"]), false);
+        machine("unseen with the launcher open on something else",
+            Seen.seen(opened({ answer: { live: {} }, placed: ["power"] }), watcher, ["heat"]),
+            false);
+        machine("seen as its answer", Seen.seen(opened({ answer: its }), watcher, []), true);
+        machine("seen stepped into", Seen.seen(opened({ held: [{ row: its }] }), watcher, []),
+            true);
+        machine("seen among what's found", Seen.seen(opened({ matches: [its] }), watcher, []),
+            true);
+        machine("seen in a place holding its row",
+            Seen.seen(opened({ placed: ["heat"] }), watcher, ["heat"]), true);
+        machine("seen as the place it says how things stand in",
+            Seen.seen(opened({ matches: [{ category: { id: "energy" } }] }), watcher,
+                ["energy", "power"]), true);
+        machine("seen by a terminal's show with the launcher closed",
+            Seen.seen(Object.assign({}, closed, { terminalSees: { walked: [], listed: [its] } }),
+                watcher, []), true);
+        machine("no launcher sees nothing", Seen.seen(null, watcher, ["heat"]), false);
+        // Its answer is made from what the daemon says, so words that ask
+        // it watch it first, and a row a condition holds back until the
+        // daemon says is still watched where its place holds it.
+        const asking = typed => typed === "heat";
+        machine("seen as what's typed asks it",
+            Seen.seen(opened({ typed: "heat" }), watcher, [], asking), true);
+        machine("unseen as what's typed asks another",
+            Seen.seen(opened({ typed: "battery" }), watcher, [], asking), false);
+        machine("unseen as words ask it with the launcher closed",
+            Seen.seen(Object.assign({}, closed, { answer: null, typed: "heat" }), watcher, [],
+                asking), false);
+        machine("a question is asked whole", Seen.asks(["battery"], "battery"), true);
+        machine("a question is asked in the plural", Seen.asks(["fan"], "fans"), true);
+        machine("a question is asked by its start", Seen.asks(["battery"], "batt"), true);
+        machine("two letters start no question", Seen.asks(["battery"], "ba"), false);
+        machine("another word asks nothing", Seen.asks(["battery"], "heat"), false);
+        machine("seen in a place holding it before its condition holds it back",
+            Seen.seen(opened({ category: { holds: ["energy", "heat"] } }), watcher, ["heat"]),
+            true);
         machine("firmware flashed at the restart waits no more",
-            Firmware.devices(flashed, {}, waiting(1))[0].waits, null);
+            waiting("pending", "1.13.0").waits, null);
         machine("why an install didn't go in", Firmware.reason(
             "Decompressing\u2026\nSystem Firmware cannot be updated: on battery\n\n"),
             "System Firmware cannot be updated: on battery");
@@ -2388,6 +2555,57 @@ QtObject {
         machine("a port with something in", Power.port({ online: false, partner: true },
             measured, portStates), "plugged in, giving nothing");
         machine("an empty port", Power.port({ online: false }, measured, portStates), "empty");
+        machine("a kernel's list written again", Power.listed(["C", "PD", "PD_PPS"], "PD"),
+            "C [PD] PD_PPS");
+        // The supplies as the machine daemon holds the laptop's: its
+        // battery, a mouse's, the charger's and two USB-C ports.
+        const powerHeld = [
+            { key: "supply:hidpp_battery_0", name: "hidpp_battery_0", type: "Battery",
+                scope: "Device" },
+            { key: "supply:BAT0", name: "BAT0", type: "Battery", scope: null, capacity_pct: 36,
+                status: "Discharging", charge_ah: 1.5, charge_full_ah: 3.6,
+                charge_design_ah: 4, energy_wh: null, energy_full_wh: null,
+                energy_design_wh: null, min_design_volts: 15,
+                upower: { state: "discharging", time_to_empty_s: 11400, time_to_full_s: null } },
+            { key: "supply:AC", name: "AC", type: "Mains", online: false },
+            { key: "supply:ucsi-source-psy-USBC000:002", name: "ucsi-source-psy-USBC000:002",
+                type: "USB", online: false, typec: { power_role: "source", partner: {} } },
+            { key: "supply:ucsi-source-psy-USBC000:001", name: "ucsi-source-psy-USBC000:001",
+                type: "USB", online: true, volts: 20, amps: 1.2, max_volts: 20, max_amps: 2.25,
+                usb_type: "PD", typec: { power_role: "sink", partner: null } }
+        ];
+        machine("the machine's battery, not a mouse's", Power.batteryOf(powerHeld).name, "BAT0");
+        machine("no battery", Power.batteryOf([powerHeld[2]]), null);
+        machine("the USB-C ports, by their number",
+            Power.portsOf(powerHeld).map(port => port.n), [1, 2]);
+        machine("a port charging, as its record says, at what it's offered",
+            Power.portOf(powerHeld[4]), { online: true, volts: 20, amps: 2.25,
+                protocol: "USB PD", partner: false, giving: false });
+        machine("a port powering what's plugged in", [Power.portOf(powerHeld[3]).giving,
+            Power.portOf(powerHeld[3]).partner], [true, true]);
+        machine("a charger plugged in elsewhere", [Power.pluggedElsewhere(powerHeld),
+            Power.pluggedElsewhere([{ name: "AC", type: "Mains", online: true }])],
+            [false, true]);
+        const powerWords = { full: "{time} to full", charging: "charging",
+            empty: "{time} to empty", battery: "on battery", whole: "full",
+            holding: "on power, holding" };
+        machine("the battery's time, as UPower works it out",
+            Power.doing(powerHeld[1], Interfaces.lasted, powerWords),
+            "36% \u00b7 3 h 10 min to empty");
+        machine("the battery charging with no time said", Power.doing({ capacity_pct: 80,
+            status: "Charging", upower: null }, Interfaces.lasted, powerWords),
+            "80% \u00b7 charging");
+        machine("the battery full", Power.doing({ capacity_pct: 100, status: "Full" },
+            Interfaces.lasted, powerWords), "100% \u00b7 full");
+        machine("a charge nobody knows, left out rather than none",
+            Power.doing({ status: "Discharging" }, Interfaces.lasted, powerWords), "on battery");
+        machine("the energy a battery counting charge holds", Power.energyOf(powerHeld[1]),
+            { now: 22.5, full: 54, design: 60 });
+        machine("the energy a battery counts itself", Power.energyOf({ energy_wh: 30,
+            energy_full_wh: 50, energy_design_wh: null, charge_design_ah: null }),
+            { now: 30, full: 50, design: null });
+        machine("made, as the daemon says it", [Power.madeOf("2026-07-20"), Power.madeOf(null),
+            Power.madeOf("0000-00-00")], ["2026-07-20", "", ""]);
         machine("made on a day", Power.made(2026, 7, 20), "2026-07-20");
         machine("made in a month", Power.made(2026, 7, 0), "2026-07");
         machine("a date that isn't", Power.made(0, 13, 40), "");
@@ -2687,6 +2905,49 @@ QtObject {
             { refused: "warp-cli wouldn't connect: Invalid account type.", note: "" },
             { refused: "its service didn't answer", note: "" }
         ]);
+
+        // How sleep stands, from the daemon's sleep:main record, in Sleep's
+        // words: a machine that failed twice freezing and once resuming,
+        // last freezing, held by a device.
+        const sleepWords = { failed: "failed while {step}", at: "{count} while {step}",
+            time: "1 time", times: "{count} times", freeze: "freezing", resume: "resuming" };
+        const slept = Power.sleepOf({ key: "sleep:main", mode: "s2idle", modes: ["s2idle", "deep"],
+            states: ["freeze", "mem", "disk"], successes: 12, failures: 3,
+            failed_at: { freeze: 2, prepare: 0, resume: 1, suspend: null },
+            last_failed_device: "0000:00:14.0", last_failed_step: "freeze",
+            last_failed_errno: -16, last_hardware_sleep_us: 3_600_000_000,
+            total_hardware_sleep_us: 0, hardware_sleep_counts_to_us: 523_986_009_990 });
+        machine("sleep's failures by step, in the order taken", slept.failedAt,
+            [{ step: "freeze", count: 2 }, { step: "resume", count: 1 }]);
+        machine("sleep's other modes", slept.others, ["deep"]);
+        machine("sleep's hardware time in seconds", [slept.lastHardware, slept.countsTo],
+            [3600, 523986.00999]);
+        const sleepErrors = { EBUSY: "a device was busy" };
+        const sleepTold = Power.sleepSaid(slept, sleepWords, Interfaces.lasted, sleepErrors);
+        machine("sleep's mode and the step it last failed at", [sleepTold.side, sleepTold.note],
+            ["s2idle", "failed while freezing \u00b7 2 times"]);
+        machine("sleep's drawer, the failures the note doesn't say, the device last",
+            sleepTold.facts, [
+            { id: "sleep:others", value: "deep" },
+            { id: "sleep:ways", value: "freeze \u00b7 mem \u00b7 disk" },
+            { id: "sleep:slept", value: "12 times" },
+            { id: "sleep:failed", value: "1 while resuming" },
+            { id: "sleep:error", value: "a device was busy" },
+            { id: "sleep:hardware", value: "1 h" },
+            { id: "sleep:counts-to", value: "6 d 1 h" },
+            { id: "sleep:device", value: "0000:00:14.0", identifies: true },
+            { id: "sleep:code", value: "EBUSY", identifies: true }
+        ]);
+        const neverFailed = Power.sleepSaid(Power.sleepOf({ mode: "s2idle", modes: ["s2idle"],
+            successes: 1, failures: 0, failed_at: {}, last_failed_step: "",
+            last_failed_errno: null, last_hardware_sleep_us: null }), sleepWords, Interfaces.lasted,
+            sleepErrors);
+        machine("sleep that never failed says only its mode",
+            [neverFailed.note, neverFailed.facts],
+            ["", [{ id: "sleep:slept", value: "1 time" }]]);
+        machine("sleep before the daemon answers", Power.sleepOf(null), null);
+        machine("an error Linux names", Power.errorOf(-5), "EIO");
+        machine("an error with no name kept", Power.errorOf(-71), "\u221271");
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)

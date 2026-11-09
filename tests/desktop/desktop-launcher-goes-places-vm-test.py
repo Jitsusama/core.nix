@@ -694,7 +694,7 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Power"
             and "Queue" not in shown["rows"]
-            and re.match(r"\d+%, ", str(shown["selected"].get("side", "")))
+            and re.match(r"\d+%", str(shown["selected"].get("side", "")))
             and "Memory" in shown["rows"]
             and shown["rows"][shown["rows"].index("Memory") + 1 :][:3] == ["Heat", "Disk", "Lag"]
         )

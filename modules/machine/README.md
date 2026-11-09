@@ -2,7 +2,8 @@
 
 How this machine is doing, held ready for the shell: a Rust program,
 `machine`, that reads the kernel's files and asks UDisks for each disk's
-health, and answers over `$XDG_RUNTIME_DIR/daemons/machine.sock` in
+health, UPower for each battery's times, logind what keeps it awake
+and fwupd for each device's firmware, and answers over `$XDG_RUNTIME_DIR/daemons/machine.sock` in
 version 1 of the shell's daemon interface (hello, get, list, watch,
 unwatch, health). [`src/main.rs`][main] says how it reads and when;
 [`src/lib.rs`][lib] how a record names its figures, with its unit in its
@@ -27,6 +28,18 @@ A tree, `tree:<pid>`, is a process and every process under it, by each
 one's parent: a program's drawer watches its own pid's, so what it
 started counts as its own. A process that started since the read before
 counts all its time, and a pid given again counts from its new start.
+
+Each bus is asked on a thread of its own, only while a kind it gives is
+watched: UDisks once a minute, UPower every 5 seconds, logind every 2,
+and fwupd once a minute and at once each time it says something
+changed, a device's problems among them. fwupd's signals are listened
+for only while firmware is watched; logind's `PrepareForSleep` is
+listened for from the daemon's start, since a sleep comes while
+nothing watches, and a signal wakes it only when a sleep begins or
+ends. A watch starting sooner than
+that after the last ask doesn't ask again, and each call gives up after
+ten seconds. A chip's labels and limits are read once, until the chips
+listed change, since some answer every read through slow firmware.
 
 ## Every Figure, and Where It Shows
 
@@ -74,10 +87,46 @@ units, or named here as left out with the reason.
 |                 | time past warning and critical heat          | Health's Too Hot For                      |
 |                 | critical warnings, when it was asked         | Health's Warnings, its note               |
 | `boot:<id>`     | when it started, time asleep, idle share     | Uptime, Asleep, Idle, Started             |
-|                 | kernel release and build                     | Kernel, its Release and Build             |
+|                 | kernel release and build                     | Linux, its Release and Build              |
 | `using:cpu:N`   | each program's share, its processes          | Processor's Using It                      |
 | `using:memory:N`| each program's resident memory, processes    | Memory's Using It                         |
 | `tree:<pid>`    | its share, memory, processes, threads, pids  | a program's drawer, watching it           |
+| `processor:0`   | throttles: package and each core, count, time, longest | Heat's Throttled                |
+| `sensor:<chip>` | each temperature, low, high, critical, emergency, alarm | Heat, each part by what it measures |
+|                 | each fan's speed, least, most, aim, power, mode | Heat's fans                            |
+|                 | each voltage, current and power, with limits | Heat's part's drawer, each figure         |
+|                 | the chip's name                              | Heat's part's drawer, Linux Name          |
+| `zone:<type>`   | temperature, policy, mode, each trip point   | Heat, for a part no chip gives; drawer's trips and Zone |
+| `cooling:<type>`| how many, each one's state, the most         | Heat's Processor's drawer, Cooling Step   |
+| `supply:<name>` | capacity, its level                          | Power's Charge                            |
+|                 | charge now, full and designed; energy        | Power's Energy and its drawer             |
+|                 | health against design, cycles, health        | Power's Health, Cycles                    |
+|                 | volts, amps, watts, design voltage           | Power's Drawing, Voltage                  |
+|                 | charge type and those offered, limits, settable | Power's Charge Type, Charge Limit      |
+|                 | maker, model, technology, made, temperature  | Power's Model, Made, Temperature          |
+|                 | serial                                       | Power's Model's drawer, Serial            |
+|                 | a port's volts, amps, those offered, USB types | Power's Charger, each port and its drawer |
+|                 | a port's roles, mode, power delivery revision | each port's drawer                       |
+|                 | what's plugged in: its revision, accessory, offers | each port's drawer, Partner, Offers |
+|                 | UPower's state, times, rate                  | Power's headline, Drawing                 |
+| `sleep:main`    | mode, those offered, the ways Linux can sleep | Sleep's side, Other Modes, Ways to Sleep |
+|                 | successes, the last failed step and its count | Slept, Sleep's note                      |
+|                 | failures by step, last device, errno         | Failed, Blocked By, Last Error, Error Code |
+|                 | last and all hardware sleep, and the most it counts | Sleep's drawer                     |
+| `awake:main`    | logind: idle, since, idle action and delay   | nothing yet; Keep Awake's drawer watches it next |
+|                 | every inhibitor, the last sleep's start, end | nothing yet, as above                     |
+| `firmware:<id>` | name, vendor, version                        | Firmware, each device                     |
+|                 | lowest and bootloader versions, branch       | each device's drawer                      |
+|                 | the hidden, needs-reboot and require-ac flags | which are listed, Install's note         |
+|                 | problems, in fwupd's words                   | the row's note, Install, Held Back        |
+|                 | the update: version, urgency, size, date, time to install, summary, notes | Offered and its drawer |
+|                 | fwupd's words for offering none              | the drawer's Nothing Offered              |
+|                 | the last update's state, version, error      | at the restart, Last Install              |
+|                 | when an update last went in                  | Last Updated                              |
+|                 | flashes left, battery, protocols             | each device's drawer                      |
+|                 | plugin, serial                               | the drawer's last, in the Name face       |
+| `firmware:host` | security level                               | Firmware's Security                       |
+|                 | product, fwupd's version                     | Security's drawer                         |
 
 ## Left Out, and Why
 
@@ -108,6 +157,41 @@ units, or named here as left out with the reason.
   costs as a whole; Using It names programs apart. A tree lists its
   pids, so a drawer counts once a process two watched trees hold, but
   not their figures.
+- **The processor package's power.** Its energy counter is root's alone,
+  so the processor's own telemetry daemon gives it, and Heat reads it
+  there.
+- **Which cooling device each thermal zone drives.** They're the
+  firmware's wiring, and nothing Joel acts on; each device's state shows.
+- **A chip's electric limits.** The only chips here that say them are
+  the USB-C ports', whose figures Power shows from their supplies, so
+  Heat's drawer gives each reading alone.
+- **A battery's alarm and UPower's warning level.** The alarm is a
+  figure in the battery's own unit for when the firmware warns, and the
+  warning says the charge is low, which Charge's bar shows from 20%.
+- **A supply's present and online flags, scope and status for a
+  battery.** They say which supply is the machine's battery and whether
+  something's plugged in, which Power's rows say in their words.
+- **A port's USB-C revision.** It says which revision of USB-C the port
+  was built to, the same for every port of a machine, where the power
+  delivery revisions beside it say how each charger talks to it.
+- **A thermal zone's policy and mode.** They say how Linux is set to
+  manage the zone, the same for every zone, and nothing Joel acts on.
+- **fwupd's devices with no name.** They're pins it keeps for its own
+  checks, with no version and nothing to update.
+- **A firmware device's other flags, parent, version format, summary
+  and times.** They say how fwupd handles the device and when it first
+  saw it, nothing Joel acts on; the flags that change what Install does
+  show as what it does. fwupd's own update error is its words for a
+  device it hides.
+- **An update's vendor, protocol and download.** The device names its
+  vendor and protocols, and fwupd fetches the download itself.
+- **The last sleep before the daemon started.** logind says a sleep as
+  it happens and keeps none, so it's kept from the daemon's start, its
+  signal listened for whether or not `awake` is watched; time
+  asleep since boot is `boot:<id>`'s, whole.
+- **A sensor's reading the chip can't give.** A sensor saying nothing, or
+  a temperature no part could reach (an unused sensor's 65,261 degrees),
+  is left out rather than shown.
 
 [main]: src/main.rs
 [lib]: src/lib.rs

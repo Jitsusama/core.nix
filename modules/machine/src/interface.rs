@@ -8,7 +8,21 @@ use serde_json::{Value, json};
 pub const VERSION: u64 = 1;
 
 /// The kinds of record this daemon keeps.
-pub const KINDS: [&str; 6] = ["processor", "memory", "disk", "boot", "using", "tree"];
+pub const KINDS: [&str; 13] = [
+    "processor",
+    "memory",
+    "disk",
+    "boot",
+    "using",
+    "tree",
+    "sensor",
+    "zone",
+    "cooling",
+    "supply",
+    "sleep",
+    "awake",
+    "firmware",
+];
 
 /// The kind a key names: `disk` for `disk:nvme0n1`.
 pub fn kind_of(key: &str) -> Option<&str> {

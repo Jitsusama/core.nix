@@ -1,7 +1,8 @@
 //! The machine daemon's own logic, apart from its socket and threads so
 //! its tests reach it: what a client asks ([`interface`]), and what each
 //! of the kernel's files says, made into records ([`processor`],
-//! [`memory`], [`disk`], [`boot`], [`using`], [`tree`]). Every file is read through
+//! [`memory`], [`disk`], [`boot`], [`using`], [`tree`], [`heat`],
+//! [`supply`], [`sleep`], [`firmware`]). Every file is read through
 //! a [`Root`], `/` in use and a fixture tree in the tests, so a record is
 //! a function of the files and the read before.
 //!
@@ -11,12 +12,20 @@
 //! it doesn't have: a figure the machine can't say is null, never a guess.
 //! Words are the shell's.
 
+// A power supply's record names over forty figures in one `json!`, past
+// the macro's default depth.
+#![recursion_limit = "256"]
+
 pub mod boot;
 pub mod disk;
+pub mod firmware;
+pub mod heat;
 pub mod interface;
 pub mod memory;
 pub mod pressure;
 pub mod processor;
+pub mod sleep;
+pub mod supply;
 pub mod tree;
 pub mod using;
 

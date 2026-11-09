@@ -339,7 +339,7 @@ def test_a_collection_or_half_a_word_is_asked_and_the_fields_keys_edit_it(deskto
     since = desktop.mark()
     machine.send_chars("yy")
     desktop.reported("yanked 1", lambda rest: rest == "", since)
-    assert desktop.as_account("wl-paste --no-newline").startswith(f"{charge}%, ")
+    assert desktop.as_account("wl-paste --no-newline").startswith(f"{charge}% \u00b7 ")
     desktop.close_launcher()
     # Each answer by its one word, and an old one asks nothing.
     # "lag" answers from lag-watch's last ten seconds.

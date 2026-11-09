@@ -472,6 +472,10 @@ pub fn record(root: &Root, fixed: &Fixed, now: &Counters, before: Option<&Counte
         "forks_per_s": rate(now.forks, before.and_then(|b| b.forks)),
         "pressure": crate::pressure::parse(root.read("/proc/pressure/cpu").as_deref()),
         "temperature": heat,
+        "throttled": crate::heat::throttled(
+            root,
+            &fixed.cpus.iter().map(|each| (each.n, each.core)).collect::<Vec<_>>(),
+        ),
         "npu": npu,
         "over_ms": span,
         "since": since(over_ms),

@@ -445,6 +445,251 @@ fn a_disk_says_its_rates_sensors_link_and_file_systems() {
     assert!(disk["file_systems"][0]["size_b"].as_u64().is_some());
 }
 
+/// A fan chip, a USB-C port's chip, a thermal zone and its trip points,
+/// two kinds of cooling device, and the processors' throttle counts.
+fn heat(root: &Path) {
+    let write = |path: &str, text: &str| {
+        let file = root.join(path.trim_start_matches('/'));
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(file, text).unwrap();
+    };
+    let fans = "/sys/class/hwmon/hwmon5";
+    write(&format!("{fans}/name"), "dell_smm\n");
+    write(&format!("{fans}/fan1_label"), "CPU Fan\n");
+    write(&format!("{fans}/fan1_input"), "2400\n");
+    write(&format!("{fans}/fan1_max"), "5900\n");
+    write(&format!("{fans}/fan1_target"), "2400\n");
+    write(&format!("{fans}/pwm1"), "128\n");
+    write(&format!("{fans}/pwm1_enable"), "2\n");
+    write(&format!("{fans}/fan2_input"), "0\n");
+    write(&format!("{fans}/temp1_input"), "47000\n");
+    let port = "/sys/class/hwmon/hwmon7";
+    write(&format!("{port}/name"), "ucsi_source_psy_USBC000:001\n");
+    write(&format!("{port}/in0_input"), "20000\n");
+    write(&format!("{port}/in0_max"), "20000\n");
+    write(&format!("{port}/curr1_input"), "2250\n");
+    let zone = "/sys/class/thermal/thermal_zone6";
+    write(&format!("{zone}/type"), "TCPU\n");
+    write(&format!("{zone}/temp"), "78500\n");
+    write(&format!("{zone}/policy"), "user_space\n");
+    write(&format!("{zone}/mode"), "enabled\n");
+    write(&format!("{zone}/trip_point_0_type"), "critical\n");
+    write(&format!("{zone}/trip_point_0_temp"), "110000\n");
+    write(&format!("{zone}/trip_point_0_hyst"), "0\n");
+    write(&format!("{zone}/trip_point_1_type"), "passive\n");
+    write(&format!("{zone}/trip_point_1_temp"), "-274000\n");
+    for (n, kind, state, most) in [
+        (0, "Processor", 0, 3),
+        (1, "Processor", 1, 3),
+        (16, "dell-smm-fan1", 2, 2),
+    ] {
+        let device = format!("/sys/class/thermal/cooling_device{n}");
+        write(&format!("{device}/type"), &format!("{kind}\n"));
+        write(&format!("{device}/cur_state"), &format!("{state}\n"));
+        write(&format!("{device}/max_state"), &format!("{most}\n"));
+    }
+    for (n, cores, package) in [(0, 4, 1161), (1, 2, 1100)] {
+        let at = format!("/sys/devices/system/cpu/cpu{n}/thermal_throttle");
+        write(&format!("{at}/core_throttle_count"), &format!("{cores}\n"));
+        write(&format!("{at}/core_throttle_total_time_ms"), "42\n");
+        write(&format!("{at}/core_throttle_max_time_ms"), "18\n");
+        write(
+            &format!("{at}/package_throttle_count"),
+            &format!("{package}\n"),
+        );
+        write(&format!("{at}/package_throttle_total_time_ms"), "8699\n");
+        write(&format!("{at}/package_throttle_max_time_ms"), "129\n");
+    }
+}
+
+#[test]
+fn the_sensors_zones_and_cooling_say_every_reading() {
+    let running = Running::new("heat");
+    heat(&running.root());
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": 1, "ask": "list", "kind": ["sensor", "zone", "cooling"]}));
+    let records = &said["records"];
+    let core = record(records, "sensor:coretemp");
+    assert_eq!(core["part"], "processor");
+    assert_eq!(core["temperatures"][0]["label"], "Package id 0");
+    assert_eq!(core["temperatures"][0]["high_c"], json!(100.0));
+    let fans = record(records, "sensor:dell_smm");
+    assert_eq!(fans["part"], "fans");
+    let fan = &fans["fans"][0];
+    assert_eq!(fan["label"], "CPU Fan");
+    assert_eq!(fan["rpm"], json!(2400));
+    assert_eq!(fan["max_rpm"], json!(5900));
+    assert_eq!(fan["target_rpm"], json!(2400));
+    assert_eq!(fan["power_ratio"], json!(0.502), "128 of 255");
+    assert_eq!(fan["mode"], "automatic");
+    assert_eq!(fans["fans"][1]["rpm"], json!(0), "a stopped fan says so");
+    assert_eq!(fans["fans"][1]["label"], Value::Null, "no label made up");
+    let port = record(records, "sensor:ucsi_source_psy_USBC000:001");
+    assert_eq!(port["part"], "port");
+    assert_eq!(port["voltages"][0]["volts"], json!(20.0));
+    assert_eq!(port["voltages"][0]["max_volts"], json!(20.0));
+    assert_eq!(port["currents"][0]["amps"], json!(2.25));
+    let zone = record(records, "zone:TCPU");
+    assert_eq!(zone["temperature_c"], json!(78.5));
+    assert_eq!(zone["policy"], "user_space");
+    let trips = zone["trips"].as_array().unwrap();
+    assert_eq!(trips.len(), 1, "a trip point at absolute zero is unset");
+    assert_eq!(trips[0]["type"], "critical");
+    assert_eq!(trips[0]["temperature_c"], json!(110.0));
+    let processors = record(records, "cooling:Processor");
+    assert_eq!(processors["count"], json!(2));
+    assert_eq!(processors["states"], json!([0, 1]));
+    assert_eq!(processors["max_state"], json!(3));
+    assert_eq!(
+        record(records, "cooling:dell-smm-fan1")["states"],
+        json!([2])
+    );
+    let processor = client.ask(&json!({"id": 2, "ask": "get", "keys": ["processor:0"]}));
+    let throttled = &processor["records"][0]["throttled"];
+    assert_eq!(throttled["cores_count"], json!(6), "each core counted once");
+    assert_eq!(throttled["cores"][1]["core"], json!(16));
+    assert_eq!(throttled["cores"][1]["count"], json!(2));
+    assert_eq!(
+        throttled["package_count"],
+        json!(1161),
+        "the package's most"
+    );
+    assert_eq!(throttled["package_ms"], json!(8699));
+    assert_eq!(throttled["package_longest_ms"], json!(129));
+}
+
+/// A battery, a charger and a USB-C port with a charger in it, and the
+/// kernel's counts of the machine's sleeps.
+fn power(root: &Path) {
+    let write = |path: &str, text: &str| {
+        let file = root.join(path.trim_start_matches('/'));
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(file, text).unwrap();
+    };
+    let battery = "/sys/class/power_supply/BAT0";
+    for (file, text) in [
+        ("type", "Battery"),
+        ("status", "Discharging"),
+        ("present", "1"),
+        ("capacity", "80"),
+        ("charge_now", "4000000"),
+        ("charge_full", "4600000"),
+        ("charge_full_design", "5000000"),
+        ("voltage_now", "16000000"),
+        ("current_now", "1500000"),
+        ("cycle_count", "312"),
+        ("charge_control_start_threshold", "75"),
+        ("charge_control_end_threshold", "80"),
+        ("charge_types", "[Standard] Fast Adaptive"),
+        ("manufacture_year", "2025"),
+        ("manufacture_month", "3"),
+        ("manufacture_day", "9"),
+        ("model_name", "DELL 8RJWW5A"),
+        ("temp", "312"),
+    ] {
+        write(&format!("{battery}/{file}"), &format!("{text}\n"));
+    }
+    let port = "/sys/class/power_supply/ucsi-source-psy-USBC000:001";
+    for (file, text) in [
+        ("type", "USB"),
+        ("online", "1"),
+        ("usb_type", "C [PD] PD_PPS"),
+        ("voltage_now", "20000000"),
+        ("current_max", "2250000"),
+    ] {
+        write(&format!("{port}/{file}"), &format!("{text}\n"));
+    }
+    write("/sys/class/typec/port0/power_role", "source [sink]\n");
+    write("/sys/class/typec/port0/data_role", "host [device]\n");
+    write(
+        "/sys/class/typec/port0/usb_power_delivery_revision",
+        "3.0\n",
+    );
+    write(
+        "/sys/class/typec/port0-partner/supports_usb_power_delivery",
+        "yes\n",
+    );
+    let offered = "/sys/class/typec/port0-partner/usb_power_delivery/source-capabilities";
+    write(&format!("{offered}/1:fixed_supply/voltage"), "5000mV\n");
+    write(
+        &format!("{offered}/1:fixed_supply/maximum_current"),
+        "3000mA\n",
+    );
+    write(
+        &format!("{offered}/10:programmable_supply/minimum_voltage"),
+        "3300mV\n",
+    );
+    write(
+        &format!("{offered}/10:programmable_supply/maximum_voltage"),
+        "21000mV\n",
+    );
+    write(
+        &format!("{offered}/10:programmable_supply/maximum_current"),
+        "5000mA\n",
+    );
+    write(&format!("{offered}/2:fixed_supply/voltage"), "20000mV\n");
+    write(
+        &format!("{offered}/2:fixed_supply/maximum_current"),
+        "2250mA\n",
+    );
+    write("/sys/power/mem_sleep", "[s2idle]\n");
+    write("/sys/power/suspend_stats/success", "7\n");
+    write("/sys/power/suspend_stats/fail", "2\n");
+    write("/sys/power/suspend_stats/failed_freeze", "2\n");
+    write("/sys/power/suspend_stats/last_failed_errno", "-16\n");
+    write("/sys/power/suspend_stats/max_hw_sleep", "523986009990\n");
+}
+
+#[test]
+fn a_supply_says_its_charge_health_and_port_and_sleep_its_steps() {
+    let running = Running::new("power");
+    power(&running.root());
+    let said = running
+        .client()
+        .ask(&json!({"id": 1, "ask": "list", "kind": ["supply", "sleep", "awake"]}));
+    let records = &said["records"];
+    let battery = record(records, "supply:BAT0");
+    assert_eq!(battery["capacity_pct"], json!(80));
+    assert_eq!(battery["charge_ah"], json!(4.0));
+    assert_eq!(battery["health_ratio"], json!(0.92), "4.6 of 5.0 Ah");
+    assert_eq!(battery["watts"], json!(24.0), "16 V at 1.5 A");
+    assert_eq!(battery["cycles"], json!(312));
+    assert_eq!(battery["limit_stop_pct"], json!(80));
+    assert_eq!(battery["limit_settable"], json!(true));
+    assert_eq!(battery["charge_type"], "Standard");
+    assert_eq!(battery["made"], "2025-03-09");
+    assert_eq!(battery["temperature_c"], json!(31.2));
+    assert_eq!(battery["upower"], Value::Null, "no UPower in a test");
+    let port = record(records, "supply:ucsi-source-psy-USBC000:001");
+    assert_eq!(port["usb_type"], "PD");
+    assert_eq!(port["volts"], json!(20.0));
+    assert_eq!(port["max_amps"], json!(2.25));
+    assert_eq!(port["typec"]["port"], json!(0));
+    assert_eq!(port["typec"]["power_role"], "sink");
+    assert_eq!(port["typec"]["power_delivery_revision"], "3.0");
+    assert_eq!(port["typec"]["partner"]["power_delivery"], json!(true));
+    assert_eq!(
+        port["typec"]["partner"]["source_capabilities"],
+        json!([
+            {"volts": 5.0, "to_volts": null, "amps": 3.0},
+            {"volts": 20.0, "to_volts": null, "amps": 2.25},
+            {"volts": 3.3, "to_volts": 21.0, "amps": 5.0}
+        ]),
+        "in the kernel's order, 10 after 2"
+    );
+    let sleep = record(records, "sleep:main");
+    assert_eq!(sleep["mode"], "s2idle");
+    assert_eq!(sleep["successes"], json!(7));
+    assert_eq!(sleep["failed_at"]["freeze"], json!(2));
+    assert_eq!(sleep["last_failed_errno"], json!(-16));
+    assert_eq!(
+        sleep["hardware_sleep_counts_to_us"],
+        json!(523_986_009_990u64)
+    );
+    assert_eq!(sleep["logind"], Value::Null, "logind's is awake:main");
+    assert_eq!(record(records, "awake:main")["kind"], "awake");
+}
+
 #[test]
 fn a_disk_taken_out_is_said_gone() {
     let running = Running::new("gone");

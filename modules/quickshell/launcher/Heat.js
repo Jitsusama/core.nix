@@ -1,6 +1,6 @@
 // What the launcher's Heat makes of the machine's sensors, in plain
 // JavaScript so a check can run it in Qt's own engine, as the shell does:
-// the kernel's hwmon chips, as Sensors.qml reads them, gathered into the
+// the kernel's hwmon chips, as the machine daemon holds them, gathered into the
 // parts Joel knows (the processor and its cores, its NPU, image processor
 // and media and display engines as its own telemetry says them, the disk
 // and its other sensors, the memory, the air inside, each fan), how near
@@ -10,6 +10,8 @@
 // level, so the two say them alike.
 .pragma library
 .import "Machine.js" as Machine
+.import "Numbers.js" as Numbers
+.import "Order.js" as Order
 
 // A sensor on a chip that measures many, as dell_ddv's are, by its label,
 // as the part it stands for. One labelled "CPU" or "Other" is left out: the
@@ -65,6 +67,192 @@ const WHOLE = /^(Composite|Package|Tctl|Tdie)/;
 // A word with no capital but its first, which a sentence lowers.
 const PLAIN_WORD = /^[A-Z][a-z]*$/;
 const SPACES = /\s+/;
+
+// The parts a chip can stand for in Heat, by the part the machine daemon
+// names it for. A chip it names for something else, as the fans' own
+// chip or a USB-C port's, measures many things or none, so its sensors
+// are named by their labels, as a chip of no part's are.
+const CHIP_PARTS = ["processor", "disk", "wifi", "board", "chipset", "graphics", "battery"];
+// The temperatures a part could read, in degrees, beyond which a sensor
+// says nothing true: an unused disk sensor says 65,261.
+const COLDEST = -40;
+const HOTTEST = 150;
+
+function plausible(value) {
+    return value !== null && value !== undefined && value > COLDEST && value < HOTTEST;
+}
+
+// A limit a chip says, or null where it says one no temperature could
+// reach, or none at all.
+function limitOf(value) {
+    return plausible(value) && value > 0 ? value : null;
+}
+
+// A chip's voltages, currents or power, each { label, value }, from the
+// daemon's list of them and the figure each says in its unit.
+function electricOf(list, unit) {
+    return (list ?? []).filter(each => given(each[unit]))
+        .map(each => ({ n: each.n, label: each.label ?? "", value: each[unit] }));
+}
+
+// A voltage, current or power in the unit that fits it, to three
+// significant digits with the real minus: a figure under one in its unit
+// is said in thousandths, "3.00 mV", and a negative one "-2.00 mA" with
+// the real minus (VKCF3Z, 2026-11-08), rather than "0.00300 V". One that
+// rounds up to one, as 0.9996 does, is said whole. Grouped and pointed as
+// Joel's settings say, `group` and `point` (Numbers.significant).
+function electricSaid(value, unit, group, point) {
+    const small = value !== 0 && Math.abs(Number(value.toPrecision(3))) < 1;
+    const figure = Numbers.significant(small ? value * 1000 : value, group, point)
+        .replace("-", "\u2212");
+    return `${figure} ${small ? "m" : ""}${unit}`;
+}
+
+// Each chip as Heat gathers it, from the machine daemon's sensor records,
+// in the order of their keys: its name, what it stands for, each
+// temperature it reads ({ n, label, value, high, crit, low, emergency,
+// alarm, chip }), each fan it turns ({ n, label, value, max, min,
+// target, power, mode }) and what it says of electricity ({ volts, amps,
+// watts }). A chip of no part keeps only the sensors its labels name,
+// since the rest say nothing of what they measure; a fan whose speed
+// can't be read is left out.
+function chipsOf(records) {
+    return Order.sorted(records, Order.byName(record => record.key))
+        .map(record => {
+            const part = CHIP_PARTS.includes(record.part) ? record.part : "";
+            const chip = record.chip ?? "";
+            const temps = (record.temperatures ?? [])
+                .filter(each => plausible(each.temperature_c))
+                .map(each => ({
+                    n: each.n,
+                    label: each.label ?? "",
+                    value: each.temperature_c,
+                    high: limitOf(each.high_c),
+                    crit: limitOf(each.critical_c),
+                    low: plausible(each.low_c) ? each.low_c : null,
+                    emergency: limitOf(each.emergency_c),
+                    alarm: each.alarm === true,
+                    chip
+                }))
+                .filter(each => part !== "" || labelled(each.label) !== "");
+            const turning = (record.fans ?? []).filter(each => given(each.rpm)).map(each => ({
+                n: each.n,
+                label: each.label ?? "",
+                value: each.rpm,
+                max: each.max_rpm ?? null,
+                min: each.min_rpm ?? null,
+                target: each.target_rpm ?? null,
+                power: each.power_ratio ?? null,
+                mode: each.mode ?? null
+            }));
+            const electric = {
+                volts: electricOf(record.voltages, "volts"),
+                amps: electricOf(record.currents, "amps"),
+                watts: electricOf(record.power, "watts")
+            };
+            return { chip, part, temps, fans: turning, electric };
+        });
+}
+
+// The thermal zones that stand for a part, each { part, type, value,
+// trips }, each trip { type, value }, from the machine daemon's zone
+// records.
+function zonesOf(records) {
+    return records.filter(each => plausible(each.temperature_c))
+        .map(each => ({
+            part: zonePart(each.type ?? ""),
+            type: each.type ?? "",
+            value: each.temperature_c,
+            trips: (each.trips ?? []).filter(trip => limitOf(trip.temperature_c) !== null)
+                .map(trip => ({ type: trip.type ?? "", value: trip.temperature_c }))
+        }))
+        .filter(each => each.part !== "");
+}
+
+// The points at which the firmware acts on a part's heat, from every zone
+// that stands for it, coolest first, each { type, value, zone }: where it
+// slows the part (passive), turns a fan up (active), calls it hot, or
+// shuts the machine down (critical). A point two zones share is said once.
+function tripsFor(zones, part) {
+    const out = [];
+    for (const zone of zones ?? []) {
+        if (zone.part !== part) {
+            continue;
+        }
+        for (const trip of zone.trips) {
+            if (!out.some(each => each.type === trip.type && each.value === trip.value)) {
+                out.push({ type: trip.type, value: trip.value, zone: zone.type });
+            }
+        }
+    }
+    return out.sort((a, b) => a.value - b.value);
+}
+
+// Each kind of cooling device the firmware can step, { type, count,
+// state, max }, its state the furthest any of them is stepped, from the
+// machine daemon's cooling records, by type.
+function coolingOf(records) {
+    return Order.sorted(records, Order.byName(record => record.type))
+        .filter(each => given(each.max_state) && each.max_state > 0)
+        .map(each => ({
+            type: each.type ?? "",
+            count: each.count ?? 1,
+            state: Math.max(0, ...(each.states ?? [])),
+            max: each.max_state
+        }));
+}
+
+// What's left of a temperature to its limit, as Heat's side says it
+// (VKCF3Z, 2026-11-08): { by, limit, past, hue }, where `by` is the
+// degrees to it or past it, `limit` "high" or "critical", and `hue` ""
+// below where it warns, "warning" past it and "alert" past the critical.
+// Past the high, what's left is to the critical, where the chip says one.
+// Where a chip's high is its critical, as a processor's often is, it
+// warns ten degrees short of it, as the bar does. Null where it says
+// neither.
+function leftTo(value, high, crit) {
+    const warns = warnsFrom(high, crit);
+    const distinct = given(high) && !(given(crit) && high >= crit);
+    if (given(crit) && value >= crit) {
+        return { by: value - crit, limit: "critical", past: true, hue: "alert" };
+    }
+    const hue = warns !== null && value >= warns ? "warning" : "";
+    if (given(crit) && (!distinct || value >= high)) {
+        return { by: crit - value, limit: "critical", past: false, hue };
+    }
+    if (distinct) {
+        return value >= high ? { by: value - high, limit: "high", past: true, hue }
+            : { by: high - value, limit: "high", past: false, hue };
+    }
+    return null;
+}
+
+// Each logical processor and the core it runs on, { cpu, core }, from the
+// machine daemon's processor record.
+function cpusOf(processor) {
+    return (processor?.cores ?? []).filter(each => given(each.core))
+        .map(each => ({ cpu: each.n, core: each.core }));
+}
+
+// How often the processor has slowed itself to cool down since the
+// machine started, from the machine daemon's processor record, as
+// Heat.qml says it: { times, ms, longest, cores, total }, each core by
+// its first logical processor, or null where the machine counts none.
+function throttledOf(processor) {
+    const said = processor?.throttled ?? null;
+    if (said === null) {
+        return null;
+    }
+    const cores = (said.cores ?? []).map(each => ({ cpu: each.cpu, count: each.count ?? 0 }))
+        .sort((a, b) => a.cpu - b.cpu);
+    return {
+        times: said.package_count ?? 0,
+        ms: said.package_ms ?? null,
+        longest: said.package_longest_ms ?? null,
+        cores,
+        total: said.cores_count ?? cores.reduce((sum, each) => sum + each.count, 0)
+    };
+}
 
 function labelled(label) {
     const match = LABELLED.find(each => each[0] === label);
@@ -169,6 +357,11 @@ function entry(id, whole, sensors, cores) {
         value: whole.value,
         high: whole.high ?? null,
         crit: whole.crit ?? null,
+        low: whole.low ?? null,
+        emergency: whole.emergency ?? null,
+        alarm: whole.alarm === true,
+        chip: whole.chip ?? "",
+        electric: null,
         sensors,
         cores
     };
@@ -192,7 +385,8 @@ function chipParts(chip, cpuOfCore) {
         return [];
     }
     if (chip.part === "processor") {
-        return [processorPart(chip, cpuOfCore)];
+        return [Object.assign(processorPart(chip, cpuOfCore),
+            { chip: chip.chip, electric: chip.electric })];
     }
     if (chip.part === "") {
         return chip.temps.filter(sensor => labelled(sensor.label) !== "")
@@ -201,7 +395,7 @@ function chipParts(chip, cpuOfCore) {
     const whole = chip.temps.find(sensor => WHOLE.test(sensor.label)) ?? hottest(chip.temps);
     const sensors = chip.temps.filter(sensor => sensor !== whole)
         .map(sensor => ({ n: sensor.n, label: sensor.label, value: sensor.value }));
-    return [entry(chip.part, whole, sensors, [])];
+    return [Object.assign(entry(chip.part, whole, sensors, []), { electric: chip.electric })];
 }
 
 // The parts in their order, then as the chips were listed, so two disks
@@ -260,8 +454,10 @@ function fanOf(fan) {
         label: fan.label,
         value: fan.value,
         max: fan.max ?? null,
+        min: fan.min ?? null,
         target: fan.target ?? null,
-        power: fan.power ?? null
+        power: fan.power ?? null,
+        mode: fan.mode ?? null
     };
 }
 
@@ -271,8 +467,10 @@ function toldOf(made, other) {
         return made;
     }
     made.max = made.max ?? other.max ?? null;
+    made.min = made.min ?? other.min ?? null;
     made.target = made.target ?? other.target ?? null;
     made.power = made.power ?? other.power ?? null;
+    made.mode = made.mode ?? other.mode ?? null;
     return made;
 }
 
@@ -295,32 +493,4 @@ function fans(chips) {
     }
     const told = unnamed.find(list => list.length === named.length) ?? [];
     return named.map((fan, i) => toldOf(fanOf(fan), told[i]));
-}
-
-// How often the processor has slowed itself to cool down since the
-// machine started, from each logical processor's counts, { cpu, core,
-// cores, package, packageMs, packageLongest }: the package's events are
-// counted by each processor that saw them, so the most any saw is the
-// package's, and a core's are said by each processor sharing it, so each
-// core counts once, by its lowest processor. Gives { times, ms, longest,
-// cores, total }, or null with nothing counted.
-function throttled(cpus) {
-    if (cpus.length === 0) {
-        return null;
-    }
-    const most = cpus.reduce((a, b) => (a && a.package >= b.package ? a : b), null);
-    const byCore = {};
-    for (const each of cpus) {
-        if (byCore[each.core] === undefined || each.cpu < byCore[each.core].cpu) {
-            byCore[each.core] = { cpu: each.cpu, count: each.cores };
-        }
-    }
-    const cores = Object.keys(byCore).map(core => byCore[core]).sort((a, b) => a.cpu - b.cpu);
-    return {
-        times: most.package,
-        ms: most.packageMs ?? null,
-        longest: most.packageLongest ?? null,
-        cores,
-        total: cores.reduce((sum, each) => sum + each.count, 0)
-    };
 }

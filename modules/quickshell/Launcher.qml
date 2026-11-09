@@ -320,12 +320,13 @@ Scope {
         const below = underFirst(Rank.keysHeld(Rank.once(Rank.placed(found.filter(once),
             gathered.filter(row => !whole.has(row.from.settings.name)), latch))));
         // Searched again only to say what's there now, it keeps the order
-        // it's shown in (reshow).
+        // it's shown in (reshow), unless a place still being made is said
+        // again in its own order (ordering).
         const placedAll = Date.now();
         // What ends a search at the top comes after it all, never counted as
         // found, so an answer given only when nothing is still shows.
         const ending = held.length === 0 && typed.trim() !== "" ? endings(typed) : [];
-        matches = live((steadying ? steadied(rows.concat(below)) : rows.concat(below))
+        matches = live((steadying && !ordering ? steadied(rows.concat(below)) : rows.concat(below))
             .concat(ending));
         // An answer only started gives way to a name that starts the same,
         // its first word: "pow" is still Power Off. A later word starting
@@ -588,6 +589,13 @@ Scope {
                     ? heldBack(place, again(row) ?? row) : row)
             });
         } else {
+            // A member that didn't answer as its place was made, as Firmware
+            // while fwupd is first asked, or Power's Kept From Resting
+            // before its reading, has no row there to say again, so the
+            // place is made again from its members, the row in its place.
+            const place = steps[last].row.category ?? category;
+            if (place && members(place).some(row => row.asker === source))
+                placesRead();
             return;
         }
         held = steps;
@@ -2301,9 +2309,12 @@ Scope {
 
     // What an ending row's side names for the key that carries it: d with
     // its verb where the row is d's own ending act (Operators.endingOf), else
-    // the line Return writes, ":disconnect" (VKCF3Z, 2026-11-05).
+    // the line Return writes, ":disconnect" (VKCF3Z, 2026-11-05). A row
+    // whose side says how it stands rather than what it does, as Sleep's
+    // does, says `carries: false`, and the foot alone names its line
+    // (VKCF3Z, 2026-11-08).
     function carriedBy(choice) {
-        if (!endsSomething(choice))
+        if (!endsSomething(choice) || choice.carries === false)
             return "";
         if (Operators.endingOf(choice, []) === choice) {
             const key = Object.keys(Operators.operators)
@@ -4467,6 +4478,26 @@ Scope {
         reshow(steps.length);
     }
 
+    // Each place held said again from its members, as a provider whose
+    // rows it holds first hears its daemon: a row it couldn't make before
+    // its records came, as Heat's, comes in place, and a place's own row
+    // says how it stands now, as Power's charge in Machine. Before, each
+    // read its source as it was asked, so the place was whole at once.
+    // The place's own order wins over Steady's, which puts a row new to
+    // it last: Heat belongs between Memory and Disk, and the place is
+    // still being made, a moment after it was stepped into.
+    function placesRead() {
+        if (!open || asking || !held.some(step => !!step.row.category))
+            return;
+        const steps = held.map(step => step.row.category ? Object.assign({}, step, {
+            rows: members(step.row.category).map(row => heldBack(step.row.category, row))
+        }) : step);
+        if (!remade(steps, held.length))
+            return;
+        held = steps;
+        reshow(steps.length, true);
+    }
+
     // A row a condition holds back now, dimmed, saying why in the place's
     // words; any other as it is. It's judged by the row's id alone, so a
     // row said again from a new reading is held back the same as one
@@ -4774,16 +4805,21 @@ Scope {
             reshow(held.length);
     }
 
-    function reshow(count) {
+    // Given `ordered`, a place's rows take its own order rather than the
+    // order they were shown in, as a place still being made does
+    // (placesRead); the selection stays on its row either way.
+    function reshow(count, ordered) {
         const was = current >= 0 && selected ? pairedId(selected) : "";
         const at = current;
         // A provider that throws mid-search mustn't leave every later search
         // keeping its rows as a refresh does.
         steadying = true;
+        ordering = ordered === true;
         try {
             search(typed);
         } finally {
             steadying = false;
+            ordering = false;
         }
         // What's typed asked something whole, out at the top, now it can.
         if (held.length !== count)
@@ -4806,6 +4842,8 @@ Scope {
     // Whether the search under way only says again what's there, as a
     // refresh does (reshow).
     property bool steadying: false
+    // Whether a place said again takes its own order (reshow).
+    property bool ordering: false
 
     // What a row is, to hold it in place as it changes: what it says it
     // is, or for a part with no key, as an answer's figures have none, its
@@ -5099,7 +5137,7 @@ Scope {
             // Searched again only to say what's there now, it keeps the
             // order it's shown in, and the selection where it is (reshow).
             if (steadying) {
-                matches = live(steadied(found));
+                matches = live(ordering ? found : steadied(found));
                 if (current === -1 && !lined)
                     current = 0;
                 return;
