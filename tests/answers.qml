@@ -582,7 +582,13 @@ QtObject {
             servers: { reach: "{count} of the last 8", unreachable: "out of reach",
                 unusable: "set aside", aside: "set aside: {why}",
                 "standing:chosen": "chosen", "standing:tooVariable": "set aside: too variable",
+                "standing:disagrees": "set aside: disagrees",
+                "why:tooVariable": "too variable", "why:disagrees": "disagrees with the others",
+                "why:untrusted": "disagrees with the trusted servers",
                 "why:tooFewSamples": "too few samples yet",
+                "why:chosen": "the clock is kept by it",
+                "why:combined": "combined with the chosen one",
+                silent: "not answering", unsampled: "no sample yet",
                 "kind:reference": "reference clock", interleaved: "interleaved",
                 basic: "basic", authenticated: "authenticated",
                 unauthenticated: "unauthenticated", exchange: "{mode} \u00b7 {authentication}",
@@ -630,6 +636,11 @@ QtObject {
             ["Unix time", Moment.unix(evening), 1793829600],
             ["TAI", Moment.tai(evening), "22:00:37"],
             ["GPS time", quoted(Moment.gps(evening)), quoted({ week: 2443, seconds: 338418 })],
+            // As Time says it, in the launcher's own marks (Y2YBTS's review of #2489).
+            ["GPS time said", Moment.gpsSaid(evening, "week {week} \u00b7 {seconds} s",
+                { group: "\u202f", point: "," }), "week 2443 \u00b7 338\u202f418 s"],
+            ["a longitude said", Moment.longitudeSaid(-79.42, ","), "79,42\u00b0 W"],
+            ["a longitude east said", Moment.longitudeSaid(10.5, "."), "10.5\u00b0 E"],
             ["Greenwich sidereal time", Moment.sidereal(evening, 0), "00:56:37"],
             ["a date this year, without its year", Moment.day(day, evening),
                 "Wednesday 4 November"],
@@ -698,6 +709,54 @@ QtObject {
                 "set aside: too few samples yet"],
             ["a server too variable", Keeping.standing({ standing: "tooVariable", reach: 255 },
                 KeepingCases.servers), "set aside: too variable"],
+            // Why is said only where the note doesn't say it (VKCF3Z, 2026-11-08).
+            ["a chosen server's why, which its note says", Keeping.whyUnsaid({ standing: "chosen",
+                reach: 255, chosen: { why: "chosen" } }, KeepingCases.servers), ""],
+            ["a server set aside's why, which its note says", Keeping.whyUnsaid({
+                standing: "unusable", reach: 3, chosen: { why: "tooFewSamples" } },
+                KeepingCases.servers), ""],
+            ["an agreeing server's why, which its note doesn't say", Keeping.whyUnsaid({
+                standing: "combined", reach: 255, chosen: { why: "combined" } },
+                KeepingCases.servers), "combined with the chosen one"],
+            ["a too variable server's why, which its note says", Keeping.whyUnsaid({
+                standing: "tooVariable", reach: 255, chosen: { why: "tooVariable" } },
+                KeepingCases.servers), ""],
+            ["a disagreeing server's why, which its note says", Keeping.whyUnsaid({
+                standing: "disagrees", reach: 255, chosen: { why: "disagrees" } },
+                KeepingCases.servers), ""],
+            ["an untrusted server's why, which says more than its note", Keeping.whyUnsaid({
+                standing: "disagrees", reach: 255, chosen: { why: "untrusted" } },
+                KeepingCases.servers), "disagrees with the trusted servers"],
+            ["a server set aside and out of reach keeps its why", Keeping.whyUnsaid({
+                standing: "unusable", reach: 0, chosen: { why: "tooFewSamples" } },
+                KeepingCases.servers), "too few samples yet"],
+            // The fact the row's side is made from tells only its note, and
+            // goes with none; one that only reads the same stays.
+            ["a server's facts beside its side", Keeping.besideSide([
+                { id: "offset", side: "+12.0 \u00b5s", note: "measured +11.0 \u00b5s" },
+                { id: "estimate", side: "+12.0 \u00b5s", note: "" },
+                { id: "stratum", side: "2", note: "" }], "offset")
+                .map(each => `${each.id} ${each.side}`).join(", "),
+                "offset measured +11.0 \u00b5s, estimate +12.0 \u00b5s, stratum 2"],
+            ["a server's side made from a fact with no note", Keeping.besideSide([
+                { id: "offset", side: "+12.0 \u00b5s", note: "" },
+                { id: "stratum", side: "2", note: "" }], "offset")
+                .map(each => each.id).join(", "), "stratum"],
+            // A server's side is never empty, and its note gives way where
+            // the side says it's out of reach.
+            ["a server's side, sampled", Keeping.side({ lastSample: 12, offset: 0.000012,
+                reach: 255 }, KeepingCases.servers), "+12.0 \u00b5s"],
+            ["a server's side, silent", Keeping.side({ lastSample: null, reach: 0 },
+                KeepingCases.servers), "not answering"],
+            ["a server's side, answering with no sample yet", Keeping.side({ lastSample: null,
+                reach: 1 }, KeepingCases.servers), "no sample yet"],
+            ["a silent server's note", Keeping.note({ standing: "unusable", lastSample: null,
+                reach: 0 }, KeepingCases.servers), ""],
+            ["a server once heard, now out of reach", Keeping.note({ standing: "unusable",
+                lastSample: 900, reach: 0 }, KeepingCases.servers), "out of reach"],
+            ["a server answering with no sample yet still says where it stands", Keeping.note({
+                standing: "combined", lastSample: null, reach: 1 },
+                { "standing:combined": "agrees" }), "agrees"],
             // The screen's Warmth, from what the backlight daemon says: what
             // holds it, by night, by day, waiting for a place, or the room;
             // and its figures, the room's white where a sensor sees it, then
