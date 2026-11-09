@@ -678,7 +678,7 @@ def name_line(desktop: Desktop, held: int) -> None:
 def test_the_launchers_picker_fetches_a_file_from_google_drive_for_the_portal(
     desktop: Desktop,
 ) -> None:
-    """The launcher's picker finds Google Drive, steps into it and hands over a file fetched."""
+    """The launcher's picker finds Google Drive, opens a file by gx, and hands over one fetched."""
     machine = desktop.machine
     notes = f"/home/{desktop.account}/drive-notes"
     chose = "/run/user/1000/portal-chose"
@@ -715,12 +715,29 @@ def test_the_launchers_picker_fetches_a_file_from_google_drive_for_the_portal(
         desktop.follow()
         desktop.launcher_until(lambda shown: "menu.pdf" in shown["rows"])
         desktop.shoot("file-chooser-drive")
+        # One of Google's own kinds says at the foot the file a program is handed.
+        desktop.normal()
+        desktop.down_to("Quarterly Plan")
+        desktop.launcher_until(
+            lambda _: "as .docx" in " ".join(word["text"] for word in laid_out(desktop)["foot"])
+        )
         desktop.down_to("menu.pdf")
         # Its row says its size and when it changed, as a file here does.
         desktop.launcher_until(
             lambda shown: (shown["selected"] or {}).get("side", "").startswith("4\u00a0B \u00b7 ")
         )
         desktop.shoot("file-chooser-drive-file")
+        # Normal's gx fetches it and opens it in its own program, the ask still waiting.
+        machine.send_chars("gx")
+        reading = f"pgrep -u {desktop.account} -f '[z]athura.*menu.pdf'"
+        machine.wait_until_succeeds(reading, timeout=STARTING)
+        machine.succeed(f"pkill -KILL -u {desktop.account} -f '[z]athura.*menu.pdf'")
+        machine.wait_until_fails(reading, timeout=timedelta(seconds=30))
+        machine.fail(f"test -e {chose}")
+        desktop.launcher_until(
+            lambda shown: shown["keys"] and (shown["selected"] or {}).get("name") == "menu.pdf",
+            timeout=timedelta(seconds=30),
+        )
         machine.send_key("ret")
         # Fetched first, then handed over, and the launcher closes.
         machine.wait_until_succeeds(

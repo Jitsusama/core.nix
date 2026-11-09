@@ -113,6 +113,7 @@ fn main() -> ExitCode {
         ),
     };
     let mut watch = Watch::new(Google::new(Origins::default()), credentials, None);
+    watch.weigh(&places);
     let mut wait = EVERY;
     let mut failures: u32 = 0;
     let mut last: Option<SystemTime> = None;

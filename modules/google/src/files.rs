@@ -248,35 +248,46 @@ fn used(inside: &Path) {
     }
 }
 
+/// How many bytes the files in one copy's folder take.
+fn weight(copy: &Path) -> u64 {
+    fs::read_dir(copy)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|file| file.metadata().ok())
+        .map(|file| file.len())
+        .sum()
+}
+
+/// How many bytes every copy under `folder` takes together, none where
+/// nothing was ever kept.
+pub fn held(folder: &Path) -> u64 {
+    fs::read_dir(folder)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|copy| weight(&copy.path()))
+        .sum()
+}
+
 /// Lets go of the copies under `folder` handed out longest ago until those
 /// left take at most `most` bytes together, never `whose`, the one just
-/// handed out, which a program may be opening.
-pub fn pruned(folder: &Path, most: u64, whose: &str) {
+/// handed out, which a program may be opening; and says how many bytes
+/// those left take.
+pub fn pruned(folder: &Path, most: u64, whose: &str) -> u64 {
     let Ok(read) = fs::read_dir(folder) else {
-        return;
+        return 0;
     };
     let mut copies: Vec<(SystemTime, u64, PathBuf)> = read
         .flatten()
         .filter(|copy| copy.file_name() != whose)
         .filter_map(|copy| {
             let used = copy.metadata().ok()?.modified().ok()?;
-            let size = fs::read_dir(copy.path())
-                .ok()?
-                .flatten()
-                .filter_map(|file| file.metadata().ok())
-                .map(|file| file.len())
-                .sum();
-            Some((used, size, copy.path()))
+            Some((used, weight(&copy.path()), copy.path()))
         })
         .collect();
-    let held: u64 = fs::read_dir(folder.join(whose))
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|file| file.metadata().ok())
-        .map(|file| file.len())
-        .sum();
-    let mut total = held + copies.iter().map(|(_, size, _)| size).sum::<u64>();
+    let mut total =
+        weight(&folder.join(whose)) + copies.iter().map(|(_, size, _)| size).sum::<u64>();
     copies.sort();
     for (_, size, path) in copies {
         if total <= most {
@@ -287,6 +298,7 @@ pub fn pruned(folder: &Path, most: u64, whose: &str) {
             Err(error) => eprintln!("<4>couldn't let a Drive copy go: {error}"),
         }
     }
+    total
 }
 
 /// Writes what `from` gives as the file `path`, replacing one there, whole
@@ -512,21 +524,28 @@ mod tests {
         assert!(fresh(&folder, "old", "f", None).is_none());
         let at = 1_793_037_600_000;
         cached(&folder, "old", "f", Some(at), &mut &[0; 10][..]).unwrap();
-        pruned(&folder, 30, "new");
+        assert_eq!(held(&folder), 30, "three copies of ten bytes");
+        assert_eq!(pruned(&folder, 30, "new"), 30);
         assert_eq!(fs::read_dir(&folder).unwrap().count(), 3, "room was there");
-        pruned(&folder, 20, "mid");
+        assert_eq!(pruned(&folder, 20, "mid"), 20);
         let mut left: Vec<_> = fs::read_dir(&folder)
             .unwrap()
             .map(|copy| copy.unwrap().file_name())
             .collect();
         left.sort();
         assert_eq!(left, ["mid", "old"]);
-        pruned(&folder, 0, "mid");
+        assert_eq!(
+            pruned(&folder, 0, "mid"),
+            10,
+            "the one just handed out stays"
+        );
+        assert_eq!(held(&folder), 10);
         let left: Vec<_> = fs::read_dir(&folder)
             .unwrap()
             .map(|copy| copy.unwrap().file_name())
             .collect();
         assert_eq!(left, ["mid"]);
         fs::remove_dir_all(&folder).unwrap();
+        assert_eq!(held(&folder), 0, "nothing kept, nothing held");
     }
 }

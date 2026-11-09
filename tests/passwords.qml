@@ -4,10 +4,10 @@
 // link in its manager's program, what its drawer says and that it never
 // says a secret, its health once every password is checked, those
 // needing attention, what the foot says of a copy as its time runs out,
-// a manager's entries by vault, and For You's one to-do from what the
-// last check found: whether it stands or is done, what its side says and
-// what For You weighs, run in Qt's own JavaScript engine, the one the
-// shell runs it in. The `the-passwords-show-every-figure-but-the-secret`
+// a manager's entries by vault and what its drawer says it holds, and
+// For You's one to-do from what the last check found: whether it stands
+// or is done, what its side says and what For You weighs, run in Qt's own
+// JavaScript engine, the one the shell runs it in. The `the-passwords-show-every-figure-but-the-secret`
 // check copies Passwords.js, Managers.js and Checked.js, and the
 // launcher's Ago.js and Numbers.js they read, beside this file and runs
 // `qml -platform offscreen passwords.qml`.
@@ -344,6 +344,18 @@ QtObject {
         check("by vault", Managers.vaults([gitHub, bank, door]).map(vault =>
             [vault.name, vault.records.map(record => record.id)]),
         [["Private", ["door", "gh"]], ["Shared", ["bank"]]]);
+
+        // What 1Password's drawer in Programs says it holds.
+        const holds = { inVault: "{count} in 1 vault", inVaults: "{count} in {vaults} vaults" };
+        const many = Array.from({ length: 1200 }, (_, at) => Object.assign({}, door,
+            { id: `d${at}`, favourite: at < 2 }));
+        check("what a manager holds", Managers.held(many.concat([bank]), holds),
+            [{ id: "passwords:entries", value: "1,201 in 2 vaults" },
+                { id: "passwords:favourites", value: "2" }]);
+        check("one vault, no favourites", Managers.held([Object.assign({}, bank,
+            { favourite: false })], holds),
+        [{ id: "passwords:entries", value: "1 in 1 vault" }]);
+        check("nothing held, nothing said", Managers.held([], holds), []);
 
         if (failures.length > 0) {
             console.warn(`${failures.length} of ${asked} failed:\n${failures.join("\n")}`);

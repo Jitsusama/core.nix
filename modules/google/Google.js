@@ -76,9 +76,17 @@ function stateOf(said) {
             listings: Array.isArray(said.drive?.listings) ? said.drive.listings : [],
             downloads: Array.isArray(said.drive?.downloads) ? said.drive.downloads : [],
             uploads: Array.isArray(said.drive?.uploads) ? said.drive.uploads : [],
-            places: placesOf(said.drive?.places)
+            places: placesOf(said.drive?.places),
+            kept: keptOf(said.drive?.kept)
         }
     };
+}
+
+// How much Drive's copies here take and may take, in bytes (src/drive.rs's
+// Kept), none from a program before it.
+function keptOf(kept) {
+    const bytes = value => typeof value === "number" && value >= 0 ? value : 0;
+    return { held: bytes(kept?.held), most: bytes(kept?.most) };
 }
 
 // Drive's own places as the program says them (src/drive.rs's Places):

@@ -735,14 +735,26 @@ pub enum Unsaved {
     Unread,
 }
 
+/// How much the copies of Drive's files kept to open or hand on take
+/// together, `held`, and how much they may, `most`, before those handed
+/// out longest ago are let go, in bytes, as Google Drive's drawer in
+/// Programs says it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+pub struct Kept {
+    pub held: u64,
+    pub most: u64,
+}
+
 /// What's held of Drive's folders: the folders, the downloads and the
-/// saves asked lately, each newest first, and Drive's own places.
+/// saves asked lately, each newest first, Drive's own places, and how
+/// much its copies here take.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct Drive {
     pub listings: Vec<Listed>,
     pub downloads: Vec<Downloaded>,
     pub uploads: Vec<Uploaded>,
     pub places: Places,
+    pub kept: Kept,
 }
 
 #[cfg(test)]

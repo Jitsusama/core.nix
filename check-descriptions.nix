@@ -2292,10 +2292,12 @@
     never its value, a website sent in the clear as its health and a weak password as its strength,
     each in the warning's role, its password reused or breached as its health once every password
     is checked, its figures grouped, and nothing before, those needing attention by title, the
-    foot counts a copy down to its clearing, or a one-time code to its lapsing, and For You's one
-    to-do for what the last check found stands while some login is breached or reused, is done
-    once a later check finds none, says how many are breached then reused at its side, each left
-    out at none, and is weighed as a thing to do ready now
+    foot counts a copy down to its clearing, or a one-time code to its lapsing, a manager's drawer
+    in Programs says how many entries it holds in how many vaults and how many are favourites,
+    each left out at none, and For You's one to-do for what the last check found stands while
+    some login is breached or reused, is done once a later check finds none, says how many are
+    breached then reused at its side, each left out at none, and is weighed as a thing to do
+    ready now
   '';
   the-people-are-one-person-each = ''
     every source's people join into one person per email address, a source that knows two
@@ -2439,7 +2441,8 @@
     any file no other program does, lists each place holding anything with its count or over it,
     and says a Drive file's kind with a picture's size and a video's length and the drive it's
     in as its drawer's eyebrow, and the figures the program read of it in its drawer, what
-    changes most first and its id last
+    changes most first and its id last; and reads what Drive's copies kept here take, a figure
+    not a number as none, saying it of the most kept only while there's any
   '';
   the-desktop-reads-the-mail = ''
     the shell gathers the google program's whole state from its daemon's records, each kind in
@@ -2895,7 +2898,8 @@
   '';
   vm-desktop-opens-files = ''
     the desktop opens files: a screenshot found by typing, the portal's chooser, its save's name
-    edited on the line and a name taken asked once, and Google Drive through it, a picture in
+    edited on the line and a name taken asked once, and Google Drive through it, a Google
+    document saying the file it comes as and gx opening a file in its own program, a picture in
     swayimg, where : opens the launcher's command line alone and low, aimed at the picture by its
     name, and :q there closes it, a document in zathura, markdown in the reader, and a folder from
     kitty's Recent, while the launcher's home keeps its shape

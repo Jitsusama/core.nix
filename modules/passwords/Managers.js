@@ -1,9 +1,11 @@
 // What Programs says of each password manager's program (Passwords.qml's
-// programActs): its entries grouped by vault. Kept apart from Passwords.js,
+// programActs and programFacts): its entries grouped by vault, and what
+// its drawer says it holds. Kept apart from Passwords.js,
 // which says each entry, so each stays a size a reader holds whole; the
 // the-passwords-show-every-figure-but-the-secret check runs it in Qt's own
 // engine (tests/passwords.qml).
 .pragma library
+.import "Numbers.js" as Numbers
 
 // Its entries grouped by vault, as Programs holds a manager's: each
 // { id, name, records } by the vault's name, its records by title.
@@ -24,4 +26,22 @@ function vaults(records) {
         .map(vault => Object.assign(vault, {
             records: vault.records.sort((a, b) => title(a).localeCompare(title(b)))
         }));
+}
+
+// What a manager's drawer in Programs says it holds, from the entries the
+// daemon already gave it (VKCF3Z, 2026-11-08): how many and in how many
+// vaults, "412 in 3 vaults" by `said.inVaults` ("412 in 1 vault" by
+// `said.inVault`), then how many are favourites, each left out at none,
+// by its id in the launcher's words. It's never asked while the manager
+// can't read, so a locked one says nothing rather than a guess.
+function held(records, said) {
+    const count = records.length;
+    const kept = new Set(records.map(record => String(record.collection?.id ?? ""))).size;
+    const liked = records.filter(record => record.favourite === true).length;
+    const within = String((kept === 1 ? said.inVault : said.inVaults) ?? "")
+        .replace("{count}", Numbers.format(count, 0)).replace("{vaults}", String(kept));
+    return [
+        ["passwords:entries", count === 0 ? "" : within],
+        ["passwords:favourites", liked > 0 ? Numbers.format(liked, 0) : ""]
+    ].filter(fact => fact[1] !== "").map(fact => ({ id: fact[0], value: fact[1] }));
 }

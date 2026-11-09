@@ -54,7 +54,8 @@ QtObject {
         const placeless = { files: [], more: false };
         const undriven = {
             listings: [], downloads: [], uploads: [],
-            places: { recent: [], starred: placeless, shared: placeless, drives: placeless }
+            places: { recent: [], starred: placeless, shared: placeless, drives: placeless },
+            kept: { held: 0, most: 0 }
         };
         const record = (kind, id, thing, heard) => ({
             [`${kind}:${id}`]: { key: `${kind}:${id}`, kind, heard, [kind]: thing }

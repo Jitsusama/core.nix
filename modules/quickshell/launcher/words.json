@@ -8592,7 +8592,9 @@
         "breaches": "seen in {count} breaches",
         "checking": "checking every password\u2026",
         "locked": "locked",
-        "within": "in {vault} \u00b7 {kind}"
+        "within": "in {vault} \u00b7 {kind}",
+        "inVault": "{count} in 1 vault",
+        "inVaults": "{count} in {vaults} vaults"
       }
     },
     {
@@ -8703,6 +8705,8 @@
       "verb": "more",
       "glyph": "vault"
     },
+    { "id": "passwords:entries", "in": "applications", "name": "Entries" },
+    { "id": "passwords:favourites", "in": "applications", "name": "Favourites" },
     { "id": "passwords:username", "in": "passwords", "name": "Username" },
     {
       "id": "passwords:websites",
@@ -10582,6 +10586,14 @@
       "glyph": "folder",
       "said": {
         "more": "over {count}"
+      }
+    },
+    {
+      "id": "drive:kept",
+      "in": "applications",
+      "name": "Kept Here",
+      "said": {
+        "of": "{held} of {most}"
       }
     },
     {
