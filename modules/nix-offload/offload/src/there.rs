@@ -2369,7 +2369,9 @@ pub const VM_ROOM: usize = 4;
 /// as where the folder can't be written, it goes at once. Runs waiting go
 /// in the order they came, each holding its place in the folder's
 /// `waiting`, since one past the room goes only once nothing else is
-/// sent, and smaller runs coming after it kept finding room first.
+/// sent, and smaller runs coming after it kept finding room first. One
+/// that fits may still pass one that doesn't, for [`PASSING_FOR`] after
+/// that one came, so room isn't left idle behind it ([`ahead`] says why).
 ///
 /// While it waits, a run goes to the first of `others`, the other VM
 /// builders, that has room and nothing waiting, and says which it went to:
@@ -2401,7 +2403,7 @@ pub fn admitted<'a>(
             return (dir, claim(dir, wants));
         }
         let busy = claimed(dir);
-        let before = ahead(dir, place.as_ref(), rank);
+        let before = ahead(dir, place.as_ref(), rank, busy, room);
         if before == 0 && (busy == 0 || busy + wants <= room) {
             // Claimed, and its place given up, before the lock is let go,
             // as dropping it does.
@@ -2461,7 +2463,7 @@ fn free(dir: &Path, wants: usize, room: usize, rank: Rank) -> Option<Claim> {
         return None;
     }
     let busy = claimed(dir);
-    if ahead(dir, None, rank) == 0 && (busy == 0 || busy + wants <= room) {
+    if ahead(dir, None, rank, busy, room) == 0 && (busy == 0 || busy + wants <= room) {
         claim(dir, wants)
     } else {
         None
@@ -2523,15 +2525,35 @@ const BULK: &str = ".bulk";
 /// What ends the place of a run sent first.
 const FIRST_PLACE: &str = ".first";
 
+/// How long a run waiting for room may be passed by ones behind it that
+/// fit where it doesn't, unless `NIX_OFFLOAD_PASSING_FOR` says otherwise
+/// in seconds: past it, nothing passes it, so the builder empties for it.
+const PASSING_FOR: std::time::Duration = std::time::Duration::from_mins(15);
+
+fn passing_for() -> std::time::Duration {
+    std::env::var("NIX_OFFLOAD_PASSING_FOR")
+        .ok()
+        .and_then(|seconds| seconds.parse().ok())
+        .map_or(PASSING_FOR, std::time::Duration::from_secs)
+}
+
 /// How many runs still going wait for room in `dir` ahead of the one at
-/// `place`, or at all for one with no place yet: every run of a rank
-/// ahead of its `rank`, and those of its own that came before it. A place
-/// whose run ended without giving it up is taken away here.
-fn ahead(dir: &Path, place: Option<&Claim>, rank: Rank) -> usize {
+/// `place`, or at all for one with no place yet, and hold it back: every
+/// run of a rank ahead of its `rank`, and those of its own that came
+/// before it, unless it doesn't fit beside the `busy` of the `room` yet
+/// and hasn't waited [`PASSING_FOR`]. On 8 November three places sat idle
+/// on two VM builders while nine parts waited, some for 70 minutes,
+/// behind a part of 4 that could go only once its builder was empty. A
+/// place whose run ended without giving it up is taken away here.
+fn ahead(dir: &Path, place: Option<&Claim>, rank: Rank, busy: usize, room: usize) -> usize {
     let Ok(entries) = fs::read_dir(dir.join("waiting")) else {
         return 0;
     };
     let mine = place.and_then(|place| place.0.file_name().map(std::ffi::OsStr::to_owned));
+    let passing = passing_for();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
     let mut before = 0;
     for entry in entries.filter_map(Result::ok) {
         let name = entry.file_name();
@@ -2546,11 +2568,37 @@ fn ahead(dir: &Path, place: Option<&Claim>, rank: Rank) -> usize {
         };
         if !pid.is_some_and(runs) {
             let _ = fs::remove_file(entry.path());
-        } else if theirs < rank || (theirs == rank && came_before) {
+        } else if (theirs < rank || (theirs == rank && came_before))
+            && holds_back(&entry.path(), name.to_str(), busy, room, now, passing)
+        {
             before += 1;
         }
     }
     before
+}
+
+/// Whether the run waiting at `place`, named `name`, holds back those
+/// behind it: it fits beside the `busy` of the `room`, so it goes next,
+/// or it has waited `passing` already, or what it wants can't be read.
+fn holds_back(
+    place: &Path,
+    name: Option<&str>,
+    busy: usize,
+    room: usize,
+    now: std::time::Duration,
+    passing: std::time::Duration,
+) -> bool {
+    let wants = fs::read_to_string(place)
+        .ok()
+        .and_then(|wants| wants.trim().parse::<usize>().ok());
+    let came = name
+        .and_then(|name| name.split('.').next()?.parse::<u128>().ok())
+        .and_then(|nanos| u64::try_from(nanos / 1_000_000_000).ok())
+        .map(std::time::Duration::from_secs);
+    let (Some(wants), Some(came)) = (wants, came) else {
+        return true;
+    };
+    busy == 0 || busy + wants <= room || now.saturating_sub(came) >= passing
 }
 
 /// How many VM tests runs still going have sent the builder `dir`'s
