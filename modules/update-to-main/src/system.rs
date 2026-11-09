@@ -351,6 +351,17 @@ fn build_kept(config: &Config, kept: &[String]) -> Result<(), Failure> {
     )
 }
 
+/// Why the builders didn't build what now builds here, with the last lines
+/// they said.
+fn fell_back(apart: &Failure) -> String {
+    let mut note = format!("{}, so they build here, after:", apart.why);
+    for line in &apart.lines {
+        note.push_str("\n  ");
+        note.push_str(line);
+    }
+    note
+}
+
 /// Builds pieces their builders didn't here, small, when `here` lets the
 /// machine and only while it's quiet or once it has been behind main for
 /// `OVERDUE`; otherwise gives why they weren't.
@@ -387,6 +398,10 @@ fn here(
             lines: apart.lines,
         });
     }
+    // The build here may well succeed, and then nothing else would say why
+    // the builders didn't: on 9 November a kept build lost 391s to a cause
+    // no line kept.
+    eprintln!("{}", fell_back(&apart));
     let mut local = nix(config);
     local.args(["build", "--no-link"]);
     if let Some(builders) = builders {
@@ -835,6 +850,24 @@ mod tests {
         assert_eq!(
             to_build("this path will be fetched:\n  /nix/store/c.drv\n"),
             [] as [std::string::String; 0]
+        );
+    }
+
+    #[test]
+    fn a_build_that_falls_back_here_says_why_the_builders_didnt() {
+        let apart = Failure {
+            why: "building the kept pieces on their own builders failed (exit status: 1)"
+                .to_owned(),
+            lines: vec![
+                "error: path '/nix/store/a-defmt' is required".to_owned(),
+                "copying path '/nix/store/a-defmt'".to_owned(),
+            ],
+        };
+        assert_eq!(
+            fell_back(&apart),
+            "building the kept pieces on their own builders failed (exit status: 1), so \
+             they build here, after:\n  error: path '/nix/store/a-defmt' is required\n  \
+             copying path '/nix/store/a-defmt'"
         );
     }
 
