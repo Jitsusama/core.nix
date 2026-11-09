@@ -177,6 +177,9 @@ def test_the_launcher_switches_to_a_window_by_its_title(desktop: Desktop) -> Non
 # test gives it stand-ins: the repositories under ~/src, the one zoxide saw visited last first
 # though its name sorts after, and the machines ssh's config names, the one zsh's history
 # reached most first though the config names it second and the other was reached since.
+# How long a shot waits for a selected row that reads on to settle: twice through, a few
+# seconds each, and then the screen's own settling (docs/design.md, A long name reads on).
+READ_ON_TWICE = dt.timedelta(seconds=30)
 REPOSITORIES = ("tide-tables", "sea-charts")
 MACHINES = ("ferry", "lighthouse")
 KITTY_ACTS = ("New Window in a Repository", "SSH to a Machine")
@@ -393,7 +396,8 @@ def test_super_tab_goes_back_to_the_window_before_and_finds_any_by_typing(deskto
     # The window used last is chosen as it opens, and this one isn't
     # there to choose.
     tab_to("", scratch[-1])
-    desktop.shoot("launcher-windows")
+    # Its long title reads on twice, then rests, as it's shot.
+    desktop.shoot("launcher-windows", READ_ON_TWICE)
     went("Scratch 25")
     tab_to("", "Notes for Tuesday")
     went("Notes for Tuesday")

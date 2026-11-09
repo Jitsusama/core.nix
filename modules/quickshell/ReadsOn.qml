@@ -1,7 +1,8 @@
 // Words cut to their room that read on while their row is selected
 // (docs/design.md, A long name reads on): after a rest to read how they
 // start, they slide at a steady reading pace until their end shows, rest
-// there, then glide back to their start and rest again. Only the words
+// there, then glide back to their start, and again for as long as
+// `reading` holds, which their row gives twice (Choice.qml). Only the words
 // move, inside their own room, so nothing beside them does, and the row
 // isn't any wider for it. A row's name and what it says at its right both
 // read on through this one piece, so the two can't come to move apart

@@ -41,6 +41,9 @@ if TYPE_CHECKING:
 
 # The scales Joel uses, where what VKCF3Z judges is shot.
 JOELS_SCALES = ("1.5", "2")
+# How long a shot waits for a selected row that reads on to settle: twice through, a few
+# seconds each, and then the screen's own settling (docs/design.md, A long name reads on).
+READ_ON_TWICE = dt.timedelta(seconds=30)
 
 
 @pytest.fixture(scope="module")
@@ -110,12 +113,14 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
             )
         )
     )
-    desktop.shoot("launcher-runs")
     # The fleet's own row says more than its share, so what it says reads on while selected, as
     # a long name does (docs/design.md). That a fleet at work draws nothing while it's only
     # looked at is held among its members, where the member at work shows below the way to
     # the fleet's session, whose row isn't cut.
     reads_on_beside(desktop, "paint-crew", "fleet \u00b7")
+    # Shot once it has read on twice and rests at its start, which takes longer than the
+    # screen's usual settling.
+    desktop.shoot("launcher-runs", READ_ON_TWICE)
     # Gone into by Ctrl+], as Return goes to its session, its members after the way there.
     desktop.follow()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go To")

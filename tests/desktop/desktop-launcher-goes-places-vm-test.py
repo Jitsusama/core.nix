@@ -119,7 +119,8 @@ def test_the_launcher_sets_the_volume_to_a_number_and_says_how_loud_it_is(deskto
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name", "").startswith("40%, through ")
     )
-    desktop.shoot("launcher-volume-told")
+    # Its long answer reads on twice, then rests, as it's shot.
+    desktop.shoot("launcher-volume-told", READ_ON_TWICE)
     # A step in, each device's level drawn as a bar.
     desktop.follow()
     desktop.shoot("launcher-volume-parts")
@@ -1090,6 +1091,9 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
 
 # What the passwords daemon keeps of a check that found the console's password breached and
 # shared with GitHub's, as Joel's state folder holds it: no secret and no hash, only counts.
+# How long a shot waits for a selected row that reads on to settle: twice through, a few
+# seconds each, and then the screen's own settling (docs/design.md, A long name reads on).
+READ_ON_TWICE = dt.timedelta(seconds=30)
 CHECKED = "~/.local/state/passwords/checked.json"
 HOUR_MS = 3_600_000
 TODO = "Change the Passwords the Check Found"

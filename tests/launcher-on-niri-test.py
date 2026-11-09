@@ -960,14 +960,39 @@ def test_a_name_too_long_for_its_row_reads_on_while_selected(shell: Shell) -> No
         assert time.monotonic() < sliding, f"the long name never slid: {words}"
         time.sleep(0.1)
     # Given up by the selection, it's back at its start at once.
-    shell.send_key("up" if shell.showing()["rows"].index(title) > 0 else "down")
+    away, back = ("up", "down") if shell.showing()["rows"].index(title) > 0 else ("down", "up")
+    shell.send_key(away)
     shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Edgewise")
     laid = json.loads(shell.as_account(shell.ipc("laidOut")))
     row = next(row for row in laid["rows"] if row["reads"].startswith(title))
+    assert named(row["words"])["x"] == start, row
+    # Selected again, it reads on twice, then rests at its start until the selection moves
+    # (VKCF3Z, 2026-11-09).
+    shell.send_key(back)
+    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == title)
+
+    def selected_row() -> Json:
+        laid = json.loads(shell.as_account(shell.ipc("laidOut")))
+        return cast("Json", next(row for row in laid["rows"] if row["selected"]))
+
+    reading = time.monotonic() + 60
+    while cast("int", selected_row()["readsDone"]) < READINGS:
+        assert time.monotonic() < reading, f"the long name never read on twice: {selected_row()}"
+        time.sleep(0.1)
+    # Three times the half second a read rests at its start before it slides, and it's still.
+    resting = time.monotonic() + 1.5
+    while time.monotonic() < resting:
+        row = selected_row()
+        assert row["readsDone"] == READINGS, f"the long name read on again: {row}"
+        assert named(row["words"])["x"] == start, f"the long name moved after two: {row}"
+        time.sleep(0.1)
     shell.close_launcher()
     shell.close(long)
     shell.close(short)
-    assert named(row["words"])["x"] == start, row
+
+
+# How many times a selected long name reads on before it rests at its start (Choice.qml).
+READINGS = 2
 
 
 def test_the_held_notices_are_vims_quickfix_list(shell: Shell) -> None:

@@ -6443,7 +6443,10 @@ Scope {
                     // wash draws: a cut name's last may not.
                     byName: !row.byWord && !row.answered,
                     washed: drawn.drawnRow.finds.slice(0, drawn.drawnRow.washed.length)
-                        .map(run => row.name.slice(run[0], run[1])) });
+                        .map(run => row.name.slice(run[0], run[1])),
+                    // How many times its cut words have read on since it
+                    // was selected (Choice.qml's readsDone).
+                    readsDone: drawn.drawnRow.readsDone });
         }
         // Where the selection is drawn, and where its row is, so a test can
         // say it's drawn on its row.
