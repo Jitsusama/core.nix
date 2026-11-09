@@ -266,6 +266,16 @@ QtObject {
         const inked = Reading.styledItems(["1 of 2", "1 folder gone"], "dots", ["", "alert"]);
         expect("an item in its own ink", inked === "1 of 2 <font color=\"dots\">\u00b7</font> "
             + "<font color=\"alert\">1 folder gone</font>", inked);
+        // A row's right says what a second Return does while that shows,
+        // else a noun's kind, else how it stands; never the key an ending
+        // act is carried by, which is the foot's (VKCF3Z, 2026-11-09), so
+        // an ending row says how it stands as its neighbours do.
+        const stands = Reading.rightSays("", "", "Numb \u00b7 locked");
+        expect("an ending row says how it stands", stands === "Numb \u00b7 locked", stands);
+        const kind = Reading.rightSays("", "window", "workspace 1");
+        expect("a noun's kind at its edge", kind === "window", kind);
+        const landed = Reading.rightSays("\u21b5 turn off", "", "on");
+        expect("a landing wins while it shows", landed === "\u21b5 turn off", landed);
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(failure);

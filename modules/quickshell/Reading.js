@@ -62,6 +62,19 @@ function wholeItems(items, room, width) {
     return keptItems(items, room, width).join(ITEMS_APART);
 }
 
+// What a row says at its right: what a second Return does while that
+// shows (`landed`), else a noun's kind, whose side then follows its name
+// as its detail does (design.md, "A row says what it is"), else how it
+// stands. The key an ending act is carried by is the foot's alone, never
+// the row's, so the cursor row reads as its neighbours do (VKCF3Z,
+// 2026-11-09).
+function rightSays(landed, kind, stands) {
+    if (landed !== "") {
+        return landed;
+    }
+    return kind !== "" ? kind : stands;
+}
+
 // The items `wholeItems` keeps, each as it's said, in their own order.
 function keptItems(items, room, width) {
     const kept = items.filter(item => item.said !== "");
