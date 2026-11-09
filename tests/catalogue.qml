@@ -371,6 +371,10 @@ QtObject {
         expect("which changes what the setting did", changes(closing[0]), true);
         closing[0].run();
         expect("which does what Return does", kept, 1);
+        const profile = { name: "Balanced", verb: "use", stays: true, alwaysStays: true,
+            run: does };
+        expect("one that always stays keeps the launcher from its step too",
+            Catalogue.closingFirst(profile, [])[0].stays, true);
         const quiet = { name: "Do Not Disturb", verb: "hold", stays: true, run: does };
         const holding = Catalogue.closingFirst(quiet, [{ name: "Until It's Ended", verb: "end",
             stays: true, run: does }, { name: "For an Hour", verb: "hold", stays: true,

@@ -2082,6 +2082,29 @@ QtObject {
             Power.profileDrawer({ holds: [{ app: "Steam", reason: "" }], slowed: "",
                 processorDriver: "amd-pstate-epp" }, id => id, profileWords).facts
                 .map(fact => fact.value), ["Steam", "amd-pstate-epp"]);
+        // A profile picked is read back from the daemon, and one it didn't
+        // take says why: nothing heard, a program holding another, or the
+        // daemon keeping its own.
+        machine("the profile the daemon says it's on",
+            Power.activeProfile("s \"balanced\"\n"), "balanced");
+        machine("nothing said back is no profile", Power.activeProfile(""), "");
+        const profileTold = holds => ({ holds,
+            named: { "power-saver": "Power Saver", performance: "Performance" },
+            said: { silent: "the profile daemon didn't answer", held: "{app} holds {profile}",
+                kept: "the daemon kept {profile}" } });
+        machine("a profile taken says nothing",
+            Power.profileRefusal("balanced", "balanced", profileTold([])), "");
+        machine("a daemon that didn't answer is said so",
+            Power.profileRefusal("balanced", "", profileTold([])),
+            "the profile daemon didn't answer");
+        machine("a program holding the profile kept is named",
+            Power.profileRefusal("balanced", "performance",
+                profileTold([{ profile: "performance", app: "Steam" }])),
+            "Steam holds Performance");
+        machine("else the daemon kept its own",
+            Power.profileRefusal("balanced", "power-saver",
+                profileTold([{ profile: "performance", app: "Steam" }])),
+            "the daemon kept Power Saver");
         machine("Type-C's own current", Power.protocol("[C] PD PD_PPS"), "USB-C");
         machine("a plain USB port", Power.protocol("[SDP] DCP CDP"), "USB");
         const powerPort = { online: true, volts: 20, amps: 5, protocol: "USB PD" };

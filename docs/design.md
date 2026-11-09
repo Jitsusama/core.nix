@@ -1516,7 +1516,9 @@ works the same way everywhere.
   one lists its acts, led by Return's own, which there does it and
   closes, so
   there's no Ctrl+Return to learn (Joel, 2 November: "all of those ctrl
-  keys do not feel very vim to me"). **An act that ends or takes away
+  keys do not feel very vim to me"); a power profile's stays even there,
+  since a pick lost to a closing launcher goes unseen (Joel, 8
+  November). **An act that ends or takes away
   never runs on Return**, from any mode: Disconnect It, Forget It, Close
   It, Turn Off, Stop, an agent's Close, Done, and the session's Lock,
   Sleep, Log Out, Reboot and Power Off. An agent's Close always asks,
