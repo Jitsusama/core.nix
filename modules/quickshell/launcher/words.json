@@ -7838,6 +7838,7 @@
     },
     {
       "id": "notices",
+      "in": "for-you:source:desktop",
       "once": ["Notifications"],
       "name": "Notices",
       "term": "Desktop/notice",
