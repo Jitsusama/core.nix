@@ -3,14 +3,16 @@
 # presses every key it lists that moves, trashes, copies or closes as a
 # keyboard would, Neovim's beside the arrows that do as they do, and the
 # keys that close nothing, and the launcher's command line's commands, as
-# swayimg-command carries them, and fails unless each does what it
-# should. swayimg writes to `shown` after every frame the picture it has
-# drawn or chosen, the mode it's in, where the picture is
-# and whether it's full screen. cage doesn't pass on how this ended, so it
-# leaves `moved` once every press has.
+# swayimg-command carries them, then opens the launcher's gallery on a
+# picture, and fails unless each does what it should. swayimg writes to
+# `shown` after every frame the picture it has drawn or chosen, the mode
+# it's in, where the picture is and whether it's full screen. cage
+# doesn't pass on how this ended, so it leaves `moved` once every press
+# has.
 # usage: swayimg-moves-by-its-keys.sh (beside a folder, pictures, holding
 # a.ppm to n.ppm and z-tall.pgm, a picture taller than the window, with a
-# wl-copy on nix.lua's path that writes what it's given to ./copied)
+# wl-copy on nix.lua's path that writes what it's given to ./copied, and
+# ./gallery, the launcher's command for a gallery, a word a line)
 #
 # What the test writes stays out of the pictures' folder: swayimg reads
 # ahead through the folder's files, and one read as it's written, such as
@@ -361,4 +363,31 @@ swayimg-command "$viewer" open other-editor
 closes ":open other-editor"
 grep -qxF "msg action spawn -- other-editor $PWD/pictures/a.ppm" "$SPAWNED" \
   || { echo ":open other-editor asked niri for: $(cat "$SPAWNED")"; exit 1; }
+
+# The launcher's gallery, as it opens one on a picture from swayimg's
+# Recent, opens on that picture, newest first: Home goes to the newest and
+# l to the one after it. Its own Lua is the one --execute it gives, so what
+# each frame writes is read from the settings for this run.
+chmod u+w config/swayimg/init.lua
+printf '%s\n' "$watched" >> config/swayimg/init.lua
+touch -d '2026-01-01 00:00:00' pictures/*
+touch -d '2026-01-02 00:00:00' pictures/c.ppm
+touch -d '2026-01-03 00:00:00' pictures/f.ppm
+mapfile -t gallery < gallery
+: > shown
+"${gallery[@]}" pictures/c.ppm > said 2>&1 &
+viewer=$!
+until_shown c.ppm "opening the launcher's gallery on a picture" 60
+grep -qx 'in gallery' shown || { echo "the launcher's gallery opened $(line 2)"; exit 1; }
+for _ in 1 2 3 4 5; do
+  wtype -k Home
+  inotifywait -q -q -t 3 -e close_write shown || true
+  if grep -q -x f.ppm shown; then
+    break
+  fi
+done
+until_shown f.ppm "Home in the launcher's gallery"
+typed l c.ppm
+wtype -M shift zz -m shift
+closes "ZZ in the launcher's gallery"
 touch moved

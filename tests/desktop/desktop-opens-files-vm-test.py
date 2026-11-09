@@ -879,10 +879,32 @@ def test_swayimg_typed_lists_the_picture_it_shows_under_it_and_return_steps_in(
         assert desktop.showing()["selected"]["note"] == "1 open", desktop.showing()["selected"]
         desktop.shoot("launcher-swayimg-typed")
         # Starting it would open nothing, so Return steps into its page,
-        # which holds its Recent and its keys, and never starts it.
+        # which holds its Recent and its keys, and never starts it. It lands
+        # on something to look through: the screenshots' gallery while there
+        # are any, else the gallery of the folder of the picture it showed,
+        # which is offered either way.
         desktop.step_in("ret")
+        home = "Look Through ~"
+        leads = {"Look Through the Screenshots", home}
         desktop.launcher_until(
-            lambda shown: "Recent" in shown["rows"] and "Shortcuts" in shown["rows"]
+            lambda shown: (
+                {"Recent", "Shortcuts", home} <= set(shown["rows"])
+                and (shown["selected"] or {}).get("name") in leads
+            )
+        )
+        # It says how many pictures the folder holds, once they're counted,
+        # and Return opens its gallery on the picture, newest first.
+        desktop.down_to(home)
+        desktop.launcher_until(
+            lambda shown: (
+                re.fullmatch(r"\d+[\xa0 ]pictures?", (shown["selected"] or {}).get("side", ""))
+                is not None
+            )
+        )
+        machine.send_key("ret")
+        machine.wait_until_succeeds(
+            f"pgrep -u {desktop.account} -f '[s]wayimg --gallery .*{looked}'",
+            timeout=timedelta(seconds=15),
         )
     finally:
         desktop.close_launcher()

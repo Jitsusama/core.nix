@@ -9661,6 +9661,28 @@
       "id": "swayimg:screenshots",
       "by": "swayimg",
       "name": "Look Through the Screenshots",
+      "verb": "look",
+      "said": {
+        "one": "{count} picture",
+        "many": "{count} pictures"
+      }
+    },
+    {
+      "id": "swayimg:screenshots:newest",
+      "in": "swayimg:screenshots",
+      "name": "Newest Screenshot"
+    },
+    {
+      "id": "swayimg:screenshots:count",
+      "in": "swayimg:screenshots",
+      "name": "Screenshots"
+    },
+    {
+      "id": "verb:swayimg:folder",
+      "command": "open",
+      "argument": "gallery",
+      "in": "applications",
+      "name": "Look Through {folder}",
       "verb": "look"
     },
     {

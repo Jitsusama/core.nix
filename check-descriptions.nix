@@ -1764,6 +1764,12 @@
     swayimg draws a picture with the account's settings and the machine's fonts without a complaint,
     its words in the monospaced face, and pictures open in it
   '';
+  swayimg-leads-with-a-gallery = ''
+    swayimg's page in the launcher leads with the screenshots' gallery while it holds any, else
+    the newest folder of its Recent's, and offers each of those folders once, newest first, saying
+    how many pictures it holds and where and opening on Recent's newest still there, and its drawer
+    says when the newest screenshot was taken and how many there are
+  '';
   swayimg-moves-by-its-keys = ''
     in swayimg, pressed as a keyboard presses them, → and ← go to the next and previous picture and
     End, Home, G and gg to the last and first, l and h as → and ←, ]b and [b as well,
@@ -1772,8 +1778,9 @@
     ? and Space ? ask the launcher for the keys, Escape stops a number or a pair waiting, Escape and
     q close nothing and ZZ and Space w close it, [ and ] alone turn nothing, : asks the launcher
     for its command line by swayimg's process, what swayimg-command carries back does as it says
-    (a number, :d, :rotate, :y, :open and :q), the gallery answers the same keys, and the picture
-    it opened with, and none after, is said to the desktop's list of files opened lately
+    (a number, :d, :rotate, :y, :open and :q), the gallery answers the same keys, the picture
+    it opened with, and none after, is said to the desktop's list of files opened lately, and the
+    launcher's gallery opens on the picture it's given, newest first
   '';
   swayimg-says-the-picture-it-shows = ''
     swayimg keeps the picture it shows, read by its Recent's command as its process and whole path,

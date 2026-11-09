@@ -6,9 +6,37 @@
   lib,
   onLinux,
   pkgs,
+  shellFolderLint,
   ...
 }:
 onLinux {
+  # swayimg's page in the launcher always leads with something to look
+  # through while there's anything to: the screenshots' gallery while it
+  # holds any, else a gallery of the newest folder of swayimg's Recent, and
+  # one of each folder its Recent's pictures are in, newest first, each
+  # once, saying how many pictures it holds and where, and opening on the
+  # newest of Recent's pictures still there; and its drawer says when the
+  # newest screenshot was taken and how many there are, as
+  # tests/swayimg-galleries.qml holds Swayimg.js to it in Qt's own engine.
+  swayimg-leads-with-a-gallery =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "swayimg-leads-with-a-gallery" { } ''
+      mkdir launcher
+      cp ${../../tests/swayimg-galleries.qml} swayimg-galleries.qml
+      cp ${./Swayimg.js} launcher/Swayimg.js
+      cp ${../quickshell/FileFacts.js} FileFacts.js
+      cp ${../quickshell/When.js} When.js
+      cp ${../quickshell/launcher/words.json} words.json
+      export QML_XHR_ALLOW_FILE_READ=1
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml swayimg-galleries.qml
+      touch $out
+    '';
+
   # swayimg shows a picture with the account's settings, on a screen of
   # its own, and quits once it's drawn. A setting it can't take stops the
   # rest of its settings from being read, said only as it starts, so
@@ -68,10 +96,13 @@ onLinux {
   # it says: a number, :d, :rotate, :y, :open and :q.
   # The picture it opened with, and only that one, is said to the desktop's
   # list of files opened lately, through recent-files, stood in as well.
+  # The launcher's gallery, as its provider opens it on a picture from
+  # Recent, opens on that picture, newest first.
   swayimg-moves-by-its-keys =
     let
       home = account graphical;
       files = home.xdg.configFile;
+      inherit (home.jitsusama.quickshell.launcher.providers.swayimg) gallery;
       fonts = pkgs.makeFontsConf { fontDirectories = graphical.config.fonts.packages; };
       recent-files = pkgs.writeShellScriptBin "recent-files" ''echo "$*" >> "$SAID"'';
       # The launcher, which only has to say what it was asked.
@@ -116,6 +147,8 @@ onLinux {
         for name in a b c d e f g h i j k l m n; do
           printf 'P3\n1 1\n255\n0 0 0\n' > pictures/$name.ppm
         done
+        # The launcher's gallery, a word a line, as the script reads it.
+        printf '%s\n' ${lib.escapeShellArgs gallery} > gallery
         { printf 'P5\n4 2000\n255\n'; head -c 8000 /dev/zero; } > pictures/z-tall.pgm
         timeout 180 cage -- bash ${./tests/swayimg-moves-by-its-keys.sh} || true
         test -e moved
