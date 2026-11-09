@@ -4,7 +4,9 @@
 // runs `qml -platform offscreen for-you.qml`. Each case is one of the design's
 // rules (VKCF3Z, 2026-11-08): what blocks a session counts most, then what's
 // due, what he can do now, its kind and how long it has waited; the heaviest
-// leads and ties keep the order they came in; a row's side says its strongest
+// leads and ties keep the order they came in; a to-do, or a look or a thing to
+// try that blocks or is due, needs him now, and the rest stand in their kind's
+// row, the oldest first among ties; a row's side says its strongest
 // reason; the looks folder's files are read into what waits and what's
 // history, a file that can't be read left out; and what other sources give
 // For You, as Passwords' one to-do, is gathered into what waits and what's
@@ -85,6 +87,49 @@ QtObject {
             { name: "a", weight: 15 }, { name: "b", weight: 50 },
             { name: "c", weight: 15 }, { name: "d", weight: 50 }, { name: "e", weight: 70 }
         ]).map(one => one.name), ["e", "b", "d", "a", "c"]);
+
+        // The bands: a to-do needs Joel now, and a look or a thing to try
+        // only while it blocks a session or is due within the day; the rest
+        // stand in their kind's own row (VKCF3Z, 2026-11-09).
+        const band = (kind, thing) => {
+            const bands = ForYou.banded([{ kind, thing, name: "it" }], now);
+            return Object.keys(bands).filter(key => bands[key].length > 0);
+        };
+        expect("a to-do needs him now", band("do", { kind: "todo" }), ["now"]);
+        expect("a look that blocks a session is lifted", band("look",
+            { kind: "look", blocks: 1 }), ["now"]);
+        expect("a look due within the day is lifted", band("look",
+            { kind: "look", due: now + 5 * hour }), ["now"]);
+        expect("a look overdue is lifted", band("look", { kind: "look", due: now - hour }),
+            ["now"]);
+        expect("a look that doesn't goes in To Look At", band("look",
+            { kind: "look", since: now - 7 * hour }), ["look"]);
+        expect("a look due in three days goes in To Look At", band("look",
+            { kind: "look", due: now + 72 * hour }), ["look"]);
+        expect("a thing to try that blocks is lifted", band("try",
+            { kind: "look", blocks: 2 }), ["now"]);
+        expect("a thing to try that doesn't goes in To Try", band("try",
+            { kind: "look", since: now - hour }), ["try"]);
+        expect("a kind with no row of its own needs him now", band("notice",
+            { kind: "look" }), ["now"]);
+        // Inside each, the heaviest first, those alike the oldest first,
+        // then as they came, and each item keeps what its caller gave it.
+        const looked = ForYou.banded([
+            { kind: "look", thing: { kind: "look", since: now - hour }, name: "a" },
+            { kind: "look", thing: { kind: "look", since: now - 1000 * hour }, name: "b" },
+            { kind: "look", thing: { kind: "look", since: now - 1001 * hour }, name: "c" },
+            { kind: "look", thing: { kind: "look" }, name: "d" },
+            { kind: "look", thing: { kind: "look", since: now - hour }, name: "e" },
+            { kind: "do", thing: { kind: "todo" }, name: "f" }
+        ], now);
+        expect("a band heaviest first, ties the oldest first", looked.look.map(one =>
+            one.name), ["c", "b", "a", "e", "d"]);
+        expect("each given its weight", looked.look.map(one => one.weight),
+            [25, 25, 10, 10, 5]);
+        expect("the rest in their own band", [looked.now.map(one => one.name),
+            looked.try.length], [["f"], 0]);
+        expect("no items, three empty bands", ForYou.banded(undefined, now),
+            { now: [], look: [], try: [] });
 
         // What blocks a session: one whose want is an action its quest or
         // its file's address holds.

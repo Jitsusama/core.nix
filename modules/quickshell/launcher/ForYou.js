@@ -2,7 +2,7 @@
 // so the most pressing leads (VKCF3Z, 2026-11-08; Joel: "should somehow
 // weight ordering so the most critical stuff bubbles up"). What a row
 // weighs is worked out here from its parts, each { id, points }, and so is
-// what its side says and how the looks folder's files are read, apart from
+// which band it stands in, what its side says and how the looks folder's files are read, apart from
 // the launcher, so tests/for-you.qml holds them in Qt's own engine.
 .pragma library
 .import "Order.js" as Order
@@ -110,6 +110,41 @@ function weigh(thing, now) {
 // order they came, since Qt's engine's own sort doesn't keep it.
 function ordered(rows) {
     return Order.sorted(rows, (one, other) => other.weight - one.weight);
+}
+
+// The kinds For You gives a row of their own after what needs Joel now,
+// in the order the design lists them (VKCF3Z, 2026-11-09; Joel: "there is
+// no to look at section"): To Look At, then To Try.
+const OWN_ROWS = ["look", "try"];
+
+// Whether a thing needs Joel now, whatever its kind, as a critical notice
+// is lifted over the rest: it blocks a session, or its deadline has
+// passed or comes within the day, as its weight counts one.
+function pressing(thing, now) {
+    return Number(thing.blocks ?? 0) > 0 || dueing(when(thing.due), now) > 0;
+}
+
+// The band a thing of a kind stands in: a to-do, or anything pressing,
+// among what needs Joel now, `now`; a look or a thing to try otherwise in
+// its kind's own row, `look` or `try`.
+function bandOf(kind, thing, now) {
+    return OWN_ROWS.includes(kind) && !pressing(thing, now) ? kind : "now";
+}
+
+// For You's items in their bands, { now, look, try }, each item
+// { kind, thing } with whatever else its caller keeps, and given its
+// `weight`. Each band is heaviest first, those alike the oldest first,
+// then in the order they came (VKCF3Z, 2026-11-09).
+function banded(items, now) {
+    const bands = { now: [], look: [], try: [] };
+    for (const item of items ?? []) {
+        bands[bandOf(item.kind, item.thing, now)].push(Object.assign({}, item,
+            { weight: weigh(item.thing, now).weight }));
+    }
+    const order = Order.then((one, other) => other.weight - one.weight,
+        Order.smaller(one => when(one.thing.since)));
+    return { now: Order.sorted(bands.now, order), look: Order.sorted(bands.look, order),
+        try: Order.sorted(bands.try, order) };
 }
 
 // How many sessions an item blocks: those whose want is an action of the

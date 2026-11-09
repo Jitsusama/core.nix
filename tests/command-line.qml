@@ -417,7 +417,7 @@ QtObject {
         const rowed = (whole, typed) => Commands.narrowed(whole, typed, argued)
             .map(line => [line.command, line.key, line.glyph, line.hue]);
         const filter = { command: "filter", short: "filt", title: "Show Only", key: "",
-            args: [{ value: "look", note: "Looks", side: "4", glyph: "E", hue: "accent" }],
+            args: [{ value: "look", note: "To Look At", side: "4", glyph: "E", hue: "accent" }],
             run: () => {} };
         holds("an argument read as a row keeps its count, mark and hue",
             rowed(menuOf(network(), [filter]), "filter "), [["look", "4", "E", "accent"]]);

@@ -1447,12 +1447,16 @@ works the same way everywhere.
   item for each thing that happened, never one for each thing it found,
   so nothing floods it: a password check finding fifteen logins is one
   to-do, "Change the Passwords the Check Found", its side "3 breached ·
-  12 reused", Return opening Passwords' list of them. What waits on him
-  leads, in one list by weight, heaviest first, so "the most critical
+  12 reused", Return opening Passwords' list of them. What needs him now
+  leads, one by one, by weight, heaviest first, so "the most critical
   stuff bubbles up": to-dos, what only he can do, each raised by the
-  session that needs him through the one tool every session uses; looks,
-  what a session points him at, never opened for him; and landings
-  whose line asks him to try something. Weight comes from what it holds
+  session that needs him through the one tool every session uses, and
+  any look or landing that blocks a session or is due within the day.
+  Then each other kind is one row holding the rest, its side how many
+  and its note the heaviest's title (VKCF3Z, 2026-11-09; Joel: "there
+  is no to look at section"): To Look At, what a session points him at,
+  never opened for him; and To Try, landings whose line asks him to try
+  something. Inside each, by weight, ties oldest first. Weight comes from what it holds
   up (a session parked on him counts most), a deadline near, its
   source's urgency and, slowly, how long it's waited; the order is
   worked out as the place opens and holds still while it's open. A row's
@@ -1490,7 +1494,7 @@ works the same way everywhere.
   and `/` finds any. A kind or a source is a step-in, never a mode:
   `:filter look` or `:filter slack` goes in, Tab completing the kinds and
   sources present, each with its mark, its name and its count, the head
-  names the kind by its noun ("For You › Looks", "› To-Dos", "› To
+  names the kind by its name ("For You › To Look At", "› To-Dos", "› To
   Try"), and - comes back out. Every row has a drawer, "nerdy and
   useful" (Joel, 2026-11-08): its why whole in the serif; Weight, as a
   figure and its parts ("82 · blocks 2 sessions · waiting 2 h · due

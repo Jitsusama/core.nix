@@ -1128,11 +1128,12 @@ def draws_nothing_held_still(desktop: Desktop, who: str, on: str) -> None:
 
 
 def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desktop) -> None:
-    """In For You, :filter lists the kinds there and look steps into the looks, shot at 1.5 and 2.
+    """In For You, To Look At holds a look and :filter look steps into it, shot at 1.5 and 2.
 
-    What a filter keeps and the words it takes are tests/for-you-filter.qml's, and its one
-    path through the launcher the nested niri's; here the menu and the head are shot
-    at Joel's scales, for VKCF3Z to judge (2026-11-08).
+    What a filter keeps and the words it takes are tests/for-you-filter.qml's, which band a
+    look stands in tests/for-you.qml's, and the filter's one path through the launcher the
+    nested niri's; here To Look At, the menu and the head are shot at Joel's scales, for
+    VKCF3Z to judge (2026-11-08, 2026-11-09).
     """
     asked = {
         "quest": "QUEST2",
@@ -1156,20 +1157,46 @@ def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desk
             desktop.as_account(f"niri msg output winit scale {scale}")
             waiting_opened(desktop)
             desktop.machine.send_key("ret")
+            # The look blocks nothing and isn't due, so it's in To Look At, after the to-do,
+            # which names it as the heaviest it holds (VKCF3Z, 2026-11-09).
             desktop.launcher_until(
-                lambda shown: {"Answer the ask", "Read the plan"} <= set(shown["rows"])
+                lambda shown: (
+                    shown["rows"][:2] == ["Answer the ask", "To Look At"]
+                    and "Read the plan" not in shown["rows"]
+                )
             )
+            desktop.normal()
+            desktop.down_to("To Look At")
+            desktop.launcher_until(
+                lambda shown: (
+                    (shown["selected"] or {}).get("note") == "Read the plan"
+                    and (shown["selected"] or {}).get("side") == "1"
+                )
+            )
+            named = scale.replace(".", "-")
+            if scale != "1":
+                desktop.shoot(f"launcher-for-you-at-{named}")
+            desktop.step_in()
+            desktop.launcher_until(
+                lambda shown: (
+                    shown["path"][-2:] == ["For You", "To Look At"]
+                    and shown["rows"] == ["Read the plan"]
+                )
+            )
+            if scale != "1":
+                desktop.shoot(f"launcher-for-you-to-look-at-at-{named}")
+            desktop.machine.send_chars("-")
+            desktop.launcher_until(lambda shown: shown["path"][-1:] == ["For You"])
             desktop.normal()
             whole = desktop.showing()["hints"]
             desktop.machine.send_chars(":filter ")
             desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "filter ")
-            named = scale.replace(".", "-")
             if scale != "1":
                 desktop.shoot(f"launcher-for-you-filter-menu-at-{named}")
             desktop.machine.send_chars("look\n")
             desktop.launcher_until(
                 lambda shown: (
-                    shown["path"][-2:] == ["For You", "Looks"]
+                    shown["path"][-2:] == ["For You", "To Look At"]
                     and shown["rows"] == ["Read the plan"]
                 )
             )

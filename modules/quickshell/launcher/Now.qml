@@ -807,9 +807,19 @@ Provider {
     }
 
     // A look as ForYou.js weighs it: a thing to look at, waiting since it
-    // was left.
+    // was left, due by its deadline where its file says one, and blocking
+    // the session that left it while that session waits on Joel, since
+    // nothing says what else it waits on, so such a look stands among what
+    // needs him now (VKCF3Z, 2026-11-09).
     function lookThing(one) {
-        return { kind: "look", since: one.since };
+        const left = typeof one.session === "string" && one.session !== "";
+        return {
+            kind: "look",
+            blocks: left ? Sessions.wanting.filter(session => session.presence?.session
+                === one.session).length : 0,
+            due: one.due ?? null,
+            since: one.since
+        };
     }
 
     // A look's drawer: its quest, by its title in the index, and that it's
@@ -1016,10 +1026,12 @@ Provider {
     // sessions that want him, each the row it is in Agents (Agents.qml's
     // made), whose Return goes to its window, what the agents have
     // waiting on him that he can do now, and what they left him to look
-    // at, in one list weighed by ForYou.js, the heaviest first, since
-    // what blocks a session or is due bubbles up whatever kind it is
-    // (VKCF3Z, 2026-11-08); the mark and the drawer's eyebrow say the kind.
-    // Then what's for later and the history, each one row. It counts and
+    // at, weighed by ForYou.js, the heaviest first, since what blocks a
+    // session or is due bubbles up whatever kind it is (VKCF3Z,
+    // 2026-11-08); the mark and the drawer's eyebrow say the kind. What
+    // needs him now leads, one by one, and what's to look at or to try
+    // and doesn't is each kind's one row after it (waitingRows). Then
+    // what's for later and the history, each one row. It counts and
     // colours only what he can do now, its note names the first of
     // those, else the first for later. With
     // only later things, the row is muted and says how many. With nothing
@@ -1098,19 +1110,93 @@ Provider {
         return row;
     }
 
+    // Everything For You weighs, each as ForYou.js bands it, { kind, thing,
+    // make }, `make(now)` giving its row as it's stepped into: the sessions
+    // wanting Joel, each blocking one, itself; what he can do now; what
+    // he's to look at; and what the launcher's sources give, by the kind
+    // its row says, a to-do where it says none.
+    readonly property var forYouItems: sessions.map(session => ({
+            kind: "do",
+            thing: { kind: "todo", blocks: 1, since: session.presence?.wants?.since ?? null },
+            make: () => {
+                const agents = provider.source("agents");
+                return agents ? provider.wantRow(agents.made(session), session) : null;
+            }
+        })).concat(WaitingOnYou.now.map(each => ({
+            kind: "do",
+            thing: provider.itemThing(each),
+            make: now => provider.item(each, now)
+        })), looks.waiting.map(one => ({
+            kind: "look",
+            thing: provider.lookThing(one),
+            make: now => provider.lookRow(one, now)
+        })), given.waiting.map(one => ({
+            kind: one.row.forYou?.kind ?? "do",
+            thing: one.thing,
+            make: () => one.row
+        })))
+    // How many each band holds, as they stand now (ForYou.js's banded):
+    // what needs Joel now, lifted looks and things to try among them, then
+    // what To Look At and To Try hold, for Now's side to say as a run, "1 to
+    // do \u00b7 44 to look at \u00b7 2 to try" (VKCF3Z, 2026-11-09).
+    readonly property var forYouBands: ForYou.banded(forYouItems, Date.now())
+    readonly property int toDoCount: forYouBands.now.length
+    readonly property int toLookAtCount: forYouBands.look.length
+    readonly property int toTryCount: forYouBands.try.length
+
+    // The rows of a band, made now, as they're stepped into.
+    function bandRows(band, now) {
+        return band.map(one => one.make(now)).filter(row => row !== null);
+    }
+
+    // A kind's own row, To Look At or To Try, holding what of that kind
+    // doesn't need Joel now (VKCF3Z, 2026-11-09; Joel: "there is no to look
+    // at section"), none when it holds nothing: at its side how many, in
+    // its note the heaviest's title, and inside each, heaviest first. It's
+    // a place, so Return steps in, as the right arrow does, and its head
+    // says "For You \u203a To Look At", as :filter look's does. Muted, as
+    // Later and Lately are, so what needs him now leads by its colour too.
+    function kindRow(kind, rows) {
+        if (rows.length === 0)
+            return [];
+        const id = `for-you:kind:${kind}`;
+        const row = member({
+            key: `on:waitingOnYou:kind:${kind}`,
+            verb: "more",
+            stays: true,
+            name: Words.name(id),
+            glyph: Words.glyph(id),
+            hue: "muted",
+            side: String(rows.length),
+            note: rows[0].name,
+            nested: true,
+            verbs: () => rows,
+            targets: () => rows,
+            run: () => provider.launcher?.enter(row)
+        });
+        return [row];
+    }
+
+    // For You's own rows, each as it's for (ForYou.js's bands), the
+    // heaviest first in each: what needs Joel now, one by one, then To Look
+    // At and To Try, then Lately, Later and History (VKCF3Z, 2026-11-09).
     function waitingRows() {
-        const agents = source("agents");
         const now = Date.now();
-        const weighed = (row, thing) => ({ row: row, weight: ForYou.weigh(thing, now).weight });
-        const wanting = agents ? sessions.map(session => weighed(wantRow(agents.made(session),
-            session), { kind: "todo", blocks: 1, since: session.presence?.wants?.since ?? null }))
-            : [];
-        const rows = wanting.concat(
-            WaitingOnYou.now.map(each => weighed(provider.item(each, now), itemThing(each))),
-            looks.waiting.map(one => weighed(provider.lookRow(one, now), lookThing(one))),
-            given.waiting.map(one => weighed(one.row, one.thing)));
-        return ForYou.ordered(rows).map(one => one.row).concat(latelyRows(now),
+        const bands = ForYou.banded(forYouItems, now);
+        return bandRows(bands.now, now).concat(kindRow("look", bandRows(bands.look, now)),
+            kindRow("try", bandRows(bands.try, now)), latelyRows(now),
             laterRow === null ? [] : [laterRow], historyRow === null ? [] : [historyRow]);
+    }
+
+    // Every row For You's :filter narrows, each one by one, as its bands
+    // order them: a filter steps past the rows that hold a kind, so
+    // :filter look holds what To Look At does, and any lifted (VKCF3Z,
+    // 2026-11-09).
+    function filterable() {
+        const now = Date.now();
+        const bands = ForYou.banded(forYouItems, now);
+        return bandRows(bands.now, now).concat(bandRows(bands.look, now),
+            bandRows(bands.try, now), latelyRows(now));
     }
 
     // What came for Joel, For You's Lately band, after what he can do and
@@ -1335,7 +1421,7 @@ Provider {
     // weighs none of them again, as :set's options are (Launcher.qml's
     // standingOptions).
     function filterCommands(from) {
-        const rows = waitingRows();
+        const rows = filterable();
         return [{
                 command: "filter",
                 short: "filt",
@@ -1367,7 +1453,7 @@ Provider {
     // For You. What it holds is For You's rows as they stand when it's
     // stepped into, in For You's order.
     function filterRow(filter) {
-        const rows = () => Filter.filtered(waitingRows(), filter);
+        const rows = () => Filter.filtered(filterable(), filter);
         const row = member({
             key: `on:waitingOnYou:filter:${Filter.keyOf(filter)}`,
             verb: "more",
