@@ -226,7 +226,7 @@ const FEWEST_SHARED = 3;
 // `at` when it came, a kind of "direct", "channel" or "group", or null for one that isn't
 // Slack's or doesn't say it as Slack does.
 function noticed(notice) {
-    const named = value => String(value ?? "").toLowerCase();
+    const named = field => String(field ?? "").toLowerCase();
     if (named(notice?.app) !== "slack" && named(notice?.entry) !== "slack") {
         return null;
     }
@@ -296,12 +296,12 @@ function isNoticed(said, one) {
 // The ids of Slack's own notices still unread whose message the daemon
 // says was read in Slack, so each is read in Notices too (Joel,
 // 2026-11-08: "i shouldn't be required to mark a notice as read if I
-// looked at the slack message in slack"). `messages` are the daemon's
-// done with (SlackUnreads.qml's doneWith), or null while it doesn't hold
+// looked at the slack message in slack"). `doneWith` are the daemon's
+// messages done with (SlackUnreads.qml's), or null while it doesn't hold
 // every one. Nothing is read on a guess: a notice two messages could be,
 // or one of two notices a message could be, is left as it is.
-function readInSlack(notices, messages) {
-    const read = (messages ?? []).filter(one => listable(one) && one.done?.how === "readInSlack");
+function readInSlack(notices, doneWith) {
+    const read = (doneWith ?? []).filter(one => listable(one) && one.done?.how === "readInSlack");
     if (read.length === 0) {
         return [];
     }
