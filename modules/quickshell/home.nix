@@ -2373,7 +2373,13 @@ in
       };
       Service = {
         StateDirectory = "clock-follows";
-        ExecStart = "${lib.getExe clockFollows} follow %t/daemons/location.sock %S/clock-follows ${timedatectl}";
+        ExecStart = lib.concatStringsSep " " [
+          (lib.getExe clockFollows)
+          "follow"
+          "%t/daemons/location.sock"
+          "%S/clock-follows"
+          timedatectl
+        ];
         Restart = "on-failure";
         RestartSec = 5;
       };

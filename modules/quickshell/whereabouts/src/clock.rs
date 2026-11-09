@@ -74,11 +74,13 @@ mod tests {
         let folder = folder("moved");
         let file = folder.join("moved.json");
         assert_eq!(moved(&file), None);
-        fs::write(
-            &file,
-            r#"{"from":"America/Toronto","to":"America/Edmonton","place":"Kelpwater, Highreach","when":1790000000}"#,
-        )
-        .unwrap();
+        let written = json!({
+            "from": "America/Toronto",
+            "to": "America/Edmonton",
+            "place": "Kelpwater, Highreach",
+            "when": 1_790_000_000_u64,
+        });
+        fs::write(&file, written.to_string()).unwrap();
         assert_eq!(
             moved(&file),
             Some(json!({

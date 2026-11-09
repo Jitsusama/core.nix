@@ -83,6 +83,18 @@ const UNASKED: u8 = 69;
 /// of a system error.
 const UNLISTENED: u8 = 71;
 
+/// Arguments it doesn't know, told from every other failure by its type.
+#[derive(Debug)]
+struct Usage;
+
+impl std::fmt::Display for Usage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("usage")
+    }
+}
+
+impl Error for Usage {}
+
 /// Where a following daemon keeps what it says.
 struct Files {
     kept: PathBuf,
@@ -109,11 +121,11 @@ async fn main() -> ExitCode {
             };
             serve(Path::new(socket), Path::new(root), Some(files)).await
         }
-        _ => Err("usage".into()),
+        _ => Err(Usage.into()),
     };
     match done {
         Ok(()) => ExitCode::SUCCESS,
-        Err(error) if error.to_string() == "usage" => {
+        Err(error) if error.is::<Usage>() => {
             eprintln!("<3>usage: whereabouts SOCKET ROOT [KEPT PIN MOVED]");
             eprintln!("<3>       whereabouts set PIN WORDS | again PIN");
             ExitCode::from(64)
@@ -422,8 +434,9 @@ async fn geoclue_followed(
                     return Err("the pin can no longer be heard".into());
                 }
                 // A pin taken away leaves here to GeoClue, which is asked
-                // where the laptop is now rather than waited on.
-                if last.is_none() {
+                // where the laptop is now rather than waited on; the pin
+                // is read first, so the here it held is let go.
+                if !pin_holds(shared, files, last) && last.is_none() {
                     found = geoclue::fix(&bus, client.location().await?).await;
                 }
             }

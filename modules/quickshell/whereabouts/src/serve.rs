@@ -214,8 +214,14 @@ fn serve(shared: &Shared, stream: UnixStream, connection: u64) {
     });
     for line in BufReader::new(reading).lines() {
         let Ok(line) = line else { break };
-        let answer = answer(shared, ask(&line), connection, &told, &hangup);
-        if told.send(answer.to_string()).is_err() {
+        let mut held = lock(shared);
+        let answer = answer(&mut held, ask(&line), connection, &told, &hangup);
+        // Queued while the lock is held, so a change can't be queued before
+        // the answer it follows; one that can't be queued is hung up on, as
+        // a change would hang up on it.
+        let queued = told.try_send(answer.to_string()).is_ok();
+        drop(held);
+        if !queued {
             break;
         }
     }
@@ -239,13 +245,12 @@ fn sources(known: &Known) -> Value {
 
 /// What one ask is answered with.
 fn answer(
-    shared: &Shared,
+    held: &mut Held,
     asked: Ask,
     connection: u64,
     told: &SyncSender<String>,
     hangup: &Arc<UnixStream>,
 ) -> Value {
-    let mut held = lock(shared);
     let whole = |held: &Held| vec![held.said.clone()];
     match asked {
         Ask::Hello { id } => json!({
@@ -254,13 +259,13 @@ fn answer(
         }),
         Ask::Get { id, keys } => {
             let records: Vec<Value> = if keys.iter().any(|key| key == HERE) {
-                whole(&held)
+                whole(held)
             } else {
                 Vec::new()
             };
             json!({"id": id, "records": records})
         }
-        Ask::List { id } => json!({"id": id, "records": whole(&held)}),
+        Ask::List { id } => json!({"id": id, "records": whole(held)}),
         Ask::Watch { id, keys } => {
             // A watch asked again by its id replaces the one before.
             held.watches
@@ -273,7 +278,7 @@ fn answer(
                 stream: Arc::clone(hangup),
             };
             let records = if watch.wants(HERE) {
-                whole(&held)
+                whole(held)
             } else {
                 Vec::new()
             };

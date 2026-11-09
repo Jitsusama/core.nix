@@ -9,7 +9,9 @@
 //! and the watch's first answer is decided as any change is. Only a fix
 //! that differs from the last one decided is: the same record also says
 //! the clock's zone, and a zone Joel sets by hand, or puts back, mustn't
-//! be taken as the laptop moving and undone a moment later. A fix
+//! be taken as the laptop moving and undone a moment later. The last fix
+//! decided is kept in the state folder (`decided.json`), so a restart, a
+//! switch or a login doesn't decide it again over his zone either. A fix
 //! moves the clock only when it names a zone and GeoClue found it to within
 //! ten kilometres, as the Wi-Fi networks in reach find it. A position read
 //! from the network's address alone, which WARP's exit sends anywhere, is
@@ -28,7 +30,7 @@ use std::env;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -49,7 +51,7 @@ const TRUSTED: f64 = 10_000.0;
 
 /// What of whereabouts' record the clock needs, each null while unknown,
 /// and when it was found, which tells a fix found again from the same.
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 struct Fix {
     #[serde(default)]
     at_s: Option<u64>,
@@ -160,32 +162,67 @@ fn write<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
     fs::rename(fresh, path)
 }
 
+/// The last fix decided, kept in the state folder across connections and
+/// starts.
+struct Decided {
+    path: PathBuf,
+    last: Option<Fix>,
+}
+
+impl Decided {
+    fn in_state(state: &Path) -> Decided {
+        let path = state.join("decided.json");
+        let last = read(&path);
+        Decided { path, last }
+    }
+
+    /// Whether `fix` is one to decide, kept as the last if it is.
+    fn fresh(&mut self, fix: &Fix) -> bool {
+        if self.last.as_ref() == Some(fix) {
+            return false;
+        }
+        self.last = Some(fix.clone());
+        if let Err(why) = write(&self.path, fix) {
+            eprintln!("<4>the fix decided couldn't be kept: {why}");
+        }
+        true
+    }
+}
+
 /// Watches where the laptop is for as long as the program runs, deciding
 /// each time it's told, and connecting again whenever whereabouts stops.
+/// Why it couldn't is said once, and again only once it's something else,
+/// so a socket missing for an hour says so once rather than each try.
 fn follow(socket: &Path, state: &Path, timedatectl: &str) -> io::Result<()> {
+    let mut kept = Decided::in_state(state);
+    let mut said: Option<String> = None;
     loop {
-        if let Err(why) = watched(socket, state, timedatectl) {
-            eprintln!("<4>where the laptop is couldn't be watched: {why}");
+        let why = watched(socket, state, timedatectl, &mut kept)
+            .err()
+            .map(|why| why.to_string());
+        if why.is_some() && why != said {
+            eprintln!(
+                "<4>where the laptop is couldn't be watched: {}",
+                why.as_deref().unwrap_or_default()
+            );
         }
+        said = why;
         std::thread::sleep(AGAIN);
     }
 }
 
 /// One connection's watch, until whereabouts hangs up.
-fn watched(socket: &Path, state: &Path, timedatectl: &str) -> io::Result<()> {
+fn watched(socket: &Path, state: &Path, timedatectl: &str, kept: &mut Decided) -> io::Result<()> {
     let mut stream = UnixStream::connect(socket)?;
     writeln!(
         stream,
         r#"{{"id":"here","ask":"watch","kind":"here","keys":["{HERE}"]}}"#
     )?;
-    // A new connection's first answer is decided, as a start is.
-    let mut last: Option<Fix> = None;
     for line in BufReader::new(stream).lines() {
         for fix in fixes(&line?) {
-            if last.as_ref() == Some(&fix) {
+            if !kept.fresh(&fix) {
                 continue;
             }
-            last = Some(fix.clone());
             // A move that fails, as when timedated refuses, is said and
             // the next change decided anew.
             match decided(&fix, state, timedatectl) {
@@ -319,6 +356,29 @@ mod tests {
             Vec::<Fix>::new()
         );
         assert_eq!(fixes("not a line"), Vec::<Fix>::new());
+    }
+
+    #[test]
+    fn only_a_fix_that_differs_from_the_last_decided_is_decided_again() {
+        let state = std::env::temp_dir().join(format!("clock-follows-{}", std::process::id()));
+        fs::create_dir_all(&state).unwrap();
+        let here = fix(300.0, Some("America/Edmonton"));
+        let mut decided = Decided::in_state(&state);
+        assert!(decided.fresh(&here), "the first is decided");
+        // A change only to the clock's zone, as Joel setting it by hand
+        // makes, says the same fix.
+        assert!(!decided.fresh(&here.clone()), "the same is not");
+        // Nor is it after a connection again or a restart.
+        assert!(!Decided::in_state(&state).fresh(&here), "nor after a start");
+        let later = Fix {
+            at_s: Some(1_790_000_600),
+            ..here
+        };
+        assert!(
+            Decided::in_state(&state).fresh(&later),
+            "one found later is"
+        );
+        fs::remove_dir_all(&state).unwrap();
     }
 
     #[test]
