@@ -219,6 +219,11 @@ Scope {
     function homeSays() {
         return null;
     }
+    // The same as items, each `{ said, keep }`, as Choice.qml gives a side
+    // way by them, or none to say it as it is.
+    function homeItems() {
+        return [];
+    }
     // Whether homeSays says something, so home reads none of its rows: a
     // property rather than asking it, since what it says may cost a walk
     // of everything it holds. Such a source names what it holds without

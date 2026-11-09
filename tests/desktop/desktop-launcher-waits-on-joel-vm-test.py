@@ -273,8 +273,8 @@ def test_the_launchers_home_says_how_its_sessions_stand_rather_than_naming_them(
 ) -> None:
     """The launcher's home says how its sessions stand together, never their names.
 
-    "1 working", as "1 needs you \u00b7 3 working \u00b7 $214 today" would, however long a
-    quest's name is (VKCF3Z, 2026-11-07).
+    "1 working" at its right and nothing after its name, as "1 needs you \u00b7 3 working \u00b7
+    $214 today" would, however long a quest's name is (VKCF3Z, 2026-11-07, dae7fb67).
     """
     desktop.pi_session()
     # A session whose quest's name is longer than home's row has room for,
@@ -287,13 +287,10 @@ def test_the_launchers_home_says_how_its_sessions_stand_rather_than_naming_them(
     desktop.launcher_until(
         lambda shown: any(
             thing["is"] == "collection:agents"
-            and re.match(r"Agents \u00b7 \d+ working", thing["reads"])
+            and re.fullmatch(r"Agents \u00b7 \d+ working(?: \u00b7 \S+ today)?", thing["reads"])
             for thing in shown["things"]
         )
     )
-    reads = {thing["is"]: thing["reads"] for thing in desktop.showing()["things"]}
-    assert "No sessions" not in reads["collection:agents"], reads
-    assert "Bootstrap" not in reads["collection:agents"], reads
     desktop.shoot("launcher-home-agents")
     desktop.close_launcher()
     desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(long)['id']}")
@@ -462,13 +459,14 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     desktop.opened("Elsewhere")
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    # Home's Now names the first Joel can do now, with its minutes.
+    # Home's Now names the first Joel can do now at its right, with its minutes, and
+    # nothing more, since it's the only one ready (VKCF3Z, bd5cb965).
     desktop.launcher_until(
         lambda shown: any(
-            thing["reads"].startswith("Now \u00b7 For You: Answer the ask \u00b7 2 min")
-            for thing in shown["things"]
+            thing["reads"] == "Now \u00b7 Answer the ask \u00b7 2 min" for thing in shown["things"]
         )
     )
+    desktop.shoot("launcher-home-now-waiting")
     # It counts only what Joel can do now: the session's two aren't ready.
     desktop.type_in("for you", selecting="For You")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "1")
@@ -855,17 +853,16 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
             )
         )
         desktop.close_launcher()
-        # Home's Now leaves it out of what's on while it holds nothing.
+        # Calm, with Keep Awake on, home's Now says nothing at its right,
+        # neither For You nor how many are on (VKCF3Z, bd5cb965).
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.launcher_until(
             lambda shown: any(
-                thing["reads"].startswith("Now \u00b7 ") and "Keep Awake" in thing["reads"]
+                thing["is"] == "collection:on" and thing["reads"] == "Now"
                 for thing in shown["things"]
             )
         )
-        now = next(thing for thing in desktop.showing()["things"] if thing["is"] == "collection:on")
-        assert "For You" not in now["reads"], now
         desktop.close_launcher()
     finally:
         desktop.as_account("systemctl --user stop keep-awake.service")

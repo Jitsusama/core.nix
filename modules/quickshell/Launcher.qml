@@ -1145,9 +1145,9 @@ Scope {
                                 .filter(fact => fact).length,
                             picture: (drawn.picture ?? "") !== ""
                         });
-                    // A plated row, Now at home, has a drawer as a thing
-                    // does (drawerOf).
-                    if (!detailed(row) && row.plated !== true
+                    // A plated row, Now at home, and a place naming what
+                    // it holds have a drawer as a thing does (drawerOf).
+                    if (!drawable(row)
                         && (!!row.drawer || (row.reads ?? "") !== ""
                         || (row.picture ?? "") !== ""))
                         undrawn.push(`${names.concat([row.name]).join(" \u203a ")}`
@@ -1676,11 +1676,11 @@ Scope {
             .sort((a, b) => named.indexOf(a.key) - named.indexOf(b.key));
     }
 
-    // What a category holds, said after its name so scrolling through
-    // them says what's there: its members' names, as their rows name them
-    // ("Agents, AI spend, Calls, Capture"), but for one its own name
-    // already says (Sound's Sound). Read from the vocabulary as its row is
-    // made, so no answer is asked for it. Its typed commands are rows
+    // What a category holds, named in its drawer so one key onto it says
+    // what's there: its members' names, as their rows name them ("Agents ·
+    // AI spend · Calls"), but for one its own name already says (Sound's
+    // Sound), never after its name (VKCF3Z, dae7fb67). Read from the
+    // vocabulary as its row is made, so no answer is asked for it. Its typed commands are rows
     // inside it but not named here: the words they start with read as
     // stray lowercase words among the places (VKCF3Z, 2026-11-05: "Wi-Fi,
     // Address, Speed, ip, is, split, mac").
@@ -1696,8 +1696,8 @@ Scope {
     // profile where Machine holds it, the way Processor's says how busy it
     // is (2026-10-28: "having power as a top under machine with just a list
     // of options in the hint instead of treated like cpus and stuff is
-    // weird"). Asked as its row is made, like the names it replaces; ""
-    // when nothing says, and the place lists what it holds instead.
+    // weird"). Asked as its row is made; "" when nothing says, and its
+    // right says nothing, its drawer naming what it holds (VKCF3Z, dae7fb67).
     function standsOf(category) {
         if (!category.stands)
             return "";
@@ -1733,21 +1733,25 @@ Scope {
         return categories.find(row => row.category.id === id);
     }
 
+    // A place's drawer's eyebrow, its kind, as a program's says "program"
+    // (VKCF3Z, 00ca9231).
+    readonly property string placeSaid: (Words.field.drawer ?? {}).place ?? ""
+
     // A thing the vocabulary names, as a row: a category, the row of that
     // key, a collection whole, an answer to its question, or a provider's
     // things as one row holding them. Null where this machine has none.
     function resolved(id) {
         const place = placeNamed(id);
         if (place) {
-            // How it stands at its right, as Power's charge, and what it
-            // holds by name after its name, at home and inside Machine
-            // alike (VKCF3Z, 2a429f67).
-            const side = PlaceRow.side(standsOf(place.category), "");
+            // How it stands at its right, as Power's charge, or nothing
+            // where it only groups others, and what it holds by name in
+            // its drawer, at home and inside Machine alike (VKCF3Z,
+            // dae7fb67).
+            const names = holding(place.category);
             return Object.assign({}, place, {
-                side: side,
-                count: PlaceRow.holds(holding(place.category),
-                    { name: place.name, says: side, room: rowRoom() }),
-                names: true
+                side: PlaceRow.side(standsOf(place.category), ""),
+                count: "",
+                drawer: PlaceRow.drawer(place.name, names, placeSaid)
             });
         }
         const known = keyed[id];
@@ -1984,6 +1988,17 @@ Scope {
         restart(start);
     }
 
+    // What a collection says at its right, { side, sideItems }, its items
+    // made once: said as items, its side is them joined, as Now's first
+    // thing waiting is, else what it says whole (homeSays), null for
+    // nothing of its own.
+    function sidesOf(source) {
+        const items = source.homeItems();
+        return items.length > 0
+            ? { side: items.map(item => item.said).join(" \u00b7 "), sideItems: items }
+            : { side: source.homeSays(), sideItems: [] };
+    }
+
     // A collection as a row the search finds: as it is at home, but naming
     // and counting none of what it holds, which would read all of it at
     // every change. One that says how it stands without reading it, as
@@ -1991,9 +2006,9 @@ Scope {
     // right, its answer by name, read as the launcher opens, as home is.
     function named(source) {
         const collection = source.collection;
-        const says = source.homeSays();
+        const says = sidesOf(source);
         const row = Object.assign(whole(source, false, false), { weight: source.weight },
-            says !== null ? { side: says } : {});
+            says.side !== null ? says : {});
         row.prepared = Fuzzy.prepare(row.name);
         row.keywords = Fuzzy.prepare([row.name, collection.noun].join(" "));
         // Its words are what a person calls it, so they count as its name.
@@ -3119,10 +3134,11 @@ Scope {
     }
 
     // A collection as one row, at home and in a place such as Desktop:
-    // Return or the right arrow opens all of it. Read whole, it names what
-    // it holds after its name and says how it stands at its right, or how
-    // many it holds (PlaceRow.js); a row the search finds isn't read, since
-    // naming it would read all of it at every change (`named`).
+    // Return or the right arrow opens all of it. Read whole, it says how it
+    // stands at its right, or that it holds none, or how many it holds, and
+    // names what it holds in its drawer (PlaceRow.js); a row the search
+    // finds isn't read, since naming it would read all of it at every
+    // change (`named`).
     function whole(source, gap, read = true) {
         const collection = source.collection;
         const name = source.settings.name;
@@ -3136,9 +3152,10 @@ Scope {
         const held = rowsRead ? source.everything() : [];
         const members = !read ? [] : rowsRead ? source.memberNames(held)
             : source.memberNames();
-        const none = collection.none ?? "";
-        const side = read ? PlaceRow.side(source.homeSays(),
-            rowsRead ? source.counted(held) : "", members.length === 0 && none !== "") : "";
+        const none = members.length === 0 ? collection.none ?? "" : "";
+        const says = read ? sidesOf(source) : { side: "", sideItems: [] };
+        const side = read ? PlaceRow.side(says.side,
+            rowsRead ? source.counted(held) : "", none) : "";
         const row = {
             key: `collection:${name}`,
             verb: "open",
@@ -3156,14 +3173,17 @@ Scope {
             chord: [],
             nextTime: opener ? opener.chord : [],
             // How it stands, or how many it holds, at its right, where a
-            // row's figure stands (VKCF3Z, 2026-11-05).
+            // row's figure stands (VKCF3Z, 2026-11-05); holding none, it
+            // says so there as a run, never the sentence an empty place
+            // says inside (VKCF3Z, 2026-11-08, dae7fb67).
             side: side,
-            // What it holds by name, given way by whole names; holding
-            // none, it says so as a run, never the sentence an empty place
-            // says inside (VKCF3Z, 2026-11-08).
-            count: read ? PlaceRow.holds(members,
-                { name: title, says: side, room: rowRoom(), none: none }) : "",
-            names: read,
+            // The same as items, where it gives way by them, as Now's first
+            // thing waiting does (Now.qml's homeItems).
+            sideItems: says.sideItems,
+            // Nothing after its name, as no other row says there; what it
+            // holds is named in its drawer (VKCF3Z, dae7fb67).
+            count: "",
+            drawer: PlaceRow.drawer(title, members, placeSaid, collection.holding ?? ""),
             gap: gap,
             opens: name,
             from: source,
@@ -6452,16 +6472,17 @@ Scope {
     // beyond its line, its own or one made of the picture and the whole
     // words it has. It's out only while the selected row is a thing and the
     // drawer says something the row doesn't, the same at home, in a search
-    // and in every place; an act, a switch, a choice or a place has none
-    // (VKCF3Z, 2026-10-29, after Joel's "shows when it's not needed, and
-    // only shows in certain places"). Between two rows that both have one it stays, and what it
+    // and in every place; an act, a switch or a choice has none, and a
+    // place's names what it holds (drawable) (VKCF3Z, 2026-10-29, after
+    // Joel's "shows when it's not needed, and only shows in certain
+    // places"; dae7fb67). Between two rows that both have one it stays, and what it
     // shows changes in place; onto a row without one, or from one, it fades
     // only once the selection has rested, so holding an arrow never
     // flickers it. `told`, where given, is told as `unread` of a drawer
     // read as it's first asked for, a turn later, that isn't in yet (the
     // row's `drawerUnread`, as a keyboard's), so a terminal asks again.
     function drawerOf(row, told) {
-        if (!detailed(row) && row?.plated !== true)
+        if (!drawable(row))
             return null;
         const own = typeof row.drawer === "function" ? row.drawer() : row.drawer;
         if (told && typeof row.drawerUnread === "function" && row.drawerUnread())
@@ -6470,6 +6491,15 @@ Scope {
             picture: row.picture ?? "", across: row.across ?? 0, down: row.down ?? 0 };
         // One that would only repeat its row is never shown (Showing.adds).
         return Showing.adds(drawer, row) ? drawer : null;
+    }
+
+    // Whether a row has a drawer: a thing, a plated row such as Now at
+    // home, or a place, whose drawer names what it holds (PlaceRow.js), its
+    // row saying nothing after its name, so one key onto it shows what's
+    // inside (VKCF3Z, dae7fb67). A place stays no thing (detailed).
+    function drawable(row) {
+        return detailed(row) || row?.plated === true
+            || (!!(row?.opens || row?.category) && !!row.drawer);
     }
 
     // Whether a row is a thing with details, by its kind rather than by

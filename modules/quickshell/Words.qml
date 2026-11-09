@@ -143,7 +143,10 @@ Singleton {
             // What home's row notes while it holds none: a lowercase run,
             // never the sentence an empty place says inside (VKCF3Z,
             // 2026-11-08: "none running", "nobody lately").
-            none: entry.none ?? "none"
+            none: entry.none ?? "none",
+            // What its drawer says it holds, where they're of one kind, in a
+            // sentence rather than by each name (VKCF3Z, 00ca9231).
+            holding: entry.tells?.holding ?? ""
         }, extra ?? {});
     }
 }

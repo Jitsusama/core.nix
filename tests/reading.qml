@@ -249,6 +249,20 @@ QtObject {
             filedIn(120));
         expect("down to a letter and its extension", filedIn(30) === "s\u2026.mp3",
             filedIn(30));
+        // Now's first thing waiting gives way from its end by whole words,
+        // behind an ellipsis, while its minutes and how many more wait
+        // never give way (VKCF3Z, bd5cb965).
+        const waits = [{ said: "Answer the ask", keep: 1, words: true, stays: true },
+            { said: "2 min", keep: 2, stays: true }, { said: "2 more", keep: 3, stays: true }];
+        const waiting = room => Reading.wholeItems(waits, room, width);
+        expect("what waits whole where it fits",
+            waiting(310) === "Answer the ask \u00b7 2 min \u00b7 2 more", waiting(310));
+        expect("its title gives way by a whole word",
+            waiting(300) === "Answer the\u2026 \u00b7 2 min \u00b7 2 more", waiting(300));
+        expect("down to its first",
+            waiting(250) === "Answer\u2026 \u00b7 2 min \u00b7 2 more", waiting(250));
+        expect("its minutes and the rest never give way",
+            waiting(50) === "Answer\u2026 \u00b7 2 min \u00b7 2 more", waiting(50));
         // Styled, the kept items keep their words and take a dot in the
         // colour given between them, so a selected agent row reads
         // "working \u00b7 $4.20" with its dot muted (VKCF3Z, 2026-11-06), and

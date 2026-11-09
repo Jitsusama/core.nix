@@ -2123,9 +2123,9 @@
     a list the launcher shows keeps its order and its selection as what's in it changes
   '';
   a-place-reads-alike-everywhere = ''
-    a place's row names what it holds after its name in the room its name and what it says at its
-    right leave, as many whole as fit and never an ellipsis, saying so where it holds none, and at
-    its right says how it stands where it says, else how many it holds
+    a place's row says nothing after its name; at its right it says how it stands where it says,
+    else its word for none while it holds nothing, else how many it holds, and nothing for a place
+    that only groups others; and its drawer names what it holds, in its own order
   '';
   recent-means-one-thing = ''
     Recent lists at most nine things, newest first across its sources, each once where it's

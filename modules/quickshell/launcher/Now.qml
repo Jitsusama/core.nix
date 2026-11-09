@@ -1623,15 +1623,45 @@ Provider {
         return all.slice();
     }
 
-    // Now's row says at its right what For You's own row says there, how
-    // many wait on Joel (VKCF3Z, 2a429f67), since that's the one thing in
-    // it only he can move.
+    // Now's row says at its right how Now stands, what waits on Joel first:
+    // the thing For You's own row leads with and its minutes, then how many
+    // more wait, "Answer the ask \u00b7 2 min \u00b7 2 more"; with nothing
+    // waiting, nothing, since a calm home says nothing (VKCF3Z, bd5cb965).
+    // For You is his one place for attention, so home leads with it.
     function homeSays() {
-        return waiting.side;
+        return homeItems().map(item => item.said).join(" \u00b7 ");
     }
 
-    // So its row names what else is on after its name, and never For You,
-    // whose count it already says at its right.
+    // Never how many rows it holds, which tells Joel nothing: calm, its
+    // right is empty (VKCF3Z, bd5cb965).
+    function counted() {
+        return "";
+    }
+
+    // The same, as items: short of room its title gives way from its end
+    // by whole words, behind an ellipsis, and its minutes and how many more
+    // never give way (Reading.js's keptItems).
+    // It leads with what's counted as waiting now, never a later item as
+    // `first` falls back to, so "N more" counts the rest of waitsNow.
+    function homeItems() {
+        const lead = sessions.length === 0 ? WaitingOnYou.now[0] ?? null : null;
+        const title = sessions.length > 0 ? first : lead ? lead.title
+            : looks.waiting.length > 0 ? looks.waiting[0].title
+            : given.waiting.length > 0 ? given.waiting[0].row.name : "";
+        if (waitsNow === 0 || title === "") {
+            return [];
+        }
+        const minutes = typeof lead?.minutes === "number"
+            ? waitingSaid("minutes", { minutes: lead.minutes }) : "";
+        const more = waitsNow - 1;
+        return [{ said: title, keep: 1, words: true, stays: true },
+            { said: minutes, keep: 2, stays: true },
+            { said: more > 0 ? waitingSaid("more", { count: more }) : "", keep: 3, stays: true }]
+            .filter(item => item.said !== "");
+    }
+
+    // What its drawer names, the rest of what's on, never For You, whose
+    // first thing it already says at its right.
     function memberNames(held = all) {
         return held.filter(one => one.key !== waiting.key && one.folded !== true)
             .map(one => one.name);
@@ -1653,13 +1683,5 @@ Provider {
             && meeting.key === `calendar:meeting:${fact.piece.meeting?.id ?? ""}`)
             return meeting.key;
         return "";
-    }
-
-    // This moment's rows and Waiting on You are always there, so what's
-    // counted is what's on beside them, and what waits only when it does.
-    function counted() {
-        const waits = WaitingOnYou.foremost !== null || sessions.length > 0;
-        const on = all.length - moment.length - (waits ? 0 : 1);
-        return on === 0 ? "nothing" : String(on);
     }
 }
