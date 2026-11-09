@@ -4475,12 +4475,14 @@ Scope {
     // its records came, as Heat's, comes in place, and a place's own row
     // says how it stands now, as Power's charge in Machine. Before, each
     // read its source as it was asked, so the place was whole at once.
+    // The place's own order wins over Steady's, which puts a row new to
+    // it last: Heat belongs between Memory and Disk, and the place is
+    // still being made, a moment after it was stepped into.
     function placesRead() {
         if (!open || asking || !held.some(step => !!step.row.category))
             return;
         const steps = held.map(step => step.row.category ? Object.assign({}, step, {
-            rows: Steady.kept(step.rows, members(step.row.category), steadyId)
-                .map(row => heldBack(step.row.category, row))
+            rows: members(step.row.category).map(row => heldBack(step.row.category, row))
         }) : step);
         if (!remade(steps, held.length))
             return;
