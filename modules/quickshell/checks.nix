@@ -804,8 +804,8 @@ onLinux {
           (account graphical).xdg.configFile."quickshell/launcher/words.json".text;
     in
     pkgs.runCommandLocal "the-launcher-shows-no-replaced-word" { } ''
-      cp ${../../tests/glossary.py} glossary.py
-      cp ${../../tests/names.py} names.py
+      cp ${../../tests/repository/glossary.py} glossary.py
+      cp ${../../tests/repository/names.py} names.py
       cp ${../../tests/launcher-shown.py} launcher-shown.py
       ${lib.getExe pkgs.python3} launcher-shown.py ${../../docs/glossary.md} ${words}
       touch $out
@@ -820,7 +820,7 @@ onLinux {
           (account graphical).xdg.configFile."quickshell/launcher/words.json".text;
     in
     pkgs.runCommandLocal "the-launcher-names-each-thing-its-term" { } ''
-      cp ${../../tests/glossary.py} glossary.py
+      cp ${../../tests/repository/glossary.py} glossary.py
       cp ${../../tests/launcher-terms.py} launcher-terms.py
       ${lib.getExe pkgs.python3} launcher-terms.py ${../../docs/glossary.md} ${words}
       touch $out

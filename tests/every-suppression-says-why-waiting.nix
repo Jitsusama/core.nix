@@ -18,13 +18,13 @@
   "tests/desktop/desktop-looks-vm-test.py" = 1;
   "tests/desktop/desktop-opens-and-sets-vm-test.py" = 1;
   "tests/dictation-watch.py" = 1;
-  "tests/every-vm-test-keeps-to-the-pyramid.py" = 1;
   "tests/greeter-vm-test.py" = 2;
   "tests/launcher_on_niri.py" = 7;
   "tests/launcher-on-niri-test.py" = 8;
   "tests/lib/qemu-after-its-sockets-test.py" = 3;
   "tests/passwords-on-niri-test.py" = 1;
   "tests/plymouth-vm-test.py" = 2;
+  "tests/repository/every-vm-test-keeps-to-the-pyramid.py" = 1;
   "tests/vm/guide/guide-install-vm-test.py" = 1;
   "tests/vm/guide/guide-writer-vm-test.py" = 1;
   "tests/vm/guide/secure-boot-vm-test.py" = 1;

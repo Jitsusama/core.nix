@@ -1,6 +1,7 @@
 # The names of core's checks and options that say a name docs/glossary.md
-# replaces and stay, for now or for good, given to tests/names.nix. A kept
-# name no longer found fails, so a rename takes its entry off here.
+# replaces and stay, for now or for good, given to
+# tests/repository/names.nix. A kept name no longer found fails, so a rename
+# takes its entry off here.
 {
   # Names whose word means something the glossary doesn't replace, often a
   # program's own word for its own thing.

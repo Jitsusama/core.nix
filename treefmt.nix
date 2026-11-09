@@ -123,9 +123,9 @@ in
     ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux python.evdev;
 
   # biome reads the JavaScript QML imports as the modules it means
-  # (tests/qt-javascript-lint.sh).
+  # (modules/treefmt/qt-javascript-lint.sh).
   settings.formatter.qt-javascript-lint = {
-    command = pkgs.lib.getExe (pkgs.callPackage ./tests/qt-javascript-lint.nix { });
+    command = pkgs.lib.getExe (pkgs.callPackage ./modules/treefmt/qt-javascript-lint.nix { });
     includes = [ "*.js" ];
     # The launcher is being redesigned, its matcher with it, which comes
     # under biome as it's rewritten. Chrome's extension isn't QML's.

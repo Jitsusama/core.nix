@@ -86,8 +86,6 @@
   "tests/desktop/op-stand-in.sh" = 3;
   "tests/desktop/stand-in-virsh.sh" = 1;
   "tests/desktop/tuple-stand-in.sh" = 2;
-  "tests/docs-name-what-exists.sh" = 4;
-  "tests/every-folder-says-what-it-holds.sh" = 9;
   "tests/google-opens-its-links.sh" = 1;
   "tests/imports-installed.sh" = 2;
   "tests/lib/qemu-after-its-sockets.sh" = 1;
@@ -96,6 +94,8 @@
   "tests/network-revive-stand-in.sh" = 4;
   "tests/notices-on-niri.sh" = 1;
   "tests/qml-compiles.sh" = 2;
+  "tests/repository/docs-name-what-exists.sh" = 4;
+  "tests/repository/every-folder-says-what-it-holds.sh" = 9;
   "tests/says-what-it-has-open.sh" = 5;
   "tests/shell-folder-lint.sh" = 5;
   "tests/spend-session.sh" = 3;

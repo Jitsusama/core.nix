@@ -1,7 +1,7 @@
 // biome lints four kinds of file, with every rule on but those below, each
 // with the reason it doesn't fit. The shell's JavaScript runs in Qt's engine
-// and is read through tests/qt-javascript-lint.sh, unformatted. Qt's engine
-// (QV4) parses neither an object spread nor a catch with no binding, so the
+// and is read through modules/treefmt/qt-javascript-lint.sh, unformatted.
+// Qt's engine (QV4) parses neither an object spread nor a catch with no binding, so the
 // rules asking for those are off for it, and it gives every library its `Qt`
 // object, whose locale names the days and months. Chrome's open-tabs
 // extension is linted as it is (treefmt.nix), running in Chrome with its
