@@ -131,12 +131,26 @@ Singleton {
     // `ending`, each `{ file, presence, window, held }` and more, made
     // again when the node tells of a change or a park comes or goes, and
     // kept as they were when nothing in them did, so what reads them isn't
-    // told for nothing. `sorted` is said once they change.
-    property var live: []
-    property var resting: []
-    property var ending: []
-    property string sortedSaid: ""
+    // told for nothing. `sorted` is said once they change. All three are
+    // set at once, so what reads more than one is told once.
+    property var sorting: ({ live: [], resting: [], ending: [] })
+    readonly property var live: sorting.live
+    readonly property var resting: sorting.resting
+    readonly property var ending: sorting.ending
     signal sorted()
+    // Whether the launcher shows them (shell.qml). While it doesn't, a
+    // change only to what it alone shows (Pi.told) is held back, and taken
+    // once it shows them again: just after, so opening isn't slowed by it,
+    // since what it first shows, how each session stands, was never held.
+    property bool showing: false
+    onShowingChanged: {
+        if (showing && heldBack)
+            Qt.callLater(resort);
+    }
+    property bool heldBack: false
+    // What was last sorted, as Pi.told said it, and whether it was shown.
+    property string sortedSaid: ""
+    property bool saidShown: false
     function resort() {
         const next = Pi.sorted(node?.held ?? {}, {
             machine: machine,
@@ -144,17 +158,34 @@ Singleton {
             bootedAt: bootedAt,
             markers: parkedMarkers()
         });
-        const said = JSON.stringify(next);
-        if (said === sortedSaid)
+        const said = Pi.told(next, showing);
+        sorts.heard += 1;
+        if (said === sortedSaid && saidShown === showing) {
+            heldBack = !showing;
             return;
+        }
         sortedSaid = said;
-        resting = next.resting;
-        ending = next.ending;
-        live = next.live;
+        saidShown = showing;
+        heldBack = false;
+        sorts.taken += 1;
+        sorting = next;
         sorted();
     }
+    // How many sortings it has made and how many it took, in a plain
+    // object, so counting notifies nothing.
+    readonly property var sorts: ({ heard: 0, taken: 0 })
+
+    // For the check that a shut launcher takes no change only it shows
+    // (vm-desktop-launcher-keeps-up).
+    IpcHandler {
+        target: "pi"
+
+        function sorts(): string {
+            return JSON.stringify(root.sorts);
+        }
+    }
     // Every session it tells of, as the contract's records.
-    readonly property var sessions: Pi.sessions({ live, resting, ending }, machine)
+    readonly property var sessions: Pi.sessions(sorting, machine)
 
     // The sessions parked now, by the marker each keeps while it is (the
     // harness's park-workflow/parked/<session>.json), deleted as it starts

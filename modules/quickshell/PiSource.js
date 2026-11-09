@@ -83,6 +83,32 @@ function sorted(held, place) {
     return sorting;
 }
 
+// What a session's presence says that only the launcher shows, and that
+// changes as the session works: its step, what it has used, and when it
+// was last heard. Joel's 113 sessions changed 26 times in 30 s on
+// 2026-11-09, and 21 of those changed nothing else.
+const SHOWN_ONLY = ["at", "heard", "step", "stepDetail", "usage"];
+
+// A sorting (`sorted`) as text, to tell whether a change is one anything
+// reads: all of it while the launcher shows it, and otherwise all but
+// what only the launcher shows. With the launcher shut, each change of
+// a session's step had cost the shell's main thread 20 to 370 ms of
+// sorting and binding that nothing on screen read.
+function told(sorting, shown) {
+    if (shown) {
+        return JSON.stringify(sorting);
+    }
+    const kept = one => {
+        const presence = Object.assign({}, one.presence);
+        for (const name of SHOWN_ONLY) {
+            delete presence[name];
+        }
+        return Object.assign({}, one, { presence });
+    };
+    return JSON.stringify({ live: sorting.live.map(kept), resting: sorting.resting.map(kept),
+        ending: sorting.ending.map(kept) });
+}
+
 // Copies the fields named from `from` that are said, so one unsaid is
 // left out rather than set to nothing.
 function said(from, names) {
