@@ -94,11 +94,14 @@ function kindName(type, globs) {
 // The kinds of file a program opens, ["PDF", "HTML", "PNG"], each once, and
 // the links it handles, ["http", "https"], from the programs daemon's
 // record of its entry (modules/programs): `opens`, each { type, globs },
-// and `handles`, in its entry's order.
+// and `handles`, in its entry's order. A type listed twice is named by its
+// first, so text/html is HTML once rather than HTML and HTM.
 function opens(record) {
+    const types = Array.from(record?.opens ?? [])
+        .filter((kind, at, all) => all.findIndex(one => one.type === kind.type) === at);
     return {
-        kinds: Array.from(new Set(Array.from(record?.opens ?? [])
-            .map(kind => kindName(kind.type, kind.globs)).filter(name => name !== ""))),
+        kinds: Array.from(new Set(types.map(kind => kindName(kind.type, kind.globs))
+            .filter(name => name !== ""))),
         schemes: Array.from(record?.handles ?? [])
     };
 }

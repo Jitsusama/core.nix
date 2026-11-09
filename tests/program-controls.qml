@@ -581,7 +581,9 @@ ShellRoot {
                 "Position 1:38 of 6:43");
 
             // A program's drawer, its entry the programs daemon's once it's
-            // asked (Program.js), where its windows are leading.
+            // asked (Program.js), where its windows are leading. An entry is
+            // read only while the launcher is open, as a drawer is seen.
+            launcher.open = true;
             program("tester").drawer();
             root.kept = { told, media, sound, player };
             root.waiting = "the tester's entry";
@@ -621,6 +623,10 @@ ShellRoot {
             same("what it opens, from its desktop file", described.facts[1].value, "HTML");
             same("its categories, as words", described.facts[3].value,
                 "Office \u00b7 Text Editor");
+            // Closed again, as the cases after it began, which lets the
+            // entry go.
+            launcher.open = false;
+            same("closing lets the entry go", applications.entryWanted, "");
             // Its processes are watched only while a program's row is the
             // one selected (Applications.qml).
             applications.treesWanted = [5151];
