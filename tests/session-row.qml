@@ -500,6 +500,13 @@ QtObject {
             failures.push(`landed today: ${todayCount}, not 2`);
         if (Landed.landedToday(keeping, Date.parse("2026-11-09T15:00:00Z")) !== 0)
             failures.push("a landing two days old counted as today's");
+        // Landed's row says at its right how it stands, state first.
+        const standing = { unread: "{count} to read", today: "{count} today" };
+        const stood = [[2, 5], [0, 5], [2, 0], [0, 0]]
+            .map(([unread, today]) => Landed.stands(unread, today, standing));
+        if (JSON.stringify(stood) !== JSON.stringify(["2 to read \u00b7 5 today", "5 today",
+            "2 to read", ""]))
+            failures.push(`Landed stands: ${JSON.stringify(stood)}`);
         // A landing's drawer says who landed it and when, what it is, and
         // what to try as its words, which the row's one line has no room
         // for; a fact nobody knows isn't said.

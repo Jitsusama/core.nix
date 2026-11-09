@@ -86,6 +86,18 @@ function landedToday(kept, now) {
         && new Date(Date.parse(String(one.at ?? ""))).toDateString() === today).length;
 }
 
+// How Landed stands, said at its row's right as a run, state first: how
+// many are still to read, then how many landed today, each only when it's
+// any, as For You's Lately says "12 to read"; nothing after its name,
+// since a place's row says nothing there (VKCF3Z, adba1297). `said` gives
+// each part's words, `unread` and `today`, holding `{count}`.
+function stands(unread, today, said) {
+    return [[unread, said.unread], [today, said.today]]
+        .filter(([count]) => count > 0)
+        .map(([count, words]) => String(words ?? "").replace("{count}", count))
+        .join(" \u00b7 ");
+}
+
 // A landing's drawer: who landed it and when as its eyebrow, what landed
 // as its title, its ref, session, quest, repository and machine as facts,
 // and what to try as its words, since a sentence never fits beside the

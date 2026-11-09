@@ -873,8 +873,9 @@ Provider {
     // What to Try and Forget It, its ending, which d does and u takes back,
     // as a notice's is. What landed is kept 30 days past its session's end
     // (the harness's landings.json, served as the node's `landing` kind),
-    // so a session closed leaves what it landed in Landed; its note says
-    // how many landed today.
+    // so a session closed leaves what it landed in Landed. Its row says at
+    // its right how many are to read and how many landed today, and its
+    // drawer, as a place's, what it holds (VKCF3Z, adba1297).
     readonly property var keptLandings: {
         void landingKind?.revision;
         return Object.values(landingKind?.held ?? {});
@@ -959,13 +960,17 @@ Provider {
             },
             verbs: () => parts(one)
         });
-        const today = Landed.landedToday(kept, Date.now());
-        const todaySaid = String((Words.of("agents:landed").said ?? {}).today ?? "");
+        const words = Words.of("agents:landed");
         return thingRow({
             key: "agents:landed",
             name: Words.name("agents:landed"),
-            note: today > 0 ? todaySaid.replace("{count}", today) : "",
-            side: unread.length > 0 ? String(unread.length) : "",
+            side: Landed.stands(unread.length, Landed.landedToday(kept, Date.now()),
+                words.said ?? {}),
+            drawer: () => ({
+                eyebrow: (Words.field.drawer ?? {}).place ?? "",
+                title: Words.name("agents:landed"),
+                body: (words.tells ?? {}).holding ?? ""
+            }),
             glyph: Words.glyph("agents:landed"),
             hue: "action"
         }, () => unread.map(landing));

@@ -238,7 +238,11 @@
       "verb": "more",
       "glyph": "done",
       "said": {
+        "unread": "{count} to read",
         "today": "{count} today"
+      },
+      "tells": {
+        "holding": "What sessions landed in the past 30 days, newest first."
       }
     },
     {
