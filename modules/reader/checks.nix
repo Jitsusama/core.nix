@@ -96,6 +96,7 @@ onLinux {
         "Asking.js"
         "Numbers.js"
         "Applications.qml"
+        "BrowserWindows.js"
         "Order.js"
         "Program.js"
         "Media.js"
