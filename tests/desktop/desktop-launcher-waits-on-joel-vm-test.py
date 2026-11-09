@@ -39,6 +39,9 @@ if TYPE_CHECKING:
     from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
 
+# The scales Joel uses, where what VKCF3Z judges is photographed.
+JOELS_SCALES = ("1.5", "2")
+
 
 @pytest.fixture(scope="module")
 def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
@@ -1115,6 +1118,53 @@ def draws_nothing_held_still(desktop: Desktop, who: str, on: str) -> None:
     assert drawn <= 1, (
         f"{who} drew {drawn} frames in three seconds left still on {on}, selecting {selected}"
     )
+
+
+def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desktop) -> None:
+    """In For You, :filter lists the kinds there and look steps into the looks, shot at 1.5 and 2.
+
+    What a filter keeps and the words it takes are tests/for-you-filter.qml's, and its one
+    path through the launcher the nested niri's; here the menu and the head are photographed
+    at Joel's scales, for VKCF3Z to judge (2026-11-08).
+    """
+    asked = {
+        "quest": "QUEST2",
+        "items": [{"id": "ask", "title": "Answer the ask", "minutes": 2, "ready": True}],
+    }
+    look = {"v": 1, "id": "filtered", "title": "Read the plan", "target": "/etc/hostname",
+            "kind": "file", "state": "waiting", "at": "2026-11-08T12:00:00Z"}  # fmt: skip
+    desktop.as_account(f"mkdir -p {MISSION}/waiting {HARNESS}/looks")
+    kept(desktop, f"{MISSION}/waiting/QUEST2.json", asked)
+    kept(desktop, f"{HARNESS}/looks/filtered.json", look)
+    try:
+        for scale in (*JOELS_SCALES, "1"):
+            desktop.as_account(f"niri msg output winit scale {scale}")
+            waiting_opened(desktop)
+            desktop.machine.send_key("ret")
+            desktop.launcher_until(
+                lambda shown: {"Answer the ask", "Read the plan"} <= set(shown["rows"])
+            )
+            desktop.normal()
+            desktop.machine.send_chars(":filter ")
+            desktop.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "filter ")
+            named = scale.replace(".", "-")
+            if scale != "1":
+                desktop.shoot(f"launcher-for-you-filter-menu-at-{named}")
+            desktop.machine.send_chars("look\n")
+            desktop.launcher_until(
+                lambda shown: (
+                    shown["path"][-2:] == ["For You", "To Look At"]
+                    and shown["rows"] == ["Read the plan"]
+                )
+            )
+            if scale != "1":
+                desktop.shoot(f"launcher-for-you-filtered-at-{named}")
+            desktop.machine.send_chars("-")
+            desktop.launcher_until(lambda shown: shown["path"][-1:] == ["For You"])
+            desktop.close_launcher()
+    finally:
+        desktop.as_account("niri msg output winit scale 1")
+        desktop.as_account(f"rm -f {MISSION}/waiting/QUEST2.json {HARNESS}/looks/filtered.json")
 
 
 # A binding that throws or assigns the wrong type only warns, and

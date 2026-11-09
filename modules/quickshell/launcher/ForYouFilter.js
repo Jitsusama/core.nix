@@ -11,6 +11,10 @@
 
 // The kinds a filter names, in the order For You's bands are designed in.
 const KINDS = ["do", "look", "try"];
+// For You's own sources that give it one kind alone, so they're no source
+// to filter by: their kind already reaches them, and typed, each answers as
+// it (VKCF3Z, 2026-11-08). Every other source is the world's.
+const AS_KIND = { "needs-you": "do", looks: "look" };
 const FIELDS = ["kind", "source"];
 
 const SPACES = /\s+/;
@@ -37,20 +41,32 @@ function sourcesOf(rows, said) {
     return named.concat(rows.map(row => fieldOf(row, "source"))).filter(source => source !== "");
 }
 
+// What a word names, as [field, value], or null for neither: a source of
+// one kind alone names its kind, before any source of its name.
+function named(word, sources) {
+    if (KINDS.includes(word)) {
+        return ["kind", word];
+    }
+    if (word in AS_KIND) {
+        return ["kind", AS_KIND[word]];
+    }
+    return sources.includes(word) ? ["source", word] : null;
+}
+
 // What the words narrow `from` to (a filter, or none for everything), as
 // { kind, source }, each "" where nothing names one; or { error } for a
-// word that's neither a kind nor a source, or a second of one, which could
-// only narrow to nothing. Vim's own E475 says it, as Ex.js says what Vim
+// word that's neither a kind nor a source, or a second of one other than
+// the first, which could only narrow to nothing. Vim's own E475 says it, as Ex.js says what Vim
 // says.
 function read(arg, rows, said, from) {
     const sources = sourcesOf(rows, said);
     const filter = { kind: from?.kind ?? "", source: from?.source ?? "" };
     for (const word of wordsOf(arg)) {
-        const field = KINDS.includes(word) ? "kind" : sources.includes(word) ? "source" : "";
-        if (field === "" || filter[field] !== "") {
+        const [field, value] = named(word, sources) ?? ["", ""];
+        if (field === "" || (filter[field] !== "" && filter[field] !== value)) {
             return { error: `E475: Invalid argument: ${word}` };
         }
-        filter[field] = word;
+        filter[field] = value;
     }
     return filter;
 }
@@ -119,7 +135,8 @@ function offered(rows, arg, said, from) {
     const kinds = so.kind !== "" ? []
         : KINDS.map(kind => ({ value: kind, note: count("kind", kind) }));
     const present = so.source !== "" ? []
-        : Array.from(new Set(kept.map(row => fieldOf(row, "source")).filter(one => one !== "")));
+        : Array.from(new Set(kept.map(row => fieldOf(row, "source"))
+            .filter(one => one !== "" && !(one in AS_KIND))));
     const sources = Order.sorted(present, Order.byName(source => sourceName(source, said)))
         .map(source => ({ value: source, note: count("source", source) }));
     return kinds.concat(sources)

@@ -25,7 +25,6 @@ QtObject {
             sources: {
                 mail: "Mail",
                 slack: "Slack",
-                "needs-you": "Needs You",
                 calendar: "Calendar"
             }
         })
@@ -36,7 +35,8 @@ QtObject {
     // launcher's, never the filter's.
     readonly property var items: [
         "a:do:needs-you", "b:look:mail", "c:look:slack", "d:try:sessions", "e:look:mail",
-        "f:notice:slack", "g:notice:mail", "h:notice:desktop", "i:notice:home-network"
+        "f:notice:slack", "g:notice:mail", "h:notice:desktop", "i:notice:home-network",
+        "j:look:looks"
     ].map(one => {
         const [key, kind, source] = one.split(":");
         return { key, kind: "thing", forYou: { kind, source } };
@@ -59,7 +59,11 @@ QtObject {
         const failures = [];
         // [what, what :filter was given, the items kept, what the head says]
         const filters = [
-            ["a kind keeps its band", "look", "b c e", "To Look At"],
+            ["a kind keeps its band", "look", "b c e j", "To Look At"],
+            ["a source of one kind alone answers as its kind", "needs-you", "a", "To Do"],
+            ["as the looks do", "looks", "b c e j", "To Look At"],
+            ["and so narrows beside a source", "looks mail", "b e", "Mail \u00b7 To Look At"],
+            ["the kind said twice is the one kind", "look looks", "b c e j", "To Look At"],
             ["a source keeps both bands, notices too", "slack", "c f", "Slack"],
             ["two words narrow to both", "mail look", "b e", "Mail · To Look At"],
             ["in either order, the source said first", "look mail", "b e", "Mail · To Look At"],
@@ -103,8 +107,9 @@ QtObject {
             check(failures, what, Filter.asked(arg, items, said).error ?? "", error);
 
         // Only sources present are offered, so never the calendar here.
-        const everything = "do 1, look 3, try 1, desktop 1, home-network 1, mail 3, needs-you 1, "
-            + "sessions 1, slack 2";
+        // Nor a source of one kind alone, which its kind already reaches.
+        const everything = "do 1, look 4, try 1, desktop 1, home-network 1, mail 3, sessions 1, "
+            + "slack 2";
         // [what, what's typed after `:filter`, what Tab offers]
         const tabs = [
             ["kinds in their bands' order, then sources A to Z by name, each with its count",

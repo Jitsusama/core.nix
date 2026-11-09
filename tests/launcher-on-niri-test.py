@@ -501,21 +501,26 @@ def test_for_yous_filter_steps_into_a_kind_and_minus_comes_back_out(shell: Shell
     looks = state / "pi/agentic-harness.pi/looks"
     looks.mkdir(parents=True, exist_ok=True)
     look = looks / "filtered.json"
-    said = {"v": 1, "id": "filtered", "title": "Filtered Look", "target": "/tmp/filtered",
-            "kind": "file", "state": "waiting", "at": "2026-11-08T12:00:00Z"}
+    said = {"v": 1, "id": "filtered", "title": "Filtered Look", "target": "/etc/hostname",
+            "kind": "file", "state": "waiting", "at": "2026-11-08T12:00:00Z"}  # fmt: skip
     look.write_text(json.dumps(said))
     try:
         shell.as_account(shell.ipc("toggle"))
         shell.launcher_ready()
         typed_at_once(shell, "'for you' -k Return")
-        shell.launcher_until(lambda shown: shown["path"][-1:] == ["For You"]
-                             and "Filtered Look" in shown["rows"])
+        shell.launcher_until(
+            lambda shown: shown["path"][-1:] == ["For You"] and "Filtered Look" in shown["rows"]
+        )
         shell.normal()
         shell.send_chars(":filter look")
         shell.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "filter look")
         shell.send_key("ret")
-        shell.launcher_until(lambda shown: shown["path"][-2:] == ["For You", "To Look At"]
-                             and shown["rows"] == ["Filtered Look"])
+        shell.launcher_until(
+            lambda shown: (
+                shown["path"][-2:] == ["For You", "To Look At"]
+                and shown["rows"] == ["Filtered Look"]
+            )
+        )
         shell.send_chars("-")
         shell.launcher_until(lambda shown: shown["path"][-1:] == ["For You"])
         shell.close_launcher()

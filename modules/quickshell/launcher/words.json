@@ -6637,9 +6637,7 @@
       "id": "for-you:sources",
       "in": "on:waiting",
       "said": {
-        "needs-you": "Needs You",
         "sessions": "Sessions",
-        "looks": "Looks",
         "mail": "Mail",
         "slack": "Slack",
         "calendar": "Calendar",
