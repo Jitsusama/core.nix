@@ -44,6 +44,7 @@ import "Numbers.js" as Numbers
 import "Order.js" as Order
 import "Recent.js" as Recent
 import "SessionDrawer.js" as SessionDrawer
+import "SessionMade.js" as SessionMade
 import "SessionRow.js" as SessionRow
 
 Provider {
@@ -58,15 +59,34 @@ Provider {
     // In the one order of how they stand, each in the order Sessions keeps
     // within it (this machine's, the one used last first, then the others,
     // the one that changed last first), each under its orchestrator.
-    // Made only while the launcher is open or its catalogue is walked from
-    // outside, since every session's row reads the machine queue and the
-    // session's presence, which change every few seconds; Home's count
-    // reads Sessions itself. Nothing is kept from one making to the next,
-    // so a row and its drawer say how the session stands now.
-    readonly property var all: {
+    // Made only while they're wanted (Provider.qml's wanted), since every
+    // session's row reads the machine queue and the session's presence,
+    // which change every few seconds; Home's count reads Sessions itself.
+    // A row is kept while all it's made from reads the same (made), so a
+    // change remakes only the sessions it changed. Laying them out writes
+    // into `keeping`, a plain object that's never reassigned, so writing
+    // it notifies nothing and can't loop (Provider.qml's keeper).
+    readonly property var all: opened() && provider.wanted ? laidOut() : []
+
+    function opened() {
         const launcher = provider.launcher;
-        if (!launcher || !(launcher.open || launcher.cataloguing))
-            return [];
+        return !!launcher && (launcher.open || launcher.cataloguing);
+    }
+
+    // Every session's row, in its place in the tree, those not made again
+    // let go once it's laid out.
+    function laidOut() {
+        keepingBegun(keeping);
+        const rows = rowsFor();
+        keptOnly(keeping);
+        return rows;
+    }
+
+    // Each session's row as last made, by its key, with what it was made
+    // from (made), and those made in the laying out underway.
+    readonly property var keeping: keeper()
+
+    function rowsFor() {
         // Those parked after, standing last in the one order, under their
         // orchestrators as the rest are.
         const running = Sessions.running.concat(Sessions.parked);
@@ -141,9 +161,14 @@ Provider {
         return first.concat(orchestrators.talksOf(one.address));
     }
     // Said as every row it shows moves, the sessions' and those after
-    // them, so a step held in Landed loses a landing as it's read.
-    readonly property var everyRow: everything()
-    onEveryRowChanged: changedTo(everyRow)
+    // them, so a step held in Landed loses a landing as it's read; and
+    // only while they're wanted, so a change nobody sees refreshes
+    // nothing. Wanted again, it says whatever moved meanwhile.
+    readonly property var everyRow: provider.wanted ? everything() : null
+    onEveryRowChanged: {
+        if (everyRow !== null)
+            changedTo(everyRow);
+    }
 
     // The rows of what SessionRow.tree laid out: a session's own, or the
     // fold of an orchestration's members that only wait, which says how
@@ -256,13 +281,42 @@ Provider {
         return { asks, state, doing };
     }
 
+    // Kept from the making before while everything it's made from reads
+    // the same (SessionMade.js): the session's own fields, how it
+    // stands, what it spent and how it's listed, where it's placed, and
+    // whether the screen's shared.
     function made(session, place) {
-        const depth = place?.depth ?? 0;
         const presence = session.presence;
-        const { asks, state, doing } = standingOf(session);
         const quest = presence && presence.owns
             ? presence.owns.find(owned => /^QEST-/.test(owned)) ?? "" : "";
-        const { spent, family } = spendOf(presence, quest, place);
+        const read = {
+            standing: standingOf(session),
+            quest: quest,
+            spending: spendOf(presence, quest, place)
+        };
+        const from = SessionMade.madeFrom(session, [windowedOf(session), Sessions.isOf(session),
+            read.standing, read.spending, listedOf(session, place), place ?? null,
+            Quiet.sharing]);
+        // Kept by where it's placed too, as Now makes it at no depth while
+        // Agents lays it out in its tree.
+        const key = `${session.address}\u0000${JSON.stringify(place ?? null)}`;
+        return keptOr(keeping, key, from, () => madeAnew(session, place, read));
+    }
+
+    // What the harness lists an orchestrator as, or null for any other.
+    function listedOf(session, place) {
+        return place?.orchestrates ? (source("orchestrators")?.listed ?? [])
+            .find(one => one.address === session.address) ?? null : null;
+    }
+
+    // A session's row made anew, from what made() read of it: how it
+    // stands, its quest and what it spent.
+    function madeAnew(session, place, read) {
+        const depth = place?.depth ?? 0;
+        const presence = session.presence;
+        const quest = read.quest;
+        const { asks, state, doing } = read.standing;
+        const { spent, family } = read.spending;
         // What it works on leads with its quest's title, the row's own
         // name, so the note says only the summary after it.
         const note = asks && presence.wants.said ? presence.wants.said
@@ -284,8 +338,7 @@ Provider {
         // An orchestrator is found by what the harness lists it as too,
         // its short name and its quest's title, as it was in the place of
         // its own this tree replaced.
-        const listedAs = place?.orchestrates ? (source("orchestrators")?.listed ?? [])
-            .find(one => one.address === session.address) ?? null : null;
+        const listedAs = listedOf(session, place);
         const known = listedAs ? ` ${listedAs.short ?? ""} ${listedAs.title ?? ""}` : "";
         // A tier 2 figure, while it's true: its context past 80% full.
         const full = state === "off" ? ""
@@ -316,6 +369,13 @@ Provider {
             returns: provider.sessionAct(session,
                 SessionRow.returns(state, windowedOf(session))),
             verbs: () => provider.verbs(session, quest, spent, family),
+            // Its parts, its acts and facts, are read as they're made, the
+            // queue's jobs and its talks among them, and found only from
+            // inside it, so the walk for where rows live never makes them
+            // (Catalogue.js's followsInto): walked on each change, it made
+            // every session's, about nine rows each, 6,733 in twelve seconds
+            // at home over 300 sessions (2026-11-09).
+            parted: true,
             // What y takes: the first of its facts, as its verbs list them.
             operands: () => [quest !== "" ? copyOperand("fact:agent:quest", quest)
                 : copyOperand("fact:agent:address",
@@ -429,7 +489,10 @@ Provider {
         const id = String(session.presence?.session ?? "");
         const asleep = word("parked");
         const awake = word("listening");
-        const now = all.find(row => row.key === key);
+        // Its row as Agents lays it out, folded or not, made as it's asked
+        // for while Agents isn't shown, as at home or held in Now, so the
+        // waking row keeps what it spent.
+        const now = sessionRows(everything()).find(row => row.key === key);
         const items = now ? now.sideItems.map(item => (item.said === asleep
             ? Object.assign({}, item, { said: awake }) : item))
             : SessionRow.side(awake, "");
@@ -859,7 +922,15 @@ Provider {
     // Reopen's alone. It always stands, after Landed and before Start, its
     // names after its own and how many at its right, and Return on one
     // reopens it where it left off, by its id (VKCF3Z, 2026-11-08).
-    readonly property var recent: {
+    // Made again only when what it lists reads otherwise, said as a string,
+    // which tells its readers only when it changes: Sessions makes every
+    // session anew as any one changes, and a new Recent each time was a
+    // change to Agents' things, which has the launcher walk again where
+    // every row lives (Launcher.qml's stale). What it lists is kept beside
+    // it in recentListed, a plain object that's never reassigned, so
+    // writing its field notifies nothing and can't loop;
+    // recent reads the field only once this string has said it changed.
+    readonly property string recentFrom: {
         const closed = Sessions.closed;
         const live = Sessions.running.concat(Sessions.parked);
         const addresses = (source("orchestrators")?.closed ?? []).map(one => one.address)
@@ -867,6 +938,12 @@ Provider {
         const quests = live.map(one => one.presence?.questInfo?.id ?? one.presence?.quest ?? "");
         const listed = Recent.listed([SessionRow.closedRecent(closed)],
             SessionRow.shownElsewhere(closed, Sessions.toReopen, addresses, quests));
+        recentListed.rows = listed;
+        return JSON.stringify([listed.map(one => one.row), new Date().toDateString()]);
+    }
+    readonly property var recentListed: ({ rows: [] })
+    readonly property var recent: {
+        const listed = recentFrom === "" ? [] : recentListed.rows;
         const words = Words.of("agents:recent");
         const stands = Recent.said(listed.map(one => String(one.row.title || one.row.address
             || one.row.id)), false, words.said ?? {});
@@ -944,8 +1021,11 @@ Provider {
 
     things: [toReopen, landed, budgets].filter(row => row !== null).concat([recent, start])
 
+    // Asked while they aren't wanted, as a step into Agents asks before it's
+    // held, its rows are laid out as asked, keeping those that read the same.
     function everything() {
-        return all.concat([toReopen, landed].filter(row => row !== null), [recent, start]);
+        const sessions = provider.wanted || !opened() ? all : laidOut();
+        return sessions.concat([toReopen, landed].filter(row => row !== null), [recent, start]);
     }
 
     // How every session stands, running and parked, read from Sessions
@@ -980,4 +1060,5 @@ Provider {
     function homeSays() {
         return summary();
     }
+    saysAtHome: true
 }

@@ -2059,7 +2059,8 @@
   the-launcher-paces-its-refreshes = ''
     an open launcher takes the first of its sources' changes at once and those after it a pace
     apart, together, and a refresh taken another way takes the one waiting with it, so no two
-    refreshes begin closer than the pace
+    refreshes begin closer than the pace; and a source's rows are wanted only while it's held,
+    searched, named at home or has an act waiting, so a change nobody sees builds none
   '';
   the-launcher-plays-from-spotify = ''
     Spotify's program in the launcher reads Spotify only as it's stepped into, once an opening,
@@ -2070,7 +2071,8 @@
   the-launcher-lays-sessions-under-their-orchestrators = ''
     every list of pi sessions keeps one order of how they stand, and Agents lays each under the
     session orchestrating it, a step in and at most two, an orchestration standing where its most
-    urgent row would
+    urgent row would; and a session's row is kept only while everything it shows or goes to
+    reads the same, its kitty window, held id and attach words among them
   '';
   pi-tells-of-its-sessions-as-an-agent-source = ''
     pi, as an agent source, sorts the node's sessions into those running, parked and closed this
@@ -2831,6 +2833,14 @@
     is answered, written to, cancelled or moved once Joel's sure, its link copied and its attachments
     opened; Google signed out wants a sign-in, the transcripts list each call written down and
     open it in the reader, and Meet joins a call by its code
+  '';
+  vm-desktop-launcher-keeps-up = ''
+    an arrow held at 30 a second at home, in Agents and in Programs, at scales 2 and 1.5, while
+    300 sessions and 2,000 people change, makes no rows for a source the place doesn't show and
+    none at all while they're frozen, but for the walk of where rows live, which makes at most
+    one laying out of the sessions a turn; refreshes the list at most four times a second and
+    never on a key's path; and keeps nineteen handlers in twenty, and its middle key to its
+    frame, within twice their times with the changes frozen and a little more
   '';
   vm-desktop-launcher-moves-windows = ''
     the launcher opens kitty and learns it was meant, frames the focused window, switches to and

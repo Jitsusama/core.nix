@@ -1112,8 +1112,10 @@ onLinux {
     '';
 
   # An open launcher takes a burst of its sources' changes a pace apart, and
-  # never two refreshes closer than that however the first was asked for, as
-  # tests/pacing.qml holds launcher/Pacing.js to it in Qt's own engine.
+  # never two refreshes closer than that however the first was asked for, and
+  # a source's rows are wanted only where they're shown or searched, as
+  # tests/pacing.qml holds launcher/Pacing.js and launcher/Wanted.js to it in
+  # Qt's own engine.
   the-launcher-paces-its-refreshes =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -1121,6 +1123,7 @@ onLinux {
     pkgs.runCommandLocal "the-launcher-paces-its-refreshes" { } ''
       cp ${../../tests/pacing.qml} pacing.qml
       cp ${./launcher/Pacing.js} Pacing.js
+      cp ${./launcher/Wanted.js} Wanted.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -1204,9 +1207,10 @@ onLinux {
 
   # Every list of pi sessions keeps one order of how they stand, and Agents
   # lays each under the session orchestrating it, a step in, at most two,
-  # an orchestration standing where its most urgent row would, as
-  # tests/session-row.qml holds launcher/SessionRow.js to it in Qt's own
-  # engine.
+  # an orchestration standing where its most urgent row would, and a
+  # session's row is kept only while what it's made from reads the same,
+  # as tests/session-row.qml holds launcher/SessionRow.js and
+  # SessionMade.js to it in Qt's own engine.
   the-launcher-lays-sessions-under-their-orchestrators =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -1215,6 +1219,7 @@ onLinux {
       cp ${../../tests/session-row.qml} session-row.qml
       cp ${./launcher/Holders.js} Holders.js
       cp ${./launcher/SessionRow.js} SessionRow.js
+      cp ${./launcher/SessionMade.js} SessionMade.js
       cp ${./launcher/Order.js} Order.js
       cp ${./launcher/SessionDrawer.js} SessionDrawer.js
       cp ${./Reading.js} Reading.js

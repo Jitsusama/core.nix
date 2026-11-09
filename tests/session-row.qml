@@ -1,8 +1,8 @@
 // How the launcher says where a pi session stands and lays a list of them
 // out, run in Qt's own JavaScript engine, the one the shell runs it in.
 // The `the-launcher-lays-sessions-under-their-orchestrators` check copies
-// modules/quickshell/launcher/SessionRow.js, SessionDrawer.js and
-// Holders.js beside this file and runs
+// modules/quickshell/launcher/SessionRow.js, SessionDrawer.js,
+// SessionMade.js and Holders.js beside this file and runs
 // `qml -platform offscreen session-row.qml`. Each list of sessions keeps
 // one order of how they stand (needs you, working, in line, listening,
 // paused, parked), and Agents sits each session under the one orchestrating it, a
@@ -12,6 +12,7 @@
 import QtQuick
 import "SessionDrawer.js" as SessionDrawer
 import "Holders.js" as Holders
+import "SessionMade.js" as SessionMade
 import "SessionRow.js" as SessionRow
 import "Reading.js" as Reading
 
@@ -585,8 +586,39 @@ QtObject {
         if (Holders.talkSide("Reef", "").length !== 1)
             failures.push("a talk row with no state says an empty item");
 
+        madeFrom(failures);
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);
+    }
+
+    // Agents keeps a session's row while what it's made from reads the same,
+    // and its acts go where the row was made to: so anything Go To reads,
+    // a kitty window, a held id or attach words, makes it anew, or Switch
+    // would go to the old window (Y2YBTS's review of #2521).
+    function madeFrom(failures) {
+        const session = {
+            address: "A1", title: "Reef", folder: "~/src", machine: "here", here: true,
+            reachable: true, window: null, kitty: { socket: "unix:/k1", window: 3 },
+            held: null, attach: null, presence: { busy: true }
+        };
+        const around = ["working", "$2"];
+        const from = SessionMade.madeFrom(session, around);
+        const changed = {
+            "the same session": [{}, around],
+            "another kitty window": [{ kitty: { socket: "unix:/k1", window: 4 } }, around],
+            "another kitty": [{ kitty: { socket: "unix:/k2", window: 3 } }, around],
+            "a held id": [{ held: "pi-7" }, around],
+            "attach words": [{ attach: ["ssh", "far"] }, around],
+            "a niri window": [{ window: { id: 12 } }, around],
+            "another presence": [{ presence: { busy: false } }, around],
+            "how it stands": [{}, ["listening", "$2"]]
+        };
+        for (const [what, [fields, beside]] of Object.entries(changed)) {
+            const same = SessionMade.madeFrom(Object.assign({}, session, fields), beside) === from;
+            if (same !== (what === "the same session"))
+                failures.push(`a session's row with ${what} is ${same ? "kept" : "made anew"}`);
+        }
     }
 }

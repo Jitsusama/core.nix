@@ -201,8 +201,8 @@ ShellRoot {
                     `${steps[3].side} ${steps[3].verb}`);
                 expect("their email copies itself", steps[4].verb === "copy", steps[4].verb);
                 // Nor is anyone's drawer made with them: it's made when it's
-                // first shown, and once.
-                const eager = people.everyone.filter(row => {
+                // first shown, and kept for the minute its time there holds.
+                const eager = people.everyone().filter(row => {
                     const drawer = Object.getOwnPropertyDescriptor(row, "drawer");
                     if (!drawer || !drawer.get)
                         return true;

@@ -403,6 +403,17 @@ let
       inherit self pkgs;
       area = "keeps-pace";
     };
+    # How the launcher keeps up with a held arrow while sessions and
+    # people change, at Joel's scales, on a screen as large as the
+    # laptop's.
+    vm-desktop-launcher-keeps-up = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "launcher-keeps-up";
+      screen = {
+        width = 2880;
+        height = 1800;
+      };
+    };
     # How the launcher is laid out at Joel's scales, which needs a screen
     # as large as the laptop's.
     vm-desktop-looks = import ./tests/desktop.nix {

@@ -72,6 +72,7 @@ import "launcher/Standing.js" as Standing
 import "launcher/Steady.js" as Steady
 import "launcher/Becoming.js" as Becoming
 import "launcher/Pacing.js" as Pacing
+import "launcher/Wanted.js" as Wanted
 import "launcher/Order.js" as Order
 
 Scope {
@@ -3063,8 +3064,10 @@ Scope {
         const lead = source.foremost ?? "";
         // A row folded into a place, as Agents' Start a Session is, does
         // something there rather than being one of what it holds, so home
-        // never names it.
-        const names = source.everything()
+        // never names it. A place that says what it holds itself is never
+        // read for names it won't show, so its rows wait to be wanted.
+        const says = source.homeSays();
+        const names = says !== null ? [] : source.everything()
             .filter(one => one.key !== "on:waitingOnYou" && one.folded !== true)
             .map(one => one.name);
         const left = room > 0 ? room - row.name.length : Infinity;
@@ -3076,7 +3079,6 @@ Scope {
         // sessions when i super space right now").
         // A place whose things are better counted than named says so
         // instead, as Agents says how its sessions stand together.
-        const says = source.homeSays();
         const rest = says !== null ? says
             : names.length > 0 && fitted === "" ? source.counted() : fitted;
         const placed = Object.assign({}, row, {
@@ -3161,6 +3163,13 @@ Scope {
     }
 
     readonly property bool atHome: typed === "" && held.length === 0
+
+    // Whether a source's rows are wanted now (launcher/Wanted.js), which
+    // each source's own wanted asks.
+    function wants(source) {
+        return Wanted.wanted({ cataloguing: cataloguing, open: open, held: held,
+            becoming: Object.values(becoming), typed: typed }, source);
+    }
 
     // A collection's matches with those picked before for what's typed
     // first, most picked first, the rest in their order.
@@ -3359,6 +3368,11 @@ Scope {
     property var livesLongest: null
     // How long a slice of the walk may run, in ms, inside a key's 4.
     readonly property int livesSlice: 3
+    // The rows each source has made for the walk, by its name, for the
+    // check that tells them from what a key made: the walk lays out a
+    // place it walks, as Agents' sessions, once the list is quiet, never
+    // on a key. A plain object, so adding to it notifies nothing.
+    readonly property var livesMade: ({})
 
     function livesFor(id) {
         if (followIndex === null)
@@ -3370,6 +3384,7 @@ Scope {
     // it if none is under way; true once it's done.
     function walkLives(until) {
         const walking = Date.now();
+        const before = tallies();
         const ways = {
             idOf: one => steadyId(one),
             holds: (one, above) => catalogueHolds(one,
@@ -3380,6 +3395,9 @@ Scope {
             livesWalk = Object.assign(Catalogue.livesBegun(home(), ways), { took: 0, longest: 0 });
         const walk = livesWalk;
         const done = Catalogue.livesOn(walk, ways);
+        const after = tallies();
+        for (const name of Object.keys(after))
+            livesMade[name] = (livesMade[name] ?? 0) + after[name] - (before[name] ?? 0);
         const took = Date.now() - walking;
         walk.took += took;
         walk.longest = Math.max(walk.longest, took);
@@ -4360,6 +4378,8 @@ Scope {
         // pacing below, so it's in the key's own frame or the next; and so
         // is a daemon's word on what an act asked it, whenever it comes.
         if (byKey || Object.values(becoming).some(one => one.from === source)) {
+            if (byKey)
+                refreshesKeyed += 1;
             if (!refreshing.includes(source))
                 refreshing = refreshing.concat([source]);
             Qt.callLater(refreshDue);
@@ -4380,6 +4400,12 @@ Scope {
             Qt.callLater(refreshDue);
     }
     readonly property int refreshPace: 250
+    // How many refreshes the open launcher has made, for the check that
+    // it makes at most four a second however fast its sources change, and
+    // how many changes were taken at once as a key's own, for the check
+    // that an arrow takes none.
+    property int refreshesDone: 0
+    property int refreshesKeyed: 0
     property var pace: Pacing.rested()
     // The timer rings when the pace says a refresh is due, and is stopped
     // once none waits.
@@ -4498,8 +4524,10 @@ Scope {
         keepPace(Pacing.took(Date.now()));
         const refreshedAt = pace.at;
         const begun = KeyTimes.now();
-        if (open)
+        if (open) {
+            refreshesDone += 1;
             freshen();
+        }
         const due = refreshing;
         // When each began, by the shell's clock, which the pacing goes by:
         // a report said as one ends is moved by its own work.
@@ -5251,6 +5279,9 @@ Scope {
         keysWaiting += 1;
         keysPressed.push(pressed > 0 ? pressed : null);
         keysHeard.push(heard);
+        // Its handler is done once it's searched or moved, all a key's own
+        // work, which design.md holds within 4 ms.
+        keysDone.push(KeyTimes.now());
     }
 
     function keyDrawn() {
@@ -5268,6 +5299,8 @@ Scope {
             keysFramed.splice(0, keysFramed.length - keysKept);
         if (keysHeard.length > keysKept)
             keysHeard.splice(0, keysHeard.length - keysKept);
+        if (keysDone.length > keysKept)
+            keysDone.splice(0, keysDone.length - keysKept);
         if (keysPressed.length > keysKept)
             keysPressed.splice(0, keysPressed.length - keysKept);
     }
@@ -5291,6 +5324,7 @@ Scope {
     // the frames by the keys still waiting for one.
     property var keysPressed: []
     property var keysHeard: []
+    property var keysDone: []
     property int keysTimed: 0
     property int keysWaiting: 0
 
@@ -6214,15 +6248,28 @@ Scope {
         }
 
         // When each of the last keys, typed or arrowed, was pressed, when
-        // the launcher's handler took it and when it reached its frame, in
-        // milliseconds of the monotonic clock, oldest first, a key at each
-        // place in all three, its press null if no press made it; and how
-        // many keys have reached a frame since the shell started.
+        // the launcher's handler took it, when that handler was done and
+        // when it reached its frame, in milliseconds of the monotonic
+        // clock, oldest first, a key at each place in all four, its press
+        // null if no press made it; and how many keys have reached a frame
+        // since the shell started.
         function framed(): string {
             const drawn = root.keysFramed.length;
             return JSON.stringify({ timed: root.keysTimed, clock: "monotonic",
                 pressed: root.keysPressed.slice(0, drawn),
-                heard: root.keysHeard.slice(0, drawn), frames: root.keysFramed });
+                heard: root.keysHeard.slice(0, drawn), done: root.keysDone.slice(0, drawn),
+                frames: root.keysFramed });
+        }
+
+        // How many rows each source has made since the shell started, by
+        // its name, and how many times the open launcher has refreshed,
+        // how many changes it took as a key's own, and the rows made for the
+        // walk of where rows live (livesMade), for the check that a source
+        // nobody sees makes none, the list refreshes at most four times a
+        // second, and an arrow takes no change as its own.
+        function made(): string {
+            return JSON.stringify({ rows: root.tallies(), refreshes: root.refreshesDone,
+                keyed: root.refreshesKeyed, walked: root.livesMade });
         }
 
         // How many frames the card has drawn since this was first asked,

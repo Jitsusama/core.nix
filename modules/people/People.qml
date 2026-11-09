@@ -177,17 +177,38 @@ Provider {
     // comes in 2 ms, before the key's first frame (427IH3, 2026-10-31).
     readonly property int freshFor: 50
 
-    // How many it holds, for a test to bound.
-    onPersonsChanged: Report.say(`people holds ${persons.length}`)
+    // How many it holds, for a test to bound; and everyone's rows are
+    // made again when next looked through.
+    onPersonsChanged: {
+        Report.say(`people holds ${persons.length}`);
+        rowsOfEveryone.stale = true;
+    }
 
     // Everyone shown, one person each: those the sources give, and those
-    // read from the daemon; and each as a row, by key, its name and
-    // addresses made ready to match only when first searched.
+    // read from the daemon.
     readonly property var persons: Person.merged(sources.map(source => ({
         name: source.settings.name,
         people: source.daemonHolds ? fromDaemon.people[source.settings.name] : source.people
     })))
-    readonly property var everyone: persons.map(person => made(person, Person.standing(person, [])))
+
+    // And each as a row, by key, its name and addresses made ready to
+    // match only when first searched, made only when a search looks
+    // through them, never for a change nobody searches: a crowd said anew
+    // made every row again each time, the launcher open or not, 813 to
+    // 2,595 of them an opening on Joel's shell (2026-11-08). Each is kept
+    // while the person reads the same. Plain, so keeping notifies nothing.
+    readonly property var rowsOfEveryone: ({ rows: [], stale: true, keeping: keeper() })
+    function everyone() {
+        const made = rowsOfEveryone;
+        if (made.stale) {
+            keepingBegun(made.keeping);
+            made.rows = persons.map(person => keptOr(made.keeping, person.key,
+                JSON.stringify(person), () => provider.made(person, Person.standing(person, []))));
+            keptOnly(made.keeping);
+            made.stale = false;
+        }
+        return made.rows;
+    }
 
     // How each stands, which changes often, read from every source in
     // order, so the first that says is believed.
@@ -200,13 +221,31 @@ Provider {
 
     // Those listed with nothing typed, as they stand now, the last thing
     // with each measured as they're listed rather than kept up with the
-    // clock.
-    readonly property var all: {
-        const now = Date.now();
-        return Person.ordered(persons.filter(person => Person.listed(person, standOf(person), now)),
-            person => standOf(person), now).map(person => made(person, standOf(person)));
+    // clock. Each is kept while the person and how they stand read the
+    // same, as everyone's are, so a change remakes only those it changed;
+    // and they're made only while they're wanted (Provider.qml's wanted),
+    // or as they're asked for, so a change nobody sees makes none and
+    // refreshes nothing. Listing them writes into keptListed, a plain
+    // object that's never reassigned, so writing it notifies nothing and
+    // can't loop (Provider.qml's keeper).
+    readonly property var all: provider.wanted ? listedNow() : []
+    onAllChanged: {
+        if (provider.wanted)
+            changed();
     }
-    onAllChanged: changed()
+    function listedNow() {
+        const now = Date.now();
+        keepingBegun(keptListed);
+        const rows = Person.ordered(persons.filter(person => Person.listed(person,
+            standOf(person), now)), person => standOf(person), now).map(person => {
+            const stood = standOf(person);
+            return keptOr(keptListed, person.key, JSON.stringify([person, stood]),
+                () => made(person, stood));
+        });
+        keptOnly(keptListed);
+        return rows;
+    }
+    readonly property var keptListed: keeper()
 
     // The listed rows by key, so a search finds them as they stand.
     readonly property var known: {
@@ -250,11 +289,21 @@ Provider {
         });
         // Their details, made when first shown rather than for everyone each
         // time everyone is made. A source's answer that comes later makes
-        // everyone again, and so this row, which reads it then.
+        // everyone again, and so this row, which reads it then. A row is
+        // kept while the person reads the same, so the time where they are
+        // is made again once its minute has passed.
         let details = null;
+        let detailsAt = -1;
         Object.defineProperty(row, "drawer", {
             enumerable: true,
-            get: () => details ?? (details = Person.details(person, zone => provider.there(zone)))
+            get: () => {
+                const minute = Math.floor(Date.now() / 60000);
+                if (details === null || detailsAt !== minute) {
+                    details = Person.details(person, zone => provider.there(zone));
+                    detailsAt = minute;
+                }
+                return details;
+            }
         });
         return Object.assign(row, {
             named: Fuzzy.letters([person.name.toLowerCase()]),
@@ -456,9 +505,10 @@ Provider {
         const found = [];
         const matched = [];
         let grade = 3;
-        const narrowing = lately.among === everyone && lately.typed !== null
+        const among = everyone();
+        const narrowing = lately.among === among && lately.typed !== null
             && String(typed).toLowerCase().startsWith(lately.typed);
-        for (const row of narrowing ? lately.found : everyone) {
+        for (const row of narrowing ? lately.found : among) {
             const byName = (row.named & need) === need
                 ? Fuzzy.match(row.prepared, words, false) : missed;
             const byAddress = (row.mailed & need) === need
@@ -473,7 +523,7 @@ Provider {
                 listed: listed !== undefined, at: found.length });
         }
         lately.typed = String(typed).toLowerCase();
-        lately.among = everyone;
+        lately.among = among;
         lately.found = matched;
         // Those listed first, then the best match, and among equals the
         // order the sources know them in.
@@ -484,12 +534,12 @@ Provider {
     }
 
     function everything() {
-        return all;
+        return provider.wanted ? all : listedNow();
     }
 
     // A search looks through everyone, not only those listed.
     function looksThrough() {
-        return everyone;
+        return everyone();
     }
 
     // A source that only follows what it knows while someone might look,

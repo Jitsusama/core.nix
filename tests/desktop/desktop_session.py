@@ -44,6 +44,7 @@ class Values(TypedDict):
     desk_light: str
     ergodox: str
     keyboard: str
+    stand_in_sessions: str
     touchscreen: str
     tuple_window: str
     # A picture, a document, a text and a track to open, as a download would be.
