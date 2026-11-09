@@ -55,6 +55,11 @@ const FILE_HOST = /^file:\/\/(localhost)?/i;
 // A markdown file's extensions.
 const MARKDOWN = /\.(md|markdown)$/i;
 
+// The extensions of the documents zathura's plugins read: MuPDF's PDF,
+// XPS, EPUB, FictionBook and Mobipocket, DjVu, and PostScript. The pictures
+// MuPDF reads too are the picture viewer's.
+const DOCUMENT = /\.(pdf|xps|oxps|epub|fb2|mobi|djvu|djv|ps|eps)$/i;
+
 // What the watcher says of one copy, its types, a space between each,
 // then a tab and its text, each line break written as BREAK, or an
 // empty line for a copy with nothing to read, as one cleared or a
@@ -179,4 +184,9 @@ function nameFilter(name) {
 // take: .md, and .markdown, which a few projects still use.
 function markdown(path) {
     return MARKDOWN.test(path);
+}
+
+// Whether a file is a document zathura reads, by its extension.
+function document(path) {
+    return DOCUMENT.test(path);
 }

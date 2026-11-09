@@ -4181,6 +4181,8 @@ onLinux {
         repository beta origin https://gitlab.com/someone/beta 1700000800
         repository gamma upstream https://github.com/NixOS/gamma.git 1700000700
         repository far/away/too origin git@github.com:someone/too.git 1700000950
+        # A document outside them, for zathura's act.
+        printf '%%PDF-1.4\n' > $HOME/report.pdf
       '';
     in
     pkgs.runCommandLocal "the-launcher-acts-only-on-what-it-can" { } ''
@@ -4219,6 +4221,8 @@ onLinux {
       cp ${../chrome/ChromeProgram.qml} launcher/ChromeProgram.qml
       cp ${../chrome/ChromeDownloads.js} launcher/ChromeDownloads.js
       cp ${../reader/ReaderProgram.qml} launcher/ReaderProgram.qml
+      cp ${../zathura/ZathuraProgram.qml} launcher/ZathuraProgram.qml
+      cp ${../zathura/Zathura.js} launcher/Zathura.js
       cp ${../gimp/CopiedPicture.qml} launcher/CopiedPicture.qml
       cp ${../../tests/program-acts.qml} shell.qml
       export XDG_RUNTIME_DIR=$TMPDIR/runtime

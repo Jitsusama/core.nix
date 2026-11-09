@@ -6,8 +6,8 @@
 # which doesn't. Run inside cage with a session
 # bus, as `keys-test.sh <document of six empty pages, with "find" on the
 # fourth and the sixth, named b.pdf in a folder beside a.pdf and c.pdf>`,
-# and a stand-in launcher-say on the path that writes what it was asked to
-# ./asked. It leaves ./passed once every key
+# a stand-in launcher-say on the path that writes what it was asked to
+# ./asked, and zathura-command on the path. It leaves ./passed once every key
 # went where the launcher says it goes, since cage ends 0 whatever the
 # script inside it does.
 set -eu
@@ -219,6 +219,29 @@ found '?find' 3
 wtype -k space '?'
 asked() { [ "$(cat asked 2>/dev/null)" = "collection shortcuts" ]; }
 until_true "Space ? to ask the launcher for its keys" asked
+
+# : asks the launcher for its command line over this window, by its bus
+# name, named for the document.
+wtype :
+commanded() { [ "$(cat asked 2>/dev/null)" = "command-line zathura $bus b.pdf" ]; }
+until_true ": to ask the launcher for its command line" commanded
+
+# What the launcher's line chooses comes back through zathura-command:
+# :3 to that page, :$ to the last and a page past it to the last too,
+# and zathura's own commands as its own line would run them, a bookmark
+# made on one page and gone back to from another, and a command zathura
+# doesn't have refused.
+carried() {
+  zathura-command "$bus" "$1" "$2"
+  until_true ":$1 $2 to page $3" on "$3"
+}
+carried goto 3 2
+carried bmark kept 2
+carried goto '$' 5
+carried goto 1 0
+carried bjump kept 2
+carried goto 99 5
+if zathura-command "$bus" nonsense "" 2>/dev/null; then never "a command zathura lacks refused"; fi
 
 # ]b opens the next document in its folder, by name, and [b the one before,
 # with a count that many, coming round at either end, and passing over

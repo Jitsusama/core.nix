@@ -9631,6 +9631,25 @@
       "glyph": "book"
     },
     {
+      "id": "verb:zathura:copied",
+      "command": "open",
+      "argument": "document",
+      "in": "applications",
+      "name": "Read the Copied Document",
+      "verb": "open",
+      "glyph": "book"
+    },
+    {
+      "id": "zathura:reading",
+      "in": "applications",
+      "name": "Reading",
+      "said": {
+        "page": "p. {page} of {pages}",
+        "through": "{share}% through",
+        "open": "open"
+      }
+    },
+    {
       "id": "swayimg",
       "in": "applications",
       "name": "Screenshots"

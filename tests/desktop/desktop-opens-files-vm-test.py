@@ -935,7 +935,7 @@ def test_reader_typed_lists_the_page_it_shows_under_it_and_tab_opens_its_page(
 def test_zathura_typed_lists_the_document_it_shows_under_it_and_tab_opens_its_page(
     desktop: Desktop,
 ) -> None:
-    """Zathura typed lists the document it shows a depth in under it; Tab opens its page."""
+    """Zathura typed lists the document it shows under it; Tab opens its page, saying its page."""
     machine = desktop.machine
     read = f"/home/{desktop.account}/charts.pdf"
     desktop.as_account(f"cp {desktop.values['page']} {read}")
@@ -959,6 +959,12 @@ def test_zathura_typed_lists_the_document_it_shows_under_it_and_tab_opens_its_pa
             lambda shown: (
                 (shown["selected"] or {}).get("name") == "Go To" and "Recent" in shown["rows"]
             )
+        )
+        # Its row says the page zathura says it's on, read over its bus,
+        # in open's place before its folder.
+        desktop.down_to("charts.pdf")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("side") == "p. 1 of 1 \u00b7 ~"
         )
     finally:
         desktop.close_launcher()

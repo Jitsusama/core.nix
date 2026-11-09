@@ -20,7 +20,10 @@
 # list of files opened lately (../open-with/says-what-it-opens.nix), so its
 # Recent in the launcher lists them, led by the document each zathura has
 # open now, which zathura says over its bus and open-now reads, and which
-# Return goes to.
+# Return goes to, each saying the page it's on, "p. 41 of 212", and its
+# drawer how far through each is (ZathuraProgram.qml). While the clipboard
+# holds a document's path, Programs › zathura offers Read the Copied
+# Document, and only then.
 #
 # Its keys are Vim's, which are zathura's own, as his Vim has them, each
 # with one meaning, and each arrow does what its letter does, unlisted: j and k
@@ -33,8 +36,11 @@
 # one before, by name, as Vim's go between buffers (next-document/). Tab
 # goes back to the place used last (a link followed, a search, the first
 # page) and again returns, c opens the contents, Space ? shows its keys in
-# the launcher, over its window, as in Joel's Neovim, and : is zathura's
-# own command line, which is Vim's already. ZZ and Space w close it, as
+# the launcher, over its window, as in Joel's Neovim, and : opens the
+# launcher's command line over the document, as it does over mpv and
+# swayimg, with each of zathura's own commands, carried back to it by
+# zathura-command (command/) over its bus, so none is lost, and :41 for
+# that page. ZZ and Space w close it, as
 # they close everything of his, and q closes nothing. Space scrolls no
 # more, since it leads, which a patch lets it.
 #
@@ -79,6 +85,11 @@ let
     ];
   });
   next-document = lib.getExe (pkgs.callPackage ./next-document/package.nix { });
+  # Carries the launcher's command line to zathura, and opens it from :.
+  command = lib.getExe (pkgs.callPackage ./command/package.nix { });
+  # : opens the launcher's command line over the window, which $DBUS
+  # names, as zathura spells a command a key runs.
+  colon = ''exec "${command} line $DBUS"'';
 
   # Every key worth knowing: the chord as niri spells it, what it
   # does, and, where it isn't zathura's own already, what zathura is told to
@@ -253,6 +264,12 @@ let
         chord = "Ctrl+r";
         does = "As printed, or in the theme";
       }
+      {
+        chord = "Shift+colon";
+        key = ":";
+        run = colon;
+        does = "A command for the document";
+      }
       # Space, then ?, as zathura spells a buffered command.
       {
         chord = "space Shift+slash";
@@ -279,9 +296,138 @@ in
 {
   imports = [
     ../keys/home.nix
+    ../quickshell/command-lines.nix
+    ../quickshell/providers.nix
     ../quickshell/recents.nix
     ../theme/home.nix
   ];
+
+  # The page each document open is on, beside its row, what its drawer
+  # says of how far through each is, and Read the Copied Document, among
+  # its acts; after the reader's, as it adds no rows of its own.
+  jitsusama.quickshell.launcher.providers.zathura = {
+    order = 63;
+    source = ./ZathuraProgram.qml;
+    opened = [
+      open-now
+      "zathura"
+    ];
+    zathura = lib.getExe' config.programs.zathura.package "zathura";
+  };
+  # What zathura's provider works out, beside it, where its import finds it.
+  xdg.configFile."quickshell/launcher/Zathura.js".source = ./Zathura.js;
+
+  # : opens the launcher's command line over the document, with every
+  # command zathura's own line has, each by the key language's name where
+  # it has one (../keys/language.toml) and by zathura's where it hasn't,
+  # and :41 for that page; zathura-command (command/) carries each to the
+  # zathura it was opened over, through its bus. :print is left out, as
+  # printing is (docs/design.md), and zathura's :help, which opens its
+  # manual, gives way to the launcher's, which shows its keys.
+  jitsusama.quickshell.launcher.commandLines.zathura = {
+    commands = [
+      {
+        command = "set";
+        title = "Set an option, as :set recolor false";
+      }
+      {
+        command = "open";
+        title = "Open a document, by its path";
+      }
+      {
+        command = "write";
+        title = "Save a copy, by its path, and with ! over one there";
+        bang = true;
+      }
+      {
+        command = "export";
+        title = "Save an attachment, by its name and a path";
+      }
+      {
+        command = "info";
+        title = "What the document says of itself";
+      }
+      {
+        command = "bmark";
+        title = "Bookmark this page, by a name";
+      }
+      {
+        command = "bjump";
+        title = "Go to a bookmark, by its name";
+      }
+      {
+        command = "blist";
+        title = "List the bookmarks";
+      }
+      {
+        command = "bdelete";
+        title = "Forget a bookmark, by its name";
+      }
+      {
+        command = "mark";
+        title = "Mark this place, by a letter";
+      }
+      {
+        command = "delmarks";
+        title = "Forget marks, by their letters";
+      }
+      {
+        command = "jumplist";
+        title = "List the jumps, or that many";
+      }
+      {
+        command = "hlsearch";
+        title = "Light the words found again";
+      }
+      {
+        command = "nohlsearch";
+        title = "Put out the words found";
+      }
+      {
+        command = "offset";
+        title = "Number the pages from another, as :offset 12";
+      }
+      {
+        command = "exec";
+        title = "Run a command, given $FILE and $PAGE";
+      }
+      {
+        command = "map";
+        title = "Bind a key until it closes";
+      }
+      {
+        command = "unmap";
+        title = "Unbind a key until it closes";
+      }
+      {
+        command = "shortcut";
+        title = "Do what a key does, by its name";
+      }
+      {
+        command = "source";
+        title = "Read its settings again";
+      }
+      {
+        command = "dump";
+        title = "Write every setting to a file";
+      }
+      {
+        command = "version";
+        title = "Which version it is";
+      }
+      {
+        command = "close";
+        title = "Close the document, keeping the window";
+      }
+      {
+        command = "quit";
+        title = "Close the document";
+        key = "ZZ";
+      }
+    ];
+    goes = "That page, by its number";
+    run = [ command ];
+  };
 
   # What each zathura has open now, for its Recent to lead with, read as
   # it's stepped into; its other files stay the desktop's list of files
@@ -394,8 +540,9 @@ in
       // {
         "[index] c" = "toggle_index";
         "[index] ZZ" = "toggle_index";
-        # Full screen closes as the window does.
+        # Full screen closes as the window does, and : opens the same line.
         "[fullscreen] ZZ" = "quit";
+        "[fullscreen] :" = colon;
       };
   };
 

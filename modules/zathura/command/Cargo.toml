@@ -1,0 +1,11 @@
+# zathura-command: carries a command from the launcher's command line to
+# the zathura it was opened over, and opens that line from zathura's :
+# (src/main.rs says how).
+[package]
+name = "zathura-command"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
