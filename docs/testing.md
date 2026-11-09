@@ -176,10 +176,18 @@ passed, from nix-offload's record of what passed at each commit. A rebase
 needs no run of its own when that run passed at an earlier commit of the
 same change, by git's patch id of a diff without context lines, so an
 edit of main's beside the change leaves it the same, and main has since
-moved none of its files. When main moved some, `changed-checks` runs again
-at the rebased head, never a single check chosen by hand, since which checks
-read a file shows only in their derivations; Nix builds only what the
-rebase moved and takes the rest from the builders. A machine
+moved none of its files. A file either side moved that names a path the
+other renamed or deleted counts as one of them, since a list naming a
+script the branch renamed breaks main as surely as a shared edit. When main
+moved some, `changed-checks` runs again at the rebased head, never a single
+check chosen by hand, since which checks read a file shows only in their
+derivations; Nix builds only what the rebase moved and takes the rest from
+the builders. The one exception is a list every change adds to, which main
+moves faster than a run takes: when each shared file is one, the run at the
+head is that list's own check (`every-check-says-what-it-proves` for
+`check-descriptions.nix`, the check a `tests/<check>-waiting.nix` is named
+for) with `nix-offload there . checks.x86_64-linux.<check>`, and the
+quarantine list needs only to read as a list of tests, each once. A machine
 switches only to merged main, and a bad switch is undone by switching
 back to the generation before it.
 

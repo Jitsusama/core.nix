@@ -50,11 +50,12 @@ pub enum Before {
     Unchecked,
 }
 
-/// Whether the head, changing `files`, is the same change as one of
-/// `candidates`, newest first, that a changed-checks run passed at (its
-/// `record`, judged as `built_there` does with `on_main`). `same` says,
-/// of a candidate, whether it makes the same change and, if so, which
-/// files main moved since the base it was checked on. On 8 November a
+/// Whether the head is the same change as one of `candidates`, newest
+/// first, that a changed-checks run passed at (its `record`, judged as
+/// `built_there` does with `on_main`). `same` says, of a candidate,
+/// whether it makes the same change and, if so, which files it shares
+/// with what main moved since the base it was checked on, as `shared`
+/// works them out. On 8 November a
 /// rule let a change merge after a rebase onto main without running its
 /// checks again when main's new commits share none of its files, so the
 /// gate takes what the rule takes. When they share some, only changed-checks
@@ -65,7 +66,6 @@ pub enum Before {
 /// rest from the builders.
 pub fn checked_before(
     candidates: &[String],
-    files: &[String],
     record: &dyn Fn(&str) -> String,
     on_main: &dyn Fn(&str) -> bool,
     same: &dyn Fn(&str) -> Option<Vec<String>>,
@@ -75,19 +75,146 @@ pub fn checked_before(
         if !built_there(&record(candidate), on_main) {
             continue;
         }
-        let Some(moved) = same(candidate) else {
+        let Some(shared) = same(candidate) else {
             continue;
         };
-        let shared: Vec<String> = moved
-            .into_iter()
-            .filter(|file| files.contains(file))
-            .collect();
         if shared.is_empty() {
             return Before::Clean(candidate.clone());
         }
         first_shared.get_or_insert(Before::Shares(candidate.clone(), shared));
     }
     first_shared.unwrap_or(Before::Unchecked)
+}
+
+/// One side of a rebase: the files it changed, the paths it renamed or
+/// deleted, and what a file holds on that side.
+pub struct Side<'a> {
+    pub changed: &'a [String],
+    pub gone: &'a [String],
+    pub text: &'a dyn Fn(&str) -> String,
+}
+
+/// The files a branch shares with what main moved since its base: those
+/// both changed, and those either side changed that name a path the other
+/// renamed or deleted. On 9 November #2597 renamed a script after #2613,
+/// merged since its run, named the old path in a list #2597 never touched,
+/// and main broke when #2597 merged with no run of its own.
+pub fn shared(branch: &Side, main: &Side) -> Vec<String> {
+    let mut shared: Vec<String> = main
+        .changed
+        .iter()
+        .filter(|file| branch.changed.contains(file))
+        .cloned()
+        .collect();
+    for (side, other) in [(main, branch), (branch, main)] {
+        for file in side.changed {
+            let text = (side.text)(file);
+            if !shared.contains(file) && other.gone.iter().any(|path| names(&text, file, path)) {
+                shared.push(file.clone());
+            }
+        }
+    }
+    shared
+}
+
+/// Whether `text`, the file at `file`, names `path`: whole, from the
+/// repository's root, or from the file's own folder, as a Nix path does.
+fn names(text: &str, file: &str, path: &str) -> bool {
+    let folder = file.rfind('/').map_or("", |at| &file[..=at]);
+    text.contains(path)
+        || path
+            .strip_prefix(folder)
+            .is_some_and(|near| !folder.is_empty() && text.contains(&format!("./{near}")))
+}
+
+/// A list each change adds a line to, which on a busy day main moves in
+/// the minutes a run at a rebased head takes: on 9 November #2576 was
+/// refused five times after a green run, each time because main had moved
+/// check-descriptions.nix or quarantine.json meanwhile.
+#[derive(Debug, PartialEq, Eq)]
+pub enum List {
+    /// Read by the one check named, which says whether the list holds.
+    Judged(String),
+    /// The net's quarantine list, which no check builds from: the net,
+    /// changed-checks and run-subtests read it from main, so it holds
+    /// when it reads as a list of tests, each once.
+    Quarantine,
+}
+
+/// The list at `path`, or none for a file that isn't one.
+pub fn list(path: &str) -> Option<List> {
+    if path == crate::world::QUARANTINE {
+        return Some(List::Quarantine);
+    }
+    if path == "check-descriptions.nix" {
+        return Some(List::Judged("every-check-says-what-it-proves".to_owned()));
+    }
+    path.strip_prefix("tests/")
+        .and_then(|name| name.strip_suffix("-waiting.nix"))
+        .filter(|check| !check.contains('/'))
+        .map(|check| List::Judged(check.to_owned()))
+}
+
+/// What shared lists say of a head, when every shared file is one.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Lists {
+    /// Some shared file is no list, so changed-checks runs again.
+    NotAll,
+    /// Each list holds, and these checks of theirs haven't passed at the
+    /// head yet; none left means it may merge.
+    Need(Vec<String>),
+    /// The quarantine list no longer reads as one, saying why.
+    Broken(String),
+}
+
+/// Whether `shared` are all lists, and what they still need at a head
+/// whose `record` says what passed there and whose quarantine list holds
+/// `quarantine`. A list's own check is all that reads it, so it's all
+/// that runs again, which takes a minute where changed-checks takes ten.
+pub fn lists(shared: &[String], record: &str, quarantine: &str) -> Lists {
+    let passed: Vec<String> = record
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter(|line| line["dir"].is_null())
+        .filter_map(|line| line["check"].as_str().map(str::to_owned))
+        .collect();
+    let mut need = Vec::new();
+    for file in shared {
+        match list(file) {
+            None => return Lists::NotAll,
+            Some(List::Quarantine) => {
+                if let Err(why) = holds_tests(quarantine) {
+                    return Lists::Broken(why);
+                }
+            }
+            Some(List::Judged(check)) => {
+                let built = passed
+                    .iter()
+                    .any(|run| run.starts_with("checks.") && run.ends_with(&format!(".{check}")));
+                if !built && !need.contains(&check) {
+                    need.push(check);
+                }
+            }
+        }
+    }
+    Lists::Need(need)
+}
+
+/// Whether the quarantine list reads as a list of tests, each once.
+fn holds_tests(quarantine: &str) -> Result<(), String> {
+    let entries: Vec<serde_json::Value> =
+        serde_json::from_str(quarantine).map_err(|error| format!("it isn't a list: {error}"))?;
+    let mut tests = Vec::new();
+    for entry in &entries {
+        let test = entry["test"]
+            .as_str()
+            .ok_or_else(|| format!("an entry names no test: {entry}"))?;
+        if tests.contains(&test) {
+            return Err(format!("{test} is on it twice"));
+        }
+        tests.push(test);
+    }
+    Ok(())
 }
 
 /// The commits nix-offload kept a passed record for in the last day,
@@ -134,6 +261,158 @@ mod tests {
 
     fn on_main(commit: &str) -> bool {
         commit == MAIN
+    }
+
+    fn nothing(_: &str) -> String {
+        String::new()
+    }
+
+    /// What a branch changing `files` shares with main moving `moved`,
+    /// with nothing renamed on either side.
+    fn sharing(files: &[String], moved: Option<Vec<String>>) -> Option<Vec<String>> {
+        moved.map(|moved| {
+            let branch = Side {
+                changed: files,
+                gone: &[],
+                text: &nothing,
+            };
+            let main = Side {
+                changed: &moved,
+                gone: &[],
+                text: &nothing,
+            };
+            shared(&branch, &main)
+        })
+    }
+
+    fn owned(names: &[&str]) -> Vec<String> {
+        names.iter().map(|name| (*name).to_owned()).collect()
+    }
+
+    #[test]
+    fn a_file_naming_a_path_the_other_side_renamed_is_shared() {
+        // #2597's case: the branch renamed a script, and main since moved a
+        // list naming its old path, which the branch never touched.
+        let list = "tests/every-script-waiting.nix";
+        let at_main = |file: &str| {
+            if file == list {
+                "{ \"tests/pi-rings-low-and-says-it.sh\" = 21; }".to_owned()
+            } else {
+                String::new()
+            }
+        };
+        let renamed = owned(&["tests/pi-rings-low-and-says-it.sh"]);
+        let branch_files = owned(&["tests/pi-rings-low.sh", "modules/pi/home.nix"]);
+        let main_files = owned(&[list, "docs/glossary.md"]);
+        let branch = Side {
+            changed: &branch_files,
+            gone: &renamed,
+            text: &nothing,
+        };
+        let main = Side {
+            changed: &main_files,
+            gone: &[],
+            text: &at_main,
+        };
+        assert_eq!(shared(&branch, &main), owned(&[list]));
+        // The other way round: main renamed a module's file, and the
+        // branch's file names it from its own folder, as a Nix path does.
+        let at_head = |file: &str| {
+            if file == "modules/pi/home.nix" {
+                "{ imports = [ ./rings.nix ]; }".to_owned()
+            } else {
+                String::new()
+            }
+        };
+        let gone = owned(&["modules/pi/rings.nix"]);
+        let branch = Side {
+            changed: &branch_files,
+            gone: &[],
+            text: &at_head,
+        };
+        let main = Side {
+            changed: &main_files,
+            gone: &gone,
+            text: &nothing,
+        };
+        assert_eq!(shared(&branch, &main), owned(&["modules/pi/home.nix"]));
+        // Naming another file of that folder isn't naming the gone one.
+        let at_head = |_: &str| "{ imports = [ ./ringside.nix ]; }".to_owned();
+        let branch = Side {
+            changed: &branch_files,
+            gone: &[],
+            text: &at_head,
+        };
+        assert_eq!(shared(&branch, &main), Vec::<String>::new());
+    }
+
+    #[test]
+    fn shared_lists_need_only_their_own_checks() {
+        let quarantine = "[{\"test\":\"vm-a\"},{\"test\":\"vm-b\"}]";
+        let shared = owned(&[
+            "check-descriptions.nix",
+            "tests/every-fixed-wait-says-why-waiting.nix",
+            "tools/merge-net/quarantine.json",
+        ]);
+        assert_eq!(
+            lists(&shared, "", quarantine),
+            Lists::Need(owned(&[
+                "every-check-says-what-it-proves",
+                "every-fixed-wait-says-why"
+            ]))
+        );
+        let record = "{\"check\":\"checks.x86_64-linux.every-fixed-wait-says-why\",\"dir\":null}\n\
+                      {\"check\":\"checks.x86_64-linux.every-check-says-what-it-proves\",\
+                      \"dir\":null}\n";
+        assert_eq!(lists(&shared, record, quarantine), Lists::Need(Vec::new()));
+        // A check passed in another folder of the repository says nothing.
+        let elsewhere =
+            "{\"check\":\"checks.x86_64-linux.every-fixed-wait-says-why\",\"dir\":\"sub\"}\n";
+        assert_eq!(
+            lists(
+                &owned(&["tests/every-fixed-wait-says-why-waiting.nix"]),
+                elsewhere,
+                ""
+            ),
+            Lists::Need(owned(&["every-fixed-wait-says-why"]))
+        );
+        // One shared file that's no list, and changed-checks runs again.
+        let mixed = owned(&["check-descriptions.nix", "checks.nix"]);
+        assert_eq!(lists(&mixed, record, quarantine), Lists::NotAll);
+        assert_eq!(
+            lists(
+                &owned(&["tests/lib/waiting-waiting.nix/x"]),
+                record,
+                quarantine
+            ),
+            Lists::NotAll,
+            "a file under tests/ in a folder isn't a list"
+        );
+    }
+
+    #[test]
+    fn a_quarantine_list_that_no_longer_reads_as_one_is_broken() {
+        let shared = owned(&["tools/merge-net/quarantine.json"]);
+        assert_eq!(
+            lists(&shared, "", "[{\"test\":\"vm-a\"}]"),
+            Lists::Need(Vec::new())
+        );
+        for (merged, why) in [
+            (
+                "[{\"test\":\"vm-a\"}\n{\"test\":\"vm-b\"}]",
+                "it isn't a list",
+            ),
+            (
+                "[{\"test\":\"vm-a\"},{\"test\":\"vm-a\"}]",
+                "vm-a is on it twice",
+            ),
+            ("[{\"reason\":\"x\"}]", "an entry names no test"),
+        ] {
+            let Lists::Broken(said) = lists(&shared, "", merged) else {
+                panic!("{merged} read as a list");
+            };
+            assert!(said.starts_with(why), "{merged}: {said}");
+        }
     }
 
     #[test]
@@ -185,7 +464,10 @@ mod tests {
         // Main moved other files since: the rebase changed nothing checked.
         let moved = |commit: &str| (commit == "old").then(|| vec!["c.nix".to_owned()]);
         assert_eq!(
-            checked_before(&candidates, &files, &record, &on_main, &moved),
+            checked_before(&candidates, &record, &on_main, &|at: &str| sharing(
+                &files,
+                moved(at)
+            )),
             Before::Clean("old".to_owned())
         );
         // Main moved one of its files: changed-checks runs again at the
@@ -193,7 +475,10 @@ mod tests {
         let moved =
             |commit: &str| (commit == "old").then(|| vec!["b.md".to_owned(), "c.nix".to_owned()]);
         assert_eq!(
-            checked_before(&candidates, &files, &record, &on_main, &moved),
+            checked_before(&candidates, &record, &on_main, &|at: &str| sharing(
+                &files,
+                moved(at)
+            )),
             Before::Shares("old".to_owned(), vec!["b.md".to_owned()])
         );
         // Only single checks passed at a later commit of the same change:
@@ -211,7 +496,9 @@ mod tests {
             _ => None,
         };
         assert_eq!(
-            checked_before(&candidates, &files, &record_rechecked, &on_main, &moved),
+            checked_before(&candidates, &record_rechecked, &on_main, &|at: &str| {
+                sharing(&files, moved(at))
+            }),
             Before::Shares("old".to_owned(), vec!["b.md".to_owned()])
         );
         // changed-checks passed at that later commit, and main moved none of
@@ -221,7 +508,10 @@ mod tests {
             _ => String::new(),
         };
         assert_eq!(
-            checked_before(&candidates, &files, &record_rerun, &on_main, &moved),
+            checked_before(&candidates, &record_rerun, &on_main, &|at: &str| sharing(
+                &files,
+                moved(at)
+            )),
             Before::Clean("rebased".to_owned())
         );
         let candidates = vec!["other".to_owned(), "old".to_owned(), "older".to_owned()];
@@ -229,7 +519,10 @@ mod tests {
         // never passed, says nothing.
         let moved = |commit: &str| (commit == "other").then(Vec::new);
         assert_eq!(
-            checked_before(&candidates, &files, &record, &on_main, &moved),
+            checked_before(&candidates, &record, &on_main, &|at: &str| sharing(
+                &files,
+                moved(at)
+            )),
             Before::Unchecked
         );
     }

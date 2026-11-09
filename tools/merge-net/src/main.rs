@@ -278,24 +278,36 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
     let on_main = |base: &str| holds(base, &main);
     if !ready::built_there(&ready::record(&commit), &on_main) {
         let files = lines(&git(&["diff", "--name-only", &main, &commit])?);
+        let renamed = gone(&main, &commit)?;
+        let at =
+            |rev: &str, file: &str| git(&["show", &format!("{rev}:{file}")]).unwrap_or_default();
+        let at_head = |file: &str| at(&commit, file);
+        let at_main = |file: &str| at(&main, file);
         let change = patch_id(Path::new("."), &main, &commit);
         let same = |candidate: &str| {
             if candidate == commit || change.is_none() {
                 return None;
             }
             let base = git(&["merge-base", candidate, &main]).ok()?;
-            (patch_id(Path::new("."), &base, candidate) == change)
-                .then(|| git(&["diff", "--name-only", &base, &main]).ok())
-                .flatten()
-                .map(|moved| lines(&moved))
+            if patch_id(Path::new("."), &base, candidate) != change {
+                return None;
+            }
+            let since = lines(&git(&["diff", "--name-only", &base, &main]).ok()?);
+            let taken_away = gone(&base, &main).ok()?;
+            let branch = ready::Side {
+                changed: &files,
+                gone: &renamed,
+                text: &at_head,
+            };
+            let main_side = ready::Side {
+                changed: &since,
+                gone: &taken_away,
+                text: &at_main,
+            };
+            Some(ready::shared(&branch, &main_side))
         };
-        let before = ready::checked_before(
-            &ready::recent_records(),
-            &files,
-            &ready::record,
-            &on_main,
-            &same,
-        );
+        let before =
+            ready::checked_before(&ready::recent_records(), &ready::record, &on_main, &same);
         match before {
             ready::Before::Clean(checked) => {
                 println!(
@@ -307,6 +319,9 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
                 return Ok(ExitCode::SUCCESS);
             }
             ready::Before::Shares(checked, shared) => {
+                if let Some(said) = lists_say(&commit, &shared) {
+                    return Ok(said);
+                }
                 eprintln!(
                     "merge-net: the same change passed at {}, but main has since moved {}; run \
                      changed-checks at {}, committed so it's sent, which builds only what the \
@@ -386,6 +401,58 @@ fn status() -> ExitCode {
         println!("paused");
     }
     ExitCode::SUCCESS
+}
+
+/// What lists say of `commit`, when every file it shares with main's moves
+/// is a list each change adds to: whether each holds there with its own
+/// check passed, saying which way it went. None when some file isn't one.
+fn lists_say(commit: &str, shared: &[String]) -> Option<ExitCode> {
+    let quarantine = git(&["show", &format!("{commit}:{}", world::QUARANTINE)]).unwrap_or_default();
+    match ready::lists(shared, &ready::record(commit), &quarantine) {
+        ready::Lists::Need(need) if need.is_empty() => {
+            println!(
+                "ready: {} sits on origin's main, and main moved only lists of its ({}), whose \
+                 own checks passed there",
+                short(commit),
+                shared.join(", ")
+            );
+            return Some(ExitCode::SUCCESS);
+        }
+        ready::Lists::Need(need) => eprintln!(
+            "merge-net: main has since moved only lists of {} ({}); build {} there, committed \
+             so it's sent, and merge again",
+            short(commit),
+            shared.join(", "),
+            need.iter()
+                .map(|check| format!("`nix-offload there . checks.{SYSTEM}.{check}`"))
+                .collect::<Vec<_>>()
+                .join(" and ")
+        ),
+        ready::Lists::Broken(why) => eprintln!(
+            "merge-net: {} at {} no longer reads as the net's list: {why}",
+            world::QUARANTINE,
+            short(commit)
+        ),
+        ready::Lists::NotAll => return None,
+    }
+    Some(ExitCode::FAILURE)
+}
+
+/// The paths renamed or deleted from `base` to `head`, by their old names.
+fn gone(base: &str, head: &str) -> Result<Vec<String>, String> {
+    let said = git(&[
+        "diff",
+        "--name-status",
+        "-M",
+        "--diff-filter=DR",
+        base,
+        head,
+    ])?;
+    Ok(said
+        .lines()
+        .filter_map(|line| line.split('\t').nth(1))
+        .map(str::to_owned)
+        .collect())
 }
 
 fn lines(text: &str) -> Vec<String> {
