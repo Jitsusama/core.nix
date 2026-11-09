@@ -3159,14 +3159,12 @@
     {
       "id": "eero:internet:main-subnet",
       "in": "eero:internet",
-      "name": "Main Subnet",
-      "term": "Network/subnet"
+      "name": "Main Subnet"
     },
     {
       "id": "eero:internet:guest-subnet",
       "in": "eero:internet",
-      "name": "Guest Subnet",
-      "term": "Network/subnet"
+      "name": "Guest Subnet"
     },
     {
       "id": "eero:internet:forwards",
@@ -3253,7 +3251,7 @@
     {
       "id": "eero:internet:ac-compatibility",
       "in": "eero:internet",
-      "name": "802.11ac Compatibility"
+      "name": "Wi-Fi 5 Compatibility"
     },
     {
       "id": "eero:internet:name-clash",
