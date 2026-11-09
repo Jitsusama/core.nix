@@ -9,8 +9,13 @@
 
 // The marks an identifier too long for a line breaks after: these first,
 // then a hyphen's, then anywhere, so "--player-operation-mode=pseudo-gui"
-// breaks at its "=" before its words.
-const STRONG_MARKS = "=/,:";
+// breaks at its "=" before its words, and a desktop entry's
+// "com.onepassword.OnePassword" at its dots (VKCF3Z, 2026-11-09). A space
+// is one too, its own word's end, for an identifier that holds one.
+const STRONG_MARKS = " =/,:.";
+// A dot between two digits is a figure's, "6.12" or "0.50", never a
+// mark to break after.
+const DIGIT = /\d/u;
 const WEAK_MARKS = "-";
 // A last item this short never stands alone on its line: "--".
 const SHORT_TOKEN = 2;
@@ -28,10 +33,13 @@ function short(said) {
 // piece stay with what follows them, so "--player-" is one.
 function cutAfter(words, marks) {
     const pieces = [""];
+    const letters = [...words];
     let worded = false;
-    for (const letter of words) {
+    for (const [at, letter] of letters.entries()) {
         pieces[pieces.length - 1] += letter;
-        const mark = marks.includes(letter);
+        const figure = letter === "." && DIGIT.test(letters[at - 1] ?? "")
+            && DIGIT.test(letters[at + 1] ?? "");
+        const mark = marks.includes(letter) && !figure;
         if (mark && worded) {
             pieces.push("");
             worded = false;
@@ -54,7 +62,7 @@ function piecesOf(words, room, width) {
 }
 
 // An identifier too wide for a line, whole on as many lines as it needs:
-// as many of its pieces to a line as fit.
+// as many of its pieces to a line as fit, a space a line ends on going.
 function wholeLines(words, room, width) {
     return piecesOf(words, room, width).reduce((lines, piece) => {
         const last = lines.length - 1;
@@ -64,7 +72,16 @@ function wholeLines(words, room, width) {
             lines.push(piece);
         }
         return lines;
-    }, []);
+    }, []).map(line => line.replace(TRAILING, ""));
+}
+
+// The words an identifier is read as, each kept whole on its line: its
+// pieces between its marks, a hyphen's among them, so a UUID broken at its
+// hyphens or a desktop entry's id at its dots breaks none of its words.
+function wordsOf(said) {
+    return cutAfter(String(said), STRONG_MARKS)
+        .reduce((all, piece) => all.concat(cutAfter(piece, WEAK_MARKS)), [])
+        .map(piece => piece.replace(TRAILING, ""));
 }
 
 // Lines whose last is a short token alone, with the end of the line before

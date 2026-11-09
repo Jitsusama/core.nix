@@ -362,6 +362,11 @@ def numbers_programs(desktop: Desktop, scale: str) -> None:
     assert gutter["relative"], f"at {scale} normal in Programs: {gutter}"
     overlaps = desktop_session.foot_overlaps(desktop)
     assert not overlaps, f"at {scale} normal in Programs: {overlaps}"
+    # The program's drawer holds its identifiers, a desktop entry's id among them, whole in its
+    # frame, broken at their own marks (VKCF3Z, 2026-11-09).
+    desktop.launcher_until(lambda shown: shown["drawer"]["out"] is True)
+    drawer = desktop.showing()["drawer"]
+    assert drawer["valuesWhole"], f"at {scale} a program's value breaks a word: {drawer}"
     desktop.shoot(f"launcher-programs-normal-at-{at}")
     desktop.type_in("k")
     desktop.launcher_until(

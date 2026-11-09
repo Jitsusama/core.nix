@@ -1203,16 +1203,16 @@ Floating {
     }
     // Whether every value drawn keeps each of its words whole, none so
     // wide where it's drawn that it breaks partway, for the launcher to
-    // report when asked. An identifier's words are its parts between
-    // slashes too, since Qt breaks a line after a slash, as a typesetter
-    // breaks a path, and a check's command is mostly paths.
+    // report when asked. An identifier's words are its parts between its
+    // own marks, its hyphens among them, since it breaks there as a
+    // typesetter breaks a path (DrawerPage.identifierWords), so a UUID
+    // broken at its hyphens keeps each of its words whole.
     function valuesWhole() {
-        const words = row => (row.modelData.identifies === true
-            ? unbroken(row.modelData.value).replace(/\//g, "/ ")
-            : unbroken(row.modelData.value)).split(" ");
-        return drawnRows().every(row => !row.known || words(row)
-            .every(word => faceOf(row.modelData).advanceWidth(word) <= row.valueWide
-                && !breaksAtItsHyphen.test(word)));
+        const fits = row => word => faceOf(row.modelData).advanceWidth(word) <= row.valueWide;
+        return drawnRows().every(row => !row.known || (row.modelData.identifies === true
+            ? Page.identifierWords(row.modelData.value).every(fits(row))
+            : unbroken(row.modelData.value).split(" ")
+                .every(word => fits(row)(word) && !breaksAtItsHyphen.test(word))));
     }
     // A hyphen inside a word, "Wi-Fi" or "v7.17.4-5", that a line may still
     // break after, leaving "Wi-" at a line's end and "Fi" alone on the next.
@@ -1262,12 +1262,14 @@ Floating {
         return String(words).replace(/(\d) (?=[A-Za-z\u00b5\u00b0%])/g, "$1\u00a0")
             .replace(/([A-Za-z0-9])-(?=[A-Za-z0-9])/g, "$1-\u2060");
     }
-    // An identifier with no space, as a supply's
-    // "ucsi-source-psy-USBC000:001", may break after its own hyphens and
-    // colons rather than draw past the frame (VKCF3Z, 2026-11-08), as a
-    // title breaks after its dots and slashes.
-    function identifierBreaks(fact, said) {
-        return fact?.identifies === true ? said.replace(/([-:])(?=\S)/g, "$1\u200b") : said;
+    // An identifier, as a supply's "ucsi-source-psy-USBC000:001" or a
+    // desktop entry's "com.onepassword.OnePassword", breaks at its own
+    // marks rather than draw past the frame (VKCF3Z, 2026-11-08 and 09), as
+    // DrawerPage.identifierLines lays it; a line that fits is held whole.
+    function identifierKept(words, face, wide) {
+        return Page.identifierLines(words, wide, text => face.advanceWidth(text))
+            .map(line => face.advanceWidth(line) <= wide ? line.replace(/ /g, "\u00a0") : line)
+            .join("\n");
     }
 
     // A value made of items, "38 s \u00b7 4.1k out \u00b7 0.9 s first token",
@@ -2108,9 +2110,11 @@ Floating {
                                         fact.modelData.between ?? " \u00b7 ", fact.valueWide,
                                         text => drawer.faceOf(fact.modelData).advanceWidth(text))
                                         .join("\n")
-                                    : drawer.identifierBreaks(fact.modelData,
-                                        drawer.itemsKept(fact.modelData.value,
-                                            drawer.faceOf(fact.modelData), fact.valueWide))
+                                    : fact.modelData.identifies === true
+                                    ? drawer.identifierKept(fact.modelData.value,
+                                        drawer.faceOf(fact.modelData), fact.valueWide)
+                                    : drawer.itemsKept(fact.modelData.value,
+                                        drawer.faceOf(fact.modelData), fact.valueWide)
                                 leading: drawer.pitch
                                 // A fact that warns, as an entry's weak
                                 // password does, says so in the warning's

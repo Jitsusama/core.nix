@@ -387,6 +387,25 @@ function valueLines(items, between, wide, width) {
         ? Identifier.joinedDown(lines, between, wide, width) : lines;
 }
 
+// An identifier's value (`identifies: true`) as lines no wider than
+// `wide`: whole on one where it fits, else a dotted run's items a dot
+// apart as valueLines lays them, each item whole on as many lines as it
+// needs, broken at its own marks (Identifier.js), so a desktop entry's
+// "com.onepassword.OnePassword" never draws past the frame (VKCF3Z,
+// 2026-11-09).
+function identifierLines(said, wide, width) {
+    const whole = String(said);
+    return width(whole) <= wide ? [whole]
+        : valueLines(whole.split(" \u00b7 ").map(item => ({ said: item, whole: true })),
+            " \u00b7 ", wide, width);
+}
+
+// The words an identifier's value is read as, for the drawer to say
+// whether each stands whole (Identifier.wordsOf).
+function identifierWords(said) {
+    return Identifier.wordsOf(said);
+}
+
 // A list alone in a value, as its one line no wider than `wide`: every
 // item a dot apart where they fit, else whole items giving way from the
 // end to `tail`, "{count} more", saying how many went, "PDF \u00b7 HTML \u00b7
