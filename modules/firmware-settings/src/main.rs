@@ -9,9 +9,14 @@
 //! ```
 //!
 //! It exits 1 when a setting differs, 2 when the firmware has no such
-//! setting, and 77 when it can't read one, as without root.
-//! `FIRMWARE_ATTRIBUTES` names the class's directory and `FIRMWARE_SETTINGS`
-//! the declared settings, one NAME=VALUE a line, for tests.
+//! setting, and 77 when it can't read one, as without root. A setting
+//! that waits for a person at the firmware's setup screen is named with
+//! what it waits for, and isn't counted as differing until it's taken off
+//! that list.
+//! `FIRMWARE_ATTRIBUTES` names the class's directory, `FIRMWARE_SETTINGS`
+//! the declared settings, one NAME=VALUE a line, and
+//! `FIRMWARE_SETTINGS_WAITING` those waiting, one NAME=WHAT a line, for
+//! tests.
 //! `FIRMWARE_SETTINGS_WAIT` says how many seconds to wait for a setting to
 //! appear: a driver announces its interface before it has made the settings
 //! in it.
@@ -82,6 +87,8 @@ struct Difference {
 struct Firmware {
     root: PathBuf,
     declared: PathBuf,
+    /// The declared settings that wait for a person, and what for.
+    waiting: PathBuf,
     wait: u64,
     /// The command it was run with, for the advice to run it as root.
     command: String,
@@ -178,6 +185,8 @@ impl Firmware {
             .unwrap_or_else(|| "/sys/class/firmware-attributes".into());
         let declared =
             env::var_os("FIRMWARE_SETTINGS").unwrap_or_else(|| "/etc/firmware-settings".into());
+        let waiting = env::var_os("FIRMWARE_SETTINGS_WAITING")
+            .unwrap_or_else(|| "/etc/firmware-settings-waiting".into());
         let wait = env::var("FIRMWARE_SETTINGS_WAIT")
             .ok()
             .and_then(|wait| wait.parse().ok())
@@ -185,6 +194,7 @@ impl Firmware {
         Self {
             root: root.into(),
             declared: declared.into(),
+            waiting: waiting.into(),
             wait,
             command: command.to_owned(),
             unlocked: Arc::default(),
@@ -265,24 +275,39 @@ impl Firmware {
         Ok(differences)
     }
 
-    /// Name every setting that differs, and say what to exit with.
+    /// Each setting that waits for a person, and what for. No file is none.
+    fn waits(&self) -> Vec<(String, String)> {
+        fs::read_to_string(&self.waiting)
+            .map(|text| parsed(&text))
+            .unwrap_or_default()
+    }
+
+    /// Name every setting that differs, and say what to exit with: one
+    /// waiting for a person is named with what for, and fails nothing.
     fn check(&self) -> u8 {
-        match self.differences() {
-            Err(code) => code,
-            Ok(differences) if differences.is_empty() => {
-                println!("The firmware's settings are as declared.");
-                0
-            }
-            Ok(differences) => {
-                for difference in differences {
-                    println!(
-                        "{} is {}, declared {}",
-                        difference.name, difference.now, difference.declared
-                    );
-                }
-                DIFFERS
+        let differences = match self.differences() {
+            Err(code) => return code,
+            Ok(differences) => differences,
+        };
+        if differences.is_empty() {
+            println!("The firmware's settings are as declared.");
+            return 0;
+        }
+        let waits = self.waits();
+        let mut code = 0;
+        for difference in differences {
+            let line = format!(
+                "{} is {}, declared {}",
+                difference.name, difference.now, difference.declared
+            );
+            if let Some((_, what)) = waits.iter().find(|(name, _)| *name == difference.name) {
+                println!("{line}; it waits for {what}");
+            } else {
+                println!("{line}");
+                code = DIFFERS;
             }
         }
+        code
     }
 
     /// Say when an interface takes some of what was written at the next boot.
@@ -435,6 +460,7 @@ mod tests {
             Firmware {
                 root: self.0.join("class"),
                 declared: file,
+                waiting: self.0.join("waiting"),
                 wait: 0,
                 command: "check".to_owned(),
                 unlocked: Arc::default(),
@@ -482,6 +508,21 @@ mod tests {
             ),
             ("50", "75")
         );
+    }
+
+    #[test]
+    fn a_setting_waiting_for_a_person_fails_nothing_while_another_still_does() {
+        let class = Class::new("waiting");
+        class.setting("class/vendor", "Downgrade", "Enabled");
+        class.setting("class/vendor", "Mode", "Adaptive");
+        let firmware = class.firmware("Downgrade=Disabled\n");
+        fs::write(&firmware.waiting, "Downgrade=someone at the setup screen\n").unwrap();
+        assert_eq!(firmware.check(), 0);
+        fs::write(&firmware.declared, "Downgrade=Disabled\nMode=Custom\n").unwrap();
+        assert_eq!(firmware.check(), DIFFERS);
+        fs::write(&firmware.waiting, "").unwrap();
+        fs::write(&firmware.declared, "Downgrade=Disabled\n").unwrap();
+        assert_eq!(firmware.check(), DIFFERS);
     }
 
     #[test]
