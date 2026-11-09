@@ -417,6 +417,23 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
 # the session that needs him.
 
 
+def shoots_now_at_joels_scales(desktop: Desktop, reads: str) -> None:
+    """Shoot home at Joel's scales, its Now row reading as given, for the plate beside it.
+
+    The plate says what waits no more, where the row says it (VKCF3Z, 2026-11-09).
+    """
+    # The to-do's card away first, which would stand over the row and the plate.
+    with desktop.told("gone notifications"):
+        desktop.as_account("qs ipc call notices putAway")
+    for scale in JOELS_SCALES:
+        desktop.as_account(f"niri msg output winit scale {scale}")
+        desktop.launcher_until(
+            lambda shown: any(thing["reads"] == reads for thing in shown["things"])
+        )
+        desktop.shoot(f"launcher-home-now-waiting-at-{scale.replace('.', '-')}")
+    desktop.as_account("niri msg output winit scale 1")
+
+
 def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     """Now leads with what waits on Joel, and Return goes to where it's done."""
     machine = desktop.machine
@@ -472,19 +489,9 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
         )
     )
     desktop.shoot("launcher-home-now-waiting")
-    # At Joel's scales too, for the plate beside the row that says what waits, which says it
-    # no more (VKCF3Z, 2026-11-09). Only the gallery shoots them.
+    # At Joel's scales too, which only the gallery shoots.
     if desktop.values["shots"]:
-        for scale in JOELS_SCALES:
-            desktop.as_account(f"niri msg output winit scale {scale}")
-            desktop.launcher_until(
-                lambda shown: any(
-                    thing["reads"] == "Now \u00b7 Answer the ask \u00b7 2 min"
-                    for thing in shown["things"]
-                )
-            )
-            desktop.shoot(f"launcher-home-now-waiting-at-{scale.replace('.', '-')}")
-        desktop.as_account("niri msg output winit scale 1")
+        shoots_now_at_joels_scales(desktop, "Now \u00b7 Answer the ask \u00b7 2 min")
     # It counts only what Joel can do now: the session's two aren't ready.
     desktop.type_in("for you", selecting="For You")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "1")
