@@ -773,9 +773,12 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
             )
         )
         desktop.shoot("launcher-for-you-drawer")
-        # Return on it steps in, with nowhere to go: Mark It Done, then Put It Off.
+        # Return on it steps in, with nowhere to go: Mark It Done, then Put
+        # It Off, then its quest, which the index holds.
         desktop.step_in("ret")
-        desktop.launcher_until(lambda shown: shown["rows"] == ["Mark It Done", "Put It Off"])
+        desktop.launcher_until(
+            lambda shown: shown["rows"] == ["Mark It Done", "Put It Off", "Open Its Quest"]
+        )
         desktop.close_launcher()
     finally:
         desktop.as_account(f"rm -f {asked} {INDEX}")
