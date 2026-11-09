@@ -132,13 +132,14 @@ QtObject {
                 + "desktop:source:Desktop, home-network:source:Home Network, "
                 + "mail:source:Mail, sessions:source:Sessions, slack:source:Slack");
         // Every offer wears a mark: a kind its own, a source its own or its
-        // program's, and one the table doesn't know none, never the to-do's.
+        // program's, and one the table doesn't know For You's tray, never the
+        // to-do's.
         check(failures, "each offer wears its kind's, its source's or its program's mark",
             Filter.offered(items, "", said).map(one => {
                 const mark = Filter.markOf(one);
-                return `${one.value} ${mark.glyph ?? `program:${mark.program}`}`.trim();
+                return `${one.value} ${mark.glyph ?? `program:${mark.program}`}`;
             }).join(", "), "do waitsOnJoel, look look, try toTry, desktop desktop, "
-                + "home-network, mail mail, sessions session, slack program:slack");
+                + "home-network forYou, mail mail, sessions session, slack program:slack");
 
         // Two sources alike by name keep the order they came, and A to Z
         // reads numbers as numbers, so a tenth session follows the ninth.

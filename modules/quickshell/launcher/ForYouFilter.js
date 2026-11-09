@@ -33,14 +33,14 @@ const SOURCE_ID = "for-you:source:";
 // The mark each word wears in Tab's menu, by the theme's name for it, so
 // the menu teaches what each word means (VKCF3Z, 2026-11-08). A source
 // that's a program, as Slack is, wears its program's own mark. One the
-// table doesn't know yet wears none, never the to-do's, which would read
-// as a to-do; For You's own tray, once the theme has it, is its mark
-// (VKCF3Z, 2026-11-08).
+// table doesn't know wears For You's own tray, never the to-do's, which
+// would read as a to-do (VKCF3Z, 2026-11-08).
 const MARKS = {
     kind: { do: "waitsOnJoel", look: "look", try: "toTry" },
     source: { mail: "mail", calendar: "calendar", desktop: "desktop", sessions: "session" }
 };
 const PROGRAMS = { slack: "slack" };
+const OWN_MARK = "forYou";
 
 // The names a filter's head says, from the vocabulary's ids and how it
 // names each: { kinds, sources }, each by its word.
@@ -146,13 +146,13 @@ function heading(filter, said) {
     return names.join(JOINED);
 }
 
-// The mark an offer wears: { glyph } by the theme's name, "" for none,
-// or { program } by the desktop entry whose mark it wears.
+// The mark an offer wears: { glyph } by the theme's name, or { program }
+// by the desktop entry whose mark it wears.
 function markOf(one) {
     if (one.field === "source" && one.value in PROGRAMS) {
         return { program: PROGRAMS[one.value] };
     }
-    return { glyph: MARKS[one.field]?.[one.value] ?? "" };
+    return { glyph: MARKS[one.field]?.[one.value] ?? OWN_MARK };
 }
 
 // A filter's own key, so two steps into one filter are one place.
