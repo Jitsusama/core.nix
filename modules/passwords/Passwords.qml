@@ -735,7 +735,7 @@ Provider {
     function programNote(asked) {
         const manager = managerOf(asked);
         return manager && signedOut(manager)
-            ? String(daemon.sources[manager.name]?.reason ?? "") : "";
+            ? Managers.noted(daemon.sources[manager.name]?.reason, manager.called) : "";
     }
 
     // A manager's program leads with Let the Launcher In while it can't
