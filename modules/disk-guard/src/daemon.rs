@@ -407,9 +407,11 @@ pub struct Guard {
     /// What holds the disks, as last measured and when, in wall seconds,
     /// and how much each grew in the day before.
     measured: Measured,
-    /// The thread measuring them, while it does.
-    measuring: Option<std::thread::JoinHandle<()>>,
-    /// When the last measure began, and how full each disk was then.
+    /// The thread measuring them, while it does, giving how long it took,
+    /// in seconds.
+    measuring: Option<std::thread::JoinHandle<f64>>,
+    /// When the last measure began, how full each disk was then, and how
+    /// long it took once it's done.
     began: Option<crate::holders::LastMeasure>,
 }
 
@@ -705,7 +707,11 @@ impl Guard {
         {
             return;
         }
-        self.measuring = None;
+        if let Some(thread) = self.measuring.take()
+            && let (Ok(took), Some(began)) = (thread.join(), self.began.as_mut())
+        {
+            began.took = took;
+        }
         let budget = self.config.budget;
         let pressed = self.watched.values().any(|watched| {
             watched.band != Band::Healthy
@@ -727,7 +733,11 @@ impl Guard {
             return;
         }
         self.remeasure = false;
-        self.began = Some(crate::holders::LastMeasure { at: now, used });
+        self.began = Some(crate::holders::LastMeasure {
+            at: now,
+            used,
+            took: 0.0,
+        });
         let places = crate::holders::places(&self.config);
         let measured = Arc::clone(&self.measured);
         let state = self.state().to_owned();
@@ -739,6 +749,7 @@ impl Guard {
                 // process, passes too, so there it runs as it is.
                 #[cfg(target_os = "linux")]
                 crate::commands::idle();
+                let clock = std::time::Instant::now();
                 let sized = crate::holders::measure(places);
                 // A ledger that won't write leaves the holders unsaid only
                 // in how much they grew.
@@ -747,6 +758,7 @@ impl Guard {
                     crate::ledger::Grown::new()
                 });
                 *measured.lock().unwrap_or_else(PoisonError::into_inner) = Some((now, sized, grew));
+                clock.elapsed().as_secs_f64()
             });
         match started {
             Ok(thread) => self.measuring = Some(thread),
