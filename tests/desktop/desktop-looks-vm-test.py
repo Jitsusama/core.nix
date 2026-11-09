@@ -3976,9 +3976,13 @@ def nearby_heard(desktop: Desktop, at_each_scale: list[str], values: dict[str, A
         desktop.launcher_until(lambda shown: False in buds(shown), timeout=timedelta(seconds=60))
         desktop.close_launcher()
         # Asked for by a terminal with the launcher closed, Nearby looks too, and says Buds: both
-        # at once, since the radio looks only for a few seconds after each show.
+        # at once, since the radio looks only for a few seconds after each show. A device
+        # heard is a row whose act is pairing, which only the JSON says, leaving acts to
+        # `launcher do` in words.
         desktop.launcher_left_closed()
-        shown = desktop.in_session("launcher show machine bluetooth nearby | grep -q Buds")
+        shown = desktop.in_session(
+            "launcher show --json machine bluetooth nearby | grep -q '\"name\": \"Buds\"'"
+        )
         try:
             machine.wait_until_succeeds(
                 f"{shown} && ( "
