@@ -110,11 +110,12 @@ def test_drives_places_and_recent_are_shot_at_each_scale(
         desktop.answer("drive")
         desktop.launcher_until(lambda shown: "Drive" in shown["rows"])
         desktop.down_to("Drive")
+        # Each size keeps its unit beside it by a no-break space, as every figure does.
         desktop.launcher_until(
             lambda shown: (
                 shown["drawer"]["out"]
                 and "Kept Here" in shown["drawer"]["drawnFacts"]
-                and "412 MB of 2.00 GB" in shown["drawer"]["values"]
+                and "412\u00a0MB of 2.00\u00a0GB" in shown["drawer"]["values"]
             )
         )
         desktop.shoot(f"launcher-drive-at-{at}")
