@@ -598,6 +598,7 @@ def test_agents_says_how_its_sessions_stand_together_at_home_and_found_by_name(
         lambda shown: any(
             thing["is"] == "collection:agents"
             and thing["reads"].startswith("Agents \u00b7 ")
+            and thing["reads"].split(" \u00b7 ")[1] not in {"", "none running"}
             and thing["reads"].endswith(f" \u00b7 {together}")
             for thing in shown["things"]
         )

@@ -1937,11 +1937,11 @@ Scope {
         restart(start);
     }
 
-    // A collection as a row the search finds: as it is at home, but for its
-    // count, which would read all of it at every change, unless it says
-    // what it holds without reading it, as Agents says how its sessions
-    // stand (homeSays), which is then its answer by name, read as the
-    // launcher opens, as home is.
+    // A collection as a row the search finds: as it is at home, but naming
+    // and counting none of what it holds, which would read all of it at
+    // every change. One that says how it stands without reading it, as
+    // Agents says how its sessions stand (homeSays), says that at its
+    // right, its answer by name, read as the launcher opens, as home is.
     function named(source) {
         const collection = source.collection;
         const says = source.homeSays();
@@ -3078,9 +3078,11 @@ Scope {
         const name = source.settings.name;
         const opener = Shortcuts.actions.find(action => action.opens === name);
         const title = collection.title ?? collection.noun;
-        const members = read ? source.memberNames() : [];
+        // What it holds is read once, for its names and for its count.
+        const held = read ? source.everything() : [];
+        const members = read ? source.memberNames(held) : [];
         const none = collection.none ?? "";
-        const side = read ? PlaceRow.side(source.homeSays(), source.counted(),
+        const side = read ? PlaceRow.side(source.homeSays(), source.counted(held),
             members.length === 0 && none !== "") : "";
         const row = {
             key: `collection:${name}`,

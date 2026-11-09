@@ -31,10 +31,15 @@ function listed(cased, room) {
 // its `name` and what it `says` at its right leave in a row of `room`
 // characters, or `none` where it holds nothing. A row whose first name
 // doesn't fit says nothing there, since its right already says how many
-// it holds.
+// it holds. A row made before the list has a width has no room to count
+// in, so it names them all, and the row gives way by whole names as it's
+// drawn.
 function holds(names, row) {
     if (names.length === 0) {
         return row.none ?? "";
+    }
+    if (row.room <= 0) {
+        return listed(names, Infinity);
     }
     const beside = row.name.length + (row.says === "" ? 0 : row.says.length + BETWEEN);
     return listed(names, row.room - beside);

@@ -263,9 +263,10 @@ Scope {
 
     // The names its row says after its own: each thing it holds, but for
     // one folded into it, as Agents' Start a Session does something there
-    // rather than being one of what it holds.
-    function memberNames() {
-        return everything().filter(one => one.folded !== true).map(one => one.name);
+    // rather than being one of what it holds. Given what it holds where
+    // its row has read it already, so a row reads it once.
+    function memberNames(held = everything()) {
+        return held.filter(one => one.folded !== true).map(one => one.name);
     }
 
     // The one row a source ends every search at the top with, after
@@ -359,10 +360,11 @@ Scope {
         return [row.prepared, row.also];
     }
 
-    // What a collection's row at home says after its title: how many it
-    // holds, grouped by thousands.
-    function counted() {
-        return countedAs(everything().length);
+    // What a collection's row says at its right where it says nothing of
+    // how it stands: how many it holds, grouped by thousands, of what its
+    // row has read where it's given.
+    function counted(held = everything()) {
+        return countedAs(held.length);
     }
 
     // A count as the collection says one, grouped by thousands, with what

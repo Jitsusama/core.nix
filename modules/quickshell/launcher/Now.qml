@@ -1483,8 +1483,8 @@ Provider {
 
     // So its row names what else is on after its name, and never For You,
     // whose count it already says at its right.
-    function memberNames() {
-        return all.filter(one => one.key !== waiting.key && one.folded !== true)
+    function memberNames(held = all) {
+        return held.filter(one => one.key !== waiting.key && one.folded !== true)
             .map(one => one.name);
     }
 

@@ -50,6 +50,9 @@ QtObject {
         check(failures, "never an ellipsis, however short the room",
             PlaceRow.holds(machine, { name: "Machine", says: "", room: 12 }).includes("\u2026"),
             false);
+        check(failures, "a row made before the list has a width names them all",
+            PlaceRow.holds(machine, { name: "Machine", says: "99% busy", room: 0 }),
+            machine.join(", "));
         check(failures, "holding none with no word for it says nothing",
             PlaceRow.holds([], { name: "Machine", says: "", room: 40 }), "");
 

@@ -1043,9 +1043,10 @@ Provider {
         return SessionRow.summary(states(), spent, Words.of("agents").said ?? {});
     }
 
-    // What it holds, at its row's right wherever it's found, and what
-    // Home's row says in place of naming its sessions (VKCF3Z,
-    // 2026-11-06). Found by its name, "agents", its row is the answer, as
+    // How its sessions stand together, at its row's right wherever it
+    // stands, home included, while its sessions are named after its name
+    // as every place's are (VKCF3Z, 2a429f67). Found by its name,
+    // "agents", its row is the answer, as
     // Processor's is for "cpu", and Return still opens it, since that's
     // what Joel types its name for.
     function counted() {
