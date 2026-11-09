@@ -1420,7 +1420,10 @@
       "said": {
         "pressure": "filling",
         "urgent": "nearly full",
-        "critical": "critically full"
+        "critical": "critically full",
+        "filling": "filling",
+        "nearly-full": "nearly full",
+        "critically-full": "critically full"
       },
       "parts": [
         "machine:disk:space",
