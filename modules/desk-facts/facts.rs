@@ -255,7 +255,7 @@ fn point((x, y): (f64, f64)) -> String {
     format!("x {x:.3} y {y:.3}")
 }
 
-/// McCamy's cubic for a white's correlated colour temperature from its xy,
+/// `McCamy`'s cubic for a white's correlated colour temperature from its xy,
 /// within a few kelvin of the daylight whites a display is set to: its
 /// epicentre, then the cubic's terms, highest first.
 const EPICENTRE: (f64, f64) = (0.3320, 0.1858);
@@ -266,7 +266,7 @@ fn grouped(whole: &str) -> String {
     let digits: Vec<char> = whole.chars().collect();
     let mut said = String::new();
     for (at, digit) in digits.iter().enumerate() {
-        if at > 0 && (digits.len() - at) % 3 == 0 {
+        if at > 0 && (digits.len() - at).is_multiple_of(3) {
             said.push(',');
         }
         said.push(*digit);
@@ -302,7 +302,10 @@ fn white_point(edid: &[u8]) -> String {
 /// x 0.640 y 0.330", a dot apart; nothing where it gives none.
 fn primaries(edid: &[u8]) -> String {
     let [red, green, blue, _] = chromaticity(edid);
-    if [red, green, blue].iter().all(|(x, y)| *x <= 0.0 && *y <= 0.0) {
+    if [red, green, blue]
+        .iter()
+        .all(|(x, y)| *x <= 0.0 && *y <= 0.0)
+    {
         return String::new();
     }
     [("red", red), ("green", green), ("blue", blue)]
