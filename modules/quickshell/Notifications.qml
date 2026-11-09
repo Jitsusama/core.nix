@@ -386,7 +386,18 @@ Scope {
                 right: (left + card.width) / screen.width,
                 bottom: (at.y + card.height) / screen.height,
                 // Where the stack ends, below its last edge.
-                foot: (pileAt.y + pile.height) / screen.height
+                foot: (pileAt.y + pile.height) / screen.height,
+                // What niri blurs and the pointer reaches, a frame each,
+                // beside where each thing drawn stands in the window, in
+                // the window's points, which those frames must match.
+                blurred: window.areas.map(area => [area.x, area.y, area.width, area.height]),
+                drawn: window.drawn().map(one => {
+                    const where = one.mapToItem(null, 0, 0);
+                    const x = Math.floor(where.x);
+                    const y = Math.floor(where.y);
+                    return [x, y, Math.ceil(where.x + one.width) - x,
+                        Math.ceil(where.y + one.height) - y];
+                })
             });
         }
     }
@@ -501,6 +512,20 @@ Scope {
         property var areas: []
         readonly property Region notices: Region {
             regions: window.areas
+        }
+
+        // What's drawn, in the order its frames are gathered: what's
+        // playing, the held list, and the cards drawn, as they're tracked.
+        function drawn() {
+            const found = root.playing ? [track] : [];
+            if (root.holding)
+                found.push(held);
+            for (let i = 0; i < cards.count; i++) {
+                const card = cards.itemAt(i) as Card;
+                if (card?.visible)
+                    found.push(card);
+            }
+            return found;
         }
 
         function gather() {
