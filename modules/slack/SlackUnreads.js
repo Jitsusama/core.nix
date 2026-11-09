@@ -217,7 +217,7 @@ const SHORTCODE = /:[a-z0-9_+'-]+:/g;
 // What a word is made of: a letter or a digit in any script.
 const WORDLY = /[\p{L}\p{N}]/u;
 // A notice's text Slack cut short ends so, maybe within a word.
-const ELLIPSIS = "\u2026";
+const ELLIPSIS = /\u2026\s*$/;
 // The daemon cuts a message's text at a space to 400 characters (LONGEST
 // in src/lib.rs), marking nothing, so one past 360 may have lost its end;
 // one cut before a longer word than the rest is taken as whole, and so
@@ -256,7 +256,7 @@ function noticed(notice) {
     const among = said[2].startsWith("#") ? "channel" : "group";
     return { kind: direct ? "direct" : among, place: said[2],
         who: direct ? said[2] : body.slice(0, by), words: words(text),
-        cut: text.trimEnd().endsWith(ELLIPSIS), at: notice.at };
+        cut: ELLIPSIS.test(text), at: notice.at };
 }
 
 // A text's words, lower case, its letters and digits alone: an emoji,

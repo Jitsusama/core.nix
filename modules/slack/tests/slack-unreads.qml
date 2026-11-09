@@ -212,7 +212,7 @@ QtObject {
         const deploy = said("C1", "#deploys", "Grace", "the deploy is out, cc @joel", 1000000);
         const lunch = said("G1", "ada, grace", "Grace", "lunch at noon, then we ship", 1000000);
         const long = `the release notes ${"say more ".repeat(40)}`;
-        const cut = said("D1", "Ada Lovelace", "Ada Lovelace", long.trimEnd(), 2000000);
+        const cut = said("D1", "Ada Lovelace", "Ada Lovelace", long.trim(), 2000000);
         const review = said("D1", "Ada Lovelace", "Ada Lovelace",
             "Thanks for the review, I will merge it after lunch today", 5000000);
         const build = said("D1", "Ada Lovelace", "Ada Lovelace", "can you check the build",
