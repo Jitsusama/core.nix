@@ -557,6 +557,10 @@
     every noqa, type: ignore, shellcheck disable and qmllint disable says why, after its codes or
     in a comment just above, but those still waiting for their reason
   '';
+  every-test-function-lives-once = ''
+    no function in test code, in Python, shell, QML, JavaScript or Rust, is copied from another
+    file, but those still waiting to move to the test library
+  '';
   every-test-runs-or-fails = ''
     no test passes without running, by an #[ignore] with no reason, a printed skip, an early return
     or pytest's or QML's skips, but those still waiting to run where they can

@@ -531,6 +531,14 @@
       lib.everyScriptMeetsShellcheckAtItsStrictest =
         pkgs: pkgs.callPackage ./tests/every-script-meets-shellcheck-at-its-strictest.nix { };
 
+      # How a repository built on core keeps each function in its test code
+      # once, as core does: `core.lib.everyTestFunctionLivesOnce pkgs { src =
+      # ./.; waiting = { ... }; }` is a check that fails on a test file holding
+      # more functions copied from another than it waits with, and on one
+      # holding fewer until its count is lowered.
+      lib.everyTestFunctionLivesOnce =
+        pkgs: pkgs.callPackage ./tests/every-test-function-lives-once.nix { };
+
       # How a repository built on core holds its names to core's glossary:
       # `core.lib.namesSayTheGlossary pkgs { names = ...; otherSenses = ...;
       # waiting = ...; }` is a check that no name says a name the glossary

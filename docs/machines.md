@@ -397,6 +397,16 @@ every-script-meets-shellcheck-at-its-strictest =
     };
 ```
 
+Its test code keeps each function once, as core's does, through a ninth:
+
+```nix
+every-test-function-lives-once = core.lib.everyTestFunctionLivesOnce pkgs {
+  src = ./.;
+  # How many copied functions each test file holds while they move.
+  waiting = { };
+};
+```
+
 Its names say the glossary's words, as core's do, through a check that reads
 the glossary of the core it locks:
 
