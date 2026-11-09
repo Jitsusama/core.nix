@@ -123,4 +123,4 @@ check "a shell back within that is asked again" asked 2
 printf 'yes\n' > "$reply/answer"
 ended
 check "and its answer taken" exited 0
-exit $failed
+exit "$failed"

@@ -1031,6 +1031,20 @@ gather (
         waiting = import ./tests/every-suppression-says-why-waiting.nix;
       };
 
+      # shellcheck's optional checks for a hidden failure, a set -e turned off,
+      # an uppercase variable nothing sets and a case with no default find
+      # faults, but too many scripts break them for treefmt to run them yet.
+      # Those findings wait, counted by script, in
+      # tests/every-script-meets-shellcheck-at-its-strictest-waiting.nix, and a
+      # count may only fall.
+      every-script-meets-shellcheck-at-its-strictest =
+        self.lib.everyScriptMeetsShellcheckAtItsStrictest pkgs
+          {
+            src = ./.;
+            waiting = import ./tests/every-script-meets-shellcheck-at-its-strictest-waiting.nix;
+            includes = [ "modules/quickshell/in-a-terminal/tests/qs" ];
+          };
+
       # A doc names only what's there, so a move or a rename that leaves a guide
       # pointing at nothing fails here rather than misleading the next reader:
       # every relative link, and every backticked path from a top folder. Those

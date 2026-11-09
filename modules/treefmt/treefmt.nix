@@ -141,7 +141,21 @@ in
         enable = true;
         edition = lib.mkDefault "2024";
       };
-      shellcheck.enable = true;
+      shellcheck = {
+        enable = true;
+        # The optional checks no script breaks. Four more that find faults run
+        # in every-script-meets-shellcheck-at-its-strictest while the scripts
+        # breaking them are fixed. Braces on every variable and [[ ]] for every
+        # test stay off: each is a style rather than a fault, and shellcheck's
+        # defaults already ask for the quoting that makes [ ] as safe as [[ ]].
+        extra-checks = [
+          "avoid-negated-conditions"
+          "avoid-nullary-conditions"
+          "deprecate-which"
+          "quote-safe-variables"
+          "useless-use-of-cat"
+        ];
+      };
       statix.enable = true;
       stylua = {
         enable = true;
