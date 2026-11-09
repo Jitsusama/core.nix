@@ -48,7 +48,7 @@ mod world;
 use std::env;
 use std::fs;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
 use state::{State, short};
@@ -278,13 +278,13 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
     let on_main = |base: &str| holds(base, &main);
     if !ready::built_there(&ready::record(&commit), &on_main) {
         let files = lines(&git(&["diff", "--name-only", &main, &commit])?);
-        let change = patch_id(&main, &commit);
+        let change = patch_id(Path::new("."), &main, &commit);
         let same = |candidate: &str| {
             if candidate == commit || change.is_none() {
                 return None;
             }
             let base = git(&["merge-base", candidate, &main]).ok()?;
-            (patch_id(&base, candidate) == change)
+            (patch_id(Path::new("."), &base, candidate) == change)
                 .then(|| git(&["diff", "--name-only", &base, &main]).ok())
                 .flatten()
                 .map(|moved| lines(&moved))
@@ -405,16 +405,25 @@ fn lines(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// The stable patch id of the change from `base` to `head`, which stays
-/// the same when a rebase moves the change without changing it.
-fn patch_id(base: &str, head: &str) -> Option<String> {
+/// The stable patch id of the change from `base` to `head`, in the repo
+/// at `repo`, which stays the same when a rebase moves the change without
+/// changing it. The diff carries no lines of context: with git's three, a
+/// rebase over a commit that edits only the lines beside the change gave
+/// it a new id, as happened to #2504 in a busy words.json, so its earlier
+/// run stopped counting. What main moved in the change's files is caught
+/// by the files it shares, not by the id.
+fn patch_id(repo: &Path, base: &str, head: &str) -> Option<String> {
     let diff = Command::new("git")
-        .args(["diff", base, head])
+        .arg("-C")
+        .arg(repo)
+        .args(["diff", "--unified=0", base, head])
         .output()
         .ok()
         .filter(|ran| ran.status.success())?
         .stdout;
     let mut id = Command::new("git")
+        .arg("-C")
+        .arg(repo)
         .args(["patch-id", "--stable"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -475,5 +484,58 @@ mod tests {
             "nothing can be read of what's installed"
         );
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Runs git in `repo` with no user's or system's config, so the test
+    /// reads the same wherever it runs, and gives what it printed.
+    fn git_in(repo: &Path, arguments: &[&str]) -> String {
+        let ran = Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(arguments)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@t")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@t")
+            .output()
+            .unwrap();
+        assert!(ran.status.success(), "git {arguments:?}: {ran:?}");
+        String::from_utf8_lossy(&ran.stdout).trim().to_owned()
+    }
+
+    /// Commits `words` as the file `w` and gives the commit.
+    fn commit(repo: &Path, words: &str) -> String {
+        fs::write(repo.join("w"), words).unwrap();
+        git_in(repo, &["commit", "-qam", "w"]);
+        git_in(repo, &["rev-parse", "HEAD"])
+    }
+
+    #[test]
+    fn a_change_rebased_over_an_edit_beside_it_keeps_its_patch_id() {
+        let repo = env::temp_dir().join(format!("merge-net-patch-{}", std::process::id()));
+        fs::create_dir_all(&repo).unwrap();
+        git_in(&repo, &["init", "-q", "-b", "main"]);
+        fs::write(repo.join("w"), "a\nb\nc\nd\ne\n").unwrap();
+        git_in(&repo, &["add", "w"]);
+        git_in(&repo, &["commit", "-qm", "w"]);
+        let base = git_in(&repo, &["rev-parse", "HEAD"]);
+        let change = commit(&repo, "a\nb\nC\nd\ne\n");
+        git_in(&repo, &["checkout", "-q", &base]);
+        let moved = commit(&repo, "a\nB\nc\nd\ne\n");
+        let rebased = commit(&repo, "a\nB\nC\nd\ne\n");
+        let other = commit(&repo, "a\nB\nc\nD\ne\n");
+        assert_eq!(
+            patch_id(&repo, &base, &change),
+            patch_id(&repo, &moved, &rebased),
+            "main's edit beside the change leaves it the same change"
+        );
+        assert_ne!(
+            patch_id(&repo, &base, &change),
+            patch_id(&repo, &rebased, &other),
+            "a change of other lines is another change"
+        );
+        fs::remove_dir_all(&repo).unwrap();
     }
 }
