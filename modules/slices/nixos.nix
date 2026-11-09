@@ -173,6 +173,67 @@ let
   apps = "10%";
   agents = "15%";
   account = "15%";
+
+  # The system's own services a call or the desktop waits on keep a soft
+  # floor each, about twice what each held: the journal every program
+  # writes to, logins and seats, devices and input, the message bus, the
+  # names and links of the network, Bluetooth for a headset and rtkit for
+  # sound's real time. On 9 November at 13:0x system.slice held 575 MiB
+  # with 671 MiB more in swap, the message bus with 3 of its 5 MiB there,
+  # so a call's program could wait on swap to reach it. The kernel keeps
+  # a floor only as far as every slice above it claims one, and system.slice
+  # claimed none, so the oomd's own 64 MiB kept nothing either. The slice
+  # claims exactly the sum: a larger one would be shared out by use, and
+  # update-to-main's evaluation, which reached 20 GB there that day, would
+  # take most of it. Each counts only while its service is on, so a machine
+  # without one gets no empty unit.
+  systemFloors = lib.filterAttrs (_: floor: floor.on) {
+    systemd-journald = {
+      mib = 64;
+      on = true;
+    };
+    systemd-logind = {
+      mib = 16;
+      on = true;
+    };
+    systemd-udevd = {
+      mib = 128;
+      on = true;
+    };
+    dbus-broker = {
+      mib = 32;
+      on = config.services.dbus.implementation == "broker";
+    };
+    systemd-oomd = {
+      mib = 64;
+      on = config.systemd.oomd.enable;
+    };
+    systemd-resolved = {
+      mib = 16;
+      on = config.services.resolved.enable;
+    };
+    systemd-networkd = {
+      mib = 16;
+      on = config.systemd.network.enable;
+    };
+    wpa_supplicant = {
+      mib = 16;
+      on = config.networking.wireless.enable;
+    };
+    bluetooth = {
+      mib = 16;
+      on = config.hardware.bluetooth.enable;
+    };
+    keyd = {
+      mib = 64;
+      on = config.services.keyd.enable;
+    };
+    rtkit-daemon = {
+      mib = 8;
+      on = config.security.rtkit.enable;
+    };
+  };
+  systemFloor = lib.foldl' (sum: floor: sum + floor.mib) 0 (lib.attrValues systemFloors);
 in
 {
   options.jitsusama.slices.disks = lib.mkOption {
@@ -295,6 +356,8 @@ in
     # it the unit is skipped, and a disk that comes later wants it itself.
     # Its stop reaches the unit without the unit requiring it, since a
     # requirement would have boot wait out the device's timeout.
+    systemd.slices.system.sliceConfig.MemoryLow = "${toString systemFloor}M";
+
     systemd.services = {
       # Every account's manager, user@<uid>.service, beside its slice.
       "user@".serviceConfig = limits // {
@@ -302,6 +365,7 @@ in
         MemoryLow = agents;
       };
     }
+    // lib.mapAttrs (_: floor: { serviceConfig.MemoryLow = "${toString floor.mib}M"; }) systemFloors
     // lib.mapAttrs' (
       disk: measured:
       lib.nameValuePair "disk-order-${disk}" {

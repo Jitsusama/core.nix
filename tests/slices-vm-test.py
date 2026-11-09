@@ -32,6 +32,8 @@ APPS_SHARE = 0.10
 AGENTS_SHARE = 0.15
 ABOVE_SHARE = 0.15
 SESSION_FLOOR = 2560 * MIB
+# The journal's soft floor, which every machine's system.slice claims.
+JOURNAL_FLOOR = 64 * MIB
 # The share of memory past which work in jobs is slowed.
 JOBS_HIGH = 0.5
 # How much of the first CPU's running time the light quest must have, alone. It's a share
@@ -224,7 +226,11 @@ def test_every_account_has_it_and_machines_none(account: Account, drive: str) ->
 
 
 def test_apps_keep_a_hard_share_of_memory(account: Account) -> None:
-    """Apps keep a hard share of memory, agents' sessions a soft one, and every slice above both."""
+    """Apps keep a hard share of memory, agents' sessions and system services a soft one.
+
+    Every slice above both claims them too. system.slice claims what its
+    services' floors add up to, at least those running now, so theirs hold.
+    """
     total = account.memory()
     above = [ACCOUNT, "/sys/fs/cgroup/user.slice/user-1000.slice", "/sys/fs/cgroup/user.slice"]
     for path, share in [(f"{ACCOUNT}/app.slice", APPS_SHARE)] + [(p, ABOVE_SHARE) for p in above]:
@@ -234,6 +240,13 @@ def test_apps_keep_a_hard_share_of_memory(account: Account) -> None:
     assert account.floor(f"{ACCOUNT}/agents.slice") == 0
     assert account.floor(f"{ACCOUNT}/session.slice") == SESSION_FLOOR
     assert account.floor(JOBS) == 0
+    system = "/sys/fs/cgroup/system.slice"
+    assert account.soft_floor(f"{system}/systemd-journald.service") == JOURNAL_FLOOR
+    running = account.machine.succeed(
+        f"find {system} -mindepth 2 -maxdepth 2 -name memory.low -exec cat {{}} + "
+        "| awk '{ n += $1 } END { print n + 0 }'"
+    )
+    assert account.soft_floor(system) >= int(running) >= JOURNAL_FLOOR, running
 
 
 def test_work_in_jobs_is_slowed_never_ended(account: Account) -> None:
