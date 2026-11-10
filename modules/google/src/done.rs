@@ -6,7 +6,8 @@
 //! Mail that wanted him and is gone from Gmail's list is asked for its
 //! labels once, which say whether he read it, archived it or it's no
 //! longer important; mail he read or archived here says so too. A meeting
-//! is done once it has ended, or once he declined it. Each is told for
+//! is done once it has ended; one he declined isn't held at all
+//! (calendar.rs). Each is told for
 //! `KEPT` after, under its own record with a `done` of `{ how, at }`, and
 //! learnt on the looks the program already makes, never by asking more
 //! often (watch.rs).
@@ -36,8 +37,6 @@ pub enum Went {
     ArchivedHere,
     /// A meeting that has ended.
     Ended,
-    /// A meeting Joel declined.
-    Declined,
 }
 
 /// When and how a thing stopped wanting Joel, `at` in milliseconds since

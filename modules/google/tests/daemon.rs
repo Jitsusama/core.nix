@@ -177,6 +177,33 @@ fn a_watch_hears_every_record_then_only_what_changed_and_what_went() {
 }
 
 #[test]
+fn a_list_or_a_watch_says_when_google_was_last_read_and_how_it_stands() {
+    let socket = folder("read").join("google.sock");
+    let (asks, _asked) = mpsc::channel();
+    let daemon = Daemon::listen(&socket, asks, NOW).unwrap();
+    let mut client = Client::to(&socket);
+    // Before Google is first read, an empty list says so, so nothing takes
+    // it for no meetings, as a switch's gate did across a restart
+    // (2026-11-10).
+    let before = client.ask(&json!({"id": 1, "ask": "list", "kind": "meeting"}));
+    assert_eq!(
+        (&before["records"], &before["read"], &before["sources"]),
+        (&json!([]), &Value::Null, &json!({"google": "starting"}))
+    );
+    daemon.say(&ready(vec![], NOW - 5_000), NOW);
+    let after = client.ask(&json!({"id": 2, "ask": "list", "kind": "meeting"}));
+    assert_eq!(
+        (&after["read"], &after["sources"]),
+        (&json!(NOW - 5_000), &json!({"google": "answering"}))
+    );
+    let watched = client.ask(&json!({"id": 3, "ask": "watch", "kind": "meeting"}));
+    assert_eq!(
+        (&watched["read"], &watched["sources"]),
+        (&json!(NOW - 5_000), &json!({"google": "answering"}))
+    );
+}
+
+#[test]
 fn a_watch_of_one_kind_hears_only_that_kind() {
     let socket = folder("kind").join("google.sock");
     let (asks, _asked) = mpsc::channel();

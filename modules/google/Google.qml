@@ -39,8 +39,8 @@ Singleton {
     property string account: "none"
     // Each { id, title, start, end, allDay, answer, link, kind, page,
     // done }, in milliseconds since 1970, from today's start to a week on;
-    // `done` is { how, at } once it has ended or Joel declined it, else
-    // null (src/done.rs).
+    // `done` is { how, at } once it has ended, else null (src/done.rs).
+    // One Joel declined, or its organiser cancelled, is never here.
     property var meetings: []
     // The mail that wants Joel, newest first: each { id, from, subject,
     // at, page }.

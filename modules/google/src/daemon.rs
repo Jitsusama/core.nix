@@ -18,6 +18,13 @@
 //! a `list` or `watch` taking one kind or a list of them, and `act`,
 //! which hands its `act` to the same asks the old socket takes
 //! (ask.rs), so the shell can do everything on one connection.
+//!
+//! A `list` or a `watch` answers beside its records when Google was last
+//! read (`read`, in milliseconds since the epoch, null until the first
+//! read since the program started) and how the account stands
+//! (`sources`), so an empty list read before Google answered is never
+//! taken for nothing there: a switch's gate took one for no meeting
+//! across a restart (2026-11-10).
 
 use std::collections::{BTreeMap, HashSet};
 use std::io::{BufRead, BufReader, Write};
@@ -114,6 +121,15 @@ fn word(state: Option<&State>) -> (&'static str, &'static str) {
         Some(Standing::Unreachable) => ("refused", "Google couldn't be reached"),
         Some(Standing::Ready) => ("answering", ""),
     }
+}
+
+/// A list's or a watch's answer: its records, when Google last answered
+/// (none before it first has), and how the account stands.
+fn listed<T: serde::Serialize>(id: &Value, records: &[T], state: Option<&State>) -> Value {
+    json!({
+        "id": id, "records": records, "read": state.and_then(|state| state.heard),
+        "sources": {"google": word(state).0},
+    })
 }
 
 /// One watch a client holds.
@@ -344,7 +360,7 @@ impl Daemon {
                     .filter_map(|key| held.records.get(key))
                     .take(limit)
                     .collect();
-                json!({"id": id, "records": records})
+                listed(&id, &records, held.state.as_ref())
             }
             "watch" => {
                 let watch = Watch {
@@ -368,7 +384,8 @@ impl Daemon {
                 // Sent while Google's next answer waits on the lock, so
                 // whatever it changes reaches the watch after these, and
                 // the shell never takes them over that change.
-                let _ = told.send(json!({"id": id, "records": records}).to_string());
+                let answer = listed(&id, &records, held.state.as_ref());
+                let _ = told.send(answer.to_string());
                 Value::Null
             }
             "unwatch" => {
@@ -500,7 +517,10 @@ mod tests {
             told.send(answered.to_string()).unwrap();
         }
         let first: Value = serde_json::from_str(&lines.recv().unwrap()).unwrap();
-        assert_eq!(first, json!({"id": 1, "records": []}));
+        assert_eq!(
+            first,
+            json!({"id": 1, "records": [], "read": null, "sources": {"google": "starting"}})
+        );
         let next: Value = serde_json::from_str(&lines.recv().unwrap()).unwrap();
         assert_eq!(next["changed"][0]["key"], ACCOUNT, "{next}");
     }
