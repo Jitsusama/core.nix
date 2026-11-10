@@ -113,6 +113,10 @@ const ELSEWHERE_S: f64 = 2.0;
 /// Under this share of its rate, a link with data waiting and our CAKE
 /// holding nothing is held back by something past it.
 const UNDER: f64 = 0.98;
+/// With our CAKE holding a queue, a router past it dropping over this
+/// share of the link's rate, in what TCP sends again past CAKE's own drops,
+/// is over its line. Less is the air's, which a cut wouldn't mend.
+const DROPPED_PAST: f64 = 0.05;
 /// A queue held elsewhere is taken back only while the link carries at
 /// least this share of the most it has carried: carrying less, what holds
 /// it back is one slow server, or other machines' share of the router, and
@@ -164,17 +168,22 @@ pub struct Ours {
     /// past what it carries drops the rest flow by flow, and what it
     /// dropped crosses our link twice, so it's no part of the line.
     pub resent: u64,
+    /// What our own CAKE, and the VPNs' riding the link, dropped over the
+    /// last second, in kbit/s: what TCP sends again of it never crossed
+    /// our link the first time, so it's no router's.
+    pub dropped: u64,
 }
 
 impl Ours {
     /// Whose the upload's queue was, from how many reads of the link's
     /// CAKE and of the VPNs' riding it found a queue, of how many read:
-    /// one held in most reads stood. None before anything was read.
+    /// one held in most reads stood, and what TCP sent again and our
+    /// queues dropped, in kbit/s. None before anything was read.
     pub fn from_reads(
         link: (u32, u32),
         vpn: (u32, u32),
         waiting: bool,
-        resent: u64,
+        (resent, dropped): (u64, u64),
     ) -> Option<Self> {
         let stood = |(queued, reads): (u32, u32)| reads > 0 && queued * 2 >= reads;
         (link.1 > 0).then_some(Self {
@@ -182,6 +191,7 @@ impl Ours {
             in_vpn: stood(vpn) && !stood(link),
             waiting,
             resent,
+            dropped,
         })
     }
 }
@@ -340,12 +350,32 @@ impl Way {
     /// climbs back to where it held. Answers whether it set the rate.
     fn own(&mut self, at: f64, dt: f64, ours: Ours, carried: f64) -> bool {
         // What got through the router once: a router dropping what it
-        // can't carry has our link carry more than its line.
-        let through = (carried - crate::rate::float(ours.resent)).max(0.0);
+        // can't carry has our link carry more than its line. What TCP sent
+        // again of what our CAKE dropped crossed the link once, and got
+        // through.
+        let lost = ours.resent.saturating_sub(ours.dropped);
+        let through = (carried - crate::rate::float(lost)).max(0.0);
+        // A VPN riding the link sends at most its share of the link's rate,
+        // so what it holds is judged by that, and a probe lifts the VPN past
+        // the line held rather than only the link.
+        let share = if ours.in_vpn {
+            crate::qdisc::VPN_SHARE
+        } else {
+            1.0
+        };
+        // With our CAKE holding nothing, the link carrying under its rate
+        // is held back past it. With CAKE holding a queue, the link carries
+        // the rate, and a router past it dropping a share of that is over
+        // its line: as when a plateau was found while the router's buffer
+        // still took more than its line, or remembered from a faster day.
+        let held_back = if ours.queued {
+            through < self.rate * share * (1.0 - DROPPED_PAST)
+        } else {
+            through < self.rate * UNDER
+        };
         let elsewhere = ours.waiting
-            && !ours.queued
+            && held_back
             && through > FLOWING_KBIT
-            && through < self.rate * UNDER
             && self.reached > 0.0
             && through >= self.reached * REACHED;
         if elsewhere {
@@ -366,14 +396,6 @@ impl Way {
         }
         let Some(plateau) = self.plateau else {
             return false;
-        };
-        // A VPN riding the link sends at most its share of the link's rate,
-        // so what it holds is judged by that, and a probe lifts the VPN past
-        // the line held rather than only the link.
-        let share = if ours.in_vpn {
-            crate::qdisc::VPN_SHARE
-        } else {
-            1.0
         };
         match self.probing_until {
             Some(until) if at >= until => {
@@ -801,13 +823,14 @@ mod tests {
 
     #[test]
     fn a_vpn_s_queue_is_ours_and_said_to_be_its() {
-        let vpn = Ours::from_reads((0, 5), (4, 5), true, 0);
+        let vpn = Ours::from_reads((0, 5), (4, 5), true, (0, 0));
         assert_eq!(vpn.map(|o| (o.queued, o.in_vpn)), Some((true, true)));
-        let link = Ours::from_reads((3, 5), (4, 5), true, 0);
+        let link = Ours::from_reads((3, 5), (4, 5), true, (90, 40));
         assert_eq!(link.map(|o| (o.queued, o.in_vpn)), Some((true, false)));
-        let none = Ours::from_reads((1, 5), (0, 0), true, 0);
+        assert_eq!(link.map(|o| (o.resent, o.dropped)), Some((90, 40)));
+        let none = Ours::from_reads((1, 5), (0, 0), true, (0, 0));
         assert_eq!(none.map(|o| (o.queued, o.in_vpn)), Some((false, false)));
-        assert_eq!(Ours::from_reads((0, 0), (5, 5), true, 0), None);
+        assert_eq!(Ours::from_reads((0, 0), (5, 5), true, (0, 0)), None);
     }
 
     #[test]
@@ -1403,6 +1426,69 @@ mod tests {
             (16_000.0..=17_500.0).contains(&vpn),
             "the VPN sent at {vpn} on a 20000 line"
         );
+    }
+
+    /// Steps a controller whose link carries many uploads, enough that our
+    /// CAKE always holds a queue, behind a router that queues flow by flow
+    /// and drops what it can't carry: the link carries the rate, and TCP
+    /// sends again what the router dropped, and `cake_drops` of the rate
+    /// CAKE dropped itself. Answers the rate held at the end.
+    fn many_flows(c: &mut Controller, to: f64, line: f64, cake_drops: f64) -> Option<u64> {
+        let mut at = 0.0;
+        let mut limits = Limits {
+            up: None,
+            down: None,
+        };
+        while at < to {
+            let rate = c.up.limit().map_or(line * 2.0, crate::rate::float);
+            let dropped = rate * cake_drops;
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "a positive rate far under u64's range"
+            )]
+            let kbit = |k: f64| k as u64;
+            limits = c.step(&Seen {
+                at_s: at,
+                up_kbit: rate,
+                up_ours: Some(Ours {
+                    queued: true,
+                    waiting: true,
+                    resent: kbit((rate - line).max(0.0) + dropped),
+                    dropped: kbit(dropped),
+                    ..Ours::default()
+                }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            at += 0.1;
+        }
+        limits.up
+    }
+
+    // A plateau learned while the router's buffer still took more than its
+    // line, at a flood's start, or remembered from a faster day, holds the
+    // link over the line, where the router drops what it can't carry while
+    // our CAKE queues: what TCP sends again past CAKE's own drops says so.
+    #[test]
+    fn a_plateau_over_the_line_is_brought_under_it_by_what_the_router_drops() {
+        let learned = Learned {
+            base: None,
+            plateau: Some(10_300.0),
+        };
+        let mut c = Controller::from_learned(learned, Learned::default());
+        let held = many_flows(&mut c, 10.0, 8_000.0, 0.03);
+        assert!(near(held, 7_600.0), "held over the line: {held:?}");
+    }
+
+    #[test]
+    fn what_our_own_cake_drops_is_no_router_s_and_moves_no_hold() {
+        let learned = Learned {
+            base: None,
+            plateau: Some(8_000.0),
+        };
+        let mut c = Controller::from_learned(learned, Learned::default());
+        let held = many_flows(&mut c, 50.0, 8_000.0, 0.08);
+        assert!(near(held, 7_600.0), "cut for CAKE's own drops: {held:?}");
     }
 
     #[test]

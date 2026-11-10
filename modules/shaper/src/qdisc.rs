@@ -305,6 +305,17 @@ pub fn holding(json: &str) -> Option<(u64, u64)> {
     Some((backlog, cake["drops"].as_u64().unwrap_or(0) + marks))
 }
 
+/// The packets the CAKE in `tc -s -j qdisc show dev` has dropped, marks
+/// aside: what TCP sends again of these never crossed the link.
+pub fn drops(json: &str) -> Option<u64> {
+    let Ok(Value::Array(all)) = serde_json::from_str::<Value>(json) else {
+        return None;
+    };
+    all.iter()
+        .find(|q| q["kind"] == "cake")
+        .map(|cake| cake["drops"].as_u64().unwrap_or(0))
+}
+
 /// A queue CAKE holds, at least, rather than packets passing through it: a
 /// couple of full-sized packets waiting.
 pub const QUEUED_BYTES: u64 = 3_000;
@@ -422,6 +433,8 @@ mod tests {
             {"ecn_mark":1},{"ecn_mark":2},{"ecn_mark":0},{"ecn_mark":0}]}]"#;
         assert_eq!(holding(json), Some((4542, 13)));
         assert_eq!(holding(r#"[{"kind":"fq_codel","backlog":9000}]"#), None);
+        assert_eq!(drops(json), Some(10));
+        assert_eq!(drops(r#"[{"kind":"fq_codel","drops":9}]"#), None);
     }
 
     #[test]
