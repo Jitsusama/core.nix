@@ -894,6 +894,38 @@ Provider {
         });
     }
 
+    // A look's row, kept while its file reads the same, within the minute
+    // and while the same sessions want Joel, which is all a row reads
+    // besides: For You is asked what it holds as it's stepped into and
+    // again as anything in Now changes while it's held, and making every
+    // look anew each time made 2,535 rows in one opening of Joel's
+    // (2026-11-09). Plain, so keeping notifies nothing.
+    readonly property var keptLooks: ({ minute: -1, wanting: "", rows: {} })
+    // Who wants Joel, as a look's row reads them (ForYou.js's leftBy): the
+    // sessions are said anew at each step and each focus move, so their
+    // list is a new one far more often than who wants him changes.
+    readonly property string wantingNames: (Sessions.wanting ?? []).map(session => [
+        session.address ?? "", session.presence?.session ?? ""
+    ].concat(session.presence?.addresses ?? []).join("\u0001")).join("\u0002")
+
+    function keptLook(one, now) {
+        const kept = keptLooks;
+        const minute = Math.floor(now / 60000);
+        if (kept.minute !== minute || kept.wanting !== wantingNames) {
+            kept.minute = minute;
+            kept.wanting = wantingNames;
+            kept.rows = {};
+        }
+        const text = lookTexts[one.file];
+        const before = kept.rows[one.file];
+        if (before !== undefined && typeof text === "string" && before.text === text)
+            return before.row;
+        const row = lookRow(one, now);
+        if (one.file !== "")
+            kept.rows[one.file] = { text: text, row: row };
+        return row;
+    }
+
     // The to-dos Joel said were done, while their quest's file
     // still tells of them (ForYou.js's settledItems).
     readonly property var doneItems: ForYou.settledItems(WaitingOnYou.asked,
@@ -954,7 +986,7 @@ Provider {
                 notices[notice.id] = found[at];
         });
         const ours = from === undefined ? looks.history.map(one => ({
-            at: one.resolved ?? one.since, row: () => provider.lookRow(one, now) }))
+            at: one.resolved ?? one.since, row: () => provider.keptLook(one, now) }))
             .concat(doneItems.map(one => ({ at: one.resolved, row: () => provider.doneRow(one) })),
                 given.done.map(one => ({ at: one.done.at, row: () => one.row })))
             : [];
@@ -1156,7 +1188,7 @@ Provider {
         })), looks.waiting.map(one => ({
             kind: "look",
             thing: provider.lookThing(one),
-            make: now => provider.lookRow(one, now)
+            make: now => provider.keptLook(one, now)
         })), given.waiting.map(one => ({
             kind: one.row.forYou?.kind ?? "do",
             thing: one.thing,
