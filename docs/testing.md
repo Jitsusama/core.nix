@@ -163,6 +163,12 @@ merge commit, so that commit stays on main.
 A change merges once the checks `changed-checks` builds pass, VM tests
 aside, and the subtests that reach what it touched, in each VM test that
 owns one of its files, pass with `run-subtests --there`: about ten minutes.
+`merge-net needs` names those VM tests, of the ones that moved from main: a
+test owns the files `checks.nix` imports for it and the paths they name
+beside them, and the folder of each module or role it imports by name, or
+only the roles' when it imports one, since it then tests the machine the
+role makes. On 10 November a change to the slices module's disk targets
+named no VM test, and the slices test failed on main alone.
 A change `merge-net needs` says touches something a revert would come too
 late for runs the VM tests it names, whole, first: boot, the initrd, the
 kernel, the disk and LUKS, the TPM, secure boot, the install, the stick and

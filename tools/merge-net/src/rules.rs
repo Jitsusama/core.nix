@@ -115,18 +115,22 @@ pub fn first(
     said: Option<&str>,
     known: Option<&[String]>,
 ) -> Needs {
-    let moved = said.map(|said| {
-        let changed = Changed::parse(said);
-        let mut moved = changed.vm_tests();
-        moved.extend(
-            changed
-                .broken
-                .into_iter()
-                .filter(|name| name.starts_with("vm-")),
-        );
-        moved
-    });
+    let moved = said.map(moved);
     needs(areas, files, moved.as_deref().or(known))
+}
+
+/// The VM tests `said`, what `changed-checks --name-only` printed, names as
+/// moved from main or broken.
+pub fn moved(said: &str) -> Vec<String> {
+    let changed = Changed::parse(said);
+    let mut moved = changed.vm_tests();
+    moved.extend(
+        changed
+            .broken
+            .into_iter()
+            .filter(|name| name.starts_with("vm-")),
+    );
+    moved
 }
 
 /// A test as `needs` names it: alone, or, when `list` (main's quarantine

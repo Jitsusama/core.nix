@@ -126,7 +126,8 @@ the same narrow way, never by copying the tree and running everything.
 
 A change is done when the checks it touched pass locally: those
 `changed-checks` names, VM tests aside; the subtests of each VM test that owns
-a file it touches, with `run-subtests --there`; and the VM tests
+a file it touches, which `merge-net needs` names, with `run-subtests --there`;
+and the VM tests
 `merge-net needs` names, whole. Its machine builds with core pointed at the
 checkout too. The net runs the other VM tests after the merge and reverts a
 merge that breaks one. Only a change every check reads, such as `flake.lock`,
