@@ -1,4 +1,5 @@
-// What the shell reads of the google program's records, when mail came in
+// What the shell reads of the google program's records, each change
+// remaking only the parts of the kinds it names, when mail came in
 // words, and the lines marking it read or archiving it, run in Qt's own
 // JavaScript engine, the one the shell runs them in. The
 // `the-desktop-reads-the-mail` check copies Google.js, Mail.js and the
@@ -128,6 +129,41 @@ QtObject {
         check("making a meeting granted", Google.gathered(account("ready",
             { meet: { granted: true, made: null } }, 1), true).meet,
             { granted: true, made: null });
+
+        // A change remakes only the parts whose keys it names (Daemon.qml's
+        // heard), each kind known by how its key begins, so a key gone is
+        // too: the account told again a minute on remakes the account's
+        // own parts alone, never a list, and a mail heard the mail and
+        // what's finished alone.
+        const holds = Object.assign({}, record("meeting", "standup", standup, 1),
+            record("mail", "m_1", mail, 1), account("ready", { unread: 3 }, 1));
+        const byKey = Google.keeping();
+        const remade = kinds => Object.keys(Google.partsOf(byKey, kinds, true)).sort();
+        check("every kind at first",
+            Object.keys(Google.keep(byKey, holds, Object.keys(holds))).sort(),
+            ["account", "mail", "meeting"]);
+        check("kept as gathered", Google.stateOf(Google.partsOf(byKey, Google.everyKind(), true)),
+            Google.gathered(holds, true));
+        Object.assign(holds, account("ready", { unread: 3 }, 2));
+        const aMinuteOn = Google.keep(byKey, holds, ["account:google"]);
+        check("the account told again moves the account alone", Object.keys(aMinuteOn),
+            ["account"]);
+        check("and remakes its own parts alone", remade(aMinuteOn),
+            ["account", "drive", "fetched", "heard", "meet", "unread"]);
+        Object.assign(holds, record("mail", "m_0", older, 1));
+        check("a mail heard remakes the mail and what's finished alone",
+            remade(Google.keep(byKey, holds, ["mail:m_0"])), ["finished", "mail"]);
+        delete holds["meeting:standup"];
+        const gone = Google.keep(byKey, holds, ["meeting:standup"]);
+        check("a meeting gone remakes the meetings alone", Google.partsOf(byKey, gone, true),
+            { meetings: [] });
+        check("a key of no kind it keeps moves nothing",
+            Google.keep(byKey, holds, ["weather:here", "account:other"]), {});
+        check("nothing once the daemon stops answering", Google.partsOf(byKey, gone, false),
+            none);
+        check("an account to say", Google.ready(byKey, true), true);
+        check("none while not answering", Google.ready(byKey, false), false);
+        check("none before the account is said", Google.ready(Google.keeping(), true), false);
 
         // A new Meet meeting, asked for at 100: how it stands as the
         // program says.

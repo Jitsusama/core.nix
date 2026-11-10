@@ -2763,7 +2763,9 @@
   '';
   the-desktop-reads-the-mail = ''
     the shell gathers the google program's whole state from its daemon's records, each kind in
-    its order, a signed-out account alone, and no account once the daemon stops answering; says
+    its order, a signed-out account alone, and no account once the daemon stops answering, a
+    change remaking only the parts of the kinds its keys name, the account told again a minute
+    on remaking none of the lists; says
     when mail came in words, and a moment as a drawer says one, and what its row and its details
     say, who was copied and the files it carries among them, each file by its kind and size;
     writes a reply to who sent it, and to all, copied to everyone else it went to, and a mail to
