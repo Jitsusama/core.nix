@@ -39,6 +39,12 @@ function remembered(key, make) {
     return made;
 }
 
+// How many widths and fits are kept now, both halves together, which
+// tests/reading.qml holds to at most MEASURES_KEPT however many are asked.
+function keptCount() {
+    return Object.keys(measures.earlier).length + measures.count;
+}
+
 // A face as one key: everything of a font that changes how wide words
 // are drawn in it.
 function faceOf(font) {

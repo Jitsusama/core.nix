@@ -411,6 +411,13 @@ QtObject {
         tens(`word ${Measures.MEASURES_KEPT - 1}`);
         expect("the oldest let go, the newest kept", measuring.length === before + 1,
             measuring.slice(before));
+        // However many words a shell draws over the days it runs, what's
+        // kept stays within its bound.
+        for (let at = 0; at < 3 * Measures.MEASURES_KEPT; at += 1)
+            Reading.wholeWords(`title ${at} of a long day`, 80, tens);
+        const keptNow = Measures.keptCount();
+        expect("what's kept stays within its bound",
+            keptNow > 0 && keptNow <= Measures.MEASURES_KEPT, keptNow);
         // A real face measures as its own metrics do.
         const real = Measures.measurer(face)(missed);
         expect("a real face's widths as its metrics say", real === face.advanceWidth(missed),
