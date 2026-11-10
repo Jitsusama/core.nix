@@ -434,9 +434,9 @@ Scope {
 
     // How many rows this source has made since the shell started, so the
     // launcher can say which made what as it opened (Launcher.qml's
-    // madeSince). A plain count in an object, so making a row notifies
-    // nothing.
-    readonly property var tally: ({ rows: 0 })
+    // madeSince), and the records it looked at. Plain counts in an object,
+    // so making a row notifies nothing.
+    readonly property var tally: ({ rows: 0, looked: 0 })
 
     // A collection's row: a thing whose name is made ready to match only
     // when it's first drawn, since a collection has thousands.

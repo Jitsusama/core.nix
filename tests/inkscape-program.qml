@@ -30,6 +30,7 @@ import QtQuick
 import "launcher" as Launcher
 import "Expect.js" as Expect
 import "Frames.js" as Frames
+import "HeardWindows.js" as HeardWindows
 import "launcher/Inkscape.js" as Inkscape
 
 ShellRoot {
@@ -200,7 +201,8 @@ ShellRoot {
         root.waiting = "its step";
         try {
             sums();
-            Niri.revision += 1;
+            HeardWindows.told(applications.windowsDaemon, Niri.windows,
+                id => DesktopEntries.heuristicLookup(id), Niri.current);
             theLauncher.open = true;
             theLauncher.held = [{ row: entry(), rows: [] }];
             // A step's frame never waits on starting a process.

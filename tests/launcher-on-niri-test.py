@@ -488,6 +488,47 @@ def test_the_shut_launcher_makes_no_window_rows_as_windows_change(shell: Shell) 
     assert "capture:window" in taking, f"a pick made shut knows no window to take: {taking}"
 
 
+RETITLES = 10
+
+
+def test_a_retitled_window_is_heard_of_alone_with_the_launcher_open(shell: Shell) -> None:
+    """With the launcher open, a window retitled is the one window its rows look at again.
+
+    Every event niri sent walked all of Joel's windows in Windows, whichever window it was of
+    (2026-11-10). The windows daemon tells of only the windows a change moved, so ten retitles
+    of one window among a dozen look at about ten records, where walking would look at well over
+    a hundred.
+    """
+    retitling = Path(os.environ["XDG_RUNTIME_DIR"]) / "retitling"
+    go = retitling.with_suffix(".go")
+    # foot takes a title from what runs in it, once the test says to begin.
+    retitling.write_text(
+        f"while [ ! -e {go} ]; do sleep 0.1; done\n"
+        f"for i in $(seq {RETITLES}); do printf '\\033]2;Tern %s\\007' \"$i\"; sleep 0.3; done\n"
+        "sleep 3600\n"
+    )
+    others = [shell.opened(f"Plover {n}") for n in range(1, 11)]
+    tern = shell.opened("Tern 0", running=f"sh {retitling}")
+
+    def looked() -> int:
+        return int(json.loads(shell.as_account(shell.ipc("made")))["looked"]["windows"])
+
+    try:
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        shell.send_chars("tern")
+        shell.launcher_until(lambda shown: "Tern 0" in shown["rows"])
+        before = looked()
+        go.touch()
+        shell.launcher_until(lambda shown: f"Tern {RETITLES}" in shown["rows"])
+        heard = looked() - before
+        shell.close_launcher()
+    finally:
+        for window in [*others, tern]:
+            shell.close(window)
+    assert heard <= 2 * RETITLES, f"{RETITLES} retitles of one window looked at {heard} records"
+
+
 def searched(shell: Shell) -> int:
     """Give how many searches of what's typed the launcher has run."""
     return int(shell.as_account(shell.ipc("searched")).strip())

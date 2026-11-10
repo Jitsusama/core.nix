@@ -49,7 +49,7 @@ import qs
 import QtQuick
 import "../FileFacts.js" as FileFacts
 import "../Fuzzy.js" as Fuzzy
-import "BrowserWindows.js" as BrowserWindows
+import "HeldWindows.js" as HeldWindows
 import "Captured.js" as Captured
 import "Media.js" as Media
 import "Order.js" as Order
@@ -151,21 +151,44 @@ Provider {
     draws: programs.reduce((all, row) => all.concat(row.stands), [])
 
     // Each program's open windows by its desktop entry's id, the one used
-    // last first, followed as niri's windows change. Read when a row is
-    // drawn or run, so a window opening never prepares every program again.
-    // A browser's window of its own opened deeper than its program's own
-    // page is that program's too (BrowserWindows.js).
-    readonly property var running: {
-        void Niri.revision;
+    // last first, as the windows daemon says them (modules/windows), which
+    // names each window's owner: its entry, or for a browser's window of
+    // its own opened deeper than its program's own page, that program.
+    // Read when a row is drawn or run, so a window opening never prepares
+    // every program again. Heard only while it's wanted: every event niri
+    // sent once walked all of Joel's windows here, launcher shut or open
+    // (2026-11-10).
+    property var running: ({})
+    readonly property var windowsHeld: HeldWindows.kept()
+    readonly property var windowsDaemon: daemon
+
+    Daemon {
+        id: daemon
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/windows.sock`
+        kind: "window"
+        live: provider.wanted
+        paced: provider.launcher
+        answersWhole: true
+        onHeard: (changed, gone) => provider.hearWindows(changed, gone)
+    }
+
+    // Takes what the daemon said, and lists each program's windows again
+    // only when a window's record differs, so a whole answer as the
+    // launcher opens that reads the same changes nothing.
+    function hearWindows(changed, gone) {
+        provider.tally.looked += changed.length + gone.length;
+        const held = provider.windowsHeld;
+        const records = changed.map(key => daemon.held[key]).filter(record => record);
+        if (HeldWindows.take(held, records, gone).length === 0 && gone.length === 0)
+            return;
         const by = {};
-        for (const window of Object.values(Niri.windows)
-            .sort((a, b) => provider.focusedAt(b) - provider.focusedAt(a))) {
-            const entry = window.app_id ? (DesktopEntries.heuristicLookup(window.app_id)
-                ?? BrowserWindows.ownerOf(window.app_id, DesktopEntries.applications.values)) : null;
-            if (entry)
-                (by[entry.id] ?? (by[entry.id] = [])).push(window);
+        for (const key of held.order) {
+            const owner = held.records[key].owner;
+            if (owner !== null)
+                (by[owner] ?? (by[owner] = [])).push(held.windows[key]);
         }
-        return by;
+        provider.running = by;
     }
 
     // When a window was last looked at, in nanoseconds, or 0 for never.

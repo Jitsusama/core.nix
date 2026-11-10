@@ -34,6 +34,7 @@ import QtQuick
 import "launcher" as Launcher
 import "launcher/Mpv.js" as Mpv
 import "Copied.js" as Copying
+import "HeardWindows.js" as HeardWindows
 
 ShellRoot {
     id: root
@@ -179,7 +180,8 @@ ShellRoot {
         root.waiting = "mpv's files";
         try {
             sums();
-            Niri.revision += 1;
+            HeardWindows.told(applications.windowsDaemon, Niri.windows,
+                id => DesktopEntries.heuristicLookup(id), Niri.current);
             theLauncher.open = true;
             program("mpv").verbs();
             counted.reload();

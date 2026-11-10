@@ -250,6 +250,7 @@
         warp = ./modules/warp/home.nix;
         wezterm = moduleFrom ./modules/wezterm/home.nix { inherit wallpapers; };
         wifid = ./modules/wifid/home.nix;
+        windows = ./modules/windows/home.nix;
         yq = ./modules/yq/home.nix;
         yubikey-signing = ./modules/yubikey-signing/home.nix;
         yubikey-spare = ./modules/yubikey-spare/home.nix;

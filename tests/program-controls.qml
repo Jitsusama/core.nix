@@ -57,6 +57,7 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import "launcher" as Launcher
+import "HeardWindows.js" as HeardWindows
 
 ShellRoot {
     id: root
@@ -342,7 +343,7 @@ ShellRoot {
             "23": { id: 23, app_id: "browser", title: "Left out - Browser", workspace_id: 1,
                 focus_timestamp: { secs: 200, nanos: 0 } }
         });
-        Niri.revision += 1;
+        windowsChanged();
         theLauncher.open = false;
         theLauncher.open = true;
         same("sites aren't read before their program is stepped into",
@@ -483,7 +484,7 @@ ShellRoot {
             "35": { id: 35, app_id: "org.example.terminal", pid: 6060, title: "more notes",
                 workspace_id: 1, focus_timestamp: { secs: 200, nanos: 0 } }
         });
-        Niri.revision += 1;
+        windowsChanged();
         root.waiting = "the viewer";
         program("org.example.viewer").verbs();
         // What it has open was read as it was stepped into before, and
@@ -555,6 +556,13 @@ ShellRoot {
         onTriggered: root.fail(`never came: ${root.waiting}`)
     }
 
+    // niri's windows changed, told to Applications as the windows daemon
+    // tells it.
+    function windowsChanged() {
+        HeardWindows.told(applications.windowsDaemon, Niri.windows,
+            id => DesktopEntries.heuristicLookup(id), Niri.current);
+    }
+
     function program(id) {
         return applications.things.find(row => row.key === `program:${id}`);
     }
@@ -582,7 +590,7 @@ ShellRoot {
         root.waiting = "the cases";
         // The windows are matched to programs as niri's change, and these
         // were there before the entries were read.
-        Niri.revision += 1;
+        windowsChanged();
         try {
             // The launcher says Programs was stepped into, as it does.
             applications.opened();
@@ -834,13 +842,13 @@ ShellRoot {
                 "13": { id: 13, app_id: "quiet", pid: 4242, title: "Quiet", workspace_id: 1,
                     focus_timestamp: { secs: 50, nanos: 0 } }
             });
-            Niri.revision += 1;
+            windowsChanged();
             lately[0].run();
             same("with one open, through the process behind it", JSON.stringify(Niri.spawned),
                 JSON.stringify(["quiet", "@", "--to", "unix:@quiet-4242", "launch",
                     `${root.home}/src/core.nix`]));
             Niri.windows = before;
-            Niri.revision += 1;
+            windowsChanged();
 
             const radio = program("radio").verbs();
             same("a player found by its identity, and a program recording", names(radio),

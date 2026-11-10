@@ -104,11 +104,6 @@
     starts, its version and package, and its command, window class, desktop id and store path
     last, from the programs daemon's record of its entry, leaving out what it can't say
   '';
-  a-browser-window-deeper-in-is-its-programs = ''
-    a browser's window of its own opened deeper than its program's own page is that program's, by the
-    longest page of the same host and profile, never another program's on that host nor another
-    profile's
-  '';
   a-prompt-waits-for-a-person = ''
     a D-Bus call from the account's shells, as run0 asks for polkit's prompt in, outlasts systemd's
     25 seconds
@@ -2327,6 +2322,11 @@
     went on slowest first, and weighs the foot's room for Return's verbs again only once the
     words file or the face has changed
   '';
+  the-launcher-places-each-window-it-hears = ''
+    the windows the windows daemon tells of are kept the one used last first, each a change names
+    placed where its order puts it without sorting the rest, the same record again changing
+    nothing, and a window gone let go
+  '';
   the-launcher-plays-from-spotify = ''
     Spotify's program in the launcher reads Spotify only as it's stepped into, once an opening,
     and holds its Recent, newest first, each row timed and noting its kind and size, and Liked
@@ -2423,8 +2423,9 @@
     now stands
   '';
   the-launcher-remakes-only-the-windows-that-changed = ''
-    the launcher's windows list This Window, then the rest the one used last first, and when the
-    focus moves make again only the rows of the windows it moved between, a renamed one too, as
+    the launcher's windows, as the windows daemon tells of them, list This Window, then the rest
+    the one used last first, and when the focus moves make again only the rows of the windows it
+    moved between, a renamed one too, the same whole answer again none and a closed one going, as
     Capture's rows of the windows do
   '';
   the-launcher-says-the-page-zathura-is-on = ''
@@ -3619,6 +3620,21 @@
   wifid-sign-in-reads-its-network = ''
     the sign-in window's tests pass: its proxy lets on only the window, and it follows which card
     wants a sign-in
+  '';
+  windows-hears-niris-windows = ''
+    the windows daemon says each window niri describes named by its program and placed as its row
+    says it, the one used last first; tells a watch only the window a retitle changed and those it
+    reads alike with, only the two windows a focus moved between, and nothing for a resize or the
+    launcher taking the keys; says a window closed as gone, names a window's program again once an
+    entry is added, describes the desktop again once niri is gone and back, and refuses an ask or
+    a kind it doesn't know
+  '';
+  windows-passes-clippy = ''
+    clippy finds nothing in the windows daemon or its tests
+  '';
+  windows-runs-beside-the-shell = ''
+    the shell brings the windows daemon, on the daemons' socket, which systemd holds whether or not
+    it runs, restarted by a switch
   '';
   without-syncfs-passes-clippy = ''
     clippy finds nothing in without-syncfs or its tests
