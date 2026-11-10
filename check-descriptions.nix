@@ -2279,8 +2279,9 @@
     boot, and says each as the agent source contract's record, leaving out what pi didn't say
   '';
   pi-sorts-without-collecting = ''
-    pi's sessions, as many and as large as Joel's, each changing its step with the launcher shut,
-    start a garbage collection in fewer than one change in five, told apart without text
+    pi's sessions, as many and as large as Joel's, each changing its step with the launcher shut
+    and then showing, start a garbage collection in fewer than one change in five, sorted and
+    lived again without text
   '';
   the-launcher-says-every-machine-of-the-realm = ''
     Machines says every machine of the realms this one links, this one first, each in words with how
