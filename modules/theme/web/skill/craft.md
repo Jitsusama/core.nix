@@ -100,6 +100,12 @@ narrow and the theme's 1.25 wide, in `rem` so zoom works.
 | `--step-display` | 53.7 to 76.3 | 44.8 to 61 |
 | `--step-hero` | 77.4 to 119.2 | 64.5 to 95.4 |
 
+On a page to read, no prose is under 15 px on screen, `--step-small` at
+its narrowest: a card's aside, a footnote, a table's head, a strip of
+labels or a slide's number takes the step, not a fraction of it. Only
+mono runs sit smaller, at 0.85 em, so code matches the serif beside it.
+The probe holds this at every width.
+
 Each step's largest is under 2.5 times its smallest, which keeps 200% zoom
 growing text (WCAG 1.4.4). Leading is unitless, 1.5 to 1.6 for reading and
 1.33 to 1.4 for rows, and nothing has a fixed height, so a reader's own
@@ -378,6 +384,33 @@ const mod = mac ? "⌘" : "Ctrl";
   facts for a complex one.
 - **Ornament is drawn the same way**: strokes in `--tint` at 1 to 1.2 px, never
   filled, drawn in once with `pathLength` when it arrives.
+
+## A Deck
+
+A talk kept as slides is a page to read that a big screen shows one slide
+at a time.
+
+- **A deck only where it reads.** It runs as slides only at a window
+  large enough that, scaled to fit, no prose falls under 15 px,
+  found by measuring rather than guessed (git's runs from 1240 by 790 px).
+  Below that it reads as one page in normal flow, with nothing scaled.
+- **Its software is the site's own.** The deck's script and the kit's fonts
+  come from the deploy, never another server, with transitions off under
+  reduced motion.
+- **Each figure has two forms**: the drawing for the deck, and for the page
+  either the drawing again narrow or, when it's only boxes in a row, a
+  list or a table. A container query shows one and sets the other to
+  `display: none`, so a reader hears it once, in the same words.
+- **Its keys are Vim's**, as the deck's own already are: the key line says
+  "h and l step from slide to slide"; Keys lists h j k l, Space, the
+  overview, the speaker's view and full screen, and Escape closing Keys
+  leaves the overview shut. q does nothing.
+- **It is dated as a record**: one muted "A talk, as of" line on its title
+  slide, from its last change, and its twin is the slides with what's said
+  over each.
+- **Its controls and progress are text too**: the slide's number, a strip
+  naming its acts and the arrows sit in one band off the slides, at
+  `--step-small` and 4.5:1, covering nothing.
 
 ## Live Data, Still
 

@@ -26,7 +26,8 @@ through axe-core and its own console.
    the Keys list (on the page, or opened by ? and shut by Escape with focus
    back where it was), the switch, the skip link, the twin, a figure for
    each part that explains, a drawing's labels at 12 px or larger on
-   screen (so run it at 320 px too), and the writing's guard (no emdash,
+   screen and a page's prose at 15 px or larger (so run it at
+   320 px too), and the writing's guard (no emdash,
    no Unicode ellipsis, Canadian spelling, nothing private). It passes on
    an empty list. A part with nothing to picture gets `data-figure="why"` on its
    section, the reason in words; never one to quiet the probe, and never a

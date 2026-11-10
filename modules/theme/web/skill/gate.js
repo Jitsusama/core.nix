@@ -236,6 +236,49 @@
     }
   }
 
+  // A page to read sets no prose under 15 px on screen, the kit's
+  // smallest step at its narrowest: a card's aside or a strip's labels
+  // shrunk to fit is the same fault as a drawing's. It's measured through
+  // any transform (a deck scaled to fit). Mono runs (code, keys, figures)
+  // sit at 0.85 em by the kit's own optical match, and a superscript is a
+  // mark, so neither counts.
+  if (toRead && main !== null) {
+    const least = 15;
+    const probe = document.createElement("span");
+    probe.style.fontFamily = "var(--mono, monospace)";
+    main.append(probe);
+    const mono = getComputedStyle(probe).fontFamily;
+    probe.remove();
+    const isMono = (element) =>
+      getComputedStyle(element).fontFamily === mono ||
+      element.closest("code, kbd, samp, pre, .mono, .figure, sup, sub, svg") !== null;
+    const set = new Set();
+    const prose = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
+    for (let text = prose.nextNode(); text !== null; text = prose.nextNode()) {
+      if (text.textContent.trim() !== "" && text.parentElement !== null) {
+        set.add(text.parentElement);
+      }
+    }
+    let small = null;
+    for (const element of set) {
+      if (shown(element) && !isMono(element) && element.offsetWidth > 0) {
+        const box = element.getBoundingClientRect();
+        const size =
+          Number.parseFloat(getComputedStyle(element).fontSize) * (box.width / element.offsetWidth);
+        if (size < least - 0.5 && (small === null || size < small.size)) {
+          small = { element, size };
+        }
+      }
+    }
+    if (small !== null) {
+      const words = small.element.textContent.trim().replace(/\s+/g, " ");
+      missing.push(
+        `prose set at ${small.size.toFixed(1)} px ("${words.slice(0, 40)}"), under ` +
+          `${least.toFixed(1)} px: set it in --step-small or larger`,
+      );
+    }
+  }
+
   // The writing's guard, over every word a reader reads (code, keys and
   // samples are names, not prose): no emdash or Unicode ellipsis, Canadian
   // spelling, and nothing private that an agent's work left behind. It reads
