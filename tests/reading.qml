@@ -1,8 +1,9 @@
 // How a long name slides, how words too long for their room give way, and
 // how the field's path shares its room, a folder's path giving way first,
 // run in Qt's own JavaScript engine, the one the shell runs it in. The `a-long-name-reads-at-one-pace` check copies
-// Reading.js beside this file and runs `qml -platform offscreen reading.qml`.
+// Reading.js and Measures.js beside this file and runs `qml -platform offscreen reading.qml`.
 import QtQuick
+import "Measures.js" as Measures
 import "Reading.js" as Reading
 
 QtObject {
@@ -18,6 +19,11 @@ QtObject {
 
     // Close enough, for sums of fractions.
     readonly property real near: 1e-9
+    // A face as the shell's rows measure in.
+    property FontMetrics face: FontMetrics {
+        font.pointSize: 11
+        font.features: { "tnum": 1 }
+    }
 
     function run() {
         const failures = [];
@@ -363,6 +369,52 @@ QtObject {
             noteWords);
         const noNote = Reading.noteFitted("a password", 5, tenEach);
         expect("a note whose first word won't fit isn't said", noNote === "", noNote);
+        // A row's words are measured once in a face, whichever opening
+        // asks, since each opening made its rows anew and measured every
+        // cut of their words again, about a tenth of an opening's thread
+        // on the laptop (2026-11-10).
+        const measuring = [];
+        const metrics = size => ({
+            font: { family: "Inter", pointSize: size, weight: 400, italic: false },
+            advanceWidth: words => {
+                measuring.push(`${size} ${words}`);
+                return words.length * size;
+            }
+        });
+        const opening = () => Reading.wholeWords(missed, 230, Measures.measurer(metrics(10)));
+        const first = opening();
+        const firstAsked = measuring.length;
+        const second = opening();
+        expect("a row's words measured once across two openings",
+            firstAsked > 0 && measuring.length === firstAsked, measuring);
+        expect("and cut as they were", first === "Open-Meteo didn't\u2026"
+            && second === first, [first, second]);
+        // A fit kept in one room is never read in another.
+        const narrower = Reading.wholeWords(missed, 170, Measures.measurer(metrics(10)));
+        expect("another room fitted anew", narrower === "Open-Meteo\u2026", narrower);
+        // With a pixel to spare, as Qt elides, it's rounded up and kept
+        // apart from the face's own widths.
+        const spared = Measures.measurer(metrics(10), true)("abc");
+        const unspared = Measures.measurer(metrics(10))("abc");
+        expect("a pixel to spare kept apart", spared === 31 && unspared === 30,
+            [spared, unspared]);
+        // Another size is another face, measured anew.
+        const larger = Measures.measurer(metrics(12))(missed);
+        expect("another size measured in its own face", larger === missed.length * 12
+            && measuring[measuring.length - 1] === `12 ${missed}`, [larger, measuring.length]);
+        // At most a few thousand are kept, the oldest let go first.
+        const tens = Measures.measurer(metrics(10));
+        for (let at = 0; at < Measures.MEASURES_KEPT; at += 1)
+            tens(`word ${at}`);
+        const before = measuring.length;
+        tens(missed);
+        tens(`word ${Measures.MEASURES_KEPT - 1}`);
+        expect("the oldest let go, the newest kept", measuring.length === before + 1,
+            measuring.slice(before));
+        // A real face measures as its own metrics do.
+        const real = Measures.measurer(face)(missed);
+        expect("a real face's widths as its metrics say", real === face.advanceWidth(missed),
+            [real, face.advanceWidth(missed)]);
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(failure);
