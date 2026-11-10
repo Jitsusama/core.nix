@@ -149,11 +149,34 @@ pub struct Seen {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Ours {
     pub queued: bool,
+    /// Whether the only queue that stood was a VPN's riding the link,
+    /// which sends at most its share of the link's rate.
+    pub in_vpn: bool,
     pub waiting: bool,
     /// What TCP sent again over the last second, in kbit/s. A router held
     /// past what it carries drops the rest flow by flow, and what it
     /// dropped crosses our link twice, so it's no part of the line.
     pub resent: u64,
+}
+
+impl Ours {
+    /// Whose the upload's queue was, from how many reads of the link's
+    /// CAKE and of the VPNs' riding it found a queue, of how many read:
+    /// one held in most reads stood. None before anything was read.
+    pub fn from_reads(
+        link: (u32, u32),
+        vpn: (u32, u32),
+        waiting: bool,
+        resent: u64,
+    ) -> Option<Self> {
+        let stood = |(queued, reads): (u32, u32)| reads > 0 && queued * 2 >= reads;
+        (link.1 > 0).then_some(Self {
+            queued: stood(link) || stood(vpn),
+            in_vpn: stood(vpn) && !stood(link),
+            waiting,
+            resent,
+        })
+    }
 }
 
 /// One direction's rate.
@@ -286,10 +309,18 @@ impl Way {
         let Some(plateau) = self.plateau else {
             return false;
         };
+        // A VPN riding the link sends at most its share of the link's rate,
+        // so what it holds is judged by that, and a probe lifts the VPN past
+        // the line held rather than only the link.
+        let share = if ours.in_vpn {
+            crate::qdisc::VPN_SHARE
+        } else {
+            1.0
+        };
         match self.probing_until {
             Some(until) if at >= until => {
                 self.probing_until = None;
-                if ours.queued && through >= self.rate * UNDER {
+                if ours.queued && through >= self.rate * share * UNDER {
                     // The link carried the higher rate with CAKE still
                     // holding a queue, so there is room past it: keep it,
                     // and look higher at once.
@@ -301,7 +332,7 @@ impl Way {
                 }
             }
             None if at >= self.next_probe && ours.waiting => {
-                self.rate = plateau * PROBE_UP;
+                self.rate = plateau * PROBE_UP / share;
                 self.probing_until = Some(at + PROBE_S);
                 self.elsewhere = None;
             }
@@ -656,6 +687,17 @@ impl crate::replay::Controller for Controller {
 mod tests {
     use super::*;
     use crate::replay::{self, Base, Stay};
+
+    #[test]
+    fn a_vpn_s_queue_is_ours_and_said_to_be_its() {
+        let vpn = Ours::from_reads((0, 5), (4, 5), true, 0);
+        assert_eq!(vpn.map(|o| (o.queued, o.in_vpn)), Some((true, true)));
+        let link = Ours::from_reads((3, 5), (4, 5), true, 0);
+        assert_eq!(link.map(|o| (o.queued, o.in_vpn)), Some((true, false)));
+        let none = Ours::from_reads((1, 5), (0, 0), true, 0);
+        assert_eq!(none.map(|o| (o.queued, o.in_vpn)), Some((false, false)));
+        assert_eq!(Ours::from_reads((0, 0), (5, 5), true, 0), None);
+    }
 
     #[test]
     fn a_replayed_queue_is_cut_with_cause_and_an_idle_connection_isnt_held_low() {
@@ -1194,6 +1236,64 @@ mod tests {
         );
     }
 
+    /// Steps a controller whose link carries everything through a VPN, as
+    /// WARP does: the VPN sends at its share of the link's rate, the link
+    /// carries that up to the line, and the queue is the VPN's, ours, only
+    /// while the VPN's rate is under the line. Answers the VPN's median
+    /// rate over the last minute, probes and all.
+    fn behind_a_vpn(c: &mut Controller, to: f64, line: impl Fn(f64) -> f64) -> f64 {
+        let mut sent = Vec::new();
+        let mut at = 0.0;
+        while at < to {
+            let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
+            let vpn = rate * crate::qdisc::VPN_SHARE;
+            if at >= to - 60.0 {
+                sent.push(vpn);
+            }
+            let line = line(at);
+            c.step(&Seen {
+                at_s: at,
+                up_kbit: vpn.min(line),
+                up_ours: Some(Ours {
+                    queued: vpn < line,
+                    in_vpn: vpn < line,
+                    waiting: true,
+                    ..Ours::default()
+                }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            at += 0.1;
+        }
+        sent.sort_by(f64::total_cmp);
+        sent[sent.len() / 2]
+    }
+
+    // Held under the line, the link leaves what goes round the VPN its
+    // room, so the VPN sends its share of the hold: about 0.85 of the line.
+    #[test]
+    fn behind_a_vpn_its_queue_is_held_under_the_line_and_no_lower() {
+        let mut c = Controller::new(None, None);
+        let vpn = behind_a_vpn(&mut c, 150.0, |_| 12_000.0);
+        assert!(
+            (9_800.0..=11_000.0).contains(&vpn),
+            "the VPN sent at {vpn} on a 12000 line"
+        );
+    }
+
+    #[test]
+    fn behind_a_vpn_a_probe_that_finds_more_room_climbs_to_it() {
+        let mut c = Controller::new(None, None);
+        let vpn = behind_a_vpn(
+            &mut c,
+            300.0,
+            |at| if at < 30.0 { 12_000.0 } else { 20_000.0 },
+        );
+        assert!(
+            (16_000.0..=17_500.0).contains(&vpn),
+            "the VPN sent at {vpn} on a 20000 line"
+        );
+    }
+
     #[test]
     fn a_line_falling_under_what_it_held_is_followed_down() {
         let mut c = Controller::new(None, None);
@@ -1234,6 +1334,7 @@ mod tests {
                         queued: rate < line,
                         waiting: true,
                         resent,
+                        ..Ours::default()
                     }),
                     ..quiet(0.0, 300.0)(at)
                 })
