@@ -24,3 +24,41 @@ function scale(wide, tall, points, cell) {
     const fill = size(points);
     return Math.min(fill / Math.sqrt(wide * tall), fill / tall, cell / wide);
 }
+
+// Each glyph's ink as Mark.qml measured it, by its face, size and text
+// (`key`), so a glyph is measured once and every row shown with it after
+// reads what was found. Measuring is most of what a row costs to show
+// anew: a row handed new words measured its glyph again at eight times its
+// size and traced its outline, about 40% of a row's rebinding offscreen
+// (2026-11-10). Kept for as long as the shell runs; it holds one entry for
+// each glyph a mark has shown, a few hundred at most. Nothing reads it to
+// be notified, so keeping in it changes no binding.
+const measures = {};
+
+// What was found of `key`'s glyph, or null while it's yet to be measured.
+function known(key) {
+    return measures[key] ?? null;
+}
+
+// The faces found among `families()`, every face the shell can draw in, so
+// they're asked for only until a face is there: asking takes a quarter of a
+// millisecond offscreen, and a mark is made for every row the launcher
+// makes.
+const held = {};
+
+// Whether `family` is there to draw in.
+function faceHeld(family, families) {
+    if (held[family] !== true && families().includes(family)) {
+        held[family] = true;
+    }
+    return held[family] === true;
+}
+
+// `measure`, kept as `key`'s when `whole`: when the face drawn is the one
+// asked for, not one standing in while it loads. Mark.qml gives it only
+// once the outline is traced from the glyph, which comes after the box.
+function measured(key, measure, whole) {
+    if (whole && measure.outline > 0) {
+        measures[key] = measure;
+    }
+}

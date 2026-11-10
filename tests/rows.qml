@@ -26,7 +26,8 @@
 // view, relative to the cursor row's absolute one in text, or all absolute,
 // right-aligned on each row's baseline, from a handful of numbers however
 // many rows there are, and none at all off normal. A row's mark, whatever
-// its shape, stands at one optical size, its ink on the capitals' middle. A
+// its shape, stands at one optical size, its ink on the capitals' middle,
+// and its glyph is measured once, however many rows show it after. A
 // status line's dot before Return goes with Return, the room held for a
 // wider word before it. A side of items on the cursor row says its words
 // in the row's ink and the dots between them muted. It exits 0 once every
@@ -300,6 +301,9 @@ ShellRoot {
                     }
                 }
             }
+            // A row handed a glyph another row has shown, as a row the
+            // launcher keeps is handed new words.
+            Choice { id: rehanded; width: 160; name: "Keyboard"; glyph: "$" }
             // A collection's count at its right, before its chord.
             Choice { id: countedChord; width: root.panel; name: "Agents"; side: "12"
                 chord: [{ text: "Super" }, { text: "0" }]; glyph: "$" }
@@ -661,6 +665,22 @@ ShellRoot {
                 Math.abs(middle - capsMiddle) <= 0.5,
                 `${shown}, middle ${middle} against ${capsMiddle}`);
         }
+    }
+
+    // A glyph is measured once: a row handed one already shown measures
+    // nothing, and its mark stands as the first row's does.
+    function markRehanded() {
+        const markOf = row => row.children.find(child => child.text === row.glyph);
+        rehanded.glyph = Theme.glyph.keyboard;
+        const first = markOf(marks.children[0]);
+        const again = markOf(rehanded);
+        const stands = mark => mark ? { measuring: mark.measuring, size: mark.font.pointSize,
+            y: mark.y, across: mark.inkCentre - mark.x } : null;
+        const shown = `${JSON.stringify(stands(again))} against ${JSON.stringify(stands(first))}`;
+        expect("a glyph already shown is measured no more", again?.measuring === "", shown);
+        expect("and its mark stands as the one measured did", first && again
+            && again.font.pointSize === first.font.pointSize && again.y === first.y
+            && again.inkCentre - again.x === first.inkCentre - first.x, shown);
     }
 
     // A row with a chord says its count at its right before it, joined as
@@ -1292,6 +1312,7 @@ ShellRoot {
             typing.narrowed = "";
             root.gutterHolds();
             root.marksHold();
+            root.markRehanded();
             root.countBeforeChord();
             root.sayHolds();
             root.noteHolds();
