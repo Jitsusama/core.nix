@@ -252,6 +252,7 @@ mod tests {
             Ours {
                 queued: false,
                 waiting: true,
+                ..Ours::default()
             },
         );
         for line in &lines {

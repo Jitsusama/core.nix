@@ -230,12 +230,14 @@ impl Shaped {
     }
 
     /// Whose the upload's queue has been since last asked: whether CAKE
-    /// held one in most reads, and whether data waits to go.
-    fn ours(&mut self, waiting: bool) -> Option<oneway::Ours> {
+    /// held one in most reads, whether data waits to go, and what TCP
+    /// sent again, in kbit/s.
+    fn ours(&mut self, waiting: bool, resent: u64) -> Option<oneway::Ours> {
         let (queued, reads) = std::mem::take(&mut self.queued_reads);
         (reads > 0).then_some(oneway::Ours {
             queued: queued * 2 >= reads,
             waiting,
+            resent,
         })
     }
 
@@ -492,6 +494,7 @@ fn run(options: &Options) -> ExitCode {
     // turn is read at every step.
     let mut sessions = Vec::new();
     let mut last_sessions: Option<Instant> = None;
+    let mut last_resent: Option<(u64, Instant)> = None;
     let mut quiet: BTreeMap<String, quiet::Quiet> = BTreeMap::new();
     let mut live = options
         .one_way
@@ -533,8 +536,9 @@ fn run(options: &Options) -> ExitCode {
             // router that queues flow by flow.
             if let Some(l) = live.as_mut() {
                 let waiting = waiting::read(&options.proc);
+                let resent = resent_kbit(&mut last_resent, waiting::resent(&options.proc), now);
                 for (name, s) in &mut shaped {
-                    if let Some(ours) = s.ours(waiting) {
+                    if let Some(ours) = s.ours(waiting, resent) {
                         l.see(name, ours);
                     }
                 }
@@ -894,7 +898,7 @@ fn hold(s: &mut Shaped, rates: replay::Rates) {
     let name = &s.uplink.name;
     if limited && !s.told {
         eprintln!(
-            "{name}: a direction's own delay stood, so the link is held to {} up and {} down",
+            "{name}: a queue past CAKE was taken back, so the link is held to {} up and {} down",
             mbit(up),
             mbit(down)
         );
@@ -1023,6 +1027,33 @@ fn write_status(runtime: &Path, shaped: &BTreeMap<String, Shaped>) {
     {
         eprintln!("couldn't write {}", path.display());
     }
+}
+
+/// A segment TCP sends again, in bytes: a bulk upload's are full, an
+/// Ethernet frame's worth, and Wi-Fi's are the same size.
+const SEGMENT_BYTES: u64 = 1_500;
+
+/// What TCP sent again since `last`, in kbit/s, from the kernel's count of
+/// segments. The count is the machine's, not a link's: the upload that
+/// fills one link is what resends, and the rest is a trickle.
+fn resent_kbit(last: &mut Option<(u64, Instant)>, now_count: Option<u64>, now: Instant) -> u64 {
+    let Some(count) = now_count else {
+        return 0;
+    };
+    let kbit = last.map_or(0, |(then, at)| {
+        let seconds = (now - at).as_secs_f64().max(0.001);
+        let bits = count.saturating_sub(then) * SEGMENT_BYTES * 8;
+        // A few hundred thousand kbit/s at most.
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "a positive rate far under u64's range"
+        )]
+        let kbit = (float(bits) / 1_000.0 / seconds).round() as u64;
+        kbit
+    });
+    *last = Some((count, now));
+    kbit
 }
 
 fn mbit(kbit: u64) -> String {

@@ -392,11 +392,20 @@ mod tests {
 
     #[test]
     fn a_queue_is_something_waiting_in_cake_or_a_packet_it_dropped() {
-        assert!(queued(Some((0, 13)), (4542, 13)));
-        assert!(queued(Some((0, 13)), (0, 14)));
-        assert!(!queued(Some((0, 13)), (1514, 13)));
+        assert!(
+            queued(Some((0, 13)), (4542, 13)),
+            "a backlog wasn't a queue"
+        );
+        assert!(queued(Some((0, 13)), (0, 14)), "a drop wasn't a queue");
+        assert!(
+            !queued(Some((0, 13)), (1514, 13)),
+            "one packet passing was a queue"
+        );
         // Queues made again count from nothing.
-        assert!(!queued(None, (0, 14)));
+        assert!(
+            !queued(None, (0, 14)),
+            "fresh queues' first count was a queue"
+        );
     }
 
     #[test]

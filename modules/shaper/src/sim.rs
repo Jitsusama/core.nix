@@ -488,6 +488,7 @@ fn flow_queued(shaped: bool) -> (f64, f64) {
                 up_ours: Some(Ours {
                     queued,
                     waiting: true,
+                    ..Ours::default()
                 }),
             });
             rate = limits.up.map_or(f64::INFINITY, float);

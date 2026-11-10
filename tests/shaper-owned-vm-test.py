@@ -62,6 +62,34 @@ class Rig:
         status: list[Json] = json.loads(self.client.succeed("cat /run/shaper/status.json"))
         return next((int(link.get("up") or 0) for link in status if link["name"] == "eth1"), 0)
 
+    def trace(self) -> str:
+        """Give what the recorder saw each second, and what the shaper said, for a failure.
+
+        Each second's upload, in kbit/s, from the link's counters, and the median of its
+        own delays up, in ms, as the controller reads them before taking each
+        reflector's least off.
+        """
+        text = self.client.succeed("cat /var/lib/shaper-record/*.jsonl")
+        seconds: dict[int, tuple[list[int], list[float]]] = {}
+        for line in text.splitlines():
+            sample: Json = json.loads(line)
+            if "tx" not in sample:
+                continue
+            sent, delays = seconds.setdefault(sample["at"] // 1000, ([], []))
+            sent.append(sample["tx"])
+            if "out" in sample:
+                delays.append(sample["out"])
+        rows = []
+        last = None
+        for second, (sent, delays) in sorted(seconds.items()):
+            kbit = (max(sent) - last) * 8 // 1000 if last is not None else 0
+            last = max(sent)
+            median = sorted(delays)[len(delays) // 2] if delays else None
+            rows.append(f"{second % 1000:03d} {kbit:6d} kbit/s up, out {median}")
+        said = self.client.succeed("journalctl -u shaper -o cat --no-pager")
+        status = self.client.succeed("cat /run/shaper/status.json")
+        return "\n".join([*rows, said, status])
+
     def taken(self) -> dict[int, int]:
         """Give the bytes the server has taken on each port."""
         rules: Json = json.loads(self.server.succeed("nft -j list chain inet seen input"))
@@ -130,14 +158,23 @@ def loaded(rig: Rig) -> Rig:
     only taking it back brings the shaper's rate under the line.
     """
     rig.uploads("uploads", "jobs.slice", JOBS, JOBS_PORT)
-    retry(lambda _last_try: 0 < rig.up() < LINE, timeout=TAKING)
+
+    def taken_back(last_try: bool) -> bool:
+        up = rig.up()
+        if last_try and not 0 < up < LINE:
+            print(f"never under the line, at {up} kbit/s:\n{rig.trace()}")
+        return 0 < up < LINE
+
+    retry(taken_back, timeout=TAKING)
     return rig
 
 
 def test_an_app_outruns_the_jobs(loaded: Rig) -> None:
     """With the shaper, an app's one upload gets most of the connection beside the 32 jobs'."""
     share = loaded.app_share()
-    assert share > SHAPED_SHARE, f"the app got {share:.2f} of the line at {loaded.up()} kbit/s"
+    assert share > SHAPED_SHARE, (
+        f"the app got {share:.2f} of the line at {loaded.up()} kbit/s:\n{loaded.trace()}"
+    )
 
 
 def test_unshaped(loaded: Rig) -> None:

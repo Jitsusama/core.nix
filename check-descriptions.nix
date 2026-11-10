@@ -2932,6 +2932,11 @@
     and isn't recorded once rejoined; a call holds logind's lock against going idle while it's
     on, transcribed or not, and lets go once it ends
   '';
+  vm-a-hidden-queue-is-taken-back = ''
+    behind a router sharing 8 Mbit/s flow by flow under fq_codel, which delays no probe, the
+    one-way controller takes the queue back under it, and an app's one upload gets over half the
+    connection beside 32 of the jobs'; without the shaper it gets under a fifth
+  '';
   vm-a-microphone-is-noise-cancelled = ''
     a microphone in Joel's PipeWire is offered a second time as "its name, Noise Cancelled",
     heard only while something records from that one and with no model loaded before; recorded
@@ -3381,11 +3386,6 @@
     again keeps its class; the client's own network isn't slowed; inside a WireGuard VPN the same
     classes reach the VPN's own CAKE; the queues follow the default route, a link unplugged and
     plugged back in is shaped afresh both ways, udev sets nothing on the IFBs, and they go when the shaper stops
-  '';
-  vm-the-router-hides-no-queue = ''
-    behind a router sharing 8 Mbit/s flow by flow under fq_codel, which delays no probe, the
-    one-way controller takes the queue back under it, and an app's one upload gets over half the
-    connection beside 32 of the jobs'; without the shaper it gets under a fifth
   '';
   vm-updates-itself-to-signed-main = ''
     an account in update-ask updates the machine to signed main with a real switch, reads how it

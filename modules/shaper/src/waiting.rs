@@ -8,6 +8,9 @@
 //! acknowledged, in flight or still to send, wants more than the link
 //! gives it. Connections to this network's own machines, and to
 //! Tailscale's, never reach CAKE, so they count for nothing.
+//!
+//! What TCP sends again is read here too, since a router held past what
+//! it carries drops the rest, and what it dropped crosses the link twice.
 
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -70,6 +73,25 @@ fn address(field: &str) -> Option<IpAddr> {
     }
 }
 
+/// The segments TCP has sent again since the machine started, from
+/// `/proc/net/snmp` under `proc`.
+pub fn resent(proc: &Path) -> Option<u64> {
+    fs::read_to_string(proc.join("net/snmp"))
+        .ok()
+        .and_then(|text| resent_in(&text))
+}
+
+/// The `RetransSegs` count in the kernel's SNMP text, whose TCP lines are
+/// a line of names and then a line of values.
+fn resent_in(snmp: &str) -> Option<u64> {
+    let mut tcp = snmp.lines().filter(|line| line.starts_with("Tcp:"));
+    let (names, values) = (tcp.next()?, tcp.next()?);
+    let at = names
+        .split_whitespace()
+        .position(|name| name == "RetransSegs")?;
+    values.split_whitespace().nth(at)?.parse().ok()
+}
+
 /// Whether an address is past the network this machine is on.
 fn distant(ip: IpAddr) -> bool {
     match ip {
@@ -109,15 +131,15 @@ mod tests {
 
     #[test]
     fn an_upload_with_data_waiting_to_a_distant_address_is_waiting() {
-        // 23.227.37.20, the model gateway, as the table writes it.
-        let table = format!("{HEADER}\n{}", line("1425E317", "01", 150_000));
-        assert!(waiting(&table));
+        // 9.9.9.9, a public resolver, as the table writes it.
+        let table = format!("{HEADER}\n{}", line("09090909", "01", 150_000));
+        assert!(waiting(&table), "150 KB unacknowledged wasn't waiting");
     }
 
     #[test]
     fn a_little_unacknowledged_is_a_reply_trickling_out() {
-        let table = format!("{HEADER}\n{}", line("1425E317", "01", 20_000));
-        assert!(!waiting(&table));
+        let table = format!("{HEADER}\n{}", line("09090909", "01", 20_000));
+        assert!(!waiting(&table), "20 KB unacknowledged counted as waiting");
     }
 
     #[test]
@@ -129,18 +151,27 @@ mod tests {
             line("0100007F", "01", 900_000),
             line("67666564", "01", 900_000)
         );
-        assert!(!waiting(&table));
+        assert!(!waiting(&table), "a nearby address counted as waiting");
     }
 
     #[test]
     fn a_listening_socket_isnt_a_connection() {
-        let table = format!("{HEADER}\n{}", line("1425E317", "0A", 900_000));
-        assert!(!waiting(&table));
+        let table = format!("{HEADER}\n{}", line("09090909", "0A", 900_000));
+        assert!(!waiting(&table), "a listening socket counted as waiting");
+    }
+
+    #[test]
+    fn the_segments_sent_again_are_read_from_tcps_counters() {
+        let snmp = "Udp: InDatagrams NoPorts\nUdp: 4 5\n\
+                    Tcp: RtoAlgorithm OutSegs RetransSegs InErrs\n\
+                    Tcp: 1 131644252 4352186 1219\n";
+        assert_eq!(resent_in(snmp), Some(4_352_186));
+        assert_eq!(resent_in("Tcp: RtoAlgorithm\n"), None);
     }
 
     #[test]
     fn ipv6_addresses_are_read_word_by_word() {
-        // 2606:4700::1111, Cloudflare's, and fe80::1 on the link.
+        // 2606:4700::1111, a public resolver, and fe80::1 on the link.
         assert_eq!(
             address("00470626000000000000000011110000:01BB"),
             Some("2606:4700::1111".parse().expect("an address"))
@@ -149,8 +180,14 @@ mod tests {
             address("000080FE000000000000000001000000:01BB"),
             Some("fe80::1".parse().expect("an address"))
         );
-        assert!(!distant("fe80::1".parse().expect("an address")));
-        assert!(distant("2606:4700::1111".parse().expect("an address")));
+        assert!(
+            !distant("fe80::1".parse().expect("an address")),
+            "a link-local address counted as distant"
+        );
+        assert!(
+            distant("2606:4700::1111".parse().expect("an address")),
+            "a public address counted as nearby"
+        );
     }
 
     #[test]
