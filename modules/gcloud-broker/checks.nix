@@ -37,11 +37,11 @@ onLinux {
       broker = machine: lib.findFirst (p: p.name == "gcloud-broker") null (account machine).home.packages;
       # The script's own text, read from its derivation rather than built.
       asks = (broker named).text;
+      # An address of only safe characters goes unquoted, so the check
+      # quotes it the way the module does rather than guessing.
+      given = lib.escapeShellArg "agents@a-lab.iam.gserviceaccount.com";
     in
     holds "gcloud-broker-asks-as-the-named-account"
       "gcloud-broker is installed where no account is named, or asks as another than the named one."
-      (
-        broker workstation == null
-        && lib.hasInfix "\"$@\" --account 'agents@a-lab.iam.gserviceaccount.com'" asks
-      );
+      (broker workstation == null && lib.hasInfix "\"$@\" --account ${given}\n" asks);
 }
