@@ -198,9 +198,7 @@ pub fn stands_apart(
     let json = std::path::Path::new(file)
         .extension()
         .is_some_and(|extension| extension.eq_ignore_ascii_case("json"));
-    let checks = std::path::Path::new(file)
-        .file_name()
-        .is_some_and(|name| name == "checks.nix");
+    let checks = file == "checks.nix" || file.ends_with("/checks.nix");
     let read: fn(&str, &str, &str, &str) -> bool = if file == "check-descriptions.nix" {
         descriptions_apart
     } else if checks {
@@ -756,8 +754,7 @@ mod tests {
 
     #[test]
     fn a_folders_checks_changed_at_different_checks_stand_apart() {
-        // #2807's case: the branch added a check to a folder's checks.nix
-        // while main changed another there.
+        // #2807's case: the branch added a check while main changed another.
         let entry = |name: &str, does: &str| format!("\n  {name} = {does};\n");
         let file = "modules/shell/checks.nix";
         let around = |entries: &str| format!("{{ pkgs }}:\nlet\n  x = 1;\nin\n{{{entries}}}\n");

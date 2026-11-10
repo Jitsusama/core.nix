@@ -3257,14 +3257,17 @@ mod tests {
             world.reverted.lock().unwrap().is_empty(),
             "the revert landed while the net was paused"
         );
-        assert!(world.put_in_quarantine.lock().unwrap().is_empty());
+        assert_eq!(
+            *world.put_in_quarantine.lock().unwrap(),
+            Vec::<String>::new()
+        );
         let hold = state.hold().unwrap();
         assert_eq!(hold["revert_again"], true, "{hold}");
 
         // Still paused, the next round starts nothing; lifted, it lands.
         state.set_heads("s", "s").unwrap();
         assert_eq!(round(&world, &state, "s").unwrap(), Round::Idle);
-        assert!(world.reverted.lock().unwrap().is_empty());
+        assert_eq!(*world.reverted.lock().unwrap(), Vec::<String>::new());
         *world.paused.lock().unwrap() = None;
         let world = Stand {
             paused_while_reverting: None,

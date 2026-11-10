@@ -125,7 +125,7 @@ fn checks(text: &str) -> Option<Value> {
     let mut entries = serde_json::Map::new();
     let mut outside: String = lines[..opens]
         .iter()
-        .map(|line| format!("{line}\n"))
+        .flat_map(|line| [*line, "\n"])
         .collect();
     let mut open: Option<(String, String)> = None;
     // The blank lines and comment read since the last line kept, which
