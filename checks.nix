@@ -1223,6 +1223,7 @@ gather (
     ./modules/firmware-notice/checks.nix
     ./modules/firmware-settings/checks.nix
     ./modules/fonts/checks.nix
+    ./modules/gcloud-broker/checks.nix
     ./modules/gimp/checks.nix
     ./modules/git/checks.nix
     ./modules/git-engine/checks.nix

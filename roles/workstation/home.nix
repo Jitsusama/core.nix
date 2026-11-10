@@ -11,6 +11,7 @@
     homeModules.opencode
     homeModules.pi
     homeModules.github-broker
+    homeModules.gcloud-broker
     homeModules.mycelium
     homeModules.to-do
     homeModules.ergodox

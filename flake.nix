@@ -168,6 +168,7 @@
         firmware-notice = ./modules/firmware-notice/home.nix;
         fontconfig = ./modules/fontconfig/home.nix;
         fzf = ./modules/fzf/home.nix;
+        gcloud-broker = ./modules/gcloud-broker/home.nix;
         gh = ./modules/gh/home.nix;
         ghostty = moduleFrom ./modules/ghostty/home.nix { inherit wallpapers; };
         gimp = moduleFrom ./modules/gimp/home.nix { inherit (self.homeModules) niri quickshell; };

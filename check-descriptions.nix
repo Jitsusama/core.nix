@@ -642,6 +642,12 @@
   formatting = ''
     everything is formatted and passes the linters
   '';
+  gcloud-broker-asks-as-the-named-account = ''
+    gcloud-broker is installed only where a machine names a service account, and asks only as it
+  '';
+  gcloud-broker-passes-clippy = ''
+    clippy finds nothing in gcloud-broker or its tests, which mint and keep tokens from a stand-in
+  '';
   gimp-accepts-its-configuration = ''
     GIMP reads its preferences, the theme's palette and colours
   '';
