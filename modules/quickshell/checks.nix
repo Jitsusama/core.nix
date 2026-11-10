@@ -1388,6 +1388,24 @@ onLinux {
       touch $out
     '';
 
+  # A row the launcher listed before is kept wherever it moves, and only a
+  # row new to the list is drawn afresh, as tests/rows-kept.qml holds
+  # launcher/RowsKept.js to it in Qt's own engine.
+  a-row-kept-is-never-drawn-again =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-row-kept-is-never-drawn-again" { } ''
+      cp ${../../tests/rows-kept.qml} rows-kept.qml
+      cp ${./launcher/RowsKept.js} RowsKept.js
+      cp ${../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml rows-kept.qml
+      touch $out
+    '';
+
   # The machine queue is the harness's file as the node's record holds it,
   # and a write of only when it was written says nothing new, as
   # tests/jobs.qml holds Jobs.js to it in Qt's own engine.

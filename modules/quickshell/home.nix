@@ -293,6 +293,7 @@ let
     "launcher/Wanted.js"
     "launcher/Standing.js"
     "launcher/Steady.js"
+    "launcher/RowsKept.js"
     "launcher/Order.js"
     "launcher/PlaceRow.js"
     "launcher/Becoming.js"

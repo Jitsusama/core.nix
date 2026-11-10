@@ -70,6 +70,7 @@ import "launcher/Rank.js" as Rank
 import "launcher/Showing.js" as Showing
 import "launcher/Standing.js" as Standing
 import "launcher/Steady.js" as Steady
+import "launcher/RowsKept.js" as RowsKept
 import "launcher/Becoming.js" as Becoming
 import "launcher/Pacing.js" as Pacing
 import "launcher/Wanted.js" as Wanted
@@ -8344,37 +8345,37 @@ Scope {
                                 id: rowsKept
                             }
 
+                            // What each kept row is, in the order they stand,
+                            // so keeping them never reads the model back.
+                            property var keptKeys: []
+
                             // Brings the kept rows into line with these, by
-                            // what each is: those the same at the start and
-                            // the end stay, and only those between are drawn
-                            // afresh. Says whether they were all the same.
-                            // The rows go in between the removing and the
-                            // adding, so no kept row ever reads past the end
-                            // of the rows it reads: the removing leaves none
-                            // past the old ones' end, and the new ones reach
-                            // as far as what's left and what's added.
+                            // what each is (RowsKept.js): a row listed before
+                            // stays wherever it moves, and only a row new to
+                            // the list is drawn afresh. Says whether they
+                            // were all the same. The rows go in between the
+                            // removing and the rest, so no kept row ever
+                            // reads past the end of the rows it reads: the
+                            // removing leaves none past the old ones' end,
+                            // and the new ones reach as far as what's left
+                            // and what's added.
                             function keep(rows) {
                                 const keys = rows.map(row => root.pairedId(row));
-                                let start = 0;
-                                while (start < rowsKept.count && start < keys.length
-                                    && rowsKept.get(start).key === keys[start])
-                                    start += 1;
-                                if (start === rowsKept.count && start === keys.length) {
+                                const steps = RowsKept.steps(list.keptKeys, keys);
+                                list.keptKeys = keys;
+                                if (steps.length === 0) {
                                     list.rows = rows;
                                     return true;
                                 }
-                                let was = rowsKept.count;
-                                let now = keys.length;
-                                while (was > start && now > start
-                                    && rowsKept.get(was - 1).key === keys[now - 1]) {
-                                    was -= 1;
-                                    now -= 1;
-                                }
-                                if (was > start)
-                                    rowsKept.remove(start, was - start);
+                                for (const step of steps.filter(one => one.remove !== undefined))
+                                    rowsKept.remove(step.remove, step.count);
                                 list.rows = rows;
-                                for (let at = start; at < now; at += 1)
-                                    rowsKept.insert(at, { key: keys[at] });
+                                for (const step of steps.filter(one => one.remove === undefined)) {
+                                    if (step.move !== undefined)
+                                        rowsKept.move(step.move, step.to, 1);
+                                    else
+                                        rowsKept.insert(step.insert, { key: step.key });
+                                }
                                 // Laid out now rather than at the next frame,
                                 // so the rows drawn stand where they will and
                                 // the selection is placed from them (rowY).

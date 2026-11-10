@@ -131,6 +131,10 @@
     a power profile the daemon refuses is said once as a warning, tried again at each change of the
     battery without repeating it, and said once it takes
   '';
+  a-row-kept-is-never-drawn-again = ''
+    the launcher's list keeps a row listed before and now wherever it moves, a key listed twice as
+    two rows, and draws afresh only a row new to the list, the same rows taking no step
+  '';
   a-sender-keeps-to-its-level = ''
     a notice reaches no further than its sender is kept to, however critical, and each level shows,
     counts and stays as it says
