@@ -3,11 +3,13 @@
 # has no YubiKey to plug in, so what's checked is the rule as udev reads it,
 # and that both the running system and its initrd carry it.
 {
+  bareNixos,
   holds,
   lib,
   macWorkstation,
   onLinux,
   pkgs,
+  self,
   workstation,
   ...
 }:
@@ -53,4 +55,37 @@
       done
       touch $out
     '';
+
+  # Once a key is named, polkit's sign-in takes its touch before the
+  # password, from the root-owned file the system makes, and no other
+  # login does; with none named, polkit asks for the password alone.
+  polkit-takes-a-yubikey-touch-once-one-is-named =
+    let
+      credential = "aGFuZGxl,cHVibGlj,es256,+presence";
+      enrolled = bareNixos [
+        self.nixosModules.workstation
+        { jitsusama.yubikey.administers.someone = [ credential ]; }
+      ];
+      mappings = enrolled.config.environment.etc.u2f-mappings.text;
+      pam = machine: service: machine.config.security.pam.services.${service}.text;
+      touches = machine: service: lib.hasInfix "pam_u2f.so" (pam machine service);
+      polkit = pam enrolled "polkit-1";
+      # The first of its sign-in's lines to ask for the key or the password.
+      asksFirst = lib.findFirst (
+        line: lib.hasInfix "pam_u2f.so" line || lib.hasInfix "pam_unix.so" line
+      ) "" (lib.filter (lib.hasPrefix "auth ") (lib.splitString "\n" polkit));
+    in
+    holds "polkit-takes-a-yubikey-touch-once-one-is-named"
+      "polkit's sign-in doesn't take a named key's touch first from /etc/u2f-mappings, another login takes one, or polkit takes one with no key named."
+      (
+        touches enrolled "polkit-1"
+        && lib.hasInfix "sufficient" asksFirst
+        && lib.hasInfix "pam_u2f.so" asksFirst
+        && lib.hasInfix "authfile=/etc/u2f-mappings" polkit
+        && lib.hasInfix "origin=pam://administrators" polkit
+        && mappings == "someone:${credential}\n"
+        && !touches enrolled "login"
+        && !touches enrolled "sudo"
+        && !touches workstation "polkit-1"
+      );
 }

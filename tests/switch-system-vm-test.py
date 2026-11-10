@@ -8,7 +8,8 @@ is never put there. An account in wheel switches between the first two unasked; 
 the third asks for authentication, which an agent outside any session can't give, so it's
 refused. An account outside wheel, and anything that isn't a NixOS system in the store, is
 refused too, and the machine is left as it was. A test that switches switches back as it ends,
-so any runs alone.
+so any runs alone. someone has a YubiKey named to answer polkit, never plugged in, so the
+authentication a switch asks for still takes the password.
 """
 
 from __future__ import annotations
@@ -103,6 +104,23 @@ def test_a_system_the_machine_never_ran_asks_an_administrator(systems: Systems) 
     systems.machine.fail("test -e /etc/unrun")
     assert systems.running() == systems.first
     assert systems.booting() == systems.first
+
+
+@pytest.mark.parametrize(
+    ("typed", "taken"),
+    [
+        pytest.param("typed", True, id="the password"),
+        pytest.param("guessed", False, id="another"),
+    ],
+)
+def test_polkit_takes_the_password_with_no_key_there(
+    systems: Systems, typed: str, *, taken: bool
+) -> None:
+    """With a key named and none there, polkit's sign-in takes the password, and only it."""
+    status, said = systems.machine.execute(
+        f"printf '%s\\n' {typed} | pamtester polkit-1 someone authenticate 2>&1"
+    )
+    assert (status == 0) == taken, said
 
 
 def test_an_account_outside_wheel_is_refused(systems: Systems) -> None:

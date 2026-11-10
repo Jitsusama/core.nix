@@ -1540,6 +1540,10 @@
   pnpm-keeps-one-store = ''
     pnpm 10 and 12 find an account's one store from what its shells and user manager are given
   '';
+  polkit-takes-a-yubikey-touch-once-one-is-named = ''
+    once a machine names a YubiKey, polkit's sign-in takes its touch before the password, from a
+    root-owned file, and no other login does; with none named, polkit asks for the password alone
+  '';
   processor-telemetry-passes-clippy = ''
     clippy finds nothing in the processor telemetry reader or its tests
   '';
@@ -2919,7 +2923,7 @@
   vm-admins-switch-unasked = ''
     an account in wheel switches to another system the machine has run and back with no password, and
     to one it never ran only by authenticating; one outside wheel, and what isn't a NixOS system in
-    the store, is refused
+    the store, is refused; and with a YubiKey named but not there, polkit takes the password alone
   '';
   vm-admins-tune-memory = ''
     an account in wheel sets the watermarks' spacing, transparent huge pages, the multi-gen LRU and

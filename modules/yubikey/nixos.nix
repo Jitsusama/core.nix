@@ -1,5 +1,5 @@
-# The YubiKey on Linux: its tools, from system.nix, and a touch that types
-# nothing. The key's own OTP setting is one each key has to be told, by
+# The YubiKey on Linux: its tools, from system.nix, a touch that types
+# nothing, and a touch that answers polkit (administers.nix). The key's own OTP setting is one each key has to be told, by
 # hand and once per key; refusing its keyboard here holds for every key
 # plugged in, a new one too, from the disk prompt on.
 { pkgs, ... }:
@@ -7,7 +7,10 @@ let
   rules = builtins.readFile ./types-nothing.rules;
 in
 {
-  imports = [ ./system.nix ];
+  imports = [
+    ./system.nix
+    ./administers.nix
+  ];
 
   services.udev.packages = [
     (pkgs.writeTextDir "lib/udev/rules.d/70-yubikey-types-nothing.rules" rules)
