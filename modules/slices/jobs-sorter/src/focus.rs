@@ -15,7 +15,9 @@
 //! holds inside agents.slice's own floor against its ceiling, and are the
 //! last systemd-oomd ends. They have no disk latency target: on 10
 //! November a target anywhere under the account held Joel's own reads in
-//! the kernel's throttle, at up to 141 ms against 9.8 ms with none. Each gives all of it back once it ages out. Focus comes before a
+//! the kernel's throttle, at up to 141 ms against 9.8 ms with none. Each
+//! gives all of it back once it ages out. A window he only passed over,
+//! for less than [`STAY`], wasn't one he was at. Focus comes before a
 //! mark saying nobody is at a window, as `src/low.rs` says.
 //!
 //! A window is found by the app id the shell opened it with, which the
@@ -48,6 +50,12 @@ pub const FOR: Duration = Duration::from_secs(600);
 
 /// The most windows held at once, the focused one among them.
 pub const MOST: usize = 3;
+
+/// How long a window keeps the focus before leaving it counts as having
+/// been at it. On 10 November at 17:26 Joel moved the focus over ten
+/// windows in two seconds, and each he passed over took a place from
+/// those he had been at.
+pub const STAY: Duration = Duration::from_secs(2);
 
 /// A window as niri says, as far as finding its scope goes.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -144,35 +152,36 @@ impl Windows {
     }
 }
 
-/// The session windows Joel has been at, and when he left each.
+/// The session window Joel is at, since when, and those he has been at,
+/// with when he left each.
 #[derive(Debug, Default)]
 pub struct Recent {
-    at: Option<Window>,
+    at: Option<(Window, Instant)>,
     left: Vec<(Window, Instant)>,
 }
 
 impl Recent {
     /// Notes the focus on `window`, or on none, `now`. One that holds no
     /// session is nobody's to hold, but leaving one for it still counts.
+    /// Leaving one within [`STAY`] leaves where it was among those left.
     pub fn focus(&mut self, window: Option<&Window>, now: Instant) {
         let window = window.filter(|window| window.session());
-        if self.at.as_ref() == window {
+        if self.at.as_ref().map(|(at, _)| at) == window {
             return;
         }
-        if let Some(was) = self.at.take() {
+        if let Some((was, since)) = self.at.take()
+            && now.saturating_duration_since(since) >= STAY
+        {
             self.left.retain(|(left, _)| left.id != was.id);
             self.left.insert(0, (was, now));
         }
-        if let Some(window) = window {
-            self.left.retain(|(left, _)| left.id != window.id);
-            self.at = Some(window.clone());
-        }
+        self.at = window.map(|window| (window.clone(), now));
     }
 
     /// Forgets the windows `has` no longer knows, which have closed.
     pub fn keep_only(&mut self, has: impl Fn(u64) -> bool) {
         self.left.retain(|(window, _)| has(window.id));
-        if self.at.as_ref().is_some_and(|window| !has(window.id)) {
+        if self.at.as_ref().is_some_and(|(window, _)| !has(window.id)) {
             self.at = None;
         }
     }
@@ -180,12 +189,15 @@ impl Recent {
     /// The windows to hold `now`: the one with the focus, then those left
     /// within [`FOR`], latest first, [`MOST`] in all.
     pub fn held(&self, now: Instant) -> Vec<Window> {
-        self.at
-            .iter()
+        let at = self.at.as_ref().map(|(window, _)| window);
+        at.into_iter()
             .chain(
                 self.left
                     .iter()
-                    .filter(|(_, left)| now.saturating_duration_since(*left) < FOR)
+                    .filter(|(window, left)| {
+                        Some(window.id) != at.map(|at| at.id)
+                            && now.saturating_duration_since(*left) < FOR
+                    })
                     .map(|(window, _)| window),
             )
             .take(MOST)
@@ -506,11 +518,43 @@ mod tests {
     }
 
     #[test]
+    fn a_window_passed_over_on_the_way_to_another_is_not_one_he_was_at() {
+        let start = Instant::now();
+        let at = |millis| start + Duration::from_millis(millis);
+        let mut recent = Recent::default();
+        recent.focus(Some(&pi(1)), at(0));
+        recent.focus(Some(&pi(2)), at(10_000));
+        recent.focus(Some(&pi(3)), at(20_000));
+        recent.focus(Some(&pi(4)), at(30_000));
+        recent.focus(Some(&pi(5)), at(30_500));
+        assert_eq!(
+            recent.held(at(30_500)),
+            [pi(5), pi(3), pi(2)],
+            "4 had the focus for half a second, on the way to 5"
+        );
+        recent.focus(Some(&pi(2)), at(40_000));
+        recent.focus(Some(&pi(6)), at(40_500));
+        assert_eq!(
+            recent.held(at(40_500)),
+            [pi(6), pi(5), pi(3)],
+            "passing over 2 again neither brings it up nor forgets it"
+        );
+        recent.keep_only(|id| id != 5 && id != 3);
+        assert_eq!(
+            recent.held(at(40_500)),
+            [pi(6), pi(2), pi(1)],
+            "2 and 1 are still those he was at before"
+        );
+    }
+
+    #[test]
     fn a_closed_window_is_no_longer_held() {
         let now = Instant::now();
         let mut recent = Recent::default();
         recent.focus(Some(&pi(1)), now);
+        let now = now + STAY;
         recent.focus(Some(&pi(2)), now);
+        assert_eq!(recent.held(now), [pi(2), pi(1)], "1 was left after a stay");
         recent.keep_only(|id| id != 1);
         assert_eq!(recent.held(now), [pi(2)]);
         recent.keep_only(|_| false);
