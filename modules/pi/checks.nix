@@ -404,6 +404,7 @@ in
           path = [
             "/first/bin"
             "/second/bin"
+            "/100%/$HOME"
           ];
         };
       };
@@ -438,12 +439,13 @@ in
         # systemd keeps a quoted entry whole, spaces and escaped quotes in it.
         && lib.elem ''"GREETING=say \"hi\" there"'' environment;
       # A realm naming folders runs node through env, which puts them before
-      # the PATH systemd expands, quoted so it stays one word.
+      # the PATH systemd expands, quoted so it stays one word, with a folder's
+      # % and $ doubled so systemd takes them as they are.
       findsItsPath =
         kind:
-        lib.hasPrefix "${pkgs.coreutils}/bin/env 'PATH=/first/bin:/second/bin:\${PATH}' ${node} " (
-          first services."pi-host-two-${kind}".Service.ExecStart
-        );
+        lib.hasPrefix
+          "${pkgs.coreutils}/bin/env 'PATH=/first/bin:/second/bin:/100%%/$$HOME:\${PATH}' ${node} "
+          (first services."pi-host-two-${kind}".Service.ExecStart);
       hostsIn = services: lib.filter (lib.hasPrefix "pi-host-") (lib.attrNames services);
     in
     holds "pi-hosts-start-with-the-session"

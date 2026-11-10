@@ -50,10 +50,15 @@ let
         ExecStart = lib.escapeShellArgs (
           # Environment= can only replace PATH, so env puts the realm's folders
           # before the user manager's; systemd expands ${PATH}, and env execs
-          # node in its place, the pid systemd watches.
+          # node in its place, the pid systemd watches. A folder's % and $ are
+          # doubled, so systemd reads neither as a specifier or a variable. The
+          # manager always has a PATH on NixOS, so the list never ends in the
+          # empty entry that would mean the working folder.
           lib.optionals (host.path != [ ]) [
             "${pkgs.coreutils}/bin/env"
-            "PATH=${lib.concatStringsSep ":" host.path}:\${PATH}"
+            "PATH=${
+              lib.concatMapStringsSep ":" (lib.replaceStrings [ "%" "$" ] [ "%%" "$$" ]) host.path
+            }:\${PATH}"
           ]
           ++ [
             host.node
