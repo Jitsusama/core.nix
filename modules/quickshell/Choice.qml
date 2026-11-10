@@ -293,7 +293,11 @@ Rectangle {
     readonly property bool nameCut: nameBox.over > 0
     readonly property bool sideCut: atRight.sided && sideText.over > 0
     property bool sidesTurn: false
-    onReadsChanged: {
+    onReadsChanged: row.letGo()
+    // Forget what its words did: whose turn it was and how many times they
+    // read on. A row the launcher lets go is given to another, which reads
+    // from its own start (Launcher.qml's reuseItems).
+    function letGo() {
         row.sidesTurn = false;
         row.readsDone = 0;
     }
