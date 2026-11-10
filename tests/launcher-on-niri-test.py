@@ -10,6 +10,7 @@ launcher closed and leaves it so, so any test runs alone.
 
 from __future__ import annotations
 
+import errno
 import itertools
 import json
 import os
@@ -1345,7 +1346,7 @@ def test_warp_says_how_its_link_stands_in_network_and_when_it_isnt_answering(
         )
         shell.close_launcher()
     finally:
-        shutil.rmtree(said)
+        warp_forgotten(said)
 
 
 def warp_said(**settings: object) -> Path:
@@ -1364,6 +1365,22 @@ def warp_said(**settings: object) -> Path:
     (said / "settings.json").write_text(json.dumps(written))
     (said / "disconnect.json").write_text('"Success"\n')
     return said
+
+
+def warp_forgotten(said: Path) -> None:
+    """Take the stand-in's answers away, again while it writes behind the removal.
+
+    The shell may still be having warp read as a test ends, and the stand-in writes each
+    question into the folder once it sees it, so a removal can meet a file written after it
+    emptied the folder (Errno 39 on 2026-11-10).
+    """
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    while said.exists():
+        try:
+            shutil.rmtree(said)
+        except OSError as error:
+            if error.errno != errno.ENOTEMPTY or time.monotonic() > deadline:
+                raise
 
 
 def asked(said: Path) -> list[str]:
@@ -1412,7 +1429,7 @@ def test_warps_disconnect_runs_warp_and_says_when_it_comes_back(shell: Shell) ->
         shell.launcher_until(lambda shown: "comes back by itself in 2 min" in shown["footer"])
         shell.close_launcher()
     finally:
-        shutil.rmtree(said)
+        warp_forgotten(said)
 
 
 def test_a_switch_the_organisation_holds_is_left_and_says_who_holds_it(shell: Shell) -> None:
@@ -1425,7 +1442,7 @@ def test_a_switch_the_organisation_holds_is_left_and_says_who_holds_it(shell: Sh
         assert "disconnect" not in asked(said), asked(said)
         shell.close_launcher()
     finally:
-        shutil.rmtree(said)
+        warp_forgotten(said)
 
 
 # How often a person might ask a terminal again: more often than WARP is read afresh while
@@ -1472,7 +1489,7 @@ def test_a_terminal_is_shown_warps_state_health_and_round_trips_drawer(shell: Sh
         assert trip["row"]["drawer"]["eyebrow"] == "via WARP \u00b7 tunnel", trip["row"]
         assert not shell.showing()["open"]
     finally:
-        shutil.rmtree(said)
+        warp_forgotten(said)
 
 
 def test_a_terminal_disconnects_warp_once_sure_and_connects_it_unasked(shell: Shell) -> None:
@@ -1510,7 +1527,7 @@ def test_a_terminal_disconnects_warp_once_sure_and_connects_it_unasked(shell: Sh
         assert connected == {"done": True, "in": ["Network", "WARP", "Connect WARP"]}, connected
         shell.launcher_until(lambda _: "connect" in asked(said))
     finally:
-        shutil.rmtree(said)
+        warp_forgotten(said)
 
 
 def test_a_held_arrow_makes_one_drawer_once_it_rests(shell: Shell) -> None:
