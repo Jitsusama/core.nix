@@ -5257,20 +5257,21 @@
       "term": "Desktop/location",
       "said": {
         "via": "found \u00b7 location",
-        "viaSource": "via {source} \u00b7 location",
         "viaHand": "set by hand \u00b7 location",
-        "sources": {
-          "wifi": "Wi-Fi",
-          "cell": "cell towers",
-          "wifi-and-cell": "Wi-Fi and cell towers",
-          "cdma": "CDMA",
-          "ip": "IP address",
-          "gps": "GPS",
-          "file": "a fixed file"
-        },
+        "via-wifi": "via Wi-Fi \u00b7 location",
+        "via-cell": "via cell towers \u00b7 location",
+        "via-wifi-and-cell": "via Wi-Fi and cell towers \u00b7 location",
+        "via-cdma": "via CDMA \u00b7 location",
+        "via-ip": "via IP address \u00b7 location",
+        "via-gps": "via GPS \u00b7 location",
+        "via-file": "via a fixed file \u00b7 location",
         "altitude": "{n} m",
         "speed": "{n} m/s",
         "heading": "{n}\u00b0",
+        "no-altitude": "altitude",
+        "no-speed": "speed",
+        "no-heading": "heading",
+        "or": "or",
         "hand": "set by hand",
         "metres": "within {n} m",
         "kilometres": "within {n} km",
@@ -5288,23 +5289,14 @@
         "foundWithin": "found {within}"
       },
       "tells": {
-        "leftOut": "{gives} no {missing}.",
-        "gives": {
-          "wifi": "Wi-Fi gives",
-          "cell": "Cell towers give",
-          "wifi-and-cell": "Wi-Fi and cell towers give",
-          "cdma": "CDMA gives",
-          "ip": "An IP address gives",
-          "gps": "GPS gave",
-          "file": "A fixed file gives",
-          "unknown": "Its source gives"
-        },
-        "missing": {
-          "altitude": "altitude",
-          "speed": "speed",
-          "heading": "heading"
-        },
-        "or": "or"
+        "leftOut": "Its source gives no {missing}.",
+        "leftOut-wifi": "Wi-Fi gives no {missing}.",
+        "leftOut-cell": "Cell towers give no {missing}.",
+        "leftOut-wifi-and-cell": "Wi-Fi and cell towers give no {missing}.",
+        "leftOut-cdma": "CDMA gives no {missing}.",
+        "leftOut-ip": "An IP address gives no {missing}.",
+        "leftOut-gps": "GPS gave no {missing}.",
+        "leftOut-file": "A fixed file gives no {missing}."
       }
     },
     {

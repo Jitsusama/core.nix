@@ -632,12 +632,13 @@ QtObject {
         const hereSaid = { metres: "within {n} m", kilometres: "within {n} km", north: "N",
             south: "S", east: "E", west: "W", nearEdge: "near a time zone's edge",
             foundWithin: "found {within}", via: "found \u00b7 location",
-            viaSource: "via {source} \u00b7 location", viaHand: "set by hand \u00b7 location",
-            sources: { wifi: "Wi-Fi", gps: "GPS" }, altitude: "{n} m", speed: "{n} m/s",
-            heading: "{n}\u00b0" };
-        const hereTells = { leftOut: "{gives} no {missing}.", or: "or",
-            gives: { wifi: "Wi-Fi gives", gps: "GPS gave", unknown: "Its source gives" },
-            missing: { altitude: "altitude", speed: "speed", heading: "heading" } };
+            viaHand: "set by hand \u00b7 location", "via-wifi": "via Wi-Fi \u00b7 location",
+            "via-gps": "via GPS \u00b7 location", altitude: "{n} m", speed: "{n} m/s",
+            heading: "{n}\u00b0", "no-altitude": "altitude", "no-speed": "speed",
+            "no-heading": "heading", or: "or" };
+        const hereTells = { leftOut: "Its source gives no {missing}.",
+            "leftOut-wifi": "Wi-Fi gives no {missing}.", "leftOut-gps": "GPS gave no {missing}." };
+        const leftOut = here => Here.leftOut(here, hereSaid, hereTells);
         // A fix GPS found, with as many of its three figures as given.
         const gps = (altitude, speed, heading) => ({ latitude: 12.3457, longitude: -98.7654,
             accuracy: 5, when: 1000, source: "gps", altitude, speed, heading });
@@ -905,18 +906,18 @@ QtObject {
                 hereSaid, Object.assign({ ago: () => "now" }, hereTold))
                 .filter(fact => ["altitude", "speed", "heading"].includes(fact.id))
                 .map(fact => fact.value).join("|"), "0.0 m/s"],
-            ["Wi-Fi gives none of the three", Here.leftOut({ source: "wifi" }, hereTells),
+            ["Wi-Fi gives none of the three", leftOut({ source: "wifi" }),
                 "Wi-Fi gives no altitude, speed or heading."],
-            ["GPS gave two of them not", Here.leftOut(gps(212, null, null), hereTells),
+            ["GPS gave two of them not", leftOut(gps(212, null, null)),
                 "GPS gave no speed or heading."],
-            ["GPS gave one of them not", Here.leftOut(gps(212, 4, null), hereTells),
+            ["GPS gave one of them not", leftOut(gps(212, 4, null)),
                 "GPS gave no heading."],
-            ["all three given leaves nothing to say", Here.leftOut(gps(212, 4, 275), hereTells),
+            ["all three given leaves nothing to say", leftOut(gps(212, 4, 275)),
                 ""],
-            ["a source unnamed is said as its source", Here.leftOut({ source: null }, hereTells),
+            ["a source unnamed is said as its source", leftOut({ source: null }),
                 "Its source gives no altitude, speed or heading."],
             ["one set by hand was found by no source",
-                Here.leftOut({ source: null, hand: true }, hereTells), ""]
+                leftOut({ source: null, hand: true }), ""]
         ];
         for (const [what, got, expected] of figures) {
             asked++;

@@ -109,8 +109,7 @@ function eyebrow(here, said) {
     if (here.hand === true) {
         return said.viaHand;
     }
-    const source = said.sources?.[here.source ?? ""] ?? "";
-    return source === "" ? said.via : said.viaSource.replace("{source}", source);
+    return (here.source ? said[`via-${here.source}`] : null) ?? said.via;
 }
 
 // The figures only some sources give, as GPS does, each in GeoClue's own
@@ -137,19 +136,20 @@ function measures(here, said, told) {
 // body says, naming the source as its eyebrow does: "Wi-Fi gives no
 // altitude, speed or heading.", "GPS gave no speed or heading." Nothing
 // when all three are held, nor for a place set by hand, which no source
-// found (VKCF3Z, 2026-11-09). `tells` is the vocabulary's.
-function leftOut(here, tells) {
+// found (VKCF3Z, 2026-11-09). `said` and `tells` are the vocabulary's,
+// each a sentence of its own for a source, as its words read whole.
+function leftOut(here, said, tells) {
     if (here.hand === true) {
         return "";
     }
-    const missing = MEASURES.filter(({ id }) => !held(here[id])).map(({ id }) => tells.missing[id]);
+    const missing = MEASURES.filter(({ id }) => !held(here[id])).map(({ id }) => said[`no-${id}`]);
     if (missing.length === 0) {
         return "";
     }
     const last = missing.pop();
-    const listed = missing.length === 0 ? last : `${missing.join(", ")} ${tells.or} ${last}`;
-    const gives = tells.gives[here.source ?? ""] ?? tells.gives.unknown;
-    return tells.leftOut.replace("{gives}", gives).replace("{missing}", listed);
+    const listed = missing.length === 0 ? last : `${missing.join(", ")} ${said.or} ${last}`;
+    const sentence = (here.source ? tells[`leftOut-${here.source}`] : null) ?? tells.leftOut;
+    return sentence.replace("{missing}", listed);
 }
 
 // Its plate's facts, from what moves most: when it was found, how near,

@@ -301,7 +301,7 @@ Provider {
                     identifies: fact.identifies === true
                 })),
             // What its source couldn't say of it.
-            body: Here.leftOut(here, Words.of("location").tells ?? {})
+            body: Here.leftOut(here, hereSaid, Words.of("location").tells ?? {})
         });
         return thingRow(Object.assign({
             key: "on:location",
