@@ -3,13 +3,15 @@
 // among the modes that are on and the margin wears its glyph. The machine
 // chooses for itself as the charger and the battery change, performance on
 // the charger and balanced or power saver on battery, and says what it chose in
-// /run/power-profile/wanted (modules/power-profiles-daemon/follow.sh), so
-// its own choice says nothing however it reads (Joel, 2026-10-28: "why is
+// /run/power-profile/wanted (modules/power-profiles-daemon/follow.sh), which
+// the machine daemon hears and says as `profile:main`'s wanted
+// (modules/machine/src/kept.rs), so its own choice says nothing however it
+// reads (Joel, 2026-10-28: "why is
 // power profile in now?"). Without that file, as where nothing follows the
 // charger, balanced is the machine's. Its words are the launcher's own for
 // each profile, so Now and Machine › Power say it the same way.
 import qs
-import Quickshell.Io
+import Quickshell
 import Quickshell.Services.UPower
 import QtQuick
 
@@ -23,7 +25,8 @@ Piece {
         "balanced": { profile: PowerProfile.Balanced, words: "session:power:Balanced Power" },
         "performance": { profile: PowerProfile.Performance, words: "session:power:Performance" }
     })
-    readonly property string said: chosen.loaded ? chosen.text().trim() : ""
+    readonly property string said: chosen.revision >= 0
+        ? chosen.held["profile:main"]?.wanted ?? "" : ""
     readonly property var machine: named[said] ?? named.balanced
     readonly property var current: Object.values(named)
         .find(each => each.profile === PowerProfiles.profile) ?? machine
@@ -50,11 +53,12 @@ Piece {
         run: () => PowerProfiles.profile = piece.machine.profile
     }] : []
 
-    FileView {
+    // Watched always, as the file was: the daemon hears it as it's
+    // written, so the watch wakes nothing until the machine chooses again.
+    Daemon {
         id: chosen
-        path: piece.settings.wanted ?? "/run/power-profile/wanted"
-        printErrors: false
-        watchChanges: true
-        onFileChanged: reload()
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+        kind: "profile"
     }
 }

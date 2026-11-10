@@ -13,8 +13,6 @@
 
 // The one of a kernel's list in brackets: "Trickle Fast [Custom]".
 const MARKED = /\[([^\]]+)\]/;
-// A string D-Bus property as busctl prints it: s "balanced".
-const BUS_STRING = /^s "([^"]*)"$/;
 const BRACKETS = /^\[|\]$/g;
 const SPACES = /\s+/;
 
@@ -48,13 +46,6 @@ function profileDrawer(known, named, said) {
             fact("firmware-driver", (known.firmwareDrivers ?? []).join(" \u00b7 "))
         ].filter(each => (each.value ?? "") !== "")
     };
-}
-
-// The profile power-profiles-daemon says it's on, from busctl's answer to
-// its ActiveProfile, by the daemon's own name ("power-saver", "balanced",
-// "performance"); "" when it didn't answer.
-function activeProfile(text) {
-    return BUS_STRING.exec(String(text ?? "").trim())?.[1] ?? "";
 }
 
 // Why a profile picked by the daemon's name, `wanted`, didn't take, from

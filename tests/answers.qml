@@ -2666,9 +2666,6 @@ QtObject {
         // A profile picked is read back from the daemon, and one it didn't
         // take says why: nothing heard, a program holding another, or the
         // daemon keeping its own.
-        machine("the profile the daemon says it's on",
-            Power.activeProfile("s \"balanced\"\n"), "balanced");
-        machine("nothing said back is no profile", Power.activeProfile(""), "");
         const profileTold = holds => ({ holds,
             named: { "power-saver": "Power Saver", performance: "Performance" },
             said: { silent: "the profile daemon didn't answer", held: "{app} holds {profile}",
