@@ -7097,8 +7097,36 @@ Scope {
     // not yet found, which no frame ever showed (the answers test's
     // "came and went", 2026-11-02, once text typed at once was searched
     // once).
-    readonly property string shown: Options.reports ? showing() : ""
+    //
+    // It's made once a turn too, not once for each thing it reads that
+    // moves: as a binding on showing() it was made again for every one, 28
+    // times in one arrow in Programs that took 283 ms, each laying the
+    // drawer's identifiers again, so keeps-up's keys queued past its 30 s
+    // (net a99645168 and a VM's timings, 2026-11-09), a cost Joel's shell,
+    // with reports off, never pays. Made, it reads what showing() reads; the first of those
+    // to move makes it again cheaply, reading none of them but
+    // `showingTurn` and asking for the turn's end, so the rest move
+    // unheard, and at the turn's end `showingTurn` moves and it's made
+    // whole, once.
+    property int showingTurn: 0
+    readonly property var showingMade: ({ turn: -1, said: "" })
+    readonly property string shown: {
+        const turn = showingTurn;
+        if (!Options.reports)
+            return "";
+        if (showingMade.turn === turn) {
+            Qt.callLater(showingTurnEnds);
+            return showingMade.said;
+        }
+        showingMade.turn = turn;
+        showingMade.said = showing();
+        return showingMade.said;
+    }
     property string shownSaid: ""
+    function showingTurnEnds() {
+        showingTurn += 1;
+        sayShown();
+    }
 
     onShownChanged: Qt.callLater(sayShown)
     function sayShown() {
