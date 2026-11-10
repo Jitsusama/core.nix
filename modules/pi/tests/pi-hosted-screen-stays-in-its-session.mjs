@@ -1,8 +1,8 @@
 // The host-only InteractiveMode patch keeps a hosted screen inside its own
 // session: closing it never ends the process, a stopped screen sends no
 // more of its first words and builds nothing an extension asks of it, a
-// suspend stops only the viewer that asked, and every screen hears a theme
-// change.
+// suspend stops only the viewer that asked, every screen hears a theme
+// change, and a closed screen disposes what an extension put on it.
 // The real methods run against fake runtimes; no TTY, model request or
 // extension is started. Ordinary signal and suspend paths retain their
 // process semantics. Arguments name the package and, optionally, source.
@@ -275,6 +275,50 @@ it("a hosted screen that has stopped builds nothing an extension asks of it", ()
   const unsubscribe = mode.addExtensionTerminalInputListener(() => undefined);
   assert.equal(listen.mock.callCount(), 0, "a stopped screen took an input listener");
   unsubscribe();
+});
+
+// A screen showing an extension's own footer, header and editor beside
+// pi's own; `disposed` counts each of the extension's disposals in turn.
+function extendedScreen() {
+  const started = screen();
+  const parts = [0, 1, 2, 3, 4].map(() => ({ dispose: mock.fn() }));
+  const [customFooter, customHeader, editor, defaultEditor, builtInHeader] = parts;
+  Object.assign(started.mode, { customFooter, customHeader, editor, defaultEditor, builtInHeader });
+  const disposed = () => parts.slice(0, 3).map((part) => part.dispose.mock.callCount());
+  return { ...started, parts, disposed };
+}
+
+it("a closed hosted screen disposes its extension's footer, header and editor", async () => {
+  forbidProcessExit();
+  const { mode, exits, disposed } = extendedScreen();
+  await mode.shutdown();
+  assert.deepEqual(disposed(), [1, 1, 1], "each disposed once");
+  // The host then invalidates the session, which resets the extension UI.
+  mode.setExtensionFooter(undefined);
+  mode.setExtensionHeader(undefined);
+  mode.setCustomEditorComponent(undefined);
+  assert.deepEqual(disposed(), [1, 1, 1], "none disposed again");
+  assert.deepEqual(exits, [{ code: 0, error: undefined }]);
+});
+
+it("a closed hosted screen leaves pi's own editor to pi", async () => {
+  const { mode, parts } = extendedScreen();
+  mode.editor = mode.defaultEditor;
+  await mode.shutdown();
+  assert.equal(parts[3].dispose.mock.callCount(), 0);
+});
+
+it("a part that fails to dispose leaves the rest disposed and the host told", async () => {
+  forbidProcessExit();
+  const { mode, exits, parts, disposed } = extendedScreen();
+  const failure = new Error("footer dispose failed");
+  parts[0].dispose.mock.mockImplementation(() => {
+    throw failure;
+  });
+  await mode.shutdown();
+  assert.deepEqual(disposed(), [1, 1, 1], "each disposed once");
+  assert.equal(mode.stop.mock.callCount(), 1, "the screen still stopped");
+  assert.deepEqual(exits, [{ code: 1, error: failure }]);
 });
 
 it("quitting one hosted screen leaves its sibling alive and notifies once", async () => {

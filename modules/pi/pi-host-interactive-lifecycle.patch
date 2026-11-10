@@ -397,7 +397,7 @@
  		const queuedInput = this.pendingUserInputs.shift();
  		if (queuedInput !== undefined) {
  			return queuedInput;
-@@ -4383,8 +4451,43 @@
+@@ -4383,8 +4451,73 @@
  	 * repaint the final frame while the process is exiting.
  	 */
  	private isShuttingDown = false;
@@ -425,15 +425,45 @@
 +		this.onInputCallback?.("");
 +		// Install the promise before cleanup so reentrant quit requests share it.
 +		this.hostedExit = Promise.resolve().then(async () => {
-+			try {
-+				this.stop();
-+			} catch (cleanupError) {
-+				exitCode = 1;
-+				error ??= cleanupError;
++			for (const cleanup of [() => this.disposeHostedExtensionUI(), () => this.stop()]) {
++				try {
++					cleanup();
++				} catch (cleanupError) {
++					exitCode = 1;
++					error ??= cleanupError;
++				}
 +			}
 +			await hosted.onExit(exitCode, error);
 +		});
 +		return this.hostedExit;
++	}
++
++	/**
++	 * Dispose what extensions put in the footer, the header and the editor's place. Once a hosted screen
++	 * has stopped, their setters no longer take them down, as resetting the session's UI does in ordinary
++	 * pi, so they go here, each on its own so one that throws leaves the rest to go.
++	 */
++	private disposeHostedExtensionUI(): void {
++		const editor = this.editor === this.defaultEditor ? undefined : this.editor;
++		const components: unknown[] = [this.customFooter, this.customHeader, editor];
++		this.customFooter = undefined;
++		this.customHeader = undefined;
++		let failed: unknown;
++		for (const component of components) {
++			try {
++				if (
++					typeof component === "object" &&
++					component !== null &&
++					"dispose" in component &&
++					typeof component.dispose === "function"
++				) {
++					component.dispose();
++				}
++			} catch (disposeError) {
++				failed ??= disposeError;
++			}
++		}
++		if (failed !== undefined) throw failed;
 +	}
  
  	private async shutdown(options?: { fromSignal?: boolean }): Promise<void> {
@@ -441,7 +471,7 @@
  		if (this.isShuttingDown) return;
  		this.isShuttingDown = true;
  		// Keep signal handlers registered until terminal cleanup has completed.
-@@ -4425,7 +4528,11 @@
+@@ -4425,7 +4558,11 @@
  		process.exit(0);
  	}
  
@@ -454,7 +484,7 @@
  		this.isShuttingDown = true;
  		this.unregisterSignalHandlers();
  		killTrackedDetachedChildren();
-@@ -4445,7 +4552,11 @@
+@@ -4445,7 +4582,11 @@
  	 * call ui.stop() to restore cooked mode, the cursor, and disable bracketed
  	 * paste / Kitty / modifyOtherKeys sequences.
  	 */
@@ -467,7 +497,7 @@
  		// A dead terminal is not a pi crash. Do not try to restore it or record it.
  		if (isDeadTerminalError(error)) {
  			this.emergencyTerminalExit();
-@@ -4482,6 +4593,8 @@
+@@ -4482,6 +4623,8 @@
  	}
  
  	private registerSignalHandlers(): void {
@@ -476,7 +506,7 @@
  		this.unregisterSignalHandlers();
  
  		const signals: NodeJS.Signals[] = ["SIGTERM"];
-@@ -4532,6 +4645,11 @@
+@@ -4532,6 +4675,11 @@
  	}
  
  	private handleCtrlZ(): void {
@@ -488,7 +518,7 @@
  		if (process.platform === "win32") {
  			this.showStatus("Suspend to background is not supported on Windows");
  			return;
-@@ -4692,6 +4810,14 @@
+@@ -4692,6 +4840,14 @@
  	private async handleOpenExternalEditor(): Promise<void> {
  		const editorCmd = this.settingsManager.getExternalEditorCommand();
  		const content = this.editor.getExpandedText?.() ?? this.editor.getText();
@@ -503,7 +533,7 @@
  		this.ui.stop();
  		try {
  			const result = await editInExternalEditor({
-@@ -5797,7 +5923,7 @@
+@@ -5797,7 +5953,7 @@
  					return;
  				}
  				try {
@@ -512,7 +542,7 @@
  					this.showStatus("Copied selected message to clipboard");
  				} catch (error) {
  					this.showError(error instanceof Error ? error.message : String(error));
-@@ -6731,11 +6857,43 @@
+@@ -6731,11 +6887,43 @@
  				keybindings: this.keybindings,
  				showStatus: (message) => this.showStatus(message),
  				showError: (message) => this.showError(message),
@@ -556,7 +586,7 @@
  	private async handleCopyCommand(
  		options: { flashConfirmation?: boolean; preferSelection?: boolean } = {},
  	): Promise<void> {
-@@ -6756,7 +6914,7 @@
+@@ -6756,7 +6944,7 @@
  		}
  
  		try {
@@ -565,7 +595,7 @@
  			if (options.flashConfirmation && this.ui instanceof TuiAltScreen) {
  				this.ui.flash("Copied!");
  			} else {
-@@ -7196,6 +7354,8 @@
+@@ -7196,6 +7384,8 @@
  		}
  		this.clearStatusIndicator();
  		this.themeController.disableAutoSync();
