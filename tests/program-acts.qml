@@ -220,6 +220,23 @@ ShellRoot {
                 + ` file:${src}/alpha/.env, file:${src}/beta/README.md`, given);
         expect("and nothing for another program", held.programOpen("vim").length === 0,
             held.programOpen("vim").join(", "));
+
+        // Programs asks the acts found from the top inside a binding
+        // (Applications.qml's optedActs), so asking them asks open-now
+        // nothing and makes no open file's row: Neovim doing both there
+        // looped that binding on Joel's shell at each opening and closing
+        // (2026-11-09), and made every act found from the top again as a
+        // window was focused.
+        held.looked = false;
+        const made = held.tally.rows;
+        const found = keys(held.foundActsOf("nvim"));
+        expect("found from the top, it gives only the acts it lists there",
+            JSON.stringify(found) === JSON.stringify(held.foundActs.map(one => one.key)),
+            JSON.stringify(found));
+        expect("asking open-now nothing and making no file's row",
+            !held.looked && held.tally.rows - made === found.length,
+            JSON.stringify([held.looked, held.tally.rows - made]));
+        expect("and nothing for another program", held.foundActsOf("vim").length === 0, "");
     }
 
     Component.onCompleted: {
