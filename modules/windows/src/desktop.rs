@@ -640,7 +640,7 @@ mod tests {
         // with both windows rather than said twice.
         hear(
             &mut desktop,
-            r#"{"WindowOpenedOrChanged":{"window":{"id":14,"title":"Calendar - Google Chrome","app_id":"google-chrome","pid":101,"workspace_id":2,"is_focused":false,"is_floating":false,"is_urgent":false,"layout":{"pos_in_scrolling_layout":[2,1],"tile_size":[640,800]},"focus_timestamp":null}}}"#,
+            r#"{"WindowOpenedOrChanged":{"window":{"id":15,"title":"Calendar - Google Chrome","app_id":"google-chrome","pid":101,"workspace_id":2,"is_focused":false,"is_floating":false,"is_urgent":false,"layout":{"pos_in_scrolling_layout":[2,1],"tile_size":[640,800]},"focus_timestamp":null}}}"#,
         );
         let said = records(&desktop);
         assert_eq!(
