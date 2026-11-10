@@ -3714,18 +3714,20 @@ impl App {
             through: most.map(|most| place::through(pt, most)),
         };
         let (block, into_pt) = place::at(&starts, here);
+        // A mark is its line's top, and the line is found by it for its
+        // baseline, which says the block it's in; a mark kept where no
+        // line is, before the page's lines are read, stands for both.
+        let lines = self.words.as_deref().unwrap_or(&[]);
+        let line = |pt: f64| {
+            lines
+                .iter()
+                .find(|line| (moves::top_of(line) - pt).abs() < 0.5)
+                .map_or((pt, pt), |line| (pt, line.baseline_pt))
+        };
         let mut marks: Vec<place::Mark> = self
             .marks
             .iter()
-            .map(|(letter, pt)| {
-                let (block, into_pt) = place::at(&starts, *pt);
-                place::Mark {
-                    letter: *letter,
-                    block,
-                    into_pt,
-                    said: said(block, *pt),
-                }
-            })
+            .map(|(letter, pt)| place::mark(&blocks, *letter, line(*pt), most))
             .collect();
         marks.sort_by_key(|mark| mark.letter);
         let at_end = self.at_end();
