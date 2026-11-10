@@ -1861,9 +1861,9 @@ in
     # The recorder's tools (Recorder.qml): wf-recorder records the screen
     # and record-window a window, grim takes a region's picture and wl-copy
     # copies it, and notify-send says where the file went. A terminal
-    # shows a run's answer through jq (launcher/Runs.qml). The
-    # clipboard's Paste presses its window's paste keys through wtype
-    # (launcher/Copies.qml).
+    # shows a run's answer through jq (launcher/Runs.qml). A paste with no
+    # clipboard history kept presses its window's paste keys through wtype
+    # (Pasting.qml).
     home.packages = lib.optional followsTheLaptop whereabouts ++ [
       askpass
       launcherInATerminal

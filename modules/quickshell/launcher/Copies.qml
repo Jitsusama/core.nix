@@ -7,14 +7,17 @@
 // short, and the selected one reads whole below the rows. A picture's row
 // is named by its size, and the launcher shows the picture itself while
 // it's selected (`picture`, its file). Return pastes the copy into the
-// window the launcher opened over: it goes back on the clipboard, a
-// picture by asking the helper, which holds it, and once the window has
-// the keys again, its paste keys are pressed for it (Pasting.qml, which
-// Super+E's emoji paste through too). With no window there,
-// Return only copies, as the right arrow's Copy always does. Forget the
-// Clipboard, the clipboard's last row while there's something to forget
-// and found by its words from anywhere, has the helper forget every copy,
-// and what the clipboard holds with them.
+// window the launcher opened over: the helper, told its number, puts it
+// back on the clipboard and, once the window has the keys again, presses
+// its paste keys for it, nothing of it waiting on the shell (Pasting.qml,
+// which Super+E's emoji paste through too, this the helper it asks).
+// With no window there, Return only copies, as the right arrow's Copy
+// always does. Forget the Clipboard, the clipboard's last row while
+// there's something to forget and found by its words from anywhere, has
+// the helper forget every copy, and what the clipboard holds with them.
+// Its rows are made here as each copy is heard, for now: they move into
+// clipboard-history next, which is to serve them worded and ranked by
+// 2026-11-12.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
@@ -33,6 +36,11 @@ Provider {
 
     // Newest first.
     property var all: []
+
+    // Whether the helper is connected, to copy and paste for Pasting.qml.
+    property bool linked: false
+
+    Component.onCompleted: Pasting.helper = provider
 
     readonly property var forget: thing({
         key: "copies:forget",
@@ -96,19 +104,22 @@ Provider {
             reads: copy.text.trim(),
             about: lines > 1 ? `${lines} lines` : "",
             // Copied while the launcher holds the keys, which the clipboard
-            // needs.
+            // needs when the helper has gone and Qt copies it.
             now: true
         });
-        return pastes(row, () => {
+        return pastes(row, `${copy.id}`, () => {
             Quickshell.clipboardText = copy.text;
         });
     }
 
     // A row that pastes on Return, and steps into Paste and Copy, or Copy
     // alone with no window to paste into. Its verb follows, so the foot says
-    // which Return does.
-    function pastes(row, copied) {
-        row.run = () => Pasting.paste(copied);
+    // which Return does. What names the copy to the helper, and unhelped
+    // copies it while the helper isn't there.
+    function pastes(row, what, unhelped) {
+        const copied = () => Pasting.copy(what, unhelped);
+        const pasted = () => Pasting.paste(what, unhelped);
+        row.run = pasted;
         Object.defineProperty(row, "verb", {
             enumerable: true,
             get: () => Pasting.verb()
@@ -136,7 +147,7 @@ Provider {
             const copy = Object.assign(act("verb:copy:copy", copied),
                 { copies: row.text ?? "" });
             return Pasting.under() === null ? [copy]
-                : [act("verb:copy:paste", () => Pasting.paste(copied)), copy];
+                : [act("verb:copy:paste", pasted), copy];
         };
         return row;
     }
@@ -177,15 +188,18 @@ Provider {
             down: copy.height ?? 0,
             about: `${kinds[copy.type] ?? "Picture"} \u00b7 ${weighed(copy.bytes)}`
         });
-        return pastes(row, () => provider.tell(`copy ${copy.picture}`));
+        return pastes(row, `${copy.picture}`, () => provider.tell(`copy ${copy.picture}`));
     }
 
-    // Each row's age, as of now, after what it is.
+    // Each row's age, as of now, after what it is, and whether it pastes
+    // without the history (Pasting.qml).
     function aged(rows) {
         const now = Date.now();
-        for (const row of rows)
+        for (const row of rows) {
             row.side = [row.about, Ago.ago(row.at, now)].filter(part => part !== "")
                 .join(" \u00b7 ");
+            Pasting.saysUnhelped(row);
+        }
         return rows;
     }
 
@@ -267,6 +281,7 @@ Provider {
                 onRead: line => provider.heard(line)
             }
             onConnectionStateChanged: {
+                provider.linked = connected;
                 if (connected)
                     provider.all = [];
                 else
