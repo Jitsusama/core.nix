@@ -992,10 +992,13 @@ impl Guard {
                 continue;
             };
             for root in roots {
-                let found = discover::walk(
+                // A stop ends the walk, as it ends a survey's: a walk of
+                // every cargo root under a loaded disk can take minutes.
+                let found = discover::walk_until(
                     root,
                     depth.map(|depth| depth as usize),
                     self.home.as_deref(),
+                    &crate::commands::stop_waiting,
                 );
                 for tree in found.unwrap_or_default() {
                     if tree.kind != discover::Kind::Target {
@@ -2717,6 +2720,7 @@ fn ending(end: &End) -> String {
         End::Reached => "reached".to_owned(),
         End::Exhausted => "exhausted".to_owned(),
         End::Stalled => "stalled".to_owned(),
+        End::Stopped => "stopped".to_owned(),
         End::Failed(why) => format!("failed: {why}"),
     }
 }

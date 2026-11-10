@@ -177,6 +177,10 @@ impl<R: Reclaimer> Reclaimer for Journaled<'_, R> {
         }
         outcome
     }
+
+    fn stopping(&self) -> bool {
+        self.inner.stopping()
+    }
 }
 
 pub struct Journal {
