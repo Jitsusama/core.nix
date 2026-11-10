@@ -3056,6 +3056,7 @@ onLinux {
     pkgs.runCommandLocal "the-launcher-remakes-only-the-screens-that-changed" { } ''
       mkdir -p launcher
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Daemon.qml} Daemon.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./ProgramGlyphs.js} ProgramGlyphs.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
