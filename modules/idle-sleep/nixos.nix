@@ -3,8 +3,10 @@
 # holding logind's lock against going idle. The desktop's session goes idle
 # once swayidle has turned the screens off (../swayidle/home.nix), and a call
 # or a video in Chrome keeps it from going idle through Wayland's own
-# inhibitor, which niri honours. mycelium, while it holds work, and Keep Awake
-# hold logind's lock, which logind honours.
+# inhibitor, which niri honours. Keep Awake holds logind's lock against idling,
+# so nothing locks either; mycelium, while it holds work, holds its lock
+# against sleep alone, so the machine still goes idle and locks but never
+# sleeps under it.
 #
 # It sleeps five minutes after the screens go off, fifteen after the last key
 # or touch, the battery's default in GNOME too. A key a minute after the

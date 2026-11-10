@@ -29,15 +29,17 @@ SETTLED = (
 )
 # The stand-in sleep leaves this file, under systemd's word for it.
 ASLEEP = "test -e /run/suspended"
-# A program holding logind's lock against idling, as mycelium does while it holds work. logind
+# A program holding logind's lock against sleep, as mycelium does while it holds work. logind
 # counts anyone's lock alike, so root's stands in for the account's. systemd-run finds the program
 # it's given itself, but the unit runs with systemd's own PATH, which on NixOS holds no sleep, so
 # the program the lock is held around is named in full.
 HOLD = (
-    "systemd-run --unit=hold systemd-inhibit --what=idle --who=hold --why=Working"
+    "systemd-run --unit=hold systemd-inhibit --what=sleep --who=hold --why=Working"
     ' --mode=block "$(command -v sleep)" infinity'
 )
 HELD = "systemd-inhibit --list --no-legend --no-pager | grep -q Working"
+# How many times logind has locked its sessions since boot, as it says each time it does.
+LOCKS = "journalctl -b -u systemd-logind -o cat | grep -c '^Locking sessions' || true"
 # How long logind may take to sleep once nothing keeps it awake: its five seconds of idling,
 # as long again for its timer to come round, and the charger's word reaching it.
 FALLING_ASLEEP = dt.timedelta(minutes=1)
@@ -148,13 +150,18 @@ def test_a_session_in_use_keeps_it_awake_on_battery(laptop: Laptop) -> None:
     laptop.settle()
 
 
-def test_a_hold_against_idling_keeps_it_awake_on_battery_until_let_go(laptop: Laptop) -> None:
-    """An idle machine on battery stays awake while a program holds it, and sleeps once let go."""
+def test_a_hold_against_sleep_still_locks_and_keeps_it_awake_until_let_go(laptop: Laptop) -> None:
+    """Held, an idle machine goes idle and locks, stays awake on battery, and sleeps once let go."""
+    locked = int(laptop.machine.succeed(LOCKS))
     laptop.machine.succeed(HOLD)
     laptop.machine.wait_until_succeeds(HELD, timeout=FOLLOWING)
     laptop.idle(idle=True)
+    # swayidle drops its lock and its screens going off while logind's blocks name idling.
+    blocked = laptop.machine.succeed(f"busctl get-property {MANAGER} BlockInhibited")
+    assert "idle" not in blocked, f"the hold stops idling, so nothing would lock: {blocked}"
+    assert laptop.machine_idle(), "the hold kept the machine from counting as idle"
+    laptop.machine.wait_until_succeeds(f"test $({LOCKS}) -gt {locked}", timeout=FALLING_ASLEEP)
     laptop.charger(plugged=False)
-    assert not laptop.machine_idle()
     laptop.machine.sleep(LOOKING)
     laptop.machine.fail(ASLEEP)
     laptop.machine.succeed("systemctl stop hold.service")

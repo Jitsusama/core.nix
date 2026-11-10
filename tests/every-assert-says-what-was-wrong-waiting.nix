@@ -338,7 +338,7 @@
   "tests/desktop/desktop-launcher-waits-on-joel-vm-test.py" = 1;
   "tests/desktop/desktop-looks-vm-test.py" = 2;
   "tests/hibernate-vm-test.py" = 1;
-  "tests/idle-sleep-vm-test.py" = 3;
+  "tests/idle-sleep-vm-test.py" = 2;
   "tests/launcher-on-niri-test.py" = 5;
   "tests/lib/qemu-after-its-sockets-test.py" = 3;
   "tests/lib/vm-helpers-test.py" = 3;
