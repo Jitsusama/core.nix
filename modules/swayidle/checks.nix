@@ -45,7 +45,8 @@
     let
       swayidle = (account graphical).services.swayidle;
       service = (account graphical).systemd.user.services.swayidle-away.Service;
-      away = lib.splitString " " service.ExecStart;
+      # Home Manager keeps each Exec line as a list.
+      away = lib.splitString " " (toString service.ExecStart);
       hint = lib.lists.findFirstIndex (arg: arg == "idlehint") null swayidle.extraArgs;
       idleAt = lib.elemAt swayidle.extraArgs (hint + 1);
     in
@@ -59,8 +60,8 @@
   someone-at-the-machine-is-marked =
     let
       service = (account graphical).systemd.user.services.swayidle-away.Service;
-      marks = lib.hasInfix "someone-at-the-machine";
-      away = lib.splitString " " service.ExecStart;
+      marks = line: lib.hasInfix "someone-at-the-machine" (toString line);
+      away = lib.splitString " " (toString service.ExecStart);
     in
     holds "someone-at-the-machine-is-marked"
       "swayidle doesn't mark someone at the machine for a followed switch to wait on."
