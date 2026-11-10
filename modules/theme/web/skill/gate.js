@@ -84,11 +84,65 @@
   if (page.querySelector('[role="radiogroup"][aria-label="Theme"]') === null) {
     missing.push('the switch in the head: role="radiogroup" aria-label="Theme"');
   }
-  const keysList = [...page.querySelectorAll("h2, h3")].find(
-    (heading) => named(heading) === "Keys",
-  );
-  if (keysList === undefined) {
-    missing.push("a Keys list, headed Keys, that ? opens");
+  // The Keys list is on the page or opens on ?, and Escape closes it with
+  // focus back where it was. An interface often draws it only once ? asks,
+  // so a list not shown at load is asked for the way a reader asks.
+  const keysHeading = () =>
+    [...page.querySelectorAll("h2, h3")].find((heading) => named(heading) === "Keys");
+  const shown = (element) => element?.isConnected === true && element.checkVisibility();
+  const within = (holds) =>
+    new Promise((answer) => {
+      const until = performance.now() + 2000;
+      const look = () => {
+        if (holds() || performance.now() >= until) {
+          answer(holds());
+        } else {
+          requestAnimationFrame(look);
+        }
+      };
+      look();
+    });
+  const press = (key, code) =>
+    (page.activeElement ?? page.body).dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key,
+        code,
+        shiftKey: key === "?",
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      }),
+    );
+  let keysList = keysHeading();
+  if (!shown(keysList)) {
+    // Asked from the first control, as a reader on the page asks, since
+    // focus that starts on the body has nowhere to come back to.
+    const start = page.activeElement;
+    page.querySelector("a[href], button, input, select, textarea, [tabindex]")?.focus();
+    const before = page.activeElement;
+    press("?", "Slash");
+    if (await within(() => shown(keysHeading()))) {
+      keysList = keysHeading();
+      // A modal <dialog> closes on a real Escape by the browser's own hand,
+      // which a made-up key never triggers, so it's asked to close the way
+      // that Escape asks it.
+      const dialog = keysList.closest("dialog");
+      if (dialog?.matches(":modal") && typeof dialog.requestClose === "function") {
+        dialog.requestClose();
+      } else {
+        press("Escape", "Escape");
+      }
+      if (!(await within(() => !shown(keysList)))) {
+        missing.push("Escape didn't close the Keys list");
+      } else if (page.activeElement !== before) {
+        missing.push("focus didn't come back after Escape");
+      }
+    } else {
+      missing.push("a Keys list, headed Keys, that ? opens");
+    }
+    if (start === page.body) {
+      page.activeElement?.blur();
+    }
   }
   const keyLine = [...page.querySelectorAll("kbd")].find(
     (key) => key.textContent.trim() === "?" && !keysList?.parentElement?.contains(key),
