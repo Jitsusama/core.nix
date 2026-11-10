@@ -216,7 +216,8 @@ since a derivation fails wherever it does, and running a searched merge's
 two runs at once, checks that the merge changed the test and that the
 test passed just before it, writes `~/.local/state/net/hold.json` so no machine
 switches to it, unless the machine already runs it, when holding would keep
-only fixes off it and the hold is kept apart and says so, reverts it through a PR merged on its own checks, clears
+only fixes off it and the hold is kept apart and says so, reverts it through a
+PR merged on its own checks, clears
 the hold as that PR merges, or as a test ends once it's on main, and writes a
 finding for its owner in `~/.local/state/net/findings`. A check
 that fails before the revert too doesn't stop it, or one break on main
