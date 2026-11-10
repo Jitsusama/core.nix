@@ -29,7 +29,8 @@ pragma ComponentBehavior: Bound
 // host runs with no window is said and never opened; one last
 // heard of before this boot is passed over; and a steer to one is asked
 // of the node, its refusal said. One the node says is gone goes; a
-// change saying only what differs keeps the rest of what the node said;
+// change saying only what differs keeps the rest of what the node said,
+// and one to a running session tells nothing of the parked or closed;
 // one the node says has ended goes; and a node lost leaves what it said
 // shown. It exits 0 once every case holds, and otherwise 1, saying which
 // didn't.
@@ -63,13 +64,22 @@ ShellRoot {
         return Sessions.running.find(session => session.address === address);
     }
 
+    // How often what reads parked and closed sessions was told they moved,
+    // so a change to a running one alone is seen to tell neither.
+    property var retold: ({ parked: 0, closed: 0 })
+    property var retoldBefore: null
+
     Connections {
         target: Sessions
         function onRunningChanged() {
             Qt.callLater(root.check);
         }
         function onParkedChanged() {
+            root.retold.parked += 1;
             Qt.callLater(root.check);
+        }
+        function onClosedChanged() {
+            root.retold.closed += 1;
         }
     }
 
@@ -107,6 +117,8 @@ ShellRoot {
                 forgotten();
             else if (stage === "differing")
                 differing();
+            else if (stage === "resting")
+                resting();
             else if (stage === "ended")
                 ended();
             else if (stage === "lost")
@@ -420,6 +432,37 @@ ShellRoot {
         // named them, is found by kitty's list: its first is niri's first.
         expect("of a kitty's several windows, one unnamed by kitty's own list",
             unseen.window.id === 20, unseen.window.id);
+        // Then it rests, as a session's own work moves it, its window
+        // the same.
+        stage = "resting";
+        retoldBefore = Object.assign({}, retold);
+        tell({
+            changed: [{
+                key: "session:s-NOWIN6",
+                presence: { session: "s-NOWIN6", addresses: ["NOWIN6"], busy: false,
+                    terminal: root.terminal("unix:@kitty-600", "1") }
+            }]
+        });
+    }
+
+    // Only a running session moved, so what reads the parked and the
+    // closed isn't told they did.
+    function resting() {
+        if (find("NOWIN6")?.presence.busy !== false)
+            return;
+        expect("a running session moving alone tells no parked or closed one",
+            retold.parked === retoldBefore.parked && retold.closed === retoldBefore.closed,
+            `parked told ${retold.parked - retoldBefore.parked}, closed `
+            + `${retold.closed - retoldBefore.closed}`);
+        // niri opening OTHER2's window anew, by the app id its record names,
+        // changes its windows in place and says so by its revision alone, as
+        // Niri.qml does, and the session's window follows.
+        const windows = Niri.windows;
+        delete windows["21"];
+        windows["23"] = { id: 23, pid: 600, title: "\u03c0 - Lighthouse", opened: "pi-session.7" };
+        Niri.revision += 1;
+        expect("a window opened anew by its app id is its session's once niri says so",
+            find("OTHER2")?.window?.id === 23, JSON.stringify(find("OTHER2")?.window));
         stage = "ended";
         tell({ changed: [{ key: "session:s-OTHER2", state: "ended" }] });
     }
