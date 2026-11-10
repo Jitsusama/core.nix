@@ -4,8 +4,12 @@
 //! rates are since boot, reads again a moment later and says them as of
 //! now; a disk taken out is said gone; nothing is read once nothing is
 //! watched; the programs are ranked by their share and their memory; a
-//! disk's file systems are found through what's mapped over it; and an
-//! ask or kind it doesn't know is refused.
+//! disk's file systems are found through what's mapped over it; the
+//! brightness and warmth the backlight program steers the screen to are
+//! told as it writes them; and an ask or kind it doesn't know is refused.
+//!
+//! Long because every case runs the one daemon over the one fixture
+//! machine built here, which a second file of cases would have to copy.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -245,7 +249,14 @@ impl Running {
             }
             None => Command::new(program),
         };
-        command.arg(&socket).arg(&root).stderr(Stdio::null());
+        // The session's folders, as paths on the machine under its root.
+        command
+            .arg(&socket)
+            .arg(&root)
+            .env("XDG_RUNTIME_DIR", "/run/user/1000")
+            .env_remove("XDG_STATE_HOME")
+            .env("HOME", "/home/joel")
+            .stderr(Stdio::null());
         Running {
             daemon: Daemon::start(&mut command, socket, folder),
         }
@@ -642,6 +653,57 @@ fn the_screens_light_and_the_rooms_are_said_as_they_move() {
     // And as the room darkens, within the sensor's next read.
     write("sys/bus/iio/devices/iio:device0/in_illuminance_raw", "40\n");
     assert_eq!(client.changed("light:iio:device0")["lux"], json!(20.0));
+}
+
+#[test]
+fn the_brightness_and_warmth_steered_are_told_as_theyre_written() {
+    let running = Running::new("steered");
+    let root = running.root();
+    // Each written whole, beside it and then renamed, as the backlight
+    // program writes them.
+    let write = |path: &str, text: &str| {
+        let file = root.join(path);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        let writing = file.with_extension("writing");
+        std::fs::write(&writing, text).unwrap();
+        std::fs::rename(writing, file).unwrap();
+    };
+    write(
+        "run/user/1000/backlight-now",
+        "level\t0.380\nlux\t28\nasks\t0.950\nfollowing\tyes\n",
+    );
+    write(
+        "run/user/1000/backlight-warmth",
+        r#"{"kelvin": 6500, "followsTheRoom": false, "nightLight": false}"#,
+    );
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": "all", "ask": "watch", "kind": ["brightness", "warmth"]}));
+    let records = &said["records"];
+    assert_eq!(
+        record(records, "brightness:built-in")["level_ratio"],
+        json!(0.38)
+    );
+    assert_eq!(
+        record(records, "warmth:built-in")["night_light"],
+        json!(false)
+    );
+    // Turned on in the launcher, the night light is told as it's written;
+    // nothing else reads these again while they're watched.
+    write(
+        "run/user/1000/backlight-warmth",
+        r#"{"kelvin": 6500, "followsTheRoom": false, "nightLight": true}"#,
+    );
+    assert_eq!(
+        client.changed("warmth:built-in")["night_light"],
+        json!(true)
+    );
+    // A curve first learned makes its folder, which is watched from then.
+    write(
+        "home/joel/.local/state/backlight/learned",
+        "6 0.377\n28 0.950\n",
+    );
+    let curve = &client.changed("brightness:built-in")["curve"];
+    assert_eq!(curve[1], json!({"lux": 28.0, "level_ratio": 0.95}));
 }
 
 #[test]

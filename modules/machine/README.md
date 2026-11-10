@@ -140,6 +140,16 @@ units, or named here as left out with the reason.
 | `light:<device>`| the lux it hears                             | Room Light, its row and the drawer        |
 |                 | its raw count, scale and offset              | the drawer's Raw, Per Count and Offset    |
 |                 | its device                                   | the drawer's Sensor, in the Name face     |
+| `brightness:built-in` | the level the backlight program settled, whether it follows the room | Brightness's note, Follows |
+|                 | the lux it heard, what its curve asks for them | Room Light, on its way to                |
+|                 | the curve's points, dimmest first            | the drawer's Curve                        |
+| `warmth:built-in` | the warmth, follows the room, sees colour  | Warmth's side and its Follow the Room switch |
+|                 | the room's white, the night light, its white | Warmth's figures and Night Light switch   |
+|                 | the night's sunset and sunrise               | Warmth's note and figures                 |
+
+The last two are the backlight program's (modules/backlight), which
+writes them whole in its files; they're heard as it writes them while
+watched, through inotify, and read at no other time.
 
 ## Left Out, and Why
 

@@ -37,7 +37,8 @@
 //
 // The backlight daemon warms the built-in screen at night from sunset to
 // sunrise, and toward the room's light where its sensor sees colour, and
-// says how that stands in a file (modules/backlight), so the Warmth
+// says how that stands, which the machine daemon serves as it changes
+// (modules/backlight, modules/machine's steered.rs), so the Warmth
 // follows the Brightness on every machine with a panel to warm: its side
 // the warmth now, its note what holds it, and Return stepping into the
 // Night Light and Follow the Room switches, which the daemon is told over
@@ -280,57 +281,22 @@ Provider {
         return rows;
     }
 
-    // How the screen's warmth stands, as the backlight daemon says it, or
-    // null where nothing warms the screen: no file, or `{}`, which the
-    // daemon leaves when it stops, since a file watched here is never
-    // seen again once it's removed.
+    // How the screen's warmth stands, as the backlight program says it
+    // (Warmth.js's of), or null where nothing warms the screen.
     property var warmth: null
     onWarmthChanged: changed()
 
-    function warmed(text) {
-        return Warmth.read(parsed(text));
-    }
-
-    FileView {
-        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/backlight-warmth`
-        watchChanges: true
-        printErrors: false
-        onFileChanged: reload()
-        onLoaded: provider.warmth = provider.warmed(text())
-        onLoadFailed: provider.warmth = null
-    }
-
-    // The level the backlight daemon last settled, what its curve asks for
-    // the room it heard and whether it follows the room, as it writes them
-    // each time a step ends or a pick is heard (Backlight.js), or null
-    // where no daemon says: no file, or an empty one, as it leaves when it
-    // stops.
+    // The level the backlight program last settled, what its curve asks
+    // for the room it heard and whether it follows the room, as it says
+    // them each time a step ends or a pick is heard (Backlight.js's
+    // settled), or null where it says none.
     property var settled: null
     onSettledChanged: changed()
 
-    FileView {
-        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/backlight-now`
-        watchChanges: true
-        printErrors: false
-        onFileChanged: reload()
-        onLoaded: provider.settled = Backlight.now(text())
-        onLoadFailed: provider.settled = null
-    }
-
-    // The daemon's curve, dimmest first, where it keeps it: its standard
-    // points with each of Joel's picks learned into them.
+    // Its curve, dimmest first, where it keeps it: its standard points
+    // with each of Joel's picks learned into them.
     property var curve: []
     onCurveChanged: changed()
-
-    FileView {
-        path: `${Quickshell.env("XDG_STATE_HOME") || `${Quickshell.env("HOME")}/.local/state`}`
-            + "/backlight/learned"
-        watchChanges: true
-        printErrors: false
-        onFileChanged: reload()
-        onLoaded: provider.curve = Backlight.curve(text())
-        onLoadFailed: provider.curve = []
-    }
 
     // How Warmth says a time and a kelvin: by the clock, and with its
     // thousands grouped (VKCF3Z, 2026-11-08: "4,000 K").
@@ -444,7 +410,7 @@ Provider {
         id: lights
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
-        kind: ["backlight", "light"]
+        kind: ["backlight", "light", "brightness", "warmth"]
         live: provider.lightsSeen
         keptThroughGap: false
         answersWhole: true
@@ -512,17 +478,30 @@ Provider {
             answered();
     }
 
+    // Each of what the lights say is replaced only when it changed, so the
+    // room's light moving leaves the rest be.
     function heard() {
         const records = Object.values(lights.held);
         const now = Backlight.lit(records);
         const sensed = Backlight.sensor(records);
-        const lit = JSON.stringify(now) !== JSON.stringify(light);
-        const sensing = JSON.stringify(sensed) !== JSON.stringify(roomSensor);
+        const level = Backlight.settledOf(records);
+        const points = Backlight.curve(records);
+        const warmed = Warmth.of(records);
+        const moved = (was, is) => JSON.stringify(was) !== JSON.stringify(is);
+        const lit = moved(light, now);
+        const sensing = moved(roomSensor, sensed);
+        const steered = [moved(settled, level), moved(curve, points), moved(warmth, warmed)];
         if (lit)
             light = now;
         if (sensing)
             roomSensor = sensed;
-        if ((lit || sensing) && lightShown)
+        if (steered[0])
+            settled = level;
+        if (steered[1])
+            curve = points;
+        if (steered[2])
+            warmth = warmed;
+        if ((lit || sensing || steered.includes(true)) && lightShown)
             answered();
     }
 
