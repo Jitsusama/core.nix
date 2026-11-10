@@ -899,8 +899,44 @@ Provider {
             answersWhole: true
         }
     }
-    readonly property var landings: Landed.all(keptLandings,
-        Sessions.running.concat(Sessions.parked))
+    // What Landed.all reads of each session, its id, address, title and
+    // own landings, said as text, so what landed is worked out again, and
+    // what's made of it made again, only as that text or a kept landing
+    // changes, never as the rest of a session's record moves. Worked out
+    // from the records themselves, Landed's row was made again at every
+    // session's change (the net's vm-desktop-launcher-keeps-up), and For
+    // You's rows for every landing, hundreds at a time with the launcher
+    // shut (PT5P13, 2026-11-10). The whole of what landed said as text was
+    // over six times this, and took twice Landed.all's time at each change
+    // (PT5P13, 2026-11-10).
+    readonly property string landersSaid: JSON.stringify(Sessions.running
+        .concat(Sessions.parked)
+        .map(session => ({
+            address: String(session.address ?? ""),
+            title: String(session.title ?? ""),
+            presence: {
+                session: session.presence?.session,
+                landings: session.presence?.landings ?? []
+            }
+        })))
+    // A landing's session is said by its address, title and id, and one
+    // still here is found again as it's acted on (landerOf).
+    readonly property var landings: Landed.all(keptLandings, JSON.parse(landersSaid))
+        .map(one => Object.assign({}, one, {
+            session: {
+                address: one.session.address,
+                title: one.session.title,
+                id: String(one.session.presence?.session ?? "")
+            }
+        }))
+    // The session here that landed `one`, by its id, else by its address,
+    // or null once it has ended.
+    function landerOf(one) {
+        const here = Sessions.running.concat(Sessions.parked);
+        return here.find(session => one.session.id !== ""
+            && session.presence?.session === one.session.id)
+            ?? here.find(session => session.address === one.session.address) ?? null;
+    }
     function readLanding(key) {
         if (Sessions.landingsRead.includes(key))
             return;
@@ -944,10 +980,13 @@ Provider {
             glyph: Words.glyph(`verb:agents:landed:${id}`),
             hue: "action"
         }, fields));
-        const windowed = one => Sessions.running.includes(one.session)
-            && provider.windowedOf(one.session);
+        const windowed = one => {
+            const session = provider.landerOf(one);
+            return session !== null && Sessions.running.includes(session)
+                && provider.windowedOf(session);
+        };
         const toChange = one => () => Niri.spawn(["xdg-open", one.url]);
-        const toSession = one => () => Sessions.goTo(one.session);
+        const toSession = one => () => Sessions.goTo(provider.landerOf(one));
         // Where Return takes it: the change, else its session, else nowhere
         // but read.
         const goes = one => one.url !== "" ? "change" : windowed(one) ? "session" : "";
@@ -989,7 +1028,11 @@ Provider {
             key: "agents:landed",
             name: Words.name("agents:landed"),
             side: Landed.stands(Landed.landedToday(keptLandings, Date.now()), words.said ?? {}),
-            drawer: () => ({
+            // A place's drawer is drawn once it names what it holds, as a
+            // Recent's is (Launcher.qml's drawable); with nothing landed,
+            // it has nothing to say past its row.
+            heldNames: landings.map(one => one.what),
+            drawer: landings.length === 0 ? undefined : () => ({
                 eyebrow: (Words.field.drawer ?? {}).place ?? "",
                 title: Words.name("agents:landed"),
                 body: (words.tells ?? {}).holding ?? ""
@@ -1022,8 +1065,18 @@ Provider {
     // landing in Agents \u203a Landed, never a copy, and reads it, so one
     // landing is counted once, in For You, and goes from it once read
     // (VKCF3Z and Y2YBTS, 2026-11-10).
+    // Each row kept while its landing, how it's read and the day read the
+    // same, so a landing coming makes its own row alone (Provider.qml's
+    // keptOr). The day is Calendars' hourly clock's, which turns at
+    // midnight, so yesterday's landing stops reading as today's; a day
+    // read here from Date would never make forYou again by itself
+    // (Y2YBTS, 2026-11-10).
+    readonly property var forYouKeeping: keeper()
     readonly property var forYou: {
         const said = Words.of("agents:landed").said ?? {};
+        const today = String(Calendars.today ?? "");
+        const kept = (one, fields) => provider.keptOr(forYouKeeping, fields.key,
+            JSON.stringify([one, fields.hue, today]), () => row(one, fields));
         const row = (one, fields) => thing(Object.assign({
             thing: true,
             name: one.what,
@@ -1039,17 +1092,20 @@ Provider {
                 provider.readLanding(one.key);
             }
         }, provider.landingShows(one), fields));
-        return Landed.toTry(landings, Sessions.landingsRead).map(one => ({
-            row: row(one, {
+        provider.keepingBegun(forYouKeeping);
+        const given = Landed.toTry(landings, Sessions.landingsRead).map(one => ({
+            row: kept(one, {
                 key: `on:waiting:try:${one.key}`,
                 hue: "action",
                 forYou: { kind: "try", source: "sessions" }
             }),
             thing: { kind: "try", ready: true, since: one.at }
         })).concat(Landed.triedRead(landings, Sessions.landingsReadAt).map(tried => ({
-            row: row(tried.one, { key: `on:waiting:tried:${tried.one.key}`, hue: "muted" }),
+            row: kept(tried.one, { key: `on:waiting:tried:${tried.one.key}`, hue: "muted" }),
             done: { how: String(said.read ?? ""), at: tried.at }
         })));
+        provider.keptOnly(forYouKeeping);
+        return given;
     }
 
     // Agents' Recent: the sessions that closed this boot, as every Recent
