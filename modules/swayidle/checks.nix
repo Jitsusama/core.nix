@@ -44,34 +44,60 @@
   the-session-goes-idle-as-the-screens-go-off =
     let
       swayidle = (account graphical).services.swayidle;
-      off = lib.findFirst (
-        timeout: lib.hasSuffix " msg action power-off-monitors" timeout.command
-      ) null swayidle.timeouts;
+      service = (account graphical).systemd.user.services.swayidle-away.Service;
+      away = lib.splitString " " service.ExecStart;
       hint = lib.lists.findFirstIndex (arg: arg == "idlehint") null swayidle.extraArgs;
       idleAt = lib.elemAt swayidle.extraArgs (hint + 1);
     in
     holds "the-session-goes-idle-as-the-screens-go-off"
       "swayidle doesn't tell logind the session is idle as the screens go off."
-      (off != null && hint != null && idleAt == toString off.timeout);
+      (hint != null && lib.length away == 4 && idleAt == lib.elemAt away 3);
 
   # A switch the follower asked for waits while someone is at the machine
   # (../update-to-main/nixos.nix), which this marks from the session's start
   # and from any key or touch until two minutes pass without one.
   someone-at-the-machine-is-marked =
     let
-      swayidle = (account graphical).services.swayidle;
-      service = (account graphical).systemd.user.services.swayidle.Service;
+      service = (account graphical).systemd.user.services.swayidle-away.Service;
       marks = lib.hasInfix "someone-at-the-machine";
-      mark = lib.findFirst (timeout: marks timeout.command) null swayidle.timeouts;
+      away = lib.splitString " " service.ExecStart;
     in
     holds "someone-at-the-machine-is-marked"
       "swayidle doesn't mark someone at the machine for a followed switch to wait on."
       (
-        mark != null
-        && mark.timeout == 120
-        && marks mark.resumeCommand
+        lib.length away == 4
+        && lib.elemAt away 1 == "120"
+        && lib.hasInfix "rm -f '$here'" (builtins.readFile ./away.sh)
         && marks service.ExecStartPre
         && marks service.ExecStopPost
+      );
+
+  # What happens as Joel steps away asks logind nothing, so no hold of
+  # logind's lock against going idle stops the lock: the swayidle that hears
+  # logind has no timeouts, and swayidle-away is given no logind event, which
+  # is all that makes a swayidle ask logind. mycelium's hold stopped the lock
+  # while Joel was away for as long as it held work (2026-11-10). The
+  # desktop's VM test locks with such a hold up and keeps it off for Keep
+  # Awake; this holds the shape that makes it so on every machine.
+  stepping-away-asks-logind-nothing =
+    let
+      # What it runs swayidle with, after its comments and arguments.
+      away = lib.last (lib.splitString "exec swayidle" (builtins.readFile ./away.sh));
+      events = [
+        "before-sleep"
+        "after-resume"
+        "lock "
+        "unlock"
+        "idlehint"
+      ];
+    in
+    holds "stepping-away-asks-logind-nothing"
+      "something that locks as Joel steps away waits on logind's idle holds."
+      (
+        (account graphical).services.swayidle.timeouts == [ ]
+        && lib.all (event: !lib.hasInfix event away) events
+        && lib.hasInfix "screen-kept || lock-screen" away
+        && lib.hasInfix "screen-kept || niri msg action power-off-monitors" away
       );
 
   # The screens go off through the machine's own niri, the one with core's
