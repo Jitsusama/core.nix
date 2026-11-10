@@ -784,6 +784,136 @@ fn a_download_what_goes_up_references_is_fetched_by_the_builder_itself() {
     );
 }
 
+/// A Go zone's test as the builder plans it in `folder`: the test takes
+/// the zone's modules, which take two downloads, and this machine holds
+/// the downloads alone, of 12 MB.
+fn a_go_zone(folder: &Path) {
+    fs::write(
+        folder.join("plans"),
+        "these 4 derivations will be built:\n\
+         \x20 /nix/store/aaaa-test.drv\n\
+         \x20 /nix/store/bbbb-modules.drv\n\
+         \x20 /nix/store/cccc-grpc.tgz.drv\n\
+         \x20 /nix/store/dddd-uuid.tgz.drv\n",
+    )
+    .unwrap();
+    fs::write(
+        folder.join("derivations"),
+        r#"{"version": 4, "derivations": {
+            "aaaa-test.drv": {
+                "outputs": {"out": {"path": "aaaa-test"}},
+                "inputs": {"drvs": {"bbbb-modules.drv": {"outputs": ["out"]}}}},
+            "bbbb-modules.drv": {
+                "outputs": {"out": {"path": "bbbb-modules"}},
+                "inputs": {"drvs": {"cccc-grpc.tgz.drv": {"outputs": ["out"]},
+                                     "dddd-uuid.tgz.drv": {"outputs": ["out"]}}}},
+            "cccc-grpc.tgz.drv": {
+                "outputs": {"out": {"hash": "sha256-CCCC", "method": "flat"}},
+                "env": {"out": "/nix/store/cccc-grpc.tgz"}, "inputs": {"drvs": {}}},
+            "dddd-uuid.tgz.drv": {
+                "outputs": {"out": {"hash": "sha256-DDDD", "method": "flat"}},
+                "env": {"out": "/nix/store/dddd-uuid.tgz"}, "inputs": {"drvs": {}}}}}"#,
+    )
+    .unwrap();
+    fs::write(
+        folder.join("held"),
+        r#"{"/nix/store/aaaa-test": null, "/nix/store/bbbb-modules": null,
+            "/nix/store/cccc-grpc.tgz": {"narSize": 9000000},
+            "/nix/store/dddd-uuid.tgz": {"narSize": 3000000}}"#,
+    )
+    .unwrap();
+    fs::write(
+        folder.join("closure"),
+        r#"{"/nix/store/cccc-grpc.tgz": {"narSize": 9000000, "ca": "fixed:sha256:00",
+                                       "deriver": "/nix/store/cccc-grpc.tgz.drv"},
+            "/nix/store/dddd-uuid.tgz": {"narSize": 3000000, "ca": "fixed:sha256:00",
+                                       "deriver": "/nix/store/dddd-uuid.tgz.drv"}}"#,
+    )
+    .unwrap();
+}
+
+#[test]
+fn a_download_this_machine_holds_that_the_builder_cant_fetch_goes_up() {
+    // On 9 November a lent builder got 403 for a Go zone's 25 modules
+    // from the proxy this machine fetched them through, and built none of
+    // the zone, though this machine held them all. They're what the
+    // zone's modules are built from, not what they reference.
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 0);
+    a_go_zone(folder.path());
+    let sends = |folder: &Path| -> Vec<String> {
+        fs::read_to_string(folder.join("nix-calls"))
+            .unwrap()
+            .lines()
+            .filter(|call| call.contains("--substitute-on-destination"))
+            .map(str::to_owned)
+            .collect()
+    };
+    let send = |paths: &str| {
+        format!(
+            "copy --to {} --no-check-sigs --substitute-on-destination {paths}",
+            STORE.trim()
+        )
+    };
+
+    // The builder is asked to fetch them first, and is refused both.
+    fs::write(
+        folder.path().join("refuses-fetch"),
+        "/nix/store/cccc-grpc.tgz.drv\n/nix/store/dddd-uuid.tgz.drv\n",
+    )
+    .unwrap();
+    let ran = there_given(folder.path(), &offload, &["/nix/store/aaaa-test.drv"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains("the builder fetches 2 downloads of 12.0 MB from their source itself")
+            && said.contains("the builder fetched 0 of 2, so what it lacks goes up from here")
+            && said.contains("sending 2 outputs of 12.0 MB this machine holds"),
+        "{said}"
+    );
+    assert_eq!(
+        sends(folder.path()),
+        [send("/nix/store/cccc-grpc.tgz /nix/store/dddd-uuid.tgz")]
+    );
+    assert_eq!(
+        given_to(folder.path()),
+        "nix-offload\nnix build --no-link '/nix/store/aaaa-test.drv^*'\n"
+    );
+
+    // Refused one, only it goes up.
+    fs::write(
+        folder.path().join("refuses-fetch"),
+        "/nix/store/dddd-uuid.tgz.drv\n",
+    )
+    .unwrap();
+    fs::remove_file(folder.path().join("nix-calls")).unwrap();
+    let ran = there_given(folder.path(), &offload, &["/nix/store/aaaa-test.drv"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains("sending 1 output of 3.0 MB this machine holds"),
+        "{said}"
+    );
+    assert_eq!(sends(folder.path()), [send("/nix/store/dddd-uuid.tgz")]);
+
+    // Fetched both, nothing goes up: a download the builder can fetch
+    // never goes through the tunnel.
+    fs::remove_file(folder.path().join("refuses-fetch")).unwrap();
+    fs::remove_file(folder.path().join("nix-calls")).unwrap();
+    let ran = there_given(folder.path(), &offload, &["/nix/store/aaaa-test.drv"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(!said.contains("this machine holds rather than"), "{said}");
+    assert_eq!(sends(folder.path()), [] as [String; 0]);
+    assert_eq!(
+        fs::read_to_string(folder.path().join("fetched")).unwrap(),
+        "/nix/store/cccc-grpc.tgz.drv\n/nix/store/dddd-uuid.tgz.drv\n"
+    );
+}
+
 #[test]
 fn printing_out_paths_brings_them_here_from_the_builder_and_prints_them() {
     let folder = tempfile::tempdir().unwrap();

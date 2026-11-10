@@ -873,8 +873,11 @@ const PLANS: &str = "xargs -r nix-store --realise --dry-run 2>&1";
 /// what it would build, in 2.4 s through the tunnel for a whole system,
 /// and [`held::instead`] says which of those go up. What they reference
 /// goes only where no cache gives it the builder, which fetches the rest
-/// itself, as it would for a build. The builder's account is one its daemon trusts, so they go
-/// unsigned. When any of it fails, or the send falls behind
+/// itself, as it would for a build. A download among them, sent or
+/// referenced, the builder fetches from its source first, and only one
+/// it couldn't goes up: on 9 November a proxy refused a lent builder a Go
+/// zone's modules, which this machine held. The builder's account is one
+/// its daemon trusts, so they go unsigned. When any of it fails, or the send falls behind
 /// [`send_within`], the builder builds what didn't go up, as before.
 fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, nix]: [&str; 2]) {
     // Said before it's asked, since a fresh builder asks its caches about
@@ -930,6 +933,18 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
         scratch,
         ssh,
     );
+    // A download the builder fetched itself goes up no more.
+    let sending: Vec<String> = sending
+        .into_iter()
+        .filter(|path| {
+            !fixed
+                .get(path)
+                .is_some_and(|derivation| fetched.contains(derivation))
+        })
+        .collect();
+    if sending.is_empty() {
+        return;
+    }
     let own: u64 = sending.iter().filter_map(|path| holds.get(path)).sum();
     let size = held::sent_up(&planned, &fixed, &closure, &fetched).max(own);
     let (outputs, them) = match sending.len() {
@@ -978,14 +993,22 @@ const SENDS_AT: u64 = 1_000_000;
 /// Nix to ask the builder what it holds.
 const SEND_STARTS: std::time::Duration = std::time::Duration::from_mins(2);
 
-/// How long a send of `size` bytes may take at [`SENDS_AT`], unless
-/// `NIX_OFFLOAD_SEND_WITHIN` says otherwise in seconds.
+/// What any send is given, however small, before it's stopped: a small
+/// one costs little to wait on, and what it holds the builder may not be
+/// able to build. On 9 November a Go zone's 106 MB of modules went at
+/// 180 kB/s, which takes 10 minutes, and was stopped at 4, leaving the
+/// builder to fetch what they're built from, which a proxy refused it.
+const SEND_LEAST: std::time::Duration = std::time::Duration::from_mins(15);
+
+/// How long a send of `size` bytes may take at [`SENDS_AT`], and never
+/// less than [`SEND_LEAST`], unless `NIX_OFFLOAD_SEND_WITHIN` says
+/// otherwise in seconds.
 fn send_within(size: u64) -> std::time::Duration {
     std::env::var("NIX_OFFLOAD_SEND_WITHIN")
         .ok()
         .and_then(|seconds| seconds.parse().ok())
         .map_or_else(
-            || SEND_STARTS + std::time::Duration::from_secs(size / SENDS_AT),
+            || (SEND_STARTS + std::time::Duration::from_secs(size / SENDS_AT)).max(SEND_LEAST),
             std::time::Duration::from_secs,
         )
 }
@@ -3386,8 +3409,12 @@ mod tests {
     use std::time::Duration;
 
     #[test]
-    fn a_send_is_given_two_minutes_and_its_size_at_a_megabyte_a_second() {
-        assert_eq!(send_within(0), Duration::from_mins(2));
+    fn a_send_is_given_two_minutes_and_its_size_at_a_megabyte_a_second_or_fifteen() {
+        // A small one is given 15 minutes: on 9 November a Go zone's
+        // 106 MB of modules went at 180 kB/s and was stopped at 4.
+        assert_eq!(send_within(0), Duration::from_mins(15));
+        assert_eq!(send_within(106_400_000), Duration::from_mins(15));
+        assert_eq!(send_within(1_080_000_000), Duration::from_mins(2 + 18));
         // The 1.4 GB that crawled on 9 November gets 25 minutes, not two hours.
         assert_eq!(send_within(1_400_000_000), Duration::from_secs(120 + 1400));
     }
