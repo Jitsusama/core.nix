@@ -7,12 +7,11 @@
 //! disk's file systems are found through what's mapped over it; and an
 //! ask or kind it doesn't know is refused.
 
-use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant};
+use std::process::{Command, Stdio};
+use std::time::Duration;
 
+use daemon_client::{Client, Daemon};
 use serde_json::{Value, json};
 
 /// A machine of two cores, one disk with an encrypted volume over its
@@ -217,9 +216,7 @@ fn process(root: &Path, pid: u32, parent: u32, name: &str, ticks: u64, pages: u6
 
 /// The daemon running on its own socket over its own machine.
 struct Running {
-    daemon: Child,
-    socket: PathBuf,
-    folder: PathBuf,
+    daemon: Daemon,
 }
 
 impl Running {
@@ -248,96 +245,18 @@ impl Running {
             }
             None => Command::new(program),
         };
-        let daemon = command
-            .arg(&socket)
-            .arg(&root)
-            .stderr(Stdio::null())
-            .spawn()
-            .unwrap();
-        until("the socket never came", || socket.exists());
+        command.arg(&socket).arg(&root).stderr(Stdio::null());
         Running {
-            daemon,
-            socket,
-            folder,
+            daemon: Daemon::start(&mut command, socket, folder),
         }
     }
 
     fn root(&self) -> PathBuf {
-        self.folder.join("root")
+        self.daemon.folder().join("root")
     }
 
     fn client(&self) -> Client {
-        let stream = UnixStream::connect(&self.socket).unwrap();
-        stream
-            .set_read_timeout(Some(Duration::from_secs(10)))
-            .unwrap();
-        Client {
-            lines: BufReader::new(stream.try_clone().unwrap()),
-            stream,
-        }
-    }
-}
-
-impl Drop for Running {
-    fn drop(&mut self) {
-        let _ = self.daemon.kill();
-        let _ = self.daemon.wait();
-        let _ = std::fs::remove_dir_all(&self.folder);
-    }
-}
-
-struct Client {
-    stream: UnixStream,
-    lines: BufReader<UnixStream>,
-}
-
-impl Client {
-    /// The answer to an ask, passing over what a watch pushed meanwhile.
-    fn ask(&mut self, asked: &Value) -> Value {
-        writeln!(self.stream, "{asked}").unwrap();
-        loop {
-            let said = self.next();
-            if said["id"] == asked["id"] && said.get("changed").is_none() {
-                return said;
-            }
-        }
-    }
-
-    fn next(&mut self) -> Value {
-        let mut line = String::new();
-        self.lines.read_line(&mut line).unwrap();
-        serde_json::from_str(&line).unwrap()
-    }
-
-    /// The next change a watch is told of the record with this key.
-    fn changed(&mut self, key: &str) -> Value {
-        loop {
-            let said = self.next();
-            let found = said["changed"]
-                .as_array()
-                .and_then(|records| records.iter().find(|record| record["key"] == key));
-            if let Some(record) = found {
-                return record.clone();
-            }
-        }
-    }
-
-    /// The next change saying keys went.
-    fn gone(&mut self) -> Vec<Value> {
-        loop {
-            let said = self.next();
-            if let Some(gone) = said["gone"].as_array() {
-                return gone.clone();
-            }
-        }
-    }
-}
-
-fn until(what: &str, held: impl Fn() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while !held() {
-        assert!(Instant::now() < deadline, "{what}");
-        std::thread::sleep(Duration::from_millis(20));
+        self.daemon.client()
     }
 }
 

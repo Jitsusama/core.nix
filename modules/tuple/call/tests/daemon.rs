@@ -8,13 +8,14 @@
 //! makes the call in it Joel's; and an ask or kind it doesn't know is
 //! refused.
 
-use std::io::{BufRead, BufReader, Write};
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant, SystemTime};
 
+use daemon_client::{Client, until};
 use serde_json::{Value, json};
 
 /// Tuple's command, in the shell the tests run in: `state follow` says
@@ -177,14 +178,7 @@ impl Running {
     }
 
     fn client(&self) -> Client {
-        let stream = UnixStream::connect(&self.socket).unwrap();
-        stream
-            .set_read_timeout(Some(Duration::from_secs(10)))
-            .unwrap();
-        Client {
-            lines: BufReader::new(stream.try_clone().unwrap()),
-            stream,
-        }
+        Client::connect(&self.socket)
     }
 }
 
@@ -197,33 +191,20 @@ impl Drop for Running {
     }
 }
 
-struct Client {
-    stream: UnixStream,
-    lines: BufReader<UnixStream>,
+/// What these tests hear of a watch of the call, beyond an ask's answer.
+trait Following {
+    /// The record as a watch is told of it, once `wanted` holds of it.
+    fn until(&mut self, what: &str, wanted: impl Fn(&Value) -> bool) -> Value;
+    /// How Tuple stands, as a watch is told once it's `word`.
+    fn stands(&mut self, word: &str);
+    /// The call as a watch of it begins.
+    fn watch(&mut self) -> Value;
 }
 
-impl Client {
-    /// The answer to an ask, passing over what a watch said meanwhile.
-    fn ask(&mut self, asked: &Value) -> Value {
-        writeln!(self.stream, "{asked}").unwrap();
-        loop {
-            let said = self.next();
-            if said["id"] == asked["id"] && said.get("changed").is_none() {
-                return said;
-            }
-        }
-    }
-
-    fn next(&mut self) -> Value {
-        let mut line = String::new();
-        self.lines.read_line(&mut line).unwrap();
-        serde_json::from_str(&line).unwrap()
-    }
-
-    /// The record as a watch is told of it, once `wanted` holds of it.
+impl Following for Client {
     fn until(&mut self, what: &str, wanted: impl Fn(&Value) -> bool) -> Value {
         loop {
-            let said = self.next();
+            let said = self.heard();
             if let Some(record) = said["changed"].get(0)
                 && wanted(record)
             {
@@ -233,10 +214,9 @@ impl Client {
         }
     }
 
-    /// How Tuple stands, as a watch is told once it's `word`.
     fn stands(&mut self, word: &str) {
         loop {
-            let said = self.next();
+            let said = self.heard();
             if said["sources"]["tuple"] == word {
                 return;
             }
@@ -266,14 +246,6 @@ fn spawned(mut command: Command, folder: &std::path::Path) -> Child {
 /// long as it's held.
 fn answering_at(folder: &std::path::Path) -> UnixListener {
     UnixListener::bind(folder.join("run/tuple-0")).unwrap()
-}
-
-fn until(what: &str, held: impl Fn() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while !held() {
-        assert!(Instant::now() < deadline, "{what}");
-        std::thread::sleep(Duration::from_millis(20));
-    }
 }
 
 #[test]
@@ -411,7 +383,7 @@ fn tuple_starting_is_followed_at_once() {
     // client acting on its answering holds the room already.
     let mut room = Value::Null;
     loop {
-        let said = client.next();
+        let said = client.heard();
         if let Some(record) = said["changed"].get(0) {
             room = record["room"].clone();
         }

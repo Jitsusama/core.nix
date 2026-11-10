@@ -7,12 +7,10 @@
 //! is heard empty, saying why; what a program has open is
 //! read as it's asked; and an ask or kind it doesn't know is refused.
 
-use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant};
+use std::process::{Command, Stdio};
 
+use daemon_client::{Client, Daemon};
 use serde_json::{Value, json};
 
 const VIEWER: &str = "[Desktop Entry]
@@ -96,9 +94,7 @@ fn fixture(folder: &Path) -> PathBuf {
 }
 
 struct Running {
-    daemon: Child,
-    socket: PathBuf,
-    folder: PathBuf,
+    daemon: Daemon,
 }
 
 impl Running {
@@ -126,24 +122,19 @@ impl Running {
             }
             None => Command::new(program),
         };
-        let daemon = command
+        command
             .arg(&socket)
             .arg(&sources)
             .env("XDG_DATA_HOME", folder.join("near"))
             .env("XDG_DATA_DIRS", folder.join("far"))
-            .stderr(Stdio::null())
-            .spawn()
-            .unwrap();
-        until("the socket never came", || socket.exists());
+            .stderr(Stdio::null());
         Running {
-            daemon,
-            socket,
-            folder,
+            daemon: Daemon::start(&mut command, socket, folder),
         }
     }
 
     fn path(&self, path: &str) -> PathBuf {
-        self.folder.join(path)
+        self.daemon.folder().join(path)
     }
 
     fn reads(&self) -> usize {
@@ -151,77 +142,7 @@ impl Running {
     }
 
     fn client(&self) -> Client {
-        let stream = UnixStream::connect(&self.socket).unwrap();
-        stream
-            .set_read_timeout(Some(Duration::from_secs(10)))
-            .unwrap();
-        Client {
-            lines: BufReader::new(stream.try_clone().unwrap()),
-            stream,
-        }
-    }
-}
-
-impl Drop for Running {
-    fn drop(&mut self) {
-        let _ = self.daemon.kill();
-        let _ = self.daemon.wait();
-        let _ = std::fs::remove_dir_all(&self.folder);
-    }
-}
-
-struct Client {
-    stream: UnixStream,
-    lines: BufReader<UnixStream>,
-}
-
-impl Client {
-    /// The answer to an ask, passing over what a watch pushed meanwhile.
-    fn ask(&mut self, asked: &Value) -> Value {
-        writeln!(self.stream, "{asked}").unwrap();
-        loop {
-            let said = self.next();
-            if said["id"] == asked["id"] && said.get("changed").is_none() {
-                return said;
-            }
-        }
-    }
-
-    fn next(&mut self) -> Value {
-        let mut line = String::new();
-        self.lines.read_line(&mut line).unwrap();
-        serde_json::from_str(&line).unwrap()
-    }
-
-    /// The next change a watch is told of the record with this key.
-    fn changed(&mut self, key: &str) -> Value {
-        loop {
-            let said = self.next();
-            let found = said["changed"]
-                .as_array()
-                .and_then(|records| records.iter().find(|record| record["key"] == key));
-            if let Some(record) = found {
-                return record.clone();
-            }
-        }
-    }
-
-    /// The next change saying keys went.
-    fn gone(&mut self) -> Vec<Value> {
-        loop {
-            let said = self.next();
-            if let Some(gone) = said["gone"].as_array() {
-                return gone.clone();
-            }
-        }
-    }
-}
-
-fn until(what: &str, held: impl Fn() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while !held() {
-        assert!(Instant::now() < deadline, "{what}");
-        std::thread::sleep(Duration::from_millis(20));
+        self.daemon.client()
     }
 }
 
