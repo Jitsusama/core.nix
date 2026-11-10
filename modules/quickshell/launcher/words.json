@@ -2903,13 +2903,12 @@
         "unreaches": "not reached",
         "freeOf": "{free} free of {total}",
         "cores": "{count} cores",
-        "on": "on {realm} \u00b7 {kind}",
+        "on": "on {realm} \u00b7 machine",
         "gpu": "graphics",
         "npu": "NPU",
         "count": "{count} reached",
         "gone": "{count} out of reach",
         "updating": "updating",
-        "restarts": "its sessions restart",
         "updated:done": "{name} updated to {commit}",
         "updated:done:bare": "{name} updated",
         "updated:unchanged": "{name} was on main already",
@@ -2952,7 +2951,7 @@
     { "id": "machines:disk", "in": "machines", "name": "Disk", "term": "Disk/disk" },
     { "id": "machines:commit", "in": "machines", "name": "Commit" },
     { "id": "machines:core", "in": "machines", "name": "Core", "term": "The Library/core" },
-    { "id": "machines:step", "in": "machines", "name": "Last Update" },
+    { "id": "machines:step", "in": "machines", "name": "Last Update", "glyph": "update" },
     { "id": "machines:reboot", "in": "machines", "name": "Reboot", "term": "Machine/reboot" },
     { "id": "machines:measured", "in": "machines", "name": "Measured" },
     {
@@ -2986,8 +2985,8 @@
       "in": "machines",
       "name": "Update It",
       "verb": "update",
-      "glyph": "firmware",
-      "sure": "Update {name} Now"
+      "glyph": "update",
+      "asked": "Update {name}"
     },
     {
       "id": "verb:machines:copy-name",

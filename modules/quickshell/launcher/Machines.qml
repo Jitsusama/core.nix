@@ -3,11 +3,12 @@
 // PROTOCOL.md), told every change as it comes rather than read again as
 // the launcher opens. This machine comes first and its Return opens the
 // Machine place, one place per thing; each other one says what it is and
-// how it stands, its drawer its figures, and its Return steps into those
-// figures as a page, each copying its value, then its acts: Start a
-// Session Here, Update It, which asks first since its sessions restart,
-// and Copy the Name. One out of reach dims, says since when and offers
-// no act (VKCF3Z's ruling of 2026-11-07, in KP0L6A's design-machines.md).
+// how it stands, and its Return steps into its figures as a page, each
+// copying its value, then its acts: Start a Session Here, Update It, which
+// asks once on the command line, and Copy the Name. Every row, this
+// machine's too, has the same drawer of its figures. One out of reach dims,
+// says since when and offers no act (VKCF3Z's rulings of 2026-11-07, in
+// KP0L6A's design-machines.md, and 2026-11-09).
 // RealmMachines.js says each row and drawer, and how an update ended.
 pragma ComponentBehavior: Bound
 import qs
@@ -108,14 +109,18 @@ Provider {
     }
     onAllChanged: changedTo(all)
 
-    // This machine: Return opens the Machine place, one place per thing.
+    // This machine: Return opens the Machine place, one place per thing,
+    // and its drawer is every machine's, one component per thing. Its side
+    // leads with what tells it apart, what it is giving way first.
     function hereRow(record, place) {
+        const items = Listed.hereItems(record, place);
         const row = member({
             thing: true,
             key: `machines:${record.name}`,
             name: record.name,
-            note: Listed.note(record, place),
-            side: Listed.side(record, place),
+            side: items.map(item => item.said).join(" \u00b7 "),
+            sideItems: items,
+            drawer: Listed.drawer(record, place),
             glyph: Words.glyph("machines"),
             hue: "machine",
             verb: "go to",
@@ -154,12 +159,12 @@ Provider {
     // last Copy the Name.
     function inside(record, drawn) {
         const acts = Listed.reached(record) ? [startHere(record), updateIt(record)] : [];
-        return drawn.facts.map(fact => copyRow({
+        return drawn.facts.map(fact => copyRow(Object.assign({
             key: `machines:${record.name}:${fact.label}`,
             name: fact.label,
             side: fact.value,
             copy: fact.value
-        })).concat(acts, [copyRow({
+        }, fact.mark ? { glyph: Words.glyph(fact.mark) } : {}))).concat(acts, [copyRow({
             key: `verb:machines:copy-name:${record.name}`,
             name: Words.name("verb:machines:copy-name"),
             verb: Words.verb("verb:machines:copy-name"),
@@ -190,39 +195,26 @@ Provider {
     // each takes minutes and says how it ended on its own.
     property string updating: ""
 
-    // Updates it to its configuration's main, which restarts what it
-    // runs, so it asks first, as every act that restarts things does:
-    // "Update skiff Now", noted that its sessions restart. While it
-    // goes, its foot says so.
+    // Updates it to its configuration's main, which can't be taken back,
+    // so it asks once on the command line as every such act does, the act
+    // on its thing then y/n: "Update skiff? (y/n)" (docs/design.md's Undo;
+    // VKCF3Z, 2026-11-09). While it goes, its foot says so.
     function updateIt(record) {
         const id = "verb:machines:update";
         const said = Words.of("machines").said ?? {};
         const going = () => (provider.updating === record.name ? said.updating : "");
-        const row = {
+        return thing({
             key: `${id}:${record.name}`,
             name: Words.name(id),
             verb: Words.verb(id),
             glyph: Words.glyph(id),
             hue: "action",
             stays: true,
-            state: going
-        };
-        if (updating !== "")
-            return thing(Object.assign(row, { gone: true }));
-        const sure = () => [thing({
-            key: `${id}:sure:${record.name}`,
-            // The step that asks Joel to be sure, so its Return does it (Launcher.lands).
-            sure: true,
-            name: String(Words.of(id).sure ?? "").replace("{name}", record.name),
-            note: said.restarts,
-            verb: Words.verb(id),
-            glyph: Words.glyph(id),
-            hue: "alert",
-            stays: true,
-            state: () => going() || said.restarts,
+            state: going,
+            gone: updating !== "",
+            asked: String(Words.of(id).asked ?? "").replace("{name}", record.name),
             run: () => provider.update(record)
-        })];
-        return thing(Object.assign(row, { verbs: sure, targets: sure }));
+        });
     }
 
     // Asks its realm's node to update it, through mycelium's own command,

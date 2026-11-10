@@ -389,6 +389,11 @@ in
     console = "f";
     means = "a device's firmware: its version, and an update offered for it";
   };
+  update = {
+    glyph = nerd "f06b0";
+    console = "U";
+    means = "a machine's system updating: to its configuration's main, and how it last ended";
+  };
   heat = {
     glyph = nerd "f050f";
     console = "H";
