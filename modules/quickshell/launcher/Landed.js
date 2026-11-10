@@ -112,10 +112,17 @@ function triedRead(rows, readAt) {
 
 // How many landings worth reading landed today, read or not, on this
 // machine's clock, `now` in milliseconds since the epoch.
+// Today runs from one midnight to the next, found once, since saying each
+// of over a thousand landings' days to compare them was most of Landed's
+// row at every opening (H6EDLC's profile, 2026-11-10).
 function landedToday(kept, now) {
-    const today = new Date(now).toDateString();
-    return kept.filter(one => worthReading(one)
-        && new Date(Date.parse(String(one.at ?? ""))).toDateString() === today).length;
+    const at = new Date(now);
+    const begun = new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime();
+    const ends = new Date(at.getFullYear(), at.getMonth(), at.getDate() + 1).getTime();
+    return kept.filter(one => {
+        const time = Date.parse(String(one.at ?? ""));
+        return time >= begun && time < ends && worthReading(one);
+    }).length;
 }
 
 // How Landed stands, said at its row's right: how many landed today, "5
@@ -156,6 +163,24 @@ function landingDrawer(one, said) {
 // says why it's there; the fact the whole moment, "Saturday 7 November,
 // 11:19". `said` gives `clock(at)`, `day(at)`, When's, and `date(at)`,
 // the full day; a landing with no time says none.
+// A landing's side alone, as landedWhen says it, kept in `sides` by its
+// moment for the day `day` names, so Landed's thousand rows made again at
+// each opening say each moment once a day. `sides` is { day, sides }, and
+// starts again once `day` turns, when today's time may read as yesterday.
+function landedSide(sides, at, day, said) {
+    if (sides.day !== day) {
+        sides.day = day;
+        sides.sides = new Map();
+    }
+    const moment = String(at ?? "");
+    if (!sides.sides.has(moment)) {
+        const time = Date.parse(moment);
+        const dayOf = Number.isNaN(time) ? "" : said.day(time);
+        sides.sides.set(moment, Number.isNaN(time) ? "" : dayOf === "" ? said.clock(time) : dayOf);
+    }
+    return sides.sides.get(moment);
+}
+
 function landedWhen(at, said) {
     const time = Date.parse(String(at ?? ""));
     if (Number.isNaN(time)) {

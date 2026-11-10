@@ -976,22 +976,29 @@ Provider {
     }
     // A landing as both its rows show it, in Landed and in For You, one
     // component the same in both: when it landed at its side, and its
-    // drawer (Landed.js's landedWhen and landingDrawer).
+    // drawer (Landed.js's landedWhen and landingDrawer). Its side is kept
+    // by its moment for the day Calendars' hourly clock names
+    // (landedSides), and the whole moment said only as its drawer is
+    // drawn, since saying both for over a thousand landings at every
+    // opening was most of the date work pegging the shell after one
+    // (H6EDLC's profile, 2026-11-10). A stopgap until the agents daemon
+    // serves Landed's rows ready, KP0L6A's, on 2026-11-12.
+    readonly property var landedSides: ({ day: "", sides: new Map() })
     function landingShows(one) {
         const said = Words.of("agents:landed").said ?? {};
-        const when = Landed.landedWhen(one.at, {
+        const when = {
             clock: at => Moment.clock(new Date(at)),
             day: at => When.day(at, Date.now(), {
                 yesterday: String(said.yesterday ?? ""),
                 date: (date, format) => Qt.formatDate(date, format)
             }),
             date: at => Moment.day(new Date(at), Date.now())
-        });
+        };
         return {
-            side: when.side,
+            side: Landed.landedSide(landedSides, one.at, String(Calendars.today ?? ""), when),
             drawer: () => Landed.landingDrawer(one, {
                 kind: String(said.kind ?? ""),
-                when: when.fact,
+                when: Landed.landedWhen(one.at, when).fact,
                 session: one.session.title ?? "",
                 named: id => Words.name(`agents:${id}`)
             })
