@@ -28,9 +28,18 @@ use std::ffi::OsString;
 use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 /// How many of the host's answers are asked for at once.
 const AT_ONCE: &str = "16";
+
+/// How long a whole read may take before main is fetched instead. A host
+/// that answers reads a folder of a few hundred files in seconds, so this
+/// only ever ends one that hangs, and the fetch comes in minutes.
+const READ_FOR: Duration = Duration::from_secs(120);
+
+/// The longest one answer may take, in seconds.
+const ONE_ANSWER: u64 = 60;
 
 /// What a read of main's head found: the folder's tree, and whether the
 /// head descends from `from`, the commit the machine last switched to.
@@ -296,6 +305,7 @@ struct Host<'a> {
     api: String,
     token: &'a str,
     work: PathBuf,
+    until: Instant,
 }
 
 impl<'a> Host<'a> {
@@ -308,6 +318,7 @@ impl<'a> Host<'a> {
             api: api.trim_end_matches('/').to_owned(),
             token,
             work,
+            until: Instant::now() + READ_FOR,
         })
     }
 
@@ -321,6 +332,13 @@ impl<'a> Host<'a> {
         if paths.is_empty() {
             return Ok(Vec::new());
         }
+        let Some((each, retrying)) = allowed(self.until.saturating_duration_since(Instant::now()))
+        else {
+            return Err(Failure::new(format!(
+                "reading main's folder from the host took over {} s",
+                READ_FOR.as_secs()
+            )));
+        };
         let asks = self.work.join("asks");
         let mut said = format!("header = \"Authorization: Bearer {}\"\n", self.token);
         let answers: Vec<PathBuf> = (0..paths.len())
@@ -342,13 +360,12 @@ impl<'a> Host<'a> {
                 "--silent",
                 "--show-error",
                 "--fail",
+                "--fail-early",
                 "--parallel",
                 "--parallel-max",
                 AT_ONCE,
                 "--connect-timeout",
                 "10",
-                "--max-time",
-                "60",
                 "--retry",
                 "2",
                 "--header",
@@ -356,6 +373,12 @@ impl<'a> Host<'a> {
             ]
             .map(OsString::from),
         );
+        args.extend([
+            OsString::from("--max-time"),
+            OsString::from(each.to_string()),
+            OsString::from("--retry-max-time"),
+            OsString::from(retrying.to_string()),
+        ]);
         let asked = run::output(curl, "reading main's folder from the host", args);
         let _ = fs::remove_file(&asks);
         asked?;
@@ -488,9 +511,27 @@ fn write_private(file: &Path, bytes: &[u8]) -> Result<(), Failure> {
         .map_err(|e| Failure::new(format!("{}: {e}", file.display())))
 }
 
+/// How long one ask of curl may take, with `left` of the read's time to
+/// go: each answer at most a minute and the retries no longer than what's
+/// left, in whole seconds. None once less than a second is left. curl stops
+/// at the first answer that fails, so a host that hangs costs one
+/// answer's time, not one per answer.
+fn allowed(left: Duration) -> Option<(u64, u64)> {
+    let left = left.as_secs();
+    (left > 0).then(|| (left.min(ONE_ANSWER), left))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_ask_takes_no_longer_than_the_read_has_left() {
+        assert_eq!(allowed(Duration::from_secs(120)), Some((60, 120)));
+        assert_eq!(allowed(Duration::from_secs(30)), Some((30, 30)));
+        assert_eq!(allowed(Duration::from_millis(500)), None);
+        assert_eq!(allowed(Duration::ZERO), None);
+    }
 
     #[test]
     fn base64_reads_what_the_host_writes_with_its_line_breaks() {

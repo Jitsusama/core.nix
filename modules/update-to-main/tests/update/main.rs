@@ -1080,7 +1080,11 @@ fn a_hosted_main_is_fetched_into_a_ref_of_its_own() {
 /// world's own folder that curl reads as it would the host's over HTTPS.
 /// `World::answer` writes them for everything main holds.
 fn with_api() -> World {
-    let mut world = World::hosted_from(World::new(), counted_token);
+    api_on(World::hosted_from(World::new(), counted_token))
+}
+
+/// `world`, hosted, reading its folder through the host's API.
+fn api_on(mut world: World) -> World {
     let api = format!("file://{}", world.root.join("api").display());
     world.config.hosted.as_mut().unwrap().api = Some(api);
     world
@@ -1254,6 +1258,26 @@ fn a_folder_read_from_the_host_where_it_was_is_not_built() {
         }
     );
     assert_eq!(world.builds(), 1);
+}
+
+/// Main's folder where it was, read from the host, with a followed input
+/// moved on is built again with the input: main where it was descends from
+/// itself, though root's copy never held it.
+#[test]
+fn a_folder_read_from_the_host_where_it_was_with_its_input_moved_on_is_built_again() {
+    let world = api_on(World::hosted_from(following(), counted_token));
+    let pinned = world.core_commit("pinned", true);
+    let one = world.hosted_commit("one", Some(&pinning(&pinned)));
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, following_done(&one, &pinned));
+    assert!(!world.checkout_has(&one), "main was fetched");
+    world.unsigned("outside the folder");
+    let newer = world.core_commit("newer", true);
+    world.answer();
+    world.system(&format!("{one}+{newer}"));
+    assert_eq!(world.update().1, following_done(&one, &newer));
+    assert_eq!(world.builds(), 2);
 }
 
 /// A file the host gives with contents its tree doesn't name is never
@@ -1621,18 +1645,23 @@ impl World {
 
     /// Commits a signed main whose lock pins core at `pinned`.
     fn signed_pinning(&self, message: &str, pinned: &str) -> String {
-        let lock = serde_json::json!({
-            "nodes": {
-                "root": { "inputs": { "core": "core" } },
-                "core": { "locked": { "type": "github", "rev": pinned } },
-            },
-            "root": "root",
-            "version": 7,
-        });
-        fs::write(self.origin.join("flake.lock"), lock.to_string()).unwrap();
+        fs::write(self.origin.join("flake.lock"), pinning(pinned)).unwrap();
         git(&self.origin, &["add", "flake.lock"]);
         self.signed(message)
     }
+}
+
+/// A lock pinning core at `pinned`.
+fn pinning(pinned: &str) -> String {
+    serde_json::json!({
+        "nodes": {
+            "root": { "inputs": { "core": "core" } },
+            "core": { "locked": { "type": "github", "rev": pinned } },
+        },
+        "root": "root",
+        "version": 7,
+    })
+    .to_string()
 }
 
 fn following_done(commit: &str, core: &str) -> Line {

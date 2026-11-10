@@ -115,6 +115,11 @@ pub fn folder(config: &Config, hosted: &Hosted, commit: &str) -> Option<String> 
 /// `newer`, and otherwise by the host's word when the folder was read from
 /// it with `older` the commit last switched to.
 pub fn descends(config: &Config, older: &str, newer: &str) -> Result<bool, Failure> {
+    // A commit descends from itself, as git's merge-base says: main where it
+    // was, with a followed input moved on, is that.
+    if older == newer {
+        return Ok(true);
+    }
     let main = Repo::main(config);
     if git::has(&main, newer) {
         return git::descends(&main, older, newer);
