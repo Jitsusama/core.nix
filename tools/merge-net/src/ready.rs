@@ -13,7 +13,7 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
-use crate::apart::{apart, descriptions_apart};
+use crate::apart::{apart, checks_apart, descriptions_apart};
 
 /// Whether nix-offload's record for a commit holds a changed-checks run that
 /// passed there and built what it named, against a base `on_main` says
@@ -182,9 +182,9 @@ fn names(text: &str, file: &str, path: &str) -> bool {
             .is_some_and(|near| !folder.is_empty() && text.contains(&format!("./{near}")))
 }
 
-/// Whether `file`, which the branch shares with main, is a JSON file, or
-/// check-descriptions.nix, both changed `apart`, so it stands as two files
-/// would. One naming a path
+/// Whether `file`, which the branch shares with main, is a JSON file,
+/// check-descriptions.nix or a folder's checks.nix, both changed `apart`,
+/// so it stands as two files would. One naming a path
 /// either side renamed or deleted stays shared, as `shared` holds. `base`
 /// gives a file where the branch was checked from, and `checked` where it
 /// was checked at.
@@ -198,8 +198,11 @@ pub fn stands_apart(
     let json = std::path::Path::new(file)
         .extension()
         .is_some_and(|extension| extension.eq_ignore_ascii_case("json"));
+    let checks = file == "checks.nix" || file.ends_with("/checks.nix");
     let read: fn(&str, &str, &str, &str) -> bool = if file == "check-descriptions.nix" {
         descriptions_apart
+    } else if checks {
+        checks_apart
     } else if json {
         apart
     } else {
@@ -746,6 +749,45 @@ mod tests {
         assert!(
             !stands_apart(file, &branch, &main, &at_base, &checked),
             "both sides' changes to one check stood apart"
+        );
+    }
+
+    #[test]
+    fn a_folders_checks_changed_at_different_checks_stand_apart() {
+        // #2807's case: the branch added a check while main changed another.
+        let entry = |name: &str, does: &str| format!("\n  {name} = {does};\n");
+        let file = "modules/shell/checks.nix";
+        let around = |entries: &str| format!("{{ pkgs }}:\nlet\n  x = 1;\nin\n{{{entries}}}\n");
+        let base = around(&entry("a", "x"));
+        let ours = around(&(entry("a", "x") + &entry("b", "x")));
+        let theirs = around(&entry("a", "x + 1"));
+        let head = around(&(entry("a", "x + 1") + &entry("b", "x")));
+        let files = owned(&[file]);
+        let (at_head, at_main) = (|_: &str| head.clone(), |_: &str| theirs.clone());
+        let branch = Side {
+            changed: &files,
+            gone: &[],
+            text: &at_head,
+        };
+        let main = Side {
+            changed: &files,
+            gone: &[],
+            text: &at_main,
+        };
+        let (at_base, checked) = (|_: &str| base.clone(), |_: &str| ours.clone());
+        assert!(
+            stands_apart(file, &branch, &main, &at_base, &checked),
+            "two checks changed apart in a folder's checks.nix were counted as one file"
+        );
+        assert!(
+            !stands_apart(
+                "modules/shell/tests.nix",
+                &branch,
+                &main,
+                &at_base,
+                &checked
+            ),
+            "another Nix file was read as checks"
         );
     }
 
