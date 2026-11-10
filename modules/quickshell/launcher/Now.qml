@@ -287,8 +287,23 @@ Provider {
         };
         // Its plate: how it was found, then its kind, as an eyebrow says
         // where then what, and what of it the side doesn't say; with
-        // nothing found, none.
-        const plate = !here ? null : () => ({
+        // nothing found, none. It reads here as it's drawn, since the
+        // launcher keeps a row that reads the same, and a source or GPS's
+        // measures can change while the town and its note don't.
+        const plate = !here ? null : () => plateOf(Location.here ?? here, now, differs);
+        return thingRow(Object.assign({
+            key: "on:location",
+            name: Words.name("location"),
+            side: side,
+            note: note,
+            hue: differs ? "strong" : "voice",
+            glyph: Theme.glyph.location
+        }, plate ? { thing: true, drawer: plate } : {}), inside);
+    }
+
+    // Location's plate for here, as `location` says it.
+    function plateOf(here, now, differs) {
+        return {
             eyebrow: Here.eyebrow(here, hereSaid),
             eyebrowNames: true,
             // Its town, the place's first part, as the plate names the
@@ -302,15 +317,7 @@ Provider {
                 })),
             // What its source couldn't say of it.
             body: Here.leftOut(here, hereSaid, Words.of("location").tells ?? {})
-        });
-        return thingRow(Object.assign({
-            key: "on:location",
-            name: Words.name("location"),
-            side: side,
-            note: note,
-            hue: differs ? "strong" : "voice",
-            glyph: Theme.glyph.location
-        }, plate ? { thing: true, drawer: plate } : {}), inside);
+        };
     }
 
     // How Location says a time, a day and how long ago, as the launcher
