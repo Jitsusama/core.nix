@@ -135,17 +135,23 @@ function bandOf(kind, thing, now) {
 // For You's items in their bands, { now, look, try }, each item
 // { kind, thing } with whatever else its caller keeps, and given its
 // `weight`. Each band is heaviest first, those alike the oldest first,
-// then in the order they came (VKCF3Z, 2026-11-09).
+// then in the order they came (VKCF3Z, 2026-11-09). Each item's time is
+// read once, beside it, rather than at each of the sort's comparisons,
+// since To Try's landings say theirs as text and number in the hundreds.
+// A stopgap until the agents daemon serves Landed's rows, their times
+// numbers (KP0L6A, 2026-11-12).
 function banded(items, now) {
     const bands = { now: [], look: [], try: [] };
     for (const item of items ?? []) {
-        bands[bandOf(item.kind, item.thing, now)].push(Object.assign({}, item,
-            { weight: weigh(item.thing, now).weight }));
+        bands[bandOf(item.kind, item.thing, now)].push({
+            row: Object.assign({}, item, { weight: weigh(item.thing, now).weight }),
+            since: when(item.thing.since)
+        });
     }
-    const order = Order.then((one, other) => other.weight - one.weight,
-        Order.smaller(one => when(one.thing.since)));
-    return { now: Order.sorted(bands.now, order), look: Order.sorted(bands.look, order),
-        try: Order.sorted(bands.try, order) };
+    const order = Order.then((one, other) => other.row.weight - one.row.weight,
+        Order.smaller(one => one.since));
+    const sorted = band => Order.sorted(band, order).map(one => one.row);
+    return { now: sorted(bands.now), look: sorted(bands.look), try: sorted(bands.try) };
 }
 
 // How many each band holds, as items for a row's side: "1 to do \u00b7 44
