@@ -655,6 +655,30 @@ def test_shortcuts_over_google_are_shot_at_each_scale(
                 desktop.close(window)
 
 
+def test_a_terminal_programs_drawer_is_shot_at_each_scale(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Shoot btop's drawer, which says it runs in a terminal and names its entry's file.
+
+    Its entry's file is an identifier, whole on as many lines as it takes, broken at its
+    slashes, which the shot shows.
+    """
+    for scale in at_each_scale:
+        at = at_scale(desktop, scale)
+        desktop.answer("btop")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["drawer"]["out"] is True
+                and str(shown["drawer"]["title"]).startswith("btop")
+                and "Runs In" in shown["drawer"]["facts"]
+                and "Entry File" in shown["drawer"]["facts"]
+                and len(shown["drawer"]["lines"]["facts"]) == len(shown["drawer"]["facts"])
+            )
+        )
+        desktop.shoot(f"launcher-btop-drawer-at-{at}")
+        desktop.close_launcher()
+
+
 def test_passwords_and_a_copy_are_shot_at_each_scale(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:

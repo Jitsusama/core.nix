@@ -20,6 +20,9 @@ thread of its own, and is stopped past ten seconds.
 |                      | comment                                        | the drawer's body             |
 |                      | categories, keywords                           | the drawer's Categories, Keywords |
 |                      | exec as its arguments, starts in               | the drawer's Command, Starts In |
+|                      | terminal, where it's asked for                 | the drawer's Runs In          |
+|                      | the entry's path                               | the drawer's Entry File       |
+|                      | its actions, each name and command             | the program's step, and found from the top |
 |                      | window class, where it isn't its entry's id    | the drawer's Window Class     |
 |                      | what it opens: each type, named from its globs | the drawer's Opens            |
 |                      | the links it handles, by scheme                | the drawer's Handles          |
@@ -40,10 +43,7 @@ holding one wins, and one saying `Hidden` is none.
   NotShowIn and every `X-` key.** They say how and where a program is
   started, not what it is.
 - **Localized keys.** Joel reads English.
-- **Held, but not shown yet:** the entry's path, which the Desktop ID
-  names already; Terminal, which says only that its Command runs in
-  one; its actions, which the program's rows don't offer yet; and a
-  type's description, since Opens names each type by its globs, in
-  fewer words. Each is in the record for the drawer to take up.
+- **A type's description.** Opens names each type by its globs, in
+  fewer words; it's in the record all the same.
 - **A package's size and when it was installed.** Only the Nix daemon
   knows them, asked through a command for each package.

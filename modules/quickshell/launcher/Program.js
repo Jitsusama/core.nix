@@ -3,9 +3,9 @@
 // its processes use, the memory they hold and how many there are, and what
 // it plays; then what other providers say of it; then what describes it,
 // the kinds of file it opens, the links it handles, its categories and
-// keywords, where it starts, and its version and package; and what
-// identifies it last, its command, window class, desktop entry's id and
-// store path (VKCF3Z, 2026-11-07 and 08). Its desktop entry's comment is
+// keywords, where it starts and whether in a terminal, and its version and
+// package; and what identifies it last, its command, window class, desktop
+// entry's id and file, and store path (VKCF3Z, 2026-11-07 and 08). Its desktop entry's comment is
 // its words. What its entry says is the programs daemon's record of it. Plain JavaScript,
 // so tests/program-drawer.qml holds it in Qt's own engine.
 .pragma library
@@ -162,6 +162,7 @@ function facts(known, named, said) {
     const opened = opens(record);
     const pack = record?.package ?? null;
     const startsIn = String(record?.starts_in ?? "");
+    const entryFile = String(record?.entry_path ?? "");
     const own = id => value => ({ label: named(id), value: String(value ?? "") });
     const figure = (id, say) => (used ? own(id)(say(used))
         : { label: named(id), value: known.asking ? null : "" });
@@ -178,6 +179,8 @@ function facts(known, named, said) {
         runFact(named("keywords"), record?.keywords),
         Object.assign(own("starts-in")(startsIn),
             startsIn === "" ? {} : { valueItems: [{ said: startsIn, whole: true }] }),
+        // Said only where its entry asks for a terminal, as most don't.
+        own("runs-in")(record?.terminal === true ? said.terminal ?? "" : ""),
         own("version")(pack?.version ?? ""),
         own("package")(pack?.name ?? ""),
         commandFact(known.command ?? [], named),
@@ -186,6 +189,10 @@ function facts(known, named, said) {
         Object.assign(own("window-class")(record?.window_class === known.id ? ""
             : record?.window_class ?? ""), { identifies: true }),
         Object.assign(own("desktop-id")(known.id ?? ""), { identifies: true }),
+        // The file its entry was read from, which says whose data folder
+        // won where several hold one of that id.
+        Object.assign(own("entry-file")(entryFile), { identifies: true,
+            valueItems: [{ said: entryFile, whole: true }] }),
         Object.assign(own("store-path")(pack?.store_path ?? ""), { identifies: true,
             valueItems: [{ said: pack?.store_path ?? "", whole: true }] })
     ]).filter(fact => fact.value !== "");
