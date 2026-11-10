@@ -268,21 +268,22 @@ Floating {
     // name would right under it (VKCF3Z, 2026-11-03).
     readonly property var facts: shown ? (shown.facts ?? [])
         .filter(fact => fact && String(fact.value ?? "") !== title) : []
-    // A fact's row is kept as the facts change, each reading the fact at
-    // its place, and only the rows past the ones before are made or let
-    // go: rows made afresh for every fact were most of a step into
-    // Programs, whose first program's drawer made 456 things, and of
-    // Passwords' (keeps-pace under load, 2026-11-10).
+    // A fact's row is kept once made, each reading the fact at its place
+    // and hidden past the facts shown, so only a thing with more facts
+    // than any before makes rows: they were made afresh for every fact
+    // each time the facts changed, and the first program's three took
+    // 5 ms of a 19 ms step into Programs at rest, made again on every
+    // step since home's drawer holds none (nested niri, 2026-11-10).
     onFactsChanged: drawer.keptTo(factsKept, facts.length)
     // How many fact rows it has made, for the check that moving between
-    // things with as many facts makes none.
+    // things and back into a place makes none.
     property int factsMade: 0
     function keptTo(kept, count) {
-        if (kept.count > count)
-            kept.remove(count, kept.count - count);
         while (kept.count < count)
             kept.append({});
     }
+    // What a hidden row reads, the same each time, so its bindings stay.
+    readonly property var noFact: ({})
     readonly property string body: shown ? shown.body ?? "" : ""
     // Whether it lists keys (`keys: true`), as Space ? does: each chord is
     // the name and what it does the value, both at Note, the chord in the
@@ -405,7 +406,7 @@ Floating {
                     return line ? contentTop + flow.y + previewBox.y + line.y
                         + line.baselineOffset : null;
                 }) : [],
-            facts: factsShown.visible ? Array.from({ length: factRows.count }, (_, at) => {
+            facts: factsShown.visible ? Array.from({ length: factRows.shown }, (_, at) => {
                 const row = factRows.itemAt(at);
                 return row ? contentTop + flow.y + factsShown.y + row.y + row.base : null;
             }) : [],
@@ -1187,7 +1188,7 @@ Floating {
     // wrapped, for the launcher to report when asked: a key list's take one.
     function factsWrapped() {
         let wrapped = 0;
-        for (let at = 0; at < factRows.count; at++) {
+        for (let at = 0; at < factRows.shown; at++) {
             const row = factRows.itemAt(at);
             if (row && !row.heading && row.lines > 1)
                 wrapped += 1;
@@ -1198,7 +1199,7 @@ Floating {
     // them, for the launcher to report: a key list's never do.
     function factsUnder() {
         let under = 0;
-        for (let at = 0; at < factRows.count; at++) {
+        for (let at = 0; at < factRows.shown; at++) {
             const row = factRows.itemAt(at);
             if (row && !row.heading && row.under)
                 under += 1;
@@ -1208,7 +1209,7 @@ Floating {
     // Whether its facts are laid one way, every value beside its name or
     // every one under, prose aside, for the launcher to report.
     function laidOneWay() {
-        const laid = Array.from({ length: factRows.count }, (_, at) => factRows.itemAt(at))
+        const laid = Array.from({ length: factRows.shown }, (_, at) => factRows.itemAt(at))
             .filter(row => row && !row.heading && !proseFact(row.modelData))
             .map(row => row.under);
         return laid.every(under => under) || laid.every(under => !under);
@@ -1216,7 +1217,7 @@ Floating {
     // Each fact's figure as drawn: its shape where it shows, "" where it
     // carries none or has given way, for the launcher to report.
     function figuresDrawn() {
-        return Array.from({ length: factRows.count }, (_, at) => {
+        return Array.from({ length: factRows.shown }, (_, at) => {
             const row = factRows.itemAt(at);
             return row && row.figureShown ? String(row.figure.shape ?? "") : "";
         });
@@ -1224,7 +1225,7 @@ Floating {
     // The facts' rows drawn, each a fact row's item.
     function drawnRows() {
         const rows = [];
-        for (let at = 0; at < factRows.count; at += 1) {
+        for (let at = 0; at < factRows.shown; at += 1) {
             const row = factRows.itemAt(at);
             if (row !== null)
                 rows.push(row);
@@ -1315,9 +1316,10 @@ Floating {
     function apartIn(wraps, first) {
         return wraps && !first ? Theme.space.beat : 0;
     }
-    // Whether any of a Repeater's things takes more than a line.
+    // Whether any of a Repeater's things takes more than a line, of those
+    // it shows where it keeps more hidden.
     function anyWraps(things) {
-        return Array.from({ length: things.count }, (_, at) => things.itemAt(at))
+        return Array.from({ length: things.shown ?? things.count }, (_, at) => things.itemAt(at))
             .some(thing => (thing?.lines ?? 1) > 1);
     }
     // A number and its unit kept on one line, so "8 s" never leaves its s
@@ -1405,7 +1407,7 @@ Floating {
                     line: words ? at : -1 });
         };
         let heading = null;
-        for (let at = 0; at < factRows.count; at++) {
+        for (let at = 0; at < factRows.shown; at++) {
             const row = factRows.itemAt(at);
             if (!row)
                 continue;
@@ -2028,14 +2030,17 @@ Floating {
                             id: factsKept
                         }
                         readonly property bool wraps: drawer.anyWraps(factRows)
+                        // How many of its rows show a fact, the rest kept
+                        // hidden for a thing with more.
+                        readonly property int shown: Math.min(count, drawer.facts.length)
                         // How tall its facts stand together.
                         function taken() {
-                            return Array.from({ length: count }, (_, at) => itemAt(at))
+                            return Array.from({ length: shown }, (_, at) => itemAt(at))
                                 .reduce((sum, row) => sum + (row?.height ?? 0), 0);
                         }
                         // Every fact's name and value, for the keys' lines.
                         function texts() {
-                            return [].concat(...Array.from({ length: count }, (_, at) => {
+                            return [].concat(...Array.from({ length: shown }, (_, at) => {
                                 const row = itemAt(at);
                                 return row ? [row.over, row.name, ...row.laterChords(), row.value]
                                     : [];
@@ -2045,7 +2050,8 @@ Floating {
                         Item {
                             id: fact
                             required property int index
-                            readonly property var modelData: drawer.facts[index] ?? ({})
+                            readonly property var modelData: drawer.facts[index] ?? drawer.noFact
+                            visible: index < drawer.facts.length
                             Component.onCompleted: drawer.factsMade += 1
                             // A heading over the facts after it, as the
                             // keys' list names each mode's, set as the
