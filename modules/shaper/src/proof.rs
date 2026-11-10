@@ -11,8 +11,8 @@
 //! `jitsusama.shaper.speedServer`, or `--server` does.
 //!
 //! It runs `--uploads` uploads from jobs.slice for the whole run, and in
-//! each block, from app.slice as Joel's own programs: one upload, a
-//! download repeated, a fresh HTTPS connection each second, and a STUN
+//! each block, from app.slice as Joel's own programs: an upload and a
+//! download, each repeated, a fresh HTTPS connection each second, and a STUN
 //! round trip five times a second, as a call's packets would go. Each pair
 //! of blocks has the shaper on for one and off for the other, in turn
 //! first, so a link that drifts through the run favours neither.
@@ -29,8 +29,13 @@
 //! within `CALL_MARGIN_MS` of its median through the shaper before the
 //! proof's load starts, Joel's upload gets at least half of what the link
 //! sends, and at least `FAVOUR` of every `FAVOUR_OF` pairs favour the
-//! shaper. A block with the shaper on
-//! whose CAKE never held a queue says nothing of it, and is void.
+//! shaper; src/proof/verdict.rs judges it. A pair says nothing of the
+//! shaper, and is void, when its block with the shaper on found CAKE
+//! never held a queue, or when the server refused any of Joel's requests
+//! in either block. A request never answered still counts, since a
+//! shaper starving Joel would look the same.
+
+mod verdict;
 
 use crate::qdisc;
 use std::fs;
@@ -40,18 +45,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
+use verdict::{Block, answers, judge, percentile};
 
 /// Where the server is named when `--server` doesn't: the machine's
 /// `jitsusama.shaper.speedServer`, which the wrapper sets.
 const SERVER_ENV: &str = "SHAPER_SPEED_SERVER";
-/// How far over the idle median a call's 99th percentile may go.
-const CALL_MARGIN_MS: f64 = 30.0;
-/// The least share of what the link sends that Joel's upload must get.
-const SHARE: f64 = 0.5;
-/// Of every `FAVOUR_OF` pairs, how many must favour the shaper: ten of
-/// twelve is a sign test's one in fifty by chance.
-const FAVOUR: f64 = 10.0;
-const FAVOUR_OF: f64 = 12.0;
 /// How long an arm settles before its block counts: the shaper takes the
 /// queue back within ten seconds of the load, and the router's queue
 /// drains as long once it's off.
@@ -71,121 +69,6 @@ fn arms(pair: u32) -> [Arm; 2] {
         [Arm::On, Arm::Off]
     } else {
         [Arm::Off, Arm::On]
-    }
-}
-
-/// What one block measured.
-#[derive(Clone, Debug, Default, serde::Serialize)]
-struct Block {
-    shaped: bool,
-    /// Joel's upload and download, and all the link sent, in kbit/s.
-    up_kbit: f64,
-    down_kbit: f64,
-    sent_kbit: f64,
-    /// The call's round trips, in ms, and how many went unanswered.
-    call_ms: Vec<f64>,
-    lost: usize,
-    /// A fresh connection's time to its first byte, in ms.
-    first_byte_ms: Vec<f64>,
-    /// Whether CAKE held a queue at any read: the shaper owned it.
-    owned: bool,
-}
-
-impl Block {
-    fn share(&self) -> f64 {
-        if self.sent_kbit > 0.0 {
-            self.up_kbit / self.sent_kbit
-        } else {
-            0.0
-        }
-    }
-
-    fn void(&self) -> bool {
-        self.shaped && !self.owned
-    }
-}
-
-#[derive(Debug, serde::Serialize)]
-struct Verdict {
-    idle_call_ms: f64,
-    shaped_call_p99_ms: f64,
-    shaped_share: f64,
-    unshaped_share: f64,
-    pairs: usize,
-    favour_shaper: usize,
-    void: usize,
-    calm: bool,
-    fair: bool,
-    consistent: bool,
-}
-
-impl Verdict {
-    fn passed(&self) -> bool {
-        self.calm && self.fair && self.consistent
-    }
-}
-
-/// The value at `p` (0 to 1) through some values, or `NaN` with none.
-fn percentile(values: &[f64], p: f64) -> f64 {
-    let mut all = values.to_vec();
-    all.sort_by(f64::total_cmp);
-    if all.is_empty() {
-        return f64::NAN;
-    }
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        clippy::cast_precision_loss,
-        reason = "an index into a few thousand values"
-    )]
-    let at = ((all.len() - 1) as f64 * p).round() as usize;
-    all[at]
-}
-
-/// Judges the pairs: whether the shaper kept the call calm and Joel's
-/// upload its share, and whether the pairs agree. A pair with a void
-/// block counts for neither arm.
-fn judge(idle_call: &[f64], pairs: &[[Block; 2]]) -> Verdict {
-    let counted: Vec<&[Block; 2]> = pairs
-        .iter()
-        .filter(|pair| !pair.iter().any(Block::void))
-        .collect();
-    let arm = |shaped: bool| {
-        counted
-            .iter()
-            .flat_map(|p| p.iter())
-            .filter(move |b| b.shaped == shaped)
-    };
-    let calls: Vec<f64> = arm(true).flat_map(|b| b.call_ms.iter().copied()).collect();
-    let shares = |shaped: bool| arm(shaped).map(Block::share).collect::<Vec<f64>>();
-    let favour = counted
-        .iter()
-        .filter(|pair| {
-            let (on, off) = if pair[0].shaped {
-                (&pair[0], &pair[1])
-            } else {
-                (&pair[1], &pair[0])
-            };
-            on.share() > off.share()
-        })
-        .count();
-    let idle = percentile(idle_call, 0.5);
-    let p99 = percentile(&calls, 0.99);
-    let shaped_share = percentile(&shares(true), 0.5);
-    #[expect(clippy::cast_precision_loss, reason = "a few dozen pairs")]
-    let consistent =
-        !counted.is_empty() && favour as f64 >= counted.len() as f64 * FAVOUR / FAVOUR_OF;
-    Verdict {
-        idle_call_ms: idle,
-        shaped_call_p99_ms: p99,
-        shaped_share,
-        unshaped_share: percentile(&shares(false), 0.5),
-        pairs: counted.len(),
-        favour_shaper: favour,
-        void: pairs.len() - counted.len(),
-        calm: p99 <= idle + CALL_MARGIN_MS,
-        fair: shaped_share >= SHARE,
-        consistent,
     }
 }
 
@@ -332,14 +215,6 @@ fn sent_bytes(link: &str) -> u64 {
         .unwrap_or(0)
 }
 
-/// Adds up a probe's lines: the first number of each, as curl's `-w`
-/// writes them.
-fn total(text: &str) -> f64 {
-    text.lines()
-        .filter_map(|l| l.split_whitespace().next()?.parse::<f64>().ok())
-        .sum()
-}
-
 fn kbit(bytes: f64, seconds: f64) -> f64 {
     bytes * 8.0 / 1_000.0 / seconds
 }
@@ -352,18 +227,24 @@ fn block(arm: Arm, link: &str, asked: &Asked, stop: &AtomicBool) -> Option<Block
     let s = seconds.to_string();
     let me = std::env::current_exe().ok()?;
     let me = me.to_str()?;
+    // Each probe says each answer's status beside what it measured, so a
+    // server refusing Joel's requests is told from a shaper slowing them,
+    // and the upload is repeated as the download is, since a server may
+    // end one early.
     let up = format!(
-        "head -c 4000000000 /dev/zero | curl -s -o /dev/null -X POST -T - --max-time {s} \
-         -w '%{{size_upload}}\\n' '{server}/__up'"
+        "end=$((SECONDS + {s})); while [ $SECONDS -lt $end ]; do head -c 4000000000 /dev/zero \
+         | curl -s -o /dev/null -X POST -T - --max-time $((end - SECONDS + 1)) \
+         -w '%{{http_code}} %{{size_upload}}\\n' '{server}/__up'; done"
     );
     let down = format!(
         "end=$((SECONDS + {s})); while [ $SECONDS -lt $end ]; do curl -s -o /dev/null \
-         --max-time $((end - SECONDS + 1)) -w '%{{size_download}}\\n' \
+         --max-time $((end - SECONDS + 1)) -w '%{{http_code}} %{{size_download}}\\n' \
          '{server}/__down?bytes=25000000'; done"
     );
     let first = format!(
         "end=$((SECONDS + {s})); while [ $SECONDS -lt $end ]; do curl -s -o /dev/null \
-         -w '%{{time_starttransfer}}\\n' '{server}/__down?bytes=0'; sleep 1; done"
+         -w '%{{http_code}} %{{time_starttransfer}}\\n' '{server}/__down?bytes=0'; \
+         sleep 1; done"
     );
     let probes: Vec<Child> = [
         scoped("app.slice", "up", &["sh", "-c", &up]),
@@ -406,19 +287,18 @@ fn block(arm: Arm, link: &str, asked: &Asked, stop: &AtomicBool) -> Option<Block
     #[expect(clippy::cast_precision_loss, reason = "bytes far under 2^52")]
     let sent_kbit = kbit(sent as f64, elapsed);
     let call = &outs[3];
+    let (up, down, first) = (answers(&outs[0]), answers(&outs[1]), answers(&outs[2]));
     Some(Block {
         shaped: arm == Arm::On,
-        up_kbit: kbit(total(&outs[0]), elapsed),
-        down_kbit: kbit(total(&outs[1]), elapsed),
+        up_kbit: kbit(up.total, elapsed),
+        down_kbit: kbit(down.total, elapsed),
         sent_kbit,
         call_ms: call.lines().filter_map(|l| l.parse().ok()).collect(),
         lost: call.lines().filter(|l| *l == "lost").count(),
-        first_byte_ms: outs[2]
-            .lines()
-            .filter_map(|l| l.parse::<f64>().ok())
-            .map(|s| s * 1_000.0)
-            .collect(),
+        first_byte_ms: first.each.iter().map(|s| s * 1_000.0).collect(),
         owned,
+        refused: up.refused + down.refused + first.refused,
+        unanswered: up.unanswered + down.unanswered + first.unanswered,
     })
 }
 
@@ -446,7 +326,8 @@ fn idle_call(seconds: u64) -> Vec<f64> {
 fn say(block: &Block, arm: Arm) {
     eprintln!(
         "  {:<3} Joel up {:>6.0} kbit/s of {:>6.0} ({:>3.0}%), down {:>7.0}, \
-         call p50 {:>5.1} p99 {:>5.1} ms, {} lost, first byte p50 {:>4.0} ms{}",
+         call p50 {:>5.1} p99 {:>5.1} ms, {} lost, first byte p50 {:>4.0} ms, \
+         {} refused, {} unanswered{}",
         if arm == Arm::On { "on" } else { "off" },
         block.up_kbit,
         block.sent_kbit,
@@ -456,11 +337,12 @@ fn say(block: &Block, arm: Arm) {
         percentile(&block.call_ms, 0.99),
         block.lost,
         percentile(&block.first_byte_ms, 0.5),
-        if block.void() {
-            ", void: CAKE held no queue"
-        } else {
-            ""
-        }
+        block.refused,
+        block.unanswered,
+        block
+            .void()
+            .map(|why| format!(", void: {why}"))
+            .unwrap_or_default()
     );
 }
 
@@ -647,92 +529,10 @@ fn run_pairs(asked: &Asked, link: &str, stop: &AtomicBool, from: u32) -> Vec<[Bl
     pairs
 }
 
-impl Verdict {
-    fn say(&self) {
-        let verdict = self;
-        eprintln!(
-            "the call: idle median {:.1} ms, shaped p99 {:.1} ms ({}); \
-             Joel's upload: {:.0}% shaped, {:.0}% unshaped ({}); \
-             {} of {} pairs favour the shaper ({}), {} void",
-            verdict.idle_call_ms,
-            verdict.shaped_call_p99_ms,
-            if verdict.calm { "calm" } else { "not calm" },
-            verdict.shaped_share * 100.0,
-            verdict.unshaped_share * 100.0,
-            if verdict.fair { "fair" } else { "not fair" },
-            verdict.favour_shaper,
-            verdict.pairs,
-            if verdict.consistent {
-                "consistent"
-            } else {
-                "not consistent"
-            },
-            verdict.void
-        );
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use super::verdict::tests::pairs;
     use super::*;
-
-    fn block(shaped: bool, share: f64, call: f64) -> Block {
-        Block {
-            shaped,
-            up_kbit: share * 10_000.0,
-            sent_kbit: 10_000.0,
-            call_ms: vec![call; 100],
-            owned: true,
-            ..Block::default()
-        }
-    }
-
-    fn pairs(n: usize, on: f64, off: f64) -> Vec<[Block; 2]> {
-        (0..n)
-            .map(|_| [block(true, on, 25.0), block(false, off, 300.0)])
-            .collect()
-    }
-
-    #[test]
-    fn a_shaper_that_keeps_the_call_and_the_upload_passes() {
-        let verdict = judge(&[20.0; 50], &pairs(12, 0.8, 0.05));
-        assert!(verdict.passed(), "{verdict:?}");
-    }
-
-    #[test]
-    fn a_call_far_over_its_idle_fails() {
-        let mut all = pairs(12, 0.8, 0.05);
-        for pair in &mut all {
-            pair[0].call_ms = vec![80.0; 100];
-        }
-        let verdict = judge(&[20.0; 50], &all);
-        assert!(!verdict.calm, "{verdict:?}");
-    }
-
-    #[test]
-    fn an_upload_under_half_the_link_fails() {
-        let verdict = judge(&[20.0; 50], &pairs(12, 0.4, 0.05));
-        assert!(!verdict.fair, "{verdict:?}");
-    }
-
-    #[test]
-    fn pairs_that_disagree_fail() {
-        let mut all = pairs(12, 0.8, 0.05);
-        for pair in all.iter_mut().take(3) {
-            pair[1] = block(false, 0.9, 300.0);
-        }
-        let verdict = judge(&[20.0; 50], &all);
-        assert_eq!(verdict.favour_shaper, 9, "{verdict:?}");
-        assert!(!verdict.consistent, "nine of twelve counted as consistent");
-    }
-
-    #[test]
-    fn a_block_whose_cake_held_no_queue_is_void() {
-        let mut all = pairs(12, 0.8, 0.05);
-        all[0][0].owned = false;
-        let verdict = judge(&[20.0; 50], &all);
-        assert_eq!((verdict.pairs, verdict.void), (11, 1), "{verdict:?}");
-    }
 
     #[test]
     fn pairs_measured_in_three_windows_are_kept_as_one_run() {
@@ -769,13 +569,6 @@ mod tests {
     fn the_shaper_goes_first_in_every_other_pair() {
         assert_eq!(arms(0), [Arm::On, Arm::Off]);
         assert_eq!(arms(1), [Arm::Off, Arm::On]);
-    }
-
-    #[test]
-    fn curls_lines_are_added_up() {
-        let added = total("25000000\n25000000\n12\n");
-        assert!((added - 50_000_012.0).abs() < 0.5, "added up to {added}");
-        assert!(total("").abs() < f64::EPSILON, "nothing added to something");
     }
 
     #[test]
