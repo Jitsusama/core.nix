@@ -19,6 +19,12 @@
 //! which hands its `act` to the same asks the old socket takes
 //! (ask.rs), so the shell can do everything on one connection.
 //!
+//! Each piece of mail that wants Joel is also a `row:mail:<id>` record,
+//! the row the launcher shows for it, worded in the vocabulary this
+//! program is handed (rows.rs), so the shell makes no rows of its own;
+//! a `list` or `watch` of rows names its `place`, one or a list of them,
+//! to hear only those. Without a vocabulary, no rows are made.
+//!
 //! A `list` or a `watch` answers beside its records when Google was last
 //! read (`read`, in milliseconds since the epoch, null until the first
 //! read since the program started) and how the account stands
@@ -42,14 +48,15 @@ use serde_json::{Map, Value, json};
 use crate::ask;
 use crate::drive::Drive;
 use crate::files::Fetched;
+use crate::rows::{self, Words};
 use crate::state::{Meet, Standing, State};
 
 /// The interface's version.
 pub const VERSION: u64 = 1;
 
 /// The kinds this daemon keeps.
-const KINDS: [&str; 7] = [
-    "meeting", "mail", "file", "held", "lately", "call", "account",
+const KINDS: [&str; 8] = [
+    "meeting", "mail", "file", "held", "lately", "call", "account", "row",
 ];
 
 /// The one account's key.
@@ -112,6 +119,19 @@ pub fn records(state: &State) -> Vec<(String, Value)> {
     made
 }
 
+/// Every ready row the state makes, in each place's order, as records
+/// keyed as rows.rs keys them, each its row under `row`.
+fn rows_of(state: &State, words: &Words) -> Vec<(String, Value)> {
+    rows::mail(&state.mail, words)
+        .into_iter()
+        .map(|row| {
+            let key = row["key"].as_str().unwrap_or_default().to_owned();
+            let record = json!({"key": key, "kind": "row", "row": row});
+            (key, record)
+        })
+        .collect()
+}
+
 /// The source's word for how the account stands, as the people daemon
 /// says its sources' (`starting` until Google is first asked).
 fn word(state: Option<&State>) -> (&'static str, &'static str) {
@@ -140,14 +160,22 @@ struct Watch {
     kinds: Option<HashSet<String>>,
     /// The keys watched, or none for every key of its kinds.
     keys: Option<HashSet<String>>,
+    /// The places whose rows are watched, or none for every place's.
+    places: Option<HashSet<String>>,
     told: Sender<String>,
 }
 
 impl Watch {
     fn sees(&self, key: &str) -> bool {
-        let kind = key.split_once(':').map_or(key, |(kind, _)| kind);
+        let (kind, rest) = key.split_once(':').unwrap_or((key, ""));
+        let place = rest.split_once(':').map_or(rest, |(place, _)| place);
         self.kinds.as_ref().is_none_or(|kinds| kinds.contains(kind))
             && self.keys.as_ref().is_none_or(|keys| keys.contains(key))
+            && (kind != "row"
+                || self
+                    .places
+                    .as_ref()
+                    .is_none_or(|places| places.contains(place)))
     }
 }
 
@@ -159,6 +187,8 @@ struct Held {
     order: Vec<String>,
     /// The last state said, none before the first look at Google.
     state: Option<State>,
+    /// The words rows are said in, none to make no rows.
+    words: Option<Words>,
     watches: Vec<Watch>,
     since: i64,
     connections: u64,
@@ -202,6 +232,11 @@ impl Daemon {
         Ok(daemon)
     }
 
+    /// Makes ready rows from now on, said in these words.
+    pub fn words(&self, words: Words) {
+        self.lock().words = Some(words);
+    }
+
     fn lock(&self) -> MutexGuard<'_, Held> {
         self.held.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -213,7 +248,10 @@ impl Daemon {
     pub fn say(&self, state: &State, now: i64) {
         let mut held = self.lock();
         let before = word(held.state.as_ref());
-        let made = records(state);
+        let mut made = records(state);
+        if let Some(words) = &held.words {
+            made.extend(rows_of(state, words));
+        }
         let mut changed = Vec::new();
         let mut order = Vec::with_capacity(made.len());
         let mut kept = BTreeMap::new();
@@ -309,8 +347,8 @@ impl Daemon {
                     &id,
                     "unknown-kind",
                     &format!(
-                        "this daemon keeps meeting, mail, file, held, lately, call and \
-                         account, not {kind}"
+                        "this daemon keeps meeting, mail, file, held, lately, call, \
+                         account and row, not {kind}"
                     ),
                 );
             }
@@ -351,6 +389,7 @@ impl Daemon {
                     id: id.clone(),
                     kinds,
                     keys: None,
+                    places: places(&said),
                     told: told.clone(),
                 };
                 let records: Vec<&Value> = held
@@ -368,6 +407,7 @@ impl Daemon {
                     id: id.clone(),
                     kinds,
                     keys: strings(&said, "keys").map(|keys| keys.into_iter().collect()),
+                    places: places(&said),
                     told: told.clone(),
                 };
                 let records: Vec<Value> = held
@@ -443,6 +483,15 @@ fn kinds(said: &Value) -> Result<Option<HashSet<String>>, String> {
     match named.iter().find(|kind| !KINDS.contains(&kind.as_str())) {
         Some(kind) => Err(kind.clone()),
         None => Ok(Some(named.into_iter().collect())),
+    }
+}
+
+/// The places an ask's rows are narrowed to, as one or a list, none for
+/// every place.
+fn places(said: &Value) -> Option<HashSet<String>> {
+    match said.get("place")? {
+        Value::String(place) => Some(HashSet::from([place.clone()])),
+        _ => strings(said, "place").map(|places| places.into_iter().collect()),
     }
 }
 
@@ -523,6 +572,63 @@ mod tests {
         );
         let next: Value = serde_json::from_str(&lines.recv().unwrap()).unwrap();
         assert_eq!(next["changed"][0]["key"], ACCOUNT, "{next}");
+    }
+
+    #[test]
+    fn mails_rows_are_heard_by_a_watch_of_their_place_once_words_are_given() {
+        let daemon = Daemon {
+            held: Arc::new(Mutex::new(Held::default())),
+        };
+        let mut state = State::without(Standing::Ready);
+        state.mail = vec![crate::mail::Mail {
+            id: "m1".into(),
+            from: "Ada Lovelace".into(),
+            address: "ada@example.com".into(),
+            to: String::new(),
+            cc: String::new(),
+            others: Vec::new(),
+            subject: "Engines".into(),
+            sent: false,
+            went: Vec::new(),
+            at: 1_000,
+            page: "https://mail.google.com/mail/u/0/#inbox/m1".into(),
+            body: String::new(),
+            attachments: Vec::new(),
+            done: None,
+        }];
+        let (told, lines) = mpsc::channel();
+        let (asks, _) = mpsc::channel();
+        daemon.say(&state, 1);
+        let unworded = daemon.answer(
+            r#"{"id": 1, "ask": "list", "kind": "row"}"#,
+            1,
+            &told,
+            &asks,
+        );
+        assert_eq!(unworded["records"], json!([]), "rows made without words");
+        daemon.words(Words {
+            untitled: "Mail Without a Subject".into(),
+            glyph: "mail".into(),
+            ..Words::default()
+        });
+        let ask = |line: &str| {
+            daemon.answer(line, 1, &told, &asks);
+            serde_json::from_str::<Value>(&lines.recv().unwrap()).unwrap()
+        };
+        let mail = ask(r#"{"id": 2, "ask": "watch", "kind": "row", "place": "mail"}"#);
+        let documents = ask(r#"{"id": 3, "ask": "watch", "kind": "row", "place": ["documents"]}"#);
+        assert_eq!(mail["records"], json!([]), "rows said before the next look");
+        daemon.say(&state, 2);
+        let heard: Value = serde_json::from_str(&lines.recv().unwrap()).unwrap();
+        assert_eq!(
+            heard["id"], 2,
+            "a watch of documents heard mail's rows: {heard}"
+        );
+        assert_eq!(heard["changed"][0]["key"], "row:mail:m1");
+        assert_eq!(heard["changed"][0]["row"]["row"], "mail:m1");
+        assert_eq!(heard["changed"][0]["row"]["name"], "Engines");
+        assert!(lines.try_recv().is_err(), "more was said than mail's row");
+        assert_eq!(documents["records"], json!([]));
     }
 
     #[test]

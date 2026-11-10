@@ -34,7 +34,7 @@ onLinux {
         socket.Socket.ListenStream == "%t/daemons/google.sock"
         && socket.Unit.ConditionPathExists == user.paths.google.Path.PathExists
         && lib.elem "google.socket" unit.Unit.Requires
-        && lib.any (lib.hasSuffix " %t/daemons/google.sock") (lib.toList unit.Service.ExecStart)
+        && lib.any (lib.hasInfix " %t/daemons/google.sock") (lib.toList unit.Service.ExecStart)
       );
 
   # google's tests run as it builds: the harness's file is read for its
