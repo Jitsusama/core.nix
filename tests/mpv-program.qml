@@ -112,7 +112,8 @@ ShellRoot {
         id: mpv
 
         launcher: theLauncher
-        settings: ({ name: "mpv", stopped: [Quickshell.env("STOPPED_LIST")] })
+        // The files it left, which the programs daemon lists by this key.
+        settings: ({ name: "mpv", stopped: "listed:mpv:stopped" })
     }
 
     Launcher.Applications {

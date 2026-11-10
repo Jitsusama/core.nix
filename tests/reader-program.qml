@@ -97,7 +97,8 @@ ShellRoot {
         id: reader
 
         launcher: theLauncher
-        settings: ({ name: "reader", reader: "reader", places: [Quickshell.env("PLACES_LIST")] })
+        // Its places, which the programs daemon lists by this key.
+        settings: ({ name: "reader", reader: "reader", places: "listed:reader:places" })
     }
 
     Launcher.Applications {
@@ -170,8 +171,10 @@ ShellRoot {
             counted.waitForJob();
             same("nothing is listed before the reader is stepped into", listings(), 0);
             theLauncher.held = [{ row: program("reader"), rows: [] }];
-            // A step's frame never waits on starting a process.
-            same("reader --places waits for the step to be drawn", theLauncher.frames.due.length, 1);
+            // The programs daemon runs reader --places, so a step's frame
+            // never waits on starting a process, nor on anything after it.
+            same("reader --places asked of the daemon, nothing left for the frame",
+                theLauncher.frames.due.length, 0);
             theLauncher.drawn();
         } catch (error) {
             fail(error.message);

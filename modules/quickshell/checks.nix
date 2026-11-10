@@ -4644,6 +4644,7 @@ onLinux {
       cp ${../chrome/ChromeProgram.qml} launcher/ChromeProgram.qml
       cp ${../chrome/ChromeDownloads.js} launcher/ChromeDownloads.js
       cp ${./Daemon.qml} Daemon.qml
+      cp ${./launcher/Listed.qml} launcher/Listed.qml
       cp ${../reader/ReaderProgram.qml} launcher/ReaderProgram.qml
       cp ${../zathura/ZathuraProgram.qml} launcher/ZathuraProgram.qml
       cp ${../zathura/Zathura.js} launcher/Zathura.js
