@@ -76,8 +76,9 @@ Provider {
     // order, told whole once and after only who changed, each with what
     // every source told of them. So the shell neither merges nor orders
     // them: with 600 people in Qt's engine, merging everyone took the GUI
-    // thread 26 to 38 ms, and ordering those listed 19 more (2026-11-10). It's said when the daemon stops answering, and those
-    // it last listed stay listed until it answers again.
+    // thread 26 to 38 ms, and ordering those listed 19 more (2026-11-10).
+    // It's said when the daemon stops answering, and those it last listed
+    // stay listed until it answers again.
     Daemon {
         id: lister
 
@@ -85,10 +86,25 @@ Provider {
         kind: "listing"
         answersWhole: true
         onStateChanged: {
-            if (state === "not answering")
+            if (state === "not answering") {
                 console.warn("People: the people daemon isn't answering, "
                     + "so those listed are as it last said");
+                quiet.restart();
+            } else {
+                quiet.stop();
+                provider.unanswered = false;
+            }
         }
+    }
+    // Whether the people daemon has been silent a second, so home says so:
+    // a restart or a reconnect answers within it, and saying so at once
+    // would blink the count away and back (VKCF3Z, 2026-11-10).
+    property bool unanswered: false
+    Timer {
+        id: quiet
+
+        interval: 1000
+        onTriggered: provider.unanswered = lister.state === "not answering"
     }
     // The record the listing says its order in.
     readonly property string orderKey: "people:order"
@@ -196,9 +212,10 @@ Provider {
                 // or by the source's id for one who has none.
                 const email = Person.address(entry.email || addressOf(record.key));
                 const id = String(entry.id ?? "");
+                const recent = entry.recent === true;
                 people[name].push(email !== ""
-                    ? { emails: [email], name: entry.name ?? "", recent: entry.recent === true }
-                    : { emails: [], id: id, name: entry.name ?? "", recent: entry.recent === true });
+                    ? { emails: [email], name: entry.name ?? "", recent: recent }
+                    : { emails: [], id: id, name: entry.name ?? "", recent: recent });
                 stands[name][email !== "" ? email : `${name}:${id}`] = source.stood(entry);
             }
         }
@@ -306,7 +323,7 @@ Provider {
         const rows = listed.map(person => {
             const stood = person.stood ?? standOf(person);
             return keptOr(keptListed, person.key, JSON.stringify([person, stood]),
-                () => made(person.stood ? withFacts(person) : person, stood));
+                () => made(person, stood, person.stood ? factsOf(person) : null));
         });
         keptOnly(keptListed);
         listedRows.from = listed;
@@ -316,15 +333,13 @@ Provider {
     readonly property var keptListed: keeper()
     readonly property var listedRows: ({ from: null, rows: [] })
 
-    // Someone the daemon listed, with the facts each source adds read
-    // from everyone merged as their drawer is shown, since the daemon
-    // keeps no source's facts: so only a drawer shown merges anyone.
-    function withFacts(person) {
-        const shown = Object.assign({}, person);
-        Object.defineProperty(shown, "facts", {
-            get: () => whoIs(person.email)?.facts ?? []
-        });
-        return shown;
+    // The facts each source adds to someone the daemon listed, read from
+    // everyone merged as their drawer is shown, since the daemon keeps no
+    // source's facts: so only a drawer shown merges anyone. A function
+    // rather than a getter on the person, which a copy of the person
+    // would read, merging everyone on the thread this frees.
+    function factsOf(person) {
+        return () => whoIs(person.email)?.facts ?? [];
     }
 
     // The listed rows by key, so a search finds them as they stand.
@@ -338,7 +353,7 @@ Provider {
     // A person's row: their name, how they stand, their first address,
     // and Return the first way a source reaches them, asked as it's used,
     // so a row made for a search costs no source anything until then.
-    function made(person, stood) {
+    function made(person, stood, facts) {
         const row = member({
             key: `person:${person.key}`,
             component: "person",
@@ -385,7 +400,8 @@ Provider {
             get: () => {
                 const minute = Math.floor(Date.now() / 60000);
                 if (details === null || detailsAt !== minute) {
-                    details = Person.details(person, zone => provider.there(zone));
+                    const shown = facts ? Object.assign({}, person, { facts: facts() }) : person;
+                    details = Person.details(shown, zone => provider.there(zone));
                     detailsAt = minute;
                 }
                 return details;
@@ -571,8 +587,9 @@ Provider {
     }
 
     // Everyone shown is searched, those the sources give and the daemon's
-    // answers, so each name and address's letters are tested first, which passes most over without a call,
-    // and only those left are made ready to match, once. A letter more
+    // answers, so each name and address's letters are tested first, which
+    // passes most over without a call, and only those left are made ready
+    // to match, once. A letter more
     // searches only those the letters before it found, since each word
     // matches where a word starts and so does all it starts with: walking
     // everyone each key was the launcher's dearest list, 8 ms a key and
@@ -666,7 +683,11 @@ Provider {
         }
         return kept.listed;
     }
+    // Home says the people daemon isn't answering rather than a count of
+    // whom it last listed, so a down daemon is never silent.
     function homeSays() {
+        if (unanswered)
+            return Words.of("people").said.silent;
         const count = listedPersons().length;
         return count === 0 && (collection.none ?? "") !== "" ? null : countedAs(count);
     }

@@ -70,6 +70,12 @@ ShellRoot {
         command: ["touch", `${root.runtime}/next`]
     }
 
+    // The people daemon stopped, as when it fails.
+    Process {
+        id: stopping
+        command: ["sh", "-c", `kill "$(cat ${root.runtime}/people.pid)"`]
+    }
+
     function names(rows) {
         return rows.map(row => row.name).join(", ");
     }
@@ -115,6 +121,14 @@ ShellRoot {
                 // (2026-11-10).
                 expect("listed as the daemon lists them, with no one merged here",
                     people.merging.merges === 0, `${people.merging.merges} merges`);
+                // Everything a row's person holds read, as a whole copy
+                // reads it: a getter for their facts there merged everyone
+                // (Y2YBTS, 2026-11-10), so only their drawer reads facts.
+                const person = open[0].person;
+                for (const name of Object.getOwnPropertyNames(person))
+                    void person[name];
+                expect("reading someone listed merges no one", people.merging.merges === 0,
+                    `${people.merging.merges} merges`);
                 expect("how each stands",
                     sides(open) === "available, in a call, away, offline", sides(open));
                 expect("a favourite wears a star",
@@ -213,8 +227,8 @@ ShellRoot {
                     reach(open[0]) === "tuple call start ada@example.com", Niri.spawned.join(" "));
                 expect("one in a call is joined", open[1].verbs()[0].name === "Join Their Call",
                     open[1].verbs()[0].name);
-                expect("joining one in a call", reach(open[1]) === "tuple call join ben@example.com",
-                    Niri.spawned.join(" "));
+                expect("joining one in a call",
+                    reach(open[1]) === "tuple call join ben@example.com", Niri.spawned.join(" "));
                 expect("calling one who's offline",
                     reach(open[3]) === "tuple call start cal@example.com", Niri.spawned.join(" "));
 
@@ -327,6 +341,19 @@ ShellRoot {
             check: () => {
                 expect("is joined", people.all[0].verbs()[0].name === "Join Their Call",
                     people.all[0].verbs()[0].name);
+            }
+        },
+        {
+            // A down daemon is said at home rather than a count of whom it
+            // last listed, which would read as if all were well.
+            what: "the people daemon gone",
+            run: () => {
+                stopping.running = true;
+            },
+            holds: () => people.homeSays() === "not answering",
+            check: () => {
+                expect("still lists whom it last listed", people.all.length === 4,
+                    names(people.all));
             }
         }
     ]
