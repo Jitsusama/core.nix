@@ -147,6 +147,7 @@
 
 mod changed;
 mod decide;
+mod freeing;
 mod held;
 mod journal;
 mod machines;
@@ -231,7 +232,7 @@ const USAGE: i32 = 64;
 const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate DOLLARS \
                     --first-start HH:MM --last-start HH:MM --deadline HH:MM \
                     [--longest HH:MM] [--standing PATH] [--beside PATH] [--dir DIR] [--only-there] \
-                    [--outlasting PROGRAM] [--tell PROGRAM] \
+                    [--outlasting PROGRAM] [--tell PROGRAM] [--freeing PATH] \
                     | nix-offload stand [--standing PATH] [--beside PATH] \
                     | nix-offload relay --listen ADDRESS --to ADDRESS \
                     | nix-offload report --rate DOLLARS \
@@ -316,6 +317,9 @@ struct Settings {
     /// The program told when no builder answers any work, and again once
     /// one does, as `--tell` names it.
     telling: Option<PathBuf>,
+    /// The file naming what frees each builder beside once it's full, as
+    /// `--freeing` names it.
+    freeing: Option<PathBuf>,
 }
 
 /// A builder lent to the machine.
@@ -1665,6 +1669,7 @@ fn serving(arguments: &[String], given: impl Fn(&str) -> Option<String>) -> Exit
                     .unwrap_or_default(),
                 outlasting: given("--outlasting").map(PathBuf::from),
                 telling: given("--tell").map(PathBuf::from),
+                freeing: given("--freeing").map(PathBuf::from),
             });
             if restarts {
                 ExitCode::from(RESTARTS)
@@ -1754,7 +1759,8 @@ fn machines_of(settings: &Settings) -> Machines {
             .map_or_else(Vec::new, read_standing),
     )
     .for_anything(dir.join("machines-for-anything"))
-    .read_from(settings.standing.clone(), settings.beside.clone());
+    .read_from(settings.standing.clone(), settings.beside.clone())
+    .freeing_from(settings.freeing.clone());
     // Only the lender for every build has others stand in for it: the
     // rest lend only to `there`, which reads no file for any work.
     if settings.only_there {
@@ -2824,6 +2830,7 @@ exit 1
             warm: Vec::new(),
             outlasting: None,
             telling: None,
+            freeing: None,
         };
         let file = |name: &str| folder.join(name);
         let machines = Machines::new(
