@@ -906,11 +906,11 @@ QtObject {
                 hereSaid, Object.assign({ ago: () => "now" }, hereTold))
                 .filter(fact => ["altitude", "speed", "heading"].includes(fact.id))
                 .map(fact => fact.value).join("|"), "0 km/h"],
-            ["a walk's speed keeps three figures, a highway's none past them",
-                [1.2, 27.8].map(speed => Here.facts(gps(null, speed, null), 1000, hereSaid,
+            ["a walk's speed keeps three figures, a highway's none past them, a "
+                + "round one no zeros", [1.2, 27.8, 10].map(speed => Here.facts(gps(null, speed, null), 1000, hereSaid,
                     Object.assign({ ago: () => "now" }, hereTold))
                     .find(fact => fact.id === "speed").value).join("|"),
-                "4.32 km/h|100 km/h"],
+                "4.32 km/h|100 km/h|36 km/h"],
             ["Wi-Fi gives none of the three", leftOut({ source: "wifi" }),
                 "Wi-Fi gives no altitude, speed or heading."],
             ["GPS gave two of them not", leftOut(gps(212, null, null)),
