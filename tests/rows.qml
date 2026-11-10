@@ -1235,6 +1235,18 @@ ShellRoot {
             expect("a chord is measured as it's drawn",
                 Math.abs(chordHints.advance("Super+\u21b5", "next time")
                     - (chords[3].to - chords[0].from)) < 1, said(chords));
+            // A key is measured once a face, since the foot weighs every
+            // listed row's keys as the rows change; another face measures
+            // it afresh, so a key is never held at a width it isn't drawn.
+            const inNote = footHints.advance("Space ?", "keys");
+            footHints.level = Theme.level.title;
+            const inTitle = footHints.advance("Space ?", "keys");
+            footHints.level = Theme.level.note;
+            expect("another face measures a key afresh", inTitle > inNote,
+                `${inNote} in the note's face, ${inTitle} in the title's`);
+            expect("and its own face measures it as before",
+                footHints.advance("Space ?", "keys") === inNote,
+                `${footHints.advance("Space ?", "keys")}, not ${inNote}`);
             // Insert's caret is a bar a quarter of a letter wide, as his
             // Neovim's guicursor draws it. In normal the keys are on the
             // rows, so the field draws no caret at all: a block there sat

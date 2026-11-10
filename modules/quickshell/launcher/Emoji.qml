@@ -106,8 +106,23 @@ Provider {
         return { rows: found.map(row), grade: Emoji.grade(found, words) };
     }
 
+    // Every row, and their names, made once, since the list is read once:
+    // Desktop's row for Emoji reads them for its count and its drawer on
+    // every step, and making 1,924 again each time was a fifth of a step
+    // into Desktop under load (2026-11-10).
+    // A plain object, so making them notifies nothing.
+    readonly property var made: ({ rows: null, names: null })
     function everything() {
-        return loaded().map(row);
+        if (made.rows === null)
+            made.rows = loaded().map(row);
+        return made.rows;
+    }
+    function memberNames(held = everything()) {
+        if (held !== made.rows)
+            return held.map(one => one.name);
+        if (made.names === null)
+            made.names = made.rows.map(one => one.name);
+        return made.names;
     }
 
     Timer {
