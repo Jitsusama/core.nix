@@ -1827,7 +1827,7 @@ fn machines_of(settings: &Settings) -> Machines {
     // Every lender says where its builder is, since another's builder
     // stands in for the first's in the lines root reads, and each line
     // is vouched for by its own lender's folder.
-    .in_cloud(cloud::Cloud::in_dir(dir, Path::new(cloud::GROUPS)));
+    .in_cloud(cloud::Cloud::in_dir(dir, Path::new(cloud::ACCOUNTS)));
     // Only the lender for every build has others stand in for it: the
     // rest lend only to `there`, which reads no file for any work.
     if settings.only_there {

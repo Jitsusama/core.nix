@@ -229,15 +229,15 @@ in
       ++ map (file: "f ${linesFolder}/${file} 0644 nix-offload-lines nix-offload-lines -") lineFiles
     );
 
-    # The lender's account is in the group so it can leave the cloud token
-    # where the service reads it, mode 0640, and no other account can.
+    # The lender leaves the cloud token readable by this account alone,
+    # through an ACL naming it, rather than being in its group: a process
+    # joins a group only when its account next logs in, and until then
+    # couldn't hand the token over (offload/src/cloud.rs).
     users.users.nix-offload-lines = lib.mkIf (lines != null) {
       isSystemUser = true;
       group = "nix-offload-lines";
     };
-    users.groups.nix-offload-lines = lib.mkIf (lines != null) {
-      members = [ config.jitsusama.nix-offload.account ];
-    };
+    users.groups.nix-offload-lines = lib.mkIf (lines != null) { };
 
     environment.etc."nix-offload/lines.json" = lib.mkIf (lines != null) {
       text = builtins.toJSON linesSettings;
