@@ -372,7 +372,9 @@ in
 
   # A hosted pi's screen does in its viewers' terminals what pi does in its
   # own: a copy reaches them, a viewer who joins late is sent the images on
-  # the screen, and the external editor opens where the viewer who asked is.
+  # the screen, the external editor opens where the viewer who asked is, and
+  # an extension's own component says it waits on the person, so its host
+  # can let a viewer attach to answer it.
   pi-hosted-screen-reaches-its-viewers =
     pkgs.runCommandLocal "pi-hosted-screen-reaches-its-viewers" { }
       ''
