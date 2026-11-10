@@ -1643,10 +1643,16 @@ def the_screens_plate_says_what_sets_it(desktop: Desktop, scale: str) -> None:
             f" > {learned}.writing && mv {learned}.writing {learned}"
         )
         settled("level\\t0.600\\nlux\\t28\\nasks\\t0.950\\nfollowing\\tyes\\n")
-        desktop.launcher_until(shown_with(["Brightness", "Follows", "Curve"], ""))
+        # The machine daemon's say of the stand-ins too: what drives the
+        # backlight, the sensor's count, and both their names (VKCF3Z,
+        # 2026-11-09).
+        light = ["Driven By", "Raw", "Per Count", "Device", "Sensor"]
+        desktop.launcher_until(shown_with(["Brightness", "Follows", "Curve", *light], ""))
         drawer = plate_shown(desktop, scale)
         facts = drawer["facts"]
         assert facts.index("Follows") < facts.index("Curve"), f"at {scale}: {drawer}"
+        driven = drawer["values"][facts.index("Driven By")]
+        assert driven == "the graphics chip", f"at {scale}: {drawer}"
         follows = drawer["values"][facts.index("Follows")]
         assert follows == "the room \u00b7 on its way to 95%", f"at {scale}: {drawer}"
         desktop.shoot(f"launcher-plate-screen-following-at-{at}")
