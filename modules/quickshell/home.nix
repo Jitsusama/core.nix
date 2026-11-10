@@ -219,6 +219,7 @@ let
     "Waiting.js"
     "ForYouHolds.qml"
     "SpendWatch.qml"
+    "SpendWatch.js"
     "Eero.qml"
     "Jobs.qml"
     "Jobs.js"

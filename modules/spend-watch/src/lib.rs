@@ -18,7 +18,9 @@
 //! The daemon writes what the shell shows to its runtime directory, a
 //! small status file with a heartbeat for the overview's row and the
 //! margin, and a larger one for the launcher's collection, every string in
-//! it ready to draw. `spend-watch report` answers from the history alone.
+//! it ready to draw, which its socket tells as records too, each pass only
+//! those it changed (`interface`). `spend-watch report` answers from the
+//! history alone.
 //!
 //! Everything but the edges (the files, the feeds' processes, D-Bus and
 //! the clock) is plain functions over plain data, tested without them.
@@ -38,6 +40,7 @@ pub mod forecast;
 pub mod go;
 pub mod history;
 pub mod ingest;
+pub mod interface;
 pub mod logs;
 pub mod money;
 pub mod notices;

@@ -2746,7 +2746,9 @@
     the AI spend piece and collection draw what the watch wrote, put what wants a look first, step
     into each figure's parts, hide amounts while sharing, and answer reports by their words; a
     budget's row, a window's and a cap's open a drawer of every fact budgets.json holds of it,
-    and a period's its days and what its cuts went to most; the tokens piece is there only while the watch's tokens warn, with its acts for a running session
+    and a period's its days and what its cuts went to most; the tokens piece is there only while the watch's tokens warn, with its acts for a running session;
+    told by the socket, a pass remakes only the rows it changed, a watch never answered is drawn
+    from what's held while still reading, and the file's figures are said to be the last
   '';
   the-desktop-speaks-its-javascript = ''
     the shell calls no method Quickshell's JavaScript lacks

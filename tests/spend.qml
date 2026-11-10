@@ -14,7 +14,11 @@
 // of every fact budgets.json holds of a budget's row and a window's, and
 // puts a
 // finding that wants a look first, going to its session and stepping into
-// marking it expected. The tokens piece (pieces/Tokens.qml), over the same
+// marking it expected. Told by spend-watch's socket rather than its file,
+// a change to a session's figure makes none of its rows and a change to
+// one row makes that row alone, a watch that never answers is drawn from
+// what's held while it's still reading, and the file's figures are said
+// to be the last ones. The tokens piece (pieces/Tokens.qml), over the same
 // file, is there only while the watch's `tokens` warns: as the watch words
 // it, wanting Joel, said as it arrives and again as its level steps down,
 // with See What Spends and Pause for a session that's running and nothing
@@ -27,6 +31,7 @@ import Quickshell.Io
 import QtQuick
 import "launcher" as Launcher
 import "launcher/SpendDrawer.js" as SpendDrawer
+import "SpendWatch.js" as Records
 
 ShellRoot {
     id: root
@@ -219,9 +224,14 @@ ShellRoot {
         id: shutLauncher
 
         property bool wanting: true
+        property bool open: true
 
         function wants(source) {
             return wanting;
+        }
+
+        function afterFrame(then) {
+            then();
         }
     }
 
@@ -341,7 +351,7 @@ ShellRoot {
         interval: 50
         repeat: true
         onTriggered: {
-            if (spend.said !== null && SpendWatch.standing !== null) {
+            if (spend.known && SpendWatch.standing !== null) {
                 stop();
                 root.answers();
             } else if (--root.collecting === 0) {
@@ -519,6 +529,11 @@ ShellRoot {
             const today = spend.answer("spend");
             expect("spend", today !== null && /^Today: /.test(today.headline)
                 && today.copy.startsWith("## AI spend"), JSON.stringify(today));
+            // Read from the file, with no socket answering, its figures
+            // are said to be the last ones rather than passing as current.
+            expect("the file's figures said as its last",
+                today.note === "spend-watch isn't answering; these are its last figures",
+                today.note);
             const week = spend.answer("spend last week by quest");
             expect("a report by its words", week !== null
                 && week.headline.startsWith("Spend last week by quest: ")
@@ -539,7 +554,7 @@ ShellRoot {
                 all.map(row => `${row.name}: ${row.side}`).join(", "));
             // At home and in Agents, today's dollars with their period,
             // as All AI Spend says them.
-            expect("how today stands, at home", spend.counted() === SpendWatch.said.today
+            expect("how today stands, at home", spend.counted() === SpendWatch.today
                 && spend.counted().startsWith(`${all[0].side.split(" \u00b7 ")[0]} today`),
                 spend.counted());
 
@@ -641,7 +656,7 @@ ShellRoot {
                     { id: "most-model", value: "claude-opus-5-5 \u00b7 all" }
                 ] }
             }];
-            SpendWatch.said = budgeted;
+            SpendWatch.readCollection(budgeted);
             const budgets = spend.everything()[0];
             expect("a budget's mark in the warning's colour",
                 budgets.glyph === Theme.glyph.agent && budgets.hue === "warning"
@@ -666,7 +681,7 @@ ShellRoot {
                 run: ["spend-watch", "go", "s1"], verb: "go to",
                 expect: ["spend-watch", "findings", "expect", "burn:s1"]
             }];
-            SpendWatch.said = shown;
+            SpendWatch.readCollection(shown);
             const burn = spend.everything()[0];
             expect("a finding first", burn.name === "A burn in Aquifer" && burn.verb === "go to"
                 && burn.hue === "alert", burn.name);
@@ -684,7 +699,7 @@ ShellRoot {
                 Niri.spawned.join(" ") === "spend-watch findings expect burn:s1",
                 Niri.spawned.join(" "));
             root.shut();
-            Qt.callLater(() => Qt.exit(0));
+            root.stream();
         } catch (error) {
             console.warn(`FAIL ${error.message}`);
             Qt.callLater(() => Qt.exit(1));
@@ -697,15 +712,15 @@ ShellRoot {
     // knowing): every row was made again at each write, 90 in four minutes
     // on Joel's shell (YQZGPC, 2026-11-10). Home's figure reads what was
     // written, and a row shown elsewhere is made as it reads now. Wanted
-    // again, they're made once, as last written.
+    // again, they're as last written, none made twice.
     function shut() {
         const finding = rows => rows.some(row => row.name === "A burn in Aquifer");
         expect("wanted, it lists what was last written", finding(shutSpend.everything()),
             shutSpend.everything().map(row => row.name).join(", "));
         shutLauncher.wanting = false;
         const before = shutSpend.tally.rows;
-        SpendWatch.said = JSON.parse(root.collected);
-        SpendWatch.said = JSON.parse(root.collected);
+        SpendWatch.readCollection(JSON.parse(root.collected));
+        SpendWatch.readCollection(JSON.parse(root.collected));
         const held = shutSpend.everything();
         expect("shut, spend-watch writing again makes none of its rows",
             shutSpend.tally.rows === before && finding(held), shutSpend.tally.rows - before);
@@ -720,11 +735,163 @@ ShellRoot {
         const wanted = shutSpend.everything();
         const again = shutSpend.tally.rows;
         shutSpend.everything();
-        expect("wanted again, they're made once, as last written", !finding(wanted)
-            && wanted.length === spend.everything().length && again > made
+        expect("wanted again, they're as last written, none made twice", !finding(wanted)
+            && wanted.length === spend.everything().length && again - made <= wanted.length
             && shutSpend.tally.rows === again,
             JSON.stringify([again - made, shutSpend.tally.rows - again,
                 wanted.map(row => row.name)]));
+    }
+
+    // spend-watch's socket as its daemon serves it (its src/interface.rs):
+    // each watch told its kinds whole, and then only what changed, as
+    // `tell` says it. A kind in `silent` is never answered, as a daemon too
+    // slow to answer leaves it.
+    property var served: ({})
+    property var silent: []
+    readonly property var watchers: ({})
+
+    function recordsOf(kinds) {
+        return Object.values(served).filter(record => kinds.includes(Records.kindOf(record.key)));
+    }
+
+    // Tells each watch of a record's kind that it changed.
+    function tell(record) {
+        served[record.key] = record;
+        const watcher = watchers[Records.kindOf(record.key)];
+        watcher.write(`${JSON.stringify({ id: "all", changed: [record], gone: [] })}\n`);
+        watcher.flush();
+    }
+
+    SocketServer {
+        id: daemon
+
+        active: false
+        path: `${root.runtime}/spend-watch/socket`
+        handler: Socket {
+            id: asked
+
+            parser: SplitParser {
+                onRead: line => {
+                    const ask = JSON.parse(line);
+                    const kinds = [].concat(ask.kind ?? []);
+                    let answer = { id: ask.id, unwatched: true };
+                    if (ask.ask === "hello")
+                        answer = { id: ask.id, version: 1, domain: "spend", state: "answering" };
+                    else if (ask.ask === "watch") {
+                        for (const kind of kinds)
+                            root.watchers[kind] = asked;
+                        if (kinds.some(kind => root.silent.includes(kind)))
+                            return;
+                        answer = { id: ask.id, records: root.recordsOf(kinds) };
+                    }
+                    asked.write(`${JSON.stringify(answer)}\n`);
+                    asked.flush();
+                }
+            }
+        }
+    }
+
+    // Waits for `holds`, five seconds at most, then goes on to `then`, or
+    // fails saying `what`; `then` failing fails too.
+    function until(what, holds, then) {
+        waits.what = what;
+        waits.holds = holds;
+        waits.then = then;
+        waits.left = 100;
+        waits.start();
+    }
+
+    Timer {
+        id: waits
+
+        property string what: ""
+        property var holds: null
+        property var then: null
+        property int left: 0
+
+        interval: 50
+        repeat: true
+        onTriggered: {
+            try {
+                if (holds()) {
+                    stop();
+                    then();
+                } else if (--left === 0) {
+                    stop();
+                    throw new Error(`${what} never held`);
+                }
+            } catch (error) {
+                stop();
+                console.warn(`FAIL ${error.message}`);
+                Qt.callLater(() => Qt.exit(1));
+            }
+        }
+    }
+
+    // Told by the socket rather than read from the file: what it says
+    // anew remakes only the rows it changed, every pass having made every
+    // row again before (2026-11-10).
+    property int streamed: 0
+
+    function stream() {
+        served = Records.records(JSON.parse(root.collected));
+        streamed = spend.tally.rows;
+        const first = spend.everything()[0];
+        daemon.active = true;
+        until("the socket answering", () => !SpendWatch.fromFile && !spend.stillReading, () => {
+            expect("the socket's answer, the same as the file's, makes no row",
+                spend.everything()[0] === first && spend.tally.rows === streamed,
+                spend.tally.rows - streamed);
+            expect("its figures pass as current",
+                spend.answer("spend").note === "Return copies the summary",
+                spend.answer("spend").note);
+            // Counted from here, since an answer asked makes its own rows.
+            streamed = spend.tally.rows;
+            // Agents' figure, as each pass tells some session's.
+            const session = Object.keys(served).find(key => Records.kindOf(key) === "session");
+            tell(Object.assign({}, served[session], { spent: "$999" }));
+            until("a session's figure told",
+                () => SpendWatch.sessions[Records.idOf(session)] === "$999", sessionTold);
+        });
+    }
+
+    function sessionTold() {
+        spend.everything();
+        expect("a session's figure changed makes none of the rows",
+            spend.tally.rows === streamed, spend.tally.rows - streamed);
+        const row = Object.keys(served).find(key => key.startsWith("row:now:"));
+        const line = Object.assign({}, served[row].line, { side: "$1 \u00b7 told" });
+        tell(Object.assign({}, served[row], { line: line }));
+        until("a row told",
+            () => SpendWatch.rows.now.some(one => one.line.side === "$1 \u00b7 told"), rowTold);
+    }
+
+    function rowTold() {
+        const rows = spend.everything();
+        expect("a row changed makes that row alone",
+            rows.some(one => one.side === "$1 \u00b7 told")
+            && spend.tally.rows === streamed + 1, spend.tally.rows - streamed);
+        unanswered();
+    }
+
+    // A watch the daemon never answers is still reading, drawn from what's
+    // held, and remakes nothing.
+    function unanswered() {
+        const made = spend.tally.rows;
+        const rows = spend.everything();
+        shutLauncher.open = false;
+        silent = ["row"];
+        shutLauncher.open = true;
+        let ticks = 0;
+        until("a watch left unanswered a while", () => ++ticks === 10, () => {
+            expect("a watch never answered is still reading", spend.stillReading
+                && !SpendWatch.fromFile, `${spend.stillReading} ${SpendWatch.fromFile}`);
+            const still = spend.everything();
+            expect("drawn from what's held, no row made twice",
+                still.length === rows.length && spend.tally.rows === made,
+                spend.tally.rows - made);
+            Qt.callLater(() => Qt.exit(0));
+        });
     }
 
     Component.onCompleted: begin()
