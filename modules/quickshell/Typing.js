@@ -65,7 +65,8 @@ function resting(text, at) {
 // since a found count from a place that can't answer would claim more than
 // it knows (VKCF3Z, 2026-11-10).
 function noteOf(pressing, narrowed, narrowing) {
-    if (pressing !== "")
+    if (pressing !== "") {
         return pressing;
+    }
     return narrowing ? narrowed : "";
 }
