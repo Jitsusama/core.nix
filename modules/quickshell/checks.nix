@@ -1355,6 +1355,26 @@ onLinux {
       touch $out
     '';
 
+  # Each close adds its own opening's line to the file's end and rewrites
+  # none before it, so a close costs the same however many are kept: it
+  # turned all 1,339 of Joel's into text, 39 ms a close at a load of 66
+  # (2026-11-10). The shell starting carries the old list into lines and
+  # lets the oldest go (tests/trials-kept.qml, through Quickshell).
+  the-launcher-keeps-its-trials-a-line-each =
+    pkgs.runCommandLocal "the-launcher-keeps-its-trials-a-line-each" { }
+      ''
+        export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+        mkdir launcher
+        cp ${./Trials.qml} Trials.qml
+        cp ${./launcher/Trials.js} launcher/Trials.js
+        cp ${../../tests/trials-kept.qml} shell.qml
+        export XDG_RUNTIME_DIR=$TMPDIR/runtime FONTCONFIG_FILE=${noFonts}
+        mkdir -m 700 $XDG_RUNTIME_DIR
+        ${shellFolderLint}
+        timeout 60 ${qs} -p shell.qml
+        touch $out
+      '';
+
   # Each opening of the launcher is a trace: its steps, backs, acts and
   # searches spans under it, a void above a list's first row told from a
   # list scrolled down, and the whole sent in OTLP's JSON mapping, as

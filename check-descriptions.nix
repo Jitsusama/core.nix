@@ -2305,7 +2305,11 @@
   '';
   the-launcher-keeps-its-trials = ''
     each opening of the launcher is kept as its keys by kind, its pick and how long it took, and a
-    miss only where letters were typed and nothing picked
+    miss only where letters were typed and nothing picked, and the file gains a close's line alone
+  '';
+  the-launcher-keeps-its-trials-a-line-each = ''
+    a close adds its own opening's line to the file and rewrites none before it, however many are
+    kept, and a start carries the old list into lines and lets the oldest go
   '';
   the-launcher-lands-where-it-did = ''
     a thing is one row, the same letters keep their row, one slip teaches nothing

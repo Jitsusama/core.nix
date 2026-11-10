@@ -104,12 +104,24 @@ QtObject {
         expect("a step with no search said", bare.answers === 0 && bare.rows === 4
             && bare.composing === null, JSON.stringify(bare));
 
-        // The oldest go once there are too many; none while there aren't.
-        const three = Trials.kept(Trials.kept(Trials.kept([], { at: 1 }, 2), { at: 2 }, 2),
-            { at: 3 }, 2);
-        expect("the oldest let go", three.map(one => one.at).join(" ") === "2 3",
-            JSON.stringify(three));
-        expect("kept from nothing", Trials.kept(null, { at: 1 }, 2).length === 1, "lost");
+        // A close says its own opening alone, a line, whatever came before.
+        expect("one opening a line", Trials.said({ at: 1, home: "today" })
+            === '{"at":1,"home":"today"}\n', JSON.stringify(Trials.said({ at: 1 })));
+
+        // As the shell starts, the oldest lines go once there are too many,
+        // none while there aren't, and the list kept before lines is carried
+        // into them only while there are none.
+        const lines = '{"at":1}\n{"at":2}\n{"at":3}\n';
+        expect("the oldest let go", Trials.carried(lines, null, 2) === '{"at":2}\n{"at":3}\n',
+            JSON.stringify(Trials.carried(lines, null, 2)));
+        expect("nothing to cut", Trials.carried(lines, null, 3) === null, "rewritten");
+        expect("nothing at all", Trials.carried("", null, 3) === null, "rewritten");
+        const listed = [{ at: 1 }, { at: 2 }, { at: 3 }];
+        expect("the list carried", Trials.carried("", listed, 2) === '{"at":2}\n{"at":3}\n',
+            JSON.stringify(Trials.carried("", listed, 2)));
+        expect("the list left once there are lines",
+            Trials.carried('{"at":9}\n', listed, 2) === null, "carried again");
+        expect("a list that isn't one", Trials.carried("", { at: 1 }, 2) === null, "carried");
 
         // At 120 Hz: a frame 8 ms after the one before is on time, one 25 ms
         // after missed two, and one half a second after is the launcher at
