@@ -1311,7 +1311,10 @@ Provider {
     // 2026-11-09, fef0c4d5): nothing after its name, as no place says
     // there since #2600, its side how many to read, and its drawer a
     // place's, naming who it holds is from, the newest first, as a run that
-    // wraps between names (PlaceRow.js's drawer).
+    // wraps between names (PlaceRow.js's drawer). It names them as
+    // `heldNames`, as a place inside another does, which is what gives a
+    // row that's no thing its drawer (Launcher.qml's drawable and
+    // heldDrawer); a drawer of its own was held for one never shown.
     function latelyRows(now) {
         const { holding, bands } = latelyBands(now);
         return bands.map(band => {
@@ -1320,8 +1323,7 @@ Provider {
             const fact = latelyPieces.find(one => one.piece.lately === band.source);
             if (fact === undefined)
                 return provider.noticesRow(band.source, senders, forYou);
-            return made(fact, { forYou: forYou, count: "", note: "",
-                drawer: () => latelyDrawer(fact.piece.title, senders) });
+            return made(fact, { forYou: forYou, count: "", note: "", heldNames: senders });
         });
     }
 
