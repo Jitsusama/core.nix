@@ -528,6 +528,25 @@ struct Ranks {
     found: HashMap<u64, Result<PathBuf, std::time::Instant>>,
 }
 
+/// The windows a sorter before this one held, to give back those not
+/// wanted now; none while focus isn't followed, as nothing would give
+/// them back ([`focus::Holding::left`]).
+fn left_held(
+    following: Option<&focus::Following>,
+    under: &[PathBuf],
+    prefixes: &[String],
+) -> focus::Holding {
+    if following.is_none() {
+        return focus::Holding::default();
+    }
+    let scopes = under.iter().flat_map(|slice| homes(slice, prefixes));
+    focus::Holding::left(scopes, |scope| {
+        fs::read_to_string(scope.join("memory.low"))
+            .ok()
+            .and_then(|low| low.trim().parse().ok())
+    })
+}
+
 /// How long a window whose scope wasn't found waits to be looked for
 /// again, as one just opened may have started nothing yet.
 const LOOK_AGAIN: Duration = Duration::from_secs(5);
@@ -1161,7 +1180,10 @@ fn run() -> Result<(), String> {
     let windows = [settings.homes.as_slice(), &settings.weigh].concat();
     let mut watch = settings.background.as_deref().and_then(watch_marks);
     let following = follow_focus(settings.niri.as_deref(), watch.as_mut());
-    let mut ranks = Ranks::default();
+    let mut ranks = Ranks {
+        holding: left_held(following.as_ref(), &under, &windows),
+        ..Ranks::default()
+    };
     let mut doorway = Doorway::new(settings.calls.as_deref());
     loop {
         match (&watch, &settings.background) {
