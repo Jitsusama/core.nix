@@ -270,7 +270,13 @@ Scope {
             path: daemon.socket
             connected: true
             parser: SplitParser {
-                onRead: line => daemon.said(line)
+                onRead: line => {
+                    const t0 = Date.now();
+                    daemon.said(line);
+                    const spent = Date.now() - t0;
+                    if (spent >= 2)
+                        console.info(`diag said ${JSON.stringify(daemon.kind)} ${line.length}B ${spent}`);
+                }
             }
             onConnectionStateChanged: {
                 if (connected) {

@@ -314,6 +314,58 @@ class Turns:
         )
 
 
+DIAG_CPU = (
+    "awk '{{print $14+$15}}' /proc/{pid}/task/{pid}/stat;"
+    " grep -E '^(voluntary|nonvoluntary)_ctxt' /proc/{pid}/task/{pid}/status | awk '{{print $2}}'"
+)
+
+
+def diag_measure(desktop: Desktop, pid: str, name: str) -> None:
+    """Diagnostic: the shell's main-thread CPU and wakes over a span."""
+    machine = desktop.machine
+    tick = 100
+    before = [int(n) for n in machine.succeed(DIAG_CPU.format(pid=pid)).split()]
+    # The span measured, not a wait.
+    machine.sleep(duration=timedelta(seconds=20))
+    after = [int(n) for n in machine.succeed(DIAG_CPU.format(pid=pid)).split()]
+    cpu, vol, invol = ((a - b) for a, b in zip(after, before, strict=True))
+    print(f"DIAG {name}: main {cpu * 1000 // tick} ms CPU in 20 s, {vol} vol {invol} invol")
+
+
+@pytest.mark.parametrize("where", ["home", "Agents"])
+def test_diag_open_shell_with_joels_sessions(desktop: Desktop, where: str) -> None:
+    """Diagnostic only: what 113 sessions, one changing a beat, cost the open launcher."""
+    machine = desktop.machine
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    pid = desktop.as_account("systemctl --user show quickshell -p MainPID --value").strip()
+    desktop.as_account("qs ipc call launcher toggle")
+    try:
+        desktop.launcher_ready()
+        if where != "home":
+            desktop.down_to(where)
+            desktop.step_in()
+            desktop.launcher_until(lambda shown: len(shown["held"]) == 1)
+        diag_measure(desktop, pid, f"{where} none")
+        since = desktop.mark()
+        sessions = f"{desktop.values['stand_in_sessions']} {PI_PRESENCE} 113 1 0.8"
+        desktop.as_account(f"systemd-run --user --collect --quiet --unit=diag-sessions {sessions}")
+        # The span the shell takes to hear them all, not a wait on anything said.
+        machine.sleep(duration=timedelta(seconds=10))
+        diag_measure(desktop, pid, f"{where} changing")
+        said = desktop.as_account(
+            f"journalctl --user --unit=quickshell --no-pager --output=cat"
+            f" --after-cursor='{since}' | grep 'diag ' || true"
+        )
+        lines = said.splitlines()
+        print(f"DIAG {where} lines: {len(lines)}")
+        for line in lines[-60:]:
+            print(f"DIAG {where} | {line}")
+    finally:
+        desktop.as_account("systemctl --user stop diag-sessions || true")
+        desktop.close_launcher()
+        machine.sleep(duration=timedelta(seconds=5))
+
+
 @pytest.mark.usefixtures("keyboard", "changing")
 @pytest.mark.parametrize("scale", JOELS_SCALES)
 @pytest.mark.parametrize("where", list(PLACES))

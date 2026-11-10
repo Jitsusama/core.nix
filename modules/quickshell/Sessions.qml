@@ -55,10 +55,13 @@ Singleton {
             const stamp = window ? window.focus_timestamp : null;
             return stamp ? stamp.secs * 1e9 + stamp.nanos : 0;
         };
+        const t0 = Date.now();
         const kitties = kittyWindows();
-        return live.map(record => shown(record, kitties))
+        const out = live.map(record => shown(record, kitties))
             .sort((a, b) => Number(b.here) - Number(a.here)
                 || (a.here ? when(b.window) - when(a.window) : b.changed - a.changed));
+        console.info(`diag running ${Date.now() - t0}`);
+        return out;
     }
     // Each session parked here (the harness's park-workflow): ended while
     // idle to give back its memory, until its holder starts it again in
@@ -2096,6 +2099,7 @@ Singleton {
             delete kept.window;
             return kept;
         };
+        const t0 = Date.now();
         const next = PiSource.live.map(kitted);
         const sleeping = PiSource.resting.map(kitted);
         const ended = PiSource.ending.map(kitted);
@@ -2103,20 +2107,30 @@ Singleton {
             ending: JSON.stringify(ended) };
         const was = liveSaid;
         liveSaid = said;
+        const t1 = Date.now();
         if (said.resting !== was.resting)
             resting = sleeping;
+        const t2 = Date.now();
         if (said.ending !== was.ending)
             ending = ended;
-        if (said.live === was.live)
+        const t3 = Date.now();
+        if (said.live === was.live) {
+            console.info(`diag relive same map+said ${t1 - t0} resting ${t2 - t1} ending ${t3 - t2}`);
             return;
+        }
         const by = {};
         for (const record of next) {
             for (const address of record.presence.addresses)
                 by[address] = record.presence;
         }
+        const t4 = Date.now();
         present = by;
+        const t5 = Date.now();
         live = next;
+        const t6 = Date.now();
         ask();
+        console.info(`diag relive map+said ${t1 - t0} resting ${t2 - t1} ending ${t3 - t2}`
+            + ` present ${t5 - t4} live ${t6 - t5} ask ${Date.now() - t6}`);
     }
 
     // niri's windows by the process drawing them, each kitty's oldest first.

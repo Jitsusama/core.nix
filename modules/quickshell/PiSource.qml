@@ -138,6 +138,7 @@ Singleton {
     property string sortedSaid: ""
     signal sorted()
     function resort() {
+        const t0 = Date.now();
         const next = Pi.sorted(node?.held ?? {}, {
             machine: machine,
             bootId: bootId,
@@ -148,10 +149,14 @@ Singleton {
         if (said === sortedSaid)
             return;
         sortedSaid = said;
+        const t1 = Date.now();
         resting = next.resting;
         ending = next.ending;
         live = next.live;
+        const t2 = Date.now();
         sorted();
+        console.info(`diag resort sort+said ${t1 - t0} assign3 ${t2 - t1}`
+            + ` relive ${Date.now() - t2}`);
     }
     // Every session it tells of, as the contract's records.
     readonly property var sessions: Pi.sessions({ live, resting, ending }, machine)
