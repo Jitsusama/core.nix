@@ -1141,11 +1141,15 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # whose every byte a builder's nested VM takes slowly. The shell's
       # reports, thousands of bytes a key, held a processor in the port's
       # interrupt for 21 s at a time on 5 November, stalling keeps-pace's VM
-      # and breaking its driver's pipe. Only warnings go there in that area;
-      # the journal keeps the rest, where the tests read it.
-      services.journald.settings.Journal.MaxLevelConsole = lib.mkIf (area == "keeps-pace") (
-        lib.mkForce "warning"
-      );
+      # and breaking its driver's pipe. Launcher keeps-up's held arrows report
+      # as much, and its guest stalled the same way, 21 s on one processor
+      # with the shell's reports on the console at each stall (#2747's runs).
+      # Only warnings go there in those areas; the journal keeps the rest,
+      # where the tests read it.
+      services.journald.settings.Journal.MaxLevelConsole = lib.mkIf (lib.elem area [
+        "keeps-pace"
+        "launcher-keeps-up"
+      ]) (lib.mkForce "warning");
       # The workstation's daemon collects garbage while under 10 GiB is free
       # (modules/nix-daemon), and this machine's store is 2 GiB of tmpfs over
       # the builder's, where only the system's own closure is registered. So
