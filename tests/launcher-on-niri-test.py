@@ -935,8 +935,9 @@ def test_a_first_letter_draws_only_the_rows_in_view(shell: Shell) -> None:
     # Else the rows end within the old cache too, and this proves nothing.
     assert int(after["listed"]) > 2 * shown, (after["listed"], shown)
     drawn = int(after["drawn"]) - int(before["drawn"])
-    # The rows shown, one cut by the view's foot, and one past it.
-    assert drawn <= shown + 2, f"{drawn} rows drawn for a first letter where {shown} are shown"
+    # The rows shown, one cut by the view's foot among them, and one past it: the list stands
+    # at its top, so no row is built above it.
+    assert drawn <= shown + 1, f"{drawn} rows drawn for a first letter where {shown} are shown"
 
 
 def test_a_refresh_at_home_moves_neither_the_selection_nor_the_list(shell: Shell) -> None:

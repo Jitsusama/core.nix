@@ -8340,8 +8340,12 @@ Scope {
                             // rows where 8 are shown, and a letter's layout
                             // took 27 ms where one row ahead took 14 to 17
                             // in the sandbox (2026-11-10). Held arrows still
-                            // draw one row a step either way.
-                            cacheBuffer: root.rowTall
+                            // draw one row a step either way. A pixel short
+                            // of a row, since Qt builds a row whose top
+                            // meets the cache's edge, and a view a whole
+                            // number of rows tall drew a row with no pixel
+                            // in reach (qquicklistview.cpp's pos <= fillTo).
+                            cacheBuffer: root.rowTall - 1
                             // The rows by what each is (steadyId), each
                             // drawn once and kept while it's there: a refresh,
                             // each second inside Machine and four times a
