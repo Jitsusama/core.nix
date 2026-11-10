@@ -14,7 +14,8 @@
 //! it, nor for a quarantined test that fails, listed at the round's head
 //! or at main's newest. A test whose breaking merge is found but won't
 //! revert goes on the list too, with that merge's PR as its owner, and the
-//! hold is cleared. A run the builder never took
+//! hold is cleared, and so does one failing at the round's base as well as
+//! its head, owned by the PR that last took it off the list. A run the builder never took
 //! (`nix-offload` exits 75), or whose builder couldn't fetch the commit's
 //! source, is tried again later, and is no failure, and so is one stopped
 //! before it ended, for running too long or going silent: twice at a commit, and the test is left there with a
@@ -173,9 +174,17 @@ pub trait World: Sync {
     /// The tests quarantined at `head`.
     fn quarantined(&self, head: &str) -> Vec<String>;
     /// Revert a bad merge on main through a PR merged on its own checks,
-    /// once `still`, asked with the main they ran on, says it's still
-    /// needed.
-    fn revert(&self, bad: &Bad, still: &dyn Fn(&str) -> bool) -> Result<Merged, String>;
+    /// once `still`, asked with main's newest head and the revert merged
+    /// into it, says it's needed: true to land, false to drop it as
+    /// needless, or why it lands nothing.
+    fn revert(
+        &self,
+        bad: &Bad,
+        still: &dyn Fn(&str, &str) -> Result<bool, String>,
+    ) -> Result<Merged, String>;
+    /// The PR whose merge, at or before `head`, last took `test` off the
+    /// quarantine list, if one did.
+    fn unlisted_by(&self, test: &str, head: &str) -> Option<u64>;
     /// Put a flaky test on the quarantine list through a merged PR.
     fn quarantine(
         &self,
@@ -596,22 +605,37 @@ fn fixed_forward(
         return Ok(false);
     }
     let outcome = attempt_together(world, state, &newest, test);
+    told_fixed(world, state, head, &newest, test, commit, outcome)
+}
+
+/// Whether `outcome`, `test`'s at main's newest head `newest`, says it
+/// was fixed forward since failing at `head`, or broken by `commit`; if so
+/// its owner is told, and a test flaky there is listed.
+fn told_fixed(
+    world: &dyn World,
+    state: &State,
+    head: &str,
+    newest: &str,
+    test: &str,
+    commit: Option<&str>,
+    outcome: Outcome,
+) -> Result<bool, String> {
     if !matches!(outcome, Outcome::Passed | Outcome::Flaky) {
         return Ok(false);
     }
     let owner = commit.and_then(|commit| pr_of(&world.subject(commit)));
     if outcome == Outcome::Flaky {
-        if !state.found("flaky", test, &newest)
-            && !world.quarantined(&newest).contains(&test.to_owned())
+        if !state.found("flaky", test, newest)
+            && !world.quarantined(newest).contains(&test.to_owned())
         {
-            list_flaky(world, state, &newest, test, owner)?;
+            list_flaky(world, state, newest, test, owner)?;
         }
         state.say(&format!(
             "{test} {} at {}, and fails one of two runs at main's newest head {}, so it is \
              listed there: nothing is searched for, reverted or held",
             if commit.is_some() { "broke" } else { "fails" },
             short(commit.unwrap_or(head)),
-            short(&newest)
+            short(newest)
         ));
         return Ok(true);
     }
@@ -627,7 +651,7 @@ fn fixed_forward(
         "{test} {what} at {}, but passes at main's newest head {}, so it was fixed forward: \
          nothing is searched for, reverted or held",
         short(commit.unwrap_or(head)),
-        short(&newest)
+        short(newest)
     ));
     Ok(true)
 }
@@ -782,7 +806,9 @@ fn revert_again(world: &dyn World, state: &State) -> Result<(), String> {
         test: test.clone(),
         log: state.log(&commit, &test, 2).display().to_string(),
     };
-    let reverted = world.revert(&found, &still_broken(world, state, &found));
+    let failed_at = hold["failed_at"].as_str().map(str::to_owned);
+    let wanted = revert_wanted(world, state, &found, failed_at.as_deref());
+    let reverted = world.revert(&found, &wanted);
     keep_revert(state, &mut hold, &reverted)?;
     if dropped(state, &found, &reverted)? {
         return Ok(());
@@ -1222,35 +1248,64 @@ fn stalled(state: &State, head: &str, test: &str, owner: Option<u64>) -> Result<
     Ok(())
 }
 
-/// Whether `test` failed twice at the round's `base`, and if so says so
-/// and finds it failed before, naming no merge. It failed then before
-/// every merge since, so no search over them can find what broke it, and
-/// `before` clears the merge one finds only after all its runs. On
+/// Whether `test` failed twice at the round's `base`. It failed then
+/// before every merge since, so no search over them can find what broke
+/// it, and `before` clears the merge one finds only after all its runs. On
 /// 9 November vm-desktop-looks failed twice at the base while it was
 /// listed, came off the list still failing, and its search took four runs
 /// of 25 minutes each. A merge that broke it again after another fixed it
 /// in the same round goes unblamed, which costs less than such a search.
-fn failed_at_base(state: &State, base: &str, head: &str, test: &str) -> Result<bool, String> {
-    let failures = state
+fn failed_at_base(state: &State, base: &str, test: &str) -> bool {
+    state
         .runs(base, test)
         .iter()
         .filter(|&&ran| ran == Ran::Failed)
-        .count();
-    if failures < FAILURES {
-        return Ok(false);
-    }
-    let log = state.log(head, test, 2).display().to_string();
+        .count()
+        >= FAILURES
+}
+
+/// List `test`, which failed twice at the round's `base` and fails at its
+/// `head`, as quarantined, owned by the PR that last took it off the list,
+/// unless main lists it now. No merge since is to blame, so nothing else
+/// names an owner: on 10 November vm-desktop-launcher-reads-mail and
+/// keeps-up came off the list still failing, by #2603 and #2602, and failed
+/// at every head for hours with nobody told.
+fn list_still_red(
+    world: &dyn World,
+    state: &State,
+    base: &str,
+    head: &str,
+    test: &str,
+    log: &str,
+) -> Result<(), String> {
+    let owner = world.unlisted_by(test, head);
+    let reason = format!(
+        "failed twice at {}, and at {} after it",
+        short(base),
+        short(head)
+    );
+    let listed =
+        (!listed_on_main(world, head, test)).then(|| world.quarantine(test, owner, head, &reason));
     state.find(&json!({
         "kind": "failed-before", "test": test, "commit": head, "since": base,
-        "owner_pr": Value::Null, "log": log, "at": now(),
+        "owner_pr": owner, "log": log,
+        "quarantine_pr": listed.as_ref().and_then(|made| made.as_ref().ok().map(|it| it.pr)),
+        "quarantine_error": listed.as_ref().and_then(|made| made.as_ref().err()),
+        "at": now(),
     }))?;
+    let what = owner.map_or_else(|| "no PR".to_owned(), |pr| format!("#{pr}"));
+    let after = match &listed {
+        Some(Ok(made)) => format!("listed as quarantined in #{}, owned by {what}", made.pr),
+        Some(Err(why)) => format!("listing it as quarantined failed: {why}"),
+        None => "main lists it as quarantined now".to_owned(),
+    };
     state.say(&format!(
         "{test} fails at {}, and failed twice at {} before it, so no merge since broke it: \
-         nothing is reverted or held",
+         nothing is reverted or held, and it's {after}",
         short(head),
         short(base)
     ));
-    Ok(true)
+    Ok(())
 }
 
 /// What a search found for a test that failed for real, for the round to
@@ -1258,6 +1313,9 @@ fn failed_at_base(state: &State, base: &str, head: &str, test: &str) -> Result<b
 enum Found {
     /// The merge that broke it.
     Merge(Bad),
+    /// None: it failed twice at the round's base, so before every merge
+    /// since; `log` is the failure at the head.
+    Before { test: String, log: String },
     /// A run the search needed stalled or no builder took, so it couldn't
     /// tell which merge broke `test`; `log` is the failure at the head.
     Unsettled { test: String, log: String },
@@ -1265,8 +1323,8 @@ enum Found {
 
 /// Find the merge since `base` that broke `test` at `head`, writing only
 /// findings that hold nothing, so searches for other tests can run beside
-/// it. None when nothing is to be held or reverted: it failed before
-/// `base`, was fixed forward, or no merge is to blame.
+/// it. None when nothing is to be held, reverted or listed: it was fixed
+/// forward, or no merge is to blame.
 fn search(
     world: &dyn World,
     state: &State,
@@ -1278,8 +1336,14 @@ fn search(
     // A round taken up again after a restart hears its failures again, and
     // one already found fixed forward was searched a second time on
     // 8 November, where runs stalled and held main.
-    if state.found("fixed-forward", test, head) || failed_at_base(state, base, head, test)? {
+    if state.found("fixed-forward", test, head) {
         return Ok(None);
+    }
+    if failed_at_base(state, base, test) {
+        return Ok(Some(Found::Before {
+            test: test.to_owned(),
+            log: state.log(head, test, 2).display().to_string(),
+        }));
     }
     let merges = to_search(world, state, base, head, test)?;
     // Whether main's newest head fixed it is asked beside the search's first
@@ -1352,8 +1416,17 @@ fn search(
     })))
 }
 
-/// Hold switching on what a search found and revert it, or keep a test
-/// whose search couldn't tell to run again at the next head.
+/// Hold switching on what a search found and revert it, list a test that
+/// failed at the base too, or keep a test whose search couldn't tell to
+/// run again at the next head. A test main's newest head passes is none of
+/// these: what a search found is settled one at a time, so it can wait
+/// behind another's revert while main moves on. On 10 November
+/// vm-desktop-launcher-moves-windows' search ended at 02:47 with the test
+/// still failing at main's head of then, waited 8 minutes for
+/// vm-guide-recovers' revert to land, and held switches at 02:55 on that
+/// answer, though #2770 had fixed it at 02:44. So it is asked once more
+/// here, at no cost when main hasn't moved, since the runs at a commit are
+/// kept.
 fn settle(
     world: &dyn World,
     state: &State,
@@ -1366,6 +1439,12 @@ fn settle(
     // without holding switches.
     let found = match found {
         Found::Merge(found) => found,
+        Found::Before { test, log } => {
+            if fixed_forward(world, state, head, &test, None)? {
+                return Ok(());
+            }
+            return list_still_red(world, state, base, head, &test, &log);
+        }
         Found::Unsettled { test, log } => {
             state.set_hold(&json!({
                 "test": test, "bad": Value::Null, "since": base, "head": head, "at": now(),
@@ -1399,6 +1478,9 @@ fn settle(
         ));
         return Ok(());
     }
+    if fixed_forward(world, state, head, test, Some(commit))? {
+        return Ok(());
+    }
     revert_and_tell(world, state, &found, head)
 }
 
@@ -1413,10 +1495,10 @@ fn revert_and_tell(
     let (commit, test, log) = (&found.commit, &found.test, &found.log);
     let mut hold = json!({
         "test": test, "bad": commit, "bad_pr": found.pr, "revert_pr": Value::Null,
-        "revert_commit": Value::Null, "at": now(),
+        "revert_commit": Value::Null, "failed_at": head, "at": now(),
     });
     state.set_hold(&hold)?;
-    let reverted = world.revert(found, &still_broken(world, state, found));
+    let reverted = world.revert(found, &revert_wanted(world, state, found, Some(head)));
     keep_revert(state, &mut hold, &reverted)?;
     if dropped(state, found, &reverted)? {
         return Ok(());
@@ -1452,21 +1534,66 @@ fn revert_and_tell(
     }
 }
 
-/// Whether a revert whose checks ran on main at the commit it's asked with
-/// is still needed: main hasn't moved since, or its test still fails at
-/// main's newest head. On 9 November the net's #2621 reverted #2597 at
-/// 12:47, its checks run on the main of 12:37, a minute after #2617 had
-/// fixed the test forward, and so broke main again.
-fn still_broken<'a>(
+/// Whether a revert is needed, asked with main's newest head and the
+/// revert merged into it: its test runs at both side by side, and the
+/// revert lands only if the test fails without it and passes with it.
+/// Passing without it, it was fixed forward, and the revert is dropped;
+/// failing with it, the revert mends nothing, and lands nothing. Neither
+/// is judged from runs at another commit: on 9 November the net's #2621
+/// reverted #2597 at 12:47, its checks run on the main of 12:37, a minute
+/// after #2617 had fixed the test forward. On 10 November #2783 reverted
+/// #2705 at 03:13 for a moves-windows failure seen only at 02:32's main.
+/// The main it was cut from carried #2770, which had moved the test to
+/// what #2705 draws, but the test never ran there or with the revert, so
+/// the revert broke the test it was for. Only a newest head building the
+/// test as `failed_at` does, where it ran and failed, isn't run again.
+fn revert_wanted<'a>(
     world: &'a dyn World,
     state: &'a State,
     found: &'a Bad,
-) -> impl Fn(&str) -> bool + 'a {
-    move |checked_on: &str| match world.head() {
-        Ok(newest) if newest != checked_on => {
-            fixed_forward(world, state, checked_on, &found.test, Some(&found.commit)) != Ok(true)
+    failed_at: Option<&'a str>,
+) -> impl Fn(&str, &str) -> Result<bool, String> + 'a {
+    move |newest: &str, reverted: &str| {
+        let test = &found.test;
+        let (without, with) = std::thread::scope(|scope| {
+            let with = scope.spawn(|| attempt_together(world, state, reverted, test));
+            let without = match failed_at {
+                Some(failed) if same_drv(world, newest, failed, test) => Outcome::Failed,
+                _ => attempt_together(world, state, newest, test),
+            };
+            (without, with.join().unwrap_or(Outcome::Unsent))
+        });
+        if without == Outcome::Unsent || with == Outcome::Unsent {
+            return Err(format!(
+                "{UNCHECKED}: no builder ran {test} at main's newest head {} with and \
+                 without the revert",
+                short(newest)
+            ));
         }
-        _ => true,
+        if told_fixed(
+            world,
+            state,
+            newest,
+            newest,
+            test,
+            Some(&found.commit),
+            without,
+        )? {
+            return Ok(false);
+        }
+        if with == Outcome::Passed {
+            return Ok(true);
+        }
+        state.say(&format!(
+            "{test} fails at main's newest head {} with the revert of {} too, so the revert \
+             mends nothing and lands nothing",
+            short(newest),
+            short(&found.commit)
+        ));
+        Err(format!(
+            "{test} fails with the revert at main's newest head {} too",
+            short(newest)
+        ))
     }
 }
 
@@ -1575,6 +1702,10 @@ mod tests {
         /// A commit main's newest head builds every check as.
         newest_builds_as: Option<String>,
         put_in_quarantine: Mutex<Vec<String>>,
+        /// The owner each test put in quarantine was listed with.
+        quarantine_owners: Mutex<Vec<Option<u64>>>,
+        /// The PR that last took a test off the list.
+        unlisted_by: Option<u64>,
         held: Option<String>,
         /// How many reverts to come find no builder for their checks.
         unchecked_reverts: Mutex<u32>,
@@ -1734,7 +1865,11 @@ mod tests {
             }
             listed
         }
-        fn revert(&self, bad: &Bad, still: &dyn Fn(&str) -> bool) -> Result<Merged, String> {
+        fn revert(
+            &self,
+            bad: &Bad,
+            still: &dyn Fn(&str, &str) -> Result<bool, String>,
+        ) -> Result<Merged, String> {
             if self.reverts_conflict {
                 return Err("the revert doesn't apply to main".to_owned());
             }
@@ -1744,13 +1879,14 @@ mod tests {
                 return Err(format!("{UNCHECKED}, land.log"));
             }
             drop(unchecked);
-            // Its checks ran on main as it was when the revert was cut.
-            let cut_from = self.head()?;
+            // Main may move while the revert's checks run, and the revert
+            // is merged into main's newest head before it's asked about.
             self.moved
                 .lock()
                 .unwrap()
                 .clone_from(&self.moves_while_reverting);
-            if !still(&cut_from) {
+            let newest = self.head()?;
+            if !still(&newest, &format!("{newest}+revert"))? {
                 return Err(format!("{DROPPED}, land.log"));
             }
             *self.fetched_since_revert.lock().unwrap() = false;
@@ -1761,14 +1897,18 @@ mod tests {
                 commit: Some("revert".to_owned()),
             })
         }
+        fn unlisted_by(&self, _: &str, _: &str) -> Option<u64> {
+            self.unlisted_by
+        }
         fn quarantine(
             &self,
             test: &str,
-            _: Option<u64>,
+            owner: Option<u64>,
             _: &str,
             _: &str,
         ) -> Result<Merged, String> {
             self.put_in_quarantine.lock().unwrap().push(test.to_owned());
+            self.quarantine_owners.lock().unwrap().push(owner);
             Ok(Merged {
                 pr: 8,
                 commit: None,
@@ -2592,7 +2732,9 @@ mod tests {
             .built()
             .into_iter()
             .map(|(commit, _)| commit)
-            .filter(|commit| !["h", "m1", "m2"].contains(&commit.as_str()))
+            .filter(|commit| {
+                !commit.ends_with("+revert") && !["h", "m1", "m2"].contains(&commit.as_str())
+            })
             .collect();
         assert!(
             searched.is_empty(),
@@ -2891,6 +3033,129 @@ mod tests {
         let found = findings(&state);
         assert_eq!(found[0]["kind"], "failed-before");
         assert_eq!(found[0]["since"], "s");
+    }
+
+    #[test]
+    fn a_test_the_base_failed_twice_is_listed_owned_by_the_pr_that_took_it_off() {
+        let state = state("still-red");
+        let log = state.log("s", "vm-a", 1);
+        for _ in 0..FAILURES {
+            state
+                .record("s", "vm-a", Ran::Failed, Some(1), &log)
+                .unwrap();
+        }
+        let world = Stand {
+            head: "m2".into(),
+            merges: names("m1 m2"),
+            changed: changed("vm-a"),
+            unlisted_by: Some(2603),
+            ..Stand::default()
+        }
+        .exits("m2", "vm-a", &[1, 1]);
+        round(&world, &state, "s").unwrap();
+        assert_eq!(
+            *world.put_in_quarantine.lock().unwrap(),
+            names("vm-a"),
+            "a test red at its base and its head was left off the list, owned by nobody"
+        );
+        assert_eq!(*world.quarantine_owners.lock().unwrap(), vec![Some(2603)]);
+        let found = findings(&state);
+        assert_eq!(found[0]["owner_pr"], 2603);
+        assert_eq!(found[0]["quarantine_pr"], 8);
+    }
+
+    #[test]
+    fn a_break_main_fixed_before_it_is_settled_holds_and_reverts_nothing() {
+        let state = state("fixed-meanwhile");
+        let world = Stand {
+            head: "m3".into(),
+            merges: names("m1 m2 m3"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("m2", "vm-a", &[1])
+        .exits("m3", "vm-a", &[1]);
+        let found = search(&world, &state, "s", "m3", "vm-a", &|| SPLITS).unwrap();
+        assert!(
+            matches!(&found, Some(Found::Merge(bad)) if bad.commit == "m2"),
+            "the search blames m2"
+        );
+        // Main moves on to a fix while the find waits to be settled.
+        *world.moved.lock().unwrap() = Some("m4".into());
+        settle(&world, &state, "s", "m3", found.unwrap()).unwrap();
+        assert!(
+            state.hold().is_none(),
+            "switches were held for a break main's newest head had fixed"
+        );
+        assert!(world.reverted.lock().unwrap().is_empty(), "m2 was reverted");
+        let found = findings(&state);
+        assert_eq!(found[0]["kind"], "fixed-forward");
+        assert_eq!(found[0]["fixed_at"], "m4");
+    }
+
+    #[test]
+    fn a_revert_lands_only_if_its_test_fails_without_it_and_passes_with_it_at_mains_head() {
+        // Main moves on to m4 while the revert's checks run, and its test
+        // is asked about there with and without the revert, never judged
+        // from the main the revert was cut from, as #2783 was.
+        let reverting = |name: &str, newest: &[i32], with: &[i32]| {
+            let state = state(name);
+            let world = Stand {
+                head: "m3".into(),
+                merges: names("m1 m2 m3"),
+                changed: changed("vm-a"),
+                moves_while_reverting: Some("m4".into()),
+                ..Stand::default()
+            }
+            .exits("m2", "vm-a", &[1])
+            .exits("m3", "vm-a", &[1])
+            .exits("m4", "vm-a", newest)
+            .exits("m4+revert", "vm-a", with);
+            round(&world, &state, "s").unwrap();
+            (state, world)
+        };
+        // It passes with the revert too, so only the run without it can
+        // drop the revert.
+        let (state, world) = reverting("revert-needless", &[0], &[0]);
+        assert!(
+            world.reverted.lock().unwrap().is_empty(),
+            "the revert landed though main's newest head passes its test"
+        );
+        assert_eq!(state.hold(), None);
+        let (state, world) = reverting("revert-mends-nothing", &[1], &[1]);
+        assert!(
+            world.reverted.lock().unwrap().is_empty(),
+            "the revert landed though its test fails with it at main's newest head"
+        );
+        assert_eq!(*world.put_in_quarantine.lock().unwrap(), names("vm-a"));
+        assert_eq!(state.hold(), None, "the listing clears the hold");
+        let (_, world) = reverting("revert-mends", &[1], &[0]);
+        assert_eq!(*world.reverted.lock().unwrap(), names("m2"));
+    }
+
+    #[test]
+    fn a_test_red_at_its_base_that_main_fixed_since_is_not_listed() {
+        let state = state("still-red-fixed");
+        let log = state.log("s", "vm-a", 1);
+        for _ in 0..FAILURES {
+            state
+                .record("s", "vm-a", Ran::Failed, Some(1), &log)
+                .unwrap();
+        }
+        let world = Stand {
+            head: "m2".into(),
+            merges: names("m1 m2"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("m2", "vm-a", &[1, 1]);
+        let found = search(&world, &state, "s", "m2", "vm-a", &|| SPLITS).unwrap();
+        *world.moved.lock().unwrap() = Some("m3".into());
+        settle(&world, &state, "s", "m2", found.unwrap()).unwrap();
+        assert!(
+            world.put_in_quarantine.lock().unwrap().is_empty(),
+            "a test main's newest head passes was listed"
+        );
     }
 
     #[test]

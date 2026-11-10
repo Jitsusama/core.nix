@@ -1,6 +1,7 @@
-//! Whether two changes to one JSON file touch different keys, so the gate
-//! can count them as two files. It changes with how JSON is compared, not
-//! with what the gate asks of a branch.
+//! Whether two changes to one JSON file, or to check-descriptions.nix,
+//! touch different keys, so the gate can count them as two files. It
+//! changes with how such files are compared, not with what the gate asks
+//! of a branch.
 
 use serde_json::Value;
 
@@ -16,7 +17,83 @@ use serde_json::Value;
 /// A file any side leaves unreadable isn't apart.
 #[must_use]
 pub fn apart(base: &str, branch: &str, main: &str, head: &str) -> bool {
-    let read = |text: &str| serde_json::from_str::<Value>(text).ok();
+    apart_read(
+        &|text| serde_json::from_str::<Value>(text).ok(),
+        base,
+        branch,
+        main,
+        head,
+    )
+}
+
+/// Whether check-descriptions.nix, which both sides changed, was changed
+/// `apart`, read as keyed by each check's name. Its check holds only that
+/// the names it describes are the names checked, in any order, so changes
+/// at different names meet as two files would. On 10 November #2763 was
+/// rebased six times in half an hour, each time for main adding another
+/// check's description during the build of the one list check it needed.
+/// A file read otherwise than as entries isn't apart.
+#[must_use]
+pub fn descriptions_apart(base: &str, branch: &str, main: &str, head: &str) -> bool {
+    apart_read(&descriptions, base, branch, main, head)
+}
+
+/// check-descriptions.nix as an object of each entry's lines by its
+/// check's name, with every line outside an entry under a key no check
+/// can have. An entry opens at `  <name> = ''` and closes at `  '';`. One
+/// left open, or a name given twice, reads as nothing.
+fn descriptions(text: &str) -> Option<Value> {
+    let mut entries = serde_json::Map::new();
+    let mut outside = String::new();
+    let mut open: Option<(String, String)> = None;
+    for line in text.lines() {
+        if let Some((name, said)) = &mut open {
+            if line == "  '';" {
+                let said = Value::String(std::mem::take(said));
+                if entries.insert(std::mem::take(name), said).is_some() {
+                    return None;
+                }
+                open = None;
+            } else {
+                said.push_str(line);
+                said.push('\n');
+            }
+        } else if let Some(name) = entry(line) {
+            open = Some((name.to_owned(), String::new()));
+        } else {
+            outside.push_str(line);
+            outside.push('\n');
+        }
+    }
+    if open.is_some() || entries.contains_key(OUTSIDE) {
+        return None;
+    }
+    entries.insert(OUTSIDE.to_owned(), Value::String(outside));
+    Some(Value::Object(entries))
+}
+
+/// The key the lines outside every entry are kept under, which a check's
+/// name, of letters, digits and dashes, can't be.
+const OUTSIDE: &str = " outside";
+
+/// The check's name, when `line` opens an entry.
+fn entry(line: &str) -> Option<&str> {
+    let name = line.strip_prefix("  ")?.strip_suffix(" = ''")?;
+    (!name.is_empty()
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'))
+    .then_some(name)
+}
+
+/// Whether the four texts, each read by `read`, were changed apart.
+fn apart_read(
+    read: &dyn Fn(&str) -> Option<Value>,
+    base: &str,
+    branch: &str,
+    main: &str,
+    head: &str,
+) -> bool {
     let (Some(base), Some(branch), Some(main), Some(head)) =
         (read(base), read(branch), read(main), read(head))
     else {
@@ -171,6 +248,63 @@ mod tests {
         assert!(
             !apart(WORDS, &branch, "{", &head),
             "main's side doesn't read"
+        );
+    }
+
+    const DESCRIBED: &str = "# What each check proves.\n{\n  a-check = ''\n    holds\n  '';\n  \
+        c-check = ''\n    holds too\n  '';\n}\n";
+
+    /// `DESCRIBED` with `name`'s entry put before `before`'s.
+    fn described(text: &str, name: &str, before: &str) -> String {
+        text.replace(
+            &format!("  {before} = ''"),
+            &format!("  {name} = ''\n    proves\n  '';\n  {before} = ''"),
+        )
+    }
+
+    #[test]
+    fn descriptions_added_for_different_checks_are_apart() {
+        // #2763's case: the branch described its new check, and main
+        // described another meanwhile.
+        let branch = described(DESCRIBED, "b-check", "c-check");
+        let main = described(DESCRIBED, "0-check", "a-check");
+        let head = described(&main, "b-check", "c-check");
+        assert!(
+            descriptions_apart(DESCRIBED, &branch, &main, &head),
+            "two checks described in their places"
+        );
+        let main = DESCRIBED.replace("holds too", "holds still");
+        let head = described(&main, "b-check", "c-check");
+        assert!(
+            descriptions_apart(DESCRIBED, &branch, &main, &head),
+            "another check's words changed"
+        );
+    }
+
+    #[test]
+    fn descriptions_changed_for_one_check_or_read_otherwise_are_not() {
+        let branch = DESCRIBED.replace("holds too", "holds more");
+        let main = DESCRIBED.replace("holds too", "holds still");
+        assert!(
+            !descriptions_apart(DESCRIBED, &branch, &main, &main),
+            "both changed one check's words"
+        );
+        let branch = DESCRIBED.replace("# What", "# All");
+        let main = DESCRIBED.replace("# What", "# Which");
+        assert!(
+            !descriptions_apart(DESCRIBED, &branch, &main, &main),
+            "both changed what's outside the entries"
+        );
+        let branch = described(DESCRIBED, "b-check", "c-check");
+        let open = DESCRIBED.replace("    holds too\n  '';\n", "");
+        assert!(
+            !descriptions_apart(DESCRIBED, &branch, &open, &branch),
+            "main's side leaves an entry open"
+        );
+        let twice = described(DESCRIBED, "a-check", "c-check");
+        assert!(
+            !descriptions_apart(DESCRIBED, &branch, &twice, &branch),
+            "main's side describes a check twice"
         );
     }
 }
