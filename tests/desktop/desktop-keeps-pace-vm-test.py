@@ -65,6 +65,13 @@ PHASE = 20
 # a workstation weighs them they waited 50 and 60 ms a key against 35 and 38, and weighed 1,
 # 78 against 20.
 WAITED = 10
+# A builder with nothing else to run wakes the guest's idle processors at once, so the frozen
+# turns wait as little as 3.9 ms a key, and twice that leaves the load less than a processor's
+# share: on 9 November #2724, which touched nothing the launcher runs, failed three times at
+# 21.8 to 26.1 ms against 3.9 to 6.9 frozen, where main passed at 22.8 to 41.8 against 7.8 to
+# 20.8. The frozen wait is taken as at least WAITED_FREE_LEAST ms, which still fails the
+# desktop weighed 1, 78 ms against 20.
+WAITED_FREE_LEAST = 10
 SLOWER_MOST = 2
 MIDDLE_MORE = 50
 TAIL = 0.95
@@ -339,7 +346,7 @@ class Timing:
             f"half the keys under load took {middle:.0f} ms to their frames, against "
             f"{middle_free:.0f} ms with the load frozen"
         )
-        assert wait <= SLOWER_MOST * wait_free + WAITED, (
+        assert wait <= SLOWER_MOST * max(wait_free, WAITED_FREE_LEAST) + WAITED, (
             f"under load the compositor and the shell waited {wait:.1f} ms a key for a processor "
             f"in the middle turn, against {wait_free:.1f} ms with the load frozen"
         )
