@@ -371,16 +371,7 @@ fn keep_head(url: &str, clone: &Path, head: &str) -> Result<bool, String> {
 /// the names are counted, which took 1.1 s and 158 MB for core's 580 checks
 /// on 30 October, against 4.8 GB for evaluating them.
 fn busiest_system(flake: &str) -> Result<String, String> {
-    let here = run(
-        "nix",
-        &[
-            "eval",
-            "--raw",
-            "--impure",
-            "--expr",
-            "builtins.currentSystem",
-        ],
-    )?;
+    let here = this_system();
     let counting = format!(
         "builtins.mapAttrs (_: checks: builtins.length (builtins.attrNames checks)) \
          ((builtins.getFlake \"{flake}\").checks or {{ }})"
@@ -389,6 +380,18 @@ fn busiest_system(flake: &str) -> Result<String, String> {
     let counts = serde_json::from_str(&counted)
         .map_err(|error| format!("reading how many checks each system has: {error}"))?;
     Ok(checks::busiest(&counts, &here))
+}
+
+/// The Nix system this program was built for, which is this machine's:
+/// read without asking Nix, whose evaluation of `builtins.currentSystem`
+/// waited 30 minutes at the jobs door on 10 November before a run it began
+/// could be sent anywhere.
+fn this_system() -> String {
+    let os = match std::env::consts::OS {
+        "macos" => "darwin",
+        os => os,
+    };
+    format!("{}-{os}", std::env::consts::ARCH)
 }
 
 /// The run sent to another machine by `nix-offload there --changed`, its

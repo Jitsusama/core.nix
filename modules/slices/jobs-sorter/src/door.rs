@@ -1,6 +1,7 @@
-//! Holds a new Nix evaluation or build at the door while the machine is
-//! short of memory, so heavy work comes in as there's room for it rather
-//! than all at once.
+//! Ranks a new Nix evaluation or build behind other work while the machine
+//! is short of memory, and holds it at the door only when memory truly
+//! can't fit it, so heavy work comes in as there's room for it rather than
+//! all at once, and never waits long.
 //!
 //! Long because its cases, half of it, stay beside the door's private
 //! pieces as every module in this crate keeps them.
@@ -18,17 +19,26 @@
 //! cgroup and seen by the sorter within [`YOUNG`] of its start, is let in
 //! only while what's available, less what those let in lately haven't
 //! grown to yet, leaves [`Machine::room`] once it has grown by
-//! [`Machine::grows`]. Otherwise
-//! it's frozen in its scope as it starts, small, and says so on its
-//! standard error, and the oldest held comes in first once there's room.
+//! [`Machine::grows`]. Otherwise, while what's available still leaves
+//! [`Machine::floor`] once it has grown, it runs at once ranked behind
+//! all other work: the lowest CPU and disk weight, and its memory capped
+//! at what keeps that floor, so it slows rather than crowds what Joel
+//! uses. Only below that, or through a call, is it frozen in its scope as
+//! it starts, small, saying so on its standard error, and the oldest held
+//! comes in first once there's room. Freezing every start short of the
+//! room paused work Joel ruled must never pause ("we need to not pause
+//! anything", 9 November): that night the door held 137 starts for 17
+//! hours in all, a median of 3.7 minutes each and 15 the whole 30, among
+//! them changed-checks' one-second evaluations of the machine's system,
+//! while 16 to 21 GB stayed available.
 //! Each let in counts as that growth, less what its scope already holds, for
 //! [`RAMP`] after, so starts that come together are let in only as many
 //! as there's room for, then one at a time as memory shows how much they
 //! took. Both are shares of the machine's memory, so the door works the
 //! same on a laptop, a desktop and a virtual machine's test. While a call
-//! is on, more room is kept. None is
-//! held past [`LONGEST`] once no call is on, so one never waits forever on
-//! memory others keep, and those that waited that long come in
+//! is on, more room is kept and nothing is ranked in. None is
+//! held past [`LONGEST`] once no call is on, so one waits minutes at most
+//! on memory others keep, and those that waited that long come in
 //! [`SPACED`] apart.
 //!
 //! A start whose environment carries [`FIRST`] lands a switch, which
@@ -64,8 +74,9 @@ pub const FIRST: &str = "JOBS_DOOR_FIRST=1";
 /// How long a start is counted to be growing.
 pub const RAMP: Duration = Duration::from_mins(2);
 
-/// The longest a start is held while no call is on.
-pub const LONGEST: Duration = Duration::from_mins(30);
+/// The longest a start is held while no call is on: minutes, since below
+/// the floor most memory is held by idle sessions that no waiting frees.
+pub const LONGEST: Duration = Duration::from_mins(5);
 
 /// The time between two let in because they waited [`LONGEST`].
 pub const SPACED: Duration = Duration::from_secs(30);
@@ -197,6 +208,26 @@ impl Machine {
     pub fn grows(self) -> u64 {
         self.total / 16
     }
+
+    /// Available memory a start ranked behind other work must leave once
+    /// it has grown, and what its memory is capped to keep: a sixteenth of
+    /// the machine's, 4 GiB of 64, so it takes the last of the room only
+    /// when there's 8 GiB to give.
+    pub fn floor(self) -> u64 {
+        self.total / 16
+    }
+}
+
+/// What the door does to a start's scope.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Act {
+    Freeze,
+    Thaw,
+    /// Ranks it behind all other work, its memory held under `high`
+    /// bytes.
+    Rank {
+        high: u64,
+    },
 }
 
 /// What the door did to a process.
@@ -204,22 +235,26 @@ impl Machine {
 pub enum Done {
     Held(u32),
     LetIn(u32),
+    /// Let in ranked behind other work, its memory held under the bytes
+    /// given.
+    Ranked(u32, u64),
 }
 
 impl Door {
     /// Looks at what's under the door `now`, `uptime` ticks since boot, on
     /// `machine`: lets each new young heavy start in a scope of its own in
-    /// while there's room for it and nothing waits before it, holds it
-    /// otherwise, and lets the oldest held in as room comes, or once it's
-    /// waited [`LONGEST`] with no call on. `freeze` freezes or thaws a
-    /// scope and says whether it could.
+    /// while there's room for it and nothing waits before it, ranks it in
+    /// behind other work while there's its floor, holds it otherwise, and
+    /// lets the oldest held in as room comes, or once it's waited
+    /// [`LONGEST`] with no call on. `act` freezes, thaws or ranks a scope
+    /// and says whether it could.
     pub fn look(
         &mut self,
         coming: &[Coming],
         machine: Machine,
         now: Instant,
         uptime: u64,
-        mut freeze: impl FnMut(&Path, bool) -> bool,
+        mut act: impl FnMut(&Path, Act) -> bool,
     ) -> Vec<Done> {
         let here: HashSet<(u32, u64)> = coming.iter().map(|it| (it.pid, it.start)).collect();
         let pids: HashSet<u32> = coming.iter().map(|it| it.pid).collect();
@@ -232,7 +267,7 @@ impl Door {
         self.admitted
             .retain(|scope, _| memory.contains_key(scope.as_path()));
         // Let in before the room is counted, so it counts as growing.
-        let blocking = self.let_in_blocking(coming, now, &mut freeze);
+        let blocking = self.let_in_blocking(coming, now, &mut act);
         let mut done: Vec<Done> = blocking.into_iter().map(Done::LetIn).collect();
         let (need, grows) = (machine.room(), machine.grows());
         let growing: u64 = self
@@ -248,6 +283,11 @@ impl Door {
         let fits = |room: u64, first: bool| {
             room >= grows + if first && !machine.calling { 0 } else { need }
         };
+        // Short of the room, a start still runs at once, ranked behind the
+        // rest, while there's its floor and no call is on; capped to keep
+        // the floor, it slows rather than crowds what the person uses.
+        let floor = machine.floor();
+        let ranks = |room: u64| !machine.calling && room >= grows + floor;
         // When each scope's oldest process started, so a run already going
         // is known by it.
         let mut oldest: HashMap<&Path, u64> = HashMap::new();
@@ -256,12 +296,16 @@ impl Door {
             *start = (*start).min(it.start);
         }
         self.take_over(coming, now, uptime);
-        // Switches, then the oldest held, come in while there's room.
-        while self.held.first().is_some_and(|held| fits(room, held.first)) {
-            let first = self.held.remove(0);
-            if freeze(&first.scope, false) {
-                done.push(Done::LetIn(first.pid));
-                self.admitted.insert(first.scope, now);
+        // Switches, then the oldest held, come in while there's room, or
+        // ranked while there's their floor.
+        while let Some(held) = self.held.first() {
+            let plain = fits(room, held.first);
+            if !plain && !ranks(room) {
+                break;
+            }
+            let ranked = (!plain).then(|| room - floor);
+            if let Some(came) = self.come_in(ranked, now, &mut act) {
+                done.push(came);
                 room -= grows;
             }
         }
@@ -298,7 +342,14 @@ impl Door {
             if midway || (fits(room, it.first) && !ahead) {
                 self.admitted.insert(it.scope.clone(), now);
                 room = room.saturating_sub(grows);
-            } else if freeze(&it.scope, true) {
+            } else if !ahead && ranks(room) {
+                let high = room - floor;
+                if act(&it.scope, Act::Rank { high }) {
+                    done.push(Done::Ranked(it.pid, high));
+                }
+                self.admitted.insert(it.scope.clone(), now);
+                room = room.saturating_sub(grows);
+            } else if act(&it.scope, Act::Freeze) {
                 let held = Held {
                     pid: it.pid,
                     scope: it.scope.clone(),
@@ -315,26 +366,51 @@ impl Door {
                 done.push(Done::Held(it.pid));
             }
         }
-        // One that has waited long enough goes, whatever the room, one at a
-        // time, but never into a call.
+        done.extend(self.let_in_longest(machine, now, &mut act));
+        done
+    }
+
+    /// Lets in the first held once it has waited [`LONGEST`], whatever the
+    /// room, one at a time, but never into a call.
+    fn let_in_longest(
+        &mut self,
+        machine: Machine,
+        now: Instant,
+        act: &mut impl FnMut(&Path, Act) -> bool,
+    ) -> Option<Done> {
         let spaced = self
             .waited_in
             .is_none_or(|at| now.saturating_duration_since(at) >= SPACED);
-        if !machine.calling
-            && spaced
-            && self
-                .held
-                .first()
-                .is_some_and(|held| now.saturating_duration_since(held.since) >= LONGEST)
-        {
-            let first = self.held.remove(0);
-            if freeze(&first.scope, false) {
-                done.push(Done::LetIn(first.pid));
-                self.admitted.insert(first.scope, now);
-                self.waited_in = Some(now);
-            }
+        let waited = self
+            .held
+            .first()
+            .is_some_and(|held| now.saturating_duration_since(held.since) >= LONGEST);
+        if machine.calling || !spaced || !waited {
+            return None;
         }
-        done
+        // Short of its floor still, it comes in ranked and capped at its own
+        // growth, so what it takes past that it reclaims from itself.
+        let came = self.come_in(Some(machine.grows()), now, act)?;
+        self.waited_in = Some(now);
+        Some(came)
+    }
+
+    /// Lets the first held in, ranked under `ranked` bytes when given, and
+    /// says how; none when it couldn't be thawed.
+    fn come_in(
+        &mut self,
+        ranked: Option<u64>,
+        now: Instant,
+        act: &mut impl FnMut(&Path, Act) -> bool,
+    ) -> Option<Done> {
+        let first = self.held.remove(0);
+        // Ranked before it thaws, so it never runs a moment unranked.
+        let ranked = ranked.filter(|high| act(&first.scope, Act::Rank { high: *high }));
+        if !act(&first.scope, Act::Thaw) {
+            return None;
+        }
+        self.admitted.insert(first.scope, now);
+        Some(ranked.map_or(Done::LetIn(first.pid), |high| Done::Ranked(first.pid, high)))
     }
 
     /// Lets in each held scope holding a lock others wait on, whatever the
@@ -345,7 +421,7 @@ impl Door {
         &mut self,
         coming: &[Coming],
         now: Instant,
-        freeze: &mut impl FnMut(&Path, bool) -> bool,
+        act: &mut impl FnMut(&Path, Act) -> bool,
     ) -> Vec<u32> {
         let blocking: HashSet<&Path> = coming
             .iter()
@@ -355,7 +431,7 @@ impl Door {
         let mut let_in = Vec::new();
         let mut kept = Vec::new();
         for held in std::mem::take(&mut self.held) {
-            if blocking.contains(held.scope.as_path()) && freeze(&held.scope, false) {
+            if blocking.contains(held.scope.as_path()) && act(&held.scope, Act::Thaw) {
                 let_in.push(held.pid);
                 self.admitted.insert(held.scope, now);
             } else {
@@ -434,9 +510,58 @@ pub fn blocking(locks: &str) -> HashSet<u32> {
         .collect()
 }
 
-/// Freezes or thaws the cgroup at `scope`, saying whether it could.
-pub fn freeze(scope: &Path, frozen: bool) -> bool {
-    fs::write(scope.join("cgroup.freeze"), if frozen { "1" } else { "0" }).is_ok()
+/// Freezes, thaws or ranks the cgroup at `scope`, saying whether it could.
+/// Ranking goes through the user's systemd, which owns the scope and
+/// turns on the parent's CPU and disk controllers for it; written to the
+/// cgroup straight, the weights have no file to go in.
+pub fn act(scope: &Path, act: Act) -> bool {
+    match act {
+        Act::Freeze => fs::write(scope.join("cgroup.freeze"), "1").is_ok(),
+        Act::Thaw => fs::write(scope.join("cgroup.freeze"), "0").is_ok(),
+        Act::Rank { high } => scope
+            .file_name()
+            .and_then(|unit| unit.to_str())
+            .is_some_and(|unit| {
+                std::process::Command::new("busctl")
+                    .args(rank_call(unit, high))
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .is_ok_and(|status| status.success())
+            }),
+    }
+}
+
+/// What busctl is given to rank the scope `unit` behind all other work:
+/// the lowest CPU and disk weight, and its memory held under `high`
+/// bytes, as runtime properties that go with the scope.
+pub fn rank_call(unit: &str, high: u64) -> Vec<String> {
+    let high = high.to_string();
+    [
+        "--user",
+        "--quiet",
+        "call",
+        "org.freedesktop.systemd1",
+        "/org/freedesktop/systemd1",
+        "org.freedesktop.systemd1.Manager",
+        "SetUnitProperties",
+        "sba(sv)",
+        unit,
+        "true",
+        "3",
+        "CPUWeight",
+        "t",
+        "1",
+        "IOWeight",
+        "t",
+        "1",
+        "MemoryHigh",
+        "t",
+        &high,
+    ]
+    .iter()
+    .map(|arg| (*arg).to_string())
+    .collect()
 }
 
 /// What the cgroup at `scope` holds, in bytes; none when it can't say.
@@ -473,9 +598,9 @@ pub fn tell(pid: u32, machine: Machine) {
              to, so this waits for room or its turn{}",
             machine.free / 1_000_000_000,
             if machine.calling {
-                ", until the call ends"
+                ", until the call ends".to_owned()
             } else {
-                ", at most 30 minutes"
+                format!(", at most {} minutes", LONGEST.as_secs() / 60)
             }
         );
     }
@@ -552,7 +677,10 @@ mod tests {
             free: 0,
             calling: false,
         };
-        assert_eq!((small.room(), small.grows()), (512 << 20, 128 << 20));
+        assert_eq!(
+            (small.room(), small.grows(), small.floor()),
+            (512 << 20, 128 << 20, 128 << 20)
+        );
         let calling = Machine {
             calling: true,
             ..free(0)
@@ -565,6 +693,7 @@ mod tests {
     const TOTAL: u64 = 64 << 30;
     const ROOM: u64 = 16 << 30;
     const GROWS: u64 = 4 << 30;
+    const FLOOR: u64 = 4 << 30;
 
     fn coming(pid: u32, start: u64, words: &'static str, scope: &str) -> Coming<'static> {
         Coming {
@@ -591,22 +720,22 @@ mod tests {
     fn a_hold_left_by_a_sorter_that_stopped_is_taken_over() {
         let mut door = Door::default();
         let at = Instant::now();
-        // Frozen 20 minutes before this door started, with room short.
+        // Frozen a minute before this door started, with room short.
         let left = [frozen(60, 1000, "nix eval .#x", "/c/work-60-1.scope")];
-        let since = 1000 + 20 * 60 * 100;
+        let since = 1000 + 60 * 100;
         assert_eq!(door.look(&left, free(1 << 30), at, since, |_, _| true), []);
         assert_eq!(
-            door.look(&left, free(1 << 30), at + LONGEST / 6, since + 1, |_, _| {
+            door.look(&left, free(1 << 30), at + LONGEST / 2, since + 1, |_, _| {
                 true
             }),
             [],
             "it waits on until its wait, counted from its start, passes the longest"
         );
         assert_eq!(
-            door.look(&left, free(1 << 30), at + LONGEST / 2, since + 2, |_, _| {
+            door.look(&left, free(1 << 30), at + LONGEST, since + 2, |_, _| {
                 true
             }),
-            [Done::LetIn(60)]
+            [Done::Ranked(60, GROWS)]
         );
     }
 
@@ -666,13 +795,13 @@ mod tests {
     #[test]
     fn a_new_heavy_start_waits_while_memory_is_short_and_comes_in_once_there_is_room() {
         let mut door = Door::default();
-        let mut frozen: Vec<(PathBuf, bool)> = Vec::new();
-        let mut freezing = |scope: &Path, now: bool| {
-            frozen.push((scope.to_path_buf(), now));
+        let mut frozen: Vec<(PathBuf, Act)> = Vec::new();
+        let mut freezing = |scope: &Path, act: Act| {
+            frozen.push((scope.to_path_buf(), act));
             true
         };
         let at = Instant::now();
-        let short = free(10 << 30);
+        let short = free(GROWS + FLOOR - 1);
         let work = [
             coming(10, 1000, "nix eval .#x", "/c/work-10-1.scope"),
             coming(11, 1000, "cargo build", "/c/work-11-1.scope"),
@@ -696,9 +825,81 @@ mod tests {
         assert_eq!(
             frozen,
             [
-                (PathBuf::from("/c/work-10-1.scope"), true),
-                (PathBuf::from("/c/work-10-1.scope"), false)
-            ]
+                (PathBuf::from("/c/work-10-1.scope"), Act::Freeze),
+                (PathBuf::from("/c/work-10-1.scope"), Act::Thaw)
+            ],
+            "held, then let in with room for it, unranked"
+        );
+    }
+
+    // On 9 November changed-checks' one-second evaluation of the machine's
+    // system waited the whole 30 minutes at the door, with 16 GB free.
+    #[test]
+    fn a_start_short_of_room_runs_at_once_ranked_behind_other_work() {
+        let mut door = Door::default();
+        let mut acted: Vec<Act> = Vec::new();
+        let at = Instant::now();
+        let short = free(10 << 30);
+        let work = [coming(10, 1000, "nix eval .#x", "/c/work-10-1.scope")];
+        let done = door.look(&work, short, at, 1000, |_, act| {
+            acted.push(act);
+            true
+        });
+        assert_eq!(done, [Done::Ranked(10, (10 << 30) - FLOOR)]);
+        assert_eq!(
+            acted,
+            [Act::Rank {
+                high: (10 << 30) - FLOOR
+            }],
+            "never frozen, and capped to keep the floor"
+        );
+    }
+
+    #[test]
+    fn a_held_start_comes_in_ranked_once_there_is_its_floor() {
+        let mut door = Door::default();
+        let mut acted: Vec<Act> = Vec::new();
+        let at = Instant::now();
+        let work = [coming(10, 1000, "nix eval .#x", "/c/work-10-1.scope")];
+        let mut acting = |_: &Path, act: Act| {
+            acted.push(act);
+            true
+        };
+        let done = door.look(&work, free(1 << 30), at, 1000, &mut acting);
+        assert_eq!(done, [Done::Held(10)]);
+        let done = door.look(&work, free(GROWS + FLOOR), at, 1001, &mut acting);
+        assert_eq!(done, [Done::Ranked(10, GROWS)]);
+        assert_eq!(
+            acted,
+            [Act::Freeze, Act::Rank { high: GROWS }, Act::Thaw],
+            "ranked before it thaws"
+        );
+    }
+
+    #[test]
+    fn ranking_asks_systemd_for_the_lowest_weights_and_a_memory_cap() {
+        let call = rank_call("work-10-1.scope", 6 << 30);
+        let at = call.iter().position(|arg| arg == "work-10-1.scope");
+        assert_eq!(
+            at.map(|at| &call[at..]),
+            Some(
+                &[
+                    "work-10-1.scope",
+                    "true",
+                    "3",
+                    "CPUWeight",
+                    "t",
+                    "1",
+                    "IOWeight",
+                    "t",
+                    "1",
+                    "MemoryHigh",
+                    "t",
+                    "6442450944"
+                ]
+                .map(str::to_owned)[..]
+            ),
+            "{call:?}"
         );
     }
 
@@ -713,7 +914,7 @@ mod tests {
             coming(10, 1000, "nix eval .#x", "/c/work-10-1.scope"),
             coming(11, 1000, "nix eval .#y", "/c/work-11-1.scope"),
         ];
-        let short = free(10 << 30);
+        let short = free(1 << 30);
         let done = door.look(&work, short, at, 1000, |_, _| true);
         assert_eq!(done, [Done::Held(10), Done::Held(11)]);
         work[1].blocking = true;
@@ -753,18 +954,26 @@ mod tests {
         let at = Instant::now();
         let mut work = thirteen();
         let done = door.look(&work, free(26_000_000_000), at, 1000, |_, _| true);
-        assert_eq!(held(&done), 11, "two fit in 26 GB: {done:?}");
+        let ranked = done
+            .iter()
+            .filter(|done| matches!(done, Done::Ranked(..)))
+            .count();
+        assert_eq!(
+            (held(&done), ranked),
+            (8, 3),
+            "two fit in 26 GB, three more ranked behind them: {done:?}"
+        );
         // Grown to what they were counted at, memory shows it: none more.
-        for it in &mut work[..2] {
+        for it in &mut work[..5] {
             it.memory = GROWS;
         }
         let later = at + Duration::from_secs(10);
-        let done = door.look(&work, free(18_000_000_000), later, 1001, |_, _| true);
+        let done = door.look(&work, free(8_000_000_000), later, 1001, |_, _| true);
         assert!(done.is_empty(), "{done:?}");
         // One ends and gives its memory back: one more comes in, the oldest.
         work.remove(0);
-        let done = door.look(&work, free(22_000_000_000), later, 1002, |_, _| true);
-        assert_eq!(done, [Done::LetIn(102)]);
+        let done = door.look(&work, free(12_000_000_000), later, 1002, |_, _| true);
+        assert_eq!(done, [Done::Ranked(105, 12_000_000_000 - FLOOR)]);
     }
 
     #[test]
@@ -782,9 +991,14 @@ mod tests {
         assert_eq!(held(&done), 0, "room for two: {done:?}");
         let third = &work[..3];
         let done = door.look(third, plenty, at, 1002, |_, _| true);
-        assert_eq!(done, [Done::Held(102)], "the first two still count");
-        let done = door.look(third, plenty, at + RAMP, 1003, |_, _| true);
-        assert_eq!(done, [Done::LetIn(102)], "their ramp has passed");
+        assert_eq!(
+            done,
+            [Done::Ranked(102, ROOM - FLOOR)],
+            "the first two still count, so it's ranked behind them"
+        );
+        let fourth = &work[..4];
+        let done = door.look(fourth, plenty, at + RAMP, 1003, |_, _| true);
+        assert!(done.is_empty(), "their ramp has passed: {done:?}");
     }
 
     #[test]
@@ -821,7 +1035,7 @@ mod tests {
         assert_eq!(held(&door.look(work, short, at, 1000, |_, _| true)), 2);
         assert_eq!(
             door.look(work, short, at + LONGEST, 1001, |_, _| true),
-            [Done::LetIn(100)],
+            [Done::Ranked(100, GROWS)],
             "short of memory still, but it has waited long enough"
         );
         assert!(
@@ -831,7 +1045,7 @@ mod tests {
         );
         assert_eq!(
             door.look(work, short, at + LONGEST + SPACED, 1003, |_, _| true),
-            [Done::LetIn(101)]
+            [Done::Ranked(101, GROWS)]
         );
     }
 

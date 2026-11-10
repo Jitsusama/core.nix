@@ -74,7 +74,7 @@ case "$5" in
     cat "$STAND_IN/systems.json" 2>/dev/null || echo '{"x86_64-linux": 4}'
     exit 0 ;;
 esac
-[ "$5" = builtins.currentSystem ] && { echo x86_64-linux; exit 0; }
+[ "$5" = builtins.currentSystem ] && { echo "asked Nix for this machine's system" >&2; exit 1; }
 [ "$6" = --no-eval-cache ] || { echo "evaluated through the cache" >&2; exit 1; }
 side=working
 case "$3" in *'?rev='*) side=base ;; esac

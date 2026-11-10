@@ -536,13 +536,15 @@ in
           # reclaims for itself until the OOM killer ends one.
           "--revive"
           "jobs.slice"
-          # A Nix evaluation or build agents start waits, frozen as it
-          # starts, unless a quarter of memory stays available once it has
-          # grown by a sixteenth, counting those let in the last two
-          # minutes as growing, so thirteen at once come in as many as
-          # there's room for. Through a call, which pw-dump hears as a
-          # program recording a microphone, three eighths stay, and nothing
-          # held comes into the call.
+          # A Nix evaluation or build agents start runs at once while a
+          # quarter of memory stays available once it has grown by a
+          # sixteenth, counting those let in the last two minutes as
+          # growing. Short of that it runs ranked behind all other work,
+          # its memory capped to keep a sixteenth free, and only short of
+          # that too does it wait, frozen as it starts, five minutes at
+          # most. Through a call, which pw-dump hears as a program
+          # recording a microphone, three eighths stay, and nothing held
+          # or ranked comes into the call.
           "--door"
           "jobs.slice"
           "--calls"
