@@ -1,9 +1,11 @@
 # shellcheck shell=bash
 # Switches the machine to a NixOS system already built, such as what
-# `nixos-rebuild build` leaves in ./result, with no password: polkit lets the
-# machine's administrators start switch-system@.service and nothing more
-# (nixos.nix). It returns once the switch is done, and on a failure shows
-# what the switch said.
+# `nixos-rebuild build` leaves in ./result: polkit lets the machine's
+# administrators start switch-system@.service and nothing more, with no
+# password for a system the machine has run and an administrator's
+# authentication for any other (nixos.nix). Run from a terminal, systemctl
+# asks for it there; with none, the switch is refused. It returns once the
+# switch is done, and on a failure shows what the switch said.
 #
 # usage: switch-system <system>
 
