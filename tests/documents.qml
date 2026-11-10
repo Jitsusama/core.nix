@@ -10,14 +10,10 @@ import qs
 import Quickshell
 import QtQuick
 import "launcher" as Launcher
+import "Expect.js" as Expect
 
 ShellRoot {
     id: root
-
-    function expect(what, holds, said) {
-        if (!holds)
-            throw new Error(`${what}: ${said}`);
-    }
 
     function document(id, title) {
         return { id: id, title: title, kind: "document",
@@ -56,29 +52,28 @@ ShellRoot {
             // clock's minute remade them all with the launcher shut, 27 a
             // minute on Joel's shell (2026-11-10).
             Calendar.now += 60000;
-            expect("shut, a minute passing makes no row", documents.tally.rows === shut,
+            Expect.expect("shut, a minute passing makes no row", documents.tally.rows === shut,
                 documents.tally.rows - shut);
             Google.documents = [document("d1", "Quarterly Plan"), document("d2", "Roadmap")];
-            expect("nor a document coming", documents.tally.rows === shut,
+            Expect.expect("nor a document coming", documents.tally.rows === shut,
                 documents.tally.rows - shut);
             standIn.open = true;
-            expect("opened, it holds every document", titles() === "Quarterly Plan, Roadmap",
+            Expect.expect("opened, it holds every document", titles() === "Quarterly Plan, Roadmap",
                 titles());
-            expect("made once", documents.tally.rows - shut === 2, documents.tally.rows - shut);
-            expect("and its program's Recent holds them",
+            Expect.expect("made once", documents.tally.rows - shut === 2, documents.tally.rows - shut);
+            Expect.expect("and its program's Recent holds them",
                 documents.recentOf("google-docs").map(row => row.name).join(", ")
                 === "Quarterly Plan, Roadmap", "");
             standIn.open = false;
             const closed = documents.tally.rows;
             Calendar.now += 60000;
-            expect("shut again, it keeps what it made", titles() === "Quarterly Plan, Roadmap",
+            Expect.expect("shut again, it keeps what it made", titles() === "Quarterly Plan, Roadmap",
                 titles());
-            expect("and makes none", documents.tally.rows === closed,
+            Expect.expect("and makes none", documents.tally.rows === closed,
                 documents.tally.rows - closed);
             Qt.callLater(() => Qt.exit(0));
         } catch (failed) {
-            console.warn(`FAIL ${failed.message}`);
-            Qt.callLater(() => Qt.exit(1));
+            Expect.fail(failed.message);
         }
     }
 }

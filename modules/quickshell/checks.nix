@@ -3416,8 +3416,11 @@ onLinux {
       saves = singleton "Saves.qml" "property var launcher: null";
       niri = singleton "Niri.qml" "function spawn(command) {}";
     in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # cases, or sets what Quickshell runs them with.
     pkgs.runCommandLocal "a-shut-launcher-makes-no-document-rows" { } ''
       mkdir -p launcher
+      cp ${../../tests/lib/Expect.js} Expect.js
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./ProgramGlyphs.js} ProgramGlyphs.js
