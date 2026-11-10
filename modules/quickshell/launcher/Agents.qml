@@ -1201,7 +1201,7 @@ Provider {
             key: `agents:recent:${one.id}`,
             name: String(one.title || one.address || one.id),
             also: Fuzzy.prepare(`${one.address ?? ""} ${one.folder ?? ""} ${one.quest ?? ""}`),
-            side: SessionRow.closedAt(one.endedAt, now, said,
+            side: SessionRow.closedAt(one.ended, now, said,
                 date => Qt.formatDate(date, "ddd")),
             note: SessionRow.closedNote(one),
             verb: Words.verb("verb:agents:to-reopen:one"),
