@@ -7759,7 +7759,7 @@ Scope {
             wakeOpen();
     }
 
-    // Opens with no source woken, so each wakes in turn as it opens
+    // Opens on the full path with no source woken, so each wakes in turn as it opens
     // (wakeEach) rather than all at once, in whichever part first reads
     // them, where the rows they make would be said as that part's: Joel's
     // first opening at 13:04 said 165 ms of forgetting, which was capture's
@@ -7899,7 +7899,10 @@ Scope {
             return;
         openFilledBy = by;
         const began = KeyTimes.now();
-        wakeOpen();
+        // Every source woken at once, since waking each in turn makes every
+        // source's wanted again at each, 20 ms for 70 sources in the
+        // sandbox: what a kept opening remakes is said by its rows instead.
+        open = true;
         if (openAsked >= 0)
             fillEarly = KeyTimes.now() - began;
         else
@@ -7971,8 +7974,10 @@ Scope {
             verbs: openVerbsWeighed, filled: rowsSaid(), filledBy: openFilledBy, woke: openWoke,
             madeBy: madeBy() };
         openingsTimed = openingsTimed.slice(0, -1).concat([Object.assign({}, last, filled)]);
+        const made = Object.values(filled.madeBy).reduce((sum, rows) => sum + rows, 0);
         console.info(`launcher: filled the opening in ${filled.filling} ms, ${worked} ms`
-            + ` working (${partsSaid(fillParts)}) and the rest waking`);
+            + ` working (${partsSaid(fillParts)}) and the rest waking; ${made} rows made`
+            + ` (${Pacing.openingParts(filled.madeBy)})`);
     }
     // An opening's parts, with waking's split by the source each woke.
     function partsSaid(parts) {
