@@ -1717,7 +1717,7 @@
     boot
   '';
   session-memory-is-protected = ''
-    session.slice and app.slice carry hard memory floors and agents.slice only a soft one, and every
+    session.slice and app.slice carry hard memory floors and agents.slice a soft one, and every
     slice above them carries one hard and one soft floor, the same at each
   '';
   sessions-sit-beside-the-programs = ''
@@ -2102,6 +2102,11 @@
   '';
   the-sessions-kitty-outlives-a-switch = ''
     a switch never restarts the kitty every session's window is in, so no switch closes them
+  '';
+  the-sessions-kitty-comes-before-its-sessions = ''
+    the kitty every session's window is drawn by sits in agents.slice above its sessions' weight,
+    with a hard memory floor agents.slice keeps as large, so a session opening never starves the
+    window Joel types in
   '';
   the-screens-go-off-on-niri = ''
     on niri, Turn Every Screen Off closes the launcher and then asks niri to power its monitors
