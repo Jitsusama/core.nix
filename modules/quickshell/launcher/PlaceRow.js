@@ -59,3 +59,30 @@ function drawer(name, names, eyebrow, holding = "") {
     return names.length === 0 ? null
         : { eyebrow, title: name, body: run(names), runs: true };
 }
+
+// What a row being read again says, at its right and below its name, as a
+// reading not back yet says it (Displays' Room Light, Recent's rows).
+const READING = "\u2026";
+
+// Home's rows as the launcher keeps them while it's shut, for the next
+// opening to draw at once (Launcher.qml's keepHome): each where it stood,
+// by the same name and key, so the rows read again land where they are
+// and nothing moves in; but what each said of how it stands, at its right
+// or below its name, is as old as the opening that read it, so it says
+// it's being read rather than showing that as now (Y2YBTS, 2026-11-10).
+// A row that said nothing there still says nothing.
+function kept(rows) {
+    return rows.map(row => {
+        const stands = (row.side ?? "") !== "" || (row.sideItems ?? []).length > 0;
+        const noted = (row.note ?? "") !== "";
+        if (!stands && !noted) {
+            return row;
+        }
+        return Object.assign({}, row, {
+            side: stands ? READING : row.side,
+            sideItems: [],
+            note: noted ? READING : row.note,
+            kept: true
+        });
+    });
+}

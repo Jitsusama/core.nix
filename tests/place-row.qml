@@ -6,6 +6,9 @@
 // holds a row at home and inside its parent alike: nothing after its
 // name; at its right how it stands, else that it holds none, else how
 // many it holds; and its members by name in its drawer (VKCF3Z, dae7fb67).
+// Home kept for the next opening holds its rows in order, each saying how
+// it stands and its note as being read, so the opening shows nothing old as
+// now (Y2YBTS, 2026-11-10).
 import QtQuick
 import "PlaceRow.js" as PlaceRow
 
@@ -62,6 +65,31 @@ QtObject {
         check(failures, "names listed in their room", PlaceRow.listed(["a", "bb", "ccc"], 6),
             "a, bb");
         check(failures, "none in no room", PlaceRow.listed(["a"], 0), "");
+
+        // Kept for the next opening, home's rows stand where they stood,
+        // and what each said of how it stands says it's being read, never
+        // the old reading as now.
+        const home = [
+            { key: "collection:now", name: "Now", side: "11:52",
+                sideItems: [{ said: "11:52" }], note: "" },
+            { key: "place:computer", name: "Computer", side: "81%", note: "12 GiB spare" },
+            { key: "place:keyboard", name: "Keyboard", side: "", note: "" }
+        ];
+        const kept = PlaceRow.kept(home);
+        check(failures, "kept, the rows stand in their order",
+            kept.map(row => row.key).join(" "), home.map(row => row.key).join(" "));
+        check(failures, "by the same names", kept.map(row => row.name).join(" "),
+            "Now Computer Keyboard");
+        check(failures, "how one stood says it's being read", kept[1].side, "\u2026");
+        check(failures, "and so does its note", kept[1].note, "\u2026");
+        check(failures, "one said in items says it in one", kept[0].side, "\u2026");
+        check(failures, "its items let go", kept[0].sideItems.length, 0);
+        check(failures, "with no note, it gains none", kept[0].note, "");
+        check(failures, "one that said nothing says nothing", kept[2].side, "");
+        check(failures, "and is the row it was", kept[2], home[2]);
+        check(failures, "the rows read are left as they were", home[1].side, "81%");
+        check(failures, "kept again, it says the same", PlaceRow.kept(kept)[1].side,
+            "\u2026");
 
         for (const failure of failures)
             console.log(`FAIL ${failure}`);

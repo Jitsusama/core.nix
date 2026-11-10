@@ -83,6 +83,17 @@ Scope {
     required property var lock
     required property var grid
     property bool open: false
+    // Whether the card is shown from what it kept while its first frame is
+    // drawn: home as the last opening read it, each row saying how it stands
+    // as still being read (keepHome). `open` follows once that frame is
+    // drawn, and all that wakes as the launcher opens wakes then (filled).
+    // Through a storm of windows changing, every core busy, an opening took
+    // 81 to 258 ms to its frame in a VM, 25 to 48 of it the shell waking for
+    // it before it could draw; on Joel's laptop one took 6,184 ms
+    // (2026-11-10).
+    property bool opening: false
+    // Shown at all: open, or drawing its first frame from what it kept.
+    readonly property bool shown: open || opening
 
     // Wide enough for a long action and its chord at the large size, or
     // as wide as a narrow screen gives, the margin the card keeps from the
@@ -5471,7 +5482,7 @@ Scope {
     property var afterFrames: []
     property var afterFramesDrawing: []
     function afterFrame(then) {
-        if (!open) {
+        if (!shown) {
             then();
             return;
         }
@@ -6299,7 +6310,7 @@ Scope {
     // as it opens. Closed, the foot's facts changing (the time, the lag,
     // the volume) drew the launcher a frame each that nobody saw
     // (2026-11-01).
-    readonly property bool cardSeen: open || parting !== ""
+    readonly property bool cardSeen: shown || parting !== ""
 
     // What the closed card held, brought up to now as it opens. The
     // bindings holding it follow cardSeen only once the opening's handler
@@ -6344,7 +6355,7 @@ Scope {
                     root.askedToOpen();
                     const words = line.trim().split(/\s+/);
                     if (words[0] === "toggle")
-                        root.open = !root.open;
+                        root.toggled();
                     else if (words[0] === "collection")
                         root.pressed(words.slice(1).join(" "));
                     else if (words[0] === "command-line" && words.length >= 3)
@@ -6362,7 +6373,7 @@ Scope {
 
         function toggle(): void {
             root.askedToOpen();
-            root.open = !root.open;
+            root.toggled();
             root.askDone();
         }
 
@@ -7047,6 +7058,8 @@ Scope {
             // How many the find found, said after what's typed in normal.
             found: prompt.narrowSaid ? prompt.narrowed : "",
             held: root.held.map(step => step.row.chip ?? step.row.name),
+            // Whether, closed, it holds home kept for the next opening.
+            kept: root.homeHeld,
             path: root.path,
             // Whether each of the path's steps is said whole in the field.
             pathWhole: prompt.chipsWhole,
@@ -7446,13 +7459,16 @@ Scope {
     // with no window focused, so the launcher stays open under it. Called
     // as the keys or niri's focused window change, in either order.
     function keysMoved(): void {
-        if (!open)
+        if (!shown)
             return;
         if (prompt.Window.active) {
             keysHeld = true;
         } else if (keysHeld && Niri.focused !== null) {
             console.info("launcher: closed, since a window took the keys");
-            open = false;
+            if (opening)
+                unopened();
+            else
+                open = false;
         }
     }
 
@@ -7473,7 +7489,7 @@ Scope {
 
     Connections {
         target: Niri
-        enabled: root.open
+        enabled: root.shown
 
         function onFocusedChanged() {
             root.keysMoved();
@@ -7538,8 +7554,13 @@ Scope {
             parts[name] = (parts[name] ?? 0) + now - lapped;
             lapped = now;
         };
+        // Opened from what it kept, it was shown already, holding the keys
+        // since then; what follows fills it in.
+        const filling = open && opening;
+        const began = lapped;
+        opening = false;
         openMark.setText(open ? "open\n" : "closed\n");
-        keysHeld = false;
+        keysHeld = filling && keysHeld;
         handing = null;
         // A viewer's line is over once the launcher closes (viewerCommandLine),
         // and gv has nothing to bring back in the rows it opens on; nor is a
@@ -7592,6 +7613,10 @@ Scope {
             lap("counting");
             spotsLater.stop();
             restart("");
+            // Home as it's found now, kept for the next opening to draw at
+            // once (keepHome).
+            homeKept = matches;
+            homeHeld = false;
             lap("finding");
             // Nothing to rest from as it opens, so the drawer is out at once
             // when the first row has details.
@@ -7635,10 +7660,13 @@ Scope {
             }
             Report.say(`stands ${standing.said}`);
             lap("telling");
-            openParts = parts;
             if (openAsked >= 0) {
+                openParts = parts;
                 openWorked = KeyTimes.now() - openAsked;
                 afterFrame(openDrawn);
+            } else if (filling) {
+                fillParts = parts;
+                fillWorked = KeyTimes.now() - began;
             }
         } else {
             // An ask closing with it says no, as Escape would, and is
@@ -7689,7 +7717,7 @@ Scope {
     property var openingsTimed: []
     property int openingsDrawn: 0
     function askedToOpen() {
-        if (!open) {
+        if (!shown) {
             openAsked = KeyTimes.now();
             openSettled = -1;
             openBegun = -1;
@@ -7707,10 +7735,135 @@ Scope {
         if (openAsked >= 0 && openSettled < 0)
             openSettled = KeyTimes.now();
     }
+
+    // The chord's toggle: shut while shown, and opened while shut, from
+    // what's kept where it can be (opening), or else made whole first, as
+    // the first opening since the shell started is, with nothing kept.
+    function toggled() {
+        if (opening)
+            unopened();
+        else if (open)
+            open = false;
+        else if (homeHeld)
+            beginOpening();
+        else
+            open = true;
+    }
+
+    // Home as the last opening found it, and whether the closed card holds
+    // it, kept (keepHome), so the next opening can draw it at once.
+    property var homeKept: []
+    property bool homeHeld: false
+    // Whether the card is being put back to home, which searches nothing.
+    property bool keeping: false
+
+    // Shows the card as it's kept, taking the keys before niri hands them
+    // over so the first one lands, and asks for its frame; nothing else
+    // wakes until that frame is drawn (openShown).
+    function beginOpening() {
+        opening = true;
+        keysHeld = false;
+        openMark.setText("open\n");
+        prompt.take();
+        if (openAsked >= 0) {
+            openWorked = KeyTimes.now() - openAsked;
+            openParts = { showing: openWorked };
+        }
+        afterFrame(openShown);
+    }
+
+    // Its first frame drawn, the opening is timed to it and filled in.
+    function openShown() {
+        if (!opening)
+            return;
+        openDrawn();
+        filled();
+    }
+
+    // Brings a card shown from what it kept up to now: open, every source
+    // it reads wakes, home is found again where its rows stand, and its
+    // drawer comes. A key or a click before its first frame is drawn does
+    // this first, so it acts on what's there now, never on what was kept.
+    function filled() {
+        if (!opening || open)
+            return;
+        const began = KeyTimes.now();
+        open = true;
+        filledSaid(KeyTimes.now() - began);
+    }
+
+    // Shut again before it was filled in, as a second press of the chord
+    // does: nothing woke for it, so nothing has to settle.
+    function unopened() {
+        opening = false;
+        openAsked = -1;
+        openMark.setText("closed\n");
+        afterFramesDue();
+    }
+
+    // Once the closed card is clear, it's put back to home as the last
+    // opening found it, or as it was left there, each row saying how it
+    // stands as still being read (PlaceRow.kept), so the next opening
+    // draws it with nothing made and nothing woken. Every row is read
+    // again as that opening fills in, landing where it stands.
+    function keepHome() {
+        if (shown || parting !== "")
+            return;
+        const home = held.length === 0 && typed === "" && matches.length > 0 ? matches
+            : homeKept;
+        if (home.length === 0)
+            return;
+        keeping = true;
+        try {
+            held = [];
+            homeDepth = 0;
+            listing = false;
+            listedInDrawer = false;
+            steadying = false;
+            typed = "";
+            candidates = [];
+            prompt.text = "";
+            matches = PlaceRow.kept(home);
+            current = 0;
+            tall = rows * rowTall + (matches.slice(0, rows).some(row => row.gap) ? apart : 0);
+        } finally {
+            keeping = false;
+        }
+        homeHeld = true;
+    }
+
+    // The rows the card shows, by what each is, what each says at its
+    // right, and where the cursor is, for the check that rows filled in
+    // land where the kept ones stood.
+    function rowsSaid() {
+        const seen = matches.slice(0, rows);
+        return { keys: seen.map(row => pairedId(row)), sides: seen.map(row => row.side ?? ""),
+            at: current };
+    }
+
+    // What filling an opening in took, said once it's done, with the rows
+    // it shows then beside those its first frame showed.
+    // Its own work's parts and all of it, and the rest, every binding and
+    // source that woke as it opened, said apart, so a fill that holds the
+    // first keys says which held them.
+    property var fillParts: ({})
+    property real fillWorked: 0
+    function filledSaid(took) {
+        const last = openingsTimed[openingsTimed.length - 1];
+        if (!last || !last.kept || last.filling !== undefined)
+            return;
+        const worked = Math.round(fillWorked);
+        const filled = { filling: Math.round(took), fillWorked: worked, fillParts: fillParts,
+            verbs: openVerbsWeighed, filled: rowsSaid() };
+        openingsTimed = openingsTimed.slice(0, -1).concat([Object.assign({}, last, filled)]);
+        console.info(`launcher: filled the opening in ${filled.filling} ms, ${worked} ms`
+            + ` working (${Pacing.openingParts(fillParts)}) and the rest waking`);
+    }
+
     function openDrawn() {
         const asked = openAsked;
         openAsked = -1;
-        if (!open || asked < 0)
+        if (!shown || asked < 0)
             return;
         const drawn = KeyTimes.now();
         const took = Math.round(drawn - asked);
@@ -7728,11 +7881,16 @@ Scope {
             .sort((a, b) => b.rows - a.rows || a.name.localeCompare(b.name));
         const rows = made.reduce((sum, each) => sum + each.rows, 0);
         const most = made.slice(0, 4).map(each => `${each.name} ${each.rows}`).join(", ");
-        openingsTimed = openingsTimed.concat([{ took, worked, parts: openParts, after, rows,
-            made: most, verbs: openVerbsWeighed, first }]).slice(-20);
+        const kept = opening;
+        const timed = { took, worked, parts: openParts, after, rows, made: most,
+            verbs: kept ? 0 : openVerbsWeighed, first, kept };
+        if (kept)
+            timed.shown = rowsSaid();
+        openingsTimed = openingsTimed.concat([timed]).slice(-20);
         console.info(`launcher: opening took ${took} ms to its frame, ${worked} ms working`
             + ` (${parts}), then ${after.settling} settling, ${after.waiting} waiting for a`
             + ` frame and ${after.drawing} drawing it, ${rows} rows made (${most})`
+            + (kept ? ", drawn from what was kept" : "")
             + (first ? ", the first since the shell started" : ""));
     }
     function madeSince(when) {
@@ -7944,25 +8102,25 @@ Scope {
         anchors.top: true
         anchors.left: true
         // Quickshell's type files can't place margins, so qmllint can't.
-        margins.top: root.open ? root.cardTop - card.reach : 0 // qmllint disable unqualified
-        margins.left: root.open ? root.cardLeft - card.reach : 0 // qmllint disable unqualified
-        implicitWidth: root.open ? root.width + root.drawerBeside + 2 * card.reach : 1
-        implicitHeight: root.open ? card.height + 2 * card.reach : 1
+        margins.top: root.shown ? root.cardTop - card.reach : 0 // qmllint disable unqualified
+        margins.left: root.shown ? root.cardLeft - card.reach : 0 // qmllint disable unqualified
+        implicitWidth: root.shown ? root.width + root.drawerBeside + 2 * card.reach : 1
+        implicitHeight: root.shown ? card.height + 2 * card.reach : 1
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
-        mask: !root.open ? nowhere : root.drawerOut ? cardAndDrawer : card.area
-        BackgroundEffect.blurRegion: !root.open ? nowhere
+        mask: !root.shown ? nowhere : root.drawerOut ? cardAndDrawer : card.area
+        BackgroundEffect.blurRegion: !root.shown ? nowhere
             : root.drawerOut ? cardAndDrawer : card.area
         WlrLayershell.layer: WlrLayer.Overlay
         // Asked for on demand once niri gives them so (Niri.asksForKeys), so
         // the newest surface Joel opened has the keys and a click on a
         // window takes them, closing the launcher (keysMoved).
-        WlrLayershell.keyboardFocus: root.open ? Niri.asksForKeys : WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: root.shown ? Niri.asksForKeys : WlrKeyboardFocus.None
         WlrLayershell.namespace: "launcher"
 
         Connections {
             target: card.Window.window
-            enabled: root.open
+            enabled: root.shown
 
             function onActiveChanged() {
                 root.keysMoved();
@@ -8017,7 +8175,8 @@ Scope {
             // much of it waited for its frame and how much drew it.
             function onAfterAnimating() {
                 const begun = KeyTimes.now();
-                if (root.afterFrames.includes(root.openDrawn) && root.openBegun < 0)
+                if ((root.afterFrames.includes(root.openDrawn)
+                        || root.afterFrames.includes(root.openShown)) && root.openBegun < 0)
                     root.openBegun = begun;
                 root.afterFramesDrawing = root.afterFramesDrawing
                     .concat(root.afterFrames.map(then => () => then(begun)));
@@ -8068,7 +8227,25 @@ Scope {
             // Clear rather than hidden while closed, since a hidden field
             // can't hold the focus, and a key that came before the card was
             // shown would be lost.
-            opacity: root.open || root.parting !== "" ? 1 : 0
+            opacity: root.shown || root.parting !== "" ? 1 : 0
+            // Clear, it's put back to home for the next opening, once the
+            // closing's own handler is done (keepHome checks it's still shut).
+            onOpacityChanged: {
+                if (opacity === 0)
+                    Qt.callLater(root.keepHome);
+            }
+
+            // A click before an opening's first frame is drawn fills it in
+            // first, then reaches the row beneath as it would have.
+            MouseArea {
+                anchors.fill: parent
+                z: 1
+                enabled: root.opening
+                onPressed: mouse => {
+                    root.filled();
+                    mouse.accepted = false;
+                }
+            }
 
             // Only a parting word's card leaves on the curve; anything
             // else closes on the next frame, as it opens.
@@ -8219,7 +8396,12 @@ Scope {
                         narrowed: root.typed !== "" && root.matches.length > 0
                             ? (Words.field.found ?? "").replace("{count}",
                                 String(root.matches.length)) : ""
+                        onPressing: root.filled()
                         onTextChanged: {
+                            // Put back to home while closed, nothing is
+                            // searched or timed (keepHome).
+                            if (root.keeping)
+                                return;
                             const due = root.keysDue;
                             trials.retyped(due.length > 0 ? due[due.length - 1].text
                                 : root.typed, text);

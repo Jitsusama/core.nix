@@ -362,6 +362,14 @@ onLinux {
     ];
   };
 
+  # An opening draws home as the closed launcher kept it, each row saying
+  # how it stands as being read, then fills it in where its rows stand; and
+  # keys typed as it opens all land (tests/opening-on-niri-test.py).
+  the-launcher-opens-on-what-it-kept-on-niri = launcherOnNiri {
+    name = "the-launcher-opens-on-what-it-kept-on-niri";
+    tests = ../../tests/opening-on-niri-test.py;
+  };
+
   # The launcher, the held notices and a window share the keys by one rule:
   # the newest Joel opened takes them, a notice arriving never does, and a
   # click on a window gives it them (tests/focus-on-niri-test.py).
@@ -1057,7 +1065,8 @@ onLinux {
   # A place's row reads alike at home and inside its parent (VKCF3Z's
   # 2a429f67, on Joel's 2026-11-08 "i don't like how the title and values on
   # the home screen differ from every other sub-menu"): tests/place-row.qml
-  # holds launcher/PlaceRow.js, which makes it in both, in Qt's own engine.
+  # holds launcher/PlaceRow.js, which makes it in both, in Qt's own engine,
+  # and home as it's kept for the next opening, each reading as being read.
   a-place-reads-alike-everywhere =
     let
       qt = pkgs.qt6.qtdeclarative;
