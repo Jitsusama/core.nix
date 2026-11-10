@@ -400,9 +400,17 @@ def drawn_steps(desktop: Desktop) -> int:
 
 def profiled(text: str, names: list[str]) -> None:
     """Say where each profiled step's time went, from qmlprofiler's trace."""
+    import re
     import xml.etree.ElementTree as ET
 
-    root = ET.fromstring(text)
+    # qmlprofiler writes JS strings' control characters raw, which XML refuses.
+    clean = re.sub("[\x00-\x08\x0b\x0c\x0e-\x1f]", "", text)
+    try:
+        root = ET.fromstring(clean)
+    except ET.ParseError as error:
+        line = error.position[0]
+        print("diag: unparsed near", repr(clean.splitlines()[line - 1][:200]))
+        raise
     events = {}
     for event in root.iter("event"):
         index = int(event.get("index"))
