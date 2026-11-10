@@ -37,8 +37,10 @@ pub fn vm_tests(checks: &str) -> Vec<(String, String)> {
         .filter_map(|line| {
             let (name, rest) = line.trim().split_once(" = import ./")?;
             let file = rest.split_whitespace().next()?;
-            (name.starts_with("vm-") && file.ends_with(".nix"))
-                .then(|| (name.to_owned(), file.to_owned()))
+            let nix = Path::new(file)
+                .extension()
+                .is_some_and(|extension| extension == "nix");
+            (name.starts_with("vm-") && nix).then(|| (name.to_owned(), file.to_owned()))
         })
         .collect()
 }
@@ -295,7 +297,10 @@ mod tests {
             owners(&tests, &words("tests/lib/pytest-vm-test.nix")),
             words("vm-apps-come-first")
         );
-        assert!(owners(&tests, &words("modules/kitty/home.nix")).is_empty());
+        assert_eq!(
+            owners(&tests, &words("modules/kitty/home.nix")),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
