@@ -239,22 +239,16 @@ Scope {
     readonly property bool wanted: typeof launcher?.wants !== "function"
         || launcher.wants(provider)
 
-    // What a binding that makes rows gives, by its name, made by `make`
-    // only while they're wanted: while they aren't, what it made last, so
-    // the binding reads `wanted` alone and a change nobody sees wakes it
-    // not at all, and it makes them once as they're wanted again. One
-    // that has made nothing yet makes it once, wanted or not, so what
-    // reads it while the launcher is shut, as the spots made after the
-    // shell starts do, finds it there. Sound, Spend and Now made 426 rows
-    // in four minutes with the launcher shut on Joel's shell (YQZGPC,
-    // 2026-11-10). Kept in a plain object, so keeping notifies nothing.
+    // Rows a binding makes, by name: made by `make` while wanted, and while not, what it made
+    // last, so it reads `wanted` alone and a change nobody sees wakes nothing. One that has made
+    // nothing makes it once regardless, for what reads it shut (Sound's spots). Shut on Joel's
+    // shell, Sound, Spend and Now made 426 rows in four minutes (YQZGPC, 2026-11-10). Kept in a
+    // plain object, so keeping notifies nothing.
     readonly property var madeLast: ({})
     function whileWanted(name, make) {
-        if (!provider.wanted && name in provider.madeLast)
-            return provider.madeLast[name];
-        const made = make();
-        provider.madeLast[name] = made;
-        return made;
+        if (provider.wanted || !(name in provider.madeLast))
+            provider.madeLast[name] = make();
+        return provider.madeLast[name];
     }
 
     // A row kept from the making before while what it's made from says the
