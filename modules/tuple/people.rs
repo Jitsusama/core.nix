@@ -21,11 +21,17 @@
 //! as the people daemon does, ending when its input or its output does,
 //! and Tuple's follow ends with it.
 //!
+//! What Tuple says as a follow ends goes to the journal once, not every
+//! time it's said. A Tuple nobody is signed in to answers each follow at
+//! once with `{"error":"not signed in","error_code":401,...}`, and
+//! passed on as it came, that was a line a minute all day on a machine
+//! whose Tuple was never signed in to.
+//!
 //! The call Joel's in is tuple-call's (call/), not this.
 
 use std::env;
 use std::fmt::Write as _;
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{self, BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -428,25 +434,57 @@ impl Roster {
     }
 }
 
+/// How a follow ended: its exit code, and what it said on its way out.
+#[derive(Debug, PartialEq)]
+struct Ended {
+    code: i32,
+    said: String,
+}
+
+/// The most of what a follow says on its way out that's kept.
+const SAYS_AT_MOST: u64 = 4096;
+
+/// What a follow wrote to its error output, read to its end so it never
+/// waits on a full pipe, and as much of it kept as `SAYS_AT_MOST`.
+fn what_it_said(said: impl Read) -> String {
+    let mut said = BufReader::new(said);
+    let mut kept = Vec::new();
+    let _ = (&mut said).take(SAYS_AT_MOST).read_to_end(&mut kept);
+    let _ = io::copy(&mut said, &mut io::sink());
+    String::from_utf8_lossy(&kept).trim().to_owned()
+}
+
 /// Runs Tuple's follow and writes what changes to `out`, flushed a line
 /// at a time. Says the follow's exit code once it ends, 1 when a signal
 /// ended it or it couldn't start, and 0 when `out` closed first, since
-/// then the daemon has gone and there's no one to tell.
-fn follow(command: &mut Command, roster: &mut Roster, mut out: impl Write) -> i32 {
-    let mut child = match dies_with_us(command).stdout(Stdio::piped()).spawn() {
+/// then the daemon has gone and there's no one to tell; and what it said
+/// on its error output, or why it couldn't start.
+fn follow(command: &mut Command, roster: &mut Roster, mut out: impl Write) -> Ended {
+    let ended = |code: i32, said: String| Ended { code, said };
+    let mut child = match dies_with_us(command)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
         Ok(child) => child,
         Err(error) => {
-            eprintln!(
-                "tuple-people: can't start {}: {error}",
-                command.get_program().to_string_lossy()
-            );
-            return 1;
+            let program = command.get_program().to_string_lossy().into_owned();
+            return ended(1, format!("can't start {program}: {error}"));
         }
+    };
+    let complaint = child
+        .stderr
+        .take()
+        .map(|said| std::thread::spawn(move || what_it_said(said)));
+    let complained = move || {
+        complaint
+            .and_then(|reading| reading.join().ok())
+            .unwrap_or_default()
     };
     let Some(stdout) = child.stdout.take() else {
         let _ = child.kill();
         let _ = child.wait();
-        return 1;
+        return ended(1, complained());
     };
     let mut input = BufReader::with_capacity(1 << 20, stdout);
     let mut line = Vec::new();
@@ -469,14 +507,47 @@ fn follow(command: &mut Command, roster: &mut Roster, mut out: impl Write) -> i3
             if written.is_err() {
                 let _ = child.kill();
                 let _ = child.wait();
-                return 0;
+                return ended(0, complained());
             }
         }
     }
     drop(input);
-    match child.wait() {
+    let code = match child.wait() {
         Ok(status) => status.code().unwrap_or(1),
         Err(_) => 1,
+    };
+    ended(code, complained())
+}
+
+/// What Tuple said as its last follow ended, so the same complaint goes
+/// to the journal once while it lasts.
+#[derive(Default)]
+struct Telling {
+    last: String,
+}
+
+impl Telling {
+    /// The line to log for what a follow said as it ended, or none when
+    /// the one before said the same. A follow that ended saying nothing
+    /// clears it, so a complaint that comes back is said again.
+    fn heard(&mut self, said: &str) -> Option<String> {
+        if said == self.last {
+            return None;
+        }
+        said.clone_into(&mut self.last);
+        (!said.is_empty()).then(|| plainly(said))
+    }
+}
+
+/// A follow's complaint as the journal says it.
+fn plainly(said: &str) -> String {
+    if said.contains("\"kind\":\"unauthorized\"") {
+        format!(
+            "tuple-people: nobody is signed in to Tuple, so its contacts wait until \
+             someone is; said once until that changes: {said}"
+        )
+    } else {
+        format!("tuple-people: Tuple's follow ended saying: {said}")
     }
 }
 
@@ -531,10 +602,14 @@ fn roster(tuple: &str, socket: &Path) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let mut wait = LOOKS_AGAIN;
+    let mut telling = Telling::default();
     loop {
         if running(socket) {
             let began = std::time::Instant::now();
-            follow(Command::new(tuple).args(ARGS), &mut said, &mut out);
+            let ended = follow(Command::new(tuple).args(ARGS), &mut said, &mut out);
+            if let Some(line) = telling.heard(&ended.said) {
+                eprintln!("{line}");
+            }
             wait = wait_after(wait, began.elapsed());
             let stopped = said.stopped();
             if say(&mut out, &stopped).is_err() {
@@ -846,13 +921,13 @@ mod tests {
             ),
         );
         let mut written = Vec::new();
-        let code = follow(
+        let ended = follow(
             Command::new("sh").arg(&script).args(ARGS),
             &mut Roster::default(),
             &mut written,
         );
         fs::remove_file(&script).unwrap();
-        assert_eq!(code, 3);
+        assert_eq!(ended.code, 3, "the follow's exit code");
         assert_eq!(
             String::from_utf8(written).unwrap(),
             format!("{}\n{BEN}\n{CAL}\n{}\n", ada("online"), ada("busy"))
@@ -880,13 +955,62 @@ mod tests {
             "forever",
             &format!("while :; do printf '%s' '{}'; done\n", snapshot(&usual())),
         );
-        let code = follow(
+        let ended = follow(
             Command::new("sh").arg(&script),
             &mut Roster::default(),
             Closed,
         );
         fs::remove_file(&script).unwrap();
-        assert_eq!(code, 0);
+        assert_eq!(ended.code, 0, "a closed output ends it as done");
+    }
+
+    /// What Tuple answers a follow with while nobody is signed in to it.
+    const SIGNED_OUT: &str =
+        "{\"error\":\"not signed in\",\"error_code\":401,\"kind\":\"unauthorized\"}";
+
+    #[test]
+    fn it_hears_what_the_follow_said_as_it_ended() {
+        let script = stand_in("signed-out", &format!("echo '{SIGNED_OUT}' >&2\nexit 1\n"));
+        let ended = follow(
+            Command::new("sh").arg(&script),
+            &mut Roster::default(),
+            Vec::new(),
+        );
+        fs::remove_file(&script).unwrap();
+        assert_eq!(
+            ended,
+            Ended {
+                code: 1,
+                said: SIGNED_OUT.to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn a_signed_out_tuple_is_said_once_until_that_changes() {
+        let mut telling = Telling::default();
+        let first = telling.heard(SIGNED_OUT).unwrap_or_default();
+        assert!(
+            first.contains("nobody is signed in to Tuple"),
+            "said as {first:?}"
+        );
+        assert_eq!(telling.heard(SIGNED_OUT), None, "said a second time");
+        assert_eq!(telling.heard(SIGNED_OUT), None, "said a third time");
+        assert_eq!(telling.heard(""), None, "a quiet end said something");
+        assert!(
+            telling.heard(SIGNED_OUT).is_some(),
+            "not said again once it came back"
+        );
+    }
+
+    #[test]
+    fn another_complaint_is_said_as_it_came() {
+        let mut telling = Telling::default();
+        telling.heard(SIGNED_OUT);
+        assert_eq!(
+            telling.heard("Error: lost the daemon").as_deref(),
+            Some("tuple-people: Tuple's follow ended saying: Error: lost the daemon")
+        );
     }
 
     /// The kernel ends the child as the thread that started it ends, so a
@@ -920,13 +1044,16 @@ mod tests {
     #[test]
     fn a_tuple_that_wont_start_ends_it_with_1() {
         let missing = env::temp_dir().join("tuple-people-test-nothing-here");
-        assert_eq!(
-            follow(
-                &mut Command::new(missing),
-                &mut Roster::default(),
-                Vec::new()
-            ),
-            1
+        let ended = follow(
+            &mut Command::new(&missing),
+            &mut Roster::default(),
+            Vec::new(),
+        );
+        assert_eq!(ended.code, 1, "the exit code of a Tuple that won't start");
+        assert!(
+            ended.said.starts_with("can't start "),
+            "said {:?}",
+            ended.said
         );
     }
 

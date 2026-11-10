@@ -2900,7 +2900,8 @@
   tuple-people-follows-the-contacts = ''
     tuple-people's own tests pass: it reads Tuple's contacts as JSON, says only who changed, and waits
     twice as long each time Tuple's follow ends at once, up to a minute, and five seconds again after
-    one that ran a minute
+    one that ran a minute; what the follow says as it ends is logged once while it says the same, a
+    signed-out Tuple's in plain words
   '';
   tuple-shares-through-the-portal = ''
     Tuple reads the portal setting where the switch writes it

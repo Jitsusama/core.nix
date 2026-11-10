@@ -43,7 +43,8 @@ onLinux {
 
   # The people daemon's Tuple source reads Tuple's contacts, says only who
   # changed, and waits longer each time Tuple's follow ends at once, as it
-  # does while nobody is signed in, up to a minute.
+  # does while nobody is signed in, up to a minute; what Tuple says as it
+  # ends goes to the journal once while it says the same.
   tuple-people-follows-the-contacts =
     pkgs.runCommandCC "tuple-people-follows-the-contacts" { nativeBuildInputs = [ pkgs.rustc ]; }
       ''
