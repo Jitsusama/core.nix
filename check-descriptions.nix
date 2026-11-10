@@ -2431,11 +2431,9 @@
     Songs, Playlists, Albums, Artists and Podcasts, each counted, each played, opened and copied as
     it says, its note saying when it's signed out or out of reach
   '';
-  the-launcher-lays-sessions-under-their-orchestrators = ''
-    every list of pi sessions keeps one order of how they stand, and Agents lays each under the
-    session orchestrating it, a step in and at most two, an orchestration standing where its most
-    urgent row would; and a session's row is kept only while everything it shows or goes to
-    reads the same, its kitty window, held id and attach words among them
+  the-launcher-says-how-each-session-stands = ''
+    a pi session says how it stands in the one order every list keeps, offers its acts in their
+    order, and its drawer says what matters first, and what it landed is kept past its end
   '';
   pi-tells-of-its-sessions-as-an-agent-source = ''
     pi, as an agent source, sorts the node's sessions into those running, parked and closed this

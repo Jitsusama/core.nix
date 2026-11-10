@@ -348,12 +348,16 @@ onLinux {
     };
 
   # An agent's row does, on Return, the act its state makes harmless, its
-  # sessions the realm's own node's, as a workstation's are
-  # (tests/agents-on-niri-test.py).
+  # rows the agents daemon's, made from the realm's own node's sessions, as
+  # a workstation's are (tests/agents-on-niri-test.py).
   an-agents-return-does-its-harmless-act-on-niri = launcherOnNiri {
     name = "an-agents-return-does-its-harmless-act-on-niri";
     tests = ../../tests/agents-on-niri-test.py;
-    given = [ "MYCELIUM=${lib.getExe self.inputs.mycelium.packages.x86_64-linux.default}" ];
+    given = [
+      "MYCELIUM=${lib.getExe self.inputs.mycelium.packages.x86_64-linux.default}"
+      "AGENTS=${lib.getExe (pkgs.callPackage ../agents/package.nix { })}"
+      "WORDS=${./launcher/words.json}"
+    ];
   };
 
   # The Passwords place asks the passwords daemon over its socket, its one
@@ -1370,23 +1374,19 @@ onLinux {
       touch $out
     '';
 
-  # Every list of pi sessions keeps one order of how they stand, and Agents
-  # lays each under the session orchestrating it, a step in, at most two,
-  # an orchestration standing where its most urgent row would, and a
-  # session's row is kept only while what it's made from reads the same,
+  # A pi session says how it stands, its acts, its drawer and its figures
   # as tests/session-row.qml holds launcher/SessionRow.js and
-  # SessionMade.js to it in Qt's own engine, and Landed what they landed,
-  # kept past their end (Landed.js).
-  the-launcher-lays-sessions-under-their-orchestrators =
+  # SessionDrawer.js to them in Qt's own engine, and Landed what they
+  # landed, kept past their end (Landed.js). How Agents lays sessions out
+  # is the agents daemon's, proven in its own crate.
+  the-launcher-says-how-each-session-stands =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
-    pkgs.runCommandLocal "the-launcher-lays-sessions-under-their-orchestrators" { } ''
+    pkgs.runCommandLocal "the-launcher-says-how-each-session-stands" { } ''
       cp ${../../tests/session-row.qml} session-row.qml
       cp ${./launcher/Holders.js} Holders.js
       cp ${./launcher/SessionRow.js} SessionRow.js
-      cp ${./launcher/SessionMade.js} SessionMade.js
-      cp ${./PiSource.js} PiSource.js
       cp ${./launcher/Order.js} Order.js
       cp ${./launcher/Landed.js} Landed.js
       cp ${./launcher/SessionDrawer.js} SessionDrawer.js

@@ -47,108 +47,6 @@ function rank(standing) {
     return at < 0 ? STATES.length : at;
 }
 
-// The deepest a row sits under another (docs/design.md keeps no layer
-// more than two deep).
-const DEEPEST = 2;
-
-// The fewest waiting members an orchestration folds.
-const FOLDS_AT = 2;
-
-// Sessions laid out as Agents shows them, from [{ address, under, state }]
-// in the order Sessions keeps: each under the session its `under` names,
-// when that one's listed, as [{ at, depth, under, orchestrates }], `at` its
-// place in what was given, `under` the address of the row it's drawn under
-// or "", and `orchestrates` whether any row is under it. Siblings stand in
-// the order of how they stand, then the order given; one with rows under
-// it stands where its most urgent row would, so an orchestration moves as
-// one. Orchestrators naming each other are cut where the first is met.
-//
-// With `folds`, the members of one orchestration that only wait, those
-// listening, paused or parked with nothing under them more urgent, fold
-// into one entry after its own rows (VKCF3Z, 2026-11-06), so a tree of
-// sixty sessions shows what moves: `{ fold: true, depth, under, members,
-// counts }`, `members` laid as the tree is, from depth 0, and `counts` how
-// many of each state it holds, in the one order, as [{ state, count }]. A
-// lone one stays a row, since folding it saves none and hides its name.
-function tree(sessions, folds) {
-    const byAddress = {};
-    for (const [at, one] of sessions.entries()) {
-        if (byAddress[one.address] === undefined) {
-            byAddress[one.address] = at;
-        }
-    }
-    const parent = sessions.map((one, at) => {
-        const found = one.under ? byAddress[one.under] : undefined;
-        return found === undefined || found === at ? -1 : found;
-    });
-    for (const at of parent.keys()) {
-        const seen = new Set([at]);
-        for (let up = parent[at]; up >= 0; up = parent[up]) {
-            if (seen.has(up)) {
-                parent[at] = -1;
-                break;
-            }
-            seen.add(up);
-        }
-    }
-    const children = sessions.map(() => []);
-    for (const [at, up] of parent.entries()) {
-        if (up >= 0) {
-            children[up].push(at);
-        }
-    }
-    // Whether one [rank, place] is more urgent than another.
-    const before = (one, other) => one[0] < other[0] || one[0] === other[0] && one[1] < other[1];
-    const compared = (one, other) => {
-        if (before(one, other)) {
-            return -1;
-        }
-        return before(other, one) ? 1 : 0;
-    };
-    // The most urgent of a row and those under it, as [rank, place].
-    const best = [];
-    const bestOf = at => {
-        if (best[at] === undefined) {
-            best[at] = children[at].map(bestOf).reduce((most, other) =>
-                before(other, most) ? other : most, [rank(sessions[at].state), at]);
-        }
-        return best[at];
-    };
-    const inOrder = list => list.slice().sort((a, b) => compared(bestOf(a), bestOf(b)));
-    const waits = at => bestOf(at)[0] >= rank("listening");
-    // Every session a fold holds, one folded within it too.
-    const held = members => members.reduce((all, one) =>
-        all.concat(one.fold ? held(one.members) : [one.at]), []);
-    const counted = members => STATES.map(each => ({ state: each,
-        count: held(members).filter(at => sessions[at].state === each).length }))
-        .filter(one => one.count > 0);
-    const lay = (into, at, depth) => {
-        const up = parent[at];
-        into.push({ at, depth: Math.min(depth, DEEPEST),
-            under: up >= 0 ? sessions[up].address : "", orchestrates: children[at].length > 0 });
-        const under = inOrder(children[at]);
-        const waiting = folds ? under.filter(waits) : [];
-        const folded = waiting.length >= FOLDS_AT ? waiting : [];
-        for (const child of under.filter(one => !folded.includes(one))) {
-            lay(into, child, depth + 1);
-        }
-        if (folded.length > 0) {
-            const members = [];
-            for (const child of folded) {
-                lay(members, child, 0);
-            }
-            into.push({ fold: true, depth: Math.min(depth + 1, DEEPEST),
-                under: sessions[at].address, members, counts: counted(members) });
-        }
-    };
-    const laid = [];
-    for (const at of inOrder([...parent.keys()].filter(root => parent[root] < 0))) {
-        lay(laid, at, 0);
-    }
-    return laid;
-}
-
-
 // The acts a running session offers, by their vocabulary's ids, in the
 // order every kind keeps (docs/design.md, the order of actions): what
 // leaves it as it is before what changes it, and what ends it last. Every
@@ -188,21 +86,6 @@ function leaves(inTree, needs, said) {
     const items = String((needs === 1 ? said.toDo : said.toDos) ?? "")
         .replace("{count}", needs);
     return String(said.stay ?? "").replace("{kept}", `${place} ${said.and} ${items}`);
-}
-
-// The act Return does, one of `acts`: the one its state makes harmless
-// (VKCF3Z, 2026-11-06). Go To one at work or waiting on Joel, Talk to one
-// listening, Resume one paused and Wake one parked; one with no window
-// to go to is talked to. Stop and Close end it, so they are never
-// Return's.
-function returns(standing, windowed) {
-    if (standing === "parked") {
-        return "wake";
-    }
-    if (standing === "paused") {
-        return "resume";
-    }
-    return windowed && standing !== "listening" ? "switch" : "talk";
 }
 
 // The theme's role its glyph is drawn in: a program's, as a live one
@@ -360,36 +243,6 @@ function figures(usage, today, said, named) {
         warn: fullness(usage) >= FULL_AT };
     return Object.keys(known).filter(id => known[id] !== "").map(id => Object.assign(
         { label: named(id), value: known[id] }, id === "context" ? { figure: stroke } : {}));
-}
-
-// How the sessions stand together, from how each stands (`states`) and
-// what they all spent today as spend-watch sums it (`spent`, "" while
-// it's unsaid or the screen is shared): those needing Joel first, as what
-// waits on him comes first everywhere it's said, then those working, then
-// the day's dollars, "1 needs you \u00b7 3 working \u00b7 $214 today", as
-// Home's Agents row and the row found by name both say it (VKCF3Z,
-// 2026-11-07). With none needing him nor working, it names how the rest
-// stand in the fold's words and order, "3 listening, 1 paused", the parked
-// not among them, and nothing for what isn't there. `said` is the
-// vocabulary's agents words.
-function summary(states, spent, said) {
-    const count = standing => states.filter(one => one === standing).length;
-    const filled = (key, fill) => String(said[key] ?? "").replace("{count}", fill);
-    const working = count("working");
-    const needing = count("needs");
-    const rest = working === 0 && needing === 0 ? ["inLine", "listening", "paused"]
-        .filter(standing => count(standing) > 0)
-        .map(standing => standing === "inLine" ? filled("inLineCount", count(standing))
-            : `${count(standing)} ${said[standing] ?? standing}`)
-        .join(", ") : "";
-    const parts = [
-        needing === 1 ? filled("needsCount", 1) : needing > 1 ? filled("needCount", needing)
-            : "",
-        working > 0 ? filled("workingCount", working) : "",
-        rest,
-        spent !== "" ? String(said.today ?? "").replace("{spent}", spent) : ""
-    ];
-    return parts.filter(part => part !== "").join(" \u00b7 ");
 }
 
 // Agents' Recent: the sessions that closed this boot (Sessions.closed),

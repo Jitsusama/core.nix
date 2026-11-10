@@ -191,7 +191,7 @@ Provider {
         if (first === null)
             return [];
         const session = first.session;
-        const row = agents.made(session, { orchestrates: true });
+        const row = agents.made(session);
         return [thing({
             key: "verb:ask:talk",
             verb: Words.verb("verb:ask:talk"),
@@ -203,8 +203,8 @@ Provider {
             run: () => {
                 Sessions.talk(session.address, carried(question, answered));
                 // By the id the launcher holds it by, its session's.
-                launcher.goTo({ trail: ["collection:agents", launcher.steadyId(row)],
-                    spot: "" });
+                launcher.goTo({ trail: ["collection:agents"].concat(row
+                    ? [launcher.steadyId(row)] : []), spot: "" });
             }
         })];
     }

@@ -1391,7 +1391,8 @@ Provider {
             make: () => {
                 const agents = provider.source("agents");
                 const now = provider.wantingNow(session);
-                return agents ? provider.wantRow(agents.made(now), now) : null;
+                const row = agents ? agents.made(now) : null;
+                return row ? provider.wantRow(row, now) : null;
             }
         })).concat(WaitingOnYou.now.map(each => ({
             kind: "do",
