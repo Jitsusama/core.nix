@@ -2556,8 +2556,11 @@ onLinux {
         property bool gathered: false
         property var marked: []
         // The newest still open, its picture held in memory as a sender's
-        // image data is; the oldest's kept as a file.
+        // image data is; the oldest's kept as a file. Each asking counted,
+        // in a plain object so counting notifies nothing.
+        readonly property var asked: ({ pictures: 0 })
         function pictureOf(notice) {
+          asked.pictures += 1;
           return ({ 3: "image://qsimage/3/0", 1: "file:///kept/oldest.png" })[notice.id] ?? "";
         }
         function mark(id, read) { marked = marked.concat([id]); }
