@@ -118,6 +118,8 @@ onLinux {
   # binding loop doing it, which its exit alone wouldn't show.
   slack-reads-a-notice-read-there-once =
     pkgs.runCommandLocal "slack-reads-a-notice-read-there-once" { }
+      # Kept in Nix because each line copies a file Nix gives it beside the
+      # case, sets what Quickshell runs it with, or reads what it logged.
       ''
         mkdir -p runtime shell && chmod 700 runtime
         cd shell
