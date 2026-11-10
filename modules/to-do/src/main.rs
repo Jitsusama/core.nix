@@ -310,6 +310,11 @@ impl Daemon {
                 keys.push(key);
             }
         }
+        // A check no longer run, as one whose to-do was said ready, found
+        // done, or given to a person or a sandbox, lets its pace go: one
+        // kept would stay due, so the daemon would wake for it at once,
+        // over and over, judging every to-do without ever waiting.
+        self.paces.retain(|key, _| keys.contains(key));
         for key in keys {
             let Some(pace) = self.paces.get_mut(&key).filter(|p| p.due(at)) else {
                 continue;
