@@ -3114,7 +3114,9 @@ mod tests {
             round(&world, &state, "s").unwrap();
             (state, world)
         };
-        let (state, world) = reverting("revert-needless", &[0], &[1]);
+        // It passes with the revert too, so only the run without it can
+        // drop the revert.
+        let (state, world) = reverting("revert-needless", &[0], &[0]);
         assert!(
             world.reverted.lock().unwrap().is_empty(),
             "the revert landed though main's newest head passes its test"
