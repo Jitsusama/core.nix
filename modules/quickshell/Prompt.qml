@@ -514,7 +514,13 @@ Item {
     // source changing beside it for the key's doing.
     property bool keyMoved: false
 
+    // A key reaching a modal line, before it does anything, so what the
+    // line acts on can be brought up to now first, as a launcher drawing
+    // its first frame from what it kept is (Launcher.qml's filled).
+    signal pressing
+
     function modalKey(event: KeyEvent) {
+        prompt.pressing();
         const key = named(event);
         keyMoved = false;
         keyTaken = key;

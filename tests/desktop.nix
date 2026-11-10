@@ -315,6 +315,13 @@ let
     doCheck = false;
   } (builtins.readFile ./desktop/tuple-window.py);
 
+  # Windows through X11 retitled without rest, as a crowd of agents'
+  # windows is (desktop/window-storm.py).
+  windowStorm = pkgs.writers.writePython3 "window-storm" {
+    libraries = [ pkgs.python3Packages.xlib ];
+    doCheck = false;
+  } (builtins.readFile ./desktop/window-storm.py);
+
   # A stand-in touchscreen, as wide as the screen, which swipes or taps as
   # it's told through /run/touchscreen (desktop/touchscreen.py).
   touchscreen = pkgs.writers.writePython3 "touchscreen" {
@@ -1298,6 +1305,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           }
           # WARP's contract, for the stand-in warp-cli to answer with, only
           # where WARP is shown.
+          # The storm of windows keeps-pace opens the launcher through, only
+          # there, so no other area moves with it.
+          // pkgs.lib.optionalAttrs (area == "keeps-pace") {
+            window_storm = windowStorm;
+          }
           // pkgs.lib.optionalAttrs standsInForWarp {
             warp_contract = "${../modules/warp/contract}";
           }

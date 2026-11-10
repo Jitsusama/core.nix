@@ -6,7 +6,8 @@ is timed from the moment a stand-in keyboard pressed it to the first frame the l
 it, both on the machine's one clock. Keys come in turns with the load running and frozen, and
 those under load are held against the others, so the builder's own load slows both alike. That
 text a program types at once is searched once, and a Return among it acts on what it found, is
-proven on a nested niri, in tests/launcher-on-niri-test.py.
+proven on a nested niri, in tests/launcher-on-niri-test.py. Long because its keys, steps and
+openings are each timed against the same loaded desktop, and a split would boot it again.
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and leaves it as it found it.
@@ -139,6 +140,20 @@ STARTS = 4
 CROWD = "/run/user/1000/crowd"
 LISTED = 500
 STARTED = timedelta(seconds=8)
+# A storm of windows changing, as Joel's crowd of agents' windows makes: STORMING windows, each
+# a session's, retitled STORM times a second between them, which niri tells the shell of one
+# event at a time. The launcher is opened OPENINGS times through it, every core busy, and each
+# opening is ready to draw within OPENED_WITHIN ms, at the tail as at the middle: Joel's took
+# 6,184 ms to its frame for 107 ms of its own work on 2026-11-10. Ready to draw is its own work,
+# the shell settling after it and the wait for the next frame to begin; the drawing itself is
+# llvmpipe's here, not the laptop's GPU, so it's held to its time with the load frozen, over
+# FROZEN openings, and a whole frame within OPENED_WITHIN is judged from Joel's own journal.
+STORMING = 40
+STORM = 100
+OPENINGS = 20
+OPENED_WITHIN = 50
+OPENED_TAIL = 0.99
+FROZEN = 8
 
 
 @pytest.fixture(scope="module")
@@ -635,6 +650,11 @@ def openings(desktop: Desktop) -> list[Json]:
     return cast("list[Json]", json.loads(desktop.as_account("qs ipc call launcher openings")))
 
 
+def latest(timed: list[Json]) -> int:
+    """Give the number of the last opening timed, as only the last 20 are kept."""
+    return cast("int", timed[-1]["nth"]) if timed else 0
+
+
 def opened_timed(desktop: Desktop) -> Json:
     """Open the launcher as its chord does, and give that opening's times once it's usable.
 
@@ -642,14 +662,14 @@ def opened_timed(desktop: Desktop) -> Json:
     the shell's thread answering on time (Joel, 2026-11-10: "It takes 7 seconds for me to see
     the launcher window").
     """
-    timed = len(openings(desktop))
+    timed = latest(openings(desktop))
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     each: list[Json] = []
 
     def drawn(_: bool) -> bool:
         each[:] = openings(desktop)
-        return len(each) > timed and "usable" in each[-1]
+        return latest(each) > timed and "usable" in each[-1]
 
     retry(drawn, timeout=REACHING)
     desktop.close_launcher()
@@ -710,6 +730,98 @@ def test_the_first_opening_after_the_shell_starts_shows_soon_while_every_core_is
     assert middle(first[True]) <= SLOWER_MOST * middle(first[False]) + STEPPED_MORE, (
         f"the load slowed the first opening after a start: {first[True]} ms against "
         f"{first[False]} ms frozen"
+    )
+
+
+@pytest.fixture
+def storm(desktop: Desktop) -> Iterator[None]:
+    """Retitle STORMING windows STORM times a second, as a crowd of agents' windows does."""
+    machine = desktop.machine
+    # Through niri, so the windows reach it through xwayland-satellite,
+    # with no token to take the keys from the shell's.
+    desktop.as_account(
+        "niri msg action spawn -- env -u XDG_ACTIVATION_TOKEN"
+        f" {desktop.values['window_storm']} {STORMING} {STORM}"
+    )
+    # Stopped however the wait for its windows ends, so a storm that's slow
+    # to list never retitles through the rest of the module.
+    try:
+        stormy = 'niri msg --json windows | grep -o \'"title":"storm \' | wc -l'
+        listed = f"test $({stormy}) -eq {STORMING}"
+        machine.wait_until_succeeds(desktop.in_session(listed), timeout=REACHING)
+        yield
+    finally:
+        # Bracketed, so the pattern never matches the shell running it.
+        desktop.as_account("pkill -f 'window-stor[m]'")
+        gone = '! niri msg --json windows | grep -q \'"title":"storm \''
+        machine.wait_until_succeeds(desktop.in_session(gone), timeout=REACHING)
+
+
+def opened_from_kept(desktop: Desktop) -> Json:
+    """Open the launcher once the last close has kept home, and give that opening as timed."""
+    retry(lambda _: bool(desktop.showing()["kept"]), timeout=REACHING)
+    opening = opened_timed(desktop)
+    assert opening["kept"], f"an opening wasn't drawn from what was kept: {opening}"
+    assert "filled" in opening, f"an opening drawn from what was kept wasn't filled: {opening}"
+    return opening
+
+
+def ready(opening: Json) -> int:
+    """Give how long an opening took until its frame began to be drawn: worked, settled, waited."""
+    after = opening["after"]
+    return int(opening["worked"] + after["settling"] + after["waiting"])
+
+
+@pytest.mark.usefixtures("loaded", "storm")
+def test_each_opening_is_soon_ready_to_draw_through_a_storm_of_windows_changing(
+    desktop: Desktop,
+) -> None:
+    """Each opening is soon ready to draw through a storm of windows changing, every core busy.
+
+    Joel's crowd of agents' windows retitle themselves all day, and an opening that waited on
+    the shell making every list again for each change took seconds to show (2026-11-10). So a
+    closed launcher keeps home, and an opening draws that before the rest of the shell wakes to
+    fill it in, where its rows stand. Its drawing is held to its drawing with the load frozen.
+    """
+    timing = Timing(desktop)
+    # The first opening after the shell starts makes every row, with nothing kept yet.
+    opened_timed(desktop)
+    each: dict[bool, list[Json]] = {True: [], False: []}
+    try:
+        for loaded, times in ((True, OPENINGS), (False, FROZEN)):
+            if loaded != timing.loading:
+                timing.load(on=loaded)
+            for _ in range(times):
+                opening = opened_from_kept(desktop)
+                print(
+                    f"through the storm, {'under load' if loaded else 'with the load frozen'},"
+                    f" an opening ready to draw in {ready(opening)} ms: {opening}"
+                )
+                each[loaded].append(opening)
+    finally:
+        if not timing.loading:
+            timing.load(on=True)
+        desktop.launcher_left_closed()
+
+    def middle(times: list[int]) -> int:
+        return sorted(times)[(len(times) - 1) // 2]
+
+    def standing(rows: Json) -> tuple[object, object]:
+        return rows["keys"], rows["at"]
+
+    moved = [
+        one for one in each[True] + each[False] if standing(one["shown"]) != standing(one["filled"])
+    ]
+    assert not moved, f"filled in, an opening's rows or cursor moved: {moved}"
+    readied = sorted(ready(one) for one in each[True])
+    tail = readied[math.ceil(OPENED_TAIL * len(readied)) - 1]
+    assert tail <= OPENED_WITHIN, (
+        f"an opening through the storm took {tail} ms to be ready to draw at the tail: {readied}"
+    )
+    drawing = {loaded: [one["after"]["drawing"] for one in each[loaded]] for loaded in each}
+    assert middle(drawing[True]) <= SLOWER_MOST * middle(drawing[False]) + STEPPED_MORE, (
+        f"the load slowed drawing an opening through the storm: {drawing[True]} ms against "
+        f"{drawing[False]} ms frozen"
     )
 
 

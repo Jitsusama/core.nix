@@ -6,6 +6,9 @@
 // holds a row at home and inside its parent alike: nothing after its
 // name; at its right how it stands, else that it holds none, else how
 // many it holds; and its members by name in its drawer (VKCF3Z, dae7fb67).
+// Home kept for the next opening and still unfilled a second after it was
+// asked for holds its rows in order, each saying how it stands as being
+// read, its note as it was (VKCF3Z, 2026-11-10).
 import QtQuick
 import "PlaceRow.js" as PlaceRow
 
@@ -62,6 +65,31 @@ QtObject {
         check(failures, "names listed in their room", PlaceRow.listed(["a", "bb", "ccc"], 6),
             "a, bb");
         check(failures, "none in no room", PlaceRow.listed(["a"], 0), "");
+
+        // Unfilled a second after an opening asked for them, home's rows
+        // stand where they stood, and what each said of how it stands says
+        // it's being read, never the old reading as now.
+        const home = [
+            { key: "collection:now", name: "Now", side: "11:52",
+                sideItems: [{ said: "11:52" }], note: "" },
+            { key: "place:computer", name: "Computer", side: "81%", note: "12 GiB spare" },
+            { key: "place:keyboard", name: "Keyboard", side: "", note: "" }
+        ];
+        const held = PlaceRow.unfilled(home);
+        check(failures, "unfilled, the rows stand in their order",
+            held.map(row => row.key).join(" "), home.map(row => row.key).join(" "));
+        check(failures, "by the same names", held.map(row => row.name).join(" "),
+            "Now Computer Keyboard");
+        check(failures, "how one stood says it's being read", held[1].side, "\u2026");
+        check(failures, "its note stays as it was", held[1].note, "12 GiB spare");
+        check(failures, "one said in items says it in one", held[0].side, "\u2026");
+        check(failures, "its items let go", held[0].sideItems.length, 0);
+        check(failures, "with no note, it gains none", held[0].note, "");
+        check(failures, "one that said nothing says nothing", held[2].side, "");
+        check(failures, "and is the row it was", held[2], home[2]);
+        check(failures, "the rows read are left as they were", home[1].side, "81%");
+        check(failures, "held again, it says the same", PlaceRow.unfilled(held)[1].side,
+            "\u2026");
 
         for (const failure of failures)
             console.log(`FAIL ${failure}`);

@@ -59,3 +59,21 @@ function drawer(name, names, eyebrow, holding = "") {
     return names.length === 0 ? null
         : { eyebrow, title: name, body: run(names), runs: true };
 }
+
+// What a row being read again says, at its right and below its name, as a
+// reading not back yet says it (Displays' Room Light, Recent's rows).
+const READING = "\u2026";
+
+// Home's rows as the launcher kept them, still unfilled a second after an
+// opening asked for them (Launcher.qml's keptUnfilled). Kept, they're drawn
+// as they stood, sides and notes alike, and the fill replaces in place only
+// what changed, since a mark shown for a frame or two and then put back is
+// a flash (VKCF3Z, 2026-11-10). Held a second, a reading at a row's right
+// could mislead, so it says it's being read; its note and name stay, and
+// a row that said nothing there still says nothing.
+function unfilled(rows) {
+    return rows.map(row => {
+        const stands = (row.side ?? "") !== "" || (row.sideItems ?? []).length > 0;
+        return stands ? Object.assign({}, row, { side: READING, sideItems: [] }) : row;
+    });
+}
