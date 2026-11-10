@@ -84,6 +84,45 @@ fn an_idle_directory_goes_whole_and_alone() {
     assert_eq!(script.heard, ["judge", "moved", "judge"]);
 }
 
+// On 10 November two quest workspaces had been reclaimed 269 times
+// each: a trash from 26 October sat inside, holding files the account
+// couldn't remove, and each pass emptied only its own.
+#[test]
+fn the_trash_an_earlier_pass_left_inside_goes_with_it() {
+    let root = Sandbox::new();
+    let dir = scratch(root.path());
+    fs::create_dir_all(dir.join("run-1/.disk-guard-trash-1-2/old")).unwrap();
+    fs::write(dir.join("run-1/.disk-guard-trash-1-2/old/f"), "x").unwrap();
+    let anchor = Dir::open(root.path()).unwrap();
+    let outcome = entry(
+        &anchor,
+        root.path(),
+        &candidate(&dir.join("run-1")),
+        &mut Script::default(),
+        &mut || {},
+    );
+    assert_eq!(outcome, Outcome::Reclaimed);
+    assert_eq!(names(&dir), ["notes.txt", "run-2"]);
+}
+
+#[test]
+fn an_entry_that_outlives_its_reclaim_is_never_said_reclaimed() {
+    let root = Sandbox::new();
+    let dir = scratch(root.path());
+    // Named as a trash, so it's never moved aside, but not one to empty.
+    fs::write(dir.join("run-1/.disk-guard-trash-1-2"), "x").unwrap();
+    let anchor = Dir::open(root.path()).unwrap();
+    let outcome = entry(
+        &anchor,
+        root.path(),
+        &candidate(&dir.join("run-1")),
+        &mut Script::default(),
+        &mut || {},
+    );
+    assert!(matches!(outcome, Outcome::Failed(_)), "{outcome:?}");
+    assert_eq!(names(&dir.join("run-1")), [".disk-guard-trash-1-2"]);
+}
+
 #[test]
 fn an_idle_file_goes() {
     let mut script = Script::default();

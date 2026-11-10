@@ -2,7 +2,7 @@
 
 use crate::band::Band;
 use crate::units::{float, whole};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::path::PathBuf;
 
 /// The groups a pass takes from, cheapest loss first.
@@ -116,6 +116,7 @@ impl Class {
 pub struct Candidate {
     pub path: PathBuf,
     pub class: Class,
+    #[serde(deserialize_with = "forever_when_null")]
     pub idle: f64,
     pub size: u64,
     /// A shell or agent sits in its tree.
@@ -124,6 +125,12 @@ pub struct Candidate {
     pub spent: bool,
     /// The checkout it was built for, when known.
     pub checkout: Option<PathBuf>,
+}
+
+/// An idle time read back: JSON writes one that's forever, as a producer
+/// that never ran is, as null, and a survey holding one must still read.
+fn forever_when_null<'de, D: Deserializer<'de>>(read: D) -> Result<f64, D::Error> {
+    Ok(Option::<f64>::deserialize(read)?.unwrap_or(f64::INFINITY))
 }
 
 /// One candidate a plan takes, by its index among those offered.

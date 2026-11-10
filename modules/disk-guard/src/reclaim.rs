@@ -340,9 +340,19 @@ pub fn entry(
     if let Err(error) = detached.empty_paced(unlinked) {
         return failed("emptying it", error);
     }
+    // Moving aside never takes a trash an earlier pass left in it, one
+    // that died or couldn't empty it, so that goes now or it's said why.
+    let left = dir.leftovers().and_then(|left| {
+        left.into_iter()
+            .try_for_each(|trash| trash.empty_paced(unlinked))
+    });
+    if let Err(error) = left {
+        return failed("emptying what an earlier pass left in it", error);
+    }
     drop(dir);
     match parent.remove_if_empty(name) {
-        Ok(_) => Outcome::Reclaimed,
+        Ok(true) => Outcome::Reclaimed,
+        Ok(false) => Outcome::Failed("something was left in it".to_owned()),
         Err(error) => failed("removing it", error),
     }
 }
