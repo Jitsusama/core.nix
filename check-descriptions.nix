@@ -2276,6 +2276,10 @@
     else its word for none while it holds nothing, else how many it holds, and nothing for a place
     that only groups others; and its drawer names what it holds, in its own order
   '';
+  the-rows-hear-only-a-new-place = ''
+    the rows drawn wear the last step's glyph and hue and say whether they're home's, and are told
+    only what changed: nothing on a refresh in the place they stay in, each change once on a step
+  '';
   recent-means-one-thing = ''
     Recent lists at most nine things, newest first across its sources, each once where it's
     newest, none already shown above it, an undated source after the dated in its own order, and

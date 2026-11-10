@@ -76,6 +76,7 @@ import "launcher/Pacing.js" as Pacing
 import "launcher/Wanted.js" as Wanted
 import "launcher/Order.js" as Order
 import "launcher/PlaceRow.js" as PlaceRow
+import "launcher/RowsPlace.js" as RowsPlace
 
 Scope {
     id: root
@@ -2960,6 +2961,19 @@ Scope {
     // those it let go.
     property int rowsBuilt: 0
 
+    // Where the rows drawn stand, the glyph and hue an act of its own
+    // without them wears and whether they're home's, told as their rows
+    // come rather than as held moves (RowsPlace.js), so the rows of a place
+    // left never redraw for the place they give way to, and a refresh in
+    // the place they stay in redraws none. A move of held that brings no
+    // new rows tells them once it's done.
+    property string rowsGlyph: ""
+    property string rowsHue: ""
+    property bool rowsAtHome: true
+    function rowsPlaced() {
+        RowsPlace.tell(root, held);
+    }
+
     onMatchesChanged: {
         // The selection's start keeps to the row it began on, as the
         // cursor does (compose's Rank.pinned), so rows arriving above it
@@ -2967,6 +2981,7 @@ Scope {
         if (visualFrom >= 0)
             visualFrom = Operators.heldFrom(matches, visualId, visualFrom, Rank.identity);
         rowsMade += 1;
+        rowsPlaced();
         noteKeys();
         noteFigures();
         noteDigits();
@@ -3299,6 +3314,7 @@ Scope {
     // Called as held changes, before the field is set for the new place,
     // so where the launcher is still says where the place left was left.
     onHeldChanged: {
+        Qt.callLater(rowsPlaced);
         const left = placeHeld;
         placeHeld = held;
         // Every place's gutter starts as wide as home's, its numbers as
@@ -9100,11 +9116,8 @@ Scope {
                                     root.rowsDrawn += 1;
                                     root.rowsBuilt += 1;
                                 }
-                                // What it's inside, whose glyph an act of its
-                                // own without one wears.
-                                readonly property var thing: root.held.length > 0
-                                    ? root.held[root.held.length - 1].row : null
-                                // Its own glyph, or its thing's, for an act.
+                                // Its own glyph, or the glyph of what it's
+                                // inside (rowsGlyph), for an act.
                                 readonly property bool own: (modelData.glyph ?? "") !== ""
                                 // Holding more (an answer's parts, a row of rows, a
                                 // collection, a part whose verb is "more", a figure
@@ -9142,11 +9155,11 @@ Scope {
                                     fills: false
                                     groundFrom: list.x
                                     glyph: entry.own || entry.sort !== "act"
-                                        ? entry.modelData.glyph ?? "" : entry.thing?.glyph ?? ""
+                                        ? entry.modelData.glyph ?? "" : root.rowsGlyph
                                     // A colour's swatch wears the colour itself.
                                     hue: entry.modelData.swatch
                                         ?? Theme[(entry.own ? entry.modelData.hue
-                                            : entry.thing?.hue) ?? ""] ?? Theme.text
+                                            : root.rowsHue) ?? ""] ?? Theme.text
                                     swatch: !!entry.modelData.swatch
                                     // A step in under the row it belongs
                                     // to, as a session under its
@@ -9185,7 +9198,7 @@ Scope {
                                     sideWhole: !!entry.modelData.sideWhole
                                     names: entry.modelData.names === true
                                     countWords: !!entry.modelData.countWords
-                                    kind: root.held.length === 0 ? root.kindOf(entry.modelData) : ""
+                                    kind: root.rowsAtHome ? root.kindOf(entry.modelData) : ""
                                     landed: selected && root.landedOn(entry.modelData)
                                         ? `\u21b5 ${root.verbOf(entry.modelData)}` : ""
                                     // What the cursor row has to say of how
