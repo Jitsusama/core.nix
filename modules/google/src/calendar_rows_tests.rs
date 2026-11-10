@@ -22,7 +22,9 @@ fn vocabulary() -> Value {
          "states": {"untitled": {"name": "A Meeting Without a Title"}},
          "said": {"earlier": "{count} in the past 30 days"}},
         {"id": "verb:calendar:cancel", "sure": "Cancel It Now"},
-        {"id": "verb:calendar:move", "sure": "Move It"}
+        {"id": "verb:calendar:move", "sure": "Move It"},
+        {"id": "meet:held", "glyph": "joinCall",
+         "said": {"two": "{first} and {second}", "others": "{first} and {count} others"}}
     ]})
 }
 
@@ -297,8 +299,12 @@ fn its_drawer_says_everything_known_of_it_and_a_series_how_many_came_before() {
     before.start -= 14 * 24 * HOUR;
     before.end -= 14 * 24 * HOUR;
     let drawn = drawers(&[], &[meeting, before], MONDAY, &zone(), &words());
-    assert_eq!(drawn.len(), 1);
-    assert_eq!(drawn[0].0, "drawer:held:weekly-2");
+    let keys: Vec<&str> = drawn.iter().map(|(key, _)| key.as_str()).collect();
+    assert_eq!(keys, ["drawer:held:weekly-2", "drawer:meet:abc-defg-hij"]);
+    assert_eq!(
+        drawn[1].1["facts"][2]["label"], "Where",
+        "a call's drawer counts nothing that came before"
+    );
     assert_eq!(
         drawn[0].1,
         json!({
@@ -320,6 +326,88 @@ fn its_drawer_says_everything_known_of_it_and_a_series_how_many_came_before() {
             "body": "What we'll do.",
         })
     );
+}
+
+#[test]
+fn meets_recent_is_each_call_held_on_a_meet_link_once_by_code_saying_who_it_was_with() {
+    let call = |id: &str, start: i64, link: &str| {
+        let mut meeting = one(id, start);
+        meeting.link = Some(link.into());
+        meeting
+    };
+    let mut latest = call(
+        "latest",
+        MONDAY - HOUR,
+        "https://meet.google.com/abc-defg-hij?authuser=0",
+    );
+    latest.holds = false;
+    latest.organizer = Some(Person {
+        name: "Ada Lovelace".into(),
+        email: Some("ada@example.com".into()),
+    });
+    latest.guests = [
+        ("Grace Hopper", Answer::Yes),
+        ("Alan Turing", Answer::No),
+        ("Edsger", Answer::Maybe),
+    ]
+    .into_iter()
+    .map(|(name, answer)| Guest {
+        name: name.into(),
+        email: Some(format!(
+            "{}@example.com",
+            name.to_lowercase().replace(' ', ".")
+        )),
+        answer,
+    })
+    .collect();
+    let again = call(
+        "again",
+        MONDAY - 25 * HOUR,
+        "https://meet.google.com/abcdefghij",
+    );
+    let alone = call(
+        "alone",
+        MONDAY - 26 * HOUR,
+        "https://meet.google.com/xyz-wxyz-xyz",
+    );
+    let elsewhere = call("zoom", MONDAY - 27 * HOUR, "https://zoom.us/j/123");
+    let rows = meetings(
+        &[],
+        &[latest, again, alone, elsewhere],
+        MONDAY,
+        &zone(),
+        &words(),
+    );
+    let calls: Vec<&Value> = rows.iter().filter(|row| row["place"] == "meet").collect();
+    let called: Vec<&str> = calls
+        .iter()
+        .map(|row| row["key"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        called,
+        ["row:meet:abc-defg-hij", "row:meet:xyz-wxyz-xyz"],
+        "one room is one call however its link is written, and Zoom's is none"
+    );
+    assert_eq!(calls[0]["row"], "meet:held:abc-defg-hij");
+    assert_eq!(calls[0]["kind"], "call");
+    assert_eq!(calls[0]["glyph"], "joinCall");
+    assert_eq!(
+        calls[0]["side"][0],
+        json!({"said": "Ada Lovelace and 2 others"})
+    );
+    assert_eq!(calls[0]["side"][1]["as"], "meeting");
+    assert_eq!(calls[0]["note"], "13:00 to 13:30");
+    assert_eq!(
+        calls[0]["keywords"],
+        "grace.hopper@example.com alan.turing@example.com edsger@example.com"
+    );
+    assert_eq!(
+        calls[1]["side"].as_array().map(Vec::len),
+        Some(1),
+        "nobody to name beside it"
+    );
+    assert_eq!(calls[1]["keywords"], Value::Null);
+    assert_eq!(calls[1]["order"], 1);
 }
 
 #[test]

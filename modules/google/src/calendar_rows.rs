@@ -2,8 +2,9 @@
 //! the shell (Joel: "the daemons need to be the data layer"): each meeting
 //! from now to a week on, soonest first, in Calendar (`calendar`), and the
 //! meetings Joel held lately, newest first and a series once at its
-//! latest, in Calendar's Recent (`held`), each worded as Calendar.qml and
-//! Calendar.js word it, with its acts in the one order every surface
+//! latest, in Calendar's Recent (`held`), and the calls among those on a
+//! Meet link, once by code, in Meet's Recent (`meet`), each worded as
+//! Calendar.qml, Calendar.js and Meet.js word it, with its acts in the one order every surface
 //! lists them and its drawer a record of its own.
 //!
 //! What reads the clock travels as a time for the shell to word: a
@@ -74,6 +75,12 @@ pub struct Words {
     pub cancel_sure: String,
     /// What Move's sure row starts with, "Move It".
     pub move_sure: String,
+    /// The glyph role every call in Meet's Recent shows.
+    pub call_glyph: String,
+    /// "{first} and {second}", who a call was with.
+    pub with_two: String,
+    /// "{first} and {count} others".
+    pub with_others: String,
 }
 
 impl Words {
@@ -97,22 +104,32 @@ impl Words {
             earlier: word("calendar:meeting", &["said", "earlier"])?,
             cancel_sure: word("verb:calendar:cancel", &["sure"])?,
             move_sure: word("verb:calendar:move", &["sure"])?,
+            call_glyph: word("meet:held", &["glyph"])?,
+            with_two: word("meet:held", &["said", "two"])?,
+            with_others: word("meet:held", &["said", "others"])?,
         })
     }
 }
 
-/// A meeting as a place lists it: the place, the meeting, and for one of
-/// a series in Calendar's Recent, how many of it came before.
+/// The places meetings are listed in: Calendar, its Recent, and Meet's.
+const PLACES: [&str; 3] = ["calendar", "held", "meet"];
+
+/// A meeting as a place lists it: the place, what it's keyed by there (its
+/// id, or in Meet's Recent its call's code), the meeting, and for one of a
+/// series in Calendar's Recent, how many of it came before.
 struct Listed<'a> {
     place: &'static str,
+    id: String,
     meeting: &'a Meeting,
     earlier: usize,
 }
 
-/// Every meeting either place lists, each place in its order: those not
-/// over, soonest first, then those held lately (Google.js's `heldLately` and
-/// `seriesOnce`): over and not turned down, newest first, each once by its
-/// id and a series once at its latest.
+/// Every meeting the three places list, each place in its order: those
+/// not over, soonest first; then those held lately (Google.js's
+/// `heldLately` and `seriesOnce`), over and not turned down, newest first,
+/// each once by its id and a series once at its latest; then the calls
+/// among those held lately on a Meet link, each once by its code, where
+/// it was newest (Meet.js's `called`).
 fn listed<'a>(meetings: &'a [Meeting], held: &'a [Meeting], now: i64) -> Vec<Listed<'a>> {
     let mut coming: Vec<&Meeting> = meetings
         .iter()
@@ -126,12 +143,32 @@ fn listed<'a>(meetings: &'a [Meeting], held: &'a [Meeting], now: i64) -> Vec<Lis
         .collect();
     lately.sort_by_key(|meeting| Reverse(meeting.start));
     let mut ids: Vec<&str> = Vec::new();
+    lately.retain(|&meeting| {
+        let new = !ids.contains(&meeting.id.as_str());
+        ids.push(&meeting.id);
+        new
+    });
+    let mut codes: Vec<String> = Vec::new();
+    let calls: Vec<Listed> = lately
+        .iter()
+        .copied()
+        .filter_map(|meeting| {
+            let code = meeting.link.as_deref().and_then(meet_code)?;
+            if codes.contains(&code) {
+                return None;
+            }
+            codes.push(code.clone());
+            Some(Listed {
+                place: "meet",
+                id: code,
+                meeting,
+                earlier: 0,
+            })
+        })
+        .take(RECENT)
+        .collect();
     let mut series: Vec<(&str, Listed)> = Vec::new();
     for meeting in lately {
-        if ids.contains(&meeting.id.as_str()) {
-            continue;
-        }
-        ids.push(&meeting.id);
         let of = meeting.series.as_deref().unwrap_or(&meeting.id);
         match series.iter_mut().find(|(each, _)| *each == of) {
             Some((_, latest)) => latest.earlier += 1,
@@ -139,6 +176,7 @@ fn listed<'a>(meetings: &'a [Meeting], held: &'a [Meeting], now: i64) -> Vec<Lis
                 of,
                 Listed {
                     place: "held",
+                    id: meeting.id.clone(),
                     meeting,
                     earlier: 0,
                 },
@@ -149,15 +187,38 @@ fn listed<'a>(meetings: &'a [Meeting], held: &'a [Meeting], now: i64) -> Vec<Lis
         .into_iter()
         .map(|meeting| Listed {
             place: "calendar",
+            id: meeting.id.clone(),
             meeting,
             earlier: 0,
         })
         .chain(series.into_iter().take(RECENT).map(|(_, held)| held))
+        .chain(calls)
         .collect()
 }
 
-/// Every meeting's row in Calendar and in its Recent, each place's in its
-/// order, worded in the zone Joel's clock reads.
+/// The code a Meet link joins by, as abc-defg-hij, before any query that
+/// follows it; none for any other link (Meet.js's `meetCode`).
+fn meet_code(link: &str) -> Option<String> {
+    let path = link.strip_prefix("https://meet.google.com/")?;
+    let code: String = path
+        .chars()
+        .take_while(|c| c.is_ascii_lowercase() || *c == '-')
+        .collect();
+    let mut parts = Vec::new();
+    let mut rest = code.as_str();
+    for (at, length) in [3, 4, 3].into_iter().enumerate() {
+        if at > 0 {
+            rest = rest.strip_prefix('-').unwrap_or(rest);
+        }
+        let part = rest.get(..length).filter(|part| !part.contains('-'))?;
+        parts.push(part);
+        rest = &rest[length..];
+    }
+    rest.is_empty().then(|| parts.join("-"))
+}
+
+/// Every meeting's row in Calendar, its Recent and Meet's, each place's in
+/// its order, worded in the zone Joel's clock reads.
 pub fn meetings(
     meetings: &[Meeting],
     held: &[Meeting],
@@ -166,11 +227,14 @@ pub fn meetings(
     words: &Words,
 ) -> Vec<Value> {
     let listed = listed(meetings, held, now);
-    let mut orders = [0usize; 2];
+    let mut orders = [0usize; PLACES.len()];
     listed
         .iter()
         .map(|each| {
-            let at = usize::from(each.place == "held");
+            let at = PLACES
+                .iter()
+                .position(|place| *place == each.place)
+                .unwrap_or(0);
             let order = orders[at];
             orders[at] += 1;
             row(each, order, now, zone, words)
@@ -190,7 +254,7 @@ pub fn drawers(
     listed(meetings, held, now)
         .iter()
         .map(|each| {
-            let key = format!("drawer:{}:{}", each.place, each.meeting.id);
+            let key = format!("drawer:{}:{}", each.place, each.id);
             (key, drawer(each, zone, words))
         })
         .collect()
@@ -204,39 +268,72 @@ fn titled<'a>(meeting: &'a Meeting, words: &'a Words) -> &'a str {
     }
 }
 
+/// A meeting's row, or in Meet's Recent its call's (Meet.qml's
+/// `calledRow`): named for its meeting, who it was with and when it was
+/// held beside it, its times below, found by its guests' addresses too.
 fn row(listed: &Listed, order: usize, now: i64, zone: &TimeZone, words: &Words) -> Value {
     let meeting = listed.meeting;
     let id = &meeting.id;
+    let call = listed.place == "meet";
     let joins = (meeting.link.is_some() && !meeting.all_day)
         .then(|| json!({"from": meeting.start - TAKES_OVER, "until": meeting.end}));
     // Its times and his answer, or nothing once it's over, where its side
-    // says when it was (Calendar.js's noted).
-    let note = if meeting.end <= now {
+    // says when it was (Calendar.js's noted); a call its times alone.
+    let note = if call {
+        span(meeting, zone)
+    } else if meeting.end <= now {
         String::new()
     } else {
         about(meeting, zone)
     };
+    let when = json!({
+        "at": meeting.start,
+        "as": "meeting",
+        "until": meeting.end,
+        "allDay": meeting.all_day,
+    });
+    let with = if call {
+        with_whom(meeting, words)
+    } else {
+        String::new()
+    };
+    let side: Vec<Value> = (!with.is_empty())
+        .then(|| json!({"said": with}))
+        .into_iter()
+        .chain([when])
+        .collect();
+    let emails: Vec<&str> = meeting
+        .guests
+        .iter()
+        .filter_map(|guest| guest.email.as_deref())
+        .collect();
+    let keywords = (call && !emails.is_empty()).then(|| emails.join(" "));
+    let (thing, kind, glyph) = if call {
+        (
+            format!("meet:held:{}", listed.id),
+            "call",
+            &words.call_glyph,
+        )
+    } else {
+        (format!("calendar:meeting:{id}"), "meeting", &words.glyph)
+    };
     json!({
-        "key": format!("row:{}:{id}", listed.place),
-        "row": format!("calendar:meeting:{id}"),
+        "key": format!("row:{}:{}", listed.place, listed.id),
+        "row": thing,
         "place": listed.place,
-        "kind": "meeting",
+        "kind": kind,
         "order": order,
         "name": titled(meeting, words),
-        "glyph": words.glyph,
+        "glyph": glyph,
         "hue": "program",
         "depth": 0,
-        "side": [{
-            "at": meeting.start,
-            "as": "meeting",
-            "until": meeting.end,
-            "allDay": meeting.all_day,
-        }],
+        "side": side,
         "note": note,
+        "keywords": keywords,
         // Whether it's today's, so Calendar's row counts today's meetings.
         "today": on_or_before(meeting.start, now, zone),
         "joins": joins,
-        "drawer": format!("drawer:{}:{id}", listed.place),
+        "drawer": format!("drawer:{}:{}", listed.place, listed.id),
         "acts": acts(meeting, words),
         "held": {
             "id": id,
@@ -349,6 +446,49 @@ fn guest_emails(meeting: &Meeting) -> Vec<&str> {
                 .filter_map(|guest| guest.email.as_deref()),
         )
         .collect()
+}
+
+/// Who a call was with, as its row says beside it: whoever held its
+/// meeting where that wasn't Joel, then each guest but those who said no,
+/// each by name or else address: "Ada Lovelace", "Ada Lovelace and Grace
+/// Hopper", "Ada Lovelace and 2 others"; nothing for a call nobody else
+/// was asked to (Meet.js's `withWhom`).
+fn with_whom(meeting: &Meeting, words: &Words) -> String {
+    let holder = if meeting.holds {
+        None
+    } else {
+        meeting.organizer.as_ref()
+    };
+    let names: Vec<String> = holder
+        .map(named)
+        .into_iter()
+        .chain(
+            meeting
+                .guests
+                .iter()
+                .filter(|guest| guest.answer != Answer::No)
+                .map(|guest| {
+                    if guest.name.is_empty() {
+                        guest.email.clone().unwrap_or_default()
+                    } else {
+                        guest.name.clone()
+                    }
+                }),
+        )
+        .filter(|name| !name.is_empty())
+        .collect();
+    match names.as_slice() {
+        [] => String::new(),
+        [one] => one.clone(),
+        [first, second] => words
+            .with_two
+            .replace("{first}", first)
+            .replace("{second}", second),
+        [first, rest @ ..] => words
+            .with_others
+            .replace("{first}", first)
+            .replace("{count}", &rest.len().to_string()),
+    }
 }
 
 /// Who Google tells of a change to a meeting, as Move's sure row says it:
