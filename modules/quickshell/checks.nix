@@ -2992,42 +2992,11 @@ onLinux {
   # with niri stood in.
   the-launcher-remakes-only-the-screens-that-changed =
     let
-      niri = singleton "Niri.qml" ''
-        property var workspaces: ({})
-        property int revision: 0
-        property bool monitorOn: true
-        // niri's answer is a map collected afresh at each ask, so the same
-        // screens may come in either order.
-        property bool turned: false
-        readonly property bool powersOffEach: false
-        function workspace() { return { output: "eDP-1" }; }
-        function act(request) {}
-        function spawn(command) {}
-        function request(asked, answer) {
-          if (asked !== "Outputs")
-            return;
-          const mode = (width, height) => ({
-            width: width, height: height, refresh_rate: 60000, is_preferred: true
-          });
-          const screen = (name, make, model, logical) => ({
-            name: name, make: make, model: model, serial: null, physical_size: [300, 190],
-            modes: [mode(2880, 1800), mode(1920, 1080)], current_mode: 0,
-            is_custom_mode: false, vrr_supported: false, vrr_enabled: false, logical: logical
-          });
-          const at = (x, y) => ({
-            x: x, y: y, width: 1440, height: 900, scale: 2, transform: "Normal"
-          });
-          const screens = [
-            ["eDP-1", screen("eDP-1", "LG Display", "0x07C6", at(0, 0))],
-            ["DP-1", screen("DP-1", "Dell Inc.", "U2723QE", monitorOn ? at(1440, 0) : null)]
-          ];
-          const outputs = {};
-          for (const [name, said] of turned ? screens.reverse() : screens)
-            outputs[name] = said;
-          answer({ Outputs: outputs });
-        }
-      '';
+      # A panel and a monitor, answered anew at each ask, as niri does.
+      niri = ./tests/stand-ins/displays-niri.qml;
     in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # cases, or sets what Quickshell runs them with.
     pkgs.runCommandLocal "the-launcher-remakes-only-the-screens-that-changed" { } ''
       mkdir -p launcher
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
@@ -3047,6 +3016,7 @@ onLinux {
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/displays.qml} shell.qml
+      cp ${../../tests/lib/Expect.js} Expect.js
       cp ${niri} Niri.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
