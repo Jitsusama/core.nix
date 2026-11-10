@@ -45,16 +45,30 @@ Scope {
     // is watched only while what it says can be seen: false unwatches
     // it, and true watches it again, answered whole at once.
     property bool live: true
-    onLiveChanged: {
+    // Whether it's watched until its next whole answer though not live,
+    // as `refresh()` asks, so what's held is current once without being
+    // watched from then on.
+    property bool refreshing: false
+    readonly property bool watched: live || refreshing
+    onWatchedChanged: {
         // What's held from an earlier watch may be hours old, so the next
         // watch is unanswered until its own whole answer comes.
         answeredThisWatch = false;
         if (wire === null)
             return;
-        if (live)
+        if (watched)
             watchAll();
         else
             tell({ id: "all", ask: "unwatch" });
+    }
+
+    // Reads its kind whole once now, as a daemon reads it when watched,
+    // though nothing shows it: for what's made from what's held while
+    // the launcher is closed, as what's inside the battery is. A daemon
+    // live already has it, and one not answering is read once it does.
+    function refresh() {
+        if (!live)
+            refreshing = true;
     }
     // Whether what was held stays held while the daemon isn't answering,
     // as someone found stays found. A kind true only while the daemon
@@ -156,7 +170,7 @@ Scope {
     // Once connected: hello, every record of its kind, and those ahead.
     function greet() {
         tell({ id: "hello", ask: "hello", version: 1, client: "shell" });
-        if (live)
+        if (watched)
             watchAll();
         watchAhead();
     }
@@ -248,6 +262,7 @@ Scope {
         if (whole) {
             answered = true;
             answeredThisWatch = live;
+            refreshing = false;
         }
         const then = awaited[answer.id];
         if (then) {
