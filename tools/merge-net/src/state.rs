@@ -10,6 +10,9 @@
 //!   the bad commit and the revert, which a switch reads to stay put.
 //! - `unsettled.json`: a held test whose search couldn't tell which merge
 //!   broke it, kept like a hold but leaving switches alone.
+//! - `already-runs.json`: a hold whose bad merge the machine already runs,
+//!   kept like a hold but leaving switches alone, since holding them keeps
+//!   only fixes off the machine.
 //! - `findings/`: a file for each failure, for a session to tell its owner.
 //! - `logs/`: each run's log, and the net's own in `net.log`.
 //! - `core/`: the net's own checkout of the repository it watches.
@@ -149,23 +152,43 @@ impl State {
         self.root.join("unsettled.json")
     }
 
+    /// Where a hold marked `already_runs` is kept: the machine runs its bad
+    /// merge already, so a switch brings it nothing new, and holding one
+    /// keeps only the merges after it off the machine.
+    fn already_runs_file(&self) -> PathBuf {
+        self.root.join("already-runs.json")
+    }
+
+    /// Every file a hold is kept in, the one a switch reads first.
+    fn hold_files(&self) -> [PathBuf; 3] {
+        [
+            self.hold_file(),
+            self.unsettled_file(),
+            self.already_runs_file(),
+        ]
+    }
+
     pub fn hold(&self) -> Option<Value> {
-        read_json(&self.hold_file()).or_else(|| read_json(&self.unsettled_file()))
+        self.hold_files().iter().find_map(|file| read_json(file))
     }
 
     pub fn set_hold(&self, hold: &Value) -> Result<(), String> {
-        let (kept, other) = if hold["unsettled"] == true {
-            (self.unsettled_file(), self.hold_file())
+        let kept = if hold["unsettled"] == true {
+            self.unsettled_file()
+        } else if hold["already_runs"] == true {
+            self.already_runs_file()
         } else {
-            (self.hold_file(), self.unsettled_file())
+            self.hold_file()
         };
         write_json(&kept, hold)?;
-        remove(&other)
+        self.hold_files()
+            .iter()
+            .filter(|file| **file != kept)
+            .try_for_each(|file| remove(file))
     }
 
     pub fn clear_hold(&self) -> Result<(), String> {
-        remove(&self.hold_file())?;
-        remove(&self.unsettled_file())
+        self.hold_files().iter().try_for_each(|file| remove(file))
     }
 
     /// Write a finding for whoever owns what failed, as a file of its own.
@@ -355,6 +378,19 @@ mod tests {
         );
         state.set_hold(&json!({ "bad": "cccc" })).unwrap();
         assert_eq!(state.hold().unwrap()["bad"], "cccc");
+        state
+            .set_hold(&json!({ "bad": "cccc", "already_runs": true }))
+            .unwrap();
+        assert!(
+            !state.hold_file().exists(),
+            "a switch reads no hold on a merge the machine runs"
+        );
+        assert_eq!(state.hold().unwrap()["already_runs"], true);
+        state.set_hold(&json!({ "bad": "dddd" })).unwrap();
+        assert!(
+            !state.already_runs_file().exists(),
+            "one hold stands at a time"
+        );
         state.clear_hold().unwrap();
         assert!(state.hold().is_none());
         state.clear_hold().unwrap();
