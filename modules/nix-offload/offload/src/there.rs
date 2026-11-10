@@ -525,17 +525,9 @@ pub fn run(
         .and_then(|folder| fs::read_to_string(folder.join("flake.lock")).ok())
         .map(|lock| kept::inputs_of(&lock))
         .unwrap_or_default();
-    let reached = sending_of(asked, scratch).and_then(|mut sending| {
+    let reached = sending_of(asked, scratch).map(|mut sending| {
         sending.command = kept::wrapped(&sending.command, &inputs.kept);
-        if !inputs.sent.is_empty() {
-            eprintln!(
-                "nix-offload: sending {} the flake takes from this machine alone to {}",
-                inputs.sent.join(", "),
-                lent.host
-            );
-        }
-        paths_up(&inputs.sent, &lent, nix, send_within(0)).map_err(Untaken::Stays)?;
-        Ok(sending)
+        sending
     });
     let reached = reached.and_then(|sending| {
         let ran = loop {
@@ -544,7 +536,10 @@ pub fn run(
             if asked.derivations
                 && let Err(why) = up(asked, &lent, scratch, [ssh, nix])
             {
-                break Err(why);
+                break Err(Untaken::Waits(why));
+            }
+            if let Err(why) = inputs_up(&inputs, &lent, nix) {
+                break Err(Untaken::Stays(why));
             }
             let bring = match (&asked.out, asked.print) {
                 (Some(out), _) => Bring::Folder(out),
@@ -554,7 +549,7 @@ pub fn run(
             let tried = std::time::Instant::now();
             let ran = on_with(&lent, &sending, bring, scratch, ssh, asked.alone.wrap());
             if !matches!(&ran, Ok(ran) if ran.status == UNREACHED) {
-                break ran;
+                break ran.map_err(Untaken::Waits);
             }
             let lost = std::time::Instant::now();
             let since = match outage {
@@ -585,16 +580,18 @@ pub fn run(
             );
             match again(since).and_then(|store| builder(store.lines().next()?.trim())) {
                 Some(stood) => lent = stood,
-                None => break ran,
+                None => break ran.map_err(Untaken::Waits),
             }
         };
         if let Some(bundle) = &sending.bundle {
             let _ = fs::remove_file(bundle);
         }
-        ran.map_err(Untaken::Waits)
+        ran
     });
     match reached {
-        Ok(ran) if ran.status == kept::KEPT => stays(
+        // Only a command `kept::wrapped` changed says this for a kept
+        // input; any other 65 is the build's own.
+        Ok(ran) if ran.status == kept::KEPT && !inputs.kept.is_empty() => stays(
             asked,
             nix,
             &format!(
@@ -607,6 +604,20 @@ pub fn run(
         Err(Untaken::Waits(why)) => unsent(asked, nix, &why),
         Err(Untaken::Stays(why)) => stays(asked, nix, &why),
     }
+}
+
+/// Sends `lent` the store paths the flake takes from this machine alone,
+/// when it takes any.
+fn inputs_up(inputs: &kept::Inputs, lent: &Builder, nix: &str) -> Result<(), String> {
+    if inputs.sent.is_empty() {
+        return Ok(());
+    }
+    eprintln!(
+        "nix-offload: sending {} the flake takes from this machine alone to {}",
+        inputs.sent.join(", "),
+        lent.host
+    );
+    paths_up(&inputs.sent, lent, nix, send_within(0))
 }
 
 /// What the builder's shell is sent to build `asked`: its command, and the

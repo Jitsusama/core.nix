@@ -42,7 +42,8 @@ impl Inputs {
 /// it came from, its `original`, since a local checkout locks as the store
 /// path it was copied to: one is sent only when that original is itself a
 /// store path or is fetched from elsewhere. Anything naming `.secrets`,
-/// in either, stays, whatever its form, as do inputs with no original.
+/// in either, or whose own name holds `secrets`, stays, whatever its form,
+/// as do inputs with no original.
 pub fn inputs_of(lock: &str) -> Inputs {
     let Ok(lock) = serde_json::from_str::<serde_json::Value>(lock) else {
         return Inputs::default();
@@ -57,11 +58,14 @@ pub fn inputs_of(lock: &str) -> Inputs {
             continue;
         }
         let original = &node["original"];
-        let secret = [locked, original]
-            .iter()
-            .flat_map(|said| [&said["path"], &said["url"]])
-            .filter_map(serde_json::Value::as_str)
-            .any(|text| text.contains(".secrets"));
+        // Named so, a store copy of secrets can say nothing else of it: its
+        // path and original are a bare `/nix/store/<hash>-source`.
+        let secret = name.contains("secrets")
+            || [locked, original]
+                .iter()
+                .flat_map(|said| [&said["path"], &said["url"]])
+                .filter_map(serde_json::Value::as_str)
+                .any(|text| text.contains(".secrets"));
         let from_store =
             original["type"] == "path" && is_store(original["path"].as_str().unwrap_or_default());
         // Only a forge's own kind names nowhere here: a git, tarball or
@@ -178,10 +182,12 @@ mod tests {
             "copied": {"locked": {"type": "path", "path": "/nix/store/def-source"},
                        "original": {"type": "git", "url": "file:///home/me/.secrets"}},
             "named": {"locked": {"type": "path", "path": "/nix/store/ghi-.secrets"},
-                      "original": {"type": "path", "path": "/nix/store/ghi-.secrets"}}
+                      "original": {"type": "path", "path": "/nix/store/ghi-.secrets"}},
+            "home-secrets": {"locked": {"type": "path", "path": "/nix/store/jkl-source"},
+                             "original": {"type": "path", "path": "/nix/store/jkl-source"}}
         }}"#;
         assert_eq!(sent(lock), Vec::<String>::new());
-        assert_eq!(kept(lock), ["copied", "named", "secrets"]);
+        assert_eq!(kept(lock), ["copied", "home-secrets", "named", "secrets"]);
     }
 
     #[test]

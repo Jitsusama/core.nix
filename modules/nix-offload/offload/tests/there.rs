@@ -1484,6 +1484,32 @@ fn a_folder_with_inputs_only_here_builds_here_and_shows_its_log() {
     );
     assert!(said.contains("the build said this"), "{said}");
     assert_eq!(fs::read_to_string(out.join("guide")).unwrap(), "a guide");
+
+    // With nothing kept, a 65 is the build's own, and nothing is made here.
+    fs::remove_file(copy.join("flake.lock")).unwrap();
+    fs::remove_file(bin.join("nix-was-given")).unwrap();
+    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        .args(["there", "-L", "--here", flake.as_str(), "packages.x.guide"])
+        .env(
+            "PATH",
+            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("NIX_OFFLOAD_DIR", &offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+        .env("XDG_RUNTIME_DIR", folder.path())
+        .env("XDG_STATE_HOME", folder.path())
+        .env("XDG_CONFIG_HOME", folder.path())
+        .output()
+        .unwrap();
+    assert_eq!(ran.status.code(), Some(65), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(!said.contains("alone holds"), "{said}");
+    assert!(
+        !fs::read_to_string(bin.join("nix-was-given"))
+            .unwrap_or_default()
+            .contains("build"),
+        "it was built here"
+    );
 }
 
 /// No builder standing changes what a flake takes from this machine, so

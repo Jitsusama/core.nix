@@ -82,18 +82,25 @@ pub fn asked(arguments: &[String]) -> Result<Asked, String> {
 /// What the builder's shell runs: `checkout`, which goes into the commit's
 /// folder there, then the command. A clock beside it ends the shell's whole
 /// group once it has run `longest` seconds, saying so, and is ended with
-/// it otherwise. The command's own status is the shell's.
+/// it otherwise. The command's own status is the shell's. The clock's
+/// sleep holds no output open, since one left behind by a TERM landing
+/// before its pid is known would keep ssh, and so the builder, until it
+/// woke. A command's 255 comes back as 254, since ssh's 255 means the
+/// builder was lost, and the run would be sent again.
 pub fn command(checkout: &str, asked: &Asked) -> String {
     let words: Vec<String> = asked.words.iter().map(|word| there::quoted(word)).collect();
     let longest = asked.longest;
     format!(
         "{checkout}set +e; \
          (trap 'kill $sleeping 2>/dev/null; exit 0' TERM; \
-         sleep {longest} & sleeping=$!; wait $sleeping; \
+         sleep {longest} 2>/dev/null & sleeping=$!; wait $sleeping; \
          echo \"nix-offload: the command ran past {longest} s, so it ends\" >&2; \
          kill -TERM 0) </dev/null >/dev/null & clock=$!; \
          WORK_RUNS_ELSEWHERE=1 {}; \
-         ended=$?; kill $clock 2>/dev/null; (exit $ended)",
+         ended=$?; kill $clock 2>/dev/null; \
+         if [ $ended = 255 ]; then \
+         echo 'nix-offload: the command ended 255, which ssh says of a lost builder, \
+         so it ends 254' >&2; ended=254; fi; (exit $ended)",
         words.join(" ")
     )
 }
@@ -242,6 +249,19 @@ mod tests {
             began.elapsed() < Duration::from_secs(10),
             "its clock held the shell open"
         );
+    }
+
+    #[test]
+    fn a_command_ending_as_ssh_does_for_a_lost_builder_ends_otherwise() {
+        let folder = tempfile::tempdir().unwrap();
+        let asked = Asked {
+            copies: Vec::new(),
+            longest: 60,
+            words: vec!["sh".to_owned(), "-c".to_owned(), "exit 255".to_owned()],
+        };
+        let (status, _, stderr) = ran(&asked, folder.path());
+        assert_eq!(status, Some(254), "it would be sent again: {stderr}");
+        assert!(stderr.contains("so it ends 254"), "{stderr}");
     }
 
     #[test]
