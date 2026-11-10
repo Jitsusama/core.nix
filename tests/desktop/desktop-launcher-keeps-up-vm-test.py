@@ -146,9 +146,19 @@ def framed(desktop: Desktop) -> Json:
     return cast("Json", json.loads(desktop.as_account("qs ipc call launcher framed")))
 
 
-def made(desktop: Desktop) -> Json:
-    """Give how many rows each source has made, and how often the open launcher refreshed."""
-    return cast("Json", json.loads(desktop.as_account("qs ipc call launcher made")))
+def made(desktop: Desktop) -> tuple[Json, float, float]:
+    """Give how many rows each source has made and how often the open launcher refreshed.
+
+    With them come the machine's uptime in seconds just before it was asked and just after it
+    answered, so a span between two of them holds every refresh counted between them.
+    """
+    said = desktop.as_account("cat /proc/uptime; qs ipc call launcher made; cat /proc/uptime")
+    asked, answer, answered = said.strip().splitlines()
+    return (
+        cast("Json", json.loads(answer)),
+        float(asked.split()[0]),
+        float(answered.split()[0]),
+    )
 
 
 def ranked(times: list[float], share: float) -> float:
@@ -173,9 +183,14 @@ class Turns:
         self.keys_made: dict[str, int] = {}
         self.agents_made: list[int] = []
         self.walked: dict[str, int] = {}
+        # Refreshes while things changed, counted from before a turn's keys until its last key's
+        # frame, and the seconds and turns they were counted over. Divided by the keys' span
+        # alone, the frames still coming after it counted at home at 2 as 4.5 a second, though no
+        # two refreshes began within the pace's quarter second (net, a99645168, 2026-11-09).
         self.refreshes = 0
+        self.window = 0.0
+        self.turns = 0
         self.keyed = 0
-        self.seconds = 0.0
         self.handled: dict[bool, list[float]] = {True: [], False: []}
         self.drawn: dict[bool, list[float]] = {True: [], False: []}
         # How often the list was composed, refreshed and drew a row afresh, frozen and not.
@@ -211,7 +226,7 @@ class Turns:
         pressed = self.keys(rows)
         said = int(machine.succeed(f"wc -l < {SAID}").strip())
         timed = framed(desktop)["timed"]
-        before = made(desktop)
+        before, since, _ = made(desktop)
         machine.succeed(f"printf '%s\\n' {' '.join(pressed)} > /tmp/keys && sh /tmp/hold.sh")
         noted: Json = {}
 
@@ -223,7 +238,7 @@ class Turns:
             retry(drawn, timeout=REACHING)
         except AssertionError:
             pytest.fail(f"{timed + KEYS - noted['timed']} of {KEYS} keys never reached a frame")
-        after = made(desktop)
+        after, _, until = made(desktop)
         assert noted["timed"] == timed + KEYS, (
             f"the launcher timed {noted['timed'] - timed} keys of {KEYS} pressed"
         )
@@ -272,19 +287,20 @@ class Turns:
             self.unseen_made[name] = self.unseen_made.get(name, 0) + rows_of(name)
         self.agents_made.append(rows_of("agents"))
         self.refreshes += after["refreshes"] - before["refreshes"]
-        self.seconds += downs[-1] - downs[0] + REPEAT * 1000
+        self.window += until - since
+        self.turns += 1
 
     def held(self, where: str, scale: str) -> None:
         """Say how the turns went, and fail a launcher that didn't keep up."""
         at = f"in {where} at {scale}"
-        rate = self.refreshes / (self.seconds / 1000)
+        rate = self.refreshes / self.window
         handled = {frozen: ranked(times, TAIL) for frozen, times in self.handled.items()}
         middle = {frozen: ranked(times, 0.5) for frozen, times in self.drawn.items()}
         print(
             f"{at}: while things changed the unseen made {self.unseen_made} rows and Agents "
             f"{self.agents_made} a turn, and while frozen the keys made {self.keys_made}, "
             f"and the look for where rows live {self.walked}; "
-            f"{self.refreshes} refreshes in {self.seconds / 1000:.1f} s, {rate:.1f} a second, "
+            f"{self.refreshes} refreshes in {self.window:.1f} s, {rate:.1f} a second, "
             f"{self.keyed} taken on a key's path; handlers 95% within {handled[False]:.1f} ms "
             f"changing against {handled[True]:.1f} ms frozen, the slowest "
             f"{max(self.handled[False]):.1f} against {max(self.handled[True]):.1f} ms; keys to "
@@ -306,7 +322,13 @@ class Turns:
             f"{at}, with no Ctrl+] pressed the look for where rows live made {self.walked} rows"
         )
         assert self.keyed == 0, f"{at}, {self.keyed} refreshes were taken on a key's path"
-        assert rate <= REFRESHES, f"{at}, the list refreshed {rate:.1f} a second"
+        # The pace lets one refresh at once and one each quarter second after it, so a turn's span
+        # holds at most one more than its share.
+        most = REFRESHES * self.window + self.turns
+        assert self.refreshes <= most, (
+            f"{at}, the list refreshed {self.refreshes} times in {self.window:.1f} s over "
+            f"{self.turns} turns, past the pace's {most:.0f}"
+        )
         # A key that composed the list, or drew rows afresh with nothing changing, did the work a
         # change costs on its own path, which the times a loaded builder stretches can't tell.
         for frozen in (False, True):
