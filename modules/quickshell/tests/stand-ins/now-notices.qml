@@ -11,6 +11,7 @@ Singleton {
     property var live: ({})
     property var resting: ({})
     property var waiting: []
+    property bool gathered: false
 
     function markRead(ids) {}
     function seen() {}

@@ -2390,7 +2390,9 @@
     the clock, the weather, placed the same way, read as the launcher opens and kept while it's
     asked again, then the calendar's own row for the next meeting, and Now counts nothing while
     only they are there; the location and the clock's zone are whereabouts' own, over its socket;
-    and For You, asked again, makes none of its looks again, only one whose file changed; and a
+    and For You, asked again, makes none of its rows again, its looks, its to-dos, the sessions
+    wanting Joel and To Look At's own, only one whose file or what it says changed, a session
+    wanting Joel making only the look it left again and to-dos said anew as they were none; and a
     piece of what's on that moved is the only one whose row and acts are made again, a kept one
     running its piece's act as it is now; and For You's Desktop holds the notices unread as the
     notices' own rows, and its History those read, stepping in again after one is read making

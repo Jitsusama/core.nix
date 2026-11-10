@@ -405,8 +405,8 @@ ShellRoot {
             changed[0] === first[0] && changed[1] !== first[1] && changed[1].name
                 === "Read B Now" && changed[2] === first[2],
             JSON.stringify(changed.map((row, at) => [row.name, row === first[at]])));
-        expect("and asking makes no more than it did for one look fewer",
-            now.tally.rows - madeBefore - madeAgain === madeAgain + 1,
+        expect("asking again made nothing, and then only it and To Look At's row holding it",
+            madeAgain === 0 && now.tally.rows - madeBefore - madeAgain === 2,
             JSON.stringify([madeAgain, now.tally.rows - madeBefore - madeAgain]));
         // The sessions are said anew at each step and each focus move, the
         // same ones wanting Joel; only who wants him is what a look reads.

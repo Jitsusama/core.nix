@@ -257,6 +257,18 @@ Scope {
         (keeping.next ?? keeping.rows)[key] = kept;
         return kept.row;
     }
+    // keptOr for a row made from several things at once, `parts`, kept
+    // while each is the same as it was, a row by its identity and a text
+    // by what it says, so nothing has to be joined into one text to be
+    // compared.
+    function keptAlike(keeping, key, parts, make) {
+        const before = keeping.rows[key];
+        const same = before !== undefined && before.from.length === parts.length
+            && parts.every((part, at) => part === before.from[at]);
+        const kept = same ? before : { from: parts, row: make() };
+        (keeping.next ?? keeping.rows)[key] = kept;
+        return kept.row;
+    }
     function keepingBegun(keeping) {
         keeping.next = {};
     }
