@@ -113,7 +113,7 @@ pub fn checked_before(
 /// moved since a base hours old is a diff of hundreds of files, with
 /// renames found. On 9 November the gate read that for each of a day's
 /// 1,245 passed records before it compared ids, so `ready` took five
-/// minutes and review_offer's merge gave up on #2687.
+/// minutes and the review tool's merge gave up on #2687.
 pub fn when_same<T>(
     candidate: &str,
     change: &str,

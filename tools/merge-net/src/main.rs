@@ -305,13 +305,13 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
         Some((since, taken_away))
     };
     let id_of = |base: &str, candidate: &str| patch_id(Path::new("."), base, candidate);
+    let branch = ready::Side {
+        changed: &files,
+        gone: &renamed,
+        text: &at_head,
+    };
     let shared_since = |candidate: &str, base: String| {
         let (since, taken_away) = since(&base)?;
-        let branch = ready::Side {
-            changed: &files,
-            gone: &renamed,
-            text: &at_head,
-        };
         let main_side = ready::Side {
             changed: &since,
             gone: &taken_away,
@@ -332,11 +332,6 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
     };
     let names_gone = |candidate: &str| {
         let (since, taken_away) = since(&base_of(candidate)?)?;
-        let branch = ready::Side {
-            changed: &files,
-            gone: &renamed,
-            text: &at_head,
-        };
         let main_side = ready::Side {
             changed: &since,
             gone: &taken_away,
