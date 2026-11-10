@@ -73,6 +73,8 @@ pub enum Command {
     Daemon {
         socket: String,
         managers: String,
+        /// The launcher's vocabulary, which its rows are said in.
+        words: Option<String>,
     },
     Find(String),
     List,
@@ -146,11 +148,17 @@ pub fn parse(args: &[String]) -> Result<Typed, String> {
     };
     let command = match *first {
         "daemon" => match rest {
-            [socket, managers] => Command::Daemon {
+            [socket, managers, words @ ..] if words.len() <= 1 => Command::Daemon {
                 socket: (*socket).to_owned(),
                 managers: (*managers).to_owned(),
+                words: words.first().map(|words| (*words).to_owned()),
             },
-            _ => return Err("daemon needs a SOCKET and a MANAGERS file".to_owned()),
+            _ => {
+                return Err(
+                    "daemon needs a SOCKET and a MANAGERS file, then the launcher's WORDS"
+                        .to_owned(),
+                );
+            }
         },
         "find" => Command::Find(joined("words to find by")?),
         "list" => none(Command::List)?,
@@ -1100,7 +1108,16 @@ mod tests {
             command("daemon /run/passwords.sock managers.json"),
             Command::Daemon {
                 socket: "/run/passwords.sock".to_owned(),
-                managers: "managers.json".to_owned()
+                managers: "managers.json".to_owned(),
+                words: None
+            }
+        );
+        assert_eq!(
+            command("daemon /run/passwords.sock managers.json words.json"),
+            Command::Daemon {
+                socket: "/run/passwords.sock".to_owned(),
+                managers: "managers.json".to_owned(),
+                words: Some("words.json".to_owned())
             }
         );
     }

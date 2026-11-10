@@ -104,6 +104,8 @@ impl Running {
             .arg("daemon")
             .arg(&socket)
             .arg(&managers_file)
+            // Rows are said in the tests' own vocabulary (rows_tests.rs's).
+            .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/words.json"))
             .env("PASSWORDS_COPIER", &copier)
             .env("PASSWORDS_CLEARS_MS", "700")
             .env("COPIED", folder.join("copied"))

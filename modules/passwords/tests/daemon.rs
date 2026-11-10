@@ -5,7 +5,10 @@
 //! to the client that asked to see it, or to the clipboard, cleared when
 //! its time is up; a one-time code says its period, and its detail gives
 //! the code, never its seed; a manager signed out is said so and refuses
-//! a secret; a watch hears entries arrive; an ask or kind it doesn't
+//! a secret; a watch hears entries arrive; a watch of rows hears each
+//! entry's ready row, worded and without a secret, apart from the entries
+//! a watch of them hears, and nothing again while no row changed; an ask
+//! or kind it doesn't
 //! know is refused; and an audit, asked by Joel alone, finds the entries
 //! sharing a password and those Have I Been Pwned's stand-in has seen in a
 //! breach, sending it each hash's five characters alone, and saying no
@@ -240,6 +243,57 @@ fn a_watch_hears_entries_arrive() {
     };
     assert_eq!(changed["changed"].as_array().unwrap().len(), 3);
     holds_no_secret(&changed);
+}
+
+#[test]
+fn a_watch_of_rows_hears_each_entrys_row_without_a_secret() {
+    let running = Running::with("rows", &[("keeping", KEEPING)]);
+    let mut watching = running.client();
+    watching.say(&json!({"id": "r", "ask": "watch", "kind": "row"}));
+    assert_eq!(
+        watching.hear()["records"],
+        json!([]),
+        "rows came before any entry"
+    );
+    let mut asking = running.client();
+    asking.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    let heard = loop {
+        let heard = watching.hear();
+        if heard["changed"]
+            .as_array()
+            .is_some_and(|changed| !changed.is_empty())
+        {
+            break heard;
+        }
+    };
+    let rows = heard["changed"].as_array().unwrap();
+    assert_eq!(rows.len(), 3, "not every entry was a row: {heard}");
+    let github = rows
+        .iter()
+        .find(|row| row["key"] == "row:entry:keeping:gh")
+        .unwrap_or_else(|| panic!("GitHub's entry had no row: {heard}"));
+    assert_eq!(github["kind"], "row");
+    assert_eq!(github["row"]["row"], "entry:keeping:gh");
+    assert_eq!(github["row"]["side"], json!([{"said": "ada"}]));
+    assert!(
+        rows.iter().all(|row| row["row"]["kind"] != "entry"),
+        "a row was said as an entry: {heard}"
+    );
+    holds_no_secret(&heard);
+    // Reading the same list again changes no row, so the watch hears none.
+    asking.ask(&json!({"id": 2, "ask": "list", "fresh": true, "asked": true}));
+    let listed = asking.ask(&json!({"id": 3, "ask": "list", "kind": "row", "held": true}));
+    assert_eq!(
+        keys(&listed).len(),
+        3,
+        "a list of rows didn't hold them: {listed}"
+    );
+    watching.say(&json!({"id": "h", "ask": "hello"}));
+    let next = watching.hear();
+    assert_eq!(
+        next["id"], "h",
+        "a watch of rows heard rows that hadn't changed: {next}"
+    );
 }
 
 /// Have I Been Pwned's stand-in, having seen "password" 1,204 times and

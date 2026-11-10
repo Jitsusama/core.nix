@@ -42,9 +42,16 @@ let
   passwords = pkgs.callPackage ./package.nix { };
   managersFile = pkgs.writeText "password-managers.json" (
     builtins.toJSON {
-      managers = map (manager: { inherit (manager) name command; }) managers;
+      # Its name as Joel reads it and its own link to an entry, for the
+      # rows the daemon serves the launcher (src/rows.rs).
+      managers = map (manager: {
+        inherit (manager) name command called;
+        shows = if manager.shows == null then "" else manager.shows;
+      }) managers;
     }
   );
+  # The launcher's vocabulary, which the daemon says its rows in.
+  words = pkgs.writeText "words.json" (builtins.toJSON config.jitsusama.quickshell.launcher.words);
 in
 {
   imports = [ quickshell ];
@@ -184,7 +191,13 @@ in
         PartOf = [ "graphical-session.target" ];
       };
       Service = {
-        ExecStart = "${lib.getExe passwords} daemon %t/daemons/passwords.sock ${managersFile}";
+        ExecStart = lib.concatStringsSep " " [
+          (lib.getExe passwords)
+          "daemon"
+          "%t/daemons/passwords.sock"
+          "${managersFile}"
+          "${words}"
+        ];
         # wl-copy holds a copied secret on the clipboard until it's cleared.
         Environment = [ "PASSWORDS_COPIER=${lib.getExe' pkgs.wl-clipboard "wl-copy"}" ];
         Restart = "on-failure";

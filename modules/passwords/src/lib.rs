@@ -34,14 +34,19 @@ use serde_json::{Map, Value, json};
 
 pub mod audit;
 pub mod cli;
+pub mod rows;
 
 use audit::Health;
 
 /// The interface's version this speaks.
 pub const VERSION: u64 = 1;
 
-/// The one kind of record this daemon keeps.
+/// The kind of record this daemon keeps.
 pub const KIND: &str = "entry";
+
+/// The kind each entry's ready row is served as, to list and watch
+/// (rows.rs).
+pub const ROW: &str = "row";
 
 /// The domain it answers for, as hello says it.
 pub const DOMAIN: &str = "passwords";
@@ -80,6 +85,8 @@ pub enum Ask {
         asked: bool,
         held: bool,
         patience: u64,
+        /// Whether it asks for the entries' ready rows rather than them.
+        rows: bool,
     },
     /// Entries by key with every detail, read from their managers when
     /// held only in summary, unless `held` asks for what's held alone.
@@ -90,9 +97,11 @@ pub enum Ask {
         held: bool,
         patience: u64,
     },
-    /// Entries as they change, and how each manager stands.
+    /// Entries as they change, or their rows where `rows` asks, and how
+    /// each manager stands.
     Watch {
         id: Value,
+        rows: bool,
     },
     Unwatch {
         id: Value,
@@ -178,7 +187,8 @@ pub fn ask(line: &str) -> Ask {
         .and_then(Value::as_u64)
         .unwrap_or(PATIENCE);
     let kind = said.get("kind").and_then(Value::as_str).unwrap_or(KIND);
-    if matches!(asked, "list" | "watch" | "search") && kind != KIND {
+    let rows = kind == ROW && matches!(asked, "list" | "watch");
+    if matches!(asked, "list" | "watch" | "search") && kind != KIND && !rows {
         return Ask::UnknownKind {
             id,
             kind: kind.to_owned(),
@@ -193,6 +203,7 @@ pub fn ask(line: &str) -> Ask {
             asked: flag("asked"),
             held: flag("held"),
             patience,
+            rows,
         },
         "get" => Ask::Get {
             id,
@@ -211,7 +222,7 @@ pub fn ask(line: &str) -> Ask {
             held: flag("held"),
             patience,
         },
-        "watch" => Ask::Watch { id },
+        "watch" => Ask::Watch { id, rows },
         "unwatch" => Ask::Unwatch { id },
         "search" => Ask::Search {
             id,
@@ -1020,7 +1031,22 @@ mod tests {
                 fresh: false,
                 asked: true,
                 held: false,
-                patience: PATIENCE
+                patience: PATIENCE,
+                rows: false
+            }
+        );
+        assert_eq!(
+            ask(r#"{"id":7,"ask":"watch","kind":"row"}"#),
+            Ask::Watch {
+                id: json!(7),
+                rows: true
+            }
+        );
+        assert_eq!(
+            ask(r#"{"id":8,"ask":"search","kind":"row"}"#),
+            Ask::UnknownKind {
+                id: json!(8),
+                kind: "row".to_owned()
             }
         );
         assert!(matches!(
