@@ -23,8 +23,10 @@ use crate::follows::Followed;
 use crate::hosted;
 use crate::line::Line;
 use crate::update::NEEDS_HOLD;
+use std::fs;
+use std::path::Path;
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 /// How often the branches are read.
 pub const LOOK_EVERY: Duration = Duration::from_secs(30);
@@ -37,7 +39,8 @@ const BUSY_AGAIN: Duration = Duration::from_secs(60);
 /// again, in case what failed was the builders and not the commit.
 const FAILED_AGAIN: Duration = Duration::from_mins(30);
 
-/// The least time between two switches it asks for. A home switch restarts
+/// The least time between a switch, whoever asked for it, and the next
+/// the follower asks for. A home switch restarts
 /// the desktop's shell: on 9 November a launcher stopped taking keys after
 /// five switches the follower asked for in half an hour, one at each core
 /// merge, so main's newest head waits for the next.
@@ -109,7 +112,8 @@ pub struct Follower {
     dropped: u32,
     /// Whether the last ask was refused for being busy.
     busy: bool,
-    /// When an ask of its own last switched the machine.
+    /// When the machine last switched, for an ask of its own or as its
+    /// system profile says.
     switched: Option<Instant>,
     /// The machine's last ending when an ask was refused for a held
     /// daemon, so it waits until that changes.
@@ -117,6 +121,17 @@ pub struct Follower {
 }
 
 impl Follower {
+    /// Counts a switch the machine made at `at`, whoever asked for it. On
+    /// 9 November a person's switch at 18:03 restarted the follower, which
+    /// asked again a minute later and built a switch by 18:08 that only
+    /// Joel's hands held back, since what it remembered of switches had
+    /// gone with it and that one wasn't its own.
+    pub fn saw_switch(&mut self, at: Instant) {
+        if self.switched.is_none_or(|switched| at > switched) {
+            self.switched = Some(at);
+        }
+    }
+
     /// Whether to ask now, at these heads, with the machine's last ending
     /// as its file holds it, given how often a hosted main is asked for.
     pub fn should_ask(
@@ -197,6 +212,14 @@ impl Follower {
             }
         }
     }
+}
+
+/// When the system profile last changed, which every switch does, as an
+/// instant: none when it can't be read, or changed before this boot or in
+/// what the clock says is the future.
+pub fn profile_changed(profile: &Path, now: Instant) -> Option<Instant> {
+    let made = fs::symlink_metadata(profile).ok()?.modified().ok()?;
+    now.checked_sub(SystemTime::now().duration_since(made).ok()?)
 }
 
 /// Where main and each followed input's branch are, as their hosts say,
@@ -445,6 +468,43 @@ mod tests {
         assert!(
             f.should_ask(&at("b"), "", t + LOOK_EVERY, EVERY),
             "an ask that switched nothing held the next"
+        );
+    }
+
+    #[test]
+    fn a_switch_anyone_made_waits_half_an_hour_for_the_next() {
+        let mut f = Follower::default();
+        let earlier = Instant::now();
+        let t = earlier + LOOK_EVERY;
+        f.saw_switch(t);
+        f.saw_switch(earlier);
+        assert!(
+            !f.should_ask(
+                &at("a"),
+                "",
+                t + SWITCH_EVERY.saturating_sub(LOOK_EVERY),
+                EVERY
+            ),
+            "it asked within half an hour of a switch it didn't ask for"
+        );
+        assert!(
+            f.should_ask(&at("a"), "", t + SWITCH_EVERY, EVERY),
+            "half an hour after a switch, it still didn't ask"
+        );
+    }
+
+    #[test]
+    fn the_profile_says_when_the_machine_last_switched() {
+        let dir = tempfile::tempdir().unwrap();
+        let profile = dir.path().join("system");
+        let now = Instant::now();
+        assert_eq!(profile_changed(&profile, now), None);
+        std::os::unix::fs::symlink("system-1-link", &profile).unwrap();
+        let changed = profile_changed(&profile, now).expect("a profile just made");
+        assert!(
+            now.duration_since(changed) < Duration::from_secs(5),
+            "a profile made now changed {:?} ago",
+            now.duration_since(changed)
         );
     }
 

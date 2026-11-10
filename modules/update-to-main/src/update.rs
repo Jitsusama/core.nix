@@ -383,21 +383,30 @@ fn busy(config: &Config) -> Option<String> {
 }
 
 /// Waits, for a switch only the follower asked for, while any command a
-/// follower waits on says someone is at the machine, and gives why it
-/// switches nothing once it has waited an hour. On 9 November a launcher
-/// stopped taking keys after five switches the follower asked for in half
-/// an hour, each restarting the desktop's shell under Joel's hands. A
+/// follower waits on says someone is at the machine, each for as long as
+/// it may hold the switch, and gives why it switches nothing once it has
+/// waited an hour. On 9 November a launcher stopped taking keys after five
+/// switches the follower asked for in half an hour, each restarting the
+/// desktop's shell under Joel's hands; and that evening no switch came for
+/// two hours while he worked, with 26 merges waiting, so someone at the
+/// keys holds it for 45 minutes and an open launcher the whole hour. A
 /// person asking meanwhile, or a stop, ends the wait at once.
 fn quiet(config: &Config, following: &dyn Fn() -> bool) -> Option<String> {
-    let until = Instant::now() + WAITS_AT_MOST;
+    let began = Instant::now();
     let mut said = None;
     while following() && !run::stopping() {
+        let waited = began.elapsed();
         let why = config
             .refuse_while
             .iter()
-            .filter(|busy| busy.follower_waits)
+            .filter(|busy| {
+                busy.follower_waits
+                    && busy
+                        .follower_waits_at_most
+                        .is_none_or(|most| waited < Duration::from_secs(most))
+            })
             .find_map(is_busy)?;
-        if Instant::now() >= until {
+        if waited >= WAITS_AT_MOST {
             return Some(format!(
                 "{why} for an hour, so what was built waits in the store for the next ask"
             ));

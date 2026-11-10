@@ -194,6 +194,11 @@ pub struct Busy {
     /// refuse an ask they made themselves, nor to build nothing ahead.
     #[serde(default)]
     pub follower_waits: bool,
+    /// How many seconds at most a follower's switch waits on it, after
+    /// which it no longer holds the switch, though what else it waits on
+    /// still does; with none, it waits the whole hour a switch waits.
+    #[serde(default)]
+    pub follower_waits_at_most: Option<u64>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
