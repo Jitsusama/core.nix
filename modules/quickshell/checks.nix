@@ -2051,16 +2051,19 @@ onLinux {
         property var asked: []
         property var settled: ({})
         function session(each) { return null; }
+        function watched(each) { return true; }
+        function waitsFor(each) { return null; }
       '';
       # Where an item is done names its session, and For You lists
-      # the sessions wanting Joel and those to reopen, none of which it
-      # needs here.
+      # the sessions wanting Joel, none of them parked, and those to
+      # reopen.
       sessions = singleton "Sessions.qml" ''
         property var running: []
         property var wanting: []
         property var toReopen: []
         function wanted(wants) { return "needs you"; }
         function goTo(session) {}
+        function parkedAs(address) { return null; }
       '';
       # A look For You opens is opened through niri, which nothing here does.
       niri = singleton "Niri.qml" ''

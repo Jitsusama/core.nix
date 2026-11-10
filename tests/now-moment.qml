@@ -11,9 +11,11 @@
 // weather is read once the launcher opens and again when it hears from
 // Open-Meteo, keeping what it knew while it asks again; the meeting is the
 // calendar's own row; and Now counts nothing while only they are there.
-// For You, asked again what it holds, makes none of its looks again, and
-// only the one whose file changed once one does; and what's on, made again
-// as any one piece moves, makes only that piece's rows again.
+// For You, asked again what it holds, makes none of its rows again: its
+// looks, its to-dos, the sessions wanting Joel and its bands' own rows,
+// only one whose file or what it says changed once one does; and what's
+// on, made again as any one piece moves, makes only that piece's rows
+// again.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -93,6 +95,24 @@ ShellRoot {
         }]
     }
 
+    // Agents, as For You reads it: each session wanting Joel as Agents'
+    // row for it, kept as Agents keeps its own, so a session's row For
+    // You makes is made again only when For You's own making is.
+    QtObject {
+        id: agents
+
+        readonly property var settings: ({ name: "agents" })
+        readonly property var toReopen: null
+        readonly property var rows: ({})
+
+        function made(session) {
+            if (!(session.address in rows))
+                rows[session.address] = { key: `agent:${session.address}`,
+                    name: session.title, side: "" };
+            return rows[session.address];
+        }
+    }
+
     // The launcher's placing of an answered thing, as Launcher.qml's
     // resolved gives it: named by the thing, what it says beside, its
     // parts a step in. Each row it gives is marked, so the test knows Now
@@ -101,7 +121,9 @@ ShellRoot {
         id: theLauncher
 
         property bool open: false
-        readonly property var sources: [weather, calendar, cameras, power, pastNotices]
+        // Nothing is held, so no step gathers the notices.
+        readonly property var held: []
+        readonly property var sources: [weather, calendar, cameras, power, pastNotices, agents]
         property int placed: 0
 
         function resolved(id) {
@@ -359,10 +381,10 @@ ShellRoot {
         // anything in Now changes while it's held, and each look it lists is
         // kept while its file reads the same: made anew each time, 105 of
         // them made 2,535 rows in one opening on Joel's shell (2026-11-09).
-        const lookAt = (id, title) => JSON.stringify({ v: 1, id: id, kind: "page",
+        const lookAt = (id, title, session) => JSON.stringify({ v: 1, id: id, kind: "page",
             at: "2026-11-09T12:00:00Z", target: "https://example.com", title: title,
-            why: "Because.", state: "waiting" });
-        now.lookTexts = { "a.json": lookAt("a", "Read A"), "b.json": lookAt("b", "Read B"),
+            why: "Because.", state: "waiting", session: session ?? "" });
+        now.lookTexts = { "a.json": lookAt("a", "Read A", "s-a"), "b.json": lookAt("b", "Read B"),
             "c.json": lookAt("c", "Read C") };
         const looked = () => now.waiting.verbs().find(row => row.key
             === "on:waitingOnYou:kind:look")?.verbs() ?? [];
@@ -393,10 +415,18 @@ ShellRoot {
         expect("a session moving, the same wanting Joel, makes none of its looks again",
             stepped.every((row, at) => row === changed[at]),
             JSON.stringify(stepped.map((row, at) => row === changed[at])));
-        Sessions.wanting = [{ address: "LEFTA", presence: { session: "s-a", addresses: [] } }];
+        // A session wanting Joel blocks the look it left, which needs him
+        // now and says so at its side, and changes nothing another look
+        // says.
+        Sessions.wanting = [{ address: "LEFTA", title: "Session A",
+            presence: { session: "s-a", addresses: [] } }];
         const wanted = looked();
-        expect("one more wanting Joel makes them again", wanted[0] !== changed[0],
-            "it was kept");
+        const lifted = now.waiting.verbs().find(row => row.key === "on:look:a");
+        expect("one more wanting Joel makes only the look it left again",
+            lifted !== undefined && lifted !== changed[0] && lifted.side !== changed[0].side
+                && wanted.length === 2 && wanted[0] === changed[1] && wanted[1] === changed[2],
+            JSON.stringify([lifted?.side, wanted.map(row => [row.name, row.side,
+                changed.includes(row)])]));
         Sessions.wanting = [];
         now.lookTexts = {};
 
@@ -471,5 +501,49 @@ ShellRoot {
         expect("one notice read, stepping in again makes only its row again",
             since(before)[0] === 1, JSON.stringify(since(before)));
         Notices.history = [];
+
+        // For You's to-dos, the sessions wanting Joel and its bands' own
+        // rows are kept as its looks are, while each reads the same: each
+        // was made anew whenever For You or a step in it was held as
+        // anything in Now changed, with what's on making 611 rows in one
+        // opening on Joel's shell (2026-11-10). The node says its to-dos
+        // anew at each revision, so they're kept by what they say.
+        const toDo = (title, deadline) => ({ v: 2, title: title, ready: true,
+            raisedAt: Date.now() - 2 * 3600000, deadline: deadline ?? null });
+        WaitingOnYou.now = [toDo("Sign In"), toDo("Say Yes")];
+        now.lookTexts = { "d.json": lookAt("d", "Read D") };
+        Sessions.wanting = [{ address: "WANTB", title: "Session B", presence: {
+            session: "s-b", addresses: [], wants: { kind: "question", said: "Which?" } } }];
+        const forYou = () => now.waiting.verbs();
+        const keys = rows => JSON.stringify(rows.map(row => row.key).sort());
+        const heldFirst = forYou();
+        expect("For You holds the session, the to-dos and To Look At", keys(heldFirst)
+            === JSON.stringify(["on:waiting:Say Yes", "on:waiting:Sign In",
+                "on:waiting:want:WANTB", "on:waitingOnYou:kind:look"]), keys(heldFirst));
+        const same = (rows, from) => rows.length === from.length
+            && rows.every((row, at) => row === from[at]);
+        let forYouBefore = now.tally.rows;
+        const heldAgain = forYou();
+        expect("asked again, For You makes none of its rows again",
+            same(heldAgain, heldFirst) && now.tally.rows === forYouBefore,
+            now.tally.rows - forYouBefore);
+        WaitingOnYou.now = [toDo("Sign In"), toDo("Say Yes")];
+        forYouBefore = now.tally.rows;
+        const toldAgain = forYou();
+        expect("its to-dos said anew as they were, it makes none of its rows again",
+            same(toldAgain, heldFirst) && now.tally.rows === forYouBefore,
+            now.tally.rows - forYouBefore);
+        WaitingOnYou.now = [toDo("Sign In"), toDo("Say Yes", Date.now() + 3600000)];
+        forYouBefore = now.tally.rows;
+        const due = forYou();
+        const dueRow = due.find(row => row.key === "on:waiting:Say Yes");
+        expect("one to-do now due makes only its row again",
+            now.tally.rows - forYouBefore === 1 && dueRow !== undefined
+                && heldFirst.indexOf(dueRow) === -1
+                && due.filter(row => row !== dueRow).every(row => heldFirst.includes(row)),
+            JSON.stringify([now.tally.rows - forYouBefore, due.map(row => row.key)]));
+        WaitingOnYou.now = [];
+        Sessions.wanting = [];
+        now.lookTexts = {};
     }
 }
