@@ -742,6 +742,55 @@ def test_a_look_cleared_in_for_you_is_written_cleared(shell: Shell) -> None:
         look.unlink()
 
 
+# How many looks wait in To Look At, enough that weighing them all again shows.
+LOOKS_WAITING = 12
+# How many rows an act may weigh again: the one it changed and the ask it answered.
+WEIGHED_BY_AN_ACT = 2
+
+
+def test_an_act_on_one_look_weighs_the_keys_of_no_other(shell: Shell) -> None:
+    """Clearing one look in To Look At weighs its own row's keys again, and no other's.
+
+    One act in For You's 115 rows weighed every row's keys for the foot again, 7 to 46 ms of
+    the 11 to 52 its rows took to be shown, where one row had changed (2026-11-10).
+    """
+    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+    looks = state / "pi/agentic-harness.pi/looks"
+    looks.mkdir(parents=True, exist_ok=True)
+    written = [looks / f"weighed{at:02d}.json" for at in range(LOOKS_WAITING)]
+    for at, look in enumerate(written):
+        said = {"v": 1, "id": look.stem, "title": f"Weighed Look {at}", "kind": "file",
+                "target": "/etc/hostname", "state": "waiting",
+                "at": f"2026-11-08T12:{at:02d}:00Z"}  # fmt: skip
+        look.write_text(json.dumps(said))
+    try:
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        typed_at_once(shell, "'for you' -k Return")
+        shell.launcher_until(
+            lambda shown: shown["path"][-1:] == ["For You"] and "To Look At" in shown["rows"]
+        )
+        shell.down_to("To Look At")
+        shell.step_in()
+        shell.launcher_until(
+            lambda shown: shown["path"][-1:] == ["To Look At"]
+            and len(shown["rows"]) >= LOOKS_WAITING
+        )
+        shell.normal()
+        with shell.told("ask ready"):
+            shell.send_chars("dd")
+        before = shell.showing()["weighed"]
+        since = shell.mark()
+        shell.send_chars("y")
+        shell.reported("act shown in ", lambda _rest: True, since)
+        weighed = shell.showing()["weighed"] - before
+        assert weighed <= WEIGHED_BY_AN_ACT, f"one act weighed {weighed} rows' keys again"
+        shell.close_launcher()
+    finally:
+        for look in written:
+            look.unlink(missing_ok=True)
+
+
 def test_the_head_holds_the_finds_mark_alone_and_no_bare_question(shell: Shell) -> None:
     """The head's / stands only on the find, it asks no bare which?, and a find says its count."""
     shell.as_account(shell.ipc("toggle"))

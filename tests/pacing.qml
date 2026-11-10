@@ -8,7 +8,8 @@
 // they're shown or searched, so a change nobody sees asks none; a key's
 // act is said shown by the first frame begun after its refresh; and an
 // opening says its parts slowest first, and weighs the foot's verbs only
-// once the words or the face have changed.
+// once the words or the face have changed, and each row's keys once for
+// what's typed, the steps and the mode.
 import QtQuick
 import "Pacing.js" as Pacing
 import "Wanted.js" as Wanted
@@ -61,6 +62,36 @@ QtObject {
         check(failures, "and so are they in another face",
             Pacing.verbRoom(again, words, {}, weigh) === again, false);
         check(failures, "each weighed once more", weighings, 3);
+    }
+
+    // One act in For You's 115 rows weighed every row's keys again, where
+    // one row had changed (2026-11-10).
+    function weighing(failures) {
+        let weighed = 0;
+        const weigh = row => {
+            weighed += 1;
+            return { keys: row.name };
+        };
+        const words = {};
+        const face = {};
+        const rows = [{ name: "a" }, { name: "b" }, { name: "c" }];
+        const first = Pacing.weighing(null, "|find", words, face);
+        rows.forEach(row => Pacing.weighedRow(first, row, weigh));
+        check(failures, "the first rows are each weighed", weighed, 3);
+        const again = Pacing.weighing(first, "|find", words, face);
+        check(failures, "the same typed, steps, mode, words and face keep them", again, first);
+        const changed = [rows[0], { name: "B" }, rows[2]];
+        const said = changed.map(row => Pacing.weighedRow(again, row, weigh).keys).join("");
+        check(failures, "a row changed is weighed, the rest kept", weighed, 4);
+        check(failures, "each says its own keys", said, "aBc");
+        check(failures, "and the count says so", again.weighed, 4);
+        for (const [what, kept] of [["typed or a mode", Pacing.weighing(again, "x|find", words,
+            face)], ["words", Pacing.weighing(again, "|find", {}, face)],
+            ["a face", Pacing.weighing(again, "|find", words, {})]]) {
+            Pacing.weighedRow(kept, rows[0], weigh);
+            check(failures, `another ${what} weighs again`, kept === again, false);
+        }
+        check(failures, "once each", weighed, 7);
     }
 
     // An opening is usable once the shell's thread answers its ticks on
@@ -267,6 +298,7 @@ QtObject {
         waking(failures);
         opening(failures);
         felt(failures);
+        weighing(failures);
 
         for (const failure of failures)
             console.warn(failure);

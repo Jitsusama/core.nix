@@ -2858,6 +2858,11 @@ Scope {
     property real footKeysWidest: 0
     // The step and what's typed that the foot's room was last weighed for.
     property string footWeighedFor: ""
+    // Each row's keys as the foot weighed them for that, and the mode
+    // (Pacing.weighing), with how many rows were weighed afresh in all,
+    // for the check that an act changing one row weighs none but it.
+    property var footRowsWeighed: null
+    property int rowsWeighed: 0
     // How many figures the chosen count holds room for: as many as the
     // place has rows, three while the drawer is out, and only ever more
     // within a place, so rows arriving with no key pressed, as a scan's,
@@ -2911,29 +2916,49 @@ Scope {
             footWeighedFor = weighing;
             footReset();
         }
+        // A row weighed before for these is the same keys at the same
+        // widths, so only a row new to them is weighed. The selection says
+        // more than its keys elsewhere, and visual's keys move with its
+        // rows, so those are weighed each time (keysFor).
+        const kept = Pacing.weighing(footRowsWeighed, `${weighing}|${prompt.mode}`,
+            Words.all, statusLine.keys.measured);
+        footRowsWeighed = kept;
+        const before = kept.weighed;
+        const weigh = row => weighedKeys(keysFor(row));
         const rows = asking ? matches.concat([asking]) : matches;
-        const said = rows.map(row => keysFor(row)).filter(keys => keys.length > 0);
+        const said = rows.map(row => row === selected || visual ? weigh(row)
+            : Pacing.weighedRow(kept, row, weigh)).filter(one => one.keys.length > 0);
+        rowsWeighed += kept.weighed - before;
         // Room for the drawer's own only once the keys have gone in, so
         // the rows' foot never gives up room to keys they don't show.
         // Choosing, the drawer names no key, so it takes no room.
         const drawn = QueryKeys.paged(prompt.mode) ? drawerKeys(prompt.mode) : [];
         if (drawn.length > 0)
-            said.push(drawn);
+            said.push(weighedKeys(drawn));
         if (prompt.mode === "normal")
-            said.push(footNormalRoom);
-        const place = Math.max(footReturnWidest,
-            ...said.map(told => statusLine.keys.advance(told[0][0], told[0][1])));
+            said.push(weighedKeys(footNormalRoom));
+        const place = Math.max(footReturnWidest, ...said.map(one => one.returnWide));
         // Said as it grows, so a test sees which row's Return took the
         // room, though the foot shows only the selection's.
         if (place > footReturnWidest) {
-            const widest = said.find(told =>
-                statusLine.keys.advance(told[0][0], told[0][1]) === place);
-            Report.say(`foot room for ${widest[0].join(" ")}`);
+            const widest = said.find(one => one.returnWide === place);
+            Report.say(`foot room for ${widest.keys[0].join(" ")}`);
             footReturnWidest = place;
         }
-        const wide = Math.max(footKeysWidest, ...said.map(keys => keysWide(keys)));
+        const wide = Math.max(footKeysWidest,
+            ...said.map(one => one.restWide + Math.max(one.returnWide, footReturnWidest)));
         if (wide > footKeysWidest)
             footKeysWidest = wide;
+    }
+
+    // Keys with how wide Return is, its marks and its word, and how wide
+    // the rest are after it, as keysWide adds them.
+    function weighedKeys(keys) {
+        if (keys.length === 0)
+            return { keys, returnWide: 0, restWide: 0 };
+        return { keys, returnWide: statusLine.keys.advance(keys[0][0], keys[0][1]),
+            restWide: keys.slice(1).reduce((sum, key) => sum + statusLine.keys.spacing
+                + statusLine.keys.advance(key[0], key[1]), 0) };
     }
 
     // The widest that graphed rows have said at their right in this step,
@@ -6765,7 +6790,7 @@ Scope {
                 ink: String(line.color) })),
             foot: wordsIn(foot, card), rows, selection, made: root.rowsMade,
             drawn: root.rowsDrawn, built: root.rowsBuilt, factsMade: drawerCard.factsMade,
-            factsHeld: drawerCard.facts.length,
+            factsHeld: drawerCard.facts.length, weighed: root.rowsWeighed,
             ahead: list.cacheBuffer, listed: list.count, firstAt,
             line: wordsIn(commandLoader.item, card),
             lines: wordsIn(commandRows, card) });
