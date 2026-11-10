@@ -35,6 +35,7 @@ import "Moment.js" as Moment
 import "NeedsYou.js" as NeedsYou
 import "Here.js" as Here
 import "PlaceRow.js" as PlaceRow
+import "../pieces/Holding.js" as Holding
 
 Provider {
     id: provider
@@ -611,7 +612,7 @@ Provider {
     function itemThing(each) {
         return {
             kind: "todo",
-            blocks: ForYou.blocked(each, Sessions.wanting),
+            blocks: ForYou.blocked(each, provider.wantingHeard),
             due: each.deadline ?? null,
             ready: each.ready === true && !each.putOff,
             since: each.raisedAt ?? null
@@ -779,8 +780,11 @@ Provider {
 
     // What can't be done yet, one row at the end of the list, so the list
     // holds only what Joel can do now; each inside says what it waits for.
+    // Kept while it names the same, since the node says what's for later
+    // anew at each revision (ownKept).
     readonly property var laterRow: whileWanted("later", () => WaitingOnYou.later.length === 0
-        ? null : member({
+        ? null : keptAlike(ownKept, "later", [WaitingOnYou.later.map(each => each.title)
+            .join("\n")], () => member({
         key: "on:waiting:later",
         verb: "more",
         stays: true,
@@ -795,7 +799,12 @@ Provider {
         verbs: () => WaitingOnYou.later.map(each => provider.item(each)),
         targets: () => WaitingOnYou.later.map(each => provider.item(each)),
         run: () => provider.launcher?.enter(provider.laterRow)
-    }))
+    })))
+    // For You's own rows, Later and For You itself, each kept while what
+    // it says reads the same: each was made anew as anything it counts
+    // moved, and For You's with it all of what's on (2026-11-10). Plain,
+    // so keeping notifies nothing.
+    readonly property var ownKept: keeper()
 
     // What the agents left for Joel to look at, each a file of the looks
     // folder the harness writes, ~/.local/state/pi/agentic-harness.pi/
@@ -899,7 +908,7 @@ Provider {
     // A look as ForYou.js weighs it, blocking the session that left it
     // while that session waits on Joel (ForYou.js's lookThing).
     function lookThing(one) {
-        return ForYou.lookThing(one, Sessions.wanting);
+        return ForYou.lookThing(one, wantingHeard);
     }
 
     // A look's drawer: its quest, by its title in the index, and that it's
@@ -1143,8 +1152,8 @@ Provider {
         if (name !== "notices")
             return null;
         const { holding } = latelyBands(Date.now());
-        return [waiting, noticesRow("desktop",
-            Lately.members(holding.desktop, one => one.who).join(", "),
+        return [waiting, keptNoticesRow("desktop",
+            Lately.members(holding.desktop, one => one.who),
             { kind: "notice", source: "desktop" })];
     }
 
@@ -1170,8 +1179,28 @@ Provider {
     // Not a session whose want is an action, though, which is one of its
     // own items (Holding.js's wanting). It's counted once, with the margin's
     // tray, in ForYouHolds.qml, so the two say one number (Y2YBTS,
-    // 2026-11-09).
-    readonly property var sessions: ForYouHolds.holds.wanting
+    // 2026-11-09); here it's the same rule over the same sessions, as For
+    // You hears them (wantingHeard).
+    readonly property var sessions: Holding.wanting(wantingHeard)
+    // The sessions wanting Joel, the same list while none of them moved
+    // what For You reads (ForYou.js's toldOf), so a session working or
+    // stepping, its want the same, weighs, bands and counts nothing again:
+    // each move made For You's own row and every one of what's on's again,
+    // and the node says one every few seconds (2026-11-10). What a row
+    // does goes to the session as it is then (wantingNow).
+    readonly property var wantingKept: ({ said: null, held: [] })
+    readonly property var wantingHeard: {
+        const wanting = Sessions.wanting;
+        const said = wanting.map(session => ForYou.toldOf(session)).join("\n");
+        if (said !== wantingKept.said) {
+            wantingKept.said = said;
+            wantingKept.held = wanting;
+        }
+        return wantingKept.held;
+    }
+    function wantingNow(session) {
+        return Sessions.wanting.find(one => one.address === session.address) ?? session;
+    }
     // What the launcher's other sources give For You, each its own row
     // made as its figures change (ForYou.js's given), as Passwords gives
     // its one to-do for what its last check found: read once as each
@@ -1306,7 +1335,8 @@ Provider {
             thing: { kind: "todo", blocks: 1, since: session.presence?.wants?.since ?? null },
             make: () => {
                 const agents = provider.source("agents");
-                return agents ? provider.wantRow(agents.made(session), session) : null;
+                const now = provider.wantingNow(session);
+                return agents ? provider.wantRow(agents.made(now), now) : null;
             }
         })).concat(WaitingOnYou.now.map(each => ({
             kind: "do",
@@ -1495,16 +1525,42 @@ Provider {
     // `heldNames`, as a place inside another does, which is what gives a
     // row that's no thing its drawer (Launcher.qml's drawable and
     // heldDrawer); a drawer of its own was held for one never shown.
+    // Each is kept while what it says reads the same, a piece's by what
+    // its piece shows (pieceSays) and Desktop's by the notices it holds,
+    // with who they're from: each asking of For You made every one anew,
+    // a piece's acts too, 7 rows an asking with nothing changed
+    // (2026-11-10). A kept piece's acts read the piece as it is now
+    // (latelyNow), as what's on reads piecesNow.
     function latelyRows(now) {
         const { holding, bands } = latelyBands(now);
-        return bands.map(band => {
+        keepingBegun(latelyKept);
+        for (const mark of Object.keys(latelyNow))
+            delete latelyNow[mark];
+        const rows = bands.map(band => {
             const senders = Lately.members(holding[band.source], one => one.who);
             const forYou = { kind: "notice", source: band.source };
             const fact = latelyPieces.find(one => one.piece.lately === band.source);
             if (fact === undefined)
-                return provider.noticesRow(band.source, senders, forYou);
-            return made(fact, { forYou: forYou, count: "", note: "", heldNames: senders });
+                return provider.keptNoticesRow(band.source, senders, forYou);
+            latelyNow[fact.entry.mark] = fact.piece;
+            return keptAlike(latelyKept, `piece:${band.source}`, [pieceSays(fact),
+                senders.join("\u241f")], () => made(fact, { forYou: forYou, count: "", note: "",
+                heldNames: senders }));
         });
+        keptOnly(latelyKept);
+        return rows;
+    }
+    readonly property var latelyKept: keeper()
+    readonly property var latelyNow: ({})
+
+    // A source's unread notices' row (noticesRow), kept while it holds the
+    // same notices from the same senders and its History as many, which is
+    // all it and what it holds of its own say.
+    function keptNoticesRow(from, senders, forYou) {
+        const ids = (noticesOf[from] ?? []).map(notice => notice.id).join(" ");
+        const done = cameDone.filter(one => one.source === from).length;
+        return keptAlike(latelyKept, `notices:${from}`, [ids, senders.join("\u241f"), done],
+            () => noticesRow(from, senders, forYou));
     }
 
     // A Lately source's drawer, a place's: its eyebrow saying so, as every
@@ -1536,13 +1592,17 @@ Provider {
             hue: "action"
         }, more));
         const none = words.empty ?? "";
-        const listed = () => (ids.length > 0
-            ? (source("notices")?.rowsOf(ids) ?? []).concat([
-                act(`verb:on:waiting:${from}:read`, "verb:on:waiting:desktop:read", {
-                    stays: true,
-                    run: () => Notices.markRead(ids)
-                })])
-            : []).concat([provider.historyOf(from)]);
+        // Its own act and its History made once, as it's first stepped
+        // into, since the row is made again whenever the notices it holds
+        // change.
+        let own = null;
+        const owned = () => own ?? (own = (ids.length === 0 ? [] : [
+            act(`verb:on:waiting:${from}:read`, "verb:on:waiting:desktop:read", {
+                stays: true,
+                run: () => Notices.markRead(ids)
+            })]).concat([provider.historyOf(from)]));
+        const listed = () => (ids.length > 0 ? (source("notices")?.rowsOf(ids) ?? [])
+            : []).concat(owned());
         const row = member({
             key: `on:waiting:${from}`,
             forYou: forYou,
@@ -1605,43 +1665,67 @@ Provider {
         return Object.assign({}, row, { side: side, sideItems: [], hue: "muted",
             forYou: { kind: "notice", source: one.source } });
     }
-    readonly property var waiting: whileWanted("waiting", () => member({
-        // Not `on:waiting`, which its rows within are keyed under
-        // (Marks.js's ROW_MARKS, which point both at For You's tray).
-        key: "on:waitingOnYou",
-        verb: "more",
-        stays: true,
-        // What its list says when it holds nothing (Launcher.qml).
-        empty: Words.of("on:waiting").empty,
-        name: Words.name("on:waiting"),
-        glyph: Theme.glyph[ForYou.markOf(provider.waitsNow, WaitingOnYou.later.length)],
-        hue: provider.waitsNow > 0 ? "strong" : "muted",
-        // How many each band holds, "1 to do \u00b7 44 to look at \u00b7 2 to
-        // try", or with none, whether anything comes later (VKCF3Z, 3a92c450).
-        sideItems: provider.bandsSaid,
-        side: provider.bandsSaid.length > 0
-            ? provider.bandsSaid.map(item => item.said).join(" \u00b7 ")
+    readonly property var waiting: whileWanted("waiting", () => {
+        const glyph = Theme.glyph[ForYou.markOf(provider.waitsNow, WaitingOnYou.later.length)];
+        const hue = provider.waitsNow > 0 ? "strong" : "muted";
+        const bands = provider.bandsSaid;
+        const side = bands.length > 0 ? bands.map(item => item.said).join(" \u00b7 ")
             : WaitingOnYou.later.length > 0
                 ? waitingSaid("later", { count: WaitingOnYou.later.length })
-                : waitingSaid("none", {}),
-        // A place's row, so nothing stands after its name; its drawer
-        // names the heaviest it holds, as To Look At's does, and the
-        // bands keep the row's room (VKCF3Z, 16efb1dc). Holding only
-        // things to try, it names none, so it has no drawer.
-        nested: true,
-        thing: true,
-        drawer: () => {
-            const heaviest = heaviestSaid();
-            return heaviest === "" ? null : {
-                title: Words.name("on:waiting"),
-                facts: [provider.fact("heaviest", heaviest)]
-            };
-        },
-        verbs: () => provider.waitingRows(),
-        targets: () => provider.waitingRows(),
-        commands: () => provider.filterCommands(null),
-        run: () => provider.launcher?.enter(provider.waiting)
-    }))
+                : waitingSaid("none", {});
+        return keptAlike(ownKept, "waiting", [glyph, hue, side, JSON.stringify(bands)],
+            () => madeWaiting(glyph, hue, bands, side));
+    })
+
+    function madeWaiting(glyph, hue, bands, side) {
+        return member({
+            // Not `on:waiting`, which its rows within are keyed under
+            // (Marks.js's ROW_MARKS, which point both at For You's tray).
+            key: "on:waitingOnYou",
+            verb: "more",
+            stays: true,
+            // What its list says when it holds nothing (Launcher.qml).
+            empty: Words.of("on:waiting").empty,
+            name: Words.name("on:waiting"),
+            glyph: glyph,
+            hue: hue,
+            // How many each band holds, "1 to do \u00b7 44 to look at \u00b7 2
+            // to try", or with none, whether anything comes later (VKCF3Z,
+            // 3a92c450).
+            sideItems: bands,
+            side: side,
+            // A place's row, so nothing stands after its name; its drawer
+            // names the heaviest it holds, as To Look At's does, and the
+            // bands keep the row's room (VKCF3Z, 16efb1dc). Holding only
+            // things to try, it names none, so it has no drawer.
+            nested: true,
+            thing: true,
+            drawer: () => {
+                const heaviest = heaviestSaid();
+                return heaviest === "" ? null : {
+                    title: Words.name("on:waiting"),
+                    facts: [provider.fact("heaviest", heaviest)]
+                };
+            },
+            verbs: () => provider.waitingRows(),
+            targets: () => provider.waitingRows(),
+            commands: () => provider.filterCommands(null),
+            run: () => provider.launcher?.enter(provider.waiting)
+        });
+    }
+
+    // What For You lists from, so a change in any while For You or a step
+    // in it is held asks whether what's held reads otherwise (changedTo),
+    // since its own row, kept while its count reads the same, no longer
+    // moves all of Now for it. Asked after the change, never inside it.
+    readonly property var forYouHeard: [forYouItems, WaitingOnYou.later, given, latelyPieces,
+        Sessions.wanting]
+    onForYouHeardChanged: Qt.callLater(provider.forYouMoved)
+
+    function forYouMoved() {
+        if (heldKeys().length > 0)
+            changedTo(all);
+    }
 
     // The words a filter's kinds and sources are said in, for its head.
     readonly property var filterSaid: Filter.saidFrom(Object.keys(Words.things),
@@ -1742,7 +1826,7 @@ Provider {
     // own, as For You's Lately rows do.
     function made(fact, over) {
         const piece = fact.piece;
-        const now = () => piecesNow[fact.entry.mark] ?? piece;
+        const now = () => piecesNow[fact.entry.mark] ?? latelyNow[fact.entry.mark] ?? piece;
         // Every act a piece has, where it keeps more than its notice can
         // offer (pieces/Pi.qml's every).
         const actions = (piece.every ?? piece.actions).map((action, at) => thing({
