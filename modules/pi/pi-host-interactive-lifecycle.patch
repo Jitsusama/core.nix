@@ -46,7 +46,23 @@
  		this.runtimeHost = runtimeHost;
  		setCapabilityOverrides(this.settingsManager.getTerminalCapabilityOverrides());
  		const tuiMode = options.tuiMode ?? this.settingsManager.getTuiMode();
-@@ -984,7 +1000,10 @@
+@@ -637,6 +653,7 @@
+ 			onRightClickPaste: this.onRightClickPaste,
+ 			fullscreenCopyOnSelect: this.settingsManager.getFullscreenCopyOnSelect(),
+ 			fullscreenWheelScrollLines: this.settingsManager.getFullscreenWheelScrollLines(),
++			copySelection: (text) => this.copyText(text),
+ 		});
+ 		this.ui = createInteractiveTuiReference(() => this.renderer);
+ 		this.ui.setClearOnShrink(this.settingsManager.getClearOnShrink());
+@@ -946,6 +963,7 @@
+ 			onRightClickPaste: this.onRightClickPaste,
+ 			fullscreenCopyOnSelect: this.settingsManager.getFullscreenCopyOnSelect(),
+ 			fullscreenWheelScrollLines: this.settingsManager.getFullscreenWheelScrollLines(),
++			copySelection: (text) => this.copyText(text),
+ 		});
+ 		nextUi.setClearOnShrink(clearOnShrink);
+ 		nextUi.onDebug = onDebug;
+@@ -984,7 +1002,10 @@
  		// after exit. Fullscreen shows the notice in the header instead (#11508).
  		if (this.renderer.mode !== "fullscreen") {
  			const modelScopeNotice = this.getModelScopeNotice();
@@ -58,7 +74,7 @@
  		}
  
  		// Keep one component tree and remount it when changing renderers.
-@@ -1128,7 +1147,7 @@
+@@ -1128,7 +1149,7 @@
  		this.renderInitialMessages();
  
  		// Set up theme file watcher
@@ -67,7 +83,7 @@
  			this.ui.invalidate();
  			this.updateEditorBorderColor();
  			this.ui.requestRender();
-@@ -1274,8 +1293,9 @@
+@@ -1274,8 +1295,9 @@
  		}
  
  		// Main interactive loop
@@ -78,7 +94,7 @@
  			try {
  				await this.session.prompt(userInput);
  			} catch (error: unknown) {
-@@ -2216,7 +2236,7 @@
+@@ -2216,7 +2238,7 @@
  		this.updateTerminalTitle();
  	}
  
@@ -87,7 +103,7 @@
  		const message = error instanceof Error ? error.message : String(error);
  		this.showError(`${prefix}: ${message}`);
  		const extensionHint = this.getCrashExtensionHint(error);
-@@ -2227,6 +2247,10 @@
+@@ -2227,6 +2249,10 @@
  			const instructions = this.crashReportInstructions();
  			this.chatContainer.addChild(new ThemedText(() => theme.fg("muted", instructions), this.outputPad, 0));
  		}
@@ -98,7 +114,7 @@
  		stopThemeWatcher();
  		this.stop("transcript");
  		process.exit(1);
-@@ -4340,6 +4364,7 @@
+@@ -4340,6 +4366,7 @@
  	}
  
  	async getUserInput(): Promise<string> {
@@ -106,7 +122,7 @@
  		const queuedInput = this.pendingUserInputs.shift();
  		if (queuedInput !== undefined) {
  			return queuedInput;
-@@ -4383,8 +4408,32 @@
+@@ -4383,8 +4410,32 @@
  	 * repaint the final frame while the process is exiting.
  	 */
  	private isShuttingDown = false;
@@ -139,7 +155,7 @@
  		if (this.isShuttingDown) return;
  		this.isShuttingDown = true;
  		// Keep signal handlers registered until terminal cleanup has completed.
-@@ -4425,7 +4474,11 @@
+@@ -4425,7 +4476,11 @@
  		process.exit(0);
  	}
  
@@ -152,7 +168,7 @@
  		this.isShuttingDown = true;
  		this.unregisterSignalHandlers();
  		killTrackedDetachedChildren();
-@@ -4445,7 +4498,11 @@
+@@ -4445,7 +4500,11 @@
  	 * call ui.stop() to restore cooked mode, the cursor, and disable bracketed
  	 * paste / Kitty / modifyOtherKeys sequences.
  	 */
@@ -165,7 +181,7 @@
  		// A dead terminal is not a pi crash. Do not try to restore it or record it.
  		if (isDeadTerminalError(error)) {
  			this.emergencyTerminalExit();
-@@ -4482,6 +4539,8 @@
+@@ -4482,6 +4541,8 @@
  	}
  
  	private registerSignalHandlers(): void {
@@ -174,7 +190,7 @@
  		this.unregisterSignalHandlers();
  
  		const signals: NodeJS.Signals[] = ["SIGTERM"];
-@@ -4532,6 +4591,10 @@
+@@ -4532,6 +4593,10 @@
  	}
  
  	private handleCtrlZ(): void {
@@ -185,7 +201,7 @@
  		if (process.platform === "win32") {
  			this.showStatus("Suspend to background is not supported on Windows");
  			return;
-@@ -4690,6 +4753,11 @@
+@@ -4690,6 +4755,11 @@
  	}
  
  	private async handleOpenExternalEditor(): Promise<void> {
@@ -197,7 +213,7 @@
  		const editorCmd = this.settingsManager.getExternalEditorCommand();
  		const content = this.editor.getExpandedText?.() ?? this.editor.getText();
  		this.ui.stop();
-@@ -5797,7 +5865,7 @@
+@@ -5797,7 +5867,7 @@
  					return;
  				}
  				try {
@@ -206,7 +222,7 @@
  					this.showStatus("Copied selected message to clipboard");
  				} catch (error) {
  					this.showError(error instanceof Error ? error.message : String(error));
-@@ -6736,6 +6804,17 @@
+@@ -6736,6 +6806,17 @@
  		);
  	}
  
@@ -224,7 +240,7 @@
  	private async handleCopyCommand(
  		options: { flashConfirmation?: boolean; preferSelection?: boolean } = {},
  	): Promise<void> {
-@@ -6756,7 +6835,7 @@
+@@ -6756,7 +6837,7 @@
  		}
  
  		try {
@@ -233,7 +249,7 @@
  			if (options.flashConfirmation && this.ui instanceof TuiAltScreen) {
  				this.ui.flash("Copied!");
  			} else {
-@@ -7196,6 +7275,8 @@
+@@ -7196,6 +7277,8 @@
  		}
  		this.clearStatusIndicator();
  		this.themeController.disableAutoSync();
@@ -301,6 +317,26 @@
  			} catch (_error) {
  				// Ignore errors (file might be in invalid state while being edited)
  			}
+--- a/packages/coding-agent/src/modes/interactive/tui-renderer.ts
++++ b/packages/coding-agent/src/modes/interactive/tui-renderer.ts
+@@ -13,6 +13,8 @@
+ 	readonly onRightClickPaste?: () => void;
+ 	readonly fullscreenCopyOnSelect?: boolean;
+ 	readonly fullscreenWheelScrollLines?: WheelScrollLines;
++	/** Where a fullscreen selection is copied; the local clipboard unless given. */
++	readonly copySelection?: (text: string) => Promise<void>;
+ }
+ 
+ /** Composition root shared by coding-agent presentations. */
+@@ -38,7 +40,7 @@
+ 			wheelScrollLines: options.fullscreenWheelScrollLines ?? "auto",
+ 			copySelection: async (text) => {
+ 				try {
+-					await copyToClipboard(text);
++					await (options.copySelection ?? copyToClipboard)(text);
+ 					return true;
+ 				} catch (error) {
+ 					return error instanceof Error ? error.message : String(error);
 --- a/packages/coding-agent/src/utils/clipboard.ts
 +++ b/packages/coding-agent/src/utils/clipboard.ts
 @@ -17,12 +17,19 @@
