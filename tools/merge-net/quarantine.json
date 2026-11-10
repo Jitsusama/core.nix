@@ -33,12 +33,5 @@
     "owner_pr": 2732,
     "reason": "failed, then passed, at 29ae3044e4de",
     "test": "vm-desktop-launcher-answers"
-  },
-  {
-    "at": 1794301043,
-    "commit": "4dd34bebd31fdf5399cee6bec4a01d541e417151",
-    "owner_pr": 2778,
-    "reason": "its stand-in restore zip keeps its build time, so builders disagree on its hash; #2778 builds it alike and takes it off this list",
-    "test": "vm-guide-recovers"
   }
 ]
