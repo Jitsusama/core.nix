@@ -476,7 +476,7 @@ fn follow(command: &mut Command, roster: &mut Roster, mut out: impl Write) -> En
         .stderr
         .take()
         .map(|said| std::thread::spawn(move || what_it_said(said)));
-    let said = move || {
+    let complained = move || {
         complaint
             .and_then(|reading| reading.join().ok())
             .unwrap_or_default()
@@ -484,7 +484,7 @@ fn follow(command: &mut Command, roster: &mut Roster, mut out: impl Write) -> En
     let Some(stdout) = child.stdout.take() else {
         let _ = child.kill();
         let _ = child.wait();
-        return ended(1, said());
+        return ended(1, complained());
     };
     let mut input = BufReader::with_capacity(1 << 20, stdout);
     let mut line = Vec::new();
@@ -507,7 +507,7 @@ fn follow(command: &mut Command, roster: &mut Roster, mut out: impl Write) -> En
             if written.is_err() {
                 let _ = child.kill();
                 let _ = child.wait();
-                return ended(0, said());
+                return ended(0, complained());
             }
         }
     }
@@ -516,7 +516,7 @@ fn follow(command: &mut Command, roster: &mut Roster, mut out: impl Write) -> En
         Ok(status) => status.code().unwrap_or(1),
         Err(_) => 1,
     };
-    ended(code, said())
+    ended(code, complained())
 }
 
 /// What Tuple said as its last follow ended, so the same complaint goes
