@@ -72,8 +72,8 @@ ShellRoot {
                 glyph: "$"
                 selected: true
             }
-            // Words at a row's right a little past the 45% of it a side may
-            // take.
+            // A window: its title is what's looked for, so it keeps its room
+            // and its program and place are cut first.
             Choice {
                 id: titled
                 name: "\u03c0 - Launcher - agentic-harness.pi"
@@ -97,16 +97,6 @@ ShellRoot {
                 width: 480
                 name: "Slack Theme"
                 side: "pick Aubergine, then Custom theme, Import"
-                glyph: "$"
-            }
-            // A side too short for its name and itself both, as Inkscape's
-            // copied picture's at a larger scale: the side wins, and the
-            // name gives way at a whole word (VKCF3Z, 2026-11-09).
-            Choice {
-                id: sideWins
-                width: 320
-                name: "New Drawing From the Copied Picture"
-                side: "256 \u00d7 256 px"
                 glyph: "$"
             }
             // A whole side in a row as wide, whose right edge a cut one
@@ -571,17 +561,6 @@ ShellRoot {
         font: noteCaps.font
     }
 
-    // A row's name, in the face it's drawn in.
-    FontMetrics {
-        id: nameFace
-        font.family: Theme.level.name.family
-        font.italic: Theme.level.name.italic
-        font.pointSize: Theme.level.name.pointSize
-        font.weight: Theme.level.name.weight
-        font.variableAxes: Theme.level.name.variableAxes
-        font.features: Theme.level.name.features
-    }
-
     // What a row says at its right, in the face it's drawn in.
     FontMetrics {
         id: sideFace
@@ -893,22 +872,9 @@ ShellRoot {
             texts = apart(sideFits, sideFits.width);
             expect("a side that fits beside its name is said whole", cut(texts).length === 0,
                 said(texts));
-            // Words at the right past 45% of the row are a sentence's, not
-            // how a row stands, so they give way, and the name fitting stays.
             texts = apart(titled, titled.width);
-            expect("a side past its guard cut, its name whole",
+            expect("a window's title kept whole, its program and place cut first",
                 cut(texts).length === 1 && cut(texts)[0] === titled.side, said(texts));
-            texts = apart(sideWins, sideWins.width);
-            const nameCut = texts.find(t => t.text === sideWins.name);
-            const nameWide = nameCut === undefined ? 0 : nameCut.to - nameCut.from;
-            const nameWords = sideWins.name.split(" ");
-            const wholeNames = nameWords.slice(1).map((_, count) =>
-                `${nameWords.slice(0, count + 1).join(" ")}\u2026`);
-            expect("a side short of room wins, the name giving way at a whole word",
-                cut(texts).length === 1 && nameCut !== undefined && nameCut.truncated
-                    && wholeNames.some(one => Math.abs(nameFace.advanceWidth(one) - nameWide) < 1),
-                `${nameWide} wide, whole cuts ${JSON.stringify(wholeNames.map(one =>
-                    [one, Math.round(nameFace.advanceWidth(one))]))}: ${said(texts)}`);
             texts = apart(sideWords, sideWords.width);
             const sideCut = texts.find(t => t.text === sideWords.side);
             const drawnWide = sideCut === undefined ? 0 : sideCut.to - sideCut.from;

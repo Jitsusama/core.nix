@@ -65,9 +65,8 @@ Item {
     property bool moving: false
     // Whether, cut at rest, the words give way at a whole word, as what a
     // row says at its right does, rather than through one (VKCF3Z,
-    // 2026-11-05: "pick Aubergine, then Custom the\u2026"), and a row's name
-    // too (docs/design.md, Set, not styled). Styled words are measured as
-    // they read, without their markup (`plain`).
+    // 2026-11-05: "pick Aubergine, then Custom the\u2026"). A name keeps as
+    // many of its letters as fit instead.
     property bool wholeWords: false
     // How wide the words are laid at rest: their room, or where they give
     // way at a word, only as far as their last whole word and its
@@ -79,10 +78,10 @@ Item {
     // How wide the words' ink is at rest, cut at a whole word: as wide as
     // their room where they're whole or cut through.
     readonly property real restInk: {
-        if (!wholeWords || over <= 0)
+        if (!wholeWords || format !== Text.PlainText || over <= 0)
             return width;
         void face.font;
-        const cut = Reading.wholeWords(plain, width, said => face.advanceWidth(said));
+        const cut = Reading.wholeWords(text, width, said => face.advanceWidth(said));
         return cut === "" ? width : Math.min(width, Math.ceil(face.advanceWidth(cut)));
     }
 

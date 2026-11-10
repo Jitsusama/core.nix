@@ -477,13 +477,11 @@ ShellRoot {
             same("what it has open, one row a file while its window is open, newest "
                 + "looked at first, then in Recent the list programs share, never a file open now",
                 names(files), "open.pdf, paper.pdf, notes.md, old.pdf");
-            // An open file in the home leaves its folder out, a lone "~"
-            // telling nothing beside how it stands (VKCF3Z, 2026-11-09).
             same("each made as every file is, saying it's open, and in how many, then its folder",
                 files.map(row => `${row.component} ${row.key} ${row.side}`).join(" | "),
-                `file file:${root.home}/open.pdf open in 2 windows | file `
-                + `file:${root.home}/paper.pdf open | file file:${root.home}/notes.md `
-                + `open in 2 windows | file file:${root.home}/old.pdf ~`);
+                `file file:${root.home}/open.pdf open in 2 windows \u00b7 ~ | file `
+                + `file:${root.home}/paper.pdf open \u00b7 ~ | file file:${root.home}/notes.md `
+                + `open in 2 windows \u00b7 ~ | file file:${root.home}/old.pdf ~`);
             same("Return goes to one open, and opens one that was",
                 files.map(row => row.verb).join(" "), "go to go to go to open");
             same("one in a window niri names holds Go To, then Copy the Path, and no Close It",
@@ -511,7 +509,7 @@ ShellRoot {
             const shut = program("org.example.viewer").verbs()[3];
             same("the file stays where it was, dimmed and said closed, holding only its path",
                 `${shut.key} ${shut.gone} ${shut.side} | ${names(shut.verbs())}`,
-                `file:${root.home}/open.pdf true closed | Copy the Path`);
+                `file:${root.home}/open.pdf true closed \u00b7 ~ | Copy the Path`);
             Qt.exit(0);
         } catch (error) {
             fail(error.message);
