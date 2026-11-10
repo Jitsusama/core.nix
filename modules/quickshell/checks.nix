@@ -1361,7 +1361,9 @@ onLinux {
   # (2026-11-10). The shell starting carries the old list into lines and
   # lets the oldest go (tests/trials-kept.qml, through Quickshell).
   the-launcher-keeps-its-trials-one-by-one =
-    pkgs.runCommandLocal "the-launcher-keeps-its-trials-one-by-one" { }
+    # procps gives the case pkill, to end the pipe as a full disk would.
+    pkgs.runCommandLocal "the-launcher-keeps-its-trials-one-by-one"
+      { nativeBuildInputs = [ pkgs.procps ]; }
       ''
         export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         mkdir launcher
@@ -1370,7 +1372,6 @@ onLinux {
         cp ${../../tests/trials-kept.qml} shell.qml
         cp ${../../tests/lib/Expect.js} Expect.js
         export XDG_RUNTIME_DIR=$TMPDIR/runtime FONTCONFIG_FILE=${noFonts}
-        export PATH=$PATH:${pkgs.procps}/bin
         mkdir -m 700 $XDG_RUNTIME_DIR
         ${shellFolderLint}
         timeout 60 ${qs} -p shell.qml
