@@ -1493,12 +1493,19 @@ def every_row_reaches_its_sender(desktop: Desktop, command: str, answer: str) ->
     machine.send_key("esc")
     machine.send_chars(f":%{command}\n", delay=KEY_PACE)
 
-    # Every notice Desktop holds can, a forgotten one still unread too, but not Mark Them Read
-    # or History, so it asks first, as Vim's :confirm does.
+    # Not every row can, Mark Them Read and History never, so it asks first, as Vim's :confirm
+    # does. How many can depends on what the subtests before left: a notice already closed
+    # can't be forgotten, and a whole run left 9 of 26 that could, so only the two here are
+    # counted on.
     def asked(shown: Json) -> bool:
         count = cast("int", shown["count"])
-        can = f"{count - 2} of {count} can {command}"
-        return shown["question"] == f"{can}; {command} them? (y/n)" and bool(shown["takesAnswer"])
+        said = re.fullmatch(
+            rf"(\d+) of {count} can {command}; {command} them\? \(y/n\)",
+            cast("str", shown["question"]),
+        )
+        return (
+            said is not None and len(titles) <= int(said[1]) < count and bool(shown["takesAnswer"])
+        )
 
     desktop.launcher_until(asked)
     machine.send_chars("y")
