@@ -66,6 +66,8 @@ Provider {
         // wants Joel first, and by name within each, so a row keeps its
         // place while its group stands (NowGroups.js).
         keepingBegun(piecesKept);
+        for (const mark of Object.keys(piecesNow))
+            delete piecesNow[mark];
         for (const fact of lit)
             piecesNow[fact.entry.mark] = fact.piece;
         const rows = lit.map(fact => ({
