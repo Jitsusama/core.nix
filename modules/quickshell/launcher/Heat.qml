@@ -36,9 +36,11 @@ import qs
 import Quickshell
 import Quickshell.Services.UPower
 import QtQuick
+import "../PiSource.js" as Pi
 import "Heat.js" as Heat
 import "Machine.js" as Machine
 import "Numbers.js" as Numbers
+import "Order.js" as Order
 import "Seen.js" as Seen
 
 Provider {
@@ -192,12 +194,35 @@ Provider {
             .map(key => held[key]);
     }
 
+    // Each chip made from its sensor record, by the record's key, made
+    // again only as the daemon says that key anew (Daemon.qml's heard),
+    // where every chip was made again at each read, each second while
+    // Heat shows, though a change names 8 of Joel's 28 records
+    // (2026-11-10). A plain object, so keeping one notifies nothing.
+    readonly property var chipsMade: ({})
+    function tookSensors(changed, gone) {
+        for (const key of changed) {
+            if (key.startsWith("sensor:") && daemon.held[key])
+                chipsMade[key] = Heat.chipOf(daemon.held[key]);
+        }
+        for (const key of gone)
+            delete chipsMade[key];
+    }
+
+    // Each row as last made, by its part, with what it was made from, so a
+    // row whose part reads the same is kept: each key typed while Heat
+    // shows asks its answer again, and every row was made again at each,
+    // though nothing had been read since (Provider.qml's keeper).
+    readonly property var rowsKept: keeper()
+
     // Everything Heat says, as the daemon holds it: each chip's
     // temperatures (of a chip measuring many, only those it can name) and
     // fans, a thermal zone for a part no chip gives, and the throttling
     // counts.
     function sensed() {
-        const chips = Heat.chipsOf(heldOf("sensor"));
+        // In the order of their keys, as Heat.chipsOf gives them.
+        const chips = Order.sorted(Object.keys(chipsMade), Order.byName(key => key))
+            .map(key => chipsMade[key]);
         const zones = Heat.zonesOf(heldOf("zone"));
         const processor = heldOf("processor")[0] ?? null;
         return {
@@ -547,15 +572,24 @@ Provider {
         if (temps.length === 0 && fans.length === 0)
             return null;
         const rows = [];
+        const kept = rowsKept;
+        keepingBegun(kept);
+        // A part's row says its figures and its drawer, which reads the
+        // firmware's points for it and, for the processor, its cooling.
+        const temp = part => keptOr(kept, tempKey(part), [part, Heat.tripsFor(now.zones, part.id),
+            part.id === "processor" ? now.cooling : null], () => tempRow(part, now), Pi.alike);
+        const throttled = () => keptOr(kept, "throttled", [now.throttled, series.throttled ?? []],
+            () => throttledRow(now.throttled), Pi.alike);
         for (const part of temps) {
-            rows.push(tempRow(part, now));
+            rows.push(temp(part));
             if (part.id === "processor" && now.throttled)
-                rows.push(throttledRow(now.throttled));
+                rows.push(throttled());
         }
         if (now.throttled && !temps.some(part => part.id === "processor"))
-            rows.push(throttledRow(now.throttled));
+            rows.push(throttled());
         for (const fan of fans)
-            rows.push(fanRow(fan));
+            rows.push(keptOr(kept, fanKey(fan), fan, () => fanRow(fan), Pi.alike));
+        keptOnly(kept);
         const hot = hottest(temps);
         const turning = fans.filter(fan => fan.value > 0).length;
         const summary = [];
@@ -647,7 +681,8 @@ Provider {
     Connections {
         target: daemon
 
-        function onHeard(keys) {
+        function onHeard(changed, gone) {
+            provider.tookSensors(changed, gone);
             if (!provider.heardSinceOpen) {
                 provider.heardSinceOpen = true;
                 provider.reads = null;

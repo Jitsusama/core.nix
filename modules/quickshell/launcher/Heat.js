@@ -117,41 +117,43 @@ function electricSaid(value, unit, group, point) {
 // since the rest say nothing of what they measure; a fan whose speed
 // can't be read is left out.
 function chipsOf(records) {
-    return Order.sorted(records, Order.byName(record => record.key))
-        .map(record => {
-            const part = CHIP_PARTS.includes(record.part) ? record.part : "";
-            const chip = record.chip ?? "";
-            const temps = (record.temperatures ?? [])
-                .filter(each => plausible(each.temperature_c))
-                .map(each => ({
-                    n: each.n,
-                    label: each.label ?? "",
-                    value: each.temperature_c,
-                    high: limitOf(each.high_c),
-                    crit: limitOf(each.critical_c),
-                    low: plausible(each.low_c) ? each.low_c : null,
-                    emergency: limitOf(each.emergency_c),
-                    alarm: each.alarm === true,
-                    chip
-                }))
-                .filter(each => part !== "" || labelled(each.label) !== "");
-            const turning = (record.fans ?? []).filter(each => given(each.rpm)).map(each => ({
-                n: each.n,
-                label: each.label ?? "",
-                value: each.rpm,
-                max: each.max_rpm ?? null,
-                min: each.min_rpm ?? null,
-                target: each.target_rpm ?? null,
-                power: each.power_ratio ?? null,
-                mode: each.mode ?? null
-            }));
-            const electric = {
-                volts: electricOf(record.voltages, "volts"),
-                amps: electricOf(record.currents, "amps"),
-                watts: electricOf(record.power, "watts")
-            };
-            return { chip, part, temps, fans: turning, electric };
-        });
+    return Order.sorted(records, Order.byName(record => record.key)).map(chipOf);
+}
+
+// One chip, as chipsOf gives each, from its sensor record.
+function chipOf(record) {
+    const part = CHIP_PARTS.includes(record.part) ? record.part : "";
+    const chip = record.chip ?? "";
+    const temps = (record.temperatures ?? [])
+        .filter(each => plausible(each.temperature_c))
+        .map(each => ({
+            n: each.n,
+            label: each.label ?? "",
+            value: each.temperature_c,
+            high: limitOf(each.high_c),
+            crit: limitOf(each.critical_c),
+            low: plausible(each.low_c) ? each.low_c : null,
+            emergency: limitOf(each.emergency_c),
+            alarm: each.alarm === true,
+            chip
+        }))
+        .filter(each => part !== "" || labelled(each.label) !== "");
+    const turning = (record.fans ?? []).filter(each => given(each.rpm)).map(each => ({
+        n: each.n,
+        label: each.label ?? "",
+        value: each.rpm,
+        max: each.max_rpm ?? null,
+        min: each.min_rpm ?? null,
+        target: each.target_rpm ?? null,
+        power: each.power_ratio ?? null,
+        mode: each.mode ?? null
+    }));
+    const electric = {
+        volts: electricOf(record.voltages, "volts"),
+        amps: electricOf(record.currents, "amps"),
+        watts: electricOf(record.power, "watts")
+    };
+    return { chip, part, temps, fans: turning, electric };
 }
 
 // The thermal zones that stand for a part, each { part, type, value,

@@ -27,6 +27,7 @@ import qs
 import Quickshell
 import Quickshell.Services.UPower
 import QtQuick
+import "../PiSource.js" as Pi
 import "Numbers.js" as Numbers
 import "Machine.js" as Machine
 import "Power.js" as Power
@@ -388,10 +389,26 @@ Provider {
     // (Piece.qml's drawnBy) without moving the sparks.
     readonly property var all: battery === null ? [] : toldOf(battery, series).rows
 
-    // The battery's rows from `record` and the reads `kept` of it, making
-    // nothing and keeping nothing.
+    // The battery's rows from `record` and the reads `kept` of it, keeping
+    // nothing: the Charger's row, made from the supplies but the battery,
+    // and the battery's own, each kept while what it's made from reads the
+    // same. The daemon says a supply anew about every two seconds while
+    // Power shows, the battery alone mostly, and each key typed asks the
+    // answer again, and every row was made again at each (2026-11-10).
     function toldOf(record, kept) {
-        const rows = [chargerPart()];
+        const charger = keptOr(rowsKept, "charger",
+            supplies().filter(each => each.type !== "Battery"), () => chargerPart(), Pi.alike);
+        const own = keptOr(rowsKept, "battery", [record, kept.watts, kept.volts],
+            () => ownRows(record, kept), Pi.alike);
+        return Object.assign({}, own, { headline: doing(), rows: [charger].concat(own.rows) });
+    }
+    // Each part's rows as last made, with what they were made from
+    // (Provider.qml's keeper).
+    readonly property var rowsKept: keeper()
+
+    // The battery's own rows, all but the Charger's.
+    function ownRows(record, kept) {
+        const rows = [];
         const state = Power.stateOf(record);
 
         // The charge, as a bar: the headline says it, but not once it's
