@@ -101,6 +101,6 @@ def test_keys_typed_as_it_opens_land_and_are_found(shell: Shell) -> None:
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_until(lambda shown: shown["keys"])
     shell.send_chars("comp")
+    # What's found lands a frame after the word it was found for, so each is waited on.
     shell.launcher_until(lambda shown: shown["open"] and shown["typed"] == "comp")
-    rows = shell.showing()["rows"]
-    assert rows, "what was typed as it opened found nothing"
+    shell.launcher_until(lambda shown: shown["typed"] == "comp" and bool(shown["rows"]))
