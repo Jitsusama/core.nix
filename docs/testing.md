@@ -253,8 +253,12 @@ merge is blamed for it. A search its stalls leave unsettled holds no switch:
 its test is kept in `~/.local/state/net/unsettled.json` and runs first at the
 next head, as a held test does, since only a test's own output earns a hold.
 A failure already found fixed forward at a head isn't searched again when a
-restarted round hears it. A switch leaves the net running, since stopping it
-mid-round loses every run in flight; it starts its new build between rounds.
+restarted round hears it. A round ends with its tests: its searches, and the
+PRs that list its flaky tests, settle beside the rounds after it, each kept in
+`~/.local/state/net/settling` until done, so a restarted net takes them up
+again. A switch leaves the net running, since stopping it mid-round loses
+every run in flight; it starts its new build between rounds, once what it
+was settling is done.
 The net starts nothing while a hold on the whole machine stands, or while
 `~/.local/state/net/pause` is there, and `merge-net status` says where it
 is.

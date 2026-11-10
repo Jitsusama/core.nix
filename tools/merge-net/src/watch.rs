@@ -26,13 +26,17 @@
 //! those choices is tested against a stand-in (the tests below).
 
 use std::path::Path;
-use std::sync::{Condvar, Mutex, MutexGuard};
+use std::sync::{Mutex, MutexGuard};
 
 use serde_json::{Value, json};
 
 use crate::movers;
 use crate::running;
 use crate::state::{Ran, State, now, short};
+
+mod settling;
+use settling::Job;
+pub use settling::Settler;
 
 /// What `nix-offload` exits with when no builder took the build.
 pub const UNSENT: i32 = 75;
@@ -85,7 +89,7 @@ pub const AT_ONCE: usize = 12;
 /// which main stayed broken; by quarters it takes four. Its runs go as
 /// bulk, so they take no room another session's run is waiting for. It is
 /// the least a step tries: a search alone takes the room `AT_ONCE` names,
-/// shared with the others under way (`Breaking::splits`).
+/// shared with the others under way (`Settler::splits`).
 const SPLITS: usize = 3;
 
 /// How many failed tests' searches run side by side, each trying at least
@@ -857,9 +861,32 @@ fn find_broken(
     Ok(())
 }
 
+/// One round, and everything it found settled before it answers, as the
+/// tests want. The first error it or a job it handed ended in is its
+/// answer.
+#[cfg(test)]
+fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, String> {
+    let settler = Settler::new(world, state);
+    let round = std::thread::scope(|scope| {
+        settler.start(scope);
+        let round = round_beside(world, state, start, &settler);
+        settler.close();
+        round
+    })?;
+    settler.error().map_or(Ok(round), Err)
+}
+
 /// One round: look at main's head, if there's something new to look at.
 /// `start` is the base of the first round, before any head has passed.
-pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, String> {
+/// What takes longer than its tests to settle goes to `settler`, and the
+/// round ends with its tests.
+pub fn round_beside(
+    world: &dyn World,
+    state: &State,
+    start: &str,
+    settler: &Settler,
+) -> Result<Round, String> {
+    settler.take_up();
     if let Some(why) = world.held() {
         state.say(&format!("held, starting nothing: {why}"));
         return Ok(Round::Idle);
@@ -874,9 +901,11 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
         Some(began) if passed.as_deref() != Some(began.as_str()) => began,
         _ => world.head()?,
     };
-    revert_again(world, state)?;
-    running::let_through_once_it_runs(world, state)?;
-    clear_if_reverted(world, state)?;
+    settler.write(|| {
+        revert_again(world, state)?;
+        running::let_through_once_it_runs(world, state)?;
+        clear_if_reverted(world, state)
+    })?;
     let base = passed.clone().unwrap_or_else(|| start.to_owned());
     if seen.as_deref() == Some(head.as_str()) || base == head {
         return Ok(Round::Idle);
@@ -884,7 +913,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
     state.begin(&head)?;
     state.say(&format!("comparing {} with {}", short(&base), short(&head)));
     let changed = world.changed(&base, &head)?;
-    let hold = clear_if_fixed_forward(world, state, &changed, &head)?;
+    let hold = clear_if_fixed_forward(world, state, settler, &changed, &head)?;
     find_broken(world, state, &changed, &base, &head)?;
     // A test held for a revert not yet merged is left until it is; one held
     // with no revert, as when the revert wouldn't apply, runs again, since
@@ -906,11 +935,10 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
             || on_hold(test)
             || listed_on_main(world, &head, test)
     };
-    let breaking = Breaking::new(world, state, &base, &head, left_be);
+    let breaking = Breaking::new(world, state, settler, &base, &head, left_be);
     let outcomes = attempt_all(world, state, &head, &tests, &|test, ran| {
         breaking.heard(test, ran);
     });
-    breaking.done()?;
     let listed = newest_known(world)
         .map(|newest| world.quarantined(&newest))
         .unwrap_or_default();
@@ -921,15 +949,16 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
         match outcome {
             Outcome::Passed => {
                 if on_hold(test) {
-                    state.clear_hold()?;
-                    state.say(&format!(
-                        "{test} passes again at {}, so the hold is cleared",
-                        short(&head)
-                    ));
+                    let how = format!("passes again at {}", short(&head));
+                    settler.write(|| clear_hold_of(state, test, &how))?;
                 }
             }
             Outcome::Flaky if !kept_out && !state.found("flaky", test, &head) => {
-                list_flaky(world, state, &head, test, owner_in(test))?;
+                settler.hand(Job::Flaky {
+                    head: head.clone(),
+                    test: test.clone(),
+                    owner: owner_in(test),
+                });
             }
             Outcome::Flaky => {}
             Outcome::Failed if kept_out => {
@@ -974,28 +1003,26 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
 /// it does, while the round's other tests still run. On 7 November
 /// vm-checks-go-first failed twice at 12:46, but the search for its merge
 /// waited 34 minutes behind the round's slower desktop tests, and main
-/// stayed broken 113 minutes in all. Up to `SEARCHES` tests are searched
-/// side by side, but what each found is settled one at a time, since each
-/// writes the hold, and the first error stops the rest.
-struct Breaking<'a, F> {
+/// stayed broken 113 minutes in all. The search goes to the settler, which
+/// runs up to `SEARCHES` side by side and settles what each found one at a
+/// time, since each writes the hold.
+struct Breaking<'a, 's, F> {
     world: &'a dyn World,
     state: &'a State,
+    settler: &'a Settler<'s>,
     base: &'a str,
     head: &'a str,
     /// Tests whose failure reverts nothing: quarantined, or already held.
     left_be: F,
-    done: Mutex<Result<(), String>>,
     /// Main's newest head a held test with no revert was last run at.
     tried: Mutex<Option<String>>,
-    /// How many searches are under way, and the room one ending makes.
-    searching: Mutex<usize>,
-    room: Condvar,
 }
 
-impl<'a, F: Fn(&str) -> bool> Breaking<'a, F> {
+impl<'a, 's, F: Fn(&str) -> bool> Breaking<'a, 's, F> {
     fn new(
         world: &'a dyn World,
         state: &'a State,
+        settler: &'a Settler<'s>,
         base: &'a str,
         head: &'a str,
         left_be: F,
@@ -1003,13 +1030,11 @@ impl<'a, F: Fn(&str) -> bool> Breaking<'a, F> {
         Self {
             world,
             state,
+            settler,
             base,
             head,
             left_be,
-            done: Mutex::new(Ok(())),
             tried: Mutex::new(None),
-            searching: Mutex::new(0),
-            room: Condvar::new(),
         }
     }
 
@@ -1018,82 +1043,23 @@ impl<'a, F: Fn(&str) -> bool> Breaking<'a, F> {
     /// 13:48, and eight merges waited off the machine behind the hold while
     /// the round it was found in ran on.
     ///
-    /// A failed test searches for its merge at once, beside the others'
-    /// searches, and waits only to settle what it found.
+    /// A failed test has its merge searched for at once, beside the round,
+    /// unless one for it is under way from a round before.
     fn heard(&self, test: &str, outcome: Outcome) {
-        self.write(|| clear_if_reverted(self.world, self.state));
+        if let Err(why) = self
+            .settler
+            .write(|| clear_if_reverted(self.world, self.state))
+        {
+            self.state.say(&why);
+        }
         if outcome == Outcome::Failed && !(self.left_be)(test) {
-            self.search(test);
+            self.settler.hand(Job::Search {
+                base: self.base.to_owned(),
+                head: self.head.to_owned(),
+                test: test.to_owned(),
+            });
         }
         self.fixed_forward_since();
-    }
-
-    /// Search for what broke `test`, once there's room, and settle it.
-    ///
-    /// A failed test that finds no room asks whether main's newest head
-    /// fixed it while it waits, rather than after. On 8 November six tests
-    /// failed at once at 06fc027e, and their searches ran one after another
-    /// from 10:30 to past 15:00, though five of the six were fixed forward
-    /// and each was found so within one search step.
-    ///
-    /// A test whose turn comes asks again whether it's left be, since the
-    /// searches before it can take an hour: on 9 November main listed
-    /// launcher tests at 09:22 that had been waiting since 08:06 behind
-    /// other searches, each decided to be searched as it failed.
-    fn search(&self, test: &str) {
-        if self.failed() {
-            return;
-        }
-        let mut searching = lock(&self.searching);
-        if *searching >= SEARCHES {
-            drop(searching);
-            // An error here is asked again beside the search's first step,
-            // so it's left to that.
-            if fixed_forward(self.world, self.state, self.head, test, None) == Ok(true) {
-                return;
-            }
-            searching = lock(&self.searching);
-            while *searching >= SEARCHES {
-                searching = self
-                    .room
-                    .wait(searching)
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-            }
-            if (self.left_be)(test) {
-                return;
-            }
-        }
-        *searching += 1;
-        drop(searching);
-        let found = search(self.world, self.state, self.base, self.head, test, &|| {
-            self.splits()
-        });
-        *lock(&self.searching) -= 1;
-        self.room.notify_one();
-        self.write(|| match found? {
-            Some(found) => settle(self.world, self.state, self.base, self.head, found),
-            None => Ok(()),
-        });
-    }
-
-    /// How many merges a search's next step tries: the room `AT_ONCE` names,
-    /// shared among the searches under way, and never fewer than `SPLITS`.
-    /// A search alone tries twelve merges a step, and leaves a thirteenth.
-    fn splits(&self) -> usize {
-        (AT_ONCE / (*lock(&self.searching)).max(1)).max(SPLITS)
-    }
-
-    /// Whether an error has stopped the round's searches.
-    fn failed(&self) -> bool {
-        lock(&self.done).is_err()
-    }
-
-    /// Run `write`, one at a time, unless an error has stopped the round.
-    fn write(&self, write: impl FnOnce() -> Result<(), String>) {
-        let mut done = lock(&self.done);
-        if done.is_ok() {
-            *done = write();
-        }
     }
 
     /// Each test's end also runs a test held with no revert at main's newest
@@ -1126,19 +1092,28 @@ impl<'a, F: Fn(&str) -> bool> Breaking<'a, F> {
         {
             return;
         }
-        if self.state.clear_hold().is_ok() {
-            self.state.say(&format!(
-                "{test} passes at main's newest head {}, so the hold is cleared",
-                short(&newest)
-            ));
+        let cleared = self.settler.write(|| {
+            clear_hold_of(
+                self.state,
+                &test,
+                &format!("passes at main's newest head {}", short(&newest)),
+            )
+        });
+        if let Err(why) = cleared {
+            self.state.say(&why);
         }
     }
+}
 
-    fn done(self) -> Result<(), String> {
-        self.done
-            .into_inner()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+/// Clear the hold if it still names `test`, which `passes` says how. A
+/// search beside the round may have held another test since it began.
+fn clear_hold_of(state: &State, test: &str, passes: &str) -> Result<(), String> {
+    if !state.hold().is_some_and(|hold| hold["test"] == test) {
+        return Ok(());
     }
+    state.clear_hold()?;
+    state.say(&format!("{test} {passes}, so the hold is cleared"));
+    Ok(())
 }
 
 /// The value behind `mutex`, even one a panicking thread left, since what
@@ -1158,6 +1133,7 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 fn clear_if_fixed_forward(
     world: &dyn World,
     state: &State,
+    settler: &Settler,
     changed: &Changed,
     head: &str,
 ) -> Result<Option<Value>, String> {
@@ -1175,12 +1151,9 @@ fn clear_if_fixed_forward(
     if !matches!(attempt(world, state, head, &test), Outcome::Passed) {
         return Ok(hold);
     }
-    state.clear_hold()?;
-    state.say(&format!(
-        "{test} passes again at {}, so the hold is cleared",
-        short(head)
-    ));
-    Ok(None)
+    let passes = format!("passes again at {}", short(head));
+    settler.write(|| clear_hold_of(state, &test, &passes))?;
+    Ok(state.hold())
 }
 
 /// Whether main's newest head, other than the round's `head`, lists `test`
@@ -1653,6 +1626,7 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
     use std::fs;
+    use std::sync::Condvar;
     use std::time::Duration;
 
     /// The exit the stand-in gives for a run stopped before it ended.
@@ -2426,24 +2400,6 @@ mod tests {
     }
 
     #[test]
-    fn a_search_alone_takes_the_room_and_shares_it_with_others() {
-        let state = state("splits");
-        let world = Stand::default();
-        let breaking = Breaking::new(&world, &state, "s", "h", |_: &str| false);
-        let at = |searches: usize| {
-            *lock(&breaking.searching) = searches;
-            breaking.splits()
-        };
-        assert_eq!(at(1), AT_ONCE, "a search alone left room unused");
-        assert_eq!(at(2), AT_ONCE / 2);
-        assert_eq!(
-            at(SEARCHES),
-            SPLITS,
-            "searches together took more than the room"
-        );
-    }
-
-    #[test]
     fn a_test_failing_one_run_at_mains_newest_head_is_listed_there() {
         let state = state("flaky-at-newest");
         state.set_heads("s", "s").unwrap();
@@ -2830,35 +2786,39 @@ mod tests {
         );
     }
 
+    fn search_for(test: &str) -> Job {
+        Job::Search {
+            base: "s".into(),
+            head: "h".into(),
+            test: test.into(),
+        }
+    }
+
     #[test]
-    fn a_test_main_lists_while_it_waits_for_a_search_is_not_searched() {
-        let state = state("listed-while-waiting");
-        state.set_heads("s", "s").unwrap();
-        state.begin("h").unwrap();
+    fn a_test_main_lists_by_its_turn_is_not_searched() {
+        let state = state("listed-by-its-turn");
         let world = Stand {
             head: "n".into(),
             merges: names("a b h"),
             changed: changed("vm-b"),
+            listed_since: names("vm-b vm-w1 vm-w2 vm-w3 vm-w4"),
             ..Stand::default()
         }
         .exits("n", "vm-b", &[1, 1]);
-        let listed = std::sync::atomic::AtomicBool::new(false);
-        let breaking = Breaking::new(&world, &state, "s", "h", |_: &str| {
-            listed.load(std::sync::atomic::Ordering::SeqCst)
-        });
-        *lock(&breaking.searching) = SEARCHES;
-        std::thread::scope(|scope| {
-            scope.spawn(|| breaking.search("vm-b"));
-            // With no room, it asks main's newest head first, and then waits.
-            world.wait_while(|built| built.is_empty(), "main's newest head");
-            listed.store(true, std::sync::atomic::Ordering::SeqCst);
-            *lock(&breaking.searching) -= 1;
-            breaking.room.notify_one();
-        });
+        let settler = Settler::new(&world, &state);
+        for test in names("vm-w1 vm-w2 vm-w3 vm-w4") {
+            settler.hand(search_for(&test));
+        }
+        // With no room, it asks main's newest head first, and then waits.
+        settler.hand(search_for("vm-b"));
         assert!(
-            world.waited_out.lock().unwrap().is_empty(),
-            "it never asked main"
+            world.built().contains(&("n".to_owned(), "vm-b".to_owned())),
+            "a test with no room to search didn't ask main's newest head first"
         );
+        std::thread::scope(|scope| {
+            settler.start(scope);
+            settler.close();
+        });
         assert!(
             world.built().iter().all(|(at, _)| at == "n"),
             "the test whose turn came after main listed it is searched"
@@ -2866,6 +2826,85 @@ mod tests {
         assert!(
             world.reverted.lock().unwrap().is_empty(),
             "a test main listed had a merge reverted"
+        );
+        assert!(state.settling().is_empty(), "a job settled is still kept");
+    }
+
+    #[test]
+    fn a_round_ends_with_its_tests_while_its_search_waits() {
+        // 10 November: the round begun at 08:13 ran its tests to 09:02 and
+        // what they found to 10:31, and every merge since waited for it.
+        let state = state("ends-with-its-tests");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a vm-b"),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1]);
+        let settler = Settler::new(&world, &state);
+        assert_eq!(
+            round_beside(&world, &state, "s", &settler).unwrap(),
+            Round::Failed("h".into())
+        );
+        assert!(
+            world.reverted.lock().unwrap().is_empty(),
+            "the round waited for its search"
+        );
+        assert!(settler.holds("vm-a"), "the search wasn't handed on");
+        assert_eq!(state.heads().0.as_deref(), Some("h"));
+        std::thread::scope(|scope| {
+            settler.start(scope);
+            settler.close();
+        });
+        assert_eq!(*world.reverted.lock().unwrap(), names("h"));
+        assert!(state.settling().is_empty(), "a job settled is still kept");
+    }
+
+    #[test]
+    fn a_search_cut_short_by_a_restart_is_taken_up_again() {
+        let state = state("taken-up");
+        state.set_heads("h", "h").unwrap();
+        state
+            .keep_settling(
+                "vm-a",
+                &json!({"kind": "search", "base": "s", "head": "h", "test": "vm-a"}),
+            )
+            .unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1]);
+        assert_eq!(round(&world, &state, "s").unwrap(), Round::Idle);
+        assert_eq!(*world.reverted.lock().unwrap(), names("h"));
+        assert!(state.settling().is_empty(), "a job settled is still kept");
+    }
+
+    #[test]
+    fn a_test_whose_search_is_under_way_is_not_handed_again() {
+        let state = state("not-handed-again");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1]);
+        let settler = Settler::new(&world, &state);
+        settler.hand(search_for("vm-a"));
+        settler.hand(Job::Search {
+            base: "h".into(),
+            head: "n".into(),
+            test: "vm-a".into(),
+        });
+        assert_eq!(state.settling().len(), 1);
+        assert_eq!(
+            state.settling()[0]["head"],
+            "h",
+            "the second search replaced the first"
         );
     }
 
