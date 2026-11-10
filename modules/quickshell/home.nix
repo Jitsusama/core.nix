@@ -663,7 +663,7 @@ let
     # The theme's brush, as GIMP paints on pictures.
     gimp = nerd "f00e3";
     # The theme's vector, as Inkscape draws in shapes and paths.
-    inkscape = nerd "f0ae7";
+    inkscape = mark "vector";
     # The theme's music playing, as Spotify plays it.
     spotify = nerd "f075a";
   };
