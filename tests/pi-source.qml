@@ -130,13 +130,34 @@ QtObject {
             Pi.telling(moved, false) === Pi.telling(sorted, false), Pi.telling(moved, false));
         expect("with the launcher showing it, a step moving tells it",
             Pi.telling(moved, true) !== Pi.telling(sorted, true), Pi.telling(moved, true));
-        busyAt.presence = Object.assign({}, busyAt.presence, { busy: false });
-        expect("with the launcher shut, a session's standing moving still tells it",
+        // It stops working and listens, as 14 in 61 of Joel's sessions'
+        // changes did, which only the launcher says.
+        busyAt.state = "idle";
+        busyAt.presence = Object.assign({}, busyAt.presence, { busy: false, state: "listening",
+            since: "2026-11-08T01:00:10Z" });
+        const listening = Pi.sorted(working, place);
+        expect("with the launcher shut, a session moving to listening tells nothing new",
+            Pi.telling(listening, false) === Pi.telling(sorted, false),
+            Pi.telling(listening, false));
+        expect("with the launcher showing it, a session moving to listening tells it",
+            Pi.telling(listening, true) !== Pi.telling(moved, true), Pi.telling(listening, true));
+        busyAt.presence = Object.assign({}, busyAt.presence,
+            { wants: [{ kind: "question" }] });
+        expect("with the launcher shut, a session coming to want Joel still tells it",
             Pi.telling(Pi.sorted(working, place), false) !== Pi.telling(sorted, false),
             Pi.telling(Pi.sorted(working, place), false));
         expect("what's told never changes what's held",
             Pi.sorted(working, place).live.find(one => one.file === "s-busy")
                 .presence.stepDetail.name === "edit", "its step was taken out");
+        // It parks, wanting nothing, so only its standing and its list move.
+        busyAt.state = "ended";
+        busyAt.presence = Object.assign({}, busyAt.presence, { state: "parked",
+            owner: { bootId: thisBoot } });
+        delete busyAt.presence.wants;
+        const parking = Pi.sorted(working, Object.assign({}, place,
+            { markers: Object.assign({ "s-busy": true }, place.markers) }));
+        expect("with the launcher shut, a session parking still tells it",
+            Pi.telling(parking, false) !== Pi.telling(sorted, false), Pi.telling(parking, false));
 
         const states2 = [null, { state: "starting" }, { state: "not answering" },
             { state: "running" }].map(link => Pi.state(link)).join(" ");
