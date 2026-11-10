@@ -67,8 +67,17 @@ Singleton {
     // 2026-11-08: "i shouldn't be required to mark a notice as read if I
     // looked at the slack message in slack"). Each is read in one change,
     // saying where, so History says "read in Slack" rather than "read here".
+    // They're read once this change is done: reading them rewrites the
+    // history readThere is found from, which inside its own change is a
+    // binding loop (tests/read-there.qml).
     readonly property var readThere: Unreads.readInSlack(Notices.history, messages)
     onReadThereChanged: {
+        if (readThere.length > 0)
+            Qt.callLater(readReadThere);
+    }
+
+    // Reads what's read in Slack still, as a change since may have read it.
+    function readReadThere() {
         if (readThere.length > 0)
             Notices.markRead(readThere, "readInSlack");
     }

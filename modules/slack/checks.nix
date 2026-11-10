@@ -3,6 +3,7 @@
 {
   account,
   bareNixos,
+  graphical,
   holds,
   lib,
   onLinux,
@@ -111,4 +112,28 @@ onLinux {
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml slack-unreads.qml
       touch $out
     '';
+  # Slack's notice of a message read in Slack is read in Notices once, by
+  # SlackUnreads.qml itself in offscreen Quickshell beside a stand-in
+  # daemon and Notices (tests/read-there.qml), and Quickshell logs no
+  # binding loop doing it, which its exit alone wouldn't show.
+  slack-reads-a-notice-read-there-once =
+    pkgs.runCommandLocal "slack-reads-a-notice-read-there-once" { }
+      ''
+        mkdir -p runtime shell && chmod 700 runtime
+        cd shell
+        cp ${./SlackUnreads.qml} SlackUnreads.qml
+        cp ${./SlackUnreads.js} SlackUnreads.js
+        cp ${./tests/stand-ins/Daemon.qml} Daemon.qml
+        cp ${./tests/stand-ins/Notices.qml} Notices.qml
+        cp ${./tests/stand-ins/SlackSays.qml} SlackSays.qml
+        cp ${./tests/read-there.qml} shell.qml
+        export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+        export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+        ${shellFolderLint}
+        timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml > ../said 2>&1 \
+          || { cat ../said; exit 1; }
+        cat ../said
+        if grep -q "Binding loop" ../said; then exit 1; fi
+        touch $out
+      '';
 }

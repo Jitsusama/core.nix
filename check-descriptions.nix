@@ -1831,6 +1831,10 @@
     taken as one change, and those already known as none; their conversation is found by any of
     their addresses, its drawer saying who said each message, newest last
   '';
+  slack-reads-a-notice-read-there-once = ''
+    Slack's own desktop notice of a message Joel read in Slack is read in Notices once, said as
+    read in Slack, after the change that found it, so the shell logs no binding loop doing it
+  '';
   slack-says-only-whats-current = ''
     Now's Slack piece gathers what Slack's daemon holds in Slack's order whatever order it was
     heard in, and counts what wants Joel only while the daemon answers and Slack answered it,
