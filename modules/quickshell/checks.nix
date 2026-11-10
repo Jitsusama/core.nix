@@ -1209,8 +1209,8 @@ onLinux {
   # pi's sessions, as many and as large as Joel's, each changing its step
   # with the launcher shut, start a garbage collection in well under one
   # change in five, as QV4's own report of each collection counts them.
-  # Told apart as text they had started one nearly every change (135 in
-  # 200), each a sweep that stalls the shell's main thread.
+  # Told apart as text they had started one nearly every change (85 in
+  # 100), each a sweep that stalls the shell's main thread.
   pi-sorts-without-collecting =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -1220,15 +1220,10 @@ onLinux {
       cp ${./PiSource.js} PiSource.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
-      export QT_LOGGING_RULES=qt.qml.gc.allocatorStats=true
+      export QML_IMPORT_PATH=${qt}/lib/qt-6/qml QT_LOGGING_RULES=qt.qml.gc.allocatorStats=true
       ${shellFolderLint}
-      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 120 ${qt}/bin/qml pi-source-collects.qml \
-        > said 2>&1 || { cat said; exit 1; }
-      started=$(grep -c 'triggered by unmanaged heap:' said || true)
-      echo "collections the text started in 100 changes: $started"
-      if [ "$started" -ge 20 ]; then
-        exit 1
-      fi
+      timeout 120 ${qt}/bin/qml pi-source-collects.qml > said 2>&1 || { cat said; exit 1; }
+      awk '/triggered by unmanaged heap:/ { n++ } END { print n + 0, "started"; exit n >= 20 }' said
       touch $out
     '';
 
