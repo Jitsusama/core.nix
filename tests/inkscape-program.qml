@@ -88,6 +88,19 @@ ShellRoot {
         property var sources: [inkscape, copies]
         property var partsOfRows: ({})
         property string underListed: ""
+
+        // What waits for the next frame, as the launcher's afterFrame
+        // keeps it, run as a frame is drawn (`drawn`).
+        property var frames: []
+        function afterFrame(then) {
+            frames = frames.concat([then]);
+        }
+        function drawn() {
+            const due = frames;
+            frames = [];
+            for (const then of due)
+                then();
+        }
     }
 
     Launcher.InkscapeProgram {
@@ -192,6 +205,9 @@ ShellRoot {
             Niri.revision += 1;
             theLauncher.open = true;
             theLauncher.held = [{ row: entry(), rows: [] }];
+            // A step's frame never waits on starting a process.
+            same("its drawings are looked at once the step is drawn", theLauncher.frames.length, 1);
+            theLauncher.drawn();
             stepped();
         } catch (error) {
             fail(error.message);
