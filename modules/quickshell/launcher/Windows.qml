@@ -22,6 +22,7 @@ import Quickshell
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "../PiSource.js" as Pi
 import "KeyLayers.js" as KeyLayers
 import "Order.js" as Order
 
@@ -154,15 +155,15 @@ Provider {
                 focused: window.id === Niri.current,
                 waiting: waiting.includes(String(window.id))
             };
-            const from = [JSON.stringify(window, provider.unsaid), one.entry ? one.entry.id : "",
-                one.program, JSON.stringify(said)].join("\n");
+            const from = { window: Object.assign({}, window),
+                said: [one.entry ? one.entry.id : "", one.program, said] };
             const before = provider.kept[window.id];
-            next[window.id] = before && before.from === from
+            next[window.id] = provider.madeFrom(before, from)
                 ? before : { from: from, row: provider.ownRow(one, said) };
             // The window Joel's in is This Window too, made from the same.
             if (said.focused) {
                 const was = provider.kept.this;
-                next.this = was && was.from === from
+                next.this = provider.madeFrom(was, from)
                     ? was : { from: from, row: provider.thisWindow(one) };
             }
             return next[window.id].row;
@@ -178,9 +179,16 @@ Provider {
     // it is focused is `said`, both changing at every move of the focus,
     // and its layout, but for the column `said` gives, changes at every
     // scroll of the view.
-    function unsaid(key, value) {
-        return key === "focus_timestamp" || key === "is_focused" || key === "layout"
-            ? undefined : value;
+    readonly property var unsaid: ["focus_timestamp", "is_focused", "layout"]
+
+    // Whether a row kept was made from what a window says now. It's
+    // compared in place rather than as text, since the text of Joel's 75
+    // windows, about 30,000 characters, was made again at each change niri
+    // told of (2026-11-10). The window is kept as a copy, since Niri.qml
+    // sets its focus, urgency and layout in place.
+    function madeFrom(kept, from) {
+        return kept !== undefined && Pi.fieldsAlike(kept.from.window, from.window, unsaid)
+            && Pi.alike(kept.from.said, from.said);
     }
 
     // A window's own row, from what niri says of it and what its row says

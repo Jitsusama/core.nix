@@ -1936,6 +1936,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Quests.qml} launcher/Quests.qml
+      cp ${./PiSource.js} PiSource.js
       cp ${./launcher/Order.js} launcher/Order.js
       cp ${./launcher/RealmMachines.js} launcher/RealmMachines.js
       cp ${./launcher/Machine.js} launcher/Machine.js
@@ -2914,6 +2915,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Runs.qml} launcher/Runs.qml
+      cp ${./PiSource.js} PiSource.js
       cp ${./launcher/Order.js} launcher/Order.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
@@ -2991,6 +2993,7 @@ onLinux {
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/KeyLayers.js} launcher/KeyLayers.js
       cp ${./launcher/Windows.qml} launcher/Windows.qml
+      cp ${./PiSource.js} PiSource.js
       cp ${./launcher/Capture.qml} launcher/Capture.qml
       cp ${./launcher/Captured.js} launcher/Captured.js
       cp ${./launcher/Recent.js} launcher/Recent.js
