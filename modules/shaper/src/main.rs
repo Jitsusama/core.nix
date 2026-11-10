@@ -44,7 +44,7 @@ mod waiting;
 
 use memory::{Held, Memory};
 use probe::{Echo, Probes};
-use rate::{Bounds, Controller, Direction, Settings, State, float, whole};
+use rate::{Bounds, Controller, Direction, Settings, State, float};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
@@ -203,6 +203,10 @@ struct Shaped {
     /// the controller was last told, how many found a queue in it.
     holding: Option<(u64, u64)>,
     queued_reads: (u32, u32),
+    /// Of the reads of the VPNs riding the link since, how many found a
+    /// queue in one: a VPN held under the link holds the queue in its own
+    /// CAKE, and one the link's CAKE doesn't see is no router's.
+    vpn_reads: (u32, u32),
 }
 
 impl Shaped {
@@ -237,12 +241,9 @@ impl Shaped {
     /// held one in most reads, whether data waits to go, and what TCP
     /// sent again, in kbit/s.
     fn ours(&mut self, waiting: bool, resent: u64) -> Option<oneway::Ours> {
-        let (queued, reads) = std::mem::take(&mut self.queued_reads);
-        (reads > 0).then_some(oneway::Ours {
-            queued: queued * 2 >= reads,
-            waiting,
-            resent,
-        })
+        let link = std::mem::take(&mut self.queued_reads);
+        let vpn = std::mem::take(&mut self.vpn_reads);
+        oneway::Ours::from_reads(link, vpn, waiting, resent)
     }
 
     /// What the link sent and received since it was last counted, in
@@ -408,6 +409,7 @@ fn start(
         real_time: qdisc::RealTime::default(),
         holding: None,
         queued_reads: (0, 0),
+        vpn_reads: (0, 0),
     };
     let (tx, rx) = shaped.bytes();
     shaped.counted = (tx, rx, Instant::now());
@@ -499,10 +501,12 @@ fn run(options: &Options) -> ExitCode {
     let mut sessions = Vec::new();
     let mut last_sessions: Option<Instant> = None;
     let mut last_resent: Option<(u64, Instant)> = None;
-    let mut quiet: BTreeMap<String, quiet::Quiet> = BTreeMap::new();
-    let mut live = options
-        .one_way
-        .then(|| live::Live::new(&options.record, SystemTime::now()));
+    let mut heard: BTreeMap<String, Heard> = BTreeMap::new();
+    let mut primary: Option<String> = None;
+    let mut live = options.one_way.then(|| {
+        let learned = options.state.join("learned.json");
+        live::Live::new(&options.record, SystemTime::now(), &learned)
+    });
     loop {
         let now = Instant::now();
         let t = (now - began).as_secs_f64();
@@ -531,6 +535,7 @@ fn run(options: &Options) -> ExitCode {
                     s.follows = leader;
                 }
             }
+            primary = order.first().cloned();
             let base = order.first().and_then(|p| shaped.get(p)).map(|s| s.applied);
             follow_vpns(&mut vpns, &options.vpns, base);
             reach = local(&shaped, &vpns);
@@ -553,7 +558,8 @@ fn run(options: &Options) -> ExitCode {
         // the sets are also written every few seconds, changed or not.
         let mut sets = classes::read(&options.cgroups);
         sets.bulk5 = classes::untyped(&options.cgroups, &sessions);
-        sets.vpnbulk = quiet_vpns(&vpns, &mut quiet, t);
+        let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
+        sets.vpnbulk = quiet_vpns(&vpns, &mut heard, rides, t);
         let text = classes::transaction(TABLE, &sets, &reach);
         if text != filled || last_fill.is_none_or(|at| now - at >= Duration::from_secs(5)) {
             last_fill = Some(now);
@@ -619,13 +625,6 @@ fn keep(memory: &mut Memory, s: &mut Shaped) {
     down.learned = false;
 }
 
-/// What a VPN may send and bring in, against the connection it rides: a
-/// little under, so its own queue forms inside the VPN, where its packets
-/// can still be told apart, before the connection's CAKE sees them as one
-/// flow. Its CAKE counts the VPN's own headers on each packet, so the
-/// share left over is for what goes round the VPN.
-const VPN_SHARE: f64 = 0.95;
-
 /// What the shaper holds a VPN to each way, in kbit/s, the IFB its
 /// downloads are turned round through, and the firewall mark its own
 /// packets carry, when it routes by one.
@@ -636,24 +635,46 @@ struct Vpn {
     mark: Option<String>,
 }
 
+/// What the shaper has heard of a VPN's CAKE: whether it carries only bulk,
+/// and what it held when last read.
+#[derive(Default)]
+struct Heard {
+    quiet: quiet::Quiet,
+    held: Option<(u64, u64)>,
+}
+
 /// The marks of the VPNs carrying only bulk now, whose own packets go as
-/// bulk on the connection. Each VPN's CAKE is counted at every step.
+/// bulk on the connection. Each VPN's CAKE is counted at every step, and
+/// whether any held a queue is counted to the primary uplink they ride,
+/// whose queue it is.
 fn quiet_vpns(
     vpns: &BTreeMap<String, Vpn>,
-    quiet: &mut BTreeMap<String, quiet::Quiet>,
+    heard: &mut BTreeMap<String, Heard>,
+    primary: Option<&mut Shaped>,
     t: f64,
 ) -> Vec<String> {
-    quiet.retain(|name, _| vpns.contains_key(name));
+    heard.retain(|name, _| vpns.contains_key(name));
     let mut marks = Vec::new();
+    let mut read = (0, 0);
     for (name, vpn) in vpns {
         let json = sh(&words(&format!("tc -s -j qdisc show dev {name}"))).unwrap_or_default();
+        let h = heard.entry(name.clone()).or_default();
+        if let Some(now) = qdisc::holding(&json) {
+            let queued = qdisc::queued(h.held.replace(now), now);
+            read = (read.0.max(u32::from(queued)), 1);
+        }
         let Some(unbulk) = qdisc::unbulk_bytes(&json) else {
             continue;
         };
-        let still = quiet.entry(name.clone()).or_default().sample(unbulk, t);
-        if still && let Some(mark) = &vpn.mark {
+        if h.quiet.sample(unbulk, t)
+            && let Some(mark) = &vpn.mark
+        {
             marks.push(mark.clone());
         }
+    }
+    if let Some(s) = primary {
+        s.vpn_reads.0 += read.0;
+        s.vpn_reads.1 += read.1;
     }
     marks.sort();
     marks.dedup();
@@ -691,8 +712,8 @@ fn follow_vpns(applied: &mut BTreeMap<String, Vpn>, names: &[String], base: Opti
             continue;
         };
         let ifb = qdisc::ifb(index);
-        let up = whole(float(up) * VPN_SHARE).max(FLOOR.up);
-        let down = whole(float(down) * VPN_SHARE).max(FLOOR.down);
+        let up = qdisc::vpn_rate(up).max(FLOOR.up);
+        let down = qdisc::vpn_rate(down).max(FLOOR.down);
         let was = applied.get(name);
         // A VPN brought back up is a new device, with a new index.
         if let Some(old) = was.filter(|v| v.ifb != ifb) {

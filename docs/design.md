@@ -179,7 +179,8 @@ of each kind of line it sets, and a row's pitch is its height.
   rather than measures keeps every digit and gains no zeros (a mode's
   "120.001 Hz", a channel's "5,745 MHz", a version, a charger's offered
   "5 V · 20 V at 3 A", a learned set point's "2 klx"), while a measure keeps
-  its zeros ("0.500 A", "96.0 ppi"). Sizes are decimal, worked out
+  its zeros ("0.500 A", "96.0 ppi"), and a measure at zero reads 0
+  ("0 lx"). Sizes are decimal, worked out
   from bytes ("1.52 GB of 4.08 GB", "915 MB"), never a GiB beside a GB;
   thousands take a comma ("4,000 K", "2,400 rpm"); a scale reads "2×",
   never "200%"; and a pair says which is which ("12 kB/s in · 0 B/s

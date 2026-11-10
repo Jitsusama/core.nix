@@ -177,7 +177,14 @@ impl Scan {
 impl Looker for Scan {
     fn judge(&mut self, target: &Path, checkout: Option<&Path>) -> io::Result<Use> {
         let me = self.me;
-        Ok(activity::judge(self.processes()?, me, target, checkout))
+        let within = crate::discover::enclosing(target);
+        Ok(activity::judge_within(
+            self.processes()?,
+            me,
+            target,
+            checkout,
+            within.as_deref(),
+        ))
     }
 
     fn moved(&mut self) {

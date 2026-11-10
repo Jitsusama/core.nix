@@ -957,6 +957,13 @@ ShellRoot {
                 program("pair").note, "1 recent");
             same("asking that provider for its Recent once", giver.askedRecent - recentAsked, 1);
             same("and for what it has open once", giver.askedOpen - openAsked, 1);
+            // A closed program's count says what it is alone, having no
+            // windows to count, so it asks no provider what it holds: a
+            // step into Programs asked for every row it drew (2026-11-10).
+            const countAsked = giver.askedRecent + giver.askedOpen;
+            const closedCount = program("radio").count;
+            same("a closed program's count asks no provider what it holds",
+                `${closedCount}|${giver.askedRecent + giver.askedOpen - countAsked}`, "|0");
             // Written while the launcher is closed, quiet's list isn't read
             // until it opens, however long that is.
             root.waiting = "a change while closed";

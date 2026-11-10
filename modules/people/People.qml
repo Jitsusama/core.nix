@@ -234,18 +234,24 @@ Provider {
             changed();
     }
     function listedNow() {
-        const now = Date.now();
+        // Listed and standing as when last asked, they're the same rows,
+        // with no one's text written again to find so.
+        const listed = listedPersons();
+        if (listedRows.from === listed)
+            return listedRows.rows;
         keepingBegun(keptListed);
-        const rows = Person.ordered(persons.filter(person => Person.listed(person,
-            standOf(person), now)), person => standOf(person), now).map(person => {
+        const rows = listed.map(person => {
             const stood = standOf(person);
             return keptOr(keptListed, person.key, JSON.stringify([person, stood]),
                 () => made(person, stood));
         });
         keptOnly(keptListed);
+        listedRows.from = listed;
+        listedRows.rows = rows;
         return rows;
     }
     readonly property var keptListed: keeper()
+    readonly property var listedRows: ({ from: null, rows: [] })
 
     // The listed rows by key, so a search finds them as they stand.
     readonly property var known: {
@@ -550,6 +556,40 @@ Provider {
 
     function everything() {
         return provider.wanted ? all : listedNow();
+    }
+
+    // Home names those listed and says how many from the people themselves,
+    // making none of their rows, so People isn't wanted there (Wanted.js)
+    // and its rows wait to be searched or stepped into. Read for its names,
+    // every opening listed them all again, each person's text written to
+    // see whether their row could be kept, and the first after each start
+    // made every row, 486 on Joel's laptop (2026-11-10).
+    saysAtHome: true
+
+    // Those listed, in order, kept while everyone and how they stand are
+    // the same and nothing with anyone has started or ended since, so the
+    // openings between two changes order them once, rather than each
+    // ordering every listed person for home's count, its names and its
+    // rows. Plain, so keeping them notifies nothing.
+    readonly property var listing: ({ persons: null, stands: null, until: 0, listed: [] })
+    function listedPersons() {
+        const now = Date.now();
+        const kept = listing;
+        if (kept.persons !== persons || kept.stands !== stands || now >= kept.until) {
+            kept.listed = Person.ordered(persons.filter(person => Person.listed(person,
+                standOf(person), now)), person => standOf(person), now);
+            kept.persons = persons;
+            kept.stands = stands;
+            kept.until = Person.changesAt(persons, now);
+        }
+        return kept.listed;
+    }
+    function homeSays() {
+        const count = listedPersons().length;
+        return count === 0 && (collection.none ?? "") !== "" ? null : countedAs(count);
+    }
+    function memberNames() {
+        return listedPersons().map(person => person.name);
     }
 
     // A search looks through everyone, not only those listed.

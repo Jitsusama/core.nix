@@ -64,10 +64,14 @@ pub fn last_build(target: &Path, checkout: Option<&Path>) -> f64 {
 }
 
 /// Every directory a profile may be in: one level down, or two under a
-/// target triple. Which are profiles is for the caller to see.
+/// target triple. Which are profiles is for the caller to see. A target
+/// kept inside this one is its own, and isn't among them.
 pub(crate) fn profiles(target: &Path) -> Vec<PathBuf> {
     let mut profiles = Vec::new();
     for child in subdirs(target) {
+        if crate::discover::kept_inside(&child) {
+            continue;
+        }
         profiles.extend(subdirs(&child));
         profiles.push(child);
     }

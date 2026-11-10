@@ -178,10 +178,27 @@ function listed(person, stood, now) {
 // and Joel, newest first, then by name. How they stand isn't part of it,
 // since it changes while the list is open; it's said in their note.
 // It's measured from now only as they're ordered, so the minute passing
-// moves nobody under the keys.
+// moves nobody under the keys. Each one's measures are read once, before
+// the sort, rather than at each of its comparisons: read there, how each
+// stands and their last thing were worked out twice a comparison, and
+// ordering 500 took some 250 ms of a launcher's opening in a VM
+// (2026-11-10).
 function ordered(persons, standOf, now) {
-    return Order.sorted(persons, Order.returned({ first: person => standOf(person).favourite,
-        last: person => last(person, now), name: person => person.name }));
+    const measured = persons.map(person => ({ person, first: standOf(person).favourite,
+        last: last(person, now), pieces: Order.pieces(person.name) }));
+    return Order.sorted(measured, Order.returned({ first: one => one.first,
+        last: one => one.last, pieces: one => one.pieces })).map(one => one.person);
+}
+
+// When the order and who's listed next change with the clock alone: the
+// first moment after now that something with someone starts or ends,
+// or Infinity when nothing will. Until then, with everyone and how they
+// stand the same, those listed and their order are as they were.
+function changesAt(persons, now) {
+    const ends = persons.map(person => (person.spans ?? [])
+        .map(span => (span.from > now ? span.from : span.to))
+        .filter(at => at > now));
+    return Math.min(Infinity, ...[].concat(...ends));
 }
 
 // Their details, as the launcher's drawer shows them beside their row:

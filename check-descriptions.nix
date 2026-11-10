@@ -174,8 +174,11 @@
     the backlight daemon's files say whether the room sets the level and what it's on its way
     to past a gap too slight to move, the room's light with the lid shut or that none is heard,
     measured to three digits in lx or klx, and every point of its curve, dimmest first, kept
-    where the daemon keeps it, its lux every digit in the same units; and the facts
-    that identify a thing end its drawer, marked, each said once
+    where the daemon keeps it, its lux every digit in the same units; the machine daemon's
+    backlight says its steps, those read back only where they differ, its stepping and driver
+    only where the kernel says them, and its sensor its count grouped, its lux a count and an
+    offset only where it isn't none; and the facts that identify a thing end its drawer, marked,
+    each said once
   '';
   a-timer-is-read-from-what-is-typed = ''
     a timer's span and name are read from what's typed after "timer" however it's written, a span
@@ -965,8 +968,8 @@
     the machine daemon says hello on the socket systemd hands it, says every record of a watch's
     kinds at once and their rates as of now a moment later, a disk's rates, sensors, link and file
     systems found through what's mapped over it, a disk taken out as gone and programs ranked by
-    their share and memory, reads nothing once nothing is watched, and refuses an ask or a kind it
-    doesn't know
+    their share and memory, the screen's backlight and the room's light told as they move, reads
+    nothing once nothing is watched, and refuses an ask or a kind it doesn't know
   '';
   machine-passes-clippy = ''
     clippy finds nothing in the machine daemon or its tests
@@ -2205,7 +2208,8 @@
     lately, finds anyone as they stand while holding only those listed and found, calls, joins and
     favours them, steps in before calling, lists a source's page for them after the ways to reach
     them with its facts in the drawer and the time where they are, knows who an address is with no
-    row made, and never asks Tuple itself
+    row made, says at home how many it lists and names them with no row made, and never asks Tuple
+    itself
   '';
   the-launcher-finds-the-quests = ''
     the launcher reads the open and ended quests the node serves, each with its own kind rather
@@ -2570,8 +2574,9 @@
     every source's people join into one person per email address, a source that knows two
     addresses for someone joining them, each standing as the first source that says, favourites
     listed first, then whoever there's been something with, the last first, someone only asked to
-    what's to come left to be found by typing, with their details for the drawer and their acts in
-    the one order
+    what's to come left to be found by typing, the order reading how each stands once each and
+    changing with the clock alone only as something with someone starts or ends, with their
+    details for the drawer and their acts in the one order
   '';
   the-picker-picks-what-the-keys-say = ''
     the region picker starts on the middle quarter, moves and sizes its box by arrows within the
@@ -3112,7 +3117,9 @@
     of the middle turn, within twice their frozen times and design.md's budget more, timed in
     turns in the same machine so the builder's own load slows both alike; and a step into
     Programs, Chrome's, the reader's, Inkscape's and Neovim's pages, Chrome's Recent and
-    Passwords, each holding what Joel's do, shows within twice its frozen time and 50 ms more
+    Passwords, each holding what Joel's do, shows within twice its frozen time and 50 ms more;
+    and the first opening after the shell starts again, People listing 500 as Joel's lists
+    hundreds, reaches its frame within twice its frozen time and 50 ms more
   '';
   vm-desktop-launcher-answers = ''
     the launcher answers from the machine and copies the answer: a MAC's vendor, the battery and

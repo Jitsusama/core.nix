@@ -82,10 +82,14 @@ static DEP_INFO: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(?P<name>\w+)-(?P<digest>[0-9a-f]{16})\.d$").unwrap());
 
 /// Each profile's `deps` in a target: `<profile>/deps`, and a cross
-/// target's `<triple>/<profile>/deps`. Never through a symlink.
+/// target's `<triple>/<profile>/deps`. Never through a symlink, and never
+/// in a target kept inside this one, which is its own.
 pub fn deps_dirs(target: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();
     for profile in subdirs(target) {
+        if crate::discover::kept_inside(&profile) {
+            continue;
+        }
         if is_dir(&profile.join("deps")) {
             found.push(profile.join("deps"));
         }

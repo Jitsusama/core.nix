@@ -905,7 +905,7 @@ QtObject {
             ["a speed of none is held, and said", Here.facts(gps(null, 0, null), 1000,
                 hereSaid, Object.assign({ ago: () => "now" }, hereTold))
                 .filter(fact => ["altitude", "speed", "heading"].includes(fact.id))
-                .map(fact => fact.value).join("|"), "0.00 km/h"],
+                .map(fact => fact.value).join("|"), "0 km/h"],
             ["a walk's speed keeps three figures, a highway's none past them, a "
                 + "round one its zeros", [1.2, 27.8, 10].map(speed => Here.facts(gps(null, speed, null), 1000, hereSaid,
                     Object.assign({ ago: () => "now" }, hereTold))
@@ -2260,6 +2260,14 @@ QtObject {
             true);
         machine("seen among what's found", Seen.seen(opened({ matches: [its] }), watcher, []),
             true);
+        // A collection's own row, and a member of it found from outside,
+        // are the collection's (Launcher.qml's into and gathered rows).
+        machine("seen stepped into as a collection",
+            Seen.seen(opened({ held: [{ row: { from: watcher } }] }), watcher, []), true);
+        machine("seen as a collection's member found from outside",
+            Seen.seen(opened({ matches: [{ from: watcher }] }), watcher, []), true);
+        machine("unseen inside another collection",
+            Seen.seen(opened({ held: [{ row: { from: {} } }] }), watcher, []), false);
         machine("seen in a place holding its row",
             Seen.seen(opened({ placed: ["heat"] }), watcher, ["heat"]), true);
         machine("seen as the place it says how things stand in",
@@ -2770,9 +2778,6 @@ QtObject {
             [["charge_control_start_threshold", "55"], ["charge_control_end_threshold", "60"]]);
         machine("a limit with no start", Power.limitWrites(null, 80, 90, 5),
             [["charge_control_end_threshold", "90"]]);
-        machine("the room's lux", Power.lux("20000", "0.001000000", "0"), 20);
-        machine("a sensor with no scale", Power.lux("17", "", ""), 17);
-        machine("a sensor not read", Power.lux("", "0.001", "0"), null);
         machine("a dark room", Power.roomLevel(0), 0);
         machine("daylight", Power.roomLevel(10000), 1);
         machine("a room a hundredth of daylight", Math.round(Power.roomLevel(100) * 100) / 100,

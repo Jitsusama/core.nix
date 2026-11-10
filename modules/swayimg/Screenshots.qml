@@ -83,7 +83,9 @@ Provider {
     property string readFor: ""
     property var reading: []
 
-    onSteppedInChanged: look()
+    // Read once the step is drawn (Launcher.qml's afterFrame), so its
+    // frame never waits on starting a process.
+    onSteppedInChanged: launcher.afterFrame(look)
     onRecentFoldersChanged: look()
 
     // The folders are read as swayimg is stepped into, and again as

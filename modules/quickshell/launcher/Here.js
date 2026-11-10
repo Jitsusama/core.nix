@@ -80,7 +80,10 @@ function figured(value, how, told) {
         ? round(value * TEN ** decimals) / TEN ** decimals
         : round(value / TEN ** -decimals) * TEN ** -decimals;
     const written = (String(rounded).split(".")[1] ?? "").length;
-    const kept = Math.max(0, how.zeros ? decimals : Math.min(decimals, written));
+    // A zero has no significant digits, so keeps no zeros either: "0 km/h",
+    // never a precision nothing gave (VKCF3Z, 2026-11-10).
+    const kept = rounded === 0 ? 0
+        : Math.max(0, how.zeros ? decimals : Math.min(decimals, written));
     return { value: rounded, text: told.number(rounded, kept) };
 }
 
@@ -136,7 +139,7 @@ const MEASURES = [
 
 // A measure's figure: to its places where it keeps a fixed number, else
 // to three significant figures, to the nearest, keeping its zeros, so
-// 10 m/s reads "36.0 km/h".
+// 10 m/s reads "36.0 km/h", and none reads "0 km/h".
 function figure(value, decimals, told) {
     if (decimals !== undefined) {
         return told.number(value, decimals);

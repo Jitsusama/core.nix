@@ -576,6 +576,25 @@ impl Walks {
     }
 }
 
+/// What reclaiming a target would free. It's emptied in place, keeping its
+/// benchmarks and the targets kept inside it, so what those hold doesn't
+/// count. The ones inside are offered first, so what each holds is counted
+/// already, but for one being worked in, which was never sized.
+fn target_frees(target: &Path, world: &World) -> u64 {
+    let working: u64 = world
+        .kept
+        .iter()
+        .filter(|(path, _)| path.parent() == Some(target))
+        .map(|(path, _)| whole(path))
+        .sum();
+    crate::reclaim::KEEP
+        .iter()
+        .fold(size(target, world), |left, kept| {
+            left.saturating_sub(whole(&target.join(kept)))
+        })
+        .saturating_sub(working)
+}
+
 fn trees_under(
     root: &Path,
     device: u64,
@@ -589,21 +608,22 @@ fn trees_under(
             Checkout::At(dir) => Some(dir.as_path()),
             _ => None,
         };
-        let used = activity::judge(world.processes, world.me, &tree.path, checkout);
+        let within = discover::enclosing(&tree.path);
+        let used = activity::judge_within(
+            world.processes,
+            world.me,
+            &tree.path,
+            checkout,
+            within.as_deref(),
+        );
         // The candidate refuses these too; deciding first spares sizing a
         // tree a build is writing to.
         if matches!(used, Use::Busy(_) | Use::Unknown(_)) {
             world.kept.push((tree.path.clone(), used));
             continue;
         }
-        // A target is emptied in place, keeping its benchmarks, so what's
-        // left once it's been reclaimed would free nothing.
         let frees = match kind {
-            Kind::Target => crate::reclaim::KEEP
-                .iter()
-                .fold(size(&tree.path, world), |left, kept| {
-                    left.saturating_sub(whole(&tree.path.join(kept)))
-                }),
+            Kind::Target => target_frees(&tree.path, world),
             Kind::Install => size(&tree.path, world),
         };
         if kind == Kind::Target && frees == 0 {

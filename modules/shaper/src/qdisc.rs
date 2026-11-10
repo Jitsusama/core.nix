@@ -19,7 +19,7 @@
 
 use serde_json::Value;
 
-use crate::rate::float;
+use crate::rate::{float, whole};
 
 /// The conntrack mark's bits the shaper owns: the class, 1 to 4 in CAKE's
 /// tin order (bulk, best effort, video, voice), and a bit for local
@@ -107,6 +107,22 @@ pub fn install(link: &str, ifb: &str, up: u64, down: u64) -> Vec<Vec<String>> {
 /// instead, small packets, where it's most, would overrun the connection,
 /// and the queue would form again in its CAKE, where the VPN is one flow.
 const VPN_OVERHEAD: u32 = 80;
+
+/// What a VPN may send and bring in, as a share of the connection it
+/// rides. On the connection a VPN is one flow, in one tin, so its queue
+/// has to form inside it, where its packets can still be told apart. CAKE's
+/// diffserv4 keeps bulk at least a sixteenth of the connection, so with
+/// bulk outside the VPN, as a build's upload to a builder is, a VPN held
+/// any closer than that fills the connection's queue too, and every flow
+/// inside it loses packets alike: Joel's upload got a thirty-third of the
+/// line beside 32 jobs uploads that way. Under it, by a twentieth for what
+/// goes round the VPN.
+pub const VPN_SHARE: f64 = 0.95 * 15.0 / 16.0;
+
+/// A VPN's rate, in kbit/s, against the connection's.
+pub fn vpn_rate(link_kbit: u64) -> u64 {
+    whole(float(link_kbit) * VPN_SHARE)
+}
 
 /// A VPN's queue: CAKE alone at its root, under the same handle as a
 /// connection's, so the priority nftables gives a packet names its tin there
@@ -335,6 +351,24 @@ impl RealTime {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_vpn_leaves_the_connection_s_bulk_its_sixteenth() {
+        // CAKE on the VPN counts its headers, so its rate is what its
+        // packets cost the connection: under what the connection's best
+        // effort gets while bulk outside the VPN takes its sixteenth, the
+        // VPN's queue stays its own.
+        let link = 8_800;
+        let vpn = vpn_rate(link);
+        assert!(
+            vpn * 16 <= link * 15,
+            "a VPN at {vpn} of {link} fills the connection"
+        );
+        assert!(
+            vpn * 100 >= link * 85,
+            "a VPN at {vpn} of {link} leaves too much unused"
+        );
+    }
 
     #[test]
     fn a_call_s_packets_count_as_real_time_and_last_through_a_pause() {

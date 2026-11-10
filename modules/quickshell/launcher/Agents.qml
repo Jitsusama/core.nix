@@ -343,7 +343,7 @@ Provider {
         // Kept by where it's placed too, as Now makes it at no depth while
         // Agents lays it out in its tree.
         const key = `${session.address}\u0000${JSON.stringify(place ?? null)}`;
-        return keptOr(keeping, key, from, () => madeAnew(session, place, read));
+        return keptOr(keeping, key, from, () => madeAnew(session, place, read), Pi.alike);
     }
 
     // What the harness lists an orchestrator as, or null for any other.

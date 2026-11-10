@@ -34,6 +34,7 @@
 // names, and a thermal zone is read only for a part no chip gives.
 import qs
 import Quickshell
+import Quickshell.Services.UPower
 import QtQuick
 import "Heat.js" as Heat
 import "Machine.js" as Machine
@@ -72,10 +73,13 @@ Provider {
     readonly property bool seen: Seen.seen(launcher, provider, ["heat"],
         typed => Seen.asks(questions.concat(Object.keys(partsAsked)), plainly(typed)))
 
-    // And once as the shell starts, though nothing shows them, since
-    // what's inside each part is made from what's held while the launcher
-    // is closed, and a part read only while seen was never found from the
-    // root until Heat had been shown (Daemon.qml's refresh).
+    // And once as the shell starts, and as UPower says a device came or
+    // went, though nothing shows them, since what's inside each part is
+    // made from what's held while the launcher is closed, and a part read
+    // only while seen was never found from the root until Heat had been
+    // shown (Daemon.qml's refresh). A battery is one of Heat's parts.
+    readonly property int upowerDevices: UPower.devices.values.length
+    onUpowerDevicesChanged: daemon.refresh()
     Component.onCompleted: daemon.refresh()
 
     // Whether the daemon hasn't yet answered this watch whole, so a
@@ -565,7 +569,6 @@ Provider {
             graph: hot ? level(hot.value, hot) : undefined,
             glyph: Words.glyph("heat"),
             rows: rows,
-            note: says("", "read"),
             live: provider
         };
     }
@@ -590,7 +593,7 @@ Provider {
             graph: part.graph,
             glyph: whole.glyph,
             rows: part.verbs ? part.verbs() : [],
-            note: part.note !== "" ? part.note : whole.note,
+            note: part.note,
             live: provider
         };
     }

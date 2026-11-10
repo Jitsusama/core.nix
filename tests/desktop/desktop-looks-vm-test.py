@@ -1590,13 +1590,14 @@ def the_desk_lights_plate_lies_on_the_lines(desktop: Desktop, scale: str) -> Non
 
 
 def the_screens_plate_says_what_sets_it(desktop: Desktop, scale: str) -> None:
-    """Hold the screen's plate to the lines with the lid shut, then following the room.
+    """Hold the screen's plate to the lines not following the room, then following it.
 
     The backlight daemon says what it settled, whole by a rename, in backlight-now, and keeps
     its curve in learned; the VM's stand-in backlight and sensor give it no real figures, so
     both are written here as it writes them, the daemon stopped so it writes neither over
-    them, and started again after. With the lid shut, Follows is gone and the Room
-    Light still says the stand-in sensor's live reading; following the room on its way to
+    them, and started again after. The stand-in has no lid to shut, so the shot is named for
+    what it shows: not following, Follows is gone and the Room Light still says the
+    stand-in sensor's live reading; following the room on its way to
     what it asks, with a curve, it says both, the Curve last of the light, every point
     dimmest first (VKCF3Z, 2026-11-08).
     """
@@ -1636,19 +1637,26 @@ def the_screens_plate_says_what_sets_it(desktop: Desktop, scale: str) -> None:
         drawer = plate_shown(desktop, scale)
         room = drawer["values"][drawer["facts"].index("Room Light")]
         assert room.endswith(" lx"), f"at {scale}: {drawer}"
-        desktop.shoot(f"launcher-plate-screen-lid-shut-at-{at}")
+        desktop.shoot(f"launcher-plate-screen-not-following-at-{at}")
         curve = "0 0.150\\n6 0.377\\n28 0.950\\n10000 1.000\\n"
         desktop.as_account(
             f"mkdir -p $(dirname {learned}) && printf '{curve}'"
             f" > {learned}.writing && mv {learned}.writing {learned}"
         )
         settled("level\\t0.600\\nlux\\t28\\nasks\\t0.950\\nfollowing\\tyes\\n")
-        desktop.launcher_until(shown_with(["Brightness", "Follows", "Curve"], ""))
+        # The machine daemon's say of the stand-ins too: what drives the
+        # backlight, the sensor's count, and both their names (VKCF3Z,
+        # 2026-11-09).
+        light = ["Driven By", "Raw", "Per Count", "Device", "Sensor"]
+        desktop.launcher_until(shown_with(["Brightness", "Follows", "Curve", *light], ""))
         drawer = plate_shown(desktop, scale)
         facts = drawer["facts"]
         assert facts.index("Follows") < facts.index("Curve"), f"at {scale}: {drawer}"
-        follows = drawer["values"][facts.index("Follows")]
-        assert follows == "the room \u00b7 on its way to 95%", f"at {scale}: {drawer}"
+        said = dict(zip(facts, drawer["values"], strict=False))
+        assert (said["Driven By"], said["Follows"]) == (
+            "the graphics chip",
+            "the room \u00b7 on its way to 95%",
+        ), f"at {scale}: {drawer}"
         desktop.shoot(f"launcher-plate-screen-following-at-{at}")
         # Its settings' choices, each by its value alone: Rotation's four
         # turns then four mirrored, and Scale's multiples (VKCF3Z, 2026-11-09).

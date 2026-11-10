@@ -285,6 +285,8 @@ Scope {
         if (whole) {
             answered = true;
             answeredThisWatch = live;
+            // A daemon that drops before this keeps it refreshing until
+            // the next connection's whole answer (greet).
             refreshing = false;
         }
         const then = awaited[answer.id];
