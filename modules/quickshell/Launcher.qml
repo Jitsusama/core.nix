@@ -7850,6 +7850,7 @@ Scope {
         openFramesWaited = 0;
         openFirstDrawn = -1;
         openFirstMade = null;
+        openAskedMade = tallies();
         opening = true;
         keysHeld = false;
         openMark.setText("open\n");
@@ -7877,8 +7878,10 @@ Scope {
     property real openFirstDrawn: -1
     // The rows each source had made by then, so what's said made before
     // the frame is made before that first one, not by a source while
-    // niri's size was awaited.
+    // niri's size was awaited. They're counted from the ask, as what the
+    // last opening woke can answer after it closed.
     property var openFirstMade: null
+    property var openAskedMade: null
     function drawnAsAsked() {
         const window = card.Window.window;
         return window !== null && Math.abs(window.width - surface.implicitWidth) < 1
@@ -8012,10 +8015,11 @@ Scope {
         const first = openingsDrawn === 0;
         openingsDrawn += 1;
         const now = openFirstMade ?? tallies();
+        const from = openFirstMade === null ? madeFrom.rows : openAskedMade;
         openFirstMade = null;
         openFirstDrawn = -1;
         const made = Object.keys(now).map(name => ({ name, rows: now[name]
-            - (madeFrom.rows[name] ?? 0) })).filter(each => each.rows > 0)
+            - (from[name] ?? 0) })).filter(each => each.rows > 0)
             .sort((a, b) => b.rows - a.rows || a.name.localeCompare(b.name));
         const rows = made.reduce((sum, each) => sum + each.rows, 0);
         const most = made.slice(0, 4).map(each => `${each.name} ${each.rows}`).join(", ");
