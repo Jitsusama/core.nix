@@ -78,7 +78,10 @@ mod tests {
         assert_eq!(said[1]["key"], "kept:lid");
         assert_eq!(said[1]["held"], json!(false));
         assert_eq!(unknown[0]["held"], Value::Null, "no runtime folder, nothing said");
-        assert!(names_a_lock("kept-awake-lid") && !names_a_lock("backlight-now"));
+        assert!(
+            names_a_lock("kept-awake-lid") && !names_a_lock("backlight-now"),
+            "only a lock's own file names a lock"
+        );
     }
 
     #[test]
