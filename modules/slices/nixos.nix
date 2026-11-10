@@ -97,6 +97,17 @@ let
   # about a tenth while the apps Joel has open only idle. The disk is
   # whichever holds /home: systemd follows it through dm-crypt to the drive.
   #
+  # Inside the account, though, the same targets came to hold Joel's own
+  # work back. On 10 November, with some ninety agents' sessions paging in
+  # beside his programs at the same 1 ms, a 4 KiB read from app.slice waited
+  # in the kernel's latency throttle, not on the drive, which answered in
+  # 0.2 ms. Over seven interleaved pairs, it took a median 2.5 to 9.8 ms
+  # with the account's targets cleared, against 7.9 to 141 ms with them, and
+  # a synced save 11 to 47 ms against 60 to 209. So only user.slice keeps
+  # one, ranking the account against the system's builds; inside it, the
+  # disk serves whoever asks, and the processor's and memory's settings
+  # rank Joel's work.
+  #
   # A target holds back every slice beside the one it's on, whoever waits.
   # user.slice's holds build.slice back for everything the account does on
   # the disk, jobs' own writes included: with no app using the disk, Nix's
@@ -255,7 +266,7 @@ in
     description = ''
       The disks shared by the slices' weights, by their names under
       /sys/class/block, each with the model io.cost measured on it. Naming
-      any drops the latency targets, so the disk behind /home belongs here,
+      any drops user.slice's latency target, so the disk behind /home belongs here,
       and only once io.cost has measured better than the targets on it.
       The name is the kernel's, which follows the order disks are found in:
       on a machine with two of a kind, the model can land on the other one.
@@ -302,13 +313,11 @@ in
       CPUWeight = 1000;
       IOWeight = 1000;
       MemoryMin = "2560M";
-    }
-    // latency;
+    };
 
     systemd.user.slices.app.sliceConfig = {
       MemoryMin = apps;
-    }
-    // latency;
+    };
 
     # Agents' sessions, pi in a window of kitty's each, beside the apps at
     # their weight rather than among them. A task in app.slice is preempted
@@ -332,8 +341,7 @@ in
       MemoryLow = agents;
       MemoryMin = agentsHeld;
       MemoryHigh = agentsHigh;
-    }
-    // latency;
+    };
 
     # Beside app.slice and session.slice, so it yields to both, and held to
     # half of memory. The floors keep only what apps already hold: work in
@@ -352,24 +360,20 @@ in
     };
     systemd.user.slices.background.sliceConfig.IOWeight = 1;
 
-    # Work other sessions wait on, beside jobs rather than in it. With no
-    # target of its own, everything in jobs waits on the disk whenever an
-    # app's or a session's work misses theirs: on 5 November pushes holding
-    # one of a repository's few walk slots sat about an hour waiting in
-    # the kernel's latency throttle, while twelve walks queued behind them
-    # waited 80 hours that day. Here a push ranks with the sessions waiting
-    # on it, at their disk target, so the two never hold each other back,
-    # while jobs still gives way to both. On the processor it still yields
-    # to what Joel uses, at a tenth of an app's weight, and past its
-    # ceiling it swaps its own memory, as jobs does. Whoever starts such
-    # work puts it here, with `systemd-run --user --scope --slice=`. A dash
-    # in the name would nest it under a parent with no target.
+    # Work other sessions wait on, beside jobs rather than in it, so it runs
+    # ahead of jobs, which is idle on the processor. On 5 November, while the
+    # account's slices held disk targets, pushes holding one of a
+    # repository's few walk slots sat about an hour in jobs waiting in the
+    # kernel's latency throttle, while twelve walks queued behind them
+    # waited 80 hours that day. On the processor it still yields to what
+    # Joel uses, at a tenth of an app's weight, and past its ceiling it
+    # swaps its own memory, as jobs does. Whoever starts such work puts it
+    # here, with `systemd-run --user --scope --slice=`.
     systemd.user.slices.shared.sliceConfig = {
       CPUWeight = 10;
       IOWeight = 10;
       MemoryHigh = "15%";
-    }
-    // latency;
+    };
 
     # Each measured disk is shared by weight from the moment it appears, and
     # stopping its unit hands it back to first come, first served. Boot wants

@@ -1755,8 +1755,9 @@
     agents' sessions have a slice beside Joel's programs at their weight, and the sorter watches both
   '';
   shared-work-ranks-with-the-sessions = ''
-    work other sessions wait on has a slice beside jobs at the sessions' disk target, below Joel's
-    programs on the processor, with a memory ceiling, named in SHARED_SLICE
+    no slice inside the account holds a disk target, and work other sessions wait on has a
+    slice beside jobs, below Joel's programs on the processor, with a memory ceiling, named in
+    SHARED_SLICE
   '';
   shaper-finds-the-rate = ''
     the shaper reads a queue from delayed pings, not one late ping or a silent host; cuts under what
@@ -3023,11 +3024,11 @@
     password; one outside wheel can't, and no other unit is opened
   '';
   vm-apps-come-first = ''
-    with no disk named, the account's app and session slices, and the system's user.slice, hold a 1
-    ms latency on the drive behind /home, through the kernel (jobs, background, machine and system
-    none); with one named, io.cost holds its model and qos, no slice holds a target, one left from
-    before is cleared as io.cost turns on, and stopping its `disk-order-<disk>` unit turns io.cost
-    off; every slice's io.weight follows its CPU weight;
+    with no disk named, the system's user.slice holds a 1 ms latency on the drive behind /home,
+    through the kernel, and no slice inside the account, machine or system does; with one named,
+    io.cost holds its model and qos, no slice holds a target, one left from before is cleared as
+    io.cost turns on, and stopping its `disk-order-<disk>` unit turns io.cost off; every slice's
+    io.weight follows its CPU weight;
     app.slice holds a hard 10% of memory and session.slice a hard 2.5 GiB, agents.slice a soft 15%
     and no hard floor, every slice above them a hard 15% and a soft 15%, and jobs is slowed past
     half; timed work sits at 10000 inside idle jobs, and work in jobs can move
