@@ -49,6 +49,27 @@
 }:
 let
   shaper = pkgs.callPackage ./package.nix { };
+  # `shaper proof` loads the link with curl only while swayidle says Joel
+  # is away and a-call-is-on says no call is on, and reads the default
+  # route with ip; systemd-run and systemctl are the system's own.
+  proofTools = [
+    pkgs.curl
+    pkgs.iproute2
+    pkgs.swayidle
+    (pkgs.callPackage ../calls/package.nix { })
+  ];
+  shaperCommand = pkgs.symlinkJoin {
+    name = "shaper";
+    paths = [ shaper ];
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    postBuild = ''
+      wrapProgram $out/bin/shaper --suffix PATH : ${lib.makeBinPath proofTools} ${serverFlag}
+    '';
+  };
+  speedServer = config.jitsusama.shaper.speedServer;
+  serverFlag = lib.optionalString (
+    speedServer != null
+  ) "--set-default SHAPER_SPEED_SERVER ${lib.escapeShellArg speedServer}";
   vpns = config.jitsusama.shaper.vpns;
   oneWay = config.jitsusama.shaper.controller == "one-way";
 in
@@ -81,6 +102,17 @@ in
       had (src/rate.rs), from pings to distant resolvers. `one-way` is its
       rebuild (src/oneway.rs), from each direction's own delay as
       shaper-record measures it, the controller `shaper replay` scores.
+    '';
+  };
+
+  options.jitsusama.shaper.speedServer = lib.mkOption {
+    type = lib.types.nullOr lib.types.str;
+    default = null;
+    example = "https://speed.example.net";
+    description = ''
+      Where `shaper proof` loads the link: a server that takes what is
+      posted to `/__up` and answers `/__down?bytes=N` with N bytes. Left
+      unset, the proof asks for `--server`.
     '';
   };
 
@@ -210,6 +242,6 @@ in
   };
 
   # `shaper status` reads what it holds each link to, and what each tin
-  # carried.
-  config.environment.systemPackages = [ shaper ];
+  # carried; `shaper proof` measures whether the shaper beats the router.
+  config.environment.systemPackages = [ shaperCommand ];
 }

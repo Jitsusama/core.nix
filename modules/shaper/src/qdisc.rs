@@ -291,7 +291,7 @@ pub fn holding(json: &str) -> Option<(u64, u64)> {
 
 /// A queue CAKE holds, at least, rather than packets passing through it: a
 /// couple of full-sized packets waiting.
-const QUEUED_BYTES: u64 = 3_000;
+pub const QUEUED_BYTES: u64 = 3_000;
 
 /// Whether CAKE held a queue since it was last read: something waiting in
 /// it now, or a packet it dropped or marked since, from what `holding`

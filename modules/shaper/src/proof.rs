@@ -1,0 +1,782 @@
+//! `shaper proof`: whether the shaper beats the router alone on this
+//! link, measured as Joel would feel it while the agents fill the upload.
+//!
+//! ```text
+//! shaper proof [--server URL] [--pairs 12] [--seconds 30] [--uploads 32] [--wait 0]
+//!              [--out FILE]
+//! ```
+//!
+//! Its server takes what is posted to `/__up` and answers
+//! `/__down?bytes=N` with N bytes; the machine names it in
+//! `jitsusama.shaper.speedServer`, or `--server` does.
+//!
+//! It runs `--uploads` uploads from jobs.slice for the whole run, and in
+//! each block, from app.slice as Joel's own programs: one upload, a
+//! download repeated, a fresh HTTPS connection each second, and a STUN
+//! round trip five times a second, as a call's packets would go. Each pair
+//! of blocks has the shaper on for one and off for the other, in turn
+//! first, so a link that drifts through the run favours neither.
+//!
+//! The load goes on the link only while no call is on and Joel has been
+//! idle two minutes, as Wayland's idle notice tells swayidle; the moment
+//! either changes, every load stops, the shaper goes back as it was, and
+//! it exits 75. It passes when, with the shaper on, the call's 99th
+//! percentile is within `CALL_MARGIN_MS` of its idle median, Joel's upload
+//! gets at least half of what the link sends, and at least `FAVOUR` of
+//! every `FAVOUR_OF` pairs favour the shaper. A block with the shaper on
+//! whose CAKE never held a queue says nothing of it, and is void.
+
+use crate::qdisc;
+use std::fs;
+use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
+use std::path::PathBuf;
+use std::process::{Child, Command, ExitCode, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use std::time::{Duration, Instant};
+
+/// Where the server is named when `--server` doesn't: the machine's
+/// `jitsusama.shaper.speedServer`, which the wrapper sets.
+const SERVER_ENV: &str = "SHAPER_SPEED_SERVER";
+const STUN: &str = "stun.l.google.com:19302";
+/// How far over the idle median a call's 99th percentile may go.
+const CALL_MARGIN_MS: f64 = 30.0;
+/// The least share of what the link sends that Joel's upload must get.
+const SHARE: f64 = 0.5;
+/// Of every `FAVOUR_OF` pairs, how many must favour the shaper: ten of
+/// twelve is a sign test's one in fifty by chance.
+const FAVOUR: f64 = 10.0;
+const FAVOUR_OF: f64 = 12.0;
+/// How long an arm settles before its block counts: the shaper takes the
+/// queue back within ten seconds of the load, and the router's queue
+/// drains as long once it's off.
+const SETTLE: Duration = Duration::from_secs(15);
+/// What the gate's idle notice waits for, in seconds.
+const IDLE_S: u32 = 120;
+/// A STUN probe's spacing, and how long one goes unanswered before it's
+/// lost.
+const CALL_EVERY: Duration = Duration::from_millis(200);
+const CALL_LOST: Duration = Duration::from_secs(2);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Arm {
+    On,
+    Off,
+}
+
+/// The arms of a pair, the shaper's first in every other one.
+fn arms(pair: u32) -> [Arm; 2] {
+    if pair.is_multiple_of(2) {
+        [Arm::On, Arm::Off]
+    } else {
+        [Arm::Off, Arm::On]
+    }
+}
+
+/// What one block measured.
+#[derive(Clone, Debug, Default, serde::Serialize)]
+struct Block {
+    shaped: bool,
+    /// Joel's upload and download, and all the link sent, in kbit/s.
+    up_kbit: f64,
+    down_kbit: f64,
+    sent_kbit: f64,
+    /// The call's round trips, in ms, and how many went unanswered.
+    call_ms: Vec<f64>,
+    lost: usize,
+    /// A fresh connection's time to its first byte, in ms.
+    first_byte_ms: Vec<f64>,
+    /// Whether CAKE held a queue at any read: the shaper owned it.
+    owned: bool,
+}
+
+impl Block {
+    fn share(&self) -> f64 {
+        if self.sent_kbit > 0.0 {
+            self.up_kbit / self.sent_kbit
+        } else {
+            0.0
+        }
+    }
+
+    fn void(&self) -> bool {
+        self.shaped && !self.owned
+    }
+}
+
+#[derive(Debug, serde::Serialize)]
+struct Verdict {
+    idle_call_ms: f64,
+    shaped_call_p99_ms: f64,
+    shaped_share: f64,
+    unshaped_share: f64,
+    pairs: usize,
+    favour_shaper: usize,
+    void: usize,
+    calm: bool,
+    fair: bool,
+    consistent: bool,
+}
+
+impl Verdict {
+    fn passed(&self) -> bool {
+        self.calm && self.fair && self.consistent
+    }
+}
+
+/// The value at `p` (0 to 1) through some values, or `NaN` with none.
+fn percentile(values: &[f64], p: f64) -> f64 {
+    let mut all = values.to_vec();
+    all.sort_by(f64::total_cmp);
+    if all.is_empty() {
+        return f64::NAN;
+    }
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss,
+        reason = "an index into a few thousand values"
+    )]
+    let at = ((all.len() - 1) as f64 * p).round() as usize;
+    all[at]
+}
+
+/// Judges the pairs: whether the shaper kept the call calm and Joel's
+/// upload its share, and whether the pairs agree. A pair with a void
+/// block counts for neither arm.
+fn judge(idle_call: &[f64], pairs: &[[Block; 2]]) -> Verdict {
+    let counted: Vec<&[Block; 2]> = pairs
+        .iter()
+        .filter(|pair| !pair.iter().any(Block::void))
+        .collect();
+    let arm = |shaped: bool| {
+        counted
+            .iter()
+            .flat_map(|p| p.iter())
+            .filter(move |b| b.shaped == shaped)
+    };
+    let calls: Vec<f64> = arm(true).flat_map(|b| b.call_ms.iter().copied()).collect();
+    let shares = |shaped: bool| arm(shaped).map(Block::share).collect::<Vec<f64>>();
+    let favour = counted
+        .iter()
+        .filter(|pair| {
+            let (on, off) = if pair[0].shaped {
+                (&pair[0], &pair[1])
+            } else {
+                (&pair[1], &pair[0])
+            };
+            on.share() > off.share()
+        })
+        .count();
+    let idle = percentile(idle_call, 0.5);
+    let p99 = percentile(&calls, 0.99);
+    let shaped_share = percentile(&shares(true), 0.5);
+    #[expect(clippy::cast_precision_loss, reason = "a few dozen pairs")]
+    let consistent =
+        !counted.is_empty() && favour as f64 >= counted.len() as f64 * FAVOUR / FAVOUR_OF;
+    Verdict {
+        idle_call_ms: idle,
+        shaped_call_p99_ms: p99,
+        shaped_share,
+        unshaped_share: percentile(&shares(false), 0.5),
+        pairs: counted.len(),
+        favour_shaper: favour,
+        void: pairs.len() - counted.len(),
+        calm: p99 <= idle + CALL_MARGIN_MS,
+        fair: shaped_share >= SHARE,
+        consistent,
+    }
+}
+
+/// A STUN binding request with this transaction id.
+fn stun_request(id: [u8; 12]) -> [u8; 20] {
+    let mut packet = [0_u8; 20];
+    packet[0..2].copy_from_slice(&0x0001_u16.to_be_bytes());
+    packet[4..8].copy_from_slice(&0x2112_A442_u32.to_be_bytes());
+    packet[8..20].copy_from_slice(&id);
+    packet
+}
+
+/// The transaction id a STUN binding success answers, if it is one.
+fn stun_answer(packet: &[u8]) -> Option<[u8; 12]> {
+    let head = packet.get(0..20)?;
+    (head[0..2] == 0x0101_u16.to_be_bytes() && head[4..8] == 0x2112_A442_u32.to_be_bytes())
+        .then(|| head[8..20].try_into().ok())
+        .flatten()
+}
+
+/// `shaper proof-call SECONDS`: STUN round trips five times a second, one
+/// line each, in ms or `lost`, run in app.slice as a call would be.
+pub fn call(args: &[String]) -> ExitCode {
+    let Some(seconds) = args.first().and_then(|s| s.parse::<u64>().ok()) else {
+        eprintln!("usage: shaper proof-call SECONDS");
+        return ExitCode::from(2);
+    };
+    let Some(server) = STUN
+        .to_socket_addrs()
+        .ok()
+        .and_then(|mut all| all.find(SocketAddr::is_ipv4))
+    else {
+        eprintln!("couldn't find {STUN}");
+        return ExitCode::FAILURE;
+    };
+    let Ok(socket) = UdpSocket::bind(("0.0.0.0", 0)) else {
+        return ExitCode::FAILURE;
+    };
+    let end = Instant::now() + Duration::from_secs(seconds);
+    let mut sent: Vec<([u8; 12], Instant)> = Vec::new();
+    let mut next = Instant::now();
+    let mut seq = 0_u64;
+    let mut buffer = [0_u8; 512];
+    while Instant::now() < end {
+        let now = Instant::now();
+        if now >= next {
+            seq += 1;
+            let mut id = [0_u8; 12];
+            id[4..].copy_from_slice(&seq.to_be_bytes());
+            if socket.send_to(&stun_request(id), server).is_ok() {
+                sent.push((id, now));
+            }
+            next = now + CALL_EVERY;
+        }
+        sent.retain(|&(_, at)| {
+            let gone = now - at > CALL_LOST;
+            if gone {
+                println!("lost");
+            }
+            !gone
+        });
+        let wait = next
+            .saturating_duration_since(Instant::now())
+            .max(Duration::from_millis(1));
+        let _ = socket.set_read_timeout(Some(wait));
+        if let Ok(length) = socket.recv(&mut buffer)
+            && let Some(id) = stun_answer(&buffer[..length])
+            && let Some(at) = sent.iter().position(|&(s, _)| s == id)
+        {
+            let (_, when) = sent.remove(at);
+            println!("{:.1}", when.elapsed().as_secs_f64() * 1_000.0);
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+const USAGE: &str = "shaper proof [--server URL] [--pairs N] [--seconds S] [--uploads N] \
+                     [--wait S] [--out FILE]";
+
+/// What the proof is asked.
+struct Asked {
+    pairs: u32,
+    seconds: u64,
+    uploads: u32,
+    wait: u64,
+    out: Option<PathBuf>,
+    /// The speed server, with no slash at its end.
+    server: String,
+}
+
+/// Reads the flags, the server falling back on `named`, the machine's.
+fn asked(args: &[String], named: Option<String>) -> Result<Asked, String> {
+    let mut server = named;
+    let mut a = Asked {
+        server: String::new(),
+        pairs: 12,
+        seconds: 30,
+        uploads: 32,
+        wait: 0,
+        out: None,
+    };
+    let mut it = args.iter();
+    while let Some(flag) = it.next() {
+        let value = it.next().ok_or(format!("{flag} needs a value"))?;
+        let number = || {
+            value
+                .parse::<u64>()
+                .map_err(|_| format!("{flag} {value}: not a number"))
+        };
+        match flag.as_str() {
+            "--pairs" => a.pairs = u32::try_from(number()?).map_err(|e| e.to_string())?,
+            "--seconds" => a.seconds = number()?,
+            "--uploads" => a.uploads = u32::try_from(number()?).map_err(|e| e.to_string())?,
+            "--wait" => a.wait = number()?,
+            "--out" => a.out = Some(PathBuf::from(value)),
+            "--server" => server = Some(value.clone()),
+            other => return Err(format!("unknown {other}")),
+        }
+    }
+    a.server = server
+        .filter(|s| !s.is_empty())
+        .ok_or("no speed server: give --server, or set jitsusama.shaper.speedServer")?
+        .trim_end_matches('/')
+        .to_string();
+    Ok(a)
+}
+
+/// Joel's being away and no call on, held as swayidle tells it.
+struct Gate {
+    mark: PathBuf,
+    idle: Child,
+}
+
+impl Gate {
+    fn new() -> Option<Gate> {
+        let runtime = std::env::var_os("XDG_RUNTIME_DIR")?;
+        let mark = PathBuf::from(runtime).join(format!("shaper-proof-idle-{}", std::process::id()));
+        let _ = fs::remove_file(&mark);
+        let shown = mark.display().to_string();
+        let idle = Command::new("swayidle")
+            .args(["timeout", &IDLE_S.to_string(), &format!("touch {shown}")])
+            .args(["resume", &format!("rm -f {shown}")])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .spawn()
+            .ok()?;
+        Some(Gate { mark, idle })
+    }
+
+    /// Whether the link may carry the load now. A call detector that
+    /// can't tell is taken for a call.
+    fn open(&self) -> bool {
+        self.mark.exists()
+            && Command::new("a-call-is-on")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .is_ok_and(|s| s.code() == Some(1))
+    }
+}
+
+impl Drop for Gate {
+    fn drop(&mut self) {
+        let _ = self.idle.kill();
+        let _ = self.idle.wait();
+        let _ = fs::remove_file(&self.mark);
+    }
+}
+
+/// Starts `command` in a scope of its own under `slice`, named so the
+/// proof can stop every scope it started at once.
+fn scoped(slice: &str, name: &str, command: &[&str]) -> Command {
+    let mut c = Command::new("systemd-run");
+    c.args(["--user", "--quiet", "--collect", "--scope"])
+        .arg(format!("--slice={slice}"))
+        .arg(format!("--unit=shaper-proof-{name}-{}", std::process::id()))
+        .arg("--")
+        .args(command)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null());
+    c
+}
+
+/// Stops every scope this proof started.
+fn stop_scopes() {
+    let _ = Command::new("systemctl")
+        .args([
+            "--user",
+            "stop",
+            &format!("shaper-proof-*-{}.scope", std::process::id()),
+        ])
+        .status();
+}
+
+fn systemctl(verb: &str) -> bool {
+    Command::new("systemctl")
+        .args([verb, "shaper.service"])
+        .stdout(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+/// The link the default route leaves by.
+fn uplink() -> Option<String> {
+    let out = Command::new("ip")
+        .args(["-j", "route", "show", "default"])
+        .output()
+        .ok()?;
+    let routes: Vec<serde_json::Value> = serde_json::from_slice(&out.stdout).ok()?;
+    routes.first()?.get("dev")?.as_str().map(str::to_string)
+}
+
+fn sent_bytes(link: &str) -> u64 {
+    fs::read_to_string(format!("/sys/class/net/{link}/statistics/tx_bytes"))
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0)
+}
+
+/// Adds up a probe's lines: the first number of each, as curl's `-w`
+/// writes them.
+fn total(text: &str) -> f64 {
+    text.lines()
+        .filter_map(|l| l.split_whitespace().next()?.parse::<f64>().ok())
+        .sum()
+}
+
+fn kbit(bytes: f64, seconds: f64) -> f64 {
+    bytes * 8.0 / 1_000.0 / seconds
+}
+
+/// Measures one block: Joel's four probes for `seconds`, while the load
+/// runs, reading CAKE's queue each second.
+fn block(arm: Arm, link: &str, asked: &Asked, stop: &AtomicBool) -> Option<Block> {
+    let seconds = asked.seconds;
+    let server = &asked.server;
+    let s = seconds.to_string();
+    let me = std::env::current_exe().ok()?;
+    let me = me.to_str()?;
+    let up = format!(
+        "head -c 4000000000 /dev/zero | curl -s -o /dev/null -X POST -T - --max-time {s} \
+         -w '%{{size_upload}}\\n' '{server}/__up'"
+    );
+    let down = format!(
+        "end=$((SECONDS + {s})); while [ $SECONDS -lt $end ]; do curl -s -o /dev/null \
+         --max-time $((end - SECONDS + 1)) -w '%{{size_download}}\\n' \
+         '{server}/__down?bytes=25000000'; done"
+    );
+    let first = format!(
+        "end=$((SECONDS + {s})); while [ $SECONDS -lt $end ]; do curl -s -o /dev/null \
+         -w '%{{time_starttransfer}}\\n' '{server}/__down?bytes=0'; sleep 1; done"
+    );
+    let probes: Vec<Child> = [
+        scoped("app.slice", "up", &["sh", "-c", &up]),
+        scoped("app.slice", "down", &["sh", "-c", &down]),
+        scoped("app.slice", "first", &["sh", "-c", &first]),
+        scoped("app.slice", "call", &[me, "proof-call", s.as_str()]),
+    ]
+    .into_iter()
+    .map(|mut c| c.stdout(Stdio::piped()).spawn())
+    .collect::<Result<_, _>>()
+    .ok()?;
+    let sent_then = sent_bytes(link);
+    let began = Instant::now();
+    let mut owned = false;
+    while began.elapsed() < Duration::from_secs(seconds) && !stop.load(Ordering::Relaxed) {
+        if arm == Arm::On
+            && let Ok(out) = Command::new("tc")
+                .args(["-s", "-j", "qdisc", "show", "dev", link])
+                .output()
+            && let Some((backlog, _)) = qdisc::holding(&String::from_utf8_lossy(&out.stdout))
+        {
+            owned |= backlog >= qdisc::QUEUED_BYTES;
+        }
+        // CAKE's queue is read once a second through the block.
+        thread::sleep(Duration::from_secs(1));
+    }
+    let elapsed = began.elapsed().as_secs_f64();
+    let sent = sent_bytes(link).saturating_sub(sent_then);
+    let outs: Vec<String> = probes
+        .into_iter()
+        .map(|c| {
+            c.wait_with_output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+                .unwrap_or_default()
+        })
+        .collect();
+    if stop.load(Ordering::Relaxed) {
+        return None;
+    }
+    #[expect(clippy::cast_precision_loss, reason = "bytes far under 2^52")]
+    let sent_kbit = kbit(sent as f64, elapsed);
+    let call = &outs[3];
+    Some(Block {
+        shaped: arm == Arm::On,
+        up_kbit: kbit(total(&outs[0]), elapsed),
+        down_kbit: kbit(total(&outs[1]), elapsed),
+        sent_kbit,
+        call_ms: call.lines().filter_map(|l| l.parse().ok()).collect(),
+        lost: call.lines().filter(|l| *l == "lost").count(),
+        first_byte_ms: outs[2]
+            .lines()
+            .filter_map(|l| l.parse::<f64>().ok())
+            .map(|s| s * 1_000.0)
+            .collect(),
+        owned,
+    })
+}
+
+/// The call's round trips with nothing loading the link.
+fn idle_call(seconds: u64) -> Vec<f64> {
+    let Some(me) = std::env::current_exe().ok() else {
+        return Vec::new();
+    };
+    let s = seconds.to_string();
+    let Some(me) = me.to_str() else {
+        return Vec::new();
+    };
+    scoped("app.slice", "idle", &[me, "proof-call", s.as_str()])
+        .stdout(Stdio::piped())
+        .output()
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .filter_map(|l| l.parse().ok())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn say(block: &Block, arm: Arm) {
+    eprintln!(
+        "  {:<3} Joel up {:>6.0} kbit/s of {:>6.0} ({:>3.0}%), down {:>7.0}, \
+         call p50 {:>5.1} p99 {:>5.1} ms, {} lost, first byte p50 {:>4.0} ms{}",
+        if arm == Arm::On { "on" } else { "off" },
+        block.up_kbit,
+        block.sent_kbit,
+        block.share() * 100.0,
+        block.down_kbit,
+        percentile(&block.call_ms, 0.5),
+        percentile(&block.call_ms, 0.99),
+        block.lost,
+        percentile(&block.first_byte_ms, 0.5),
+        if block.void() {
+            ", void: CAKE held no queue"
+        } else {
+            ""
+        }
+    );
+}
+
+/// `shaper proof`: the run itself.
+pub fn command(args: &[String]) -> ExitCode {
+    let asked = match asked(args, std::env::var(SERVER_ENV).ok()) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{e}\nusage: {USAGE}");
+            return ExitCode::from(2);
+        }
+    };
+    let Some(link) = uplink() else {
+        eprintln!("no default route to measure");
+        return ExitCode::FAILURE;
+    };
+    let Some(gate) = Gate::new() else {
+        eprintln!("couldn't start swayidle to hear whether Joel is away");
+        return ExitCode::FAILURE;
+    };
+    let waiting = Instant::now();
+    while !gate.open() {
+        if waiting.elapsed() >= Duration::from_secs(asked.wait) {
+            eprintln!("Joel hasn't been idle two minutes, or a call is on: not loading the link");
+            return ExitCode::from(75);
+        }
+        // The gate is asked once a second while it's waited for.
+        thread::sleep(Duration::from_secs(1));
+    }
+    let was_on = systemctl("is-active");
+    eprintln!("idle: the call's round trips with nothing loading {link}");
+    let idle = idle_call(asked.seconds.min(15));
+    let stop = Arc::new(AtomicBool::new(false));
+    let watch = {
+        let stop = Arc::clone(&stop);
+        thread::spawn(move || {
+            while !stop.load(Ordering::Relaxed) {
+                if !gate.open() {
+                    eprintln!("Joel is back, or a call started: stopping the load");
+                    stop.store(true, Ordering::Relaxed);
+                    stop_scopes();
+                }
+                // The gate is asked once a second while the load runs.
+                thread::sleep(Duration::from_secs(1));
+            }
+        })
+    };
+    load(asked.uploads, &asked.server);
+    let pairs = run_pairs(&asked, &link, &stop);
+    let stopped = stop.swap(true, Ordering::Relaxed);
+    stop_scopes();
+    let _ = watch.join();
+    systemctl(if was_on { "start" } else { "stop" });
+    if stopped {
+        return ExitCode::from(75);
+    }
+    let verdict = judge(&idle, &pairs);
+    verdict.say();
+    if let Some(out) = &asked.out {
+        let report = serde_json::json!({"verdict": verdict, "idle_call_ms": idle, "pairs": pairs});
+        if fs::write(out, report.to_string()).is_err() {
+            eprintln!("couldn't write {}", out.display());
+        }
+    }
+    if verdict.passed() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
+}
+
+/// Starts the agents' uploads, from jobs.slice, each going again as it ends.
+fn load(uploads: u32, server: &str) {
+    let load = format!(
+        "while :; do head -c 400000000 /dev/zero | curl -s -o /dev/null -X POST -T - \
+         --max-time 120 '{server}/__up'; done"
+    );
+    for n in 0..uploads {
+        let _ = scoped("jobs.slice", &format!("load{n}"), &["sh", "-c", &load])
+            .stdout(Stdio::null())
+            .spawn();
+    }
+}
+
+/// Measures the pairs, the shaper on for one block of each and off for the
+/// other, until they're done or the gate closes.
+fn run_pairs(asked: &Asked, link: &str, stop: &AtomicBool) -> Vec<[Block; 2]> {
+    let mut pairs: Vec<[Block; 2]> = Vec::new();
+    'pairs: for pair in 0..asked.pairs {
+        eprintln!("pair {} of {}", pair + 1, asked.pairs);
+        let mut done: Vec<Block> = Vec::new();
+        for arm in arms(pair) {
+            systemctl(if arm == Arm::On { "start" } else { "stop" });
+            // Each arm settles before it counts, as SETTLE says.
+            thread::sleep(SETTLE);
+            if stop.load(Ordering::Relaxed) {
+                break 'pairs;
+            }
+            let Some(b) = block(arm, link, asked, stop) else {
+                break 'pairs;
+            };
+            say(&b, arm);
+            done.push(b);
+        }
+        if let Ok(both) = <[Block; 2]>::try_from(done) {
+            pairs.push(both);
+        }
+    }
+    pairs
+}
+
+impl Verdict {
+    fn say(&self) {
+        let verdict = self;
+        eprintln!(
+            "the call: idle median {:.1} ms, shaped p99 {:.1} ms ({}); \
+             Joel's upload: {:.0}% shaped, {:.0}% unshaped ({}); \
+             {} of {} pairs favour the shaper ({}), {} void",
+            verdict.idle_call_ms,
+            verdict.shaped_call_p99_ms,
+            if verdict.calm { "calm" } else { "not calm" },
+            verdict.shaped_share * 100.0,
+            verdict.unshaped_share * 100.0,
+            if verdict.fair { "fair" } else { "not fair" },
+            verdict.favour_shaper,
+            verdict.pairs,
+            if verdict.consistent {
+                "consistent"
+            } else {
+                "not consistent"
+            },
+            verdict.void
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn block(shaped: bool, share: f64, call: f64) -> Block {
+        Block {
+            shaped,
+            up_kbit: share * 10_000.0,
+            sent_kbit: 10_000.0,
+            call_ms: vec![call; 100],
+            owned: true,
+            ..Block::default()
+        }
+    }
+
+    fn pairs(n: usize, on: f64, off: f64) -> Vec<[Block; 2]> {
+        (0..n)
+            .map(|_| [block(true, on, 25.0), block(false, off, 300.0)])
+            .collect()
+    }
+
+    #[test]
+    fn a_shaper_that_keeps_the_call_and_the_upload_passes() {
+        let verdict = judge(&[20.0; 50], &pairs(12, 0.8, 0.05));
+        assert!(verdict.passed(), "{verdict:?}");
+    }
+
+    #[test]
+    fn a_call_far_over_its_idle_fails() {
+        let mut all = pairs(12, 0.8, 0.05);
+        for pair in &mut all {
+            pair[0].call_ms = vec![80.0; 100];
+        }
+        let verdict = judge(&[20.0; 50], &all);
+        assert!(!verdict.calm, "{verdict:?}");
+    }
+
+    #[test]
+    fn an_upload_under_half_the_link_fails() {
+        let verdict = judge(&[20.0; 50], &pairs(12, 0.4, 0.05));
+        assert!(!verdict.fair, "{verdict:?}");
+    }
+
+    #[test]
+    fn pairs_that_disagree_fail() {
+        let mut all = pairs(12, 0.8, 0.05);
+        for pair in all.iter_mut().take(3) {
+            pair[1] = block(false, 0.9, 300.0);
+        }
+        let verdict = judge(&[20.0; 50], &all);
+        assert_eq!(verdict.favour_shaper, 9, "{verdict:?}");
+        assert!(!verdict.consistent, "nine of twelve counted as consistent");
+    }
+
+    #[test]
+    fn a_block_whose_cake_held_no_queue_is_void() {
+        let mut all = pairs(12, 0.8, 0.05);
+        all[0][0].owned = false;
+        let verdict = judge(&[20.0; 50], &all);
+        assert_eq!((verdict.pairs, verdict.void), (11, 1), "{verdict:?}");
+    }
+
+    #[test]
+    fn the_shaper_goes_first_in_every_other_pair() {
+        assert_eq!(arms(0), [Arm::On, Arm::Off]);
+        assert_eq!(arms(1), [Arm::Off, Arm::On]);
+    }
+
+    #[test]
+    fn a_stun_answer_is_matched_to_its_request() {
+        let id = [7_u8; 12];
+        let mut answer = stun_request(id);
+        answer[0..2].copy_from_slice(&0x0101_u16.to_be_bytes());
+        assert_eq!(stun_answer(&answer), Some(id));
+        assert_eq!(
+            stun_answer(&stun_request(id)),
+            None,
+            "a request read as an answer"
+        );
+        assert_eq!(
+            stun_answer(&answer[..10]),
+            None,
+            "a short packet read as an answer"
+        );
+    }
+
+    #[test]
+    fn curls_lines_are_added_up() {
+        let added = total("25000000\n25000000\n12\n");
+        assert!((added - 50_000_012.0).abs() < 0.5, "added up to {added}");
+        assert!(total("").abs() < f64::EPSILON, "nothing added to something");
+    }
+
+    #[test]
+    fn the_flags_are_read() {
+        let args: Vec<String> = ["--pairs", "6", "--seconds", "20"]
+            .map(String::from)
+            .to_vec();
+        let a = asked(&args, Some("https://speed.example.net/".into())).expect("flags");
+        assert_eq!((a.pairs, a.seconds, a.uploads), (6, 20, 32));
+        assert_eq!(a.server, "https://speed.example.net");
+        let named = asked(&["--server".into(), "https://b.example".into()], None).expect("server");
+        assert_eq!(named.server, "https://b.example");
+        assert!(
+            asked(&["--pairs".to_string()], Some("https://a.example".into())).is_err(),
+            "a flag with no value taken"
+        );
+        assert!(asked(&[], None).is_err(), "a proof with no server to load");
+    }
+}
