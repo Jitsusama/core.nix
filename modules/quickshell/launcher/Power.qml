@@ -534,6 +534,7 @@ Provider {
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
         kind: "supply"
         live: provider.seen
+        paced: provider.launcher
         keptThroughGap: false
         answersWhole: true
     }

@@ -1590,6 +1590,7 @@ Provider {
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
         kind: ["processor", "memory", "boot"]
         live: provider.shown
+        paced: provider.launcher
         keptThroughGap: false
         answersWhole: true
     }
@@ -1600,6 +1601,7 @@ Provider {
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
         kind: "disk"
         live: provider.disksWanted
+        paced: provider.launcher
         keptThroughGap: false
         answersWhole: true
     }
@@ -1610,6 +1612,7 @@ Provider {
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
         kind: "using"
         live: provider.shown && provider.usingWanted
+        paced: provider.launcher
         keptThroughGap: false
         answersWhole: true
     }

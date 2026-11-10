@@ -6,8 +6,9 @@
 // at once; once the daemon starts the client connects by itself and says
 // hello, which names the source; a watch narrowed to those listed holds
 // them alone; one not live holds nothing until it's refreshed, and then
-// holds its kind, watched no longer; a search's answer is given to it and
-// never held; one no
+// holds its kind, watched no longer; one paced by a frame watches only
+// once its frame is drawn, and one begun again before then is answered
+// once it's drawn; a search's answer is given to it and never held; one no
 // source knows any more is let go; the keys it watches ahead come to be
 // held, asked ahead; a get is answered by id, asked as a step-in; the
 // daemon stopping is said, keeping what was held and giving a get none,
@@ -108,6 +109,35 @@ ShellRoot {
         live: false
     }
 
+    // What a paced watch waits on, as the launcher's next frame: drawn
+    // only when a step says.
+    QtObject {
+        id: pacer
+
+        property var queued: []
+
+        function afterFrame(then) {
+            queued = queued.concat([then]);
+        }
+
+        function drawn() {
+            const due = queued;
+            queued = [];
+            for (const then of due)
+                then();
+        }
+    }
+
+    // Watching only once its frame is drawn.
+    Daemon {
+        id: paced
+
+        socket: `${root.runtime}/daemons/people.sock`
+        kind: "person"
+        live: false
+        paced: pacer
+    }
+
     // Watching a kind with no records.
     Daemon {
         id: none
@@ -180,6 +210,26 @@ ShellRoot {
             what: "one not live, refreshed, holds its kind and is watched no longer",
             run: () => refreshed.refresh(),
             holds: () => root.hal in refreshed.held && !refreshed.watched
+        },
+        {
+            // A quarter second is time enough for the daemon to answer a
+            // watch sent, so holding nothing then says none was sent.
+            what: "one paced watches only once its frame is drawn",
+            run: () => {
+                paced.live = true;
+            },
+            holds: () => root.left <= 195 && pacer.queued.length === 1
+                && Object.keys(paced.held).length === 0 && !paced.answeredThisWatch
+        },
+        {
+            what: "a paced watch begun again before its frame is answered once it's drawn",
+            run: () => {
+                paced.live = false;
+                paced.live = true;
+                pacer.drawn();
+            },
+            holds: () => root.hal in paced.held && paced.answeredThisWatch
+                && pacer.queued.length === 0
         },
         {
             what: "a search's answer is given to it and never held",

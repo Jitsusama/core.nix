@@ -27,6 +27,11 @@ ShellRoot {
         property var held: []
         property var matches: []
         property var placed: []
+
+        // No frame is drawn here, so what waits on one runs at once.
+        function afterFrame(then) {
+            then();
+        }
     }
 
     Launcher.Machine {
