@@ -858,6 +858,17 @@ Provider {
         onLoadFailed: provider.facts = ({})
     }
 
+    // What its spots are made of (Provider.spotsStamp): the screens as niri
+    // says them, which one holds the Brightness, whether the room's sensor
+    // and the warmth are there, and which facts desk-facts says; never a
+    // level, a lux or a warmth's figure, which move while nothing else
+    // does. modules/windows' display kind takes this over, serving the
+    // screens' rows ready, by 11 November.
+    spotsStamp: JSON.stringify([outputsSaid, light === null ? false : light.connector ?? "",
+        roomSensor !== null, warmth === null ? null : warmth.seesColour === true,
+        Niri.powersOffEach, Object.keys(facts).sort().map(name => [name,
+            (facts[name] ?? []).map(fact => `${fact.name}:${fact.value === ""}`)])])
+
     // What desk-facts says of a display, each named first as a part is:
     // Colour depth "10 bit", Colours, then who made it and when, the depth
     // first since it's what's asked.
