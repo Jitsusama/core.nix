@@ -35,7 +35,7 @@ use std::fs;
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::process::CommandExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
@@ -119,6 +119,42 @@ pub fn evaluators(text: &str) -> Vec<Evaluator> {
 /// `CHANGED_CHECKS_PASSED`, the commit and then each name, so it builds
 /// none of them again; a changed-checks from before that builds them.
 pub fn sending(source: Source, arguments: &[String], passed: &[String]) -> Sending {
+    let commit = match &source {
+        Source::Pushed { commit, .. } | Source::Bundled { commit, .. } => commit.clone(),
+    };
+    let (checkout, bundle) = checked_out(source);
+    let words: Vec<String> = arguments.iter().map(|word| there::quoted(word)).collect();
+    let told = if passed.is_empty() {
+        String::new()
+    } else {
+        let named = std::iter::once(commit.as_str())
+            .chain(passed.iter().map(String::as_str))
+            .collect::<Vec<_>>()
+            .join(" ");
+        format!("CHANGED_CHECKS_PASSED={} ", there::quoted(&named))
+    };
+    // The builder's gate reads the mark and lets a run sent first past
+    // the sessions' runs waiting for a turn at evaluating.
+    let first = if there::first() {
+        format!("{}={} ", there::FIRST.0, there::FIRST.1)
+    } else {
+        String::new()
+    };
+    Sending {
+        command: format!(
+            "{checkout}{told}{HERE} {first}nix run .#changed-checks -- {}",
+            words.join(" ")
+        ),
+        bundle,
+    }
+}
+
+/// What the far side's shell runs to check out the commit `source` names,
+/// in a folder of its own gone when the shell ends, and to go into the
+/// flake's folder there, each command after it ending `; `, and the
+/// bundle it reads from its standard input, when the commit isn't on
+/// GitHub.
+pub fn checked_out(source: Source) -> (String, Option<PathBuf>) {
     let (github, base, commit, dir, bundle) = match source {
         Source::Pushed {
             github,
@@ -151,23 +187,6 @@ pub fn sending(source: Source, arguments: &[String], passed: &[String]) -> Sendi
              git -C {into}/tree fetch -q {into}/there.bundle {tip}:refs/heads/there; "
         )
     });
-    let words: Vec<String> = arguments.iter().map(|word| there::quoted(word)).collect();
-    let told = if passed.is_empty() {
-        String::new()
-    } else {
-        let named = std::iter::once(commit.as_str())
-            .chain(passed.iter().map(String::as_str))
-            .collect::<Vec<_>>()
-            .join(" ");
-        format!("CHANGED_CHECKS_PASSED={} ", there::quoted(&named))
-    };
-    // The builder's gate reads the mark and lets a run sent first past
-    // the sessions' runs waiting for a turn at evaluating.
-    let first = if there::first() {
-        format!("{}={} ", there::FIRST.0, there::FIRST.1)
-    } else {
-        String::new()
-    };
     let command = format!(
         "set -e; rm -rf {into}; mkdir -p {into}; trap 'rm -rf {into}' EXIT; \
          command -v git >/dev/null || \
@@ -179,15 +198,10 @@ pub fn sending(source: Source, arguments: &[String], passed: &[String]) -> Sendi
          git clone -q --shared {mirror} {into}/tree; \
          {unbundled}\
          git -C {into}/tree checkout -q -B nix-offload-changed {commit}; \
-         cd {into}/tree/{}; \
-         {told}{HERE} {first}nix run .#changed-checks -- {}",
+         cd {into}/tree/{}; ",
         dir.as_deref().unwrap_or("."),
-        words.join(" ")
     );
-    Sending {
-        command,
-        bundle: bundle.map(|(bundle, _)| bundle),
-    }
+    (command, bundle.map(|(bundle, _)| bundle))
 }
 
 /// What a run there asked for, read from changed-checks' own arguments:

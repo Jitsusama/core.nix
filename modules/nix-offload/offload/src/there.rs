@@ -82,6 +82,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use crate::held;
+use crate::kept;
 use crate::passed;
 use crate::proof;
 
@@ -516,28 +517,26 @@ pub fn run(
     let Some(mut lent) = lent else {
         return unsent(asked, nix, "no builder is lent");
     };
-    let reached = match folder_of(&asked.flake) {
-        _ if asked.derivations => Ok(Sending {
-            command: asked.command(),
-            bundle: None,
-        }),
-        None => Ok(Sending {
-            command: asked.command(),
-            bundle: None,
-        }),
-        // A `path:` flake is read as its folder holds it, git or not.
-        Some(folder) if asked.flake.starts_with("path:") => packed(&folder, asked, scratch, true),
-        Some(folder) => source(
-            &folder,
-            scratch,
-            asked.pinned.as_ref().map(|it| &*it.commit),
-        )
-        .map(|source| source.sending(asked))
-        .or_else(|why| {
-            eprintln!("nix-offload: {why}, so it goes as a tarball");
-            packed(&folder, asked, scratch, false)
-        }),
-    };
+    // What the flake's lock takes from this machine alone: store paths go
+    // ahead of it, and a failure there for want of the rest comes back to
+    // be made here (`kept.rs`).
+    let inputs = folder_of(&asked.flake)
+        .filter(|_| !asked.derivations)
+        .and_then(|folder| fs::read_to_string(folder.join("flake.lock")).ok())
+        .map(|lock| kept::inputs_of(&lock))
+        .unwrap_or_default();
+    let reached = sending_of(asked, scratch).and_then(|mut sending| {
+        sending.command = kept::wrapped(&sending.command, &inputs.kept);
+        if !inputs.sent.is_empty() {
+            eprintln!(
+                "nix-offload: sending {} the flake takes from this machine alone to {}",
+                inputs.sent.join(", "),
+                lent.host
+            );
+        }
+        paths_up(&inputs.sent, &lent, nix, send_within(0)).map_err(Untaken::Stays)?;
+        Ok(sending)
+    });
     let reached = reached.and_then(|sending| {
         let ran = loop {
             // Copied to each builder that stands, since one stood again
@@ -595,10 +594,76 @@ pub fn run(
         ran.map_err(Untaken::Waits)
     });
     match reached {
+        Ok(ran) if ran.status == kept::KEPT => stays(
+            asked,
+            nix,
+            &format!(
+                "its evaluation on the builder read {}, which this machine alone holds",
+                inputs.kept_names()
+            ),
+        ),
         Ok(ran) if ran.status != UNREACHED => ran,
         Ok(_) => unsent(asked, nix, &format!("ssh couldn't reach {}", lent.host)),
         Err(Untaken::Waits(why)) => unsent(asked, nix, &why),
         Err(Untaken::Stays(why)) => stays(asked, nix, &why),
+    }
+}
+
+/// What the builder's shell is sent to build `asked`: its command, and the
+/// commits or tarball its standard input carries, from `scratch`.
+fn sending_of(asked: &Asked, scratch: &Path) -> Result<Sending, Untaken> {
+    match folder_of(&asked.flake) {
+        _ if asked.derivations => Ok(Sending {
+            command: asked.command(),
+            bundle: None,
+        }),
+        None => Ok(Sending {
+            command: asked.command(),
+            bundle: None,
+        }),
+        // A `path:` flake is read as its folder holds it, git or not.
+        Some(folder) if asked.flake.starts_with("path:") => packed(&folder, asked, scratch, true),
+        Some(folder) => source(
+            &folder,
+            scratch,
+            asked.pinned.as_ref().map(|it| &*it.commit),
+        )
+        .map(|source| source.sending(asked))
+        .or_else(|why| {
+            eprintln!("nix-offload: {why}, so it goes as a tarball");
+            packed(&folder, asked, scratch, false)
+        }),
+    }
+}
+
+/// Sends the store paths `sent` and what they reference to the lent
+/// builder ahead of what reads them there, fetched here first where this
+/// store lacks them, within `within`. They go as held outputs do, signed
+/// or content-addressed, since the builder trusts no account: the source
+/// a lock pins is named by its content, and what this machine builds it
+/// signs. Where one can't go, nothing that reads it is sent.
+pub fn paths_up(
+    sent: &[String],
+    lent: &Builder,
+    nix: &str,
+    within: std::time::Duration,
+) -> Result<(), String> {
+    if sent.is_empty() {
+        return Ok(());
+    }
+    // ssh's control socket goes in TMPDIR, as when what's built comes back.
+    let mut copying = Command::new(nix)
+        .args(["copy", "--to", &lent.store, "--substitute-on-destination"])
+        .args(sent)
+        .env("TMPDIR", "/tmp")
+        .spawn()
+        .map_err(|error| format!("couldn't run {nix}: {error}"))?;
+    match finished_within(&mut copying, within) {
+        Some(status) if status.success() => Ok(()),
+        _ => Err(format!(
+            "{} couldn't be sent to the builder",
+            sent.join(", ")
+        )),
     }
 }
 
@@ -1124,7 +1189,7 @@ const SEND_LEAST: std::time::Duration = std::time::Duration::from_mins(15);
 /// How long a send of `size` bytes may take at [`SENDS_AT`], and never
 /// less than [`SEND_LEAST`], unless `NIX_OFFLOAD_SEND_WITHIN` says
 /// otherwise in seconds.
-fn send_within(size: u64) -> std::time::Duration {
+pub fn send_within(size: u64) -> std::time::Duration {
     std::env::var("NIX_OFFLOAD_SEND_WITHIN")
         .ok()
         .and_then(|seconds| seconds.parse().ok())
@@ -1374,15 +1439,6 @@ const UNIGNORED: &[&str] = &[
 /// target folder held 793 MB on 30 October, which no build reads and
 /// whose upload took longer than the build.
 fn packed(folder: &Path, asked: &Asked, scratch: &Path, whole: bool) -> Result<Sending, Untaken> {
-    let lock = fs::read_to_string(folder.join("flake.lock")).unwrap_or_default();
-    let kept = kept_here(&lock);
-    if !kept.is_empty() {
-        return Err(Untaken::Stays(format!(
-            "{} takes {} from this machine alone",
-            folder.display(),
-            kept.join(", ")
-        )));
-    }
     fs::create_dir_all(scratch)
         .map_err(|error| Untaken::Waits(format!("{}: {error}", scratch.display())))?;
     let tarball = mine(scratch, "folder.tgz");
@@ -1537,9 +1593,10 @@ impl Source {
 /// what was built brought into this store, derivations' paths,
 /// `--outlive`, a build that goes on once its caller is gone, `--bulk`,
 /// one whose VM tests let others' go first, `--never-ask`, a run
-/// that asks the lender for no builder, and `--first`, one that goes
-/// ahead of every other run waiting for room or for a turn.
-pub const TAKES: [&str; 14] = [
+/// that asks the lender for no builder, `--first`, one that goes ahead of
+/// every other run waiting for room or for a turn, and `--run`, a command
+/// run on a lent builder (`command.rs`).
+pub const TAKES: [&str; 15] = [
     "tree",
     "apply",
     "out",
@@ -1554,6 +1611,7 @@ pub const TAKES: [&str; 14] = [
     "bulk",
     "never-ask",
     "first",
+    "run",
 ];
 
 /// The variable, with its value, that marks a run sent first, as
@@ -1781,6 +1839,14 @@ const GRACE: u32 = 300;
 /// nothing left to wait for.
 pub fn far(command: &str) -> String {
     far_within(command, &format!("${{NIX_OFFLOAD_GRACE:-{GRACE}}}"), false)
+}
+
+/// `command` as `far` sends it, ending once its caller has been gone 15
+/// seconds, or `NIX_OFFLOAD_RUN_GRACE`'s: a command run with `--run` builds
+/// nothing another run could wait on, so there's nothing to keep it for,
+/// and a suite left running holds a builder others wait for.
+pub fn far_brief(command: &str) -> String {
+    far_within(command, "${NIX_OFFLOAD_RUN_GRACE:-15}", false)
 }
 
 /// How long, at most, a run asked to outlive its callers goes on alone: as
@@ -3168,31 +3234,6 @@ fn pinned(lock: &str) -> Vec<String> {
         .collect();
     found.sort();
     found.dedup();
-    found
-}
-
-/// The inputs a flake's lock takes from this machine alone, a store path
-/// or a repository at a `file:` URL, which the lent builder can't fetch:
-/// such a flake is built here rather than failing there, since what they
-/// hold, as a machine's secrets, isn't for sending.
-fn kept_here(lock: &str) -> Vec<String> {
-    let Ok(lock) = serde_json::from_str::<serde_json::Value>(lock) else {
-        return Vec::new();
-    };
-    let mut found: Vec<String> = lock["nodes"]
-        .as_object()
-        .into_iter()
-        .flatten()
-        .filter(|(_, node)| {
-            let locked = &node["locked"];
-            locked["type"] == "path"
-                || locked["url"]
-                    .as_str()
-                    .is_some_and(|url| url.starts_with("file:"))
-        })
-        .map(|(name, _)| name.clone())
-        .collect();
-    found.sort();
     found
 }
 
