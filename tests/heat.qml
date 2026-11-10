@@ -152,6 +152,8 @@ ShellRoot {
         expect("each chip made by its key", Object.keys(root.chipsBefore).length === 2,
             Object.keys(root.chipsBefore).join(", "));
         root.counted = made;
+        // Shown, so what the daemon tells is answered at once.
+        theLauncher.answer = answer;
         root.tell({ changed: [root.fan(3100)] });
     }
 
