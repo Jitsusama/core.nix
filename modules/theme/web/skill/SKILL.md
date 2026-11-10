@@ -236,6 +236,8 @@ and `gate.js` finds each one missing before it's published (`checks.md`).
   explanation](#a-page-to-read)). A part with nothing to picture, a
   changelog or a list of links, says so on its section in `data-figure`,
   as a suppression says why, and every page to read draws at least one.
+  A dated record kept as written says why once, on its `main` or its
+  `article`, rather than gaining a drawing only to have one.
 - **Ornament at the joins**: a fleuron or rule drawn between parts, a drop
   cap or a crest at the threshold, in the story's own metaphor. The probe
   can't judge these; holding the page beside its model can ([Judging
