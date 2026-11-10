@@ -66,8 +66,8 @@ ShellRoot {
 
     // How often what reads parked and closed sessions was told they moved,
     // so a change to a running one alone is seen to tell neither.
-    property var told: ({ parked: 0, closed: 0 })
-    property var toldBefore: null
+    property var retold: ({ parked: 0, closed: 0 })
+    property var retoldBefore: null
 
     Connections {
         target: Sessions
@@ -75,11 +75,11 @@ ShellRoot {
             Qt.callLater(root.check);
         }
         function onParkedChanged() {
-            root.told.parked += 1;
+            root.retold.parked += 1;
             Qt.callLater(root.check);
         }
         function onClosedChanged() {
-            root.told.closed += 1;
+            root.retold.closed += 1;
         }
     }
 
@@ -410,7 +410,7 @@ ShellRoot {
         // node said of it: running here, now in kitty 600's first window,
         // which nothing named.
         stage = "differing";
-        toldBefore = Object.assign({}, told);
+        retoldBefore = Object.assign({}, retold);
         tell({
             changed: [{
                 key: "session:s-NOWIN6",
@@ -434,9 +434,9 @@ ShellRoot {
         // Only a running session moved, so what reads the parked and the
         // closed isn't told they did.
         expect("a running session moving alone tells no parked or closed one",
-            told.parked === toldBefore.parked && told.closed === toldBefore.closed,
-            `parked told ${told.parked - toldBefore.parked}, closed `
-            + `${told.closed - toldBefore.closed}`);
+            retold.parked === retoldBefore.parked && retold.closed === retoldBefore.closed,
+            `parked told ${retold.parked - retoldBefore.parked}, closed `
+            + `${retold.closed - retoldBefore.closed}`);
         stage = "ended";
         tell({ changed: [{ key: "session:s-OTHER2", state: "ended" }] });
     }
