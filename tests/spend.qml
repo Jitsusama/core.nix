@@ -14,7 +14,9 @@
 // of every fact budgets.json holds of a budget's row and a window's, and
 // puts a
 // finding that wants a look first, going to its session and stepping into
-// marking it expected. The tokens piece (pieces/Tokens.qml), over the same
+// marking it expected; read from the file, its figures are said to be the
+// last ones, since the file is read only while spend-watch's socket isn't
+// answering (tests/spend-told.qml drives the socket). The tokens piece (pieces/Tokens.qml), over the same
 // file, is there only while the watch's `tokens` warns: as the watch words
 // it, wanting Joel, said as it arrives and again as its level steps down,
 // with See What Spends and Pause for a session that's running and nothing
@@ -219,9 +221,14 @@ ShellRoot {
         id: shutLauncher
 
         property bool wanting: true
+        property bool open: true
 
         function wants(source) {
             return wanting;
+        }
+
+        function afterFrame(then) {
+            then();
         }
     }
 
@@ -341,7 +348,7 @@ ShellRoot {
         interval: 50
         repeat: true
         onTriggered: {
-            if (spend.said !== null && SpendWatch.standing !== null) {
+            if (spend.known && SpendWatch.standing !== null) {
                 stop();
                 root.answers();
             } else if (--root.collecting === 0) {
@@ -519,6 +526,11 @@ ShellRoot {
             const today = spend.answer("spend");
             expect("spend", today !== null && /^Today: /.test(today.headline)
                 && today.copy.startsWith("## AI spend"), JSON.stringify(today));
+            // Read from the file, with no socket answering, its figures
+            // are said to be the last ones rather than passing as current.
+            expect("the file's figures said as its last",
+                today.note === "spend-watch isn't answering; these are its last figures",
+                today.note);
             const week = spend.answer("spend last week by quest");
             expect("a report by its words", week !== null
                 && week.headline.startsWith("Spend last week by quest: ")
@@ -539,7 +551,7 @@ ShellRoot {
                 all.map(row => `${row.name}: ${row.side}`).join(", "));
             // At home and in Agents, today's dollars with their period,
             // as All AI Spend says them.
-            expect("how today stands, at home", spend.counted() === SpendWatch.said.today
+            expect("how today stands, at home", spend.counted() === SpendWatch.today
                 && spend.counted().startsWith(`${all[0].side.split(" \u00b7 ")[0]} today`),
                 spend.counted());
 
@@ -641,7 +653,7 @@ ShellRoot {
                     { id: "most-model", value: "claude-opus-5-5 \u00b7 all" }
                 ] }
             }];
-            SpendWatch.said = budgeted;
+            SpendWatch.readCollection(budgeted);
             const budgets = spend.everything()[0];
             expect("a budget's mark in the warning's colour",
                 budgets.glyph === Theme.glyph.agent && budgets.hue === "warning"
@@ -666,7 +678,7 @@ ShellRoot {
                 run: ["spend-watch", "go", "s1"], verb: "go to",
                 expect: ["spend-watch", "findings", "expect", "burn:s1"]
             }];
-            SpendWatch.said = shown;
+            SpendWatch.readCollection(shown);
             const burn = spend.everything()[0];
             expect("a finding first", burn.name === "A burn in Aquifer" && burn.verb === "go to"
                 && burn.hue === "alert", burn.name);
@@ -697,15 +709,15 @@ ShellRoot {
     // knowing): every row was made again at each write, 90 in four minutes
     // on Joel's shell (YQZGPC, 2026-11-10). Home's figure reads what was
     // written, and a row shown elsewhere is made as it reads now. Wanted
-    // again, they're made once, as last written.
+    // again, they're as last written, none made twice.
     function shut() {
         const finding = rows => rows.some(row => row.name === "A burn in Aquifer");
         expect("wanted, it lists what was last written", finding(shutSpend.everything()),
             shutSpend.everything().map(row => row.name).join(", "));
         shutLauncher.wanting = false;
         const before = shutSpend.tally.rows;
-        SpendWatch.said = JSON.parse(root.collected);
-        SpendWatch.said = JSON.parse(root.collected);
+        SpendWatch.readCollection(JSON.parse(root.collected));
+        SpendWatch.readCollection(JSON.parse(root.collected));
         const held = shutSpend.everything();
         expect("shut, spend-watch writing again makes none of its rows",
             shutSpend.tally.rows === before && finding(held), shutSpend.tally.rows - before);
@@ -720,8 +732,8 @@ ShellRoot {
         const wanted = shutSpend.everything();
         const again = shutSpend.tally.rows;
         shutSpend.everything();
-        expect("wanted again, they're made once, as last written", !finding(wanted)
-            && wanted.length === spend.everything().length && again > made
+        expect("wanted again, they're as last written, none made twice", !finding(wanted)
+            && wanted.length === spend.everything().length && again - made <= wanted.length
             && shutSpend.tally.rows === again,
             JSON.stringify([again - made, shutSpend.tally.rows - again,
                 wanted.map(row => row.name)]));

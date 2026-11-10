@@ -1,0 +1,124 @@
+.pragma library
+// spend-watch's records, as its socket tells them (its src/interface.rs),
+// and what SpendWatch.qml makes of them. collection.json, read while the
+// socket isn't there, is cut into the same records here, so the shell
+// holds one shape whichever told it and remakes only what changed.
+
+// The kind a key names: "session" for "session:01a1...".
+function kindOf(key) {
+    const at = key.indexOf(":");
+    return at > 0 ? key.slice(0, at) : "";
+}
+
+// The id a key names, after its kind: "now:today" for "row:now:today".
+function idOf(key) {
+    return key.slice(key.indexOf(":") + 1);
+}
+
+// collection.json as records, by key, as the daemon cuts it.
+function records(collection) {
+    const cut = {};
+    const session = id => {
+        const key = `session:${id}`;
+        if (!(key in cut)) {
+            cut[key] = { key, kind: "session" };
+        }
+        return cut[key];
+    };
+    for (const [from, field] of [["sessions", "spent"], ["sessionsToday", "today"],
+        ["helpers", "helpers"]]) {
+        for (const [id, value] of Object.entries(collection[from] ?? {})) {
+            session(id)[field] = value;
+        }
+    }
+    for (const [id, family] of Object.entries(collection.families ?? {})) {
+        cut[`quest:${id}`] = Object.assign({ key: `quest:${id}`, kind: "quest" }, family);
+    }
+    for (const [id, report] of Object.entries(collection.reports ?? {})) {
+        cut[`report:${id}`] = { key: `report:${id}`, kind: "report", report };
+    }
+    for (const [id, from] of [["all", "today"], ["agents", "agentsToday"]]) {
+        cut[`day:${id}`] = { key: `day:${id}`, kind: "day", spent: collection[from] ?? null };
+    }
+    for (const list of ["now", "findings", "more", "quiet"]) {
+        (collection[list] ?? []).forEach((line, order) => {
+            const key = `row:${list}:${line.key}`;
+            cut[key] = { key, kind: "row", list, order, line };
+        });
+    }
+    for (const id of ["periods", "cuts", "examples"]) {
+        cut[`words:${id}`] = { key: `words:${id}`, kind: "words", words: collection[id] ?? [] };
+    }
+    return cut;
+}
+
+// The properties a record's change touches, from what it was to what it
+// is, either null: each of a session's figures its own, so a session
+// whose spend moved and whose day didn't leaves sessionsToday as it was.
+function touched(was, now) {
+    const record = now ?? was;
+    const differs = field => JSON.stringify(was?.[field]) !== JSON.stringify(now?.[field]);
+    switch (record.kind) {
+    case "session":
+        return [["spent", "sessions"], ["today", "sessionsToday"], ["helpers", "helpers"]]
+            .filter(([field]) => differs(field)).map(([, property]) => property);
+    case "quest":
+        return ["families"];
+    case "day":
+        return [idOf(record.key) === "all" ? "today" : "agentsToday"];
+    case "row":
+        return ["rows"];
+    case "report":
+        return ["reports"];
+    case "words":
+        return [idOf(record.key)];
+    default:
+        return [];
+    }
+}
+
+// A property as the records held make it.
+function made(held, property) {
+    const of = kind => Object.keys(held).filter(key => kindOf(key) === kind)
+        .map(key => held[key]);
+    const byId = (kind, take) => {
+        const all = {};
+        for (const record of of(kind)) {
+            const value = take(record);
+            if (value !== undefined) {
+                all[idOf(record.key)] = value;
+            }
+        }
+        return all;
+    };
+    switch (property) {
+    case "sessions":
+        return byId("session", record => record.spent);
+    case "sessionsToday":
+        return byId("session", record => record.today);
+    case "helpers":
+        return byId("session", record => record.helpers);
+    case "families":
+        return byId("quest", record => ({ all: record.all, own: record.own,
+            under: record.under }));
+    case "today":
+        return String(held["day:all"]?.spent ?? "");
+    case "agentsToday":
+        return String(held["day:agents"]?.spent ?? "");
+    case "rows": {
+        const lists = { now: [], findings: [], more: [], quiet: [] };
+        for (const record of of("row")) {
+            lists[record.list]?.push(record);
+        }
+        for (const list of Object.keys(lists)) {
+            lists[list] = lists[list].sort((a, b) => a.order - b.order)
+                .map(record => ({ key: record.key, line: record.line }));
+        }
+        return lists;
+    }
+    case "reports":
+        return byId("report", record => record.report);
+    default:
+        return held[`words:${property}`]?.words ?? [];
+    }
+}

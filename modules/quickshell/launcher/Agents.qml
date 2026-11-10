@@ -1283,7 +1283,7 @@ Provider {
     // session's, never added up here, and none of them while the screen is
     // shared.
     function summary() {
-        const spent = Quiet.sharing ? "" : String(SpendWatch.said?.agentsToday ?? "");
+        const spent = Quiet.sharing ? "" : SpendWatch.agentsToday;
         return SessionRow.summary(states(), spent, Words.of("agents").said ?? {});
     }
 

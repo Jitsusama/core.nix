@@ -1821,7 +1821,8 @@ onLinux {
   # budgets' drawers read what spend-watch writes, from a day of a session's turns on two models,
   # and the states tests/spend.qml writes by hand, through Quickshell
   # itself, with niri, do not disturb, the shortcuts and the sessions stood
-  # in for.
+  # in for; and what its socket tells, from a stand-in serving those
+  # records (tests/spend-told.qml), a pass remaking only the rows it changed.
   the-desktop-reads-the-spend-watch =
     let
       watch = pkgs.callPackage ../spend-watch/package.nix { };
@@ -1870,7 +1871,11 @@ onLinux {
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${./SpendWatch.qml} SpendWatch.qml
+      cp ${./SpendWatch.js} SpendWatch.js
+      cp ${./Daemon.qml} Daemon.qml
       cp ${../../tests/spend.qml} shell.qml
+      cp ${../../tests/spend-told.qml} told.qml
+      cp ${../../tests/lib/Expect.js} Expect.js
       cp ${niri} Niri.qml
       cp ${singleton "Quiet.qml" "property bool sharing: false"} Quiet.qml
       cp ${shortcuts} Shortcuts.qml
@@ -1878,6 +1883,8 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
+      cp runtime/written/collection.json runtime/written/budgets.json runtime/spend-watch/
+      timeout 60 ${qs} -p told.qml
       touch $out
     '';
 
