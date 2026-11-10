@@ -26,12 +26,19 @@
       return false;
     }
   };
-  const named = (element) =>
-    element.textContent
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line !== "")
-      .join(" ");
+  // A heading's name is its text nodes each trimmed and joined by a space,
+  // since textContent runs one element's words into the next's ("yes3").
+  const named = (element) => {
+    const walker = page.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const words = [];
+    while (walker.nextNode()) {
+      words.push(walker.currentNode.textContent.trim());
+    }
+    return words
+      .filter((word) => word !== "")
+      .join(" ")
+      .replace(/ ([,.;:!?])/gu, "$1");
+  };
 
   // The head: what names the page in a tab, a shared link and a reader.
   if (page.characterSet !== "UTF-8") {
@@ -90,8 +97,10 @@
     missing.push("the key line under the head, naming ? for the keys");
   }
   const first = page.querySelector("a[href], button, input, select, textarea, [tabindex]");
+  // The target is found by its id rather than as a selector, since a link to
+  // a route such as "#/" is no selector at all.
   const skipsTo = first?.getAttribute("href")?.startsWith("#") ? first.getAttribute("href") : "";
-  if (skipsTo === "" || page.querySelector(skipsTo) === null) {
+  if (skipsTo.length < 2 || page.getElementById(decodeURIComponent(skipsTo.slice(1))) === null) {
     missing.push("a skip link, the first thing focus reaches, to the page's main part");
   }
 

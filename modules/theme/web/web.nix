@@ -64,13 +64,25 @@ let
 
   property = name: "--${lib.replaceStrings [ "_" ] [ "-" ] name}";
 
+  # A ground so near grey that a browser reads its hue as missing would turn
+  # from no hue at all and land on the turn itself, a brown or a maroon under
+  # text turned from green. Mixing in none of the accent fills only a missing
+  # hue, with the accent's, and leaves every other part of the colour as it
+  # was, so each role turns from the theme's own hue.
+  turnedFrom =
+    colours: value:
+    let
+      filled = "color-mix(in oklch, ${value} 100%, ${colours.accent} 0%)";
+    in
+    "oklch(from ${filled} l c calc(h + var(--turn)))";
+
   roles =
     colours: turn:
     lib.concatStrings (
       lib.mapAttrsToList (
         name: value:
         if turn then
-          lib.optionalString (lib.elem name turned) "  ${property name}: oklch(from ${value} l c calc(h + var(--turn)));\n"
+          lib.optionalString (lib.elem name turned) "  ${property name}: ${turnedFrom colours value};\n"
         else
           "  ${property name}: ${value};\n"
       ) colours
