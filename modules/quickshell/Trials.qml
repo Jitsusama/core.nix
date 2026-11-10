@@ -23,6 +23,11 @@ Scope {
     // The opening under way, or null while closed.
     property var trial: null
 
+    // Whether the pipe is running to take a close's line, and the lines said
+    // while it wasn't, written once it starts.
+    property bool piped: false
+    property var waiting: []
+
     function opened() {
         trial = Trials.begun(Date.now(), home);
         pace = Trials.unpaced();
@@ -91,7 +96,11 @@ Scope {
         if (pace.late > 0)
             console.info(`launcher: ${pace.late} of ${pace.drawn} frames came late while`
                 + ` it moved, the longest ${pace.longest} ms after the one before`);
-        keeping.write(Trials.said(Trials.ended(Trials.paced(trial, pace), Date.now())));
+        const said = Trials.said(Trials.ended(Trials.paced(trial, pace), Date.now()));
+        if (piped)
+            keeping.write(said);
+        else
+            waiting.push(said);
         trial = null;
     }
 
@@ -122,6 +131,24 @@ Scope {
         id: keeping
         command: ["sh", "-c", 'mkdir -p "${1%/*}" && exec cat >> "$1"', "trials", file.path]
         stdinEnabled: true
+        onStarted: {
+            root.piped = true;
+            root.waiting.splice(0).forEach(said => keeping.write(said));
+        }
+        // A pipe that ends would lose every close after it without a word,
+        // so it's said and started again, a second on so one that ends at
+        // once doesn't spin.
+        onExited: (code, status) => {
+            root.piped = false;
+            console.warn(`launcher: the trials' pipe ended with ${code}, so it starts again`);
+            again.restart();
+        }
+    }
+
+    Timer {
+        id: again
+        interval: 1000
+        onTriggered: keeping.running = true
     }
 
     Component.onCompleted: {

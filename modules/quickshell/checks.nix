@@ -1370,6 +1370,7 @@ onLinux {
         cp ${../../tests/trials-kept.qml} shell.qml
         cp ${../../tests/lib/Expect.js} Expect.js
         export XDG_RUNTIME_DIR=$TMPDIR/runtime FONTCONFIG_FILE=${noFonts}
+        export PATH=$PATH:${pkgs.procps}/bin
         mkdir -m 700 $XDG_RUNTIME_DIR
         ${shellFolderLint}
         timeout 60 ${qs} -p shell.qml
