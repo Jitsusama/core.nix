@@ -21,7 +21,7 @@ QtObject {
         }
     }
 
-    property QtObject rows: QtObject {
+    component Rows: QtObject {
         property string rowsGlyph: ""
         property string rowsHue: ""
         property bool rowsAtHome: true
@@ -30,6 +30,8 @@ QtObject {
         onRowsHueChanged: told += 1
         onRowsAtHomeChanged: told += 1
     }
+
+    property Rows rows: Rows {}
 
     function check(failures, what, got, want) {
         if (got !== want)
