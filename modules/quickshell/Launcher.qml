@@ -7846,6 +7846,8 @@ Scope {
         openKept = true;
         openFilledBy = "";
         fillEarly = -1;
+        openFramesSized = 0;
+        openFramesWaited = 0;
         opening = true;
         keysHeld = false;
         openMark.setText("open\n");
@@ -7857,10 +7859,34 @@ Scope {
         afterFrame(openShown);
     }
 
-    // Its first frame drawn, the opening is timed to it and filled in.
+    // Shut, the surface is a pixel square (its implicit size), so an
+    // opening grows it, and niri answers the new size on this thread. A
+    // frame can be swapped before that answer is taken, one Joel never
+    // sees: filled in on it, the thread was held for seconds before the
+    // card stood at its size (Joel, 2026-11-10 15:10: "focus leaves my
+    // current window right when I hit the key combo", the card 7 s
+    // later). So the fill waits for two frames drawn at the size asked,
+    // the second begun after the first was given to niri, or 20 frames at
+    // most, so a size niri never gives can't hold it.
+    property int openFramesSized: 0
+    property int openFramesWaited: 0
+    function drawnAsAsked() {
+        const window = card.Window.window;
+        return window !== null && Math.abs(window.width - surface.implicitWidth) < 1
+            && Math.abs(window.height - surface.implicitHeight) < 1;
+    }
+
+    // Its first frame drawn, the opening is timed to it; drawn at its size,
+    // it's filled in.
     function openShown() {
         if (!opening)
             return;
+        openFramesSized = drawnAsAsked() ? openFramesSized + 1 : 0;
+        openFramesWaited += 1;
+        if (openFramesSized < 2 && openFramesWaited < 20) {
+            afterFrame(openShown);
+            return;
+        }
         openDrawn();
         filled("frame");
     }
@@ -7978,7 +8004,8 @@ Scope {
         // Numbered, since only the last 20 are kept, so a check opening more
         // than that still sees each new one come.
         const timed = { nth: openingsDrawn, took, worked, parts: openParts, after, rows,
-            made: most, verbs: kept ? 0 : openVerbsWeighed, first, kept, felt };
+            made: most, verbs: kept ? 0 : openVerbsWeighed, first, kept, felt,
+            frames: kept ? openFramesWaited : 1 };
         if (kept)
             timed.shown = rowsSaid();
         openingsTimed = openingsTimed.concat([timed]).slice(-20);
@@ -7989,7 +8016,8 @@ Scope {
         console.info(`launcher: opening took ${took} ms to its frame, ${worked} ms working`
             + ` (${parts}), then ${after.settling} settling, ${after.waiting} waiting for a`
             + ` frame and ${after.drawing} drawing it, ${rows} rows made (${most})`
-            + (kept ? ", drawn from what was kept" : "")
+            + (kept ? `, drawn from what was kept, at its size after ${openFramesWaited} frames`
+                : "")
             + (first ? ", the first since the shell started" : "")
             + (felt < 0 ? "" : `; ${felt} ms from the chord, heard ${heard} ms after it`));
     }
