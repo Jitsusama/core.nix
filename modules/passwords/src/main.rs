@@ -1,4 +1,4 @@
-//! passwords daemon SOCKET MANAGERS
+//! passwords daemon SOCKET MANAGERS [WORDS]
 //! passwords find WORDS | list | details ENTRY | show ENTRY [DETAIL]
 //! passwords copy ENTRY [DETAIL] | code ENTRY | let-in MANAGER | health
 //! passwords audit | keys | help [--json]
@@ -21,6 +21,12 @@
 //! without its secrets (lib.rs); a secret goes from its manager to the
 //! client that asked to see it, or to the clipboard, marked sensitive and
 //! cleared after CLEARS, and is never kept, written or logged here.
+//!
+//! Given the launcher's vocabulary, WORDS, it serves each entry's ready row
+//! too, as kind `row` to list and watch: worded, ordered and with its acts
+//! as rows.rs makes them, each watch told only the rows that changed, so
+//! the launcher makes none of its own. Without it, or with a word it
+//! lacks, it serves no rows and says why in the journal.
 //!
 //! An audit is the one ask that reads every password: asked by Joel alone
 //! (`asked`), never at start, on a timer or with a list, it asks each
@@ -56,8 +62,8 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use passwords::{
-    Ask, Changes, DOMAIN, Held, KIND, PATIENCE, Said, Standing, VERSION, ask, audit, cli, error,
-    key, named, now, said, standing,
+    Ask, Changes, DOMAIN, Held, KIND, PATIENCE, ROW, Said, Standing, VERSION, ask, audit, cli,
+    error, key, named, now, rows, said, standing,
 };
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
@@ -79,6 +85,12 @@ struct Managers {
     managers: Vec<Manager>,
 }
 
+/// The managers as rows name them, from the same file.
+#[derive(Deserialize)]
+struct Shown {
+    managers: Vec<rows::Shown>,
+}
+
 #[derive(Clone, Deserialize)]
 struct Manager {
     name: String,
@@ -90,6 +102,15 @@ struct Watch {
     connection: u64,
     id: Value,
     told: Sender<String>,
+    /// Whether it watches the entries' rows rather than them.
+    rows: bool,
+}
+
+/// What rows are made with, and the last each row watch was told.
+struct Rows {
+    shown: Vec<rows::Shown>,
+    words: Option<rows::Words>,
+    told: HashMap<String, Value>,
 }
 
 /// Everything the threads share.
@@ -110,6 +131,7 @@ struct Daemon {
     /// Where what the checks found is kept, or none where the account
     /// names no state folder.
     kept: Option<PathBuf>,
+    rows: Rows,
 }
 
 /// The daemon's state, and what wakes an ask waiting on a manager to start.
@@ -125,17 +147,23 @@ fn main() {
         }
     };
     match typed.command {
-        cli::Command::Daemon { socket, managers } => daemon(&PathBuf::from(socket), &managers),
+        cli::Command::Daemon {
+            socket,
+            managers,
+            words,
+        } => daemon(&PathBuf::from(socket), &managers, words.as_deref()),
         command => std::process::exit(command_line(command, typed.json)),
     }
 }
 
-fn daemon(socket: &std::path::Path, managers: &str) {
-    let managers: Vec<Manager> = match std::fs::read_to_string(managers)
-        .map_err(|error| error.to_string())
-        .and_then(|text| serde_json::from_str::<Managers>(&text).map_err(|error| error.to_string()))
-    {
-        Ok(read) => read.managers,
+fn daemon(socket: &std::path::Path, managers: &str, words: Option<&str>) {
+    let read = std::fs::read_to_string(managers).map_err(|error| error.to_string());
+    let (managers, shown): (Vec<Manager>, Vec<rows::Shown>) = match read.and_then(|text| {
+        let managers = serde_json::from_str::<Managers>(&text).map_err(|error| error.to_string());
+        let shown = serde_json::from_str::<Shown>(&text).map_err(|error| error.to_string());
+        Ok((managers?.managers, shown?.managers))
+    }) {
+        Ok(read) => read,
         Err(why) => {
             eprintln!("<3>couldn't read the password managers: {why}");
             std::process::exit(78);
@@ -169,6 +197,11 @@ fn daemon(socket: &std::path::Path, managers: &str) {
             copied: None,
             auditing: false,
             kept,
+            rows: Rows {
+                shown,
+                words: words.and_then(vocabulary),
+                told: HashMap::new(),
+            },
         }),
         Condvar::new(),
     ));
@@ -181,6 +214,58 @@ fn daemon(socket: &std::path::Path, managers: &str) {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || serve(&shared, stream, connection));
     }
+}
+
+/// The words rows are said in, from the launcher's vocabulary at `path`,
+/// or none, saying why, where it can't be read or lacks one.
+fn vocabulary(path: &str) -> Option<rows::Words> {
+    let read = std::fs::read_to_string(path)
+        .map_err(|error| error.to_string())
+        .and_then(|text| serde_json::from_str::<Value>(&text).map_err(|error| error.to_string()))
+        .and_then(|vocabulary| rows::Words::read(&vocabulary));
+    read.map_err(|why| eprintln!("<3>serving no rows, {path}: {why}"))
+        .ok()
+}
+
+/// Every entry's row as it stands, as a record of kind `row`.
+fn rows_of(daemon: &Daemon) -> Vec<Value> {
+    let Some(words) = &daemon.rows.words else {
+        return Vec::new();
+    };
+    rows::rows(&daemon.held.records(), &daemon.rows.shown, words)
+        .into_iter()
+        .map(|row| json!({"key": row["key"], "kind": ROW, "row": row}))
+        .collect()
+}
+
+/// Tells each row watch the rows that changed since it was last told,
+/// and those gone: one entry changing can move every row's order.
+fn tell_rows(daemon: &mut Daemon) {
+    if !daemon.watches.iter().any(|watch| watch.rows) {
+        return;
+    }
+    let now: HashMap<String, Value> = rows_of(daemon)
+        .into_iter()
+        .map(|row| (row["key"].as_str().unwrap_or_default().to_owned(), row))
+        .collect();
+    let changed: Vec<&Value> = now
+        .iter()
+        .filter(|(key, row)| daemon.rows.told.get(*key) != Some(*row))
+        .map(|(_, row)| row)
+        .collect();
+    let gone: Vec<&String> = daemon
+        .rows
+        .told
+        .keys()
+        .filter(|key| !now.contains_key(*key))
+        .collect();
+    if !(changed.is_empty() && gone.is_empty()) {
+        for watch in daemon.watches.iter().filter(|watch| watch.rows) {
+            let line = json!({"id": watch.id, "changed": changed, "gone": gone});
+            let _ = watch.told.send(line.to_string());
+        }
+    }
+    daemon.rows.told = now;
 }
 
 /// Where what the checks found is kept: the account's state folder's
@@ -253,6 +338,8 @@ fn keep(daemon: &mut Daemon) {
         let line = json!({"id": watch.id, "checked": checked});
         let _ = watch.told.send(line.to_string());
     }
+    // What a check found is said on each row it found troubled.
+    tell_rows(daemon);
 }
 
 /// The socket systemd holds for it (passwords.socket), so the shell never
@@ -397,10 +484,11 @@ fn took_in(shared: &Shared, manager: &str, line: &str) {
                     .iter()
                     .filter_map(|key| daemon.held.record(key))
                     .collect();
-                for watch in &daemon.watches {
+                for watch in daemon.watches.iter().filter(|watch| !watch.rows) {
                     let line = json!({"id": watch.id, "changed": records, "gone": changes.gone});
                     let _ = watch.told.send(line.to_string());
                 }
+                tell_rows(&mut daemon);
             }
             // A list finding an entry changed or gone takes what a check
             // found of it.
@@ -547,11 +635,12 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
             asked,
             held,
             patience,
+            rows,
         } => {
             if !held {
                 list(shared, fresh, asked, patience);
             }
-            listed(shared, &id, limit)
+            listed(shared, &id, limit, rows)
         }
         Ask::Get {
             id,
@@ -561,19 +650,16 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
             patience,
         } if !held => get(shared, &id, &keys, asked, patience),
         Ask::Get { id, keys, .. } => held_records(shared, &id, &keys),
-        Ask::Watch { id } => {
-            let mut daemon = lock(shared);
-            let records = daemon.held.records();
-            let _ = told.send(
-                json!({"id": id, "records": records,
-                       "sources": daemon.held.standings(), "state": daemon.held.state()})
-                .to_string(),
+        Ask::Watch { id, rows } => {
+            watch(
+                shared,
+                Watch {
+                    connection,
+                    id,
+                    told: told.clone(),
+                    rows,
+                },
             );
-            daemon.watches.push(Watch {
-                connection,
-                id,
-                told: told.clone(),
-            });
             Value::Null
         }
         Ask::Unwatch { id } => {
@@ -620,16 +706,48 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
         Ask::UnknownKind { id, kind } => error(
             &id,
             "unknown-kind",
-            &format!("this daemon keeps entries, not {kind}"),
+            &format!("this daemon keeps entries and their rows, not {kind}"),
         ),
         Ask::Unknown { id, ask } => error(&id, "unknown-ask", &format!("can't answer {ask:?}")),
     }
 }
 
-/// Every entry held, at most `limit`, and how each manager stands.
-fn listed(shared: &Shared, id: &Value, limit: Option<usize>) -> Value {
+/// Starts a watch: what's held now, the entries or their rows, then each
+/// change as it comes.
+fn watch(shared: &Shared, watch: Watch) {
+    let mut daemon = lock(shared);
+    let records = if watch.rows {
+        let told = rows_of(&daemon);
+        daemon.rows.told = told
+            .iter()
+            .map(|row| {
+                (
+                    row["key"].as_str().unwrap_or_default().to_owned(),
+                    row.clone(),
+                )
+            })
+            .collect();
+        told
+    } else {
+        daemon.held.records()
+    };
+    let _ = watch.told.send(
+        json!({"id": watch.id, "records": records,
+               "sources": daemon.held.standings(), "state": daemon.held.state()})
+        .to_string(),
+    );
+    daemon.watches.push(watch);
+}
+
+/// Every entry held, or its row where `rows` asks, at most `limit`, and
+/// how each manager stands.
+fn listed(shared: &Shared, id: &Value, limit: Option<usize>, rows: bool) -> Value {
     let daemon = lock(shared);
-    let mut records = daemon.held.records();
+    let mut records = if rows {
+        rows_of(&daemon)
+    } else {
+        daemon.held.records()
+    };
     if let Some(limit) = limit {
         records.truncate(limit);
     }
@@ -972,10 +1090,11 @@ fn audit_read(shared: &Shared, id: &Value) -> Value {
         .filter_map(|key| daemon.held.record(key))
         .collect();
     if !records.is_empty() {
-        for watch in &daemon.watches {
+        for watch in daemon.watches.iter().filter(|watch| !watch.rows) {
             let line = json!({"id": watch.id, "changed": records, "gone": []});
             let _ = watch.told.send(line.to_string());
         }
+        tell_rows(&mut daemon);
     }
     keep(&mut daemon);
     let troubled: Vec<Value> = daemon

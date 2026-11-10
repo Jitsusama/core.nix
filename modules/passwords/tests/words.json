@@ -1,0 +1,31 @@
+{
+  "things": [
+    {
+      "id": "passwords",
+      "said": {
+        "hidden": "hidden",
+        "set": "set up",
+        "none": "none",
+        "unsecured": "unsecured website",
+        "reused": "reused password",
+        "reusedIn": "reused in {count} other entries",
+        "breached": "breached password",
+        "breaches": "seen in {count} breaches",
+        "within": "in {vault} · {kind}"
+      }
+    },
+    { "id": "passwords:health", "name": "Health" },
+    { "id": "passwords:strength", "name": "Strength" },
+    { "id": "passwords:code", "name": "One-Time Code" },
+    { "id": "passwords:changed", "name": "Last Changed" },
+    {
+      "id": "passwords:websites",
+      "name": "Website",
+      "states": { "several": { "name": "Websites" } }
+    },
+    { "id": "passwords:tags", "name": "Tags" },
+    { "id": "passwords:created", "name": "Created" },
+    { "id": "passwords:manager", "name": "Password Manager" },
+    { "id": "passwords:files", "name": "Files" }
+  ]
+}
