@@ -218,13 +218,7 @@ ShellRoot {
         // Desktop entries and what quiet had open are read in the
         // background, so the cases wait for all three and both lists.
         onThingsChanged: root.ready()
-        onChanged: root.redrawn += 1
     }
-
-    // How often Applications said its rows changed: a program's rows read
-    // their counts and Go To as they're drawn, so windows heard draw them
-    // again, and the same windows again don't.
-    property int redrawn: 0
 
     Connections {
         target: applications.recents
