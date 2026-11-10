@@ -263,7 +263,8 @@ Provider {
         const words = Words.of("keyboards").said;
         const board = Keyboards.zsa(device) ? "ergodox" : Keyboards.builtIn(device) ? "laptop"
             : "";
-        const tally = board === "" ? null : KeyCounts.board(counts, board, Shortcuts.faces);
+        const told = board === "" ? null : counts[`counts:${board}`] ?? null;
+        const tally = KeyCounts.board(told, Shortcuts.faces);
         const title = provider.named(device);
         const named = id => provider.partNamed("keyboards", id);
         return Keyboards.drawer(Object.assign({
@@ -272,7 +273,7 @@ Provider {
             layer: Keyboards.zsa(device) && KeyboardLayer.present
                 ? { name: KeyboardLayer.name, locked: KeyboardLayer.locked } : null,
             desk: facts[device.name] ?? [],
-            counted: KeyCounts.facts(tally, named, KeyCounts.since(countsBegan, words)),
+            counted: KeyCounts.facts(tally, named, KeyCounts.since(told?.began_s, words)),
             most: KeyCounts.most(tally, named)
         }, read), named, words);
     }
@@ -324,8 +325,6 @@ Provider {
             usbId: folder === "" ? "" : `${device.vendor}:${device.product}`,
             serial: folder === "" ? device.uniq : said(`${folder}/serial`) || device.uniq
         };
-        counted.reload();
-        began.reload();
         const reading = Object.assign({}, provider.reading);
         delete reading[key];
         provider.reading = reading;
@@ -339,28 +338,18 @@ Provider {
             readings = ({});
     }
 
-    // What key-counts has tallied (modules/key-counts), and when it began,
-    // the seconds it writes beside the counts on its first run, read as
-    // the drawer asks and as the counts are written again.
-    property string counts: ""
-    property string countsBegan: ""
+    // What key-counts has tallied of each board (modules/key-counts), and
+    // when it began, summed by the machine daemon as the counts are written
+    // again (modules/machine/src/counts.rs), by each board's record's key.
+    readonly property var counts: tallies.revision >= 0 ? tallies.held : ({})
 
-    FileView {
-        id: counted
-        path: "/var/lib/key-counts/counts.tsv"
-        watchChanges: true
-        printErrors: false
-        onFileChanged: reload()
-        onLoaded: provider.counts = text()
-        onLoadFailed: provider.counts = ""
-    }
+    Daemon {
+        id: tallies
 
-    FileView {
-        id: began
-        path: "/var/lib/key-counts/counts.since"
-        printErrors: false
-        onLoaded: provider.countsBegan = text()
-        onLoadFailed: provider.countsBegan = ""
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+        kind: "counts"
+        keptThroughGap: false
+        answersWhole: true
     }
 
     // Flashing a board with this machine's build, the ZSA board's alone,
@@ -589,7 +578,7 @@ Provider {
     Connections {
         target: KeyboardLayer
 
-        function onLineChanged() {
+        function onSaidChanged() {
             if (provider.shown)
                 provider.answered();
         }

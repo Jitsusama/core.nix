@@ -5,9 +5,10 @@
 //! [`supply`], [`sleep`], [`firmware`], [`light`], and what the backlight
 //! program steers the screen to, [`steered`], who has each camera open,
 //! [`camera`], and the keyboards connected, caps lock and a board's layer,
-//! [`keyboards`], each heard as it's written through [`written`]), and the
-//! user units the shell may restart, [`units`], and the parts Heat's rows
-//! say, gathered from those records and the processor's own telemetry
+//! [`keyboards`], and what key-counts has tallied of each, [`counts`],
+//! each heard as it's written through [`written`]), and the user units
+//! the shell may restart, [`units`], and the parts Heat's rows say,
+//! gathered from those records and the processor's own telemetry
 //! ([`parts`], [`telemetry`]), and Heat's and Power's rows made of them,
 //! ready for the launcher ([`heat_rows`], [`power_rows`], placed and
 //! graphed through [`rows`] and worded through [`words`]). Every file is
@@ -27,6 +28,7 @@
 
 pub mod boot;
 pub mod camera;
+pub mod counts;
 pub mod disk;
 pub mod firmware;
 pub mod heat;

@@ -1001,6 +1001,29 @@ fn the_keyboards_caps_lock_and_a_boards_layer_are_told_as_their_watchers_write()
 }
 
 #[test]
+fn what_key_counts_tallied_is_told_as_it_writes_its_counts_again() {
+    let running = Running::new("counts");
+    let folder = running.root().join("var/lib/key-counts");
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": "all", "ask": "watch", "kind": "counts"}));
+    assert_eq!(said["records"], json!([]), "nothing counted yet");
+    // Written beside and renamed over, as key-counts writes it.
+    let write = |presses: u32| {
+        std::fs::create_dir_all(&folder).unwrap();
+        let text = format!(
+            "board\tlayer\tmodifiers\tkey\tpresses\tholds\n\
+             ergodox\tcoal\t-\te\t{presses}\t0\n"
+        );
+        std::fs::write(folder.join("counts.new"), text).unwrap();
+        std::fs::rename(folder.join("counts.new"), folder.join("counts.tsv")).unwrap();
+    };
+    write(12);
+    assert_eq!(client.changed("counts:ergodox")["presses"], 12);
+    write(13);
+    assert_eq!(client.changed("counts:ergodox")["presses"], 13);
+}
+
+#[test]
 fn a_disk_taken_out_is_said_gone() {
     let running = Running::new("gone");
     let mut client = running.client();

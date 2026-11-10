@@ -1,95 +1,42 @@
 // What key-counts has tallied of a keyboard (modules/key-counts), for its
 // drawer (Keyboards.qml): how many keys it has pressed and held, which most,
-// on which layers and under which modifiers, read from the counts file it
-// writes, in plain JavaScript so tests/answers.qml holds it in Qt's own
-// engine. The file is a header and a row for each board, layer, modifiers
-// held and key: `ergodox	coal	ctrl	a	4355	12`, "-" for no modifiers.
+// on which layers and under which modifiers, as the machine daemon sums
+// them from the counts file and tells them (modules/machine/src/counts.rs),
+// worded here in plain JavaScript so tests/answers.qml holds it in Qt's own
+// engine.
 .pragma library
-.import "Order.js" as Order
 
-// How many keys the drawer names as most pressed.
-const MOST = 5;
 // How many layers and modifiers it names beside their whole.
 const SHARES = 3;
 
-// The kernel's names for keys the key map spells otherwise: one name for
-// a key there are two of, and the keys the counter knows only by their
-// number, code193 the Copilot key's F23 and code70 Scroll Lock.
-const SPELLED = {
-    leftshift: "shift", rightshift: "shift", leftctrl: "ctrl", rightctrl: "ctrl",
-    leftalt: "alt", rightalt: "alt", leftmeta: "super", rightmeta: "super",
-    kpenter: "enter", capslock: "caps_lock", numlock: "num_lock",
-    scrolllock: "scroll_lock", code193: "f23", code70: "scroll_lock"
-};
-
-// A number pad's key, by the kernel's name for it, kp7.
-const PAD = /^kp(\d)$/;
-
-// A key as a chord draws it, from the kernel's name for it: its face in
-// the theme's table (Shortcuts.qml's faces, by the key map's spelling),
+// A key as a chord draws it, from the key map's spelling of it, as the
+// daemon tells it: its face in the theme's table (Shortcuts.qml's faces),
 // else a letter as a capital and any other word with one.
 function face(key, faces) {
-    // The number pad's keys read as what they type, as the board's
-    // numbers layer sends them.
-    const pad = PAD.exec(key);
-    if (pad !== null) {
-        return pad[1];
-    }
-    const spelled = SPELLED[key] ?? key;
-    const own = faces[spelled];
+    const own = faces[key];
     if (own !== undefined) {
         return own.text;
     }
-    return spelled.length === 1 ? spelled.toUpperCase()
-        : spelled.charAt(0).toUpperCase() + spelled.slice(1);
+    return key.length === 1 ? key.toUpperCase() : key.charAt(0).toUpperCase() + key.slice(1);
 }
 
-// The counts file's rows, each { board, layer, modifiers, key, presses,
-// holds }, leaving out its header and any row it can't read.
-function rows(text) {
-    return String(text ?? "").split("\n").map(line => line.split("\t"))
-        .filter(cells => cells.length === 6 && cells[0] !== "board")
-        .map(([named, layer, modifiers, key, presses, holds]) => ({
-            board: named, layer, modifiers, key,
-            presses: Number(presses) || 0,
-            holds: Number(holds) || 0
-        }));
-}
-
-// Each key's presses summed over the layers and modifiers it was pressed
-// under, keyed by how it's drawn, so the two shifts are one: amounts, the
-// most pressed first.
-function tallied(each, by) {
-    const sums = new Map();
-    for (const row of each) {
-        const key = by(row);
-        sums.set(key, (sums.get(key) ?? 0) + row.presses);
-    }
-    const pressed = Array.from(sums, ([name, presses]) => ({ name, presses }))
-        .filter(one => one.presses > 0);
-    return Order.sorted(pressed,
-        Order.amounts({ amount: one => one.presses, name: one => one.name }));
-}
-
-// What one board has tallied, or null for one it has nothing of:
-// { presses, holds, most: [{ key, presses }], layers: [{ name, share }],
-// modified: share, modifiers: [{ name, share }] }, a share of one.
-function board(text, name, faces) {
-    const own = rows(text).filter(row => row.board === name);
-    const presses = own.reduce((sum, row) => sum + row.presses, 0);
-    if (presses === 0) {
+// What one board has tallied, from its record as the daemon tells it
+// (`counts:<board>`, summed and ranked there), or null for one it has
+// nothing of: { presses, holds, most: [{ key, presses }], layers: [{ name,
+// share }], modified: share, modifiers: [{ name, share }] }, a share of one.
+function board(told, faces) {
+    const presses = Number(told?.presses ?? 0);
+    if (!(presses > 0)) {
         return null;
     }
     const share = one => ({ name: one.name, share: one.presses / presses });
-    const modified = own.filter(row => row.modifiers !== "-");
     return {
         presses,
-        holds: own.reduce((sum, row) => sum + row.holds, 0),
-        most: tallied(own, row => face(row.key, faces)).slice(0, MOST)
-            .map(one => ({ key: one.name, presses: one.presses })),
-        layers: tallied(own, row => row.layer).map(share),
-        modified: modified.reduce((sum, row) => sum + row.presses, 0) / presses,
-        modifiers: tallied(modified, row => row.modifiers).map(share)
+        holds: Number(told.holds ?? 0),
+        most: (told.most ?? []).map(one => ({ key: face(one.name, faces), presses: one.presses })),
+        layers: (told.layers ?? []).map(share),
+        modified: Number(told.modified ?? 0) / presses,
+        modifiers: (told.modifiers ?? []).map(share)
     };
 }
 

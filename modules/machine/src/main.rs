@@ -8,7 +8,8 @@
 //! room's light, the brightness and warmth the backlight program
 //! steers the built-in screen to, who has each camera open, Keep Awake's
 //! locks and the power profile (kept.rs), and the keyboards connected,
-//! caps lock and a board's layer, each a record whose figures are
+//! caps lock, a board's layer and what key-counts has tallied of each
+//! keyboard, each a record whose figures are
 //! the kernel's own or its services'
 //! (lib.rs says how they're named). The kernel's files are read under
 //! ROOT, `/` unless a test says otherwise.
@@ -70,9 +71,9 @@ use std::time::{Duration, Instant};
 use machine::interface::{Ask, KINDS, MADE, VERSION, ask, error, kind_of, place_of};
 use machine::words::Words;
 use machine::{
-    Root, boot, camera, clock_ms, disk, firmware, heat, heat_rows, keyboards, kept, light, memory,
-    now_ms, power_rows, processor, rounded, rows, sleep, steered, supply, telemetry, tree, units,
-    using, written::Written,
+    Root, boot, camera, clock_ms, counts, disk, firmware, heat, heat_rows, keyboards, kept, light,
+    memory, now_ms, power_rows, processor, rounded, rows, sleep, steered, supply, telemetry, tree,
+    units, using, written::Written,
 };
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
@@ -102,13 +103,14 @@ const LEEWAY: Duration = Duration::from_millis(50);
 /// the second.
 const STEERED: [&str; 2] = ["brightness", "warmth"];
 const KEYBOARDS: [&str; 2] = ["keyboards", "capslock"];
-const HEARD: [&str; 6] = [
+const HEARD: [&str; 7] = [
     "brightness",
     "warmth",
     "camera",
     "keyboards",
     "capslock",
     "layer",
+    "counts",
 ];
 /// How often a watch on files heard looks to see whether it's still
 /// wanted, once every folder is watched.
@@ -246,6 +248,9 @@ impl Reader {
         }
         if wants("layer") {
             records.extend(keyboards::layer(&self.root, self.layer.as_deref()));
+        }
+        if wants("counts") {
+            records.extend(counts::boards(&self.root));
         }
         records
     }
@@ -503,6 +508,11 @@ fn main() {
         let shared = Arc::clone(&shared);
         let folders = vec![root.path(keyboards::LIGHTS)];
         std::thread::spawn(move || heard_loop(&shared, &KEYBOARDS, &folders, keyboards::names));
+    }
+    {
+        let shared = Arc::clone(&shared);
+        let folders = vec![root.path(counts::FOLDER)];
+        std::thread::spawn(move || heard_loop(&shared, &["counts"], &folders, counts::names));
     }
     if let Some(folder) = keyboards::layer_file()
         .as_deref()
