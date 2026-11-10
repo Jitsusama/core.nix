@@ -81,9 +81,10 @@ ShellRoot {
             const ats = root.lines.map(line => JSON.parse(line).at)
                 .map(at => at <= 5 ? at : "new").join(" ");
             if (root.stage === "carrying" && ats === "3 4 5") {
-                // Read by name, since Trials has no such list to say.
-                if (root.made["trials"] !== undefined)
-                    return root.fail(`the shell holds the openings: ${root.made["trials"]}`);
+                // Asked with `in`, since Trials has no such list for the lint to
+                // find, while its own members are seen.
+                if (!("remember" in root.made) || "trials" in root.made)
+                    return root.fail("the shell holds the openings");
                 root.stage = "closing";
                 root.openAndClose();
             } else if (root.stage === "closing" && root.lines.length === 4) {
