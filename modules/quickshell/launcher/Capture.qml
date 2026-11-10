@@ -102,9 +102,16 @@ Provider {
     // before it describes the window, and Niri.windows changes in place, so
     // this follows Niri.revision too: on an empty workspace, Niri.current
     // names the new window while Niri.windows doesn't hold it yet.
+    // Followed only while Capture's rows are wanted, as the windows below
+    // are: each change made the seven fixed rows again, shut too.
+    readonly property var lastFocused: ({ window: null })
     readonly property var focused: {
+        if (!provider.wanted)
+            return provider.lastFocused.window;
         void Niri.revision;
-        return Niri.current === null ? null : Niri.windows[Niri.current] ?? null;
+        provider.lastFocused.window = Niri.current === null ? null
+            : Niri.windows[Niri.current] ?? null;
+        return provider.lastFocused.window;
     }
 
     readonly property var stop: member({
@@ -254,7 +261,15 @@ Provider {
     // kept by its id while its program and title read the same. A plain
     // object, so keeping one notifies nothing.
     readonly property var keptWindows: ({})
+    // The rows as they were last made, held while nobody wants them.
+    readonly property var madeWindows: ({ rows: [] })
+    // Made only while they're wanted (Provider.qml's wanted): with the
+    // launcher shut, every event niri sent made them again, 287 rows in
+    // four minutes on Joel's shell, for nobody (2026-11-10). Unwanted, it
+    // reads nothing of niri and says the rows last made.
     readonly property var windows: {
+        if (!provider.wanted)
+            return provider.madeWindows.rows;
         void Niri.revision;
         const next = {};
         const rows = Object.values(Niri.windows)
@@ -269,6 +284,7 @@ Provider {
         for (const id of Object.keys(provider.keptWindows))
             delete provider.keptWindows[id];
         Object.assign(provider.keptWindows, next);
+        provider.madeWindows.rows = rows;
         return rows;
     }
 
