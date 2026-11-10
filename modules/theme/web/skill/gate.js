@@ -137,11 +137,15 @@
 
   // The writing's guard, over every word a reader reads (code, keys and
   // samples are names, not prose): no emdash or Unicode ellipsis, Canadian
-  // spelling, and nothing private that an agent's work left behind.
+  // spelling, and nothing private that an agent's work left behind. A proper
+  // name is marked translate="no", the standard's own way of saying it stays
+  // as written, so a surname such as Gray is never asked to be respelled.
+  const names = '[translate="no"]';
   const prose = [];
   const walker = page.createTreeWalker(page.body, NodeFilter.SHOW_TEXT);
   for (let text = walker.nextNode(); text !== null; text = walker.nextNode()) {
-    if (text.parentElement.closest("code, kbd, pre, samp, script, style, template") === null) {
+    const kept = `code, kbd, pre, samp, script, style, template, ${names}`;
+    if (text.parentElement.closest(kept) === null) {
       prose.push(text.textContent);
     }
   }
