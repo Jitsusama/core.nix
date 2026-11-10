@@ -877,8 +877,15 @@ const PLANS: &str = "xargs -r nix-store --realise --dry-run 2>&1";
 /// referenced, the builder fetches from its source first, and only one
 /// it couldn't goes up: on 9 November a proxy refused a lent builder a Go
 /// zone's modules, which this machine held. The builder's account is one
-/// its daemon trusts, so they go unsigned. When any of it fails, or the send falls behind
-/// [`send_within`], the builder builds what didn't go up, as before.
+/// its daemon trusts, so they go unsigned.
+///
+/// When any of it fails, or the send falls behind [`send_within`], the
+/// builder builds what it still lacks, and of what that's built from only
+/// the downloads this machine holds go up, the same way: on 10 November
+/// a Go zone's 106 MB of modules hadn't gone up in 15 minutes, and the
+/// builder, left to build them, was refused the 18 MB of downloads they
+/// take. The rest it builds, since what a big output is built from is
+/// often bigger.
 fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, nix]: [&str; 2]) {
     // Said before it's asked, since a fresh builder asks its caches about
     // every path the build takes, which can run for minutes.
@@ -904,7 +911,7 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
     let outputs = derivations
         .values()
         .flat_map(|derivation| derivation.outputs.values());
-    let holds = held::held(&json_of(
+    let mut holds = held::held(&json_of(
         Command::new(nix)
             .args(["path-info", "--json"])
             .args(outputs),
@@ -914,39 +921,97 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
         .iter()
         .map(|word| held::wanted(word))
         .collect();
-    let sending = held::instead(&planned, &derivations, &wanted, &holds);
-    if sending.is_empty() {
-        return;
+    let mut sending = held::instead(&planned, &derivations, &wanted, &holds);
+    // What went up stays held, so what it's built from isn't sent again.
+    let mut up = BTreeSet::new();
+    while !sending.is_empty()
+        && !sent_held(
+            &sending,
+            &planned,
+            &fixed,
+            &holds,
+            lent,
+            scratch,
+            [ssh, nix],
+        )
+    {
+        let lacks: BTreeSet<String> = lacking(lent, &sending, scratch, ssh)
+            .unwrap_or_else(|| sending.clone())
+            .into_iter()
+            .collect();
+        if lacks.is_empty() {
+            return;
+        }
+        up.extend(
+            sending
+                .iter()
+                .filter(|path| !lacks.contains(*path))
+                .cloned(),
+        );
+        // Each round holds fewer, so the rounds end.
+        holds.retain(|path, _| {
+            !lacks.contains(path) && (fixed.contains_key(path) || up.contains(path))
+        });
+        sending = held::instead(&planned, &derivations, &wanted, &holds)
+            .into_iter()
+            .filter(|path| !up.contains(path))
+            .collect();
+        if !sending.is_empty() {
+            let (outputs, them) = match lacks.len() {
+                1 => ("1 output".to_owned(), "it"),
+                count => (format!("{count} outputs"), "them"),
+            };
+            eprintln!(
+                "nix-offload: the builder lacks {outputs} that didn't go up and builds {them} \
+                 itself, so the downloads this machine holds for {them} go up where it can't \
+                 fetch them"
+            );
+        }
     }
+}
+
+/// Sends `sending` up, of those `holds` says this machine holds, after
+/// the builder has fetched what downloads it can among them and what they
+/// reference, and says whether nothing is left to send: false when the
+/// send failed or fell behind [`send_within`].
+fn sent_held(
+    sending: &[String],
+    planned: &BTreeSet<String>,
+    fixed: &std::collections::BTreeMap<String, String>,
+    holds: &std::collections::BTreeMap<String, u64>,
+    lent: &Builder,
+    scratch: &Path,
+    [ssh, nix]: [&str; 2],
+) -> bool {
     // `nix copy` sends what they reference too, wherever no cache gives
     // it the builder, so a download is fetched first at its source.
     let closure = held::described(&json_of(
         Command::new(nix)
             .args(["path-info", "--recursive", "--json"])
-            .args(&sending),
+            .args(sending),
     ));
-    let fetching = held::fetched(&fixed, &closure);
+    let fetching = held::fetched(fixed, &closure);
     let fetched = fetched_first(
         &fetching,
-        held::fetched_size(&fixed, &closure, &fetching),
+        held::fetched_size(fixed, &closure, &fetching),
         lent,
         scratch,
         ssh,
     );
     // A download the builder fetched itself goes up no more.
-    let sending: Vec<String> = sending
-        .into_iter()
+    let sending: Vec<&String> = sending
+        .iter()
         .filter(|path| {
             !fixed
-                .get(path)
+                .get(*path)
                 .is_some_and(|derivation| fetched.contains(derivation))
         })
         .collect();
     if sending.is_empty() {
-        return;
+        return true;
     }
-    let own: u64 = sending.iter().filter_map(|path| holds.get(path)).sum();
-    let size = held::sent_up(&planned, &fixed, &closure, &fetched).max(own);
+    let own: u64 = sending.iter().filter_map(|path| holds.get(*path)).sum();
+    let size = held::sent_up(planned, fixed, &closure, &fetched).max(own);
     let (outputs, them) = match sending.len() {
         1 => ("1 output".to_owned(), "it"),
         count => (format!("{count} outputs"), "them"),
@@ -971,7 +1036,7 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
         .spawn()
         .map(|mut send| finished_within(&mut send, within));
     match sent {
-        Ok(Some(sent)) if sent.success() => {}
+        Ok(Some(sent)) if sent.success() => return true,
         Ok(None) => eprintln!(
             "nix-offload: the send took longer than {}, slower than this machine's uplink, so \
              it stops and the builder builds what didn't go up",
@@ -979,6 +1044,7 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
         ),
         _ => eprintln!("nix-offload: they couldn't be sent, so the builder builds {them}"),
     }
+    false
 }
 
 /// How fast held outputs must go up, in bytes a second, for sending them
