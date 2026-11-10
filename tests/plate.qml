@@ -75,16 +75,20 @@ QtObject {
             "no-light": "no light heard", at: "{share} at {lux}" })[key] ?? key, values);
     }
 
-    // What backlight-now says as #2333's daemon writes it: following the
-    // room, there, resting a gap too slight to move, or still stepping to
-    // what it asks; the lid shut, where the room is still said; no light
-    // heard, where the Room Light says so; and nothing, for an empty file
-    // or one the daemon never writes. Then the curve, every point dimmest
-    // first and kept where the daemon keeps it, none for a file it would
-    // refuse.
+    // What the machine daemon says of the level the backlight program
+    // settled (modules/machine's steered.rs, which reads its files and
+    // whose own tests hold how they're parsed): following the room, there,
+    // resting a gap too slight to move, or still stepping to what it asks;
+    // the lid shut, where the room is still said; no light heard, where
+    // the Room Light says so; and nothing, for no record or one with no
+    // level. Then the curve, as the daemon orders it.
     function backlight(check) {
         const lx = each => `${each} lx`;
-        const there = Backlight.now("level\t0.380\nlux\t28\nasks\t0.380\nfollowing\tyes\n");
+        const said = (level, lux, asks, following, curve) => Backlight.settled([{
+            key: "brightness:built-in", kind: "brightness", level_ratio: level, lux,
+            asks_ratio: asks, following, curve: curve ?? []
+        }]);
+        const there = said(0.38, 28, 0.38, true);
         check("the daemon's level, what the curve asks and whether it follows",
             JSON.stringify(there)
                 === JSON.stringify({ level: 0.38, lux: 28, asks: 0.38, following: true }),
@@ -92,36 +96,39 @@ QtObject {
         check("following the room, there", Backlight.follows(there, backlightSaid) === "the room"
             && Backlight.room(there, 28, backlightSaid, lx) === "28 lx",
             Backlight.follows(there, backlightSaid));
-        const stepping = Backlight.now("level\t0.600\nlux\t28\nasks\t0.950\nfollowing\tyes\n");
+        const stepping = said(0.6, 28, 0.95, true);
         check("following the room, on its way",
             Backlight.follows(stepping, backlightSaid) === "the room \u00b7 on its way to 95%",
             Backlight.follows(stepping, backlightSaid));
         // The panel's steps put the level a point or two from what's asked,
         // under the daemon's 0.03, where it rests.
-        const resting = Backlight.now("level\t0.380\nlux\t28\nasks\t0.400\nfollowing\tyes\n");
+        const resting = said(0.38, 28, 0.4, true);
         check("a gap too slight to move is there",
             Backlight.follows(resting, backlightSaid) === "the room",
             Backlight.follows(resting, backlightSaid));
-        const shut = Backlight.now("level\t0.600\nlux\t28\nasks\t0.950\nfollowing\tno\n");
+        const shut = said(0.6, 28, 0.95, false);
         check("the lid shut, the room still said",
             Backlight.follows(shut, backlightSaid) === ""
             && Backlight.room(shut, 30, backlightSaid, lx) === "30 lx"
             && Backlight.room(shut, null, backlightSaid, lx) === "28 lx",
             Backlight.room(shut, null, backlightSaid, lx));
-        const unheard = Backlight.now("level\t0.600\nfollowing\tno\n");
+        const unheard = said(0.6, null, null, false);
         check("no light heard, said where nothing hears the room", unheard?.asks === null
             && unheard?.lux === null
             && Backlight.follows(unheard, backlightSaid) === ""
             && Backlight.room(unheard, null, backlightSaid, lx) === "no light heard"
             && Backlight.room(unheard, 0, backlightSaid, lx) === "0 lx",
             JSON.stringify(unheard));
-        check("an empty file, or one with no following, says nothing", Backlight.now("") === null
-            && Backlight.now("level\t0.600\nasks\t0.950\n") === null
+        const curveOnly = said(null, null, null, null, [{ lux: 6, level_ratio: 0.377 }]);
+        check("no record, or one with no level settled, says nothing",
+            Backlight.settled([]) === null && curveOnly === null
             && Backlight.follows(null, backlightSaid) === ""
             && Backlight.room(null, 28, backlightSaid, lx) === "28 lx"
             && Backlight.room(null, null, backlightSaid, lx) === "",
-            JSON.stringify(Backlight.now("level\t0.600\nasks\t0.950\n")));
-        const points = Backlight.curve("# the curve\n28 0.950\n\n6 0.377\n10000 1.000\n");
+            JSON.stringify(curveOnly));
+        const points = Backlight.curve([{ kind: "brightness", curve: [
+            { lux: 6, level_ratio: 0.377 }, { lux: 28, level_ratio: 0.95 },
+            { lux: 10000, level_ratio: 1 }] }]);
         const curve = Backlight.curveSaid(points, backlightSaid, each => Backlight.chosen(each));
         check("the curve, dimmest first",
             curve === "38% at 6 lx \u00b7 95% at 28 lx \u00b7 100% at 10 klx", curve);
@@ -133,15 +140,8 @@ QtObject {
             .map(each => Backlight.chosen(each)).join("; ");
         check("a curve's lux every digit, none added, in a reading's units", chosen
             === "0 lx; 50 lx; 400 lx; 1.234 klx; 1.5 klx; 2 klx", chosen);
-        check("a file the daemon would refuse is no curve",
-            ["6 0.377\nnot a point\n", "6 0.377 1\n", "1.2.3 0.5\n", "0x10 0.5\n", ""]
-                .every(text => Backlight.curve(text).length === 0),
-            JSON.stringify(Backlight.curve("0x10 0.5\n")));
-        const kept = Backlight.curve("-5 0.010\n100 1.500\n");
-        check("a point past the curve's bounds is kept where the daemon keeps it",
-            JSON.stringify(kept)
-                === JSON.stringify([{ lux: 0, level: 0.02 }, { lux: 100, level: 1 }]),
-            JSON.stringify(kept));
+        check("no record is no curve", Backlight.curve([]).length === 0,
+            JSON.stringify(Backlight.curve([])));
     }
 
     // The machine daemon's records of the panel's backlight and the room's

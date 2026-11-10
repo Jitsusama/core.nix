@@ -1,29 +1,15 @@
-// What the backlight daemon says of the screen's level, in plain
+// What the machine daemon says of the screen's level, in plain
 // JavaScript so a check can run it in Qt's own engine, as the shell does:
-// the level it last settled, what its curve asks for the room it heard
-// and whether it follows the room, from backlight-now; and its curve's
-// points, from its learned file; and what the machine daemon says of the
-// backlight's steps and the room's sensor. Displays.qml reads the files,
+// the level the backlight program last settled, what its curve asks for
+// the room it heard, whether it follows the room and its curve's points
+// (modules/machine's steered.rs, which reads and parses its files); and
+// the backlight's steps and the room's sensor (light.rs). Displays.qml
 // holds the daemon's records and draws the screen's drawer.
 .pragma library
 .import "Numbers.js" as Numbers
 .import "Order.js" as Order
 .import "Plate.js" as Plate
 
-// A fact a line, its name, a tab and its value, as the daemon writes them.
-const FACT = /^([a-z]+)\t(.*)$/;
-// A curve's point a line, its lux and its level, as the daemon writes it;
-// a blank line or one opening with # is no point.
-const SPACES = /\s+/;
-const COMMENT = "#";
-const FIELDS = 2;
-// A figure as Rust's parse takes one: decimal, never hex as Number takes.
-const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
-// The curve's levels lie between these, and its lux are never below none,
-// as Curve::through keeps them.
-const DIMMEST = 0.02;
-const BRIGHTEST = 1;
-const NO_LUX = 0;
 const PERCENT = 100;
 // The daemon moves the level only for a gap this wide or wider
 // (steer.rs's SLIGHT), so a narrower one is where it rests.
@@ -47,58 +33,37 @@ function fill(words, values) {
         filled.replace(`{${name}}`, values[name]), String(words ?? ""));
 }
 
-// A figure the daemon would read, or NaN.
-function figure(text) {
-    return DECIMAL.test(String(text ?? "")) ? Number(text) : Number.NaN;
+// The machine daemon's record of the built-in screen's brightness, or
+// null with none.
+function brightness(records) {
+    return records.find(record => record?.kind === "brightness") ?? null;
 }
 
-// What backlight-now says: { level, lux, asks, following }, the levels
-// shares of the whole, lux and asks null while no light is heard; or null while it
-// says nothing, as when the daemon has stopped and emptied it, or says
-// it in a way the daemon never writes. `following` is the daemon's: light
-// heard and the lid open, the curve setting the level; a pick is learned
-// into the curve at once, so there's no pick held apart from it.
-function now(text) {
-    const said = {};
-    for (const line of String(text ?? "").split("\n")) {
-        const found = FACT.exec(line);
-        if (found) {
-            said[found[1]] = found[2];
-        }
-    }
-    const level = figure(said.level);
-    const known = Number.isFinite(level)
-        && (said.following === "yes" || said.following === "no");
-    if (!known) {
+// The level the backlight program last settled: { level, lux, asks,
+// following }, the levels shares of the whole, lux and asks null while no
+// light is heard; or null while it says none, as when it has stopped.
+// `following` is the program's: light heard and the lid open, the curve
+// setting the level; a pick is learned into the curve at once, so there's
+// no pick held apart from it.
+function settled(records) {
+    const found = brightness(records);
+    if (!Number.isFinite(found?.level_ratio) || typeof found.following !== "boolean") {
         return null;
     }
     const finite = value => Number.isFinite(value) ? value : null;
     return {
-        level,
-        lux: finite(figure(said.lux)),
-        asks: finite(figure(said.asks)),
-        following: said.following === "yes"
+        level: found.level_ratio,
+        lux: finite(found.lux),
+        asks: finite(found.asks_ratio),
+        following: found.following
     };
 }
 
-// The curve's points, dimmest first: [{ lux, level }], each kept where
-// the daemon keeps it. A file the daemon would refuse, any line of it not
-// two figures, gives none, as the daemon falls back to its standard curve
-// then.
-function curve(text) {
-    const lines = String(text ?? "").split("\n").map(line => line.trim())
-        .filter(line => line !== "" && !line.startsWith(COMMENT));
-    const points = lines.map(line => line.split(SPACES)).map(fields => ({
-        whole: fields.length === FIELDS,
-        lux: figure(fields[0]),
-        level: figure(fields[1])
-    }));
-    const read = points.every(point => point.whole && Number.isFinite(point.lux)
-        && Number.isFinite(point.level));
-    return !read ? [] : points.map(point => ({
-        lux: Math.max(point.lux, NO_LUX),
-        level: Math.min(Math.max(point.level, DIMMEST), BRIGHTEST)
-    })).sort((one, other) => one.lux - other.lux);
+// The curve's points, dimmest first, as the daemon says them: [{ lux,
+// level }], none while it says none.
+function curve(records) {
+    return (brightness(records)?.curve ?? [])
+        .map(point => ({ lux: point.lux, level: point.level_ratio }));
 }
 
 // What sets the level, in the vocabulary's words: the room while the
