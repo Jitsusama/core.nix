@@ -15,6 +15,7 @@ use std::fmt::Write;
 
 use serde_json::{Value, json};
 
+use crate::calendar_rows;
 use crate::document_rows;
 use crate::mail::Mail;
 
@@ -47,6 +48,7 @@ pub struct Words {
 pub struct Vocabulary {
     pub mail: Words,
     pub documents: document_rows::Words,
+    pub calendar: calendar_rows::Words,
 }
 
 impl Vocabulary {
@@ -55,6 +57,7 @@ impl Vocabulary {
         Ok(Vocabulary {
             mail: Words::read(vocabulary)?,
             documents: document_rows::Words::read(vocabulary)?,
+            calendar: calendar_rows::Words::read(vocabulary)?,
         })
     }
 }
@@ -282,7 +285,7 @@ fn answering(subject: &str) -> String {
 /// Where a new message to these addresses is written, about this subject
 /// and copied to those, as Gmail's own link to compose takes them, each
 /// address once; nothing with nobody to write to.
-fn writing(to: &[&str], subject: &str, copied: &[&str]) -> String {
+pub(crate) fn writing(to: &[&str], subject: &str, copied: &[&str]) -> String {
     let mut addresses: Vec<&str> = Vec::new();
     for address in to {
         if !address.is_empty() && !addresses.contains(address) {
