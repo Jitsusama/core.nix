@@ -2,13 +2,12 @@
 
 Each line written to /run/touchscreen is how many fingers and which way (RL is from right to
 left, DU from down to up), then how far across the screen an up or down swipe goes, as a
-fraction of it; or a count, "tap" and anything, for one finger's tap in the middle. Writing
-waits until it's read, so a swipe has started once the write returns.
+fraction of it; or a count, "tap" and anything, for one finger's tap in the middle. A swipe
+written while another runs goes once that one ends.
 """
 
 import os
 import time
-from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from evdev import AbsInfo, UInput
@@ -111,17 +110,23 @@ def swipe(device: UInput, fingers: int, way: str, across: float) -> None:
 
 
 def main() -> None:
-    """Do each thing written to the fifo, for as long as it runs."""
+    """Do each thing written to the fifo, for as long as it runs.
+
+    It holds the fifo open for writing too, so it never reads an end. Reopening at each end
+    lost a line written as the last writer had gone and it hadn't yet closed: the fifo's last
+    reader closing drops what it holds, and a loaded machine can keep it from closing for
+    long enough.
+    """
     device = touchscreen()
     os.mkfifo(FIFO)
-    while True:
-        with Path(FIFO).open() as asked:
-            for line in asked:
-                fingers, way, across = line.split()
-                if way == "tap":
-                    tap(device)
-                else:
-                    swipe(device, int(fingers), way, float(across))
+    # Python's own open refuses r+ on a fifo, since it can't seek, so it's opened by hand.
+    with os.fdopen(os.open(FIFO, os.O_RDWR)) as asked:
+        for line in asked:
+            fingers, way, across = line.split()
+            if way == "tap":
+                tap(device)
+            else:
+                swipe(device, int(fingers), way, float(across))
 
 
 if __name__ == "__main__":
