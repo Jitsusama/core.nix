@@ -348,8 +348,14 @@ pub fn now() -> u64 {
 mod tests {
     use super::*;
 
+    /// A state of the test's own. The tests run side by side, so a number
+    /// counted for each keeps two that chose the same name from emptying
+    /// each other's folder.
     fn state(name: &str) -> State {
-        let root = std::env::temp_dir().join(format!("merge-net-{name}-{}", std::process::id()));
+        static MADE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let made = MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let root =
+            std::env::temp_dir().join(format!("merge-net-{name}-{}-{made}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let state = State { root };
         state.make().expect("made");
