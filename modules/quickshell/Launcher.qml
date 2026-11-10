@@ -7848,6 +7848,7 @@ Scope {
         fillEarly = -1;
         openFramesSized = 0;
         openFramesWaited = 0;
+        openFirstDrawn = -1;
         opening = true;
         keysHeld = false;
         openMark.setText("open\n");
@@ -7870,6 +7871,9 @@ Scope {
     // most, so a size niri never gives can't hold it.
     property int openFramesSized: 0
     property int openFramesWaited: 0
+    // When its first frame was swapped, so its drawing is that frame's
+    // own, and the frames waited for niri's size are said apart as sizing.
+    property real openFirstDrawn: -1
     function drawnAsAsked() {
         const window = card.Window.window;
         return window !== null && Math.abs(window.width - surface.implicitWidth) < 1
@@ -7883,6 +7887,8 @@ Scope {
             return;
         openFramesSized = drawnAsAsked() ? openFramesSized + 1 : 0;
         openFramesWaited += 1;
+        if (openFirstDrawn < 0)
+            openFirstDrawn = KeyTimes.now();
         if (openFramesSized < 2 && openFramesWaited < 20) {
             afterFrame(openShown);
             return;
@@ -7980,17 +7986,21 @@ Scope {
         openAsked = -1;
         if ((!open && !opening) || asked < 0)
             return;
-        const drawn = KeyTimes.now();
-        const took = Math.round(drawn - asked);
+        const sized = KeyTimes.now();
+        const drawn = openFirstDrawn < 0 ? sized : openFirstDrawn;
+        const took = Math.round(sized - asked);
+        // Joel's wait runs from his chord to the frame niri shows at the
+        // card's size, so it's felt from here, not from the first frame.
         const felt = chordAt < 0 ? -1 : Math.round(Date.now() - chordAt);
-        feltBegin(felt < 0 ? asked : KeyTimes.now() - felt, felt >= 0);
+        feltBegin(felt < 0 ? asked : sized - felt, felt >= 0);
         const heard = Math.round(chordHeardAfter);
         chordAt = -1;
         const parts = Pacing.openingParts(openParts);
         const settled = openSettled < 0 ? asked + openWorked : openSettled;
         const begun = openBegun < 0 ? drawn : openBegun;
         const after = { settling: Math.round(settled - asked - openWorked),
-            waiting: Math.round(begun - settled), drawing: Math.round(drawn - begun) };
+            waiting: Math.round(begun - settled), drawing: Math.round(drawn - begun),
+            sizing: Math.round(sized - drawn) };
         const worked = Math.round(openWorked);
         const first = openingsDrawn === 0;
         openingsDrawn += 1;
@@ -8017,7 +8027,7 @@ Scope {
             + ` (${parts}), then ${after.settling} settling, ${after.waiting} waiting for a`
             + ` frame and ${after.drawing} drawing it, ${rows} rows made (${most})`
             + (kept ? `, drawn from what was kept, at its size after ${openFramesWaited} frames`
-                : "")
+                + ` and ${after.sizing} ms` : "")
             + (first ? ", the first since the shell started" : "")
             + (felt < 0 ? "" : `; ${felt} ms from the chord, heard ${heard} ms after it`));
     }
