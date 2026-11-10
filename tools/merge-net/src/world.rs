@@ -148,16 +148,18 @@ impl Real {
 
     /// Land a change on main through a PR merged on its own checks: a
     /// branch from main, `change` made in the checkout and committed as
-    /// `message`, pushed, changed-checks passing on it, then a PR merged
-    /// only at the commit checked, and only if `still`, asked with the main
-    /// its checks ran on, says it's still wanted.
+    /// `message`, pushed, changed-checks passing on it, then main's newest
+    /// head merged into it and pushed, and a PR merged only at that commit,
+    /// and only if `still`, asked with main's newest head and the change at
+    /// it, says it's wanted. Main moves in the minutes the checks take, so
+    /// `still` is asked of main as it lands on, not as it was cut from.
     fn land(
         &self,
         branch: &str,
         message: &str,
         title: &str,
         body: &str,
-        still: &dyn Fn(&str) -> bool,
+        still: &dyn Fn(&str, &str) -> Result<bool, String>,
         change: impl FnOnce() -> Result<(), String>,
     ) -> Result<Merged, String> {
         let followed = self.followed();
@@ -207,9 +209,24 @@ impl Real {
             );
         }
         // Main may move in the minutes the checks take, and a merge in them
-        // may have fixed what this change is for.
-        if !still(&cut_from) {
-            return Err(format!("{DROPPED}, {}", log.display()));
+        // may have fixed what this change is for, or changed what it meets.
+        self.git(&["fetch", "--quiet", "origin", &self.branch])?;
+        let newest = self.git(&["rev-parse", &followed])?;
+        let sha = if newest == cut_from {
+            sha
+        } else {
+            let merging = format!("Merge {} into {branch}", short(&newest));
+            self.git(&["merge", "--quiet", "--no-edit", "-m", &merging, &newest])
+                .inspect_err(|_| {
+                    let _ = self.git(&["merge", "--abort"]);
+                })?;
+            self.git(&["push", "--quiet", "origin", branch])?;
+            self.git(&["rev-parse", "HEAD"])?
+        };
+        match still(&newest, &sha) {
+            Ok(true) => {}
+            Ok(false) => return Err(format!("{DROPPED}, {}", log.display())),
+            Err(why) => return Err(format!("{why}, {}", log.display())),
         }
         let slug = self.slug();
         let made = run(Command::new("gh").args([
@@ -500,7 +517,11 @@ impl World for Real {
         crate::watch::pr_of(&self.subject(commit))
     }
 
-    fn revert(&self, bad: &Bad, still: &dyn Fn(&str) -> bool) -> Result<Merged, String> {
+    fn revert(
+        &self,
+        bad: &Bad,
+        still: &dyn Fn(&str, &str) -> Result<bool, String>,
+    ) -> Result<Merged, String> {
         let what = bad
             .pr
             .map_or_else(|| short(&bad.commit).to_owned(), |pr| format!("#{pr}"));
@@ -547,7 +568,7 @@ impl World for Real {
             &format!("test(merge-net): quarantine a flaky check\n\n{test} {reason}, so the net reverts nothing for it\nuntil its owner makes it steady."),
             &format!("Quarantine {test}, Which Failed Then Passed"),
             &body,
-            &|_| true,
+            &|_, _| Ok(true),
             || {
                 let mut list = fs::read_to_string(&path)
                     .ok()
