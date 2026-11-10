@@ -36,6 +36,9 @@ pub enum Action {
     Build { root: PathBuf, target: PathBuf },
     /// One entry, judged, moved aside, judged again and removed.
     Entry { root: PathBuf },
+    /// One entry of a cache that refills itself and trims itself by age,
+    /// as Go's build cache does: removed without judging who uses it.
+    CacheEntry { root: PathBuf },
     /// An item of a desktop trash and its info file.
     Trash { trash: PathBuf },
     /// A quest workspace, whose repositories prune its worktrees after.
@@ -79,6 +82,7 @@ impl Action {
             | Action::Variant { root }
             | Action::Build { root, .. }
             | Action::Entry { root }
+            | Action::CacheEntry { root }
             | Action::Workspace { root }
             | Action::Trim { root }
             | Action::Run { root, .. }
@@ -278,7 +282,7 @@ fn offer_cache(
                 let candidate = caches::go_entry(&entry, rank, from, world.awake, world.now);
                 offers.push(Offer {
                     candidate,
-                    action: Action::Entry {
+                    action: Action::CacheEntry {
                         root: path.to_owned(),
                     },
                     device,

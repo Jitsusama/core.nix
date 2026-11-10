@@ -403,6 +403,69 @@ fn each_offer_is_reclaimed_as_its_action_says() {
 }
 
 #[test]
+fn a_cache_entry_goes_whoever_the_guard_cant_read() {
+    // On 10 November the account's guard kept half of Go's build cache as
+    // "process 1 can't be read", and scanned every process twice for each
+    // entry it judged. Go trims its own cache by age alone, and a process
+    // reading an entry keeps reading it once it's gone.
+    let proc = tempfile::tempdir().unwrap();
+    hidden(proc.path(), 1, 100);
+    let root = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(root.path()).unwrap();
+    let entry = root
+        .join("go-build/3f")
+        .join(format!("{}-d", "3f".repeat(32)));
+    fs::create_dir_all(entry.parent().unwrap()).unwrap();
+    fs::write(&entry, "output").unwrap();
+    let offers = [offer(
+        &entry,
+        Class::Cache {
+            rank: 40,
+            from: disk_guard::band::Band::Healthy,
+        },
+        Action::CacheEntry {
+            root: root.join("go-build"),
+        },
+    )];
+    let mut scan = empty_scan(proc.path());
+    let mut reclaim = Reclaim::new(&offers, &mut scan);
+    assert_eq!(reclaim.reclaim(&offers[0].candidate), Outcome::Reclaimed);
+    assert!(!entry.exists(), "the entry is still there");
+    assert!(
+        entry.parent().unwrap().exists(),
+        "Go's own directory went too"
+    );
+}
+
+#[test]
+fn a_folder_offered_as_a_cache_entry_is_refused_untouched() {
+    let proc = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(root.path()).unwrap();
+    let folder = root.join("go-build/3f");
+    fs::create_dir_all(&folder).unwrap();
+    fs::write(folder.join("kept"), "x").unwrap();
+    let offers = [offer(
+        &folder,
+        Class::Cache {
+            rank: 40,
+            from: disk_guard::band::Band::Healthy,
+        },
+        Action::CacheEntry {
+            root: root.join("go-build"),
+        },
+    )];
+    let mut scan = empty_scan(proc.path());
+    let mut reclaim = Reclaim::new(&offers, &mut scan);
+    let outcome = reclaim.reclaim(&offers[0].candidate);
+    assert!(
+        matches!(outcome, Outcome::Failed(_)),
+        "a folder wasn't refused: {outcome:?}"
+    );
+    assert!(folder.join("kept").exists(), "the folder's file went");
+}
+
+#[test]
 fn a_workspace_goes_and_its_worktrees_are_pruned() {
     use crate::finished::git;
     let proc = tempfile::tempdir().unwrap();
