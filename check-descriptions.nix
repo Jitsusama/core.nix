@@ -1465,9 +1465,11 @@
     commits waits for the host to end or continue it, once, across recovery
   '';
   pi-hosted-keeps-each-conversations-keys = ''
-    pi built with the host's patches, applied exactly, marks a model runtime that takes an auth
-    context, gives each runtime the key its own context holds, never falls back to the process for
-    a key its context lacks, and reads the process for a runtime given none, as ordinary pi does
+    pi built with the host's patches, applied exactly, marks a model runtime that reads keys and
+    headers through an auth context, gives each runtime the key, provider headers, model headers
+    and OAuth headers its own context holds, never falls back to the process for one its context
+    lacks, refuses header variables where it can't read the context, and reads the process for a
+    runtime given none, as ordinary pi does
   '';
   pi-hosted-screen-stays-in-its-session = ''
     pi built with the host's patches, applied exactly, ends only a hosted screen when it quits,
