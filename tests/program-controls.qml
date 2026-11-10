@@ -44,7 +44,10 @@
 // through its source's command too, with no Close It. A program whose
 // entry hides itself is listed only when another provider gives it acts,
 // and then steps in on Return rather than starting. An act found from the
-// top that asks for a choice goes to its list inside its program. Typing on
+// top that asks for a choice goes to its list inside its program. The list
+// programs share, heard again as it was, changes nothing, and an act
+// another provider gives to be found from the top makes its own row and
+// no program's own again. Typing on
 // looks only through what the last key found, and finds what looking
 // through everything would. It exits 0 once every case holds, and
 // otherwise 1, saying which didn't.
@@ -105,6 +108,9 @@ ShellRoot {
         signal changed
 
         property var hiddenPrograms: ["pair"]
+        // The acts it gives that are found from the top too, as Meet's
+        // Join by Code is, none until a case gives one.
+        property var foundActs: []
 
         function programActs(program) {
             return program === "tester" ? [
@@ -203,6 +209,7 @@ ShellRoot {
         }
 
         function onSharedChanged() {
+            root.sharedSaid += 1;
             root.ready();
         }
 
@@ -213,6 +220,10 @@ ShellRoot {
                 root.viewed();
         }
     }
+
+    // How often the list programs share has changed, as everything that
+    // reads it reads it again.
+    property int sharedSaid: 0
 
     // Writes quiet's list anew, as the program would.
     FileView {
@@ -843,6 +854,23 @@ ShellRoot {
             // and doesn't throw.
             same("a program whose entry is gone offers nothing",
                 applications.controls({}, () => {}, () => {}).length, 0);
+            // The daemon says every list again as the launcher opens, and
+            // the list programs share, heard again as it was, changes
+            // nothing that reads it: on Joel's shell it remade every
+            // program's acts and every gallery twice an opening (2026-11-09).
+            const sharedBefore = root.sharedSaid;
+            applications.recents.took(["recent:shared"]);
+            same("the list programs share, heard again unchanged, is the same list",
+                root.sharedSaid - sharedBefore, 0);
+            // An act another provider gives that's found from the top is
+            // made as it comes, alone: no program's own act is made again.
+            const madeBefore = applications.tally.rows;
+            giver.foundActs = [{ program: "pair", key: "pair:room" }];
+            same("an act given to be found from the top makes its own row and no other",
+                applications.tally.rows - madeBefore, 1);
+            same("and it's found there", applications.things.filter(row => row.key
+                === "program-act:pair:pair:room").length, 1);
+            giver.foundActs = [];
             // Written while the launcher is closed, quiet's list isn't read
             // until it opens, however long that is.
             root.waiting = "a change while closed";

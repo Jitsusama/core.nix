@@ -1382,20 +1382,33 @@ Provider {
             .map(one => Object.assign({ from: other }, one))), [])
 
     // Every program's acts found from the top: its desktop entry's own,
-    // then those opted in, each made once as the lists change.
-    readonly property var acts: {
+    // made again only as the entries are read, then those opted in, made
+    // again as another provider's change. Made together, every program's
+    // own were made again with each gallery swayimg gives, twice an
+    // opening on Joel's shell (2026-11-09).
+    readonly property var ownActs: {
         const taken = provider.taken();
-        const own = DesktopEntries.applications.values
+        return DesktopEntries.applications.values
             .reduce((all, entry) => all.concat(provider.menu(entry, taken)
                 .map(act => provider.foundAct(entry, act))), []);
-        const given = provider.optedIn.map(one => {
+    }
+    // Each provider's acts for a program are asked once, however many of
+    // them it opts in, as swayimg opts in a gallery a folder.
+    readonly property var optedActs: {
+        const asked = new Map();
+        return provider.optedIn.map(one => {
             const entry = DesktopEntries.byId(one.program);
-            const act = entry ? one.from.programActs(one.program)
-                .find(row => row.key === one.key) : null;
+            if (!entry)
+                return null;
+            const by = asked.get(one.from) ?? new Map();
+            asked.set(one.from, by);
+            if (!by.has(one.program))
+                by.set(one.program, one.from.programActs(one.program));
+            const act = by.get(one.program).find(row => row.key === one.key);
             return act ? provider.foundAct(entry, act) : null;
         }).filter(row => row !== null);
-        return own.concat(given);
     }
+    readonly property var acts: ownActs.concat(optedActs)
 
     // One of a program's acts as a row found from the top, by its own name
     // only, so typing a program's name doesn't list every act it has. It

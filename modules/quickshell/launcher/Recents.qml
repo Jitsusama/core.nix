@@ -164,8 +164,16 @@ Scope {
                     when[one.line] = one.at;
             }
             if (app === "shared") {
-                recents.sharedTimes = when;
-                recents.sharedLines = lines.map(one => one.line);
+                // Heard again as it was, as the daemon says every list
+                // again as the launcher opens, it's left be: set anew,
+                // everything reading it made its rows again, every
+                // program's acts and every gallery twice an opening on
+                // Joel's shell (2026-11-09).
+                const said = lines.map(one => one.line);
+                if (JSON.stringify(when) !== JSON.stringify(recents.sharedTimes))
+                    recents.sharedTimes = when;
+                if (JSON.stringify(said) !== JSON.stringify(recents.sharedLines))
+                    recents.sharedLines = said;
                 continue;
             }
             lists = Object.assign({}, lists,
