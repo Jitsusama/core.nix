@@ -136,6 +136,25 @@ QtObject {
         check("a favourite before the last", names(Person.ordered(lately,
             person => Person.standing(person, cFavourite), now)), ["C", "A", "B"]);
 
+        // How each stands is read once each as they're ordered, not at each
+        // of the sort's comparisons: read there, ordering the 500 Joel lists
+        // took most of every opening of the launcher (2026-11-10).
+        const crowd = Person.merged([{ name: "crowd", people: Array.from({ length: 200 },
+            (_, at) => ({ emails: [`p${(at * 37) % 200}@x`], name: `P${(at * 37) % 200}` })) }]);
+        let stood = 0;
+        const counted = Person.ordered(crowd, person => {
+            stood += 1;
+            return Person.standing(person, []);
+        }, now);
+        check("how each stands, read once each", [stood, counted.length], [200, 200]);
+        check("and still in order", names(counted).slice(0, 3), ["P0", "P1", "P2"]);
+        // So the order is kept until the clock alone changes it: A's meeting
+        // ending, then the one to come starting.
+        check("the order changes as a meeting ends", Person.changesAt(lately, now),
+            now + minute);
+        check("then as one starts", Person.changesAt(lately, now + minute), now + 9 * minute);
+        check("and never with nothing to come", Person.changesAt(crowd, now) === Infinity, true);
+
         // The drawer.
         check("their details", Person.details(everyone[0]), {
             title: "Ada Lovelace",

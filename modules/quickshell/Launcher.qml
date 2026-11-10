@@ -6269,6 +6269,7 @@ Scope {
             parser: SplitParser {
                 onRead: line => {
                     caller.connected = false;
+                    root.askedToOpen();
                     const words = line.trim().split(/\s+/);
                     if (words[0] === "toggle")
                         root.open = !root.open;
@@ -6287,12 +6288,20 @@ Scope {
         target: "launcher"
 
         function toggle(): void {
+            root.askedToOpen();
             root.open = !root.open;
         }
 
         // Opens the launcher into a collection by its provider's name.
         function collection(name: string): void {
+            root.askedToOpen();
             root.into(name);
+        }
+
+        // Each of the last openings, from its ask to its first frame, as
+        // JSON (openingsTimed).
+        function openings(): string {
+            return JSON.stringify(root.openingsTimed);
         }
 
         // The command line over a viewer, by its name, where it is and the
@@ -7338,7 +7347,9 @@ Scope {
             // machine's room) that marks nothing stale as it changes, so
             // home would open saying the count of the last join.
             choicesStale = true;
+            const joining = KeyTimes.now();
             freshen();
+            openJoined = KeyTimes.now() - joining;
             trials.opened();
             partingLater.stop();
             fading = false;
@@ -7389,6 +7400,10 @@ Scope {
                 toldOnOpen = [];
             }
             Report.say(`stands ${standing.said}`);
+            if (openAsked >= 0) {
+                openWorked = KeyTimes.now() - openAsked;
+                afterFrame(openDrawn);
+            }
         } else {
             // An ask closing with it says no, as Escape would, and is
             // never asked again.
@@ -7422,6 +7437,46 @@ Scope {
         for (const source of sources)
             by[source.settings?.name ?? ""] = source.tally?.rows ?? 0;
         return by;
+    }
+    // When the launcher was last asked to open, as its chord asks, on the
+    // monotonic clock its keys are timed by, or -1 while no opening waits
+    // for its frame; how long that opening took joining every source's
+    // things, and in all of its own work before it could draw; and each of
+    // the last openings, from its ask to its first frame, with the rows
+    // made by then, said in the journal as it's drawn. The first since the shell
+    // started makes every source's rows it reads, which is the one Joel
+    // meets after each switch (Y2YBTS, 2026-11-10: the start is slow), so
+    // it says so, and the keeps-pace check times it under load.
+    property real openAsked: -1
+    property real openJoined: 0
+    property real openWorked: 0
+    property var openingsTimed: []
+    property int openingsDrawn: 0
+    function askedToOpen() {
+        if (!open)
+            openAsked = KeyTimes.now();
+    }
+    function openDrawn() {
+        const asked = openAsked;
+        openAsked = -1;
+        if (!open || asked < 0)
+            return;
+        const took = Math.round(KeyTimes.now() - asked);
+        const joined = Math.round(openJoined);
+        const worked = Math.round(openWorked);
+        const first = openingsDrawn === 0;
+        openingsDrawn += 1;
+        const now = tallies();
+        const made = Object.keys(now).map(name => ({ name, rows: now[name]
+            - (madeFrom.rows[name] ?? 0) })).filter(each => each.rows > 0)
+            .sort((a, b) => b.rows - a.rows || a.name.localeCompare(b.name));
+        const rows = made.reduce((sum, each) => sum + each.rows, 0);
+        const most = made.slice(0, 4).map(each => `${each.name} ${each.rows}`).join(", ");
+        openingsTimed = openingsTimed.concat([{ took, joined, worked, rows, made: most, first }])
+            .slice(-20);
+        console.info(`launcher: opening took ${took} ms to its frame, ${worked} ms working,`
+            + ` ${joined} of it joining, ${rows} rows made (${most})`
+            + (first ? ", the first since the shell started" : ""));
     }
     function madeSince(when) {
         madeFrom = { rows: tallies(), texts: Fuzzy.keptSoFar(), changes: Object.assign({}, changesIn),

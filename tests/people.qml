@@ -115,6 +115,15 @@ ShellRoot {
                 // meeting's guests by their rows made each one's whole row
                 // every time its acts were read (2026-11-09).
                 const madeBefore = people.tally.rows;
+                // Home counts and names those listed from the people
+                // themselves, so it never wants their rows: wanting them
+                // listed every row again at every opening (2026-11-10).
+                expect("home says itself", people.saysAtHome, people.saysAtHome);
+                expect("home counts those listed", people.homeSays() === "4",
+                    people.homeSays());
+                expect("and names them", people.memberNames().join(", ")
+                    === "Ada Brook, Ben Carrow, Dee Ellery, Cal Dunmore",
+                    people.memberNames().join(", "));
                 const ada = people.whoIs(" ADA@example.com ");
                 expect("who an address is, whatever its case", ada?.name === "Ada Brook",
                     ada?.name);

@@ -68,9 +68,17 @@ function pieces(name) {
 // option, so the digits are read here. It's only ever the last tie, or the
 // order of many peers alike, as a large folder's files.
 function byName(name) {
+    return byPieces(one => pieces(name(one)));
+}
+
+// The same, from each one's name already broken into pieces (`pieces`),
+// for a long list sorted often, which would otherwise break both names
+// apart at each of its comparisons, as People's 500 did at every opening
+// (2026-11-10).
+function byPieces(of) {
     return (one, other) => {
-        const a = pieces(name(one));
-        const b = pieces(name(other));
+        const a = of(one);
+        const b = of(other);
         for (let at = 0; at < Math.min(a.length, b.length); at += 1) {
             const numbers = DIGITS.test(a[at]) && DIGITS.test(b[at]);
             const said = numbers ? Number(a[at]) - Number(b[at]) : a[at].localeCompare(b[at]);
@@ -87,13 +95,15 @@ function byName(name) {
 // quest's priority), then by the last thing he did with each, the newest
 // first, then A to Z. `first` says whether one is open or a favourite,
 // `last` when he last did something with it (or nothing, where that isn't
-// known), `name` what it's called.
+// known), `name` what it's called, or `pieces` its name as `pieces` breaks
+// it, worked out once.
 function returned(how) {
     const first = one => Boolean(how.first(one));
     return then((one, other) => Number(first(other)) - Number(first(one)),
         (one, other) => first(one) && first(other) && how.placed
             ? how.placed(one, other) : 0,
-        larger(how.last ?? (() => null)), byName(how.name ?? (() => "")));
+        larger(how.last ?? (() => null)),
+        how.pieces ? byPieces(how.pieces) : byName(how.name ?? (() => "")));
 }
 
 // A stream, as Recent, Notices and mail: the newest first, by `at`, a

@@ -2205,7 +2205,8 @@
     lately, finds anyone as they stand while holding only those listed and found, calls, joins and
     favours them, steps in before calling, lists a source's page for them after the ways to reach
     them with its facts in the drawer and the time where they are, knows who an address is with no
-    row made, and never asks Tuple itself
+    row made, says at home how many it lists and names them with no row made, and never asks Tuple
+    itself
   '';
   the-launcher-finds-the-quests = ''
     the launcher reads the open and ended quests the node serves, each with its own kind rather
@@ -2570,8 +2571,9 @@
     every source's people join into one person per email address, a source that knows two
     addresses for someone joining them, each standing as the first source that says, favourites
     listed first, then whoever there's been something with, the last first, someone only asked to
-    what's to come left to be found by typing, with their details for the drawer and their acts in
-    the one order
+    what's to come left to be found by typing, the order reading how each stands once each and
+    changing with the clock alone only as something with someone starts or ends, with their
+    details for the drawer and their acts in the one order
   '';
   the-picker-picks-what-the-keys-say = ''
     the region picker starts on the middle quarter, moves and sizes its box by arrows within the
@@ -3112,7 +3114,9 @@
     of the middle turn, within twice their frozen times and design.md's budget more, timed in
     turns in the same machine so the builder's own load slows both alike; and a step into
     Programs, Chrome's, the reader's, Inkscape's and Neovim's pages, Chrome's Recent and
-    Passwords, each holding what Joel's do, shows within twice its frozen time and 50 ms more
+    Passwords, each holding what Joel's do, shows within twice its frozen time and 50 ms more;
+    and the first opening after the shell starts again, People listing 500 as Joel's lists
+    hundreds, reaches its frame within twice its frozen time and 50 ms more
   '';
   vm-desktop-launcher-answers = ''
     the launcher answers from the machine and copies the answer: a MAC's vendor, the battery and
