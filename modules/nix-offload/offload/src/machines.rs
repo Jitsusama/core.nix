@@ -153,7 +153,9 @@ pub enum Named {
 /// as its proofs' `state` says; else the `second` lent builder's lines
 /// beside it while that answers, else the warm `vm` builders' that do.
 /// The one lent is named first while it's lent, since one failing once
-/// may yet answer.
+/// may yet answer. One whose store is full is named only while nothing
+/// stands in: it collects at its own min-free as it builds, which beats
+/// no builder, but any with room comes first.
 pub fn for_anything(
     lent: Option<&str>,
     state: State,
@@ -161,17 +163,21 @@ pub fn for_anything(
     vm: &[String],
 ) -> (String, Named) {
     let answers = lent.is_some() && matches!(state, State::None | State::Unproven | State::Passing);
+    let full = lent.is_some() && state == State::Full;
     let (stand_ins, named): (&[String], Named) = if answers {
         (&[], Named::Lent)
     } else if !second.is_empty() {
         (second, Named::Second)
     } else if !vm.is_empty() {
         (vm, Named::Vm(vm.len()))
+    } else if full {
+        (&[], Named::Lent)
     } else if lent.is_some() || state == State::Dropped {
         (&[], Named::Unanswered)
     } else {
         (&[], Named::Nothing)
     };
+    let lent = lent.filter(|_| !full || stand_ins.is_empty());
     let lines = lent.into_iter().chain(stand_ins.iter().map(String::as_str));
     (text(lines, None), named)
 }
@@ -265,7 +271,8 @@ fn stand_ins(second: &Path, vm: &[PathBuf], at: u64) -> (Vec<String>, Vec<String
 }
 
 /// Prove the builder beside `line` names when due, with `nix`, keeping
-/// its proofs in `kept`: whether it's left out, saying so as that changes.
+/// its proofs in `kept`: whether it's left out, having failed its proofs
+/// or with its store full, saying so as that changes.
 fn kept_beside(kept: &mut Vec<(String, Keeper)>, line: &str, nix: &str, now: Instant) -> bool {
     let index = kept
         .iter()
@@ -275,23 +282,35 @@ fn kept_beside(kept: &mut Vec<(String, Keeper)>, line: &str, nix: &str, now: Ins
             kept.len() - 1
         });
     let keeper = &mut kept[index].1;
-    let was = keeper.health.dropped();
+    let was = keeper.health.state();
     let (proving, nix) = (line.to_owned(), nix.to_owned());
     keeper.keep(now, seconds(), move || {
         proof::through_daemon(&proving, &nix, proof::WITHIN)
     });
-    let dropped = keeper.health.dropped();
+    let state = keeper.health.state();
     let name = &keeper.health.builder;
-    if dropped && !was {
-        eprintln!(
+    match (was, state) {
+        (was, is) if was == is => {}
+        (_, State::Dropped) => eprintln!(
             "nix-offload: {name} failed {} proofs in a row, so no build goes there until one \
              passes",
             proof::FAILS
-        );
-    } else if was && !dropped {
-        eprintln!("nix-offload: {name} passed its proof again, so builds go there again");
+        ),
+        (_, State::Full) => eprintln!(
+            "nix-offload: {name} has {} GB free, under the {} GB floor, so no build goes \
+             there until it has room",
+            keeper.health.free.unwrap_or_default() / 1_000_000_000,
+            proof::FLOOR / 1_000_000_000
+        ),
+        (State::Dropped, _) => {
+            eprintln!("nix-offload: {name} passed its proof again, so builds go there again");
+        }
+        (State::Full, State::Passing) => {
+            eprintln!("nix-offload: {name} has room again, so builds go there again");
+        }
+        _ => {}
     }
-    dropped
+    keeper.health.left_out()
 }
 
 fn seconds() -> u64 {
@@ -1035,6 +1054,20 @@ mod tests {
             for_anything(None, State::None, &[], &[]),
             (String::new(), Named::Nothing)
         );
+        assert_eq!(
+            for_anything(Some("lent"), State::Full, &second, &vm),
+            ("second\n".to_owned(), Named::Second),
+            "one with room stands in for a full one"
+        );
+        assert_eq!(
+            for_anything(Some("lent"), State::Full, &[], &vm),
+            ("vm\nvm-3\n".to_owned(), Named::Vm(2))
+        );
+        assert_eq!(
+            for_anything(Some("lent"), State::Full, &[], &[]),
+            ("lent\n".to_owned(), Named::Lent),
+            "a full one, collecting as it builds, beats none"
+        );
     }
 
     /// A lender's folder whose builder passed its last proof just now,
@@ -1210,13 +1243,23 @@ mod tests {
         );
     }
 
-    /// A stand-in for nix that exits as the `status` file beside it says.
+    /// A stand-in for nix that exits as the `status` file beside it says,
+    /// its proof's log saying the store has what the `free` file does,
+    /// where there is one.
     fn nix_in(dir: &Path) -> String {
         let nix = dir.join("nix");
-        let status = dir.join("status");
+        let (status, free) = (dir.join("status"), dir.join("free"));
         executable(
             &nix,
-            &format!("#!/bin/sh\nexit \"$(cat '{}')\"\n", status.display()),
+            &format!(
+                "#!/bin/sh\n\
+                 if [ -e '{free}' ]; then\n\
+                 echo \"nix-offload-proof> nix-offload-free $(cat '{free}')\" >&2\n\
+                 fi\n\
+                 exit \"$(cat '{status}')\"\n",
+                free = free.display(),
+                status = status.display()
+            ),
         );
         nix.display().to_string()
     }
@@ -1230,6 +1273,7 @@ mod tests {
                     keeper.health.last_success,
                     keeper.health.last_failure,
                     keeper.health.failures,
+                    keeper.health.free,
                 )
             })
         };
@@ -1238,7 +1282,7 @@ mod tests {
         let mut dropped = kept_beside(kept, line, nix, now);
         // One just kept has heard no proof yet.
         let unheard = |kept: &Vec<(String, Keeper)>| {
-            heard(kept) == before || heard(kept) == Some((None, None, 0))
+            heard(kept) == before || heard(kept) == Some((None, None, 0, None))
         };
         while unheard(kept) && Instant::now() < ending {
             std::thread::sleep(Duration::from_millis(10));
@@ -1303,6 +1347,58 @@ mod tests {
         ));
         machines.show(None);
         assert_eq!(read(&alone), format!("{line}\n"), "back once one passes");
+        drop(listening);
+    }
+
+    // On 9 November the work Mac's builder had 6 GB free, and every check
+    // sent there failed for room while its proofs passed.
+    #[test]
+    fn a_builder_beside_under_the_floor_is_left_out_until_it_has_room() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let nix = nix_in(dir.path());
+        let (status, free) = (dir.path().join("status"), dir.path().join("free"));
+        let (every, alone) = (
+            dir.path().join("machines"),
+            dir.path().join("machines-beside"),
+        );
+        let listening = TcpListener::bind("127.0.0.1:0").expect("a port");
+        let address = listening.local_addr().expect("its address").to_string();
+        let line = "ssh-ng://work x86_64-linux - 8 1 big-parallel,benchmark";
+        let mut machines = Machines::new(
+            every.clone(),
+            dir.path().join("machines-with-standing"),
+            dir.path().join("store"),
+            dir.path().join("lending"),
+            vec![],
+        )
+        .beside(
+            alone.clone(),
+            vec![Standing {
+                address,
+                line: line.to_owned(),
+            }],
+        )
+        .proving_with(&nix);
+        let read = |path| fs::read_to_string(path).expect("read");
+        let began = Instant::now();
+        fs::write(&status, "0").expect("write");
+        fs::write(&free, (proof::FLOOR - 1).to_string()).expect("write");
+        assert!(
+            left_out(&mut machines.kept, line, &nix, began),
+            "full at once"
+        );
+        machines.show(None);
+        assert_eq!(read(&alone), "");
+        assert_eq!(read(&every), "");
+        let health = machines.beside_health().expect("builders beside");
+        assert_eq!(health[0].state(), State::Full);
+        fs::write(&free, (proof::FLOOR * 2).to_string()).expect("write");
+        assert!(
+            !left_out(&mut machines.kept, line, &nix, began + proof::EVERY),
+            "a builder with room again is taken back"
+        );
+        machines.show(None);
+        assert_eq!(read(&alone), format!("{line}\n"), "back once it has room");
         drop(listening);
     }
 

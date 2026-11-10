@@ -12,15 +12,26 @@
 //! daemon's build hook, as every build sent to it is, passing once its
 //! output comes back.
 //!
+//! A proof also reads how many bytes its builder's store has free: over
+//! ssh with a df once it has built, and through the daemon with this
+//! program's own df, taken along into the proof's sandbox, whose shell
+//! has none, its answer coming back in the build's log. A builder that
+//! passes with less than `FLOOR` free is full, and takes no builds until
+//! it has room: a builder beside is left out of every list, a VM builder
+//! or second lent builder never stands in, and the one lent hands any
+//! work to one with room, staying named for big work, since it collects
+//! at its own min-free as it builds and isn't given back for it.
+//!
 //! Each lender says how its builder stands in its folder's `health.json`,
 //! written every tick, for a status card to read:
 //!
 //! ```json
 //! {"at": 1793725313, "builder": "lend-1793725000", "state": "passing",
 //!  "lastSuccess": 1793725300, "lastFailure": null, "consecutiveFailures": 0,
-//!  "beside": [{"builder": "work-linux", "state": "dropped",
-//!              "lastSuccess": 1793720000, "lastFailure": 1793725290,
-//!              "consecutiveFailures": 2}]}
+//!  "freeBytes": 81604378624,
+//!  "beside": [{"builder": "work-linux", "state": "full",
+//!              "lastSuccess": 1793725290, "lastFailure": 1793720000,
+//!              "consecutiveFailures": 0, "freeBytes": 6001344512}]}
 //! ```
 //!
 //! `at` is when it was written and every time is in seconds since the
@@ -29,8 +40,10 @@
 //! proof ends, `passing` once its last passed, `failing` after one failure,
 //! and `dropped` after two in a row, which takes a lent builder out of
 //! every list and gives it back, and leaves a builder beside out of every
-//! list until it passes again. `beside` is there only in a folder whose
-//! lender names builders beside.
+//! list until it passes again; `full` once one passes with its store under
+//! the floor. `freeBytes` is what its store had free when its last proof
+//! passed, null where it didn't say. `beside` is there only in a folder
+//! whose lender names builders beside.
 //!
 //! Long because its tests, a third of it, stay beside the private pieces
 //! they prove, the proof's clock and what it keeps of a builder's builds.
@@ -68,6 +81,26 @@ pub const FRESH: u64 = 180;
 /// The file a lender says how its builders stand in, in its folder.
 pub const HEALTH: &str = "health.json";
 
+/// The least a builder's store may have free and still take builds, in
+/// bytes: one with less is left out until it has room again. On 9
+/// November the work Mac's builder had 6 GB, and every check sent there
+/// failed for room while its proofs passed.
+pub const FLOOR: u64 = 15_000_000_000;
+
+/// How a proof ended: whether it passed, and the bytes its builder's
+/// store had free, where it said.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Proven {
+    pub passed: bool,
+    pub free: Option<u64>,
+}
+
+impl From<bool> for Proven {
+    fn from(passed: bool) -> Self {
+        Self { passed, free: None }
+    }
+}
+
 /// How a builder stands, as its proofs say.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum State {
@@ -81,6 +114,8 @@ pub enum State {
     Failing,
     /// Its last `FAILS` proofs failed, so it's left out.
     Dropped,
+    /// Its last proof passed, but its store has less than `FLOOR` free.
+    Full,
 }
 
 impl State {
@@ -91,6 +126,7 @@ impl State {
             Self::Passing => "passing",
             Self::Failing => "failing",
             Self::Dropped => "dropped",
+            Self::Full => "full",
         }
     }
 }
@@ -103,6 +139,9 @@ pub struct Health {
     pub last_failure: Option<u64>,
     /// The proofs that failed since the last that passed.
     pub failures: u32,
+    /// The bytes its store had free when its last proof passed, where it
+    /// said.
+    pub free: Option<u64>,
 }
 
 impl Health {
@@ -114,8 +153,10 @@ impl Health {
     }
 
     /// Take in a proof that ended `at`.
-    pub fn heard(&mut self, passed: bool, at: u64) {
+    pub fn heard(&mut self, proven: impl Into<Proven>, at: u64) {
+        let Proven { passed, free } = proven.into();
         if passed {
+            self.free = free;
             self.last_success = Some(at);
             self.failures = 0;
         } else {
@@ -127,6 +168,7 @@ impl Health {
     pub fn state(&self) -> State {
         match (self.failures, self.last_success) {
             (0, None) => State::Unproven,
+            (0, Some(_)) if self.free.is_some_and(|free| free < FLOOR) => State::Full,
             (0, Some(_)) => State::Passing,
             (failures, _) if failures >= FAILS => State::Dropped,
             _ => State::Failing,
@@ -139,6 +181,11 @@ impl Health {
         self.state() == State::Dropped
     }
 
+    /// Whether it takes no builds: dropped, or full.
+    pub fn left_out(&self) -> bool {
+        matches!(self.state(), State::Dropped | State::Full)
+    }
+
     pub fn json(&self) -> Value {
         json!({
             "builder": self.builder,
@@ -146,6 +193,7 @@ impl Health {
             "lastSuccess": self.last_success,
             "lastFailure": self.last_failure,
             "consecutiveFailures": self.failures,
+            "freeBytes": self.free,
         })
     }
 }
@@ -160,23 +208,23 @@ pub fn due(began: Option<Instant>, now: Instant) -> bool {
 #[derive(Default)]
 pub struct Prover {
     began: Option<Instant>,
-    running: Option<mpsc::Receiver<bool>>,
+    running: Option<mpsc::Receiver<Proven>>,
 }
 
 impl Prover {
     /// What the proof running ended with, if it has ended, starting the
     /// next with `prove` once one is due and none runs.
-    pub fn tick(
+    pub fn tick<P: Into<Proven>>(
         &mut self,
         now: Instant,
-        prove: impl FnOnce() -> bool + Send + 'static,
-    ) -> Option<bool> {
+        prove: impl FnOnce() -> P + Send + 'static,
+    ) -> Option<Proven> {
         let heard = match &self.running {
             Some(running) => match running.try_recv() {
                 Ok(passed) => Some(passed),
                 Err(mpsc::TryRecvError::Empty) => return None,
                 // A proof that panicked proved nothing.
-                Err(mpsc::TryRecvError::Disconnected) => Some(false),
+                Err(mpsc::TryRecvError::Disconnected) => Some(Proven::default()),
             },
             None => None,
         };
@@ -184,7 +232,7 @@ impl Prover {
         if due(self.began, now) {
             let (said, running) = mpsc::channel();
             thread::spawn(move || {
-                let _ = said.send(prove());
+                let _ = said.send(prove().into());
             });
             self.began = Some(now);
             self.running = Some(running);
@@ -213,13 +261,11 @@ impl Keeper {
         &mut self,
         now: Instant,
         at: u64,
-        prove: impl FnOnce() -> bool + Send + 'static,
+        prove: impl FnOnce() -> Proven + Send + 'static,
     ) -> Option<bool> {
-        let heard = self.prover.tick(now, prove);
-        if let Some(passed) = heard {
-            self.health.heard(passed, at);
-        }
-        heard
+        let heard = self.prover.tick(now, prove)?;
+        self.health.heard(heard, at);
+        Some(heard.passed)
     }
 }
 
@@ -231,12 +277,35 @@ fn nonce() -> String {
     format!("{since}-{}", std::process::id())
 }
 
+/// What starts the line a proof says its builder's free bytes on, after
+/// it.
+const FREE: &str = "nix-offload-free ";
+
+/// What a proof over ssh asks once it has built: the free bytes of the
+/// builder's store, on a line of standard error after [`FREE`].
+const FREE_ASKED: &str =
+    "echo \"nix-offload-free $(df -B1 --output=avail /nix/store | tail -n 1)\" >&2";
+
+/// The free bytes a line of a proof's standard error says, if it says
+/// them.
+fn said_free(line: &str) -> Option<u64> {
+    let (_, free) = line.split_once(FREE)?;
+    free.trim().parse().ok()
+}
+
 /// The derivation a proof builds, as a Nix expression: `/bin/sh` writes
 /// `nonce` to its output, so no store holds it. It's for `system`, or the
 /// builder's own when none is given, and requires `features`, since a
 /// builder whose line makes a feature mandatory takes only builds asking
-/// for it.
-pub fn expression(nonce: &str, system: Option<&str>, features: &[&str]) -> String {
+/// for it. Given `coreutils`, it also prints its store's free bytes with
+/// their df, which it takes along as an input: a sandbox's own shell has
+/// none, and its store is the builder's own filesystem.
+pub fn expression(
+    nonce: &str,
+    system: Option<&str>,
+    features: &[&str],
+    coreutils: Option<&str>,
+) -> String {
     let string = |text: &str| format!("\"{}\"", text.replace(['"', '\\', '$'], ""));
     let system = system.map_or_else(|| "builtins.currentSystem".to_owned(), string);
     let features = features.iter().fold(String::new(), |mut all, feature| {
@@ -244,9 +313,16 @@ pub fn expression(nonce: &str, system: Option<&str>, features: &[&str]) -> Strin
         all.push_str(&string(feature));
         all
     });
+    let measured = coreutils.map_or_else(String::new, |coreutils| {
+        format!(
+            "; set -- $(${{builtins.storePath {}}}/bin/df -B1 --output=avail /nix/store); \
+             echo {FREE}$2",
+            string(coreutils)
+        )
+    });
     format!(
         "derivation {{ name = \"nix-offload-proof\"; system = {system}; builder = \"/bin/sh\"; \
-         args = [ \"-c\" \"echo {} > $out\" ]; requiredSystemFeatures = [{features} ]; }}",
+         args = [ \"-c\" \"echo {} > $out{measured}\" ]; requiredSystemFeatures = [{features} ]; }}",
         nonce.replace(
             |byte: char| !byte.is_ascii_alphanumeric() && byte != '-',
             ""
@@ -259,20 +335,20 @@ pub fn expression(nonce: &str, system: Option<&str>, features: &[&str]) -> Strin
 /// timeout, its store's key and host key, building a fresh derivation
 /// there within `within`. `scratch` holds the host key and ssh's log while
 /// it runs.
-pub fn over_ssh(store: &str, scratch: &Path, ssh: &str, within: Duration) -> bool {
+pub fn over_ssh(store: &str, scratch: &Path, ssh: &str, within: Duration) -> Proven {
     let Some(lent) = store
         .lines()
         .next()
         .and_then(|line| there::builder(line.trim()))
     else {
-        return false;
+        return Proven::default();
     };
     let Ok((mut command, known, said)) = there::reach(&lent, scratch, ssh) else {
-        return false;
+        return Proven::default();
     };
     let build = format!(
-        "nix build --no-link --impure --option substitute false --expr {} && {}",
-        there::quoted(&expression(&nonce(), None, &[])),
+        "nix build --no-link --impure --option substitute false --expr {} && {} && {FREE_ASKED}",
+        there::quoted(&expression(&nonce(), None, &[], None)),
         crate::progress::asked_said()
     );
     command
@@ -299,10 +375,25 @@ const BUILT_THERE: &str = "-nix-offload-proof' from '";
 /// built here, and the line is given slots of its own, so a proof never
 /// waits behind the builds filling its own. It passes once its output
 /// comes back, waiting for no lock here.
-pub fn through_daemon(line: &str, nix: &str, within: Duration) -> bool {
+pub fn through_daemon(line: &str, nix: &str, within: Duration) -> Proven {
+    proven_through(line, nix, within, COREUTILS)
+}
+
+/// The coreutils this program was built with, whose df a proof through
+/// the daemon measures its builder's store with.
+const COREUTILS: Option<&str> = option_env!("NIX_OFFLOAD_COREUTILS");
+
+/// The system this machine builds for, as Nix names it.
+fn here() -> String {
+    format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS)
+}
+
+/// [`through_daemon`], measuring the builder's store with `coreutils`' df
+/// where its proof is for this machine's own system.
+fn proven_through(line: &str, nix: &str, within: Duration, coreutils: Option<&str>) -> Proven {
     let fields: Vec<&str> = line.split_whitespace().collect();
     let Some(uri) = fields.first() else {
-        return false;
+        return Proven::default();
     };
     let field = |at: usize| fields.get(at).copied().filter(|field| *field != "-");
     let system = field(1).and_then(|systems| systems.split(',').next());
@@ -320,13 +411,15 @@ pub fn through_daemon(line: &str, nix: &str, within: Duration) -> bool {
     own.resize(own.len().max(4), "-");
     own[0] = &slots;
     own[3] = "1";
+    // This machine's df runs only on a builder of its own system.
+    let coreutils = coreutils.filter(|_| system.is_none_or(|system| system == here()));
     let mut command = Command::new(nix);
     command
-        .args(["build", "--no-link", "--impure", "--max-jobs", "0"])
+        .args(["build", "--no-link", "--impure", "--max-jobs", "0", "-L"])
         .args(["--option", "substitute", "false", "--builders"])
         .arg(own.join(" "))
         .arg("--expr")
-        .arg(expression(&nonce(), system, &mandatory));
+        .arg(expression(&nonce(), system, &mandatory, coreutils));
     ended_within(&mut command, within, &named(line), Some(BUILT_THERE), None)
 }
 
@@ -349,6 +442,20 @@ fn ended_within(
     builder: &str,
     answered: Option<&str>,
     figures: Option<&Path>,
+) -> Proven {
+    let mut free = None;
+    let passed = ended(command, within, builder, answered, figures, &mut free);
+    Proven { passed, free }
+}
+
+/// [`ended_within`], keeping the free bytes the proof said in `free`.
+fn ended(
+    command: &mut Command,
+    within: Duration,
+    builder: &str,
+    answered: Option<&str>,
+    figures: Option<&Path>,
+    free: &mut Option<u64>,
 ) -> bool {
     command
         .stdin(Stdio::null())
@@ -385,6 +492,10 @@ fn ended_within(
                 keep_builds(kept, read);
                 continue;
             }
+            if let Some(said) = said_free(&line) {
+                *free = Some(said);
+                continue;
+            }
             if answered.is_some_and(|answered| line.contains(answered)) {
                 ends(&mut running);
                 return true;
@@ -409,6 +520,9 @@ fn ended_within(
         while let Ok(line) = heard.recv_timeout(ending.saturating_duration_since(Instant::now())) {
             if let (Some(kept), Some(read)) = (figures, crate::progress::heard(&line)) {
                 keep_builds(kept, read);
+            }
+            if let Some(said) = said_free(&line) {
+                *free = Some(said);
             }
         }
         return true;
@@ -464,6 +578,7 @@ pub fn write(dir: &Path, lent: Option<&Health>, beside: Option<&[Health]>, at: u
                 "lastSuccess": null,
                 "lastFailure": null,
                 "consecutiveFailures": 0,
+                "freeBytes": null,
             })
         },
         Health::json,
@@ -550,6 +665,42 @@ mod tests {
         assert!(fresh.dropped(), "one never proven is dropped too");
     }
 
+    // On 9 November the work Mac's builder had 6 GB free, and every check
+    // sent there failed for room while its proofs passed.
+    #[test]
+    fn a_builder_whose_store_is_under_the_floor_is_full_until_it_has_room() {
+        let mut health = Health::of("work-linux");
+        health.heard(true, 10);
+        assert_eq!(health.state(), State::Passing, "no reading, no floor");
+        health.heard(
+            Proven {
+                passed: true,
+                free: Some(FLOOR - 1),
+            },
+            70,
+        );
+        assert_eq!(health.state(), State::Full);
+        assert!(health.left_out(), "a full builder takes no builds");
+        assert!(!health.dropped(), "nor is it given back");
+        health.heard(false, 130);
+        assert_eq!(
+            health.free,
+            Some(FLOOR - 1),
+            "a failure says nothing of room"
+        );
+        assert_eq!(health.state(), State::Failing);
+        health.heard(
+            Proven {
+                passed: true,
+                free: Some(FLOOR),
+            },
+            190,
+        );
+        assert_eq!(health.state(), State::Passing, "room again");
+        assert!(!health.left_out(), "a builder at the floor takes builds");
+        assert_eq!(health.json()["freeBytes"], FLOOR);
+    }
+
     #[test]
     fn a_proof_is_due_a_minute_after_the_last_began() {
         let began = Instant::now();
@@ -563,7 +714,7 @@ mod tests {
         let ending = Instant::now() + Duration::from_secs(5);
         while Instant::now() < ending {
             if let Some(heard) = prover.tick(now, move || passes) {
-                return Some(heard);
+                return Some(heard.passed);
             }
             thread::sleep(Duration::from_millis(10));
         }
@@ -587,14 +738,16 @@ mod tests {
             .expect("it started");
         let later = began + EVERY * 2;
         assert_eq!(
-            prover.tick(later, || panic!("a second ran beside the first")),
+            prover.tick(later, || -> bool {
+                panic!("a second ran beside the first")
+            }),
             None,
             "one running holds the next back"
         );
         go.send(()).expect("told to end");
         assert_eq!(heard(&mut prover, began, false), Some(true));
         assert_eq!(
-            prover.tick(began + Duration::from_secs(30), || {
+            prover.tick(began + Duration::from_secs(30), || -> bool {
                 panic!("one ran within the minute")
             }),
             None,
@@ -606,19 +759,27 @@ mod tests {
     #[test]
     fn a_proof_builds_what_no_store_holds_with_what_its_builder_requires() {
         assert_eq!(
-            expression("17-3", None, &[]),
+            expression("17-3", None, &[], None),
             "derivation { name = \"nix-offload-proof\"; system = builtins.currentSystem; \
              builder = \"/bin/sh\"; args = [ \"-c\" \"echo 17-3 > $out\" ]; \
              requiredSystemFeatures = [ ]; }"
         );
         assert!(
-            expression("17-3", Some("x86_64-linux"), &["own", "big-parallel"]).contains(
+            expression("17-3", Some("x86_64-linux"), &["own", "big-parallel"], None).contains(
                 "system = \"x86_64-linux\"; builder = \"/bin/sh\"; \
                  args = [ \"-c\" \"echo 17-3 > $out\" ]; \
                  requiredSystemFeatures = [ \"own\" \"big-parallel\" ]; }"
             )
         );
         assert_ne!(nonce(), nonce(), "each proof's own");
+        let measuring = expression("17-3", None, &[], Some("/nix/store/abc-coreutils"));
+        assert!(
+            measuring.contains(
+                "\"echo 17-3 > $out; set -- $(${builtins.storePath \"/nix/store/abc-coreutils\"}\
+                 /bin/df -B1 --output=avail /nix/store); echo nix-offload-free $2\""
+            ),
+            "{measuring}"
+        );
     }
 
     #[test]
@@ -657,7 +818,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ssh = stand_in(dir.path(), "ssh", "exit 0");
         let scratch = dir.path().join("proving");
-        assert!(over_ssh(STORE, &scratch, &ssh, WITHIN));
+        assert!(over_ssh(STORE, &scratch, &ssh, WITHIN).passed);
         let given = fs::read_to_string(dir.path().join("given")).unwrap();
         let words: Vec<&str> = given.lines().collect();
         for option in [
@@ -685,8 +846,39 @@ mod tests {
             "its host key and log are cleaned up"
         );
         let failing = stand_in(dir.path(), "ssh", "exit 255");
-        assert!(!over_ssh(STORE, &scratch, &failing, WITHIN));
-        assert!(!over_ssh("", &scratch, &ssh, WITHIN), "no store, no proof");
+        assert!(!over_ssh(STORE, &scratch, &failing, WITHIN).passed);
+        assert!(
+            !over_ssh("", &scratch, &ssh, WITHIN).passed,
+            "no store, no proof"
+        );
+    }
+
+    #[test]
+    fn a_lent_builder_says_how_much_its_store_has_free_once_it_has_built() {
+        let dir = tempfile::tempdir().unwrap();
+        let ssh = stand_in(
+            dir.path(),
+            "ssh",
+            "echo 'nix-offload-free 6000000000' >&2; exit 0",
+        );
+        let proven = over_ssh(STORE, &dir.path().join("proving"), &ssh, WITHIN);
+        assert_eq!(
+            proven,
+            Proven {
+                passed: true,
+                free: Some(6_000_000_000)
+            }
+        );
+        let given = fs::read_to_string(dir.path().join("given")).unwrap();
+        assert!(
+            given.contains("df -B1 --output=avail /nix/store"),
+            "{given}"
+        );
+        let silent = stand_in(dir.path(), "ssh", "exit 0");
+        assert_eq!(
+            over_ssh(STORE, &dir.path().join("proving"), &silent, WITHIN).free,
+            None
+        );
     }
 
     // On 9 November a switch stopped a quiet build on a lent builder that
@@ -700,7 +892,7 @@ mod tests {
             "echo 'nix-offload-builds 5 2 ' >&2; exit 0",
         );
         let scratch = dir.path().join("proving.d");
-        assert!(over_ssh(STORE, &scratch, &ssh, WITHIN));
+        assert!(over_ssh(STORE, &scratch, &ssh, WITHIN).passed);
         let given = fs::read_to_string(dir.path().join("given")).unwrap();
         assert!(given.contains("&& { printf"), "{given}");
         let mut health = Health::of("lend-1");
@@ -729,12 +921,15 @@ mod tests {
             "sleep 60 & echo $! > \"$(dirname \"$0\")/child\"; wait",
         );
         let began = Instant::now();
-        assert!(!over_ssh(
-            STORE,
-            &dir.path().join("proving"),
-            &ssh,
-            Duration::from_millis(500)
-        ));
+        assert!(
+            !over_ssh(
+                STORE,
+                &dir.path().join("proving"),
+                &ssh,
+                Duration::from_millis(500)
+            )
+            .passed
+        );
         assert!(
             began.elapsed() < Duration::from_secs(5),
             "{:?}",
@@ -754,7 +949,7 @@ mod tests {
         let nix = stand_in(dir.path(), "nix", "exit 0");
         let line = "ssh-ng://work-linux x86_64-linux,aarch64-linux /etc/nix/key 4 0.5 \
                     big-parallel,own own AAAA";
-        assert!(through_daemon(line, &nix, WITHIN));
+        assert!(through_daemon(line, &nix, WITHIN).passed);
         let given = fs::read_to_string(dir.path().join("given")).unwrap();
         let words: Vec<&str> = given.lines().collect();
         assert_eq!(
@@ -782,7 +977,45 @@ mod tests {
             "nix",
             "echo 'cannot build on work-linux' >&2; exit 1",
         );
-        assert!(!through_daemon(line, &failing, WITHIN));
+        assert!(!through_daemon(line, &failing, WITHIN).passed);
+    }
+
+    // Only root's ssh reaches a builder beside, so its proof measures the
+    // store from inside its sandbox, with a df it brings along, and says
+    // so in the build log that comes back before its output does.
+    #[test]
+    fn a_builder_beside_says_how_much_its_store_has_free_in_its_proofs_log() {
+        let dir = tempfile::tempdir().unwrap();
+        let copying = "copying path '/nix/store/abc-nix-offload-proof' from 'ssh-ng://work-linux'";
+        let nix = stand_in(
+            dir.path(),
+            "nix",
+            &format!(
+                "echo 'nix-offload-proof> nix-offload-free 7000000000' >&2; \
+                 echo \"{copying}...\" >&2; sleep 60"
+            ),
+        );
+        let coreutils = Some("/nix/store/abc-coreutils");
+        let line = format!("ssh-ng://work-linux {} - 4 1 - - -", here());
+        let proven = proven_through(&line, &nix, Duration::from_secs(10), coreutils);
+        assert_eq!(
+            proven,
+            Proven {
+                passed: true,
+                free: Some(7_000_000_000)
+            }
+        );
+        let given = fs::read_to_string(dir.path().join("given")).unwrap();
+        let words: Vec<&str> = given.lines().collect();
+        assert!(words.contains(&"-L"), "its log comes back: {given}");
+        assert!(words[words.len() - 1].contains("/bin/df -B1"), "{given}");
+        let elsewhere = "ssh-ng://work-linux riscv64-linux - 4 1 - - -";
+        proven_through(elsewhere, &nix, Duration::from_secs(10), coreutils);
+        let given = fs::read_to_string(dir.path().join("given")).unwrap();
+        assert!(
+            !given.contains("/bin/df"),
+            "this machine's df runs only on its own system: {given}"
+        );
     }
 
     // This store takes nothing while a collection holds its lock, as the
@@ -800,14 +1033,14 @@ mod tests {
             &format!("echo \"{copying}...\" >&2; sleep 60"),
         );
         let began = Instant::now();
-        assert!(through_daemon(line, &nix, Duration::from_secs(10)));
+        assert!(through_daemon(line, &nix, Duration::from_secs(10)).passed);
         assert!(
             began.elapsed() < Duration::from_secs(5),
             "{:?}",
             began.elapsed()
         );
         let stuck = stand_in(dir.path(), "nix", "echo 'copying 1 paths...' >&2; sleep 60");
-        assert!(!through_daemon(line, &stuck, Duration::from_millis(500)));
+        assert!(!through_daemon(line, &stuck, Duration::from_millis(500)).passed);
     }
 
     #[test]
@@ -830,17 +1063,31 @@ mod tests {
                 "lastSuccess": 1000,
                 "lastFailure": null,
                 "consecutiveFailures": 0,
+                "freeBytes": null,
                 "beside": [{
                     "builder": "work-linux",
                     "state": "dropped",
                     "lastSuccess": null,
                     "lastFailure": 1050,
                     "consecutiveFailures": 2,
+                    "freeBytes": null,
                 }],
             })
         );
         assert!(passes_in(dir.path(), 1000 + FRESH));
         assert!(!passes_in(dir.path(), 1001 + FRESH), "a lender gone quiet");
+        health.heard(
+            Proven {
+                passed: true,
+                free: Some(1),
+            },
+            1000,
+        );
+        write(dir.path(), Some(&health), None, 1060);
+        assert!(
+            !passes_in(dir.path(), 1060),
+            "a full one stands in for none"
+        );
         write(dir.path(), None, None, 1070);
         let said: Value =
             serde_json::from_str(&fs::read_to_string(dir.path().join(HEALTH)).unwrap()).unwrap();
