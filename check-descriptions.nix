@@ -1497,8 +1497,9 @@
   pi-hosted-screen-stays-in-its-session = ''
     pi built with the host's patches, applied exactly, ends only a hosted screen when it quits
     or crashes, suspends only the viewer that asked when its host can and refuses otherwise,
-    binds nothing after quitting during startup and tells every screen of a theme change,
-    while ordinary pi keeps its process exits
+    binds nothing after quitting during startup, sends no more of its first words once it
+    quits, builds nothing an extension asks of it once stopped and tells every screen of a
+    theme change, while ordinary pi keeps its process exits
   '';
   pi-hosts-start-with-the-session = ''
     each realm a machine names gets an attended and a background pi host, started with the
