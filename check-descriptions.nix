@@ -2513,6 +2513,14 @@
     the graphical role's fontconfig, asked for a Mac's system or monospaced font by a name pages give
     it, gives the theme's sans or monospaced face, carrying the name asked for
   '';
+  heat-remakes-only-what-moved = ''
+    Heat's answer asked again with nothing read since makes no row, a chip the machine daemon tells
+    anew is made again alone, the processor's row kept as the fan's changes, and a chip let go goes
+  '';
+  power-remakes-only-what-moved = ''
+    Power's answer asked again with nothing read since makes no row, the battery told anew keeps the
+    Charger's row, and its USB-C port told anew keeps the battery's
+  '';
   the-machine-answers-from-its-daemon = ''
     Machine answers the processors, the memory, the disk and the uptime from the machine daemon
     reading the sandbox's own /proc, their headlines making no parts, and asks it for the programs
