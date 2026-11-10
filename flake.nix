@@ -142,6 +142,7 @@
     in
     {
       homeModules = {
+        agents = ./modules/agents/home.nix;
         backlight = ./modules/backlight/home.nix;
         bat = ./modules/bat/home.nix;
         broot = ./modules/broot/home.nix;

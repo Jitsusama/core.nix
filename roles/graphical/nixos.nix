@@ -22,7 +22,8 @@
 # they wait, and load-proof proves on demand that they don't under full load.
 # Where fwupd runs, each firmware update it offers is said once, as a notice.
 # Where the system installs WARP's warp-cli, warp says how its link stands,
-# and the launcher's Network shows it.
+# and the launcher's Network shows it. On a machine in a mycelium realm,
+# the agents daemon makes Agents' rows ready for the launcher.
 { nixosModules, homeModules }:
 {
   imports = [
@@ -61,6 +62,7 @@
     nixosModules.zathura
   ];
   home-manager.sharedModules = [
+    homeModules.agents
     homeModules.backlight
     homeModules.call-transcripts
     homeModules.camera
