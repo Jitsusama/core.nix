@@ -761,6 +761,11 @@ Singleton {
             if (!root.behindTheLock && !root.lockLetGo && Niri.focused !== null)
                 root.lockGone();
         }
+        // A workspace focused or one gone changes where a moved session's
+        // viewer may open (viewKept).
+        function onRevisionChanged() {
+            root.viewKept();
+        }
         // The window a session being reopened opens in, placed once niri
         // has laid it out, and the next begun; never a terminal of Joel's.
         function onWindowOpenedOrChanged(window) {
@@ -1747,7 +1752,8 @@ Singleton {
 
     // Views a hosted session in a new window of the sessions' kitty, by its
     // node's words, once until niri lists its window, as `attach` does;
-    // `into` a place kept for it (viewKept), or where niri opens one.
+    // `into` a place kept for it (viewKept), which opens without the focus,
+    // or, for Go To, where niri opens one, focused, since Joel asked for it.
     function view(session, into) {
         const words = session.attach;
         const named = viewerOf(session.presence);
@@ -1802,14 +1808,16 @@ Singleton {
         return "kept";
     }
     // Opens the viewer of each session kept that now runs hosted where it
-    // was, or where niri opens one when its workspace has gone since, and
-    // lets go of what's done or a day old (Places.viewersDue).
+    // was, never on the workspace Joel is on and never with his focus
+    // (Places.viewerPlace), and lets go of what's done or a day old
+    // (Places.viewersDue). Asked again as niri's focus moves, so one waiting
+    // for Joel to leave its workspace opens once he has.
     function viewKept() {
         if (Object.keys(keptPlaces).length === 0)
             return;
-        const due = Places.viewersDue(keptPlaces, running, Date.now());
+        const due = Places.viewersDue(keptPlaces, running, Date.now(), Niri.workspaces);
         for (const one of due.open)
-            view(one.session, Niri.workspace(one.into.workspace) ? one.into : null);
+            view(one.session, one.into);
         if (Object.keys(due.kept).length !== Object.keys(keptPlaces).length)
             keepPlaces(due.kept);
     }
