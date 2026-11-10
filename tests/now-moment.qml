@@ -213,52 +213,45 @@ ShellRoot {
         Qt.callLater(root.afterwards);
     }
 
-    // The cases that hold once what a change deferred has run.
+    // The cases that hold once what a change deferred has run, then once
+    // the files an opening reads in one turn are taken, together: each
+    // taken alone parsed every file and banded For You afresh, 166 times
+    // in each of Joel's openings (2026-11-10).
     function afterwards() {
-        try {
+        const looksBefore = now.looks;
+        if (tried(() => {
             heldHears();
-            readsAtOnce();
+            bandedAtReads = now.bandsKept.times;
+            ["e", "f", "g"].forEach(id => now.readLook(`${id}.json`, JSON.stringify({ v: 1,
+                id: id, kind: "page", at: "2026-11-09T12:00:00Z", title: id, why: "Because.",
+                target: "https://example.com", state: "waiting", session: "" })));
+            expect("files read in one turn wait for its end", now.looks === looksBefore,
+                JSON.stringify(Object.keys(now.lookTexts)));
+        }))
+            Qt.callLater(root.readsTaken);
+    }
+    property int bandedAtReads: 0
+
+    function readsTaken() {
+        const banded = () => now.bandsKept.times - bandedAtReads;
+        if (tried(() => expect("and are taken together, For You banded once",
+            JSON.stringify(now.looks.waiting.map(one => one.file))
+                === JSON.stringify(["e.json", "f.json", "g.json"]) && banded() === 1
+                && now.forYouBands.look.length === 3,
+            JSON.stringify([Object.keys(now.lookTexts), banded()]))))
+            Qt.exit(0);
+    }
+
+    // Whether the cases held, exiting 1 saying which didn't.
+    function tried(cases) {
+        try {
+            cases();
+            return true;
         } catch (error) {
             console.warn(`FAIL ${error.message ?? error}`);
             Qt.exit(1);
-            return;
+            return false;
         }
-        Qt.callLater(root.readsTaken);
-    }
-
-    // Files read in one turn, as the launcher opening reads every one,
-    // are taken together as the turn ends: each taken alone parsed every
-    // file again and banded For You afresh, 166 times in each of Joel's
-    // openings (2026-11-10).
-    property int bandedAtReads: 0
-
-    function readsAtOnce() {
-        const look = id => JSON.stringify({ v: 1, id: id, kind: "page",
-            at: "2026-11-09T12:00:00Z", target: "https://example.com", title: `Read ${id}`,
-            why: "Because.", state: "waiting", session: "" });
-        const looksBefore = now.looks;
-        bandedAtReads = now.bandsKept.times;
-        ["e", "f", "g"].forEach(id => now.readLook(`${id}.json`, look(id)));
-        expect("files read in one turn wait for its end", now.looks === looksBefore,
-            JSON.stringify(Object.keys(now.lookTexts)));
-    }
-
-    function readsTaken() {
-        let status = 0;
-        try {
-            const bandsFirst = now.forYouBands;
-            expect("and are taken together, For You banded once",
-                JSON.stringify(now.looks.waiting.map(one => one.file))
-                    === JSON.stringify(["e.json", "f.json", "g.json"])
-                    && now.bandsKept.times - bandedAtReads === 1
-                    && bandsFirst.look.length === 3,
-                JSON.stringify([Object.keys(now.lookTexts),
-                    now.bandsKept.times - bandedAtReads]));
-        } catch (error) {
-            console.warn(`FAIL ${error.message ?? error}`);
-            status = 1;
-        }
-        Qt.exit(status);
     }
 
     // How many times Now said its rows changed.
