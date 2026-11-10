@@ -44,11 +44,27 @@ Text {
     // Its top is true; its outline gives its height. Measuring the outline
     // rather than Qt's box fixes that cause, where a size or offset tuned
     // per glyph would only hide it until the next mark.
+    // Its outline is traced after the box is measured, so a measure is kept
+    // only as the outline changes, for the text it was traced from: kept as
+    // the box came, the first mark of a glyph kept the empty outline's
+    // height, and every mark after it centred on that (2026-11-10).
     Shape {
         id: markOutline
         visible: false
+        onBoundingRectChanged: {
+            if (outlined.text !== "" && outlined.text === mark.measuring
+                && markInk.text === mark.measuring)
+                MarkSize.measured(mark.measureKey, {
+                    x: markInk.tightBoundingRect.x,
+                    y: markInk.tightBoundingRect.y,
+                    width: markInk.tightBoundingRect.width,
+                    height: markInk.tightBoundingRect.height,
+                    outline: boundingRect.height
+                }, mark.faceHeld);
+        }
         ShapePath {
             PathText {
+                id: outlined
                 text: mark.measuring
                 font.family: Theme.level.figure.family
                 font.pointSize: Theme.level.figure.pointSize * mark.fine
@@ -56,14 +72,14 @@ Text {
         }
     }
     // Its ink's box and outline's height at the fine size, known or just
-    // measured, and kept once the face drawn is the one asked for.
-    readonly property var ink: known ?? MarkSize.measured(measureKey, {
+    // measured.
+    readonly property var ink: known ?? {
         x: markInk.tightBoundingRect.x,
         y: markInk.tightBoundingRect.y,
         width: markInk.tightBoundingRect.width,
         height: markInk.tightBoundingRect.height,
         outline: markOutline.boundingRect.height
-    }, faceHeld)
+    }
     // The ink's height, its top and its middle, at the fine size.
     readonly property real inkTall: ink.outline > 0 ? Math.min(ink.outline, ink.height)
         : ink.height

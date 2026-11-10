@@ -55,11 +55,10 @@ function faceHeld(family, families) {
 }
 
 // `measure`, kept as `key`'s when `whole`: when the face drawn is the one
-// asked for, not one standing in while it loads, and the outline is traced,
-// which comes after the box. Either way it's what was measured.
+// asked for, not one standing in while it loads. Mark.qml gives it only
+// once the outline is traced from the glyph, which comes after the box.
 function measured(key, measure, whole) {
     if (whole && measure.outline > 0) {
         measures[key] = measure;
     }
-    return measure;
 }
