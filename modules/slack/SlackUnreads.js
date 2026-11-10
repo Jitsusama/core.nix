@@ -37,45 +37,105 @@ function listable(one) {
         && typeof one.at === "number";
 }
 
-// What the daemon holds, by key (Daemon.qml's `held`), as { state,
-// conversations, recent, messages, whole }, or null while it doesn't
-// answer or hasn't yet said how Slack stands. A conversation is kept when
-// it's whole: a channel merely unread, or one in Recent, has no count, and
-// anything else has one. `messages` are each message wanting Joel, done
-// ones too, the newest first (src/messages.rs), and `whole` whether the
-// daemon says it holds every one, since a history Slack didn't give
-// leaves some out.
+// Each kind of record the daemon holds, by the part of what's gathered
+// it makes, and the one key the account is held by.
+const PARTS = { "slack-unread": "conversations", "slack-recent": "recent",
+    "slack-message": "messages", "slack-account": "account" };
+const ACCOUNT = "slack-account:slack";
+
+// What's kept of the daemon's records: the account, and each other kind's
+// by key, so a change remakes only the parts whose keys it names
+// (Daemon.qml's heard) rather than walking all held, 400 on Joel's shell
+// at a change a minute, with the launcher shut too (RCTRF8, 2026-11-10).
+function keeping() {
+    return { account: null, "slack-unread": {}, "slack-recent": {}, "slack-message": {} };
+}
+
+// Takes what `held` (Daemon.qml's) says of these keys into `kept`, and
+// says which parts moved, as { account, conversations, recent, messages }
+// with those that did. A key's kind is how it begins, as the daemon makes
+// them (src/daemon.rs), so a key gone is placed without its record.
+function keep(kept, held, keys) {
+    const moved = {};
+    for (const key of keys) {
+        const kind = key.slice(0, key.indexOf(":"));
+        const part = PARTS[kind];
+        if (part === undefined || (part === "account" && key !== ACCOUNT)) {
+            continue;
+        }
+        const record = held?.[key];
+        const one = record?.kind === kind ? record[kind] : undefined;
+        if (part === "account") {
+            kept.account = one ?? null;
+        } else if (one === undefined || one === null) {
+            delete kept[kind][key];
+        } else {
+            kept[kind][key] = one;
+        }
+        moved[part] = true;
+    }
+    return moved;
+}
+
+// Whether a conversation can be listed: it says its id, its name and the
+// link that opens it.
+function openable(one) {
+    return one !== null && typeof one === "object" && typeof one.id === "string"
+        && typeof one.name === "string" && typeof one.link === "string";
+}
+
+// The conversations kept, in Slack's order. One is listed when it's whole:
+// a channel merely unread, or one in Recent, has no count, and anything
+// else has one.
+function conversationsOf(kept) {
+    const first = newest("latest");
+    return Object.values(kept["slack-unread"]).filter(openable)
+        .filter(one => one.kind === "unread" || one.count > 0)
+        .sort((one, other) => ((groups[one.kind] ?? 4) - (groups[other.kind] ?? 4))
+            || first(one, other));
+}
+
+// What Joel read last, newest first.
+function recentOf(kept) {
+    return Object.values(kept["slack-recent"]).filter(openable).sort(newest("read"));
+}
+
+// Each message wanting Joel, done ones too, the newest first
+// (src/messages.rs).
+function messagesOf(kept) {
+    return Object.values(kept["slack-message"]).filter(listable)
+        .sort((one, other) => (other.at - one.at) || other.ts.localeCompare(one.ts));
+}
+
+// Every part kept, listed.
+function listed(kept) {
+    return { conversations: conversationsOf(kept), recent: recentOf(kept),
+        messages: messagesOf(kept) };
+}
+
+// What the daemon holds as { state, conversations, recent, messages,
+// whole }, from its account and each part listed, or null while it
+// doesn't answer or hasn't yet said how Slack stands. `whole` is whether
+// the daemon says it holds every message, since a history Slack didn't
+// give leaves some out.
+function toldBy(account, lists, answering) {
+    if (!answering || account === null || typeof account !== "object"
+        || typeof account.standing !== "string") {
+        return null;
+    }
+    return { state: account.standing, conversations: lists.conversations,
+        recent: lists.recent, messages: lists.messages, whole: account.messages === "whole" };
+}
+
+// What the daemon holds, by key (Daemon.qml's `held`), gathered whole at
+// once, as toldBy says it.
 function gathered(held, answering) {
     if (!answering || held === null || typeof held !== "object") {
         return null;
     }
-    const account = held["slack-account:slack"]?.["slack-account"];
-    if (account === null || typeof account !== "object"
-        || typeof account.standing !== "string") {
-        return null;
-    }
-    const whole = one => one !== null && typeof one === "object"
-        && typeof one.id === "string" && typeof one.name === "string"
-        && typeof one.link === "string";
-    const of = kind => Object.values(held)
-        .filter(record => record?.kind === kind)
-        .map(record => record[kind])
-        .filter(whole);
-    const first = newest("latest");
-    return {
-        state: account.standing,
-        conversations: of("slack-unread")
-            .filter(one => one.kind === "unread" || one.count > 0)
-            .sort((one, other) => ((groups[one.kind] ?? 4) - (groups[other.kind] ?? 4))
-                || first(one, other)),
-        recent: of("slack-recent").sort(newest("read")),
-        messages: Object.values(held)
-            .filter(record => record?.kind === "slack-message")
-            .map(record => record["slack-message"])
-            .filter(listable)
-            .sort((one, other) => (other.at - one.at) || other.ts.localeCompare(one.ts)),
-        whole: account.messages === "whole"
-    };
+    const kept = keeping();
+    keep(kept, held, Object.keys(held));
+    return toldBy(kept.account, listed(kept), true);
 }
 
 // The messages wanting Joel, one each, while the daemon holds every one,
@@ -96,7 +156,11 @@ function done(one) {
 // The conversations a message never stands for, listed beside the
 // messages: Threads, whose replies the daemon doesn't hold.
 function unheld(told) {
-    return wanting(told).filter(one => one.kind === "thread");
+    return threads(wanting(told));
+}
+
+function threads(conversations) {
+    return conversations.filter(one => one.kind === "thread");
 }
 
 // Whether a conversation wants Joel, as Now lists only those that do: a
@@ -353,8 +417,7 @@ function readInSlack(notices, all) {
     if (!(notices ?? []).some(notice => notice?.read !== true && isSlacks(notice))) {
         return [];
     }
-    const held = (all ?? []).filter(listable).map(one => ({ one, words: words(one.text),
-        cut: [...String(one.text ?? "")].length > CUT_PAST }));
+    const held = (all ?? []).filter(listable).map(worded);
     if (!held.some(each => each.one.done?.how === "readInSlack")) {
         return [];
     }
@@ -376,6 +439,22 @@ function readInSlack(notices, all) {
     return matched.filter(each => each.unread && each.of.length === 1
         && claimed.get(keyOf(each.of[0])) === 1 && readAfter(each.of[0], each.at))
         .map(each => each.id);
+}
+
+// A message held with its words, and whether the daemon may have cut it,
+// kept by the message, which the daemon replaces whole as it changes, so
+// a notice or a message heard words only the messages new since rather
+// than every one held again.
+const wordings = new WeakMap();
+
+function worded(one) {
+    let said = wordings.get(one);
+    if (said === undefined) {
+        said = { one, words: words(one.text),
+            cut: [...String(one.text ?? "")].length > CUT_PAST };
+        wordings.set(one, said);
+    }
+    return said;
 }
 
 // Whether a message was read in Slack at or after `at`, the daemon's time
