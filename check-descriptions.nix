@@ -2891,8 +2891,9 @@
     clippy finds nothing in the cameras' holders watcher or its tests
   '';
   vm-admins-switch-unasked = ''
-    an account in wheel switches to another system and back with no password; one outside wheel, and
-    what isn't a NixOS system in the store, is refused
+    an account in wheel switches to another system the machine has run and back with no password, and
+    to one it never ran only by authenticating; one outside wheel, and what isn't a NixOS system in
+    the store, is refused
   '';
   vm-admins-tune-memory = ''
     an account in wheel sets the watermarks' spacing, transparent huge pages, the multi-gen LRU and

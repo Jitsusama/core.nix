@@ -1,10 +1,14 @@
-"""The machine's administrators switch it with no password, and nobody else does.
+"""The machine's administrators switch it to a system it has run, and nobody else does.
 
 tests/switch-system.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py).
-The machine's system has a specialisation that adds /etc/switched, so switching to it and
-back is a switch to another system and to the first again. An account in wheel switches; an
-account outside it, and anything that isn't a NixOS system in the store, is refused, and the
-machine is left as it was. A test that switches switches back as it ends, so any runs alone.
+The machine's system has a specialisation that adds /etc/switched, which root puts in the
+system profile first, as update-to-main would, so switching to it and back is a switch to
+another system the machine has run and to the first again. A second, which adds /etc/unrun,
+is never put there. An account in wheel switches between the first two unasked; a switch to
+the third asks for authentication, which an agent outside any session can't give, so it's
+refused. An account outside wheel, and anything that isn't a NixOS system in the store, is
+refused too, and the machine is left as it was. A test that switches switches back as it ends,
+so any runs alone.
 """
 
 from __future__ import annotations
@@ -19,14 +23,17 @@ if TYPE_CHECKING:
 
     from test_driver.machine import BaseMachine
 
+PROFILE = "/nix/var/nix/profiles/system"
+
 
 @dataclass(frozen=True)
 class Systems:
-    """The machine, and the two systems a test switches it between."""
+    """The machine, the two systems it has run, and the one it never has."""
 
     machine: BaseMachine
     first: str
     switched: str
+    unrun: str
 
     def switch(self, account: str, target: str) -> tuple[int, str]:
         """Switch the machine as an account, outside any session as an agent would.
@@ -41,16 +48,23 @@ class Systems:
 
     def booting(self) -> str:
         """Give the system the machine boots next."""
-        return self.machine.succeed("readlink -f /nix/var/nix/profiles/system").strip()
+        return self.machine.succeed(f"readlink -f {PROFILE}").strip()
 
 
 @pytest.fixture(scope="module")
 def systems(machine: BaseMachine) -> Systems:
-    """Give the machine up on its first system, and the specialisation beside it."""
+    """Give the machine up on its first system, with the second in its system profile.
+
+    Root puts the second there and the first back after it, as update-to-main switching on and
+    back would, so both are systems the machine has run and it still boots the first.
+    """
     machine.wait_for_unit("multi-user.target")
     first = machine.succeed("readlink -f /run/current-system").strip()
     switched = machine.succeed(f"readlink -f {first}/specialisation/switched").strip()
-    return Systems(machine, first, switched)
+    unrun = machine.succeed(f"readlink -f {first}/specialisation/unrun").strip()
+    for system in (first, switched, first):
+        machine.succeed(f"nix-env --profile {PROFILE} --set {system}")
+    return Systems(machine, first, switched, unrun)
 
 
 @pytest.fixture
@@ -63,8 +77,10 @@ def switched(systems: Systems) -> Iterator[Systems]:
     assert status == 0, said
 
 
-def test_an_administrator_switches_to_another_system_with_no_password(switched: Systems) -> None:
-    """An administrator switches to another system, with no password, and boots it next."""
+def test_an_administrator_switches_to_a_system_it_has_run_with_no_password(
+    switched: Systems,
+) -> None:
+    """An administrator switches to another system it has run, unasked, and boots it next."""
     switched.machine.succeed("test -e /etc/switched")
     assert switched.running() == switched.switched
     assert switched.booting() == switched.switched
@@ -77,6 +93,16 @@ def test_an_administrator_switches_back(switched: Systems) -> None:
     switched.machine.fail("test -e /etc/switched")
     assert switched.running() == switched.first
     assert switched.booting() == switched.first
+
+
+def test_a_system_the_machine_never_ran_asks_an_administrator(systems: Systems) -> None:
+    """An administrator's switch to a system it never ran asks, and nothing changes unasked."""
+    status, said = systems.switch("someone", systems.unrun)
+    assert status != 0, said
+    assert "requires interactive authentication" in said
+    systems.machine.fail("test -e /etc/unrun")
+    assert systems.running() == systems.first
+    assert systems.booting() == systems.first
 
 
 def test_an_account_outside_wheel_is_refused(systems: Systems) -> None:
@@ -102,10 +128,12 @@ def test_what_isnt_a_nixos_system_in_the_store_is_refused(
 ) -> None:
     """What isn't a NixOS system in the store is refused, and nothing changes.
 
-    Each target is found from bash's path in the store, which the machine's system holds.
+    polkit asks for any of these, since none is a system the machine has run, so they're
+    switched as root, whom polkit never asks, to reach the switch's own refusal. Each target is
+    found from bash's path in the store, which the machine's system holds.
     """
     bash = systems.machine.succeed("readlink -f /run/current-system/sw/bin/bash").strip()
-    status, said = systems.switch("someone", target(bash))
+    status, said = systems.switch("root", target(bash))
     assert status != 0, said
     assert refusal in said
     assert systems.running() == systems.first

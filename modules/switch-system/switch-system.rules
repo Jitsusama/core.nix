@@ -1,7 +1,9 @@
-// The machine's administrators may start a switch to a system, and nothing
-// else, without a password: modules/switch-system/nixos.nix says why that
-// gives them nothing their password didn't. polkit's own engine reads this,
-// in the JavaScript it knows.
+// The machine's administrators may start a switch to a system the machine has
+// run before, and nothing else, without a password; a switch to any other
+// system asks an administrator to authenticate: modules/switch-system/nixos.nix
+// says why. @known@ (switch-system-known.sh) says which systems the machine
+// has run, and fails for any other. polkit's own engine reads this, in the
+// JavaScript it knows.
 polkit.addRule(function (action, subject) {
   if (
     action.id === "org.freedesktop.systemd1.manage-units" &&
@@ -9,7 +11,12 @@ polkit.addRule(function (action, subject) {
     /^switch-system@.+\.service$/.test(action.lookup("unit")) &&
     subject.isInGroup("wheel")
   ) {
-    return polkit.Result.YES;
+    try {
+      polkit.spawn(["@known@", action.lookup("unit")]);
+      return polkit.Result.YES;
+    } catch (_unknown) {
+      return polkit.Result.AUTH_ADMIN;
+    }
   }
   return polkit.Result.NOT_HANDLED;
 });
