@@ -1892,6 +1892,7 @@ onLinux {
     echo 3 > runtime/leds/test::kbd_backlight/max_brightness
     touch runtime/leds/test::kbd_backlight/brightness_hw_changed
     cp ${./Lights.qml} Lights.qml
+    cp ${./Daemon.qml} Daemon.qml
     cp ${../../tests/lights.qml} shell.qml
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     export FONTCONFIG_FILE=${noFonts}
@@ -3936,6 +3937,8 @@ onLinux {
   # description of the board, locked on Numb, with niri, the shortcuts and
   # the shell's lights stood in for. Unplugged, as the kernel's list and
   # keyboard-lights' say, the laptop's own layout, keyd's, takes its place.
+  # The machine daemon tells the keyboards and the layer from its files,
+  # under a root of its own.
   the-launcher-finds-the-keyboards-keys =
     let
       firmware = import ../ergodox/firmware.nix pkgs {
@@ -3965,12 +3968,14 @@ onLinux {
           (import ../keyd/layout.nix { inherit lib; }).environment.etc."keyboard/layout.json".text;
     in
     pkgs.runCommandLocal "the-launcher-finds-the-keyboards-keys" { } ''
-      mkdir -p runtime config/ergodox launcher && chmod 700 runtime
-      echo "Numb locked" > runtime/keyboard-layer
-      printf '1\n9\n' > runtime/keyboards
+      mkdir -p runtime/daemons config/ergodox launcher && chmod 700 runtime
+      mkdir -p root/proc/bus/input root/run/keyboard-lights root/run/user/1000
+      echo "Numb locked" > root/run/user/1000/keyboard-layer
+      printf '1\n9\n' > root/run/keyboard-lights/keyboards
       cp ${firmware}/shell.json config/ergodox/layout.json
       cp ${laptop} laptop.json
       cp ${./ConnectedKeyboards.qml} ConnectedKeyboards.qml
+      cp ${./Daemon.qml} Daemon.qml
       cp ${../../tests/keyboard.qml} shell.qml
       cp ${./KeyboardLayout.qml} KeyboardLayout.qml
       cp ${./KeyboardLayer.qml} KeyboardLayer.qml
@@ -3991,10 +3996,14 @@ onLinux {
       cp ${shortcuts} Shortcuts.qml
       cp ${lights} Lights.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime XDG_CONFIG_HOME=$TMPDIR/config
-      export LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export MACHINE_ROOT=$TMPDIR/root LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
+      XDG_RUNTIME_DIR=/run/user/1000 \
+        ${lib.getExe machine} "$TMPDIR/runtime/daemons/machine.sock" "$MACHINE_ROOT" &
+      daemon=$!
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
+      kill "$daemon"
       touch $out
     '';
 

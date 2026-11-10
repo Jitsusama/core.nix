@@ -1,7 +1,8 @@
 // The keyboard's lights. Whether caps lock is on, as the system's
-// keyboard-lights watcher writes it (modules/quickshell/nixos.nix): the file
-// changes only when the light does, so nothing is asked. With no watcher, as
-// on a Mac, it's never on.
+// keyboard-lights watcher writes it (modules/quickshell/nixos.nix), told by
+// the machine daemon as it's written (modules/machine/src/keyboards.rs), so
+// nothing is asked and the shell reads no file for it. With no watcher, as
+// on a Mac, or while the daemon isn't answering, it's never on.
 //
 // And the keyboard's backlight, whenever its firmware changes it, as the
 // backlight key does on a Dell: the kernel writes brightness_hw_changed
@@ -17,7 +18,8 @@ import QtQuick
 Singleton {
     id: root
 
-    readonly property bool caps: file.loaded && file.text().trim() === "1"
+    readonly property bool caps: capslock.revision >= 0
+        && capslock.held["capslock:keyboard"]?.on === true
 
     // Where the kernel lists its lights; a test lists its own.
     property string leds: "/sys/class/leds"
@@ -43,12 +45,13 @@ Singleton {
     property real heardAt: 0
     readonly property int sameChange: 200
 
-    FileView {
-        id: file
-        path: "/run/keyboard-lights/capslock"
-        printErrors: false
-        watchChanges: true
-        onFileChanged: reload()
+    Daemon {
+        id: capslock
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+        kind: "capslock"
+        keptThroughGap: false
+        answersWhole: true
     }
 
     FolderListModel {

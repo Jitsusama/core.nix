@@ -10,8 +10,8 @@
 // board's parts hold its Layer, saying where it's locked, and its Light,
 // each a setting whose choices a step in run the board's own command.
 // Then the board is unplugged, leaving the kernel's list of input devices
-// as keyboard-lights says (ConnectedKeyboards.qml), though its watcher
-// still says its layer: the open layout turns to the laptop's own in place,
+// as keyboard-lights says, as the machine daemon tells them under its root
+// (ConnectedKeyboards.qml), though its watcher still says its layer: the open layout turns to the laptop's own in place,
 // and every key, act and choice of the board goes, as does its row among
 // the keyboards, until it's plugged back in. It exits 0 once every case
 // holds, and otherwise 1, saying which case didn't.
@@ -63,9 +63,9 @@ ShellRoot {
 
     // The kernel's list of input devices, the laptop's keyboard alone or
     // the ErgoDox beside it, and keyboard-lights' list of the keyboards it
-    // holds, written here as they'd change as the board is unplugged and
-    // plugged back in.
-    readonly property string runtime: Quickshell.env("XDG_RUNTIME_DIR")
+    // holds, written under the machine daemon's root as they'd change as
+    // the board is unplugged and plugged back in.
+    readonly property string machineRoot: Quickshell.env("MACHINE_ROOT")
     readonly property string laptopListed: [
         "I: Bus=0011 Vendor=0001 Product=0001 Version=ab83",
         "N: Name=\"AT Translated Set 2 keyboard\"",
@@ -87,22 +87,23 @@ ShellRoot {
 
     FileView {
         id: devicesFile
-        path: `${root.runtime}/devices`
+        path: `${root.machineRoot}/proc/bus/input/devices`
         blockWrites: true
         printErrors: false
     }
 
     FileView {
         id: heldFile
-        path: `${root.runtime}/keyboards`
+        path: `${root.machineRoot}/run/keyboard-lights/keyboards`
         blockWrites: true
         printErrors: false
     }
 
     Component.onCompleted: {
+        // The daemon reads the kernel's list again as keyboard-lights'
+        // changes, as it can't watch the kernel's, so that's written after.
         devicesFile.setText(`${laptopListed}\n${boardListed}`);
-        ConnectedKeyboards.devices = `${runtime}/devices`;
-        ConnectedKeyboards.held = `${runtime}/keyboards`;
+        heldFile.setText("1\n9\n");
         KeyboardLayout.laptopLayout = `${Quickshell.env("HOME")}/laptop.json`;
     }
 

@@ -1,10 +1,11 @@
-// What the launcher's Keyboards answer makes of the kernel's files, in plain
-// JavaScript so a check can run it in Qt's own engine, as the shell does:
-// which of the kernel's input devices are keyboards, how each is joined, the
-// lock lights it has, where a USB board's own description sits in sysfs, how
-// its lights' timeout reads, and which layers a board can be moved to.
-// Keyboards.qml reads the files and says it, and Keyboard.qml offers the
-// layers too.
+// What the launcher's Keyboards answer makes of the keyboards connected, in
+// plain JavaScript so a check can run it in Qt's own engine, as the shell
+// does: how each is joined, the lock lights it has, where a USB board's own
+// description sits in sysfs, how its lights' timeout reads, and which layers
+// a board can be moved to. Which of the kernel's input devices are keyboards
+// is the machine daemon's to say (modules/machine/src/keyboards.rs), as
+// ConnectedKeyboards.qml hears it. Keyboards.qml says it, and Keyboard.qml
+// offers the layers too.
 .pragma library
 
 // The kernel's buses, as /proc/bus/input/devices numbers them.
@@ -13,25 +14,6 @@ const BLUETOOTH = "0005";
 const PS2 = "0011";
 // ZSA's vendor number, the ErgoDox's maker.
 const ZSA = "3297";
-
-// A blank line between two devices in the kernel's list, and the fields of
-// each device's lines.
-const BETWEEN = /\n\s*\n/;
-const NAME = /^N: Name="(.*)"$/m;
-const PHYS = /^P: Phys=(.*)$/m;
-const SYSFS = /^S: Sysfs=(.*)$/m;
-const UNIQ = /^U: Uniq=(.*)$/m;
-const HANDLERS = /^H: Handlers=(.*)$/m;
-const BUS = /^I: .*\bBus=(\w+)/m;
-const VENDOR = /^I: .*\bVendor=(\w+)/m;
-const PRODUCT = /^I: .*\bProduct=(\w+)/m;
-const LEDS = /^B: LED=([0-9a-f]+)$/im;
-const HEX = 16;
-
-// What gives a device keys and lights, and keyd's own keyboard.
-const KEYS = /\bkbd\b/;
-const LIGHTS = /\bleds\b/;
-const KEYD = /^keyd\b/;
 
 // Where a keyboard sits: on USB, by a Bluetooth address, or the laptop's own
 // PS/2 port.
@@ -68,45 +50,6 @@ const LOCKS = [
     { id: "num", bit: 0, light: "numlock" },
     { id: "scroll", bit: 2, light: "scrolllock" }
 ];
-
-// What a pattern finds in a device's lines, or "".
-function found(pattern, block) {
-    return (pattern.exec(block) ?? [])[1] ?? "";
-}
-
-// Each device in the kernel's list, with what it says of itself.
-function devices(text) {
-    return String(text ?? "").split(BETWEEN).filter(block => block.trim() !== "")
-        .map(block => ({
-            name: found(NAME, block),
-            phys: found(PHYS, block),
-            sysfs: found(SYSFS, block),
-            uniq: found(UNIQ, block),
-            handlers: found(HANDLERS, block),
-            bus: found(BUS, block).toLowerCase(),
-            vendor: found(VENDOR, block).toLowerCase(),
-            product: found(PRODUCT, block).toLowerCase(),
-            leds: Number.parseInt(found(LEDS, block) || "0", HEX)
-        }));
-}
-
-// The keyboards among them: a device the kernel gives both keys and lights,
-// which leaves out the power button, the lid and the hotkeys. keyd's own
-// keyboard only passes on the others' keys, so it's left out too. A board
-// is listed once however many keyboards it says it is: the ErgoDox says it
-// twice over one USB device, its keys and its keypad's, so the first of a
-// USB device's is the board (Joel saw two, 2026-10-26).
-function keyboards(text) {
-    const seen = new Set();
-    return devices(text).filter(device => KEYS.test(device.handlers)
-        && LIGHTS.test(device.handlers) && !KEYD.test(device.name))
-        .filter(device => {
-            const board = usbFolder(device) || device.sysfs;
-            const first = !seen.has(board);
-            seen.add(board);
-            return first;
-        });
-}
 
 // How a keyboard is joined, from where the kernel says it sits, as its
 // drawer's eyebrow says it (VKCF3Z, 2026-11-08).
