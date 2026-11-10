@@ -1,7 +1,8 @@
 use disk_guard::clock::Awake;
 use disk_guard::pass::Learned;
-use disk_guard::plan::Class;
+use disk_guard::plan::{Candidate, Class};
 use disk_guard::state::{Memory, load, save};
+use disk_guard::surveyed::{self, Offered, Surveyed};
 use std::fs;
 
 fn remembered() -> Memory {
@@ -72,6 +73,33 @@ fn fields_a_newer_guard_wrote_are_kept() {
         serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
     assert_eq!(again["fill_rates"]["root"], 3);
     assert_eq!(again["version"], 2, "a newer file stays as new as it was");
+}
+
+// On 10 November a producer that had never run was offered as idle
+// forever, which JSON writes as null, so the whole survey of 29,000
+// candidates couldn't be read back and each plan walked for minutes.
+#[test]
+fn a_survey_with_a_candidate_idle_forever_is_read_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let never = Candidate {
+        path: "/cache#producer".into(),
+        class: Class::Target,
+        idle: f64::INFINITY,
+        size: 0,
+        occupied: false,
+        spent: false,
+        checkout: None,
+    };
+    let survey = Surveyed {
+        version: 1,
+        at: 1.0,
+        offered: vec![Offered {
+            device: 1,
+            candidate: never,
+        }],
+    };
+    surveyed::save(dir.path(), &survey).unwrap();
+    assert_eq!(surveyed::load(dir.path()), Some(survey));
 }
 
 #[test]
