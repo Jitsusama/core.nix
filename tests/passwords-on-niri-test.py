@@ -5,7 +5,8 @@ is the store's own, which the check names, run as its unit runs it, on the daemo
 one password manager: a stand-in for 1Password's, named as 1Password's is
 (tests/passwords-stand-in.sh), which never runs op. It starts signed out. Nothing asks it
 anything until Joel steps into Passwords, which asks it once, and while it's signed out the
-place leads with 1Password's row, its side saying it's locked, whose Return unlocks it. Once
+place leads with 1Password's row, its side saying it's locked, whose Return unlocks it. Refused
+the first time, as a dismissed prompt is, the launcher says why the next time it opens. Once
 in, GitHub leads as a favourite, its username at its side, its Return copies its password
 through the daemon to the clipboard and the launcher goes, the margin wearing the clipboard's
 mark and the foot, opened again, saying when it clears; resting on it reads it in full, its
@@ -40,6 +41,10 @@ ASKED = LOGS / "passwords-asked.log"
 STAND_IN = "stand-in-password"
 # The row leading the place while 1Password is locked: the manager, by its name.
 LOCKED = "1Password"
+# What the foot says, opened again, after 1Password didn't let the launcher in.
+REFUSED = "1Password asks you to let the launcher in"
+# How many unlocks the stand-in hears before it's let in: the one it refuses, then its own.
+UNLOCKS = 2
 # What the stand-in Chrome was given, a line an argument.
 CHROME_GIVEN = LOGS.resolve() / "chrome-given.log"
 # The act opening an entry's website, in Chrome, where 1Password's extension fills it.
@@ -114,9 +119,28 @@ def asks() -> list[str]:
 
 
 def let_in(shell: Shell) -> None:
-    """Let the launcher in from the row leading Passwords, unless it's let in already."""
-    if "let-in" in asks():
+    """Let the launcher in from the row leading Passwords, unless it's let in already.
+
+    The stand-in refuses the first, as 1Password does a dismissed prompt, so the launcher,
+    opened again, says why, and the second lets it in.
+    """
+    if asks().count("let-in") >= UNLOCKS:
         return
+    if asks().count("let-in") == 0:
+        unlocked(shell)
+        shell.launcher_until(lambda _: "let-in" in asks())
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        # Told on opening, it's said where a key's word is, until the first key.
+        shell.launcher_until(lambda shown: shown["saying"] == [REFUSED])
+        shell.close_launcher()
+    unlocked(shell)
+    # Let in, the daemon reads the list afresh.
+    shell.launcher_until(lambda _: asks()[-2:] == ["let-in", "list"])
+
+
+def unlocked(shell: Shell) -> None:
+    """Press Unlock on the row leading Passwords, which asks 1Password as the launcher goes."""
     opened(shell)
     shell.launcher_until(lambda shown: shown["rows"][:1] == [LOCKED])
     selected = cast("Json", shell.showing()["selected"])
@@ -133,8 +157,6 @@ def let_in(shell: Shell) -> None:
     )
     shell.send_key("ret")
     shell.launcher_until(lambda shown: not shown["open"])
-    # Let in, the daemon reads the list afresh.
-    shell.launcher_until(lambda _: asks()[-2:] == ["let-in", "list"])
 
 
 def test_passwords_asks_nothing_until_stepped_into_and_leads_with_letting_it_in(

@@ -47,6 +47,11 @@
 // a later check finds none breached or reused (`forYou`, which Now.qml
 // gathers). Stepping into it is stepping into Passwords' list, so it asks
 // for the list as stepping in here does.
+//
+// Long because it's one provider whose rows, acts and notes all read the
+// one daemon's standing as it changes; what works on plain values already
+// lives apart, in Passwords.js, Managers.js and Checked.js, where cases
+// reach it.
 import qs
 import Quickshell
 import QtQuick
@@ -560,10 +565,19 @@ Provider {
         });
     }
 
-    // Answered once Joel answers his manager, for as long as he takes.
+    // Answered once Joel answers his manager, for as long as he takes. The
+    // launcher has gone by then, so one that didn't let it in says why the
+    // next time it opens, by the manager's own reason, as a folder gone
+    // before Return is (Launcher.qml's tellOnOpen): never nothing, as when
+    // 1Password keeps its command out and no prompt ever comes.
     function letIn(manager) {
-        daemon.ask({ ask: "let-in", manager: manager.name, patience: 120000 },
-            () => provider.changed());
+        daemon.ask({ ask: "let-in", manager: manager.name, patience: 120000 }, answer => {
+            provider.changed();
+            const why = answer === null ? said.away ?? "" : answer.error?.message ?? "";
+            if (why !== "")
+                provider.launcher?.tellOnOpen([[manager.called,
+                    Managers.noted(why, manager.called), Theme.alert]]);
+        });
     }
 
     // Asks the daemon for every entry, as Joel steps into the place or types
@@ -656,12 +670,19 @@ Provider {
     }
 
     // Below its row at home: why a manager can't read, where one can't for
-    // a reason other than Joel's leave.
+    // a reason other than Joel's leave, as 1Password keeping its command
+    // out, by the manager's name once: "1Password: needs Integrate with
+    // 1Password CLI on, in Settings \u203a Developer".
     function noted() {
         return (checking ? [said.checking ?? ""] : []).concat(managers
-            .filter(manager => daemon.sources[manager.name]?.state === "refused")
-            .map(manager => `${manager.called}: ${daemon.sources[manager.name]?.reason ?? ""}`))
+            .filter(manager => refused(manager))
+            .map(manager => `${manager.called}: ${Managers.noted(
+                daemon.sources[manager.name]?.reason, manager.called)}`))
             .join(" \u00b7 ");
+    }
+
+    function refused(manager) {
+        return daemon.sources[manager.name]?.state === "refused";
     }
 
     function everything() {
@@ -732,9 +753,11 @@ Provider {
             .map(fact => ({ label: Words.name(fact.id), value: fact.value }));
     }
 
+    // Below its program: why it can't read, whether Joel's leave is all it
+    // waits on or it's refused, as while 1Password keeps its command out.
     function programNote(asked) {
         const manager = managerOf(asked);
-        return manager && signedOut(manager)
+        return manager && (signedOut(manager) || refused(manager))
             ? Managers.noted(daemon.sources[manager.name]?.reason, manager.called) : "";
     }
 
