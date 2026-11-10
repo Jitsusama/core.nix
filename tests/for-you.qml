@@ -130,6 +130,26 @@ QtObject {
             looked.try.length], [["f"], 0]);
         expect("no items, three empty bands", ForYou.banded(undefined, now),
             { now: [], look: [], try: [] });
+        // Each item's time is read once, never at each of its sort's
+        // comparisons, since To Try holds every landing with a line to try
+        // that Joel hasn't read, its time as text, and each opening bands
+        // them more than once. A library's Date is its own, so the reads are
+        // counted at each item's time instead: one to weigh it, one to
+        // order it.
+        let timesRead = 0;
+        const tries = Array.from({ length: 64 }, (_, at) => {
+            const since = new Date(now - (at % 7) * hour).toISOString();
+            const thing = { kind: "look", ready: true };
+            Object.defineProperty(thing, "since", { enumerable: true, get: () => {
+                timesRead += 1;
+                return since;
+            } });
+            return { kind: "try", thing, name: `t${at}` };
+        });
+        const tried = ForYou.banded(tries, now);
+        expect("a band's times read once each", timesRead, 2 * tries.length);
+        expect("a band by time read as text, the oldest first", tried.try.slice(0, 2)
+            .map(one => one.name), ["t6", "t13"]);
 
         // A look blocks the session that left it while that session wants
         // Joel, named by its session or its address, as the session's own
