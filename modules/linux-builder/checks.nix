@@ -79,6 +79,27 @@ in
         && !plain.services.chrony.enable
       );
 
+  # A changed guest collects garbage once a sixth of its disk is free, back
+  # to five twelfths, so a build has room: nixpkgs' 1 GiB and 3 GiB left a
+  # 60 GiB store 90 to 93% full on 9 November, with builds failing for disk.
+  # One given nothing keeps the cached guest's, so it still needs no build.
+  linux-builder-keeps-room-in-a-changed-guest =
+    holds "linux-builder-keeps-room-in-a-changed-guest"
+      "A changed guest doesn't collect garbage from a sixth of its disk free to five twelfths, or a guest given nothing does."
+      (
+        let
+          gib = 1024 * 1024 * 1024;
+          sized = guestOf {
+            disk = 60 * 1024;
+            features = [ "own-code" ];
+          };
+        in
+        sized.nix.settings.min-free == 10 * gib
+        && sized.nix.settings.max-free == 25 * gib
+        && plain.nix.settings.min-free == cached.nix.settings.min-free
+        && plain.nix.settings.max-free == cached.nix.settings.max-free
+      );
+
   # Only the accounts named may restart the VM and the Nix daemon without a
   # password, each by the whole command, so the rule lets nothing else
   # through; with none named, sudo gets no rule at all.
