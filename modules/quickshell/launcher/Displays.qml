@@ -522,10 +522,10 @@ Provider {
     stillReading: terminalLooks && !(launcher?.open ?? false) && !lights.answeredThisWatch
         && lights.state !== "not answering"
 
-    // Whether the lights can be seen, so are watched: Screens' answer, a
-    // screen stepped into or found, a place holding Screens, words typed
-    // asking the Brightness or the Room light, or a terminal's look
-    // (Seen.js), as Heat is read; not every page the launcher opens on.
+    // Whether the lights can be seen, so are watched: Screens' answer,
+    // Screens or a screen stepped into or found, a place holding Screens,
+    // words typed asking the Brightness or the Room light, or a terminal's
+    // look (Seen.js), as Heat is read; not every page the launcher opens on.
     readonly property bool lightsSeen: Seen.seen(launcher, provider, ["displays"],
         typed => brightnessTyped.test(typed.trim().toLowerCase())
             || ["brightness", "room"].includes(partsAsked[asks(typed)]))

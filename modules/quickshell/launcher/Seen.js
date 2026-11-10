@@ -7,10 +7,13 @@
 // own engine.
 .pragma library
 
-// Whether a row is one of the provider's: its own row, or the row of a
-// place it says how things stand in, as Power's place is said by Power.
+// Whether a row is one of the provider's: its own row, the row of a
+// place it says how things stand in, as Power's place is said by Power,
+// or a row of a collection it is, as Screens' own row is Displays', or
+// one of its members found from outside it.
 function isOf(row, provider, ids) {
-    return !!row && (row.live === provider || ids.includes(row.category?.id ?? ""));
+    return !!row && (row.live === provider || row.from === provider
+        || ids.includes(row.category?.id ?? ""));
 }
 
 // Whether words typed, read plainly, ask one of `questions`, whole or in

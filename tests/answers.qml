@@ -2260,6 +2260,14 @@ QtObject {
             true);
         machine("seen among what's found", Seen.seen(opened({ matches: [its] }), watcher, []),
             true);
+        // A collection's own row, and a member of it found from outside,
+        // are the collection's (Launcher.qml's into and gathered rows).
+        machine("seen stepped into as a collection",
+            Seen.seen(opened({ held: [{ row: { from: watcher } }] }), watcher, []), true);
+        machine("seen as a collection's member found from outside",
+            Seen.seen(opened({ matches: [{ from: watcher }] }), watcher, []), true);
+        machine("unseen inside another collection",
+            Seen.seen(opened({ held: [{ row: { from: {} } }] }), watcher, []), false);
         machine("seen in a place holding its row",
             Seen.seen(opened({ placed: ["heat"] }), watcher, ["heat"]), true);
         machine("seen as the place it says how things stand in",
