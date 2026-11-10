@@ -195,6 +195,11 @@ in
     # are asked for. (DelegateControllers is the property systemd reports,
     # not a key it reads.)
     Delegate = "cpu io memory pids";
+    # A restart stops only the daemon that listens, so each client's own
+    # daemon and its build finish under the new one, and a switch that
+    # restarts it cuts nothing (vm-checks-go-first). Nix's unit says so too;
+    # said here, it stays so.
+    KillMode = "process";
     ManagedOOMMemoryPressure = "kill";
     ManagedOOMMemoryPressureLimit = "80%";
     # When memory runs out, a build dies before anything Joel uses: its

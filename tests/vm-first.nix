@@ -80,6 +80,17 @@ let
       { ${pkgs.coreutils}/bin/cat said; echo "sync ran"; } > "$out"
     '';
   };
+  # A build that waits until the test puts a file named go in its build
+  # folder, and then finishes, so a restart of the daemon falls inside it.
+  standInWaiter = pkgs.writeShellApplication {
+    name = "stand-in-waiter";
+    # Nix gives a builder $out in its environment.
+    excludeShellChecks = [ "SC2154" ];
+    text = ''
+      until [ -e go ]; do ${pkgs.coreutils}/bin/sleep 0.1; done
+      ${pkgs.coreutils}/bin/touch "$out"
+    '';
+  };
   # A build that, as a container's would, mounts its cgroup, makes one below
   # it and moves in, then asks to hand that one a controller, saying what it
   # was answered. A cgroup it makes beside that one says it has asked, and
@@ -128,6 +139,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       standInLazyWriter
       standInSyncer
       standInNester
+      standInWaiter
     ];
     environment.etc."vm-build.nix".source = buildOf "vm-build" standInVm;
     environment.etc."compiler-build.nix".source = buildOf "compiler-build" standInCompiler;
@@ -136,6 +148,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     environment.etc."writer-build.nix".source = buildOf "writer-build" standInWriter;
     environment.etc."lazy-writer-build.nix".source = buildOf "lazy-writer-build" standInLazyWriter;
     environment.etc."syncer-build.nix".source = buildOf "syncer-build" standInSyncer;
+    environment.etc."waiter-build.nix".source = buildOf "waiter-build" standInWaiter;
     environment.etc."uid-range.nix".source = ./uid-range.nix;
     # As buildOf makes one, given a range of user ids as a container's is.
     environment.etc."nester-build.nix".text = ''

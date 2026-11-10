@@ -12,7 +12,8 @@ slice's weight, and follows it when it changes.
 The daemon's own cgroup is marked for systemd-oomd to spare while a build
 can go instead. Restarting the daemon, ten times over with vm-first looking
 every 20 ms, leaves the builds running, and the new daemon starts and
-builds again. A build making cgroups of its own, as a container does, is
+builds again. A build the daemon is restarted under finishes, and its
+client is given what it built. A build making cgroups of its own, as a container does, is
 refused handing them controllers, so the daemon restarts beside it too.
 A build that has gone is said in vm-first's journal, with
 what its client ran, its quest, what it wrote and read, and what it left
@@ -281,6 +282,34 @@ def test_a_restarted_daemon_leaves_its_builds_running_and_builds_again(
     given = builds.machine.succeed(f"cat {built}").strip()
 
     assert given == RANGE, f"the build was given {given} ids"
+
+
+def test_a_build_the_daemon_is_restarted_under_finishes_for_its_client(builds: Builds) -> None:
+    """A build the daemon is restarted under finishes, and its client is given what it built."""
+    machine = builds.machine
+    # Kept once its client ends, so how it ended can be read.
+    machine.succeed(
+        "systemd-run --unit=waiter-build --property=RemainAfterExit=yes "
+        f"{NIX_BUILD} /etc/waiter-build.nix"
+    )
+    waiter = builds.found("stand-in-waiter")
+
+    builds.restart_the_daemon()
+    # The build goes on only now, so it finishes under the new daemon.
+    machine.succeed(f"touch /proc/{waiter}/cwd/go")
+
+    machine.wait_until_succeeds(
+        "systemctl show -P SubState waiter-build | grep -qxE 'exited|failed'", timeout=STARTING
+    )
+    ended = [
+        machine.succeed(f"systemctl show -P {what} waiter-build").strip()
+        for what in ["Result", "ExecMainStatus"]
+    ]
+    assert ended == ["success", "0"], f"the build's client ended {ended}"
+    # Its journal names nix-build's own path too, as systemd started it.
+    said = machine.succeed("journalctl -u waiter-build -o cat")
+    (built,) = [word for word in said.split() if re.fullmatch(r"/nix/store/\S+-waiter-build", word)]
+    machine.succeed(f"nix-store --check-validity {built}")
 
 
 def test_a_build_cant_hand_controllers_on_itself_so_the_daemon_restarts_beside_it(

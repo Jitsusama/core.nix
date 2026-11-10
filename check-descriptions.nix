@@ -3086,7 +3086,8 @@
     1000 and a service in it goes to normal at nice -10; a build asked for from a quest's slice
     takes the slice's weight and follows it; the daemon's own cgroup carries oomd's mark to pass it
     over; ten restarts of the daemon, vm-first looking every 20 ms, each start and leave the builds
-    running, the daemon builds again, a build asking for a range of user ids gets 65,536, a
+    running, the daemon builds again, a build the daemon is restarted under finishes and its
+    client is given the valid path it built, a build asking for a range of user ids gets 65,536, a
     uid-range build that makes a cgroup of its own is refused handing it pids with "Permission
     denied" and the daemon restarts beside it, a finished build that wrote 64 MiB is said with at
     least that and its client's command, one that wrote 64 MiB without waiting for the disk says at
