@@ -90,7 +90,8 @@ SAVED_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><
 FRESH = "Drawing 2026-11-09 10.12.03.svg"
 
 # Where in the home GIMP saved the pictures it edited lately, the last the newest, and the name
-# GIMP says each it opens under on the desktop's list of files opened lately.
+# GIMP says each it opens under on the desktop's list of files opened lately: its long name,
+# which its entry keeps among its keywords now that it goes by GIMP, so its Recent is found.
 EDITED = "Pictures/Posters"
 EDITS = ("quay-retouched.png", "ferry-poster.png")
 GIMP = "GNU Image Manipulation Program"

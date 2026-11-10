@@ -124,7 +124,7 @@ def test_a_screenshot_just_taken_is_found_by_typing_and_opens_in_gimp(
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     # GIMP holds it on its page, which Tab opens from where its name is typed.
-    desktop.type_in("gnu image", selecting="GNU Image Manipulation Program")
+    desktop.type_in("gnu image", selecting="GIMP")
     desktop.into_program()
     desktop.launcher_until(lambda shown: "Edit the Newest Screenshot" in shown["rows"])
     desktop.close_launcher()

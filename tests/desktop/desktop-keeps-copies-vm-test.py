@@ -228,7 +228,7 @@ def test_a_picture_copied_is_kept_shown_as_it_is_and_copied_again(desktop: Deskt
     # looked at.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.type_in("gnu image", selecting="GNU Image Manipulation Program")
+    desktop.type_in("gnu image", selecting="GIMP")
     desktop.into_program()
     desktop.launcher_until(lambda shown: "New Image From the Copied Picture" in shown["rows"])
     desktop.shoot("launcher-gimp-copied-picture")

@@ -231,7 +231,14 @@ let
     ln -sf ${gimprc} $out/gimprc
   '';
 
-  # The desktop entry starts gimp-3.2, and gimp and gimp-3 link to it.
+  # The desktop entry starts gimp-3.2, and gimp and gimp-3 link to it. The
+  # launcher names a program by its entry, which GIMP's gives as "GNU Image
+  # Manipulation Program", in Canadian and British English too, where every
+  # other program's page reads a short name, so the entry is copied with
+  # GIMP for its name. The long name goes first among its keywords, where
+  # search finds it, its drawer says it, and Recent finds the entry that
+  # GIMP's own list names by it (VKCF3Z, 2026-11-10). The build fails
+  # should GIMP's entry stop naming itself so.
   wrapped = pkgs.symlinkJoin {
     name = "gimp-${gimp.version}";
     inherit (gimp) version meta;
@@ -246,6 +253,12 @@ let
         wrapProgram $out/bin/$program --set GIMP3_SYSCONFDIR ${sysconf}
       done
       ln -s ${gimp.man} $man
+      entry=share/applications/gimp.desktop
+      rm $out/$entry
+      sed -E -e 's/^(Name(\[en_(CA|GB)\])?)=GNU Image Manipulation Program$/\1=GIMP/' \
+        -e 's/^(Keywords(\[en_GB\])?)=/\1=GNU Image Manipulation Program;/' \
+        ${gimp}/$entry > $out/$entry
+      grep -qx Name=GIMP $out/$entry
     '';
     passthru = { inherit sysconf; };
   };
