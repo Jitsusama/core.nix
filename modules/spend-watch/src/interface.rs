@@ -220,7 +220,7 @@ impl Hub {
         }
         let mut held = self.lock();
         if !held.passed {
-            held.records.extend(cut_budgets(whole));
+            held.records.extend(cut_budgets(&whole));
         }
     }
 

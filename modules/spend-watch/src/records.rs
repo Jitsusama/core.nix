@@ -45,13 +45,13 @@ pub fn records(collection: &Collection) -> BTreeMap<String, Value> {
 
 /// How the budgets stand as records, by key.
 pub fn budget_records(standing: &Standing) -> BTreeMap<String, Value> {
-    serde_json::to_value(standing).map_or_else(|_| BTreeMap::new(), cut_budgets)
+    serde_json::to_value(standing).map_or_else(|_| BTreeMap::new(), |whole| cut_budgets(&whole))
 }
 
 /// budgets.json, as it's written, cut into records by key: each budget by
 /// its name, and each session's last budget by its id. Its time and total
 /// are left out, since nothing draws them and the time moves each pass.
-pub fn cut_budgets(whole: Value) -> BTreeMap<String, Value> {
+pub fn cut_budgets(whole: &Value) -> BTreeMap<String, Value> {
     let mut made = BTreeMap::new();
     if let Some(budgets) = whole["budgets"].as_array() {
         for budget in budgets {
