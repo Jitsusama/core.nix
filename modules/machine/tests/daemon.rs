@@ -621,6 +621,39 @@ fn a_supply_says_its_charge_health_and_port_and_sleep_its_steps() {
 }
 
 #[test]
+fn a_charge_limit_set_is_told_before_its_answer() {
+    let running = Running::new("limit");
+    power(&running.root());
+    let mut client = running.client();
+    client.ask(&json!({"id": "power", "ask": "watch", "kind": "supply"}));
+    client.send(
+        &json!({"id": 2, "ask": "act", "act": "charge-limit", "supply": "BAT0",
+        "stop_pct": 60}),
+    );
+    // Read again before it's answered, so Power's row moves as the act
+    // does rather than at the next second's read.
+    let told = client.heard();
+    let battery = told["changed"]
+        .as_array()
+        .and_then(|records| records.iter().find(|record| record["key"] == "supply:BAT0"));
+    assert_eq!(
+        battery.map(|record| &record["limit_stop_pct"]),
+        Some(&json!(60)),
+        "{told}"
+    );
+    assert_eq!(
+        battery.map(|record| &record["limit_start_pct"]),
+        Some(&json!(55))
+    );
+    assert_eq!(client.heard(), json!({"id": 2, "done": true}));
+    let refused = client.ask(&json!({"id": 3, "ask": "act", "act": "charge-limit",
+        "supply": "../BAT0", "stop_pct": 60}));
+    assert_eq!(refused["error"]["code"], "bad-act");
+    let unknown = client.ask(&json!({"id": 4, "ask": "act", "act": "overclock"}));
+    assert_eq!(unknown["error"]["code"], "unknown-act");
+}
+
+#[test]
 fn the_screens_light_and_the_rooms_are_said_as_they_move() {
     let running = Running::new("light");
     let root = running.root();

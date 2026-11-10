@@ -223,6 +223,82 @@ pub fn supplies(root: &Root) -> Vec<String> {
     root.names(SUPPLIES)
 }
 
+const STOP: &str = "charge_control_end_threshold";
+const START: &str = "charge_control_start_threshold";
+
+/// How far below its stop a battery with a start begins charging again,
+/// as its firmware's own limit is set.
+pub const RESTART_PCT: u32 = 5;
+
+/// The files written to move a battery's limit to stop at `wanted`, each
+/// with what it's given, in the order the kernel takes them: it refuses
+/// a start at or above the stop, so a limit raised has its stop written
+/// first, and one lowered its start. A battery with no start has only
+/// its stop.
+pub fn limit_writes(
+    start: Option<u32>,
+    stop: Option<u32>,
+    wanted: u32,
+) -> Vec<(&'static str, u32)> {
+    let end = (STOP, wanted);
+    if start.is_none() {
+        return vec![end];
+    }
+    let begin = (START, wanted.saturating_sub(RESTART_PCT));
+    if stop.is_none_or(|stop| wanted >= stop) {
+        vec![end, begin]
+    } else {
+        vec![begin, end]
+    }
+}
+
+/// Why a limit wasn't set: what was asked is no limit this machine has
+/// (`bad-act`), or the kernel refused a write (`refused`), with what to
+/// say of it.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Unset {
+    pub code: &'static str,
+    pub message: String,
+}
+
+fn unset(code: &'static str, message: impl Into<String>) -> Unset {
+    Unset {
+        code,
+        message: message.into(),
+    }
+}
+
+/// Moves the limit of the supply named to stop charging at `wanted` per
+/// cent, and start again `RESTART_PCT` below it where it can, as Power's
+/// Charge Limit asks. A name that could reach outside the kernel's list
+/// of supplies is refused before anything is written.
+pub fn set_limit(root: &Root, name: &str, wanted: u32) -> Result<(), Unset> {
+    let plain = !name.is_empty() && !name.starts_with('.') && !name.contains('/');
+    let folder = format!("{SUPPLIES}/{name}");
+    if !plain || !root.path(&format!("{folder}/{STOP}")).exists() {
+        return Err(unset(
+            "bad-act",
+            format!("no supply {name:?} with a charge limit"),
+        ));
+    }
+    if !(1..=100).contains(&wanted) {
+        return Err(unset("bad-act", format!("no stop at {wanted} per cent")));
+    }
+    let figure = |file: &str| {
+        root.said(&format!("{folder}/{file}"))
+            .and_then(|said| said.parse().ok())
+    };
+    let start = root
+        .path(&format!("{folder}/{START}"))
+        .exists()
+        .then(|| figure(START).unwrap_or(0));
+    for (file, value) in limit_writes(start, figure(STOP), wanted) {
+        std::fs::write(root.path(&format!("{folder}/{file}")), format!("{value}\n"))
+            .map_err(|why| unset("refused", format!("{file}: {why}")))?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -245,6 +321,35 @@ mod tests {
         let settable = limit_settable(&held, folder);
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(settable, Some(false), "a start it can't write");
+    }
+
+    #[test]
+    fn a_limit_is_written_in_the_order_the_kernel_takes_it() {
+        let raised = limit_writes(Some(55), Some(60), 80);
+        assert_eq!(raised, [(STOP, 80), (START, 75)], "its stop first");
+        let lowered = limit_writes(Some(75), Some(80), 60);
+        assert_eq!(lowered, [(START, 55), (STOP, 60)], "its start first");
+        assert_eq!(limit_writes(None, Some(80), 60), [(STOP, 60)], "no start");
+        assert_eq!(limit_writes(Some(0), None, 60), [(STOP, 60), (START, 55)]);
+    }
+
+    #[test]
+    fn a_limit_set_writes_both_ends_and_refuses_a_name_outside() {
+        let root = std::env::temp_dir().join(format!("machine-set-{}", std::process::id()));
+        let at = root.join("sys/class/power_supply/BAT0");
+        std::fs::create_dir_all(&at).unwrap();
+        std::fs::write(at.join(START), "75\n").unwrap();
+        std::fs::write(at.join(STOP), "80\n").unwrap();
+        let held = Root::new(&root);
+        let set = set_limit(&held, "BAT0", 60);
+        let said = |file: &str| std::fs::read_to_string(at.join(file)).unwrap();
+        let ends = (said(START), said(STOP));
+        let outside = set_limit(&held, "../BAT0", 60).map_err(|unset| unset.code);
+        let over = set_limit(&held, "BAT0", 101).map_err(|unset| unset.code);
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(set, Ok(()));
+        assert_eq!(ends, ("55\n".into(), "60\n".into()));
+        assert_eq!((outside, over), (Err("bad-act"), Err("bad-act")));
     }
 
     #[test]

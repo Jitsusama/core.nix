@@ -6,7 +6,9 @@ health, UPower for each battery's times, logind what keeps it awake
 and fwupd for each device's firmware, the screen's backlight and the
 room's light sensor among the files, and answers over `$XDG_RUNTIME_DIR/daemons/machine.sock` in
 version 1 of the shell's daemon interface (hello, get, list, watch,
-unwatch, health). [`src/main.rs`][main] says how it reads and when;
+unwatch, health), and acts on what it holds when asked (act), so the
+launcher spawns and writes nothing itself. [`src/main.rs`][main] says how
+it reads and when;
 [`src/lib.rs`][lib] how a record names its figures, with its unit in its
 key. The launcher's Machine draws only what it holds
 ([`../quickshell/launcher/Machine.qml`][machine]).
@@ -41,6 +43,21 @@ ends. A watch starting sooner than
 that after the last ask doesn't ask again, and each call gives up after
 ten seconds. A chip's labels and limits are read once, until the chips
 listed change, since some answer every read through slow firmware.
+
+## Acts
+
+`{"ask": "act", "act": <name>, ...}` is answered `{"done": true}` once
+done, or an error: `bad-act` for what this machine hasn't, `refused`
+where the kernel said no, and `unknown-act` for a name it doesn't know.
+What an act moved is read again before it's answered, so a watch hears
+the change first, never a second late.
+
+| Act            | Given                | What it does                                       |
+| -------------- | -------------------- | -------------------------------------------------- |
+| `charge-limit` | `supply`, `stop_pct` | stops charging there, starting 5 below where it can |
+
+A charge limit's files are written in the order the kernel takes them,
+which refuses a start at or above the stop.
 
 ## Every Figure, and Where It Shows
 
