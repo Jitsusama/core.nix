@@ -26,5 +26,12 @@
     "owner_pr": 2575,
     "reason": "failed, then passed, at 1ac453f5ffca",
     "test": "vm-disk-guard-keeps-the-disk"
+  },
+  {
+    "at": 1794287810,
+    "commit": "7b2252da0ee858c88774061464627ea2d6741b91",
+    "owner_pr": 2691,
+    "reason": "failed, then passed, at 7b2252da0ee8",
+    "test": "vm-desktop-launcher-draws-still"
   }
 ]
