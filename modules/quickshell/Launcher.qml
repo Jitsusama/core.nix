@@ -3075,7 +3075,9 @@ Scope {
     // Every row there is now, by key, each with the fewest letters it's
     // learned at, for forgetting the picks of those that are gone: what the
     // main search finds from, and what each collection holds. Made only
-    // when something's picked.
+    // when something's picked, from every collection, wanted or not, so a
+    // collection that can name its rows' keys without making its rows says
+    // them in keysKnown(), as People does.
     function knowing() {
         const out = {};
         const add = row => {
@@ -3084,7 +3086,7 @@ Scope {
         };
         choices.forEach(add);
         for (const source of collections)
-            source.everything().forEach(add);
+            (source.keysKnown?.() ?? source.everything()).forEach(add);
         return out;
     }
 
@@ -6483,6 +6485,14 @@ Scope {
             return JSON.stringify({ rows: root.tallies(), refreshes: root.refreshesDone,
                 keyed: root.refreshesKeyed, walked: root.livesMade, composed: root.rowsMade,
                 drawn: root.rowsDrawn, built: root.rowsBuilt });
+        }
+
+        // The keys of a kind a pick would know now (knowing), for the check
+        // that a shut launcher knows a window come since it last made its
+        // rows, with none made.
+        function known(kind: string): string {
+            return JSON.stringify(Object.keys(root.knowing())
+                .filter(key => key.startsWith(`${kind}:`)));
         }
 
         // How many frames the card has drawn since this was first asked,

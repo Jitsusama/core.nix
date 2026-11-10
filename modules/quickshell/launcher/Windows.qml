@@ -55,6 +55,20 @@ Provider {
             rest.filter(window => !window.waiting));
     }
 
+    // Every window's key as its row says it, and This Window's, for a pick
+    // (Launcher.qml's knowing), read from niri with no row made: unwanted,
+    // the rows are those last made, or none, so a pick would forget a
+    // window opened since. A window's row asks for no confirming.
+    function keysKnown() {
+        const keys = Object.values(Niri.windows).map(window => {
+            const entry = window.app_id ? DesktopEntries.heuristicLookup(window.app_id) : null;
+            const program = entry ? entry.name : (window.app_id ?? "");
+            const title = provider.tidy(window.title ?? "", program) || program;
+            return { key: `window:${window.app_id}:${title}` };
+        });
+        return Niri.current === null ? keys : keys.concat([{ key: "windows:this" }]);
+    }
+
     // What a pi window is about, ready to match, kept while it reads the
     // same, so a key prepares nothing new.
     property var abouts: new Map()

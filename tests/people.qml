@@ -40,6 +40,13 @@ ShellRoot {
 
         property bool open: true
         property var entered: null
+        // Whether People's rows are wanted (Provider.qml's wanted), as
+        // the launcher says from where it stands.
+        property bool wanting: true
+
+        function wants(source) {
+            return wanting;
+        }
 
         function enter(row) {
             entered = row;
@@ -133,6 +140,19 @@ ShellRoot {
                     people.tally.rows - madeBefore);
                 expect("while their row is still theirs to step into",
                     people.personOf("ada@example.com")?.name === "Ada Brook", "");
+                // A pick forgets the picks of rows gone by every row's key
+                // (Launcher.qml's knowing), asked of People wanted or not:
+                // read as rows, it made every listed person's row while
+                // People wasn't wanted, 116 at one of Joel's picks
+                // (2026-11-10).
+                launcher.wanting = false;
+                const unwanted = people.tally.rows;
+                const keys = people.keysKnown().map(one => one.key).join(", ");
+                expect("a pick knows who's listed with no row made while unwanted",
+                    people.tally.rows === unwanted, people.tally.rows - unwanted);
+                launcher.wanting = true;
+                expect("by the keys their rows have", keys === open.map(row => row.key)
+                    .join(", "), keys);
             }
         },
         seeking("eli@example.com", "a stranger found by their email", () => {

@@ -155,6 +155,11 @@
     or else through the kitty it runs in, and gone once its record or its process is; and those to reopen are the last boot's until
     put off, then those another machine carried here, newest first, never put off
   '';
+  a-shut-launcher-makes-no-document-rows = ''
+    the launcher's Documents make no row while it's shut, as the clock's minute passes or a
+    document comes, then hold every document once it opens, made once, and keep them, making none,
+    once it's shut again
+  '';
   a-silent-hub-is-driven-as-one-stream = ''
     the XPS 14's kernel drives an MST hub whose first branch didn't answer its link address as a
     single stream until the sink goes away, so the monitor behind it still lights
@@ -2161,7 +2166,8 @@
     answer's row from the keystroke, finds the power acts by their names and the names they had
     and asks before they act, draws nothing closed as a minute turns though it says the new time
     as it opens, draws nothing left open and still, its caret steady, makes no window's rows
-    shut as windows open and close yet finds them as it opens, searches text a program
+    shut as windows open and close yet a pick knows them shut and it finds them as it opens,
+    searches text a program
     types at once once for its newest letters, a Return among them acting on the row those
     letters found, steps into For You's looks by :filter look and back out by -, glides the
     selection to its row by the arrows only and draws it on its row as
@@ -2224,8 +2230,8 @@
     lately, finds anyone as they stand while holding only those listed and found, calls, joins and
     favours them, steps in before calling, lists a source's page for them after the ways to reach
     them with its facts in the drawer and the time where they are, knows who an address is with no
-    row made, says at home how many it lists and names them with no row made, and never asks Tuple
-    itself
+    row made, says at home how many it lists and names them with no row made, tells a pick who's
+    listed with no row made while unwanted, and never asks Tuple itself
   '';
   the-launcher-finds-the-quests = ''
     the launcher reads the open and ended quests the node serves, each with its own kind rather

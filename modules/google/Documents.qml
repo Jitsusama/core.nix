@@ -13,7 +13,24 @@ Provider {
 
     what: "document"
 
-    things: Drive.documents.map(document => Drive.row(document, provider))
+    // Its rows, made only while the launcher is open or its rows are
+    // wanted (Provider.qml's wanted), as a walk of every row is. Each row
+    // says when it was opened against the clock (Drive.row reads
+    // Calendar.now), so every minute remade them all with the launcher
+    // shut, 27 a minute on Joel's shell (2026-11-10). Shut, it gives the
+    // rows it made last and reads nothing else, so no change wakes it, and
+    // it makes them once as the launcher opens. Open is wider than wanted,
+    // since a program's Recent and Programs' counts read them from
+    // Applications' steps (recentOf).
+    readonly property bool rowsWanted: provider.launcher?.open === true || provider.wanted
+    readonly property var madeRows: ({ rows: [] })
+    things: {
+        if (!provider.rowsWanted)
+            return provider.madeRows.rows;
+        const rows = Drive.documents.map(document => Drive.row(document, provider));
+        provider.madeRows.rows = rows;
+        return rows;
+    }
     onThingsChanged: changedTo(things)
 
     // A program's Recent: its kind's documents, the one he opened last
