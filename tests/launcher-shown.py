@@ -50,6 +50,7 @@ SHOWN = (
 
 # Things whose word means something the glossary doesn't replace.
 OTHER_SENSE = {
+    "agents:host": "the pi host a session was given back by, a program, not a machine",
     "drive:drive": "Google Drive, as Google names its file store, not a disk",
     "drive:drives": "Google Drive's shared drives, as Google names them, not disks",
     "drive:mine": "Google Drive's My Drive, as Google names it, not a disk",

@@ -18,8 +18,8 @@ pragma ComponentBehavior: Bound
 // reopened held in its own folder, until put off, one pi
 // never saved started under its own id with its quest, and Reopen Them
 // All reopens even when niri never answers its ask for the screens; what
-// another machine carried here is offered after it, the newest first, and
-// never put off with it, and a window it had joined to a session another
+// another machine carried here, or pi's host gave back, is offered after
+// it, the newest first, and never put off with it, and a window it had joined to a session another
 // machine holds is joined again by its words, once; a closed session
 // resumes in its own folder, and one whose folder is gone opens nowhere
 // but its quest's start folder, never the home folder. What the node tells
@@ -325,13 +325,14 @@ ShellRoot {
             Sessions.lastBoot.map(one => one.id).join(" ")
                 === "s-before s-fresh s-given-back s-far",
             JSON.stringify(Sessions.lastBoot));
-        // Those another machine carried here apart, the newest first, and
-        // one saying where from badly left out.
-        expect("the carried, newest first",
-            Sessions.carried.map(one => one.id).join(" ") === "s-ferry s-ferried",
-            JSON.stringify(Sessions.carried));
-        expect("the last boot's, then the carried", Sessions.toReopen.map(one => one.id).join(" ")
-            === "s-before s-fresh s-given-back s-far s-ferry s-ferried",
+        // Those another machine carried here or pi's host gave back
+        // apart, the newest first, and one saying where from badly, or
+        // both ways, left out.
+        expect("the carried and given back, newest first",
+            Sessions.apart.map(one => one.id).join(" ") === "s-ferry s-freed s-ferried",
+            JSON.stringify(Sessions.apart));
+        expect("the last boot's, then those apart", Sessions.toReopen.map(one => one.id).join(" ")
+            === "s-before s-fresh s-given-back s-far s-ferry s-freed s-ferried",
             JSON.stringify(Sessions.toReopen));
         Sessions.lastBoot.forEach(one => Sessions.reopen(one, told(one.id)));
         // One held elsewhere is joined again once, however often asked.
@@ -417,7 +418,7 @@ ShellRoot {
         Sessions.forgetReopen({ id: "s-ferried" });
         expect("a forgotten one is offered no more",
             Sessions.toReopen.map(one => one.id).join(" ")
-                === "s-before s-fresh s-given-back s-far s-ferry",
+                === "s-before s-fresh s-given-back s-far s-ferry s-freed",
             JSON.stringify(Sessions.toReopen));
         Sessions.forgotten = ["s-long-gone"];
         Sessions.forgetReopen({ id: "s-ferried" });
@@ -426,9 +427,10 @@ ShellRoot {
             JSON.stringify(Sessions.forgotten));
         Sessions.putOffLastBoot();
         expect("put off, none", Sessions.lastBoot.length === 0, JSON.stringify(Sessions.lastBoot));
-        // The carried are never put off with the last boot.
-        expect("put off, the carried still", Sessions.toReopen.map(one => one.id).join(" ")
-            === "s-ferry", JSON.stringify(Sessions.toReopen));
+        // Those apart are never put off with the last boot.
+        expect("put off, the carried and given back still",
+            Sessions.toReopen.map(one => one.id).join(" ") === "s-ferry s-freed",
+            JSON.stringify(Sessions.toReopen));
         stage = "forgotten";
         tell({ gone: ["session:s-LIVE01"] });
     }

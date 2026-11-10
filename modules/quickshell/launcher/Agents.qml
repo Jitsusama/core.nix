@@ -40,6 +40,7 @@ import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "../PiSource.js" as Pi
+import "../Places.js" as Places
 import "../When.js" as When
 import "Landed.js" as Landed
 import "Moment.js" as Moment
@@ -726,13 +727,14 @@ Provider {
 
     // The sessions there are to reopen (Sessions.qml's toReopen): those the
     // last boot's end took away, gone on the boot they ran in or once put
-    // off, and those other machines carried here, offered whatever the
-    // boot until each runs here (VKCF3Z's design, [fce929da], [17db838c]).
+    // off, and those other machines carried here or pi's host gave back,
+    // offered whatever the boot until each runs here (VKCF3Z's design,
+    // [fce929da], [17db838c]; 2QZBX9, [44e65ce0]).
     // One row after the sessions running while any are left, which For You
     // lists as a thing to do (Now.qml's waitingRows). Return steps in with
     // Reopen Them All first, so Return twice brings every one back, each in
     // its own window and folder; then each one, as a closed session,
-    // reopening just it, the last boot's and then the carried, newest
+    // reopening just it, the last boot's and then those apart, newest
     // first; then Not Now, which puts off only the last boot's, so it's
     // there only while any are. Its count is at its side, never in its
     // name, which would change as he reopens them, and its note says where
@@ -749,21 +751,21 @@ Provider {
             glyph: Words.glyph(`verb:agents:to-reopen:${id}`),
             hue: "action"
         }, fields));
-        // Where one came from: the last boot, or the machine that carried
-        // it; several machines are counted rather than listed.
-        const carriedFrom = machines => String(said.carried ?? "").replace("{machine}",
-            machines.length === 1 ? machines[0]
-                : String(said.machines ?? "").replace("{count}", machines.length));
-        const fromOf = one => one.carried === undefined ? String(said.lastBoot ?? "")
-            : carriedFrom([one.carried.from]);
-        const booted = Sessions.lastBoot.length;
-        const machines = Sessions.carried.map(one => one.carried.from)
-            .filter((from, at, all) => all.indexOf(from) === at);
-        const note = machines.length === 0 ? String(said.lastBoot ?? "")
-            : booted === 0 ? carriedFrom(machines)
-            : String(said.both ?? "").replace("{boot}", booted)
-                .replace("{carried}", Sessions.carried.length)
-                .replace("{from}", carriedFrom(machines));
+        // Where each came from, and where they all did: the last boot, the
+        // machine that carried it or pi's host that gave it back.
+        const fromOf = one => Places.wayOf(said, one);
+        const note = Places.reopenNote(said, Sessions.lastBoot.length, Sessions.apart);
+        // One given back names its host in its drawer alone, last, as an
+        // identifier, since the host's name is no place Joel chose
+        // (VKCF3Z, [92a1d30c]).
+        const hostOf = one => Places.apartOf(one)?.kind !== "released" ? {} : {
+            drawer: () => ({
+                eyebrow: fromOf(one),
+                title: String(one.title || one.address || one.id),
+                facts: [{ label: Words.name("agents:host"), value: Places.apartOf(one).from,
+                    identifies: true }]
+            })
+        };
         const home = Sessions.home;
         const homely = folder => folder === home || folder.startsWith(`${home}/`)
             ? `~${folder.slice(home.length)}` : folder;
@@ -780,7 +782,7 @@ Provider {
         const goneCount = count => count === 1 ? String(said.goneOne ?? "")
             : String(said.goneMany ?? "").replace("{count}", count);
         const forget = one => act("forget", { run: () => Sessions.forgetReopen(one) });
-        const unreopened = one => thingRow({
+        const unreopened = one => thingRow(Object.assign({
             key: `agents:to-reopen:${one.id}`,
             name: String(one.title || one.address || one.id),
             side: String(oneSaid.gone ?? "").replace("{cwd}", homely(one.cwd)),
@@ -788,8 +790,8 @@ Provider {
             note: fromOf(one),
             glyph: Theme.glyph.agent,
             hue: "alert"
-        }, () => [forget(one)]);
-        const closed = one => goneHere(one) ? unreopened(one) : thing({
+        }, hostOf(one)), () => [forget(one)]);
+        const closed = one => goneHere(one) ? unreopened(one) : thing(Object.assign({
             thing: true,
             key: `agents:to-reopen:${one.id}`,
             name: String(one.title || one.address || one.id),
@@ -801,7 +803,7 @@ Provider {
             hue: "program",
             later: true,
             run: () => reopen(one)
-        });
+        }, hostOf(one)));
         const reopenable = lost.filter(one => !goneHere(one));
         const goneNow = lost.length - reopenable.length;
         // Reopen Them All reopens those that can be, its side counting them
@@ -843,7 +845,7 @@ Provider {
             // For You's filter knows it as a session's, to be done.
             forYou: { kind: "do", source: "sessions" }
         }, () => (reopenable.length === 0 ? [] : [themAll()]).concat(lost.map(closed),
-            booted === 0 ? [] : [act("notNow", {
+            Sessions.lastBoot.length === 0 ? [] : [act("notNow", {
             run: () => Sessions.putOffLastBoot()
         })]));
     }

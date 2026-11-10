@@ -181,7 +181,8 @@
         "lastBoot": "from the last boot",
         "carried": "carried from {machine}",
         "machines": "{count} machines",
-        "both": "{boot} from the last boot, {carried} {from}",
+        "givenBack": "given back by its host",
+        "counted": "{count} {from}",
         "there": "{there} of {count}",
         "goneOne": "1 folder gone",
         "goneMany": "{count} folders gone",
@@ -338,6 +339,11 @@
       "id": "agents:started",
       "in": "agents",
       "name": "Started"
+    },
+    {
+      "id": "agents:host",
+      "in": "agents",
+      "name": "Host"
     },
     {
       "id": "agents:machine",
