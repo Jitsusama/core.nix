@@ -5412,7 +5412,7 @@ Scope {
         afterFrames = afterFrames.concat([then]);
         card.Window.window?.update();
     }
-    function framesDrawn() {
+    function afterFramesDue() {
         const due = afterFrames;
         afterFrames = [];
         for (const then of due)
@@ -7306,7 +7306,7 @@ Scope {
         if (!open) {
             // What waits on a frame runs, since no frame of the launcher's
             // is coming.
-            framesDrawn();
+            afterFramesDue();
             over = null;
             lastVisual = null;
             rowChanges = Changes.changes();
@@ -7684,7 +7684,7 @@ Scope {
 
             function onFrameSwapped() {
                 if (root.afterFramesBegun)
-                    root.framesDrawn();
+                    root.afterFramesDue();
             }
         }
 
