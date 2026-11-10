@@ -1,0 +1,106 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] io/fileview: read again a file reloaded mid-read
+
+A reload while a read of the same path was under way started no read of
+its own, and the read under way could have opened the file before the
+change the reload was asked for. So that change was lost until the file
+changed again: a status file taken away while a read of what it said
+before was still going stayed said, and a FileView watching it heard
+nothing more, since nothing was left to change.
+
+A reload while a read of the same path is under way now asks for one
+more read, started as that read lands. However many reloads come
+meanwhile, they ask that one, and a reload with nothing under way reads
+as it always did. text() and data() starting a read don't ask it, since
+they ask for what the file holds, not for news of a change.
+
+---
+diff --git a/src/io/fileview.cpp b/src/io/fileview.cpp
+index f8dd16f..83bfdf4 100644
+--- a/src/io/fileview.cpp
++++ b/src/io/fileview.cpp
+@@ -357,6 +357,8 @@ void FileView::cancelAsync() {
+ 
+ 	if (this->liveReader()) {
+ 		qCDebug(logFileView) << "Disowning async read for" << this;
++		// The read that takes its place starts after any change it was asked again for.
++		this->mReadAgain = false;
+ 		QObject::disconnect(this->liveOperation, nullptr, this, nullptr);
+ 		this->liveOperation = nullptr;
+ 	} else if (this->liveWriter()) {
+@@ -377,7 +379,8 @@ void FileView::operationFinished() {
+ 	this->writeData = FileViewData();
+ 	this->updateState(this->liveOperation->state);
+ 
+-	if (this->liveReader()) {
++	auto* reader = this->liveReader();
++	if (reader) {
+ 		if (this->state.error) emit this->loadFailed(this->state.error);
+ 		else emit this->loaded();
+ 	} else {
+@@ -386,9 +389,25 @@ void FileView::operationFinished() {
+ 	}
+ 
+ 	this->liveOperation = nullptr;
++	if (reader) this->readAgainIfAsked(reader->doStringConversion);
+ }
+ 
+-void FileView::reload() { this->updatePath(); }
++// A reload while a read of the same path is under way starts no read of its
++// own, as loadAsync has it, and the read under way may have opened the file
++// before the change the reload was asked for. So it's read once more as that
++// read lands, and only then: reloads asked meanwhile ask that one read, and a
++// reload with nothing under way reads as it always did.
++void FileView::reload() {
++	if (this->liveReader() && this->pathInFlight == this->targetPath) this->mReadAgain = true;
++	this->updatePath();
++}
++
++void FileView::readAgainIfAsked(bool doStringConversion) {
++	if (!this->mReadAgain) return;
++	this->mReadAgain = false;
++	qCDebug(logFileView) << "Reading" << this << "again, as it was reloaded mid-read";
++	this->loadAsync(doStringConversion);
++}
+ 
+ bool FileView::waitForJob() {
+ 	if (this->liveOperation != nullptr) {
+@@ -397,7 +416,8 @@ bool FileView::waitForJob() {
+ 		this->writeData = FileViewData();
+ 		this->updateState(this->liveOperation->state);
+ 
+-		if (this->liveReader()) {
++		auto* reader = this->liveReader();
++		if (reader) {
+ 			if (this->state.error) emit this->loadFailed(this->state.error);
+ 			else emit this->loaded();
+ 		} else {
+@@ -406,6 +426,7 @@ bool FileView::waitForJob() {
+ 		}
+ 
+ 		this->liveOperation = nullptr;
++		if (reader) this->readAgainIfAsked(reader->doStringConversion);
+ 		return true;
+ 	} else return false;
+ }
+diff --git a/src/io/fileview.hpp b/src/io/fileview.hpp
+index b0981d9..1f62f2f 100644
+--- a/src/io/fileview.hpp
++++ b/src/io/fileview.hpp
+@@ -370,6 +370,7 @@ private slots:
+ 
+ private:
+ 	void loadAsync(bool doStringConversion);
++	void readAgainIfAsked(bool doStringConversion);
+ 	void saveAsync();
+ 	void cancelAsync();
+ 	void loadSync();
+@@ -390,6 +391,8 @@ private:
+ 	FileViewData writeData;
+ 	FileViewOperation* liveOperation = nullptr;
+ 	QString pathInFlight;
++	// Reloaded while a read of the same path was under way (reload()).
++	bool mReadAgain = false;
+ 
+ 	QString targetPath;
+ 	bool mAsyncUpdate = true;

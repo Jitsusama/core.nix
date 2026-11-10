@@ -27,6 +27,10 @@
     treefmt fails within a minute, naming them, on two files no formatter reads that git lists
     before thousands of others, where released treefmt waits on git for good
   '';
+  a-file-reloaded-mid-read-is-read-again = ''
+    a FileView reloaded while it's still reading reads once more as that read lands, however many
+    reloads came meanwhile, so it holds what was written last; one reloaded idle reads once
+  '';
   a-file-says-its-size-and-when-it-changed = ''
     a file in the launcher's chooser of files says its size in SI units, one decimal under 10, and
     when it changed by how long ago, a folder its count; its plate says its kind with its numbers,
