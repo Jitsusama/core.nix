@@ -6511,7 +6511,8 @@ Scope {
         // times a second, and an arrow takes no change as its own, composes
         // nothing and draws no row afresh.
         function made(): string {
-            return JSON.stringify({ rows: root.tallies(), refreshes: root.refreshesDone,
+            return JSON.stringify({ rows: root.tallies(), looked: root.tallies("looked"),
+                refreshes: root.refreshesDone,
                 keyed: root.refreshesKeyed, walked: root.livesMade, composed: root.rowsMade,
                 drawn: root.rowsDrawn, built: root.rowsBuilt });
         }
@@ -7687,10 +7688,10 @@ Scope {
     // says which did, to learn from Joel's own shell whether remaking them
     // only after a change would spare most closings (2026-10-31).
     readonly property var changesIn: ({})
-    function tallies() {
+    function tallies(counted) {
         const by = {};
         for (const source of sources)
-            by[source.settings?.name ?? ""] = source.tally?.rows ?? 0;
+            by[source.settings?.name ?? ""] = source.tally?.[counted ?? "rows"] ?? 0;
         return by;
     }
     // When the launcher was last asked to open, as its chord asks, on the

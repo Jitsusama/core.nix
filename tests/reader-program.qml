@@ -29,6 +29,7 @@ import QtQuick
 import "launcher" as Launcher
 import "Expect.js" as Expect
 import "Frames.js" as Frames
+import "HeardWindows.js" as HeardWindows
 import "launcher/Reader.js" as Reader
 
 ShellRoot {
@@ -164,7 +165,8 @@ ShellRoot {
         root.waiting = "the reader's places";
         try {
             sums();
-            Niri.revision += 1;
+            HeardWindows.told(applications.windowsDaemon, Niri.windows,
+                id => DesktopEntries.heuristicLookup(id), Niri.current);
             theLauncher.open = true;
             program("reader").verbs();
             counted.reload();

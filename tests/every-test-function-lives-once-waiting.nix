@@ -48,7 +48,6 @@
   "tests/becoming.qml" = 1;
   "tests/bluetooth-disk-prompt-vm-test.py" = 1;
   "tests/bluetooth-pairing.qml" = 1;
-  "tests/browser-windows.qml" = 1;
   "tests/calls-vm-test.py" = 1;
   "tests/captured.qml" = 1;
   "tests/command-line.qml" = 1;
@@ -140,5 +139,4 @@
   "tests/waits.qml" = 1;
   "tests/weather.qml" = 2;
   "tests/wifi-check-page.py" = 1;
-  "tests/windows.qml" = 2;
 }

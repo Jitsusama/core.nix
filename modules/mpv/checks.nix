@@ -49,7 +49,7 @@ onLinux {
         "Asking.js"
         "Numbers.js"
         "Applications.qml"
-        "BrowserWindows.js"
+        "HeldWindows.js"
         "Order.js"
         "Program.js"
         "Media.js"
@@ -112,6 +112,7 @@ onLinux {
       cp ${./MpvProgram.qml} launcher/MpvProgram.qml
       cp ${./Mpv.js} launcher/Mpv.js
       cp ${../../tests/mpv-program.qml} shell.qml
+      cp ${../../tests/lib/HeardWindows.js} HeardWindows.js
       cp ${niri} Niri.qml
       cp ${playing} launcher/Playing.qml
       cp ${singleton "Shortcuts.qml" "property var actions: []"} Shortcuts.qml

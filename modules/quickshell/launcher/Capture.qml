@@ -38,6 +38,7 @@ import QtQuick
 import "../FileFacts.js" as FileFacts
 import "../Fuzzy.js" as Fuzzy
 import "Captured.js" as Captured
+import "HeldWindows.js" as HeldWindows
 import "Recent.js" as Recent
 import "Order.js" as Order
 
@@ -82,13 +83,6 @@ Provider {
         return title.length > 48 ? `${title.slice(0, 47)}\u2026` : title;
     }
 
-    // A window's program as its desktop entry names it, or nothing when it
-    // has none, as the windows' own rows say it.
-    function programOf(window) {
-        const entry = window.app_id ? DesktopEntries.heuristicLookup(window.app_id) : null;
-        return entry ? entry.name : "";
-    }
-
     // Comes back here from the picker, as - there goes up a level.
     function back() {
         provider.launcher.into(provider.settings.name);
@@ -98,20 +92,65 @@ Provider {
         Niri.act({ ScreenshotWindow: { id: window.id, write_to_disk: true, show_pointer: false } });
     }
 
-    // The window the keys were in. niri names a workspace's new active window
-    // before it describes the window, and Niri.windows changes in place, so
-    // this follows Niri.revision too: on an empty workspace, Niri.current
-    // names the new window while Niri.windows doesn't hold it yet.
-    // Followed only while Capture's rows are wanted, as the windows below
-    // are: each change made the seven fixed rows again, shut too.
-    readonly property var lastFocused: ({ window: null })
-    readonly property var focused: {
-        if (!provider.wanted)
-            return provider.lastFocused.window;
-        void Niri.revision;
-        provider.lastFocused.window = Niri.current === null ? null
-            : Niri.windows[Niri.current] ?? null;
-        return provider.lastFocused.window;
+    // The window the keys were in, and every other, as the windows daemon
+    // says them (modules/windows), heard only while Capture's rows are
+    // wanted: each event niri sent once made the seven fixed rows again
+    // and walked every window, shut too (2026-11-10). Shut, it hears
+    // nothing and keeps what it last made.
+    readonly property var windowsDaemon: daemon
+
+    Daemon {
+        id: daemon
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/windows.sock`
+        kind: ["window", "desktop"]
+        live: provider.wanted
+        paced: provider.launcher
+        answersWhole: true
+        onHeard: (changed, gone) => provider.hear(changed, gone)
+    }
+
+    // The window the keys were in, as the desktop record says it: its id,
+    // title, app id and program, or null.
+    property var focused: null
+
+    // Takes what the daemon said: the window the keys are in, when that
+    // reads otherwise, and each window's row whose program or title
+    // changed, so a whole answer as the launcher opens makes nothing anew
+    // that reads the same. How many it heard of is counted (Provider.qml's
+    // tally), for the check that a change is heard only of what it moved.
+    function hear(changed, gone) {
+        provider.tally.looked += changed.length + gone.length;
+        let moved = false;
+        for (const key of gone) {
+            const id = key.slice("window:".length);
+            if (id in provider.keptWindows) {
+                delete provider.keptWindows[id];
+                moved = true;
+            }
+        }
+        for (const key of changed) {
+            const record = daemon.held[key];
+            if (key === "desktop") {
+                const window = record.window ?? null;
+                const was = provider.focused;
+                if (window === null ? was !== null : was === null || !HeldWindows.same(window, was)) {
+                    provider.focused = window;
+                    moved = true;
+                }
+                continue;
+            }
+            const from = `${record.app_id}\n${provider.titled(record)}\n${record.entry ?? ""}`;
+            const before = provider.keptWindows[record.id];
+            if (before && before.from === from)
+                continue;
+            provider.keptWindows[record.id] = { from: from, row: provider.takingRow(record) };
+            moved = true;
+        }
+        if (moved)
+            provider.windows = Object.keys(provider.keptWindows)
+                .filter(id => provider.focused === null || Number(id) !== provider.focused.id)
+                .map(id => provider.keptWindows[id].row);
     }
 
     readonly property var stop: member({
@@ -218,7 +257,7 @@ Provider {
             hue: "action",
             chord: chord("qs ipc call recording window"),
             later: true,
-            run: () => Recorder.window(focused)
+            run: () => Recorder.window(null)
         })
     ], Recorder.recording ? [] : [
         member({
@@ -255,48 +294,22 @@ Provider {
     ])
 
     // Every other window, found only by typing its title or program, since
-    // listing them all would bury the rest. Each event niri sends moved its
-    // revision and made every window's row again, 343 rows over 8 changes
-    // in one closing on Joel's shell (2026-11-04), so a window's row is
-    // kept by its id while its program and title read the same. A plain
-    // object, so keeping one notifies nothing.
+    // listing them all would bury the rest, by id as niri numbers them. A
+    // window's row is kept by its id while its program and title read the
+    // same. A plain object, so keeping one notifies nothing.
     readonly property var keptWindows: ({})
-    // The rows as they were last made, held while nobody wants them.
-    readonly property var madeWindows: ({ rows: [] })
-    // Made only while they're wanted (Provider.qml's wanted): with the
-    // launcher shut, every event niri sent made them again, 287 rows in
-    // four minutes on Joel's shell, for nobody (2026-11-10). Unwanted, it
-    // reads nothing of niri and says the rows last made.
-    readonly property var windows: {
-        if (!provider.wanted)
-            return provider.madeWindows.rows;
-        void Niri.revision;
-        const next = {};
-        const rows = Object.values(Niri.windows)
-            .filter(window => provider.focused === null || window.id !== provider.focused.id)
-            .map(window => {
-                const from = `${window.app_id}\n${provider.titled(window)}`;
-                const before = provider.keptWindows[window.id];
-                next[window.id] = before && before.from === from
-                    ? before : { from: from, row: provider.takingRow(window) };
-                return next[window.id].row;
-            });
-        for (const id of Object.keys(provider.keptWindows))
-            delete provider.keptWindows[id];
-        Object.assign(provider.keptWindows, next);
-        provider.madeWindows.rows = rows;
-        return rows;
-    }
+    property var windows: []
 
-    // The row that takes a picture of another window.
+    // The row that takes a picture of another window, from its record.
     function takingRow(window) {
         const id = window.id;
         return member({
             key: `capture:window:${window.app_id}`,
             verb: "take",
             name: provider.titled(window),
-            // Its program by the name Joel knows, never its app id.
-            side: provider.programOf(window),
+            // Its program by the name Joel knows, never its app id, so
+            // one with no entry says none.
+            side: window.entry ? window.program : "",
             glyph: provider.picture,
             hue: "action",
             later: true,

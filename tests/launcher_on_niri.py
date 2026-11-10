@@ -79,6 +79,9 @@ class Shell:
         # socket the account's systemd would hold for it.
         if "MACHINE" in os.environ:
             self.daemon("machine", os.environ["MACHINE"])
+        # The windows come from the windows daemon, hearing this niri as the account's does.
+        if "WINDOWS" in os.environ:
+            self.daemon("windows", os.environ["WINDOWS"])
         # Meanings come from the meaning daemon's stand-in, given what a test writes that each
         # text means in meaning-means.json, since no model loads here
         # (tests/desktop/stand-in-meaning.py).
@@ -362,13 +365,14 @@ class Shell:
         """Give every window niri lists."""
         return cast("list[Json]", json.loads(self.as_account("niri msg --json windows")))
 
-    def opened(self, title: str, app: str = "") -> Json:
-        """Open a window with this title, as this app's if one's named, and give it once listed.
+    def opened(self, title: str, app: str = "", running: str = "sleep 3600") -> Json:
+        """Open a window with this title, as this app's if one's named, running this.
 
-        It's foot's, which draws without a GPU, where the desktop's machine opens a kitty.
+        It's given once niri lists it. It's foot's, which draws without a GPU, where the
+        desktop's machine opens a kitty.
         """
         carrying = f"--app-id '{app}' " if app else ""
-        self.as_account(f"niri msg action spawn -- foot {carrying}--title '{title}' sleep 3600")
+        self.as_account(f"niri msg action spawn -- foot {carrying}--title '{title}' {running}")
         deadline = time.monotonic() + STARTING.total_seconds()
         while time.monotonic() < deadline:
             titled = [window for window in self.windows() if window["title"] == title]

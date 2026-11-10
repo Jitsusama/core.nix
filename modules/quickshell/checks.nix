@@ -31,6 +31,8 @@ let
   # The daemon Machine's answers come from, run over a check's own /proc.
   machine = pkgs.callPackage ../machine/package.nix { };
   programs = pkgs.callPackage ../programs/package.nix { };
+  # The daemon the launcher's windows come from, hearing a check's own niri.
+  windows = pkgs.callPackage ../windows/package.nix { };
   # Every QML file the shell and the modules beside it draw, by its path
   # under modules/, its tests left out: a module's surface is drawn in the
   # theme as the shell's own are.
@@ -267,6 +269,8 @@ let
           "PYTHONPATH=${checked}"
           # Machine's answers come from its daemon, as the account's do.
           "MACHINE=${lib.getExe machine}"
+          # The windows come from theirs, hearing the nested niri.
+          "WINDOWS=${lib.getExe windows}"
         ]
         # What a file of tests is given besides, as a program it runs.
         ++ given
@@ -2740,7 +2744,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Applications.qml} launcher/Applications.qml
-      cp ${./launcher/BrowserWindows.js} launcher/BrowserWindows.js
+      cp ${./launcher/HeldWindows.js} launcher/HeldWindows.js
       cp ${./launcher/Media.js} launcher/Media.js
       cp ${./launcher/Program.js} launcher/Program.js
       cp ${./FileFacts.js} FileFacts.js
@@ -2760,6 +2764,7 @@ onLinux {
       cp ${./Files.qml} Files.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/program-controls.qml} shell.qml
+      cp ${../../tests/lib/HeardWindows.js} HeardWindows.js
       cp ${niri} Niri.qml
       cp ${notices} Notices.qml
       cp ${playing} launcher/Playing.qml
@@ -3004,12 +3009,12 @@ onLinux {
   # The launcher's windows list the one Joel's in as This Window, then the
   # rest the one used last first, and when the focus moves make again only
   # the rows of the windows it moved between, as Capture's do
-  # (tests/windows.qml), with niri, pi's sessions, the recorder, the
-  # shortcuts and what was taken stood in.
+  # (tests/windows.qml), with what the windows daemon tells given as its
+  # lines, and niri, pi's sessions, the recorder, the shortcuts and what
+  # was taken stood in.
   the-launcher-remakes-only-the-windows-that-changed =
     let
-      # Three windows, two on the workspace in front, changed in place as
-      # niri's events change them (Niri.qml).
+      # What a window's verbs read of niri as they're asked.
       niri = singleton "Niri.qml" ''
         property var windows: ({
           "11": { id: 11, app_id: "tester", title: "Logbook", workspace_id: 1, is_focused: true,
@@ -3062,7 +3067,9 @@ onLinux {
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/KeyLayers.js} launcher/KeyLayers.js
       cp ${./launcher/Windows.qml} launcher/Windows.qml
-      cp ${./PiSource.js} PiSource.js
+      cp ${./launcher/HeldWindows.js} launcher/HeldWindows.js
+      cp ${./Daemon.qml} Daemon.qml
+      cp ${../../tests/lib/Expect.js} Expect.js
       cp ${./launcher/Capture.qml} launcher/Capture.qml
       cp ${./launcher/Captured.js} launcher/Captured.js
       cp ${./launcher/Recent.js} launcher/Recent.js
@@ -3965,22 +3972,23 @@ onLinux {
       touch $out
     '';
 
-  # A browser's window of its own opened deeper than its program's own
-  # page, a new document or a mail opened from the shell, is that
-  # program's, as tests/browser-windows.qml holds launcher/BrowserWindows.js
-  # to desktop entries made up there.
-  a-browser-window-deeper-in-is-its-programs =
+  # The launcher keeps the windows the windows daemon tells of in the order
+  # it lists them, the one used last first, placing each window a change
+  # names and letting those gone go, as tests/held-windows.qml holds
+  # launcher/HeldWindows.js to records made up there.
+  the-launcher-places-each-window-it-hears =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
-    pkgs.runCommandLocal "a-browser-window-deeper-in-is-its-programs" { } ''
+    pkgs.runCommandLocal "the-launcher-places-each-window-it-hears" { } ''
       mkdir launcher
-      cp ${../../tests/browser-windows.qml} browser-windows.qml
-      cp ${./launcher/BrowserWindows.js} launcher/BrowserWindows.js
+      cp ${../../tests/held-windows.qml} held-windows.qml
+      cp ${./launcher/HeldWindows.js} launcher/HeldWindows.js
+      cp ${../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml browser-windows.qml
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml held-windows.qml
       touch $out
     '';
 

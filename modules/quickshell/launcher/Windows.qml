@@ -9,8 +9,9 @@
 // another workspace, float or tile it, copy its title or close it. A pi
 // window is found by its work too, its quest's title and what its session
 // says it's on, and one waiting on Joel says so beside its name. What niri
-// says of its windows comes through Niri, from niri's own event stream, so
-// finding a window costs no process.
+// says of its windows comes ready from the windows daemon (modules/windows),
+// which hears niri's event stream so the shell needn't, and tells of only
+// the windows a change moved.
 //
 // They're also a collection, which Super+Tab opens on its own: every window
 // but this one, the one used last first, so Super+Tab and Return go back to
@@ -22,7 +23,7 @@ import Quickshell
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
-import "../PiSource.js" as Pi
+import "HeldWindows.js" as HeldWindows
 import "KeyLayers.js" as KeyLayers
 import "Order.js" as Order
 
@@ -35,14 +36,18 @@ Provider {
     // its title gives it (KeyLayers.js's over), as their glyphs know them.
     readonly property var inTerminal: ({ pi: "pi", neovim: "nvim", btop: "btop" })
 
-    // A window's glyph: its program's, or, in a terminal, that of the
-    // program its title says it's running.
+    // A window's glyph: its program's, by its entry's id, or, in a
+    // terminal, that of the program its title says it's running.
     function glyphOf(window, entry) {
         const running = inTerminal[KeyLayers.over(window.app_id ?? "", window.title ?? "")[0]];
-        return programGlyph(running ?? (entry ? entry.id : window.app_id));
+        return programGlyph(running ?? entry ?? window.app_id);
     }
 
-    collection: Words.collection("windows", { searched: false })
+    // Before the daemon's first answer it holds no windows it can say are
+    // all there are, so it says it's still reading rather than none.
+    collection: Words.collection("windows",
+        Object.assign({ searched: false }, daemon.answered ? {} : { empty: "\u2026" }))
+    stillReading: daemon.live && !daemon.answeredThisWatch && daemon.state !== "not answering"
 
     // An open list follows windows opening, closing and being renamed, and
     // only those, not each event niri sends.
@@ -124,115 +129,146 @@ Provider {
         return { rows: kept.map(f => f.choice), grade: grade };
     }
 
-    // Each window's row, by its id, with what it was made from. Every event
-    // niri sends moves its revision, and a focus moving changes only the two
-    // windows it moved between, yet every window's row was made again: 348
-    // rows over 8 changes in one closing on Joel's shell (2026-11-04). A
-    // row is now made again only when its window's record, its workspace's
-    // place or what its row says of it changed. A plain object, so keeping
-    // one notifies nothing.
+    // The windows as the daemon says them, in the order they're listed.
+    // Each event niri sent once walked every window here, all 75 of Joel's,
+    // launcher shut or open (2026-11-10); the daemon now tells of only the
+    // windows a change moved, and only while they're wanted (Provider.qml's
+    // wanted), so a shut launcher hears nothing and keeps the rows it last
+    // made, and its first frame draws them.
+    readonly property var held: HeldWindows.kept()
+    // Each window's row by its record's key, and This Window's, made again
+    // only for a record that changed. Plain objects, so keeping one
+    // notifies nothing.
     readonly property var kept: ({})
-    // The rows as they were last made, held while nobody wants them.
-    readonly property var madeRows: ({ rows: [] })
+    readonly property var thisOne: ({ key: "", row: null })
+    // The windows whose rows say they wait on Joel, by id.
+    readonly property var waitingOf: ({ ids: {} })
 
-    // Made only while they're wanted (Provider.qml's wanted), since with the
-    // launcher shut every event niri sent walked all of Joel's 75 windows and
-    // made 657 rows in four minutes, for nobody (2026-11-10). Unwanted, it
-    // reads nothing of niri, so no event wakes it, and says the rows last
-    // made until it's wanted again.
-    things: {
+    Daemon {
+        id: daemon
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/windows.sock`
+        kind: "window"
+        live: provider.wanted
+        paced: provider.launcher
+        answersWhole: true
+        onHeard: (changed, gone) => provider.hear(changed, gone)
+    }
+
+    // A window waiting on Joel says so, which comes from Sessions rather
+    // than the daemon, so only the rows whose waiting turned are made again.
+    Connections {
+        target: Sessions
+        function onWaitingWindowsChanged() {
+            provider.waitingTurned();
+        }
+    }
+    onWantedChanged: waitingTurned()
+
+    // Takes what the daemon said, making again only the rows of windows
+    // whose records differ, so a whole answer as the launcher opens makes
+    // nothing anew that reads the same. How many records it heard of is
+    // counted (Provider.qml's tally), for the check that a change is heard
+    // only of the windows it moved, never all of them.
+    readonly property var windowsDaemon: daemon
+    function hear(changed, gone) {
+        provider.tally.looked += changed.length + gone.length;
+        const records = changed.map(key => daemon.held[key]).filter(record => record);
+        remake(HeldWindows.take(provider.held, records, gone), gone);
+    }
+
+    function waitingTurned() {
         if (!provider.wanted)
-            return provider.madeRows.rows;
-        void Niri.revision;
-        const waiting = Sessions.waitingWindows.split(" ");
-        const here = Niri.workspace();
-        const when = window => {
-            const stamp = window.focus_timestamp;
-            return stamp ? stamp.secs * 1e9 + stamp.nanos : 0;
-        };
-        const named = Object.values(Niri.windows)
-            .sort((a, b) => when(b) - when(a))
-            .map(window => {
-                const entry = window.app_id ? DesktopEntries.heuristicLookup(window.app_id) : null;
-                const program = entry ? entry.name : (window.app_id ?? "");
-                const own = provider.tidy(window.title ?? "", program);
-                return {
-                    window: window,
-                    entry: entry,
-                    program: program,
-                    title: own || program,
-                    untitled: own === "" || own === program
-                };
-            });
-        // How many windows each title is, so those alike say their column.
-        const alike = {};
-        for (const one of named)
-            alike[one.title] = (alike[one.title] ?? 0) + 1;
-        const next = {};
-        const rows = named.map(one => {
-            const window = one.window;
-            const workspace = Niri.workspaces[window.workspace_id];
-            const said = {
-                where: provider.placeOf(window, workspace, here, alike[one.title]),
-                workspace: workspace ? workspace.idx : null,
-                focused: window.id === Niri.current,
-                waiting: waiting.includes(String(window.id))
-            };
-            const from = { window: Object.assign({}, window),
-                said: [one.entry ? one.entry.id : "", one.program, said] };
-            const before = provider.kept[window.id];
-            next[window.id] = provider.madeFrom(before, from)
-                ? before : { from: from, row: provider.ownRow(one, said) };
-            // The window Joel's in is This Window too, made from the same.
-            if (said.focused) {
-                const was = provider.kept.this;
-                next.this = provider.madeFrom(was, from)
-                    ? was : { from: from, row: provider.thisWindow(one) };
-            }
-            return next[window.id].row;
+            return;
+        const now = {};
+        for (const id of Sessions.waitingWindows.split(" "))
+            now[id] = true;
+        const was = provider.waitingOf.ids;
+        provider.waitingOf.ids = now;
+        const turned = Object.keys(provider.held.records).filter(key => {
+            const id = String(provider.held.records[key].id);
+            return (id in now) !== (id in was);
         });
-        for (const id of Object.keys(provider.kept))
-            delete provider.kept[id];
-        Object.assign(provider.kept, next);
-        provider.madeRows.rows = (next.this ? [next.this.row] : []).concat(rows);
-        return provider.madeRows.rows;
+        provider.tally.looked += turned.length;
+        remake(turned, []);
     }
 
-    // What niri says of a window that its row never says, left out of what
-    // the row is made from: when it was focused orders the rows and whether
-    // it is focused is `said`, both changing at every move of the focus,
-    // and its layout, but for the column `said` gives, changes at every
-    // scroll of the view.
-    readonly property var unsaid: ["focus_timestamp", "is_focused", "layout"]
-
-    // Whether a row kept was made from what a window says now. It's
-    // compared in place rather than as text, since the text of Joel's 75
-    // windows, about 30,000 characters, was made again at each change niri
-    // told of (2026-11-10). The window is kept as a copy, since Niri.qml
-    // sets its focus, urgency and layout in place.
-    function madeFrom(kept, from) {
-        return kept !== undefined && Pi.fieldsAlike(kept.from.window, from.window, unsaid)
-            && Pi.alike(kept.from.said, from.said);
+    // Makes again the rows of these keys and lets those gone go, then lists
+    // them as held, This Window first.
+    function remake(keys, gone) {
+        if (keys.length === 0 && gone.length === 0)
+            return;
+        for (const key of gone) {
+            delete provider.kept[key];
+            if (key === provider.thisOne.key)
+                Object.assign(provider.thisOne, { key: "", row: null });
+        }
+        for (const key of keys) {
+            const record = provider.held.records[key];
+            const one = provider.named(record);
+            provider.kept[key] = provider.ownRow(one, provider.saidOf(record));
+            // The window Joel's in is This Window too, made from the same.
+            if (record.focused)
+                Object.assign(provider.thisOne, { key: key, row: provider.thisWindow(one) });
+            else if (key === provider.thisOne.key)
+                Object.assign(provider.thisOne, { key: "", row: null });
+        }
+        provider.things = (provider.thisOne.row ? [provider.thisOne.row] : [])
+            .concat(provider.held.order.map(key => provider.kept[key]));
     }
 
-    // A window's own row, from what niri says of it and what its row says
+    // A window's names, as its record says them: its program's entry by id,
+    // the program's own name, and its title tidied of the program's.
+    function named(record) {
+        return {
+            window: provider.held.windows[record.key],
+            entry: record.entry,
+            program: record.program,
+            title: record.named,
+            untitled: record.untitled
+        };
+    }
+
+    // What a window's row says of where it is and how it stands.
+    function saidOf(record) {
+        const workspace = record.workspace === null ? null
+            : { id: record.workspace, idx: record.workspace_idx };
+        return {
+            where: provider.placeOf(provider.held.windows[record.key], workspace,
+                record.elsewhere ? null : workspace, record.alike),
+            workspace: workspace ? workspace.idx : null,
+            focused: record.focused,
+            waiting: String(record.id) in provider.waitingOf.ids
+        };
+    }
+
+    // What Shift+Return opens below a window: another of its program, its
+    // entry found as it's pressed, since the record names it by id.
+    function belowOf(window, entry) {
+        return entry === null ? null : () => {
+            const found = DesktopEntries.byId(entry);
+            if (found)
+                provider.launcher.grid.under(window.id, provider.command(found));
+        };
+    }
+
+    // A window's own row, from its names (`named`) and what its row says
     // of where it is (`said`).
     function ownRow(one, said) {
         const window = one.window;
         const entry = one.entry;
         const program = one.program;
         const title = one.title;
-        const below = entry
-            ? () => provider.launcher.grid.under(window.id, provider.command(entry)) : null;
+        const below = provider.belowOf(window, entry);
         return thing({
             // What learning knows it by, which outlives the window.
             thing: true,
             key: `window:${window.app_id}:${title}`,
             // What it is now: this window, or its program when the
             // program's name is all its title says.
-            is: one.untitled && entry ? `program:${entry.id}` : `window:${window.id}`,
+            is: one.untitled && entry ? `program:${entry}` : `window:${window.id}`,
             id: window.id,
-            program: entry ? entry.id : (window.app_id ?? ""),
+            program: entry ?? window.app_id ?? "",
             owner: Fuzzy.prepare(program),
             verb: "go to",
             name: title,
@@ -258,9 +294,7 @@ Provider {
     // which niri does to the column in front, after floating it.
     function thisWindow(one) {
         const window = one.window;
-        const entry = one.entry;
-        const below = entry
-            ? () => provider.launcher.grid.under(window.id, provider.command(entry)) : null;
+        const below = provider.belowOf(window, one.entry);
         return thing({
             thing: true,
             key: "windows:this",

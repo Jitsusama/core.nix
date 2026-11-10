@@ -55,7 +55,7 @@ onLinux {
         "Asking.js"
         "Numbers.js"
         "Applications.qml"
-        "BrowserWindows.js"
+        "HeldWindows.js"
         "Order.js"
         "Program.js"
         "Media.js"
@@ -135,6 +135,7 @@ onLinux {
       cp ${../../tests/inkscape-program.qml} shell.qml
       cp ${../../tests/lib/Expect.js} Expect.js
       cp ${../../tests/lib/Frames.js} Frames.js
+      cp ${../../tests/lib/HeardWindows.js} HeardWindows.js
       cp ${niri} Niri.qml
       cp ${playing} launcher/Playing.qml
       cp ${singleton "Shortcuts.qml" "property var actions: []"} Shortcuts.qml
