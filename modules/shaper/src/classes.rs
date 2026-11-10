@@ -210,12 +210,14 @@ fn managers(root: &Path) -> Vec<String> {
 }
 
 /// The links the shaper holds, and the addresses they reach without the
-/// router, which it leaves unshaped.
+/// router, which it leaves unshaped, and the marks its VPNs' own packets
+/// carry on them, which it counts.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Local {
     pub links: Vec<String>,
     pub v4: Vec<String>,
     pub v6: Vec<String>,
+    pub marks: Vec<String>,
 }
 
 /// One nft transaction that empties each set and fills it again, so nft
@@ -245,6 +247,7 @@ pub fn transaction(table: &str, sets: &Sets, local: &Local) -> String {
     fill("awaited5", &sets.awaited5, true);
     fill("bulk5", &sets.bulk5, true);
     fill("vpnbulk", &sets.vpnbulk, false);
+    fill("vpns", &local.marks, false);
     fill("local4", &local.v4, false);
     fill("local6", &local.v6, false);
     fill("uplinks", &local.links, true);
@@ -458,6 +461,7 @@ mod tests {
             links: vec!["enp1".into()],
             v4: vec!["192.168.4.0/22".into()],
             v6: vec![],
+            marks: vec!["0xca6c".into(), "0x80000".into()],
         };
         let text = transaction("shaper", &sets, &local);
         assert!(text.contains(
@@ -466,6 +470,7 @@ mod tests {
         assert!(text.contains(
             "flush set inet shaper awaited5\nflush set inet shaper bulk5\n\
              flush set inet shaper vpnbulk\nadd element inet shaper vpnbulk { 0xca6c }\n\
+             flush set inet shaper vpns\nadd element inet shaper vpns { 0xca6c, 0x80000 }\n\
              flush set inet shaper local4\n"
         ));
         assert!(text.contains("add element inet shaper local4 { 192.168.4.0/22 }\n"));

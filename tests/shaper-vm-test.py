@@ -572,6 +572,9 @@ def test_quiet_tunnel(tunnel: Connection) -> None:
     inner = f"{BIN}/head -c 1000000 /dev/zero > /dev/tcp/10.9.0.2/5201"
     client.wait_until_succeeds(quiet, timeout=HOLDING)
     tunnel.lands("bulk", "jobs.slice", inner, dev="eth1")
+    # The connection counts the tunnel's own packets, a megabyte's worth and more, so its
+    # queue can give up what they cost past what it counted.
+    client.succeed("nft list counter inet shaper vpnout | grep -Eq 'bytes [0-9]{7,}'")
 
     # An app's upload inside puts the tunnel back in best effort within a step, so all
     # but its first moment goes so.

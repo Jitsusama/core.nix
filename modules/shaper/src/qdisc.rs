@@ -277,6 +277,16 @@ pub fn shaped_bytes(json: &str) -> Option<u64> {
     all.iter().find(|q| q["kind"] == "cake")?["bytes"].as_u64()
 }
 
+/// What a VPN's CAKE, in `tc -s -j qdisc show dev`, has counted sending:
+/// its bytes, and the header it counts each packet with.
+pub fn counted_bytes(json: &str) -> Option<u64> {
+    let Ok(Value::Array(all)) = serde_json::from_str::<Value>(json) else {
+        return None;
+    };
+    let cake = all.iter().find(|q| q["kind"] == "cake")?;
+    Some(cake["bytes"].as_u64()? + u64::from(VPN_OVERHEAD) * cake["packets"].as_u64()?)
+}
+
 /// The bytes the CAKE in `tc -s -j qdisc show dev` has sent from every tin
 /// but bulk, or none without a CAKE.
 pub fn unbulk_bytes(json: &str) -> Option<u64> {
@@ -416,6 +426,14 @@ mod tests {
         assert_eq!(shaped_bytes(json), Some(6000));
         assert_eq!(shaped_bytes(r#"[{"kind":"fq_codel","bytes":3000}]"#), None);
         assert_eq!(shaped_bytes(""), None);
+    }
+
+    #[test]
+    fn what_a_vpns_cake_counted_is_its_bytes_and_a_header_a_packet() {
+        let json = r#"[{"kind":"cake","handle":"2:","bytes":13000,"packets":10}]"#;
+        assert_eq!(counted_bytes(json), Some(13_800));
+        assert_eq!(counted_bytes(r#"[{"kind":"fq_codel","bytes":3000}]"#), None);
+        assert_eq!(counted_bytes(""), None);
     }
 
     #[test]

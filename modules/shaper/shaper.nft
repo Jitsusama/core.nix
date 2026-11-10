@@ -37,6 +37,10 @@ set uplinks { type ifname; }
 # The firewall marks of the VPNs carrying nothing but bulk now, which the
 # shaper fills each step (src/quiet.rs says why).
 set vpnbulk { type mark; }
+# Every VPN's mark, and what its own packets cost the connection, which
+# the shaper holds its VPNs by (src/cost.rs says why).
+set vpns { type mark; }
+counter vpnout { }
 
 chain local {
   ct mark set ct mark and 0xf0ffffff or 0x0a000000
@@ -141,6 +145,7 @@ chain input {
 chain postrouting {
   type filter hook postrouting priority mangle; policy accept;
   oifname != @uplinks return
+  meta mark @vpns counter name "vpnout"
   ct mark and 0x08000000 != 0 meta priority set 1:1 return
   # Over Wi-Fi the radio picks its queue from DSCP and never from the
   # priority, so bulk that says nothing for itself goes out as CS1, which
