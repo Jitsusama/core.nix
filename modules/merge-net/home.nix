@@ -56,6 +56,10 @@ in
       Environment = [ "PATH=${path}" ];
       Restart = "always";
       RestartSec = 60;
+      # Below what Joel uses, as the timed work it is: its evaluations ran
+      # in app.slice beside his programs, 2.2 GiB at their peak on
+      # 10 November.
+      Slice = "jobs-timed.slice";
     };
     Install.WantedBy = [ "default.target" ];
   };
@@ -67,6 +71,7 @@ in
       Environment = [ "PATH=${path}" ];
       Restart = "always";
       RestartSec = 60;
+      Slice = "jobs-timed.slice";
     };
     Install.WantedBy = [ "default.target" ];
   };

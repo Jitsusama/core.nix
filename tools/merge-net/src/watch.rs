@@ -30,6 +30,7 @@ use std::sync::{Condvar, Mutex, MutexGuard};
 
 use serde_json::{Value, json};
 
+use crate::movers;
 use crate::running;
 use crate::state::{Ran, State, now, short};
 
@@ -744,7 +745,7 @@ fn to_search(
     test: &str,
 ) -> Result<Vec<String>, String> {
     let all = world.merges(base, head)?;
-    let merges = movers(world, &all, test);
+    let merges = movers::movers(world, &all, test);
     if merges.len() > 1 {
         state.say(&format!(
             "finding which of {} merges broke {test}, the {} that changed it",
@@ -753,30 +754,6 @@ fn to_search(
         ));
     }
     Ok(merges)
-}
-
-/// The merges among `merges` (oldest first, on main's first parents) worth
-/// searching for what broke `test`: those that changed its derivation from
-/// the commit before them, or that it couldn't be told for. Only these can
-/// have broken it, since a test whose derivation is the same at two
-/// commits does there what it does here, and each is a few seconds'
-/// evaluation against minutes a run. On 7 November the search among 16
-/// merges took 73 minutes. The first merge stays all the same, so a test
-/// failing from the range's start, which no merge changed, is still told
-/// apart as broken outside the code rather than blamed on the next merge.
-fn movers(world: &dyn World, merges: &[String], test: &str) -> Vec<String> {
-    let mut before: Option<String> = None;
-    merges
-        .iter()
-        .enumerate()
-        .filter(|(at, merge)| {
-            let now = world.drv(merge, test).ok();
-            let moved = *at == 0 || now.is_none() || now != before;
-            before = now;
-            moved
-        })
-        .map(|(_, merge)| merge.clone())
-        .collect()
 }
 
 /// Keeps in the hold how its revert went: the PR and commit that landed,
