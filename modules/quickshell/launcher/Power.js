@@ -429,20 +429,6 @@ function sleepSaid(sleep, said, lasted, errors) {
     };
 }
 
-// The writes that move a charge limit to stop at `wanted`, starting again
-// `gap` below it, as [file, value] in the order the kernel takes them: it
-// refuses a start at or above the stop, so a limit raised moves its stop
-// first and one lowered its start first. With no start file (start null),
-// only the stop is written.
-function limitWrites(start, stop, wanted, gap) {
-    const end = ["charge_control_end_threshold", String(wanted)];
-    if (start === null) {
-        return [end];
-    }
-    const begin = ["charge_control_start_threshold", String(Math.max(0, wanted - gap))];
-    return wanted >= stop ? [end, begin] : [begin, end];
-}
-
 // The brightest a room is drawn as: daylight at a window.
 const DAYLIGHT = 10_000;
 

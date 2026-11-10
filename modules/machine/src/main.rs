@@ -30,6 +30,11 @@
 //! program's files are heard as it writes them while their kinds are
 //! watched, so a switch turned in the launcher reads turned within a
 //! frame, not at the next second's read.
+//!
+//! It acts as well as answers, so the shell spawns and writes nothing of
+//! its own: `charge-limit` moves a battery's charge limit, and the supply
+//! is read again before the act is answered, so each watch is told the
+//! new limit first.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
@@ -1379,11 +1384,35 @@ fn answer(
                 "took_us": daemon.took.iter().collect::<Vec<_>>(),
             })
         }
+        Ask::Act { id, act, said } => acted(shared, &id, &act, &said),
         Ask::UnknownKind { id, kind } => {
             error(&id, "unknown-kind", &format!("no kind {kind} here"))
         }
         Ask::Unknown { id, ask } => error(&id, "unknown-ask", &format!("no ask {ask:?} here")),
     })
+}
+
+/// Does what an act asks and says it's done, or why not; the kinds it
+/// moved are read again first, so a watch hears of it before the answer.
+fn acted(shared: &Shared, id: &Value, act: &str, said: &Value) -> Value {
+    match act {
+        "charge-limit" => {
+            let name = said["supply"].as_str().unwrap_or("");
+            let Some(wanted) = said["stop_pct"]
+                .as_u64()
+                .and_then(|n| u32::try_from(n).ok())
+            else {
+                return error(id, "bad-act", "a charge limit needs its stop_pct");
+            };
+            let set = supply::set_limit(&lock(&shared.reader).root, name, wanted);
+            if let Err(unset) = set {
+                return error(id, unset.code, &unset.message);
+            }
+            read(shared, &HashSet::from(["supply".to_owned()]), &[]);
+            json!({"id": id, "done": true})
+        }
+        _ => error(id, "unknown-act", &format!("no act {act:?} here")),
+    }
 }
 
 #[cfg(test)]

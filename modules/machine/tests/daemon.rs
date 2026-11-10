@@ -6,7 +6,8 @@
 //! watched; the programs are ranked by their share and their memory; a
 //! disk's file systems are found through what's mapped over it; the
 //! brightness and warmth the backlight program steers the screen to are
-//! told as it writes them; and an ask or kind it doesn't know is refused.
+//! told as it writes them; a charge limit set is told before it's
+//! answered; and an ask, act or kind it doesn't know is refused.
 //!
 //! Long because every case runs the one daemon over the one fixture
 //! machine built here, which a second file of cases would have to copy.
@@ -618,6 +619,39 @@ fn a_supply_says_its_charge_health_and_port_and_sleep_its_steps() {
     );
     assert_eq!(sleep["logind"], Value::Null, "logind's is awake:main");
     assert_eq!(record(records, "awake:main")["kind"], "awake");
+}
+
+#[test]
+fn a_charge_limit_set_is_told_before_its_answer() {
+    let running = Running::new("limit");
+    power(&running.root());
+    let mut client = running.client();
+    client.ask(&json!({"id": "power", "ask": "watch", "kind": "supply"}));
+    client.send(
+        &json!({"id": 2, "ask": "act", "act": "charge-limit", "supply": "BAT0",
+        "stop_pct": 60}),
+    );
+    // Read again before it's answered, so Power's row moves as the act
+    // does rather than at the next second's read.
+    let told = client.heard();
+    let battery = told["changed"]
+        .as_array()
+        .and_then(|records| records.iter().find(|record| record["key"] == "supply:BAT0"));
+    assert_eq!(
+        battery.map(|record| &record["limit_stop_pct"]),
+        Some(&json!(60)),
+        "{told}"
+    );
+    assert_eq!(
+        battery.map(|record| &record["limit_start_pct"]),
+        Some(&json!(55))
+    );
+    assert_eq!(client.heard(), json!({"id": 2, "done": true}));
+    let refused = client.ask(&json!({"id": 3, "ask": "act", "act": "charge-limit",
+        "supply": "../BAT0", "stop_pct": 60}));
+    assert_eq!(refused["error"]["code"], "bad-act");
+    let unknown = client.ask(&json!({"id": 4, "ask": "act", "act": "overclock"}));
+    assert_eq!(unknown["error"]["code"], "unknown-act");
 }
 
 #[test]
