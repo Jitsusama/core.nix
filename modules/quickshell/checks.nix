@@ -3426,6 +3426,8 @@ onLinux {
         "command": ["${helper}/bin/tuple-people", "people", "${tuple}/bin/tuple", "tuple-0"]}]}
       EOF
       ${lib.getExe people} $XDG_RUNTIME_DIR/daemons/people.sock $PWD/sources.json &
+      # The last step stops the daemon, to see People say so.
+      echo $! > $XDG_RUNTIME_DIR/people.pid
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml

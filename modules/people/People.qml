@@ -666,7 +666,11 @@ Provider {
         }
         return kept.listed;
     }
+    // Home says the people daemon isn't answering rather than a count of
+    // whom it last listed, so a down daemon is never silent.
     function homeSays() {
+        if (lister.state === "not answering")
+            return Words.of("people").said.silent;
         const count = listedPersons().length;
         return count === 0 && (collection.none ?? "") !== "" ? null : countedAs(count);
     }
