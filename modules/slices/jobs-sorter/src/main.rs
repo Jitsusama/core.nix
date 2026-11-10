@@ -579,11 +579,11 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
                 let unit = focus::scope_of(window, &started_with(all)).map(str::to_owned);
                 let scope = all
                     .iter()
-                    .find(|scope| scope.file_name().and_then(|name| name.to_str()) == unit.as_deref())
+                    .find(|scope| {
+                        scope.file_name().and_then(|name| name.to_str()) == unit.as_deref()
+                    })
                     .cloned();
-                ranks
-                    .found
-                    .insert(window.id, scope.clone().ok_or(now));
+                ranks.found.insert(window.id, scope.clone().ok_or(now));
                 scope
             }
         };
@@ -1115,6 +1115,26 @@ fn return_stray(scope: &Path, root: &Path, manager: &str, slice: &str, warned: &
     );
 }
 
+/// Follows niri's focus with `niri`, waking `watch` as it moves. Windows
+/// are weighed and held as the marks' watch wakes, so niri's focus is
+/// followed only beside it.
+fn follow_focus(niri: Option<&Path>, watch: Option<&mut low::Watch>) -> Option<focus::Following> {
+    match (niri, watch) {
+        (Some(niri), Some(watch)) => {
+            let waker = watch
+                .waker()
+                .map_err(|error| eprintln!("The focus can't wake the sorter: {error}"))
+                .ok();
+            Some(focus::Following::start(niri, waker))
+        }
+        (Some(_), None) => {
+            eprintln!("--niri needs --background, so no window is held for focus.");
+            None
+        }
+        _ => None,
+    }
+}
+
 fn run() -> Result<(), String> {
     let settings = settings(std::env::args().skip(1))?;
     let own = fs::read_to_string("/proc/self/cgroup").map_err(|e| e.to_string())?;
@@ -1150,29 +1170,9 @@ fn run() -> Result<(), String> {
     let mut holders: Vec<Option<u32>> = vec![None; settings.split.len()];
     let mut weights = quests::Weights::new(settings.quests.clone().unwrap_or_default());
     let mut pass: u32 = 0;
-    let windows: Vec<String> = settings
-        .homes
-        .iter()
-        .chain(&settings.weigh)
-        .cloned()
-        .collect();
+    let windows = [settings.homes.as_slice(), &settings.weigh].concat();
     let mut watch = settings.background.as_deref().and_then(watch_marks);
-    // Windows are weighed and held as the marks' watch wakes, so niri's
-    // focus is followed only beside it.
-    let following = match (settings.niri.as_deref(), watch.as_mut()) {
-        (Some(niri), Some(watch)) => {
-            let waker = watch
-                .waker()
-                .map_err(|error| eprintln!("The focus can't wake the sorter: {error}"))
-                .ok();
-            Some(focus::Following::start(niri, waker))
-        }
-        (Some(_), None) => {
-            eprintln!("--niri needs --background, so no window is held for focus.");
-            None
-        }
-        _ => None,
-    };
+    let following = follow_focus(settings.niri.as_deref(), watch.as_mut());
     let mut ranks = Ranks::default();
     let mut doorway = Doorway::new(settings.calls.as_deref());
     loop {
@@ -1351,6 +1351,7 @@ mod tests {
             orchestrators: None,
             door: None,
             calls: None,
+            niri: None,
         }
     }
 

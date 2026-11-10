@@ -446,7 +446,9 @@ mod tests {
         assert!(windows.take(r#"{"WindowClosed":{"id":23}}"#));
         assert_eq!(windows.focused(), None);
         assert!(!windows.has(23));
-        assert!(windows.take(r#"{"WindowFocusChanged":{"id":null}}"#) || windows.focused().is_none());
+        assert!(
+            windows.take(r#"{"WindowFocusChanged":{"id":null}}"#) || windows.focused().is_none()
+        );
     }
 
     #[test]
@@ -475,7 +477,11 @@ mod tests {
         };
         recent.focus(Some(&slack), at(50));
         assert_eq!(recent.held(at(50)), [pi(2), pi(4), pi(3)]);
-        assert_eq!(recent.held(at(50 + 599)), [pi(2)], "4 and 3 were left earlier");
+        assert_eq!(
+            recent.held(at(50 + 599)),
+            [pi(2)],
+            "4 and 3 were left earlier"
+        );
         assert_eq!(recent.held(at(50 + 600)), [] as [Window; 0]);
     }
 
@@ -494,10 +500,22 @@ mod tests {
     #[test]
     fn a_window_is_found_by_its_app_id_or_its_kittys_one_scope() {
         let scopes = [
-            ("kitty-2684-22.scope".to_owned(), vec!["pi-session.22".to_owned()]),
-            ("kitty-2684-46.scope".to_owned(), vec!["pi-session.46".to_owned()]),
-            ("kitty-2684-60.scope".to_owned(), vec!["pi-spawned.3".to_owned()]),
-            ("kitty-2684-61.scope".to_owned(), vec!["pi-spawned.3".to_owned()]),
+            (
+                "kitty-2684-22.scope".to_owned(),
+                vec!["pi-session.22".to_owned()],
+            ),
+            (
+                "kitty-2684-46.scope".to_owned(),
+                vec!["pi-session.46".to_owned()],
+            ),
+            (
+                "kitty-2684-60.scope".to_owned(),
+                vec!["pi-spawned.3".to_owned()],
+            ),
+            (
+                "kitty-2684-61.scope".to_owned(),
+                vec!["pi-spawned.3".to_owned()],
+            ),
             ("kitty-3295902-0.scope".to_owned(), vec![]),
         ];
         let find = |app_id: &str, pid| {
@@ -508,13 +526,20 @@ mod tests {
             };
             scope_of(&window, &scopes).map(str::to_owned)
         };
-        assert_eq!(find("pi-session.46", 2684).as_deref(), Some("kitty-2684-46.scope"));
+        assert_eq!(
+            find("pi-session.46", 2684).as_deref(),
+            Some("kitty-2684-46.scope")
+        );
         assert_eq!(
             find("pi-spawned.96260002", 3_295_902).as_deref(),
             Some("kitty-3295902-0.scope"),
             "a kitty of its own"
         );
-        assert_eq!(find("pi-spawned.3", 2684), None, "two started with one app id");
+        assert_eq!(
+            find("pi-spawned.3", 2684),
+            None,
+            "two started with one app id"
+        );
         assert_eq!(find("pi-session.99", 2684), None, "one kitty, many scopes");
     }
 
@@ -561,7 +586,11 @@ mod tests {
             latency("259:0 target=1000\n", false).as_deref(),
             Some("259:0 target=0\n")
         );
-        assert_eq!(latency("", true), None, "a slice with no target names no disk");
+        assert_eq!(
+            latency("", true),
+            None,
+            "a slice with no target names no disk"
+        );
     }
 
     #[test]
@@ -591,19 +620,24 @@ mod tests {
         let a = PathBuf::from("/a/kitty-1-1.scope");
         let b = PathBuf::from("/a/kitty-1-2.scope");
         let mut holding = Holding::default();
-        assert_eq!(holding.changes(&[a.clone()]), [(a.clone(), true)]);
+        let only = std::slice::from_ref;
+        assert_eq!(holding.changes(only(&a)), [(a.clone(), true)]);
         holding.done(&a, true);
         assert!(holding.holds("kitty-1-1.scope"));
-        assert_eq!(holding.changes(&[a.clone()]), []);
+        assert_eq!(holding.changes(only(&a)), []);
         assert_eq!(
-            holding.changes(&[b.clone()]),
+            holding.changes(only(&b)),
             [(b.clone(), true), (a.clone(), false)]
         );
         holding.done(&a, false);
         assert!(!holding.holds("kitty-1-1.scope"));
         holding.done(&b, true);
         holding.keep_only(|_| false);
-        assert_eq!(holding.changes(&[]), [], "a scope gone is nobody's to give back");
+        assert_eq!(
+            holding.changes(&[]),
+            [],
+            "a scope gone is nobody's to give back"
+        );
     }
 
     #[test]
