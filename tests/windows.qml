@@ -134,12 +134,12 @@ ShellRoot {
                 space(2, { inside: ["tester"] }), space(3, { new: true }),
                 space(4, { output: "HDMI-A-1" })] },
                 Object.assign(desktop(logbook), { spaces: { "eDP-1": [1, 2, 3], "HDMI-A-1": [4] } }));
+            const madeHearing = windows.tally.rows - madeBefore;
             const offered = windows.workspacesFor(windows.held.windows["window:11"]);
             Expect.same("Move to Workspace offers the others on its screen, saying what's on each",
                 offered.map(row => `${row.name}: ${row.side}`).join("; "),
                 "Workspace 2: tester; A new workspace: ");
-            Expect.same("and hearing the workspaces makes no window's row",
-                windows.tally.rows - madeBefore, 0);
+            Expect.same("and hearing the workspaces makes no window's row", madeHearing, 0);
 
             // Super+Tab, Return on Draft: the keys move as the launcher
             // closes, unheard, so the next opening's rows still mark the
