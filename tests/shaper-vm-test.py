@@ -317,8 +317,21 @@ def replugged(on_eth2: Connection) -> Replugged:
 
 
 def test_jobs(connection: Connection) -> None:
-    """The account's work goes in bulk, both ways."""
+    """The account's work goes in bulk, both ways, and leaves marked CS1 for the radio."""
+    connection.server.succeed(
+        "nft add table inet seen",
+        "nft add chain inet seen input '{ type filter hook input priority 0; }'",
+        "nft add rule inet seen input tcp dport 5201 ip dscp cs1 counter",
+    )
     connection.lands("bulk", "jobs.slice", connection.upload)
+    rules = json.loads(connection.server.succeed("nft -j list chain inet seen input"))
+    counted = sum(
+        e["counter"]["packets"]
+        for item in rules["nftables"]
+        for e in item.get("rule", {}).get("expr", [])
+        if "counter" in e
+    )
+    assert counted > 0, f"no bulk packet arrived marked CS1: {rules}"
     connection.lands("bulk", "jobs.slice", connection.download, dev=connection.ifb("eth1"))
     connection.lands("bulk", "background.slice", connection.datagrams(9000))
 
