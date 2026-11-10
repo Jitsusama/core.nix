@@ -14,7 +14,8 @@
 //! it, nor for a quarantined test that fails, listed at the round's head
 //! or at main's newest. A test whose breaking merge is found but won't
 //! revert goes on the list too, with that merge's PR as its owner, and the
-//! hold is cleared. A run the builder never took
+//! hold is cleared, and so does one failing at the round's base as well as
+//! its head, owned by the PR that last took it off the list. A run the builder never took
 //! (`nix-offload` exits 75), or whose builder couldn't fetch the commit's
 //! source, is tried again later, and is no failure, and so is one stopped
 //! before it ended, for running too long or going silent: twice at a commit, and the test is left there with a
@@ -176,6 +177,9 @@ pub trait World: Sync {
     /// once `still`, asked with the main they ran on, says it's still
     /// needed.
     fn revert(&self, bad: &Bad, still: &dyn Fn(&str) -> bool) -> Result<Merged, String>;
+    /// The PR whose merge, at or before `head`, last took `test` off the
+    /// quarantine list, if one did.
+    fn unlisted_by(&self, test: &str, head: &str) -> Option<u64>;
     /// Put a flaky test on the quarantine list through a merged PR.
     fn quarantine(
         &self,
@@ -1222,35 +1226,64 @@ fn stalled(state: &State, head: &str, test: &str, owner: Option<u64>) -> Result<
     Ok(())
 }
 
-/// Whether `test` failed twice at the round's `base`, and if so says so
-/// and finds it failed before, naming no merge. It failed then before
-/// every merge since, so no search over them can find what broke it, and
-/// `before` clears the merge one finds only after all its runs. On
+/// Whether `test` failed twice at the round's `base`. It failed then
+/// before every merge since, so no search over them can find what broke
+/// it, and `before` clears the merge one finds only after all its runs. On
 /// 9 November vm-desktop-looks failed twice at the base while it was
 /// listed, came off the list still failing, and its search took four runs
 /// of 25 minutes each. A merge that broke it again after another fixed it
 /// in the same round goes unblamed, which costs less than such a search.
-fn failed_at_base(state: &State, base: &str, head: &str, test: &str) -> Result<bool, String> {
-    let failures = state
+fn failed_at_base(state: &State, base: &str, test: &str) -> bool {
+    state
         .runs(base, test)
         .iter()
         .filter(|&&ran| ran == Ran::Failed)
-        .count();
-    if failures < FAILURES {
-        return Ok(false);
-    }
-    let log = state.log(head, test, 2).display().to_string();
+        .count()
+        >= FAILURES
+}
+
+/// List `test`, which failed twice at the round's `base` and fails at its
+/// `head`, as quarantined, owned by the PR that last took it off the list,
+/// unless main lists it now. No merge since is to blame, so nothing else
+/// names an owner: on 10 November vm-desktop-launcher-reads-mail and
+/// keeps-up came off the list still failing, by #2603 and #2602, and failed
+/// at every head for hours with nobody told.
+fn list_still_red(
+    world: &dyn World,
+    state: &State,
+    base: &str,
+    head: &str,
+    test: &str,
+    log: &str,
+) -> Result<(), String> {
+    let owner = world.unlisted_by(test, head);
+    let reason = format!(
+        "failed twice at {}, and at {} after it",
+        short(base),
+        short(head)
+    );
+    let listed =
+        (!listed_on_main(world, head, test)).then(|| world.quarantine(test, owner, head, &reason));
     state.find(&json!({
         "kind": "failed-before", "test": test, "commit": head, "since": base,
-        "owner_pr": Value::Null, "log": log, "at": now(),
+        "owner_pr": owner, "log": log,
+        "quarantine_pr": listed.as_ref().and_then(|made| made.as_ref().ok().map(|it| it.pr)),
+        "quarantine_error": listed.as_ref().and_then(|made| made.as_ref().err()),
+        "at": now(),
     }))?;
+    let what = owner.map_or_else(|| "no PR".to_owned(), |pr| format!("#{pr}"));
+    let after = match &listed {
+        Some(Ok(made)) => format!("listed as quarantined in #{}, owned by {what}", made.pr),
+        Some(Err(why)) => format!("listing it as quarantined failed: {why}"),
+        None => "main lists it as quarantined now".to_owned(),
+    };
     state.say(&format!(
         "{test} fails at {}, and failed twice at {} before it, so no merge since broke it: \
-         nothing is reverted or held",
+         nothing is reverted or held, and it's {after}",
         short(head),
         short(base)
     ));
-    Ok(true)
+    Ok(())
 }
 
 /// What a search found for a test that failed for real, for the round to
@@ -1258,6 +1291,9 @@ fn failed_at_base(state: &State, base: &str, head: &str, test: &str) -> Result<b
 enum Found {
     /// The merge that broke it.
     Merge(Bad),
+    /// None: it failed twice at the round's base, so before every merge
+    /// since; `log` is the failure at the head.
+    Before { test: String, log: String },
     /// A run the search needed stalled or no builder took, so it couldn't
     /// tell which merge broke `test`; `log` is the failure at the head.
     Unsettled { test: String, log: String },
@@ -1265,8 +1301,8 @@ enum Found {
 
 /// Find the merge since `base` that broke `test` at `head`, writing only
 /// findings that hold nothing, so searches for other tests can run beside
-/// it. None when nothing is to be held or reverted: it failed before
-/// `base`, was fixed forward, or no merge is to blame.
+/// it. None when nothing is to be held, reverted or listed: it was fixed
+/// forward, or no merge is to blame.
 fn search(
     world: &dyn World,
     state: &State,
@@ -1278,8 +1314,14 @@ fn search(
     // A round taken up again after a restart hears its failures again, and
     // one already found fixed forward was searched a second time on
     // 8 November, where runs stalled and held main.
-    if state.found("fixed-forward", test, head) || failed_at_base(state, base, head, test)? {
+    if state.found("fixed-forward", test, head) {
         return Ok(None);
+    }
+    if failed_at_base(state, base, test) {
+        return Ok(Some(Found::Before {
+            test: test.to_owned(),
+            log: state.log(head, test, 2).display().to_string(),
+        }));
     }
     let merges = to_search(world, state, base, head, test)?;
     // Whether main's newest head fixed it is asked beside the search's first
@@ -1352,8 +1394,9 @@ fn search(
     })))
 }
 
-/// Hold switching on what a search found and revert it, or keep a test
-/// whose search couldn't tell to run again at the next head.
+/// Hold switching on what a search found and revert it, list a test that
+/// failed at the base too, or keep a test whose search couldn't tell to
+/// run again at the next head.
 fn settle(
     world: &dyn World,
     state: &State,
@@ -1366,6 +1409,9 @@ fn settle(
     // without holding switches.
     let found = match found {
         Found::Merge(found) => found,
+        Found::Before { test, log } => {
+            return list_still_red(world, state, base, head, &test, &log);
+        }
         Found::Unsettled { test, log } => {
             state.set_hold(&json!({
                 "test": test, "bad": Value::Null, "since": base, "head": head, "at": now(),
@@ -1575,6 +1621,10 @@ mod tests {
         /// A commit main's newest head builds every check as.
         newest_builds_as: Option<String>,
         put_in_quarantine: Mutex<Vec<String>>,
+        /// The owner each test put in quarantine was listed with.
+        quarantine_owners: Mutex<Vec<Option<u64>>>,
+        /// The PR that last took a test off the list.
+        unlisted_by: Option<u64>,
         held: Option<String>,
         /// How many reverts to come find no builder for their checks.
         unchecked_reverts: Mutex<u32>,
@@ -1761,14 +1811,18 @@ mod tests {
                 commit: Some("revert".to_owned()),
             })
         }
+        fn unlisted_by(&self, _: &str, _: &str) -> Option<u64> {
+            self.unlisted_by
+        }
         fn quarantine(
             &self,
             test: &str,
-            _: Option<u64>,
+            owner: Option<u64>,
             _: &str,
             _: &str,
         ) -> Result<Merged, String> {
             self.put_in_quarantine.lock().unwrap().push(test.to_owned());
+            self.quarantine_owners.lock().unwrap().push(owner);
             Ok(Merged {
                 pr: 8,
                 commit: None,
@@ -2891,6 +2945,35 @@ mod tests {
         let found = findings(&state);
         assert_eq!(found[0]["kind"], "failed-before");
         assert_eq!(found[0]["since"], "s");
+    }
+
+    #[test]
+    fn a_test_the_base_failed_twice_is_listed_owned_by_the_pr_that_took_it_off() {
+        let state = state("still-red");
+        let log = state.log("s", "vm-a", 1);
+        for _ in 0..FAILURES {
+            state
+                .record("s", "vm-a", Ran::Failed, Some(1), &log)
+                .unwrap();
+        }
+        let world = Stand {
+            head: "m2".into(),
+            merges: names("m1 m2"),
+            changed: changed("vm-a"),
+            unlisted_by: Some(2603),
+            ..Stand::default()
+        }
+        .exits("m2", "vm-a", &[1, 1]);
+        round(&world, &state, "s").unwrap();
+        assert_eq!(
+            *world.put_in_quarantine.lock().unwrap(),
+            names("vm-a"),
+            "a test red at its base and its head was left off the list, owned by nobody"
+        );
+        assert_eq!(*world.quarantine_owners.lock().unwrap(), vec![Some(2603)]);
+        let found = findings(&state);
+        assert_eq!(found[0]["owner_pr"], 2603);
+        assert_eq!(found[0]["quarantine_pr"], 8);
     }
 
     #[test]

@@ -479,6 +479,27 @@ impl World for Real {
             .unwrap_or_default()
     }
 
+    // The newest merge to change the test's entry whose list lacks it took
+    // it off, and the first parent's diff is the merge's own.
+    fn unlisted_by(&self, test: &str, head: &str) -> Option<u64> {
+        let entry = format!("-S\"test\": \"{test}\"");
+        let moved = self
+            .git(&[
+                "log",
+                "--first-parent",
+                "--format=%H",
+                &entry,
+                head,
+                "--",
+                QUARANTINE,
+            ])
+            .ok()?;
+        let commit = moved
+            .lines()
+            .find(|commit| !self.quarantined(commit).iter().any(|kept| kept == test))?;
+        crate::watch::pr_of(&self.subject(commit))
+    }
+
     fn revert(&self, bad: &Bad, still: &dyn Fn(&str) -> bool) -> Result<Merged, String> {
         let what = bad
             .pr
