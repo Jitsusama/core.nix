@@ -3084,7 +3084,9 @@
     the launcher draws its keys, arrowed or typed, nearly as soon while every core is busy in
     jobs.slice and build.slice as with that load frozen: half the keys, and nineteen in twenty
     of the middle turn, within twice their frozen times and design.md's budget more, timed in
-    turns in the same machine so the builder's own load slows both alike
+    turns in the same machine so the builder's own load slows both alike; and a step into
+    Programs, Chrome's, the reader's, Inkscape's and Neovim's pages, Chrome's Recent and
+    Passwords, each holding what Joel's do, shows within twice its frozen time and 50 ms more
   '';
   vm-desktop-launcher-answers = ''
     the launcher answers from the machine and copies the answer: a MAC's vendor, the battery and

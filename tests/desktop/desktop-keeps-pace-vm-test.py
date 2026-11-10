@@ -16,13 +16,24 @@ from __future__ import annotations
 
 import json
 import math
+import re
+import shlex
 import time
 from datetime import timedelta
+from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
 import pytest
-from desktop_session import retry
+from desktop_session import (
+    chrome_download_gone,
+    chrome_downloaded,
+    chrome_gone,
+    chrome_visited,
+    neovim_in_kitty,
+    neovims_quit,
+    retry,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -88,6 +99,24 @@ KEPT = 300
 REACHING = timedelta(seconds=30)
 # How long freezing or thawing the load may take before the test says it couldn't.
 FREEZING = timedelta(minutes=3)
+# Each place a program gives, stepped into as Joel does, in rounds with the load frozen and
+# running by turns, after a first round that's only read, since a place's first step makes what
+# it keeps for the rest. A step is timed by the launcher from the key it heard to its frame, and
+# said in its journal as `"\u2192 Name" took N ms to its frame` (Trials.js), which is what the
+# machine's own load proof reads of Joel's. Under load a place's middle step may take twice its
+# middle with the load frozen and STEPPED_MORE ms more, as a key may.
+ROUNDS = 6
+STEPPED_MORE = 50
+STEP_SAID = re.compile(r'"\u2192 ([^"]+)" took (\d+) ms to its frame, (\d+) ms searching')
+# The programs whose pages are stepped into: what's typed to find each, and its row's key.
+PAGES = [
+    ("chrome", "program:google-chrome"),
+    ("reader", "program:reader"),
+    ("inkscape", "program:org.inkscape.Inkscape"),
+    ("neovim", "program:nvim"),
+]
+# Neovim's page lists the files each Neovim holds, so one holds two.
+SOUNDINGS = "soundings"
 
 
 @pytest.fixture(scope="module")
@@ -350,6 +379,118 @@ class Timing:
             f"under load the compositor and the shell waited {wait:.1f} ms a key for a processor "
             f"in the middle turn, against {wait_free:.1f} ms with the load frozen"
         )
+
+
+def selects(key: str, shown: Json) -> bool:
+    """Say whether the selected row is the thing this key names, as a program's row."""
+    return (shown["selected"] or {}).get("is") == key
+
+
+def stepped_round(desktop: Desktop) -> None:
+    """Step into Programs, each program's page, Chrome's Recent and Passwords, once each."""
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.down_to("Programs")
+    desktop.step_in("ret")
+    desktop.close_launcher()
+    for typed, key in PAGES:
+        desktop.answer(typed)
+        desktop.launcher_until(partial(selects, key))
+        desktop.into_program()
+        if typed == "chrome":
+            desktop.type_in("recent", selecting="Recent")
+            desktop.follow()
+        desktop.close_launcher()
+    desktop.answer("passwords")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Passwords")
+    desktop.step_in("ret")
+    desktop.close_launcher()
+
+
+def steps_said(desktop: Desktop, since: str) -> list[tuple[str, int, int, str]]:
+    """Give each step timed since the mark: its place, its frame, its search and its line."""
+    said = desktop.as_account(
+        "journalctl --user --unit=quickshell --no-pager --output=cat"
+        f" --after-cursor={shlex.quote(since)} | grep -a -F ' ms to its frame'; true"
+    )
+    return [
+        (found[1], int(found[2]), int(found[3]), found.string.strip())
+        for found in map(STEP_SAID.search, said.splitlines())
+        if found
+    ]
+
+
+@pytest.fixture
+def pages_filled(desktop: Desktop) -> Iterator[None]:
+    """Give Chrome its sites, its tab and a download, and a Neovim two files, as Joel's have."""
+    folder = f"/home/{desktop.account}/{SOUNDINGS}"
+    desktop.as_account(
+        f"mkdir -p {folder} && printf 'North pier\\n' > {folder}/tides.txt"
+        f" && printf 'Harbour mouth\\n' > {folder}/reefs.txt"
+    )
+    chrome_visited(desktop)
+    downloaded = chrome_downloaded(desktop)
+    neovims = [neovim_in_kitty(desktop, folder, "tides.txt", "reefs.txt")]
+    try:
+        yield
+    finally:
+        neovims_quit(desktop, neovims)
+        chrome_download_gone(desktop, downloaded)
+        chrome_gone(desktop)
+        desktop.as_account(f"rm -rf {folder}")
+
+
+@pytest.mark.usefixtures("loaded", "pages_filled")
+def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
+    desktop: Desktop,
+) -> None:
+    """Programs, its pages, a page's Recent and Passwords each show soon, every core busy.
+
+    Joel, 2026-11-10: "loading certain menus takes too long ... this needs to be as fast as
+    thought no matter how loaded my machine is." On his laptop that night Programs took 39 to
+    111 ms to its frame, Chrome's page 86 and Recent up to 81, nearly all of it composing.
+    """
+    timing = Timing(desktop)
+    under: dict[str, list[int]] = {}
+    free: dict[str, list[int]] = {}
+    searching: dict[str, list[int]] = {}
+    # Each place's slowest step under load as the launcher said it, whose
+    # parts say where its time went.
+    slowest: dict[str, tuple[int, str]] = {}
+    try:
+        stepped_round(desktop)
+        for turn in range(ROUNDS):
+            loaded = turn % 2 == 1
+            if loaded != timing.loading:
+                timing.load(on=loaded)
+            since = desktop.mark()
+            stepped_round(desktop)
+            for place, took, search, line in steps_said(desktop, since):
+                (under if loaded else free).setdefault(place, []).append(took)
+                if loaded:
+                    searching.setdefault(place, []).append(search)
+                    slowest[place] = max(slowest.get(place, (0, "")), (took, line))
+    finally:
+        if not timing.loading:
+            timing.load(on=True)
+        desktop.close_launcher()
+
+    def middle(times: list[int]) -> int:
+        return sorted(times)[(len(times) - 1) // 2]
+
+    slowed = []
+    for place in sorted(under):
+        print(
+            f"stepping into {place}: under load {sorted(under[place])} ms to its frame,"
+            f" {sorted(searching[place])} of it searching, against {sorted(free.get(place, []))}"
+            f" with the load frozen; its slowest said {slowest[place][1]}"
+        )
+        if place in free and middle(under[place]) > (
+            SLOWER_MOST * middle(free[place]) + STEPPED_MORE
+        ):
+            slowed.append(place)
+    assert "Programs" in under, f"no step into Programs was timed: {sorted(under)}"
+    assert not slowed, f"the load slowed stepping into {slowed}: {under} against {free}"
 
 
 @pytest.mark.usefixtures("keyboard", "loaded")
