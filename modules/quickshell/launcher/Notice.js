@@ -162,13 +162,14 @@ function named(summary, body, typed, holds) {
 // search finds every notice that holds what's typed, but the main search
 // shows only its best, the rest behind one row, so lining each at once
 // spent 40 to 90 ms of a letter over 800 notices, more than all else the
-// search does. The copy keeps each getter the row has as a getter, so
-// nothing else it looks up is asked before it's read either; each is a
-// copy, so a search or a program's row never changes the note of a row
-// shown elsewhere.
+// search does. Each is a copy, so a search or a program's row never
+// changes the note of a row shown elsewhere, copied by Object.assign,
+// which reads each of the row's getters: copying their descriptors
+// instead, to leave them unread, took three to four times as long in
+// Qt's engine.
 function lined(rows, typed, holds) {
     return rows.map((row) => {
-        const copy = Object.defineProperties({}, Object.getOwnPropertyDescriptors(row));
+        const copy = Object.assign({}, row);
         let note = null;
         Object.defineProperty(copy, "count", {
             enumerable: true,
