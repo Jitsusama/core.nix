@@ -1870,7 +1870,8 @@
     its busy time over the cycle or warned as over 100% where it didn't finish, a follower in
     its driver's cycle), its format, the kernel's facts, and its priority and identifiers last,
     never whether it's muted nor its level; and channels at one level are balanced, a stereo
-    pair's otherwise named without front
+    pair's otherwise named without front; and a device's volume moving remakes only its own
+    device's row
   '';
   space-is-set-by-rung = ''
     no QML file of the shell's names a space by its step on the size scale, rather than by the

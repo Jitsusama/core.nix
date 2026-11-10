@@ -175,7 +175,8 @@ ShellRoot {
     // made every device's row again, 137 in four minutes on Joel's shell
     // (YQZGPC, 2026-11-10). Home's count reads the devices themselves, and
     // Now's Volume borrows its device's row as it reads now. Wanted again,
-    // they're made once, as they stand.
+    // they're made once, as they stand, and then a device's volume moving
+    // remakes its own row alone.
     function shut() {
         const names = rows => rows.map(row => row.key).join(", ");
         expect("wanted, it lists the device there is",
@@ -203,6 +204,13 @@ ShellRoot {
             names(wanted) === "sound:usb-desk-speakers, sound:usb-desk-microphone"
             && wanted[0].note.includes("30%") && shutSound.tally.rows - made === 2,
             `${shutSound.tally.rows - made} made, ${names(wanted)}: ${wanted[0]?.note}`);
+        const moved = shutSound.tally.rows;
+        deskMicrophone.audio = { volume: 0.7, muted: false };
+        const heard = shutSound.everything();
+        expect("wanted, a device's volume moving remakes its row alone",
+            heard[0] === wanted[0] && heard[1].note.includes("70%")
+            && shutSound.tally.rows - moved === 1,
+            `${shutSound.tally.rows - moved} made, ${heard[1]?.note}`);
     }
 
     // A device's drawer says where it is and which way it goes, then what

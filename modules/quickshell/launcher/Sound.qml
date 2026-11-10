@@ -252,14 +252,29 @@ Provider {
         node.audio.muted = !node.audio.muted;
     }
 
-    function made(node) {
-        const used = chosen(node);
-        const muted = node.audio.muted;
+    // What a device's row says, each part of it as text, and its level as
+    // a share, which its bar draws.
+    function says(node) {
         const note = [said("volume", { level: percent(node.audio.volume) })]
-            .concat(muted ? [said("muted")] : [],
+            .concat(node.audio.muted ? [said("muted")] : [],
                 Sounds.hidden(factsOf(node), jacksCurrent) ? [said("unplugged")] : [],
                 switches(node) ? [said("to-calls")] : [])
             .join(" \u00b7 ");
+        return [named(node), worn(node), chosen(node) ? said("chosen") : "", audible(node), note];
+    }
+
+    // Each device's row, kept while it's the same device saying the same,
+    // so a volume, a jack or a node moving remakes only its own device's
+    // row rather than every device's (Provider.qml's keptAlike).
+    readonly property var keeping: keeper()
+    function kept(node) {
+        const told = says(node);
+        return keptAlike(keeping, `sound:${node.name}`, [node].concat(told),
+            () => made(node, told));
+    }
+
+    function made(node, told = says(node)) {
+        const [name, mark, side, level, note] = told;
         // Return steps in, as every device's does, with its likeliest act
         // first inside: using it, or for the one chosen, whether it's
         // Muted. A Return that muted it would do the opposite as it
@@ -268,11 +283,11 @@ Provider {
         const row = entering(member({
             thing: true,
             key: `sound:${node.name}`,
-            name: named(node),
-            glyph: worn(node),
+            name: name,
+            glyph: mark,
             hue: "machine",
-            side: used ? said("chosen") : "",
-            graph: loudness(node),
+            side: side,
+            graph: bar(level),
             note: note,
             drawer: () => provider.drawerOf(node)
         }), () => provider.verbs(node));
@@ -1656,8 +1671,13 @@ Provider {
     // volume, a jack or niri's workspaces moving made every device's row
     // again: 137 in four minutes with the launcher shut on Joel's shell
     // (YQZGPC, 2026-11-10). Home's count reads the devices themselves.
-    readonly property var all: whileWanted("all", () => ordered(outputs)
-        .concat(ordered(inputs)).filter(node => !!node.audio).map(node => made(node)))
+    readonly property var all: whileWanted("all", () => {
+        keepingBegun(keeping);
+        const rows = ordered(outputs).concat(ordered(inputs)).filter(node => !!node.audio)
+            .map(node => kept(node));
+        keptOnly(keeping);
+        return rows;
+    })
     onAllChanged: changed()
 
     // A device's row as it reads now, for Now's Volume and Microphone,
@@ -1725,7 +1745,12 @@ Provider {
     // How loud a device is as a bar, empty while it's muted. A loud one
     // wants nothing, so the bar never warns.
     function loudness(node) {
-        return bar(!node || !node.audio || node.audio.muted ? 0 : node.audio.volume);
+        return bar(audible(node));
+    }
+
+    // How loud it's heard, as a share, none while it's muted.
+    function audible(node) {
+        return !node || !node.audio || node.audio.muted ? 0 : node.audio.volume;
     }
 
     // A player's drawer, as the programs' Media row has it (Applications'
