@@ -431,3 +431,45 @@
  	return true;
  }
  
+--- a/packages/tui/src/tui.ts
++++ b/packages/tui/src/tui.ts
+@@ -559,6 +559,9 @@
+ 
+ 	protected resetRenderState(): void {}
+ 
++	/** Forgets which images the terminal holds, so the next render sends them again. */
++	protected forgetSentImages(): void {}
++
+ 	protected beforeTerminalStart(): void {}
+ 
+ 	protected afterTerminalStart(): void {}
+@@ -1030,6 +1033,16 @@
+ 		this.doRender();
+ 	}
+ 
++	/**
++	 * Redraws everything, images included, for a terminal that has seen none of
++	 * this screen, as a viewer joining a hosted screen has. A forced render
++	 * alone only places the images the terminal was sent before.
++	 */
++	repaintForNewTerminal(): void {
++		this.forgetSentImages();
++		this.requestRender(true);
++	}
++
+ 	requestRender(force = false): void {
+ 		if (force) {
+ 			this.resetRenderState();
+--- a/packages/tui/src/tui-alt-screen.ts
++++ b/packages/tui/src/tui-alt-screen.ts
+@@ -500,6 +500,10 @@
+ 		this.currentLayout = undefined;
+ 	}
+ 
++	protected override forgetSentImages(): void {
++		this.uploadedKittyImages.clear();
++	}
++
+ 	scrollBy(lines: number): void {
+ 		this.getPrimaryScrollView().scrollBy(lines);
+ 		this.requestRender();

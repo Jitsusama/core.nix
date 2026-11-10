@@ -1490,8 +1490,9 @@
   pi-hosted-screen-stays-in-its-session = ''
     pi built with the host's patches, applied exactly, ends only a hosted screen when it quits,
     crashes or is suspended, binds nothing after quitting during startup, copies (a fullscreen
-    selection too) through its viewers' terminals, refuses the external editor
-    and tells every screen of a theme change, while ordinary pi keeps its process exits
+    selection too) through its viewers' terminals, refuses the external editor,
+    tells every screen of a theme change and sends a viewer who joins late the images
+    already on the screen, while ordinary pi keeps its process exits
   '';
   pi-hosts-start-with-the-session = ''
     each realm a machine names gets an attended and a background pi host, started with the

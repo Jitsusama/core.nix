@@ -1,7 +1,8 @@
 // The host-only InteractiveMode patch keeps a hosted screen inside its own
 // session: closing it never ends the process, a copy (a selection's too)
-// reaches its viewers' terminals rather than the host's, and every screen
-// hears a theme change.
+// reaches its viewers' terminals rather than the host's, every screen
+// hears a theme change, and a viewer who joins late is sent the images
+// already on the screen.
 // The real methods run against fake runtimes; no TTY, model request or
 // extension is started. Ordinary signal and suspend paths retain their
 // process semantics. Arguments name the package and, optionally, source.
@@ -31,6 +32,9 @@ function loadMode() {
 const { InteractiveMode, createInteractiveTui, createInteractiveTuiReference } = await loadMode();
 const themeSource = join(dirname(source), `theme/theme${source.endsWith(".ts") ? ".ts" : ".js"}`);
 const { onThemeChange, setThemeInstance } = await loadModule(themeSource);
+const { Image, setCapabilities } = await import(
+  join(agentPackage, "node_modules/@earendil-works/pi-tui/dist/index.js")
+);
 const osc52 = (text) => `\u001b]52;c;${Buffer.from(text).toString("base64")}\u0007`;
 
 afterEach(() => mock.restoreAll());
@@ -173,6 +177,37 @@ it("a hosted fullscreen selection is copied to its viewers' terminals", async ()
     [osc52("selected")],
   );
   assert.equal(hostWrites, 0);
+});
+
+it("a repaint for a viewer who joined late sends the images already on the screen", async () => {
+  const terminal = viewerTerminal();
+  const renderer = createInteractiveTui({
+    tuiMode: "fullscreen",
+    showHardwareCursor: false,
+    logDirectory: process.env.HOME,
+    terminal,
+  });
+  setCapabilities({ images: "kitty", trueColor: true, hyperlinks: false });
+  // A one-pixel PNG.
+  const pixel =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+  renderer.addChild(new Image(pixel, "image/png", { fallbackColor: (text) => text }));
+  const uploads = () =>
+    terminal.write.mock.calls.filter((call) => call.arguments[0].includes("\u001b_Ga=T")).length;
+  const frame = () => new Promise((settle) => setImmediate(settle));
+  renderer.start();
+  renderer.renderNow(true);
+  assert.equal(uploads(), 1, "the first frame uploads the image");
+
+  // Ordinary pi's forced redraw only places what its terminal already holds.
+  renderer.requestRender(true);
+  await frame();
+  assert.equal(uploads(), 1, "a forced redraw places the image it uploaded");
+
+  renderer.repaintForNewTerminal();
+  await frame();
+  renderer.stop();
+  assert.equal(uploads(), 2, "a viewer who joined late is sent the image's data");
 });
 
 it("a hosted copy too large for the terminal says so and writes nothing", async () => {

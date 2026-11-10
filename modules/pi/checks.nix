@@ -360,7 +360,8 @@ in
 
   # A hosted pi's screen stays in its own conversation: quitting, a crash or
   # a suspend ends only that screen, a copy reaches its viewers' terminals,
-  # every screen hears a theme change, and ordinary pi keeps every path.
+  # every screen hears a theme change, a viewer who joins late is sent the
+  # images on the screen, and ordinary pi keeps every path.
   pi-hosted-screen-stays-in-its-session =
     pkgs.runCommandLocal "pi-hosted-screen-stays-in-its-session" { }
       ''
