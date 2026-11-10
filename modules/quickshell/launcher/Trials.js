@@ -69,6 +69,26 @@ function timed(trial, searched, drawn, parts) {
     } });
 }
 
+// What a step spent its time on, said as a key's parts are: `inner` the
+// parts of the search that drew the place stepped into, or null, and
+// `at` when the step began, made its lists, held them, opened the row
+// and ended. Its lists are the step's own and those the place found its
+// rows in; its rows whatever else it did after opening; its answers and
+// their composing the place's own, so a slow step says where its rows
+// went (RTOIMQ, 2026-11-10).
+function stepped(inner, at) {
+    const finding = inner ? inner.lists : 0;
+    const answers = inner ? inner.answers : 0;
+    return {
+        lists: at.made - at.began + finding,
+        rows: Math.max(0, at.ended - at.opened - finding - answers),
+        answers,
+        each: Object.assign({}, inner?.each, { making: at.made - at.began, finding,
+            holding: at.pushed - at.made, opening: at.opened - at.pushed }),
+        composing: inner?.composing ?? null
+    };
+}
+
 // The trial with one more key of this kind, or as it was for a kind not
 // counted.
 function counted(trial, kind) {

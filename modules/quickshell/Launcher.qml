@@ -73,6 +73,7 @@ import "launcher/Steady.js" as Steady
 import "launcher/RowsKept.js" as RowsKept
 import "launcher/Becoming.js" as Becoming
 import "launcher/Pacing.js" as Pacing
+import "launcher/Trials.js" as Trials
 import "launcher/Wanted.js" as Wanted
 import "launcher/Order.js" as Order
 import "launcher/PlaceRow.js" as PlaceRow
@@ -4340,6 +4341,7 @@ Scope {
         // into from a collection's match, the match stays selected among all
         // it holds (Joel, 2026-10-26: stepping in keeps the match). A step
         // whose line holds its words, as a save's name, puts them back.
+        searchParts = null;
         restart(row.words?.() ?? "");
         placeCaret(row);
         if (row.from) {
@@ -4350,9 +4352,10 @@ Scope {
             }
         }
         // Said as a key's are: making the step's lists, what each part of
-        // stepping took, and the search that draws its rows.
-        searchParts = { lists: made - began, rows: Date.now() - opened, answers: 0,
-            each: { holding: pushed - made, opening: opened - pushed } };
+        // stepping took, and the search that drew its rows, whose parts
+        // restart() left.
+        searchParts = Trials.stepped(searchParts, { began, made, pushed, opened,
+            ended: Date.now() });
         keyTimed(`\u2192 ${row.name}`, began, heard, pressed);
         return true;
     }
@@ -5214,7 +5217,10 @@ Scope {
                     current = 0;
                 return;
             }
-            matches = live(found);
+            const foundAt = Date.now();
+            const lived = live(found);
+            const livedAt = Date.now();
+            matches = lived;
             // What's typed taken away whole leaves the selection on the row
             // it was on, now among them all.
             const kept = cleared ? matches.findIndex(row => steadyId(row) === cleared) : -1;
@@ -5223,6 +5229,13 @@ Scope {
                 list.positionViewAtIndex(kept, ListView.Contain);
             else
                 list.positionViewAtBeginning();
+            // Said as the top level's are: finding the place's rows, then
+            // showing them, so a letter or a step inside says where its
+            // time went.
+            searchParts = { before: 0, lists: foundAt - searchBegan, rows: 0,
+                answers: Date.now() - foundAt, each: {}, within: null,
+                composing: { asking: 0, placing: livedAt - foundAt,
+                    showing: Date.now() - livedAt } };
             return;
         }
         // What the search spends its time on, said with a key that's slow
@@ -5340,8 +5353,8 @@ Scope {
             composing: composeParts };
     }
 
-    // What the last search at the top level spent its time on, or null for
-    // one inside a step.
+    // What the last search of what's typed spent its time on, at the top
+    // or inside a step, or null when the search said nothing of it.
     property var searchParts: null
     // What each collection took in the last search of them.
     property var listsTook: ({})
