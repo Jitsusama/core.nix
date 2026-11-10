@@ -18,6 +18,7 @@ import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "../PiSource.js" as Pi
 import "../When.js" as When
 import "Order.js" as Order
 import "RealmMachines.js" as Listed
@@ -163,7 +164,10 @@ Provider {
     // told again each time the harness writes a list of them, and every
     // quest's row was once made again at each change, about 824 on Joel's
     // shell (2026-11-03); a row is now kept while nothing it says changed.
-    // A plain object, so keeping one notifies nothing.
+    // A plain object, so keeping one notifies nothing. What it was made
+    // from is compared in place rather than as text, since the text of
+    // Joel's 1,063 quests, about a million characters, started a garbage
+    // collection at every list the harness wrote (2026-11-10).
     readonly property var kept: ({})
 
     // Open first, by priority and then rank; the rest, last touched first.
@@ -182,9 +186,9 @@ Provider {
         const sessions = loaded;
         const next = {};
         const rows = sorted.map(quest => {
-            const from = JSON.stringify([quest, sessions[quest.id] ?? null]);
+            const from = [quest, sessions[quest.id] ?? null];
             const before = provider.kept[quest.id];
-            next[quest.id] = before && before.from === from
+            next[quest.id] = before && Pi.alike(before.from, from)
                 ? before : { from: from, row: made(quest) };
             return next[quest.id].row;
         });

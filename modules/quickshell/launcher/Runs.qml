@@ -17,6 +17,7 @@ import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "../PiSource.js" as Pi
 import "Order.js" as Order
 
 Provider {
@@ -144,7 +145,10 @@ Provider {
     // opening made every run's row again, 279 on Joel's shell with only a
     // few running (2026-11-03); a finished one's row is now kept while
     // nothing it says changed. A plain object, so keeping one notifies
-    // nothing.
+    // nothing. What it was made from is compared in place rather than as
+    // text, since the text of Joel's 538 runs, about 1.3 million
+    // characters, started a garbage collection at every change of a
+    // session (2026-11-10).
     readonly property var kept: ({})
 
     // A run as its session leaves it: one the node says runs whose session
@@ -169,9 +173,10 @@ Provider {
             if (run.participants.some(p => running(p.state)))
                 return made(run);
             const address = sessions[run.parent]?.live ? sessions[run.parent].address : "";
-            const from = [JSON.stringify(run), address, sharing].join("\n");
+            const from = [run, address, sharing];
             const before = provider.kept[run.id];
-            next[run.id] = before && before.from === from ? before : { from: from, row: made(run) };
+            next[run.id] = before && Pi.alike(before.from, from)
+                ? before : { from: from, row: made(run) };
             return next[run.id].row;
         });
         for (const id of Object.keys(provider.kept))
