@@ -2,6 +2,11 @@
 # Locks the screen through Quickshell and returns once niri has drawn the
 # lock on every screen, as Quickshell says by its marker file, or fails
 # after three seconds, so a sleep held for it never shows the desktop.
+#
+# It says why it locks, as its first argument gives it, to the journal of
+# what asked, since the lock itself can't tell an idle lock from a lid's.
+
+echo "locking: ${1:-asked}" >&2
 
 marker=$XDG_RUNTIME_DIR/quickshell-locked
 drawn() { [ "$(cat "$marker" 2> /dev/null)" = locked ]; }

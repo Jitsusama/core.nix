@@ -6,6 +6,6 @@
 # the lock wasn't drawn in time, which lock-screen reports by failing.
 
 status=0
-lock-screen || status=$?
+lock-screen "the machine sleeps" || status=$?
 niri msg action power-off-monitors
 exit "$status"

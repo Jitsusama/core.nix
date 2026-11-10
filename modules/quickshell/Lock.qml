@@ -140,6 +140,9 @@ Scope {
                 marker.setText("unlocked\n");
             }
             Report.say(`${sessionLock.secure ? "secured" : "released"} lock`);
+            // Said to the journal each time, so a lock that stops coming
+            // shows as a gap: the lock writes nothing else that lasts.
+            console.info(sessionLock.secure ? "lock: drawn on every screen" : "lock: lifted");
         }
     }
 

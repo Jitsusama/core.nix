@@ -2647,6 +2647,10 @@
     swayidle marks someone at the machine from the session's start and from any key or touch, and
     takes the mark away after two minutes without one, for a followed switch to wait on
   '';
+  stepping-away-asks-logind-nothing = ''
+    the lock and the screens going off as Joel steps away wait on no hold of logind's idle lock,
+    only on Keep Awake's and a call's, so a program holding the machine awake keeps no lock off
+  '';
   the-desktop-follows-dictation = ''
     the shell follows each dictation state, watches again a service its socket restarts, and tries a
     socket nothing listens on once, never looping

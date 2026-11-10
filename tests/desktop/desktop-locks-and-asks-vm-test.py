@@ -115,6 +115,75 @@ def test_logind_saying_to_unlock_lets_the_lock_go(desktop: Desktop) -> None:
     desktop.as_account(f"grep -qx unlocked {LOCKED}")
 
 
+# Where swayidle-away marks someone at the machine.
+HERE = "$XDG_RUNTIME_DIR/someone-at-the-machine"
+
+# swayidle-away's own seconds, made short: the mark, the lock, and the screens going off, late
+# enough that the test never turns them off.
+SOON = "2 4 3600"
+
+
+def test_the_screen_locks_as_joel_steps_away_past_holds_that_keep_it_awake(
+    desktop: Desktop,
+) -> None:
+    """The screen locks as Joel steps away though mycelium holds logind's idle off.
+
+    A swayidle that hears logind drops every timeout while anything holds logind's lock
+    against going idle, and mycelium holds it whenever it holds work, so the screen went
+    unlocked for as long as Joel was away (2026-11-10). swayidle-away asks logind nothing.
+    The test runs it with short times, since typing by wtype counts as no key here.
+    """
+    machine = desktop.machine
+    desktop.as_account(f"grep -qx unlocked {LOCKED}")
+    desktop.as_account(
+        "systemd-run --user --unit=holds-sessions systemd-inhibit --what=idle --mode=block"
+        " --who=mycelium '--why=It holds sessions for the realm' sleep infinity"
+    )
+    try:
+        desktop.as_account(f"touch {HERE}")
+        with desktop.told("secured lock", timeout=timedelta(seconds=60)):
+            desktop.as_account(f"systemd-run --user --unit=away-soon swayidle-away {SOON}")
+        desktop.as_account(f"grep -qx locked {LOCKED}")
+        desktop.as_account(f"test ! -e {HERE}")
+        # Each lock says why it came and that it was drawn, so a lock that stops coming
+        # shows as a gap in the journal.
+        desktop.as_account("journalctl --user -u away-soon | grep -q 'locking: Joel stepped away'")
+        machine.wait_until_succeeds(
+            desktop.in_session("journalctl --user -u quickshell | grep -q 'lock: drawn'"),
+            timeout=timedelta(seconds=30),
+        )
+        with desktop.told("released lock"):
+            desktop.as_account("qs ipc call lock release")
+        machine.wait_until_succeeds(
+            desktop.in_session("journalctl --user -u quickshell | grep -q 'lock: lifted'"),
+            timeout=timedelta(seconds=30),
+        )
+    finally:
+        desktop.as_account("systemctl --user stop away-soon holds-sessions || true")
+        desktop.as_account("qs ipc call lock release")
+    desktop.as_account(f"grep -qx unlocked {LOCKED}")
+
+
+def test_keep_awake_keeps_the_screen_unlocked_as_joel_steps_away(desktop: Desktop) -> None:
+    """Keep Awake keeps the screen on and unlocked as Joel steps away, as a call's hold does."""
+    machine = desktop.machine
+    desktop.as_account(f"grep -qx unlocked {LOCKED}")
+    desktop.as_account("systemctl --user start keep-awake.service")
+    try:
+        desktop.as_account(f"systemd-run --user --unit=away-kept swayidle-away {SOON}")
+        machine.wait_until_succeeds(
+            desktop.in_session(
+                "journalctl --user -u away-kept | grep -q 'the screen stays: Keep Awake holds it'"
+            ),
+            timeout=timedelta(seconds=60),
+        )
+        desktop.as_account(f"grep -qx unlocked {LOCKED}")
+    finally:
+        desktop.as_account("systemctl --user stop away-kept keep-awake.service || true")
+        desktop.as_account("qs ipc call lock release")
+    desktop.as_account(f"grep -qx unlocked {LOCKED}")
+
+
 def test_polkits_prompt_lets_the_account_start_a_system_service(desktop: Desktop) -> None:
     """Polkit's prompt lets the account start a system service."""
     machine = desktop.machine

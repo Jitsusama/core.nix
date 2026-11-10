@@ -3,6 +3,19 @@
 # screen. A while after locking, niri turns the screens off; any key or touch
 # turns them back on.
 #
+# Two swayidles do it. One hears logind: it locks before sleep and when
+# logind asks, unlocks when logind says to, and tells logind the session is
+# idle. The other, swayidle-away (away.sh), asks logind nothing and does
+# what happens as Joel steps away: it locks the screen, turns the screens
+# off and keeps the mark a followed switch waits on. A swayidle that hears
+# logind drops every timeout while anything holds logind's lock against
+# going idle, and mycelium holds it whenever it holds work, so with one
+# swayidle the screen never locked while Joel was away (2026-11-10). Keep
+# Awake and a call's transcripts hold that lock to keep the screen on and
+# unlocked, so swayidle-away asks screen-kept before locking or turning the
+# screens off; Wayland's own inhibitor, held by a video or a call in
+# Chrome, it hears through niri.
+#
 # Asking for the lock returns before it's drawn, and niri shows the desktop
 # until every screen has its lock, so a machine let sleep at once could wake
 # showing the desktop. The lock command returns once Quickshell says niri has
@@ -18,8 +31,7 @@
 # As the screens go off, swayidle tells logind the session is idle, which on
 # battery lets idle sleep have the laptop (../idle-sleep/nixos.nix); any key
 # or touch, an unlock or a wake says it isn't. While anything holds logind's
-# lock against going idle, swayidle neither locks, turns the screens off nor
-# says the session is idle, as Keep Awake wants.
+# lock against going idle, it doesn't say so, as mycelium and Keep Awake want.
 #
 # The screens go off and on through the system's niri, the one with core's patches,
 # so the machine doesn't carry a second niri just to ask.
@@ -48,17 +60,42 @@ let
     ];
     text = builtins.readFile ./lock-for-sleep.sh;
   };
+  screenKept = pkgs.writeShellApplication {
+    name = "screen-kept";
+    runtimeInputs = [
+      pkgs.jq
+      pkgs.systemd
+    ];
+    text = builtins.readFile ./screen-kept.sh;
+  };
+  # swayidle runs each command through sh, with this path.
+  away = pkgs.writeShellApplication {
+    name = "swayidle-away";
+    runtimeInputs = [
+      pkgs.bash
+      pkgs.coreutils
+      pkgs.swayidle
+      lock
+      niri
+      screenKept
+    ];
+    text = builtins.readFile ./away.sh;
+  };
   screensOn = "${lib.getExe niri} msg action power-on-monitors";
-  # Seconds from the last key or touch to the screens going off.
+  # Seconds from the last key or touch to each step of stepping away: no
+  # one marked at the machine, the lock, and the screens going off.
+  unmarked = 120;
+  locked = 300;
   screensOff = 600;
-  # The mark that someone is at the machine, which swayidle's commands run
-  # through a shell expand.
-  here = "\"$XDG_RUNTIME_DIR/someone-at-the-machine\"";
+  # The mark that someone is at the machine.
+  here = "%t/someone-at-the-machine";
 in
 {
   home.packages = [
     lock
     lockForSleep
+    screenKept
+    away
   ];
 
   services.swayidle = {
@@ -73,33 +110,28 @@ in
     events = {
       before-sleep = lib.getExe lockForSleep;
       after-resume = screensOn;
-      lock = lib.getExe lock;
+      lock = "${lib.getExe lock} 'logind asked'";
       unlock = "${lib.getExe' pkgs.quickshell "qs"} ipc call lock release";
     };
-    timeouts = [
-      {
-        timeout = 300;
-        command = lib.getExe lock;
-      }
-      {
-        timeout = screensOff;
-        command = "${lib.getExe niri} msg action power-off-monitors";
-      }
-      # A switch the follower asked for waits while this mark says someone
-      # touched a key or the pointer in the last two minutes
-      # (../update-to-main/nixos.nix), since a switch restarts the shell
-      # under their hands.
-      {
-        timeout = 120;
-        command = "${lib.getExe' pkgs.coreutils "rm"} -f ${here}";
-        resumeCommand = "${lib.getExe' pkgs.coreutils "touch"} ${here}";
-      }
-    ];
   };
 
-  # A session just started has someone at it, and one ended has nobody.
-  systemd.user.services.swayidle.Service = {
-    ExecStartPre = "${lib.getExe' pkgs.coreutils "touch"} %t/someone-at-the-machine";
-    ExecStopPost = "${lib.getExe' pkgs.coreutils "rm"} -f %t/someone-at-the-machine";
+  # A followed switch waits while this marks someone touched a key or the
+  # pointer in the last two minutes (../update-to-main/nixos.nix), since a
+  # switch restarts the shell under their hands. A session just started
+  # has someone at it, and one ended has nobody.
+  systemd.user.services.swayidle-away = {
+    Unit = {
+      Description = "Locks the screen and turns the screens off as Joel steps away";
+      PartOf = [ "graphical-session.target" ];
+      After = [ "graphical-session.target" ];
+      ConditionEnvironment = "WAYLAND_DISPLAY";
+    };
+    Service = {
+      ExecStartPre = "${lib.getExe' pkgs.coreutils "touch"} ${here}";
+      ExecStart = "${lib.getExe away} ${toString unmarked} ${toString locked} ${toString screensOff}";
+      ExecStopPost = "${lib.getExe' pkgs.coreutils "rm"} -f ${here}";
+      Restart = "always";
+    };
+    Install.WantedBy = [ "graphical-session.target" ];
   };
 }

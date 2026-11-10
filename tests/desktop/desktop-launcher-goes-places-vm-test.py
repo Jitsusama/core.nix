@@ -57,6 +57,8 @@ def test_the_screen_never_locks_by_itself_however_long_the_test_waits(desktop: D
     for none, and the idle lock fell mid-run, failing every subtest after it behind the lock
     (2026-11-03). The lock is still asked for by its key and by logind.
     """
+    away = desktop.as_account("systemctl --user is-active swayidle-away || true").strip()
+    assert away == "inactive", f"swayidle-away locks the screen by itself: {away}"
     line = desktop.as_account("systemctl --user show swayidle -p ExecStart --value")
     assert " timeout " not in line, f"swayidle locks the screen by itself: {line}"
     assert " lock " in line, f"swayidle no longer locks when logind asks: {line}"

@@ -919,8 +919,10 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # minutes pass with no key from the test, typing by wtype counting
         # for none, and the idle lock fell mid-run, failing every subtest
         # after it behind the lock (2026-11-03). The lock is tested by its
-        # key and by logind's lock-session, which swayidle still answers.
-        services.swayidle.timeouts = lib.mkForce [ ];
+        # key and by logind's lock-session, which swayidle still answers,
+        # and stepping away by swayidle-away run with short times, which
+        # the test starts itself.
+        systemd.user.services.swayidle-away.Install.WantedBy = lib.mkForce [ ];
         # Dictation's own service would load Whisper in the VM.
         systemd.user.services.dictation.Service.ExecStart = lib.mkForce "${standInDictation}";
         # The google program would ask Google, as an account nobody signed
