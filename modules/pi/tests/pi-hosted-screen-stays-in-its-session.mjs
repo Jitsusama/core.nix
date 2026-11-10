@@ -1,7 +1,6 @@
 // The host-only InteractiveMode patch keeps a hosted screen inside its own
-// session: closing it never ends the process, a copy (a selection's too)
-// reaches its viewers' terminals rather than the host's, and every screen
-// hears a theme change.
+// session: closing it never ends the process, a suspend stops only the
+// viewer that asked, and every screen hears a theme change.
 // The real methods run against fake runtimes; no TTY, model request or
 // extension is started. Ordinary signal and suspend paths retain their
 // process semantics. Arguments name the package and, optionally, source.
@@ -28,10 +27,9 @@ function loadModule(path) {
 function loadMode() {
   return loadModule(source);
 }
-const { InteractiveMode, createInteractiveTui, createInteractiveTuiReference } = await loadMode();
+const { InteractiveMode } = await loadMode();
 const themeSource = join(dirname(source), `theme/theme${source.endsWith(".ts") ? ".ts" : ".js"}`);
 const { onThemeChange, setThemeInstance } = await loadModule(themeSource);
-const osc52 = (text) => `\u001b]52;c;${Buffer.from(text).toString("base64")}\u0007`;
 
 afterEach(() => mock.restoreAll());
 
@@ -103,92 +101,6 @@ it("stopping a screen stops its theme listener", () => {
   InteractiveMode.prototype.stop.call(mode);
   assert.equal(unsubscribe.mock.callCount(), 1);
   assert.equal(mode.themeChangeUnsubscribe, undefined);
-});
-
-it("a hosted copy reaches its viewers' terminals and never the host's output", async () => {
-  const { mode, notices } = screen();
-  mode.runtimeHost.session.getLastAssistantText = () => "hello";
-  const hostOutput = mock.method(process.stdout, "write", () => true);
-  await mode.handleCopyCommand();
-  const hostWrites = hostOutput.mock.callCount();
-  mock.restoreAll();
-  assert.deepEqual(
-    mode.ui.terminal.write.mock.calls.map((call) => call.arguments[0]),
-    [osc52("hello")],
-  );
-  assert.equal(hostWrites, 0);
-  assert.deepEqual(notices, ["Copied last agent message to clipboard"]);
-});
-
-// A terminal that keeps what it is sent, for a real renderer to draw on.
-function viewerTerminal() {
-  return {
-    columns: 80,
-    rows: 24,
-    kittyProtocolActive: true,
-    start: mock.fn(),
-    stop: mock.fn(),
-    drainInput: async () => undefined,
-    write: mock.fn(),
-    moveBy: mock.fn(),
-    hideCursor: mock.fn(),
-    showCursor: mock.fn(),
-    clearLine: mock.fn(),
-    clearFromCursor: mock.fn(),
-    clearScreen: mock.fn(),
-    setTitle: mock.fn(),
-    setProgress: mock.fn(),
-    setProgramStatus: mock.fn(),
-  };
-}
-
-it("a hosted fullscreen selection is copied to its viewers' terminals", async () => {
-  const { mode } = screen();
-  const terminal = viewerTerminal();
-  // The screen's own renderer switch builds the fullscreen renderer.
-  mode.renderer = createInteractiveTui({
-    tuiMode: "regular",
-    showHardwareCursor: false,
-    logDirectory: process.env.HOME,
-    terminal,
-  });
-  mode.ui = createInteractiveTuiReference(() => mode.renderer);
-  mode.options.tuiMode = "regular";
-  mode.fullscreenLayoutRoot = { render: () => [], invalidate: () => undefined };
-  Object.assign(mode.runtimeHost.session.settingsManager, {
-    getFullscreenCopyOnSelect: () => true,
-    getFullscreenWheelScrollLines: () => "auto",
-  });
-  assert.equal(mode.switchTuiMode("fullscreen", false, false), true);
-  assert.equal(mode.renderer.mode, "fullscreen");
-  terminal.write.mock.resetCalls();
-  const hostOutput = mock.method(process.stdout, "write", () => true);
-  // What a drag-select and the copy command both end in.
-  const copied = await mode.renderer.copyTextToClipboard("selected");
-  const hostWrites = hostOutput.mock.callCount();
-  mock.restoreAll();
-  assert.equal(copied, true);
-  assert.deepEqual(
-    terminal.write.mock.calls.map((call) => call.arguments[0]),
-    [osc52("selected")],
-  );
-  assert.equal(hostWrites, 0);
-});
-
-it("a hosted copy too large for the terminal says so and writes nothing", async () => {
-  const { mode, notices } = screen();
-  mode.runtimeHost.session.getLastAssistantText = () => "x".repeat(80_000);
-  await mode.handleCopyCommand();
-  assert.equal(mode.ui.terminal.write.mock.callCount(), 0);
-  assert.deepEqual(notices, ["Clipboard unavailable: text exceeds the OSC 52 size limit"]);
-});
-
-it("a hosted screen refuses the external editor without leaving its viewers' screen", async () => {
-  const { mode, notices } = screen();
-  await mode.handleOpenExternalEditor();
-  assert.equal(mode.ui.stop.mock.callCount(), 0);
-  assert.equal(mode.editor.setText.mock.callCount(), 0);
-  assert.deepEqual(notices, ["The external editor is unavailable in a hosted session"]);
 });
 
 it("the host can check patch version before constructing a screen", () => {
@@ -434,6 +346,22 @@ it("hosted suspend refuses without stopping either screen or signalling the proc
   ]);
   assert.equal(first.mode.ui.stop.mock.callCount(), 0);
   assert.equal(second.mode.ui.stop.mock.callCount(), 0);
+});
+
+it("hosted suspend stops only the viewer that asked, when its host can", () => {
+  forbidProcessExit();
+  const able = screen();
+  const unable = screen();
+  able.mode.options.hosted.suspend = mock.fn(() => true);
+  unable.mode.options.hosted.suspend = mock.fn(() => false);
+  able.mode.handleCtrlZ();
+  unable.mode.handleCtrlZ();
+  assert.equal(able.mode.options.hosted.suspend.mock.callCount(), 1);
+  assert.deepEqual(able.notices, []);
+  assert.equal(able.mode.ui.stop.mock.callCount(), 0, "the screen runs on");
+  assert.deepEqual(unable.notices, [
+    "Suspend is unavailable in a hosted session; close the viewer to detach",
+  ]);
 });
 
 it("ordinary pi still registers process handlers and unregisters them on cleanup", () => {

@@ -358,14 +358,26 @@ in
         touch $out
       '';
 
-  # A hosted pi's screen stays in its own conversation: quitting, a crash or
-  # a suspend ends only that screen, a copy reaches its viewers' terminals,
-  # every screen hears a theme change, and ordinary pi keeps every path.
+  # A hosted pi's screen stays in its own conversation: quitting or a crash
+  # ends only that screen, a suspend stops only the viewer that asked, every
+  # screen hears a theme change, and ordinary pi keeps every path.
   pi-hosted-screen-stays-in-its-session =
     pkgs.runCommandLocal "pi-hosted-screen-stays-in-its-session" { }
       ''
         HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
           ${./tests/pi-hosted-screen-stays-in-its-session.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+        touch $out
+      '';
+
+  # A hosted pi's screen does in its viewers' terminals what pi does in its
+  # own: a copy reaches them, a viewer who joins late is sent the images on
+  # the screen, and the external editor opens where the viewer who asked is.
+  pi-hosted-screen-reaches-its-viewers =
+    pkgs.runCommandLocal "pi-hosted-screen-reaches-its-viewers" { }
+      ''
+        HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+          ${./tests/pi-hosted-screen-reaches-its-viewers.mjs} \
+          ${hostedPi}/lib/node_modules/pi-monorepo
         touch $out
       '';
 
