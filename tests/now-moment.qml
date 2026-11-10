@@ -542,6 +542,16 @@ ShellRoot {
                 && heldFirst.indexOf(dueRow) === -1
                 && due.filter(row => row !== dueRow).every(row => heldFirst.includes(row)),
             JSON.stringify([now.tally.rows - forYouBefore, due.map(row => row.key)]));
+        // A session's window moving keeps its row, which reads none of it,
+        // but Go To goes to the session as it is now, not as it was.
+        const movedB = Object.assign({}, Sessions.wanting[0], { window: 7 });
+        Sessions.wanting = [movedB];
+        const wantKept = forYou().find(row => row.key === "on:waiting:want:WANTB");
+        wantKept.verbs().find(act => act.key.startsWith("verb:on:waiting:go:")).run();
+        expect("a kept session's Go To goes to it as it is now",
+            heldFirst.includes(wantKept) && Sessions.wentTo === movedB,
+            JSON.stringify(Sessions.wentTo));
+        Sessions.wentTo = null;
         WaitingOnYou.now = [];
         Sessions.wanting = [];
         now.lookTexts = {};

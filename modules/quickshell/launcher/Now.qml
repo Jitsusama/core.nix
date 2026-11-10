@@ -1200,33 +1200,41 @@ Provider {
         // What it asked, in its own words, or the session by its name.
         const asked = String(session.presence?.wants?.said || session.title);
         const resting = Sessions.parkedAs(session.address);
+        wantsNow[session.address] = session;
         return keptAlike(wantsKept, session.address, [made, asked, resting, session.title],
             () => madeWantRow(made, session, asked, resting));
     }
     readonly property var wantsKept: keeper()
+    // Each session wanting Joel as For You last read it, which a kept
+    // row's acts go to: Go To finds its window, its kitty and where it
+    // runs from the session, which can move while its row reads the same
+    // (Y2YBTS, 2026-11-10). Plain, so holding it notifies nothing.
+    readonly property var wantsNow: ({})
 
-    function madeWantRow(made, session, asked, resting) {
-        const key = `on:waiting:want:${session.address}`;
+    function madeWantRow(made, madeFrom, asked, resting) {
+        const key = `on:waiting:want:${madeFrom.address}`;
+        const address = madeFrom.address;
+        const session = () => provider.wantsNow[address] ?? madeFrom;
         const named = id => ({
             verb: Words.verb(`verb:on:waiting:${id}`),
             name: Words.name(`verb:on:waiting:${id}`),
             glyph: Words.glyph(`verb:on:waiting:${id}`),
             hue: "action",
-            side: session.title,
+            side: madeFrom.title,
             later: true
         });
         const inside = () => [
             thing(Object.assign(named("deal"), {
                 key: `verb:on:waiting:deal:${key}`,
                 run: () => {
-                    Sessions.steer(session.address, {
+                    Sessions.steer(address, {
                         act: "fill",
                         text: readyToDeal(asked)
                     }, put => {
                         if (put && resting)
                             Sessions.wake(resting);
                     });
-                    Sessions.goTo(session);
+                    Sessions.goTo(session());
                 }
             })),
             thing(Object.assign(named("go"), {
@@ -1234,7 +1242,7 @@ Provider {
                 run: () => {
                     if (resting)
                         Sessions.wake(resting);
-                    Sessions.goTo(session);
+                    Sessions.goTo(session());
                 }
             }))
         ];
@@ -1364,6 +1372,8 @@ Provider {
         keeps.forEach(keeping => keepingBegun(keeping));
         for (const identity of Object.keys(itemsNow))
             delete itemsNow[identity];
+        for (const address of Object.keys(wantsNow))
+            delete wantsNow[address];
         const rows = bandRows(bands.now, now).concat(kindRow("look", bandRows(bands.look, now)),
             kindRow("try", bandRows(bands.try, now)), latelyRows(now),
             laterRow === null ? [] : [laterRow], historyRow === null ? [] : [historyRow]);
