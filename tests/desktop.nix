@@ -1115,8 +1115,10 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       };
       # A switch starts tty1's getty, which Cage's unit conflicts with, so
       # it stops Cage and the session in it; greetd, which a machine runs,
-      # keeps the getty off. Only where the area switches.
-      systemd.services."getty@tty1".enable = lib.mkIf switchesTheSessionsKitty false;
+      # keeps the getty off. getty.target starts it as autovt@tty1, which
+      # is the name greetd turns off, and turning off getty@tty1 left the
+      # switch back stopping Cage. Only where the area switches.
+      systemd.services."autovt@tty1".enable = lib.mkIf switchesTheSessionsKitty false;
       # Stands in for niri's own unit, which starts the graphical session, and
       # with it the desktop portal.
       systemd.user.services.compositor = {
