@@ -649,32 +649,65 @@ Provider {
     // the right arrow does: Go To, then Done and Not Now, which stay open as
     // the item leaves its place, then its quest.
     // In For You's weighed list (`weighed`, the time it's weighed at), its
-    // side says the strongest reason it's there instead (ForYou.js's reason).
+    // side says the strongest reason it's there instead (ForYou.js's reason),
+    // and its row is kept while what it says reads the same (itemsKept).
     function item(each, weighed) {
         const now = each.ready && !each.putOff;
         const reason = weighed === undefined ? ""
             : ForYou.reason(itemThing(each), weighed, forYouSaid(weighed));
-        const where = whereOf(each);
+        // An ended session or concluded quest is a state, so it leads the
+        // side, said once (VKCF3Z, 2026-11-08).
+        const side = [ownerSaid(each), reason !== "" ? reason
+            : !now && waitsSaid(each) !== "" ? waitsSaid(each)
+            : typeof each.minutes === "number"
+            ? waitingSaid("minutes", { minutes: each.minutes }) : ""]
+            .filter(part => part !== "").join(" \u00b7 ");
+        const note = noteOf(each, reason);
+        if (weighed === undefined)
+            return itemRow(each, () => each, now, side, note, reason);
+        const identity = WaitingOnYou.identity(each);
+        itemsNow[identity] = each;
+        return keptAlike(itemsKept, identity, [each.title, now, side, note],
+            () => itemRow(each, () => provider.itemsNow[identity] ?? each, now, side, note,
+                reason));
+    }
+
+    // Each to-do's row in For You, by its identity, kept while its title,
+    // whether Joel can do it now, its side and its note read the same,
+    // which is all its row says; what's inside is made as it's stepped
+    // into. For You is asked what it holds at each refresh while it's
+    // held, and the node says its to-dos anew at each revision, so each
+    // was made anew, its acts too, at every change in Now (2026-11-10).
+    // Each to-do as For You last read it (itemsNow) is what a kept row's
+    // acts and drawer read. Plain, so keeping notifies nothing.
+    readonly property var itemsKept: keeper()
+    readonly property var itemsNow: ({})
+
+    // An item's row, `current()` giving the item as it is now.
+    function itemRow(each, current, now, side, note, reason) {
         // Go To, where it goes at its side, as going to anything open is
         // said everywhere, so the word never changes shape.
-        const does = where === "" ? null : act(each, "go", {
-            side: where,
-            later: true,
-            run: () => WaitingOnYou.go(each)
-        });
+        const does = one => {
+            const where = whereOf(one);
+            return where === "" ? null : act(one, "go", {
+                side: where,
+                later: true,
+                run: () => WaitingOnYou.go(one)
+            });
+        };
         // Dealing with it in its session leads, when it has one to go to.
-        const deal = WaitingOnYou.session(each) === null ? null : act(each, "deal", {
-            side: WaitingOnYou.session(each).title,
+        const deal = one => WaitingOnYou.session(one) === null ? null : act(one, "deal", {
+            side: WaitingOnYou.session(one).title,
             later: true,
-            run: () => provider.dealWith(each)
+            run: () => provider.dealWith(one)
         });
         // Its quest, said as the act it is (VKCF3Z, 2026-11-08: acts are
         // imperatives), its title at its side; Return opens the quest's row
         // as Quests has it, which never closes the launcher.
-        const quest = () => {
+        const quest = one => {
             const found = (source("quests")?.everything() ?? [])
-                .find(row => row.key === `quest:${each.quest}`) ?? null;
-            return found === null ? null : act(each, "quest", {
+                .find(row => row.key === `quest:${one.quest}`) ?? null;
+            return found === null ? null : act(one, "quest", {
                 side: found.name,
                 stays: true,
                 drawer: found.drawer,
@@ -683,12 +716,16 @@ Provider {
         };
         // An item done in a window of its own leads with going there, its
         // app; one done in its session leads with dealing with it there.
-        const own = typeof each.window === "string" && each.window !== "";
-        const inside = () => (own ? [does, deal] : [deal, does]).concat([
-            act(each, "done", { stays: true, run: () => WaitingOnYou.settle(each, "done") }),
-            act(each, "notNow", { stays: true, run: () => WaitingOnYou.settle(each, "notNow") }),
-            quest()
-        ]).filter(row => row !== null);
+        const inside = () => {
+            const one = current();
+            const own = typeof one.window === "string" && one.window !== "";
+            return (own ? [does(one), deal(one)] : [deal(one), does(one)]).concat([
+                act(one, "done", { stays: true, run: () => WaitingOnYou.settle(one, "done") }),
+                act(one, "notNow", { stays: true,
+                    run: () => WaitingOnYou.settle(one, "notNow") }),
+                quest(one)
+            ]).filter(row => row !== null);
+        };
         const row = member({
             thing: true,
             key: `on:waiting:${WaitingOnYou.identity(each)}`,
@@ -704,15 +741,9 @@ Provider {
             name: each.title,
             glyph: Theme.glyph.waitsOnJoel,
             hue: now ? "strong" : "muted",
-            // An ended session or concluded quest is a state, so it leads
-            // the side, said once (VKCF3Z, 2026-11-08).
-            side: [ownerSaid(each), reason !== "" ? reason
-                : !now && waitsSaid(each) !== "" ? waitsSaid(each)
-                : typeof each.minutes === "number"
-                ? waitingSaid("minutes", { minutes: each.minutes }) : ""]
-                .filter(part => part !== "").join(" \u00b7 "),
-            note: noteOf(each, reason),
-            drawer: () => provider.drawerOf(each, reason),
+            side: side,
+            note: note,
+            drawer: () => provider.drawerOf(current(), reason),
             // Its verbs and targets both make it a row holding rows, which
             // Return's own act never leads (Catalogue.js's leading).
             verbs: inside,
@@ -911,7 +942,7 @@ Provider {
             name: one.title,
             glyph: Theme.glyph[ForYou.glyphOf(one.kind)],
             hue: waits ? "strong" : "muted",
-            side: waits ? ForYou.reason(lookThing(one), now, say) : ForYou.historySide(one, say),
+            side: lookSide(one, now, say),
             note: one.why,
             later: true,
             drawer: () => provider.lookDrawer(one),
@@ -921,36 +952,28 @@ Provider {
         });
     }
 
-    // A look's row, kept while its file reads the same, within the minute
-    // and while the same sessions want Joel, which is all a row reads
-    // besides: For You is asked what it holds as it's stepped into and
-    // again as anything in Now changes while it's held, and making every
-    // look anew each time made 2,535 rows in one opening of Joel's
-    // (2026-11-09). Plain, so keeping notifies nothing.
-    readonly property var keptLooks: ({ minute: -1, wanting: "", rows: {} })
-    // Who wants Joel, as a look's row reads them (ForYou.js's leftBy): the
-    // sessions are said anew at each step and each focus move, so their
-    // list is a new one far more often than who wants him changes.
-    readonly property string wantingNames: (Sessions.wanting ?? []).map(session => [
-        session.address ?? "", session.presence?.session ?? ""
-    ].concat(session.presence?.addresses ?? []).join("\u0001")).join("\u0002")
+    // What a look's row says at its side: the strongest reason it waits,
+    // or, in History, how it went and when.
+    function lookSide(one, now, say) {
+        return one.state === "waiting" ? ForYou.reason(lookThing(one), now, say)
+            : ForYou.historySide(one, say);
+    }
+
+    // A look's row, kept while its file reads the same and its side says
+    // the same, which is all a row reads besides: For You is asked what
+    // it holds as it's stepped into and again as anything in Now changes
+    // while it's held, and making every look anew each time made 2,535
+    // rows in one opening of Joel's (2026-11-09). Its side is what the
+    // minute and who wants Joel change, and only for some looks, so the
+    // rest are kept through both. Plain, so keeping notifies nothing.
+    readonly property var looksKept: keeper()
 
     function keptLook(one, now) {
-        const kept = keptLooks;
-        const minute = Math.floor(now / 60000);
-        if (kept.minute !== minute || kept.wanting !== wantingNames) {
-            kept.minute = minute;
-            kept.wanting = wantingNames;
-            kept.rows = {};
-        }
         const text = lookTexts[one.file];
-        const before = kept.rows[one.file];
-        if (before !== undefined && typeof text === "string" && before.text === text)
-            return before.row;
-        const row = lookRow(one, now);
-        if (one.file !== "")
-            kept.rows[one.file] = { text: text, row: row };
-        return row;
+        if (one.file === "" || typeof text !== "string")
+            return lookRow(one, now);
+        return keptAlike(looksKept, one.file, [text, lookSide(one, now, forYouSaid(now))],
+            () => lookRow(one, now));
     }
 
     // The to-dos Joel said were done, while their quest's file
@@ -1170,31 +1193,48 @@ Provider {
     // is woken by either, its window showing it come back, as a key typed
     // there would; Deal With It wakes it once the filled prompt is in its
     // inbox, which it reads as it starts, as Talk does (Sessions.talk).
+    // Each is kept while Agents' row for it, what it asked, its title and
+    // whether it's parked are the same, as Agents keeps its own row while
+    // its window and how it stands are (wantsKept).
     function wantRow(made, session) {
         // What it asked, in its own words, or the session by its name.
         const asked = String(session.presence?.wants?.said || session.title);
         const resting = Sessions.parkedAs(session.address);
-        const key = `on:waiting:want:${session.address}`;
+        wantsNow[session.address] = session;
+        return keptAlike(wantsKept, session.address, [made, asked, resting, session.title],
+            () => madeWantRow(made, session, asked, resting));
+    }
+    readonly property var wantsKept: keeper()
+    // Each session wanting Joel as For You last read it, which a kept
+    // row's acts go to: Go To finds its window, its kitty and where it
+    // runs from the session, which can move while its row reads the same
+    // (Y2YBTS, 2026-11-10). Plain, so holding it notifies nothing.
+    readonly property var wantsNow: ({})
+
+    function madeWantRow(made, madeFrom, asked, resting) {
+        const key = `on:waiting:want:${madeFrom.address}`;
+        const address = madeFrom.address;
+        const session = () => provider.wantsNow[address] ?? madeFrom;
         const named = id => ({
             verb: Words.verb(`verb:on:waiting:${id}`),
             name: Words.name(`verb:on:waiting:${id}`),
             glyph: Words.glyph(`verb:on:waiting:${id}`),
             hue: "action",
-            side: session.title,
+            side: madeFrom.title,
             later: true
         });
         const inside = () => [
             thing(Object.assign(named("deal"), {
                 key: `verb:on:waiting:deal:${key}`,
                 run: () => {
-                    Sessions.steer(session.address, {
+                    Sessions.steer(address, {
                         act: "fill",
                         text: readyToDeal(asked)
                     }, put => {
                         if (put && resting)
                             Sessions.wake(resting);
                     });
-                    Sessions.goTo(session);
+                    Sessions.goTo(session());
                 }
             })),
             thing(Object.assign(named("go"), {
@@ -1202,7 +1242,7 @@ Provider {
                 run: () => {
                     if (resting)
                         Sessions.wake(resting);
-                    Sessions.goTo(session);
+                    Sessions.goTo(session());
                 }
             }))
         ];
@@ -1288,9 +1328,15 @@ Provider {
     // count; its drawer names the heaviest. Its mark is muted, as any row
     // that holds more draws one, its name in text, so what needs him now
     // leads by its order (VKCF3Z, 2026-11-09).
+    // Kept while it holds the same rows, each kept as it is (kindsKept).
     function kindRow(kind, rows) {
         if (rows.length === 0)
             return [];
+        return [keptAlike(kindsKept, kind, rows, () => madeKindRow(kind, rows))];
+    }
+    readonly property var kindsKept: keeper()
+
+    function madeKindRow(kind, rows) {
         const id = `for-you:kind:${kind}`;
         const row = member({
             key: `on:waitingOnYou:kind:${kind}`,
@@ -1310,18 +1356,33 @@ Provider {
             targets: () => rows,
             run: () => provider.launcher?.enter(row)
         });
-        return [row];
+        return row;
     }
 
     // For You's own rows, each as it's for (ForYou.js's bands), the
     // heaviest first in each: what needs Joel now, one by one, then To Look
     // At and To Try, then Lately, Later and History (VKCF3Z, 2026-11-09).
+    // Each asking is a pass of the to-dos', sessions' and kinds' keeping,
+    // so what's no longer there is let go; a look is let go once its file
+    // is, since History's looks are kept beside them.
     function waitingRows() {
         const now = Date.now();
         const bands = ForYou.banded(forYouItems, now);
-        return bandRows(bands.now, now).concat(kindRow("look", bandRows(bands.look, now)),
+        const keeps = [itemsKept, wantsKept, kindsKept];
+        keeps.forEach(keeping => keepingBegun(keeping));
+        for (const identity of Object.keys(itemsNow))
+            delete itemsNow[identity];
+        for (const address of Object.keys(wantsNow))
+            delete wantsNow[address];
+        const rows = bandRows(bands.now, now).concat(kindRow("look", bandRows(bands.look, now)),
             kindRow("try", bandRows(bands.try, now)), latelyRows(now),
             laterRow === null ? [] : [laterRow], historyRow === null ? [] : [historyRow]);
+        keeps.forEach(keeping => keptOnly(keeping));
+        for (const file of Object.keys(looksKept.rows)) {
+            if (!(file in lookTexts))
+                delete looksKept.rows[file];
+        }
+        return rows;
     }
 
     // Every row For You's :filter narrows, each one by one, as its bands
