@@ -141,6 +141,10 @@ Scope {
         const now = says(rows, heldKeys(), true);
         if (now === lastSaid)
             return;
+        let at = 0;
+        while (at < now.length && now[at] === lastSaid[at])
+            at += 1;
+        console.info(`diag changedTo ${settings?.name} at ${Date.now()} was ${lastSaid.slice(Math.max(0, at - 60), at + 80)} now ${now.slice(Math.max(0, at - 60), at + 80)}`);
         lastSaid = now;
         changed();
     }

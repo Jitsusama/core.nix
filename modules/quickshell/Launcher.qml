@@ -4391,6 +4391,8 @@ Scope {
     // each source heard is made again once, in the order heard.
     property var refreshing: []
     function refreshed(source) {
+        if (source.settings?.name === "agents")
+            console.trace(`diag agents changed at ${Date.now()}`);
         // A collection's note is read as the corpus is joined, so a source
         // saying it changed marks it stale even when its things are the
         // same.

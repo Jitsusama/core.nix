@@ -1096,7 +1096,10 @@ Provider {
     // and the launcher joins what a place says only when it says it
     // changed (Y2YBTS, 2026-11-07).
     readonly property string standing: summary()
-    onStandingChanged: changed()
+    onStandingChanged: {
+        console.info(`diag agents standing ${standing} at ${Date.now()}`);
+        changed();
+    }
     // With no session to say, its right says so, "none running", rather
     // than standing bare, since Agents holds sessions (VKCF3Z, 00ca9231).
     function homeSays() {
