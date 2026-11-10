@@ -1325,6 +1325,9 @@ onLinux {
     let
       qt = pkgs.qt6.qtdeclarative;
     in
+    # Kept in Nix because each line copies, or names in a variable, a file
+    # Nix gives it, and the cases it runs are a QML file of their own
+    # (tests/plate.qml).
     pkgs.runCommandLocal "a-things-drawer-says-its-parts" { } ''
       cp ${../../tests/plate.qml} plate.qml
       cp ${./launcher/Plate.js} Plate.js
