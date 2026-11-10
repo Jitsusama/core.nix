@@ -228,6 +228,7 @@
         session-backup = ./modules/session-backup/home.nix;
         signing = ./modules/signing/home.nix;
         slack = moduleFrom ./modules/slack/home.nix { inherit (self.homeModules) people quickshell; };
+        sound = ./modules/sound/home.nix;
         spend-watch = ./modules/spend-watch/home.nix;
         spotify = moduleFrom ./modules/spotify/home.nix {
           inherit spicetify-nix;
