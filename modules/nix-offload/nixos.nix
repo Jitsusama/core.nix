@@ -25,10 +25,27 @@
   lib,
   ...
 }:
+let
+  keys = config.jitsusama.nix-offload.builderKeys;
+  keysFile = "/run/nix-offload/builder-keys";
+in
 {
   options.jitsusama.nix-offload.account = lib.mkOption {
     type = lib.types.str;
     description = "The account whose nix-offload lends the builder, and so writes its line.";
+  };
+
+  options.jitsusama.nix-offload.builderKeys = lib.mkOption {
+    type = lib.types.listOf lib.types.str;
+    default = [ ];
+    example = [ "builders-1:AAAA...=" ];
+    description = ''
+      The public keys the lent builders sign what they build with. Nix
+      here trusts them, and `nix-offload there` brings what a lent builder
+      built back into this store only when it's signed, rather than taking
+      it unchecked as an account Nix trusts may. With none, it's taken
+      unchecked.
+    '';
   };
 
   config = {
@@ -67,6 +84,7 @@
       # timeouts. Eight lets four big builds fill such a builder, and a
       # build here still has half of a 16-thread laptop.
       cores = lib.mkDefault 8;
+      extra-trusted-public-keys = lib.mkIf (keys != [ ]) keys;
     };
 
     # A builder near its end hands over to a successor, whose relay shares
@@ -81,6 +99,12 @@
       "f /run/nix-offload/machines-with-standing 0644 ${config.jitsusama.nix-offload.account} - -"
       "f /run/nix-offload/store 0644 ${config.jitsusama.nix-offload.account} - -"
       "f /run/nix-offload/lending 0644 ${config.jitsusama.nix-offload.account} - -"
+    ]
+    # The keys the lent builders sign with, root's, where `there` reads
+    # whether to check what it brings back: the account's tools can't read
+    # the daemon's settings.
+    ++ lib.optional (keys != [ ]) "f+ ${keysFile} 0644 root root - ${toString keys}"
+    ++ [
       # The folder of a second lender, for VM tests alone, whose files only
       # the account's `there` reads: Nix is never given its builder.
       "d /run/nix-offload-vm 0755 ${config.jitsusama.nix-offload.account} - -"

@@ -508,6 +508,7 @@ pub fn run(
     waiting: Waiting,
     scratch: &Path,
     [ssh, nix]: [&str; 2],
+    signatures: Signatures,
 ) -> Ran {
     let mut outage: Option<std::time::Instant> = None;
     let lent = store.and_then(|store| builder(store.lines().next()?.trim()));
@@ -547,7 +548,7 @@ pub fn run(
             }
             let bring = match (&asked.out, asked.print) {
                 (Some(out), _) => Bring::Folder(out),
-                (None, true) => Bring::Store(nix),
+                (None, true) => Bring::Store(nix, signatures),
                 (None, false) => Bring::Nothing,
             };
             let tried = std::time::Instant::now();
@@ -1866,8 +1867,43 @@ pub enum Bring<'a> {
     Nothing,
     /// Its output, unpacked into this folder.
     Folder(&'a Path),
-    /// Its output paths, copied into this machine's store by this nix.
-    Store(&'a str),
+    /// Its output paths, copied into this machine's store by this nix,
+    /// their signatures taken so.
+    Store(&'a str, Signatures),
+}
+
+/// Whether what a builder built is checked for a signature Nix here
+/// trusts as it comes back into this store.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Signatures {
+    Checked,
+    /// Taken as it comes, as only an account Nix here trusts may: a
+    /// machine nearby signs nothing it builds.
+    Unchecked,
+}
+
+/// How what the lent builders build is taken, as the lender's folder
+/// `dir` says in `builder-keys`: checked where it names the keys they
+/// sign with, which Nix here trusts, and unchecked where it names none.
+pub fn signatures(dir: &Path) -> Signatures {
+    if fs::read_to_string(dir.join("builder-keys")).is_ok_and(|keys| !keys.trim().is_empty()) {
+        Signatures::Checked
+    } else {
+        Signatures::Unchecked
+    }
+}
+
+/// How long a checked copy back that failed waits before trying again,
+/// unless `NIX_OFFLOAD_SIGNED_WITHIN` says otherwise in seconds. A lent
+/// builder signs what it builds as it builds it, but a path it was sent
+/// from here only as its push signs the closures it uploads, every 20 s.
+const SIGNED_WITHIN: std::time::Duration = std::time::Duration::from_secs(30);
+
+fn signed_within() -> std::time::Duration {
+    std::env::var("NIX_OFFLOAD_SIGNED_WITHIN")
+        .ok()
+        .and_then(|seconds| seconds.parse().ok())
+        .map_or(SIGNED_WITHIN, std::time::Duration::from_secs)
 }
 
 pub fn on(
@@ -1903,7 +1939,7 @@ pub fn on_with(
     let status = match bring {
         Bring::Nothing => command.status(),
         Bring::Folder(out) => unpacked_into(&mut command, out),
-        Bring::Store(nix) => brought_from(&mut command, &lent.store, nix),
+        Bring::Store(nix, signatures) => brought_from(&mut command, &lent.store, nix, signatures),
     };
     let sent = fs::read_to_string(&said).ok().and_then(|log| sent(&log));
     let _ = fs::remove_file(&known);
@@ -2098,12 +2134,14 @@ const COPY_TRIES: u32 = 3;
 /// from `store` into this machine's, trying again up to [`COPY_TRIES`]
 /// times when the copy breaks off, and prints them once they're here, so
 /// a caller never reads a path this store lacks. Its status is the build's,
-/// or 1 when every copy fails. This machine's account is one its daemon
-/// trusts, so the builder's paths need no signature.
+/// or 1 when every copy fails. Each path comes signed or, `Unchecked`,
+/// however it comes, which this machine's daemon allows only an account
+/// it trusts.
 fn brought_from(
     command: &mut Command,
     store: &str,
     nix: &str,
+    signatures: Signatures,
 ) -> std::io::Result<std::process::ExitStatus> {
     use std::os::unix::process::ExitStatusExt;
     // output() would capture stderr too, and drop the builder's log and
@@ -2122,7 +2160,12 @@ fn brought_from(
         // ssh's control socket goes in TMPDIR, and a long one is past what
         // a socket's path may be.
         let copied = Command::new(nix)
-            .args(["copy", "--no-check-sigs", "--from", store])
+            .arg("copy")
+            .args(match signatures {
+                Signatures::Checked => &[][..],
+                Signatures::Unchecked => &["--no-check-sigs"][..],
+            })
+            .args(["--from", store])
             .args(&paths)
             .env("TMPDIR", "/tmp")
             .status()?;
@@ -2142,6 +2185,15 @@ fn brought_from(
              ({tries} of {COPY_TRIES}): the paths that came whole stay, and one cut off \
              part way comes again from its start"
         );
+        if signatures == Signatures::Checked {
+            let within = signed_within();
+            eprintln!(
+                "nix-offload: what came back may hold a path the builder signs only as it \
+                 pushes, so this waits {} s for it first",
+                within.as_secs()
+            );
+            std::thread::sleep(within);
+        }
     }
     let mut stdout = std::io::stdout();
     for path in paths {
@@ -3224,7 +3276,13 @@ fn sent_nearby(
     let mut reached = reaching(ssh, &said);
     reached.arg(&machine.host).arg(far(&command));
     let status = if asked.print {
-        brought_from(&mut reached, &format!("ssh-ng://{}", machine.host), nix)
+        // A machine nearby signs nothing it builds.
+        brought_from(
+            &mut reached,
+            &format!("ssh-ng://{}", machine.host),
+            nix,
+            Signatures::Unchecked,
+        )
     } else {
         reached.status()
     }
@@ -3926,6 +3984,7 @@ mod tests {
             QUICK,
             folder.path(),
             [ssh.to_str().unwrap(), "false"],
+            Signatures::Unchecked,
         );
         assert_eq!(ran.status, 0);
         let sinces = sinces.into_inner();
