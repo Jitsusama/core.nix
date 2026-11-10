@@ -26,12 +26,19 @@
       return false;
     }
   };
-  const named = (element) =>
-    element.textContent
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line !== "")
-      .join(" ");
+  // A heading's name is its text nodes each trimmed and joined by a space,
+  // since textContent runs one element's words into the next's ("yes3").
+  const named = (element) => {
+    const walker = page.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const words = [];
+    while (walker.nextNode()) {
+      words.push(walker.currentNode.textContent.trim());
+    }
+    return words
+      .filter((word) => word !== "")
+      .join(" ")
+      .replace(/ ([,.;:!?])/gu, "$1");
+  };
 
   // The head: what names the page in a tab, a shared link and a reader.
   if (page.characterSet !== "UTF-8") {
@@ -70,28 +77,89 @@
   if (marks.length === 0) {
     missing.push("the site's mark, drawn as inline SVG in the first <header>");
   }
-  const titles = page.querySelectorAll("h1").length;
+  // Only what's drawn counts, since an interface keeps its other views
+  // mounted under [hidden], each with its own h1, while it shows one.
+  const titles = [...page.querySelectorAll("h1")].filter((title) => title.checkVisibility()).length;
   if (titles !== 1) {
     missing.push(`one <h1>, the page's title: it has ${titles}`);
   }
   if (page.querySelector('[role="radiogroup"][aria-label="Theme"]') === null) {
     missing.push('the switch in the head: role="radiogroup" aria-label="Theme"');
   }
-  const keysList = [...page.querySelectorAll("h2, h3")].find(
-    (heading) => named(heading) === "Keys",
-  );
-  if (keysList === undefined) {
-    missing.push("a Keys list, headed Keys, that ? opens");
+  // The Keys list is on the page or opens on ?, and Escape closes it with
+  // focus back where it was. An interface often draws it only once ? asks,
+  // so a list not shown at load is asked for the way a reader asks.
+  const keysHeading = () =>
+    [...page.querySelectorAll("h2, h3")].find((heading) => named(heading) === "Keys");
+  const shown = (element) => element?.isConnected === true && element.checkVisibility();
+  const within = (holds) =>
+    new Promise((answer) => {
+      const until = performance.now() + 2000;
+      const look = () => {
+        if (holds() || performance.now() >= until) {
+          answer(holds());
+        } else {
+          requestAnimationFrame(look);
+        }
+      };
+      look();
+    });
+  const press = (key, code) =>
+    (page.activeElement ?? page.body).dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key,
+        code,
+        shiftKey: key === "?",
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      }),
+    );
+  let keysList = keysHeading();
+  if (!shown(keysList)) {
+    // Asked from the first control, as a reader on the page asks, since
+    // focus that starts on the body has nowhere to come back to.
+    const start = page.activeElement;
+    page.querySelector("a[href], button, input, select, textarea, [tabindex]")?.focus();
+    const before = page.activeElement;
+    press("?", "Slash");
+    if (await within(() => shown(keysHeading()))) {
+      keysList = keysHeading();
+      // A modal <dialog> closes on a real Escape by the browser's own hand,
+      // which a made-up key never triggers, so it's asked to close the way
+      // that Escape asks it.
+      const dialog = keysList.closest("dialog");
+      if (dialog?.matches(":modal") && typeof dialog.requestClose === "function") {
+        dialog.requestClose();
+      } else {
+        press("Escape", "Escape");
+      }
+      if (!(await within(() => !shown(keysList)))) {
+        missing.push("Escape didn't close the Keys list");
+      } else if (page.activeElement !== before) {
+        missing.push("focus didn't come back after Escape");
+      }
+    } else {
+      missing.push("a Keys list, headed Keys, that ? opens");
+    }
+    if (start === page.body) {
+      page.activeElement?.blur();
+    }
   }
   const keyLine = [...page.querySelectorAll("kbd")].find(
-    (key) => key.textContent.trim() === "?" && !keysList?.parentElement?.contains(key),
+    (key) =>
+      key.textContent.trim() === "?" &&
+      key.checkVisibility() &&
+      !keysList?.parentElement?.contains(key),
   );
   if (keyLine === undefined) {
     missing.push("the key line under the head, naming ? for the keys");
   }
   const first = page.querySelector("a[href], button, input, select, textarea, [tabindex]");
+  // The target is found by its id rather than as a selector, since a link to
+  // a route such as "#/" is no selector at all.
   const skipsTo = first?.getAttribute("href")?.startsWith("#") ? first.getAttribute("href") : "";
-  if (skipsTo === "" || page.querySelector(skipsTo) === null) {
+  if (skipsTo.length < 2 || page.getElementById(decodeURIComponent(skipsTo.slice(1))) === null) {
     missing.push("a skip link, the first thing focus reaches, to the page's main part");
   }
 
@@ -128,11 +196,16 @@
 
   // The writing's guard, over every word a reader reads (code, keys and
   // samples are names, not prose): no emdash or Unicode ellipsis, Canadian
-  // spelling, and nothing private that an agent's work left behind.
+  // spelling, and nothing private that an agent's work left behind. It reads
+  // views kept hidden too, since each is a page the reader opens. A proper
+  // name is marked translate="no", the standard's own way of saying it stays
+  // as written, so a surname such as Gray is never asked to be respelled.
+  const names = '[translate="no"]';
   const prose = [];
   const walker = page.createTreeWalker(page.body, NodeFilter.SHOW_TEXT);
   for (let text = walker.nextNode(); text !== null; text = walker.nextNode()) {
-    if (text.parentElement.closest("code, kbd, pre, samp, script, style, template") === null) {
+    const kept = `code, kbd, pre, samp, script, style, template, ${names}`;
+    if (text.parentElement.closest(kept) === null) {
       prose.push(text.textContent);
     }
   }

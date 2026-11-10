@@ -64,13 +64,26 @@ let
 
   property = name: "--${lib.replaceStrings [ "_" ] [ "-" ] name}";
 
+  # A role turns by rotating its a and b in OKLab, which is turning its hue
+  # with its lightness and chroma held. OKLCH's own hue would be simpler, but
+  # a browser reads a ground near grey as having none, so it would turn from
+  # 0 and land a cream on pink and a green-grey on brown; a and b are always
+  # there, and a turn of 0 gives back the theme's colour exactly.
+  turnedFrom =
+    value:
+    let
+      cos = "cos(calc(var(--turn) * 1deg))";
+      sin = "sin(calc(var(--turn) * 1deg))";
+    in
+    "oklab(from ${value} l calc(a * ${cos} - b * ${sin}) calc(a * ${sin} + b * ${cos}))";
+
   roles =
     colours: turn:
     lib.concatStrings (
       lib.mapAttrsToList (
         name: value:
         if turn then
-          lib.optionalString (lib.elem name turned) "  ${property name}: oklch(from ${value} l c calc(h + var(--turn)));\n"
+          lib.optionalString (lib.elem name turned) "  ${property name}: ${turnedFrom value};\n"
         else
           "  ${property name}: ${value};\n"
       ) colours
@@ -315,7 +328,7 @@ let
     /* A site's tint: --turn turns the grounds, the text and the accent round
        the hue wheel by that many degrees, keeping their lightness, so a blue
        site reads as blue and still passes as the theme does. */
-    @supports (color: oklch(from red l c h)) {
+    @supports (color: oklab(from red l calc(a * cos(0deg)) b)) {
     ${scheme true}}
 
     :root {
