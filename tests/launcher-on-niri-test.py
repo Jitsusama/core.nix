@@ -450,6 +450,8 @@ def test_the_shut_launcher_makes_no_window_rows_as_windows_change(shell: Shell) 
     With the launcher shut, every event niri sent made Windows' and Capture's rows again over
     all of Joel's windows: 657 and 287 rows in four minutes, for nobody (2026-11-10). Opened,
     the window that came meanwhile is found by its title, so the rows are made as it opens.
+    Shut, a pick still knows that window, since its rows as last made don't hold it, and a
+    pick forgets what it knows nothing of.
     """
 
     def window_rows() -> dict[str, int]:
@@ -462,6 +464,8 @@ def test_the_shut_launcher_makes_no_window_rows_as_windows_change(shell: Shell) 
     shell.close(gone)
     # The span measured, for the events to reach the shell, not a wait for something to happen.
     time.sleep(SETTLING.total_seconds())
+    windows = json.loads(shell.as_account(shell.ipc("known", "window")))
+    taking = json.loads(shell.as_account(shell.ipc("known", "capture")))
     after = window_rows()
     try:
         shell.as_account(shell.ipc("toggle"))
@@ -473,6 +477,10 @@ def test_the_shut_launcher_makes_no_window_rows_as_windows_change(shell: Shell) 
         shell.close(window)
     made = {name: after[name] - before[name] for name in after}
     assert not any(made.values()), f"the shut launcher made window rows: {made}"
+    assert any(key.endswith(":Godwit Notes") for key in windows), (
+        f"a pick made shut knows no window come since: {windows}"
+    )
+    assert "capture:window" in taking, f"a pick made shut knows no window to take: {taking}"
 
 
 def searched(shell: Shell) -> int:

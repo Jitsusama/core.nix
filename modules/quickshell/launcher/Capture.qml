@@ -573,6 +573,16 @@ Provider {
         return fixed.concat(recent);
     }
 
+    // Its rows' keys for a pick (Launcher.qml's knowing), with those of the
+    // rows that take a window read from niri, no row made: unwanted, they
+    // stand as last made, or not at all, and a pick would forget them.
+    function keysKnown() {
+        const windows = Niri.current === null ? []
+            : [{ key: "capture:window" }, { key: "capture:record-window" }];
+        return everything().concat(windows, Object.values(Niri.windows)
+            .map(window => ({ key: `capture:window:${window.app_id}` })));
+    }
+
     function counted() {
         return Recorder.recording ? "recording" : "";
     }

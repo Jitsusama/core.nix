@@ -6487,6 +6487,14 @@ Scope {
                 drawn: root.rowsDrawn, built: root.rowsBuilt });
         }
 
+        // The keys of a kind a pick would know now (knowing), for the check
+        // that a shut launcher knows a window come since it last made its
+        // rows, with none made.
+        function known(kind: string): string {
+            return JSON.stringify(Object.keys(root.knowing())
+                .filter(key => key.startsWith(`${kind}:`)));
+        }
+
         // How many frames the card has drawn since this was first asked,
         // for the check that a launcher left still draws nothing.
         function frames(): string {
