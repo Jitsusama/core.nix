@@ -2074,7 +2074,11 @@ Singleton {
     // again or a window comes or goes, and kept as it was when nothing in
     // it did, so what reads it isn't told for nothing.
     property var live: []
-    property string liveSaid: ""
+    // What each of live, resting and ending held last, as text, so only
+    // the one a change moved is set again, and what reads the others isn't
+    // told: one session's step moving had made the 36 parked and 36 closed
+    // of Joel's 113 shown again (2026-11-09).
+    property var liveSaid: ({ live: "", resting: "", ending: "" })
     // Each parked session's record, { file, presence, kitty, held }, as
     // `live` keeps the running ones'.
     property var resting: []
@@ -2095,12 +2099,16 @@ Singleton {
         const next = PiSource.live.map(kitted);
         const sleeping = PiSource.resting.map(kitted);
         const ended = PiSource.ending.map(kitted);
-        const said = JSON.stringify([next, sleeping, ended]);
-        if (said === liveSaid)
-            return;
+        const said = { live: JSON.stringify(next), resting: JSON.stringify(sleeping),
+            ending: JSON.stringify(ended) };
+        const was = liveSaid;
         liveSaid = said;
-        resting = sleeping;
-        ending = ended;
+        if (said.resting !== was.resting)
+            resting = sleeping;
+        if (said.ending !== was.ending)
+            ending = ended;
+        if (said.live === was.live)
+            return;
         const by = {};
         for (const record of next) {
             for (const address of record.presence.addresses)

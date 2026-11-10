@@ -29,7 +29,8 @@ pragma ComponentBehavior: Bound
 // host runs with no window is said and never opened; one last
 // heard of before this boot is passed over; and a steer to one is asked
 // of the node, its refusal said. One the node says is gone goes; a
-// change saying only what differs keeps the rest of what the node said;
+// change saying only what differs keeps the rest of what the node said,
+// and one to a running session tells nothing of the parked or closed;
 // one the node says has ended goes; and a node lost leaves what it said
 // shown. It exits 0 once every case holds, and otherwise 1, saying which
 // didn't.
@@ -63,13 +64,22 @@ ShellRoot {
         return Sessions.running.find(session => session.address === address);
     }
 
+    // How often what reads parked and closed sessions was told they moved,
+    // so a change to a running one alone is seen to tell neither.
+    property var told: ({ parked: 0, closed: 0 })
+    property var toldBefore: null
+
     Connections {
         target: Sessions
         function onRunningChanged() {
             Qt.callLater(root.check);
         }
         function onParkedChanged() {
+            root.told.parked += 1;
             Qt.callLater(root.check);
+        }
+        function onClosedChanged() {
+            root.told.closed += 1;
         }
     }
 
@@ -400,6 +410,7 @@ ShellRoot {
         // node said of it: running here, now in kitty 600's first window,
         // which nothing named.
         stage = "differing";
+        toldBefore = Object.assign({}, told);
         tell({
             changed: [{
                 key: "session:s-NOWIN6",
@@ -420,6 +431,12 @@ ShellRoot {
         // named them, is found by kitty's list: its first is niri's first.
         expect("of a kitty's several windows, one unnamed by kitty's own list",
             unseen.window.id === 20, unseen.window.id);
+        // Only a running session moved, so what reads the parked and the
+        // closed isn't told they did.
+        expect("a running session moving alone tells no parked or closed one",
+            told.parked === toldBefore.parked && told.closed === toldBefore.closed,
+            `parked told ${told.parked - toldBefore.parked}, closed `
+            + `${told.closed - toldBefore.closed}`);
         stage = "ended";
         tell({ changed: [{ key: "session:s-OTHER2", state: "ended" }] });
     }
