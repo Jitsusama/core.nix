@@ -18,8 +18,14 @@ const DAY = 86_400_000;
 // them, at about 35 m, 350 m, 3.5 km and 35 km.
 const BANDS = [35, 350, 3500, 35_000];
 const MOST = BANDS.length;
-// The significant figures a distance is said to, rounded up.
+// The significant figures a distance or a speed is said to.
 const FIGURES = 3;
+// How near a fix is rounds up, so it never claims nearer than it knows,
+// and drops its zeros (Y2YBTS's review of #2785); a speed is a measure,
+// which keeps them, so its width holds as it changes, as design.md's Set,
+// Not Styled has "0.500 A" (VKCF3Z, 2026-11-10).
+const WITHIN = { up: true, zeros: false };
+const MEASURED = { up: false, zeros: true };
 const TEN = 10;
 // The widest a fix may be for its zone to move the clock, where its zone
 // holds round its circle and where nothing says, as clock-follows decides
@@ -53,24 +59,29 @@ function coordinates(here, said) {
 // whichever of metres and kilometres keeps it under a thousand: "within
 // 80 m", "within 1.01 km", "within 26 km", "within 1,240 km".
 function within(metres, said, told) {
-    const figured = (value) => {
-        const whole = Math.max(1, Math.floor(Math.log10(Math.max(value, 1))) + 1);
-        // Past three whole digits, the rest round up to tens and hundreds.
-        const decimals = FIGURES - whole;
-        // Kept whole either side of the point, so a float never says
-        // 1,239.9999 for 1,240.
-        const up = decimals >= 0
-            ? Math.ceil(value * TEN ** decimals - 1e-9) / TEN ** decimals
-            : Math.ceil(value / TEN ** -decimals - 1e-9) * TEN ** -decimals;
-        // Trailing zeros say nothing more: 26.0 is 26.
-        const kept = Math.max(0, Math.min(decimals, (String(up).split(".")[1] ?? "").length));
-        return { value: up, text: told.number(up, kept) };
-    };
-    const near = figured(metres);
+    const near = figured(metres, WITHIN, told);
     if (near.value < KILOMETRE) {
         return said.metres.replace("{n}", near.text);
     }
-    return said.kilometres.replace("{n}", figured(metres / KILOMETRE).text);
+    return said.kilometres.replace("{n}", figured(metres / KILOMETRE, WITHIN, told).text);
+}
+
+// A figure to three significant figures, rounding up where `how.up`
+// says it mustn't claim less than it is, else to the nearest, and with
+// its trailing zeros where `how.zeros` keeps them: "1.01", "26" or
+// "26.0", "1,240". Past three whole digits the rest round to tens and
+// hundreds, and the rounding is kept whole either side of the point, so
+// a float never says 1,239.9999 for 1,240. Its value and its text.
+function figured(value, how, told) {
+    const whole = Math.max(1, Math.floor(Math.log10(Math.max(value, 1))) + 1);
+    const decimals = FIGURES - whole;
+    const round = how.up ? (scaled) => Math.ceil(scaled - 1e-9) : Math.round;
+    const rounded = decimals >= 0
+        ? round(value * TEN ** decimals) / TEN ** decimals
+        : round(value / TEN ** -decimals) * TEN ** -decimals;
+    const written = (String(rounded).split(".")[1] ?? "").length;
+    const kept = Math.max(0, how.zeros ? decimals : Math.min(decimals, written));
+    return { value: rounded, text: told.number(rounded, kept) };
 }
 
 
@@ -112,23 +123,36 @@ function eyebrow(here, said) {
     return (here.source ? said[`via-${here.source}`] : null) ?? said.via;
 }
 
-// The figures only some sources give, as GPS does, each in GeoClue's own
-// units and only while held: altitude to the metre, speed to a tenth of
-// a metre a second, and heading to the degree east of north.
+// The figures only some sources give, as GPS does, and only while held:
+// altitude to the metre and heading to the degree east of north, in
+// GeoClue's own units, and speed in kilometres an hour, as a road says it,
+// to three significant figures, from GeoClue's metres a second, so 4.26
+// m/s reads "15.3 km/h" (VKCF3Z, 2026-11-10).
 const MEASURES = [
     { id: "altitude", decimals: 0 },
-    { id: "speed", decimals: 1 },
+    { id: "speed", scale: 3.6 },
     { id: "heading", decimals: 0 }
 ];
+
+// A measure's figure: to its places where it keeps a fixed number, else
+// to three significant figures, to the nearest, keeping its zeros, so
+// 10 m/s reads "36.0 km/h".
+function figure(value, decimals, told) {
+    if (decimals !== undefined) {
+        return told.number(value, decimals);
+    }
+    return figured(value, MEASURED, told).text;
+}
 
 function held(value) {
     return Number.isFinite(value);
 }
 
 function measures(here, said, told) {
-    return MEASURES.map(({ id, decimals }) => ({
+    return MEASURES.map(({ id, decimals, scale }) => ({
         id,
-        value: held(here[id]) ? said[id].replace("{n}", told.number(here[id], decimals)) : ""
+        value: held(here[id])
+            ? said[id].replace("{n}", figure(here[id] * (scale ?? 1), decimals, told)) : ""
     }));
 }
 

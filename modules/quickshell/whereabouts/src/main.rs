@@ -316,6 +316,16 @@ fn pin_holds(shared: &Shared, files: &Files, last: &mut Option<Fix>) -> bool {
     false
 }
 
+/// Hears the pin change while GeoClue is followed, and answers whether
+/// GeoClue is to be asked where the laptop is now rather than waited on, as
+/// it is once Joel takes his pin away. The pin is read first, so the here it
+/// held is let go before what's left is judged: judged first, a here set by
+/// hand was still there, GeoClue was never asked, and here stayed unknown
+/// until the laptop moved far enough for GeoClue to say so.
+fn found_again(shared: &Shared, files: &Files, last: &mut Option<Fix>) -> bool {
+    !pin_holds(shared, files, last) && last.is_none()
+}
+
 /// Follows GeoClue for as long as the program runs, asking it again a
 /// minute after it refuses or leaves, and hearing the pin meanwhile.
 async fn follow(
@@ -436,14 +446,72 @@ async fn geoclue_followed(
                 if heard.is_none() {
                     return Err("the pin can no longer be heard".into());
                 }
-                // A pin taken away leaves here to GeoClue, which is asked
-                // where the laptop is now rather than waited on; the pin
-                // is read first, so the here it held is let go.
-                if !pin_holds(shared, files, last) && last.is_none() {
+                if found_again(shared, files, last) {
                     found = geoclue::fix(&bus, client.location().await?).await;
                 }
             }
             _ = gone.next() => return Ok("GeoClue left the bus".into()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A following daemon's files, in a folder of the test's own.
+    fn files(name: &str) -> Files {
+        let folder =
+            std::env::temp_dir().join(format!("whereabouts-{}-{name}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).unwrap();
+        Files {
+            kept: folder.join("kept.json"),
+            pin: folder.join("pin.json"),
+            moved: folder.join("moved.json"),
+        }
+    }
+
+    fn town(by_hand: bool) -> Fix {
+        let fix = Fix::new(12.3457, -98.7654, BY_HAND, 1_790_000_000).unwrap();
+        if by_hand { fix.by_hand() } else { fix }
+    }
+
+    #[test]
+    fn a_pin_taken_away_lets_its_here_go_and_asks_geoclue() {
+        let files = files("taken");
+        let shared = Shared::new(Known::default());
+        town(true).write(&files.pin).unwrap();
+        let mut last = None;
+        assert!(
+            !found_again(&shared, &files, &mut last),
+            "GeoClue was asked while the pin held"
+        );
+        assert!(
+            last.as_ref().is_some_and(|fix| fix.hand),
+            "the pin wasn't said: {last:?}"
+        );
+        again(&files.pin).unwrap();
+        assert!(
+            found_again(&shared, &files, &mut last),
+            "GeoClue wasn't asked once the pin was taken away"
+        );
+        assert!(last.is_none(), "the here the pin held was kept: {last:?}");
+        assert!(
+            !files.kept.exists(),
+            "the here the pin held was kept for the next start"
+        );
+    }
+
+    #[test]
+    fn a_pin_heard_without_one_leaves_geoclues_here_and_asks_nothing() {
+        let files = files("unpinned");
+        let shared = Shared::new(Known::default());
+        let mut last = Some(town(false));
+        assert!(
+            !found_again(&shared, &files, &mut last),
+            "GeoClue was asked again of a here it had said"
+        );
+        assert_eq!(last, Some(town(false)), "GeoClue's here was let go");
     }
 }

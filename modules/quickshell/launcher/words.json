@@ -5266,7 +5266,7 @@
         "via-gps": "via GPS \u00b7 location",
         "via-file": "via a fixed file \u00b7 location",
         "altitude": "{n} m",
-        "speed": "{n} m/s",
+        "speed": "{n} km/h",
         "heading": "{n}\u00b0",
         "no-altitude": "altitude",
         "no-speed": "speed",

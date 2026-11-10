@@ -633,7 +633,7 @@ QtObject {
             south: "S", east: "E", west: "W", nearEdge: "near a time zone's edge",
             foundWithin: "found {within}", via: "found \u00b7 location",
             viaHand: "set by hand \u00b7 location", "via-wifi": "via Wi-Fi \u00b7 location",
-            "via-gps": "via GPS \u00b7 location", altitude: "{n} m", speed: "{n} m/s",
+            "via-gps": "via GPS \u00b7 location", altitude: "{n} m", speed: "{n} km/h",
             heading: "{n}\u00b0", "no-altitude": "altitude", "no-speed": "speed",
             "no-heading": "heading", or: "or" };
         const hereTells = { leftOut: "Its source gives no {missing}.",
@@ -896,16 +896,21 @@ QtObject {
             ["set by hand, though a source is named",
                 Here.eyebrow({ source: "wifi", hand: true }, hereSaid),
                 "set by hand \u00b7 location"],
-            ["GPS's figures follow where on a map, in its own units",
+            ["GPS's figures follow where on a map, speed in km/h",
                 Here.facts(gps(212.4, 4.26, 274.6), 1000, hereSaid,
                     Object.assign({ ago: () => "now" }, hereTold))
                     .map(fact => `${fact.id} ${fact.value}`).slice(2).join("|"),
-                "coordinates 12.3457\u00b0 N \u00b7 98.7654\u00b0 W|altitude 212 m|speed 4.3 m/s|"
+                "coordinates 12.3457\u00b0 N \u00b7 98.7654\u00b0 W|altitude 212 m|speed 15.3 km/h|"
                     + "heading 275\u00b0"],
             ["a speed of none is held, and said", Here.facts(gps(null, 0, null), 1000,
                 hereSaid, Object.assign({ ago: () => "now" }, hereTold))
                 .filter(fact => ["altitude", "speed", "heading"].includes(fact.id))
-                .map(fact => fact.value).join("|"), "0.0 m/s"],
+                .map(fact => fact.value).join("|"), "0.00 km/h"],
+            ["a walk's speed keeps three figures, a highway's none past them, a "
+                + "round one its zeros", [1.2, 27.8, 10].map(speed => Here.facts(gps(null, speed, null), 1000, hereSaid,
+                    Object.assign({ ago: () => "now" }, hereTold))
+                    .find(fact => fact.id === "speed").value).join("|"),
+                "4.32 km/h|100 km/h|36.0 km/h"],
             ["Wi-Fi gives none of the three", leftOut({ source: "wifi" }),
                 "Wi-Fi gives no altitude, speed or heading."],
             ["GPS gave two of them not", leftOut(gps(212, null, null)),
