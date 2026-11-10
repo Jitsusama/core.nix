@@ -36,6 +36,16 @@ fn the_commands_that_answer_read_their_options() {
             config: None,
             band: Some(Band::NearlyFull),
             pretend_free: Some(Size::Bytes(20 << 30)),
+            fresh: false,
+        }
+    );
+    assert_eq!(
+        parse(&words("plan --fresh")).unwrap(),
+        Command::Plan {
+            config: None,
+            band: None,
+            pretend_free: None,
+            fresh: true,
         }
     );
     assert_eq!(
@@ -533,12 +543,60 @@ fn plan_shows_what_a_pass_would_take() {
     );
     let (code, out, err) = machine.run("plan --band filling");
     assert_eq!(code, 0, "{err}");
+    assert!(
+        out.starts_with("Surveying every source"),
+        "with no survey kept it says it walks first: {out}"
+    );
     assert!(out.contains("filling"), "{out}");
     assert!(out.contains("old.txt"), "{out}");
     assert!(trash.join("files/old.txt").exists());
     assert!(
         !machine.env.state.join("journal.jsonl").exists(),
         "a plan journals nothing"
+    );
+}
+
+#[test]
+fn plan_reads_the_survey_the_daemon_kept() {
+    use std::os::unix::fs::MetadataExt;
+    let machine = Machine::new();
+    let trash = machine.root.join("Trash");
+    fs::create_dir_all(trash.join("files")).unwrap();
+    write_file(
+        &machine.env.config,
+        &format!(
+            r#"{{ "version": 1, "scope": "user",
+                 "sources": {{ "trash": {{ "kind": "trash", "path": "{}" }} }} }}"#,
+            trash.display()
+        ),
+    );
+    let device = fs::metadata(&trash).unwrap().dev();
+    let at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64()
+        - 600.0;
+    let kept = serde_json::json!({
+        "version": 1, "at": at,
+        "offered": [{ "device": device, "candidate": {
+            "path": trash.join("files/seen.txt"), "class": "Trash", "idle": 1e9,
+            "size": 4096, "occupied": false, "spent": false, "checkout": null } }]
+    });
+    fs::create_dir_all(&machine.env.state).unwrap();
+    write_file(&machine.env.state.join("survey.json"), &kept.to_string());
+    let (code, out, err) = machine.run("plan --band filling");
+    assert_eq!(code, 0, "{err}");
+    assert!(
+        out.starts_with("From the survey the daemon's last pass made, 10 min ago"),
+        "{out}"
+    );
+    assert!(out.contains("seen.txt"), "what that survey saw: {out}");
+    let (code, out, err) = machine.run("plan --band filling --fresh");
+    assert_eq!(code, 0, "{err}");
+    assert!(out.starts_with("Surveying every source"), "{out}");
+    assert!(
+        !out.contains("seen.txt"),
+        "walked afresh, it's not there: {out}"
     );
 }
 

@@ -114,7 +114,9 @@ fn the_dead_are_listed_and_described_in_chunks_the_kernel_takes() {
 #[test]
 fn what_isnt_a_store_path_in_the_store_is_not_described() {
     // Nix keeps temporary files in the store's directory, which the
-    // listing names among the dead and which are gone a moment later.
+    // listing names among the dead and which are gone a moment later: on
+    // 9 November the system guard's listing failed 44 times in a day on a
+    // tmp- folder Nix adds a path through.
     let dir = tempfile::tempdir().unwrap();
     let nix = fake_nix(dir.path(), 0);
     script(
@@ -123,6 +125,7 @@ fn what_isnt_a_store_path_in_the_store_is_not_described() {
             "[ \"$*\" = '{LISTING}' ] || exit 9\n\
              echo /nix/store/p0\n\
              echo /nix/store/.tmp-link-2410616-37796915\n\
+             echo /nix/store/tmp-165546-2837579398\n\
              echo /nix/store/p1\n"
         ),
     );

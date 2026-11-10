@@ -252,12 +252,19 @@ pub const MEASURED_AT_LEAST: f64 = 6.0 * 3600.0;
 /// more than the disks it lies on have.
 pub const MOVED: u64 = 1 << 30;
 
-/// When what holds the disks was last measured, and the bytes used on each
-/// disk then, by device.
+/// How many times its own length a measure waits before the next, so
+/// sizing what holds the disks takes at most a twentieth of one core
+/// however much there is to read.
+pub const SPARED: f64 = 20.0;
+
+/// When what holds the disks was last measured, the bytes used on each
+/// disk then, by device, and how long that measure took, in seconds, or
+/// nothing while it's under way.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct LastMeasure {
     pub at: f64,
     pub used: BTreeMap<u64, u64>,
+    pub took: f64,
 }
 
 /// Whether what holds the disks is due a measure at `now`, with `used` the
@@ -268,7 +275,8 @@ pub fn due(last: Option<&LastMeasure>, now: f64, used: &BTreeMap<u64, u64>) -> b
         return true;
     };
     let since = now - last.at;
-    if since < MEASURED_EVERY {
+    let wait = MEASURED_EVERY.max(last.took * SPARED);
+    if since < wait {
         return false;
     }
     // Each disk's move counts apart, so one filling as another empties
@@ -284,7 +292,7 @@ pub fn due(last: Option<&LastMeasure>, now: f64, used: &BTreeMap<u64, u64>) -> b
             then.abs_diff(used.get(disk).copied().unwrap_or(0))
         })
         .sum();
-    moved >= MOVED || since >= MEASURED_AT_LEAST
+    moved >= MOVED || since >= MEASURED_AT_LEAST.max(wait)
 }
 
 /// What the last survey offered, kept in order of path. Everything beneath

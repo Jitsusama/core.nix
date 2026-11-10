@@ -15,16 +15,11 @@ fn seen(watch: &Watch, wanted: impl Fn(&[Seen]) -> bool, within: Duration) -> Ve
     all
 }
 
-/// A watch, or none where the kernel refuses this account one, which the
-/// guard then works without.
-fn watch() -> Option<Watch> {
-    match Watch::new() {
-        Ok(watch) => Some(watch),
-        Err(error) => {
-            eprintln!("no fanotify here, so nothing to check: {error}");
-            None
-        }
-    }
+/// A watch. Where the kernel refuses this account one the guard works
+/// without it, but these tests then fail, since a test that can't watch
+/// proves nothing by passing.
+fn watch() -> Watch {
+    Watch::new().unwrap_or_else(|error| panic!("no fanotify here, which these tests need: {error}"))
 }
 
 #[test]
@@ -33,7 +28,7 @@ fn another_process_opening_an_artifact_is_seen_by_its_path() {
     let deps = root.path().join("deps");
     let rlib = deps.join("libalpha-1111111111111111.rlib");
     file(&rlib, "built");
-    let Some(watch) = watch() else { return };
+    let watch = watch();
     watch.watch(&deps).unwrap();
     let status = Command::new("cat").arg(&rlib).output().unwrap().status;
     assert!(status.success());
@@ -49,7 +44,7 @@ fn the_guards_own_opens_and_unwatched_ones_are_not_seen() {
     let elsewhere = root.path().join("elsewhere/libbeta-2222222222222222.rlib");
     file(&deps.join("libalpha-1111111111111111.rlib"), "built");
     file(&elsewhere, "built");
-    let Some(watch) = watch() else { return };
+    let watch = watch();
     watch.watch(&deps).unwrap();
     fs::read(deps.join("libalpha-1111111111111111.rlib")).unwrap();
     Command::new("cat").arg(&elsewhere).output().unwrap();
@@ -78,7 +73,7 @@ fn opens_beyond_what_the_queue_holds_are_told_as_lost() {
         assert!(ran.unwrap().success(), "{script}");
     };
     run(make);
-    let Some(watch) = watch() else { return };
+    let watch = watch();
     watch.watch(&deps).unwrap();
     run("find . -name '*.rlib' -exec cat {} +");
     let all = seen(
@@ -91,6 +86,6 @@ fn opens_beyond_what_the_queue_holds_are_told_as_lost() {
 
 #[test]
 fn a_watch_on_what_is_not_a_directory_is_refused() {
-    let Some(watch) = watch() else { return };
+    let watch = watch();
     assert!(watch.watch(Path::new("/nonexistent/deps")).is_err());
 }

@@ -358,17 +358,19 @@ pub fn list(nix: &Path, idle: bool) -> Result<Vec<Listed>, String> {
         LIST_TIMEOUT,
         idle,
     )?;
-    // Nix's own temporary files in the store's directory, such as its
-    // .tmp-link-s, are listed too and gone a moment later, and asking
-    // about one fails the whole listing; no store path's name has a dot
-    // first.
+    // Nix's own temporary files in the store's directory, its .tmp-link-s
+    // and the tmp- folders it adds a path through, are listed too and gone
+    // a moment later, and asking about one fails the whole listing: on 9
+    // November the system guard's failed 44 times so. A store path's name
+    // starts with its hash, never a dot or tmp-.
     let paths: Vec<&str> = listed
         .lines()
         .filter(|line| line.starts_with('/'))
         .filter(|line| {
-            Path::new(line)
-                .file_name()
-                .is_some_and(|name| !name.as_encoded_bytes().starts_with(b"."))
+            Path::new(line).file_name().is_some_and(|name| {
+                let name = name.as_encoded_bytes();
+                !name.starts_with(b".") && !name.starts_with(b"tmp-")
+            })
         })
         .collect();
     // Each chunk's references are placed as they're read, among all the

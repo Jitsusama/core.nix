@@ -2,6 +2,7 @@
 
 use crate::band::Band;
 use crate::units::{float, whole};
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// The groups a pass takes from, cheapest loss first.
@@ -18,7 +19,7 @@ pub enum Group {
 }
 
 /// What a candidate is.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Class {
     Target,
     Install,
@@ -111,7 +112,7 @@ impl Class {
 
 /// Something a pass may reclaim. `idle` is the awake time since it was last
 /// used, or since it was kept for what it was kept for; `size` is logical.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Candidate {
     pub path: PathBuf,
     pub class: Class,
@@ -229,7 +230,10 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
         Class::Coredump if candidate.idle < DAY => {
             (Group::Occupied, [NEVER, NEVER, NEVER, AT_ONCE])
         }
-        Class::Coredump => (Group::Waste, [days(7.0), days(3.0), days(1.0), AT_ONCE]),
+        // A crash is in the journal once its dump is a day old, and on 9
+        // November two of Nix's from two days before held 3.7 GB of a disk
+        // filling for days, so a filling disk keeps them only that day.
+        Class::Coredump => (Group::Waste, [days(7.0), days(1.0), days(1.0), AT_ONCE]),
         Class::Replaced => (
             Group::Replaced,
             [
@@ -264,9 +268,16 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
                 ],
             )
         }
-        // At most hourly, like a producer's.
-        Class::Podman { unused: false } => (Group::Caches, [NEVER, NEVER, hours(1.0), hours(1.0)]),
-        Class::Podman { unused: true } => (Group::Occupied, [NEVER, NEVER, NEVER, hours(1.0)]),
+        // At most hourly, like a producer's, once the disk fills. Images no
+        // container uses go once a day on a filling disk: on 9 November they
+        // were 16.6 of podman's 16.9 GB and grew 3 GB a day, on a disk that
+        // had been filling for days and so never pruned them.
+        Class::Podman { unused: false } => {
+            (Group::Caches, [NEVER, hours(1.0), hours(1.0), hours(1.0)])
+        }
+        Class::Podman { unused: true } => {
+            (Group::Occupied, [NEVER, days(1.0), hours(1.0), hours(1.0)])
+        }
     };
     (group, windows)
 }

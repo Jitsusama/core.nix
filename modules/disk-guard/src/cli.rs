@@ -34,6 +34,8 @@ pub enum Command {
         config: Option<PathBuf>,
         band: Option<Band>,
         pretend_free: Option<Size>,
+        /// Survey every source again rather than read the daemon's last.
+        fresh: bool,
     },
     Journal {
         since: Option<Span>,
@@ -94,7 +96,7 @@ pub const NO_DAEMON: i32 = 3;
 
 const USAGE: &str = "usage: disk-guard user|system [--config FILE] [--state DIR]
        disk-guard status [--json]
-       disk-guard plan [--config FILE] [--band BAND] [--pretend-free SIZE]
+       disk-guard plan [--config FILE] [--band BAND] [--pretend-free SIZE] [--fresh]
        disk-guard keep FOLDER REASON...
        disk-guard unkeep FOLDER
        disk-guard clear FOLDER
@@ -187,6 +189,7 @@ pub fn parse(args: &[OsString]) -> Result<Command, String> {
                 .text("--pretend-free")?
                 .map(|size| Size::parse(&size))
                 .transpose()?,
+            fresh: options.flag("--fresh"),
         },
         Some("journal") => Command::Journal {
             since: options
@@ -278,7 +281,7 @@ struct Options {
 }
 
 /// The options that take no value.
-const FLAGS: [&str; 1] = ["--json"];
+const FLAGS: [&str; 2] = ["--json", "--fresh"];
 
 impl Options {
     fn read(args: &[OsString]) -> Result<Options, String> {
@@ -370,7 +373,8 @@ pub fn run(command: Command, env: &Env, out: &mut dyn Write, err: &mut dyn Write
             config,
             band,
             pretend_free,
-        } => plan(env, config.as_deref(), band, pretend_free, out),
+            fresh,
+        } => plan(env, config.as_deref(), (band, pretend_free), fresh, out),
         Command::User { config, state } => daemon(env, Scope::User, config, state, err),
         Command::System { config, state } => daemon(env, Scope::System, config, state, err),
         Command::Thaw => thaw(out),
@@ -958,8 +962,8 @@ fn journal(env: &Env, since: Option<Span>, json: bool, out: &mut dyn Write) -> D
 fn plan(
     env: &Env,
     config: Option<&Path>,
-    band: Option<Band>,
-    free: Option<Size>,
+    (band, free): (Option<Band>, Option<Size>),
+    fresh: bool,
     out: &mut dyn Write,
 ) -> Done {
     let config = read_config(config.unwrap_or(&env.config))?;
@@ -972,7 +976,25 @@ fn plan(
     };
     let mut guard = Guard::new(config, &places).map_err(failed)?;
     let tick = crate::sys::tick().map_err(failed)?;
-    let previews = guard.preview(&tick, band, free).map_err(failed)?;
+    if fresh || crate::surveyed::load(&env.state).is_none() {
+        // Said first, since the walk takes minutes on a full machine and
+        // a plan that says nothing meanwhile looks hung.
+        writeln!(
+            out,
+            "Surveying every source, which takes minutes on a full disk."
+        )
+        .map_err(failed)?;
+        out.flush().map_err(failed)?;
+    }
+    let (surveyed, previews) = guard.preview(&tick, band, free, fresh).map_err(failed)?;
+    if let Some(at) = surveyed {
+        writeln!(
+            out,
+            "From the survey the daemon's last pass made, {} ago; --fresh surveys again.",
+            span(tick.wall - at)
+        )
+        .map_err(failed)?;
+    }
     for preview in previews {
         let band = serde_json::to_value(preview.band).ok();
         writeln!(

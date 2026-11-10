@@ -760,7 +760,9 @@ fn a_preview_says_how_many_processes_it_could_not_judge_and_why() {
     let home = Home::new();
     home.cold_scratch("run-1");
     let mut guard = home.guard(home.config("0%", "100%"));
-    guard.preview(&tick(), Some(Band::Filling), None).unwrap();
+    guard
+        .preview(&tick(), Some(Band::Filling), None, true)
+        .unwrap();
     assert_eq!(guard.unread(), (0, None));
     home.hidden(300, 77);
     // And one of the account's, read whole.
@@ -781,7 +783,9 @@ fn a_preview_says_how_many_processes_it_could_not_judge_and_why() {
         ..home.places()
     };
     let mut guard = Guard::new(crate::unpaced(home.config("0%", "100%")), &places).unwrap();
-    guard.preview(&tick(), Some(Band::Filling), None).unwrap();
+    guard
+        .preview(&tick(), Some(Band::Filling), None, true)
+        .unwrap();
     let (unread, why) = guard.unread();
     assert_eq!(unread, 1);
     assert!(why.is_some(), "the system daemon didn't answer");
@@ -794,7 +798,10 @@ fn a_preview_says_what_a_pass_would_take_and_takes_nothing() {
     let second = home.cold_scratch("run-2");
     let trashed = home.trashed("old.txt", "2001-09-09T01:46:40");
     let mut guard = home.guard(home.config("0%", "100%"));
-    let previews = guard.preview(&tick(), Some(Band::Filling), None).unwrap();
+    let (surveyed, previews) = guard
+        .preview(&tick(), Some(Band::Filling), None, false)
+        .unwrap();
+    assert_eq!(surveyed, None, "no pass kept a survey, so it surveyed");
     assert_eq!(previews.len(), 1);
     let preview = &previews[0];
     assert_eq!(preview.band, Band::Filling);
@@ -921,21 +928,52 @@ fn a_status_whose_estimates_only_drift_is_no_news() {
 }
 
 #[test]
+fn a_preview_reads_the_survey_the_last_pass_kept_rather_than_walking_again() {
+    // On 9 November a plan walked every source itself and ran past 200
+    // seconds on a full machine without a word.
+    let home = Home::new();
+    let cold = home.cold_scratch("run-1");
+    let at = tick().wall;
+    let mut daemon = home.guard(home.config("100%", "100%"));
+    daemon.step(&tick(), &CALM).unwrap();
+    assert!(!cold.exists(), "the pass took it");
+    drop(daemon);
+    let mut planner = home.guard(home.config("100%", "100%"));
+    let (surveyed, kept) = planner
+        .preview(&tick(), Some(Band::Filling), None, false)
+        .unwrap();
+    assert!(
+        surveyed.is_some_and(|when| (when - at).abs() < 60.0),
+        "it answers from the pass's survey: {surveyed:?}"
+    );
+    assert_eq!(kept[0].taken[0].path, cold, "as that survey saw it");
+    let (surveyed, fresh) = planner
+        .preview(&tick(), Some(Band::Filling), None, true)
+        .unwrap();
+    assert_eq!(surveyed, None, "asked fresh, it surveys");
+    assert_eq!(fresh[0].taken, [], "and finds it gone");
+}
+
+#[test]
 fn pretending_free_space_bands_the_preview() {
     let home = Home::new();
     let cold = home.cold_scratch("run-1");
     let mut guard = home.guard(home.config("50%", "60%"));
-    let short = guard.preview(&tick(), None, Some(Size::Bytes(0))).unwrap();
+    let (_, short) = guard
+        .preview(&tick(), None, Some(Size::Bytes(0)), true)
+        .unwrap();
     assert_eq!(short[0].band, Band::Filling);
     assert_eq!(short[0].free, 0);
     assert_eq!(short[0].taken[0].path, cold);
     let total = short[0].total;
-    let roomy = guard
-        .preview(&tick(), None, Some(Size::Percent(100.0)))
+    let (_, roomy) = guard
+        .preview(&tick(), None, Some(Size::Percent(100.0)), true)
         .unwrap();
     assert_eq!(roomy[0].free, total);
     let mut low = home.guard(home.config("1%", "2%"));
-    let banded = low.preview(&tick(), Some(Band::Filling), None).unwrap();
+    let (_, banded) = low
+        .preview(&tick(), Some(Band::Filling), None, true)
+        .unwrap();
     assert!(
         banded[0].free < total / 100,
         "a band alone pretends free space just short of it: {} of {total}",
@@ -1394,7 +1432,9 @@ fn a_predicates_answer_is_kept_for_the_next_guard() {
     assert_eq!(times_asked(&asked), 1, "routine upkeep asks once");
     drop(first);
     let mut second = home.guard(config());
-    second.preview(&tick(), Some(Band::Filling), None).unwrap();
+    second
+        .preview(&tick(), Some(Band::Filling), None, true)
+        .unwrap();
     assert_eq!(times_asked(&asked), 1, "a finished head is known still");
 }
 
@@ -1416,7 +1456,9 @@ fn a_preview_leaves_a_damaged_memory_as_it_found_it() {
     let home = Home::new();
     fs::write(home.root.join("state/memory.json"), "{ \"learned\": ").unwrap();
     let mut guard = home.guard(home.config("0%", "0%"));
-    guard.preview(&tick(), Some(Band::Filling), None).unwrap();
+    guard
+        .preview(&tick(), Some(Band::Filling), None, true)
+        .unwrap();
     let kept = fs::read_to_string(home.root.join("state/memory.json")).unwrap();
     assert_eq!(kept, "{ \"learned\": ");
     assert!(!home.root.join("state/memory.json.damaged").exists());

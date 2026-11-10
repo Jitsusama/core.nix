@@ -1,7 +1,7 @@
 use disk_guard::activity::Use;
 use disk_guard::config::Config;
 use disk_guard::holders::{
-    Kind, LastMeasure, MOVED, Offered, Offers, Place, due, holders, mark, measure, places,
+    Kind, LastMeasure, MOVED, Offered, Offers, Place, SPARED, due, holders, mark, measure, places,
 };
 use disk_guard::keeps::{Keep, Keeps};
 use disk_guard::ledger::{Grown, Growth};
@@ -448,6 +448,7 @@ fn last() -> LastMeasure {
     LastMeasure {
         at: 0.0,
         used: used(&[(1, 500 * GIB)]),
+        took: 60.0,
     }
 }
 
@@ -482,12 +483,42 @@ fn a_disk_that_held_still_is_measured_again_only_after_six_hours() {
     assert!(due(Some(&last()), 6.0 * HOUR, &still));
 }
 
+/// A walk of every holder took 6 to 12 minutes of a core at a time on 9
+/// November, every half hour on a filling disk, so the guard spent a fifth
+/// of a core sizing what it couldn't clear.
+#[test]
+fn a_measure_that_took_long_waits_that_many_times_its_length_before_the_next() {
+    let slow = LastMeasure {
+        took: 600.0,
+        ..last()
+    };
+    let moved = used(&[(1, 600 * GIB)]);
+    let wait = 600.0 * SPARED;
+    assert!(
+        !due(Some(&slow), wait - 1.0, &moved),
+        "a ten minute walk waits {wait} s however the disk moved"
+    );
+    assert!(due(Some(&slow), wait, &moved), "and is due once it has");
+    let slower = LastMeasure {
+        took: HOUR / 2.0,
+        ..last()
+    };
+    let still = used(&[(1, 500 * GIB)]);
+    let longer = HOUR / 2.0 * SPARED;
+    assert!(
+        !due(Some(&slower), longer - 1.0, &still),
+        "a still disk after a half hour walk waits {longer} s, past six hours"
+    );
+    assert!(due(Some(&slower), longer, &still), "and is due once it has");
+}
+
 #[test]
 fn what_moved_on_each_disk_counts_together_and_a_new_disk_counts_whole() {
     let half = MOVED / 2;
     let both = LastMeasure {
         at: 0.0,
         used: used(&[(1, 500 * GIB), (2, 100 * GIB)]),
+        took: 60.0,
     };
     let opposite = used(&[(1, 500 * GIB + half), (2, 100 * GIB - half)]);
     assert!(

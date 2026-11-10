@@ -84,7 +84,7 @@ pub struct Owners {
     pub spent: BTreeSet<PathBuf>,
 }
 
-fn version() -> u32 {
+pub fn version() -> u32 {
     VERSION
 }
 

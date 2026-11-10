@@ -72,6 +72,7 @@ pub use macos as sys;
 pub mod socket;
 pub mod state;
 pub mod survey;
+pub mod surveyed;
 pub mod temp;
 pub mod trash;
 pub mod trees;

@@ -407,9 +407,11 @@ pub struct Guard {
     /// What holds the disks, as last measured and when, in wall seconds,
     /// and how much each grew in the day before.
     measured: Measured,
-    /// The thread measuring them, while it does.
-    measuring: Option<std::thread::JoinHandle<()>>,
-    /// When the last measure began, and how full each disk was then.
+    /// The thread measuring them, while it does, giving how long it took,
+    /// in seconds.
+    measuring: Option<std::thread::JoinHandle<f64>>,
+    /// When the last measure began, how full each disk was then, and how
+    /// long it took once it's done.
     began: Option<crate::holders::LastMeasure>,
 }
 
@@ -705,7 +707,11 @@ impl Guard {
         {
             return;
         }
-        self.measuring = None;
+        if let Some(thread) = self.measuring.take()
+            && let (Ok(took), Some(began)) = (thread.join(), self.began.as_mut())
+        {
+            began.took = took;
+        }
         let budget = self.config.budget;
         let pressed = self.watched.values().any(|watched| {
             watched.band != Band::Healthy
@@ -727,7 +733,11 @@ impl Guard {
             return;
         }
         self.remeasure = false;
-        self.began = Some(crate::holders::LastMeasure { at: now, used });
+        self.began = Some(crate::holders::LastMeasure {
+            at: now,
+            used,
+            took: 0.0,
+        });
         let places = crate::holders::places(&self.config);
         let measured = Arc::clone(&self.measured);
         let state = self.state().to_owned();
@@ -739,6 +749,7 @@ impl Guard {
                 // process, passes too, so there it runs as it is.
                 #[cfg(target_os = "linux")]
                 crate::commands::idle();
+                let clock = std::time::Instant::now();
                 let sized = crate::holders::measure(places);
                 // A ledger that won't write leaves the holders unsaid only
                 // in how much they grew.
@@ -747,6 +758,7 @@ impl Guard {
                     crate::ledger::Grown::new()
                 });
                 *measured.lock().unwrap_or_else(PoisonError::into_inner) = Some((now, sized, grew));
+                clock.elapsed().as_secs_f64()
             });
         match started {
             Ok(thread) => self.measuring = Some(thread),
@@ -1906,7 +1918,14 @@ impl Guard {
             let scan = Scan::new(&self.processes, Path::new("/proc/locks"), me, FRESH);
             (scan, self.garbage_offers(tick))
         } else {
-            self.offers(tick, None)?
+            let (scan, offers) = self.offers(tick, None)?;
+            // Kept for a plan to read; one that can't be kept only means
+            // the next plan surveys for itself.
+            let surveyed = crate::surveyed::Surveyed::new(tick.wall, &offers);
+            if let Err(error) = crate::surveyed::save(self.state(), &surveyed) {
+                eprintln!("disk-guard: keeping the survey: {error}");
+            }
+            (scan, offers)
         };
         for &(device, decision, thresholds) in due {
             if !self.watched.contains_key(&device) {
@@ -2205,15 +2224,41 @@ impl Guard {
     /// itself against a disk that frees what learning predicts, so it
     /// shows the order a pass goes in and where it would stop; whether
     /// each would be found in use is only known when it's tried.
+    ///
+    /// Unless `fresh`, it reads the survey the daemon's last pass kept,
+    /// answering when that was, since a survey walks every source and on
+    /// a full machine takes minutes.
     pub fn preview(
         &mut self,
         tick: &Tick,
         band: Option<Band>,
         free: Option<Size>,
-    ) -> io::Result<Vec<Preview>> {
+        fresh: bool,
+    ) -> io::Result<(Option<f64>, Vec<Preview>)> {
         self.memory.awake.observe(tick);
         self.watch();
-        let (_, offers) = self.offers(tick, None)?;
+        let kept = if fresh {
+            None
+        } else {
+            crate::surveyed::load(self.state())
+        };
+        let (surveyed, offers): (_, Vec<(u64, Candidate)>) = match kept {
+            Some(kept) => (
+                Some(kept.at),
+                kept.offered
+                    .into_iter()
+                    .map(|offered| (offered.device, offered.candidate))
+                    .collect(),
+            ),
+            None => (
+                None,
+                self.offers(tick, None)?
+                    .1
+                    .into_iter()
+                    .map(|offer| (offer.device, offer.candidate))
+                    .collect(),
+            ),
+        };
         let mut previews = Vec::new();
         for (&device, watched) in &self.watched {
             let Ok(space) = crate::sys::space(&watched.path) else {
@@ -2245,8 +2290,8 @@ impl Guard {
             };
             let candidates: Vec<_> = offers
                 .iter()
-                .filter(|offer| offer.device == device)
-                .map(|offer| offer.candidate.clone())
+                .filter(|(on, _)| *on == device)
+                .map(|(_, candidate)| candidate.clone())
                 .collect();
             let freed = Rc::new(Cell::new(space.free));
             let mut learned = self.memory.learned.clone();
@@ -2281,7 +2326,7 @@ impl Guard {
                 taken,
             });
         }
-        Ok(previews)
+        Ok((surveyed, previews))
     }
 
     pub fn status(&self, now: f64) -> Status {
