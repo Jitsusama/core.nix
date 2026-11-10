@@ -255,7 +255,7 @@ Provider {
         // The row stands from the sensor while what it hears is still being
         // read, so it keeps its place, and from what it heard once read.
         const heard = lightRead ? room : null;
-        if (inTheRoom(output) && roomSensor !== null && (room !== null || !lightRead))
+        if (inTheRoom(output) && roomSensor !== null)
             rows.push(copyRow({
                 key: `displays:${output.name}:room`,
                 name: partName("room"),
@@ -458,18 +458,21 @@ Provider {
     readonly property bool lightRead: lights.answeredThisWatch
     // What a level not yet read says: nothing for its first second, which
     // the daemon's answer nearly always beats, so no word flashes past,
-    // then that it's not read yet (VKCF3Z, 2026-11-10).
+    // then that it's not read yet (VKCF3Z, 2026-11-10). The sensor's count
+    // is read on a thread of its own, so it can come after the backlight's.
     function unreadSaid() {
         return lightWaited ? partSaid("", "unread") : "";
     }
     property bool lightWaited: false
-    // Fires a second into a watch the daemon hasn't answered, and each
+    onLightWaitedChanged: changed()
+    readonly property bool lightsAllRead: lightRead && (roomSensor === null || room !== null)
+    // Fires a second into a watch that hasn't read everything, and each
     // second after, which changes nothing; it repeats so that its running
     // stays bound, since a timer that stops itself lets go of its binding.
     Timer {
         interval: 1000
         repeat: true
-        running: lights.live && !lights.answeredThisWatch
+        running: lights.live && !provider.lightsAllRead
         onTriggered: provider.lightWaited = true
     }
     property var roomSensor: null
@@ -486,7 +489,6 @@ Provider {
         // A light's answer waits for the watch's first answer, so it's
         // asked again once that's come, moved or not.
         function onAnsweredThisWatchChanged() {
-            provider.lightWaited = false;
             if (provider.lightShown)
                 provider.answered();
         }
