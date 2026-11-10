@@ -22,7 +22,11 @@ orchestration spent today only where it spent anything, Return reopening it. A s
 this boot, its owner gone, stands alone in Recent, after Landed and before Start a Session,
 saying when it closed and where it ran. A folder the disk guard measured offers to talk to the
 session working in it, by its title and how it stands, and what Joel tells it reaches its inbox
-with the folder and its size.
+with the folder and its size. Shut, a session arriving with a landing makes none of Agents' rows,
+which show both once it opens.
+
+Long because every case here shares one shell, its node and its sessions, started once a run,
+which cost more than all the cases, so splitting it would start them twice.
 """
 
 from __future__ import annotations
@@ -798,3 +802,40 @@ def talks(inbox: Path) -> list[Path]:
         for one in inbox.glob("*.json")
         if "The disk guard says" in str(json.loads(one.read_text()).get("text", ""))
     ]
+
+
+def made_by_agents(shell: Shell) -> int:
+    """Give how many rows Agents has made since the shell started."""
+    return int(json.loads(shell.as_account(shell.ipc("made")))["rows"]["agents"])
+
+
+def sortings_taken(shell: Shell) -> int:
+    """Give how many sortings of pi's sessions the shell has taken, each a change it heard."""
+    sorts = f"qs -p {shell.folder} ipc call pi sorts"
+    return int(json.loads(shell.as_account(sorts))["taken"])
+
+
+def test_a_shut_launcher_makes_no_agents_rows_as_a_session_comes_and_lands(shell: Shell) -> None:
+    """Shut, a session arriving with a landing makes no row of Agents'; opened, it's there.
+
+    Joel's shut launcher made 312 of Agents' rows in 240 s that nobody saw, and each burst is
+    what his openings wait behind (2026-11-10).
+    """
+    shell.launcher_closed()
+    before, taken = made_by_agents(shell), sortings_taken(shell)
+    landing = {"at": datetime.now(UTC).isoformat(), "ref": "core.nix#2141", "what": "Arrived"}
+    lay("ARRIVE", "Arriving Quest", {"state": "listening", "busy": False, "landings": [landing]})
+    # Taken once the shell has sorted it in, which makes whatever its change makes at once.
+    deadline = time.monotonic() + 10
+    while sortings_taken(shell) == taken:
+        assert time.monotonic() < deadline, "the shell never took the arriving session"
+        time.sleep(0.1)
+    made = made_by_agents(shell) - before
+    assert made == 0, f"the shut launcher made {made} of Agents' rows as a session arrived"
+    shell.as_account(shell.ipc("collection", "agents"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: "Arriving Quest" in shown["rows"])
+    shell.launcher_until(lambda shown: "Landed" in shown["rows"])
+    shell.down_to("Landed")
+    shell.step_in()
+    shell.launcher_until(lambda shown: "Arrived" in shown["rows"])

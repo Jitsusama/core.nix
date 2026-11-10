@@ -46,6 +46,12 @@ ShellRoot {
         id: theLauncher
 
         property bool open: false
+        // Whether it wants the quests' rows (Wanted.js), as it doesn't
+        // while it's shut, which a case turns.
+        property bool wanting: true
+        function wants(source) {
+            return wanting;
+        }
         // The orchestrators the harness lists, as the launcher's sources
         // hold them, which a case fills.
         property var sources: []
@@ -62,6 +68,10 @@ ShellRoot {
                 root.read();
             else if (root.waiting === "the quest made since" && theQuests.all.length > 4)
                 Qt.callLater(root.since);
+        }
+        onQuestsChanged: {
+            if (root.waiting === "heard shut" && theQuests.quests.length > 4)
+                Qt.callLater(root.heardShut);
         }
     }
 
@@ -288,13 +298,34 @@ ShellRoot {
 
             root.made = theQuests.looksThrough();
             root.counted = theQuests.tally.rows;
-            root.waiting = "the quest made since";
+            root.waiting = "heard shut";
+            theLauncher.wanting = false;
             // The node tells every quest again as the harness writes its
             // list, heard anew, and the new one whole.
             tell("quest", { changed: root.open.map(one => ({ key: one.key, heard: 2 })).concat([
                 quest("QEST-20261020-NEWONE", "Newly made", "quest", { status: "active",
                     priority: "someday", rank: 1, updated: "2026-10-20" })
             ]) });
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+
+    // Heard while shut, nobody sees a quest's row, so none is made, and
+    // Joel's shut launcher made 184 in 240 s (2026-11-10); wanted again,
+    // the new one is made.
+    function heardShut() {
+        if (root.waiting !== "heard shut")
+            return;
+        try {
+            expect("no row made shut", theQuests.tally.rows === root.counted,
+                `${theQuests.tally.rows - root.counted} rows`);
+            expect("the rows last made still given", theQuests.all.length === 4,
+                `${theQuests.all.length} rows`);
+            expect("still counted shut", theQuests.counted() === "4 open, 1 driving",
+                theQuests.counted());
+            root.waiting = "the quest made since";
+            theLauncher.wanting = true;
         } catch (error) {
             fail(error.message);
         }

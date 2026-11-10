@@ -78,6 +78,26 @@ Provider {
         return !!launcher && (launcher.open || launcher.cataloguing);
     }
 
+    // Agents' own rows after its sessions' (toReopen, landed, recent, start
+    // and budgets), as each was last made while anything could read it:
+    // the launcher open, or its catalogue walked. Shut, nothing does, so
+    // each gives what it last made and reads nothing else, and a change
+    // nobody sees makes none of them; each is made again as the launcher
+    // opens, three or four rows (keeps-pace). Joel's shut launcher made 312
+    // of Agents' rows in 240 s (YQZGPC, 2026-11-10). For You's (forYou)
+    // are made shut too, since the tray counts what waits there, but only
+    // as a landing comes, goes or changes. A plain object, so keeping one
+    // notifies nothing.
+    readonly property var lastMade: ({})
+    function madeBefore(name, none) {
+        return name in lastMade ? lastMade[name] : none;
+    }
+    onToReopenChanged: lastMade.toReopen = toReopen
+    onLandedChanged: lastMade.landed = landed
+    onRecentChanged: lastMade.recent = recent
+    onStartChanged: lastMade.start = start
+    onBudgetsChanged: lastMade.budgets = budgets
+
     // Every session's row, in its place in the tree, those not made again
     // let go once it's laid out.
     function laidOut() {
@@ -713,6 +733,8 @@ Provider {
     }
 
     readonly property var start: {
+        if (!opened())
+            return madeBefore("start", null);
         const quests = () => (source("quests")?.everything() ?? [])
             .filter(row => row.unfinished && row.verb !== "go to");
         return Object.assign(thingRow({
@@ -740,6 +762,8 @@ Provider {
     // name, which would change as he reopens them, and its note says where
     // they came from.
     readonly property var toReopen: {
+        if (!opened())
+            return madeBefore("toReopen", null);
         const lost = Sessions.toReopen;
         if (lost.length === 0)
             return null;
@@ -974,6 +998,8 @@ Provider {
         };
     }
     readonly property var landed: {
+        if (!opened())
+            return madeBefore("landed", null);
         const read = one => provider.readLanding(one.key);
         const act = (id, fields) => thing(Object.assign({
             key: `verb:agents:landed:${id}`,
@@ -1130,6 +1156,8 @@ Provider {
     // text, about 30,000 characters, started a garbage collection every
     // second change with the launcher open (2026-11-10).
     readonly property int recentFrom: {
+        if (!opened())
+            return recentListed.made;
         const closed = Sessions.closed;
         const live = Sessions.running.concat(Sessions.parked);
         const addresses = (source("orchestrators")?.closed ?? []).map(one => one.address)
@@ -1150,6 +1178,8 @@ Provider {
     }
     readonly property var recentListed: ({ rows: [], said: [], day: "", made: 0 })
     readonly property var recent: {
+        if (!opened())
+            return madeBefore("recent", null);
         const listed = recentFrom === 0 ? [] : recentListed.rows;
         const words = Words.of("agents:recent");
         const stands = Recent.said(listed.map(one => String(one.row.title || one.row.address
@@ -1211,7 +1241,14 @@ Provider {
     // with no spend-watch, or while the screen is shared, when AI spend
     // lists only what holds no amount (KP0L6A, 2026-11-08 [f566a31a]).
     readonly property var budgets: {
-        const spent = (source("spend")?.everything() ?? [])
+        if (!opened())
+            return madeBefore("budgets", null);
+        // AI spend's row as it reads now, since AI spend makes its rows
+        // only while it's wanted, which it isn't while Agents is held;
+        // found among them where it can't say (1KZFHC, 2026-11-10).
+        const spend = source("spend");
+        const now = spend?.rowNow("spend:budgets");
+        const spent = now !== undefined ? now : (spend?.everything() ?? [])
             .find(row => row.key === "spend:budgets") ?? null;
         if (spent === null)
             return null;
@@ -1226,13 +1263,13 @@ Provider {
         });
     }
 
-    things: [toReopen, landed, budgets].filter(row => row !== null).concat([recent, start])
+    things: [toReopen, landed, budgets, recent, start].filter(row => row !== null)
 
     // Asked while they aren't wanted, as a step into Agents asks before it's
     // held, its rows are laid out as asked, keeping those that read the same.
     function everything() {
         const sessions = provider.wanted || !opened() ? all : laidOut();
-        return sessions.concat([toReopen, landed].filter(row => row !== null), [recent, start]);
+        return sessions.concat([toReopen, landed, recent, start].filter(row => row !== null));
     }
 
     // How every session stands, running and parked, read from Sessions
