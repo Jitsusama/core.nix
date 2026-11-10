@@ -2659,7 +2659,7 @@ Scope {
     // the one row's actions are read, as pendingSaid reads them, and only
     // once it's selected (selectedActions), never in the foot's binding.
     function operatorKeys(choice) {
-        return choice === selectedActions.row ? selectedActions.keys : [];
+        return choice === footActions.row ? footActions.keys : [];
     }
 
     // d and y for a row, from its actions, as operatorKeys says them.
@@ -5762,25 +5762,32 @@ Scope {
     // row made searchable: nine such rows a row, as a window has, took
     // 18 ms over 400 rows when timed alone (2026-11-05).
     // The selected row's actions, read as it's selected rather than in the
-    // foot's binding, and the d and y they give it, as the foot says them:
-    // a row's verbs() may ask its source, as Time's watch chrony, and a
-    // binding that read them would loop on what they set.
+    // foot's binding: a row's verbs() may ask its source, as Time's watch
+    // chrony, and a binding that read them would loop on what they set.
     // Only in normal and visual, where the foot names d and y, and never a row whose
     // verbs are the things inside it (nested), since reading those asks
     // for them: Search Slack's asked Slack with each letter typed, which
     // Slack allows only a few times a minute.
-    property var selectedActions: ({ row: null, keys: [] })
+    property var selectedActions: ({ row: null, actions: [] })
     function readSelectedActions() {
         const reads = selected && prompt.modal && ["normal", "visual"].includes(prompt.mode)
             && !selected.nested;
-        const keys = reads ? operatorKeysOf(selected, actionsOf(selected)) : [];
-        // Told anew only where the foot would say something new
-        // (Standing.toldAnew); else the row they're for changes unsaid,
-        // since with no keys before or now no row's keys change.
-        if (Standing.toldAnew(selectedActions, selected, keys))
-            selectedActions = { row: selected, keys };
+        selectedActions = { row: selected, actions: reads ? actionsOf(selected) : [] };
+    }
+    // d and y as they stand, worked out again as what they're read from
+    // changes, as an answer's parts arriving give it y; and the foot's
+    // own, told anew only where it would say something new
+    // (Standing.toldAnew), since all it reads them for runs again each time
+    // it's told. Else the row they're for changes unsaid: with no keys
+    // before or now, no row's keys change.
+    readonly property var selectedKeys: selectedActions.row === null ? []
+        : operatorKeysOf(selectedActions.row, selectedActions.actions)
+    property var footActions: ({ row: null, keys: [] })
+    onSelectedKeysChanged: {
+        if (Standing.toldAnew(footActions, selectedActions.row, selectedKeys))
+            footActions = { row: selectedActions.row, keys: selectedKeys };
         else
-            selectedActions.row = selected;
+            footActions.row = selectedActions.row;
     }
 
     function actionsOf(row) {
@@ -6667,7 +6674,11 @@ Scope {
     property var drawerRow: null
     readonly property int drawerFollows: 50
     onSelectedChanged: {
-        readSelectedActions();
+        // Once the event that selected it has run, since a step selects
+        // its first row and again the row its arriving rows put first, and
+        // the first read was thrown away: 4 to 7 ms a step into Desktop in
+        // the loaded test machine (2026-11-10).
+        Qt.callLater(root.readSelectedActions);
         if (!open || selected === null) {
             drawerFollowing.stop();
             drawerRow = selected;
