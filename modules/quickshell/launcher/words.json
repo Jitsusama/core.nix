@@ -8375,7 +8375,7 @@
       ],
       "said": {
         "followsRoom": "{now} of {most} steps; it follows the room, and the keys set it",
-        "followsRoomUnread": "{most} steps; it follows the room, and the keys set it",
+        "followsRoomUnread": "{most} steps \u00b7 follows the room",
         "everyFollows": "every screen follows it, and the keys set it"
       }
     },

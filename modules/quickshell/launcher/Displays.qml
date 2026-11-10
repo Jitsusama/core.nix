@@ -232,7 +232,7 @@ Provider {
         if (light === null)
             return [];
         const rows = [Object.assign(setting(output, "brightness", lightRead ? `${light.share}%`
-            : partSaid("", "unread"), "brightness",
+            : unreadSaid(), "brightness",
             // Each by its value, as every choice is (VKCF3Z, 2026-11-09),
             // :set brightness= its command.
             levels.map(each => choice({
@@ -252,14 +252,14 @@ Provider {
                     .replace("{now}", grouped(light.now)).replace("{most}", grouped(light.most))
                 : partSaid("brightness", "everyFollows")
         })];
-        // The row stands from the sensor, so it keeps its place while what
-        // the sensor hears is still being read.
+        // The row stands from the sensor while what it hears is still being
+        // read, so it keeps its place, and from what it heard once read.
         const heard = lightRead ? room : null;
-        if (inTheRoom(output) && roomSensor !== null)
+        if (inTheRoom(output) && roomSensor !== null && (room !== null || !lightRead))
             rows.push(copyRow({
                 key: `displays:${output.name}:room`,
                 name: partName("room"),
-                side: heard === null ? partSaid("", "unread") : lux(heard),
+                side: heard === null ? unreadSaid() : lux(heard),
                 copy: heard === null ? "" : lux(heard),
                 glyph: "",
                 hue: "machine",
@@ -421,7 +421,7 @@ Provider {
             run: () => provider.brighten(kept),
             rows: [],
             note: lightRead ? partSaid("", "now").replace("{share}", light.share)
-                : partSaid("", "unread")
+                : unreadSaid()
         };
     }
 
@@ -456,6 +456,22 @@ Provider {
     // the level as it is now; until then the level held from an earlier
     // watch is said as not read yet, in the same rows.
     readonly property bool lightRead: lights.answeredThisWatch
+    // What a level not yet read says: nothing for its first second, which
+    // the daemon's answer nearly always beats, so no word flashes past,
+    // then that it's not read yet (VKCF3Z, 2026-11-10).
+    function unreadSaid() {
+        return lightWaited ? partSaid("", "unread") : "";
+    }
+    property bool lightWaited: false
+    // Fires a second into a watch the daemon hasn't answered, and each
+    // second after, which changes nothing; it repeats so that its running
+    // stays bound, since a timer that stops itself lets go of its binding.
+    Timer {
+        interval: 1000
+        repeat: true
+        running: lights.live && !lights.answeredThisWatch
+        onTriggered: provider.lightWaited = true
+    }
     property var roomSensor: null
     onRoomSensorChanged: changed()
     readonly property var room: roomSensor?.lux ?? null
@@ -470,8 +486,13 @@ Provider {
         // A light's answer waits for the watch's first answer, so it's
         // asked again once that's come, moved or not.
         function onAnsweredThisWatchChanged() {
+            provider.lightWaited = false;
             if (provider.lightShown)
                 provider.answered();
+        }
+
+        function onLiveChanged() {
+            provider.lightWaited = false;
         }
     }
 
@@ -715,7 +736,7 @@ Provider {
                 label: partName("brightness"),
                 // A monitor following the panel has none of its steps,
                 // and a hundred steps are its share again.
-                value: !lightRead ? partSaid("", "unread")
+                value: !lightRead ? unreadSaid()
                     : inTheRoom(output) && light.most !== 100 ? Plate.runs([`${light.share}%`,
                         partSaid("", "steps").replace("{now}", grouped(light.now))
                             .replace("{most}", grouped(light.most))])
