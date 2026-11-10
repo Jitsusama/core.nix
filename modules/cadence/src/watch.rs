@@ -14,9 +14,12 @@ pub const NOT_ON_MIN: i64 = 20;
 /// A VM run's median wait for a builder over the last hour, past which it
 /// is said, in minutes; the target is 2, and a few slow runs aren't a trend.
 pub const VM_WAIT_MEDIAN_MIN: f64 = 5.0;
-/// CPU pressure over five minutes, machine-wide; the target is 15 from
-/// agents' work alone, so only well past it is said.
-pub const CPU_AVG300: f64 = 40.0;
+/// CPU pressure over five minutes in what Joel uses, his apps' or his
+/// session's slice, past which it is said. The machine-wide figure stays on
+/// the card alone: on 10 November it was asked about at 53% and 41%, both
+/// times carried by the agents' jobs, which rank behind him by design,
+/// while his own slices waited under 1%, so no answer changed anything.
+pub const JOEL_CPU_AVG300: f64 = 10.0;
 /// The net's round this many hours behind main's head.
 pub const NET_BEHIND_H: f64 = 3.0;
 /// The net holding main with no revert under way this long, in minutes:
@@ -60,6 +63,9 @@ pub struct Snapshot {
     pub follower: Follower,
     pub runs: Vec<Run>,
     pub cpu_avg300: Option<f64>,
+    /// The higher of Joel's apps' and session's CPU pressure over five
+    /// minutes.
+    pub joel_cpu_avg300: Option<f64>,
     pub available_gib: f64,
     pub swap_gib: f64,
     /// When the newest machine-wide out-of-memory kill in the last week was.
@@ -125,10 +131,13 @@ pub fn breaches(s: &Snapshot) -> Vec<Breach> {
             ),
         });
     }
-    if let Some(cpu) = s.cpu_avg300.filter(|&c| c > CPU_AVG300) {
+    if let Some(cpu) = s.joel_cpu_avg300.filter(|&c| c > JOEL_CPU_AVG300) {
         out.push(Breach {
             key: format!("cpu:{hour}"),
-            text: format!("the machine's CPU pressure over five minutes is {cpu:.0}% (target 15)"),
+            text: format!(
+                "what Joel uses waits on the CPU {cpu:.0}% of five minutes (his apps' or \
+                 session's slice, said past {JOEL_CPU_AVG300:.0})"
+            ),
         });
     }
     if let Some(round) = &s.round {
@@ -696,6 +705,13 @@ mod tests {
         s.runs = vec![run(400.0), run(400.0), run(400.0), run(400.0)];
         s.cpu_avg300 = Some(45.0);
         s.last_oom_kill = Some(99_000);
+        let keys: Vec<String> = breaches(&s).into_iter().map(|b| b.key).collect();
+        assert_eq!(
+            keys,
+            ["vmwait:27", "oom:99000"],
+            "the agents' own pressure is the card's alone"
+        );
+        s.joel_cpu_avg300 = Some(12.0);
         let keys: Vec<String> = breaches(&s).into_iter().map(|b| b.key).collect();
         assert_eq!(keys, ["vmwait:27", "cpu:27", "oom:99000"]);
         s.last_oom_kill = Some(100_000 - 3600);
