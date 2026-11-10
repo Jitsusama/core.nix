@@ -19,6 +19,12 @@
 # come back unsigned. That's a trusted user's power already, since Nix lets
 # one name builders for any build, so only a trusted account may write it:
 # the file then gives it nothing it didn't have.
+#
+# Once a machine says what `lines` trusts, root reads the lines from
+# /run/nix-offload-lines instead, which an account of their own writes
+# (src/lines.rs): it copies the lender's lines there, passing only those
+# naming a builder it can vouch for, so the lender's account needs no
+# trust to keep root safe.
 {
   config,
   pkgs,
@@ -28,6 +34,32 @@
 let
   keys = config.jitsusama.nix-offload.builderKeys;
   keysFile = "/run/nix-offload/builder-keys";
+  lines = config.jitsusama.nix-offload.lines;
+  linesFolder = "/run/nix-offload-lines";
+  lineFiles = [
+    "machines"
+    "machines-with-standing"
+    "machines-beside"
+    "machines-for-anything"
+  ];
+  offload = pkgs.callPackage ./offload/package.nix { };
+  # What src/lines.rs reads, as JSON.
+  linesSettings = {
+    from = "/run/nix-offload";
+    into = linesFolder;
+    files = lineFiles;
+    key = "/etc/nix/offload_ed25519";
+    inherit (lines) project prefix zones;
+    standing = map (builder: {
+      inherit (builder) uri key hostKey;
+    }) lines.standing;
+    lent = map (builder: {
+      inherit (builder) uri;
+      instance = "${builder.folder}/instance";
+      token = "${builder.folder}/cloud-token";
+    }) lines.lent;
+    gcloud = lib.getExe' lines.gcloud "gcloud";
+  };
 in
 {
   options.jitsusama.nix-offload.account = lib.mkOption {
@@ -48,6 +80,72 @@ in
     '';
   };
 
+  options.jitsusama.nix-offload.lines = lib.mkOption {
+    type = lib.types.nullOr (
+      lib.types.submodule {
+        options = {
+          project = lib.mkOption {
+            type = lib.types.str;
+            description = "The cloud project lent builders are made in.";
+          };
+          prefix = lib.mkOption {
+            type = lib.types.str;
+            example = "offload-";
+            description = "What every lent builder's instance name starts with.";
+          };
+          zones = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            description = "The zones a lent builder may be made in.";
+          };
+          lent = lib.mkOption {
+            type = lib.types.listOf (
+              lib.types.submodule {
+                options.uri = lib.mkOption {
+                  type = lib.types.str;
+                  example = "ssh-ng://nix-offload?compress=true";
+                  description = "The URI its lender's lines name it by, whole.";
+                };
+                options.folder = lib.mkOption {
+                  type = lib.types.str;
+                  example = "/run/nix-offload";
+                  description = ''
+                    Its lender's folder, where the lender names its instance in
+                    `instance`, `<name> <zone>`, and the token gcloud asks with in
+                    `cloud-token`.
+                  '';
+                };
+              }
+            );
+            description = "The lent builders whose lines may reach root, the first's and its stand-ins'.";
+          };
+          standing = lib.mkOption {
+            type = lib.types.listOf (
+              lib.types.submodule {
+                options.uri = lib.mkOption { type = lib.types.str; };
+                options.key = lib.mkOption { type = lib.types.str; };
+                options.hostKey = lib.mkOption {
+                  type = lib.types.str;
+                  description = "Its host key as its line carries it, in base64.";
+                };
+              }
+            );
+            default = [ ];
+            description = "The standing and beside builders whose lines may reach root.";
+          };
+          gcloud = lib.mkPackageOption pkgs "google-cloud-sdk" { };
+        };
+      }
+    );
+    default = null;
+    description = ''
+      What may reach root's Nix of the lender's lines. Set, root reads them
+      from ${linesFolder}, which only an account of their own writes,
+      passing a line only when it names one of these builders, a lent one
+      with the host key the cloud gives for its instance. Unset, root reads
+      the lender's own, and the lender's account must be trusted.
+    '';
+  };
+
   config = {
     assertions =
       let
@@ -58,10 +156,12 @@ in
       in
       [
         {
-          assertion = lib.elem account trusted || lib.any (group: lib.elem "@${group}" trusted) groups;
+          assertion =
+            lines != null || lib.elem account trusted || lib.any (group: lib.elem "@${group}" trusted) groups;
           message = ''
             jitsusama.nix-offload.account (${account}) writes the builders root's Nix
-            trusts, so it must be one of nix.settings.trusted-users.
+            trusts, so it must be one of nix.settings.trusted-users, unless
+            jitsusama.nix-offload.lines says which of its lines may reach root.
           '';
         }
       ];
@@ -71,7 +171,7 @@ in
     # the place of, so a machine's other builders belong in it too.
     nix.distributedBuilds = true;
     nix.settings = {
-      builders = "@/run/nix-offload/machines";
+      builders = if lines == null then "@/run/nix-offload/machines" else "@${linesFolder}/machines";
       # The builder fetches what a cache holds itself, rather than being
       # sent it from here.
       builders-use-substitutes = true;
@@ -122,7 +222,55 @@ in
     ++ [
       # And of a third, for what `there` sends while the first is full.
       "d /run/nix-offload-more 0755 ${config.jitsusama.nix-offload.account} - -"
-    ];
+    ]
+    # The lines root reads, which only their own account writes.
+    ++ lib.optionals (lines != null) (
+      [ "d ${linesFolder} 0755 nix-offload-lines nix-offload-lines -" ]
+      ++ map (file: "f ${linesFolder}/${file} 0644 nix-offload-lines nix-offload-lines -") lineFiles
+    );
+
+    # The lender's account is in the group so it can leave the cloud token
+    # where the service reads it, mode 0640, and no other account can.
+    users.users.nix-offload-lines = lib.mkIf (lines != null) {
+      isSystemUser = true;
+      group = "nix-offload-lines";
+    };
+    users.groups.nix-offload-lines = lib.mkIf (lines != null) {
+      members = [ config.jitsusama.nix-offload.account ];
+    };
+
+    environment.etc."nix-offload/lines.json" = lib.mkIf (lines != null) {
+      text = builtins.toJSON linesSettings;
+    };
+
+    systemd.services.nix-offload-lines = lib.mkIf (lines != null) {
+      description = "Passes root's Nix only the builder lines it can vouch for";
+      wantedBy = [ "multi-user.target" ];
+      after = [
+        "network-online.target"
+        "systemd-tmpfiles-setup.service"
+      ];
+      wants = [ "network-online.target" ];
+      restartTriggers = [ config.environment.etc."nix-offload/lines.json".source ];
+      serviceConfig = {
+        ExecStart = "${lib.getExe offload} lines --config /etc/nix-offload/lines.json";
+        User = "nix-offload-lines";
+        Group = "nix-offload-lines";
+        Restart = "always";
+        RestartSec = 5;
+        # gcloud keeps its state here, never in a home.
+        StateDirectory = "nix-offload-lines";
+        StateDirectoryMode = "0700";
+        ReadWritePaths = [ linesFolder ];
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        PrivateTmp = true;
+        NoNewPrivileges = true;
+        CapabilityBoundingSet = "";
+        RestrictSUIDSGID = true;
+        LockPersonality = true;
+      };
+    };
 
     # After /etc, which /etc/nix belongs to.
     system.activationScripts.nix-offload-key = {

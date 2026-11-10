@@ -1252,12 +1252,20 @@
     takes it, else tells changed-checks to run here; and `relay` dials a far side again
     while it closes before saying its first line, passes that line and everything after
     both ways, and hangs up once, without dialling again, on one that says nothing in time,
-    and ends once its far side has answered no caller for long enough, never while idle
+    and ends once its far side has answered no caller for long enough, never while idle; and
+    `lines` copies into root's files only the lender's lines whose URI, whole, key and host key
+    a standing builder's settings give, or a lent builder's instance does, named by prefix and
+    zone and its host key asked of the cloud once, each line of eight fields and the rest plain
   '';
   nix-offload-lenders-outlive-a-switch = ''
     a switch that changes a lender's unit reloads it rather than restarting it, and a lender
     that ends superseded is started again from the new unit; every VM lender, and no other,
     warms each builder it stands, by default with a check core still has
+  '';
+  nix-offload-lines-reach-root-alone = ''
+    with nix-offload's lines set, root's Nix reads its builders only from the folder their own
+    account writes, the service runs as it with its settings, and the lender's account needn't
+    be trusted; unset, root reads the lender's own and its account must be
   '';
   nix-offload-passes-clippy = ''
     clippy finds nothing in nix-offload or its tests
