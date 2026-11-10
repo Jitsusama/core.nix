@@ -806,7 +806,9 @@ fn revert_again(world: &dyn World, state: &State) -> Result<(), String> {
         test: test.clone(),
         log: state.log(&commit, &test, 2).display().to_string(),
     };
-    let reverted = world.revert(&found, &revert_wanted(world, state, &found));
+    let failed_at = hold["failed_at"].as_str().map(str::to_owned);
+    let wanted = revert_wanted(world, state, &found, failed_at.as_deref());
+    let reverted = world.revert(&found, &wanted);
     keep_revert(state, &mut hold, &reverted)?;
     if dropped(state, &found, &reverted)? {
         return Ok(());
@@ -1493,10 +1495,10 @@ fn revert_and_tell(
     let (commit, test, log) = (&found.commit, &found.test, &found.log);
     let mut hold = json!({
         "test": test, "bad": commit, "bad_pr": found.pr, "revert_pr": Value::Null,
-        "revert_commit": Value::Null, "at": now(),
+        "revert_commit": Value::Null, "failed_at": head, "at": now(),
     });
     state.set_hold(&hold)?;
-    let reverted = world.revert(found, &revert_wanted(world, state, found));
+    let reverted = world.revert(found, &revert_wanted(world, state, found, Some(head)));
     keep_revert(state, &mut hold, &reverted)?;
     if dropped(state, found, &reverted)? {
         return Ok(());
@@ -1543,17 +1545,22 @@ fn revert_and_tell(
 /// #2705 at 03:13 for a moves-windows failure seen only at 02:32's main.
 /// The main it was cut from carried #2770, which had moved the test to
 /// what #2705 draws, but the test never ran there or with the revert, so
-/// the revert broke the test it was for.
+/// the revert broke the test it was for. Only a newest head building the
+/// test as `failed_at` does, where it ran and failed, isn't run again.
 fn revert_wanted<'a>(
     world: &'a dyn World,
     state: &'a State,
     found: &'a Bad,
+    failed_at: Option<&'a str>,
 ) -> impl Fn(&str, &str) -> Result<bool, String> + 'a {
     move |newest: &str, reverted: &str| {
         let test = &found.test;
         let (without, with) = std::thread::scope(|scope| {
             let with = scope.spawn(|| attempt_together(world, state, reverted, test));
-            let without = attempt_together(world, state, newest, test);
+            let without = match failed_at {
+                Some(failed) if same_drv(world, newest, failed, test) => Outcome::Failed,
+                _ => attempt_together(world, state, newest, test),
+            };
             (without, with.join().unwrap_or(Outcome::Unsent))
         });
         if without == Outcome::Unsent || with == Outcome::Unsent {
@@ -2725,7 +2732,9 @@ mod tests {
             .built()
             .into_iter()
             .map(|(commit, _)| commit)
-            .filter(|commit| !["h", "m1", "m2"].contains(&commit.as_str()))
+            .filter(|commit| {
+                !commit.ends_with("+revert") && !["h", "m1", "m2"].contains(&commit.as_str())
+            })
             .collect();
         assert!(
             searched.is_empty(),
@@ -3086,15 +3095,15 @@ mod tests {
 
     #[test]
     fn a_revert_lands_only_if_its_test_fails_without_it_and_passes_with_it_at_mains_head() {
-        // #2783's case: main moved on to m4 while the revert's checks ran,
-        // building the test as m3 does, and passes it there.
+        // Main moves on to m4 while the revert's checks run, and its test
+        // is asked about there with and without the revert, never judged
+        // from the main the revert was cut from, as #2783 was.
         let reverting = |name: &str, newest: &[i32], with: &[i32]| {
             let state = state(name);
             let world = Stand {
                 head: "m3".into(),
                 merges: names("m1 m2 m3"),
                 changed: changed("vm-a"),
-                newest_builds_as: Some("m4".into()),
                 moves_while_reverting: Some("m4".into()),
                 ..Stand::default()
             }

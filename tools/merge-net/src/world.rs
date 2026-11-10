@@ -146,6 +146,32 @@ impl Real {
         .map(|_| ())
     }
 
+    /// Merge main's newest head into `branch`, at `sha` and cut from
+    /// `cut_from`, and push it, giving main's newest head and the branch's
+    /// commit. Main may move in the minutes a change's checks take, and a
+    /// merge in them may have fixed what the change is for, or changed what
+    /// it meets.
+    fn onto_newest(
+        &self,
+        branch: &str,
+        cut_from: &str,
+        sha: String,
+    ) -> Result<(String, String), String> {
+        self.git(&["fetch", "--quiet", "origin", &self.branch])?;
+        let newest = self.git(&["rev-parse", &self.followed()])?;
+        if newest == cut_from {
+            return Ok((newest, sha));
+        }
+        let merging = format!("Merge {} into {branch}", short(&newest));
+        self.git(&["merge", "--quiet", "--no-edit", "-m", &merging, &newest])
+            .inspect_err(|_| {
+                let _ = self.git(&["merge", "--abort"]);
+            })?;
+        self.git(&["push", "--quiet", "origin", branch])?;
+        let merged = self.git(&["rev-parse", "HEAD"])?;
+        Ok((newest, merged))
+    }
+
     /// Land a change on main through a PR merged on its own checks: a
     /// branch from main, `change` made in the checkout and committed as
     /// `message`, pushed, changed-checks passing on it, then main's newest
@@ -208,21 +234,7 @@ impl Real {
                 ),
             );
         }
-        // Main may move in the minutes the checks take, and a merge in them
-        // may have fixed what this change is for, or changed what it meets.
-        self.git(&["fetch", "--quiet", "origin", &self.branch])?;
-        let newest = self.git(&["rev-parse", &followed])?;
-        let sha = if newest == cut_from {
-            sha
-        } else {
-            let merging = format!("Merge {} into {branch}", short(&newest));
-            self.git(&["merge", "--quiet", "--no-edit", "-m", &merging, &newest])
-                .inspect_err(|_| {
-                    let _ = self.git(&["merge", "--abort"]);
-                })?;
-            self.git(&["push", "--quiet", "origin", branch])?;
-            self.git(&["rev-parse", "HEAD"])?
-        };
+        let (newest, sha) = self.onto_newest(branch, &cut_from, sha)?;
         match still(&newest, &sha) {
             Ok(true) => {}
             Ok(false) => return Err(format!("{DROPPED}, {}", log.display())),
