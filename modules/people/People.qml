@@ -592,8 +592,8 @@ Provider {
         return listedPersons().map(person => person.name);
     }
 
-    // Those listed, by their rows' keys alone, for a pick (Provider.qml's
-    // keysKnown): a person's row asks for no confirming, so its key is all
+    // Those listed, by their rows' keys alone, for a pick (Launcher.qml's
+    // knowing): a person's row asks for no confirming, so its key is all
     // a pick reads. Read for their rows, a pick made every listed person's
     // row while People wasn't wanted, 116 at one of Joel's (2026-11-10).
     function keysKnown() {

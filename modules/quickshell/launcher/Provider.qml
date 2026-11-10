@@ -380,15 +380,6 @@ Scope {
         return [];
     }
 
-    // Everything it holds as a pick reads it, to forget the picks of rows
-    // gone (Launcher.qml's knowing): each row's key, and its name and
-    // confirm where it has them (Rank.leastOf). Its rows, unless it can
-    // say them without making them, as People does, since every pick
-    // reads every collection, wanted or not.
-    function keysKnown() {
-        return everything();
-    }
-
     // The rows its search looks through, whose texts the launcher makes
     // ready while it's closed: everything, unless it searches more than it
     // lists, as Quests searches its finished quests too.
