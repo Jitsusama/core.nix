@@ -2417,10 +2417,21 @@ onLinux {
       '';
       litra = pkgs.writeShellApplication {
         name = "litra";
-        runtimeInputs = [ pkgs.coreutils ];
+        runtimeInputs = [
+          pkgs.coreutils
+          pkgs.util-linux
+        ];
         text = ''
           state=$XDG_RUNTIME_DIR/litra-state
           feed=$XDG_RUNTIME_DIR/litra-feed
+          # Each change waits its turn, as litra's own does under a lock on
+          # the light's node (modules/litra/litra.rs): the shell sets
+          # brightness and warmth at once, and two changes read at the same
+          # time would each write back the other's field as it was.
+          if [ "$1" != watch ]; then
+            exec 9> "$XDG_RUNTIME_DIR/litra-lock"
+            flock 9
+          fi
           [ -e "$state" ] || echo "true 40 4000" > "$state"
           read -r on percent kelvin < "$state"
           # A light as litra says it: its lumens are a Glow's, 20 to 250
