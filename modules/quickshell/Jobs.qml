@@ -1,30 +1,42 @@
 pragma Singleton
+pragma ComponentBehavior: Bound
 // The machine's queue of heavy work, as the harness writes it for every pi
 // session (its placement, in agentic-harness): what runs and what waits its
-// turn, each job's owner, and the room the machine has. One file,
-// $XDG_RUNTIME_DIR/jobs/queue.json, replaced whole on each change and at
-// least every thirty seconds, so it's heard rather than read on a clock,
-// and a harness gone quiet shows as silent. The folder is made at login
-// (this module's home.nix), so the watch hears the first file.
+// turn, each job's owner, and the room the machine has. The harness
+// replaces $XDG_RUNTIME_DIR/jobs/queue.json whole on each change and at
+// least every thirty seconds, and the machine's mycelium node serves it as
+// one `queue` record (modules/mycelium), so the shell reads no file of the
+// queue's: it's told each change as the node hears it, at most four a
+// second. Jobs.js decides what of each record is the harness's and what's
+// new in it.
+//
+// The node serves each job as a `job` record too, but the interface's own
+// `kind` takes the place of a job's, which Queue draws ("build"), so the
+// jobs are read from the queue's record, where they're whole and in the
+// harness's order.
 import qs
 import Quickshell
 import QtQuick
-import "pieces"
+import "Jobs.js" as Read
 
 Singleton {
     id: root
 
-    // The file as written, or null with none of a version this reads.
-    readonly property var said: status.said
-    readonly property bool silent: status.silent
+    // The file as written, or null with none of a version this reads, or
+    // while the node isn't answering, so Queue says it's silent rather
+    // than show the last it heard as current.
+    property var said: null
     // Running first, then waiting in turn order, as the harness keeps them.
     readonly property var jobs: said?.jobs ?? []
     readonly property var running: jobs.filter(job => job.state === "running")
     readonly property var waiting: jobs.filter(job => job.state === "waiting")
 
     // Whether the launcher is open (shell.qml), the only place anything of
-    // the queue is drawn (Agents and Queue): closed, its writes are only
-    // noted, and the last read as it opens.
+    // the queue is drawn (Agents and Queue): closed, the queue isn't
+    // watched at all, so a write costs the shell nothing, and it's told the
+    // queue whole as it opens. Under load the queue's pressure changed in
+    // nearly every write, 12 a second, each about 20 wakeups and 14 ms of
+    // the shell's with the launcher closed (15J7N3, 2026-10-30).
     property bool showing: false
 
     // What it heard, for the test that a closed launcher hears nothing.
@@ -35,19 +47,38 @@ Singleton {
         return jobs.filter(job => job.owner?.session === session);
     }
 
-    StatusFile {
-        id: status
-        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/jobs/queue.json`
-        held: !root.showing
-        // Three heartbeats missed.
-        silence: 90
-        parse: text => {
-            try {
-                const said = JSON.parse(text);
-                return typeof said === "object" && said !== null && said.v === 1 ? said : null;
-            } catch (error) {
-                return null;
-            }
+    // What it said last beyond its beats, so a write that says only when
+    // changes nothing said, and what reads `said` runs again only for news.
+    property string saying: ""
+
+    readonly property var queueKind: queueLink.item
+    LazyLoader {
+        id: queueLink
+        active: Sessions.nodePath !== ""
+
+        Daemon {
+            socket: Sessions.nodePath
+            kind: "queue"
+            live: root.showing
+            changesDiffer: true
+            answersWhole: true
+            // The queue is true only while the node answers, so a node
+            // stopped or restarting leaves nothing shown as current.
+            keptThroughGap: false
+        }
+    }
+    // The node's one record of the queue, keyed by the machine's name, or
+    // none while there's no file.
+    readonly property var record: {
+        void queueKind?.revision;
+        return Object.values(queueKind?.held ?? {})[0] ?? null;
+    }
+    onRecordChanged: {
+        const file = Read.told(record);
+        const told = Read.saying(file);
+        if (file === null || told !== saying) {
+            saying = told;
+            said = file;
         }
     }
 }

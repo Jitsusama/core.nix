@@ -221,6 +221,7 @@ let
     "SpendWatch.qml"
     "Eero.qml"
     "Jobs.qml"
+    "Jobs.js"
     "KeepAwake.qml"
     "Recorder.qml"
     "Picker.qml"

@@ -58,8 +58,10 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
     read Queue's note, were made again whole on each write with the launcher closed: two
     thirds of the shell's idle processor on 2026-10-29. Then each write was still read and
     heard, about 20 wakeups and 14 ms a write (2026-10-30), and then only noted, each write
-    still waking it (2026-10-31). Now a closed launcher doesn't watch the queue at all, and
-    reads it once as it opens, its note saying the last write.
+    still waking it (2026-10-31). Then a closed launcher didn't watch the file at all. Now the
+    machine's node watches it, and a closed launcher doesn't watch the node's record of it,
+    so it's told nothing until it opens, and then the queue whole, its note saying the last
+    write.
     """
     jobs = "$XDG_RUNTIME_DIR/jobs"
     # The shell's first opening joins its sources as they first come, so
@@ -89,13 +91,14 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
             ).strip()
         )
 
-    # Closed, a write never so much as wakes it: the folder isn't watched.
+    # Closed, a write never so much as wakes it: the shell watches no file
+    # of the queue's, and the node's record of it isn't watched, which the
+    # reports below say, only the opening's heard. Nor are its rows joined
+    # again while it's closed, even by a change it does hear, a window
+    # opening, counted before it opens, since an open launcher joins them
+    # as anything on the desktop changes: a budget for the opening's joins
+    # failed whenever the desktop moved meanwhile (2026-11-06).
     assert watches() == 0, "the closed launcher watches the queue's folder"
-    # Nor are its rows joined again while it's closed, even by a change it
-    # does hear, a window opening, counted before it opens, since an open
-    # launcher joins them as anything on the desktop changes: a budget for
-    # the opening's joins failed whenever the desktop moved meanwhile
-    # (2026-11-06).
     windows = int(desktop.as_account("qs ipc call launcher changes windows"))
     desktop.as_account("niri msg action spawn -- kitty --title still-closed sleep infinity")
     desktop.machine.wait_until_succeeds(
@@ -112,8 +115,8 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
                 and shown["selected"]["note"].startswith("20 GiB to spare")
             )
         )
-        # Open, it is, so the count above looked where a watch would be.
-        assert watches() > 0, "the open launcher doesn't watch the queue's folder"
+        # Open, it's told by the node, still watching no file of its own.
+        assert watches() == 0, "the open launcher watches the queue's folder"
         said = desktop.as_account(
             "journalctl --user --unit=quickshell --no-pager --output=cat"
             f" --after-cursor={shlex.quote(since)}"
@@ -176,7 +179,10 @@ def test_an_open_launcher_takes_a_burst_of_changes_together(desktop: Desktop) ->
         machine.wait_until_succeeds(desktop.in_session(last), timeout=dt.timedelta(seconds=10))
         heard = started_apart(desktop, since, "report[heard jobs ")
         refreshes = started_apart(desktop, since, "report[refreshed jobs]")
-        assert len(heard) >= writes // 3, f"only {len(heard)} changes heard, too few to tell"
+        # The node tells a watch a change no sooner than a quarter second
+        # after the last (mycelium's PROTOCOL.md), so 3 s of writes are
+        # heard as about 12.
+        assert len(heard) >= writes // 4, f"only {len(heard)} changes heard, too few to tell"
         # Taken one by one, each change heard was a refresh of its own, some
         # a tenth of a second after the last (2026-10-30). Together, there's
         # one at once and then at most four a second while they come, each

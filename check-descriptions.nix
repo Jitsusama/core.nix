@@ -2529,6 +2529,10 @@
     action and copy, the (y/n) ask once before what can't be put back, and yG or dG over 400 rows
     within half a key's 4 ms
   '';
+  the-queue-is-heard-from-the-node = ''
+    the machine queue is the harness's file as the node's record holds it, none of a version it
+    doesn't read, and a write of only when it was written says nothing new
+  '';
   the-sandboxes-door-trusts-no-one = ''
     the Nix daemon's door for sandboxes, run as its socket unit runs it, answers as a daemon and
     takes its caller as untrusted, so a sandbox passed it rather than the daemon's socket can't
