@@ -115,7 +115,8 @@ pub struct Session {
     typed: PathBuf,
 }
 
-/// Every pi running in a unit of an account's app.slice, read from `proc`,
+/// Every pi running in a unit of an account's app.slice or agents.slice,
+/// where the agents' windows run, read from `proc`,
 /// with its typed folder under `run`, the accounts' runtime folders. About
 /// 30 sessions, each sending its whole conversation at every turn, filled
 /// the upload ahead of the turn Joel had typed and waited on. A pi
@@ -134,7 +135,7 @@ pub fn sessions(proc: &Path, run: &Path) -> Vec<Session> {
             && let Some((unit, uid)) = fs::read_to_string(dir.join("cgroup"))
                 .ok()
                 .as_deref()
-                .and_then(app_unit)
+                .and_then(session_unit)
         {
             found.push(Session {
                 pid,
@@ -147,12 +148,19 @@ pub fn sessions(proc: &Path, run: &Path) -> Vec<Session> {
     found
 }
 
-/// The unit of an account's app.slice a process's cgroup file names, and
-/// the account's uid, or none for any cgroup else.
-fn app_unit(cgroup: &str) -> Option<(String, String)> {
+/// The unit of an account's app.slice or agents.slice a process's cgroup
+/// file names, and the account's uid, or none for any cgroup else.
+fn session_unit(cgroup: &str) -> Option<(String, String)> {
     let path = cgroup.lines().find_map(|line| line.strip_prefix("0::/"))?;
     let parts: Vec<&str> = path.split('/').collect();
-    let ["user.slice", account, manager, "app.slice", unit] = parts[..] else {
+    let [
+        "user.slice",
+        account,
+        manager,
+        "app.slice" | "agents.slice",
+        unit,
+    ] = parts[..]
+    else {
         return None;
     };
     let uid = account.strip_prefix("user-")?.strip_suffix(".slice")?;
@@ -407,6 +415,30 @@ mod tests {
         // The turn ends and its file goes: it's bulk at once.
         fs::remove_file(run.join("1000/pi/typed/20")).unwrap();
         assert_eq!(untyped(&root, &found).len(), 2);
+    }
+
+    /// Agents' windows run in agents.slice, beside the apps rather than in
+    /// them: on 9 November about 60 sessions there sent their requests as
+    /// Joel's own.
+    #[test]
+    fn a_pi_in_the_agents_slice_is_sorted_as_one_in_the_apps() {
+        let agents = format!("{ACCOUNT}/agents.slice");
+        let root = tree(&[
+            &format!("{agents}/kitty-1-1.scope"),
+            &format!("{agents}/kitty-2-2.scope"),
+        ]);
+        let proc = root.join("proc");
+        let run = root.join("run");
+        process(&proc, 10, "pi", &format!("{agents}/kitty-1-1.scope"));
+        process(&proc, 20, "pi", &format!("{agents}/kitty-2-2.scope"));
+        fs::create_dir_all(run.join("1000/pi/typed")).unwrap();
+        fs::write(run.join("1000/pi/typed/20"), "").unwrap();
+        let found = sessions(&proc, &run);
+        assert_eq!(
+            untyped(&root, &found),
+            [format!("{agents}/kitty-1-1.scope")],
+            "only the agent's window nobody typed in should be bulk: {found:?}"
+        );
     }
 
     #[test]
