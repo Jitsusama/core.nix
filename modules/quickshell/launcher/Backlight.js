@@ -2,8 +2,9 @@
 // JavaScript so a check can run it in Qt's own engine, as the shell does:
 // the level it last settled, what its curve asks for the room it heard
 // and whether it follows the room, from backlight-now; and its curve's
-// points, from its learned file. Displays.qml reads the files and draws
-// the screen's drawer.
+// points, from its learned file; and what the machine daemon says of the
+// backlight's steps and the room's sensor. Displays.qml reads the files,
+// holds the daemon's records and draws the screen's drawer.
 .pragma library
 .import "Numbers.js" as Numbers
 .import "Plate.js" as Plate
@@ -143,6 +144,86 @@ function chosen(lux, group, point) {
     return lux >= KILO
         ? `${Numbers.format(lux / KILO, undefined, group, point)} ${KILOLUX}`
         : `${Numbers.format(lux, undefined, group, point)} ${LUX}`;
+}
+
+// The first of a kind of the machine daemon's records (light.rs), by its
+// device's name as the kernel lists them, or null with none.
+function first(records, kind, holds) {
+    return records.filter(record => record?.kind === kind && holds(record))
+        .sort((a, b) => String(a.device).localeCompare(String(b.device)))[0] ?? null;
+}
+
+// The screen's backlight, from the machine daemon's records: its steps
+// now and most, its share, the steps the hardware reads back where they
+// differ, as when firmware moved it, how its steps map to light, what
+// drives it, its device and the screen it lights; or null with none that
+// says the most it can be.
+function lit(records) {
+    const found = first(records, "backlight",
+        record => record.max_brightness > 0 && Number.isFinite(record.brightness));
+    if (found === null) {
+        return null;
+    }
+    const reads = found.actual_brightness;
+    return {
+        now: found.brightness,
+        most: found.max_brightness,
+        share: Math.round(found.brightness / found.max_brightness * PERCENT),
+        reads: Number.isFinite(reads) && reads !== found.brightness ? reads : null,
+        stepping: found.scale ?? null,
+        driven: found.type ?? null,
+        device: found.device,
+        connector: found.connector ?? null
+    };
+}
+
+// The room's light sensor, from the machine daemon's records: the lux it
+// hears, its raw count, the lux a count is, its offset, its name and its
+// device; or null with none.
+function sensor(records) {
+    const found = first(records, "light", () => true);
+    if (found === null) {
+        return null;
+    }
+    return {
+        lux: Number.isFinite(found.lux) ? found.lux : null,
+        raw: Number.isFinite(found.raw) ? found.raw : null,
+        perCount: found.scale,
+        offset: found.offset ?? 0,
+        name: found.name,
+        device: found.device
+    };
+}
+
+// What the kernel says of the backlight past its share, as a screen's
+// drawer says it after Brightness: the steps it Reads where they differ
+// from those set, its Stepping and what it's Driven By, each only where
+// the kernel says it (VKCF3Z, 2026-11-09). `named` names a fact by its
+// id, `said` is the vocabulary's words, and `count` groups a figure in
+// threes.
+function kernelFacts(light, named, said, count) {
+    const word = (kind, key) => key === null ? "" : said[`${kind}-${key}`] ?? "";
+    return drawn([
+        { id: "reads", value: light.reads === null ? "" : count(light.reads) },
+        { id: "stepping", value: word("stepping", light.stepping) },
+        { id: "driven-by", value: word("driven", light.driven) }
+    ], named);
+}
+
+// Facts by id, those with nothing to say left out, each named.
+function drawn(facts, named) {
+    return facts.filter(fact => fact.value !== "")
+        .map(fact => ({ label: named(fact.id), value: fact.value }));
+}
+
+// What the sensor counts, as a screen's drawer says it after Room Light:
+// its Raw count, the lux Per Count, and its Offset where it isn't none.
+function sensorFacts(sensed, named, said, count) {
+    return drawn([
+        { id: "raw", value: sensed.raw === null ? "" : count(sensed.raw) },
+        { id: "per-count", value: said.perCount.replace("{n}", count(sensed.perCount)) },
+        { id: "offset", value: sensed.offset === 0 ? "" : count(sensed.offset) }
+    ], named);
 }
 
 // Each of the curve's points as its share at its lux, a run apart,

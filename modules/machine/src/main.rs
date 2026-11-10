@@ -4,7 +4,8 @@
 //! that asks, over SOCKET in the shell's daemon interface (interface.rs):
 //! the processor, the memory, each disk, this boot, the programs using
 //! the machine most, its sensors, thermal zones and cooling, each power
-//! supply, how it sleeps and its firmware, each a record whose figures are
+//! supply, how it sleeps, its firmware, and the screen's backlight and the
+//! room's light, each a record whose figures are
 //! the kernel's own or its services'
 //! (lib.rs says how they're named). The kernel's files are read under
 //! ROOT, `/` unless a test says otherwise.
@@ -39,8 +40,8 @@ use std::time::{Duration, Instant};
 
 use machine::interface::{Ask, KINDS, VERSION, ask, error, kind_of};
 use machine::{
-    Root, boot, clock_ms, disk, firmware, heat, memory, now_ms, processor, rounded, sleep, supply,
-    tree, using,
+    Root, boot, clock_ms, disk, firmware, heat, light, memory, now_ms, processor, rounded, sleep,
+    supply, tree, using,
 };
 use serde_json::{Value, json};
 
@@ -175,6 +176,12 @@ impl Reader {
         }
         if wants("sleep") {
             records.push(sleep::record(&self.root));
+        }
+        if wants("backlight") {
+            records.extend(light::backlights(&self.root));
+        }
+        if wants("light") {
+            records.extend(light::sensors(&self.root));
         }
         if wants("awake") {
             records.push(sleep::awake(&buses.logind));

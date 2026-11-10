@@ -174,8 +174,11 @@
     the backlight daemon's files say whether the room sets the level and what it's on its way
     to past a gap too slight to move, the room's light with the lid shut or that none is heard,
     measured to three digits in lx or klx, and every point of its curve, dimmest first, kept
-    where the daemon keeps it, its lux every digit in the same units; and the facts
-    that identify a thing end its drawer, marked, each said once
+    where the daemon keeps it, its lux every digit in the same units; the machine daemon's
+    backlight says its steps, those read back only where they differ, its stepping and driver
+    only where the kernel says them, and its sensor its count grouped, its lux a count and an
+    offset only where it isn't none; and the facts that identify a thing end its drawer, marked,
+    each said once
   '';
   a-timer-is-read-from-what-is-typed = ''
     a timer's span and name are read from what's typed after "timer" however it's written, a span
@@ -965,8 +968,8 @@
     the machine daemon says hello on the socket systemd hands it, says every record of a watch's
     kinds at once and their rates as of now a moment later, a disk's rates, sensors, link and file
     systems found through what's mapped over it, a disk taken out as gone and programs ranked by
-    their share and memory, reads nothing once nothing is watched, and refuses an ask or a kind it
-    doesn't know
+    their share and memory, the screen's backlight and the room's light told as they move, reads
+    nothing once nothing is watched, and refuses an ask or a kind it doesn't know
   '';
   machine-passes-clippy = ''
     clippy finds nothing in the machine daemon or its tests

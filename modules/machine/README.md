@@ -3,7 +3,8 @@
 How this machine is doing, held ready for the shell: a Rust program,
 `machine`, that reads the kernel's files and asks UDisks for each disk's
 health, UPower for each battery's times, logind what keeps it awake
-and fwupd for each device's firmware, and answers over `$XDG_RUNTIME_DIR/daemons/machine.sock` in
+and fwupd for each device's firmware, the screen's backlight and the
+room's light sensor among the files, and answers over `$XDG_RUNTIME_DIR/daemons/machine.sock` in
 version 1 of the shell's daemon interface (hello, get, list, watch,
 unwatch, health). [`src/main.rs`][main] says how it reads and when;
 [`src/lib.rs`][lib] how a record names its figures, with its unit in its
@@ -131,6 +132,14 @@ units, or named here as left out with the reason.
 |                 | its description, fix flags, plugin and id    | each attribute's drawer                   |
 |                 | the setting it reads, and what passing needs | each attribute's drawer                   |
 |                 | can fix, can undo                            | Secure It, Undo It, a step in             |
+| `backlight:<device>` | its steps, the most it takes            | the screen's Brightness, row and drawer   |
+|                 | the steps the hardware reads back            | the drawer's Reads, where they differ     |
+|                 | its scale, its type                          | the drawer's Stepping and Driven By       |
+|                 | its device                                   | the drawer's Device, in the Name face     |
+|                 | the screen it lights                         | which screen holds Brightness, never said |
+| `light:<device>`| the lux it hears                             | Room Light, its row and the drawer        |
+|                 | its raw count, scale and offset              | the drawer's Raw, Per Count and Offset    |
+|                 | its name                                     | the drawer's Sensor, in the Name face     |
 
 ## Left Out, and Why
 
@@ -204,6 +213,13 @@ units, or named here as left out with the reason.
 - **A sensor's reading the chip can't give.** A sensor saying nothing, or
   a temperature no part could reach (an unused sensor's 65,261 degrees),
   is left out rather than shown.
+- **The backlight's power state.** `bl_power` is on whenever the
+  launcher can be seen, since a blanked panel shows nothing.
+- **The light sensor's sampling frequency.** It says how often the
+  sensor hub samples, nothing Joel acts on; the lux it hears shows.
+- **The screen a backlight lights, as a name.** Its connector only
+  chooses which screen's drawer holds Brightness, whose eyebrow already
+  names it.
 
 [main]: src/main.rs
 [lib]: src/lib.rs

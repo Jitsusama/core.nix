@@ -8332,6 +8332,12 @@
         "chosen": "chosen",
         "set": "set",
         "steps": "{now} of {most} steps",
+        "stepping-linear": "linear",
+        "stepping-non-linear": "non-linear",
+        "driven-firmware": "the firmware",
+        "driven-platform": "a platform driver",
+        "driven-raw": "the graphics chip",
+        "perCount": "{n} lx",
         "the-room": "the room",
         "on-its-way": "on its way to {share}",
         "no-light": "no light heard",
@@ -8644,6 +8650,46 @@
       "id": "displays:curve",
       "in": "displays",
       "name": "Curve"
+    },
+    {
+      "id": "displays:reads",
+      "in": "displays",
+      "name": "Reads"
+    },
+    {
+      "id": "displays:stepping",
+      "in": "displays",
+      "name": "Stepping"
+    },
+    {
+      "id": "displays:driven-by",
+      "in": "displays",
+      "name": "Driven By"
+    },
+    {
+      "id": "displays:raw",
+      "in": "displays",
+      "name": "Raw"
+    },
+    {
+      "id": "displays:per-count",
+      "in": "displays",
+      "name": "Per Count"
+    },
+    {
+      "id": "displays:offset",
+      "in": "displays",
+      "name": "Offset"
+    },
+    {
+      "id": "displays:device",
+      "in": "displays",
+      "name": "Device"
+    },
+    {
+      "id": "displays:sensor",
+      "in": "displays",
+      "name": "Sensor"
     },
     {
       "id": "displays:input",

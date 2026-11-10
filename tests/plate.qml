@@ -11,8 +11,12 @@
 // Backlight.js reads them: what sets the level, the room or why nothing
 // does, and its curve, dimmest first;
 // the room's light measured to three digits, the curve's lux every digit.
+// The machine daemon's backlight and light sensor records are read as
+// Backlight.js reads them too: the panel's steps, what the kernel says
+// of them and what the sensor counts, each only where it's said.
 import QtQuick
 import "Backlight.js" as Backlight
+import "Numbers.js" as Numbers
 import "Plate.js" as Plate
 import "Screens.js" as Screens
 
@@ -138,6 +142,60 @@ QtObject {
             JSON.stringify(kept)
                 === JSON.stringify([{ lux: 0, level: 0.02 }, { lux: 100, level: 1 }]),
             JSON.stringify(kept));
+    }
+
+    // The machine daemon's records of the panel's backlight and the room's
+    // sensor (modules/machine's light.rs), as its drawer says them: what
+    // the kernel reads back only where it differs, its stepping and its
+    // driver only where the kernel says them, counts grouped in threes,
+    // and an offset of none unsaid.
+    function lights(check) {
+        const named = id => id;
+        const told = { "stepping-linear": "linear", "stepping-non-linear": "non-linear",
+            "driven-firmware": "the firmware", "driven-raw": "the graphics chip",
+            perCount: "{n} lx" };
+        const count = each => Numbers.format(each, undefined, ",", ".");
+        const panel = { key: "backlight:intel_backlight", kind: "backlight",
+            device: "intel_backlight", brightness: 57_600, actual_brightness: 57_600,
+            max_brightness: 96_000, type: "raw", scale: "non-linear", connector: "eDP-1" };
+        const sensor = { key: "light:iio:device0", kind: "light", device: "iio:device0",
+            name: "als", raw: 1234, scale: 0.1, offset: 0, lux: 123.4 };
+        const lit = Backlight.lit([sensor, panel]);
+        check("a backlight is its steps, its share and the screen it lights",
+            lit.now === 57_600 && lit.most === 96_000 && lit.share === 60 && lit.reads === null
+                && lit.connector === "eDP-1" && lit.device === "intel_backlight",
+            JSON.stringify(lit));
+        check("the kernel's say of its steps, read back the same",
+            said(Backlight.kernelFacts(lit, named, told, count))
+                === "stepping=non-linear; driven-by=the graphics chip",
+            said(Backlight.kernelFacts(lit, named, told, count)));
+        const moved = Backlight.lit([Object.assign({}, panel,
+            { actual_brightness: 1200, scale: null, type: "platform" })]);
+        check("steps read back otherwise are said, grouped; a stepping unsaid isn't",
+            said(Backlight.kernelFacts(moved, named, told, count)) === "reads=1,200",
+            said(Backlight.kernelFacts(moved, named, told, count)));
+        check("no backlight that says its most is none",
+            Backlight.lit([Object.assign({}, panel, { max_brightness: 0 }), sensor]) === null
+                && Backlight.lit([]) === null,
+            JSON.stringify(Backlight.lit([Object.assign({}, panel, { max_brightness: 0 })])));
+        const room = Backlight.sensor([panel, sensor]);
+        check("a sensor is the lux it hears, its count and its name",
+            room.lux === 123.4 && room.name === "als"
+                && said(Backlight.sensorFacts(room, named, told, count))
+                === "raw=1,234; per-count=0.1 lx",
+            said(Backlight.sensorFacts(room, named, told, count)));
+        const offset = Backlight.sensor([Object.assign({}, sensor, { offset: 6 })]);
+        check("an offset is said where it isn't none",
+            said(Backlight.sensorFacts(offset, named, told, count))
+                === "raw=1,234; per-count=0.1 lx; offset=6",
+            said(Backlight.sensorFacts(offset, named, told, count)));
+        const unread = Backlight.sensor([Object.assign({}, sensor, { raw: null, lux: null })]);
+        check("a sensor not yet read says no lux and no count",
+            unread.lux === null && said(Backlight.sensorFacts(unread, named, told, count))
+                === "per-count=0.1 lx",
+            JSON.stringify(unread));
+        check("no sensor is none", Backlight.sensor([panel]) === null,
+            JSON.stringify(Backlight.sensor([panel])));
     }
 
     // The laptop's panel as niri says it: two modes, both preferred.
@@ -388,6 +446,7 @@ QtObject {
             && Screens.physical({ physical_size: [0, 0] }) === "", Screens.physical(on));
 
         backlight(check);
+        lights(check);
         settings(check);
         onTheLine(check);
 
