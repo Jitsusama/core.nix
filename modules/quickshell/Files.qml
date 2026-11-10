@@ -45,6 +45,14 @@ Singleton {
         return cut < 0 || said === "/" ? "" : cut === 0 ? "/" : said.slice(0, cut);
     }
 
+    // The folder said beside a file's name, but nothing for the home: a
+    // lone "~" says nothing, and the drawer carries the path (VKCF3Z,
+    // 2026-11-09).
+    function beside(path) {
+        const folder = within(path);
+        return folder === "~" ? "" : folder;
+    }
+
     // A file's row: Return does the first of `acts`, and Ctrl+] goes into
     // them all, then Copy the Path; given `inside`, Return steps in.
     function file(path, thing, acts, inside) {
@@ -61,7 +69,8 @@ Singleton {
     function held(path, thing, acts, now, gone) {
         const far = gone === true ? "" : throughOf(path);
         return made("file", path, thing, acts, null, {
-            side: `${far !== "" ? far : now} \u00b7 ${within(path)}`,
+            side: [far !== "" ? far : now, beside(path)].filter(said => said !== "")
+                .join(" \u00b7 "),
             gone: gone === true
         });
     }

@@ -1,8 +1,8 @@
 // Drives the launcher's Shortcuts (modules/quickshell/launcher/KeyMap.qml)
 // through Quickshell itself, over an account's own shortcuts, Neovim's and
 // pi's among them, with niri stood in for: its top is the layers, pi's named
-// Agents and found by that name alone, each saying its count and its first
-// groups; a layer holds its groups, then what no group takes; typing finds a
+// Agents and found by that name alone, each a place saying its count at its
+// right, nothing after its name, and its groups in its drawer; a layer holds its groups, then what no group takes; typing finds a
 // group by its name before every chord it starts, flat, at the top and
 // inside a layer, a group found from the top saying its layer, and one
 // found further down saying the group holding it; a group can hold
@@ -73,9 +73,12 @@ ShellRoot {
             const desktop = top[0];
             // Counted as rows: two chords for one act are one.
             const binds = KeyGroups.merged("desktop", Shortcuts.layers[0].binds).length;
-            // Its first groups after its name, its count at its right.
-            expect("the desktop's count and first groups", desktop.side === String(binds)
-                && desktop.count === "Windows, Columns", `${desktop.count} ${desktop.side}`);
+            // A place: nothing after its name, its count at its right, and
+            // its groups for its drawer (VKCF3Z, dae7fb67).
+            expect("the desktop's count and its groups", desktop.side === String(binds)
+                && desktop.count === ""
+                && desktop.heldNames.slice(0, 3).join(", ") === "Windows, Columns, Workspaces",
+                `${desktop.count}|${desktop.heldNames} ${desktop.side}`);
             // The touchscreen's swipes are the desktop's: one doing what a
             // chord does is that chord's row, the swipe in words in its note,
             // and found by "swipe".
@@ -169,9 +172,11 @@ ShellRoot {
                 && reacting[0].note.endsWith("a pull request or a review's thread"),
                 reacting.map(one => one.note).join(" | "));
             const own = row(neovim.from.search("code").rows, "Code");
-            expect("a level's own group found inside it says its first groups",
-                own !== null && own.count === code.count && code.count.startsWith("Definitions"),
-                own ? own.count : "not found");
+            expect("a level's own group found inside it holds its groups",
+                own !== null && own.count === ""
+                && own.heldNames.join(", ") === code.heldNames.join(", ")
+                && code.heldNames[0] === "Definitions and Calls",
+                own ? `${own.count}|${own.heldNames}` : "not found");
             const github = row(neovim.verbs(), "GitHub");
             expect("a group holding groups", names(github.verbs()).slice(0, 4).join(", ")
                 === "Issues, People and Labels, Comments, Reactions",
