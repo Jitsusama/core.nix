@@ -15,7 +15,10 @@
 // looks, its to-dos, the sessions wanting Joel and its bands' own rows,
 // only one whose file or what it says changed once one does; and what's
 // on, made again as any one piece moves, makes only that piece's rows
-// again.
+// again. Its Lately rows are kept too, so one notice arriving makes only
+// Desktop's row again, and a session's move that changes nothing For You
+// reads of it, its want the same, makes none; For You held still hears a
+// change its own row doesn't count, once the change is done.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -125,7 +128,7 @@ ShellRoot {
         // they aren't while the launcher is shut or open elsewhere.
         property bool wanting: true
         // Nothing is held, so no step gathers the notices.
-        readonly property var held: []
+        property var held: []
 
         function wants(source) {
             return wanting;
@@ -198,14 +201,37 @@ ShellRoot {
     }
 
     function cases() {
-        let status = 0;
         try {
             run();
         } catch (error) {
             console.warn(`FAIL ${error.message ?? error}`);
+            Qt.callLater(() => Qt.exit(1));
+            return;
+        }
+        Qt.callLater(root.afterwards);
+    }
+
+    // The cases that hold once what a change deferred has run.
+    function afterwards() {
+        let status = 0;
+        try {
+            heldHears();
+        } catch (error) {
+            console.warn(`FAIL ${error.message ?? error}`);
             status = 1;
         }
-        Qt.callLater(() => Qt.exit(status));
+        Qt.exit(status);
+    }
+
+    // How many times Now said its rows changed.
+    property int nowChanged: 0
+
+    Connections {
+        target: now
+
+        function onChanged() {
+            root.nowChanged += 1;
+        }
     }
 
     function run() {
@@ -563,6 +589,7 @@ ShellRoot {
         Sessions.wanting = [];
         now.lookTexts = {};
         shut(piece, toDo);
+        remakesWhatChanged(toDo);
     }
 
     // With the launcher shut, a piece moving, a to-do coming, one for
@@ -614,6 +641,113 @@ ShellRoot {
         expect("and once", now.tally.rows === made, now.tally.rows - made);
         Location.here = here;
         Facts.all = [];
+        WaitingOnYou.now = [];
+        WaitingOnYou.later = [];
+        Sessions.wanting = [];
+    }
+
+    // For You is asked what it holds again at each change in Now while it's
+    // held, and each asking made its Lately rows anew, Mail's and Slack's
+    // with their acts and Desktop's, and its own row at any count, a
+    // session's every move among them: 7 rows an asking on a For You of two
+    // pieces and the desktop's notices, a notice arriving or nothing
+    // changed alike (2026-11-10). Now only a row a change names is made
+    // again, and a session's move that changes nothing For You reads, as
+    // its `told` says, reaches none of its rows.
+    function remakesWhatChanged(toDo) {
+        let ran = "";
+        const lately = (source, who, act) => ({ entry: { mark: source }, piece: {
+            present: true, active: true, group: "on", title: source, value: "",
+            lately: source, came: [{ who: who, at: Date.now() - 60000 }],
+            actions: [{ name: "Open It", run: act }, { name: "Mark It Read", run: () => {} }]
+        } });
+        const notice = id => ({ id: id, at: Date.now() - id * 60000, app: "Tester",
+            summary: `Notice ${id}`, body: "said", glyph: 0xf0f3, hue: "program",
+            read: id > 3, missed: false, readAt: id > 3 ? Date.now() - id * 60000 : null });
+        const told = [];
+        for (let id = 2; id <= 20; id++)
+            told.push(notice(id));
+        const session = (busy, said, digest) => ({ address: "WANTD", title: "Session D",
+            told: digest, presence: { session: "s-d", addresses: [], busy: busy,
+                wants: { kind: "question", said: said, since: "2026-11-10T12:00:00Z" } } });
+        Facts.all = [lately("mail", "Ann", () => ran = "mail"), lately("slack", "Bo", () => {})];
+        Notices.history = told;
+        WaitingOnYou.now = [toDo("Sign In")];
+        WaitingOnYou.later = [toDo("Renew It")];
+        Sessions.wanting = [session(false, "Which?", "d1")];
+        const forYou = () => now.waiting.verbs();
+        const byKey = rows => rows.reduce((keyed, row) => Object.assign(keyed,
+            { [row.key]: row }), {});
+        const first = byKey(forYou());
+        const mail = first["on:mail"];
+        let before = now.tally.rows;
+        const again = byKey(forYou());
+        expect("asked again with nothing changed, For You makes none of its rows",
+            now.tally.rows === before && Object.keys(first).every(key => again[key] === first[key]),
+            now.tally.rows - before);
+        // A piece said anew as it was keeps its row, and its act runs the
+        // piece as it is now.
+        Facts.all = [lately("mail", "Ann", () => ran = "mail now"), lately("slack", "Bo",
+            () => {})];
+        before = now.tally.rows;
+        const said = byKey(forYou());
+        said["on:mail"].verbs()[0].run();
+        expect("Mail said anew as it was keeps its row, and its act is Mail's as it is now",
+            said["on:mail"] === mail && ran === "mail now", `${ran}, ${said["on:mail"] === mail}`);
+        const waitingRow = now.waiting;
+        Notices.history = [notice(1)].concat(told);
+        before = now.tally.rows;
+        const came = byKey(forYou());
+        const remade = Object.keys(came).filter(key => came[key] !== first[key]);
+        expect("one notice arriving makes only Desktop's row again",
+            now.tally.rows - before === 1 && JSON.stringify(remade)
+                === JSON.stringify(["on:waiting:desktop"]) && now.waiting === waitingRow,
+            JSON.stringify([now.tally.rows - before, remade]));
+        const desktop = () => now.waiting.verbs().find(row => row.key === "on:waiting:desktop")
+            .verbs();
+        desktop();
+        before = now.tally.rows;
+        desktop();
+        expect("Desktop stepped into again makes none of its rows", now.tally.rows === before,
+            now.tally.rows - before);
+        // A session working, its want the same, is a shown-only change, its
+        // digest unmoved: none of For You's rows, nor its count, hear it.
+        const bands = now.forYouBands;
+        before = now.tally.rows;
+        Sessions.wanting = [session(true, "Which?", "d1")];
+        expect("a session's shown-only move reaches none of For You's rows",
+            now.tally.rows === before && now.forYouBands === bands && now.waiting === waitingRow,
+            JSON.stringify([now.tally.rows - before, now.forYouBands === bands]));
+        // Without a digest, it's told by what For You reads of it.
+        Sessions.wanting = [session(false, "Which?")];
+        const undigested = now.forYouBands;
+        Sessions.wanting = [session(true, "Which?")];
+        expect("and without a digest, by what For You reads of it",
+            now.forYouBands === undigested, "its bands were made again");
+        Sessions.wanting = [session(false, "Which one?", "d2")];
+        const asked = byKey(forYou())["on:waiting:want:WANTD"];
+        expect("its want changed, its row says so",
+            now.forYouBands !== undigested && asked?.name === "Session D"
+                && asked !== first["on:waiting:want:WANTD"], JSON.stringify(asked?.name));
+        // For You held, a to-do said otherwise, its count the same, leaves
+        // For You's own row as it was, so Now asks once the change is done
+        // whether what's held reads otherwise (heldHears).
+        theLauncher.open = true;
+        theLauncher.held = [{ row: { from: now, key: "on" } },
+            { row: { key: "on:waitingOnYou" } }];
+        now.changedTo(now.everything());
+        root.nowChanged = 0;
+        WaitingOnYou.now = [toDo("Sign In Again")];
+        expect("a to-do said otherwise, its count the same, keeps For You's own row",
+            now.waiting === waitingRow && root.nowChanged === 0, root.nowChanged);
+    }
+
+    function heldHears() {
+        expect("and For You held hears it once the change is done", root.nowChanged === 1,
+            root.nowChanged);
+        theLauncher.held = [];
+        Facts.all = [];
+        Notices.history = [];
         WaitingOnYou.now = [];
         WaitingOnYou.later = [];
         Sessions.wanting = [];

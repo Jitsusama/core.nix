@@ -173,6 +173,21 @@ function heaviest(lead, heaviestLook) {
     return first.length > 0 ? first.join(" \u00b7 ") : heaviestLook ?? "";
 }
 
+// What For You reads of a session wanting Joel, as text, so a move of a
+// session that changes none of it, as its working or its step, is heard
+// as none: the node's digest of its record (`told`, everything but how
+// it works now, mycelium's session records) where it carries one, else
+// the fields For You reads, its title and want and the names it goes by.
+function toldOf(session) {
+    const address = String(session?.address ?? "");
+    if (typeof session?.told === "string" && session.told !== "") {
+        return `${address} ${session.told}`;
+    }
+    const presence = session?.presence ?? {};
+    return JSON.stringify([address, session?.title ?? "", presence.session ?? "",
+        presence.addresses ?? [], presence.owns ?? [], presence.wants ?? null]);
+}
+
 // Whether a look was left by a session, by the session or the address the
 // look names, matched against the session's address, its presence's
 // session or any address its presence answers to.

@@ -100,7 +100,7 @@
   "tests/notice-list.qml" = 1;
   "tests/notices-on-niri.sh" = 1;
   "tests/notices-wait-while-away.sh" = 1;
-  "tests/now-moment.qml" = 2;
+  "tests/now-moment.qml" = 1;
   "tests/order.qml" = 1;
   "tests/pacing.qml" = 1;
   "tests/part-names.qml" = 2;
