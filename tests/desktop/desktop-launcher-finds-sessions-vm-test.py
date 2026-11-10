@@ -40,8 +40,10 @@ if TYPE_CHECKING:
     from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
 
-# How late, in seconds, the journal may stamp a line of the shell's on a busy machine.
-JOURNAL_LAG = 0.1
+# How late, in seconds, the journal may stamp a line of the shell's on a busy machine: a
+# quarter of a second, since a builder running other VM tests beside it once stamped one
+# 0.11 s late (9 November), while starts the shell didn't pace would come together.
+JOURNAL_LAG = 0.25
 # Pi's session's row, its quest's title, which Lighthouse's is while it runs.
 LIGHTHOUSE = "A quest of its own & whole"
 
@@ -578,27 +580,42 @@ def a_quest_offers_to_orchestrate(desktop: Desktop) -> None:
 
 
 def wakes_parked_orchestrator(desktop: Desktop) -> None:
-    """Wake Lighthouse once it's parked, by the file its marker names, rather than resume it."""
+    """Wake Lighthouse once it's parked, by the file its marker names, rather than resume it.
+
+    Parked while it wants Joel, its want still holds For You's mark, and its row still
+    wakes it, since there's no process to go to.
+    """
     machine = desktop.machine
     # Parked as the harness parks one: its process ended this boot, its
-    # record saying so, and the marker naming the file that wakes it.
+    # record saying so, and the marker naming the file that wakes it. Its
+    # want stays in its record, as the harness keeps it when it parks.
     parked = f"{HARNESS}/park-workflow/parked"
     boot = desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip()
+    began = machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip()
     record = {
         "session": "s-testqa", "addresses": ["TESTQA"], "state": "parked", "busy": False,
         "title": "\u03c0 - Lighthouse", "owner": {"pid": 1, "bootId": boot, "startTicks": 1},
         "at": "2026-11-06T12:00:00Z",
     }  # fmt: skip
+    wanting = record | {"wants": {"kind": "question", "since": began, "said": "Which way?"}}
+    since = desktop.mark()
     desktop.as_account(
-        f"mkdir -p {parked} && echo '{json.dumps(record)}' > {PI_PRESENCE}/testqa.json"
+        f"mkdir -p {parked} && echo '{json.dumps(wanting)}' > {PI_PRESENCE}/testqa.json"
         ' && printf \'{"session":"s-testqa","wake":"%s/testqa.wake"}\' "$XDG_RUNTIME_DIR"'
         f" > {parked}/s-testqa.json"
     )
+    desktop.reported("holds margin ", lambda rest: "forYou" in rest.split(), since)
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
     # Its row is its parked session's, which Return wakes, where a closed
-    # one's Return resumes it.
+    # one's Return resumes it, wanting Joel or not.
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "wake")
+    # Answered, its want ends and the mark goes, though it stays parked.
+    since = desktop.mark()
+    desktop.as_account(f"echo '{json.dumps(record)}' > {PI_PRESENCE}/testqa.json.new")
+    desktop.as_account(f"mv {PI_PRESENCE}/testqa.json.new {PI_PRESENCE}/testqa.json")
+    desktop.reported("holds margin ", lambda rest: "forYou" not in rest.split(), since)
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "wake")
     desktop.land()
     assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 wake"], desktop.showing()
@@ -1226,9 +1243,9 @@ def test_agents_reopens_each_session_where_it_sat(desktop: Desktop) -> None:
         desktop.launcher_until(lambda shown: not shown["open"])
         # Each began two seconds or more after the one before, so they don't
         # all start at once. The shell paces them by its own clock, and the
-        # journal stamps each line as it reads it, up to a tenth of a second
-        # late on a busy machine: one read late once made a gap of 1.94 s
-        # between two the shell began 2 s apart.
+        # journal stamps each line as it reads it, late on a busy machine: one
+        # read late once made a gap of 1.89 s between two the shell began 2 s
+        # apart.
         began = started_apart(desktop, since, "report[resumed session 01c3-")
         assert len(began) == len(where), began
         assert all(gap >= 2 - JOURNAL_LAG for gap in began[1:]), began

@@ -1131,10 +1131,14 @@ Provider {
     // past it (Joel, 2026-11-08: "Selecting one brings me often into a pi
     // session that is so far past what i'm being asked that i don't know if
     // it is still relevant"). Inside, Deal With It brings its window forward
-    // with the prompt filled in, naming what it asked, then Go To.
+    // with the prompt filled in, naming what it asked, then Go To. One parked
+    // is woken by either, its window showing it come back, as a key typed
+    // there would; Deal With It wakes it once the filled prompt is in its
+    // inbox, which it reads as it starts, as Talk does (Sessions.talk).
     function wantRow(made, session) {
         // What it asked, in its own words, or the session by its name.
         const asked = String(session.presence?.wants?.said || session.title);
+        const resting = Sessions.parkedAs(session.address);
         const key = `on:waiting:want:${session.address}`;
         const named = id => ({
             verb: Words.verb(`verb:on:waiting:${id}`),
@@ -1151,13 +1155,20 @@ Provider {
                     Sessions.steer(session.address, {
                         act: "fill",
                         text: readyToDeal(asked)
+                    }, put => {
+                        if (put && resting)
+                            Sessions.wake(resting);
                     });
                     Sessions.goTo(session);
                 }
             })),
             thing(Object.assign(named("go"), {
                 key: `verb:on:waiting:go:${key}`,
-                run: () => Sessions.goTo(session)
+                run: () => {
+                    if (resting)
+                        Sessions.wake(resting);
+                    Sessions.goTo(session);
+                }
             }))
         ];
         const row = member(Object.assign({}, made, {

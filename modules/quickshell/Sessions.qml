@@ -114,8 +114,10 @@ Singleton {
     // said }, kind a question, an approval, blocked or an action, and only
     // while it's truly his (Waiting.js): an action while its quest has
     // something he can do now, and a question only from a session no
-    // other orchestrates. The oldest first.
-    readonly property var wanting: running
+    // other orchestrates. The oldest first. One parked still wants him:
+    // its presence keeps its want while its process gives back its memory
+    // (the harness's peer.ts), so it waits in For You until he answers.
+    readonly property var wanting: running.concat(parked)
         .filter(session => asks(session))
         .sort((a, b) => String(a.presence.wants.since ?? "").localeCompare(String(b.presence.wants.since ?? "")))
     // The windows of those waiting on Joel, as one string, so a session's

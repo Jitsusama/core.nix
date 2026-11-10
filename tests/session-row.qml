@@ -67,6 +67,8 @@ QtObject {
             ["one paused that wants Joel needs him", { state: "paused" }, true, false, "needs"],
             ["one parked is parked, never listening", { state: "parked", busy: false }, false,
                 false, "parked"],
+            ["one parked that wants Joel is still parked, its want For You's",
+                { state: "parked", wants: { kind: "question" } }, true, false, "parked"],
             ["none at all is off", null, false, false, "off"]
         ];
         for (const [what, presence, asks, queued, want] of states) {
