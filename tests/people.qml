@@ -400,6 +400,9 @@ ShellRoot {
             check: () => {
                 expect("still lists whom it last listed", people.all.length === 4,
                     names(people.all));
+                // Said inside People too, on its head, as home's row says it.
+                expect("said on People's head", people.pressing === "not answering",
+                    people.pressing);
             }
         }
     ]

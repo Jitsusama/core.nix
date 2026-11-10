@@ -8706,6 +8706,10 @@ Scope {
                             ? (Words.field.found ?? "").replace("{count}",
                                 String(root.matches.length)) : ""
                         onPressing: root.filled("key")
+                        // How the place it's in stands, where its source
+                        // says that presses, as People's down daemon.
+                        placeSays: root.held.length === 0 ? ""
+                            : root.held[0].row.from?.pressing ?? ""
                         onTextChanged: {
                             // Put back to home while closed, nothing is
                             // searched or timed (keepHome).
