@@ -86,15 +86,21 @@ Singleton {
     readonly property bool heardAll: waitingKind?.answered === true
         && verdictKind?.answered === true && questKind?.answered === true
 
+    // What each of the node's kinds last said, kept while it's told again
+    // saying the same (Waiting.js's kept), so nothing below is weighed
+    // again for it. A plain object, never reassigned.
+    readonly property var toldLast: ({})
+
     // Each item the quests keep, as the node serves them.
     readonly property var asked: {
         void waitingKind?.revision;
-        return Waiting.served(waitingKind?.held ?? {});
+        return Waiting.kept(toldLast, "asked", Waiting.served(waitingKind?.held ?? {}));
     }
     // What the to do daemon found, or none while the node hasn't said.
     readonly property var verdicts: {
         void verdictKind?.revision;
-        return verdictKind?.answered ? Waiting.verdictsOf(verdictKind.held) : null;
+        return Waiting.kept(toldLast, "verdicts",
+            verdictKind?.answered ? Waiting.verdictsOf(verdictKind.held) : null);
     }
     // The quests the items name, as one string, so the items heard again
     // naming the same leave their owners as they were.
@@ -104,8 +110,8 @@ Singleton {
     // has answered.
     readonly property var owners: {
         void questKind?.revision;
-        return Waiting.owners(questKind?.answered ? questKind.held : null,
-            named === "" ? [] : named.split(" "));
+        return Waiting.kept(toldLast, "owners", Waiting.owners(questKind?.answered
+            ? questKind.held : null, named === "" ? [] : named.split(" ")));
     }
     // What Joel has said of each item: { done, notNow }, by identity.
     property var settled: ({})

@@ -1,6 +1,7 @@
 // What only Joel can do, run in Qt's own JavaScript engine, the one the
-// shell runs it in. The `needs-you-is-true` check copies Waiting.js,
-// launcher/NeedsYou.js and the Ago.js it says a span by beside this file
+// shell runs it in. The `needs-you-is-true` check copies Waiting.js, the
+// PiSource.js it compares by, launcher/NeedsYou.js and the Ago.js it says a
+// span by beside this file
 // and runs `qml -platform offscreen waiting-on-you.qml`.
 // The files are those the agents kept on 2026-10-26, cut to what's read,
 // when Waiting on You counted eleven things and three were Joel's to do,
@@ -158,6 +159,20 @@ QtObject {
         expect("one found done is gone, one found ready is for now", ids(verdicted.now),
             ["publish-pp-1802", "deploy-v3", "keys"]);
         expect("and says what found it", verdicted.now[2].verdict.how, { signal: "device:dock" });
+
+        // When the node heard a record is said by nothing here, so it's
+        // left out, and a kind told again saying nothing else new is kept.
+        const heardAt = heard => ({ "waiting:QEST-A-AAAAAA:x": { id: "x", title: "X",
+            heard: heard } });
+        expect("an item holds no heard", "heard" in Waiting.served(heardAt(1))[0], false);
+        expect("nor does a verdict", "heard" in Waiting.verdictsOf({ "verdict:Q:x":
+            { state: "ready", heard: 1 } }).items["Q:x"], false);
+        const was = {};
+        const kept = Waiting.kept(was, "asked", Waiting.served(heardAt(1)));
+        expect("told again with only heard moved, it's the one kept",
+            Waiting.kept(was, "asked", Waiting.served(heardAt(2))) === kept, true);
+        expect("told something new, it's the new one", Waiting.kept(was, "asked",
+            [Object.assign({}, kept[0], { title: "Y" })])[0].title, "Y");
 
         // What one not ready yet waits for, as its owner said.
         const waits = id => Waiting.waitsFor(today.later.find(item => item.id === id) ?? {});

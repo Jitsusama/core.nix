@@ -4070,12 +4070,56 @@ onLinux {
     pkgs.runCommandLocal "needs-you-is-true" { } ''
       cp ${../../tests/waiting-on-you.qml} waiting-on-you.qml
       cp ${./Waiting.js} Waiting.js
+      cp ${./PiSource.js} PiSource.js
       cp ${./launcher/NeedsYou.js} NeedsYou.js
       cp ${./launcher/Ago.js} Ago.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml waiting-on-you.qml
+      touch $out
+    '';
+
+  # For You weighs what waits on Joel again only when the node says something
+  # new of it, not each time a file of it is written again, as
+  # tests/waiting-kept.qml holds the real WaitingOnYou.qml to, through
+  # Quickshell, with a stand-in for the node and the rest of the shell.
+  for-you-weighs-again-only-for-news =
+    let
+      folder = pkgs.linkFarm "for-you-weighs-again-only-for-news" {
+        "WaitingOnYou.qml" = ./WaitingOnYou.qml;
+        "Waiting.js" = ./Waiting.js;
+        "PiSource.js" = ./PiSource.js;
+        "Daemon.qml" = ./Daemon.qml;
+        "Expect.js" = ../../tests/lib/Expect.js;
+        "shell.qml" = ../../tests/waiting-kept.qml;
+        "Sessions.qml" = singleton "Sessions.qml" ''
+          readonly property string nodePath: Quickshell.env("XDG_RUNTIME_DIR") + "/node.sock"
+          property var present: ({})
+          property var running: []
+        '';
+        "Words.qml" = singleton "Words.qml" ''
+          function of(name) { return { said: {} }; }
+          function name(id) { return id; }
+        '';
+        "Niri.qml" = singleton "Niri.qml" ''
+          property var windows: ({})
+          function act(request) {}
+        '';
+        "Notices.qml" = singleton "Notices.qml" ''
+          property var live: ({})
+          function mark(id, read, how) {}
+          function settleWaiting(standing) {}
+        '';
+      };
+    in
+    pkgs.runCommandLocal "for-you-weighs-again-only-for-news" { } ''
+      cp -L ${folder}/* .
+      mkdir -m 700 runtime
+      export HOME=$TMPDIR XDG_STATE_HOME=$TMPDIR/state XDG_RUNTIME_DIR=$PWD/runtime
+      export LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
       touch $out
     '';
 
