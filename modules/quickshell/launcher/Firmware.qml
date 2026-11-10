@@ -629,6 +629,7 @@ Provider {
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
         kind: ["firmware"]
         live: provider.seen
+        paced: provider.launcher
         keptThroughGap: false
         answersWhole: true
     }

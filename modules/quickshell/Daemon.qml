@@ -50,16 +50,39 @@ Scope {
     // watched from then on.
     property bool refreshing: false
     readonly property bool watched: live || refreshing
+    // What a watch begun waits on, when it's begun by what Joel pressed:
+    // something with `afterFrame(then)`, as the launcher is, which runs
+    // `then` once its next frame is drawn, or at once while nothing is
+    // shown. A step into Machine makes five of its parts seen at once,
+    // and each whole answer took the GUI thread up to 18 ms just before
+    // the step's frame, a median 46 ms in all (keeps-pace's loaded VM,
+    // 2026-11-10); waiting, the step is drawn from what's held, as a
+    // closed launcher's rows are, and the answers land a frame later.
+    // Null, as outside the launcher, watches at once.
+    property var paced: null
+    // Counts each change of whether it's watched, so a watch left waiting
+    // on a frame isn't sent once it's no longer the newest.
+    property int watchesBegun: 0
     onWatchedChanged: {
         // What's held from an earlier watch may be hours old, so the next
         // watch is unanswered until its own whole answer comes.
         answeredThisWatch = false;
+        watchesBegun += 1;
         if (wire === null)
             return;
-        if (watched)
-            watchAll();
-        else
+        if (!watched) {
             tell({ id: "all", ask: "unwatch" });
+            return;
+        }
+        if (paced === null) {
+            watchAll();
+            return;
+        }
+        const begun = watchesBegun;
+        paced.afterFrame(() => {
+            if (begun === watchesBegun && watched)
+                watchAll();
+        });
     }
 
     // Reads its kind whole once now, as a daemon reads it when watched,

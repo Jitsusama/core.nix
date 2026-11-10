@@ -666,6 +666,7 @@ Provider {
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
         kind: ["sensor", "zone", "cooling", "processor"]
         live: provider.seen
+        paced: provider.launcher
         keptThroughGap: false
         answersWhole: true
     }

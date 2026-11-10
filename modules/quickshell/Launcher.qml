@@ -5395,6 +5395,32 @@ Scope {
             keysPressed.splice(0, keysPressed.length - keysKept);
     }
 
+    // What waits for the launcher's next frame, as a daemon's watch begun
+    // by a step does (Daemon.qml's paced): run once a frame begun after it
+    // is drawn, so a swap already under way isn't taken for it, or at once
+    // while the launcher is closed, as no frame is coming. A frame is asked
+    // for, so one comes though nothing else changed. Each waits in
+    // afterFrames until a frame begins, then in afterFramesDrawing until
+    // that frame is swapped, so one queued while a frame is drawn waits for
+    // the next rather than running on a swap that began before it.
+    property var afterFrames: []
+    property var afterFramesDrawing: []
+    function afterFrame(then) {
+        if (!open) {
+            then();
+            return;
+        }
+        afterFrames = afterFrames.concat([then]);
+        card.Window.window?.update();
+    }
+    function afterFramesDue() {
+        const due = afterFramesDrawing.concat(afterFrames);
+        afterFramesDrawing = [];
+        afterFrames = [];
+        for (const then of due)
+            then();
+    }
+
     // When each of the last keys reached its frame, oldest first, for the
     // check that times each key from the keyboard to the screen under load,
     // and for the machine's own load proof. Every key is kept, however
@@ -7280,6 +7306,9 @@ Scope {
         // line Return wrote and Joel left, which would hold the next
         // opening's rows still and take its next line's place.
         if (!open) {
+            // What waits on a frame runs, since no frame of the launcher's
+            // is coming.
+            afterFramesDue();
             over = null;
             lastVisual = null;
             rowChanges = Changes.changes();
@@ -7644,6 +7673,25 @@ Scope {
                     return;
                 root.actsDrawing = swapped.acts;
                 root.actsDrawn(swapped.shown);
+            }
+        }
+
+        Connections {
+            target: card.Window.window
+            enabled: root.afterFrames.length > 0 || root.afterFramesDrawing.length > 0
+
+            function onAfterAnimating() {
+                root.afterFramesDrawing = root.afterFramesDrawing.concat(root.afterFrames);
+                root.afterFrames = [];
+            }
+
+            function onFrameSwapped() {
+                const due = root.afterFramesDrawing;
+                root.afterFramesDrawing = [];
+                for (const then of due)
+                    then();
+                if (root.afterFrames.length > 0)
+                    card.Window.window?.update();
             }
         }
 
