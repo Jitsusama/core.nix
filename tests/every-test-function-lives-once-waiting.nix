@@ -35,7 +35,7 @@
   "modules/mpv/keys-test.sh" = 1;
   "modules/mpv/stopped-test.sh" = 1;
   "modules/pi-packages/tests/inuse.rs" = 1;
-  "modules/pi-packages/tests/update.rs" = 1;
+  "modules/pi-packages/tests/keep.rs" = 1;
   "modules/pi/tests/pi-ask-answers-on-the-machines-plan.sh" = 1;
   "modules/pi/tests/pi-claude-keeps-to-the-plan.sh" = 1;
   "modules/pi/tests/pi-keeps-its-own-settings.sh" = 1;
