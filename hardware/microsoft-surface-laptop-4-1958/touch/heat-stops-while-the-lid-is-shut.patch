@@ -213,10 +213,18 @@ index 975e125..c440962 100644
  		shid->irq_enabled, shid->ready,
  		spi_hid_seq_state_name(shid->seq_state), shid->seq_state);
 diff --git a/spi-hid-core.h b/spi-hid-core.h
-index c601b40..b3ee0a1 100644
+index c601b40..e4ecd8e 100644
 --- a/spi-hid-core.h
 +++ b/spi-hid-core.h
-@@ -424,6 +424,13 @@ struct spi_hid {
+@@ -3,6 +3,7 @@
+ #ifndef SPI_HID_CORE_H
+ #define SPI_HID_CORE_H
+ 
++#include <linux/input.h>	/* struct input_handler, held for the lid */
+ #include <linux/kernel.h>
+ #include <linux/ktime.h>
+ #include <linux/completion.h>
+@@ -424,6 +425,13 @@ struct spi_hid {
  	u8 stat_last_contacts;
  	u32 stat_last_gx[HEATMAP_MAX_BLOBS];
  	u32 stat_last_gy[HEATMAP_MAX_BLOBS];
