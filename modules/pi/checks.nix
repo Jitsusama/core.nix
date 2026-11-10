@@ -22,6 +22,7 @@ let
       ./pi-host-agent-interface.patch
       ./pi-host-committed-turn.patch
       ./pi-host-interactive-lifecycle.patch
+      ./pi-host-model-auth-context.patch
     ];
     patchFlags = [
       "-p1"
@@ -345,6 +346,17 @@ in
       ${./tests/pi-hosted-keeps-turns-its-own.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
     touch $out
   '';
+
+  # A hosted pi's conversations each read their keys from their own auth
+  # context and never from the process, while a pi given none reads the
+  # process as ordinary pi does.
+  pi-hosted-keeps-each-conversations-keys =
+    pkgs.runCommandLocal "pi-hosted-keeps-each-conversations-keys" { }
+      ''
+        HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+          ${./tests/pi-hosted-keeps-each-conversations-keys.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+        touch $out
+      '';
 
   # A hosted pi's screen stays in its own conversation: quitting, a crash or
   # a suspend ends only that screen, a copy reaches its viewers' terminals,
