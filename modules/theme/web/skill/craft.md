@@ -363,9 +363,10 @@ const mod = mac ? "⌘" : "Ctrl";
 ## Diagrams
 
 - **Inline `<svg>`, never an image**, so it takes the page's faces, roles and
-  properties: text in `--serif` or `--mono` at a named level (never below the
-  note size at the narrowest width), strokes in `--rule` or `currentColor`,
-  marks in their kind's colour, the accent nowhere but a focusable node.
+  properties: text in `--serif` or `--mono` at a named level, and never
+  under 12 px on screen at any width, once the drawing is scaled to fit;
+  strokes in `--rule` or `currentColor`, marks in their kind's colour, the
+  accent nowhere but a focusable node.
 - **Hairlines stay hairlines**: `stroke-width: 1; vector-effect:
   non-scaling-stroke`.
 - **Drawn twice**, wide and narrow, chosen by a container query, or with its
