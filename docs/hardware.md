@@ -1560,6 +1560,16 @@ untouched, the rest brought it from about 100 heat maps a second to about
 22, and every touch still landed. `touch_stats` in the panel's sysfs folder
 counts heat maps, contacts, touches and rests, readable without root.
 
+The rest can't catch a shut lid, since the lid presses on the glass. Shut
+at a desk, with the laptop's own screen off and a monitor on, the panel
+streamed about 100 heat maps a second, each holding two or three contacts
+along its top edge, about 1.3 touches a second that nobody made. Its
+thread took about 44% of a core, and the touches landed on the monitor
+and dragged its windows about. A third patch has the driver hear the
+lid's switch: while it reads shut, the heat maps stop and any touch still
+down is lifted, and they start again when it opens. `touch_stats` says
+`lid_shut` and counts `lid_shuts`.
+
 ### The Ports and Bluetooth
 
 The firmware describes no USB-C connector to the OS: its ACPI has no

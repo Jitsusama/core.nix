@@ -1,0 +1,240 @@
+diff --git a/spi-hid-core.c b/spi-hid-core.c
+index 975e125..c440962 100644
+--- a/spi-hid-core.c
++++ b/spi-hid-core.c
+@@ -2621,6 +2621,13 @@ static int spi_hid_seq_write_setfeat(struct spi_hid *shid)
+  * contact in those frames keeps it scanning until the next quiet second.
+  * Anything else the panel sends while it rests starts them at once, in case
+  * it says so when touched. heat_rest_after = 0 leaves the panel scanning.
++ *
++ * A shut lid stops the heat maps until it opens, whatever heat_rest_after
++ * says: shut, the lid presses on the glass and the panel reads two or three
++ * contacts along its top edge about 100 times a second, touches nobody made
++ * that land on whatever screen the touchscreen is mapped to. The lid's
++ * switch is heard through an input handler (spi_hid_lid_*), and any touch
++ * still down when it shuts is lifted.
+  */
+ static uint heat_rest_after = 100;
+ module_param(heat_rest_after, uint, 0644);
+@@ -2637,7 +2644,7 @@ module_param(heat_rest_scan, uint, 0644);
+ MODULE_PARM_DESC(heat_rest_scan,
+ 	"Heat maps the panel sends between rests while nothing touches it");
+ 
+-enum { HEAT_SCANNING, HEAT_STOPPING, HEAT_RESTING };
++enum { HEAT_SCANNING, HEAT_STOPPING, HEAT_RESTING, HEAT_LID_SHUT };
+ 
+ /* Called with seq_lock held: SET_FEATURE 5 with `on`, doubled framing only. */
+ static int spi_hid_heat_scan(struct spi_hid *shid, bool on)
+@@ -2661,7 +2668,36 @@ static void spi_hid_heat_rest_work(struct work_struct *work)
+ 	mutex_lock(&shid->seq_lock);
+ 	if (READ_ONCE(shid->removing) || READ_ONCE(shid->suspended) ||
+ 	    shid->seq_state != SPI_HID_SEQ_DONE) {
++		/* The panel's next start scans; its first heat map under a
++		 * shut lid brings this back. */
+ 		shid->heat_rest_phase = HEAT_SCANNING;
++	} else if (READ_ONCE(shid->lid_shut)) {
++		if (shid->heat_rest_phase != HEAT_LID_SHUT) {
++			ret = spi_hid_heat_scan(shid, false);
++			if (ret) {
++				dev_warn_ratelimited(&shid->spi->dev,
++					"lid shut: stopping the heat maps failed: %d\n", ret);
++				schedule_delayed_work(&shid->heat_rest_work,
++					msecs_to_jiffies(READ_ONCE(heat_rest_ms)));
++			} else {
++				shid->heat_rest_phase = HEAT_LID_SHUT;
++				shid->stat_lid_shuts++;
++				/* Lifts any touch still down, and drops the
++				 * baseline the lid pressed on. */
++				mshw0231_raw_reset(shid);
++			}
++		}
++	} else if (shid->heat_rest_phase == HEAT_LID_SHUT) {
++		ret = spi_hid_heat_scan(shid, true);
++		if (ret) {
++			dev_warn_ratelimited(&shid->spi->dev,
++				"lid open: starting the heat maps failed: %d\n", ret);
++			schedule_delayed_work(&shid->heat_rest_work,
++				msecs_to_jiffies(READ_ONCE(heat_rest_ms)));
++		} else {
++			shid->heat_empty_frames = 0;
++			shid->heat_rest_phase = HEAT_SCANNING;
++		}
+ 	} else if (shid->heat_rest_phase == HEAT_STOPPING) {
+ 		ret = spi_hid_heat_scan(shid, false);
+ 		shid->heat_rest_phase = ret ? HEAT_SCANNING : HEAT_RESTING;
+@@ -2691,6 +2727,102 @@ static void spi_hid_heat_rest_work(struct work_struct *work)
+ 	mutex_unlock(&shid->seq_lock);
+ }
+ 
++/* The lid's switch. Its handler takes only devices with SW_LID, reads the
++ * switch as it stands when one connects, and hands each change to the rest's
++ * work, which stops or starts the heat maps under seq_lock. */
++static void spi_hid_lid_heard(struct spi_hid *shid, bool shut)
++{
++	if (READ_ONCE(shid->lid_shut) == shut)
++		return;
++	WRITE_ONCE(shid->lid_shut, shut);
++	if (!READ_ONCE(shid->removing))
++		mod_delayed_work(system_wq, &shid->heat_rest_work, 0);
++}
++
++static void spi_hid_lid_event(struct input_handle *handle, unsigned int type,
++			      unsigned int code, int value)
++{
++	struct spi_hid *shid = container_of(handle->handler, struct spi_hid,
++					    lid_handler);
++
++	if (type == EV_SW && code == SW_LID)
++		spi_hid_lid_heard(shid, value);
++}
++
++static int spi_hid_lid_connect(struct input_handler *handler,
++			       struct input_dev *input,
++			       const struct input_device_id *id)
++{
++	struct spi_hid *shid = container_of(handler, struct spi_hid, lid_handler);
++	struct input_handle *handle;
++	int ret;
++
++	handle = kzalloc(sizeof(*handle), GFP_KERNEL);
++	if (!handle)
++		return -ENOMEM;
++	handle->dev = input;
++	handle->handler = handler;
++	handle->name = "sl4a_lid";
++	ret = input_register_handle(handle);
++	if (ret)
++		goto err_free;
++	ret = input_open_device(handle);
++	if (ret)
++		goto err_unregister;
++	spi_hid_lid_heard(shid, test_bit(SW_LID, input->sw));
++	dev_info(&shid->spi->dev, "lid: hearing %s, shut=%d\n",
++		 input->name ?: "its switch", READ_ONCE(shid->lid_shut));
++	return 0;
++
++err_unregister:
++	input_unregister_handle(handle);
++err_free:
++	kfree(handle);
++	return ret;
++}
++
++static void spi_hid_lid_disconnect(struct input_handle *handle)
++{
++	input_close_device(handle);
++	input_unregister_handle(handle);
++	kfree(handle);
++}
++
++static const struct input_device_id spi_hid_lid_ids[] = {
++	{
++		.flags = INPUT_DEVICE_ID_MATCH_EVBIT | INPUT_DEVICE_ID_MATCH_SWBIT,
++		.evbit = { BIT_MASK(EV_SW) },
++		.swbit = { [BIT_WORD(SW_LID)] = BIT_MASK(SW_LID) },
++	},
++	{ },
++};
++
++static void spi_hid_lid_register(struct spi_hid *shid)
++{
++	int ret;
++
++	shid->lid_handler.event = spi_hid_lid_event;
++	shid->lid_handler.connect = spi_hid_lid_connect;
++	shid->lid_handler.disconnect = spi_hid_lid_disconnect;
++	shid->lid_handler.name = "sl4a_lid";
++	shid->lid_handler.id_table = spi_hid_lid_ids;
++	ret = input_register_handler(&shid->lid_handler);
++	if (ret)
++		dev_warn(&shid->spi->dev,
++			 "lid: can't hear its switch (%d), so the panel scans shut too\n",
++			 ret);
++	else
++		shid->lid_handler_registered = true;
++}
++
++static void spi_hid_lid_unregister(struct spi_hid *shid)
++{
++	if (!shid->lid_handler_registered)
++		return;
++	input_unregister_handler(&shid->lid_handler);
++	shid->lid_handler_registered = false;
++}
++
+ /* ── GET_FEATURE Report ID 6 (raw-mode configuration read) ──────────
+  *
+  * Windows reads report ID 6 between the report descriptor and the SET_FEATURE
+@@ -4127,7 +4259,12 @@ static void seq_handle_data(struct spi_hid *shid, int type, u16 blen)
+ 				schedule_delayed_work(&shid->stream_watchdog,
+ 						      msecs_to_jiffies(stream_watchdog_ms));
+ 			}
+-			if (raw_input_beta) {
++			if (raw_input_beta && READ_ONCE(shid->lid_shut)) {
++				/* What the panel reads under a shut lid is the
++				 * lid: nothing of it is a touch. */
++				if (shid->heat_rest_phase != HEAT_LID_SHUT)
++					schedule_delayed_work(&shid->heat_rest_work, 0);
++			} else if (raw_input_beta) {
+ 				cret = mshw0231_raw_consume_v0(shid, &body[5], rblen - 5);
+ 				if (cret) {
+ 					dev_warn_ratelimited(dev,
+@@ -4636,12 +4773,14 @@ static ssize_t touch_stats_show(struct device *dev,
+ 
+ 	mutex_lock(&shid->seq_lock);
+ 	off = sysfs_emit(buf,
+-			 "heat_frames=%u\ncontact_frames=%u\ntouches=%u\nrests=%u\nresting=%u\nother_frames=%u\nlast_other_id=0x%02x\nlast_contacts=%u\n",
++			 "heat_frames=%u\ncontact_frames=%u\ntouches=%u\nrests=%u\nresting=%u\nother_frames=%u\nlast_other_id=0x%02x\nlid_shut=%u\nlid_shuts=%u\nlast_contacts=%u\n",
+ 			 shid->stat_heat_frames, shid->stat_heat_contact_frames,
+ 			 shid->stat_touches,
+ 			 shid->stat_heat_rests,
+ 			 shid->heat_rest_phase == HEAT_RESTING,
+ 			 shid->stat_other_frames, shid->stat_last_other_id,
++			 shid->heat_rest_phase == HEAT_LID_SHUT,
++			 shid->stat_lid_shuts,
+ 			 shid->stat_last_contacts);
+ 	for (i = 0; i < shid->stat_last_contacts && i < HEATMAP_MAX_BLOBS; i++)
+ 		off += sysfs_emit_at(buf, off, "contact=%u.%02u,%u.%02u\n",
+@@ -5274,6 +5413,7 @@ static int spi_hid_probe(struct spi_device *spi)
+ 	}
+ 	dev_info(dev, "GATE3: IRQ armed; DESCREQ sent after _PS0->_RST\n");
+ 	trace_spi_hid_lifecycle(shid, SPI_HID_LIFECYCLE_IRQ_ARMED, 0);
++	spi_hid_lid_register(shid);
+ 	dev_info(dev, "TRACE[hid] probe complete: d3 -> %s\n",
+ 		spi_hid_power_mode_string(shid->power_state));
+ 	return 0;
+@@ -5326,6 +5466,8 @@ static void spi_hid_remove(struct spi_device *spi)
+ 	struct device *dev = &spi->dev;
+ 
+ 	dev_info(dev, "removing driver instance\n");
++	/* Before the workers stop, so no lid change schedules one after. */
++	spi_hid_lid_unregister(shid);
+ 	seq_dbg(shid, 1, "remove begin irq_enabled=%u ready=%u state=%s(%d)\n",
+ 		shid->irq_enabled, shid->ready,
+ 		spi_hid_seq_state_name(shid->seq_state), shid->seq_state);
+diff --git a/spi-hid-core.h b/spi-hid-core.h
+index c601b40..e4ecd8e 100644
+--- a/spi-hid-core.h
++++ b/spi-hid-core.h
+@@ -3,6 +3,7 @@
+ #ifndef SPI_HID_CORE_H
+ #define SPI_HID_CORE_H
+ 
++#include <linux/input.h>	/* struct input_handler, held for the lid */
+ #include <linux/kernel.h>
+ #include <linux/ktime.h>
+ #include <linux/completion.h>
+@@ -424,6 +425,13 @@ struct spi_hid {
+ 	u8 stat_last_contacts;
+ 	u32 stat_last_gx[HEATMAP_MAX_BLOBS];
+ 	u32 stat_last_gy[HEATMAP_MAX_BLOBS];
++	/* The lid's switch, heard through an input handler: while the lid is
++	 * shut the panel's heat maps stop, since a shut lid presses on the
++	 * glass and the panel reads contacts nobody made. */
++	struct input_handler lid_handler;
++	bool lid_handler_registered;
++	bool lid_shut;
++	u32 stat_lid_shuts;
+ 	u32 stat_irq_edges;                       /* Hard-IRQ edges seen (top half) */
+ 	u32 stat_raw_observed; /* V0 0x0c heatmap bodies seen on any path
+ 				 * (envelope ce 10 0c, 4304B). Passive only:

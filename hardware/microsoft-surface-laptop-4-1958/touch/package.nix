@@ -33,6 +33,13 @@ stdenv.mkDerivation {
     # how often it rested, where the last contacts were and what else the
     # panel sent; heat_scan stops or starts the heat maps by hand.
     ./heat-rests-when-untouched.patch
+    # Shut, the lid presses on the glass, and the panel reads two or three
+    # contacts along its top edge about 100 times a second. With the
+    # laptop's own screen off at a desk, those touches land on the monitor
+    # and drag its windows about. While the lid's switch reads shut, the
+    # heat maps stop and any touch still down is lifted; they start again
+    # when it opens. touch_stats says lid_shut and how many times it was.
+    ./heat-stops-while-the-lid-is-shut.patch
   ];
 
   nativeBuildInputs = kernel.moduleBuildDependencies;
