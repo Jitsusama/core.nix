@@ -86,6 +86,10 @@ ShellRoot {
         property var held: []
         property string typed: ""
         property var belowChord: []
+        // What each program's step lists from other places, and the one
+        // listed under its row, which a program's note reads: none here.
+        property var partsOfRows: ({})
+        property string underListed: ""
         property var sources: [notices, keys, giver]
         property var entered: null
         property var went: null
