@@ -3400,6 +3400,8 @@ onLinux {
   # and the saves stood in.
   a-shut-launcher-makes-no-document-rows =
     let
+      # Kept in Nix because it only stands in for what Drive.qml reads of
+      # Google's, answering nothing.
       google = singleton "Google.qml" ''
         property var documents: []
         property var drive: ({ places: {}, kept: {}, listings: [], downloads: [] })
