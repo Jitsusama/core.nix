@@ -406,6 +406,22 @@ Provider {
     readonly property var all: networks.map(network => made(network))
     onAllChanged: changed()
 
+    // What its spots are made of (Launcher.qml's spotsFrom): the radio, the
+    // networks in reach by name, with what each can have done to it, and
+    // the parts of the one looked at; never a signal, which moves at
+    // every look. wifid takes this over, serving Wi-Fi's rows ready, by 11
+    // November.
+    property string spotsStamp: {
+        const detail = Wifi.detail;
+        return JSON.stringify([present, on, SignIn.network, looking,
+            networks.map(network => [network.name, network.security, network.known,
+                network.declared, network.trusted, network.connected]).sort(),
+            !detail ? null : [detail.name, detail.points.length > 0,
+                detail.joined.map(link => link.card)],
+            !linkRead ? null : [linkRead.card, Object.keys(linkRead.said)
+                .filter(said => linkRead.said[said] !== null).sort()]]);
+    }
+
     // The network stepped into, asked about in detail for as long as it,
     // or its access points, are shown: in the open launcher, or walked
     // through by a terminal's `launcher show` (Launcher.qml's

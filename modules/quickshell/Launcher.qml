@@ -820,8 +820,15 @@ Scope {
     // source had changed then (changesIn), so a closing makes again only
     // those whose source changed since. It made all of them each time:
     // Sound's 111 rows on every closing of Joel's, with no change to Sound
-    // (2026-11-03). What the last making made and kept, for the closing's
-    // report.
+    // (2026-11-03). A source that says what its spots are made of, in a
+    // `spotsStamp` of its own that a figure moving never changes, as
+    // Displays and Wi-Fi do, has them made again only once that changes,
+    // so a light or a signal moving remakes nothing as the launcher closes,
+    // and their figures a minute later (spotsFreshened), if it stayed
+    // closed: closings made Displays' 87 rows and Wi-Fi's 17 to 65 again
+    // as Joel went back to typing (2026-11-10), each its lights or its
+    // signal read while it showed. What the last making made and kept, for
+    // the closing's report.
     property var spotsKept: ({})
     property var spotsSaid: ({ made: [], kept: [] })
 
@@ -829,16 +836,22 @@ Scope {
     // answers a place holds and those home is, such as Disk: asked already
     // as their places are made, so finding them asks nothing more. Each
     // place's collections' spots come before its answers'.
-    function spotsFrom() {
+    function spotsFrom(freshening = false) {
         const kept = {};
         const said = { made: [], kept: [] };
         const piece = (where, id, make) => {
             const name = Words.of(id).provider ?? id;
-            const stamp = sources.some(one => one.settings.name === name)
-                ? root.changesIn[name] ?? 0 : -1;
+            const source = sources.find(one => one.settings.name === name) ?? null;
+            const stamp = source !== null ? root.changesIn[name] ?? 0 : -1;
+            const shape = source !== null && (source.spotsStamp ?? "") !== ""
+                ? source.spotsStamp : null;
             const before = root.spotsKept[where];
-            const same = before !== undefined && before.stamp === stamp;
-            kept[where] = same ? before : Object.assign({ stamp: stamp }, make());
+            // Its make, where it says one, and then, freshening, its
+            // figures; else, closing, any change, and freshening, none.
+            const same = before !== undefined && (shape === null
+                ? freshening || before.stamp === stamp
+                : before.shape === shape && (!freshening || before.stamp === stamp));
+            kept[where] = same ? before : Object.assign({ stamp: stamp, shape: shape }, make());
             (same ? said.kept : said.made).push(where);
             return kept[where];
         };
@@ -7611,6 +7624,7 @@ Scope {
             often = picks.counts();
             lap("counting");
             spotsLater.stop();
+            spotsFreshened.stop();
             restart("");
             lap("finding");
             // Nothing to rest from as it opens, so the drawer is out at once
@@ -7867,7 +7881,28 @@ Scope {
         freshen();
         spots = spotsFrom();
         spotsMade = true;
+        spotsFreshened.restart();
         Report.say(`spots made while closed ${JSON.stringify(spotsSaid)}`);
+    }
+
+    // The figures of spots whose make held (spotsFrom), made again a minute
+    // after a closing, if the launcher is still closed, so a level moved
+    // reads as it is at the next opening, much as a remaking on every
+    // closing had it, and never as Joel goes back to what he was doing.
+    // Said as the closing is (madeSaid), when it made any.
+    Timer {
+        id: spotsFreshened
+
+        interval: 60000
+        onTriggered: {
+            if (root.open || !root.spotsMade)
+                return;
+            root.madeSince("freshening");
+            root.spots = root.spotsFrom(true);
+            if (root.spotsSaid.made.length === 0)
+                madeSettling.stop();
+            Report.say(`spots freshened while closed ${JSON.stringify(root.spotsSaid)}`);
+        }
     }
 
     // So is every text a collection's search looks through, which each

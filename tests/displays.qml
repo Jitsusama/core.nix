@@ -82,6 +82,21 @@ ShellRoot {
                 JSON.stringify({ side: roomLight?.side, verb: roomLight?.verb }));
             Expect.expect("and copies nothing while it's read", roomLight?.copies() === "",
                 roomLight?.copies());
+            // What its spots are made of holds while a level or a lux moves,
+            // so a closing remakes none of them (Provider.spotsStamp), and
+            // moves once a part comes or goes, or a screen changes.
+            const made = displays.spotsStamp;
+            displays.light = { connector: "eDP-1", share: 80, now: 160, most: 200 };
+            displays.roomSensor = { device: "acpi-als", lux: 312, raw: 40 };
+            Expect.expect("a level and a lux moving leave the spots' make as it was",
+                displays.spotsStamp === made, "");
+            displays.roomSensor = null;
+            Expect.expect("the room's sensor going changes it", displays.spotsStamp !== made, "");
+            displays.roomSensor = { device: "acpi-als", lux: 5, raw: 1 };
+            Expect.expect("and coming back puts it back", displays.spotsStamp === made, "");
+            Niri.monitorOn = true;
+            Niri.workspaces = { said: "lit again" };
+            Expect.expect("a screen turned on changes it", displays.spotsStamp !== made, "");
             Qt.exit(0);
         } catch (error) {
             Expect.fail(error.message);
