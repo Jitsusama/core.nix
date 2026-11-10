@@ -21,7 +21,8 @@
 //! idle two minutes, as Wayland's idle notice tells swayidle; the moment
 //! either changes, every load stops, the shaper goes back as it was, and
 //! it exits 75. It passes when, with the shaper on, the call's 99th
-//! percentile is within `CALL_MARGIN_MS` of its idle median, Joel's upload
+//! percentile is within `CALL_MARGIN_MS` of its median through the shaper
+//! before the proof's load starts, Joel's upload
 //! gets at least half of what the link sends, and at least `FAVOUR` of
 //! every `FAVOUR_OF` pairs favour the shaper. A block with the shaper on
 //! whose CAKE never held a queue says nothing of it, and is void.
@@ -564,7 +565,15 @@ pub fn command(args: &[String]) -> ExitCode {
         thread::sleep(Duration::from_secs(1));
     }
     let was_on = systemctl("is-active");
-    eprintln!("idle: the call's round trips with nothing loading {link}");
+    // The rest of the machine's traffic runs through the whole proof, and
+    // with the router alone it bloats the router's queue: the first run's
+    // idle median was 81 ms, where a loaded call through the shaper took
+    // 38. So the call's quiet is heard with the shaper on, and the bar
+    // asks what the proof's own load adds to it.
+    systemctl("start");
+    // The shaper settles before its quiet counts, as SETTLE says.
+    thread::sleep(SETTLE);
+    eprintln!("idle: the call's round trips through the shaper, with the proof loading nothing");
     let idle = idle_call(asked.seconds.min(15));
     let stop = Arc::new(AtomicBool::new(false));
     let watch = {
