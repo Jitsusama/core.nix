@@ -140,6 +140,15 @@ QtObject {
             reordered.live[0], { unsaid: undefined });
         expect("a field in another order or left undefined tells nothing new",
             Pi.tellsAlike(sorted, reordered, true), JSON.stringify(reordered.live[0]));
+        // What Sessions.qml keeps each list by, said as JSON would say it.
+        const said = [[{ a: 1, b: [1, { c: "x" }] }, { b: [1, { c: "x" }], a: 1 }, true],
+            [{ a: 1, b: undefined }, { a: 1 }, true], [{ a: null }, {}, false],
+            [[1, 2], [1, 2, 3], false], [[], {}, false], [{ a: [1] }, { a: [2] }, false],
+            ["1", 1, false], [{ a: { b: 1 } }, { a: { b: 1, c: 2 } }, false]];
+        const missaid = said.filter(([before, after, same]) => Pi.alike(before, after) !== same
+            || Pi.alike(after, before) !== same);
+        expect("lists and records are alike only where their JSON would be",
+            missaid.length === 0, JSON.stringify(missaid));
         // It stops working and listens, as 14 in 61 of Joel's sessions'
         // changes did, which only the launcher says.
         busyAt.state = "idle";

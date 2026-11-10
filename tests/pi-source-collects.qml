@@ -3,7 +3,9 @@ import "PiSource.js" as Pi
 
 // pi's sessions, as many and as large as Joel's, each changing its step in
 // turn, sorted and told against the last sorting taken as PiSource.qml
-// does with the launcher shut. It counts nothing itself: the check runs it
+// does, the launcher shut for half of them and showing them for the rest,
+// and each taken lived again as Sessions.qml does. It counts only what's
+// taken and lived again itself: the check runs it
 // with QV4's collector reporting each collection, and holds their number
 // well under one a change. Told as text, Joel's 117 sessions' 280,000
 // characters had made each change start a collection of its own (303 in
@@ -19,6 +21,11 @@ Item {
     property var sorting: ({ live: [], resting: [], ending: [] })
     property int changed: 0
     property int taken: 0
+    property bool shown: false
+    // What Sessions.qml's relive() last made, and how often what it made
+    // moved.
+    property var lived: ({ live: [], resting: [], ending: [] })
+    property int relived: 0
     readonly property var place: ({ machine: "skiff", bootId: "boot", bootedAt: 0, markers: {} })
 
     function session(at) {
@@ -41,6 +48,17 @@ Item {
         };
     }
 
+    // As Sessions.qml's relive() does: each session copied with its kitty,
+    // and each list kept unless what it holds moved.
+    function relive() {
+        const kitted = record => Object.assign({}, record, { kitty: null, opened: "" });
+        const next = { live: sorting.live.map(kitted), resting: sorting.resting.map(kitted),
+            ending: sorting.ending.map(kitted) };
+        if (!Pi.alike(lived.live, next.live))
+            relived += 1;
+        lived = next;
+    }
+
     Component.onCompleted: {
         const held = {};
         for (let at = 0; at < sessions; at += 1)
@@ -57,24 +75,30 @@ Item {
         repeat: true
         onTriggered: {
             // A change arrives as the node's text, parsed and laid over
-            // what's held, as Node.qml does.
+            // what's held, as Daemon.qml does.
             const key = `session:s-${root.changed % root.sessions}`;
             const said = JSON.parse(JSON.stringify({ presence: Object.assign({},
                 root.held[key].presence, { step: `step ${root.changed}` }) }));
             const held = Object.assign({}, root.held);
             held[key] = Object.assign({}, root.held[key], said);
             root.held = held;
+            // The launcher shows them for the second half, so each change
+            // is taken there, and lived again as Sessions.qml does.
+            const shown = root.changed >= root.changes / 2;
             const next = Pi.sorted(held, root.place);
-            if (!Pi.tellsAlike(root.sorting, next, false)) {
+            if (shown !== root.shown || !Pi.tellsAlike(root.sorting, next, shown)) {
+                root.shown = shown;
                 root.taken += 1;
                 root.sorting = next;
+                root.relive();
             }
             root.changed += 1;
             if (root.changed < root.changes)
                 return;
             stop();
-            if (root.taken !== 0) {
-                console.log(`FAIL a step moving alone was taken ${root.taken} times`);
+            if (root.taken !== root.changes / 2 || root.relived !== root.taken) {
+                console.log(`FAIL ${root.taken} changes were taken and ${root.relived} `
+                    + `lived again, where only the ${root.changes / 2} shown should be`);
                 Qt.exit(1);
                 return;
             }

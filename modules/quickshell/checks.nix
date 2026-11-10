@@ -1207,10 +1207,11 @@ onLinux {
     '';
 
   # pi's sessions, as many and as large as Joel's, each changing its step
-  # with the launcher shut, start a garbage collection in well under one
-  # change in five, as QV4's own report of each collection counts them.
-  # Told apart as text they had started one nearly every change (85 in
-  # 100), each a sweep that stalls the shell's main thread.
+  # with the launcher shut and then showing them, sorted and lived again as
+  # Sessions.qml does, start a garbage collection in well under one change
+  # in five, as QV4's own report of each collection counts them. Told apart
+  # as text they had started one nearly every change (99 in 100), each a
+  # sweep that stalls the shell's main thread.
   pi-sorts-without-collecting =
     let
       qt = pkgs.qt6.qtdeclarative;
