@@ -26,13 +26,15 @@ through axe-core and its own console.
    the Keys list (on the page, or opened by ? and shut by Escape with focus
    back where it was), the switch, the skip link, the twin, a figure for
    each part that explains, a drawing's labels at 12 px or larger on
-   screen and a page's prose at 15 px or larger, things side by side
-   ending level with their parts in line and none under 256 px, every fold
-   opening without moving anything beside or above it, and the writing's
-   guard (no emdash, no Unicode ellipsis, Canadian spelling, nothing
-   private). Run it at 320, 390, 768, 1024, 1440 and 1920 px, in both
-   looks, since a row that holds at one width breaks at another. It passes
-   on an empty list at every one. A part with nothing to picture gets
+   screen and a page's prose at 15 px or larger, and the writing's guard
+   (no emdash, no Unicode ellipsis, Canadian spelling, nothing private).
+   Then run `layout.js`, beside it, the same way: things side by side
+   ending level with their parts in line and none under 256 px, and every
+   fold opening without moving anything beside or above it. It opens each
+   fold, so run it on a page nobody is reading. Run both at 320, 390, 768,
+   1024, 1440 and 1920 px, in both looks, since a row that holds at one
+   width breaks at another. Each passes on an empty list at every one. A
+   part with nothing to picture gets
    `data-figure="why"` on its
    section, the reason in words; never one to quiet the probe, and never a
    drawing added only so the page has one. A dated record kept as written
@@ -102,9 +104,9 @@ fault "stretched and grotesque" names.
 - **No sideways scroll at 320 px** and no lost content at 200% and 400% zoom
   (WCAG 1.4.10, 1.4.4).
 - **Things side by side end level** and their parts share lines across the
-  row; none is narrower than 256 px. `gate.js` measures each row of a grid
+  row; none is narrower than 256 px. `layout.js` measures each row of a grid
   or a flex line.
-- **Opening a fold moves nothing beside or above it.** `gate.js` opens each
+- **Opening a fold moves nothing beside or above it.** `layout.js` opens each
   `<details>` and each button that expands what it controls, measures every
   box in `main` before and after, and closes it again. Only what's below it
   in its own column may move, and only down.

@@ -31,6 +31,8 @@ Beside this file:
 - `gate.js`: the probe that opens the gate before every publish, finding
   what a page lacks of its parts ([Every Page Has Its
   Parts](#every-page-has-its-parts)) and what its words get wrong.
+- `layout.js`: the probe run after it, finding rows and folds that don't
+  hold their layout ([Layout That Holds](#layout-that-holds)).
 
 The theme itself, ready for a site, is the kit at `~/.local/share/jitsusama/web/`
 ([The Kit](#the-kit)). Never retype a colour, a size or a face.
@@ -331,7 +333,7 @@ Each rule says why, in his words where he said it.
 
 "we can't have cards beside each other with different heights looking like
 shit", "we need adaptive layouts, we also can't have opening a disclosure
-causing the page to reformat" (2026-11-10). The probe measures all three.
+causing the page to reformat" (2026-11-10). `layout.js` measures all three.
 
 - **Things side by side end level, by layout.** Steps, panels or
   comparisons set beside each other are one grid row: each stretches to the

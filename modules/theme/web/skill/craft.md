@@ -158,6 +158,7 @@ coincidence:
 .steps li { display: grid; grid-row: span 4; grid-template-rows: subgrid;
   row-gap: var(--apart); } /* state, title, line, fold */
 ```
+
 - **Space as hierarchy.** Gaps on the parent (`gap`, `row-gap`), each level's
   rung wider than the one inside it: `--tie` inside a mark, `--mark` between a
   mark and its words, `--apart` between parts of a row, `--items` between
@@ -284,8 +285,8 @@ that won't answer.
 - `hidden="until-found"` on a long fold lets find-in-page open it.
 - Whatever measures the page measures it with every fold open too.
 - **Opening one grows only itself, downward**: nothing above moves, nothing
-  beside resizes, and only what's below in its own column moves down. The
-  probe opens each fold and measures every box before and after. A fold
+  beside resizes, and only what's below in its own column moves down.
+  `layout.js` opens each fold and measures every box before and after. A fold
   inside one of several things side by side would stretch the whole row and
   move its neighbours' parts, so it opens a side sheet instead.
 
