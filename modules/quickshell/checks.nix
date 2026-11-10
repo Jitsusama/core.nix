@@ -4900,6 +4900,29 @@ onLinux {
     pkgs.callPackage ./clipboard/package.nix { }
   );
 
+  # clippy finds nothing in launcher-say, its tests included.
+  launcher-say-passes-clippy = passesClippy "launcher-say-passes-clippy" (
+    pkgs.callPackage ./launcher-say/package.nix { }
+  );
+
+  # A chord's program asks the loader for no library, so a chord on a
+  # loaded machine reads only its one file, which launcher-say-resident
+  # holds in memory (launcher-say/src/main.rs).
+  a-chord-reads-only-its-own-program =
+    let
+      say = pkgs.callPackage ./launcher-say/package.nix { };
+    in
+    # Kept in Nix because it is one readelf call over the built program,
+    # with nothing in it to test alone.
+    pkgs.runCommandLocal "a-chord-reads-only-its-own-program" { } ''
+      if ${pkgs.binutils}/bin/readelf -l ${lib.getExe say} | grep -q INTERP; then
+        echo "launcher-say asks for a loader, so it reads libraries as it starts:" >&2
+        ${pkgs.binutils}/bin/readelf -d ${lib.getExe say} >&2
+        exit 1
+      fi
+      touch $out
+    '';
+
   # clippy finds nothing in the window recorder, its tests included.
   record-window-passes-clippy = passesClippy "record-window-passes-clippy" (
     pkgs.callPackage ./record-window/package.nix { }

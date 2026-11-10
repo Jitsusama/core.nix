@@ -895,18 +895,10 @@ let
   # after Super+Space that could land in the window below. With no shell
   # listening, as while it restarts, qs ipc carries it instead. The line
   # ends with when the chord ran it, so the shell can time an opening from
-  # Joel's press rather than from when it got round to hearing it.
-  launcherSay = pkgs.writeShellApplication {
-    name = "launcher-say";
-    runtimeInputs = [
-      pkgs.quickshell
-      pkgs.socat
-    ];
-    text = ''
-      printf '%s @%s\n' "$*" "$EPOCHREALTIME" | socat - "UNIX-CONNECT:$XDG_RUNTIME_DIR/launcher.sock" 2>/dev/null \
-        || exec qs ipc call launcher "$@"
-    '';
-  };
+  # Joel's press rather than from when it got round to hearing it. It's one
+  # static program whose pages launcher-say-resident holds in memory, so a
+  # chord reads nothing from the disk (launcher-say/src/main.rs says why).
+  launcherSay = pkgs.callPackage ./launcher-say/package.nix { };
 
   # How `launcher` (in-a-terminal/) inks a terminal: each role it draws in
   # as a 24-bit escape, and as the terminal colour holding the role's
@@ -2276,6 +2268,25 @@ in
         ];
         Restart = "always";
         RestartSec = 5;
+      };
+      Install.WantedBy = [ "graphical-session.target" ];
+    };
+
+    # launcher-say's pages held in memory, so a chord's program is never
+    # read back from the disk, which took up to 1.7 s under load
+    # (launcher-say/src/main.rs). vmtouch locks the file's pages and then
+    # waits, waking for nothing; it holds well under the 8 MiB a user may
+    # lock.
+    systemd.user.services.launcher-say-resident = {
+      Unit = {
+        Description = "The launcher's chord program, held in memory";
+        PartOf = [ "graphical-session.target" ];
+        After = [ "graphical-session.target" ];
+      };
+      Service = {
+        ExecStart = "${lib.getExe pkgs.vmtouch} -q -l ${lib.getExe launcherSay}";
+        Restart = "on-failure";
+        RestartSec = 1;
       };
       Install.WantedBy = [ "graphical-session.target" ];
     };
