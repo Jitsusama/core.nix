@@ -2263,7 +2263,9 @@
     an open launcher takes the first of its sources' changes at once and those after it a pace
     apart, together, and a refresh taken another way takes the one waiting with it, so no two
     refreshes begin closer than the pace; and a source's rows are wanted only while it's held,
-    searched, named at home or has an act waiting, so a change nobody sees builds none
+    searched, named at home or has an act waiting, so a change nobody sees builds none; and a
+    key's act is said shown by the first frame begun after its refresh, which another act
+    refreshed while that frame is drawn never holds back
   '';
   the-launcher-plays-from-spotify = ''
     Spotify's program in the launcher reads Spotify only as it's stepped into, once an opening,

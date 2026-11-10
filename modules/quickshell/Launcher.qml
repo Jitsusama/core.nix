@@ -4477,8 +4477,7 @@ Scope {
     property real keyHeardAt: -Infinity
     property real keyDoneAt: -Infinity
     property var keyedActs: []
-    property var actsDrawing: []
-    property bool actsBegun: false
+    property var actsDrawing: Pacing.unframed()
 
     Connections {
         target: prompt
@@ -4508,17 +4507,16 @@ Scope {
         keyedActs = keyedActs.filter(one => !due.includes(one.source));
         for (const one of shown)
             one.begun = begun;
-        actsDrawing = actsDrawing.concat(shown);
-        actsBegun = false;
+        actsDrawing = Pacing.refreshedActs(actsDrawing, shown);
     }
 
-    // Each act's time to its frame, said for the test and, slow enough to
-    // feel, in the journal, as a key's is (Trials.qml). Only the last key's:
-    // one an earlier key changed, whose refresh drew nothing new, had no
-    // frame of its own, and the one now drawn is another key's.
-    function actsDrawn() {
+    // Each act a frame showed, `shown`, timed to it, said for the test and,
+    // slow enough to feel, in the journal, as a key's is (Trials.qml). Only
+    // the last key's: one an earlier key changed, whose refresh drew nothing
+    // new, had no frame of its own, and the one now drawn is another key's.
+    function actsDrawn(shown) {
         const drawn = KeyTimes.now();
-        for (const one of actsDrawing.filter(each => each.heard === keyHeardAt)) {
+        for (const one of shown.filter(each => each.heard === keyHeardAt)) {
             const took = Math.round(drawn - one.heard);
             const waited = Math.round(one.begun - one.done);
             const name = one.source.settings.name;
@@ -4528,7 +4526,6 @@ Scope {
                 console.info(
                     `launcher: what a key changed in ${name} took ${took} ms to its frame`);
         }
-        actsDrawing = [];
     }
     // A condition a shown place names has moved, as when the charger goes
     // in: its rows are made again, so what it held stays dimmed and says
@@ -7629,18 +7626,24 @@ Scope {
         }
 
         // An act's refresh is drawn by a frame begun after it, so a swap
-        // of one already under way when it ran isn't taken for it.
+        // of one already under way when it ran isn't taken for it, and an
+        // act refreshed while a frame is drawn holds back none in that
+        // frame (launcher/Pacing.js's frameSwapped).
         Connections {
             target: card.Window.window
-            enabled: root.actsDrawing.length > 0
+            enabled: root.actsDrawing.waiting.length + root.actsDrawing.framing.length > 0
 
             function onAfterAnimating() {
-                root.actsBegun = true;
+                if (root.actsDrawing.waiting.length > 0)
+                    root.actsDrawing = Pacing.frameBegun(root.actsDrawing);
             }
 
             function onFrameSwapped() {
-                if (root.actsBegun)
-                    root.actsDrawn();
+                const swapped = Pacing.frameSwapped(root.actsDrawing);
+                if (swapped.shown.length === 0)
+                    return;
+                root.actsDrawing = swapped.acts;
+                root.actsDrawn(swapped.shown);
             }
         }
 

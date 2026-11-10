@@ -58,3 +58,31 @@ function sinceKey(now, taken, done) {
 function rang(pace) {
     return { at: pace.at, due: null };
 }
+
+// A key's acts on their way to the screen, each shown by the first frame
+// begun after its refresh: `waiting`, refreshed with no frame begun since,
+// and `framing`, in a frame begun after it, so a swap of one already under
+// way when an act's refresh ran isn't taken for it.
+function unframed() {
+    return { waiting: [], framing: [] };
+}
+
+// The acts whose refresh has just run wait for the next frame.
+function refreshedActs(acts, refreshed) {
+    return { waiting: acts.waiting.concat(refreshed), framing: acts.framing };
+}
+
+// A frame began, so it draws every act that waited.
+function frameBegun(acts) {
+    return { waiting: [], framing: acts.framing.concat(acts.waiting) };
+}
+
+// A frame was swapped onto the screen: the acts it drew are `shown`, and
+// those refreshed while it was drawn wait on for the next. Held back with
+// them, as one flag for every act once held them, dd on a notice was never
+// said shown: a source no row showed changed just after it, as its own
+// refresh's frame began, was taken for the key's, and its refresh drew no
+// frame to follow (draws-still at 7b2252da0, 2026-11-10).
+function frameSwapped(acts) {
+    return { shown: acts.framing, acts: { waiting: acts.waiting, framing: [] } };
+}

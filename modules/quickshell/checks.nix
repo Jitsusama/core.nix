@@ -1151,7 +1151,8 @@ onLinux {
 
   # An open launcher takes a burst of its sources' changes a pace apart, and
   # never two refreshes closer than that however the first was asked for, and
-  # a source's rows are wanted only where they're shown or searched, as
+  # a source's rows are wanted only where they're shown or searched, and a
+  # key's act is said shown by the first frame begun after its refresh, as
   # tests/pacing.qml holds launcher/Pacing.js and launcher/Wanted.js to it in
   # Qt's own engine.
   the-launcher-paces-its-refreshes =
