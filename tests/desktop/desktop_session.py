@@ -63,6 +63,9 @@ class Values(TypedDict):
     # the stand-in warp-cli to give: only the areas that show WARP, so no other area moves with
     # them.
     warp_contract: str
+    # Windows retitled without rest, as a crowd of agents' windows is (desktop/window-storm.py):
+    # only keeps-pace, which opens the launcher through the storm.
+    window_storm: str
     # The packages whose programs the test runs by their paths.
     coreutils: str
     dbus: str
