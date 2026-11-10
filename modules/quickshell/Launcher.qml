@@ -2659,9 +2659,11 @@ Scope {
     // the one row's actions are read, as pendingSaid reads them, and only
     // once it's selected (selectedActions), never in the foot's binding.
     function operatorKeys(choice) {
-        if (choice !== selectedActions.row)
-            return [];
-        const actions = selectedActions.actions;
+        return choice === footActions.row ? footActions.keys : [];
+    }
+
+    // d and y for a row, from its actions, as operatorKeys says them.
+    function operatorKeysOf(choice, actions) {
         const ending = Operators.endingOf(choice, actions);
         const copy = Operators.copyOf(choice, actions,
             one => verbOf(one) === "copy" && !!one.run);
@@ -5772,6 +5774,21 @@ Scope {
             && !selected.nested;
         selectedActions = { row: selected, actions: reads ? actionsOf(selected) : [] };
     }
+    // d and y as they stand, worked out again as what they're read from
+    // changes, as an answer's parts arriving give it y; and the foot's
+    // own, told anew only where it would say something new
+    // (Standing.toldAnew), since all it reads them for runs again each time
+    // it's told. Else the row they're for changes unsaid: with no keys
+    // before or now, no row's keys change.
+    readonly property var selectedKeys: selectedActions.row === null ? []
+        : operatorKeysOf(selectedActions.row, selectedActions.actions)
+    property var footActions: ({ row: null, keys: [] })
+    onSelectedKeysChanged: {
+        if (Standing.toldAnew(footActions, selectedActions.row, selectedKeys))
+            footActions = { row: selectedActions.row, keys: selectedKeys };
+        else
+            footActions.row = selectedActions.row;
+    }
 
     function actionsOf(row) {
         if (typeof row.operands === "function")
@@ -6657,7 +6674,11 @@ Scope {
     property var drawerRow: null
     readonly property int drawerFollows: 50
     onSelectedChanged: {
-        readSelectedActions();
+        // Once the event that selected it has run, since a step selects
+        // its first row and again the row its arriving rows put first, and
+        // the first read was thrown away: 4 to 7 ms a step into Desktop in
+        // the loaded test machine (2026-11-10).
+        Qt.callLater(root.readSelectedActions);
         if (!open || selected === null) {
             drawerFollowing.stop();
             drawerRow = selected;

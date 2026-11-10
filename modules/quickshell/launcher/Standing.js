@@ -100,6 +100,19 @@ function keysFitted(keys, wide, room, yielding = []) {
     return kept;
 }
 
+// Whether the selected row's d and y need telling the foot anew: all it
+// reads them for runs again each time they're told, and a step reads them
+// as it selects its first row and again as its rows arrive, though most
+// rows have neither (2026-11-10). `last` is what was last told, its row
+// and its keys, each a key and its word. With none before and none now,
+// nothing the foot says changes, whichever row they're for.
+function toldAnew(last, row, keys) {
+    if (last.keys.length === 0 && keys.length === 0) {
+        return false;
+    }
+    return last.row !== row || JSON.stringify(last.keys) !== JSON.stringify(keys);
+}
+
 // The facts as the foot draws them, each with what it `said`, given
 // whether facts so told `fit` the room.
 function fitted(facts, fits) {
