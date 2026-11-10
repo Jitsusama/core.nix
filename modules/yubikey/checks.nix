@@ -61,12 +61,12 @@
   # login does; with none named, polkit asks for the password alone.
   polkit-takes-a-yubikey-touch-once-one-is-named =
     let
+      credential = "aGFuZGxl,cHVibGlj,es256,+presence";
       enrolled = bareNixos [
         self.nixosModules.workstation
-        {
-          jitsusama.yubikey.administers.someone = [ "aGFuZGxl,cHVibGlj,es256,+presence" ];
-        }
+        { jitsusama.yubikey.administers.someone = [ credential ]; }
       ];
+      mappings = enrolled.config.environment.etc.u2f-mappings.text;
       pam = machine: service: machine.config.security.pam.services.${service}.text;
       touches = machine: service: lib.hasInfix "pam_u2f.so" (pam machine service);
       polkit = pam enrolled "polkit-1";
@@ -83,7 +83,7 @@
         && lib.hasInfix "pam_u2f.so" asksFirst
         && lib.hasInfix "authfile=/etc/u2f-mappings" polkit
         && lib.hasInfix "origin=pam://administrators" polkit
-        && enrolled.config.environment.etc.u2f-mappings.text == "someone:aGFuZGxl,cHVibGlj,es256,+presence\n"
+        && mappings == "someone:${credential}\n"
         && !touches enrolled "login"
         && !touches enrolled "sudo"
         && !touches workstation "polkit-1"
