@@ -167,6 +167,16 @@ ShellRoot {
         // LIVE01 here, and both elsewhere.
         expect("working, as each record says", Sessions.working === 3, Sessions.working);
         expect("a session is its window", Sessions.isOf(other) === "window:21", Sessions.isOf(other));
+        // Asked to keep where a session's window is, as the move onto pi's
+        // host asks before it closes it, the shell says whether it could.
+        expect("a session's window kept", Sessions.keepPlace("s-OTHER2") === "kept"
+            && JSON.stringify(Sessions.keptPlaces["s-OTHER2"] ?? null).startsWith(
+                '{"workspace":3,"column":2,'), JSON.stringify(Sessions.keptPlaces));
+        const keptNot = ["s-NOWIN6", "r-far", "s-nobody"].map(id => Sessions.keepPlace(id));
+        expect("one with no window, or not here, keeps nothing", keptNot.every(answer =>
+            answer === "no window to keep") && Object.keys(Sessions.keptPlaces).length === 1,
+            keptNot.join(", "));
+        Sessions.keepPlaces({});
 
         Sessions.goTo(other);
         expect("Go To focuses its window", JSON.stringify(Niri.acted) === '{"FocusWindow":{"id":21}}',

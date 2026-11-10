@@ -720,10 +720,12 @@ Singleton {
     // A session's window found, as when a kitty has said which of its
     // windows is whose, can be what a session handed over waits for to
     // go beside its kin (placeQuietly), one opened behind the lock among
-    // them (placeBehind).
+    // them (placeBehind). One moved onto pi's host has its viewer opened
+    // where it was (viewKept).
     onRunningChanged: {
         arranging.restart();
         root.placeOpened();
+        root.viewKept();
         if (root.placeable() && (root.reopening?.behind.length ?? 0) > 0)
             root.placeBehind();
     }
@@ -1735,8 +1737,9 @@ Singleton {
     }
 
     // Views a hosted session in a new window of the sessions' kitty, by its
-    // node's words, once until niri lists its window, as `attach` does.
-    function view(session) {
+    // node's words, once until niri lists its window, as `attach` does;
+    // `into` a place kept for it (viewKept), or where niri opens one.
+    function view(session, into) {
         const words = session.attach;
         const named = viewerOf(session.presence);
         if (!Array.isArray(words) || words.length === 0 || named === "") {
@@ -1746,8 +1749,60 @@ Singleton {
         if (Date.now() - (attaching[named] ?? 0) < attachPatience)
             return;
         attaching = Object.assign({}, attaching, { [named]: Date.now() });
-        root.inSessions("pi-hosted", words.map(String), null, named);
+        root.inSessions("pi-hosted", words.map(String), into ?? null, named);
         Report.say(`viewing hosted session ${session.address}`);
+    }
+
+    // Where the windows of sessions moving onto pi's host were, by pi's
+    // session id, so each one's viewer opens there once it runs hosted,
+    // rather than nowhere until Joel goes to it (OSPHT4's cutover; 2QZBX9,
+    // [906a6c10]). The cutover asks for each (keepPlace) just before it
+    // tells the session to move, which closes its window. Kept in a file,
+    // so a shell started again between the two still opens it.
+    property var keptPlaces: keptPlacesOf(keptPlacesFile.text())
+    function keptPlacesOf(text) {
+        try {
+            const kept = JSON.parse(text);
+            return kept !== null && typeof kept === "object" && !Array.isArray(kept) ? kept : {};
+        } catch (_error) {
+            return {};
+        }
+    }
+    FileView {
+        id: keptPlacesFile
+        path: Quickshell.statePath("kept-places.json")
+        blockLoading: true
+        printErrors: false
+    }
+    function keepPlaces(kept) {
+        keptPlaces = kept;
+        keptPlacesFile.setText(JSON.stringify(kept));
+    }
+    // Keeps where the window of the session here that pi knows as `id`
+    // sits, answering "kept", or "no window to keep" for one with no
+    // window niri has laid out, so the cutover can list the viewers it
+    // couldn't put back.
+    function keepPlace(id) {
+        const session = running.find(one => one.here && one.presence.session === id);
+        const place = /^[A-Za-z0-9-]+$/.test(id) ? Places.placeOf(session?.window, Date.now())
+            : null;
+        if (place === null)
+            return "no window to keep";
+        keepPlaces(Object.assign({}, keptPlaces, { [id]: place }));
+        console.info(`sessions: kept ${id}'s place, ${place.workspace}/${place.column}`);
+        return "kept";
+    }
+    // Opens the viewer of each session kept that now runs hosted where it
+    // was, or where niri opens one when its workspace has gone since, and
+    // lets go of what's done or a day old (Places.viewersDue).
+    function viewKept() {
+        if (Object.keys(keptPlaces).length === 0)
+            return;
+        const due = Places.viewersDue(keptPlaces, running, Date.now());
+        for (const one of due.open)
+            view(one.session, Niri.workspace(one.into.workspace) ? one.into : null);
+        if (Object.keys(due.kept).length !== Object.keys(keptPlaces).length)
+            keepPlaces(due.kept);
     }
 
     // The app id a hosted session's viewer opens with, by pi's session id,
@@ -1985,6 +2040,12 @@ Singleton {
 
         function reopen(sessions: string): string {
             return root.handedOver(sessions);
+        }
+
+        // keepPlace, as the cutover asks it before moving a session onto
+        // pi's host, by pi's session id.
+        function keepPlace(session: string): string {
+            return root.keepPlace(session);
         }
     }
 

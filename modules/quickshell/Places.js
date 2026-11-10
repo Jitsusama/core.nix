@@ -412,3 +412,44 @@ function reopenNote(said, booted, offered) {
     }
     return ways.map(counted).join(", ");
 }
+
+// Where a session's niri `window` sits, kept `at` a time in milliseconds,
+// so its viewer opens there once pi's host runs it (viewersDue): its
+// workspace, and its column where it has one, as a floating window has
+// none. A session with no window, or one niri hasn't laid out, keeps
+// nothing.
+function placeOf(window, at) {
+    if (!window || window.workspace_id === null || window.workspace_id === undefined) {
+        return null;
+    }
+    const column = window.layout?.pos_in_scrolling_layout?.[0];
+    return { workspace: window.workspace_id, column: column ?? null, at };
+}
+
+// How long a kept place waits for its session to run hosted: a day, past
+// which its session most likely never moved, busy past the cutover's
+// deadline or refusing it (2QZBX9, [906a6c10]).
+const KEPT_FOR = 24 * 60 * 60 * 1000;
+
+// Of the places `kept`, by pi's session id, the viewers to open `now`
+// among `sessions` as Sessions.qml lists them, each with where it goes
+// (`into`), and the places still to keep: one whose session runs hosted
+// with words to view it by opens, unless its viewer is open already, and
+// is kept no more either way; one kept past KEPT_FOR lapses.
+function viewersDue(kept, sessions, now) {
+    const open = [];
+    const still = {};
+    for (const id of Object.keys(kept).filter(one => now - kept[one].at <= KEPT_FOR)) {
+        const place = kept[id];
+        const session = sessions.find(one => one.presence?.session === id
+            && one.presence?.hosted);
+        const viewable = session !== undefined && Array.isArray(session.attach)
+            && session.attach.length > 0;
+        if (!viewable) {
+            still[id] = place;
+        } else if (!session.window) {
+            open.push({ session, into: { workspace: place.workspace, column: place.column } });
+        }
+    }
+    return { open, kept: still };
+}

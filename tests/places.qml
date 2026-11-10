@@ -336,6 +336,44 @@ QtObject {
         expect("no queue holds nothing",
             [Places.mayBegin("", 5010), Places.mayBegin("{", 5010)], [true, true]);
 
+        // A session moving onto pi's host keeps where its window was, as
+        // niri lays it out, so its viewer opens there once it runs hosted;
+        // one with no window, or none laid out yet, keeps nothing.
+        const laid = (workspace, column) => ({ id: 7, workspace_id: workspace,
+            layout: { pos_in_scrolling_layout: [column, 1] } });
+        expect("a window's place kept", Places.placeOf(laid(4, 3), 100),
+            { workspace: 4, column: 3, at: 100 });
+        expect("a window floating keeps its workspace alone", Places.placeOf(
+            { id: 7, workspace_id: 4, layout: { pos_in_scrolling_layout: null } }, 100),
+            { workspace: 4, column: null, at: 100 });
+        expect("no window keeps nothing", [Places.placeOf(null, 100),
+            Places.placeOf({ id: 7, workspace_id: null }, 100)], [null, null]);
+
+        // Each kept place is one viewer to open once its session runs
+        // hosted with words to view it by, and then kept no more; one whose
+        // viewer is open already is let go, and one a day old lapses, as
+        // one whose session never moved would.
+        const day = 24 * 60 * 60 * 1000;
+        const hosted = (id, window) => ({ window: window ?? null, attach: ["attach", id],
+            presence: { session: id, hosted: { host: "harbour-attended" } } });
+        const plain = id => ({ window: laid(1, 1), attach: null, presence: { session: id } });
+        const moving = { moved: { workspace: 4, column: 3, at: 0 },
+            moving: { workspace: 5, column: 1, at: 0 },
+            viewed: { workspace: 6, column: 2, at: 0 },
+            stale: { workspace: 7, column: 1, at: -day } };
+        const due = Places.viewersDue(moving, [hosted("moved"), plain("moving"),
+            hosted("viewed", laid(6, 2)), hosted("stale")], 10);
+        expect("the moved one's viewer opens where it was",
+            due.open.map(one => [one.session.presence.session, one.into]),
+            [["moved", { workspace: 4, column: 3 }]]);
+        expect("only the one still moving stays kept", due.kept,
+            { moving: { workspace: 5, column: 1, at: 0 } });
+        expect("one hosted with no words waits", Places.viewersDue(moving,
+            [Object.assign(hosted("moved"), { attach: [] })], 10).kept.moved,
+            { workspace: 4, column: 3, at: 0 });
+        expect("nothing kept, nothing to open", Places.viewersDue({}, [hosted("moved")], 10),
+            { open: [], kept: {} });
+
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(failure);
