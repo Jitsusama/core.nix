@@ -1590,13 +1590,14 @@ def the_desk_lights_plate_lies_on_the_lines(desktop: Desktop, scale: str) -> Non
 
 
 def the_screens_plate_says_what_sets_it(desktop: Desktop, scale: str) -> None:
-    """Hold the screen's plate to the lines with the lid shut, then following the room.
+    """Hold the screen's plate to the lines not following the room, then following it.
 
     The backlight daemon says what it settled, whole by a rename, in backlight-now, and keeps
     its curve in learned; the VM's stand-in backlight and sensor give it no real figures, so
     both are written here as it writes them, the daemon stopped so it writes neither over
-    them, and started again after. With the lid shut, Follows is gone and the Room
-    Light still says the stand-in sensor's live reading; following the room on its way to
+    them, and started again after. The stand-in has no lid to shut, so the shot is named for
+    what it shows: not following, Follows is gone and the Room Light still says the
+    stand-in sensor's live reading; following the room on its way to
     what it asks, with a curve, it says both, the Curve last of the light, every point
     dimmest first (VKCF3Z, 2026-11-08).
     """
@@ -1636,7 +1637,7 @@ def the_screens_plate_says_what_sets_it(desktop: Desktop, scale: str) -> None:
         drawer = plate_shown(desktop, scale)
         room = drawer["values"][drawer["facts"].index("Room Light")]
         assert room.endswith(" lx"), f"at {scale}: {drawer}"
-        desktop.shoot(f"launcher-plate-screen-lid-shut-at-{at}")
+        desktop.shoot(f"launcher-plate-screen-not-following-at-{at}")
         curve = "0 0.150\\n6 0.377\\n28 0.950\\n10000 1.000\\n"
         desktop.as_account(
             f"mkdir -p $(dirname {learned}) && printf '{curve}'"

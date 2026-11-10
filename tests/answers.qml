@@ -905,7 +905,7 @@ QtObject {
             ["a speed of none is held, and said", Here.facts(gps(null, 0, null), 1000,
                 hereSaid, Object.assign({ ago: () => "now" }, hereTold))
                 .filter(fact => ["altitude", "speed", "heading"].includes(fact.id))
-                .map(fact => fact.value).join("|"), "0.00 km/h"],
+                .map(fact => fact.value).join("|"), "0 km/h"],
             ["a walk's speed keeps three figures, a highway's none past them, a "
                 + "round one its zeros", [1.2, 27.8, 10].map(speed => Here.facts(gps(null, speed, null), 1000, hereSaid,
                     Object.assign({ ago: () => "now" }, hereTold))
