@@ -118,8 +118,17 @@ Provider {
     // place or what its row says of it changed. A plain object, so keeping
     // one notifies nothing.
     readonly property var kept: ({})
+    // The rows as they were last made, held while nobody wants them.
+    readonly property var madeRows: ({ rows: [] })
 
+    // Made only while they're wanted (Provider.qml's wanted), since with the
+    // launcher shut every event niri sent walked all of Joel's 75 windows and
+    // made 657 rows in four minutes, for nobody (2026-11-10). Unwanted, it
+    // reads nothing of niri, so no event wakes it, and says the rows last
+    // made until it's wanted again.
     things: {
+        if (!provider.wanted)
+            return provider.madeRows.rows;
         void Niri.revision;
         const waiting = Sessions.waitingWindows.split(" ");
         const here = Niri.workspace();
@@ -171,7 +180,8 @@ Provider {
         for (const id of Object.keys(provider.kept))
             delete provider.kept[id];
         Object.assign(provider.kept, next);
-        return (next.this ? [next.this.row] : []).concat(rows);
+        provider.madeRows.rows = (next.this ? [next.this.row] : []).concat(rows);
+        return provider.madeRows.rows;
     }
 
     // What niri says of a window that its row never says, left out of what

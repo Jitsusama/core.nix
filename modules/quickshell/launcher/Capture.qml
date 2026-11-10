@@ -254,7 +254,15 @@ Provider {
     // kept by its id while its program and title read the same. A plain
     // object, so keeping one notifies nothing.
     readonly property var keptWindows: ({})
+    // The rows as they were last made, held while nobody wants them.
+    readonly property var madeWindows: ({ rows: [] })
+    // Made only while they're wanted (Provider.qml's wanted): with the
+    // launcher shut, every event niri sent made them again, 287 rows in
+    // four minutes on Joel's shell, for nobody (2026-11-10). Unwanted, it
+    // reads nothing of niri and says the rows last made.
     readonly property var windows: {
+        if (!provider.wanted)
+            return provider.madeWindows.rows;
         void Niri.revision;
         const next = {};
         const rows = Object.values(Niri.windows)
@@ -269,6 +277,7 @@ Provider {
         for (const id of Object.keys(provider.keptWindows))
             delete provider.keptWindows[id];
         Object.assign(provider.keptWindows, next);
+        provider.madeWindows.rows = rows;
         return rows;
     }
 

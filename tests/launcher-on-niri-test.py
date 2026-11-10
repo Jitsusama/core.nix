@@ -439,6 +439,42 @@ def test_the_launcher_left_still_draws_nothing(shell: Shell) -> None:
     assert drawn <= 1, f"the launcher drew {drawn} frames in three seconds left still"
 
 
+# How long a window opening and closing is given to reach the shut shell, which made its rows
+# within a few milliseconds of each event when it made them shut.
+SETTLING = timedelta(seconds=2)
+
+
+def test_the_shut_launcher_makes_no_window_rows_as_windows_change(shell: Shell) -> None:
+    """The shut launcher makes no window's rows as windows open and close, and finds them open.
+
+    With the launcher shut, every event niri sent made Windows' and Capture's rows again over
+    all of Joel's windows: 657 and 287 rows in four minutes, for nobody (2026-11-10). Opened,
+    the window that came meanwhile is found by its title, so the rows are made as it opens.
+    """
+
+    def window_rows() -> dict[str, int]:
+        rows = json.loads(shell.as_account(shell.ipc("made")))["rows"]
+        return {name: rows.get(name, 0) for name in ("windows", "capture")}
+
+    before = window_rows()
+    window = shell.opened("Godwit Notes")
+    gone = shell.opened("Whimbrel Notes")
+    shell.close(gone)
+    # The span measured, for the events to reach the shell, not a wait for something to happen.
+    time.sleep(SETTLING.total_seconds())
+    after = window_rows()
+    try:
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        shell.send_chars("godwit")
+        shell.launcher_until(lambda shown: "Godwit Notes" in shown["rows"])
+        shell.close_launcher()
+    finally:
+        shell.close(window)
+    made = {name: after[name] - before[name] for name in after}
+    assert not any(made.values()), f"the shut launcher made window rows: {made}"
+
+
 def searched(shell: Shell) -> int:
     """Give how many searches of what's typed the launcher has run."""
     return int(shell.as_account(shell.ipc("searched")).strip())
