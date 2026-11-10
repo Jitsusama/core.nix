@@ -3330,6 +3330,23 @@ onLinux {
     touch $out
   '';
 
+  # A file reloaded while it's still being read is read once more as that
+  # read lands, so the view holds what was written last, as
+  # tests/reloaded.qml drives it in the Quickshell the machine runs
+  # (fileview-reads-again.patch): a status file taken away mid-read stayed
+  # said, as the-desktop-reads-the-spend-watch once saw on a busy builder.
+  a-file-reloaded-mid-read-is-read-again =
+    pkgs.runCommandLocal "a-file-reloaded-mid-read-is-read-again" { }
+      ''
+        mkdir runtime && chmod 700 runtime
+        cp ${../../tests/reloaded.qml} shell.qml
+        export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+        export FONTCONFIG_FILE=${noFonts}
+        ${shellFolderLint}
+        timeout 60 ${qs} -p shell.qml
+        touch $out
+      '';
+
   # A status file is heard again once its folder is made again, and when
   # its folder is made only after the shell starts, as tests/watched.qml
   # drives it, in the Quickshell the machine runs

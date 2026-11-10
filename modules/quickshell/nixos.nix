@@ -16,7 +16,10 @@
 # FileView watching a file lost it for good once the file's directory went
 # or if it wasn't there yet, as a service's runtime directory is each time
 # systemd restarts the service, so fileview-watch-nearest.patch watches the
-# nearest directory that is. An IPC call's connection was deleted as soon
+# nearest directory that is. A FileView reloaded while it was still reading
+# the file started no read of its own, so a change heard mid-read was lost
+# until the file changed again, and a status file taken away stayed said;
+# fileview-reads-again.patch reads once more as that read lands. An IPC call's connection was deleted as soon
 # as its reply was handed over, cutting off a reply longer than the
 # socket's buffer, so ipc-replies-whole.patch closes it only once the reply
 # is written. The desktop entries were read again whenever anything changed
@@ -26,7 +29,7 @@
 # node said neither what pipewire says it's doing nor the format it moves
 # audio in, which a device's drawer shows, so
 # pipewire-node-state-and-format.patch reads both from the node's info and
-# its Format param, which opens no stream. All six are laid over the
+# its Format param, which opens no stream. All nine are laid over the
 # machine's packages, so the shell, the greeter and the lock all run them.
 #
 # wf-recorder, which records the screen (Recorder.qml), bound the
@@ -101,6 +104,7 @@ in
           ./desktop-entries-heard-only-when-theirs.patch
           ./fileview-quiet.patch
           ./fileview-watch-nearest.patch
+          ./fileview-reads-again.patch
           ./ipc-replies-whole.patch
           ./pipewire-node-state-and-format.patch
         ];
