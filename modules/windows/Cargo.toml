@@ -1,0 +1,21 @@
+# niri's windows, held ready for the shell: one resident program that
+# hears niri's event stream and says each window, workspace and the
+# desktop as a record, sending only what changed, over a socket in the
+# shell's daemon interface (src/main.rs says how).
+[package]
+name = "windows"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Where the desktop entries are, how one reads, and inotify, which says
+# when they change, as the programs daemon reads them.
+programs = { path = "../programs" }
+serde_json = "1.0"
+
+[dev-dependencies]
+# The daemon started for a test, and its client, as every daemon's tests
+# share them (tests/daemon.rs).
+daemon-client = { path = "../daemon-client" }

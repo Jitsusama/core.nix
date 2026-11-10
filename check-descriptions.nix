@@ -3620,6 +3620,21 @@
     the sign-in window's tests pass: its proxy lets on only the window, and it follows which card
     wants a sign-in
   '';
+  windows-hears-niris-windows = ''
+    the windows daemon says each window niri describes named by its program and placed as its row
+    says it, the one used last first; tells a watch only the window a retitle changed and those it
+    reads alike with, only the two windows a focus moved between, and nothing for a resize or the
+    launcher taking the keys; says a window closed as gone, names a window's program again once an
+    entry is added, describes the desktop again once niri is gone and back, and refuses an ask or
+    a kind it doesn't know
+  '';
+  windows-passes-clippy = ''
+    clippy finds nothing in the windows daemon or its tests
+  '';
+  windows-runs-beside-the-shell = ''
+    the shell brings the windows daemon, on the daemons' socket, which systemd holds whether or not
+    it runs, restarted by a switch
+  '';
   without-syncfs-passes-clippy = ''
     clippy finds nothing in without-syncfs or its tests
   '';

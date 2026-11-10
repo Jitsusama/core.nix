@@ -1019,6 +1019,9 @@ in
     # Programs, each program's drawer and its Recent are what the
     # programs daemon holds.
     ../programs/home.nix
+    # Windows, Capture and each program's windows are what the windows
+    # daemon holds.
+    ../windows/home.nix
   ];
 
   options.jitsusama.quickshell.margin.pieces = lib.mkOption {
