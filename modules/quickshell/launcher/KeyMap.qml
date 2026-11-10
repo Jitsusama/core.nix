@@ -67,10 +67,6 @@ Provider {
         "google-drive": "google drive files"
     })
 
-    // How many letters of a level's first groups its row names, whole
-    // names only, so they never run out of the room after its name.
-    readonly property int room: 24
-
     // A chord as words: its keys joined by +, those pressed one after
     // another a space apart, as the launcher's foot says them. One the key
     // map gives as a string is already words.
@@ -155,14 +151,6 @@ Provider {
         // have Focus. Found from further up, its own groups say this one.
         const deeper = groups.reduce((all, group) => all.concat(group.deeper), []);
         const below = groups.map(group => group.row).concat(deeper);
-        // Its first groups, as many as fit whole.
-        let first = "";
-        for (const group of groups) {
-            const more = first === "" ? group.row.name : `${first}, ${group.row.name}`;
-            if (more.length > room)
-                break;
-            first = more;
-        }
         const row = member({
             key: `shortcut-level:${id}`,
             verb: "open",
@@ -172,10 +160,12 @@ Provider {
             nested: true,
             glyph: Words.glyph(id) || glyph,
             hue: "voice",
-            // What it holds after its name, as home's rows say theirs, and
-            // how many keys at its right, where a row's figure stands
-            // (VKCF3Z, 2026-11-05: one place for each kind of fact).
-            count: first,
+            // It's a place, so nothing after its name: how many keys at its
+            // right, where a row's figure stands (VKCF3Z, 2026-11-05), and
+            // its groups by name in its drawer, as Recent's (the launcher's
+            // heldNames; VKCF3Z, dae7fb67, and of a program's Shortcuts,
+            // 2026-11-09).
+            heldNames: groups.map(group => group.row.name),
             note: condition,
             standing: () => condition,
             side: held.length > 0 ? String(held.length) : "",

@@ -984,11 +984,9 @@ def test_zathura_typed_lists_the_document_it_shows_under_it_and_tab_opens_its_pa
             )
         )
         # Its row says the page zathura says it's on, read over its bus,
-        # in open's place before its folder.
+        # in open's place, and no folder, since it's in the home.
         desktop.down_to("charts.pdf")
-        desktop.launcher_until(
-            lambda shown: (shown["selected"] or {}).get("side") == "p. 1 of 1 \u00b7 ~"
-        )
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "p. 1 of 1")
     finally:
         desktop.close_launcher()
         # Its wrapper names the process otherwise, so it's found by its command line.
