@@ -14,8 +14,13 @@ pragma Singleton
 // nothing of Spend's. The whole file was read every 37 s before, about
 // 228 KB, and each of Spend's rows made again while it was shut
 // (2026-11-10). Agents' figures and today's are watched always, the
-// collection's rows while the launcher is open, and the reports and
-// their words while Spend's rows are wanted.
+// collection's rows and the budgets while the launcher is open, and the
+// reports and their words while Spend's rows are wanted. budgets.json
+// was read again each pass too, about 9 KB, while nothing drew it.
+//
+// Spend still makes its rows from these records, and its drawers in
+// SpendDrawer.js, until spend-watch serves them ready and ranked, planned
+// for 2026-11-12.
 //
 // While the socket isn't there, as before the daemon starts or in a check
 // that writes the file by hand, the file is read instead, when the watch
@@ -60,6 +65,11 @@ Singleton {
     // Each report by its id, and the words that name a period, a cut, and
     // the examples the field offers.
     property var reports: ({})
+    // Each budget by its name, as `spend-watch budgets --json` says it, and
+    // which budget each session that spent today drew on last, by its
+    // whole id.
+    property var budgets: ({})
+    property var budgetOf: ({})
     property var periods: []
     property var cuts: []
     property var examples: []
@@ -79,6 +89,15 @@ Singleton {
 
     // Whether the socket isn't answering, so the file is read instead.
     readonly property bool fromFile: spent.state === "not answering"
+    // Whether the daemon is still on its first pass, telling what its last
+    // run wrote, so those figures are said as still being read rather
+    // than passing as current.
+    readonly property bool lastRun: spent.state === "starting"
+    // Whether there's nothing to tell at all: no socket, and no file, as
+    // when the daemon never ran. Said, rather than Spend going silently.
+    readonly property bool down: fromFile && !known
+    // Whether the file is watched, only while it's read, as a check asks.
+    readonly property bool watchingFile: file.watchChanges
     // Whether the rows, or the reports, are still being read for this
     // opening, drawn from what was held meanwhile (Provider.stillReading).
     readonly property bool rowsReading: !fromFile && listed.live && !listed.answeredThisWatch
@@ -95,7 +114,7 @@ Singleton {
         for (const record of records) {
             if (typeof record?.key !== "string")
                 continue;
-            if (record.key in held && JSON.stringify(held[record.key]) === JSON.stringify(record))
+            if (record.key in held && Records.alike(held[record.key], record))
                 continue;
             for (const property of Records.touched(held[record.key] ?? null, record))
                 touched[property] = true;
@@ -115,7 +134,7 @@ Singleton {
         heard(changed, dropped);
         for (const property in touched)
             root[property] = Records.made(held, property);
-        known = Object.keys(held).length > 0;
+        known = Object.keys(held).some(key => !Records.ofBudgets(key));
     }
 
     // What a daemon said, taken with every key of its kinds it doesn't
@@ -128,25 +147,22 @@ Singleton {
             gone.concat(unheld));
     }
 
-    // A collection as read from the file, or null for none.
+    // A collection as read from the file, or null for none, letting go
+    // only what the file told, so budgets.json's records stay.
     function readCollection(collection) {
         const now = collection === null ? {} : Records.records(collection);
-        took(Object.values(now), Object.keys(held).filter(key => !(key in now)));
+        took(Object.values(now),
+            Object.keys(held).filter(key => !Records.ofBudgets(key) && !(key in now)));
     }
 
-    // budgets.json as read, or null.
+    // budgets.json as read while the socket isn't answering, or as a check
+    // sets it, or null; cut into records as the daemon tells them.
     property var standing: null
-    // Each budget, nearest its allowance first, by its name, as `spend-watch
-    // budgets --json` says it.
-    readonly property var budgets: {
-        const named = {};
-        for (const budget of standing?.budgets ?? [])
-            named[budget.name] = budget;
-        return named;
+    onStandingChanged: {
+        const now = Records.budgetRecords(standing);
+        took(Object.values(now),
+            Object.keys(held).filter(key => Records.ofBudgets(key) && !(key in now)));
     }
-    // Which budget each session that spent today drew on last, by its
-    // whole id.
-    readonly property var budgetOf: standing?.sessions ?? {}
 
     function parsed(text, version) {
         try {
@@ -170,12 +186,13 @@ Singleton {
         onHeard: (changed, gone) => root.heardFrom(spent, changed, gone)
     }
 
-    // The collection's rows, while the launcher is open.
+    // The collection's rows, and the budgets its drawers and Agents' say,
+    // while the launcher is open.
     Daemon {
         id: listed
 
         socket: root.socket
-        kind: "row"
+        kind: ["row", "budget", "drew"]
         live: root.listing
         paced: root.paced
         answersWhole: true
@@ -205,14 +222,17 @@ Singleton {
     function readFile() {
         file.reload();
         file.text();
+        budgetsFile.reload();
+        budgetsFile.text();
     }
 
     FileView {
         id: file
         path: `${Quickshell.env("XDG_RUNTIME_DIR")}/spend-watch/collection.json`
-        // Watched always, which costs nothing, since a watch begun once
-        // the socket fails never hears the file made; read only then.
-        watchChanges: true
+        // Watched only while it's read, so the daemon's passes wake
+        // nothing while its socket answers. A watch begun once it fails
+        // watches the folder too, so a file made after is heard made.
+        watchChanges: root.fromFile
         preload: false
         printErrors: false
         onFileChanged: {
@@ -237,19 +257,27 @@ Singleton {
     FileView {
         id: budgetsFile
         path: `${Quickshell.env("XDG_RUNTIME_DIR")}/spend-watch/budgets.json`
-        watchChanges: true
+        // Read, and watched, only while the collection's file is.
+        watchChanges: root.fromFile
+        preload: false
         printErrors: false
-        onFileChanged: reload()
+        onFileChanged: {
+            if (root.fromFile) {
+                budgetsFile.reload();
+                budgetsFile.text();
+            }
+        }
         property string read: ""
         onLoaded: {
-            if (budgetsFile.text() === budgetsFile.read)
+            if (!root.fromFile || budgetsFile.text() === budgetsFile.read)
                 return;
             budgetsFile.read = budgetsFile.text();
             root.standing = root.parsed(budgetsFile.read, 1);
         }
         onLoadFailed: {
             budgetsFile.read = "";
-            root.standing = null;
+            if (root.fromFile)
+                root.standing = null;
         }
     }
 }

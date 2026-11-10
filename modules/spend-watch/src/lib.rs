@@ -19,7 +19,8 @@
 //! small status file with a heartbeat for the overview's row and the
 //! margin, and a larger one for the launcher's collection, every string in
 //! it ready to draw, which its socket tells as records too, each pass only
-//! those it changed (`interface`). `spend-watch report` answers from the
+//! those it changed (`interface`, cut as `records` says). `spend-watch
+//! report` answers from the
 //! history alone.
 //!
 //! Everything but the edges (the files, the feeds' processes, D-Bus and
@@ -48,6 +49,7 @@ pub mod over;
 pub mod picture;
 pub mod quests;
 pub mod random;
+pub mod records;
 pub mod report;
 pub mod runs;
 pub mod series;

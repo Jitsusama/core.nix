@@ -22,9 +22,11 @@ pragma ComponentBehavior: Bound
 //
 // A daemon that's down is said, never waited on: `state` is "starting"
 // until it first answers, then the daemon's own word, or "not answering"
-// while its socket is gone. A socket that refuses is tried again every
-// two seconds; one that isn't there at all, as Slack's isn't before Joel
-// signs in, is tried again only once it appears, so a machine without it
+// while its socket is gone. A socket that refuses is tried again after
+// two seconds, and twice as long after each refusal since it last
+// answered, a minute at most, so a daemon down for good isn't asked by
+// every domain's connection every two seconds; one that isn't there at
+// all, as Slack's isn't before Joel signs in, is tried again only once it appears, so a machine without it
 // isn't asked, and warned of, every two seconds for as long as it runs.
 // What was held stays held through a gap, and is replaced by what the
 // daemon says once it answers again, unless `keptThroughGap` says to let
@@ -328,17 +330,18 @@ Scope {
             }
             onConnectionStateChanged: {
                 if (connected) {
+                    daemon.refusals = 0;
                     daemon.wire = socket;
                     daemon.greet();
                 } else {
                     daemon.gone();
-                    again.restart();
+                    daemon.tryAgain();
                 }
             }
             onError: failed => {
                 daemon.gone();
                 if (failed !== daemon.serverNotFound)
-                    again.restart();
+                    daemon.tryAgain();
             }
         }
     }
@@ -381,6 +384,24 @@ Scope {
         awaited = {};
         for (const id in waiting)
             waiting[id](null);
+    }
+
+    // How many times it's been refused since it last answered.
+    property int refusals: 0
+
+    // How long to wait before trying again, after so many refusals.
+    function waitAfter(refused) {
+        return Math.min(2000 * 2 ** refused, 60000);
+    }
+
+    // A connection dropped says so twice, as its state and as an error,
+    // so a try already waiting counts once.
+    function tryAgain() {
+        if (again.running)
+            return;
+        again.interval = waitAfter(refusals);
+        refusals += 1;
+        again.restart();
     }
 
     Timer {

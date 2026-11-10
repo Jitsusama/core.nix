@@ -7,26 +7,18 @@
 //!
 //! The shell reads the whole collection again for each pass otherwise,
 //! about 228 KB every 37 s, though most of it is only drawn while the
-//! launcher's Spend is (2026-11-10). So the collection is cut into
-//! records of a few kinds, each kind watched only while it's drawn:
+//! launcher's Spend is (2026-11-10). So the collection and the budgets
+//! are cut into records of a few kinds (`records.rs`), each kind watched
+//! only while it's drawn.
 //!
-//! - `session:<id>`, what one pi session spent today, how its day went
-//!   and what its helpers cost, and `quest:<id>`, a quest's family, for
-//!   Agents;
-//! - `day:all` and `day:agents`, how today stands, for the home row and
-//!   Agents;
-//! - `row:<list>:<key>`, one row of the collection's lists (`now`,
-//!   `findings`, `more` and `quiet`), with its place in that list, for
-//!   the launcher while it's open;
-//! - `report:<id>`, one report, and `words:periods`, `words:cuts` and
-//!   `words:examples`, for Spend's answers while it's wanted.
-//!
-//! collection.json is still written whole for the command line, and for
-//! the shell while the socket isn't there.
+//! collection.json and budgets.json are still written whole for the
+//! command line, and for the shell while the socket isn't there.
 
 use crate::collection::Collection;
-use serde_json::{Map, Value, json};
-use std::collections::BTreeMap;
+use crate::records::{BUDGETS, KINDS, budget_records, cut, cut_budgets, kind_of, records};
+use crate::standing::Standing;
+use serde_json::{Value, json};
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufRead, Write};
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
@@ -36,96 +28,9 @@ use std::sync::{Arc, Mutex, MutexGuard};
 /// The interface's version this speaks.
 pub const VERSION: u64 = 1;
 
-/// The kinds of record the collection is told as.
-pub const KINDS: [&str; 6] = ["session", "quest", "day", "row", "report", "words"];
-
 /// Lines queued for a reader before it's hung up on as too slow, which
 /// asks again and is told everything whole.
 const QUEUED: usize = 64;
-
-/// The kind a key names: `session` for `session:01a1...`.
-pub fn kind_of(key: &str) -> Option<&str> {
-    let (kind, rest) = key.split_once(':')?;
-    (KINDS.contains(&kind) && !rest.is_empty()).then_some(kind)
-}
-
-/// The collection as records, by key.
-pub fn records(collection: &Collection) -> BTreeMap<String, Value> {
-    serde_json::to_value(collection).map_or_else(|_| BTreeMap::new(), cut)
-}
-
-/// A collection, as it's written, cut into records by key.
-fn cut(whole: Value) -> BTreeMap<String, Value> {
-    let Value::Object(mut whole) = whole else {
-        return BTreeMap::new();
-    };
-    let mut made = BTreeMap::new();
-    let mut take = |key: &str| match whole.remove(key) {
-        Some(Value::Object(entries)) => entries,
-        _ => Map::new(),
-    };
-    // A session's three figures are one record, so a change to any of them
-    // is told as one.
-    let fields = [
-        ("sessions", "spent"),
-        ("sessionsToday", "today"),
-        ("helpers", "helpers"),
-    ];
-    for (from, field) in fields {
-        for (id, value) in take(from) {
-            let key = format!("session:{id}");
-            let record = made
-                .entry(key.clone())
-                .or_insert_with(|| json!({"key": key, "kind": "session"}));
-            record[field] = value;
-        }
-    }
-    for (id, family) in take("families") {
-        let mut record = json!({"key": format!("quest:{id}"), "kind": "quest"});
-        if let Value::Object(fields) = family {
-            for (field, value) in fields {
-                record[field] = value;
-            }
-        }
-        made.insert(format!("quest:{id}"), record);
-    }
-    for (id, report) in take("reports") {
-        let key = format!("report:{id}");
-        made.insert(
-            key.clone(),
-            json!({"key": key, "kind": "report", "report": report}),
-        );
-    }
-    for (id, from) in [("all", "today"), ("agents", "agentsToday")] {
-        let key = format!("day:{id}");
-        let spent = whole.remove(from).unwrap_or(Value::Null);
-        made.insert(
-            key.clone(),
-            json!({"key": key, "kind": "day", "spent": spent}),
-        );
-    }
-    for list in ["now", "findings", "more", "quiet"] {
-        let Some(Value::Array(lines)) = whole.remove(list) else {
-            continue;
-        };
-        for (order, line) in lines.into_iter().enumerate() {
-            let key = format!("row:{list}:{}", line["key"].as_str().unwrap_or_default());
-            made.insert(
-                key.clone(),
-                json!({"key": key, "kind": "row", "list": list, "order": order, "line": line}),
-            );
-        }
-    }
-    for id in ["periods", "cuts", "examples"] {
-        let key = format!("words:{id}");
-        let words = whole.remove(id).unwrap_or(Value::Array(Vec::new()));
-        made.insert(
-            key.clone(),
-            json!({"key": key, "kind": "words", "words": words}),
-        );
-    }
-    made
-}
 
 /// What a client asked, one line of it.
 #[derive(Clone, Debug, PartialEq)]
@@ -295,18 +200,55 @@ impl Hub {
         }
         let mut held = self.lock();
         if !held.passed {
+            let budgets: Vec<(String, Value)> = std::mem::take(&mut held.records)
+                .into_iter()
+                .filter(|(key, _)| kind_of(key).is_some_and(|kind| BUDGETS.contains(&kind)))
+                .collect();
             held.records = cut(whole);
+            held.records.extend(budgets);
+        }
+    }
+
+    /// Holds what the daemon wrote last of the budgets, `budgets.json`'s
+    /// text, until its first pass, as `seed` holds the collection.
+    pub fn seed_budgets(&self, written: &str) {
+        let Ok(whole) = serde_json::from_str::<Value>(written) else {
+            return;
+        };
+        if whole["v"].as_u64() != Some(u64::from(crate::standing::VERSION)) {
+            return;
+        }
+        let mut held = self.lock();
+        if !held.passed {
+            held.records.extend(cut_budgets(&whole));
         }
     }
 
     /// Takes what a pass made, telling each watch what changed of its
-    /// kinds and what went.
-    pub fn publish(&self, collection: &Collection) {
-        let now = records(collection);
+    /// kinds and what went. The first pass tells each connection watching
+    /// that the daemon is answering now, as hello would, since what it
+    /// was told before was the last run's and said as such.
+    pub fn publish(&self, collection: &Collection, budgets: Option<&Standing>) {
+        let mut now = records(collection);
+        if let Some(budgets) = budgets {
+            now.extend(budget_records(budgets));
+        }
         let mut held = self.lock();
+        let first = !held.passed;
         held.passed = true;
         let was = std::mem::take(&mut held.records);
+        let mut greeted = BTreeSet::new();
         held.watches.retain(|watch| {
+            if first && greeted.insert(watch.connection) {
+                let line = json!({
+                    "id": "hello", "version": VERSION, "domain": "spend",
+                    "state": "answering", "since": self.since,
+                });
+                if watch.told.try_send(line.to_string()).is_err() {
+                    let _ = watch.stream.shutdown(Shutdown::Both);
+                    return false;
+                }
+            }
             let changed: Vec<&Value> = now
                 .iter()
                 .filter(|(key, record)| watch.wants(key) && was.get(*key) != Some(*record))
@@ -565,7 +507,7 @@ mod tests {
     fn a_watch_is_told_its_kinds_whole_and_then_only_what_changed() {
         let hub = Arc::new(Hub::new(0));
         let mut was = collection();
-        hub.publish(&was);
+        hub.publish(&was, None);
         let mut client = Client::to(
             &hub,
             r#"{"id":"all","ask":"watch","kind":["session","day"]}"#,
@@ -578,7 +520,7 @@ mod tests {
         );
         was.sessions.insert("b".into(), "$2.50".into());
         was.reports.clear();
-        hub.publish(&was);
+        hub.publish(&was, None);
         let change = client.next();
         assert_eq!(
             change["changed"],
@@ -591,7 +533,7 @@ mod tests {
             said < 120,
             "one session's change should be a short line, not {said} bytes: {change}"
         );
-        hub.publish(&was);
+        hub.publish(&was, None);
         assert!(
             client.silent(),
             "a pass that changed nothing should tell nothing"
@@ -601,7 +543,7 @@ mod tests {
     #[test]
     fn a_watch_asked_again_wider_is_told_the_new_kinds_whole() {
         let hub = Arc::new(Hub::new(0));
-        hub.publish(&collection());
+        hub.publish(&collection(), None);
         let mut client = Client::to(&hub, r#"{"id":"all","ask":"watch","kind":"session"}"#);
         client.next();
         client.say(r#"{"id":"all","ask":"watch","kind":["session","report","words"]}"#);
@@ -615,7 +557,7 @@ mod tests {
         );
         let mut changed = collection();
         changed.sessions.insert("a".into(), "$9.00".into());
-        hub.publish(&changed);
+        hub.publish(&changed, None);
         let change = client.next();
         assert_eq!(
             keys(&change, "changed"),
@@ -628,12 +570,12 @@ mod tests {
     #[test]
     fn what_a_pass_let_go_is_told_as_gone() {
         let hub = Arc::new(Hub::new(0));
-        hub.publish(&collection());
+        hub.publish(&collection(), None);
         let mut client = Client::to(&hub, r#"{"id":"all","ask":"watch","kind":"session"}"#);
         client.next();
         let mut fewer = collection();
         fewer.sessions.remove("b");
-        hub.publish(&fewer);
+        hub.publish(&fewer, None);
         assert_eq!(
             client.next()["gone"],
             json!(["session:b"]),
@@ -655,7 +597,7 @@ mod tests {
             (Some("starting"), Some("spend"), Some(7)),
             "before any pass the daemon should say it's starting: {hello}"
         );
-        hub.publish(&collection());
+        hub.publish(&collection(), None);
         client.say(r#"{"id":"again","ask":"hello"}"#);
         assert_eq!(
             client.next()["state"],
@@ -685,10 +627,15 @@ mod tests {
                 .collect::<Vec<_>>(),
             "a watch before the first pass should be told what was written last"
         );
-        hub.publish(&collection());
+        hub.publish(&collection(), None);
+        assert_eq!(
+            client.next()["state"],
+            "answering",
+            "the first pass should tell a watch the daemon is answering now"
+        );
         assert!(
             client.silent(),
-            "a first pass that says what was written should tell nothing"
+            "a first pass that says what was written should tell nothing more"
         );
         hub.seed(r#"{"v":2}"#);
         client.say(r#"{"id":"all","ask":"watch","kind":"session"}"#);
@@ -696,6 +643,84 @@ mod tests {
             client.next()["records"].as_array().map(Vec::len),
             Some(keys.len()),
             "once a pass has told the collection, what was written is passed over"
+        );
+    }
+
+    fn budget(name: &str, standing: &str) -> crate::standing::Budget {
+        crate::standing::Budget {
+            name: name.into(),
+            label: name.into(),
+            kind: None,
+            whose: None,
+            default: false,
+            undeclared: false,
+            providers: Vec::new(),
+            spent: BTreeMap::new(),
+            value: None,
+            allowances: Vec::new(),
+            standing: standing.into(),
+            nearest: None,
+            health: None,
+            words: String::new(),
+            said: crate::standing::BudgetSaid::default(),
+        }
+    }
+
+    fn standing(at: &str, mine: &str) -> Standing {
+        Standing {
+            v: crate::standing::VERSION,
+            at: at.into(),
+            default: "me".into(),
+            total: crate::standing::Total {
+                periods: BTreeMap::new(),
+                words: String::new(),
+            },
+            budgets: vec![budget("me", mine), budget("team", "$1 of $50")],
+            sessions: BTreeMap::from([("a".to_owned(), "me".to_owned())]),
+            session: None,
+        }
+    }
+
+    #[test]
+    fn the_budgets_are_told_as_records_and_then_only_the_one_that_moved() {
+        let hub = Arc::new(Hub::new(0));
+        let written = serde_json::to_string(&standing("then", "$1 of $40")).expect("budgets");
+        hub.seed(&serde_json::to_string(&collection()).expect("a collection as text"));
+        hub.seed_budgets(&written);
+        let mut client = Client::to(
+            &hub,
+            r#"{"id":"all","ask":"watch","kind":["budget","drew"]}"#,
+        );
+        let whole = client.next();
+        assert_eq!(
+            keys(&whole, "records"),
+            ["budget:me", "budget:team", "drew:a"],
+            "before the first pass a watch should be told the budgets written last"
+        );
+        assert_eq!(
+            whole["records"][2]["budget"], "me",
+            "a session's record should name the budget it drew on"
+        );
+        hub.publish(&collection(), Some(&standing("now", "$2 of $40")));
+        assert_eq!(
+            client.next()["id"],
+            "hello",
+            "the first pass says it's answering"
+        );
+        let change = client.next();
+        assert_eq!(
+            keys(&change, "changed"),
+            ["budget:me"],
+            "only the budget that moved should be told, not its time: {change}"
+        );
+        assert_eq!(
+            change["changed"][0]["budget"]["standing"], "$2 of $40",
+            "the budget should be told whole as it stands now"
+        );
+        hub.publish(&collection(), Some(&standing("later", "$2 of $40")));
+        assert!(
+            client.silent(),
+            "a pass that moved only the time should tell nothing"
         );
     }
 

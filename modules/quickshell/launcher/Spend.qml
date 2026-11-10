@@ -38,7 +38,9 @@ Provider {
 
     // Named, and found, as the vocabulary says (Words.qml): a part of
     // Agents, wearing their glyph, and no longer found by pi's names.
-    collection: known ? Words.collection("spend") : null
+    // While there's nothing to tell, as when the watch never ran, it's
+    // there still, saying so, with a way to start it.
+    collection: known || SpendWatch.down ? Words.collection("spend") : null
     examples: SpendWatch.examples
 
     // Only what's drawn is watched: the rows while the launcher is open,
@@ -63,9 +65,22 @@ Provider {
         when: provider.launcher !== null
     }
 
-    // While the rows or the reports are read for this opening, what was
-    // held is drawn, and a report never held is said as "\u2026".
-    stillReading: SpendWatch.rowsReading || SpendWatch.reportsReading
+    // While the rows or the reports are read for this opening, or the
+    // daemon's first pass is, what was held is drawn, and a report never
+    // held is said as "\u2026".
+    stillReading: SpendWatch.rowsReading || SpendWatch.reportsReading || SpendWatch.lastRun
+
+    // The one row while there's nothing to tell: the watch isn't
+    // answering, and starting it.
+    readonly property var downLine: ({
+        key: "start",
+        name: Words.name("spend:start"),
+        side: "",
+        note: Words.of("spend").said?.down ?? "",
+        role: "warning",
+        verb: Words.verb("spend:start"),
+        run: ["systemctl", "--user", "restart", "spend-watch.service"]
+    })
 
     Connections {
         target: SpendWatch
@@ -232,7 +247,8 @@ Provider {
     // The rows the daemon gives to be listed, each { key, line }, in order.
     function listedRows() {
         const rows = SpendWatch.rows;
-        return !known ? []
+        return SpendWatch.down ? [{ key: "start", line: downLine }]
+            : !known ? []
             : sharing ? orderedRows([], rows.quiet)
             : orderedRows(rows.now, rows.findings).concat(rows.more);
     }
@@ -337,17 +353,26 @@ Provider {
         };
     }
 
-    // Beside each answer, unless the daemon answers: its last figures
-    // are said as such rather than passing as current.
+    // Beside each answer, unless the daemon answers with this run's
+    // figures: its last figures, or its last run's, are said as such
+    // rather than passing as current.
     function noted(note) {
-        return SpendWatch.fromFile ? "spend-watch isn't answering; these are its last figures"
-            : note;
+        const said = Words.of("spend").said ?? {};
+        return SpendWatch.fromFile ? said.lastFigures ?? note
+            : SpendWatch.lastRun ? said.lastRun ?? note : note;
     }
 
     function answer(typed) {
+        const id = reportFor(typed);
+        if (SpendWatch.down)
+            return id === null ? null : {
+                headline: downLine.note,
+                copy: "",
+                rows: [build(downLine)],
+                note: ""
+            };
         if (!known)
             return null;
-        const id = reportFor(typed);
         const shown = id === null ? null : reports[id] ?? null;
         if (shown === null)
             return id !== null && SpendWatch.reportsReading ? waitingAnswer() : null;

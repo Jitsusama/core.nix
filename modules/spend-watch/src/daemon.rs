@@ -419,7 +419,7 @@ pub fn pass(
     shown.tokens = tokens;
     let collection = crate::collection::collection(&picture, &findings, config);
     writer.write(&config.runtime()?, &shown, &collection, Some(&standing))?;
-    hub.publish(&collection);
+    hub.publish(&collection, Some(&standing));
     // Telling is best effort: the shell has its figures whether or not a
     // notice could be given, as with no notification server yet at login.
     if config.notices.enable
@@ -531,8 +531,12 @@ fn hold(config: &Config) -> Result<(), String> {
 fn hub(config: &Config) -> Result<Arc<Hub>, String> {
     let since = u64::try_from(jiff::Timestamp::now().as_millisecond()).unwrap_or_default();
     let hub = Arc::new(Hub::new(since));
-    if let Ok(written) = std::fs::read_to_string(config.runtime()?.join("collection.json")) {
+    let runtime = config.runtime()?;
+    if let Ok(written) = std::fs::read_to_string(runtime.join("collection.json")) {
         hub.seed(&written);
+    }
+    if let Ok(written) = std::fs::read_to_string(runtime.join("budgets.json")) {
+        hub.seed_budgets(&written);
     }
     Ok(hub)
 }

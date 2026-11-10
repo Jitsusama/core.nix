@@ -11,12 +11,13 @@ budget a session's drawer names. Every fact in it is in words too, each
 budget's and allowance's `said`, so neither pi nor the shell formats one. A
 cap's row in `collection.json` names its window there, so both open one
 drawer, and a period's row carries its own drawer's facts, `drawn`. Its
-socket tells the shell the same collection as records, the shell's daemon
-interface (`src/interface.rs`): a session's figures, a quest's, a row, a
-report and its words each one record, and after each pass only those that
-changed, so the shell remakes only what a pass moved and watches each kind
-only while it draws it. The file stays for the command line and the
-checks, and for the shell while the socket isn't there.
+socket tells the shell the same collection and budgets as records, the
+shell's daemon interface (`src/interface.rs`): a session's figures, a
+quest's, a row, a report and its words, a budget and the budget a session
+drew on each one record, and after each pass only those that changed, so
+the shell remakes only what a pass moved and watches each kind only while
+it draws it. The files stay for pi, the command line and the checks, and
+for the shell while the socket isn't there.
 [`home.nix`][1] renders its config and runs it; the [contract][2] says what a
 feed speaks.
 

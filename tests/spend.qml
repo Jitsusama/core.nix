@@ -16,8 +16,8 @@
 // finding that wants a look first, going to its session and stepping into
 // marking it expected; read from the file, its figures are said to be the
 // last ones, since the file is read only while spend-watch's socket isn't
-// answering (tests/spend-told.qml drives the socket). The tokens piece (pieces/Tokens.qml), over the same
-// file, is there only while the watch's `tokens` warns: as the watch words
+// answering (tests/spend-told.qml drives the socket). The tokens piece
+// (pieces/Tokens.qml), over the same file, is there only while the watch's `tokens` warns: as the watch words
 // it, wanting Joel, said as it arrives and again as its level steps down,
 // with See What Spends and Pause for a session that's running and nothing
 // else; urgent in the alert colour once out; quiet while shared; saying
@@ -331,9 +331,16 @@ ShellRoot {
     property int collecting: 0
 
     function collect() {
-        if (spend.collection !== null || spend.answer("spend") !== null) {
-            const shown = JSON.stringify(spend.collection);
-            console.warn(`FAIL a collection with nothing written: ${shown}`);
+        // With no socket and nothing written, it says the watch isn't
+        // answering, with a way to start it, rather than going silently.
+        const down = spend.everything();
+        const asked = spend.answer("spend");
+        if (spend.collection?.noun !== "spend" || down.length !== 1
+            || down[0].name !== "Start the Watch" || down[0].note !== "the watch isn't answering"
+            || asked?.headline !== "the watch isn't answering" || asked.rows.length !== 1
+            || spend.answer("hello") !== null) {
+            const shown = JSON.stringify([down.map(row => [row.name, row.note]), asked]);
+            console.warn(`FAIL a collection with nothing written says the watch is down: ${shown}`);
             Qt.exit(1);
             return;
         }
@@ -529,7 +536,7 @@ ShellRoot {
             // Read from the file, with no socket answering, its figures
             // are said to be the last ones rather than passing as current.
             expect("the file's figures said as its last",
-                today.note === "spend-watch isn't answering; these are its last figures",
+                today.note === "the watch isn't answering; these are its last figures",
                 today.note);
             const week = spend.answer("spend last week by quest");
             expect("a report by its words", week !== null
