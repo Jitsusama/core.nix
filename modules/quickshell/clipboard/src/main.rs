@@ -6,10 +6,11 @@
 //! each new copy, and keeps the latest. The shell connects to its socket and
 //! is sent every copy kept, oldest first, then each new one as it comes: one
 //! JSON object to a line, the time in milliseconds since the epoch in `at`.
-//! A text copy is `{"at", "text"}`. A picture is `{"at", "picture", "type",
-//! "path", "bytes", "width", "height"}`: its number, its type, the file
-//! holding it, its size, and its width and height when its type says them.
-//! Nothing is started per copy.
+//! A text copy is `{"at", "id", "text"}`, its number in `id`. A picture is
+//! `{"at", "picture", "type", "path", "bytes", "width", "height"}`: its
+//! number, its type, the file holding it, its size, and its width and height
+//! when its type says them. Text and pictures are numbered from one count,
+//! and a copy made again keeps its number. Nothing is started per copy.
 //!
 //! Text is kept in memory, and pictures in files of their own in the
 //! directory `--pictures` names, only this account's to read, which should
@@ -22,9 +23,19 @@
 //! than `--largest`, nor a picture larger than `--largest-picture`. The
 //! pictures kept take up at most `--room`, the oldest going first, and the
 //! shells are sent `{"gone":[N, ...]}` for those let go, to make room or
-//! past what it keeps, since their files go with them. From the shell, a
-//! line `copy N` puts picture N back on the clipboard, and `clear` forgets
-//! everything, every client then being sent `{"clear":true}`.
+//! past what it keeps, since their files go with them.
+//!
+//! From the shell, a line `copy N` puts copy N back on the clipboard, and
+//! `copy "text"`, the text spelled as JSON, puts the shell's own text
+//! there, kept as a copy is. `paste N terminal` or `paste N plain`, or the
+//! same with the text in place of N, puts it there and then presses the
+//! paste keys for the window the launcher closed over: Ctrl+Shift+V for a
+//! terminal, whose Ctrl+V is a key of its own, and Ctrl+V anywhere else.
+//! They're pressed through the compositor's virtual keyboard, once niri
+//! says the launcher's layer has let go of the keys, so they reach the
+//! window and not the launcher, and nothing waits on the shell's thread:
+//! the window reads the copy from here, too. `clear` forgets everything,
+//! every client then being sent `{"clear":true}`.
 //!
 //! A copy outlives the program that made it: when the clipboard empties
 //! because that program let go of it, as one does when it closes, this one
@@ -49,10 +60,12 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, mpsc};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{env, process, thread};
 
 use rustix::event::{PollFd, PollFlags, poll};
+use rustix::fs::{MemfdFlags, memfd_create};
+use serde_json::Value;
 use wayland_client::backend::{ObjectId, WaylandError};
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{wl_registry, wl_seat};
@@ -62,6 +75,10 @@ use wayland_protocols::ext::data_control::v1::client::{
     ext_data_control_manager_v1::ExtDataControlManagerV1,
     ext_data_control_offer_v1::{self, ExtDataControlOfferV1},
     ext_data_control_source_v1::{self, ExtDataControlSourceV1},
+};
+use wayland_protocols_misc::zwp_virtual_keyboard_v1::client::{
+    zwp_virtual_keyboard_manager_v1::ZwpVirtualKeyboardManagerV1,
+    zwp_virtual_keyboard_v1::ZwpVirtualKeyboardV1,
 };
 
 /// The type KDE's Klipper set the convention with, and 1Password follows,
@@ -86,6 +103,148 @@ const OURS: &str = "application/x-clipboard-history-kept";
 
 /// How long a program has to hand over what it copied before it's skipped.
 const PATIENCE: Duration = Duration::from_secs(2);
+
+/// The layer the launcher draws on, as it names itself to niri, which
+/// holds the keys while it's open.
+const LAUNCHER: &str = "launcher";
+
+/// How long the launcher has to let go of the keys before a paste gives up
+/// rather than press them into it.
+const LETTING_GO: Duration = Duration::from_secs(1);
+
+/// How often niri is asked whether the launcher has let go of the keys.
+const ASKING: Duration = Duration::from_millis(1);
+
+/// How long a paste waits with no niri to ask, as the shell's own wait for
+/// the keys to move was.
+const UNASKED: Duration = Duration::from_millis(150);
+
+/// The virtual keyboard's own keymap: one key, V, at evdev's code 1, with
+/// the usual modifiers, so Control and Shift are the masks below
+/// whatever keymap Joel types in.
+const KEYMAP: &str = "xkb_keymap {
+  xkb_keycodes \"paste\" { minimum = 8; maximum = 9; <V> = 9; };
+  xkb_types \"paste\" { include \"complete\" };
+  xkb_compatibility \"paste\" { include \"complete\" };
+  xkb_symbols \"paste\" { key <V> { [ v ] }; };
+};
+";
+
+/// V, in the keymap above, as evdev numbers it.
+const V: u32 = 1;
+
+/// The modifiers' masks in the keymap above.
+const SHIFT: u32 = 1;
+const CONTROL: u32 = 4;
+
+/// Which paste keys a window takes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Keys {
+    /// Ctrl+V.
+    Plain,
+    /// Ctrl+Shift+V, for a terminal, whose Ctrl+V is a key of its own.
+    Terminal,
+}
+
+impl Keys {
+    fn modifiers(self) -> u32 {
+        match self {
+            Keys::Plain => CONTROL,
+            Keys::Terminal => CONTROL | SHIFT,
+        }
+    }
+}
+
+/// The copy the shell names: one kept, by its number, or text of its own.
+#[derive(Debug, PartialEq)]
+enum Which {
+    Kept(u64),
+    Text(String),
+}
+
+/// What the shell asks for, or the paste keys, once the launcher has let
+/// go of them.
+#[derive(Debug, PartialEq)]
+enum Asked {
+    Clear,
+    Copy(Which),
+    Paste(Which, Keys),
+    Press(Keys),
+}
+
+/// A line from the shell, as what it asks, or none for one it doesn't
+/// understand.
+fn asked(line: &str) -> Option<Asked> {
+    let line = line.trim();
+    if line == "clear" {
+        return Some(Asked::Clear);
+    }
+    if let Some(rest) = line.strip_prefix("copy ") {
+        let (which, rest) = which(rest)?;
+        return rest.trim().is_empty().then_some(Asked::Copy(which));
+    }
+    let (which, rest) = which(line.strip_prefix("paste ")?)?;
+    let keys = match rest.trim() {
+        "terminal" => Keys::Terminal,
+        "plain" => Keys::Plain,
+        _ => return None,
+    };
+    Some(Asked::Paste(which, keys))
+}
+
+/// The copy a line names, and what follows it: text spelled as JSON, or
+/// else a number.
+fn which(said: &str) -> Option<(Which, &str)> {
+    let said = said.trim_start();
+    if said.starts_with('"') {
+        let mut strings = serde_json::Deserializer::from_str(said).into_iter::<String>();
+        let text = strings.next()?.ok()?;
+        return Some((Which::Text(text), &said[strings.byte_offset()..]));
+    }
+    let (number, rest) = said.split_once(' ').unwrap_or((said, ""));
+    Some((Which::Kept(number.parse().ok()?), rest))
+}
+
+/// Whether niri's answer to `Layers` says the launcher holds no keys: none
+/// when it isn't an answer to that.
+fn let_go(answer: &str) -> Option<bool> {
+    let answer: Value = serde_json::from_str(answer).ok()?;
+    let layers = answer.get("Ok")?.get("Layers")?.as_array()?;
+    Some(!layers.iter().any(|layer| {
+        layer.get("namespace").and_then(Value::as_str) == Some(LAUNCHER)
+            && layer.get("keyboard_interactivity").and_then(Value::as_str) != Some("None")
+    }))
+}
+
+/// Asks niri whether the launcher holds no keys.
+fn asked_niri(socket: &Path) -> Option<bool> {
+    let mut stream = UnixStream::connect(socket).ok()?;
+    stream.set_read_timeout(Some(LETTING_GO)).ok()?;
+    stream.write_all(b"\"Layers\"\n").ok()?;
+    let mut answer = String::new();
+    BufReader::new(stream).read_line(&mut answer).ok()?;
+    let_go(&answer)
+}
+
+/// Waits until niri says the launcher has let go of the keys, and says so
+/// twice, so the answer comes after niri has given them to the window; or
+/// with no niri to ask, a moment. Answers whether they're free to press.
+fn keys_let_go(niri: Option<&Path>) -> bool {
+    let Some(niri) = niri else {
+        thread::sleep(UNASKED);
+        return true;
+    };
+    let deadline = Instant::now() + LETTING_GO;
+    let mut free = 0;
+    while Instant::now() < deadline {
+        free = if asked_niri(niri) == Some(true) { free + 1 } else { 0 };
+        if free == 2 {
+            return true;
+        }
+        thread::sleep(ASKING);
+    }
+    false
+}
 
 /// What an offer is read as.
 #[derive(Debug, PartialEq)]
@@ -157,19 +316,23 @@ enum Heard {
     Picture { kind: &'static str, bytes: Vec<u8> },
 }
 
-/// One kept copy.
+/// One kept copy, and its number.
 #[derive(Clone, Debug, PartialEq)]
 struct Copy {
     at: u128,
+    id: u64,
     content: Content,
 }
 
 impl Copy {
     fn line(&self) -> String {
         match &self.content {
-            Content::Text(text) => {
-                format!("{{\"at\":{},\"text\":{}}}\n", self.at, quoted(text))
-            }
+            Content::Text(text) => format!(
+                "{{\"at\":{},\"id\":{},\"text\":{}}}\n",
+                self.at,
+                self.id,
+                quoted(text)
+            ),
             Content::Picture(picture) => {
                 let size = picture
                     .size
@@ -427,6 +590,23 @@ impl History {
         }))
     }
 
+    /// A copy's number: a picture's own, the number text kept already had
+    /// when it's copied again, or else the next.
+    fn number(&mut self, content: &Content) -> u64 {
+        let known = match content {
+            Content::Picture(picture) => Some(picture.id),
+            Content::Text(_) => self
+                .copies
+                .iter()
+                .find(|kept| kept.content.same(content))
+                .map(|kept| kept.id),
+        };
+        known.unwrap_or_else(|| {
+            self.next += 1;
+            self.next - 1
+        })
+    }
+
     /// What the clipboard now holds: a copy, kept if it can be, or for one
     /// that can't, nothing to give back once its program lets go. Answers
     /// the copy when it was kept.
@@ -436,7 +616,12 @@ impl History {
             Heard::Text(text) => Content::Text(text),
             Heard::Picture { kind, bytes } => self.picture(kind, &bytes)?,
         };
-        let copy = Copy { at: now(), content };
+        let id = self.number(&content);
+        let copy = Copy {
+            at: now(),
+            id,
+            content,
+        };
         if !self.add(copy.clone()) {
             return None;
         }
@@ -444,13 +629,10 @@ impl History {
         Some(copy)
     }
 
-    /// Picture N, moved to the front as what the clipboard holds, as the
-    /// shell asks when it's chosen.
+    /// Copy N, moved to the front as what the clipboard holds, as the shell
+    /// asks when it's chosen.
     fn choose(&mut self, id: u64) -> Option<Copy> {
-        let at = self
-            .copies
-            .iter()
-            .position(|kept| matches!(&kept.content, Content::Picture(p) if p.id == id))?;
+        let at = self.copies.iter().position(|kept| kept.id == id)?;
         let mut copy = self.copies.remove(at)?;
         copy.at = now();
         self.copies.push_front(copy.clone());
@@ -493,7 +675,9 @@ fn prepared(dir: &Path) -> io::Result<()> {
 
 /// What the Wayland side needs: the history, the types each offer has said
 /// it can be read as until its selection arrives, the largest copies it
-/// reads, and while a copy is offered in its program's place, that offer.
+/// reads, while a copy is offered in its program's place, that offer, the
+/// keyboard a paste's keys are pressed through, and how a paste waiting
+/// on the launcher to let go of the keys says it may press them.
 struct State {
     history: Arc<Mutex<History>>,
     offers: HashMap<ObjectId, Vec<String>>,
@@ -505,6 +689,11 @@ struct State {
     held: Option<ExtDataControlSourceV1>,
     // The clipboard emptied, and nothing has been copied since.
     emptied: bool,
+    keyboard: Option<ZwpVirtualKeyboardV1>,
+    niri: Option<PathBuf>,
+    pressing: mpsc::Sender<Asked>,
+    waking: PipeWriter,
+    started: Instant,
 }
 
 impl State {
@@ -532,19 +721,105 @@ impl State {
         }
     }
 
-    /// Puts picture N back on the clipboard, as the shell asked.
-    fn choose(&mut self, id: u64, handle: &QueueHandle<Self>) {
-        let chosen = {
+    /// Puts a copy on the clipboard, as the shell asked: one kept, or the
+    /// shell's own text, kept as a copy is. Answers whether it's there.
+    fn offer(&mut self, which: Which, handle: &QueueHandle<Self>) -> bool {
+        let offered = {
             let mut history = self.history.lock().unwrap();
-            let chosen = history.choose(id);
-            if let Some(copy) = &chosen {
+            let offered = match which {
+                Which::Kept(id) => history.choose(id),
+                Which::Text(text) => history.copied(Some(Heard::Text(text))),
+            };
+            if let Some(copy) = &offered {
                 history.tell(&copy.line());
+                if let Some(line) = history.went() {
+                    history.tell(&line);
+                }
             }
-            chosen
+            offered.is_some()
         };
-        if chosen.is_some() {
+        if offered {
             self.hold(handle);
         }
+        offered
+    }
+
+    /// Puts a copy on the clipboard, then waits, away from the Wayland
+    /// side, for the launcher to let go of the keys, and asks for the paste
+    /// keys to be pressed once it has.
+    fn paste(&mut self, which: Which, keys: Keys, handle: &QueueHandle<Self>) {
+        if !self.offer(which, handle) {
+            return;
+        }
+        let (Ok(mut waking), niri) = (self.waking.try_clone(), self.niri.clone()) else {
+            return;
+        };
+        let pressing = self.pressing.clone();
+        thread::spawn(move || {
+            if !keys_let_go(niri.as_deref()) {
+                eprintln!("The launcher never let go of the keys, so nothing was pasted.");
+                return;
+            }
+            if pressing.send(Asked::Press(keys)).is_ok() {
+                let _ = waking.write_all(b"!");
+            }
+        });
+    }
+
+    /// Presses the paste keys through the virtual keyboard: its modifiers
+    /// held, V pressed and let go, then the modifiers let go.
+    fn press(&self, keys: Keys) {
+        let Some(keyboard) = &self.keyboard else {
+            eprintln!("The compositor has no virtual keyboard, so nothing was pasted.");
+            return;
+        };
+        let time = u32::try_from(self.started.elapsed().as_millis()).unwrap_or(u32::MAX);
+        keyboard.modifiers(keys.modifiers(), 0, 0, 0);
+        keyboard.key(time, V, 1);
+        keyboard.key(time, V, 0);
+        keyboard.modifiers(0, 0, 0, 0);
+    }
+}
+
+/// A virtual keyboard on the seat, given its own keymap, or none when the
+/// compositor has none to give.
+fn virtual_keyboard(
+    manager: Option<&ZwpVirtualKeyboardManagerV1>,
+    seat: &wl_seat::WlSeat,
+    handle: &QueueHandle<State>,
+) -> Option<ZwpVirtualKeyboardV1> {
+    let keyboard = manager?.create_virtual_keyboard(seat, handle, ());
+    let mut keymap = File::from(memfd_create("paste-keymap", MemfdFlags::CLOEXEC).ok()?);
+    // The keymap's size counts the NUL that ends it, as XKB reads it.
+    keymap.write_all(KEYMAP.as_bytes()).ok()?;
+    keymap.write_all(&[0]).ok()?;
+    let size = u32::try_from(KEYMAP.len() + 1).ok()?;
+    // XKB's text format, the only one the protocol knows.
+    keyboard.keymap(1, keymap.as_fd(), size);
+    Some(keyboard)
+}
+
+impl Dispatch<ZwpVirtualKeyboardManagerV1, ()> for State {
+    fn event(
+        _: &mut Self,
+        _: &ZwpVirtualKeyboardManagerV1,
+        _: <ZwpVirtualKeyboardManagerV1 as Proxy>::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ZwpVirtualKeyboardV1, ()> for State {
+    fn event(
+        _: &mut Self,
+        _: &ZwpVirtualKeyboardV1,
+        _: <ZwpVirtualKeyboardV1 as Proxy>::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
     }
 }
 
@@ -733,11 +1008,12 @@ fn now() -> u128 {
 }
 
 /// Sends each new shell every copy kept, then listens for what it asks:
-/// `clear` here, and `copy N` passed to the Wayland side, woken to do it.
+/// `clear` here, and a copy or a paste passed to the Wayland side, woken to
+/// do it.
 fn serve(
     listener: &UnixListener,
     history: &Arc<Mutex<History>>,
-    asked: &mpsc::Sender<u64>,
+    asked: &mpsc::Sender<Asked>,
     wake: &PipeWriter,
 ) {
     for client in listener.incoming().flatten() {
@@ -758,15 +1034,18 @@ fn serve(
         thread::spawn(move || {
             for line in BufReader::new(asking).lines() {
                 let Ok(line) = line else { break };
-                let line = line.trim();
-                if line == "clear" {
-                    let mut history = history.lock().unwrap();
-                    history.forget();
-                    history.tell("{\"clear\":true}\n");
-                } else if let Some(Ok(id)) = line.strip_prefix("copy ").map(str::parse)
-                    && (asked.send(id).is_err() || waking.write_all(b"!").is_err())
-                {
-                    break;
+                match self::asked(&line) {
+                    Some(Asked::Clear) => {
+                        let mut history = history.lock().unwrap();
+                        history.forget();
+                        history.tell("{\"clear\":true}\n");
+                    }
+                    Some(wanted) => {
+                        if asked.send(wanted).is_err() || waking.write_all(b"!").is_err() {
+                            break;
+                        }
+                    }
+                    None => {}
                 }
             }
         });
@@ -845,6 +1124,8 @@ fn run() -> Result<(), String> {
         .bind(&handle, 1..=9, ())
         .map_err(|_| "the compositor has no seat")?;
     let device = manager.get_data_device(&seat, &handle, ());
+    let keyboards: Option<ZwpVirtualKeyboardManagerV1> = globals.bind(&handle, 1..=1, ()).ok();
+    let keyboard = virtual_keyboard(keyboards.as_ref(), &seat, &handle);
 
     // A socket left by an earlier run would refuse the bind.
     let _ = fs::remove_file(&settings.socket);
@@ -855,9 +1136,10 @@ fn run() -> Result<(), String> {
         settings.pictures.clone(),
         settings.room,
     )));
-    let (asked, chosen) = mpsc::channel();
+    let (asked, wanted) = mpsc::channel();
     let (mut woken, wake) = io::pipe().map_err(|e| format!("no pipe: {e}"))?;
     let serving = Arc::clone(&history);
+    let (pressing, waking) = (asked.clone(), wake.try_clone().map_err(|e| format!("no pipe: {e}"))?);
     thread::spawn(move || serve(&listener, &serving, &asked, &wake));
 
     let mut state = State {
@@ -870,6 +1152,11 @@ fn run() -> Result<(), String> {
         device,
         held: None,
         emptied: false,
+        keyboard,
+        niri: env::var_os("NIRI_SOCKET").map(PathBuf::from),
+        pressing,
+        waking,
+        started: Instant::now(),
     };
     loop {
         queue.dispatch_pending(&mut state).map_err(lost)?;
@@ -879,8 +1166,15 @@ fn run() -> Result<(), String> {
         if std::mem::take(&mut state.emptied) && state.history.lock().unwrap().current.is_some() {
             state.hold(&handle);
         }
-        for id in chosen.try_iter() {
-            state.choose(id, &handle);
+        for wanted in wanted.try_iter() {
+            match wanted {
+                Asked::Copy(which) => {
+                    state.offer(which, &handle);
+                }
+                Asked::Paste(which, keys) => state.paste(which, keys, &handle),
+                Asked::Press(keys) => state.press(keys),
+                Asked::Clear => {}
+            }
         }
         queue.flush().map_err(lost)?;
         let Some(guard) = queue.prepare_read() else {
@@ -1133,7 +1427,8 @@ mod tests {
         assert_eq!(chosen.content, made.content);
         assert_eq!(kept.copies[0].content, made.content);
         assert_eq!(kept.current, Some(made.content.clone()));
-        assert_eq!(kept.choose(picture.id + 1), None);
+        // A number no copy has, text and pictures sharing one count.
+        assert_eq!(kept.choose(99), None);
         fs::remove_dir_all(dir).unwrap();
     }
 
@@ -1164,8 +1459,104 @@ mod tests {
     fn copy(at: u128, text: &str) -> Copy {
         Copy {
             at,
+            id: 0,
             content: Content::Text(text.to_string()),
         }
+    }
+
+    #[test]
+    fn text_is_numbered_from_the_count_pictures_take_theirs_from() {
+        let dir = directory("numbered");
+        let mut kept = History::new(10, Some(dir.clone()), 100);
+        let one = kept.copied(text("one")).unwrap();
+        let picture = kept.copied(picture(b"a picture")).unwrap();
+        let two = kept.copied(text("two")).unwrap();
+        assert_eq!((one.id, picture.id, two.id), (1, 2, 3));
+        let Content::Picture(made) = &picture.content else {
+            unreachable!()
+        };
+        assert_eq!(made.id, picture.id);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn text_copied_again_keeps_its_number() {
+        let mut kept = history(10);
+        let first = kept.copied(text("one")).unwrap();
+        kept.copied(text("two"));
+        let again = kept.copied(text("one")).unwrap();
+        assert_eq!(again.id, first.id);
+        assert_eq!(kept.copied(text("three")).unwrap().id, 3);
+    }
+
+    #[test]
+    fn text_chosen_moves_to_the_front_as_what_the_clipboard_holds() {
+        let mut kept = history(10);
+        let one = kept.copied(text("one")).unwrap();
+        kept.copied(text("two"));
+        let chosen = kept.choose(one.id).unwrap();
+        assert_eq!(chosen.content, one.content);
+        assert_eq!(kept.copies[0].content, one.content);
+        assert_eq!(kept.current, Some(one.content));
+    }
+
+    #[test]
+    fn the_shell_asks_for_a_copy_by_its_number_or_its_text() {
+        assert_eq!(asked("copy 12"), Some(Asked::Copy(Which::Kept(12))));
+        assert_eq!(
+            asked("copy \"\\ud83d\\ude00 \\\"hi\\\"\\n\""),
+            Some(Asked::Copy(Which::Text("\u{1f600} \"hi\"\n".to_string())))
+        );
+        assert_eq!(asked("clear\n"), Some(Asked::Clear));
+    }
+
+    #[test]
+    fn the_shell_asks_for_a_paste_with_the_keys_its_window_takes() {
+        assert_eq!(
+            asked("paste 3 terminal"),
+            Some(Asked::Paste(Which::Kept(3), Keys::Terminal))
+        );
+        assert_eq!(
+            asked("paste \"a b\" plain"),
+            Some(Asked::Paste(Which::Text("a b".to_string()), Keys::Plain))
+        );
+    }
+
+    #[test]
+    fn a_line_the_shell_never_sends_asks_nothing() {
+        for line in [
+            "copy",
+            "copy x",
+            "copy 3 terminal",
+            "paste 3",
+            "paste 3 loud",
+            "paste \"open",
+            "Press",
+        ] {
+            assert_eq!(asked(line), None, "{line}");
+        }
+    }
+
+    #[test]
+    fn the_keys_are_let_go_once_the_launchers_layer_takes_none() {
+        let layers = |keys: &str| {
+            format!(
+                "{{\"Ok\":{{\"Layers\":[{{\"namespace\":\"launcher\",\"output\":\"DP-4\",\
+                 \"layer\":\"Overlay\",\"keyboard_interactivity\":\"{keys}\"}},\
+                 {{\"namespace\":\"notices\",\"keyboard_interactivity\":\"OnDemand\"}}]}}}}"
+            )
+        };
+        assert_eq!(let_go(&layers("None")), Some(true));
+        assert_eq!(let_go(&layers("OnDemand")), Some(false));
+        assert_eq!(let_go(&layers("Exclusive")), Some(false));
+        assert_eq!(let_go("{\"Ok\":{\"Layers\":[]}}"), Some(true));
+        assert_eq!(let_go("{\"Err\":\"no\"}"), None);
+    }
+
+    #[test]
+    fn a_terminal_takes_shift_besides() {
+        assert_eq!(Keys::Plain.modifiers(), CONTROL);
+        assert_eq!(Keys::Terminal.modifiers(), CONTROL | SHIFT);
     }
 
     #[test]
@@ -1198,7 +1589,7 @@ mod tests {
         let line = copy(5, "say \"hi\"\n\\ \u{1}").line();
         assert_eq!(
             line,
-            "{\"at\":5,\"text\":\"say \\\"hi\\\"\\n\\\\ \\u0001\"}\n"
+            "{\"at\":5,\"id\":0,\"text\":\"say \\\"hi\\\"\\n\\\\ \\u0001\"}\n"
         );
     }
 
@@ -1206,6 +1597,7 @@ mod tests {
     fn a_pictures_line_says_where_it_is_and_its_size() {
         let line = Copy {
             at: 5,
+            id: 3,
             content: Content::Picture(Picture {
                 id: 3,
                 kind: "image/png",

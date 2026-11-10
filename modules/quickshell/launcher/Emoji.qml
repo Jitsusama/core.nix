@@ -59,9 +59,14 @@ Provider {
     // foot says whether Return pastes or only copies.
     function row(e) {
         if (!e.row) {
-            const copied = () => {
+            // Copied by the clipboard's history, given it as JSON text, or
+            // by Qt while there's no history (Pasting.qml).
+            const what = JSON.stringify(e.emoji);
+            const unhelped = () => {
                 Quickshell.clipboardText = e.emoji;
             };
+            const copied = () => Pasting.copy(what, unhelped);
+            const pasted = () => Pasting.paste(what, unhelped);
             const made = member({
                 thing: true,
                 key: `emoji:${e.name}`,
@@ -70,7 +75,7 @@ Provider {
                 glyph: e.emoji,
                 hue: "text",
                 now: true,
-                run: () => Pasting.paste(copied),
+                run: pasted,
                 // What y takes, as plain fields rather than a row made
                 // searchable, since y over hundreds asks every row
                 // (Launcher.qml's actionsOf).
@@ -84,7 +89,7 @@ Provider {
                     const copy = Object.assign(provider.act("verb:emoji:copy", copied),
                         { copies: e.emoji });
                     return Pasting.under() === null ? [copy]
-                        : [provider.act("verb:emoji:paste", () => Pasting.paste(copied)), copy];
+                        : [provider.act("verb:emoji:paste", pasted), copy];
                 }
             });
             Object.defineProperty(made, "verb", {

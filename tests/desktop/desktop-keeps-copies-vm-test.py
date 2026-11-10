@@ -120,8 +120,8 @@ def test_super_v_pastes_into_the_window_it_opened_over_a_terminal_or_not(desktop
         desktop.in_session("niri msg focused-window | grep -q paste-gtk"),
         timeout=timedelta(seconds=10),
     )
-    # The shell says so as it starts wtype, which then presses the keys;
-    # Return any sooner would close the field still empty.
+    # The shell says so as it asks the helper to paste, which then presses
+    # the keys; Return any sooner would close the field still empty.
     time.sleep(1)
     machine.send_key("ret")
     machine.wait_until_succeeds(

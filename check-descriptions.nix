@@ -2153,6 +2153,11 @@
     with a hard memory floor agents.slice keeps as large, so a session opening never starves the
     window Joel types in
   '';
+  a-paste-lands-while-the-shell-is-busy-on-niri = ''
+    on niri, Return on a copy in the launcher pastes it into the terminal under within 50 ms,
+    though the shell is held stopped the moment it has asked, since the clipboard's history
+    serves the copy and presses the paste keys through a virtual keyboard
+  '';
   the-screens-go-off-on-niri = ''
     on niri, Turn Every Screen Off closes the launcher and then asks niri to power its monitors
     off, and :set noscreens asks it too, as read on the way to niri's socket; and a scale niri

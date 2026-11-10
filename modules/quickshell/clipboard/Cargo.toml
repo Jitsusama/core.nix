@@ -11,5 +11,10 @@ publish = false
 [dependencies]
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
-# poll(2), to wait on the compositor and the shell at once.
-rustix = { version = "1", features = ["event"] }
+# The virtual keyboard a paste's keys are pressed through.
+wayland-protocols-misc = { version = "0.3", features = ["client"] }
+# poll(2), to wait on the compositor and the shell at once, and a
+# keymap's file in memory, for the virtual keyboard.
+rustix = { version = "1", features = ["event", "fs"] }
+# niri's answers, and the text the shell sends, as JSON spells them.
+serde_json = "1"
