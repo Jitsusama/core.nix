@@ -3,8 +3,9 @@ pragma Singleton
 // hold logind's locks, one against going idle and one against the lid, and
 // each leaves a file in the runtime directory while it runs, which is how the
 // shell knows without asking anything. Neither holds the lock against sleep,
-// so a suspend Joel asks for with the power key or the launcher still goes
-// through. The lid is held only while there's
+// which logind's own handling of the power key honours, so a suspend Joel
+// asks for with it still goes through (home.nix says why only that one
+// would be held back). The lid is held only while there's
 // power, since a machine shut in a bag on its battery would cook: when the
 // power goes the lid is let go, and taken again when it comes back. Where
 // a shut lid on the charger never suspends, as with the lid module, it's
