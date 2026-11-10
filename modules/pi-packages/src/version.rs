@@ -41,7 +41,14 @@ const KEPT: [&str; 12] = [
 /// installed still installs. The pnpm a package names is never fetched,
 /// under pnpm 10's name for that and pnpm 11's (`pm-on-fail`): a fetched
 /// pnpm is a prebuilt binary NixOS won't run without nix-ld.
-const INSTALL: [&str; 9] = [
+///
+/// Every dependency goes in pnpm's global virtual store, so a package at
+/// one version and with the same dependencies has one real path whatever
+/// version of ours holds it. Node keeps an ES module for as long as the
+/// process runs, keyed by that path: with a folder of its own in each
+/// version, a pi that took 16 installs held 16 copies of the MCP SDK and
+/// zod among 170 modules each, 163 MB of a 574 MB heap on 10 November.
+const INSTALL: [&str; 10] = [
     "install",
     "--prod",
     "--config.auto-install-peers=false",
@@ -51,6 +58,7 @@ const INSTALL: [&str; 9] = [
     "--config.pm-on-fail=ignore",
     "--config.package-manager-strict=false",
     "--config.dangerously-allow-all-builds=true",
+    "--config.enable-global-virtual-store=true",
 ];
 
 /// Where one package's mirror, versions and `current` are.
