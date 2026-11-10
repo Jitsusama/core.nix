@@ -117,9 +117,20 @@ Provider {
         }
     })
 
+    // niri is asked at every workspace change and opening, and answers the
+    // same while no screen changed; taking that answer anew made every
+    // screen's rows again, 46 at nearly every closing on Joel's shell
+    // (2026-11-09), so it's taken only when it reads otherwise.
     function refresh() {
-        Niri.request("Outputs", answer => provider.outputs = answer.Outputs);
+        Niri.request("Outputs", answer => {
+            const said = JSON.stringify(answer.Outputs);
+            if (said === outputsSaid)
+                return;
+            outputsSaid = said;
+            provider.outputs = answer.Outputs;
+        });
     }
+    property string outputsSaid: ""
 
     Component.onCompleted: refresh()
 
