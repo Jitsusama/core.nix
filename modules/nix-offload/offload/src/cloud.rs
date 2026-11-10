@@ -59,10 +59,14 @@ impl Place {
 pub struct Cloud {
     instance: PathBuf,
     token: PathBuf,
-    /// Where [`ACCOUNT`] is looked for, each time the token is written,
-    /// since the account may come with a switch while the lender runs.
+    /// Where [`ACCOUNT`] is looked for, each time the lender says where
+    /// its builder is, since the account may come with a switch while the
+    /// lender runs.
     accounts: PathBuf,
-    written: Option<Place>,
+    /// What was last written, and the id of [`ACCOUNT`] it was written
+    /// for, so an account that comes has the token written again for it
+    /// at once rather than at the next new token.
+    written: Option<(Place, Option<u32>)>,
 }
 
 impl Cloud {
@@ -80,16 +84,16 @@ impl Cloud {
     /// Say where the builder lent is, or empty both files while none is.
     pub fn say(&mut self, place: Option<&Place>) {
         let place = place.cloned().unwrap_or_default();
-        if self.written.as_ref() == Some(&place) {
+        let reader = fs::read_to_string(&self.accounts)
+            .ok()
+            .and_then(|accounts| id_of(&accounts, ACCOUNT));
+        if self.written.as_ref() == Some(&(place.clone(), reader)) {
             return;
         }
         let line = |said: &Option<String>| {
             said.as_ref()
                 .map_or_else(String::new, |said| format!("{said}\n"))
         };
-        let reader = fs::read_to_string(&self.accounts)
-            .ok()
-            .and_then(|accounts| id_of(&accounts, ACCOUNT));
         let token = written(&self.token, &line(&place.token), 0o600, reader);
         let instance = written(&self.instance, &line(&place.instance), 0o644, None);
         for (path, result) in [(&self.token, token), (&self.instance, instance)] {
@@ -98,7 +102,7 @@ impl Cloud {
                 return;
             }
         }
-        self.written = Some(place);
+        self.written = Some((place, reader));
     }
 }
 
@@ -313,24 +317,58 @@ mod tests {
         );
         assert_eq!(mode("cloud-token"), 0o600, "a token nobody else may read");
         #[cfg(target_os = "linux")]
+        assert_eq!(named_in(&dir.join("cloud-token")), Vec::new());
+    }
+
+    #[test]
+    fn an_account_that_comes_has_the_same_token_written_again_for_it() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let dir = folder.path();
+        let accounts = dir.join("passwd");
+        fs::write(&accounts, "root:x:0:0::/root:/bin/sh\n").expect("written");
+        let mut cloud = Cloud::in_dir(dir, &accounts);
+        let place = Place {
+            instance: Some("lend-5 us-central1-a".to_owned()),
+            token: Some("ya29.x".to_owned()),
+        };
+        // Each write renames a new draft into place, so a file written
+        // again is another inode.
+        let inode = || fs::metadata(dir.join("cloud-token")).expect("a file").ino();
+        cloud.say(Some(&place));
+        let first = inode();
+        cloud.say(Some(&place));
+        assert_eq!(
+            inode(),
+            first,
+            "the same place, for the same account, isn't written again"
+        );
+        // The account comes with a switch while the lender runs, its token
+        // unchanged: the token is written again at once, for the account.
+        fs::write(
+            &accounts,
+            format!("{ACCOUNT}:x:65534:65534::/var/empty:/bin/false\n"),
+        )
+        .expect("written");
+        cloud.say(Some(&place));
+        assert_ne!(
+            inode(),
+            first,
+            "the token is written again once the account comes"
+        );
+        assert_eq!(
+            fs::read_to_string(dir.join("cloud-token")).expect("a file"),
+            "ya29.x\n"
+        );
+        #[cfg(target_os = "linux")]
         {
-            assert_eq!(named_in(&dir.join("cloud-token")), Vec::new());
-            // The account came with a switch while the lender ran: the
-            // next token it writes is the service's to read.
-            fs::write(
-                &accounts,
-                format!("{ACCOUNT}:x:65534:65534::/var/empty:/bin/false\n"),
-            )
-            .expect("written");
-            cloud.say(Some(&Place {
-                instance: Some("lend-5 us-central1-a".to_owned()),
-                token: Some("ya29.y".to_owned()),
-            }));
-            assert_eq!(read("cloud-token"), "ya29.y\n");
+            let mode = fs::metadata(dir.join("cloud-token"))
+                .expect("a file")
+                .mode()
+                & 0o777;
             assert_eq!(
-                (named_in(&dir.join("cloud-token")), mode("cloud-token")),
+                (named_in(&dir.join("cloud-token")), mode),
                 handed_over(dir),
-                "the account is looked for at every write, not once"
+                "the token written again is the account's to read"
             );
         }
     }
