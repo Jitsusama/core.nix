@@ -237,7 +237,11 @@ fn keys_let_go(niri: Option<&Path>) -> bool {
     let deadline = Instant::now() + LETTING_GO;
     let mut free = 0;
     while Instant::now() < deadline {
-        free = if asked_niri(niri) == Some(true) { free + 1 } else { 0 };
+        free = if asked_niri(niri) == Some(true) {
+            free + 1
+        } else {
+            0
+        };
         if free == 2 {
             return true;
         }
@@ -1139,7 +1143,10 @@ fn run() -> Result<(), String> {
     let (asked, wanted) = mpsc::channel();
     let (mut woken, wake) = io::pipe().map_err(|e| format!("no pipe: {e}"))?;
     let serving = Arc::clone(&history);
-    let (pressing, waking) = (asked.clone(), wake.try_clone().map_err(|e| format!("no pipe: {e}"))?);
+    let (pressing, waking) = (
+        asked.clone(),
+        wake.try_clone().map_err(|e| format!("no pipe: {e}"))?,
+    );
     thread::spawn(move || serve(&listener, &serving, &asked, &wake));
 
     let mut state = State {
