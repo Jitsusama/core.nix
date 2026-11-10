@@ -1389,9 +1389,8 @@ onLinux {
     '';
 
   # The machine queue is the harness's file as the node's record holds it,
-  # a write of only when it was written says nothing new, and the harness
-  # goes silent once its heartbeat is the silence old, as tests/jobs.qml
-  # holds Jobs.js to it in Qt's own engine.
+  # and a write of only when it was written says nothing new, as
+  # tests/jobs.qml holds Jobs.js to it in Qt's own engine.
   the-queue-is-heard-from-the-node =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -1399,6 +1398,7 @@ onLinux {
     pkgs.runCommandLocal "the-queue-is-heard-from-the-node" { } ''
       cp ${../../tests/jobs.qml} jobs.qml
       cp ${./Jobs.js} Jobs.js
+      cp ${../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

@@ -2531,8 +2531,7 @@
   '';
   the-queue-is-heard-from-the-node = ''
     the machine queue is the harness's file as the node's record holds it, none of a version it
-    doesn't read, a write of only when it was written says nothing new, and the harness goes
-    silent once its heartbeat is ninety seconds old
+    doesn't read, and a write of only when it was written says nothing new
   '';
   the-sandboxes-door-trusts-no-one = ''
     the Nix daemon's door for sandboxes, run as its socket unit runs it, answers as a daemon and

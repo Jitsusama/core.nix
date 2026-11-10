@@ -80,12 +80,25 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
             f"mkdir -p {jobs} && echo '{json.dumps(lined)}' > {jobs}/.q"
             f" && mv {jobs}/.q {jobs}/queue.json"
         )
-    # Closed, a write is never told it, which the reports below say: only
-    # the opening's. Nor are its rows joined again while it's closed, even by a change it
-    # does hear, a window opening, counted before it opens, since an open
-    # launcher joins them as anything on the desktop changes: a budget for
-    # the opening's joins failed whenever the desktop moved meanwhile
-    # (2026-11-06).
+
+    def watches() -> int:
+        """How many of the shell's inotify watches are on the queue's folder."""
+        return int(
+            desktop.as_account(
+                "p=$(systemctl --user show quickshell -p MainPID --value);"
+                f" i=$(printf '%x' $(stat -c %i {jobs}));"
+                ' cat /proc/$p/fdinfo/* 2>/dev/null | grep -c " ino:$i " || true'
+            ).strip()
+        )
+
+    # Closed, a write never so much as wakes it: the shell watches no file
+    # of the queue's, and the node's record of it isn't watched, which the
+    # reports below say, only the opening's heard. Nor are its rows joined
+    # again while it's closed, even by a change it does hear, a window
+    # opening, counted before it opens, since an open launcher joins them
+    # as anything on the desktop changes: a budget for the opening's joins
+    # failed whenever the desktop moved meanwhile (2026-11-06).
+    assert watches() == 0, "the closed launcher watches the queue's folder"
     windows = int(desktop.as_account("qs ipc call launcher changes windows"))
     desktop.as_account("niri msg action spawn -- kitty --title still-closed sleep infinity")
     desktop.machine.wait_until_succeeds(
@@ -102,6 +115,8 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
                 and shown["selected"]["note"].startswith("20 GiB to spare")
             )
         )
+        # Open, it's told by the node, still watching no file of its own.
+        assert watches() == 0, "the open launcher watches the queue's folder"
         said = desktop.as_account(
             "journalctl --user --unit=quickshell --no-pager --output=cat"
             f" --after-cursor={shlex.quote(since)}"
