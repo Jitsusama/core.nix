@@ -157,28 +157,9 @@ in
     ];
     # How a contact stands, as TuplePeople.qml says it, for those the
     # daemon lists in order; Tuple's "unknown" for anyone not a favourite
-    # says nothing.
-    stands = {
-      field = "status";
-      words = {
-        online = {
-          said = "available";
-          order = 0;
-        };
-        busy = {
-          said = "in a call";
-          order = 1;
-        };
-        unavailable = {
-          said = "away";
-          order = 2;
-        };
-        offline = {
-          said = "offline";
-          order = 3;
-        };
-      };
-    };
+    # says nothing. A file of its own, so People's check gives its daemon
+    # the same.
+    stands = lib.importJSON ./stands.json;
   };
   jitsusama.quickshell = {
     margin.pieces.call = {

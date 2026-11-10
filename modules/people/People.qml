@@ -60,19 +60,42 @@ Provider {
         sources = made;
     }
 
-    // The people daemon: those a held source lists, watched as they
-    // change, and a search's answers, given to the search alone.
+    // The people daemon, asked what a search finds, its answers given to
+    // the search alone. It watches nothing: those listed come whole from
+    // the lister below.
     Daemon {
         id: book
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/people.sock`
         kind: "person"
-        watching: ({ listed: true })
+        live: false
     }
+
+    // Those listed with nothing typed, kept ready by the people daemon
+    // (its listing kind): one person each, how they stand, and their
+    // order, told whole once and after only who changed, each with what
+    // every source told of them. So the shell neither merges nor orders
+    // them: with 600 people in Qt's engine, merging everyone took the GUI
+    // thread 26 to 38 ms, and ordering those listed 19 more (2026-11-10). It's said when the daemon stops answering, and those
+    // it last listed stay listed until it answers again.
+    Daemon {
+        id: lister
+
+        socket: book.socket
+        kind: "listing"
+        answersWhole: true
+        onStateChanged: {
+            if (state === "not answering")
+                console.warn("People: the people daemon isn't answering, "
+                    + "so those listed are as it last said");
+        }
+    }
+    // The record the listing says its order in.
+    readonly property string orderKey: "people:order"
 
     // Counts each change the daemon says, for a source that keeps
     // something of its own until then (Tuple's favourites changed here).
-    readonly property int revision: book.revision
+    readonly property int revision: lister.revision
 
     // The names of the sources the daemon holds.
     readonly property var heldBy: sources.filter(source => source.daemonHolds)
@@ -91,7 +114,7 @@ Provider {
     // a change nobody looks at merges no one: merging everyone took 26 to
     // 38 ms of the GUI thread at every change to any source's people,
     // open or shut, 600 of them in Qt's engine (2026-11-10).
-    readonly property var heard: [book.revision, sought].concat(sources.map(source =>
+    readonly property var heard: [lister.revision, sought].concat(sources.map(source =>
         [source.people, source.stands, source.standing]))
     onHeardChanged: {
         merging.stale = true;
@@ -135,12 +158,12 @@ Provider {
     }
 
     // Every record read from the daemon, once each: the latest search's
-    // first, in its order, then those listed.
+    // first, in its order, then those listed, the listing's order aside.
     function readRecords() {
         const by = {};
         const all = [];
-        for (const record of sought.records.concat(Object.values(book.held))) {
-            if (record.gone || record.key in by)
+        for (const record of sought.records.concat(Object.values(lister.held))) {
+            if (record.gone || !record.sources || record.key in by)
                 continue;
             by[record.key] = record;
             all.push(record);
@@ -152,8 +175,8 @@ Provider {
     // source keeping something of its own until the daemon says it
     // (Tuple's favourites changed here).
     function recordFor(key) {
-        return sought.records.find(record => record.key === key && !record.gone)
-            ?? book.held[key] ?? null;
+        return lister.held[key] ?? sought.records.find(record => record.key === key
+            && !record.gone) ?? null;
     }
 
     // A held source's people and stands, from the records read, as a
@@ -194,7 +217,7 @@ Provider {
         const keys = person.emails.length > 0 ? person.emails.map(email => `person:${email}`)
             : [`person:${person.key}`];
         for (const key of keys) {
-            const entry = merged().recordOf[key]?.sources?.[name];
+            const entry = recordFor(key)?.sources?.[name];
             if (entry)
                 return Object.assign({ email: addressOf(key) }, entry);
         }
@@ -281,9 +304,9 @@ Provider {
             return listedRows.rows;
         keepingBegun(keptListed);
         const rows = listed.map(person => {
-            const stood = standOf(person);
+            const stood = person.stood ?? standOf(person);
             return keptOr(keptListed, person.key, JSON.stringify([person, stood]),
-                () => made(person, stood));
+                () => made(person.stood ? withFacts(person) : person, stood));
         });
         keptOnly(keptListed);
         listedRows.from = listed;
@@ -292,6 +315,17 @@ Provider {
     }
     readonly property var keptListed: keeper()
     readonly property var listedRows: ({ from: null, rows: [] })
+
+    // Someone the daemon listed, with the facts each source adds read
+    // from everyone merged as their drawer is shown, since the daemon
+    // keeps no source's facts: so only a drawer shown merges anyone.
+    function withFacts(person) {
+        const shown = Object.assign({}, person);
+        Object.defineProperty(shown, "facts", {
+            get: () => whoIs(person.email)?.facts ?? []
+        });
+        return shown;
+    }
 
     // The listed rows by key, so a search finds them as they stand.
     readonly property var known: {
@@ -595,13 +629,30 @@ Provider {
     // made every row, 486 on Joel's laptop (2026-11-10).
     saysAtHome: true
 
-    // Those listed, in order, kept while everyone and how they stand are
-    // the same and nothing with anyone has started or ended since, so the
-    // openings between two changes order them once, rather than each
-    // ordering every listed person for home's count, its names and its
-    // rows. Plain, so keeping them notifies nothing.
-    readonly property var listing: ({ persons: null, stands: null, until: 0, listed: [] })
+    // Those listed, in the daemon's order, each as it told them, read
+    // again only once it says a change. While a source keeps something
+    // of its own the daemon hasn't heard yet, as a favourite changed here
+    // is until Tuple says it, they're merged and ordered here instead, so
+    // the row moves at once.
+    readonly property var told: ({ revision: -1, listed: [] })
     function listedPersons() {
+        if (sources.some(source => Object.keys(source.standing ?? {}).length > 0)) {
+            told.revision = -1;
+            return listedHere();
+        }
+        if (told.revision !== lister.revision) {
+            told.listed = (lister.held[orderKey]?.order ?? [])
+                .map(key => lister.held[key]?.person).filter(Boolean);
+            told.revision = lister.revision;
+        }
+        return told.listed;
+    }
+
+    // Those listed, merged and ordered here, kept while everyone and how
+    // they stand are the same and nothing with anyone has started or
+    // ended since. Plain, so keeping them notifies nothing.
+    readonly property var listing: ({ persons: null, stands: null, until: 0, listed: [] })
+    function listedHere() {
         const now = Date.now();
         const kept = listing;
         const everyone = merged();
