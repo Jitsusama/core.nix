@@ -2658,7 +2658,10 @@ mod tests {
             world.built().iter().all(|(at, _)| at == "n"),
             "the test whose turn came after main listed it is searched"
         );
-        assert!(world.reverted.lock().unwrap().is_empty());
+        assert!(
+            world.reverted.lock().unwrap().is_empty(),
+            "a test main listed had a merge reverted"
+        );
     }
 
     #[test]
