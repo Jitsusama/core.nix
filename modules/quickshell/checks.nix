@@ -3394,6 +3394,53 @@ onLinux {
       touch $out
     '';
 
+  # The launcher's Documents make no row while it's shut, however the clock
+  # and Drive move, and make them once as it opens (tests/documents.qml),
+  # through the real Drive.qml, with Google's account, the clock, the mail
+  # and the saves stood in.
+  a-shut-launcher-makes-no-document-rows =
+    let
+      google = singleton "Google.qml" ''
+        property var documents: []
+        property var drive: ({ places: {}, kept: {}, listings: [], downloads: [] })
+        property var account: null
+      '';
+      calendar = singleton "Calendar.qml" ''property real now: Date.parse("2026-11-10T12:00:00Z")'';
+      mail = singleton "Mail.qml" "property var dates: ({})";
+      saves = singleton "Saves.qml" "property var launcher: null";
+      niri = singleton "Niri.qml" "function spawn(command) {}";
+    in
+    pkgs.runCommandLocal "a-shut-launcher-makes-no-document-rows" { } ''
+      mkdir -p launcher
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Fuzzy.js} Fuzzy.js
+      cp ${./ProgramGlyphs.js} ProgramGlyphs.js
+      cp ${./Words.qml} Words.qml
+      cp ${./FileFacts.js} FileFacts.js
+      cp ${./When.js} When.js
+      cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
+      cp ${./launcher/words.json} launcher/words.json
+      cp ${../google/Documents.qml} launcher/Documents.qml
+      cp ${../google/Drive.qml} Drive.qml
+      cp ${../google/Drive.js} Drive.js
+      cp ${../google/DrivePlaces.js} DrivePlaces.js
+      cp ${../google/Mail.js} Mail.js
+      cp ${google} Google.qml
+      cp ${calendar} Calendar.qml
+      cp ${mail} Mail.qml
+      cp ${saves} Saves.qml
+      cp ${niri} Niri.qml
+      cp ${../../tests/documents.qml} shell.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export TZ=UTC FONTCONFIG_FILE=${noFonts}
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
   # A FileView told not to print errors says nothing of a file that opens
   # and then refuses every read, as some sysfs files do, in the Quickshell
   # the machine runs (fileview-quiet.patch); /proc/self/mem is one, since

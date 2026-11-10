@@ -3084,7 +3084,7 @@ Scope {
         };
         choices.forEach(add);
         for (const source of collections)
-            source.everything().forEach(add);
+            source.keysKnown().forEach(add);
         return out;
     }
 
