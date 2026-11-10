@@ -24,6 +24,7 @@
 //!        shaper replay [--base UP,DOWN] [--controller one-way|none] [--json] FILES...
 
 mod classes;
+mod cpu;
 mod icmp;
 mod links;
 mod live;
@@ -1075,6 +1076,7 @@ fn status(runtime: &Path) -> ExitCode {
     // Written whole at the end, so a reader that stops early, as
     // `grep -q` or `head` does, ends the report rather than panicking it.
     let mut out = String::new();
+    let first = Spent::now();
     let all: Vec<LinkStatus> = serde_json::from_str(&text).unwrap_or_default();
     if all.is_empty() {
         let _ = writeln!(out, "nothing to shape: no link has a default route");
@@ -1132,8 +1134,80 @@ fn status(runtime: &Path) -> ExitCode {
             }
         }
     }
+    // A share of time needs an interval: a second is long enough to hold
+    // hundreds of the shaper's wakes and short enough to wait for.
+    if let Some(left) = Duration::from_secs(1).checked_sub(first.at.elapsed()) {
+        std::thread::sleep(left);
+    }
+    first.say(&Spent::now(), &mut out);
     let _ = std::io::stdout().write_all(out.as_bytes());
     ExitCode::SUCCESS
+}
+
+/// The services whose CPU status shows, by their cgroups.
+const SPENDERS: [(&str, &str); 2] = [
+    (
+        "the shaper",
+        "/sys/fs/cgroup/system.slice/shaper.service/cpu.stat",
+    ),
+    (
+        "its recorder",
+        "/sys/fs/cgroup/system.slice/shaper-record.service/cpu.stat",
+    ),
+];
+
+/// What the processor had spent at one moment, for `shaper status`.
+struct Spent {
+    at: Instant,
+    cores: Vec<cpu::Ticks>,
+    services: Vec<Option<u64>>,
+}
+
+impl Spent {
+    fn now() -> Self {
+        let stat = fs::read_to_string("/proc/stat").unwrap_or_default();
+        let services = SPENDERS
+            .iter()
+            .map(|(_, path)| cpu::used_usec(&fs::read_to_string(path).unwrap_or_default()))
+            .collect();
+        Self {
+            at: Instant::now(),
+            cores: cpu::ticks(&stat),
+            services,
+        }
+    }
+
+    /// What was spent between this and `later`, as lines of status.
+    fn say(&self, later: &Self, out: &mut String) {
+        use std::fmt::Write as _;
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "a second or two, far under u64's microseconds"
+        )]
+        let elapsed = (later.at - self.at).as_micros() as u64;
+        let spent: Vec<String> = SPENDERS
+            .iter()
+            .zip(self.services.iter().zip(&later.services))
+            .filter_map(|((name, _), pair)| match pair {
+                (Some(b), Some(a)) => Some(format!(
+                    "{name} {:.1}%",
+                    cpu::of_a_core(*b, *a, elapsed) * 100.0
+                )),
+                _ => None,
+            })
+            .collect();
+        if !spent.is_empty() {
+            let _ = writeln!(out, "cpu: {} of a core", spent.join(", "));
+        }
+        if let Some((all, busiest)) = cpu::softirq(&self.cores, &later.cores) {
+            let _ = writeln!(
+                out,
+                "softirq, where CAKE runs: {:.1}% of the machine, {:.1}% of its busiest core",
+                all * 100.0,
+                busiest * 100.0
+            );
+        }
+    }
 }
 
 /// Takes every queue the shaper made away, for when it stops.
