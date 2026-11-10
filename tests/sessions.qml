@@ -201,15 +201,42 @@ ShellRoot {
             Niri.spawned.join(" "));
         Sessions.goTo(out);
         expect("one out of reach isn't joined", root.unjoined === "OUTRCH", root.unjoined);
-        // One pi's host runs, here and held, with no window: Go To says so
-        // and neither attaches it nor raises anything.
-        const opened = `${Niri.spawned.join(" ")} ${JSON.stringify(Niri.acted)}`;
-        Sessions.goTo({ address: "HOSTED", here: true, window: null, kitty: null,
-            held: "h-hosted", presence: { hosted: { unit: "pi-host" }, addresses: ["HOSTED"] } });
-        expect("a hosted one with no window is said, never opened", root.unhosted === "HOSTED"
-            && `${Niri.spawned.join(" ")} ${JSON.stringify(Niri.acted)}` === opened,
-            `${root.unhosted} ${Niri.spawned.join(" ")} ${JSON.stringify(Niri.acted)}`);
+        hosts();
         Sessions.steer("farawy", { act: "pause" });
+    }
+
+    // One pi's host runs, with no window: Go To views it by its node's
+    // words, in a window named for it, once; niri's window by that name is
+    // its own after; and one the node gives no words for is said.
+    function hosts() {
+        const hosted = {
+            address: "HOSTED", here: true, window: null, kitty: null, held: null,
+            attach: ["mycelium", "--realm", "harbour", "attach", "--host", "harbour-attended",
+                "--session", "s-hosted"],
+            presence: { hosted: { host: "harbour-attended", conversation: "s-hosted" },
+                session: "s-hosted", addresses: ["HOSTED"] }
+        };
+        const before = Niri.spawns.length;
+        Sessions.goTo(hosted);
+        const viewed = Niri.spawned.join(" ");
+        expect("a hosted one is viewed by its node's words, in a window named for it",
+            viewed.includes("MYCELIUM_APP_ID=pi-hosted.s-hosted")
+            && viewed.includes("--class pi-hosted.s-hosted")
+            && viewed.endsWith("attach --host harbour-attended --session s-hosted"), viewed);
+        Sessions.goTo(hosted);
+        expect("viewed only once while its window comes", Niri.spawns.length === before + 1,
+            Niri.spawns.slice(before).join("\n"));
+        const record = { opened: "", kitty: null, presence: hosted.presence };
+        const window = { id: 40, opened: "pi-hosted.s-hosted" };
+        expect("its viewer is its window, by the name it opened with",
+            Sessions.windowOf(record, {}, { "pi-hosted.s-hosted": window }) === window,
+            JSON.stringify(Sessions.windowOf(record, {}, { "pi-hosted.s-hosted": window })));
+        Sessions.goTo(Object.assign({}, hosted, { window: window }));
+        const raised = JSON.stringify(Niri.acted);
+        expect("Go To raises its viewer", raised === '{"FocusWindow":{"id":40}}', raised);
+        Sessions.goTo(Object.assign({}, hosted, { address: "WORDLESS", attach: null }));
+        expect("one with no words is said, never opened", root.unhosted === "WORDLESS"
+            && Niri.spawns.length === before + 1, `${root.unhosted} ${Niri.spawned.join(" ")}`);
     }
 
     // One parked is listed apart, never running, and only while its marker
@@ -339,17 +366,19 @@ ShellRoot {
     }
     function reopening() {
         const kitties = Niri.spawns.map(command => inSessions(command))
-            .filter(command => command.startsWith("kitty ") && !command.includes("attach r-far"));
+            .filter(command => command.startsWith("kitty ") && !command.includes("attach r-far")
+                && !command.includes("attach --host"));
         if (kitties.length < 6 || unopened.length < 3 || !steered || !talked())
             return;
         // Each window is opened with an app id of its own, which its process
         // is told, so the node's record of what it holds names it as niri
-        // lists it.
+        // lists it; a hosted one's viewer, by its session's id.
         const named = Niri.spawns.filter(command => command.includes(scope))
             .map(command => [(/MYCELIUM_APP_ID=(\S+)/.exec(command) ?? [])[1],
                 (/ --class (\S+)/.exec(command) ?? [])[1]]);
         expect("each window opened is told the app id it opens with, its own",
-            named.every(([told, classed]) => /^pi-(session|spawned)\.\d+$/.test(told ?? "")
+            named.every(([told, classed]) => /^pi-((session|spawned)\.\d+|hosted\.s-hosted)$/
+                .test(told ?? "")
                 && told === classed) && new Set(named.map(([told]) => told)).size === named.length,
             JSON.stringify(named));
         // Held as every start is, by the realm's node where there is one.

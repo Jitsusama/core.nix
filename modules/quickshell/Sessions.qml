@@ -181,9 +181,9 @@ Singleton {
     // niri hands what it spawns, which kitty would spend on taking the
     // focus once its window shows.
     property int openings: 0
-    function inSessions(kind, rest, into) {
+    function inSessions(kind, rest, into, named) {
         openings++;
-        const classed = `${kind}.${openings}`;
+        const classed = named ?? `${kind}.${openings}`;
         const placed = into !== null && into !== undefined;
         if (placed) {
             const asked = { app_id: classed, reference: { Id: into.workspace } };
@@ -1693,13 +1693,14 @@ Singleton {
     // attached in a new one, and only then: Go To never makes a second
     // window of a session (Joel: "seeing multiples of the same thing
     // gives me executive dysfunction"). A hosted one, which pi's host runs
-    // under a unit of its own with no window, has nothing to raise and
-    // nothing yet that opens one, so Go To tells `unhosted` and opens
-    // nothing until a window of it is known (N4S6OF, 2026-11-09).
+    // under a unit of its own with no window, is viewed in a new one by the
+    // words its node gives (Jitsusama/mycelium: `attach --host H --session
+    // ID`), named for it alone (viewerOf), so niri's word on that window is
+    // what Go To raises next time; with no words it tells `unhosted`.
     signal unhosted(var session)
     function goTo(session) {
         if (session.presence?.hosted && !session.window) {
-            unhosted(session);
+            view(session);
             return;
         }
         if (!session.here && !session.window && !session.kitty) {
@@ -1735,6 +1736,29 @@ Singleton {
         const command = Array.isArray(words) ? words.map(String) : ["zsh", "-lic", String(words)];
         root.inSessions("pi-session", command);
         Report.say(`joined session ${session.address} on ${session.machine}`);
+    }
+
+    // Views a hosted session in a new window of the sessions' kitty, by its
+    // node's words, once until niri lists its window, as `attach` does.
+    function view(session) {
+        const words = session.attach;
+        const named = viewerOf(session.presence);
+        if (!Array.isArray(words) || words.length === 0 || named === "") {
+            unhosted(session);
+            return;
+        }
+        if (Date.now() - (attaching[named] ?? 0) < attachPatience)
+            return;
+        attaching = Object.assign({}, attaching, { [named]: Date.now() });
+        root.inSessions("pi-hosted", words.map(String), null, named);
+        Report.say(`viewing hosted session ${session.address}`);
+    }
+
+    // The app id a hosted session's viewer opens with, by pi's session id,
+    // which stays the same as its host restarts, or "" for one not hosted.
+    function viewerOf(presence) {
+        const id = presence?.hosted ? String(presence.session ?? "") : "";
+        return /^[A-Za-z0-9-]+$/.test(id) ? `pi-hosted.${id}` : "";
     }
 
     // Attaches what is held as `id` in a new window of the sessions' kitty.
@@ -2118,9 +2142,10 @@ Singleton {
     }
 
     // A session's niri window: the one niri lists by the app id its window
-    // was opened with (`opened`), since kitty's own ids mean nothing to
-    // niri. A window opened without one, before the shell named them or by
-    // Joel by hand, is the one window of the kitty it runs in, or of a
+    // was opened with (`opened`), or a hosted one's viewer by its own
+    // (viewerOf), since kitty's own ids mean nothing to niri. A window
+    // opened without one, before the shell named them or by Joel by hand,
+    // is the one window of the kitty it runs in, or of a
     // kitty drawing several, the nth of kitty's as niri's nth of that
     // kitty's, each newer than the last, once kitty has said which of its
     // windows holds the session and has as many as niri shows. That ranking
@@ -2130,11 +2155,11 @@ Singleton {
     // needn't be made again each time niri's focus moves, niri's are looked
     // through.
     function windowOf(record, kitties, opened) {
-        if (record.opened !== "" && opened)
-            return opened[String(record.opened)] ?? null;
-        if (record.opened !== "")
-            return Object.values(Niri.windows).find(window => window.opened === record.opened)
-                ?? null;
+        const named = record.opened || viewerOf(record.presence);
+        if (named !== "" && opened)
+            return opened[String(named)] ?? null;
+        if (named !== "")
+            return Object.values(Niri.windows).find(window => window.opened === named) ?? null;
         const kitty = record.kitty;
         const pid = kitty ? (kittySocket.exec(kitty.socket) ?? [])[1] : undefined;
         const windows = pid ? kitties[pid] ?? [] : [];
