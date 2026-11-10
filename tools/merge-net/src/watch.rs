@@ -30,6 +30,7 @@ use std::sync::{Condvar, Mutex, MutexGuard};
 
 use serde_json::{Value, json};
 
+use crate::running;
 use crate::state::{Ran, State, now, short};
 
 /// What `nix-offload` exits with when no builder took the build.
@@ -205,6 +206,9 @@ pub trait World: Sync {
     ) -> Result<Merged, String>;
     /// Whether main holds `commit`.
     fn on_main(&self, commit: &str) -> bool;
+    /// Whether the machine already runs `commit`, false when that can't be
+    /// told, so a hold stands.
+    fn runs(&self, commit: &str) -> bool;
     /// Wait this many seconds.
     fn wait(&self, seconds: u64);
 }
@@ -894,6 +898,7 @@ pub fn round(world: &dyn World, state: &State, start: &str) -> Result<Round, Str
         _ => world.head()?,
     };
     revert_again(world, state)?;
+    running::let_through_once_it_runs(world, state)?;
     clear_if_reverted(world, state)?;
     let base = passed.clone().unwrap_or_else(|| start.to_owned());
     if seen.as_deref() == Some(head.as_str()) || base == head {
@@ -1503,11 +1508,16 @@ fn revert_and_tell(
     head: &str,
 ) -> Result<(), String> {
     let (commit, test, log) = (&found.commit, &found.test, &found.log);
+    let already_runs = world.runs(commit);
     let mut hold = json!({
         "test": test, "bad": commit, "bad_pr": found.pr, "revert_pr": Value::Null,
         "revert_commit": Value::Null, "failed_at": head, "at": now(),
+        "already_runs": already_runs,
     });
     state.set_hold(&hold)?;
+    if already_runs {
+        state.say(&running::lets_through(commit, test));
+    }
     let reverted = world.revert(found, &revert_wanted(world, state, found, Some(head)));
     keep_revert(state, &mut hold, &reverted)?;
     if dropped(state, found, &reverted)? {
@@ -1736,6 +1746,8 @@ mod tests {
         /// The head main moves to while a revert's checks run.
         moves_while_reverting: Option<String>,
         moved: Mutex<Option<String>>,
+        /// The merges the machine runs already.
+        running: Vec<String>,
     }
 
     impl Stand {
@@ -1954,6 +1966,9 @@ mod tests {
             }
             self.reaches_main_after > 0 && self.built().len() >= self.reaches_main_after
         }
+        fn runs(&self, commit: &str) -> bool {
+            self.running.iter().any(|it| it == commit)
+        }
         fn wait(&self, _: u64) {}
     }
 
@@ -2059,6 +2074,47 @@ mod tests {
         );
         assert_eq!(*world.reverted.lock().unwrap(), names("h"));
         assert_eq!(state.hold().unwrap()["test"], "each-mark-means-one-thing");
+        assert!(
+            state.hold_file().exists(),
+            "a merge not yet running holds switches"
+        );
+    }
+
+    #[test]
+    fn a_hold_on_a_merge_the_machine_runs_lets_switches_through_and_still_reverts() {
+        // 10 November: the net held main at 09:55 on #2798, which the
+        // machine had run since 08:02, and kept three fixes off it.
+        let state = state("already-runs");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("each-mark-means-one-thing"),
+            running: names("h"),
+            ..Stand::default()
+        }
+        .exits("h", "each-mark-means-one-thing", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert_eq!(*world.reverted.lock().unwrap(), names("h"));
+        assert!(!state.hold_file().exists(), "a switch read a hold");
+        assert_eq!(state.hold().unwrap()["already_runs"], true);
+    }
+
+    #[test]
+    fn a_hold_lets_switches_through_once_the_machine_runs_its_merge() {
+        let state = state("comes-to-run");
+        state
+            .set_hold(&json!({ "test": "vm-a", "bad": "b", "revert_pr": null }))
+            .unwrap();
+        let mut world = Stand::default();
+        crate::running::let_through_once_it_runs(&world, &state).unwrap();
+        assert!(state.hold_file().exists(), "the machine doesn't run b yet");
+        world.running = names("b");
+        crate::running::let_through_once_it_runs(&world, &state).unwrap();
+        assert!(!state.hold_file().exists(), "a switch still reads the hold");
+        assert_eq!(state.hold().unwrap()["bad"], "b", "the hold is kept");
     }
 
     #[test]

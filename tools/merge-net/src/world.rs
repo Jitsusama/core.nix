@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 
 use crate::holds;
+use crate::running;
 use crate::state::{now, short};
 use crate::watch::{Bad, Changed, DROPPED, Merged, UNCHECKED, UNSENT, World};
 
@@ -600,6 +601,28 @@ impl World for Real {
     fn on_main(&self, commit: &str) -> bool {
         self.git(&["merge-base", "--is-ancestor", commit, &self.followed()])
             .is_ok()
+    }
+
+    /// Read in update-to-main's journal, which says each switch's core, a
+    /// week of it: a hold is written or looked at once or twice a round, so
+    /// its 40 to 50 seconds with the disk busy on 10 November cost little
+    /// beside a round's hours.
+    fn runs(&self, commit: &str) -> bool {
+        let journal = run(Command::new("journalctl").args([
+            "--unit=update-to-main.service",
+            "--output=cat",
+            "--no-pager",
+            "--since=-7d",
+            "--grep=\"step\":\"done\"",
+        ]));
+        journal
+            .ok()
+            .as_deref()
+            .and_then(running::core)
+            .is_some_and(|core| {
+                self.git(&["merge-base", "--is-ancestor", commit, &core])
+                    .is_ok()
+            })
     }
 
     fn wait(&self, seconds: u64) {

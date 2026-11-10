@@ -43,6 +43,7 @@ mod holds;
 mod lists;
 mod ready;
 mod rules;
+mod running;
 mod state;
 mod watch;
 mod world;
@@ -440,6 +441,9 @@ fn status() -> ExitCode {
     match state.hold() {
         // One its search couldn't settle leaves switches alone, and says so.
         Some(hold) if hold["unsettled"] == true => println!("unsettled {hold}, switches go on"),
+        Some(hold) if hold["already_runs"] == true => {
+            println!("hold    {hold}, which the machine already runs, so switches go on");
+        }
         Some(hold) => println!("hold    {hold}"),
         None => println!("hold    none"),
     }
