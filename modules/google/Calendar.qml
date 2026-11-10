@@ -329,8 +329,7 @@ Singleton {
     // design: the guests, before Attachments), counting those People
     // knows; none when it knows nobody on it, or there's no People.
     function guesting(meeting, provider) {
-        const emails = (meeting.holds ? [] : [meeting.organizer?.email])
-            .concat((meeting.guests ?? []).map(guest => guest.email));
+        const emails = Said.guestEmails(meeting);
         const people = () => {
             const found = [];
             for (const email of emails) {
@@ -340,11 +339,8 @@ Singleton {
             }
             return found;
         };
-        // Counted by who People knows, making no one's row: counting by
-        // their rows made each guest's whole row every time a meeting's
-        // acts were read.
-        const count = new Set(emails.map(email => Google.whoIs(provider.launcher, email)?.key)
-            .filter(key => key !== undefined)).size;
+        // Counted by who People knows, making no one's row (Calendar.js).
+        const count = Said.knownGuests(meeting, Google.peopleOf(provider.launcher));
         if (count === 0)
             return null;
         const key = "verb:calendar:guests";

@@ -2680,7 +2680,8 @@
     among them, which may be moved and to what later or typed time, what that clashes with and who's
     told, writes the lines that answer, cancel and move it, says when one over was held, knows
     which Meet call a window is and whose meeting it is, and lists as Meet's Recent the calls held
-    on Meet, once by code and newest first, each saying who it was with and when
+    on Meet, once by code and newest first, each saying who it was with and when, and counts the
+    people known on a meeting, each once, making no one's row
   '';
   the-shutdown-mark-cannot-stop-a-reboot = ''
     the mark a healthy stop leaves can't fail the reboot, and what reads it outlives the last stage

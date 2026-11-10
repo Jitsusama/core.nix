@@ -88,12 +88,12 @@ Singleton {
         return people ? people.personOf(email) : null;
     }
 
-    // Who an address is, as People knows them, with no row made (People.qml's
-    // whoIs), for counting; null as for personOf.
-    function whoIs(launcher, email) {
-        const people = (launcher?.sources ?? []).find(source => typeof source.whoIs
-            === "function");
-        return people ? people.whoIs(email) : null;
+    // The launcher's provider that knows people, asked who an address is
+    // with no row made (People.qml's whoIs), as a meeting's guests are
+    // counted; null on a machine without People.
+    function peopleOf(launcher) {
+        return (launcher?.sources ?? []).find(source => typeof source.whoIs
+            === "function") ?? null;
     }
 
     // The launcher's chooser of files (open-with's FileChooser.qml), which
