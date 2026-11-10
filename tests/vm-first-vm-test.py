@@ -19,7 +19,8 @@ what its client ran, its quest, what it wrote and read, and what it left
 in memory still to write. Stopping a build leaves nothing of it. A build
 asking for a range of user ids gets 65,536. A build asking for its
 filesystem to be synced is told it's done, while sync itself still runs,
-there and outside the daemon.
+there and outside the daemon. A build is signed by the key the machine made
+as it activated, whose secret half only root can read.
 
 tests/vm-first.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py). Each
 test asks for the state it starts from as a fixture: the daemon started, a VM's and a
@@ -351,6 +352,24 @@ def test_a_builds_syncfs_is_answered_as_done_and_sync_still_runs(
     assert "sync ran" in answered, answered
     # Only the daemon and its builds are answered without it running.
     builds.machine.succeed("sync -f /")
+
+
+def test_a_build_is_signed_by_the_machines_own_key(builds: Builds) -> None:
+    """A build is signed by the key the machine made, whose secret half only root reads."""
+    machine = builds.machine
+    built = machine.succeed(f"{NIX_BUILD} /etc/writer-build.nix").strip()
+
+    signatures = machine.succeed(f"nix path-info --sigs {built}")
+    held_by = machine.succeed("stat -c '%U %a' /etc/nix/signing-key").strip()
+
+    assert " machine-1:" in signatures, signatures
+    # Verified against the public half alone, the secret one set aside since
+    # Nix trusts its counterpart too, so it's the key handed out that signed.
+    machine.succeed(
+        "nix store verify --sigs-needed 1 --option secret-key-files ''"
+        f' --option trusted-public-keys "$(cat /etc/nix/signing-key.pub)" {built}'
+    )
+    assert held_by == "root 600", f"the secret half is {held_by}"
 
 
 @pytest.mark.usefixtures("running", "quests")

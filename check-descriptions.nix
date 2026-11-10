@@ -2993,7 +2993,8 @@
     denied" and the daemon restarts beside it, a finished build that wrote 64 MiB is said with at
     least that and its client's command, one that wrote 64 MiB without waiting for the disk says at
     least that between what it wrote and what it left, a build's sync -f is answered as done while
-    its sync runs and root's sync -f outside the daemon works, a stopped
+    its sync runs and root's sync -f outside the daemon works, a build carries a signature by
+    machine-1 that its public half alone verifies, the secret half root's at mode 600, a stopped
     quest's build is said with its quest, and a stopped build leaves no process nor cgroup
   '';
   vm-clock-keeps-time = ''

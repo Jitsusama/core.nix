@@ -112,6 +112,19 @@
 # trusted users may change is refused with a warning. The experimental
 # features are what Nix 2.34 asks for `nix daemon`, --force-untrusted and
 # --process-ops, named here so the door opens whatever nix.conf says.
+#
+# The daemon signs every path it builds with a key of the machine's own, so
+# another machine can take what this one built as it takes a cache's, by
+# trusting the key in its trusted-public-keys, rather than by trusting the
+# account that copies it, which would make that account root there too. The
+# key is made once, by root, as the machine first activates: the secret half
+# in /etc/nix/signing-key, root's alone, and the public half beside it in
+# signing-key.pub for a machine repository to hand the others. It's named
+# for the machine, as caches' keys are, and kept across switches, since the
+# others trust it by that name. Paths built before it, and those copied in
+# from other builders, stay as they came. Activation runs before the daemon
+# starts, at boot and at a switch, so the daemon never looks for a key that
+# isn't there yet, which would fail every build.
 { config, pkgs, ... }:
 let
   gib = 1024 * 1024 * 1024;
@@ -142,6 +155,19 @@ in
     "nix-command"
   ];
   nix.settings.extra-system-features = [ "uid-range" ];
+
+  nix.settings.secret-key-files = [ "/etc/nix/signing-key" ];
+
+  # After /etc, which /etc/nix belongs to.
+  system.activationScripts.nix-signing-key = {
+    deps = [ "etc" ];
+    text = builtins.concatStringsSep " " [
+      "${pkgs.bash}/bin/bash ${./signing-key.sh}"
+      "${config.nix.package}/bin/nix"
+      "${config.networking.hostName}-1"
+      "/etc/nix/signing-key /etc/nix/signing-key.pub"
+    ];
+  };
 
   nix.settings.min-free = 10 * gib;
   nix.settings.max-free = 24 * gib;
