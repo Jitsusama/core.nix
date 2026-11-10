@@ -20,7 +20,10 @@
 // that list is. How many pictures each folder holds is read as swayimg is
 // stepped into, once each time the launcher opens, never on a timer. Its
 // drawer says when the newest screenshot was taken and how many there are
-// (`programFacts`).
+// (`programFacts`), and each gallery's drawer is its folder's plate, as a
+// folder's is wherever a file's is: where it is, then its kind, the newest
+// picture previewed, its name, when it was taken or added, and how many
+// there are (Swayimg.js's `plate`).
 import qs
 import Quickshell.Io
 import QtQuick
@@ -125,6 +128,20 @@ Provider {
     readonly property var pictures: Words.of("swayimg:screenshots").said ?? {}
     readonly property var factWords: FileFacts.wordsOf(id => Words.of(id),
         (at, format) => Qt.formatDate(at, format))
+    // And what a gallery's drawer says, each fact's label by its id.
+    readonly property var plateWords: ({
+            file: factWords,
+            labelled: id => Words.name(id)
+        })
+
+    // A gallery's drawer, drawn as it's shown, so when the newest came is
+    // said from the moment it's looked at.
+    function plate(folder, gallery) {
+        return Swayimg.plate(Object.assign({
+            where: Files.within(folder),
+            name: Files.named(folder)
+        }, gallery), Date.now(), provider.plateWords);
+    }
 
     readonly property var looking: thing({
         key: "swayimg:screenshots",
@@ -136,6 +153,13 @@ Provider {
         side: Swayimg.side(provider.count, "", provider.pictures),
         leads: true,
         later: true,
+        // A thing with a drawer, the folder it looks through.
+        thing: true,
+        drawer: () => provider.plate(provider.settings.folder, {
+            count: provider.count,
+            newest: provider.newest,
+            taken: true
+        }),
         // Newest first, as the folder's names may not sort that way: niri's
         // and the shell's region pictures are named differently.
         run: () => Niri.spawn(Swayimg.opening(provider.settings.gallery,
@@ -162,6 +186,13 @@ Provider {
             side: Swayimg.side(one.count, Files.within(one.folder), provider.pictures),
             leads: leads,
             later: true,
+            thing: true,
+            drawer: () => provider.plate(one.folder, {
+                count: one.count,
+                newest: one.newest,
+                target: one.target,
+                taken: false
+            }),
             run: () => Niri.spawn(Swayimg.opening(provider.settings.gallery, one.target))
         });
     }

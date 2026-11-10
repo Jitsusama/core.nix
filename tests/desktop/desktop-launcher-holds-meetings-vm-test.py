@@ -366,7 +366,7 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
     assert facts.get("Where") == "Room 4", drawer
     assert facts.get("Repeats") == "Every weekday", drawer
     assert facts.get("Holds It") == "Ada Lovelace", drawer
-    assert facts.get("Asked") == "Grace Hopper, not going", drawer
+    assert facts.get("Asked") == "Grace Hopper \u00b7 not going", drawer
     assert drawer.get("body") == "What we did yesterday,\nwhat we do today.", drawer
     # Found by a search typed at home, it's out too, since the drawer is
     # the selected row's wherever it's found (docs/design.md, "The drawer
@@ -781,7 +781,7 @@ def test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_s
     desktop.launcher_until(lambda shown: "15 Minutes Later" in shown["rows"])
     # A time typed there is offered first, named by its day and times.
     day = machine.succeed("date -d tomorrow '+%A %-d %B'").strip()
-    when = f"{day}, 10:00 to 10:30"
+    when = f"{day} \u00b7 10:00 to 10:30"
     desktop.type_in("tomorrow 10:00", selecting=when)
     # Return asks first, naming who Google tells, and moves nothing yet.
     desktop.step_in("ret")

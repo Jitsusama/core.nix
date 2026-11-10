@@ -220,6 +220,13 @@ QtObject {
             words).eyebrow, "in My Drive \u00b7 Folder");
         expect("a file with no ending is a file", FileFacts.plateElsewhere({ name: "notes",
             where: "", entry: { name: "notes", size: 3 } }, words).eyebrow, "File");
+        expect("a file nothing has read is its ending's kind, or a file's",
+            ["tide-chart.png", "Q3.report.Pdf", "notes", ".hidden"]
+                .map(name => FileFacts.kindByName(name, words)), ["PNG", "PDF", "File", "File"]);
+        expect("a picture the shell draws is previewed as it is, and nothing else",
+            ["/d/chart.PNG", "/d/drawing.svg", "/d/report.pdf", ""]
+                .map(path => FileFacts.pictured(path)),
+            [{ picture: "/d/chart.PNG", across: 0, down: 0 }, undefined, undefined, undefined]);
 
         const entries = [
             { name: "note 10.md", path: "/n/note 10.md", size: 5, modified: 3 },

@@ -685,9 +685,23 @@ press "'a"
 logged '^key GoToMark\(.a.\)' 1
 near "$(cursor)" "$marked" || fail "'a put the cursor at $(cursor) pt, not $marked"
 
-# gf opens the file the top's link names, and Ctrl+] follows it.
+# A mark on a heading's own line, ]] from the top, and one on the last
+# line, by G, are kept as :q closes it, and read back once it has.
 press gg
 logged '^key First None' $((tops + 5))
+press ']]'
+logged '^key HeadingOn None' 2
+press mh
+logged '^key SetMark\(.h.\)' 1
+lasts=$(how_many '^key Last None')
+press G
+logged '^key Last None' $((lasts + 1))
+press mz
+logged '^key SetMark\(.z.\)' 1
+
+# gf opens the file the top's link names, and Ctrl+] follows it.
+press gg
+logged '^key First None' $((tops + 6))
 press gf
 logged '^file: (.*/)?second.md' 3
 logged '^opened: (.*/)?second.md, ' 5
@@ -726,8 +740,8 @@ logged '^keys: away' $((aways + 1))
 
 # :g/Part/ lists the four sections' headings, the lines it matches, in
 # gO's place, and Return goes to the one chosen; one matching nothing
-# says so. :marks lists ' and a, and :ju the jumps, each put away by ZZ
-# or Space w.
+# says so. :marks lists ', a, h and z, and :ju the jumps, each put away
+# by ZZ or Space w.
 closed=$(how_many '^outline: closed')
 went=$(how_many '^outline went to')
 press ':g/Part/'
@@ -740,7 +754,7 @@ press -k Return
 logged '^said: Pattern not found: zzz' 1
 press ':marks'
 press -k Return
-logged "^outline: 2 rows, chosen \"'  " 1
+logged "^outline: 4 rows, chosen \"'  " 1
 press ZZ
 logged '^outline: closed' $((closed + 2))
 lists=$(how_many '^outline: [0-9]+ rows')
@@ -829,4 +843,17 @@ press ':q'
 press -k Return
 wait "$reader" || true
 grep -a -q -E '^command: "q" is Quit' said || fail ":q didn't close it"
+
+# The mark on the heading's line is under that heading, though its line's
+# top is above where the heading's block starts, and the one on the last
+# line says its line's share of the whole page, short of all of it, where
+# a view's share there would be the whole.
+kept=$(reader --places | grep -F '/page.md"') || fail "no place kept for page.md"
+marked() { grep -o -E "\\{[^{}]*\"letter\":\"$1\"[^{}]*\\}" <<< "$kept" || true; }
+on_heading=$(marked h)
+on_last=$(marked z)
+[[ $on_heading == *'"heading":"Part 1"'* ]] || fail "mark h on Part 1 was kept as $on_heading"
+[[ $on_last =~ \"through\":([0-9.e-]+) ]] || fail "mark z said no share: $on_last"
+awk "BEGIN { exit !(${BASH_REMATCH[1]} > 0.5 && ${BASH_REMATCH[1]} < 1) }" \
+  || fail "mark z on the last line: $on_last"
 touch passed

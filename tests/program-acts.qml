@@ -24,7 +24,8 @@
 // away. Chrome's downloads are read only once Chrome is stepped into, by
 // a stand-in for chrome-recent-sites: each is then a file's row in its
 // Recent, dated, its size and when beside it and its drawer saying where
-// it came from, and Open the Latest Download is listed and found from the
+// it is then its kind, a picture previewed, and where it came from, and
+// Open the Latest Download is listed and found from the
 // top, opening the newest as the desktop opens a file. And what each
 // Neovim holds, as a stand-in open-now says it: each file open once,
 // the Neovim looked at last first, said modified and by its tab before its
@@ -481,8 +482,9 @@ ShellRoot {
                 expect("opened as the desktop opens it", spawned()
                     === JSON.stringify(["xdg-open", report]), spawned());
                 const rows = chrome.recentOf("google-chrome");
+                const chart = `${root.home}/Downloads/tide-chart.png`;
                 expect("each a file's row, keyed by its path, newest first", keys(rows).join(", ")
-                    === `file:${report}, file:${root.home}/Downloads/undated.zip`,
+                    === `file:${report}, file:${root.home}/Downloads/undated.zip, file:${chart}`,
                     keys(rows).join(", "));
                 expect("dated as Chrome finished it, or undated", rows[0].at === 1800000100000
                     && rows[1].at === null, `${rows[0].at} ${rows[1].at}`);
@@ -490,13 +492,21 @@ ShellRoot {
                 expect("its size and when beside it", rows[0].side.startsWith(sized)
                     && rows[1].side === "10\u00a0B", `${rows[0].side} | ${rows[1].side}`);
                 const drawer = rows[0].drawer;
-                expect("its drawer where it is and where it came from",
-                    drawer.eyebrow === "in ~/Downloads" && drawer.title === "report.pdf"
+                expect("its drawer where it is then its kind, and where it came from",
+                    drawer.eyebrow === "in ~/Downloads \u00b7 PDF" && drawer.title === "report.pdf"
                     && JSON.stringify(drawer.facts)
-                        === JSON.stringify([{ label: "From", value: "docs.example.com" }]),
+                        === JSON.stringify([{ label: "From", value: "docs.example.com" }])
+                    && drawer.preview === undefined,
                     JSON.stringify(drawer));
-                expect("none said for one from nowhere", rows[1].drawer.facts.length === 0,
+                expect("none said for one from nowhere", rows[1].drawer.facts.length === 0
+                    && rows[1].drawer.eyebrow === "in ~/Downloads \u00b7 ZIP",
                     JSON.stringify(rows[1].drawer));
+                const pictured = rows[2].drawer;
+                expect("a picture previewed as a file's drawer previews one",
+                    pictured.eyebrow === "in ~/Downloads \u00b7 PNG"
+                    && JSON.stringify(pictured.preview)
+                        === JSON.stringify({ picture: chart, across: 0, down: 0 }),
+                    JSON.stringify(pictured));
                 expect("Return opens it", rows[0].verb === "open"
                     && names(rows[0].verbs()) === "Open, Copy the Path", names(rows[0].verbs()));
                 expect("no other program given them", chrome.recentOf("nvim").length === 0, "");

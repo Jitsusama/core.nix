@@ -4,9 +4,9 @@
 // pictures in swayimg's Recent, newest first, each once, and which picture
 // each opens on; the command that reads how many pictures each holds, and
 // what it printed; what each gallery's row says beside it; which row leads
-// its page; the command that opens a gallery; and what its drawer says of
-// the screenshots. A count and a time are said as the launcher says them of
-// any file (FileFacts.js).
+// its page; the command that opens a gallery; what each gallery's drawer
+// shows; and what swayimg's own drawer says of the screenshots. A count
+// and a time are said as the launcher says them of any file (FileFacts.js).
 .pragma library
 .import "../FileFacts.js" as FileFacts
 
@@ -25,6 +25,9 @@ const BETWEEN = " \u00b7 ";
 // Said while a folder's pictures aren't counted yet, as every row still
 // reading says it.
 const WAITING = "\u2026";
+
+// A second, in the milliseconds a moment is said in.
+const SECOND = 1000;
 
 // Whether a file is one swayimg draws, by its name.
 function isPicture(path) {
@@ -62,46 +65,59 @@ function folders(recent, skipped) {
     return each;
 }
 
-// What reads the files in these folders, a whole path a line, without
+// What reads the files in these folders, a line each, when it last
+// changed in seconds since 1970 and its whole path, a tab between, without
 // going into the folders inside them or listing what's hidden, as
 // swayimg's gallery leaves those out. The launcher runs it without a
 // shell.
 function listing(within) {
     return ["find"].concat(within, ["-maxdepth", "1", "-type", "f", "-not", "-name", ".*",
-        "-printf", "%p\\n"]);
+        "-printf", "%T@\\t%p\\n"]);
 }
 
 // What the listing printed, of the folders it read (`within`): how many
-// pictures each holds and which pictures are there, { within, counts,
-// there }, `counts` by folder and `there` by path. A folder it read that
-// holds none, or is gone, counts none.
+// pictures each holds, which pictures are there and each one's newest,
+// { within, counts, there, newest }, `counts` and `newest` by folder and
+// `there` by path, a newest { path, at } with `at` in milliseconds, as
+// the newest gallery tile swayimg shows first. A folder it read that
+// holds none, or is gone, counts none and has no newest.
 function read(lines, within) {
     const counts = {};
     const there = {};
+    const newest = {};
     for (const folder of within) {
         counts[folder] = 0;
     }
-    for (const path of lines) {
+    for (const line of lines) {
+        const tab = line.indexOf("\t");
+        const path = line.slice(tab + 1);
+        const at = Number(line.slice(0, tab)) * SECOND;
         const folder = folderOf(path);
-        if (folder in counts && isPicture(path)) {
-            counts[folder] += 1;
-            there[path] = true;
+        if (!(folder in counts && isPicture(path))) {
+            continue;
+        }
+        counts[folder] += 1;
+        there[path] = true;
+        if (Number.isFinite(at) && at > (newest[folder]?.at ?? -1)) {
+            newest[folder] = { path, at };
         }
     }
-    return { within: within.slice(), counts, there };
+    return { within: within.slice(), counts, there, newest };
 }
 
 // Each folder's gallery, as its page offers them, newest first: { folder,
-// count, target }, `count` null until `listed` (read's) has counted it,
-// and `target` what swayimg opens: the newest picture of Recent's still
-// there, so its gallery opens on it, or the folder alone, opening on its
-// newest, where none is. A folder counted holding no picture isn't
+// count, target, newest }, `count` null until `listed` (read's) has
+// counted it, `target` what swayimg opens: the newest picture of Recent's
+// still there, so its gallery opens on it, or the folder alone, opening on
+// its newest, where none is; and `newest` the folder's newest picture,
+// read's, null until it's read. A folder counted holding no picture isn't
 // offered, since its gallery would open on nothing.
 function galleries(recent, listed, skipped) {
     const offered = [];
     for (const one of folders(recent, skipped)) {
         if (!(listed?.within ?? []).includes(one.folder)) {
-            offered.push({ folder: one.folder, count: null, target: one.pictures[0] });
+            offered.push({ folder: one.folder, count: null, target: one.pictures[0],
+                newest: null });
             continue;
         }
         const count = listed.counts[one.folder] ?? 0;
@@ -109,9 +125,45 @@ function galleries(recent, listed, skipped) {
             continue;
         }
         const kept = one.pictures.find(path => listed.there[path] === true);
-        offered.push({ folder: one.folder, count, target: kept ?? one.folder });
+        offered.push({ folder: one.folder, count, target: kept ?? one.folder,
+            newest: listed.newest?.[one.folder] ?? null });
     }
     return offered;
+}
+
+// A gallery's drawer, as a folder's plate is drawn wherever a file's is
+// (FileFacts.js): where its folder is, then its kind, a folder; its
+// folder's name; the newest picture, previewed; then that picture's name,
+// when it was taken, for the screenshots', or added, for any other
+// folder's, and how many pictures there are. `gallery` is { where, name,
+// count, newest, target, taken }, `where` its folder from ~ and `newest`
+// a { path, at }, or null before it's read, when what the gallery opens
+// on, `target`, is previewed in its place and nothing more is said;
+// `words` are { file, labelled }, FileFacts' words and each fact's label
+// by its id.
+function plate(gallery, now, words) {
+    const { file, labelled } = words;
+    const newest = gallery.newest ?? null;
+    const facts = newest === null ? [] : [
+        {
+            label: labelled("swayimg:gallery:newest"),
+            value: FileFacts.named(newest.path, false)
+        },
+        {
+            label: labelled(gallery.taken ? "swayimg:gallery:taken" : "swayimg:gallery:added"),
+            value: FileFacts.when(newest.at, now, file)
+        },
+        { label: labelled("swayimg:gallery:count"), value: String(gallery.count ?? "") }
+    ].filter(fact => fact.value !== "");
+    const shown = Object.assign(FileFacts.placed(gallery.where, file.folder, file), {
+        title: gallery.name,
+        facts
+    });
+    const preview = FileFacts.pictured(newest?.path ?? gallery.target ?? "");
+    if (preview) {
+        shown.preview = preview;
+    }
+    return shown;
 }
 
 // What a gallery's row says beside its name: how many pictures it holds

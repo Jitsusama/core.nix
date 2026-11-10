@@ -152,6 +152,47 @@ pub fn at(starts: &[(usize, f64)], pt: f64) -> (usize, f64) {
         .map_or((0, pt), |(block, top)| (*block, pt - top))
 }
 
+/// A letter's mark as it's kept: the block its line is in and how far the
+/// line's top sits from the block's, with the heading it's under and how
+/// far down the page it is. `line` is the line's top and baseline, in
+/// points, and the page's height is known only of the whole file's page.
+///
+/// A line is in the block its baseline is in, as ]] finds a heading's
+/// line (moves.rs): a heading's block starts at its capitals, below its
+/// line's top, so a mark found by its top alone was kept under the
+/// heading before. Its distance into its block is then less than nothing,
+/// which reaches the same top again. And a mark is a point, not a view,
+/// so how far down it is is its line's share of the page's whole height:
+/// a view's share of how far it can go reads every mark on the last
+/// screen as all of it.
+pub fn mark(blocks: &[Block], letter: char, line: (f64, f64), height_pt: Option<f64>) -> Mark {
+    let starts: Vec<(usize, f64)> = blocks
+        .iter()
+        .map(|block| (block.number, block.top_pt))
+        .collect();
+    let (top, baseline) = line;
+    let (block, below_its_top) = at(&starts, baseline);
+    Mark {
+        letter,
+        block,
+        into_pt: below_its_top - (baseline - top),
+        said: Said {
+            heading: heading_of(blocks, block),
+            through: height_pt.map(|height| share(top, height)),
+        },
+    }
+}
+
+/// How far down a page a point is, as a share of the page's whole height.
+/// A page of no height has nothing to be through.
+fn share(pt: f64, height_pt: f64) -> f64 {
+    if height_pt <= 0.0 {
+        0.0
+    } else {
+        (pt / height_pt).clamp(0.0, 1.0)
+    }
+}
+
 /// The heading a block sits under: the nearest heading at or before it in
 /// the page's order, in the words gO's outline gives it, or none above the
 /// first. Blocks are as `blocks` gives them, top to bottom.
@@ -462,7 +503,7 @@ fn keep_window_in(state: &Path, pt: f64) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Block, Mark, Place, Said, at, heading_of, keep_window_in, kept_at, letter, listed_in,
+        Block, Mark, Place, Said, at, heading_of, keep_window_in, kept_at, letter, listed_in, mark,
         opening, pt_of, read_in, through, window_in, write_in,
     };
 
@@ -496,6 +537,53 @@ mod tests {
             "above the first heading, none"
         );
         assert_eq!(heading_of(&blocks, 9), None, "a block the page lacks, none");
+    }
+
+    #[test]
+    fn a_mark_on_a_headings_line_is_kept_under_that_heading() {
+        // A heading's block starts at its capitals, a few points below its
+        // line's top, which is where the cursor's line and so the mark are.
+        let blocks = [
+            block(0, Some("A Page")),
+            block(1, None),
+            block(2, Some("Further On")),
+        ];
+        let kept = mark(&blocks, 'a', (196.0, 210.0), Some(1000.0));
+        assert_eq!(kept.said.heading.as_deref(), Some("Further On"), "{kept:?}");
+        assert_eq!(kept.block, 2, "{kept:?}");
+        assert_eq!(
+            pt_of(
+                &[(0, 0.0), (1, 100.0), (2, 200.0)],
+                kept.block,
+                kept.into_pt
+            ),
+            Some(196.0),
+            "it's kept where its line's top is"
+        );
+        let words = mark(&blocks, 'b', (120.0, 134.0), Some(1000.0));
+        assert_eq!(
+            (words.block, words.said.heading.as_deref()),
+            (1, Some("A Page")),
+            "a line of words under a heading is in its own block"
+        );
+    }
+
+    #[test]
+    fn a_mark_says_its_lines_share_of_the_whole_page() {
+        // The view goes no further than 700 down a 1000-point page, so a
+        // view's share of 950 would be all of it; a mark there is a point.
+        let blocks = [block(0, None), block(9, None)];
+        let kept = mark(&blocks, 'a', (950.0, 964.0), Some(1000.0));
+        let share = kept
+            .said
+            .through
+            .expect("a whole page's mark says how far down");
+        assert!((share - 0.95).abs() < 1e-9, "{share} isn't 950 of 1000");
+        assert_eq!(
+            mark(&blocks, 'a', (950.0, 964.0), None).said.through,
+            None,
+            "a page not yet set whole can't say"
+        );
     }
 
     #[test]

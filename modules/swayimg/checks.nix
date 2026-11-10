@@ -15,9 +15,11 @@ onLinux {
   # holds any, else a gallery of the newest folder of swayimg's Recent, and
   # one of each folder its Recent's pictures are in, newest first, each
   # once, saying how many pictures it holds and where, and opening on the
-  # newest of Recent's pictures still there; and its drawer says when the
-  # newest screenshot was taken and how many there are, as
-  # tests/swayimg-galleries.qml holds Swayimg.js to it in Qt's own engine.
+  # newest of Recent's pictures still there, each gallery's drawer its
+  # folder's plate with its newest picture previewed, named, and when it
+  # was taken or added; and its drawer says when the newest screenshot was
+  # taken and how many there are, as tests/swayimg-galleries.qml holds
+  # Swayimg.js to it in Qt's own engine.
   swayimg-leads-with-a-gallery =
     let
       qt = pkgs.qt6.qtdeclarative;

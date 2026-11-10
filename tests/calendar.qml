@@ -202,10 +202,11 @@ QtObject {
             check(`next, ${what}`, Calendar.upNext(one, when), meant);
 
         check("its day and times in full", Calendar.dated(
-            meeting("m", at(26, 14, 0), at(26, 14, 30))), "Monday 26 October, 14:00 to 14:30");
+            meeting("m", at(26, 14, 0), at(26, 14, 30))),
+            "Monday 26 October \u00b7 14:00 to 14:30");
         check("a whole day's in full", Calendar.dated(
             meeting("m", at(28, 0, 0), at(29, 0, 0), { allDay: true })),
-            "Wednesday 28 October, all day");
+            "Wednesday 28 October \u00b7 all day");
 
         // How he answered, and his answer: [answer, said, invited]
         const answers = [
@@ -222,13 +223,13 @@ QtObject {
         }
         check("an answer beside the times", Calendar.about(
             meeting("m", at(26, 14, 0), at(26, 14, 30), { answer: "maybe" })),
-            "14:00 to 14:30, maybe");
+            "14:00 to 14:30 \u00b7 maybe");
         check("a meeting he holds says its times alone", Calendar.about(
             meeting("m", at(26, 14, 0), at(26, 14, 30), { answer: null })), "14:00 to 14:30");
         // A meeting's row notes its times and answer until it's over, then nothing.
         check("a meeting to come notes its times and answer", Calendar.noted(
             meeting("m", at(26, 16, 0), at(26, 16, 30), { answer: "maybe" }), now),
-            "16:00 to 16:30, maybe");
+            "16:00 to 16:30 \u00b7 maybe");
         check("a meeting that's over notes nothing", Calendar.noted(
             meeting("m", at(25, 16, 0), at(25, 16, 30), { answer: "maybe" }), now), "");
 
@@ -248,14 +249,14 @@ QtObject {
             }), "Untitled"), {
             title: "Standup",
             facts: [
-                { label: "When", value: "Monday 26 October, 14:00 to 14:30" },
+                { label: "When", value: "Monday 26 October \u00b7 14:00 to 14:30" },
                 { label: "Where", value: "Room 4" },
                 { label: "Call", value: "https://meet.google.com/abc-defg-hij" },
                 { label: "Dial In", value: "+1 555-010-0199, PIN 123456789" },
                 { label: "Your Answer", value: "maybe" },
                 { label: "Holds It", value: "Ada Lovelace" },
                 { label: "Answers", value: "1 not going, 1 not answered" },
-                { label: "Asked", value: "Grace Hopper, not going; alan@example.com" },
+                { label: "Asked", value: "Grace Hopper \u00b7 not going; alan@example.com" },
                 { label: "Attachments", value: "Agenda, Numbers" }
             ],
             body: "What we did.\nWhat we do."
@@ -271,7 +272,7 @@ QtObject {
         check("a bare one he holds says only when", Calendar.details(meeting("m", at(26, 14, 0),
             at(26, 14, 30), { title: "", answer: null, link: null }), "Untitled"), {
             title: "Untitled",
-            facts: [{ label: "When", value: "Monday 26 October, 14:00 to 14:30" }],
+            facts: [{ label: "When", value: "Monday 26 October \u00b7 14:00 to 14:30" }],
             body: ""
         });
         // How one of a series repeats, said after when it is.
@@ -281,14 +282,14 @@ QtObject {
         check("one of a series says how it repeats after when", Calendar.details(meeting("m",
             at(26, 14, 0), at(26, 14, 30), { answer: null, link: null,
                 repeats: rule({ days: [day(1)] }) }), "Untitled").facts, [
-            { label: "When", value: "Monday 26 October, 14:00 to 14:30" },
+            { label: "When", value: "Monday 26 October \u00b7 14:00 to 14:30" },
             { label: "Repeats", value: "Every week on Monday" }
         ]);
         check("one of a series a Recent lists once says how many came before",
             Calendar.details(meeting("m", at(26, 14, 0), at(26, 14, 30), { answer: null,
                 link: null, repeats: rule({ days: [day(1)] }) }), "Untitled",
                 "8 in the past 30 days").facts, [
-                { label: "When", value: "Monday 26 October, 14:00 to 14:30" },
+                { label: "When", value: "Monday 26 October \u00b7 14:00 to 14:30" },
                 { label: "Repeats", value: "Every week on Monday" },
                 { label: "Earlier", value: "8 in the past 30 days" }
             ]);
@@ -349,11 +350,11 @@ QtObject {
         const design = meeting("design", at(26, 16, 0), at(26, 16, 30));
         check("later times", Calendar.later(design).map(time => [time.name,
             Calendar.dated(Object.assign({ allDay: false }, time))]), [
-            ["15 Minutes Later", "Monday 26 October, 16:15 to 16:45"],
-            ["30 Minutes Later", "Monday 26 October, 16:30 to 17:00"],
-            ["An Hour Later", "Monday 26 October, 17:00 to 17:30"],
-            ["Tomorrow, Same Time", "Tuesday 27 October, 16:00 to 16:30"],
-            ["Next Week, Same Time", "Monday 2 November, 16:00 to 16:30"]
+            ["15 Minutes Later", "Monday 26 October \u00b7 16:15 to 16:45"],
+            ["30 Minutes Later", "Monday 26 October \u00b7 16:30 to 17:00"],
+            ["An Hour Later", "Monday 26 October \u00b7 17:00 to 17:30"],
+            ["Tomorrow, Same Time", "Tuesday 27 October \u00b7 16:00 to 16:30"],
+            ["Next Week, Same Time", "Monday 2 November \u00b7 16:00 to 16:30"]
         ]);
         // A week on crosses Toronto's clocks going back, on Sunday 1
         // November, which mustn't move the time on the clock.
@@ -378,17 +379,17 @@ QtObject {
 
         // A typed time, at 15:20 on Monday: [typed, its day and times, or null]
         const typing = [
-            ["16:30", "Monday 26 October, 16:30 to 17:00"],
-            ["17", "Monday 26 October, 17:00 to 17:30"],
-            ["  5pm ", "Monday 26 October, 17:00 to 17:30"],
-            ["tomorrow 10:00", "Tuesday 27 October, 10:00 to 10:30"],
-            ["Thursday 9", "Thursday 29 October, 09:00 to 09:30"],
-            ["thu 2pm", "Thursday 29 October, 14:00 to 14:30"],
-            ["monday 9", "Monday 2 November, 09:00 to 09:30"],
-            ["monday 16:00", "Monday 26 October, 16:00 to 16:30"],
+            ["16:30", "Monday 26 October \u00b7 16:30 to 17:00"],
+            ["17", "Monday 26 October \u00b7 17:00 to 17:30"],
+            ["  5pm ", "Monday 26 October \u00b7 17:00 to 17:30"],
+            ["tomorrow 10:00", "Tuesday 27 October \u00b7 10:00 to 10:30"],
+            ["Thursday 9", "Thursday 29 October \u00b7 09:00 to 09:30"],
+            ["thu 2pm", "Thursday 29 October \u00b7 14:00 to 14:30"],
+            ["monday 9", "Monday 2 November \u00b7 09:00 to 09:30"],
+            ["monday 16:00", "Monday 26 October \u00b7 16:00 to 16:30"],
             ["today 9:00", null],
             ["12am", null],
-            ["tomorrow 12am", "Tuesday 27 October, 00:00 to 00:30"],
+            ["tomorrow 12am", "Tuesday 27 October \u00b7 00:00 to 00:30"],
             ["25:00", null],
             ["16:75", null],
             ["13pm", null],

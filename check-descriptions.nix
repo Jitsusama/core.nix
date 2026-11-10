@@ -35,8 +35,9 @@
     folder's entries order by name, change or size, folders first, 2 before 10; a save's name puts
     the caret before its extension; and one kept elsewhere, as in Google Drive, says the same on
     its row and plate from what its place listed, its place's facts after, leaving out what isn't
-    given; a file in the Nix store goes by its own name past its hash, kept whole where the store's
-    own listing holds it
+    given; a file nothing has read is its ending's kind, and a picture the shell draws is
+    previewed as it is; a file in the Nix store goes by its own name past its hash, kept whole
+    where the store's own listing holds it
   '';
   a-firmware-update-frees-pcr-0-only-for-fwupds-entry = ''
     the shutdown step takes PCR 0 out of the TPM's policy only when BootNext names fwupd's
@@ -1604,7 +1605,9 @@
     and a selection's lines with :'<,'>y, says E16 past the end, edits the line with Ctrl+W,
     Ctrl+U and Ctrl+H and drops it with Ctrl+C, keeps the search's marks on
     Escape at rest, says E21 for every change (d d, c c, S, x, p, d and c with a motion, :d, d on
-    a selection), keeps a mark between openings, goes between files with :bp, :e and :bn, says
+    a selection), keeps a mark between openings, one on a heading's line under that heading and
+    one on the last line saying its share of the whole page, goes between files with :bp, :e and
+    :bn, says
     E484 of a file that isn't, lists the keys on :h, lists the lines :g/pat/ matches, the marks on
     :marks and the jumps on :ju, going to one on Return, a chosen row too long for them reading
     on in place, shows the command line's menu on :, narrowed
@@ -1854,8 +1857,10 @@
   swayimg-leads-with-a-gallery = ''
     swayimg's page in the launcher leads with the screenshots' gallery while it holds any, else
     the newest folder of its Recent's, and offers each of those folders once, newest first, saying
-    how many pictures it holds and where and opening on Recent's newest still there, and its drawer
-    says when the newest screenshot was taken and how many there are
+    how many pictures it holds and where and opening on Recent's newest still there, each
+    gallery's drawer saying where its folder is, then its kind, previewing its newest picture and
+    saying its name, when it was taken or added and how many there are, and its drawer says when
+    the newest screenshot was taken and how many there are
   '';
   swayimg-moves-by-its-keys = ''
     in swayimg, pressed as a keyboard presses them, → and ← go to the next and previous picture and
@@ -2025,8 +2030,9 @@
     can open, listing the one whose git last wrote first, a repository's files the one changed
     last first, each beside its folder there, its hidden ones but not what git ignores, and only
     those with a remote on GitHub, origin's first; Chrome's downloads, read as Chrome is
-    stepped into, are file rows in its Recent, dated, their size and when beside them and where
-    each came from in its drawer, with Open the Latest Download listed and found from the top
+    stepped into, are file rows in its Recent, dated, their size and when beside them, and in
+    each one's drawer where it is then its kind, a picture previewed, and where it came from, with
+    Open the Latest Download listed and found from the top
     only while there's one, opening it as the desktop opens a file; and Neovim lists every file
     each Neovim has open once, the one looked at last first, said modified and by its tab, going
     to its buffer through open-now, and counts them in its drawer

@@ -10050,6 +10050,26 @@
       "verb": "look"
     },
     {
+      "id": "swayimg:gallery:newest",
+      "in": "verb:swayimg:folder",
+      "name": "Newest"
+    },
+    {
+      "id": "swayimg:gallery:taken",
+      "in": "verb:swayimg:folder",
+      "name": "Taken"
+    },
+    {
+      "id": "swayimg:gallery:added",
+      "in": "verb:swayimg:folder",
+      "name": "Added"
+    },
+    {
+      "id": "swayimg:gallery:count",
+      "in": "verb:swayimg:folder",
+      "name": "Pictures"
+    },
+    {
       "id": "applications",
       "once": ["Apps"],
       "name": "Programs",

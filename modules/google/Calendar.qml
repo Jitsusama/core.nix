@@ -96,7 +96,7 @@ Singleton {
         return Said.upNext(meeting, now);
     }
 
-    // Its day and times in full: "Monday 26 October, 14:00 to 14:30".
+    // Its day and times in full: "Monday 26 October \u00b7 14:00 to 14:30".
     function dated(meeting) {
         return Said.dated(meeting);
     }
@@ -106,7 +106,7 @@ Singleton {
         return Said.span(meeting);
     }
 
-    // Its times and, for an invitation, his answer: "14:00 to 14:30, maybe".
+    // Its times and, for an invitation, his answer: "14:00 to 14:30 \u00b7 maybe".
     function about(meeting) {
         return Said.about(meeting);
     }
