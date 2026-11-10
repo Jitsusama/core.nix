@@ -202,26 +202,14 @@ def cost(measured: Account, name: str) -> list[str]:
     return next(line.split()[1:] for line in lines if line.startswith(f"{vda} "))
 
 
-def test_what_joel_uses_has_a_millisecond(account: Account, drive: str) -> None:
-    """What Joel uses has a millisecond on the drive behind /home."""
-    assert latency(account, "app") == f"{drive} target=1000"
-    assert latency(account, "session") == f"{drive} target=1000"
-
-
-def test_work_sessions_wait_on_has_theirs(account: Account, drive: str) -> None:
-    """Work sessions wait on has their millisecond, so the work it starts gives way to it."""
-    assert latency(account, "agents") == f"{drive} target=1000"
-    assert latency(account, "shared") == f"{drive} target=1000"
-
-
-def test_the_work_it_starts_has_none(account: Account) -> None:
-    """The work it starts has none, so it gives way."""
-    assert latency(account, "jobs") == ""
-    assert latency(account, "background") == ""
+def test_no_slice_inside_the_account_has_one(account: Account) -> None:
+    """No slice inside the account has one, so the kernel never holds Joel's own work back."""
+    for name in ("app", "session", "agents", "shared", "jobs", "background"):
+        assert latency(account, name) == "", name
 
 
 def test_every_account_has_it_and_machines_none(account: Account, drive: str) -> None:
-    """Among the system's, every account has it, and machines none."""
+    """Among the system's, every account has a millisecond on the drive, and machines none."""
     assert latency(account, "user", "/sys/fs/cgroup") == f"{drive} target=1000"
     assert latency(account, "machine", "/sys/fs/cgroup") == ""
     assert latency(account, "system", "/sys/fs/cgroup") == ""

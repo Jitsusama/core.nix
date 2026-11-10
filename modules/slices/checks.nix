@@ -105,10 +105,10 @@
         && (agents.MemoryMin or null) == kitty.MemoryMin
       );
 
-  # Work other sessions wait on ranks with them on the disk, at their own
-  # target, while on the processor it stays below what Joel uses and above
-  # idle jobs, and past its ceiling swaps its own memory. Without a target
-  # it waits behind every session's disk work, as jobs does.
+  # Work other sessions wait on ranks with them on the disk, where nothing
+  # inside the account holds a target, while on the processor it stays below
+  # what Joel uses and above idle jobs, and past its ceiling swaps its own
+  # memory. A target on one slice there holds back every slice beside it.
   shared-work-ranks-with-the-sessions =
     let
       inherit (graphical.config) systemd environment;
@@ -117,10 +117,14 @@
       target = slice: slice.sliceConfig.IODeviceLatencyTargetSec or null;
     in
     holds "shared-work-ranks-with-the-sessions"
-      "Work other sessions wait on has no slice at their disk target, outranks Joel's programs on the processor, has no ceiling, or can't be found."
+      "A slice inside the account holds a disk target, or work other sessions wait on outranks Joel's programs on the processor, has no ceiling, or can't be found."
       (
-        target slices.shared != null
-        && target slices.shared == target slices.agents
+        lib.all (slice: target slice == null) [
+          slices.shared
+          slices.agents
+          slices.app
+          slices.session
+        ]
         && shared.CPUWeight < (slices.app.sliceConfig.CPUWeight or 100)
         && shared ? MemoryHigh
         && environment.sessionVariables.SHARED_SLICE == "shared.slice"
