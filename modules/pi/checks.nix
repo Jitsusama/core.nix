@@ -347,9 +347,9 @@ in
     touch $out
   '';
 
-  # A hosted pi's conversations each read their keys from their own auth
-  # context and never from the process, while a pi given none reads the
-  # process as ordinary pi does.
+  # A hosted pi's conversations each read their keys and headers from their
+  # own auth context and never from the process, while a pi given none
+  # reads the process as ordinary pi does.
   pi-hosted-keeps-each-conversations-keys =
     pkgs.runCommandLocal "pi-hosted-keeps-each-conversations-keys" { }
       ''

@@ -1,15 +1,20 @@
 A host runs many conversations in one process, each with credentials of
-its own, and holds none itself. pi reads a configured key, checks a
-provider is set up before a prompt, and lists available models through
-an auth context that defaults to the process's environment, and
-ModelRuntime offers no way to give it another. A hosted conversation
-therefore found no key, or would have found the host's.
+its own, and holds none itself. pi reads a configured key and its
+provider and model headers, checks a provider is set up before a prompt,
+and lists available models through an auth context that defaults to the
+process's environment, and ModelRuntime offers no way to give it
+another. A hosted conversation therefore found no key, or would have
+found the host's.
 
 Let ModelRuntime.create take an auth context and hand it to the models
-it builds, and mark the build so a host can refuse one without it.
-Resolve a configured key only when the context holds it, as the check
-before a prompt already does, so a key the context lacks never comes
-from the process. Without a context, pi reads the process as before.
+and providers it builds, and mark the build so a host can refuse one
+without it. Resolve a configured key or header variable only when the
+context holds it, as the check before a prompt already does, since pi's
+resolver otherwise falls back to the process for any variable it misses.
+The synchronous fallback for an unconfigured provider can't read a
+context, so a runtime given one refuses every header variable there.
+Without a context, pi reads the process as before, though a value of
+only spaces now counts as unset, as pi's own check already counts it.
 
 Offered upstream as the model auth-context host seam. Apply only to the
 host's private pi build; ordinary interactive pi stays unchanged.
@@ -24,7 +29,15 @@ host's private pi build; ordinary interactive pi stays unchanged.
  	type AuthInteraction,
  	type AuthOperationOptions,
  	type AuthResult,
-@@ -123,6 +124,12 @@
+@@ -80,6 +81,7 @@
+ 	type ProviderConfigInput,
+ 	resolveCompatibilityRequestConfig,
+ 	resolveConfiguredModelHeaders,
++	resolveContextModelHeaders,
+ 	validateExtensionProvider,
+ } from "./provider-composer.ts";
+ import { withPersonalizedCatalog, withRemoteCatalog } from "./remote-catalog-provider.ts";
+@@ -123,6 +125,12 @@
  	signal?: AbortSignal;
  	/** Skip initial catalog and availability refresh. Static models remain available. */
  	refreshOnCreate?: boolean;
@@ -37,16 +50,22 @@ host's private pi build; ordinary interactive pi stays unchanged.
  }
  
  export interface ModelRuntimeAuthOverrides extends AuthOperationOptions {
-@@ -172,6 +179,8 @@
+@@ -172,7 +180,14 @@
  
  /** Configured pi-ai Models collection used by coding-agent and SDK consumers. */
  export class ModelRuntime implements Models {
-+	/** Marks a build whose create() takes an auth context, so a host can refuse one without it. */
-+	static readonly hostAuthContextVersion = 1;
++	/**
++	 * Marks a build whose create() takes an auth context, so a host can refuse one without it. Version
++	 * 2 also reads configured header variables through that context alone.
++	 */
++	static readonly hostAuthContextVersion = 2;
  	private readonly models: MutableModels;
++	/** Where auth reads environment variables, when create() was given one; otherwise the process. */
++	private readonly authContext: AuthContext | undefined;
  	private readonly credentials: RuntimeCredentials;
  	private readonly defaultBuiltins: ReadonlyMap<string, Provider>;
-@@ -204,6 +213,7 @@
+ 	private readonly builtins = new Map<string, Provider>();
+@@ -204,14 +219,16 @@
  		modelsStore: ModelsStore,
  		providers: readonly Provider[],
  		modelNetworkEnabled: boolean,
@@ -54,8 +73,9 @@ host's private pi build; ordinary interactive pi stays unchanged.
  	) {
  		this.credentials = credentials;
  		this.config = config;
-@@ -211,7 +221,7 @@
+ 		this.modelsPath = modelsPath;
  		this.modelNetworkEnabled = modelNetworkEnabled;
++		this.authContext = authContext;
  		this.defaultBuiltins = new Map(providers.map((provider) => [provider.id, provider]));
  		for (const [providerId, provider] of this.defaultBuiltins) this.builtins.set(providerId, provider);
 -		this.models = createModels({ credentials, modelsStore });
@@ -63,7 +83,7 @@ host's private pi build; ordinary interactive pi stays unchanged.
  		this.rebuildProviders();
  	}
  
-@@ -246,6 +256,7 @@
+@@ -246,6 +263,7 @@
  			modelsStore,
  			providers,
  			process.env.PI_OFFLINE === undefined,
@@ -71,14 +91,183 @@ host's private pi build; ordinary interactive pi stays unchanged.
  		);
  		runtime.configureRadiusProviders();
  		runtime.rebuildProviders();
+@@ -315,7 +333,7 @@
+ 			return base;
+ 		}
+ 		try {
+-			const provider = composeModelProvider(providerId, base, this.config, extension);
++			const provider = composeModelProvider(providerId, base, this.config, extension, this.authContext);
+ 			this.compositionErrors.delete(providerId);
+ 			return provider;
+ 		} catch (error) {
+@@ -538,6 +556,7 @@
+ 			model,
+ 			this.config.getProvider(model.provider),
+ 			this.extensionProviders.get(model.provider),
++			this.authContext !== undefined,
+ 		);
+ 	}
+ 
+@@ -562,12 +581,13 @@
+ 		if (typeof providerOrModel === "string") return this.models.getAuth(providerOrModel, overrides);
+ 		const resolution = await this.models.getAuth(providerOrModel, overrides);
+ 		if (!resolution) return undefined;
+-		const configuredHeaders = resolveConfiguredModelHeaders(
+-			providerOrModel,
+-			this.config.getProvider(providerOrModel.provider),
+-			this.extensionProviders.get(providerOrModel.provider),
+-			{ ...(resolution.env ?? {}), ...(overrides.env ?? {}) },
+-		);
++		const providerConfig = this.config.getProvider(providerOrModel.provider);
++		const extension = this.extensionProviders.get(providerOrModel.provider);
++		const explicit = { ...(resolution.env ?? {}), ...(overrides.env ?? {}) };
++		// Given an auth context, a model's headers read it alone, so one it lacks never comes from the process.
++		const configuredHeaders = this.authContext
++			? await resolveContextModelHeaders(providerOrModel, providerConfig, extension, this.authContext, explicit)
++			: resolveConfiguredModelHeaders(providerOrModel, providerConfig, extension, explicit);
+ 		return {
+ 			...resolution,
+ 			auth: {
 --- a/packages/coding-agent/src/core/provider-composer.ts
 +++ b/packages/coding-agent/src/core/provider-composer.ts
-@@ -469,6 +469,8 @@
+@@ -419,6 +419,37 @@
+ 	return Object.keys(env).length > 0 ? env : undefined;
+ }
+ 
++/**
++ * Refuse a header naming a variable the auth context lacks or holds empty. Resolving it would read
++ * the process's environment, which in a host running many conversations belongs to none of them.
++ */
++function refuseHeadersOutsideContext(
++	headers: Record<string, string> | undefined,
++	description: string,
++	env: Record<string, string> | undefined,
++): void {
++	for (const [key, value] of Object.entries(headers ?? {})) {
++		const missing = getConfigValueEnvVarNames(value).filter((name) => !env?.[name]);
++		if (missing.length === 0) continue;
++		const variables = missing.length === 1 ? "variable" : "variables";
++		throw new Error(
++			`Failed to resolve ${description} header "${key}" from environment ${variables}: ${missing.join(", ")}`,
++		);
++	}
++}
++
++/** Resolve headers from an auth context and explicit values alone, never the process's environment. */
++async function resolveContextHeaders(
++	headers: Record<string, string> | undefined,
++	description: string,
++	ctx: AuthContext,
++	explicit?: Record<string, string>,
++): Promise<Record<string, string> | undefined> {
++	const env = await configContextEnv(Object.values(headers ?? {}), ctx, explicit);
++	refuseHeadersOutsideContext(headers, description, env);
++	return resolveHeadersOrThrow(headers, description, env);
++}
++
+ function composeApiKeyAuth(
+ 	providerId: string,
+ 	base: Provider | undefined,
+@@ -469,6 +500,8 @@
  						: undefined;
  			} else if (rawKey !== undefined) {
  				const env = await configContextEnv([rawKey], input.ctx);
 +				// Resolve only a key the auth context holds, as check does, so one it lacks never comes from the process.
-+				if (getConfigValueEnvVarNames(rawKey).some((name) => env?.[name] === undefined)) return undefined;
++				if (getConfigValueEnvVarNames(rawKey).some((name) => !env?.[name])) return undefined;
  				const key = resolveConfigValueOrThrow(rawKey, `API key for provider "${providerId}"`, env);
  				result = inherited
  					? await inherited.resolve({ ...input, credential: { type: "api_key", key } })
+@@ -478,8 +511,8 @@
+ 			}
+ 			if (!result) return undefined;
+ 			const explicitEnv = { ...(input.credential?.env ?? {}), ...(result.env ?? {}) };
+-			const headerEnv = await configContextEnv(Object.values(rawHeaders ?? {}), input.ctx, explicitEnv);
+-			const headers = resolveHeadersOrThrow(rawHeaders, `provider "${providerId}"`, headerEnv);
++			// Headers read the auth context alone, as the key does, so one it lacks never comes from the process.
++			const headers = await resolveContextHeaders(rawHeaders, `provider "${providerId}"`, input.ctx, explicitEnv);
+ 			return { ...result, auth: withConfiguredAuth(result.auth, headers, authHeader) };
+ 		},
+ 	};
+@@ -490,6 +523,7 @@
+ 	base: Provider | undefined,
+ 	config: ModelsJsonProvider | undefined,
+ 	extension: ProviderConfigInput | undefined,
++	authContext?: AuthContext,
+ ): OAuthAuth | undefined {
+ 	const oauth = extension?.oauth ? adaptOAuth(extension.oauth) : base?.auth.oauth;
+ 	if (!oauth) return undefined;
+@@ -500,11 +534,11 @@
+ 		toAuth: async (credential) => {
+ 			const auth = await oauth.toAuth(credential);
+ 			const env = credential.env;
+-			const headers = resolveHeadersOrThrow(
+-				rawHeaders,
+-				`provider "${providerId}"`,
+-				typeof env === "object" && env !== null ? (env as Record<string, string>) : undefined,
+-			);
++			const explicit = typeof env === "object" && env !== null ? (env as Record<string, string>) : undefined;
++			// Given an auth context, headers read it alone, so one it lacks never comes from the process.
++			const headers = authContext
++				? await resolveContextHeaders(rawHeaders, `provider "${providerId}"`, authContext, explicit)
++				: resolveHeadersOrThrow(rawHeaders, `provider "${providerId}"`, explicit);
+ 			return withConfiguredAuth(auth, headers, authHeader);
+ 		},
+ 	};
+@@ -549,6 +583,7 @@
+ 	base: Provider | undefined,
+ 	modelConfig: ModelConfig,
+ 	extension: ProviderConfigInput | undefined,
++	authContext?: AuthContext,
+ ): Provider {
+ 	const config = modelConfig.getProvider(providerId);
+ 	let extensionOAuthCredential: OAuthCredentials | undefined;
+@@ -581,7 +616,7 @@
+ 	// Validate eagerly so registration/reload reports structural errors immediately.
+ 	getAllModels();
+ 	const apiKey = composeApiKeyAuth(providerId, base, config, extension);
+-	const oauth = composeOAuthAuth(providerId, base, config, extension);
++	const oauth = composeOAuthAuth(providerId, base, config, extension, authContext);
+ 	if (!apiKey && !oauth) throw new Error(`Provider ${providerId}: no authentication method configured.`);
+ 
+ 	const supportsBaseApi = (model: Model<Api>) => base?.getModels().some((entry) => entry.api === model.api) ?? false;
+@@ -700,6 +735,22 @@
+ 	);
+ }
+ 
++/** A model's configured headers from an auth context and explicit values alone, never the process's. */
++export function resolveContextModelHeaders(
++	model: AnyModel,
++	config: ModelsJsonProvider | undefined,
++	extension: ProviderConfigInput | undefined,
++	ctx: AuthContext,
++	explicit?: Record<string, string>,
++): Promise<Record<string, string> | undefined> {
++	return resolveContextHeaders(
++		rawModelHeaders(model, config, extension),
++		`model "${model.provider}/${model.id}"`,
++		ctx,
++		explicit,
++	);
++}
++
+ export interface CompatibilityRequestConfig {
+ 	headers?: ProviderHeaders;
+ 	authHeader: boolean;
+@@ -709,11 +760,13 @@
+ 	model: AnyModel,
+ 	config: ModelsJsonProvider | undefined,
+ 	extension: ProviderConfigInput | undefined,
++	closed = false,
+ ): CompatibilityRequestConfig {
+-	const configured = resolveHeadersOrThrow(
+-		{ ...configuredHeaders(config, extension), ...rawModelHeaders(model, config, extension) },
+-		`model "${model.provider}/${model.id}"`,
+-	);
++	const raw = { ...configuredHeaders(config, extension), ...rawModelHeaders(model, config, extension) };
++	const description = `model "${model.provider}/${model.id}"`;
++	// A runtime given an auth context can't read it here, synchronously, so it refuses a variable outright.
++	if (closed) refuseHeadersOutsideContext(raw, description, undefined);
++	const configured = resolveHeadersOrThrow(raw, description);
+ 	return {
+ 		headers: model.headers || configured ? { ...model.headers, ...configured } : undefined,
+ 		authHeader: extension?.authHeader ?? config?.authHeader ?? false,
