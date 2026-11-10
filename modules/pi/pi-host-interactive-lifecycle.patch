@@ -62,7 +62,17 @@
  		});
  		nextUi.setClearOnShrink(clearOnShrink);
  		nextUi.onDebug = onDebug;
-@@ -984,7 +1002,10 @@
+@@ -972,7 +990,8 @@
+ 	}
+ 
+ 	async init(): Promise<void> {
+-		if (this.isInitialized) return;
++		// A hosted screen that quit is never started again, even by a late event.
++		if (this.isInitialized || this.hostedExit) return;
+ 
+ 		this.registerSignalHandlers();
+ 
+@@ -984,7 +1003,10 @@
  		// after exit. Fullscreen shows the notice in the header instead (#11508).
  		if (this.renderer.mode !== "fullscreen") {
  			const modelScopeNotice = this.getModelScopeNotice();
@@ -74,7 +84,29 @@
  		}
  
  		// Keep one component tree and remount it when changing renderers.
-@@ -1128,7 +1149,7 @@
+@@ -1028,6 +1050,7 @@
+ 		// The header and startup notices bake theme colors into their text, so build them once the terminal
+ 		// reported its colors. This ends at the terminal's DA1 reply, or after 100 ms if it answers nothing.
+ 		await this.themeController.waitForTerminalColors();
++		if (this.hostedStartupEnded()) return;
+ 
+ 		// Add header with keybindings from config (unless silenced)
+ 		if (this.shouldShowStartupHeader()) {
+@@ -1115,6 +1138,7 @@
+ 			ensureTool("rg", (status) => this.showManagedToolStatus(status)),
+ 		]);
+ 		this.fdPath = fdPath;
++		if (this.hostedStartupEnded()) return;
+ 
+ 		// Enable the remaining input handlers only after managed-tool setup completes.
+ 		this.setupKeyHandlers();
+@@ -1123,12 +1147,13 @@
+ 
+ 		// Initialize extensions first so resources are shown before messages
+ 		await this.rebindCurrentSession();
++		if (this.hostedStartupEnded()) return;
+ 
+ 		// Render initial messages AFTER showing loaded resources
  		this.renderInitialMessages();
  
  		// Set up theme file watcher
@@ -83,7 +115,23 @@
  			this.ui.invalidate();
  			this.updateEditorBorderColor();
  			this.ui.requestRender();
-@@ -1274,8 +1295,9 @@
+@@ -1141,6 +1166,7 @@
+ 
+ 		// Initialize available provider count for footer display
+ 		await this.updateAvailableProviderCount();
++		if (this.hostedStartupEnded()) return;
+ 
+ 		// Flush the completed startup state before loading the remaining syntax grammars.
+ 		this.ui.renderNow();
+@@ -1170,6 +1196,7 @@
+ 	 */
+ 	async run(): Promise<void> {
+ 		await this.init();
++		if (this.hostedExit) return;
+ 
+ 		if (!process.env.PI_OFFLINE) {
+ 			const controller = new AbortController();
+@@ -1274,8 +1301,9 @@
  		}
  
  		// Main interactive loop
@@ -94,7 +142,17 @@
  			try {
  				await this.session.prompt(userInput);
  			} catch (error: unknown) {
-@@ -2216,7 +2238,7 @@
+@@ -2203,7 +2231,8 @@
+ 
+ 		await this.bindCurrentSessionExtensions();
+ 
+-		if (this.session !== session) {
++		// A hosted screen that quit while extensions bound subscribes to nothing.
++		if (this.session !== session || this.hostedExit) {
+ 			return;
+ 		}
+ 
+@@ -2216,7 +2245,7 @@
  		this.updateTerminalTitle();
  	}
  
@@ -103,7 +161,7 @@
  		const message = error instanceof Error ? error.message : String(error);
  		this.showError(`${prefix}: ${message}`);
  		const extensionHint = this.getCrashExtensionHint(error);
-@@ -2227,6 +2249,10 @@
+@@ -2227,6 +2256,10 @@
  			const instructions = this.crashReportInstructions();
  			this.chatContainer.addChild(new ThemedText(() => theme.fg("muted", instructions), this.outputPad, 0));
  		}
@@ -114,7 +172,7 @@
  		stopThemeWatcher();
  		this.stop("transcript");
  		process.exit(1);
-@@ -4340,6 +4366,7 @@
+@@ -4340,6 +4373,7 @@
  	}
  
  	async getUserInput(): Promise<string> {
@@ -122,12 +180,23 @@
  		const queuedInput = this.pendingUserInputs.shift();
  		if (queuedInput !== undefined) {
  			return queuedInput;
-@@ -4383,8 +4410,32 @@
+@@ -4383,8 +4417,43 @@
  	 * repaint the final frame while the process is exiting.
  	 */
  	private isShuttingDown = false;
 +	private hostedExit: Promise<void> | undefined;
 +	private themeChangeUnsubscribe: (() => void) | undefined;
++
++	/**
++	 * Whether a hosted screen quit while its startup awaited. Its stop has already run, so what startup
++	 * bound since then, the theme listener, is released here rather than outliving the screen.
++	 */
++	private hostedStartupEnded(): boolean {
++		if (!this.hostedExit) return false;
++		this.themeChangeUnsubscribe?.();
++		this.themeChangeUnsubscribe = undefined;
++		return true;
++	}
 +
 +	/** Stop this screen once; the host owns scoped session and child cleanup. */
 +	private exitHosted(exitCode: number, error?: unknown): Promise<void> {
@@ -155,7 +224,7 @@
  		if (this.isShuttingDown) return;
  		this.isShuttingDown = true;
  		// Keep signal handlers registered until terminal cleanup has completed.
-@@ -4425,7 +4476,11 @@
+@@ -4425,7 +4494,11 @@
  		process.exit(0);
  	}
  
@@ -168,7 +237,7 @@
  		this.isShuttingDown = true;
  		this.unregisterSignalHandlers();
  		killTrackedDetachedChildren();
-@@ -4445,7 +4500,11 @@
+@@ -4445,7 +4518,11 @@
  	 * call ui.stop() to restore cooked mode, the cursor, and disable bracketed
  	 * paste / Kitty / modifyOtherKeys sequences.
  	 */
@@ -181,7 +250,7 @@
  		// A dead terminal is not a pi crash. Do not try to restore it or record it.
  		if (isDeadTerminalError(error)) {
  			this.emergencyTerminalExit();
-@@ -4482,6 +4541,8 @@
+@@ -4482,6 +4559,8 @@
  	}
  
  	private registerSignalHandlers(): void {
@@ -190,7 +259,7 @@
  		this.unregisterSignalHandlers();
  
  		const signals: NodeJS.Signals[] = ["SIGTERM"];
-@@ -4532,6 +4593,10 @@
+@@ -4532,6 +4611,10 @@
  	}
  
  	private handleCtrlZ(): void {
@@ -201,7 +270,7 @@
  		if (process.platform === "win32") {
  			this.showStatus("Suspend to background is not supported on Windows");
  			return;
-@@ -4690,6 +4755,11 @@
+@@ -4690,6 +4773,11 @@
  	}
  
  	private async handleOpenExternalEditor(): Promise<void> {
@@ -213,7 +282,7 @@
  		const editorCmd = this.settingsManager.getExternalEditorCommand();
  		const content = this.editor.getExpandedText?.() ?? this.editor.getText();
  		this.ui.stop();
-@@ -5797,7 +5867,7 @@
+@@ -5797,7 +5885,7 @@
  					return;
  				}
  				try {
@@ -222,7 +291,7 @@
  					this.showStatus("Copied selected message to clipboard");
  				} catch (error) {
  					this.showError(error instanceof Error ? error.message : String(error));
-@@ -6736,6 +6806,17 @@
+@@ -6736,6 +6824,17 @@
  		);
  	}
  
@@ -240,7 +309,7 @@
  	private async handleCopyCommand(
  		options: { flashConfirmation?: boolean; preferSelection?: boolean } = {},
  	): Promise<void> {
-@@ -6756,7 +6837,7 @@
+@@ -6756,7 +6855,7 @@
  		}
  
  		try {
@@ -249,7 +318,7 @@
  			if (options.flashConfirmation && this.ui instanceof TuiAltScreen) {
  				this.ui.flash("Copied!");
  			} else {
-@@ -7196,6 +7277,8 @@
+@@ -7196,6 +7295,8 @@
  		}
  		this.clearStatusIndicator();
  		this.themeController.disableAutoSync();
