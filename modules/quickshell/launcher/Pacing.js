@@ -87,6 +87,19 @@ function frameSwapped(acts) {
     return { shown: acts.framing, acts: { waiting: acts.waiting, framing: [] } };
 }
 
+// The room the foot holds for Return's widest verb, as `kept` weighed it
+// for these words in this face, or weighed again by `weigh` once either
+// has changed: the words are the file as it was read, and the face what
+// the foot measured its keys in, each a new object when it changes. On
+// 10 November every opening walked 1,803 things' verbs again, its slowest
+// part after the first.
+function verbRoom(kept, words, face, weigh) {
+    if (kept !== null && kept.words === words && kept.face === face) {
+        return kept;
+    }
+    return { words, face, widest: weigh(words) };
+}
+
 // What an opening's own work went on, from each part's milliseconds by its
 // name, said slowest first, since the slowest is what its line is read for.
 // A part under a millisecond is left out, and an opening with none left

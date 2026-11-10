@@ -547,7 +547,8 @@ def test_the_first_opening_after_the_shell_starts_shows_soon_while_every_core_is
 
     Every switch starts the shell again, several times a day, and Joel named the start as slow
     (Y2YBTS, 2026-11-10): its first opening made every row its places read, 486 of them
-    People's, where a later one makes only what changed.
+    People's, where a later one makes only what changed. The one after it weighs none of the
+    words file's verbs again, which every opening once walked, 8 to 11 ms of its 30 to 39.
     """
     timing = Timing(desktop)
     first: dict[bool, list[int]] = {True: [], False: []}
@@ -583,6 +584,8 @@ def test_the_first_opening_after_the_shell_starts_shows_soon_while_every_core_is
             f"{'under load' if loaded else 'with the load frozen'}, the first opening after a"
             f" start {opening}, and the one after it {after}"
         )
+    weighing = [after for _, _, after in said if after.get("verbs") != 0]
+    assert not weighing, f"an opening after the first weighed the verbs again: {weighing}"
     assert middle(first[True]) <= SLOWER_MOST * middle(first[False]) + STEPPED_MORE, (
         f"the load slowed the first opening after a start: {first[True]} ms against "
         f"{first[False]} ms frozen"

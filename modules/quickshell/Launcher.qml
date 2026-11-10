@@ -2756,10 +2756,17 @@ Scope {
     // as rows came, Return moved in as soon as Joel typed, since home's
     // rows say less than what a letter finds. The keys before it hold no
     // room until a row says them.
-    // Chosen afresh as each opening's room is set (footReset), since a
-    // binding would weigh the verbs once, maybe before the foot's face had
-    // loaded and measured them all alike (Y2YBTS, 2026-11-05).
+    // Chosen as each opening's room is set (footReset), since a binding
+    // would weigh the verbs once, maybe before the foot's face had loaded
+    // and measured them all alike (Y2YBTS, 2026-11-05). Weighed again only
+    // once the words file or the face has changed (Pacing.verbRoom): every
+    // opening walking 1,803 things' verbs was its slowest part after the
+    // first, 8 to 11 ms of the 30 to 39 before it could draw (2026-11-10).
     property string footVerbRoom: "connect"
+    // The words and the face the room was last weighed in, with how many
+    // things that opening weighed, said with its time (openingsTimed).
+    property var footVerbsWeighed: null
+    property int openVerbsWeighed: 0
 
     // The widest verb the words file names, in any of its states, as the
     // foot draws it after Return (VKCF3Z, 2026-11-05: "Hold room at the
@@ -7448,7 +7455,12 @@ Scope {
             lap("digits");
             // Weighed once an opening, not on every mode change, which
             // walks every thing's verbs.
-            footVerbRoom = widestVerb(Words.all.things ?? []);
+            const weighed = Pacing.verbRoom(footVerbsWeighed, Words.all,
+                statusLine.keys.measured, words => widestVerb(words.things ?? []));
+            openVerbsWeighed = weighed === footVerbsWeighed ? 0
+                : (Words.all.things ?? []).length;
+            footVerbsWeighed = weighed;
+            footVerbRoom = weighed.widest;
             lap("verbs");
             // The foot's room once the line is back on the find: set
             // before, the rows noted their keys while it was still in
@@ -7539,7 +7551,7 @@ Scope {
         const rows = made.reduce((sum, each) => sum + each.rows, 0);
         const most = made.slice(0, 4).map(each => `${each.name} ${each.rows}`).join(", ");
         openingsTimed = openingsTimed.concat([{ took, worked, parts: openParts, rows, made: most,
-            first }]).slice(-20);
+            verbs: openVerbsWeighed, first }]).slice(-20);
         console.info(`launcher: opening took ${took} ms to its frame, ${worked} ms working`
             + ` (${parts}), ${rows} rows made (${most})`
             + (first ? ", the first since the shell started" : ""));
