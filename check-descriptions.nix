@@ -2382,7 +2382,9 @@
     the clock, the weather, placed the same way, read as the launcher opens and kept while it's
     asked again, then the calendar's own row for the next meeting, and Now counts nothing while
     only they are there; the location and the clock's zone are whereabouts' own, over its socket;
-    and For You, asked again, makes none of its looks again, only one whose file changed
+    and For You, asked again, makes none of its looks again, only one whose file changed; and a
+    piece of what's on that moved is the only one whose row and acts are made again, a kept one
+    running its piece's act as it is now
   '';
   the-launcher-sums-within-a-key = ''
     the launcher's sums and measures, worked out by libqalculate in the shell's own process, take a
