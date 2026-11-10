@@ -1,6 +1,8 @@
 // The host-only InteractiveMode patch keeps a hosted screen inside its own
-// session: closing it never ends the process, a suspend stops only the
-// viewer that asked, and every screen hears a theme change.
+// session: closing it never ends the process, a stopped screen sends no
+// more of its first words and builds nothing an extension asks of it, a
+// suspend stops only the viewer that asked, and every screen hears a theme
+// change.
 // The real methods run against fake runtimes; no TTY, model request or
 // extension is started. Ordinary signal and suspend paths retain their
 // process semantics. Arguments name the package and, optionally, source.
@@ -207,6 +209,73 @@ for (const quitAt of ["colors", "tools", "extensions", "providers"]) {
     assert.equal(mode.ui.start.mock.callCount(), 1);
   });
 }
+
+for (const quitOn of ["first", "second"]) {
+  it(`a hosted screen that quits on its ${quitOn} words sends none after`, async () => {
+    forbidProcessExit();
+    process.env.PI_OFFLINE = "1";
+    // A screen that starts whole, then is handed its first words.
+    const { mode, exits } = startingScreen("never");
+    mode.options.initialMessage = "first";
+    mode.options.initialMessages = ["second", "third"];
+    Object.assign(mode, {
+      checkForPackageUpdates: () => Promise.resolve([]),
+      checkTmuxKeyboardSetup: () => Promise.resolve(undefined),
+      maybeWarnAboutAnthropicSubscriptionAuth: () => Promise.resolve(),
+      showWarning: mock.fn(),
+      getUserInput: () => Promise.reject(new Error("a stopped screen waited for input")),
+    });
+    // Startup ends by loading syntax grammars, which redraws once they load.
+    mode.ui.invalidate = mock.fn();
+    const sent = [];
+    mode.runtimeHost.session.prompt = async (words) => {
+      sent.push(words);
+      if (words === quitOn) {
+        await mode.shutdown();
+      }
+    };
+    const path = process.env.PATH;
+    process.env.PATH = "";
+    try {
+      await mode.run();
+    } finally {
+      process.env.PATH = path;
+      // The fake stop keeps what the real one releases.
+      mode.themeChangeUnsubscribe?.();
+    }
+    assert.deepEqual(sent, quitOn === "first" ? ["first"] : ["first", "second"]);
+    assert.deepEqual(exits, [{ code: 0, error: undefined }]);
+  });
+}
+
+it("a hosted screen that has stopped builds nothing an extension asks of it", () => {
+  const { mode } = screen();
+  mode.hostedExit = Promise.resolve();
+  const built = mock.fn(() => ({ render: () => [], invalidate: () => undefined }));
+  const listen = mock.fn(() => () => undefined);
+  Object.assign(mode, {
+    builtInHeader: {},
+    extensionWidgetsAbove: new Map(),
+    extensionWidgetsBelow: new Map(),
+    footerContainer: { clear: mock.fn(), addChild: mock.fn() },
+    headerContainer: { children: [] },
+    renderWidgets: mock.fn(),
+  });
+  mode.ui.addInputListener = listen;
+  const asks = {
+    widget: () => mode.setExtensionWidget("w", built),
+    footer: () => mode.setExtensionFooter(built),
+    header: () => mode.setExtensionHeader(built),
+    editor: () => mode.setCustomEditorComponent(built),
+  };
+  for (const [what, ask] of Object.entries(asks)) {
+    ask();
+    assert.equal(built.mock.callCount(), 0, `a ${what} was built for a stopped screen`);
+  }
+  const unsubscribe = mode.addExtensionTerminalInputListener(() => undefined);
+  assert.equal(listen.mock.callCount(), 0, "a stopped screen took an input listener");
+  unsubscribe();
+});
 
 it("quitting one hosted screen leaves its sibling alive and notifies once", async () => {
   forbidProcessExit();

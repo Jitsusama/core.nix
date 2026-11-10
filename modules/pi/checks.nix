@@ -359,8 +359,9 @@ in
       '';
 
   # A hosted pi's screen stays in its own conversation: quitting or a crash
-  # ends only that screen, a suspend stops only the viewer that asked, every
-  # screen hears a theme change, and ordinary pi keeps every path.
+  # ends only that screen and what it was doing, a stopped screen builds
+  # nothing for an extension, a suspend stops only the viewer that asked,
+  # every screen hears a theme change, and ordinary pi keeps every path.
   pi-hosted-screen-stays-in-its-session =
     pkgs.runCommandLocal "pi-hosted-screen-stays-in-its-session" { }
       ''
