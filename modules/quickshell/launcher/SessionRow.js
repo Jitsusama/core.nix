@@ -393,10 +393,10 @@ function summary(states, spent, said) {
 }
 
 // Agents' Recent: the sessions that closed this boot (Sessions.closed),
-// as Recent.js lists them, by id and when each ended (RSCH-20261030-GB56HX).
+// as Recent.js lists them, by id and when each ended (RSCH-20261030-GB56HX),
+// its `ended` in milliseconds as Sessions keeps it.
 function closedRecent(closed) {
-    return (closed ?? []).map(one => ({ key: `session:${one.id}`, at: Date.parse(one.endedAt),
-        row: one }));
+    return (closed ?? []).map(one => ({ key: `session:${one.id}`, at: one.ended, row: one }));
 }
 
 // Those closed Agents shows already, as closedRecent keys them: a closed
@@ -424,12 +424,13 @@ function closedNote(one) {
 
 // When a closed session ended, at its right: "closed 23:41" today, and
 // with its day before, "closed Fri 23:41", as `day` names a date. `said`
-// is the vocabulary's agents words.
+// is the vocabulary's agents words, and `endedAt` when it ended, in
+// milliseconds.
 function closedAt(endedAt, now, said, day) {
-    const ended = new Date(endedAt);
-    if (Number.isNaN(ended.getTime())) {
+    if (typeof endedAt !== "number" || !Number.isFinite(endedAt)) {
         return String(said.closed ?? "");
     }
+    const ended = new Date(endedAt);
     const time = [ended.getHours(), ended.getMinutes()].map(part => String(part).padStart(2,
         "0")).join(":");
     const today = ended.toDateString() === now.toDateString();

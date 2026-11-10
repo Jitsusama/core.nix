@@ -71,16 +71,18 @@ Singleton {
     // Each session here that ended this boot and isn't parked, closed or
     // gone with its process, the one that ended last first, by id when
     // two ended at once: shown as each parked one is, with `id`, its
-    // `quest` where it had one, and `endedAt`, when the node last heard of
-    // it, as an ISO time. What a closed session's record can't tell, as
+    // `quest` where it had one, and `ended`, when the node last heard of
+    // it, in milliseconds, kept a number since the node gives one and each
+    // opening reads it: writing it out as a time only for Agents' Recent
+    // to read it back at every change cost a date's sums twice a session
+    // (2026-11-10). What a closed session's record can't tell, as
     // when it was lost or whether it was carried, isn't said. Agents'
     // Recent reads it beside toReopen, the last boot's.
     readonly property var closed: ending.map(record => Object.assign(shown(record, {}), {
         id: String(record.presence.session ?? record.file),
         quest: record.presence.questInfo?.id ?? record.presence.quest ?? null,
-        endedAt: new Date(record.changed).toISOString()
-    })).sort((one, other) => other.endedAt.localeCompare(one.endedAt)
-        || one.id.localeCompare(other.id))
+        ended: record.changed
+    })).sort((one, other) => other.ended - one.ended || one.id.localeCompare(other.id))
 
     // A session as `running` lists it, from its record, with niri's windows
     // by app id when they're at hand (windowOf).
