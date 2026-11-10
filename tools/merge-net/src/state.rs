@@ -59,7 +59,7 @@ impl State {
 
     /// Make the folders it writes into.
     pub fn make(&self) -> Result<(), String> {
-        for folder in ["findings", "logs"] {
+        for folder in ["findings", "logs", "settling"] {
             fs::create_dir_all(self.root.join(folder))
                 .map_err(|error| format!("making {}: {error}", self.root.join(folder).display()))?;
         }
@@ -225,6 +225,43 @@ impl State {
                         && finding["commit"] == commit
                 })
             })
+    }
+
+    /// Keep a job handed to the settler for `test` until it's settled.
+    pub fn keep_settling(&self, test: &str, job: &Value) -> Result<(), String> {
+        write_json(&self.settling_file(test), job)
+    }
+
+    /// Let go of `test`'s job, settled.
+    pub fn settled(&self, test: &str) -> Result<(), String> {
+        let kept = self.settling_file(test);
+        match fs::remove_file(&kept) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                Err(format!("letting go of {}: {error}", kept.display()))
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// Every job kept for the settler.
+    pub fn settling(&self) -> Vec<Value> {
+        let Ok(entries) = fs::read_dir(self.root.join("settling")) else {
+            return Vec::new();
+        };
+        let mut kept: Vec<PathBuf> = entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension == "json")
+            })
+            .collect();
+        kept.sort();
+        kept.iter().filter_map(|path| read_json(path)).collect()
+    }
+
+    fn settling_file(&self, test: &str) -> PathBuf {
+        self.root.join("settling").join(format!("{test}.json"))
     }
 
     /// Say something in the net's own log, and on its standard error.

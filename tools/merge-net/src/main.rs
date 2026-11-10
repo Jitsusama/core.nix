@@ -13,7 +13,8 @@
 //! that fails and then passes goes on the quarantine list
 //! (`quarantine.json`) instead, and nothing is reverted for it. It starts
 //! nothing while the machine is held or paused (`holds.rs`, `state.rs`).
-//! `watch.rs` says what a round does; `state.rs` what it keeps, and where.
+//! `watch.rs` says what a round does, `watch/settling.rs` how what it found
+//! settles beside the next, and `state.rs` what it keeps, and where.
 //!
 //! `merge-net needs`, on a branch, says whether its change runs VM tests
 //! before it merges, rather than after on the net, and which: a change to
@@ -139,8 +140,34 @@ fn watching(rest: &[&str]) -> Result<ExitCode, String> {
         world.branch,
         short(&start)
     ));
+    // What a round found settles beside the rounds after it, so a merge
+    // waits behind the round's tests alone. The net ends only once the
+    // settler has finished what it was handed.
+    let settler = watch::Settler::new(&world, &state);
+    let ended = std::thread::scope(|scope| {
+        settler.start(scope);
+        let ended = rounds(&world, &state, &start, &settler, once, follow.as_deref());
+        settler.close();
+        ended
+    });
+    if once && settler.error().is_some() {
+        return Ok(ExitCode::FAILURE);
+    }
+    ended
+}
+
+/// Run round after round, or one with `once`, until another merge-net is
+/// installed at `follow`.
+fn rounds(
+    world: &Real,
+    state: &State,
+    start: &str,
+    settler: &watch::Settler,
+    once: bool,
+    follow: Option<&Path>,
+) -> Result<ExitCode, String> {
     loop {
-        let round = watch::round(&world, &state, &start);
+        let round = watch::round_beside(world, state, start, settler);
         let rest = match &round {
             Ok(Round::Passed(_) | Round::Failed(_)) => 0,
             Ok(Round::Idle) => 60,
@@ -163,7 +190,7 @@ fn watching(rest: &[&str]) -> Result<ExitCode, String> {
                 ExitCode::FAILURE
             });
         }
-        if let Some(installed) = &follow
+        if let Some(installed) = follow
             && replaced(fs::canonicalize(installed), env::current_exe())
         {
             state.say("another merge-net is installed, so this one ends between rounds");
