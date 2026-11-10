@@ -83,6 +83,7 @@ use std::process::{Command, Stdio};
 
 use crate::held;
 use crate::passed;
+use crate::proof;
 
 /// What a `there` was asked to build, and how.
 #[derive(Debug, PartialEq, Eq)]
@@ -650,7 +651,9 @@ pub fn derivation_system(written: &str) -> Option<String> {
 
 /// What the lent builder `dir`'s lender lends builds for, as its machines
 /// line says, and on Linux this machine's own system where none is lent
-/// yet, since the builder asked for then is built as this one is.
+/// yet, since the builder asked for then is built as this one is. The
+/// line is the one naming the store's host: root reaches it as another
+/// account, by a URI of its own, so the two never match whole.
 pub fn lent_systems(dir: &Path) -> Vec<String> {
     let store = fs::read_to_string(dir.join("store")).unwrap_or_default();
     let store = store.lines().next().unwrap_or_default().trim();
@@ -659,8 +662,9 @@ pub fn lent_systems(dir: &Path) -> Vec<String> {
         .lines()
         .filter(|_| !store.is_empty())
         .find_map(|line| {
-            let (uri, rest) = line.split_once(' ')?;
-            (uri == store).then(|| rest.split_whitespace().next().map(str::to_owned))?
+            let (_, rest) = line.split_once(' ')?;
+            (proof::named(line) == proof::named(store))
+                .then(|| rest.split_whitespace().next().map(str::to_owned))?
         })
         .map(|systems| systems.split(',').map(str::to_owned).collect());
     named.unwrap_or_else(|| {
@@ -878,7 +882,10 @@ const PLANS: &str = "xargs -r nix-store --realise --dry-run 2>&1";
 /// referenced, the builder fetches from its source first, and only one
 /// it couldn't goes up: on 9 November a proxy refused a lent builder a Go
 /// zone's modules, which this machine held. The builder's account is one
-/// its daemon trusts, so they go unsigned.
+/// its daemon doesn't trust, since a trusted one is root there, so only
+/// what's signed by a key it trusts, as this machine's own is, or
+/// content-addressed goes up; an output built here before this machine
+/// signed what it built the builder builds itself.
 ///
 /// When any of it fails, or the send falls behind [`send_within`], the
 /// builder builds what it still lacks, and of what that's built from only
@@ -912,7 +919,7 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
     let outputs = derivations
         .values()
         .flat_map(|derivation| derivation.outputs.values());
-    let mut holds = held::held(&json_of(
+    let mut holds = held::signed(&json_of(
         Command::new(nix)
             .args(["path-info", "--json"])
             .args(outputs),
@@ -1025,13 +1032,7 @@ fn sent_held(
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let within = send_within(size);
     let sent = Command::new(nix)
-        .args([
-            "copy",
-            "--to",
-            &lent.store,
-            "--no-check-sigs",
-            "--substitute-on-destination",
-        ])
+        .args(["copy", "--to", &lent.store, "--substitute-on-destination"])
         .args(&sending)
         .env("TMPDIR", "/tmp")
         .spawn()
@@ -3590,6 +3591,28 @@ mod tests {
             None
         );
         assert_eq!(foreign(&paths, &[], read), None, "systems not known");
+    }
+
+    // The store names the account `there` reaches the builder as, and its
+    // key; root's line names hook, and neither has the other's options.
+    #[test]
+    fn what_the_lent_builder_builds_for_is_read_from_the_line_naming_its_host() {
+        let folder = tempfile::tempdir().expect("a folder");
+        fs::write(
+            folder.path().join("store"),
+            "ssh-ng://nix-offload?compress=true&ssh-key=/k&base64-ssh-public-host-key=K\n",
+        )
+        .expect("the store");
+        fs::write(
+            folder.path().join("machines"),
+            "ssh-ng://home x86_64-linux - 4\n\
+             ssh-ng://hook@nix-offload?compress=true aarch64-linux,x86_64-linux /k 8 1 - - K\n",
+        )
+        .expect("the machines");
+        assert_eq!(
+            lent_systems(folder.path()),
+            ["aarch64-linux", "x86_64-linux"]
+        );
     }
 
     #[test]
