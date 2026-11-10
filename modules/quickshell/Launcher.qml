@@ -7735,6 +7735,7 @@ Scope {
             return;
         const took = Math.round(KeyTimes.now() - asked);
         const felt = chordAt < 0 ? -1 : Math.round(Date.now() - chordAt);
+        feltBegin(felt < 0 ? asked : KeyTimes.now() - felt, felt >= 0);
         const heard = Math.round(chordHeardAfter);
         chordAt = -1;
         const parts = Pacing.openingParts(openParts);
@@ -7754,6 +7755,57 @@ Scope {
             + (first ? ", the first since the shell started" : "")
             + (felt < 0 ? "" : `; ${felt} ms from the chord, heard ${heard} ms after it`));
     }
+
+    // How long Joel waited for an opening to be usable, from his chord (or
+    // the ask, for one that didn't say when it ran) to the first 100 ms in
+    // which the shell's thread answered a 16 ms tick on time, and the
+    // longest stall between, which its first frame can't say: his 15:08
+    // openings logged 437 ms to their frame and showed the launcher 7 s
+    // after his chord, when the thread came free (Joel, 2026-11-10: "It
+    // takes 7 seconds for me to see the launcher window"). It ticks only
+    // from an opening's first frame until then, or 15 s, never while shut.
+    readonly property var feltPace: ({ every: 16, within: 17, calmFor: 100 })
+    property var feltTicks: Pacing.feltBegun(0)
+    property real feltFrom: -1
+    property bool feltFromChord: false
+    function feltBegin(from, fromChord) {
+        if (feltTicking.running)
+            feltSaid();
+        feltTicks = Pacing.feltBegun(KeyTimes.now());
+        feltFrom = from;
+        feltFromChord = fromChord;
+        feltTicking.start();
+    }
+    function feltTicked() {
+        const now = KeyTimes.now();
+        feltTicks = Pacing.feltTicked(feltTicks, now, feltPace);
+        if (feltTicks.usable >= 0 || !open || now - feltFrom > feltGiveUp)
+            feltSaid();
+    }
+    readonly property int feltGiveUp: 15000
+    function feltSaid() {
+        feltTicking.stop();
+        const usable = feltTicks.usable < 0 ? -1 : Math.round(feltTicks.usable - feltFrom);
+        const stalled = Math.round(feltTicks.stall);
+        const last = openingsTimed[openingsTimed.length - 1];
+        if (last)
+            openingsTimed = openingsTimed.slice(0, -1)
+                .concat([Object.assign({}, last, { usable, stalled })]);
+        const from = feltFromChord ? "the chord" : "the ask";
+        const waited = Math.round(KeyTimes.now() - feltFrom);
+        console.info(usable >= 0
+            ? `launcher: opening usable ${usable} ms from ${from}, its longest stall ${stalled} ms`
+            : `launcher: opening not usable ${waited} ms from ${from}, its longest stall`
+                + ` ${stalled} ms` + (open ? "" : ", closed first"));
+    }
+    Timer {
+        id: feltTicking
+
+        interval: root.feltPace.every
+        repeat: true
+        onTriggered: root.feltTicked()
+    }
+
     function madeSince(when) {
         madeFrom = { rows: tallies(), texts: Fuzzy.keptSoFar(), changes: Object.assign({}, changesIn),
             when: when };

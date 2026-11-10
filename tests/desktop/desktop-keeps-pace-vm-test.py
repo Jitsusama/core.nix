@@ -636,7 +636,12 @@ def openings(desktop: Desktop) -> list[Json]:
 
 
 def opened_timed(desktop: Desktop) -> Json:
-    """Open the launcher as its chord does, and give that opening's time to its first frame."""
+    """Open the launcher as its chord does, and give that opening's times once it's usable.
+
+    Its first frame isn't what Joel sees, so it's kept open until it says when it was usable,
+    the shell's thread answering on time (Joel, 2026-11-10: "It takes 7 seconds for me to see
+    the launcher window").
+    """
     timed = len(openings(desktop))
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
@@ -644,7 +649,7 @@ def opened_timed(desktop: Desktop) -> Json:
 
     def drawn(_: bool) -> bool:
         each[:] = openings(desktop)
-        return len(each) > timed
+        return len(each) > timed and "usable" in each[-1]
 
     retry(drawn, timeout=REACHING)
     desktop.close_launcher()
@@ -696,6 +701,10 @@ def test_the_first_opening_after_the_shell_starts_shows_soon_while_every_core_is
             f"{'under load' if loaded else 'with the load frozen'}, the first opening after a"
             f" start {opening}, and the one after it {after}"
         )
+    unusable = [
+        each for _, opening, after in said for each in (opening, after) if each["usable"] < 0
+    ]
+    assert not unusable, f"an opening never answered on time for 100 ms: {unusable}"
     weighing = [after for _, _, after in said if after.get("verbs") != 0]
     assert not weighing, f"an opening after the first weighed the verbs again: {weighing}"
     assert middle(first[True]) <= SLOWER_MOST * middle(first[False]) + STEPPED_MORE, (

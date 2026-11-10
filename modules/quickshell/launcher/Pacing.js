@@ -115,3 +115,25 @@ function openingParts(parts) {
     }
     return said.map(part => `${part.name} ${part.ms}`).join(", ");
 }
+
+// When an opening became usable, from a timer ticking every `every` ms
+// after its first frame: the start of the first `calmFor` ms in which no
+// tick came more than `within` ms late, so the shell's thread was free to
+// draw what niri asked and to answer a key. Its first frame alone wasn't
+// what Joel saw: his openings logged 437 ms to their frame and showed him
+// the launcher about 7 s after his chord, when the thread came free (Joel,
+// 2026-11-10: "It takes 7 seconds for me to see the launcher window").
+// `stall` is the longest gap between ticks, and `usable` is -1 until then.
+function feltBegun(now) {
+    return { last: now, calm: now, stall: 0, usable: -1 };
+}
+
+function feltTicked(felt, now, pace) {
+    if (felt.usable >= 0) {
+        return felt;
+    }
+    const gap = now - felt.last;
+    const calm = gap - pace.every > pace.within ? now : felt.calm;
+    return { last: now, calm, stall: Math.max(felt.stall, gap),
+        usable: now - calm >= pace.calmFor ? calm : -1 };
+}

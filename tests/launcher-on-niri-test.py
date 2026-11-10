@@ -41,6 +41,8 @@ READ = timedelta(seconds=5)
 SEEING_ENDS = timedelta(seconds=4)
 # How long before its line a chord is said to have run, well past any opening's own time here.
 CHORD_AGO = timedelta(seconds=2)
+# How long the shell is held stopped just after a chord, well past any opening's own time here.
+HELD = timedelta(seconds=2)
 
 
 @pytest.fixture(scope="module")
@@ -1844,6 +1846,31 @@ def test_an_opening_is_timed_from_the_chord_that_asked_for_it(shell: Shell) -> N
         time.sleep(launcher_on_niri.POLL)
     ago = CHORD_AGO.total_seconds() * 1000
     assert felt >= ago, f"the opening was timed {felt} ms from a chord {ago:.0f} ms before it"
+
+
+def test_an_opening_is_usable_only_once_the_shell_is_free_after_its_chord(shell: Shell) -> None:
+    """An opening is usable only once the shell's thread answers on time, however soon it drew.
+
+    Joel's openings logged 437 ms to their first frame and showed him the launcher 7 s after his
+    chord, once the shell's thread came free (Joel, 2026-11-10: "It takes 7 seconds for me to see
+    the launcher window"). So a shell held stopped just after a chord says the opening wasn't
+    usable until at least that long after it.
+    """
+    with socket.socket(socket.AF_UNIX) as said:
+        said.connect(str(Path(os.environ["XDG_RUNTIME_DIR"]) / "launcher.sock"))
+        said.sendall(f"toggle @{time.time():.6f}\n".encode())
+    with shell.frozen():
+        # How long the shell is held, as its thread was held after Joel's chords.
+        time.sleep(HELD.total_seconds())
+    shell.launcher_ready()
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    usable = -1
+    while usable < 0 and time.monotonic() < deadline:
+        openings = json.loads(shell.as_account(shell.ipc("openings")))
+        usable = openings[-1].get("usable", -1) if openings else -1
+        time.sleep(launcher_on_niri.POLL)
+    held = HELD.total_seconds() * 1000
+    assert usable >= held, f"the opening was usable {usable} ms after a shell held {held:.0f} ms"
 
 
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
