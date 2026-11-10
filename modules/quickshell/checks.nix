@@ -1082,6 +1082,7 @@ onLinux {
     pkgs.runCommandLocal "the-rows-hear-only-a-new-place" { } ''
       cp ${../../tests/rows-place.qml} rows-place.qml
       cp ${./launcher/RowsPlace.js} RowsPlace.js
+      cp ${../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
