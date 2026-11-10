@@ -20,6 +20,12 @@ const BANDS = [35, 350, 3500, 35_000];
 const MOST = BANDS.length;
 // The significant figures a distance or a speed is said to.
 const FIGURES = 3;
+// How near a fix is rounds up, so it never claims nearer than it knows,
+// and drops its zeros (Y2YBTS's review of #2785); a speed is a measure,
+// which keeps them, so its width holds as it changes, as design.md's Set,
+// Not Styled has "0.500 A" (VKCF3Z, 2026-11-10).
+const WITHIN = { up: true, zeros: false };
+const MEASURED = { up: false, zeros: true };
 const TEN = 10;
 // The widest a fix may be for its zone to move the clock, where its zone
 // holds round its circle and where nothing says, as clock-follows decides
@@ -53,27 +59,28 @@ function coordinates(here, said) {
 // whichever of metres and kilometres keeps it under a thousand: "within
 // 80 m", "within 1.01 km", "within 26 km", "within 1,240 km".
 function within(metres, said, told) {
-    const near = figured(metres, true, told);
+    const near = figured(metres, WITHIN, told);
     if (near.value < KILOMETRE) {
         return said.metres.replace("{n}", near.text);
     }
-    return said.kilometres.replace("{n}", figured(metres / KILOMETRE, true, told).text);
+    return said.kilometres.replace("{n}", figured(metres / KILOMETRE, WITHIN, told).text);
 }
 
-// A figure to three significant figures, `up` rounding up where it mustn't
-// claim less than it is, as how near a fix is, else to the nearest, and
-// with no trailing zeros, since 26.0 says nothing 26 doesn't: "1.01",
-// "26", "1,240". Past three whole digits the rest round to tens and
+// A figure to three significant figures, rounding up where `how.up`
+// says it mustn't claim less than it is, else to the nearest, and with
+// its trailing zeros where `how.zeros` keeps them: "1.01", "26" or
+// "26.0", "1,240". Past three whole digits the rest round to tens and
 // hundreds, and the rounding is kept whole either side of the point, so
 // a float never says 1,239.9999 for 1,240. Its value and its text.
-function figured(value, up, told) {
+function figured(value, how, told) {
     const whole = Math.max(1, Math.floor(Math.log10(Math.max(value, 1))) + 1);
     const decimals = FIGURES - whole;
-    const round = up ? (scaled) => Math.ceil(scaled - 1e-9) : Math.round;
+    const round = how.up ? (scaled) => Math.ceil(scaled - 1e-9) : Math.round;
     const rounded = decimals >= 0
         ? round(value * TEN ** decimals) / TEN ** decimals
         : round(value / TEN ** -decimals) * TEN ** -decimals;
-    const kept = Math.max(0, Math.min(decimals, (String(rounded).split(".")[1] ?? "").length));
+    const written = (String(rounded).split(".")[1] ?? "").length;
+    const kept = Math.max(0, how.zeros ? decimals : Math.min(decimals, written));
     return { value: rounded, text: told.number(rounded, kept) };
 }
 
@@ -128,14 +135,13 @@ const MEASURES = [
 ];
 
 // A measure's figure: to its places where it keeps a fixed number, else
-// to three significant figures, to the nearest, as a distance is said
-// but for its rounding, so 10 m/s reads "36 km/h" as a distance reads
-// "26 km" (Y2YBTS's review of #2785).
+// to three significant figures, to the nearest, keeping its zeros, so
+// 10 m/s reads "36.0 km/h".
 function figure(value, decimals, told) {
     if (decimals !== undefined) {
         return told.number(value, decimals);
     }
-    return figured(value, false, told).text;
+    return figured(value, MEASURED, told).text;
 }
 
 function held(value) {
