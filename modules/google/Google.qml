@@ -29,11 +29,31 @@ Singleton {
         keptThroughGap: false
     }
 
-    // The account as the program keeps it, gathered once a change; none
-    // while the daemon isn't answering (Google.js's gathered).
-    readonly property var said: google.revision >= 0
-        ? Said.gathered(google.held, google.state === "answering") : null
-    onSaidChanged: hear(said)
+    // What's kept of the daemon's records, each kind's by key (Google.js's
+    // keep), so a change remakes only the parts of the kinds it names: the
+    // account told again each minute remakes the account's own parts and
+    // never a list. A plain object, so keeping one notifies nothing.
+    readonly property var kept: Said.keeping()
+    // Whether there was an account to say at the last change, so the
+    // change that first says one remakes every part.
+    property bool ready: false
+
+    Connections {
+        target: google
+        function onHeard(changed, gone) {
+            root.took(Said.keep(root.kept, google.held, changed.concat(gone)));
+        }
+    }
+
+    // Takes the parts the kinds moved make (Google.js's partsOf), each
+    // only if its text changed (hear); none while the daemon isn't
+    // answering.
+    function took(moved) {
+        const now = Said.ready(kept, answering);
+        const parts = Said.partsOf(kept, now && !ready ? Said.everyKind() : moved, answering);
+        ready = now;
+        hear(parts);
+    }
 
     // "none", "signedOut", "unreachable" or "ready", as the program says.
     property string account: "none"
@@ -126,6 +146,7 @@ Singleton {
     property var following: []
     readonly property bool answering: google.state === "answering"
     onAnsweringChanged: {
+        took({});
         if (answering && following.length > 0)
             ask(Said.follow(following));
     }

@@ -12,44 +12,127 @@ const ACCOUNT = "account:google";
 // (src/drive.rs's Kind::ALL), each kind's last looked at first.
 const DOCUMENTS = ["document", "spreadsheet", "presentation"];
 
-// The account as the program keeps it, gathered from the daemon's
-// records, held by key. A record carries no place, so each kind is put
-// back in its order by its own fields: meetings by when they start, mail
-// newest first, documents by kind and then last looked at first. Until
-// the daemon answers and says how the account stands, as on a machine
-// nobody signed in to Google on, there's no account; nor once it stops
-// answering, since what it held may not be Joel's to see any more.
-function gathered(held, answering) {
-    const account = answering ? held?.[ACCOUNT] : undefined;
-    if (typeof account?.account?.standing !== "string") {
+// The kinds of record the daemon keeps besides the account
+// (src/daemon.rs's KINDS), each by key.
+const KINDS = ["meeting", "mail", "file", "held", "lately", "call"];
+
+// What's kept of the daemon's records: the account's, and each other
+// kind's things by key, so a change remakes only the parts whose keys it
+// names (Daemon.qml's heard). The account's record is told again each
+// time Google answers, and every list was walked and its text made anew
+// at each, 169 records about twice a minute on Joel's shell (RCTRF8,
+// 2026-11-10).
+function keeping() {
+    const kept = { account: null };
+    for (const kind of KINDS) {
+        kept[kind] = {};
+    }
+    return kept;
+}
+
+// Every kind, as moved, for a part to be remade whole.
+function everyKind() {
+    const every = { account: true };
+    for (const kind of KINDS) {
+        every[kind] = true;
+    }
+    return every;
+}
+
+// Takes what `held` (Daemon.qml's) says of these keys into `kept`, and
+// says which kinds moved, each true. A key's kind is how it begins, as the
+// daemon makes them, so a key gone is placed without its record.
+function keep(kept, held, keys) {
+    const moved = {};
+    for (const key of keys) {
+        const kind = key.slice(0, key.indexOf(":"));
+        const record = held?.[key];
+        const thing = record?.kind === kind ? record[kind] : undefined;
+        if (kind === "account") {
+            if (key !== ACCOUNT) {
+                continue;
+            }
+            kept.account = record ?? null;
+        } else if (!KINDS.includes(kind)) {
+            continue;
+        } else if (thing) {
+            kept[kind][key] = thing;
+        } else {
+            delete kept[kind][key];
+        }
+        moved[kind] = true;
+    }
+    return moved;
+}
+
+// The parts of the account as the program keeps it (stateOf's) that the
+// kinds moved make, from what's kept. A record carries no place, so each
+// kind is put back in its order by its own fields: meetings by when they
+// start, mail newest first, documents by kind and then last looked at
+// first. Until the daemon answers and says how the account stands, as on
+// a machine nobody signed in to Google on, there's no account, and every
+// part is none; nor once it stops answering, since what it held may not
+// be Joel's to see any more.
+function partsOf(kept, moved, answering) {
+    if (!ready(kept, answering)) {
         return stateOf({ account: "none", meetings: [] });
     }
-    const of = kind => Object.values(held)
-        .filter(record => record?.kind === kind && record[kind])
-        .map(record => record[kind]);
+    const account = kept.account;
+    const of = kind => Object.values(kept[kind]);
     const rank = kind => {
         const at = DOCUMENTS.indexOf(kind);
         return at < 0 ? DOCUMENTS.length : at;
     };
-    return stateOf({
-        account: account.account.standing,
-        meetings: of("meeting").sort((one, other) => one.start - other.start),
+    const parts = {};
+    if (moved.meeting) {
+        parts.meetings = of("meeting").sort((one, other) => one.start - other.start);
+    }
+    if (moved.mail) {
         // Mail done is still a mail record, saying how it went, so what
         // wants Joel is the mail without a `done` (src/done.rs).
-        mail: of("mail").filter(mail => !mail.done).sort((one, other) => other.at - one.at),
-        finished: of("mail").filter(mail => mail.done)
-            .sort((one, other) => other.done.at - one.done.at),
-        unread: account.account.unread,
-        documents: of("file").sort((one, other) => rank(one.kind) - rank(other.kind)
-            || (other.viewed ?? 0) - (one.viewed ?? 0)),
-        held: of("held").sort((one, other) => one.start - other.start),
-        lately: of("lately").sort((one, other) => other.at - one.at),
-        calls: of("call"),
-        heard: account.heard,
-        fetched: account.account.fetched,
-        meet: account.account.meet,
-        drive: account.account.drive
-    });
+        parts.mail = of("mail").filter(mail => !mail.done)
+            .sort((one, other) => other.at - one.at);
+        parts.finished = of("mail").filter(mail => mail.done)
+            .sort((one, other) => other.done.at - one.done.at);
+    }
+    if (moved.file) {
+        parts.documents = of("file").sort((one, other) => rank(one.kind) - rank(other.kind)
+            || (other.viewed ?? 0) - (one.viewed ?? 0));
+    }
+    if (moved.held) {
+        parts.held = of("held").sort((one, other) => one.start - other.start);
+    }
+    if (moved.lately) {
+        parts.lately = of("lately").sort((one, other) => other.at - one.at);
+    }
+    if (moved.call) {
+        parts.calls = of("call");
+    }
+    if (moved.account) {
+        const own = stateOf({ account: account.account.standing, meetings: [],
+            unread: account.account.unread, heard: account.heard,
+            fetched: account.account.fetched, meet: account.account.meet,
+            drive: account.account.drive });
+        for (const part of ["account", "unread", "heard", "fetched", "meet", "drive"]) {
+            parts[part] = own[part];
+        }
+    }
+    return parts;
+}
+
+// Whether there's an account to say: the daemon answers and has said how
+// it stands. Until there is, every part is none, so once there is every
+// part is remade, whichever kinds moved.
+function ready(kept, answering) {
+    return answering && typeof kept.account?.account?.standing === "string";
+}
+
+// The account as the program keeps it, gathered whole from the daemon's
+// records, held by key, as partsOf says each part.
+function gathered(held, answering) {
+    const kept = keeping();
+    keep(kept, held, Object.keys(held ?? {}));
+    return stateOf(Object.assign({ meetings: [] }, partsOf(kept, everyKind(), answering)));
 }
 
 // The account in the program's shape, or null when `said` isn't one.
