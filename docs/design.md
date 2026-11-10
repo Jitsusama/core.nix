@@ -494,8 +494,9 @@ eyebrows of one place share one shape, where the thing
 is and then its kind ("via Example ISP", "eero Pro 6 · node", "on Study
 · Wi-Fi"), and say no state, which its first fact says. Nothing the
 launcher shows names a daemon: it says where a thing came from ("set by
-hand · location"), never what told it, such as GeoClue, and never a
-source it can't tell ("found · location"). Short of room,
+hand · location", "via Wi-Fi · location", "via cell towers ·
+location"), never what told it, such as GeoClue, and never a source it
+can't tell ("found · location"). Short of room,
 an eyebrow gives way by whole items from its end, as a note does. Each
 surface says which levels it shows, in the surfaces table.
 
@@ -1453,7 +1454,14 @@ works the same way everywhere.
   running" with none), else "none" or "nobody lately" while it holds
   nothing, a lowercase run and never the sentence that stays inside it,
   else how many it holds ("78 keys"); a place that only groups others
-  (Machine, Network, Desktop) says nothing there. Now's right names the
+  (Machine, Network, Desktop) says nothing there. What's pressing leads
+  that run: Timers reads "rang 21:20 · 1 running" once one has rung and
+  "paused · 1:00 · 1 running" while its first is held, else "2 running ·
+  23:44", the soonest's time left (VKCF3Z, 158ac71f). Return on a place
+  opens it, and its foot says so ("↵ open"). A thing keeps its detail
+  after its name, as every row does: a call names who's in it, a
+  meeting its time, a track its artist. Only a row that opens a list of
+  its own goes bare (VKCF3Z, 2026-11-09). Now's right names the
   first thing waiting on Joel, its minutes and how many more he can do
   now ("Answer the ask · 2 min · 2 more"); short of room its title gives
   way by whole words behind an ellipsis, its minutes and counts never
@@ -1462,8 +1470,11 @@ works the same way everywhere.
   row inside Now counts every band, needed most first ("1 to do · 44 to
   look at · 2 to try"), To Try giving way first, and as a place's row
   says nothing after its name, its drawer naming the heaviest it holds
-  (VKCF3Z, a31a0e1b, 3a92c450, 16efb1dc). Now's drawer is its moment
-  plate, which leaves out For You while the row says it. A place's
+  in a fact, Heaviest ("Answer the ask · 2 min"; VKCF3Z, a31a0e1b,
+  3a92c450, 16efb1dc). Now's drawer is its moment plate, holding only
+  the moment (the date, the clock, the week), never what waits, which
+  home's Now row already says, and nothing more when all is calm
+  (VKCF3Z, 8e0712aa, 25c253d3). A place's
   row is the same row at home and inside its parent, made by one
   function (Joel, 2026-11-08: "i don't like how the title and values on
   the home screen differ from every other sub-menu"; VKCF3Z, 2a429f67),
@@ -1513,9 +1524,10 @@ works the same way everywhere.
   doesn't; a look wears an eye, a landing to try a flask, a to-do and
   History the person and clock, and a source with no mark of its own
   the tray (VKCF3Z, 2026-11-08). Lately
-  follows, what came: a row per source holding parts ("Mail", "Slack"),
-  its side "12 to read", its note its senders newest first, ordered by
-  its heaviest, and a notice its source calls critical lifts into the
+  follows, what came: a place per source ("Mail", "Slack"), nothing
+  after its name, its side "12 to read", its drawer its senders newest
+  first (VKCF3Z, 2026-11-09), ordered by its heaviest, and a notice its
+  source calls critical lifts into the
   first band. A message inside is one row wherever it shows, Search
   Slack's hits included: named by its sender, its note its first line,
   or from the first word a find matched, its side its time, its eyebrow
@@ -1851,7 +1863,11 @@ works the same way everywhere.
   clock"), and a state of ours is lowercase wherever it's said ("normal",
   "off"). A figure takes the unit that fits it, "3.00 mV", never "0.00300
   V"; then its words,
-  a notice's in the serif upright its card reads them in; then its picture. Its
+  a notice's in the serif upright its card reads them in; then its
+  picture, only one that is the thing itself (album art, a screenshot, a
+  photo), never a program's own icon, for which its mark stands, and
+  never on a notice's card, while History keeps a notice's words alone,
+  since a picture can hold what's private (VKCF3Z, 2026-11-09). Its
   text is as far from its frame as the card's (the inset, l and the
   hairline) on every side, its foot included, so it ends at the last
   whole line inside that, and every line lies on one of
