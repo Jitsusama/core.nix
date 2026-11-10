@@ -3404,7 +3404,7 @@ onLinux {
       ${lib.getExe pkgs.socat} UNIX-LISTEN:$XDG_RUNTIME_DIR/tuple-0,fork,unlink-close=0 /dev/null &
       while [ ! -S $XDG_RUNTIME_DIR/tuple-0 ]; do sleep 0.1; done
       cat > sources.json <<EOF
-      {"sources": [{"name": "tuple",
+      {"sources": [{"name": "tuple", "stands": $(cat ${../tuple/stands.json}),
         "command": ["${helper}/bin/tuple-people", "people", "${tuple}/bin/tuple", "tuple-0"]}]}
       EOF
       ${lib.getExe people} $XDG_RUNTIME_DIR/daemons/people.sock $PWD/sources.json &

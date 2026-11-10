@@ -1,0 +1,9 @@
+{
+  "field": "status",
+  "words": {
+    "online": { "said": "available", "order": 0 },
+    "busy": { "said": "in a call", "order": 1 },
+    "unavailable": { "said": "away", "order": 2 },
+    "offline": { "said": "offline", "order": 3 }
+  }
+}

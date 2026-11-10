@@ -109,6 +109,12 @@ ShellRoot {
             holds: () => names(people.all) === "Ada Brook, Ben Carrow, Dee Ellery, Cal Dunmore",
             check: () => {
                 const open = people.all;
+                // Those listed are the daemon's, merged, standing and in
+                // order: with 600 people, merging them here took the GUI
+                // thread 26 to 38 ms, and ordering them 19 more
+                // (2026-11-10).
+                expect("listed as the daemon lists them, with no one merged here",
+                    people.merging.merges === 0, `${people.merging.merges} merges`);
                 expect("how each stands",
                     sides(open) === "available, in a call, away, offline", sides(open));
                 expect("a favourite wears a star",
