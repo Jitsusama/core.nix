@@ -1162,6 +1162,7 @@ onLinux {
     in
     pkgs.runCommandLocal "the-launcher-paces-its-refreshes" { } ''
       cp ${../../tests/pacing.qml} pacing.qml
+      cp ${./launcher/Order.js} Order.js
       cp ${./launcher/Pacing.js} Pacing.js
       cp ${./launcher/Wanted.js} Wanted.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
