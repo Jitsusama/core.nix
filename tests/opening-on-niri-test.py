@@ -44,6 +44,14 @@ SPOTS_LATER = timedelta(milliseconds=500)
 # within SPOTS_LATER fails it.
 REOPENINGS_TRIED = 3
 
+# How long niri leaves a surface off the screen before it answers a frame of its: once a
+# second (niri.rs's FRAME_CALLBACK_THROTTLE), so an opening that waited on one is plain.
+UNANSWERED_MS = 900
+
+# How long a window opening is given to reach the closed shell, which hears niri's events
+# within a few milliseconds of each.
+SETTLING_S = 2
+
 
 @pytest.fixture(scope="module")
 def shell() -> Iterator[Shell]:
@@ -295,3 +303,35 @@ def test_keys_typed_as_it_opens_land_and_are_found(shell: Shell) -> None:
     opening = each[-1]
     assert opening.get("kept"), f"the opening wasn't drawn from what was kept: {opening}"
     assert opening.get("filledBy") in {"frame", "key"}, f"nothing filled it in: {opening}"
+
+
+def test_a_kept_opening_fills_in_on_its_first_frame(shell: Shell) -> None:
+    """Kept at the card's size while closed, an opening moves it and fills on its first frame.
+
+    Grown from a pixel, every opening waited for niri to answer its new size and for a second
+    frame at it, 100 to 150 ms past its own work on Joel's laptop (2026-11-10). Closed, it's
+    above the screen, where niri answers its frames only once a second, so an opening that
+    waited on a frame drawn there takes most of a second to its own.
+    """
+    opening = opened_from_kept(shell)
+    assert opening["frames"] == 1, f"the kept opening waited on niri's size: {opening}"
+    assert opening["took"] < UNANSWERED_MS, f"the opening waited on a frame unanswered: {opening}"
+
+
+def test_the_closed_launcher_draws_nothing_as_windows_change(shell: Shell) -> None:
+    """Closed, the launcher draws no frame as a window opens and closes.
+
+    Kept at the card's size above the screen, a frame it drew there would wait a second for
+    niri to answer it, and the next opening behind it.
+    """
+    shell.launcher_until(lambda shown: shown.get("kept"))
+    drawn = shell.frames()
+    window = shell.opened("Godwit Notes")
+    try:
+        # The span measured, for the window's events to reach the shell, not a wait for an end.
+        time.sleep(SETTLING_S)
+    finally:
+        shell.close(window)
+    # The same span, for its closing.
+    time.sleep(SETTLING_S)
+    assert shell.frames() == drawn, f"closed, it drew {shell.frames() - drawn} frames"
