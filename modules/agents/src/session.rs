@@ -159,6 +159,28 @@ impl JoelCan {
     pub fn contains(&self, name: &str) -> bool {
         self.0.contains(name)
     }
+
+    /// Who has something Joel can do now, from the to-do daemon's
+    /// records (modules/to-do), which judge each to-do `now`, `later` or
+    /// `done`: each one now names its quest, the address the harness
+    /// keeps its file by (the quest's id's last part), and its owner's.
+    pub fn from_to_dos<'a>(records: impl IntoIterator<Item = &'a Value>) -> Self {
+        let mut names = HashSet::new();
+        for record in records {
+            if record.get("state").and_then(Value::as_str) != Some("now") {
+                continue;
+            }
+            let said = |field| record.pointer(field).and_then(Value::as_str);
+            if let Some(quest) = said("/item/quest").filter(|quest| !quest.is_empty()) {
+                names.insert(quest.to_owned());
+                names.insert(quest.rsplit('-').next().unwrap_or(quest).to_uppercase());
+            }
+            if let Some(owner) = said("/item/owner/address") {
+                names.insert(owner.to_owned());
+            }
+        }
+        Self(names)
+    }
 }
 
 /// Whether a session's want is truly on Joel (Waiting.asksJoel). A yes it
@@ -335,6 +357,21 @@ mod tests {
             !asks_joel(Some(&presence), &can(&["QEST-B"])),
             "another's isn't his"
         );
+    }
+
+    #[test]
+    fn joel_can_act_for_each_to_do_now_by_its_quest_and_owner() {
+        let records = [
+            json!({"state": "now", "item": {"quest": "QEST-20261106-reef01"}}),
+            json!({"state": "now", "item": {"quest": "slack", "owner": {"address": "P"}}}),
+            json!({"state": "later", "item": {"quest": "QEST-B"}}),
+            json!({"kind": "look", "state": "waiting"}),
+        ];
+        let can = JoelCan::from_to_dos(&records);
+        for name in ["QEST-20261106-reef01", "REEF01", "slack", "SLACK", "P"] {
+            assert!(can.contains(name), "{name} has something now");
+        }
+        assert!(!can.contains("QEST-B"), "one for later isn't now");
     }
 
     #[test]
