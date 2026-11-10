@@ -117,7 +117,8 @@ ShellRoot {
         expect("not moved before its sender's window is known", moves().length === 0,
             JSON.stringify(moves()));
         stage = "told";
-        tell({ changed: [{ key: "session:s-sender", held: "h-sender",
+        // Its window is read shut, so the node tells a new digest.
+        tell({ changed: [{ key: "session:s-sender", held: "h-sender", told: "0000000000000001",
             window: { terminal: "kitty", id: "4", within: "unix:@kitty-600",
                 app_id: "pi-session.3" } }] });
     }
@@ -161,7 +162,8 @@ ShellRoot {
                     const terminal = { driverId: "kitty", kind: "kitty-window",
                         hostId: "here", value: "4", scope: "unix:@kitty-600" };
                     const sender = { key: "session:s-sender", kind: "session",
-                        heard: Date.now(), id: "s-sender", state: "idle", here: true,
+                        heard: Date.now(), id: "s-sender", state: "idle",
+                        standing: "running", here: true,
                         machine: Sessions.machine, at: new Date().toISOString(),
                         window: null, held: null, presence: { session: "s-sender",
                             addresses: ["SENDER"], terminal: terminal } };

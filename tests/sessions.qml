@@ -11,9 +11,9 @@ pragma ComponentBehavior: Bound
 // window was opened with, or for one opened without, through the kitty its
 // record's terminal names, by kitty's own list of its several windows. Go
 // To focuses that window, or asks kitty when niri's isn't known. One the
-// node says has ended, parked, is held apart from those running while its marker stands,
-// and only then, however its record reads, and never once its boot is over; Wake, or talking to it, writes
-// the file its marker names. What an earlier boot's end took away is
+// node says is parked is held apart from those running, and one it says
+// closed apart again, however each record reads; Wake, or talking to one
+// parked, writes the file its marker names. What an earlier boot's end took away is
 // offered whole, but one that ran hosted, which its host brings back,
 // reopened held in its own folder, until put off, one pi
 // never saved started under its own id with its quest, and Reopen Them
@@ -26,8 +26,8 @@ pragma ComponentBehavior: Bound
 // of sessions on the realm's other machines is held too: each says its
 // machine, after this machine's; Go To joins one by the words its node
 // gives; one out of reach stays, saying so, and isn't joined; one pi's
-// host runs with no window is said and never opened; one last
-// heard of before this boot is passed over; and a steer to one is asked
+// host runs with no window is said and never opened; one the node says
+// nothing of how it stands is passed over; and a steer to one is asked
 // of the node, its refusal said. One the node says is gone goes; a
 // change saying only what differs keeps the rest of what the node said,
 // and one to a running session tells nothing of the parked or closed;
@@ -144,7 +144,7 @@ ShellRoot {
         const other = find("OTHER2");
         if (addresses() !== "FARAWY LIVE01 NOWIN6 OTHER2 OUTRCH" || !other || !other.window)
             return;
-        if (parkedAs() === "") {
+        if (!markersLaid) {
             parking.running = true;
             return;
         }
@@ -161,7 +161,7 @@ ShellRoot {
         expect("its kitty from its record's terminal",
             JSON.stringify(other.kitty) === '{"socket":"unix:@kitty-600","window":4}',
             JSON.stringify(other.kitty));
-        expect("one the node says has ended, and one before this boot elsewhere, aren't there",
+        expect("one the node says has ended, and one it passes over elsewhere, aren't there",
             Object.keys(Sessions.present).sort().join(" ") === "FARAWY LIVE01 NOWIN6 OTHER2 OUTRCH",
             Object.keys(Sessions.present).sort().join(" "));
         // LIVE01 here, and both elsewhere.
@@ -249,18 +249,18 @@ ShellRoot {
             && Niri.spawns.length === before + 1, `${root.unhosted} ${Niri.spawned.join(" ")}`);
     }
 
-    // One parked is listed apart, never running, and only while its marker
-    // stands; Wake writes the file the marker names, whole, in place, and
-    // talking to it asks the node to steer its inbox, then, once the node
-    // has, wakes it to read it.
+    // One the node says is parked is listed apart, never running, however
+    // its record reads; Wake writes the file its marker names, whole, in
+    // place, and talking to it asks the node to steer its inbox, then,
+    // once the node has, wakes it to read it.
     function parks() {
-        expect("only the one parked this boot whose marker stands is parked",
+        expect("only the one the node says is parked is parked",
             parkedAs() === "NAPPER", parkedAs());
-        // Those here that ended this boot and aren't parked are closed, the
-        // one parked before this boot among them, the latest first, by id
-        // when they ended at once, each saying when it ended.
+        // Those the node says are closed, one whose record says parked
+        // among them, the latest first, by id when they ended at once, each
+        // saying when it ended.
         const closed = Sessions.closed;
-        expect("closed, as each ended here this boot unparked",
+        expect("closed, as the node says each is",
             closed.map(one => one.id).join(" ") === "s-ENDED3 s-STALE7 s-WOKEN8",
             JSON.stringify(closed.map(one => one.id)));
         expect("each saying when it ended, and its address",
@@ -304,8 +304,13 @@ ShellRoot {
     // The marker of the one parked, naming its wake file, laid once the
     // shell has listed its sessions, in a park folder that wasn't there
     // till then, as the harness makes it only as a session first parks.
+    property bool markersLaid: false
     Process {
         id: parking
+        onExited: {
+            root.markersLaid = true;
+            Qt.callLater(root.check);
+        }
         command: ["sh", "-c", 'p="$1/pi/agentic-harness.pi/park-workflow/parked"; mkdir -p "$p"'
             + ' && printf \'{"session":"s-NAPPER","wake":"%s/napper.wake"}\' "$1"'
             + ' > "$p/s-NAPPER.json"'
@@ -460,10 +465,12 @@ ShellRoot {
         // Told only that it's working now, it keeps the rest of what the
         // node said of it: running here, now in kitty 600's first window,
         // which nothing named.
+        // Its terminal is read shut, so the node tells a new digest.
         stage = "differing";
         tell({
             changed: [{
                 key: "session:s-NOWIN6",
+                told: "0000000000000001",
                 presence: { session: "s-NOWIN6", addresses: ["NOWIN6"], busy: true,
                     terminal: root.terminal("unix:@kitty-600", "1") }
             }]
@@ -516,7 +523,8 @@ ShellRoot {
         expect("a window opened anew by its app id is its session's once niri says so",
             find("OTHER2")?.window?.id === 23, JSON.stringify(find("OTHER2")?.window));
         stage = "ended";
-        tell({ changed: [{ key: "session:s-OTHER2", state: "ended" }] });
+        tell({ changed: [{ key: "session:s-OTHER2", state: "ended", standing: "closed",
+            told: "0000000000000002" }] });
     }
 
     // One the node says has ended goes, though its record stays.
@@ -642,15 +650,17 @@ ShellRoot {
             key: `session:${id}`, kind: "session", heard: Date.now(), id: id, at: now,
             groups: [], title: "", window: null, held: null
         }, fields);
-        // One here, running, as its own record says it.
-        const here = (address, state, presence) => record(`s-${address}`, {
+        // One here, standing as the node says: running, or closed once
+        // ended, unless it's said otherwise.
+        const here = (address, state, presence, standing) => record(`s-${address}`, {
             address: address, machine: Sessions.machine, here: true, state: state,
+            standing: standing ?? (state === "ended" ? "closed" : "running"),
             presence: Object.assign({ session: `s-${address}`, addresses: [address] }, presence)
         });
-        // One on another machine.
-        const far = (id, address, state, at, attach) => record(id, {
+        // One on another machine, running unless the node passes it over.
+        const far = (id, address, state, at, attach, standing) => record(id, {
             address: address, machine: "lighthouse", here: false, state: state, at: at,
-            attach: attach,
+            attach: attach, standing: standing,
             presence: { addresses: [address], title: `\u03c0 - ${address} - /far`, busy: true }
         });
         return [
@@ -668,17 +678,19 @@ ShellRoot {
             // In a kitty niri shows no window of.
             here("NOWIN6", "idle", { terminal: terminal("unix:@kitty-700", "2") }),
             here("ENDED3", "ended", {}),
-            // Parked, as the node tells of one: ended, its record saying
-            // it's parked; one with its marker standing, one without.
+            // Parked, as the node tells of one: ended, saying it's parked.
             here("NAPPER", "ended", { state: "parked", busy: false,
-                title: "\u03c0 - Napper - core.nix" }),
+                title: "\u03c0 - Napper - core.nix" }, "parked"),
+            // Closed, though each record says parked: its marker gone, or
+            // laid before this boot, which the node sees and the shell
+            // needn't.
             here("WOKEN8", "ended", { state: "parked" }),
-            // Parked before this boot, its marker still standing, as a
-            // restart leaves one whose holder went with the boot.
             here("STALE7", "ended", { state: "parked",
                 owner: { pid: 4242, bootId: "an-earlier-boot" } }),
-            far("r-far", "FARAWY", "busy", now, "mycelium attach r-far"),
-            far("r-out", "OUTRCH", "unreachable", now, null),
+            far("r-far", "FARAWY", "busy", now, "mycelium attach r-far", "running"),
+            far("r-out", "OUTRCH", "unreachable", now, null, "running"),
+            // Last heard of before this boot, so the node says nothing of
+            // how it stands.
             far("r-old", "OLDONE", "busy", "2000-01-01T00:00:00Z", "mycelium attach r-old")
         ];
     }

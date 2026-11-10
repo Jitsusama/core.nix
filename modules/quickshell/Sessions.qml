@@ -2156,7 +2156,7 @@ Singleton {
         // parked and 36 closed of Joel's 113 shown again (2026-11-09).
         // Compared in place rather than as text, since the text of his
         // sessions, about 280,000 characters, started a garbage
-        // collection each time (as PiSource.js's tellsAlike says).
+        // collection each time (as PiSource.js's alike says).
         const first = !relived;
         relived = true;
         if (first || !Pi.alike(resting, sleeping))
