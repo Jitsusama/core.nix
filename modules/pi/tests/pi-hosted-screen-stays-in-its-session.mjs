@@ -1,6 +1,7 @@
 // The host-only InteractiveMode patch keeps a hosted screen inside its own
-// session: closing it never ends the process, a copy reaches its viewers'
-// terminals rather than the host's, and every screen hears a theme change.
+// session: closing it never ends the process, a copy (a selection's too)
+// reaches its viewers' terminals rather than the host's, and every screen
+// hears a theme change.
 // The real methods run against fake runtimes; no TTY, model request or
 // extension is started. Ordinary signal and suspend paths retain their
 // process semantics. Arguments name the package and, optionally, source.
@@ -27,7 +28,7 @@ function loadModule(path) {
 function loadMode() {
   return loadModule(source);
 }
-const { InteractiveMode } = await loadMode();
+const { InteractiveMode, createInteractiveTui, createInteractiveTuiReference } = await loadMode();
 const themeSource = join(dirname(source), `theme/theme${source.endsWith(".ts") ? ".ts" : ".js"}`);
 const { onThemeChange, setThemeInstance } = await loadModule(themeSource);
 const osc52 = (text) => `\u001b]52;c;${Buffer.from(text).toString("base64")}\u0007`;
@@ -117,6 +118,61 @@ it("a hosted copy reaches its viewers' terminals and never the host's output", a
   );
   assert.equal(hostWrites, 0);
   assert.deepEqual(notices, ["Copied last agent message to clipboard"]);
+});
+
+// A terminal that keeps what it is sent, for a real renderer to draw on.
+function viewerTerminal() {
+  return {
+    columns: 80,
+    rows: 24,
+    kittyProtocolActive: true,
+    start: mock.fn(),
+    stop: mock.fn(),
+    drainInput: async () => undefined,
+    write: mock.fn(),
+    moveBy: mock.fn(),
+    hideCursor: mock.fn(),
+    showCursor: mock.fn(),
+    clearLine: mock.fn(),
+    clearFromCursor: mock.fn(),
+    clearScreen: mock.fn(),
+    setTitle: mock.fn(),
+    setProgress: mock.fn(),
+    setProgramStatus: mock.fn(),
+  };
+}
+
+it("a hosted fullscreen selection is copied to its viewers' terminals", async () => {
+  const { mode } = screen();
+  const terminal = viewerTerminal();
+  // The screen's own renderer switch builds the fullscreen renderer.
+  mode.renderer = createInteractiveTui({
+    tuiMode: "regular",
+    showHardwareCursor: false,
+    logDirectory: process.env.HOME,
+    terminal,
+  });
+  mode.ui = createInteractiveTuiReference(() => mode.renderer);
+  mode.options.tuiMode = "regular";
+  mode.fullscreenLayoutRoot = { render: () => [], invalidate: () => undefined };
+  Object.assign(mode.runtimeHost.session.settingsManager, {
+    getFullscreenCopyOnSelect: () => true,
+    getFullscreenWheelScrollLines: () => "auto",
+  });
+  assert.equal(mode.switchTuiMode("fullscreen", false, false), true);
+  assert.equal(mode.renderer.mode, "fullscreen");
+  terminal.write.mock.resetCalls();
+  const hostOutput = mock.method(process.stdout, "write", () => true);
+  // What a drag-select and the copy command both end in.
+  const copied = await mode.renderer.copyTextToClipboard("selected");
+  const hostWrites = hostOutput.mock.callCount();
+  mock.restoreAll();
+  assert.equal(copied, true);
+  assert.deepEqual(
+    terminal.write.mock.calls.map((call) => call.arguments[0]),
+    [osc52("selected")],
+  );
+  assert.equal(hostWrites, 0);
 });
 
 it("a hosted copy too large for the terminal says so and writes nothing", async () => {
