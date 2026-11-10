@@ -1,5 +1,5 @@
-//! Whether two changes to one JSON file, or to check-descriptions.nix,
-//! touch different keys, so the gate can count them as two files. It
+//! Whether two changes to one JSON file, to check-descriptions.nix or to
+//! a folder's checks.nix touch different keys, so the gate can count them as two files. It
 //! changes with how such files are compared, not with what the gate asks
 //! of a branch.
 
@@ -83,6 +83,102 @@ fn entry(line: &str) -> Option<&str> {
         && name
             .bytes()
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'))
+    .then_some(name)
+}
+
+/// Whether a folder's checks.nix, which both sides changed, was changed
+/// `apart`, read as keyed by each check it gives. A check is built from
+/// its own entry and what the file keeps outside the entries, its
+/// arguments and `let` helpers, so changes to different checks' entries
+/// meet as two files would, while either side changing what's outside
+/// them may reach every check, and isn't apart. On 10 November #2807
+/// added a check to modules/quickshell/checks.nix while #2822 changed
+/// another there, and #2807 ran changed-checks a second time for it,
+/// as #2794 did for the same file half an hour later. A check reading
+/// the whole set of checks, as nix-offload's reads their names, is left
+/// for the net to catch, as two files meeting would be.
+#[must_use]
+pub fn checks_apart(base: &str, branch: &str, main: &str, head: &str) -> bool {
+    let outside = |text: &str| checks(text).and_then(|entries| entries.get(OUTSIDE).cloned());
+    let kept = outside(base);
+    kept.is_some()
+        && outside(branch) == kept
+        && outside(main) == kept
+        && apart_read(&checks, base, branch, main, head)
+}
+
+/// A checks.nix as an object of each check's lines by its name, with
+/// every other line under a key no check can have. Checks are the
+/// bindings at two spaces' indent after the file's `in`, or after its
+/// arguments where it has no `let`. Each takes the blank lines and
+/// comment just above it, so adding a check after another leaves that
+/// one as it was, and every line after it up to the next check or the
+/// next line at a shallower indent. A file of neither shape, or a check
+/// given twice, reads as nothing.
+fn checks(text: &str) -> Option<Value> {
+    let lines: Vec<&str> = text.lines().collect();
+    let opens = match lines.iter().position(|line| *line == "in") {
+        Some(at) => at + 1,
+        None if !lines.contains(&"let") => lines.iter().position(|line| *line == "}:")? + 1,
+        None => return None,
+    };
+    let mut entries = serde_json::Map::new();
+    let mut outside: String = lines[..opens]
+        .iter()
+        .map(|line| format!("{line}\n"))
+        .collect();
+    let mut open: Option<(String, String)> = None;
+    // The blank lines and comment read since the last line kept, which
+    // go with whatever comes after them.
+    let mut above = String::new();
+    for line in &lines[opens..] {
+        let into = if let Some(name) = check(line) {
+            if let Some((name, said)) = open.replace((name.to_owned(), String::new())) {
+                entries
+                    .insert(name, Value::String(said))
+                    .is_none()
+                    .then_some(())?;
+            }
+            open.as_mut().map(|(_, said)| said)
+        } else if line.is_empty() || line.starts_with("  #") {
+            above.push_str(line);
+            above.push('\n');
+            continue;
+        } else if line.starts_with("  ") {
+            open.as_mut().map(|(_, said)| said)
+        } else {
+            if let Some((name, said)) = open.take() {
+                entries
+                    .insert(name, Value::String(said))
+                    .is_none()
+                    .then_some(())?;
+            }
+            None
+        };
+        let into = into.unwrap_or(&mut outside);
+        into.push_str(&std::mem::take(&mut above));
+        into.push_str(line);
+        into.push('\n');
+    }
+    if let Some((name, said)) = open {
+        entries
+            .insert(name, Value::String(said))
+            .is_none()
+            .then_some(())?;
+    }
+    outside.push_str(&above);
+    entries.insert(OUTSIDE.to_owned(), Value::String(outside));
+    Some(Value::Object(entries))
+}
+
+/// The check's name, when `line` opens one in a checks.nix.
+fn check(line: &str) -> Option<&str> {
+    let rest = line.strip_prefix("  ")?;
+    let (name, _) = rest.split_once(" =")?;
+    (!name.is_empty()
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'\'')))
     .then_some(name)
 }
 
@@ -305,6 +401,89 @@ mod tests {
         assert!(
             !descriptions_apart(DESCRIBED, &branch, &twice, &branch),
             "main's side describes a check twice"
+        );
+    }
+
+    /// A folder's checks.nix, as modules/quickshell/checks.nix was on 10
+    /// November: its arguments, its helpers, and its checks after `in`.
+    const CHECKS: &str = "# The checks of the shell.\n{\n  pkgs,\n  onLinux,\n}:\nlet\n  \
+        lines = 10;\nin\n# Only Linux has the shell.\nonLinux {\n  # The launcher holds a \
+        program's controls.\n  the-launcher-holds-a-programs-controls =\n    \
+        pkgs.runCommandLocal \"controls\" { } ''\n      cp a.js a.js\n\n      \
+        touch $out\n    '';\n\n  the-launcher-shows-the-moment-in-now = pkgs.hello;\n}\n";
+
+    /// `CHECKS` with a check of `name`, and its comment, put before `before`.
+    fn checked(text: &str, name: &str, before: &str) -> String {
+        text.replace(
+            &format!("  {before} ="),
+            &format!("  # {name} holds.\n  {name} = pkgs.hello;\n\n  {before} ="),
+        )
+    }
+
+    #[test]
+    fn checks_added_or_changed_at_different_checks_are_apart() {
+        // #2807's case: the branch added a check, and main had changed
+        // another check's lines since.
+        let branch = CHECKS.replace(
+            "\n}\n",
+            "\n\n  # Trials are kept.\n  the-launcher-keeps-its-trials = pkgs.hello;\n}\n",
+        );
+        let main = CHECKS.replace("cp a.js a.js", "cp a.js a.js\n      cp b.js b.js");
+        let head = branch.replace("cp a.js a.js", "cp a.js a.js\n      cp b.js b.js");
+        assert!(
+            checks_apart(CHECKS, &branch, &main, &head),
+            "a check added at the end while another changed"
+        );
+        let ours = checked(CHECKS, "b-check", "the-launcher-shows-the-moment-in-now");
+        let theirs = checked(CHECKS, "a-check", "the-launcher-shows-the-moment-in-now");
+        let both = checked(&ours, "a-check", "the-launcher-shows-the-moment-in-now");
+        assert!(
+            checks_apart(CHECKS, &ours, &theirs, &both),
+            "two checks added side by side"
+        );
+        let open = CHECKS.replace("let\n  lines = 10;\nin\n", "");
+        let ours = checked(&open, "b-check", "the-launcher-shows-the-moment-in-now");
+        let theirs = open.replace("pkgs.hello", "pkgs.cowsay");
+        let both = ours.replace("moment-in-now = pkgs.hello", "moment-in-now = pkgs.cowsay");
+        assert!(
+            checks_apart(&open, &ours, &theirs, &both),
+            "a file with no helpers, its checks after its arguments"
+        );
+    }
+
+    #[test]
+    fn checks_changed_at_one_check_or_their_helpers_are_not() {
+        let ours = CHECKS.replace("cp a.js a.js", "cp a.js b.js");
+        let theirs = CHECKS.replace("touch $out", "touch $out $out");
+        let head = ours.replace("touch $out", "touch $out $out");
+        assert!(
+            !checks_apart(CHECKS, &ours, &theirs, &head),
+            "both changed one check's lines"
+        );
+        let ours = checked(CHECKS, "b-check", "the-launcher-shows-the-moment-in-now");
+        let theirs = CHECKS.replace("lines = 10", "lines = 20");
+        let head = ours.replace("lines = 10", "lines = 20");
+        assert!(
+            !checks_apart(CHECKS, &ours, &theirs, &head),
+            "main changed a helper every check may read"
+        );
+        assert!(
+            !checks_apart(CHECKS, &theirs, &ours, &head),
+            "the branch changed a helper every check may read"
+        );
+        let twice = checked(
+            CHECKS,
+            "the-launcher-shows-the-moment-in-now",
+            "the-launcher-holds-a-programs-controls",
+        );
+        assert!(
+            !checks_apart(CHECKS, &ours, &twice, &ours),
+            "main's side gives a check twice"
+        );
+        let helped = CHECKS.replace("in\n", "");
+        assert!(
+            !checks_apart(&helped, &helped, &helped, &helped),
+            "a file with helpers and no in"
         );
     }
 }
