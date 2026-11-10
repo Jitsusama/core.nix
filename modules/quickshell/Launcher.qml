@@ -5399,21 +5399,23 @@ Scope {
     // by a step does (Daemon.qml's paced): run once a frame begun after it
     // is drawn, so a swap already under way isn't taken for it, or at once
     // while the launcher is closed, as no frame is coming. A frame is asked
-    // for, so one comes though nothing else changed.
+    // for, so one comes though nothing else changed. Each waits in
+    // afterFrames until a frame begins, then in afterFramesDrawing until
+    // that frame is swapped, so one queued while a frame is drawn waits for
+    // the next rather than running on a swap that began before it.
     property var afterFrames: []
-    property bool afterFramesBegun: false
+    property var afterFramesDrawing: []
     function afterFrame(then) {
         if (!open) {
             then();
             return;
         }
-        if (afterFrames.length === 0)
-            afterFramesBegun = false;
         afterFrames = afterFrames.concat([then]);
         card.Window.window?.update();
     }
     function afterFramesDue() {
-        const due = afterFrames;
+        const due = afterFramesDrawing.concat(afterFrames);
+        afterFramesDrawing = [];
         afterFrames = [];
         for (const then of due)
             then();
@@ -7676,15 +7678,20 @@ Scope {
 
         Connections {
             target: card.Window.window
-            enabled: root.afterFrames.length > 0
+            enabled: root.afterFrames.length > 0 || root.afterFramesDrawing.length > 0
 
             function onAfterAnimating() {
-                root.afterFramesBegun = true;
+                root.afterFramesDrawing = root.afterFramesDrawing.concat(root.afterFrames);
+                root.afterFrames = [];
             }
 
             function onFrameSwapped() {
-                if (root.afterFramesBegun)
-                    root.afterFramesDue();
+                const due = root.afterFramesDrawing;
+                root.afterFramesDrawing = [];
+                for (const then of due)
+                    then();
+                if (root.afterFrames.length > 0)
+                    card.Window.window?.update();
             }
         }
 
