@@ -270,17 +270,7 @@ fn needs(base: &str) -> Result<ExitCode, String> {
         return Ok(ExitCode::SUCCESS);
     }
     println!("yes:");
-    if !owning.is_empty() {
-        // A test that owns a file the change touches is the one written to
-        // catch it, so it runs before the merge rather than on main.
-        println!(
-            "run the subtests that reach what it touched with run-subtests --there, in each \
-             VM test that owns one of its files and moved from {base}:"
-        );
-        for test in &owning {
-            println!("  {}", rules::named(test, &list));
-        }
-    }
+    said_owners(&owning, base, &list);
     if found.touched.is_empty() {
         return Ok(ExitCode::SUCCESS);
     }
@@ -306,6 +296,39 @@ fn needs(base: &str) -> Result<ExitCode, String> {
         println!("(the names are patterns: no list of the checks was found to match them against)");
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// The recent passed runs that could be `commit`'s change: those carrying
+/// one of its own subjects and touching one of its `files`, the first read
+/// being cheap and the second not. Should git fail to say either, every
+/// record goes on, as slow as before but no less right.
+fn candidates(commit: &str, main: &str, files: &[String]) -> Result<Vec<String>, String> {
+    let records = ready::recent_records();
+    let subjects = lines(&git(&["log", "--format=%s", &format!("{main}..{commit}")])?);
+    let records = logged(&records, &["--format=%H%x01%s"]).map_or(records.clone(), |said| {
+        ready::titled(&records, &said, &subjects)
+    });
+    Ok(
+        logged(&records, &["--format=%x01%H", "--name-only"]).map_or(records.clone(), |touched| {
+            ready::likely(&records, &touched, files)
+        }),
+    )
+}
+
+/// Name the VM tests that own a file the change touches, each of which is
+/// the one written to catch it, so it runs before the merge rather than
+/// on main.
+fn said_owners(owning: &[String], base: &str, list: &serde_json::Value) {
+    if owning.is_empty() {
+        return;
+    }
+    println!(
+        "run the subtests that reach what it touched with run-subtests --there, in each VM \
+         test that owns one of its files and moved from {base}:"
+    );
+    for test in owning {
+        println!("  {}", rules::named(test, list));
+    }
 }
 
 /// Say whether `commit` may merge: on origin's main as it is now, with what
@@ -393,18 +416,7 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
         };
         Some(ready::names_gone(&branch, &main_side))
     };
-    let records = ready::recent_records();
-    // Only records carrying one of the change's own subjects go on to the
-    // costlier reads. Should git fail to say either, every record is read,
-    // as slow as before but no less right.
-    let subjects = lines(&git(&["log", "--format=%s", &format!("{main}..{commit}")])?);
-    let records = logged(&records, &["--format=%H%x01%s"]).map_or(records.clone(), |said| {
-        ready::titled(&records, &said, &subjects)
-    });
-    let candidates = logged(&records, &["--format=%x01%H", "--name-only"])
-        .map_or(records.clone(), |touched| {
-            ready::likely(&records, &touched, &files)
-        });
+    let candidates = candidates(commit, main, &files)?;
     let mut before = ready::checked_before(&candidates, &ready::record, on_main, &same);
     if let ready::Before::Twice(newest, earlier, shared) = before {
         if names_gone(&newest).is_some_and(|naming| naming.is_empty()) {
