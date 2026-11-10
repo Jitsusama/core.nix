@@ -301,6 +301,7 @@ let
     "launcher/Recents.js"
     "launcher/SessionRow.js"
     "launcher/SessionMade.js"
+    "launcher/Landed.js"
     "launcher/SessionDrawer.js"
     "launcher/Holders.js"
     "launcher/SpendDrawer.js"

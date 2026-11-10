@@ -1267,7 +1267,8 @@ onLinux {
   # an orchestration standing where its most urgent row would, and a
   # session's row is kept only while what it's made from reads the same,
   # as tests/session-row.qml holds launcher/SessionRow.js and
-  # SessionMade.js to it in Qt's own engine.
+  # SessionMade.js to it in Qt's own engine, and Landed what they landed,
+  # kept past their end (Landed.js).
   the-launcher-lays-sessions-under-their-orchestrators =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -1278,6 +1279,7 @@ onLinux {
       cp ${./launcher/SessionRow.js} SessionRow.js
       cp ${./launcher/SessionMade.js} SessionMade.js
       cp ${./launcher/Order.js} Order.js
+      cp ${./launcher/Landed.js} Landed.js
       cp ${./launcher/SessionDrawer.js} SessionDrawer.js
       cp ${./Reading.js} Reading.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

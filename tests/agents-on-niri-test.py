@@ -489,7 +489,8 @@ def test_landed_reads_newest_first_and_return_d_read_each_u_brings_one_back(shel
     opened(shell)
     shell.launcher_until(lambda shown: "Landed" in shown["rows"])
     shell.down_to("Landed")
-    assert shell.showing()["selected"]["side"] == "2", shell.showing()
+    # Said as a run, state first; none of them landed today.
+    assert shell.showing()["selected"]["side"] == "2 to read", shell.showing()
     shell.step_in()
     shell.launcher_until(lambda shown: shown["rows"] == [STOPPED, CLOSING])
     assert shell.showing()["selected"]["side"] == "core.nix#2140", shell.showing()
@@ -511,7 +512,7 @@ def test_landed_reads_newest_first_and_return_d_read_each_u_brings_one_back(shel
     shell.close_launcher()
     opened(shell)
     shell.down_to("Landed")
-    assert shell.showing()["selected"]["side"] == "1", shell.showing()
+    assert shell.showing()["selected"]["side"] == "1 to read", shell.showing()
 
 
 def gone(shown: Json) -> list[bool]:

@@ -2852,14 +2852,14 @@ def close_asks_what_stays(desktop: Desktop, title: str, address: str, shot: str)
 
 
 def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
-    """Shoot Landed, its count at its side, then inside it, a landing's drawer out.
+    """Shoot Landed, how many to read at its side, then inside it, a landing's drawer out.
 
     Each says what landed as its name and its ref in the mono at its right; its drawer says
     who landed it and when, and what to try, a sentence the row has no room for. Nothing is
     read, so the walk can come back to it.
     """
     desktop.down_to("Landed")
-    assert desktop.showing()["selected"]["side"] == "2", f"at {shot}: {desktop.showing()}"
+    assert desktop.showing()["selected"]["side"] == "2 to read", f"at {shot}: {desktop.showing()}"
     desktop.shoot(f"launcher-agents-landed-at-{shot}")
     desktop.follow()
     desktop.launcher_until(lambda shown: shown["rows"] == [STOPPED, CLOSING])

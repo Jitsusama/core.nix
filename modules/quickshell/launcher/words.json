@@ -236,7 +236,19 @@
       "name": "Landed",
       "term": "Agents/Landed",
       "verb": "more",
-      "glyph": "done"
+      "glyph": "done",
+      "said": {
+        "unread": "{count} to read",
+        "today": "{count} today"
+      },
+      "tells": {
+        "holding": "What sessions landed in the past 30 days, newest first."
+      }
+    },
+    {
+      "id": "agents:repo",
+      "in": "agents",
+      "name": "Repository"
     },
     {
       "id": "agents:recent",
