@@ -893,7 +893,9 @@ let
   # (Launcher.qml), which takes a few milliseconds where starting `qs ipc`
   # takes a hundred or more, and every one of those is a letter typed
   # after Super+Space that could land in the window below. With no shell
-  # listening, as while it restarts, qs ipc carries it instead.
+  # listening, as while it restarts, qs ipc carries it instead. The line
+  # ends with when the chord ran it, so the shell can time an opening from
+  # Joel's press rather than from when it got round to hearing it.
   launcherSay = pkgs.writeShellApplication {
     name = "launcher-say";
     runtimeInputs = [
@@ -901,7 +903,7 @@ let
       pkgs.socat
     ];
     text = ''
-      printf '%s\n' "$*" | socat - "UNIX-CONNECT:$XDG_RUNTIME_DIR/launcher.sock" 2>/dev/null \
+      printf '%s @%s\n' "$*" "$EPOCHREALTIME" | socat - "UNIX-CONNECT:$XDG_RUNTIME_DIR/launcher.sock" 2>/dev/null \
         || exec qs ipc call launcher "$@"
     '';
   };
