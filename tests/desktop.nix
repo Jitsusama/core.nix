@@ -112,11 +112,12 @@ let
     "looks"
     "launcher-finds-by-name"
   ];
-  # The area that switches its home onto the sessions' kitty kept through
-  # a switch, from one that wasn't, as a machine first switching onto it
+  # The area that switches its home, onto the sessions' kitty kept through
+  # a switch from one that wasn't, as a machine first switching onto it
   # does: it boots on the unit before, which says no switch method, and
-  # its specialisation is the one after.
-  switchesTheSessionsKitty = area == "sessions-outlive-a-switch";
+  # its specialisation is the one after. And onto a changed shell beside a
+  # unit slow to stop, as disk-guard was on 10 November.
+  switchesTheHome = area == "outlives-a-switch";
 
   # A certificate authority the machine trusts, and the Office's server's
   # certificate from it, naming radius.office.test.
@@ -854,7 +855,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           };
         # The sessions' kitty as it was before it was kept through a switch,
         # with no switch method, so a change restarts it.
-        systemd.user.services.sessions-kitty.Unit.X-SwitchMethod = lib.mkIf switchesTheSessionsKitty (
+        systemd.user.services.sessions-kitty.Unit.X-SwitchMethod = lib.mkIf switchesTheHome (
           lib.mkForce null
         );
         # The launcher's VMs read the stand-in, the virsh on the account's
@@ -972,6 +973,14 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # the test that reads what it was sent.
         systemd.user.services.stand-in-collector = lib.mkIf (area == "launcher-goes-places") {
           Service.ExecStart = "${standInCollector}";
+        };
+        # A unit whose stop takes 30 s, as disk-guard's did when a switch
+        # stopped it mid-step, started by the test that switches past it.
+        systemd.user.services.slow-to-stop = lib.mkIf switchesTheHome {
+          Service = {
+            ExecStart = "${lib.getExe' pkgs.coreutils "sleep"} infinity";
+            ExecStop = "${lib.getExe' pkgs.coreutils "sleep"} 30";
+          };
         };
         # Inkscape stood in where keeps-copies opens a new drawing in it.
         jitsusama.quickshell.launcher.providers.inkscape = lib.mkIf (area == "keeps-copies") {
@@ -1134,7 +1143,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # keeps the getty off. getty.target starts it as autovt@tty1, which
       # is the name greetd turns off, and turning off getty@tty1 left the
       # switch back stopping Cage. Only where the area switches.
-      systemd.services."autovt@tty1".enable = lib.mkIf switchesTheSessionsKitty false;
+      systemd.services."autovt@tty1".enable = lib.mkIf switchesTheHome false;
       # Stands in for niri's own unit, which starts the graphical session, and
       # with it the desktop portal.
       systemd.user.services.compositor = {
@@ -1171,10 +1180,16 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # it, kept through a switch, and a changed command line as a new kitty
       # brings, so the switch onto it changes the unit in a way that would
       # restart it. Over the boot's own unit, which forces the method away.
-      specialisation = lib.mkIf switchesTheSessionsKitty {
+      # And the same machine with the shell's unit and the slow one changed,
+      # so a switch onto it stops the slow one and restarts the shell.
+      specialisation = lib.mkIf switchesTheHome {
         switched.configuration.home-manager.users.${account}.systemd.user.services.sessions-kitty = {
           Unit.X-SwitchMethod = lib.mkOverride 40 "keep-old";
           Service.Environment = [ "SESSIONS_KITTY_SWITCHED=1" ];
+        };
+        slowed.configuration.home-manager.users.${account}.systemd.user.services = {
+          quickshell.Service.Environment = [ "SHELL_SWITCHED=1" ];
+          slow-to-stop.Service.Environment = [ "SLOW_TO_STOP_SWITCHED=1" ];
         };
       };
     };

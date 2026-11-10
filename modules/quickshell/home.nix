@@ -2511,6 +2511,17 @@ in
         X-Restart-Triggers = lib.mapAttrsToList (_: file: "${file.source}") (
           lib.filterAttrs (name: _: lib.hasPrefix "quickshell/" name) config.xdg.configFile
         );
+        # Without a method, a switch stops a changed unit with every other it
+        # stops, waits for the slowest, and only then starts it again: the
+        # shell stayed down 91 s on 10 November while disk-guard's stop ran
+        # to its timeout, with no launcher, notices or lock client. Restarted,
+        # it's left out of that batch and runs on until its own restart after
+        # the units reload, which waits on nothing else. Until the batch ends
+        # the old shell runs with the new files already linked under it, which
+        # is safe: it made every surface and provider from its files as it
+        # started (shell.qml, Launcher.qml, Facts.qml) and loads none later, so
+        # it draws as it did until its restart brings the new ones.
+        X-SwitchMethod = "restart";
       };
       Service = {
         # Quickshell turns every one of its own categories on at every level
