@@ -30,6 +30,7 @@ pragma Singleton
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "PiSource.js" as Pi
 import "Places.js" as Places
 import "Waiting.js" as Waiting
 
@@ -2039,11 +2040,9 @@ Singleton {
     // again or a window comes or goes, and kept as it was when nothing in
     // it did, so what reads it isn't told for nothing.
     property var live: []
-    // What each of live, resting and ending held last, as text, so only
-    // the one a change moved is set again, and what reads the others isn't
-    // told: one session's step moving had made the 36 parked and 36 closed
-    // of Joel's 113 shown again (2026-11-09).
-    property var liveSaid: ({ live: "", resting: "", ending: "" })
+    // Whether live, resting and ending have been made once, since each is
+    // made again only when what it holds moves.
+    property bool relived: false
     // Each parked session's record, { file, presence, kitty, held }, as
     // `live` keeps the running ones'.
     property var resting: []
@@ -2064,15 +2063,19 @@ Singleton {
         const next = PiSource.live.map(kitted);
         const sleeping = PiSource.resting.map(kitted);
         const ended = PiSource.ending.map(kitted);
-        const said = { live: JSON.stringify(next), resting: JSON.stringify(sleeping),
-            ending: JSON.stringify(ended) };
-        const was = liveSaid;
-        liveSaid = said;
-        if (said.resting !== was.resting)
+        // Only the list a change moved is set again, so what reads the
+        // others isn't told: one session's step moving had made the 36
+        // parked and 36 closed of Joel's 113 shown again (2026-11-09).
+        // Compared in place rather than as text, since the text of his
+        // sessions, about 280,000 characters, started a garbage
+        // collection each time (as PiSource.js's tellsAlike says).
+        const first = !relived;
+        relived = true;
+        if (first || !Pi.alike(resting, sleeping))
             resting = sleeping;
-        if (said.ending !== was.ending)
+        if (first || !Pi.alike(ending, ended))
             ending = ended;
-        if (said.live === was.live)
+        if (!first && Pi.alike(live, next))
             return;
         const by = {};
         for (const record of next) {
