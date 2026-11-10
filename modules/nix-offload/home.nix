@@ -73,6 +73,9 @@ let
   warming = lib.optional (
     cfg.vmTests != null && cfg.vmTests.warm != [ ]
   ) "--warm ${lib.escapeShellArg (lib.concatStringsSep " " cfg.vmTests.warm)}";
+  # How long a VM lender keeps a builder nothing uses, since one given
+  # back costs its successor a boot and a warming.
+  staying = lib.optional (cfg.vmTests != null) "--idle ${cfg.vmTests.idle}";
   # Named here, since glibc without it reads a zone it can't find as UTC,
   # and says nothing.
   zoned = [
@@ -147,6 +150,7 @@ let
             "--dir /run/nix-offload-vm-${toString number} --only-there"
           ]
           ++ warming
+          ++ staying
         );
         Environment = vmEnvironment lender.environment;
       }
@@ -279,6 +283,19 @@ in
                 November a fresh one's first tests took 65 to 80 minutes
                 building the desktop, against 2 to 12 once warm. Empty, each
                 takes VM tests cold.
+              '';
+            };
+            idle = lib.mkOption {
+              type = lib.types.str;
+              default = "00:45";
+              example = "00:15";
+              description = ''
+                How long, as HH:MM, each VM builder may sit unused before it's
+                given back, where other builders go after 15 minutes. A fresh
+                one boots and then warms for about 17 minutes before it takes
+                a VM test: on 10 November four given back after 15 minutes
+                were asked for again two to four minutes later, and VM runs
+                waited a median 6.8 minutes for a builder while they warmed.
               '';
             };
             builds = lib.mkOption {
@@ -619,6 +636,7 @@ in
             "--dir /run/nix-offload-vm --only-there"
           ]
           ++ warming
+          ++ staying
         );
         Environment = vmEnvironment cfg.vmTests.environment;
       }
@@ -641,6 +659,7 @@ in
                 "--dir /run/nix-offload-vm-more --only-there"
               ]
               ++ warming
+              ++ staying
             );
             Environment = vmEnvironment cfg.vmTests.more.environment;
           }

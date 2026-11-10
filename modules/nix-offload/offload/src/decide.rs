@@ -3,7 +3,8 @@
 
 use crate::journal::Event;
 
-/// How long a builder sits unused before it's given back.
+/// How long a builder sits unused before it's given back, unless its
+/// lender says otherwise in [`Hours::idle`].
 pub const IDLE: u64 = 15 * 60;
 /// How long after a builder fails to stand before another is asked for,
 /// so a helper that keeps failing doesn't make one a minute. One that
@@ -37,6 +38,12 @@ pub struct Hours {
     /// of the deadline, so one lent at any hour isn't ended mid-build at
     /// midnight, as two were on 2 November.
     pub longest: Option<u32>,
+    /// How long a builder sits unused before it's given back, in seconds.
+    /// A VM builder warms for about 17 minutes before it takes a test, so
+    /// on 10 November four given back after [`IDLE`] were asked for again
+    /// two to four minutes later, and VM runs waited a median 6.8 minutes
+    /// for a builder while their successors warmed.
+    pub idle: u64,
 }
 
 /// When a builder asked for at `asked` ends, as seen `now`, `into_day`
@@ -133,7 +140,7 @@ pub fn give_back(hours: Hours, tick: Tick, used: u64, ends: u64, gone: bool) -> 
     let near_its_end = tick.now + NEAR_ITS_END >= ends;
     if gone && !over && !near_its_end && !tick.woke {
         Some(Event::Lost)
-    } else if over || gone || tick.now.saturating_sub(used) >= IDLE {
+    } else if over || gone || tick.now.saturating_sub(used) >= hours.idle {
         Some(Event::Stopped)
     } else {
         None
@@ -183,7 +190,7 @@ pub fn proven_lost(dropped: bool, failures: u32, reached: bool) -> bool {
 /// reaches it, and a prebuild's kernel would be given back mid-compile.
 pub fn asks_outliving(hours: Hours, tick: Tick, used: u64, ends: u64) -> bool {
     let over = tick.now >= ends || past_deadline(hours, tick.into_day);
-    !over && tick.now.saturating_sub(used) >= IDLE
+    !over && tick.now.saturating_sub(used) >= hours.idle
 }
 
 /// When the next builder may be asked for, after one last used at `used`
@@ -328,6 +335,7 @@ mod tests {
         last: 19 * 3600 + 30 * 60,
         deadline: 20 * 3600,
         longest: None,
+        idle: IDLE,
     };
 
     /// Lent at any hour, each builder living at most 12 hours.
@@ -336,6 +344,7 @@ mod tests {
         last: 23 * 3600 + 59 * 60,
         deadline: 23 * 3600 + 59 * 60,
         longest: Some(12 * 3600),
+        idle: IDLE,
     };
 
     #[test]
@@ -551,6 +560,31 @@ mod tests {
         assert!(!asks_outliving(HOURS, noon, noon.now - IDLE, noon.now));
         let late = at(20 * 3600, false);
         assert!(!asks_outliving(HOURS, late, late.now - IDLE, LATER));
+    }
+
+    #[test]
+    fn a_builder_slow_to_warm_stays_through_the_idle_its_lender_names() {
+        let warming = Hours {
+            idle: 45 * 60,
+            ..HOURS
+        };
+        let noon = at(12 * 3600, false);
+        assert_eq!(
+            give_back(warming, noon, noon.now - IDLE, LATER, false),
+            None
+        );
+        assert!(
+            !asks_outliving(warming, noon, noon.now - IDLE, LATER),
+            "asked about an outliving run before the idle its lender names"
+        );
+        assert_eq!(
+            give_back(warming, noon, noon.now - 45 * 60, LATER, false),
+            Some(Event::Stopped)
+        );
+        assert!(
+            asks_outliving(warming, noon, noon.now - 45 * 60, LATER),
+            "not asked about an outliving run once idle as long as its lender names"
+        );
     }
 
     #[test]
