@@ -21,7 +21,7 @@
   "modules/tuple/call/tests/daemon.rs" = 1;
   "modules/update-to-main/tests/update/main.rs" = 1;
   "tests/desktop/desktop-keeps-pace-vm-test.py" = 1;
-  "tests/desktop/desktop-launcher-finds-sessions-vm-test.py" = 2;
+  "tests/desktop/desktop-launcher-finds-sessions-vm-test.py" = 1;
   "tests/desktop/desktop-launcher-waits-on-joel-vm-test.py" = 1;
   "tests/desktop/desktop-shows-then-rests-vm-test.py" = 1;
   "tests/desktop/desktop_session.py" = 1;

@@ -85,7 +85,8 @@ Singleton {
         // its plate alike (VKCF3Z, 2026-11-03).
         "notify-send": { glyph: 0xf0e51, hue: "machine", name: "Desktop" },
         // A pi session wanting Joel (Sessions.qml), in its mark. It's
-        // never missed, since the margin's mark says it while it holds.
+        // never missed, since For You's tray in the margin says the want
+        // while it holds (Joel's pick, 2026-11-09).
         "pi": {
             glyph: Theme.glyph.agent.codePointAt(0), hue: "program", answers: true,
             name: Words.name("agents")

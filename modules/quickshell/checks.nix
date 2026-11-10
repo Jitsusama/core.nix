@@ -447,6 +447,7 @@ onLinux {
           "spend"
           "pi"
           "notices"
+          "forYou"
           "google"
           "meeting"
           "quiet"
@@ -1991,17 +1992,21 @@ onLinux {
       niri = singleton "Niri.qml" ''
         function spawn(command) {}
       '';
-      # For You's Desktop row holds the notices unread, none of which the
-      # moment needs.
+      # For You's Desktop row holds the notices unread, and For You counts
+      # a critical one among what waits while no card says it.
       notices = singleton "Notices.qml" ''
         property var history: []
+        property var live: ({})
+        property var resting: ({})
         function markRead(ids) {}
         function seen() {}
       '';
       whereabouts = pkgs.callPackage ./whereabouts/package.nix { };
     in
     pkgs.runCommandLocal "the-launcher-shows-the-moment-in-now" { } ''
-      mkdir launcher
+      mkdir launcher pieces
+      cp ${./ForYouHolds.qml} ForYouHolds.qml
+      cp ${./pieces/Holding.js} pieces/Holding.js
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./Marks.js} Marks.js
@@ -3878,8 +3883,8 @@ onLinux {
 
   # Every glyph in the margin stands the same height on the gap's middle
   # line, however tall its font draws it, and they line up from the corner
-  # by how much each asks, in the colour that says so, as tests/marks.qml
-  # holds them.
+  # by how much each asks, in the colour that says so, and For You's tray
+  # is lit by what For You holds, as tests/marks.qml holds them.
   the-margins-marks-stand-level =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -3887,6 +3892,7 @@ onLinux {
     pkgs.runCommandLocal "the-margins-marks-stand-level" { } ''
       cp ${../../tests/marks.qml} marks.qml
       cp ${./Marks.js} Marks.js
+      cp ${./pieces/Holding.js} Holding.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

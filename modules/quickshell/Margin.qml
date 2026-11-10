@@ -1,8 +1,8 @@
 // The margin: what's on that Joel would otherwise forget, at the top centre
 // of each screen, without covering a window (docs/design.md, Shape and
 // Kinds, the margin). Each overview piece with a mark that's true right now (the
-// camera, the screen shared or recorded, a pi session or a notice waiting,
-// the battery low, Keep Awake, do not disturb, the microphone muted) is
+// camera, the screen shared or recorded, For You holding what waits on
+// Joel, the battery low, Keep Awake, do not disturb, the microphone muted) is
 // its mark alone, in the gap the windows already leave above them.
 // Nothing true, nothing drawn.
 //
@@ -27,8 +27,8 @@
 //
 // What each is, in words, and what can be done about it, is the launcher's
 // Now (launcher/Now.qml): Super+O opens it, and clicking a mark
-// opens it on that mark's row. While it's open on a screen, the mark of
-// the row the keys are on wears the accent on that screen, as where the
+// opens it on that mark's row, For You's tray For You itself. While
+// it's open on a screen, the mark of the row the keys are on wears the accent on that screen, as where the
 // keys are always does, so the eye joins the row to its mark straight up
 // the line they share. Nothing grows, since anything past the gap would lie
 // over a window. A piece whose program has a
@@ -140,7 +140,13 @@ Scope {
     }
 
     // Opens Now with this thing's row selected.
+    // One standing for a place of its own, as For You's tray does, opens
+    // that place instead (Piece.qml's opens).
     function show(thing) {
+        if (thing.piece.opens !== "") {
+            root.launcher.into(thing.piece.opens);
+            return;
+        }
         root.launcher.into("on");
         const row = root.launcher.matches.findIndex(row => row.key === `on:${thing.entry.mark}`);
         if (row >= 0)
@@ -205,6 +211,13 @@ Scope {
 
             onPointedChanged: later()
 
+            // What each lit mark stands for, which its report says, so a test
+            // reads it as it is now: For You's count changes with the tray lit.
+            // Followed only while the shell reports, so nothing else pays for it.
+            readonly property string states: Options.reports
+                ? root.on.map(thing => thing.piece.value).join("\n") : ""
+            onStatesChanged: later()
+
             // A recording waits for its mark to be drawn, so its first frame
             // holds it (Recorder.qml). A frame begun before the mark came may
             // still be shown after, without it, so only a frame begun since
@@ -241,6 +254,7 @@ Scope {
                 Report.say(`holds margin ${root.on.map(thing => thing.entry.mark).join(" ")}`);
                 Report.say(`sets margin ${JSON.stringify(root.on.map(thing => ({
                     mark: thing.entry.mark,
+                    drawn: thing.drawn,
                     kind: thing.kind,
                     tone: thing.tone,
                     hue: thing.mark === window.pointed ? "accent" : thing.tone,

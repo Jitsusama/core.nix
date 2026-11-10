@@ -224,6 +224,31 @@ def but_the_ticks(before: bytes, now: bytes) -> bool:
     return moved < TICKS_SHARE * was.width * was.height
 
 
+def for_you_lit(desktop: Desktop, said: str) -> None:
+    """Light For You's tray with a critical notice put away unread, then wait for its mark."""
+    with desktop.told(f"shows card {said}"):
+        desktop.as_account(f"notify-send --urgency=critical {shlex.quote(said)} 'are you there?'")
+    since = desktop.mark()
+    desktop.as_account("qs ipc call notices putAway")
+    desktop.reported("holds margin ", lambda rest: "forYou" in rest.split(), since)
+
+
+def for_you_read(desktop: Desktop, *rest: str) -> None:
+    """Read every notice, which puts For You's tray out, and wait for the margin to hold the rest.
+
+    Read as Joel reads them, by Mark Them Read in For You's Desktop, where Super+N goes with
+    no cards up; its line asks first, since reading them all can't be taken back.
+    """
+    desktop.machine.send_key("meta_l-n")
+    desktop.launcher_until(lambda shown: shown["held"][-1:] == ["Desktop"])
+    desktop.down_to("Mark Them Read")
+    since = desktop.mark()
+    desktop.line_answered("delete")
+    desktop.close_launcher()
+    # The prefix holds no space, since a margin holding nothing says none after it.
+    desktop.reported("holds margin", lambda held: sorted(held.split()) == sorted(rest), since)
+
+
 def drawn_at(window: Json) -> tuple[int, int, int, int]:
     """Give where a floating window draws on the screen: left, top, width, height."""
     layout = window["layout"]

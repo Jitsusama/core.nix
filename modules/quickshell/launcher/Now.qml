@@ -1018,8 +1018,11 @@ Provider {
     // through from home: "notices", as Super+N with no cards and the
     // margin's Show Them ask, is For You's Desktop, one key to one place
     // whatever it holds (VKCF3Z, 2026-11-09), never the Notices place it
-    // once was; the notices stay found by `/` (PastNotices.qml).
+    // once was; the notices stay found by `/` (PastNotices.qml). "forYou",
+    // as the margin's tray is pressed, is For You itself.
     function leadsTo(name) {
+        if (name === "forYou")
+            return [waiting];
         if (name !== "notices")
             return null;
         const { holding } = latelyBands(Date.now());
@@ -1047,24 +1050,38 @@ Provider {
     // most pressing first, or to a list saying nothing waits: the row acts
     // the same whatever waits, so Super+O, Return, Return reaches the
     // pressing thing and each press can be foreseen (VKCF3Z, 2026-10-29).
-    // Not a session whose want is an action, though: that's one of its own
-    // items, which a session's presence mirrors (harness #907), and which
-    // is listed here itself, so its session's row would say the same thing
-    // twice (2026-10-31: four items read as eight).
-    readonly property var sessions: Sessions.wanting
-        .filter(session => session.presence?.wants?.kind !== "action")
+    // Not a session whose want is an action, though, which is one of its
+    // own items (Holding.js's wanting). It's counted once, with the margin's
+    // tray, in ForYouHolds.qml, so the two say one number (Y2YBTS,
+    // 2026-11-09).
+    readonly property var sessions: ForYouHolds.holds.wanting
     // What the launcher's other sources give For You, each its own row
     // made as its figures change (ForYou.js's given), as Passwords gives
     // its one to-do for what its last check found: read once as each
     // changes, those to do weighed beside the rest, those done in History.
     readonly property var given: ForYou.given(provider.launcher?.sources ?? [])
-    readonly property int waitsNow: sessions.length + WaitingOnYou.now.length
-        + looks.waiting.length + given.waiting.length
+    // The looks and what the sources give, as Now reads them, counted
+    // with the rest where the tray counts them too.
+    Binding {
+        target: ForYouHolds
+        property: "looks"
+        value: provider.looks.waiting
+    }
+    Binding {
+        target: ForYouHolds
+        property: "given"
+        value: provider.given.waiting
+    }
+    // What waits on Joel now, among it a critical notice unread, which
+    // waits in For You's Desktop as the tray says (ForYouHolds.qml).
+    readonly property int waitsNow: ForYouHolds.count
+    readonly property var criticalNotices: ForYouHolds.holds.notices
     readonly property string first: sessions.length > 0
         ? `${sessions[0].title} ${Sessions.wanted(sessions[0].presence.wants)}`
         : WaitingOnYou.foremost ? WaitingOnYou.titled(WaitingOnYou.foremost)
         : looks.waiting.length > 0 ? looks.waiting[0].title
-        : given.waiting.length > 0 ? given.waiting[0].row.name : ""
+        : given.waiting.length > 0 ? given.waiting[0].row.name
+        : criticalNotices.length > 0 ? String(criticalNotices[0].summary ?? "") : ""
     // What's inside, made and weighed as it's stepped into, so the order
     // is the one it had then; Steady.js keeps the rows still while it's
     // open. A session wanting him blocks one, itself.
@@ -1152,7 +1169,9 @@ Provider {
     // For You's rows are banded again as it's stepped into, at that time,
     // since a deadline coming within the day lifts a row with no change.
     readonly property var forYouBands: ForYou.banded(forYouItems, Date.now())
-    readonly property int toDoCount: forYouBands.now.length
+    // A critical notice unread is among what needs him now, as the margin's
+    // tray counts it (ForYouHolds.qml), though For You's Desktop holds it.
+    readonly property int toDoCount: forYouBands.now.length + criticalNotices.length
     readonly property int toLookAtCount: forYouBands.look.length
     readonly property int toTryCount: forYouBands.try.length
     // For You's row's side, the bands as a run (ForYou.js's bandsRun).
@@ -1403,8 +1422,8 @@ Provider {
             forYou: { kind: "notice", source: one.source } });
     }
     readonly property var waiting: member({
-        // Not `on:waiting`, which is the missed notices' row, by its mark
-        // (pieces/Waiting.qml), so the two are never taken for one.
+        // Not `on:waiting`, which its rows within are keyed under
+        // (Marks.js's ROW_MARKS, which point both at For You's tray).
         key: "on:waitingOnYou",
         verb: "more",
         stays: true,
@@ -1690,7 +1709,8 @@ Provider {
         // session or to-do leads, says its own row's name.
         const lifted = sessions.length > 0 || lead ? null : forYouBands.now[0] ?? null;
         const title = sessions.length > 0 ? first : lead ? lead.title
-            : lifted?.make(Date.now())?.name ?? "";
+            : lifted?.make(Date.now())?.name
+            ?? (criticalNotices.length > 0 ? String(criticalNotices[0].summary ?? "") : "");
         if (title === "") {
             return [];
         }
@@ -1718,9 +1738,9 @@ Provider {
     // runs on past its start, and is then the moment's meeting row.
     function above(fact) {
         // What came for Joel is For You's Lately, and the notices missed
-        // are among its Desktop row's (latelyRows).
-        if (fact.entry.mark === "agent" || fact.entry.mark === "waiting"
-            || Lately.SOURCES.includes(fact.piece.lately))
+        // are among its Desktop row's (latelyRows). The margin's tray is
+        // For You's own.
+        if (fact.entry.mark === "forYou" || Lately.SOURCES.includes(fact.piece.lately))
             return waiting.key;
         if (fact.entry.mark === "meeting" && meeting !== null
             && meeting.key === `calendar:meeting:${fact.piece.meeting?.id ?? ""}`)

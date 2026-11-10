@@ -1,7 +1,8 @@
 // pi at a glance: how many sessions run and how many are working, for the
-// launcher's foot, where the time and the battery are; and a mark in the
-// margin while any wants Joel (Sessions.qml: a question, an approval, or a
-// run stuck without him), and a way to each one's window on its notice.
+// launcher's foot, where the time and the battery are; and while any wants
+// Joel (Sessions.qml: a question, an approval, or a run stuck without him),
+// a way to each one's window on its notice. The margin says a want by For
+// You's tray (ForYou.qml), which holds it.
 // Now has no row of its own for it: Waiting on You lists each session that
 // wants Joel, as the session (launcher/Now.qml's above). With no pi
 // running there's nothing to show.

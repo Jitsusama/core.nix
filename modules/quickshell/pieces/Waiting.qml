@@ -1,7 +1,9 @@
 // Notices that came and went while Joel wasn't looking (Notices.qml): how
 // many, and from whom. It's true while any wait to be seen, and then it
 // wants him, unless notices are being held on purpose, when the margin says
-// so instead (DoNotDisturb.qml). One still on screen isn't waiting yet.
+// so instead (DoNotDisturb.qml). One still on screen isn't waiting yet. It
+// wears no mark: a critical one is For You's, whose tray says it
+// (ForYou.qml), and the rest are what came lately.
 import qs
 import QtQuick
 import "Drawers.js" as Drawers

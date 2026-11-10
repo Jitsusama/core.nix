@@ -100,6 +100,11 @@ Item {
     // own: the power profile's mark says which profile is on. The mark
     // stays its name, so what Now lists is the same thing whichever it is.
     property string markGlyph: ""
+    // The launcher's place pressing its mark opens, by the name the
+    // launcher leads from (Launcher.qml's into), where the mark stands for
+    // a place of its own rather than its row in Now, as For You's tray
+    // does; "" opens Now on its row.
+    property string opens: ""
     property string hue: "machine"
     // { glyph, name, chord, run(shell) }, and a `verb` where the name is
     // too long for the launcher's foot to say beside Return. One that only

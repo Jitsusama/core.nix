@@ -217,6 +217,7 @@ let
     "Location.qml"
     "WaitingOnYou.qml"
     "Waiting.js"
+    "ForYouHolds.qml"
     "SpendWatch.qml"
     "Eero.qml"
     "Jobs.qml"
@@ -236,6 +237,7 @@ let
     "Frames.qml"
     "Counted.qml"
     "pieces/Drawers.js"
+    "pieces/Holding.js"
     "pieces/Piece.qml"
     "pieces/StatusFile.qml"
     "launcher/Provider.qml"
@@ -679,6 +681,7 @@ let
     spend = ./pieces/Spend.qml;
     tokens = ./pieces/Tokens.qml;
     notices = ./pieces/Waiting.qml;
+    forYou = ./pieces/ForYou.qml;
     quiet = ./pieces/DoNotDisturb.qml;
     microphone = ./pieces/Microphone.qml;
     capslock = ./pieces/CapsLock.qml;
@@ -1770,17 +1773,26 @@ in
         label = "pi";
         sign = "agent";
         collapse = 6;
-        # In the margin while a session wants Joel.
-        mark = "agent";
       };
       # What's on only now and then, each also a glyph in the margin while
       # it's true (Margin.qml), in the order the pieces give them.
+      # The notices missed wear no mark of their own: what of them waits on
+      # Joel is For You's, whose tray says it (Joel's pick, 2026-11-09).
       notices = {
         order = 54;
         source = "notices";
         label = "notices";
         tier = "when";
-        mark = "waiting";
+      };
+      # The one mark for what waits on Joel, while For You holds any: a
+      # session wanting him, a to-do, a look, a landing to try or a
+      # critical notice (pieces/ForYou.qml).
+      forYou = {
+        order = 55;
+        source = "forYou";
+        label = "for you";
+        tier = "when";
+        mark = "forYou";
       };
       quiet = {
         order = 57;

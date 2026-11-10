@@ -543,6 +543,17 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
 INDEX = f"{HARNESS}/quest-workflow/quests.json"
 
 
+def tray_counted(desktop: Desktop) -> int:
+    """Say how many For You's tray last counted waiting on Joel, none while it was out."""
+    sets = desktop.as_account(
+        "journalctl --user --unit=quickshell --no-pager --output=cat"
+        " | grep -o 'report\\[sets margin .*\\]$' | tail -n 1"
+    )
+    said = sets.strip().removeprefix("report[sets margin ").removesuffix("]")
+    drawn = json.loads(said or "[]")
+    return next((int(glyph["state"]) for glyph in drawn if glyph["mark"] == "forYou"), 0)
+
+
 def indexed(desktop: Desktop, *quests: str) -> None:
     """Write the harness's index of quests, which holds only those still open, as these."""
     index = {
@@ -859,12 +870,12 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
         desktop.close_launcher()
     finally:
         desktop.as_account(f"rm -f {asked} {INDEX}")
-        # Its notice goes a moment after its item does; until then the
-        # margin holds it, and Now would open on it in the next subtest.
+        # For You's tray goes a moment after its item does; until then it
+        # holds it, and Now would open on it in the next subtest.
         machine.wait_until_succeeds(
             desktop.in_session(
                 "journalctl --user --unit=quickshell --no-pager --output=cat"
-                " | grep -o 'report\\[holds margin [^]]*' | tail -n 1 | grep -qvw waiting"
+                " | grep -o 'report\\[holds margin [^]]*' | tail -n 1 | grep -qvw forYou"
             ),
             timeout=dt.timedelta(seconds=10),
         )
@@ -1036,6 +1047,8 @@ def test_a_sessions_action_is_in_needs_you_once_as_its_item(desktop: Desktop) ->
                 and shown["selected"]["side"] == "1 to do"
             )
         )
+        # The tray counts as For You does, its row and the margin one number.
+        retry(lambda _: tray_counted(desktop) == 1, timeout=dt.timedelta(seconds=10))
         desktop.machine.send_key("ret")
         desktop.launcher_until(
             lambda shown: shown["held"] == ["now", "For You"] and shown["rows"] == ["Sign the Form"]
@@ -1117,32 +1130,30 @@ def test_a_session_wants_joel_only_while_it_is_true(desktop: Desktop) -> None:
             }
         )
 
-    def marked() -> bool:
-        """Say whether the margin last held pi's mark, which says a session wants Joel."""
-        held = desktop.as_account(
-            "journalctl --user --unit=quickshell --no-pager --output=cat"
-            " | grep -o 'report\\[holds margin [^]]*' | tail -n 1"
-        )
-        return "agent" in held.split()[2:]
+    def counted() -> int:
+        """Say how many For You's tray last counted waiting on Joel."""
+        return tray_counted(desktop)
 
     # An action its quest's file holds only for later isn't Joel's yet.
     later = {"quest": "TESTQA", "items": [{"id": "later", "title": "Later", "ready": False}]}
     desktop.as_account(f"printf %s {shlex.quote(json.dumps(later))} > {waiting}")
     wants("action", "WCJQSG")
     time.sleep(2)
-    assert not marked(), "an action held only for later marked Joel"
-    # It is once the file says he can do it now.
+    assert counted() == 0, "an action held only for later marked Joel"
+    # It is once the file says he can do it now, and then it's that to-do,
+    # counted once, as For You lists it (Holding.js's wanting).
     now = {"quest": "TESTQA", "items": [{"id": "now", "title": "Now", "ready": True}]}
     desktop.as_account(
         f"printf %s {shlex.quote(json.dumps(now))} > {waiting}.q && mv {waiting}.q {waiting}"
     )
-    retry(lambda _: marked(), timeout=dt.timedelta(seconds=20))
+    both, the_to_do = 2, 1
+    retry(lambda _: counted() == the_to_do, timeout=dt.timedelta(seconds=20))
     # A question an orchestrated session asks is its orchestrator's; a yes
     # it waits for is always his.
     wants("question", "WCJQSG")
-    retry(lambda _: not marked(), timeout=dt.timedelta(seconds=20))
+    retry(lambda _: counted() == the_to_do, timeout=dt.timedelta(seconds=20))
     wants("approval", "WCJQSG")
-    retry(lambda _: marked(), timeout=dt.timedelta(seconds=20))
+    retry(lambda _: counted() == both, timeout=dt.timedelta(seconds=20))
     desktop.as_account(f"rm {waiting}")
     desktop.pi_session()
     for title in ["Elsewhere"]:

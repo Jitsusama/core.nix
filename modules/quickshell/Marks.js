@@ -48,7 +48,11 @@ function asked(launcher) {
 // The mark Now points at, from the launcher's `keys`: the key of each
 // row it holds and of the one selected, in order. A thing's row is
 // `on:<mark>` and its actions' `verb:on:<mark>:<name>`, so the last key
-// that names a thing names the one the keys are on. Empty for none.
+// that names a thing names the one the keys are on, For You's row
+// `on:waitingOnYou` and all within it its tray's, `forYou`: its rows
+// `on:waiting:*`, their acts `verb:on:waiting:*` and a look's
+// `verb:on:look:*` (Y2YBTS, 2026-11-09). Empty for none.
+const ROW_MARKS = { waitingOnYou: "forYou", waiting: "forYou", look: "forYou" };
 function pointed(launcher) {
     if (!asked(launcher)) {
         return "";
@@ -57,7 +61,7 @@ function pointed(launcher) {
         .map(key => key.split(":"))
         .map(parts => (parts[0] === "verb" ? parts.slice(1) : parts))
         .filter(parts => parts[0] === "on" && parts.length > 1)
-        .map(parts => parts[1]);
+        .map(parts => ROW_MARKS[parts[1]] ?? parts[1]);
     const [last] = marks.slice(-1);
     return last ?? "";
 }

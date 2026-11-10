@@ -24,6 +24,8 @@ from desktop_session import (
     MARGIN,
     NOTICES,
     changed_at_the_top,
+    for_you_lit,
+    for_you_read,
     margin_points,
     margin_sets,
 )
@@ -47,6 +49,9 @@ BESIDE_THE_MIDDLE = 2
 # How long the same wait lasts before the VM's margin marks it, in seconds,
 # as tests/desktop.nix sets the Lag piece's `lasts`.
 LAG_LASTS = 3600
+
+# The scales Joel's screens are seen at, which a design's shots are judged at.
+JOELS_SCALES = ("1.5", "2")
 
 
 def now_down_to(desktop: Desktop, name: str) -> None:
@@ -396,17 +401,15 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     stays_showing_it_gone(desktop, "Do Not Disturb")
 
 
-def test_a_missed_notice_shows_its_glyph_and_now_shows_the_notices(desktop: Desktop) -> None:
-    """A missed notice shows its glyph, Now shows the notices, and u undoes dd there."""
+def test_now_shows_the_notices_and_a_critical_one_unread_lights_for_yous_tray(
+    desktop: Desktop,
+) -> None:
+    """Now shows the notices, u undoes dd there, and a critical one unread lights the tray."""
     machine = desktop.machine
-    # On screen it isn't waiting yet; once it goes by itself, it is, and
-    # it wants Joel, so it's strong.
-    since = desktop.mark()
-    with desktop.told("drawn margin"), desktop.told("shows card Peter"):
+    # Missed, a notice is what came lately, lighting nothing; open to its sender, d forgets it.
+    with desktop.told("shows card Peter"):
         desktop.as_account("notify-send --expire-time=1000 'Peter' 'are you there?'")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
-    desktop.reported("sets margin ", margin_sets(("waiting", "wants", "strong")), since)
-    desktop.shoot("margin-waiting")
     # Now opens on For You, its first row, however much the notices
     # want Joel. The time and the date are among Now's own rows, each its
     # own answer as it's placed anywhere; the VM has no forecast and no
@@ -449,9 +452,17 @@ def test_a_missed_notice_shows_its_glyph_and_now_shows_the_notices(desktop: Desk
     desktop.shoot("launcher-from-margin")
     forgets_then_brings_back(desktop)
     desktop.close_launcher()
-    # Opening them counted them seen, so nothing's waiting.
-    machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
+    # Peter's was read as Desktop showed it, so another, unopened, for Mark Them Read to read.
+    with desktop.told("rests Pat"):
+        desktop.as_account("notify-send --expire-time=1000 'Pat' 'call me'")
     reads_them_all(desktop)
+    # A critical notice put away unread waits in For You's Desktop, whose tray
+    # is then the margin's one mark, strong, since it wants Joel; read, it goes.
+    since = desktop.mark()
+    for_you_lit(desktop, "Paula")
+    desktop.reported("sets margin ", margin_sets(("forYou", "wants", "strong")), since)
+    desktop.shoot("margin-for-you")
+    for_you_read(desktop)
 
 
 def says_each_thing_once(desktop: Desktop) -> None:
@@ -706,6 +717,48 @@ def test_whats_playing_shows_in_the_margin_and_a_media_key_shows_what_it_is(
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
     desktop.as_account("systemctl --user stop player")
+
+
+def test_for_yous_tray_is_shot_alone_calm_and_beside_a_timer_and_music(desktop: Desktop) -> None:
+    """For You's tray is shot alone, then out and lit beside a running timer and music.
+
+    At Joel's two scales, for its weight and size against the densest marks lit beside it
+    (VKCF3Z, 2026-11-09). Only the gallery shoots them.
+    """
+    if not desktop.values["shots"]:
+        return
+    machine = desktop.machine
+    machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
+    for scale in JOELS_SCALES:
+        desktop.as_account(f"niri msg output winit scale {scale}")
+        for_you_lit(desktop, f"Alone at {scale}")
+        desktop.shoot(f"margin-for-you-at-{scale.replace('.', '-')}")
+        for_you_read(desktop)
+    desktop.as_account("niri msg output winit scale 1")
+    with desktop.told("drawn notifications"):
+        track = desktop.values["track"]
+        desktop.as_account(f"systemd-run --user -u player mpv --ao=null --no-video --loop {track}")
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    desktop.answer("timer 25m bread")
+    desktop.land()
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: str((shown["selected"] or {}).get("name")).startswith("Bread \u00b7 ")
+    )
+    desktop.close_launcher()
+    try:
+        for scale in JOELS_SCALES:
+            desktop.as_account(f"niri msg output winit scale {scale}")
+            desktop.shoot(f"margin-calm-beside-a-timer-at-{scale.replace('.', '-')}")
+            for_you_lit(desktop, f"Beside at {scale}")
+            desktop.shoot(f"margin-for-you-beside-a-timer-at-{scale.replace('.', '-')}")
+            for_you_read(desktop, "timer", "playing")
+    finally:
+        desktop.as_account("niri msg output winit scale 1")
+        desktop.as_account("systemctl --user stop player timers.service")
+        # The timers the daemon keeps go with it, in the account's state.
+        desktop.as_account("rm -f ~/.local/state/timers/held.json")
+        machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=30))
 
 
 def test_caps_lock_shows_in_the_margin_while_its_on(desktop: Desktop) -> None:

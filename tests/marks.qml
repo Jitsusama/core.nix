@@ -1,10 +1,11 @@
 // How the margin sets its glyphs, run in Qt's own JavaScript engine, the
 // one the shell runs it in. The `the-margins-marks-stand-level` check
-// copies Marks.js beside this file and runs `qml -platform offscreen
+// copies Marks.js and pieces/Holding.js beside this file and runs `qml -platform offscreen
 // marks.qml` over ink measured as TextMetrics measures it: from the
 // baseline, its top negative.
 import QtQuick
 import "Marks.js" as Marks
+import "Holding.js" as Holding
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -145,6 +146,60 @@ QtObject {
         expect("nothing selected points nowhere",
             Marks.pointed(launcher(true, "on", [""])), "");
         expect("shut points nowhere", Marks.pointed(launcher(false, "on", ["on:camera"])), "");
+        expect("For You's row points at its tray",
+            Marks.pointed(launcher(true, "on", ["on:waitingOnYou"])), "forYou");
+        expect("and so does anything within it",
+            Marks.pointed(launcher(true, "on", ["on:waitingOnYou", "on:waitingOnYou:kind:look"])),
+            "forYou");
+        // Its rows inside are keyed under `on:waiting`, and a look's act
+        // under `on:look` (Y2YBTS, 2026-11-09).
+        expect("a row inside For You points at its tray",
+            Marks.pointed(launcher(true, "on", ["on:waiting:QUEST1:ask", "on:waiting:later"])),
+            "forYou");
+        expect("and so do its acts",
+            Marks.pointed(launcher(true, "on", ["verb:on:waiting:go:QUEST1:ask"])), "forYou");
+        expect("and a look's", Marks.pointed(launcher(true, "on", ["verb:on:look:open"])),
+            "forYou");
+
+        // For You's tray is lit by what For You holds, of every kind, and
+        // nothing else (Joel's pick, VKCF3Z, 2026-11-09).
+        // How many of each kind For You holds.
+        const sized = holds => Object.keys(holds).map(kind => `${kind} ${holds[kind].length}`)
+            .join(", ");
+        const none = "wanting 0, toDo 0, looks 0, given 0, notices 0";
+        const session = { title: "pi", presence: { wants: { kind: "question" } } };
+        const acting = { title: "pi", presence: { wants: { kind: "action" } } };
+        const critical = { id: 7, urgency: "critical", read: false };
+        const holds = [
+            ["nothing held, nothing lit", {}, none],
+            ["a session's want, a to-do, a look and a source's to-do each count",
+                { wanting: [session], toDo: [{}], looks: [{}], given: [{}] },
+                "wanting 1, toDo 1, looks 1, given 1, notices 0"],
+            // As For You lists it (2026-10-31: four items read as eight).
+            ["a want that's an action is its own to-do, counted there",
+                { wanting: [acting], toDo: [{}] },
+                "wanting 0, toDo 1, looks 0, given 0, notices 0"],
+            ["only a critical notice unread counts, the rest came lately",
+                { notices: [critical, { id: 8, urgency: "normal" }, { id: 9, urgency: "low" }] },
+                "wanting 0, toDo 0, looks 0, given 0, notices 1"],
+            ["a critical notice read counts no more",
+                { notices: [Object.assign({}, critical, { read: true })] }, none],
+            ["nor while its card is up, which says it, by its id as a key",
+                { notices: [critical], onScreen: ["7"] }, none],
+            ["nor one saying a to-do, which is that to-do",
+                { notices: [Object.assign({}, critical, { waits: "QUEST1:ask" })] }, none],
+            ["a source that isn't a list holds nothing", { wanting: null, notices: "x" }, none]
+        ];
+        for (const [what, sources, held] of holds)
+            expect(`For You holds: ${what}`, sized(Holding.held(sources)), held);
+        expect("its count is every kind's", Holding.count(Holding.held({ wanting: [session],
+            toDo: [{}], looks: [{}], given: [{}], notices: [critical] })), 5);
+        const saidBy = sources => Holding.saidBy(Holding.held(sources));
+        expect("pi's card says it while all held is sessions wanting",
+            saidBy({ wanting: [session, session] }), "pi");
+        expect("no one card says a want beside a to-do",
+            saidBy({ wanting: [session], toDo: [{}] }), "");
+        expect("nor anything else", saidBy({ notices: [critical] }), "");
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
