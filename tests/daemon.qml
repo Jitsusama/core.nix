@@ -342,7 +342,8 @@ ShellRoot {
         {
             what: "a socket that refuses is tried twice as late each time, a minute at most",
             holds: () => typeof people.waitAfter === "function"
-                && [0, 1, 2, 5, 9].map(n => people.waitAfter(n)).join(" ") === "2000 4000 8000 60000 60000"
+                && [0, 1, 2, 5, 9].map(n => people.waitAfter(n)).join(" ")
+                    === "2000 4000 8000 60000 60000"
                 && people.refusals === 0
         }
     ]

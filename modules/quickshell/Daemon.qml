@@ -25,8 +25,8 @@ pragma ComponentBehavior: Bound
 // while its socket is gone. A socket that refuses is tried again after
 // two seconds, and twice as long after each refusal since it last
 // answered, a minute at most, so a daemon down for good isn't asked by
-// every domain's connection every two seconds; one that isn't there at all, as Slack's isn't before Joel
-// signs in, is tried again only once it appears, so a machine without it
+// every domain's connection every two seconds; one that isn't there at
+// all, as Slack's isn't before Joel signs in, is tried again only once it appears, so a machine without it
 // isn't asked, and warned of, every two seconds for as long as it runs.
 // What was held stays held through a gap, and is replaced by what the
 // daemon says once it answers again, unless `keptThroughGap` says to let

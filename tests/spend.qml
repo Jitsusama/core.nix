@@ -16,8 +16,8 @@
 // finding that wants a look first, going to its session and stepping into
 // marking it expected; read from the file, its figures are said to be the
 // last ones, since the file is read only while spend-watch's socket isn't
-// answering (tests/spend-told.qml drives the socket). The tokens piece (pieces/Tokens.qml), over the same
-// file, is there only while the watch's `tokens` warns: as the watch words
+// answering (tests/spend-told.qml drives the socket). The tokens piece
+// (pieces/Tokens.qml), over the same file, is there only while the watch's `tokens` warns: as the watch words
 // it, wanting Joel, said as it arrives and again as its level steps down,
 // with See What Spends and Pause for a session that's running and nothing
 // else; urgent in the alert colour once out; quiet while shared; saying
