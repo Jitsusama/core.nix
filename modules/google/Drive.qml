@@ -80,9 +80,7 @@ Singleton {
     function row(document, provider) {
         const words = Said.kind(document);
         const name = document.title !== "" ? document.title : Words.name(words.thing, "untitled");
-        const details = Said.details(document, Words.name(words.thing, "untitled"), Calendar.now,
-            Mail.dates);
-        return provider.thing({
+        const made = provider.thing({
             key: `gdoc:${document.id}`,
             what: "document",
             component: "document",
@@ -91,16 +89,39 @@ Singleton {
             verb: Words.verb(words.open),
             glyph: Words.glyph(words.thing, document.kind),
             hue: "program",
-            side: Said.beside(document, Calendar.now, Mail.dates, root.said.said.opened),
-            drawer: Places.drawn(details, document, Object.assign({
-                    drives: root.places?.drives?.files ?? [],
-                    now: Calendar.now,
-                    dates: Mail.dates
-                }, root.said)),
+            side: root.side(document),
             later: true,
             run: () => root.open(document),
             verbs: () => root.acts(document, provider)
         });
+        // Its drawer, made when first shown, and again once the clock has
+        // moved, rather than with the row: a row is kept while it reads the
+        // same (Documents.qml), so a drawer made with it would go on saying
+        // the minute it was made.
+        let drawn = null;
+        let drawnAt = -1;
+        Object.defineProperty(made, "drawer", {
+            enumerable: true,
+            get: () => {
+                if (drawn === null || drawnAt !== Calendar.now) {
+                    const details = Said.details(document, Words.name(words.thing, "untitled"),
+                        Calendar.now, Mail.dates);
+                    drawn = Places.drawn(details, document, Object.assign({
+                        drives: root.places?.drives?.files ?? [],
+                        now: Calendar.now,
+                        dates: Mail.dates
+                    }, root.said));
+                    drawnAt = Calendar.now;
+                }
+                return drawn;
+            }
+        });
+        return made;
+    }
+
+    // What a file's row says at its right: when he last opened it.
+    function side(document) {
+        return Said.beside(document, Calendar.now, Mail.dates, root.said.said.opened);
     }
 
     // Its acts, in the one order every surface lists them.

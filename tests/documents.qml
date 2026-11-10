@@ -3,8 +3,8 @@
 // and Google's account, the clock, the mail and the saves stood in. With
 // the launcher shut, a minute passing and a document coming make no row,
 // though each row says when it was opened against the clock; opened, it
-// makes them once, holding every document; and shut again, it keeps the
-// rows it made. It exits 0 once every case holds, and otherwise 1, saying
+// makes them once, holding every document; opened again, it makes only
+// those that changed; and shut again, it keeps the rows it made. It exits 0 once every case holds, and otherwise 1, saying
 // which didn't.
 import qs
 import Quickshell
@@ -64,11 +64,27 @@ ShellRoot {
             Expect.expect("and its program's Recent holds them",
                 documents.recentOf("google-docs").map(row => row.name).join(", ")
                 === "Quarterly Plan, Roadmap", "");
+            // Opened again, it makes only what changed: every opening made
+            // all 27 of Joel's again (2026-11-10).
+            standIn.open = false;
+            const opened = documents.tally.rows;
+            standIn.open = true;
+            Expect.expect("opened again, it makes none that reads the same",
+                documents.tally.rows === opened, documents.tally.rows - opened);
+            Google.documents = Google.documents.map(each => Object.assign({}, each,
+                each.id === "d2" ? { title: "Roadmap, Revised" } : {}));
+            Expect.expect("and one changed, only it", documents.tally.rows - opened === 1,
+                documents.tally.rows - opened);
+            Expect.expect("as it reads now", titles() === "Quarterly Plan, Roadmap, Revised",
+                titles());
+            Expect.expect("its drawer as it reads now",
+                documents.things[1].drawer.title === "Roadmap, Revised",
+                JSON.stringify(documents.things[1].drawer.title));
             standIn.open = false;
             const closed = documents.tally.rows;
             Calendar.now += 60000;
-            Expect.expect("shut again, it keeps what it made", titles() === "Quarterly Plan, Roadmap",
-                titles());
+            Expect.expect("shut again, it keeps what it made",
+                titles() === "Quarterly Plan, Roadmap, Revised", titles());
             Expect.expect("and makes none", documents.tally.rows === closed,
                 documents.tally.rows - closed);
             Qt.callLater(() => Qt.exit(0));

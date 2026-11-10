@@ -24,10 +24,21 @@ Provider {
     // Applications' steps (recentOf).
     readonly property bool rowsWanted: provider.launcher?.open === true || provider.wanted
     readonly property var madeRows: ({ rows: [] })
+    // Each row is kept while its document and what it says at its right
+    // read the same, so an opening makes only those that changed: every
+    // opening made all 27 again on Joel's shell (2026-11-10). A stopgap
+    // until the google daemon serves Documents' rows ready (RTOIMQ's
+    // ready rows, due 2026-11-11 18:00), which streams only those that
+    // changed, and keeping them by key stays.
+    readonly property var keeping: provider.keeper()
     things: {
         if (!provider.rowsWanted)
             return provider.madeRows.rows;
-        const rows = Drive.documents.map(document => Drive.row(document, provider));
+        provider.keepingBegun(provider.keeping);
+        const rows = Drive.documents.map(document => provider.keptOr(provider.keeping,
+            document.id, JSON.stringify([document, Drive.side(document)]),
+            () => Drive.row(document, provider)));
+        provider.keptOnly(provider.keeping);
         provider.madeRows.rows = rows;
         return rows;
     }
