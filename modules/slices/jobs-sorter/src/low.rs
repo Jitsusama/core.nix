@@ -303,11 +303,17 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let mut watch = Watch::new(&dir).unwrap();
         let mut waker = watch.waker().unwrap();
-        assert!(!watch.wait(Duration::from_millis(50)));
+        assert!(
+            !watch.wait(Duration::from_millis(50)),
+            "no wake, no mark: the wait runs out"
+        );
         std::io::Write::write_all(&mut waker, &[1]).unwrap();
         let began = Instant::now();
-        assert!(watch.wait(Duration::from_secs(10)));
-        assert!(began.elapsed() < Duration::from_secs(5));
+        assert!(watch.wait(Duration::from_secs(10)), "woken");
+        assert!(
+            began.elapsed() < Duration::from_secs(5),
+            "woken at once, not at the wait's end"
+        );
         assert!(!watch.wait(Duration::ZERO), "read whole");
         fs::remove_dir_all(&dir).unwrap();
     }

@@ -419,13 +419,19 @@ mod tests {
     #[test]
     fn the_focus_is_followed_through_niris_events() {
         let mut windows = Windows::default();
-        assert!(windows.take(
-            r#"{"WindowsChanged":{"windows":[
+        assert!(
+            windows.take(
+                r#"{"WindowsChanged":{"windows":[
                 {"id":23,"app_id":"pi-session.22","pid":2684,"is_focused":false},
                 {"id":70,"app_id":"slack","pid":311171,"is_focused":true}]}}"#
-        ));
+            ),
+            "every window, at first"
+        );
         assert_eq!(windows.focused().map(|window| window.id), Some(70));
-        assert!(windows.take(r#"{"WindowFocusChanged":{"id":23}}"#));
+        assert!(
+            windows.take(r#"{"WindowFocusChanged":{"id":23}}"#),
+            "the focus moved"
+        );
         assert_eq!(
             windows.focused(),
             Some(&Window {
@@ -438,16 +444,23 @@ mod tests {
             !windows.take(r#"{"WorkspacesChanged":{"workspaces":[]}}"#),
             "nothing moved"
         );
-        assert!(windows.take(
-            r#"{"WindowOpenedOrChanged":{"window":
-                {"id":9,"app_id":"pi-spawned.4","pid":2684,"is_focused":false}}}"#
-        ));
-        assert_eq!(windows.focused().map(|window| window.id), Some(23));
-        assert!(windows.take(r#"{"WindowClosed":{"id":23}}"#));
-        assert_eq!(windows.focused(), None);
-        assert!(!windows.has(23));
         assert!(
-            windows.take(r#"{"WindowFocusChanged":{"id":null}}"#) || windows.focused().is_none()
+            windows.take(
+                r#"{"WindowOpenedOrChanged":{"window":
+                {"id":9,"app_id":"pi-spawned.4","pid":2684,"is_focused":false}}}"#
+            ),
+            "a window opened"
+        );
+        assert_eq!(windows.focused().map(|window| window.id), Some(23));
+        assert!(
+            windows.take(r#"{"WindowClosed":{"id":23}}"#),
+            "the focused window closed"
+        );
+        assert_eq!(windows.focused(), None);
+        assert!(!windows.has(23), "a closed window is gone");
+        assert!(
+            !windows.take(r#"{"WindowFocusChanged":{"id":null}}"#),
+            "the focus was on nothing already"
         );
     }
 
@@ -563,17 +576,17 @@ mod tests {
 
     #[test]
     fn a_session_window_is_one_the_shell_classed_for_a_session() {
-        assert!(pi(1).session());
+        assert!(pi(1).session(), "a pi-session window");
         let spawned = Window {
             app_id: "pi-spawned.96260002".into(),
             ..pi(1)
         };
-        assert!(spawned.session());
+        assert!(spawned.session(), "a pi-spawned window");
         let kitty = Window {
             app_id: "kitty".into(),
             ..pi(1)
         };
-        assert!(!kitty.session());
+        assert!(!kitty.session(), "a plain kitty holds no session");
     }
 
     #[test]
@@ -623,14 +636,14 @@ mod tests {
         let only = std::slice::from_ref;
         assert_eq!(holding.changes(only(&a)), [(a.clone(), true)]);
         holding.done(&a, true);
-        assert!(holding.holds("kitty-1-1.scope"));
+        assert!(holding.holds("kitty-1-1.scope"), "held once done");
         assert_eq!(holding.changes(only(&a)), []);
         assert_eq!(
             holding.changes(only(&b)),
             [(b.clone(), true), (a.clone(), false)]
         );
         holding.done(&a, false);
-        assert!(!holding.holds("kitty-1-1.scope"));
+        assert!(!holding.holds("kitty-1-1.scope"), "given back once done");
         holding.done(&b, true);
         holding.keep_only(|_| false);
         assert_eq!(
@@ -643,6 +656,11 @@ mod tests {
     #[test]
     fn three_floors_fit_inside_the_agents_slices_own() {
         // agents.slice's floor is 15% of a 62 GiB machine (modules/slices).
-        const { assert!(FLOOR * MOST as u64 <= (62 << 30) * 15 / 100) };
+        const {
+            assert!(
+                FLOOR * MOST as u64 <= (62 << 30) * 15 / 100,
+                "three floors past agents.slice's own"
+            );
+        };
     }
 }
