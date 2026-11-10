@@ -487,15 +487,24 @@ Provider {
         }
 
         // A light's answer waits for the watch's first answer, so it's
-        // asked again once that's come, moved or not.
+        // asked again once that's come, moved or not. Asked as the turn
+        // ends, never at once: a watch ending as lightsSeen changes says
+        // so here, inside lightsSeen's own binding, and an answer asked
+        // there makes the rows lightsSeen reads again, a binding loop
+        // whenever the watch was answered before the next key (the
+        // answers VM test, 2026-11-10).
         function onAnsweredThisWatchChanged() {
-            if (provider.lightShown)
-                provider.answered();
+            Qt.callLater(provider.lightAnswered);
         }
 
         function onLiveChanged() {
             provider.lightWaited = false;
         }
+    }
+
+    function lightAnswered() {
+        if (lightShown)
+            answered();
     }
 
     function heard() {
