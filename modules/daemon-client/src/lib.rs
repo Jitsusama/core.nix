@@ -79,9 +79,15 @@ impl Client {
         }
     }
 
+    /// Sends an ask without waiting on its answer, for a test that reads
+    /// what comes back itself, as one hearing a push that may come first.
+    pub fn send(&mut self, asked: &Value) {
+        writeln!(self.stream, "{asked}").expect("the ask is sent");
+    }
+
     /// The answer to an ask, passing over what a watch pushed meanwhile.
     pub fn ask(&mut self, asked: &Value) -> Value {
-        writeln!(self.stream, "{asked}").expect("the ask is sent");
+        self.send(asked);
         loop {
             let said = self.heard();
             if said["id"] == asked["id"] && said.get("changed").is_none() {

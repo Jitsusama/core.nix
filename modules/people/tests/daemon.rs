@@ -255,12 +255,7 @@ fn a_watch_hears_a_source_sign_out_as_it_says_so() {
         assert!(Instant::now() < deadline, "slack never started");
         std::thread::sleep(Duration::from_millis(20));
     }
-    writeln!(
-        client.stream,
-        "{}",
-        json!({"id": 2, "ask": "watch", "keys": ["person:ada@example.com"]})
-    )
-    .unwrap();
+    client.send(&json!({"id": 2, "ask": "watch", "keys": ["person:ada@example.com"]}));
     // The ask ahead has it say it's signed out, which the watch hears
     // without asking, as a client learns a sign-in went. The source may
     // say so before the watch is answered, so either comes first.
