@@ -157,8 +157,19 @@
       key.checkVisibility() &&
       !keysList?.parentElement?.contains(key),
   );
+  // It's in the head, where a reader finds it as the page opens: inside the
+  // first <header>, or anywhere before <main>, never in a footer the length
+  // of the page away. A key outside <main> and before it finds <main>
+  // following it, and nothing more, since neither holds the other.
+  const main = page.querySelector("main");
+  const following = Node.DOCUMENT_POSITION_FOLLOWING;
+  const upTop = (key) =>
+    head?.contains(key) === true ||
+    (main !== null && key.compareDocumentPosition(main) === following);
   if (keyLine === undefined) {
     missing.push("the key line under the head, naming ? for the keys");
+  } else if (!upTop(keyLine)) {
+    missing.push("the key line in the head, not further down the page");
   }
   const first = page.querySelector("a[href], button, input, select, textarea, [tabindex]");
   // The target is found by its id rather than as a selector, since a link to
@@ -218,7 +229,15 @@
       prose.push(text.textContent);
     }
   }
-  const words = `${page.title} ${meta('meta[name="description"]')} ${prose.join(" ")}`;
+  // A tab's title can't carry a marker, so it's read without whatever the
+  // page's own marked names and words hold: an issue titled by the person
+  // who filed it is drawn on the page with data-said-by, and its tab reads
+  // only the site's parts around it.
+  const tabTitle = [...page.querySelectorAll(names)]
+    .map((element) => element.textContent.trim())
+    .filter((marked) => marked !== "")
+    .reduce((left, marked) => left.replaceAll(marked, " "), page.title);
+  const words = `${tabTitle} ${meta('meta[name="description"]')} ${prose.join(" ")}`;
   const faults = [
     ["\u2014", "an emdash: a comma, colon or full stop instead"],
     ["\u2026", "a Unicode ellipsis: three full stops, or say it whole"],
