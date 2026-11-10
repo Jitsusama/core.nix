@@ -85,8 +85,32 @@ Provider {
 
     // The managers, as the module lists them: each by its name in the
     // daemon, the desktop entry its program row is made from, its name as
-    // Joel reads it, and the pattern of its own link to an entry.
+    // Joel reads it, the pattern of its own link to an entry, and the app
+    // ids its program's windows carry.
     readonly property var managers: settings.managers ?? []
+
+    // How long after an ask of Joel's a manager's window may come and still
+    // be his answer to it: the manager waits up to 20 s for a closed app to
+    // open, and its prompt follows within a few more. One already answering
+    // asks again only once its leave lapses, and at once, so its window is
+    // given less, lest one changing for its own reasons close the launcher
+    // as Joel reads.
+    readonly property int opening: 30000
+    readonly property int asking: 5000
+
+    // Said just before an ask that may have a manager put its prompt up
+    // while the launcher is open, so the launcher closes and that window
+    // takes the keys rather than coming up beneath it (2026-11-10:
+    // stepping into Passwords had 1Password ask beneath the launcher,
+    // until Joel's next key closed it).
+    function handOver() {
+        const windows = managers.map(manager => manager.windows ?? [])
+            .reduce((all, some) => all.concat(some), []);
+        const answering = managers.every(manager =>
+            daemon.sources[manager.name]?.state === "answering");
+        if (windows.length > 0)
+            provider.launcher?.handsOver?.(windows, answering ? asking : opening);
+    }
     // Whether rows name their manager: only while two or more are here.
     readonly property bool naming: Passwords.named(managers)
 
@@ -207,6 +231,7 @@ Provider {
             return;
         checking = true;
         checkWhy = "";
+        handOver();
         daemon.ask({ ask: "audit", asked: true, patience: 120000 }, answer => {
             provider.checking = false;
             provider.checkWhy = answer === null ? said.away ?? ""
@@ -522,6 +547,7 @@ Provider {
         const asked = { ask: "copy", key: key };
         if (detail !== null)
             asked.detail = detail;
+        handOver();
         daemon.ask(asked, answer => {
             if (Clearing.copied?.key !== key || Clearing.copied?.detail !== what)
                 return;
@@ -611,6 +637,7 @@ Provider {
     // before Return is (Launcher.qml's tellOnOpen): never nothing, as when
     // 1Password keeps its command out and no prompt ever comes.
     function letIn(manager) {
+        handOver();
         daemon.ask({ ask: "let-in", manager: manager.name, patience: 120000 }, answer => {
             provider.changed();
             const why = answer === null ? said.away ?? "" : answer.error?.message ?? "";
@@ -629,6 +656,7 @@ Provider {
         if (listedThisTime)
             return;
         listedThisTime = true;
+        handOver();
         daemon.ask({ ask: "list", asked: true, fresh: true }, null);
     }
 
@@ -647,6 +675,8 @@ Provider {
         if (asked && Array.isArray(recordOf(key)?.details))
             return;
         gotThisTime[key] = asked ? "asked" : "rested";
+        if (asked)
+            handOver();
         daemon.ask({ ask: "get", keys: [key], asked: asked }, null);
     }
 

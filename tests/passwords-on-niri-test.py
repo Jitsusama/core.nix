@@ -5,7 +5,8 @@ is the store's own, which the check names, run as its unit runs it, on the daemo
 one password manager: a stand-in for 1Password's, named as 1Password's is
 (tests/passwords-stand-in.sh), which never runs op. It starts signed out. Nothing asks it
 anything until Joel steps into Passwords, which asks it once, and while it's signed out the
-place leads with 1Password's row, its side saying it's locked, whose Return unlocks it. Refused
+place leads with 1Password's row, its side saying it's locked, whose Return unlocks it, and a
+window of 1Password's opening for that ask closes the launcher and takes the keys. Refused
 the first time, as a dismissed prompt is, the launcher says why the next time it opens. Once
 in, GitHub leads as a favourite, its username at its side, its Return copies its password
 through the daemon to the clipboard and the launcher goes, the margin wearing the clipboard's
@@ -43,6 +44,8 @@ STAND_IN = "stand-in-password"
 LOCKED = "1Password"
 # What the foot says, opened again, after 1Password didn't let the launcher in.
 REFUSED = "1Password asks you to let the launcher in"
+# The app id 1Password's windows carry, as its desktop entry names it.
+PROMPT = "com.onepassword.OnePassword"
 # How many unlocks the stand-in hears before it's let in: the one it refuses, then its own.
 UNLOCKS = 2
 # What the stand-in Chrome was given, a line an argument.
@@ -174,7 +177,16 @@ def test_passwords_asks_nothing_until_stepped_into_and_leads_with_letting_it_in(
     # Refused, as 1Password is when its prompt is dismissed, so the place
     # leads with the row that lets the launcher in.
     shell.launcher_until(lambda shown: shown["rows"][:1] == [LOCKED])
-    shell.close_launcher()
+    # The list being Joel's ask, 1Password's prompt coming for it closes the launcher and
+    # takes the keys, never coming up beneath it (Joel, 2026-11-10: "the unlock screen shows
+    # below the launcher"). A foot window carrying 1Password's app id stands in for it.
+    with shell.told(f"handed to {PROMPT}"):
+        prompt = shell.opened("Unlock 1Password", PROMPT)
+    shell.launcher_closed()
+    focused = json.loads(shell.as_account("niri msg --json focused-window"))
+    assert focused is not None, "niri focuses no window once the launcher went"
+    assert focused["id"] == prompt["id"], f"1Password's prompt isn't focused: {focused}"
+    shell.close(prompt)
     # Home's row says nothing after its name and that it's locked at its right, and its
     # drawer names what it holds, the manager, never Check Every Password, its act
     # (VKCF3Z, db2d4ed6 and dae7fb67).

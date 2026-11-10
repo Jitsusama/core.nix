@@ -172,6 +172,13 @@ in
           ];
           program = "com.onepassword.OnePassword";
           called = "1Password";
+          # Its windows, by the app id niri's own rule for it names and the
+          # one its desktop entry says, until a window on a machine shows
+          # which it carries.
+          windows = [
+            "1Password"
+            "com.onepassword.OnePassword"
+          ];
           # 1Password's own link to an item, which its desktop entry takes
           # as the onepassword scheme's handler, opening the item there.
           shows = "onepassword://view-item?a={account}&v={collection}&i={id}";
