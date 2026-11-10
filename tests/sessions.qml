@@ -392,6 +392,14 @@ ShellRoot {
                 .test(told ?? "")
                 && told === classed) && new Set(named.map(([told]) => told)).size === named.length,
             JSON.stringify(named));
+        // Numbered on from when this shell started, so a shell started again,
+        // as every switch does, names none as a window still open from before.
+        const numbers = named.map(([told]) => /\.(\d+)$/.exec(told ?? ""))
+            .filter(number => number !== null).map(number => Number(number[1]));
+        expect("each window numbered past the moment its shell started",
+            numbers.length > 0 && Math.abs(Date.now() - Sessions.startedAt) < 10 * 60 * 1000
+                && numbers.every(number => number > Sessions.startedAt),
+            `${Sessions.startedAt}: ${numbers.join(" ")}`);
         // Held as every start is, by the realm's node where there is one.
         const opened = command => kitties.some(one => one.startsWith(command[0])
             && one.endsWith(command[1]));

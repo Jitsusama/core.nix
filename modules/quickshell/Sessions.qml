@@ -180,7 +180,14 @@ Singleton {
     // opened aside, or where it goes, goes without the activation token
     // niri hands what it spawns, which kitty would spend on taking the
     // focus once its window shows.
-    property int openings: 0
+    // They're numbered on from the moment this shell started, in
+    // milliseconds, not from nought: a shell started again, as every switch
+    // does, would otherwise name its first window as one still open from
+    // before, and windowOf would take either for the other. No shell opens
+    // a window a millisecond, so a later start counts past every number an
+    // earlier one gave.
+    readonly property real startedAt: Date.now()
+    property real openings: startedAt
     function inSessions(kind, rest, into, named) {
         openings++;
         const classed = named ?? `${kind}.${openings}`;
