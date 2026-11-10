@@ -80,7 +80,7 @@ Scope {
             app: fact.piece.app,
             glyph: Theme.glyph[fact.piece.markGlyph || fact.entry.mark],
             kind: fact.piece.kind,
-            order: fact.entry.order,
+            order: fact.place,
             tone: Marks.tone(fact.piece)
         }))
     // What was on air and has just gone, which stays a while, muted

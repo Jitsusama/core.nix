@@ -9,13 +9,17 @@
 // `<mark>:<key>`. Every reader knows a fact by its mark (Arrivals'
 // notice, the margin's cell, Now's row), so each thing is said, drawn and
 // listed on its own, and none while there are none.
+// Each fact keeps its `place` in that order, counting from 0, since the
+// entries leave their own order out (Pieces.qml) and the margin places its
+// marks by it (Marks.arranged); without it, two of a kind fell in
+// whichever order they came true.
 // Qt's JavaScript has no flatMap, so each is pushed in turn.
 function facts(entries, pieces) {
     const all = [];
     entries.forEach((entry, index) => {
         const piece = pieces[index] ?? null;
         if (piece === null || !Array.isArray(piece.each)) {
-            all.push({ entry, piece });
+            all.push({ entry, piece, place: all.length });
             return;
         }
         for (const thing of piece.each) {
@@ -23,7 +27,8 @@ function facts(entries, pieces) {
                 entry: Object.assign({}, entry, {
                     mark: entry.mark === null ? null : `${entry.mark}:${thing.key}`
                 }),
-                piece: thing
+                piece: thing,
+                place: all.length
             });
         }
     });
