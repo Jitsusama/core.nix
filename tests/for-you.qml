@@ -269,7 +269,7 @@ QtObject {
         const byId = (them, id) => them.waiting.concat(them.history).find(one => one.id === id);
         expect("a file as it was, not parsed again", byId(again, "B") === byId(first, "B"), true);
         expect("a file that changed, parsed again", byId(again, "A").title, "Again");
-        expect("a file gone, forgotten", ["e.json" in kept, "a.json" in kept], [false, true]);
+        expect("a file gone, forgotten", ["e.json" in kept.by, "a.json" in kept.by], [false, true]);
 
         // History's side: how it went and when.
         const side = id => ForYou.historySide(read.history.find(one => one.id === id), say);

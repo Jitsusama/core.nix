@@ -817,8 +817,8 @@ Provider {
         || `${Quickshell.env("HOME")}/.local/state`}/pi/agentic-harness.pi/looks`
     // Each file's text, by its name, as it was last read.
     property var lookTexts: ({})
-    // Each file's look is kept by its text, so only a file that changed
-    // is parsed again.
+    // Each file's look is kept by its text, in looksParsed.by, so only a
+    // file that changed is parsed again.
     readonly property var looks: ForYou.looks(Object.keys(lookTexts)
         .map(file => ({ file: file, text: lookTexts[file] })), looksParsed)
     readonly property var looksParsed: ({})
