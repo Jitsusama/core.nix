@@ -572,6 +572,10 @@ let
     # Whether polkit lets an account switch the machine shows only with
     # polkit, systemd and a system to switch to.
     vm-admins-switch-unasked = import ./tests/switch-system.nix { inherit self pkgs; };
+    # Whether root is given only the builders nix-offload's lines trust,
+    # in files the lender's account can't write, shows only with systemd
+    # running the service as its own account.
+    vm-root-builds-only-where-it-trusts = import ./tests/offload-lines.nix { inherit self pkgs; };
     # Whether a machine updates itself to signed main, and goes back when it
     # isn't whole, shows only with systemd, a real switch and Nix building.
     vm-updates-itself-to-signed-main = import ./tests/update-to-main.nix { inherit self pkgs; };

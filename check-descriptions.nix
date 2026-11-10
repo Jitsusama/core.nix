@@ -3421,6 +3421,12 @@
     stage, and Plymouth hears which; an account's units that ignore SIGTERM hold its manager under
     ten seconds, alone or in a reboot
   '';
+  vm-root-builds-only-where-it-trusts = ''
+    nix-offload's lines start as their own account with their settings, read the token the
+    lender's account leaves them, and give root the lent builder's line the cloud vouches for and
+    a standing one's, never a forged host key's, in files the lender's account can't write; with
+    nothing lent, the lent line goes and the standing one stays
+  '';
   vm-screens-come-and-go = ''
     the launcher, a notice, the margin's marks and dictation's bar come back after the screen goes
     and returns, after a console switch and after a sleep and wake, after which the shell still
