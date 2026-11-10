@@ -76,6 +76,9 @@ pub struct Row {
     pub side_items: Vec<Item>,
     pub note: String,
     pub depth: usize,
+    /// Whether it orchestrates others, so its drawer says what its whole
+    /// orchestration spent.
+    pub orchestrates: bool,
     /// Out of reach, so it does nothing.
     pub gone: bool,
     pub state: &'static str,
@@ -266,6 +269,7 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         side_items: items,
         note: noted.clone(),
         depth: place.depth,
+        orchestrates: place.orchestrates,
         gone: !session.reachable(),
         state: stands.id(),
         returns: standing::returns(stands, windowed),

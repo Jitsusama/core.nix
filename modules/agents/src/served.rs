@@ -4,9 +4,10 @@
 //! `row:agents:<id>` with the row's fields under `row`, placed by a
 //! spaced `order` the shell never sorts. A fold holds its members' keys,
 //! each member saying the fold it's in, and how the sessions stand
-//! together is one record more. Each making is held against the last, so
-//! a change sends only the records that read differently and the keys
-//! gone, and a session whose step alone moved sends nothing.
+//! together is a record of its own kind, `summary`, read by its key.
+//! Each making is held against the last, so a change sends only the
+//! records that read differently and the keys gone, and a session whose
+//! step alone moved sends nothing.
 
 use std::collections::BTreeMap;
 
@@ -20,8 +21,10 @@ pub const PLACE: &str = "agents";
 /// How far apart each row's `order` is set, so one row moving between
 /// two takes a number between theirs and the rest keep their own.
 pub const SPACING: i64 = 1024;
-/// The key of the record saying how the sessions stand together.
-pub const SUMMARY: &str = "row:agents:summary";
+/// The key of the record saying how the sessions stand together, its
+/// kind's own, since it's no row and is read where Agents' row is, home
+/// included.
+pub const SUMMARY: &str = "summary:agents";
 
 /// The records as last served, by key.
 #[derive(Debug, Default)]
@@ -65,7 +68,8 @@ fn items(items: &[Item]) -> Value {
 }
 
 /// A session's row in the launcher's form: its acts by their verbs' keys,
-/// each with the address it's done to, which the shell does; and what
+/// each with the ask that does it, the line the shell sends back (with
+/// its own id) as it is; and what
 /// only Agents reads, how it's found, its note, how it stands, what
 /// Return does and itself ranked flat, held.
 fn session(row: &Row, fold: Option<&str>) -> Value {
@@ -73,10 +77,14 @@ fn session(row: &Row, fold: Option<&str>) -> Value {
     let acts: Vec<Value> = row
         .acts
         .iter()
-        .map(|act| json!({"key": format!("verb:agent:{act}"), "address": address}))
+        .map(|act| {
+            json!({"key": format!("verb:agent:{act}"),
+                "ask": {"ask": act, "address": address}})
+        })
         .collect();
     let mut held = json!({
         "also": row.also, "note": row.note, "state": row.state, "gone": row.gone,
+        "orchestrates": row.orchestrates,
         "returns": format!("verb:agent:{}", row.returns),
         "ranked": {"note": row.ranked.note, "side": items(&row.ranked.side_items),
             "belongs": row.ranked.belongs},
@@ -119,8 +127,7 @@ fn laid(shown: &[Shown], fold: Option<&str>, rows: &mut Vec<Value>) {
 pub fn made(shown: &[Shown], summary: &str) -> Made {
     let mut rows = Vec::new();
     laid(shown, None, &mut rows);
-    let summary = json!({"key": SUMMARY, "row": PLACE, "place": PLACE, "kind": "summary",
-        "held": {"said": summary}});
+    let summary = json!({"place": PLACE, "said": summary});
     Made { rows, summary }
 }
 
@@ -221,7 +228,7 @@ impl Served {
         }
         records.insert(
             SUMMARY.to_owned(),
-            json!({"key": SUMMARY, "kind": "row", "row": made.summary}),
+            json!({"key": SUMMARY, "kind": "summary", "summary": made.summary}),
         );
         let gone = self
             .records
@@ -258,6 +265,7 @@ mod tests {
             }],
             note: String::new(),
             depth: 0,
+            orchestrates: false,
             gone: false,
             state: "working",
             returns: "switch",
@@ -307,14 +315,14 @@ mod tests {
         assert_eq!(row["side"], json!([{"said": "working", "keep": 3}]));
         assert_eq!(
             row["acts"][1],
-            json!({"key": "verb:agent:talk", "address": "P"})
+            json!({"key": "verb:agent:talk", "ask": {"ask": "talk", "address": "P"}})
         );
         assert_eq!(row["held"]["returns"], "verb:agent:switch");
         assert_eq!(row["order"], SPACING);
         assert_eq!(
             served
                 .get(SUMMARY)
-                .map(|one| one["row"]["held"]["said"].clone()),
+                .map(|one| one["summary"]["said"].clone()),
             Some(json!("1 working"))
         );
     }

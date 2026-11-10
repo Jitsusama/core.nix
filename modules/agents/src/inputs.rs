@@ -169,7 +169,7 @@ mod tests {
     }
 
     fn summary_of(served: &served::Served) -> Value {
-        served.get(served::SUMMARY).expect("the summary")["row"]["held"]["said"].clone()
+        served.get(served::SUMMARY).expect("the summary")["summary"]["said"].clone()
     }
 
     #[test]

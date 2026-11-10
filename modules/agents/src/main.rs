@@ -21,10 +21,11 @@ use daemon_serve::asks::Domain;
 use daemon_serve::serve::{self, Own, Shared};
 use serde_json::json;
 
-/// The daemon as the launcher knows it: Agents' ready rows.
+/// The daemon as the launcher knows it: Agents' ready rows, and how its
+/// sessions stand together.
 const DOMAIN: Domain = Domain {
     name: "agents",
-    kinds: &["row"],
+    kinds: &["row", "summary"],
 };
 
 const USAGE: &str = "usage: agents --vocabulary WORDS --node NODE --to-do TODO \
