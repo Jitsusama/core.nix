@@ -317,7 +317,8 @@ ShellRoot {
         same("when it was opened beside it", logo.side, "12\u00a0min ago");
         same("just now", fresh.side, "just now");
         same("days ago", icon.side, Qt.formatDate(new Date(root.now - 172800000), "dddd"));
-        same("an export is the shared list's row", exported.side, "~/Drawings");
+        same("an export is the shared list's row, saying when and then its folder",
+            exported.side, "16\u00a0min ago \u00b7 ~/Drawings");
         same("its drawer says where it is and its kind", logo.drawer.eyebrow,
             "in ~/Drawings \u00b7 drawing");
         same("as written, since its folder is a name", logo.drawer.eyebrowNames, true);
