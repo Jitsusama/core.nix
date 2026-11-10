@@ -12,7 +12,8 @@
 // Open-Meteo, keeping what it knew while it asks again; the meeting is the
 // calendar's own row; and Now counts nothing while only they are there.
 // For You, asked again what it holds, makes none of its looks again, and
-// only the one whose file changed once one does.
+// only the one whose file changed once one does; and what's on, made again
+// as any one piece moves, makes only that piece's rows again.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -390,5 +391,41 @@ ShellRoot {
             "it was kept");
         Sessions.wanting = [];
         now.lookTexts = {};
+
+        // What's on is made again as any one fact moves, and each piece's
+        // row, with its acts, is kept while what it shows reads the same:
+        // every lit piece's was made anew at each move, about 12 rows a
+        // change on Joel's shell (2026-11-10).
+        let ran = "";
+        const piece = (title, value, act) => ({ present: true, active: true, group: "on",
+            title: title, value: value, actions: [{ name: "Let It Sleep", run: act }] });
+        const awake = { entry: { mark: "awake" }, piece: piece("Awake", "on",
+            () => ran = "awake") };
+        const cast = { entry: { mark: "casting" }, piece: piece("Casting", "to the TV",
+            () => ran = "cast") };
+        const onRow = key => now.everything().find(row => row.key === key);
+        Facts.all = [awake, cast];
+        const awakeRow = onRow("on:awake");
+        const castRow = onRow("on:casting");
+        const onBefore = now.tally.rows;
+        Facts.all = [awake, cast];
+        expect("what's on said again as it was makes none of its rows again",
+            now.tally.rows === onBefore && onRow("on:awake") === awakeRow
+                && onRow("on:casting") === castRow, now.tally.rows - onBefore);
+        cast.piece = piece("Casting", "to the speaker", () => ran = "speaker");
+        Facts.all = [awake, cast];
+        expect("one piece changed makes only its row and its act again",
+            now.tally.rows - onBefore === 2 && onRow("on:awake") === awakeRow
+                && onRow("on:casting") !== castRow
+                && onRow("on:casting").side === "to the speaker", now.tally.rows - onBefore);
+        // A kept row's act runs the piece's act as it is now, though the
+        // piece was made anew saying the same, as a thing a piece stands
+        // for is (Facts.js).
+        awake.piece = piece("Awake", "on", () => ran = "awake now");
+        Facts.all = [awake, cast];
+        onRow("on:awake").run();
+        expect("a kept row runs its piece's act as it is now",
+            onRow("on:awake") === awakeRow && ran === "awake now", ran);
+        Facts.all = [];
     }
 }
