@@ -1843,11 +1843,13 @@
   '';
   slack-reads-a-notice-read-there-once = ''
     Slack's own desktop notice of a message Joel read in Slack is read in Notices once, said as
-    read in Slack, after the change that found it, so the shell logs no binding loop doing it
+    read in Slack, after the change that found it, so the shell logs no binding loop doing it,
+    and a change remakes only the lists whose keys it names, a message heard leaving the
+    conversations and Recent as they were
   '';
   slack-says-only-whats-current = ''
     Now's Slack piece gathers what Slack's daemon holds in Slack's order whatever order it was
-    heard in, and counts what wants Joel only while the daemon answers and Slack answered it,
+    heard in, a change moving only the parts whose keys it names, and counts what wants Joel only while the daemon answers and Slack answered it,
     saying Slack can't be reached when it can't, and signed out once Slack refuses the sign-in;
     it's listed only with something to read, never with nothing or the daemon not answering,
     naming the first two conversations and how many more, and Slack's own Unread counts the
