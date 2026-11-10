@@ -1020,6 +1020,60 @@ def is_graph(text: object) -> bool:
     return isinstance(text, str) and text != "" and all("\u2800" <= c <= "\u28ff" for c in text)
 
 
+def test_the_drawers_fact_rows_are_kept_between_programs_and_steps(shell: Shell) -> None:
+    """An arrow between programs, or a step back into Programs, makes no fact row it has.
+
+    The drawer made a row afresh for each fact every time its facts changed: the first
+    program's three took 5 ms of a 19 ms step into Programs at rest, made again on every step
+    since home's drawer holds none, and again on every arrow (2026-11-10). Its rows are kept
+    once made, each reading the fact at its place, so only a thing with more facts than any
+    before makes rows.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    held = [stepped_into_programs(shell)]
+    made = int(laid_out(shell)["factsMade"])
+    lacked = 0
+    # Down to the last and back: the test's account has three programs, the Foot terminal's.
+    for key in "jjkk":
+        title = shell.showing()["drawer"]["title"]
+        shell.send_chars(key)
+        shell.launcher_until(functools.partial(drawer_moved, title))
+        held.append(int(laid_out(shell)["factsHeld"]))
+        lacked += max(0, held[-1] - max(held[:-1]))
+    stepped_out(shell)
+    held.append(stepped_into_programs(shell))
+    lacked += max(0, held[-1] - max(held[:-1]))
+    made = int(laid_out(shell)["factsMade"]) - made
+    stepped_out(shell)
+    shell.close_launcher()
+    # Else no program after the first has a fact, and this proves nothing.
+    assert sum(held[1:]) > 0, f"facts held by each program's drawer: {held}"
+    assert made <= lacked, f"{made} fact rows made where {lacked} were missing, holding {held}"
+
+
+def stepped_into_programs(shell: Shell) -> int:
+    """Step into Programs from home and give how many facts its first program's drawer holds."""
+    shell.type_in("programs", selecting="Programs")
+    shell.step_in()
+    shell.launcher_until(functools.partial(stands_in, "Programs"))
+    shell.normal()
+    shell.launcher_until(drawer_on_selected)
+    return int(laid_out(shell)["factsHeld"])
+
+
+def drawer_moved(was: str, shown: Json) -> bool:
+    """Say whether the drawer is out on the selected row, titled otherwise than it was."""
+    return drawer_on_selected(shown) and cast("Json", shown["drawer"])["title"] != was
+
+
+def drawer_on_selected(shown: Json) -> bool:
+    """Say whether the drawer is out, titled as the selected row is named."""
+    drawer = cast("Json", shown["drawer"])
+    selected = cast("Json", shown.get("selected") or {})
+    return bool(drawer["shown"]) and drawer["title"] == selected.get("name")
+
+
 def stands_in(place: str, shown: Json) -> bool:
     """Say whether the launcher shows the place, as the last of its path."""
     return cast("list[str]", shown["path"])[-1:] == [place]
