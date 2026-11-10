@@ -1680,6 +1680,22 @@ Provider {
     })
     onAllChanged: changed()
 
+    // What its spots are made of (Launcher.qml's spotsFrom): each device
+    // listed, whether it's the one chosen or would switch a headset to
+    // calls, and which programs, filters, ports, channels, profile and facts
+    // it has parts for; never a volume, a level or how loud a program
+    // plays, which move while nothing else does. Without it, every closing
+    // made Sound's 77 to 80 spots again with nothing here changed (8N2CSC,
+    // 2026-11-10). A sound daemon takes this over, serving Sound's rows
+    // ready, by 13 November.
+    property string spotsStamp: JSON.stringify(ordered(outputs).concat(ordered(inputs))
+        .filter(node => !!node.audio).map(node => [node.name, named(node), chosen(node),
+            switches(node), programsOf(node).map(program => program.name),
+            filtersOf(node).map(filter => filter.name),
+            (portChoices(node)?.choosable ?? []).map(port => port.name),
+            Array.from(node.audio.channels ?? []).length, carried(node),
+            factsOf(node).map(fact => fact.name)]))
+
     // A device's row as it reads now, for Now's Volume and Microphone,
     // which borrow its drawer while Now is held and these rows aren't
     // wanted: made then, or none for one that can no longer be read. Where

@@ -167,6 +167,26 @@ ShellRoot {
 
         drawers();
         shut();
+        spotsMake();
+    }
+
+    // What Sound's spots are made of holds while a volume or a mute moves,
+    // so a closing remakes none of them (Launcher.qml's spotsFrom), and
+    // moves once a device comes or goes.
+    function spotsMake() {
+        const made = shutSound.spotsStamp;
+        expect("it says what its spots are made of", typeof made === "string" && made !== "",
+            String(made));
+        deskSpeakers.audio = { volume: 0.9, muted: true };
+        deskMicrophone.audio = { volume: 0.1, muted: false };
+        expect("a volume and a mute moving leave it as it was", shutSound.spotsStamp === made,
+            shutSound.spotsStamp);
+        shutSound.serverNodes = [deskSpeakers];
+        expect("a device going changes it", shutSound.spotsStamp !== made,
+            shutSound.spotsStamp);
+        shutSound.serverNodes = [deskSpeakers, deskMicrophone];
+        expect("and coming back puts it back", shutSound.spotsStamp === made,
+            shutSound.spotsStamp);
     }
 
     // With the launcher shut, a volume moving, a device coming and niri's
