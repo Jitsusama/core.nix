@@ -602,18 +602,6 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
             .output();
         match result {
             Ok(output) if output.status.success() => {
-                // The latency target is the kernel's alone: systemd can't
-                // take one back once it's set (focus::latency).
-                let slice = scope.parent().map(|slice| slice.join("io.latency"));
-                let target = slice
-                    .and_then(|slice| fs::read_to_string(slice).ok())
-                    .and_then(|text| focus::latency(&text, hold));
-                if let Some(target) = target
-                    && let Err(error) = fs::write(scope.join("io.latency"), target)
-                    && !std::mem::replace(&mut ranks.holding.failed, true)
-                {
-                    eprintln!("Couldn't set {unit}'s disk target: {error}");
-                }
                 ranks.holding.done(&scope, hold);
                 // An orchestrator's window gave its floor up to this one,
                 // so it's kept again from nothing once given back.

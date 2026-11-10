@@ -585,8 +585,8 @@ in
           ]
           # The session window Joel is at, as niri says, and those he was at
           # in the last ten minutes, three in all, rank as his own programs:
-          # an app's weight, a floor inside agents.slice's own and the disk's
-          # target. On 10 November the pi he typed into, at an agent's rank
+          # an app's weight, a floor inside agents.slice's own and oomd's
+          # avoid. On 10 November the pi he typed into, at an agent's rank
           # beside eighty, had 726 MB in swap and his keys felt sluggish.
           + lib.optionalString config.programs.niri.enable (
             " "

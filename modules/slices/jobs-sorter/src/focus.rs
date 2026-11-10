@@ -12,9 +12,10 @@
 //!
 //! So the pi window with the focus, and those that had it within [`FOR`],
 //! [`MOST`] in all, run at [`WEIGHT`], keep a floor of [`FLOOR`], which
-//! holds inside agents.slice's own floor against its ceiling, have the
-//! disk's 1 ms target, as Joel's apps do, and are the last systemd-oomd
-//! ends. Each gives all of it back once it ages out. Focus comes before a
+//! holds inside agents.slice's own floor against its ceiling, and are the
+//! last systemd-oomd ends. They have no disk latency target: on 10
+//! November a target anywhere under the account held Joel's own reads in
+//! the kernel's throttle, at up to 141 ms against 9.8 ms with none. Each gives all of it back once it ages out. Focus comes before a
 //! mark saying nobody is at a window, as `src/low.rs` says.
 //!
 //! A window is found by the app id the shell opened it with, which the
@@ -47,10 +48,6 @@ pub const FOR: Duration = Duration::from_secs(600);
 
 /// The most windows held at once, the focused one among them.
 pub const MOST: usize = 3;
-
-/// The disk's latency target a held window has, in microseconds: the 1 ms
-/// Joel's apps have (modules/slices).
-pub const TARGET: u64 = 1000;
 
 /// A window as niri says, as far as finding its scope goes.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -226,15 +223,6 @@ pub fn app_id(environ: &[u8]) -> Option<String> {
         .split(|byte| *byte == 0)
         .find_map(|entry| entry.strip_prefix(b"MYCELIUM_APP_ID="))
         .map(|id| String::from_utf8_lossy(id).into_owned())
-}
-
-/// What a held window's `io.latency` is given, on the disk its slice's
-/// own names (`259:0 target=1000`), or to give it back: a target of 0,
-/// since systemd leaves a kernel's target in place when its is emptied.
-pub fn latency(slice: &str, hold: bool) -> Option<String> {
-    let device = slice.split_whitespace().next()?;
-    let target = if hold { TARGET } else { 0 };
-    Some(format!("{device} target={target}\n"))
 }
 
 /// What busctl is given to hold a window's unit with [`FLOOR`] and
@@ -587,23 +575,6 @@ mod tests {
             ..pi(1)
         };
         assert!(!kitty.session(), "a plain kitty holds no session");
-    }
-
-    #[test]
-    fn a_held_window_has_the_disks_target_on_its_slices_disk_and_gives_it_back_as_nought() {
-        assert_eq!(
-            latency("259:0 target=1000\n", true).as_deref(),
-            Some("259:0 target=1000\n")
-        );
-        assert_eq!(
-            latency("259:0 target=1000\n", false).as_deref(),
-            Some("259:0 target=0\n")
-        );
-        assert_eq!(
-            latency("", true),
-            None,
-            "a slice with no target names no disk"
-        );
     }
 
     #[test]
