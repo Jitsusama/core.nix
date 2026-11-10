@@ -1592,11 +1592,17 @@ Provider {
                 // name; only what it is while its say counts what it holds,
                 // which says it's open already, so the say isn't cut for
                 // saying it twice (VKCF3Z, 2026-11-07).
+                // A closed one has no windows to count, so it asks nothing
+                // of what it holds: a step into Programs reads every row it
+                // draws (2026-11-10).
                 count: {
                     enumerable: true,
-                    get: () => [entry.genericName.toLowerCase(),
-                        provider.holding(entry) === "" ? provider.windowCount(entry) : ""]
-                        .filter(part => part !== "").join(" \u00b7 ")
+                    get: () => {
+                        const windows = provider.windowCount(entry);
+                        return [entry.genericName.toLowerCase(),
+                            windows !== "" && provider.holding(entry) === "" ? windows : ""]
+                            .filter(part => part !== "").join(" \u00b7 ");
+                    }
                 },
                 // The layer of its own keys it holds as Shortcuts, so the
                 // layer, named as the program is, isn't listed beside it
