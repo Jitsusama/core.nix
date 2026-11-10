@@ -97,25 +97,24 @@ Singleton {
         // Its drawer, made when first shown, and again once the clock has
         // moved, rather than with the row: a row is kept while it reads the
         // same (Documents.qml), so a drawer made with it would go on saying
-        // the minute it was made.
+        // the minute it was made. A function the drawer calls (drawerOf)
+        // rather than a getter, which a copy of the row would read, making
+        // every drawer with it (Y2YBTS, 2026-11-10).
         let drawn = null;
         let drawnAt = -1;
-        Object.defineProperty(made, "drawer", {
-            enumerable: true,
-            get: () => {
-                if (drawn === null || drawnAt !== Calendar.now) {
-                    const details = Said.details(document, Words.name(words.thing, "untitled"),
-                        Calendar.now, Mail.dates);
-                    drawn = Places.drawn(details, document, Object.assign({
-                        drives: root.places?.drives?.files ?? [],
-                        now: Calendar.now,
-                        dates: Mail.dates
-                    }, root.said));
-                    drawnAt = Calendar.now;
-                }
-                return drawn;
+        made.drawer = () => {
+            if (drawn === null || drawnAt !== Calendar.now) {
+                const details = Said.details(document, Words.name(words.thing, "untitled"),
+                    Calendar.now, Mail.dates);
+                drawn = Places.drawn(details, document, Object.assign({
+                    drives: root.places?.drives?.files ?? [],
+                    now: Calendar.now,
+                    dates: Mail.dates
+                }, root.said));
+                drawnAt = Calendar.now;
             }
-        });
+            return drawn;
+        };
         return made;
     }
 
