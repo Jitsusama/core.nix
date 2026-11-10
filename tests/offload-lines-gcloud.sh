@@ -8,6 +8,7 @@ set -euo pipefail
 for argument in "$@"; do
   case $argument in
   --access-token-file=*) test -s "${argument#*=}" ;;
+  *) ;;
   esac
 done
 cat /etc/offload-lines/host-key
