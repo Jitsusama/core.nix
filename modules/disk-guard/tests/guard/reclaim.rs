@@ -282,3 +282,34 @@ fn deleting_in_place_keeps_what_it_is_told_to() {
     remove_in_place(&Dir::open(&path).unwrap(), &["criterion"]).unwrap();
     assert_eq!(names(&path), ["criterion"]);
 }
+
+/// A target kept inside one being emptied is judged and reclaimed on its
+/// own, so it's left whole.
+#[test]
+fn a_target_kept_inside_is_left_whole() {
+    let mut script = Script::default();
+    let root = tempfile::tempdir().unwrap();
+    let path = built(root.path());
+    let run = path.join("run-1");
+    fs::create_dir_all(run.join("debug/deps")).unwrap();
+    fs::write(run.join("CACHEDIR.TAG"), crate::discover::CARGO_TAG).unwrap();
+    let anchor = Dir::open(root.path()).unwrap();
+    let outcome = target(
+        &anchor,
+        root.path(),
+        &candidate(&path, false),
+        None,
+        &mut script,
+        &mut || {},
+    );
+    assert_eq!(outcome, Outcome::Reclaimed, "the outer target is emptied");
+    assert_eq!(
+        names(&path),
+        ["criterion", "run-1"],
+        "its benchmarks and the run's target stay"
+    );
+    assert!(
+        run.join("debug/deps").is_dir(),
+        "the run's target is left whole"
+    );
+}

@@ -196,3 +196,29 @@ fn a_target_is_dated_by_its_last_build() {
     let found = found(target.to_str().unwrap(), Kind::Target, Checkout::Unknown);
     crate::assert_exactly(last_used(&found), 2_000.0);
 }
+
+/// A run's own target kept inside its zone's isn't built again because the
+/// checkout moved on: the next build goes where the shell's variables say.
+#[test]
+fn a_target_kept_inside_another_is_dated_by_its_own_builds_alone() {
+    let root = tempfile::tempdir().unwrap();
+    let checkout = root.path().join("app");
+    let outer = root.path().join("target/zone");
+    let run = outer.join("run-1");
+    fs::create_dir_all(run.join("debug/deps")).unwrap();
+    fs::create_dir_all(checkout.join(".git/logs")).unwrap();
+    fs::write(checkout.join(".git/logs/HEAD"), "").unwrap();
+    for target in [&outer, &run] {
+        fs::write(target.join(".rustc_info.json"), "{}").unwrap();
+    }
+    touch(&run.join("debug/deps"), 2_000);
+    touch(&run.join("debug"), 1_000);
+    touch(&run, 1_000);
+    touch(&checkout.join(".git/logs/HEAD"), 9_000);
+    let found = found(
+        run.to_str().unwrap(),
+        Kind::Target,
+        Checkout::At(checkout.clone()),
+    );
+    crate::assert_exactly(last_used(&found), 2_000.0);
+}

@@ -123,8 +123,11 @@ fn normalized(path: &Path) -> PathBuf {
     out
 }
 
-/// How one process uses a target.
-fn used(process: &Process, target: &Path, checkout: Option<&Path>) -> Use {
+/// How one process uses a target. Of a target kept `within` another, only
+/// a variable naming it, or something in it, says a build goes there: one
+/// naming the target around it, as a zone's shell does, or a process
+/// sitting in the checkout, builds into the outer one.
+fn used(process: &Process, target: &Path, checkout: Option<&Path>, within: Option<&Path>) -> Use {
     let pid = process.pid;
     if !process.readable {
         return Use::Unknown(pid);
@@ -147,12 +150,13 @@ fn used(process: &Process, target: &Path, checkout: Option<&Path>) -> Use {
             Use::Busy(pid)
         };
     }
-    let sits = checkout.is_some_and(|checkout| {
-        process
-            .cwd
-            .as_ref()
-            .is_some_and(|cwd| cwd.starts_with(checkout))
-    });
+    let sits = within.is_none()
+        && checkout.is_some_and(|checkout| {
+            process
+                .cwd
+                .as_ref()
+                .is_some_and(|cwd| cwd.starts_with(checkout))
+        });
     let points = process.env.iter().any(|(name, value)| {
         if !BUILD_VARIABLES.iter().any(|variable| name == variable) {
             return false;
@@ -163,7 +167,7 @@ fn used(process: &Process, target: &Path, checkout: Option<&Path>) -> Use {
             _ => normalized(value),
         };
         // The target, somewhere in it, or the directory it sits in.
-        value.starts_with(target) || target.starts_with(&value)
+        value.starts_with(target) || (within.is_none() && target.starts_with(&value))
     });
     match (sits || points, builds) {
         (false, _) => Use::Free,
@@ -177,10 +181,22 @@ fn used(process: &Process, target: &Path, checkout: Option<&Path>) -> Use {
 /// process the guard can't read stands in the way. The guard (`me`) holds
 /// its own files there while it works, and is left out.
 pub fn judge(processes: &[Process], me: u32, target: &Path, checkout: Option<&Path>) -> Use {
+    judge_within(processes, me, target, checkout, None)
+}
+
+/// How a target is used, as `judge` says, when it may be kept `within`
+/// another target.
+pub fn judge_within(
+    processes: &[Process],
+    me: u32,
+    target: &Path,
+    checkout: Option<&Path>,
+    within: Option<&Path>,
+) -> Use {
     processes
         .iter()
         .filter(|process| process.pid != me)
-        .map(|process| used(process, target, checkout))
+        .map(|process| used(process, target, checkout, within))
         .fold(Use::Free, |worst, next| {
             if next.rank() > worst.rank() {
                 next
