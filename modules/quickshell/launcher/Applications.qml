@@ -202,7 +202,7 @@ Provider {
         }
         const was = provider.running;
         provider.running = by;
-        if (HeardWindows.ownersMoved(was, by))
+        if (HeldWindows.ownersMoved(was, by))
             provider.changed();
         else
             redrawHeld();
