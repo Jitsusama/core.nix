@@ -4512,9 +4512,8 @@ Scope {
 
     // Each act a frame showed, `shown`, timed to it, said for the test and,
     // slow enough to feel, in the journal, as a key's is (Trials.qml). Only
-    // the last key's:
-    // one an earlier key changed, whose refresh drew nothing new, had no
-    // frame of its own, and the one now drawn is another key's.
+    // the last key's: one an earlier key changed, whose refresh drew nothing
+    // new, had no frame of its own, and the one now drawn is another key's.
     function actsDrawn(shown) {
         const drawn = KeyTimes.now();
         for (const one of shown.filter(each => each.heard === keyHeardAt)) {
