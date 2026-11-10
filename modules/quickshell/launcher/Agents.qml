@@ -39,7 +39,9 @@ import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "../When.js" as When
 import "Landed.js" as Landed
+import "Moment.js" as Moment
 import "Numbers.js" as Numbers
 import "Order.js" as Order
 import "Recent.js" as Recent
@@ -909,6 +911,29 @@ Provider {
     function landingTrail(one) {
         return ["collection:agents", "agents:landed", `agents:landed:${one.key}`];
     }
+    // A landing as both its rows show it, in Landed and in For You, one
+    // component the same in both: when it landed at its side, and its
+    // drawer (Landed.js's landedWhen and landingDrawer).
+    function landingShows(one) {
+        const said = Words.of("agents:landed").said ?? {};
+        const when = Landed.landedWhen(one.at, {
+            clock: at => Moment.clock(new Date(at)),
+            day: at => When.day(at, Date.now(), {
+                yesterday: String(said.yesterday ?? ""),
+                date: (date, format) => Qt.formatDate(date, format)
+            }),
+            date: at => Moment.day(new Date(at), Date.now())
+        });
+        return {
+            side: when.side,
+            drawer: () => Landed.landingDrawer(one, {
+                kind: String(said.kind ?? ""),
+                when: when.fact,
+                session: one.session.title ?? "",
+                named: id => Words.name(`agents:${id}`)
+            })
+        };
+    }
     readonly property var landed: {
         const read = one => provider.readLanding(one.key);
         const act = (id, fields) => thing(Object.assign({
@@ -936,16 +961,10 @@ Provider {
                 glyph: Words.glyph("verb:agents:landed:try")
             }) : null
         ].filter(row => row !== null);
-        const landing = one => thing({
+        const landing = one => thing(Object.assign({
             thing: true,
             key: `agents:landed:${one.key}`,
             name: one.what,
-            side: one.ref,
-            drawer: () => Landed.landingDrawer(one, {
-                at: one.at !== "" ? started(one.at) : "",
-                session: one.session.title ?? "",
-                named: id => Words.name(`agents:${id}`)
-            }),
             verb: Words.verb(`verb:agents:landed:${goes(one) || "read"}`),
             glyph: Words.glyph("agents:landed"),
             hue: "action",
@@ -963,7 +982,7 @@ Provider {
                 read(one);
             },
             verbs: () => parts(one)
-        });
+        }, provider.landingShows(one)));
         const words = Words.of("agents:landed");
         return thingRow({
             key: "agents:landed",
@@ -1011,12 +1030,6 @@ Provider {
         const row = (one, fields) => thing(Object.assign({
             thing: true,
             name: one.what,
-            side: one.ref,
-            drawer: () => Landed.landingDrawer(one, {
-                at: one.at !== "" ? started(one.at) : "",
-                session: one.session.title ?? "",
-                named: id => Words.name(`agents:${id}`)
-            }),
             verb: "go to",
             glyph: Theme.glyph.toTry,
             readsLanding: one.key,
@@ -1028,7 +1041,7 @@ Provider {
                 provider.launcher?.goTo({ trail: provider.landingTrail(one), spot: "" });
                 provider.readLanding(one.key);
             }
-        }, fields));
+        }, provider.landingShows(one), fields));
         return Landed.toTry(landings, Sessions.landingsRead).map(one => ({
             row: row(one, {
                 key: `on:waiting:try:${one.key}`,

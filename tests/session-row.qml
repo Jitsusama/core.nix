@@ -514,21 +514,42 @@ QtObject {
         const stood = [5, 0].map(today => Landed.stands(today, standing));
         if (JSON.stringify(stood) !== JSON.stringify(["5 today", "none today"]))
             failures.push(`Landed stands: ${JSON.stringify(stood)}`);
-        // A landing's drawer says who landed it and when, what it is, and
-        // what to try as its words, which the row's one line has no room
-        // for; a fact nobody knows isn't said.
-        const plate = Landed.landingDrawer(unread[2],
-            { at: "11:30", session: "A Quest", named: id => id });
-        const plateSays = `${plate.eyebrow} | ${plate.title} | `
-            + `${plate.facts.map(fact => `${fact.label}=${fact.value}`).join(" ")} | ${plate.body}`;
-        const plateWant = "A \u00b7 11:30 | PLAN-20261106-2ZPAI5#4 | landed=PLAN-20261106-2ZPAI5#4"
-            + " session=A Quest | try Stop twice";
-        if (plateSays !== plateWant)
-            failures.push(`a landing's drawer: "${plateSays}", not "${plateWant}"`);
+        // A landing's drawer says who landed it and that it's a landing,
+        // what it is, when it landed first among its facts and its ref
+        // last, named a change or an item by what it is, and what to try
+        // as its words, which the row's one line has no room for; a fact
+        // nobody knows isn't said.
+        const drawerSays = drawn => `${drawn.eyebrow} | ${drawn.title} | `
+            + `${drawn.facts.map(fact => `${fact.label}=${fact.value}`).join(" ")} | ${drawn.body}`;
+        const plate = Landed.landingDrawer(unread[2], { kind: "landing",
+            when: "Saturday 7 November, 11:30", session: "A Quest", named: id => id });
+        const plateWant = "A \u00b7 landing | PLAN-20261106-2ZPAI5#4 | landed=Saturday 7 November,"
+            + " 11:30 session=A Quest item=PLAN-20261106-2ZPAI5#4 | try Stop twice";
+        if (drawerSays(plate) !== plateWant)
+            failures.push(`a landing's drawer: "${drawerSays(plate)}", not "${plateWant}"`);
+        const merged = drawerSays(Landed.landingDrawer(closedOne,
+            { kind: "landing", when: "", session: "", named: id => id }));
+        const mergedWant = "D \u00b7 landing | core.nix#2200 | task=QEST-20261106-KP0L6A"
+            + " repo=Jitsusama/core.nix machine=skiff change=core.nix#2200 | ";
+        if (merged !== mergedWant)
+            failures.push(`a change's drawer: "${merged}", not "${mergedWant}"`);
         const unsaid = Landed.landingDrawer(unread[3],
-            { at: "", session: "", named: id => id });
+            { kind: "", when: "", session: "", named: id => id });
         if (unsaid.eyebrow !== "B" || unsaid.facts.length !== 1 || unsaid.body !== "")
             failures.push(`a bare landing's drawer: ${JSON.stringify(unsaid)}`);
+        // Its row says when it landed, its time today and its day before,
+        // and its drawer the whole moment.
+        const landedSaid = {
+            clock: at => new Date(at).toISOString().slice(11, 16),
+            day: at => at < Date.parse("2026-11-07T00:00:00Z") ? "yesterday" : "",
+            date: () => "Saturday 7 November"
+        };
+        const whens = ["2026-11-07T11:19:00Z", "2026-11-06T09:00:00Z", ""]
+            .map(at => Landed.landedWhen(at, landedSaid));
+        const whensWant = [{ side: "11:19", fact: "Saturday 7 November, 11:19" },
+            { side: "yesterday", fact: "Saturday 7 November, 09:00" }, { side: "", fact: "" }];
+        if (JSON.stringify(whens) !== JSON.stringify(whensWant))
+            failures.push(`when it landed: ${JSON.stringify(whens)}`);
 
         // Agents' Recent: those closed this boot, keyed by id at when they
         // ended, and never one Agents shows already: a closed orchestrator
