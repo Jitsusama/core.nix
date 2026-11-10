@@ -4,8 +4,11 @@
 //! The window runs from the start of today to the start of the eighth day
 //! after, in the machine's own time zone, so it's the same all day and
 //! moves at midnight. Each repeating meeting comes as its own occurrence.
-//! A cancelled one, and the calendar's other kinds of event (out of office,
-//! focus time, where he's working, birthdays), aren't meetings.
+//! A cancelled one, one Joel declined, and the calendar's other kinds of
+//! event (out of office, focus time, where he's working, birthdays), aren't
+//! meetings: nothing that asks whether he's in one, or who he met, counts
+//! a meeting he won't be at (2026-11-10, when a switch's gate saw one he
+//! had declined).
 //!
 //! Each meeting says what the launcher shows of it: where, who holds it,
 //! who else is asked and how each answered, and what it's about, its
@@ -80,8 +83,8 @@ pub struct Meeting {
     /// start, furthest first: its own reminders, or the calendar's when it
     /// keeps those, and only those that pop up, since one by email is mail.
     pub reminders: Vec<i64>,
-    /// How and when it stopped wanting Joel, ended or declined, or none
-    /// while it still does (done.rs; watch.rs says it).
+    /// When it ended, or none while it still wants Joel (done.rs; watch.rs
+    /// says it).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub done: Option<Done>,
 }
@@ -438,6 +441,9 @@ fn meeting(event: &Value, zone: &TimeZone, defaults: &[i64], writable: &[&str]) 
         // A meeting Joel holds is his own, not an invitation to answer.
         .filter(|me| !is(me, "organizer"))
         .map(answered);
+    if answer == Some(Answer::No) {
+        return None;
+    }
     let organizer = event.get("organizer");
     // Google names who holds each event; one it didn't would be Joel's
     // only with nobody else on it.
@@ -991,8 +997,20 @@ mod tests {
         };
         let answer = |status| meetings(&with(status), &zone())[0].answer;
         assert_eq!(answer("accepted"), Some(Answer::Yes));
-        assert_eq!(answer("declined"), Some(Answer::No));
+        assert_eq!(answer("tentative"), Some(Answer::Maybe));
         assert_eq!(answer("needsAction"), Some(Answer::Waiting));
+    }
+
+    #[test]
+    fn a_meeting_joel_declined_is_not_a_meeting() {
+        let answer = json!({"items": [{"id": "e", "start": {"date": "2026-10-27"},
+            "end": {"date": "2026-10-28"},
+            "attendees": [{"self": true, "responseStatus": "declined"},
+                {"email": "a@example.com", "organizer": true, "responseStatus": "accepted"}]}]});
+        assert!(
+            meetings(&answer, &zone()).is_empty(),
+            "a meeting he declined is listed"
+        );
     }
 
     #[test]

@@ -56,10 +56,6 @@ pub struct Watch {
     followed_at: i64,
     /// How many times running Meet couldn't be asked about a call.
     calls_failed: u32,
-    /// When Joel was first heard to decline each meeting he declined. It's
-    /// held in memory alone, so a restart moves a declined meeting's
-    /// `done.at` to the first look after it.
-    declined: HashMap<String, i64>,
     /// Mail gone from what wants Joel whose labels Gmail couldn't be asked
     /// for, and when it went, to ask again on the next look (done.rs).
     departed: Vec<(Mail, i64)>,
@@ -108,7 +104,6 @@ impl Watch {
             followed: Vec::new(),
             followed_at: 0,
             calls_failed: 0,
-            declined: HashMap::new(),
             departed: Vec::new(),
         }
     }
@@ -382,6 +377,8 @@ impl Watch {
     /// held, and Google still answering the looks is still ready.
     pub fn answer(&mut self, id: &str, with: Answer, now: &Zoned) -> &State {
         match self.asking(now, |google, token| google.answer(token, id, with)) {
+            // One he declined goes at once, as it will from the next look.
+            Ok(()) if with == Answer::No => self.state.meetings.retain(|meeting| meeting.id != id),
             Ok(()) => {
                 for meeting in &mut self.state.meetings {
                     if meeting.id == id {
@@ -550,32 +547,14 @@ impl Watch {
         self.state.finished.insert(0, mail);
     }
 
-    /// Says of each meeting held whether it's done: declined, since Joel
-    /// was first heard to decline it, or ended, at its end.
+    /// Says of each meeting held whether it's done: ended, at its end.
     fn meetings_done(&mut self, at: i64) {
-        let declined = &mut self.declined;
         for meeting in &mut self.state.meetings {
-            meeting.done = if meeting.answer == Some(Answer::No) {
-                let since = *declined.entry(meeting.id.clone()).or_insert(at);
-                Some(Done {
-                    how: Went::Declined,
-                    at: since,
-                })
-            } else if meeting.end <= at {
-                Some(Done {
-                    how: Went::Ended,
-                    at: meeting.end,
-                })
-            } else {
-                None
-            };
+            meeting.done = (meeting.end <= at).then_some(Done {
+                how: Went::Ended,
+                at: meeting.end,
+            });
         }
-        let meetings = &self.state.meetings;
-        self.declined.retain(|id, _| {
-            meetings
-                .iter()
-                .any(|meeting| &meeting.id == id && meeting.answer == Some(Answer::No))
-        });
     }
 
     /// Whether Joel's sign-in lets this program make a Meet meeting, read
@@ -983,12 +962,10 @@ impl Watch {
         match looked {
             // What was held may not be Joel's to see once the account is
             // back, maybe as another, so mail waiting to be asked about
-            // goes too, since its ids would read as gone, and so do the
-            // meetings he declined, which another account may not share.
+            // goes too, since its ids would read as gone.
             Looked::Missing => {
                 self.state = State::without(Standing::None);
                 self.departed.clear();
-                self.declined.clear();
                 self.documented = None;
                 self.placed = None;
                 self.recalled = None;
@@ -996,7 +973,6 @@ impl Watch {
             Looked::Refused(Refused::SignedOut) => {
                 self.state = State::without(Standing::SignedOut);
                 self.departed.clear();
-                self.declined.clear();
                 self.documented = None;
                 self.placed = None;
                 self.recalled = None;

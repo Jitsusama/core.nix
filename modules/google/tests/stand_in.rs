@@ -1561,7 +1561,7 @@ fn mail_listed_again_before_gmail_says_how_it_left_wants_joel_still() {
 }
 
 #[test]
-fn a_meeting_declined_is_done_from_when_joel_was_first_heard_to_decline_it() {
+fn a_meeting_joel_declined_is_not_held() {
     let stand_in = StandIn::new(|path, body| {
         if path.starts_with("GET /calendar/v3/calendars/primary/events?") {
             return (
@@ -1578,14 +1578,13 @@ fn a_meeting_declined_is_done_from_when_joel_was_first_heard_to_decline_it() {
     });
     let path = credentials("declined", now().timestamp().as_millisecond() + 3_600_000);
     let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
-    let first = watch.look(&now()).meetings[0].done.expect("declined");
+    // Nothing that asks whether he's in a meeting, or who he met, counts
+    // one he declined (2026-11-10).
     assert_eq!(
-        (first.how, first.at),
-        (Went::Declined, now().timestamp().as_millisecond())
+        watch.look(&now()).meetings,
+        [] as [google::calendar::Meeting; 0],
+        "a meeting he declined is held as his"
     );
-    let later = now().checked_add(jiff::Span::new().minutes(5)).unwrap();
-    let again = watch.look(&later).meetings[0].done.expect("still declined");
-    assert_eq!(again, first, "declined when first heard, not each look");
 }
 
 #[test]
@@ -1652,6 +1651,19 @@ fn invited(path: &str, _: &str) -> (u16, String) {
         return (200, r#"{"id": "e1"}"#.into());
     }
     (200, EVENTS.into())
+}
+
+#[test]
+fn a_meeting_declined_here_goes_at_once() {
+    let stand_in = StandIn::new(invited);
+    let path = credentials("decline", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    watch.look(&now());
+    let state = watch.answer("e1", Answer::No, &now()).clone();
+    assert!(
+        state.meetings.iter().all(|meeting| meeting.id != "e1"),
+        "a meeting he declined here is still held until the next look"
+    );
 }
 
 #[test]
