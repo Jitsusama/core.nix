@@ -1,0 +1,652 @@
+//! Those People lists with nothing typed, made here rather than on the
+//! shell's GUI thread: each record as one person, how they stand by every
+//! source that says, whether they're listed, and in the order things
+//! returned to keep (the shell's Order.js, `returned`). Merging, standing
+//! and ordering 600 people there took 26 to 38 ms of every change to any
+//! source's people, open or shut, and listing them as much again
+//! (2026-11-10), so the shell now maps what this says to rows by key.
+//!
+//! A record is one person already: the book keys everyone by their
+//! address, or by a source's own id for one it knows by no address, as the
+//! shell's Person.js joins them, and no source says more than one address
+//! for anyone.
+
+use std::cmp::Ordering;
+use std::collections::{BTreeMap, HashMap};
+
+use serde::Deserialize;
+use serde_json::{Value, json};
+
+use crate::{Book, LISTING, Record, address};
+
+/// The key of the record holding those listed, by their keys in order.
+pub const ORDER: &str = "people:order";
+
+/// How a source's entry says someone stands, as its module tells the
+/// daemon in the sources file: the entry's field that says it, People's
+/// words and order for each word it says, whether a word it says that
+/// isn't among them is said as it is (Slack's presence) or not at all
+/// (Tuple's "unknown"), and the field holding a mark to say after it
+/// (Slack's status emoji). A source with none says nothing of how anyone
+/// stands, as Google doesn't.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct Stands {
+    pub field: String,
+    #[serde(default)]
+    pub words: BTreeMap<String, Said>,
+    #[serde(default)]
+    pub others: bool,
+    #[serde(default)]
+    pub mark: Option<String>,
+}
+
+/// A word as People says it, and its place in the order of who can be
+/// reached first: available 0, busy 1, away 2, offline 3.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct Said {
+    pub said: String,
+    pub order: u8,
+}
+
+/// How someone stands, as Person.js's `standing` says it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Stood {
+    pub said: String,
+    pub order: u8,
+    pub mark: Option<String>,
+    pub favourite: bool,
+    pub recent: bool,
+}
+
+/// The order of someone nobody says anything of, after everyone who's
+/// said to stand anyhow.
+pub const UNSAID: u8 = 4;
+
+/// How much each order limits reaching them, by order: available 0, busy
+/// 1, away 2, offline 3, unsaid 4. What most limits reaching them is said.
+const LIMITS: [u8; 5] = [2, 4, 3, 1, 0];
+
+impl Stood {
+    fn unsaid() -> Stood {
+        Stood {
+            said: String::new(),
+            order: UNSAID,
+            mark: None,
+            favourite: false,
+            recent: false,
+        }
+    }
+
+    fn limit(&self) -> u8 {
+        if self.said.is_empty() {
+            0
+        } else {
+            LIMITS.get(usize::from(self.order)).copied().unwrap_or(0)
+        }
+    }
+}
+
+fn text<'a>(entry: &'a Value, field: &str) -> Option<&'a str> {
+    entry
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|text| !text.is_empty())
+}
+
+fn yes(entry: &Value, field: &str) -> bool {
+    entry.get(field).and_then(Value::as_bool) == Some(true)
+}
+
+/// How one source's entry says someone stands, or nothing where it says
+/// nothing: a source that says how anyone stands says it of everyone it
+/// has a word or a mark for, or calls a favourite or dealt with lately.
+pub fn stood(entry: &Value, stands: &Stands) -> Option<Stood> {
+    let word = text(entry, &stands.field);
+    let mark = stands
+        .mark
+        .as_deref()
+        .and_then(|field| text(entry, field))
+        .map(str::to_owned);
+    let (favourite, recent) = (yes(entry, "favourite"), yes(entry, "recent"));
+    if word.is_none() && mark.is_none() && !favourite && !recent {
+        return None;
+    }
+    let (said, order) = match word.map(|word| (word, stands.words.get(word))) {
+        Some((_, Some(said))) => (said.said.clone(), said.order),
+        Some((word, None)) if stands.others => (word.to_owned(), UNSAID),
+        _ => (String::new(), UNSAID),
+    };
+    Some(Stood {
+        said,
+        order,
+        mark,
+        favourite,
+        recent,
+    })
+}
+
+/// How someone stands by every source that says, in the order they're
+/// consulted: what most limits reaching them, a tie to the source asked
+/// first, the first mark after it, and a favourite or recent if any says
+/// so.
+pub fn standing(said: &[Stood]) -> Stood {
+    let Some(first) = said.first() else {
+        return Stood::unsaid();
+    };
+    let most = said.iter().fold(first, |held, stood| {
+        if stood.limit() > held.limit() {
+            stood
+        } else {
+            held
+        }
+    });
+    let mark = said.iter().find_map(|stood| stood.mark.clone());
+    let words: Vec<&str> = [Some(most.said.as_str()), mark.as_deref()]
+        .into_iter()
+        .flatten()
+        .filter(|word| !word.is_empty())
+        .collect();
+    Stood {
+        said: words.join(" "),
+        order: if most.said.is_empty() {
+            UNSAID
+        } else {
+            most.order
+        },
+        mark,
+        favourite: said.iter().any(|stood| stood.favourite),
+        recent: said.iter().any(|stood| stood.recent),
+    }
+}
+
+/// When one thing with someone was, from its start to its end, in
+/// milliseconds since the epoch.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Span {
+    pub from: f64,
+    pub to: f64,
+}
+
+/// Someone as People lists them.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Person {
+    /// The record's key, `person:` and what they're known by.
+    pub key: String,
+    pub email: String,
+    pub name: String,
+    pub recent: bool,
+    pub spans: Vec<Span>,
+    /// The sources that know them, in the order they're consulted.
+    pub from: Vec<String>,
+    pub stood: Stood,
+}
+
+/// Whether a name is only an address, which a real name always wins over.
+fn bare(name: &str) -> bool {
+    name.is_empty() || name.contains('@')
+}
+
+/// A record as one person, by its sources in the order they're consulted,
+/// each with how it says anyone stands.
+pub fn person(record: &Record, sources: &[(String, Option<Stands>)]) -> Person {
+    let email = address(&record.key)
+        .filter(|kept| kept.contains('@'))
+        .unwrap_or("")
+        .to_owned();
+    let known = record.key.strip_prefix("person:").unwrap_or(&record.key);
+    let entries: Vec<(&String, &Value, Option<&Stands>)> = sources
+        .iter()
+        .filter_map(|(name, stands)| {
+            record
+                .sources
+                .get(name)
+                .map(|entry| (name, entry, stands.as_ref()))
+        })
+        .collect();
+    let name = entries
+        .iter()
+        .filter_map(|(_, entry, _)| entry.get("name").and_then(Value::as_str))
+        .map(str::trim)
+        .find(|name| !bare(name))
+        .map_or_else(
+            || {
+                if email.is_empty() {
+                    known.to_owned()
+                } else {
+                    email.clone()
+                }
+            },
+            str::to_owned,
+        );
+    let spans = entries
+        .iter()
+        .filter_map(|(_, entry, _)| entry.get("spans").and_then(Value::as_array))
+        .flatten()
+        .filter_map(|span| {
+            let from = span.get("from").and_then(Value::as_f64)?;
+            let to = span.get("to").and_then(Value::as_f64)?;
+            (from.is_finite() && to.is_finite()).then_some(Span { from, to })
+        })
+        .collect();
+    let said: Vec<Stood> = entries
+        .iter()
+        .filter_map(|(_, entry, stands)| stands.and_then(|stands| stood(entry, stands)))
+        .collect();
+    Person {
+        key: record.key.clone(),
+        email,
+        name,
+        recent: entries.iter().any(|(_, entry, _)| yes(entry, "recent")),
+        spans,
+        from: entries.iter().map(|(name, ..)| (*name).clone()).collect(),
+        stood: standing(&said),
+    }
+}
+
+impl Person {
+    /// When the last thing between them and Joel was: the end of a meeting
+    /// they had, now for one under way, or when a mail came; or nothing
+    /// when there's been nothing yet, as for someone only asked to a
+    /// meeting to come.
+    pub fn last(&self, now: f64) -> Option<f64> {
+        self.spans
+            .iter()
+            .filter(|span| span.from <= now)
+            .map(|span| span.to.min(now))
+            .reduce(f64::max)
+    }
+
+    /// Whether they're listed with nothing typed: a favourite, someone
+    /// there's been something with, or someone a source says Joel dealt
+    /// with lately.
+    pub fn listed(&self, now: f64) -> bool {
+        self.stood.favourite || self.stood.recent || self.recent || self.last(now).is_some()
+    }
+
+    /// As the shell reads them: Person.js's person and how they stand.
+    /// When the last thing with them was isn't said, since one under way
+    /// moves with the clock, and would be said again every time.
+    pub fn json(&self) -> Value {
+        let spans: Vec<Value> = self
+            .spans
+            .iter()
+            .map(|span| json!({"from": span.from, "to": span.to}))
+            .collect();
+        let emails: Vec<&str> = if self.email.is_empty() {
+            Vec::new()
+        } else {
+            vec![self.email.as_str()]
+        };
+        json!({
+            "key": self.key.strip_prefix("person:").unwrap_or(&self.key),
+            "email": self.email, "emails": emails, "name": self.name, "recent": self.recent,
+            "spans": spans, "from": self.from,
+            "stood": {
+                "said": self.stood.said, "order": self.stood.order,
+                "favourite": self.stood.favourite, "recent": self.stood.recent,
+            },
+        })
+    }
+}
+
+/// A name's runs of digits and of the rest, the rest in lower case, as
+/// Order.js's `pieces` breaks it.
+pub fn pieces(name: &str) -> Vec<String> {
+    let mut runs: Vec<String> = Vec::new();
+    let mut digits = false;
+    for c in name.to_lowercase().chars() {
+        let digit = c.is_ascii_digit();
+        match runs.last_mut() {
+            Some(run) if digit == digits => run.push(c),
+            _ => runs.push(c.to_string()),
+        }
+        digits = digit;
+    }
+    runs
+}
+
+/// A to Z, as names are read: numbers by their value, so Tab 9 comes
+/// before Tab 10, and case alike, as Order.js's `byPieces`. The rest is
+/// compared by character where the shell asks the locale, which differs
+/// only for letters with marks.
+fn by_pieces(one: &[String], other: &[String]) -> Ordering {
+    for (a, b) in one.iter().zip(other) {
+        let numbers = a.starts_with(|c: char| c.is_ascii_digit())
+            && b.starts_with(|c: char| c.is_ascii_digit());
+        let said = if numbers {
+            let value = |run: &str| run.parse::<f64>().unwrap_or(0.0);
+            value(a).partial_cmp(&value(b)).unwrap_or(Ordering::Equal)
+        } else {
+            a.cmp(b)
+        };
+        if said != Ordering::Equal {
+            return said;
+        }
+    }
+    one.len().cmp(&other.len())
+}
+
+/// Those listed, in the order things returned to keep: favourites first,
+/// then by the last thing with each, the newest first, those with nothing
+/// yet after, then A to Z, and those alike in all three in the order heard.
+pub fn ordered(persons: &[Person], now: f64) -> Vec<&Person> {
+    let mut measured: Vec<(bool, Option<f64>, Vec<String>, usize, &Person)> = persons
+        .iter()
+        .enumerate()
+        .filter(|(_, person)| person.listed(now))
+        .map(|(at, person)| {
+            (
+                person.stood.favourite,
+                person.last(now),
+                pieces(&person.name),
+                at,
+                person,
+            )
+        })
+        .collect();
+    measured.sort_by(|one, other| {
+        other
+            .0
+            .cmp(&one.0)
+            .then_with(|| match (one.1, other.1) {
+                (Some(a), Some(b)) => b.partial_cmp(&a).unwrap_or(Ordering::Equal),
+                (Some(_), None) => Ordering::Less,
+                (None, Some(_)) => Ordering::Greater,
+                (None, None) => Ordering::Equal,
+            })
+            .then_with(|| by_pieces(&one.2, &other.2))
+            .then_with(|| one.3.cmp(&other.3))
+    });
+    measured.into_iter().map(|(.., person)| person).collect()
+}
+
+/// When who's listed, and their order, next change with the clock alone:
+/// the first moment after now that something with someone starts or
+/// ends, or nothing when nothing will.
+pub fn changes_at(persons: &[Person], now: f64) -> Option<f64> {
+    persons
+        .iter()
+        .flat_map(|person| &person.spans)
+        .map(|span| if span.from > now { span.from } else { span.to })
+        .filter(|at| *at > now)
+        .reduce(f64::min)
+}
+
+/// What a watch of those listed was last told, so it's told only what
+/// changed: each listed person's record as told, by key, and their order.
+#[derive(Debug, Default)]
+pub struct Told {
+    persons: HashMap<String, Value>,
+    order: Option<Vec<String>>,
+    /// When the clock alone next changes who's listed or their order.
+    pub until: Option<f64>,
+}
+
+impl Told {
+    /// Those listed now as records, each person's and the order's: all of
+    /// them the first time, and after only those that changed, each no
+    /// longer listed said gone.
+    pub fn changes(
+        &mut self,
+        book: &Book,
+        sources: &[(String, Option<Stands>)],
+        now: f64,
+    ) -> Vec<Value> {
+        let persons: Vec<Person> = book
+            .everyone()
+            .map(|record| person(record, sources))
+            .collect();
+        let listed = ordered(&persons, now);
+        self.until = changes_at(&persons, now);
+        let mut said = Vec::new();
+        let mut now_told = HashMap::new();
+        for person in &listed {
+            let sources_said = book
+                .record(&person.key)
+                .map_or_else(|| json!({}), |record| json!(record.sources));
+            let record = json!({
+                "key": person.key, "kind": LISTING, "person": person.json(),
+                "sources": sources_said,
+            });
+            if self.persons.get(&person.key) != Some(&record) {
+                said.push(record.clone());
+            }
+            now_told.insert(person.key.clone(), record);
+        }
+        for key in self.persons.keys() {
+            if !now_told.contains_key(key) {
+                said.push(json!({"key": key, "kind": LISTING, "gone": true}));
+            }
+        }
+        let order: Vec<String> = listed.iter().map(|person| person.key.clone()).collect();
+        if self.order.as_ref() != Some(&order) {
+            said.push(json!({"key": ORDER, "kind": LISTING, "order": order}));
+            self.order = Some(order);
+        }
+        self.persons = now_told;
+        said
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tuple() -> Stands {
+        serde_json::from_value(json!({
+            "field": "status",
+            "words": {
+                "online": {"said": "available", "order": 0},
+                "busy": {"said": "in a call", "order": 1},
+                "unavailable": {"said": "away", "order": 2},
+                "offline": {"said": "offline", "order": 3}
+            }
+        }))
+        .unwrap()
+    }
+
+    fn slack() -> Stands {
+        serde_json::from_value(json!({
+            "field": "presence",
+            "words": {
+                "active": {"said": "active", "order": 0},
+                "in a huddle": {"said": "in a huddle", "order": 1},
+                "away": {"said": "away", "order": 2}
+            },
+            "others": true,
+            "mark": "emoji"
+        }))
+        .unwrap()
+    }
+
+    fn sources() -> Vec<(String, Option<Stands>)> {
+        vec![
+            ("tuple".to_owned(), Some(tuple())),
+            ("slack".to_owned(), Some(slack())),
+            ("google".to_owned(), None),
+        ]
+    }
+
+    fn record(key: &str, entries: &[(&str, Value)]) -> Record {
+        let mut record = Record::of(key.to_owned(), 0);
+        for (source, entry) in entries {
+            record.sources.insert((*source).to_owned(), entry.clone());
+        }
+        record
+    }
+
+    #[test]
+    fn a_source_says_how_someone_stands_in_peoples_words() {
+        let tuple_said = stood(&json!({"status": "busy", "favourite": true}), &tuple()).unwrap();
+        assert_eq!(
+            (
+                tuple_said.said.as_str(),
+                tuple_said.order,
+                tuple_said.favourite
+            ),
+            ("in a call", 1, true),
+            "Tuple's busy is in a call, second in order"
+        );
+        let unknown = stood(&json!({"status": "unknown"}), &tuple()).unwrap();
+        assert_eq!(
+            (unknown.said.as_str(), unknown.order),
+            ("", UNSAID),
+            "a word Tuple says that People doesn't know says nothing"
+        );
+        let slack_said = stood(&json!({"presence": "lurking", "emoji": "🌴"}), &slack()).unwrap();
+        assert_eq!(
+            (
+                slack_said.said.as_str(),
+                slack_said.order,
+                slack_said.mark.as_deref()
+            ),
+            ("lurking", UNSAID, Some("🌴")),
+            "a word Slack says that People doesn't know is said as it is, with its mark"
+        );
+        assert_eq!(
+            stood(&json!({"name": "Ada"}), &slack()),
+            None,
+            "no word, no mark, no stand"
+        );
+        let favourite = stood(&json!({"status": "unknown", "favourite": true}), &tuple());
+        assert_eq!(
+            favourite.map(|stood| (stood.order, stood.favourite)),
+            Some((UNSAID, true)),
+            "a favourite stands as one, whatever is said of them"
+        );
+    }
+
+    #[test]
+    fn what_most_limits_reaching_them_is_said_with_the_first_mark() {
+        let person = person(
+            &record(
+                "person:ada@example.com",
+                &[
+                    ("tuple", json!({"status": "online"})),
+                    ("slack", json!({"presence": "in a huddle", "emoji": "🎧"})),
+                ],
+            ),
+            &sources(),
+        );
+        assert_eq!(
+            (person.stood.said.as_str(), person.stood.order),
+            ("in a huddle 🎧", 1),
+            "a huddle limits more than being available, and its mark follows"
+        );
+        let nobody = person_of(&[("google", json!({"name": "Bo"}))]);
+        assert_eq!(
+            nobody.stood,
+            Stood::unsaid(),
+            "a source that says nothing stands nobody"
+        );
+    }
+
+    fn person_of(entries: &[(&str, Value)]) -> Person {
+        person(&record("person:bo@example.com", entries), &sources())
+    }
+
+    #[test]
+    fn the_first_real_name_a_source_gives_is_theirs() {
+        let named = person_of(&[
+            ("tuple", json!({"name": "bo@example.com"})),
+            ("slack", json!({"name": " Bo Diddley "})),
+        ]);
+        assert_eq!(named.name, "Bo Diddley", "an address loses to a real name");
+        let bare = person_of(&[("google", json!({"name": ""}))]);
+        assert_eq!(bare.name, "bo@example.com", "with no name, their address");
+        let by_id = person(
+            &record("person:tuple:7", &[("tuple", json!({"id": 7}))]),
+            &sources(),
+        );
+        assert_eq!(
+            (by_id.name.as_str(), by_id.email.as_str()),
+            ("tuple:7", ""),
+            "one known only by a source's id is known by it"
+        );
+    }
+
+    fn span(from: f64, to: f64) -> Value {
+        json!({"from": from, "to": to})
+    }
+
+    #[test]
+    fn those_listed_are_favourites_then_newest_then_by_name() {
+        let now = 1_000.0;
+        let persons: Vec<Person> = [
+            (
+                "person:a@x",
+                vec![(
+                    "google",
+                    json!({"name": "Tab 10", "spans": [span(100.0, 200.0)]}),
+                )],
+            ),
+            (
+                "person:b@x",
+                vec![(
+                    "google",
+                    json!({"name": "Tab 9", "spans": [span(100.0, 200.0)]}),
+                )],
+            ),
+            (
+                "person:c@x",
+                vec![(
+                    "google",
+                    json!({"name": "Newest", "spans": [span(900.0, 2_000.0)]}),
+                )],
+            ),
+            (
+                "person:d@x",
+                vec![(
+                    "tuple",
+                    json!({"name": "Fave", "status": "offline", "favourite": true}),
+                )],
+            ),
+            (
+                "person:e@x",
+                vec![(
+                    "google",
+                    json!({"name": "To Come", "spans": [span(5_000.0, 6_000.0)]}),
+                )],
+            ),
+            (
+                "person:f@x",
+                vec![(
+                    "tuple",
+                    json!({"name": "Lately", "status": "online", "recent": true}),
+                )],
+            ),
+        ]
+        .iter()
+        .map(|(key, entries)| person(&record(key, entries), &sources()))
+        .collect();
+        let names: Vec<&str> = ordered(&persons, now)
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect();
+        assert_eq!(
+            names,
+            ["Fave", "Newest", "Tab 9", "Tab 10", "Lately"],
+            "a favourite first, then the newest thing (a meeting under way as now), numbers by \
+             value, someone dealt with lately but with nothing timed last, and nobody only to come"
+        );
+        assert_eq!(
+            changes_at(&persons, now),
+            Some(2_000.0),
+            "the next edge is the meeting under way ending"
+        );
+    }
+
+    #[test]
+    fn a_name_breaks_into_runs_of_digits_and_the_rest() {
+        assert_eq!(
+            pieces("Tab 10b"),
+            ["tab ", "10", "b"],
+            "digits apart, the rest lower case"
+        );
+        assert_eq!(
+            by_pieces(&pieces("tab 9"), &pieces("Tab 10")),
+            Ordering::Less,
+            "9 before 10, case alike"
+        );
+    }
+}

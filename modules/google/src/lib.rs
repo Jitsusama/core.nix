@@ -8,7 +8,8 @@
 //! what the shell is told (state.rs) and how, in the daemon interface
 //! (daemon.rs), how a thing stopped wanting Joel (done.rs), what the
 //! shell asks (ask.rs), what Joel saves into Drive (saves.rs), the Meet
-//! calls Joel is in (meet.rs), and the account as it stands (watch.rs).
+//! calls Joel is in (meet.rs), the account as it stands (watch.rs), and
+//! everyone its meetings and mail name, for People (people.rs).
 
 pub mod account;
 pub mod api;
@@ -21,6 +22,7 @@ pub mod files;
 pub mod link;
 pub mod mail;
 pub mod meet;
+pub mod people;
 pub mod saves;
 pub mod state;
 pub mod token;

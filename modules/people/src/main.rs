@@ -2,7 +2,8 @@
 //!
 //! Everyone Joel deals with, held ready for the shell and anything else
 //! that asks, over SOCKET in the shell's daemon interface (lib.rs). Each
-//! source in SOURCES, a JSON file `{"sources": [{"name", "command"}]}`,
+//! source in SOURCES, a JSON file
+//! `{"sources": [{"name", "command", "stands"}]}`,
 //! runs as a child on its own line protocol: an address written to it is
 //! Joel stepping into someone, `?ADDRESS` asking ahead, and each line it
 //! says back is what it knows of one of them, or how its sign-in stands.
@@ -25,6 +26,14 @@
 //! waited on. So the shell holds none of them: a `search` answers the few
 //! dozen whose names or addresses the words find, and a `list` or `watch`
 //! with `listed` only those a source lists with nothing typed.
+//!
+//! A `list` or `watch` of kind `listing` is those People lists with
+//! nothing typed, as it shows them (listing.rs): a record for each, as
+//! one person, with how they stand by each source's `stands`, and a
+//! `people:order` record of their keys in order. A watch of it is told
+//! again only once the book changed, or the clock reached a meeting's
+//! start or end, and then only the persons that changed, so the shell
+//! remakes nothing for everyone else.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
@@ -37,6 +46,7 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
+use people::listing::{Stands, Told};
 use people::{Ask, Book, Heard, KIND, Record, Standing, VERSION, address, ask, error, heard, now};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -61,6 +71,9 @@ struct Sources {
 struct Source {
     name: String,
     command: Vec<String>,
+    /// How its lines say someone stands, in People's words (listing.rs).
+    #[serde(default)]
+    stands: Option<Stands>,
 }
 
 /// One watch a client holds.
@@ -74,6 +87,9 @@ struct Watch {
     told: Sender<String>,
     /// What changed since it was last told, by key.
     pending: HashMap<String, Value>,
+    /// For a watch of those listed, what it was last told, and the book's
+    /// revision then, so it's told again only once something changed.
+    listing: Option<(Told, u64)>,
 }
 
 /// Everything the threads share.
@@ -93,6 +109,11 @@ struct Daemon {
     /// How long the last gets took, in milliseconds.
     took: VecDeque<u64>,
     since: u64,
+    /// The sources in the order they're consulted, each with how its lines
+    /// say someone stands.
+    sources: Vec<(String, Option<Stands>)>,
+    /// Counts each change the book takes, for a watch of those listed.
+    revision: u64,
 }
 
 type Shared = Arc<(Mutex<Daemon>, Condvar)>;
@@ -132,6 +153,11 @@ fn main() {
             watches: Vec::new(),
             took: VecDeque::new(),
             since: now(),
+            sources: sources
+                .iter()
+                .map(|source| (source.name.clone(), source.stands.clone()))
+                .collect(),
+            revision: 0,
         }),
         Condvar::new(),
     ));
@@ -300,11 +326,13 @@ fn took_in(shared: &Shared, source: &str, line: &str) {
         .and_then(|key| daemon.book.record(&key))
         .is_some_and(Record::listed);
     if let Some(key) = daemon.book.take(source, heard, now()) {
+        daemon.revision += 1;
         let record = daemon.book.record(&key);
         let listed = was_listed || record.is_some_and(Record::listed);
         let told = record.map_or_else(|| Record::gone(&key), Record::json);
         for watch in &mut daemon.watches {
             let wants = match &watch.keys {
+                _ if watch.listing.is_some() => false,
                 Some(keys) => keys.contains(&key),
                 None => !watch.listed || listed,
             };
@@ -409,6 +437,12 @@ fn ask_ahead_of(daemon: &mut Daemon, sources: &[String], keys: &[String]) {
     }
 }
 
+/// Milliseconds since the epoch, as the shell's times and the spans
+/// sources say are numbered.
+fn clock() -> f64 {
+    Duration::from_millis(now()).as_secs_f64() * 1000.0
+}
+
 /// Says what changed to each watch, at most every GATHERED.
 fn gather(shared: &Shared) {
     loop {
@@ -420,7 +454,29 @@ fn gather(shared: &Shared) {
 /// Tells each watch what changed since it was last told, dropping one
 /// that's gone.
 fn say_gathered(daemon: &mut Daemon) {
-    daemon.watches.retain_mut(|watch| {
+    let Daemon {
+        watches,
+        book,
+        sources,
+        revision,
+        ..
+    } = daemon;
+    let at = clock();
+    watches.retain_mut(|watch| {
+        if let Some((told, seen)) = &mut watch.listing {
+            // Told again once the book changed, or once the clock reaches
+            // something with someone starting or ending.
+            if *seen == *revision && told.until.is_none_or(|until| until > at) {
+                return true;
+            }
+            *seen = *revision;
+            let changed = told.changes(book, sources, at);
+            if changed.is_empty() {
+                return true;
+            }
+            let line = json!({"id": watch.id, "changed": changed}).to_string();
+            return watch.told.send(line).is_ok();
+        }
         if watch.pending.is_empty() {
             return true;
         }
@@ -528,6 +584,32 @@ fn answer(shared: &Shared, asked: Ask, connection: u64, told: &Sender<String>) -
                 listed,
                 told: told.clone(),
                 pending: HashMap::new(),
+                listing: None,
+            });
+            return None;
+        }
+        Ask::Listing { id, watch } => {
+            let mut daemon = lock(shared);
+            let mut said = Told::default();
+            let records = said.changes(&daemon.book, &daemon.sources, clock());
+            if !watch {
+                return Some(json!({"id": id, "records": records}));
+            }
+            daemon
+                .watches
+                .retain(|watch| !(watch.connection == connection && watch.id == id));
+            // Told under the lock that holds the watch, as a watch of
+            // records is, so no change is said before the whole.
+            let _ = told.send(json!({"id": id, "records": records}).to_string());
+            let seen = daemon.revision;
+            daemon.watches.push(Watch {
+                connection,
+                id,
+                keys: None,
+                listed: false,
+                told: told.clone(),
+                pending: HashMap::new(),
+                listing: Some((said, seen)),
             });
             return None;
         }
@@ -648,6 +730,8 @@ mod tests {
                 watches: Vec::new(),
                 took: VecDeque::new(),
                 since: now(),
+                sources: Vec::new(),
+                revision: 0,
             }),
             Condvar::new(),
         ));

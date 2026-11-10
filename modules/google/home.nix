@@ -109,6 +109,14 @@ in
     jitsusama.people.sources.google = {
       order = 20;
       source = ./GoogleSource.qml;
+      # Who they are, and when each thing with them was, said to the people
+      # daemon too, so it lists and orders them with everyone else
+      # (src/people.rs); google-people follows google's daemon socket in
+      # the runtime folder.
+      daemon = [
+        (lib.getExe' google "google-people")
+        "daemons/google.sock"
+      ];
     };
 
     # Google's programs, every one opened as jitsusama.google.window says,
