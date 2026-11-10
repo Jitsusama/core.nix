@@ -88,7 +88,7 @@ def test_root_is_given_only_the_lines_it_trusts(
 
 
 def test_the_lenders_account_is_in_none_of_the_services_groups(lending: BaseMachine) -> None:
-    """The lender's account hands the token over by an ACL, so it needs no group of the service's."""
+    """The lender's account hands the token over by an ACL, so needs no group of the service's."""
     groups = lending.succeed("id -nG someone").split()
     assert "nix-offload-lines" not in groups, groups
 
