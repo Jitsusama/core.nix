@@ -240,7 +240,9 @@
       "said": {
         "today": "{count} today",
         "none": "none today",
-        "read": "read"
+        "read": "read",
+        "kind": "landing",
+        "yesterday": "yesterday"
       },
       "tells": {
         "holding": "What sessions landed in the past 30 days, newest first."
@@ -250,6 +252,16 @@
       "id": "agents:repo",
       "in": "agents",
       "name": "Repository"
+    },
+    {
+      "id": "agents:change",
+      "in": "agents",
+      "name": "Change"
+    },
+    {
+      "id": "agents:item",
+      "in": "agents",
+      "name": "Item"
     },
     {
       "id": "agents:recent",

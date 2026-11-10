@@ -114,22 +114,43 @@ function stands(today, said) {
         : String(said.none ?? "");
 }
 
-// A landing's drawer: who landed it and when as its eyebrow, what landed
-// as its title, its ref, session, quest, repository and machine as facts,
-// and what to try as its words, since a sentence never fits beside the
-// row's ref. `said` gives when (`at`), the session's title and how a fact
-// is named; what isn't known isn't said.
+// A landing's drawer, the same in Landed and in For You: who landed it and
+// that it's a landing as its eyebrow, where and what kind with no state;
+// what landed as its title; when it landed, its session, quest, repository
+// and machine as facts, its ref last, as identifiers go; and what to try
+// as its words, since a sentence never fits beside the row (VKCF3Z,
+// 2026-11-10). `said` gives the kind (`kind`), when (`when`), the
+// session's title and how a fact is named; what isn't known isn't said.
 function landingDrawer(one, said) {
-    const eyebrow = [one.session.address, said.at]
+    const eyebrow = [one.session.address, said.kind]
         .filter(part => (part ?? "") !== "").join(" \u00b7 ");
     const facts = [
-        { label: said.named("landed"), value: one.ref },
+        { label: said.named("landed"), value: said.when },
         { label: said.named("session"), value: said.session },
         { label: said.named("task"), value: one.quest },
         { label: said.named("repo"), value: one.repo },
-        { label: said.named("machine"), value: one.machine }
+        { label: said.named("machine"), value: one.machine },
+        { label: said.named(isChange(one.ref) ? "change" : "item"), value: one.ref }
     ].filter(fact => (fact.value ?? "") !== "");
     return { eyebrow, eyebrowNames: true, title: one.what, facts, body: one.person };
+}
+
+// When a landing landed, as its row says it at its side and its drawer as
+// a fact: the side its time today, "11:19", and before today its day as
+// When says one, "yesterday", "Saturday", "7 Nov", since a row's side
+// says why it's there; the fact the whole moment, "Saturday 7 November,
+// 11:19". `said` gives `clock(at)`, `day(at)`, When's, and `date(at)`,
+// the full day; a landing with no time says none.
+function landedWhen(at, said) {
+    const time = Date.parse(String(at ?? ""));
+    if (Number.isNaN(time)) {
+        return { side: "", fact: "" };
+    }
+    const day = said.day(time);
+    return {
+        side: day === "" ? said.clock(time) : day,
+        fact: `${said.date(time)}, ${said.clock(time)}`
+    };
 }
 
 // What of Joel's reading is still worth keeping: the keys of landings

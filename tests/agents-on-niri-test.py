@@ -498,7 +498,7 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
     assert shell.showing()["selected"]["side"] == "none today", shell.showing()
     shell.step_in()
     shell.launcher_until(lambda shown: shown["rows"] == [STOPPED, CLOSING])
-    assert shell.showing()["selected"]["side"] == "core.nix#2140", shell.showing()
+    assert shell.showing()["selected"]["side"] not in {"", "core.nix#2140"}, shell.showing()
     # No link to it is known and its session has no window, so normal's Return only reads it,
     # keeping the launcher; the find's lands on it, as on any row that changes something.
     shell.normal()
@@ -510,9 +510,10 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
     shell.down_to("To Try")
     shell.step_in()
     shell.launcher_until(lambda shown: shown["rows"] == [CLOSING])
-    assert shell.showing()["selected"]["side"] == "core.nix#2138", shell.showing()
-    # What to try is a sentence, so its drawer says it rather than the row beside its ref.
+    assert shell.showing()["selected"]["side"] not in {"", "core.nix#2138"}, shell.showing()
+    # Its side says when it landed; its drawer says what to try, a sentence, after its facts.
     shell.launcher_until(lambda shown: (shown["drawer"] or {}).get("body") == TRY)
+    assert shell.showing()["drawer"]["values"][-1] == "core.nix#2138", shell.showing()
     # Return steps into it where it lives, never a copy of it.
     shell.send_key("ret")
     shell.launcher_until(lambda shown: shown["held"] == ["agents", "Landed", CLOSING])
@@ -525,8 +526,7 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
     shell.step_in()
     shell.launcher_until(lambda shown: CLOSING in shown["rows"])
     shell.down_to(CLOSING)
-    side = shell.showing()["selected"]["side"]
-    assert re.fullmatch(r"read .+", side), f"a landing read says {side!r} in History"
+    assert re.fullmatch(r"read .+", shell.showing()["selected"]["side"]), shell.showing()
     shell.close_launcher()
     opened(shell)
     shell.down_to("Landed")

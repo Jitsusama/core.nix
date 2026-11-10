@@ -2875,8 +2875,8 @@ def close_asks_what_stays(desktop: Desktop, title: str, address: str, shot: str)
 def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
     """Shoot For You's one landing to try, Landed, then a landing's drawer, then History.
 
-    Each says what landed as its name and its ref in the mono at its right; its drawer says
-    who landed it and when, and what to try, a sentence the row has no room for. Landed says
+    Each says what landed as its name and when it landed at its right; its drawer says who
+    landed it, when, its ref last, and what to try, a sentence the row has no room for. Landed says
     how many landed today at its side; what's to read is For You's alone to count. The one
     saying what to try lands afresh at each scale, so each finds it unread.
     """
@@ -2911,7 +2911,8 @@ def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
     desktop.launcher_until(lambda shown: shown["rows"] == [STOPPED, CLOSING])
     desktop.down_to(CLOSING)
     selected = desktop.showing()["selected"]
-    assert selected["side"] == "core.nix#2138", f"at {shot}: {selected}"
+    # A day before today, as a row says one, never its ref, which its drawer says last.
+    assert selected["side"] not in {"", "core.nix#2138"}, f"at {shot}: {selected}"
     desktop.launcher_until(
         lambda shown: (
             shown["drawer"]["out"] is True and shown["drawer"]["body"] == LANDINGS[2]["person"]
