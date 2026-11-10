@@ -1,8 +1,9 @@
 // The host-only InteractiveMode patch does in its viewers' terminals what
 // pi does in its own: a copy (a selection's too) reaches them rather than
 // the host's clipboard, a viewer who joins late is sent the images already
-// on the screen, and the external editor opens where the viewer who asked
-// is, through its host, or is refused when its host can't.
+// on the screen, the external editor opens where the viewer who asked
+// is, through its host, or is refused when its host can't, and an
+// extension's own component, overlays too, says it waits on the person.
 // The real methods run against fake runtimes and a fake terminal; no TTY,
 // model request, editor or extension is started. Arguments name the
 // package and, optionally, source.
@@ -231,4 +232,86 @@ it("an extension's editor panel edits where its screen says, never in the host's
   await panel.handleOpenExternalEditor();
   assert.equal(panel.editor.getText(), "draft, edited");
   assert.equal(tui.stop.mock.callCount(), 0);
+});
+
+// A screen an extension's own component takes, with what it reports kept.
+function panelScreen(hosted) {
+  const { mode } = screen();
+  if (!hosted) {
+    mode.options = {};
+  }
+  Object.assign(mode, {
+    extensionDialogs: [],
+    editorContainer: { clear: mock.fn(), addChild: mock.fn() },
+    programStatus: { setBlocked: mock.fn() },
+    keybindings: {},
+  });
+  Object.assign(mode.ui, {
+    setFocus: mock.fn(),
+    showOverlay: mock.fn(() => ({ hide: mock.fn() })),
+  });
+  const calls = () => mode.programStatus.setBlocked.mock.calls.map((call) => call.arguments);
+  return { mode, calls };
+}
+
+// Show an extension's component, once pi has it on the screen.
+async function shown(mode, options) {
+  let answer;
+  const answered = mode.showExtensionCustom((_tui, _theme, _keys, done) => {
+    answer = done;
+    return { render: () => [], invalidate: () => undefined };
+  }, options);
+  await new Promise((settle) => setImmediate(settle));
+  return { answer: (value) => answer(value), answered };
+}
+
+const ASKING = { kind: "question", message: "An extension is asking" };
+
+it("a hosted extension's overlay says it waits on the person until answered", async () => {
+  const { mode, calls } = panelScreen(true);
+  const panel = await shown(mode, { overlay: true });
+  assert.deepEqual(
+    calls().map(([, status]) => status),
+    [ASKING],
+  );
+  panel.answer("yes");
+  assert.equal(await panel.answered, "yes");
+  assert.deepEqual(
+    calls().map(([, status]) => status),
+    [ASKING, undefined],
+  );
+});
+
+it("a hosted overlay clears only its own report, while another stays up", async () => {
+  const { mode, calls } = panelScreen(true);
+  const first = await shown(mode, { overlay: true });
+  await shown(mode, { overlay: true });
+  first.answer("done");
+  await first.answered;
+  assert.equal(
+    calls().length,
+    3,
+    "each overlay reports as it shows, and the first clears as it goes",
+  );
+  const [[opened], [other], [cleared, status]] = calls();
+  assert.equal(cleared, opened, "the first overlay clears the report it made");
+  assert.equal(status, undefined);
+  assert.notEqual(other, opened, "the second reports under a name of its own");
+});
+
+it("a hosted component in the editor's place says it waits, in its own words if given", async () => {
+  const { mode, calls } = panelScreen(true);
+  await shown(mode);
+  await shown(mode, { blocked: { kind: "permission", message: "Run it?" } });
+  assert.deepEqual(calls(), [
+    ["extension-dialog", ASKING],
+    ["extension-dialog", { kind: "permission", message: "Run it?" }],
+  ]);
+});
+
+it("ordinary pi reports an extension's component only as the extension says", async () => {
+  const { mode, calls } = panelScreen(false);
+  await shown(mode, { overlay: true, blocked: { kind: "question", message: "Pick" } });
+  await shown(mode);
+  assert.deepEqual(calls(), [["extension-dialog", undefined]]);
 });
