@@ -89,6 +89,11 @@ in
         # (src/commands.rs); sent to the whole unit, it made Nix abort in a
         # delete and dump core. What's left once the guard exits is killed.
         KillMode = "mixed";
+        # A stop the guard can't take mid-walk is killed after 5 s, not the
+        # default 90, so a switch restarting it holds nothing else for long:
+        # the account's guard held the shell's start for 91 s on 10
+        # November. What it learns is saved as it goes.
+        TimeoutStopSec = "5s";
         # The socket every account's guard asks, and the status file
         # `disk-guard status` reads, both open to every account. It's kept
         # while the guard is down, so its last status, heartbeat and all,

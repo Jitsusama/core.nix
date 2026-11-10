@@ -310,6 +310,11 @@ in
         # (src/commands.rs); sent to the whole unit, it made Nix abort in a
         # delete and dump core. What's left once the guard exits is killed.
         KillMode = "mixed";
+        # A stop the guard can't take mid-walk is killed after 5 s, not the
+        # default 90: a switch's restart of it held the shell's start behind
+        # it for 91 s on 10 November. Killing it is safe: what it learns is
+        # saved as it goes, and its commands are killed the same way.
+        TimeoutStopSec = "5s";
         # What the guard holds itself, 17 MiB at its peak while planning a
         # pass of 14,000 candidates on a workstation, is far under the high
         # mark, which reclaims the page cache its walks fill. The ceiling is the
