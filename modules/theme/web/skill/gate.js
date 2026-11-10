@@ -27,12 +27,17 @@
     }
   };
   // A heading's name is its text nodes each trimmed and joined by a space,
-  // since textContent runs one element's words into the next's ("yes3").
+  // since textContent runs one element's words into the next's ("yes3"). It
+  // leaves out what's aria-hidden, as a screen reader does, so a heading drawn
+  // once for the eye and once for the ear is named once ("Keys", not "Keys
+  // Keys").
   const named = (element) => {
     const walker = page.createTreeWalker(element, NodeFilter.SHOW_TEXT);
     const words = [];
     while (walker.nextNode()) {
-      words.push(walker.currentNode.textContent.trim());
+      if (walker.currentNode.parentElement.closest('[aria-hidden="true"]') === null) {
+        words.push(walker.currentNode.textContent.trim());
+      }
     }
     return words
       .filter((word) => word !== "")
