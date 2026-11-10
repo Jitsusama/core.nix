@@ -11,7 +11,7 @@ use crate::plan::Candidate;
 use crate::reclaim::{self, Looker};
 use crate::survey::{Action, Offer};
 use crate::vouch::{self, Answer};
-use crate::{garbage, logs, socket, workspaces};
+use crate::{garbage, socket, workspaces};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io;
@@ -407,6 +407,9 @@ impl Reclaimer for Reclaim<'_> {
             Action::Entry { .. } => {
                 reclaim::entry(&root, root_path, candidate, self.scan, &mut unlinked)
             }
+            Action::CacheEntry { .. } => {
+                reclaim::cache_entry(&root, root_path, candidate, &mut unlinked)
+            }
             Action::Trash { .. } => reclaim::trashed(&root, root_path, candidate, &mut unlinked),
             Action::Run { argv, timeout, .. } => {
                 let (argv, timeout, gentle) = (argv.clone(), *timeout, self.gentle);
@@ -450,17 +453,7 @@ impl Reclaimer for Reclaim<'_> {
                 let (nix, roots, paths) = (nix.clone(), roots.clone(), paths.clone());
                 self.collect(nix, roots, paths)
             }
-            Action::Trim { .. } => {
-                let Ok(relative) = candidate.path.strip_prefix(root_path) else {
-                    return Outcome::Failed(format!("outside its root {}", root_path.display()));
-                };
-                // Its writer carries on appending to what's kept, so its use
-                // judges nothing.
-                match logs::trim(&root, relative, logs::KEEP) {
-                    Ok(_) => Outcome::Reclaimed,
-                    Err(error) => Outcome::Failed(format!("trimming it: {error}")),
-                }
-            }
+            Action::Trim { .. } => reclaim::trimmed(&root, root_path, candidate),
             Action::Workspace { .. } => {
                 // Read before it goes: its .git files name the repositories.
                 let linked = workspaces::linked(&candidate.path);

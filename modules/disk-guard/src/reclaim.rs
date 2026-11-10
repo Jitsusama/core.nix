@@ -280,6 +280,55 @@ pub fn trashed(
     }
 }
 
+/// Trims a log under `root`, which `root_path` names, in place to its last
+/// part. Its writer carries on appending to what's kept, so its use
+/// judges nothing.
+pub fn trimmed(root: &Dir, root_path: &Path, candidate: &Candidate) -> Outcome {
+    let Ok(relative) = candidate.path.strip_prefix(root_path) else {
+        return Outcome::Failed(format!("outside its root {}", root_path.display()));
+    };
+    match crate::logs::trim(root, relative, crate::logs::KEEP) {
+        Ok(_) => Outcome::Reclaimed,
+        Err(error) => Outcome::Failed(format!("trimming it: {error}")),
+    }
+}
+
+/// Reclaims one file of a cache that trims itself by age, under `root`,
+/// which `root_path` names, unlinked and never followed. Who uses it
+/// isn't judged: the cache's own tool trims the same way, and a process
+/// reading the file keeps reading it once it's gone. Judging cost two
+/// scans of every process for each of Go's thousands of entries, and an
+/// unreadable process kept them all. Anything but a file is refused.
+pub fn cache_entry(
+    root: &Dir,
+    root_path: &Path,
+    candidate: &Candidate,
+    unlinked: &mut dyn FnMut(),
+) -> Outcome {
+    let Ok(relative) = candidate.path.strip_prefix(root_path) else {
+        return Outcome::Failed(format!("outside its root {}", root_path.display()));
+    };
+    let (Some(parent), Some(name)) = (relative.parent(), relative.file_name()) else {
+        return Outcome::Failed("its root itself".to_owned());
+    };
+    let parent = match root.child(parent) {
+        Ok(parent) => parent,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Outcome::Reclaimed,
+        Err(error) => return Outcome::Failed(format!("opening where it lies: {error}")),
+    };
+    match parent.kind(name) {
+        None => Outcome::Reclaimed,
+        Some(rustix::fs::FileType::RegularFile) => match parent.remove_entry(name) {
+            Ok(()) => {
+                unlinked();
+                Outcome::Reclaimed
+            }
+            Err(error) => Outcome::Failed(format!("removing it: {error}")),
+        },
+        Some(_) => Outcome::Failed("not a file, as a cache's entry is".to_owned()),
+    }
+}
+
 /// Reclaims one entry under `root`, which `root_path` names: a scratch
 /// run, a temp leftover, a workspace or a cache. It's judged first, and a
 /// file or symlink is then unlinked, never followed. A directory's

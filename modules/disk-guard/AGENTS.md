@@ -69,7 +69,9 @@ or launchd, and [`home.nix`][2] the account's.
   naming it. Busy stays; a target only sat in waits for critically full; a process
   it can't read keeps everything it might use, unless the system daemon
   vouches for it or it has exited since the scan, as most of a build's do
-  within a second.
+  within a second. An entry of Go's build cache isn't judged: Go trims it
+  by age alone, and a process reading one keeps reading it once it's gone.
+  Judging each cost two scans of every process.
 - **Measuring.** A pass reclaims a batch, lets it settle and measures it. A
   group whose batches free under a tenth of what they predict, three times
   running, is left for the next group; a batch predicting under a gigabyte

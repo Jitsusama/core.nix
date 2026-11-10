@@ -425,7 +425,7 @@ fn caches_are_offered_whole_or_by_entry_with_their_rank_and_band() {
             from: Band::Filling
         }
     );
-    assert_eq!(by_entry.action, Action::Entry { root: go.clone() });
+    assert_eq!(by_entry.action, Action::CacheEntry { root: go.clone() });
 }
 
 #[test]
