@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
+use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 
@@ -281,7 +282,7 @@ fn base64(text: &str) -> Option<Vec<u8>> {
         held += 6;
         if held >= 8 {
             held -= 8;
-            bytes.push((bits >> held) as u8);
+            bytes.push(u8::try_from(bits >> held).ok()?);
             bits &= (1 << held) - 1;
         }
     }
@@ -326,11 +327,12 @@ impl<'a> Host<'a> {
             .map(|n| self.work.join(format!("answer-{n}")))
             .collect();
         for (path, answer) in paths.iter().zip(&answers) {
-            said.push_str(&format!(
+            let _ = write!(
+                said,
                 "url = \"{}/{path}\"\noutput = \"{}\"\n",
                 self.api,
                 answer.display()
-            ));
+            );
         }
         write_private(&asks, said.as_bytes())?;
         let curl = run::command(&self.config.tools.curl, &self.config.state);
@@ -519,10 +521,16 @@ mod tests {
                 {"path": name, "mode": "100644", "type": "blob", "sha": "22".repeat(20)}
             ]})
         };
-        assert!(entries(&listing("file"), &id).is_ok());
+        assert!(
+            entries(&listing("file"), &id).is_ok(),
+            "a plain file's name was refused"
+        );
         for name in ["../x", "a/b", "..", ""] {
             assert!(entries(&listing(name), &id).is_err(), "{name}");
         }
-        assert!(entries(&listing("file"), &"33".repeat(20)).is_err());
+        assert!(
+            entries(&listing("file"), &"33".repeat(20)).is_err(),
+            "a listing for another tree's id was read"
+        );
     }
 }
