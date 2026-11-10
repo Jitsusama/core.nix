@@ -156,6 +156,40 @@ QtObject {
         expect("no body", Notice.named("Battery low", "", ["low"], holds),
             { name: "Battery low", note: "" });
 
+        // Lined, each row's note is worked out only once it's read, and
+        // nor is anything the row looks up as it's read, so a search
+        // finding hundreds lines only the one the main search shows.
+        let asked = 0;
+        const counted = (text, word) => {
+            asked += 1;
+            return holds(text, word);
+        };
+        let followed = 0;
+        const rows = ["7", "1", "7"].map(line => {
+            const row = { key: line, title: "Deploy log", wrote: log, count: "" };
+            Object.defineProperty(row, "follows", {
+                enumerable: true,
+                get: () => {
+                    followed += 1;
+                    return "program:deploy";
+                }
+            });
+            return row;
+        });
+        const lined = Notice.lined(rows, ["log", "7"], counted);
+        expect("lined, nothing is asked", [asked, followed], [0, 0]);
+        expect("until a note is read", lined[0].count, "line 7 of the deploy went by");
+        const once = asked;
+        void lined[0].count;
+        expect("a note read twice is worked out once", asked, once);
+        void lined[1].count;
+        expect("another's was left till it was read", asked > once, true);
+        expect("its row's own note stays its", rows.map(row => row.count), ["", "", ""]);
+        expect("what it looks up is its row's", [lined[1].follows, lined[1].key, followed],
+            ["program:deploy", "1", 1]);
+        lined[2].count = "said";
+        expect("a note set holds", lined[2].count, "said");
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
