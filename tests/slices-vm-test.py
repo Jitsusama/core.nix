@@ -211,7 +211,11 @@ def test_what_joel_uses_has_a_millisecond(account: Account, drive: str) -> None:
 def test_work_sessions_wait_on_has_theirs(account: Account, drive: str) -> None:
     """Work sessions wait on has their millisecond, so the work it starts gives way to it."""
     assert latency(account, "agents") == f"{drive} target=1000"
-    assert latency(account, "shared") == f"{drive} target=1000"
+
+
+def test_shared_work_yields_to_joel_before_jobs(account: Account, drive: str) -> None:
+    """Shared work has five milliseconds, so it gives way to Joel's reads but not to jobs."""
+    assert latency(account, "shared") == f"{drive} target=5000"
 
 
 def test_the_work_it_starts_has_none(account: Account) -> None:
