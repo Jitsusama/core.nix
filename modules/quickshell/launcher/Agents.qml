@@ -901,6 +901,20 @@ Provider {
     }
     readonly property var landings: Landed.all(keptLandings,
         Sessions.running.concat(Sessions.parked))
+    // The names Landed's row says it holds, the same list for as long as
+    // they read the same, so the row isn't made again at every session's
+    // change. `landings` is remade at each, and read by the row itself, it
+    // made Landed's row afresh at each one nobody saw, as home names
+    // Agents' rows (vm-desktop-launcher-keeps-up, 2026-11-10). Plain, so
+    // keeping them notifies nothing.
+    readonly property var landedKept: ({ names: [] })
+    readonly property var landedNames: {
+        const names = landings.map(one => one.what);
+        if (names.length !== landedKept.names.length
+            || names.some((name, at) => name !== landedKept.names[at]))
+            landedKept.names = names;
+        return landedKept.names;
+    }
     function readLanding(key) {
         if (Sessions.landingsRead.includes(key))
             return;
@@ -992,8 +1006,8 @@ Provider {
             // A place's drawer is drawn once it names what it holds, as a
             // Recent's is (Launcher.qml's drawable); with nothing landed,
             // it has nothing to say past its row.
-            heldNames: landings.map(one => one.what),
-            drawer: landings.length === 0 ? undefined : () => ({
+            heldNames: landedNames,
+            drawer: landedNames.length === 0 ? undefined : () => ({
                 eyebrow: (Words.field.drawer ?? {}).place ?? "",
                 title: Words.name("agents:landed"),
                 body: (words.tells ?? {}).holding ?? ""
