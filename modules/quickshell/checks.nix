@@ -2066,19 +2066,8 @@ onLinux {
       '';
       # For You's Desktop row holds the notices unread, as their own rows
       # say them, and For You counts a critical one among what waits while
-      # no card says it. No sender has a window here.
-      notices = singleton "Notices.qml" ''
-        property var history: []
-        property var live: ({})
-        property var resting: ({})
-        property var waiting: []
-        function markRead(ids) {}
-        function seen() {}
-        function mark(id, read) {}
-        function pictureOf(notice) { return ""; }
-        function sender(name) { return { glyph: 0xf0f3, hue: "program", name: name }; }
-        function senderWindow(app) { return null; }
-      '';
+      # no card says it.
+      notices = ./tests/stand-ins/now-notices.qml;
       whereabouts = pkgs.callPackage ./whereabouts/package.nix { };
     in
     pkgs.runCommandLocal "the-launcher-shows-the-moment-in-now" { } ''
