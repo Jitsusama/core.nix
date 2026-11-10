@@ -93,7 +93,7 @@ Scope {
     // (2026-11-10).
     property bool opening: false
     // Shown at all: open, or drawing its first frame from what it kept.
-    readonly property bool shown: open || opening
+    readonly property bool cardUp: open || opening
 
     // Wide enough for a long action and its chord at the large size, or
     // as wide as a narrow screen gives, the margin the card keeps from the
@@ -5482,7 +5482,7 @@ Scope {
     property var afterFrames: []
     property var afterFramesDrawing: []
     function afterFrame(then) {
-        if (!shown) {
+        if (!cardUp) {
             then();
             return;
         }
@@ -6310,7 +6310,7 @@ Scope {
     // as it opens. Closed, the foot's facts changing (the time, the lag,
     // the volume) drew the launcher a frame each that nobody saw
     // (2026-11-01).
-    readonly property bool cardSeen: shown || parting !== ""
+    readonly property bool cardSeen: cardUp || parting !== ""
 
     // What the closed card held, brought up to now as it opens. The
     // bindings holding it follow cardSeen only once the opening's handler
@@ -7459,7 +7459,7 @@ Scope {
     // with no window focused, so the launcher stays open under it. Called
     // as the keys or niri's focused window change, in either order.
     function keysMoved(): void {
-        if (!shown)
+        if (!cardUp)
             return;
         if (prompt.Window.active) {
             keysHeld = true;
@@ -7489,7 +7489,7 @@ Scope {
 
     Connections {
         target: Niri
-        enabled: root.shown
+        enabled: root.cardUp
 
         function onFocusedChanged() {
             root.keysMoved();
@@ -7717,7 +7717,7 @@ Scope {
     property var openingsTimed: []
     property int openingsDrawn: 0
     function askedToOpen() {
-        if (!shown) {
+        if (!cardUp) {
             openAsked = KeyTimes.now();
             openSettled = -1;
             openBegun = -1;
@@ -7807,7 +7807,7 @@ Scope {
     // draws it with nothing made and nothing woken. Every row is read
     // again as that opening fills in, landing where it stands.
     function keepHome() {
-        if (shown || parting !== "")
+        if (cardUp || parting !== "")
             return;
         const home = held.length === 0 && typed === "" && matches.length > 0 ? matches
             : homeKept;
@@ -7863,7 +7863,7 @@ Scope {
     function openDrawn() {
         const asked = openAsked;
         openAsked = -1;
-        if (!shown || asked < 0)
+        if (!cardUp || asked < 0)
             return;
         const drawn = KeyTimes.now();
         const took = Math.round(drawn - asked);
@@ -8102,25 +8102,25 @@ Scope {
         anchors.top: true
         anchors.left: true
         // Quickshell's type files can't place margins, so qmllint can't.
-        margins.top: root.shown ? root.cardTop - card.reach : 0 // qmllint disable unqualified
-        margins.left: root.shown ? root.cardLeft - card.reach : 0 // qmllint disable unqualified
-        implicitWidth: root.shown ? root.width + root.drawerBeside + 2 * card.reach : 1
-        implicitHeight: root.shown ? card.height + 2 * card.reach : 1
+        margins.top: root.cardUp ? root.cardTop - card.reach : 0 // qmllint disable unqualified
+        margins.left: root.cardUp ? root.cardLeft - card.reach : 0 // qmllint disable unqualified
+        implicitWidth: root.cardUp ? root.width + root.drawerBeside + 2 * card.reach : 1
+        implicitHeight: root.cardUp ? card.height + 2 * card.reach : 1
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
-        mask: !root.shown ? nowhere : root.drawerOut ? cardAndDrawer : card.area
-        BackgroundEffect.blurRegion: !root.shown ? nowhere
+        mask: !root.cardUp ? nowhere : root.drawerOut ? cardAndDrawer : card.area
+        BackgroundEffect.blurRegion: !root.cardUp ? nowhere
             : root.drawerOut ? cardAndDrawer : card.area
         WlrLayershell.layer: WlrLayer.Overlay
         // Asked for on demand once niri gives them so (Niri.asksForKeys), so
         // the newest surface Joel opened has the keys and a click on a
         // window takes them, closing the launcher (keysMoved).
-        WlrLayershell.keyboardFocus: root.shown ? Niri.asksForKeys : WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: root.cardUp ? Niri.asksForKeys : WlrKeyboardFocus.None
         WlrLayershell.namespace: "launcher"
 
         Connections {
             target: card.Window.window
-            enabled: root.shown
+            enabled: root.cardUp
 
             function onActiveChanged() {
                 root.keysMoved();
@@ -8227,7 +8227,7 @@ Scope {
             // Clear rather than hidden while closed, since a hidden field
             // can't hold the focus, and a key that came before the card was
             // shown would be lost.
-            opacity: root.shown || root.parting !== "" ? 1 : 0
+            opacity: root.cardUp || root.parting !== "" ? 1 : 0
             // Clear, it's put back to home for the next opening, once the
             // closing's own handler is done (keepHome checks it's still shut).
             onOpacityChanged: {
