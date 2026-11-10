@@ -6521,7 +6521,9 @@ Scope {
         // The frame's inside across, and the hairlines' tops, so a test can
         // say where a ground meets them. And how far past the view the list
         // builds rows ahead, and how many it holds, so a test can say a
-        // step drew only the rows in reach rather than every one.
+        // step drew only the rows in reach rather than every one; and how
+        // many fact rows the drawer has made and how many it holds, so it
+        // can say an arrow keeps them.
         const inside = listBox.mapToItem(card, 0, 0);
         return JSON.stringify({ typed: root.typed, field: wordsIn(prompt, card),
             numbers: wordsIn(rowsGutter, card), rowTall: root.rowTall,
@@ -6531,7 +6533,8 @@ Scope {
                 y: Math.round(line.mapToItem(card, 0, 0).y), height: line.height,
                 ink: String(line.color) })),
             foot: wordsIn(foot, card), rows, selection, made: root.rowsMade,
-            drawn: root.rowsDrawn, built: root.rowsBuilt,
+            drawn: root.rowsDrawn, built: root.rowsBuilt, factsMade: drawerCard.factsMade,
+            factsHeld: drawerCard.facts.length,
             ahead: list.cacheBuffer, listed: list.count, firstAt,
             line: wordsIn(commandLoader.item, card),
             lines: wordsIn(commandRows, card) });

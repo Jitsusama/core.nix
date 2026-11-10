@@ -268,6 +268,21 @@ Floating {
     // name would right under it (VKCF3Z, 2026-11-03).
     readonly property var facts: shown ? (shown.facts ?? [])
         .filter(fact => fact && String(fact.value ?? "") !== title) : []
+    // A fact's row is kept as the facts change, each reading the fact at
+    // its place, and only the rows past the ones before are made or let
+    // go: rows made afresh for every fact were most of a step into
+    // Programs, whose first program's drawer made 456 things, and of
+    // Passwords' (keeps-pace under load, 2026-11-10).
+    onFactsChanged: drawer.keptTo(factsKept, facts.length)
+    // How many fact rows it has made, for the check that moving between
+    // things with as many facts makes none.
+    property int factsMade: 0
+    function keptTo(kept, count) {
+        if (kept.count > count)
+            kept.remove(count, kept.count - count);
+        while (kept.count < count)
+            kept.append({});
+    }
     readonly property string body: shown ? shown.body ?? "" : ""
     // Whether it lists keys (`keys: true`), as Space ? does: each chord is
     // the name and what it does the value, both at Note, the chord in the
@@ -1476,7 +1491,10 @@ Floating {
     // a binding reads as a loop though no letter moves.
     readonly property bool wordsCut: shownAndHidden.wordsFrom >= 0
     onWordsCutChanged: Qt.callLater(drawer.countWords)
-    Component.onCompleted: drawer.countWords()
+    Component.onCompleted: {
+        drawer.countWords();
+        drawer.keptTo(factsKept, facts.length);
+    }
     function countWords() {
         bodyText.counting = drawer.wordsCut;
     }
@@ -2006,7 +2024,9 @@ Floating {
 
                     Repeater {
                         id: factRows
-                        model: drawer.facts
+                        model: ListModel {
+                            id: factsKept
+                        }
                         readonly property bool wraps: drawer.anyWraps(factRows)
                         // How tall its facts stand together.
                         function taken() {
@@ -2024,8 +2044,9 @@ Floating {
 
                         Item {
                             id: fact
-                            required property var modelData
                             required property int index
+                            readonly property var modelData: drawer.facts[index] ?? ({})
+                            Component.onCompleted: drawer.factsMade += 1
                             // A heading over the facts after it, as the
                             // keys' list names each mode's, set as the
                             // eyebrow is and an empty line below any

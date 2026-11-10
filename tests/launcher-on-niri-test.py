@@ -1020,6 +1020,41 @@ def is_graph(text: object) -> bool:
     return isinstance(text, str) and text != "" and all("\u2800" <= c <= "\u28ff" for c in text)
 
 
+def test_an_arrow_between_programs_keeps_the_drawers_fact_rows(shell: Shell) -> None:
+    """An arrow from one program to the next makes only the drawer's fact rows it lacked.
+
+    The drawer made a row afresh for each fact of every thing it showed, which was the largest
+    part of a step into Programs or Passwords under load, a first program's drawer making 456
+    things (keeps-pace, 2026-11-10). Its rows are kept, each reading the fact at its place, so
+    an arrow makes a row only where the next program has more facts than the last.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("programs", selecting="Programs")
+    shell.step_in()
+    shell.launcher_until(functools.partial(stands_in, "Programs"))
+    shell.normal()
+    shell.launcher_until(lambda shown: shown["drawer"]["shown"])
+    laid = laid_out(shell)
+    made, held = int(laid["factsMade"]), [int(laid["factsHeld"])]
+    lacked = 0
+    for _ in range(4):
+        title = shell.showing()["drawer"]["title"]
+        shell.send_chars("j")
+        shell.launcher_until(
+            lambda shown, was=title: shown["drawer"]["shown"] and shown["drawer"]["title"] != was
+        )
+        laid = laid_out(shell)
+        held.append(int(laid["factsHeld"]))
+        lacked += max(0, held[-1] - held[-2])
+    made = int(laid["factsMade"]) - made
+    stepped_out(shell)
+    shell.close_launcher()
+    # Else no program after the first has a fact, and this proves nothing.
+    assert sum(held[1:]) > 0, f"facts held by each program's drawer: {held}"
+    assert made <= lacked, f"{made} fact rows made where {lacked} were missing, holding {held}"
+
+
 def stands_in(place: str, shown: Json) -> bool:
     """Say whether the launcher shows the place, as the last of its path."""
     return cast("list[str]", shown["path"])[-1:] == [place]
