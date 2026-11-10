@@ -39,8 +39,8 @@ ShellRoot {
         launcher: theLauncher
     }
 
-    // The machine queue is drawn only in the launcher, so it's read only
-    // while that's open (Jobs.qml).
+    // The machine queue is drawn only in the launcher, so the node's record
+    // of it is watched only while that's open (Jobs.qml).
     Binding {
         target: Jobs
         property: "showing"

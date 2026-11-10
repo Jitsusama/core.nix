@@ -79,9 +79,11 @@ let
   # The areas that show pi's sessions, whose machine runs the realm's
   # mycelium node, as a workstation does, since the shell knows sessions
   # from the node alone, and looks-machine, which shoots Machines from
-  # the record the node measures of its own machine. It links nothing, so
-  # it needs no key.
+  # the record the node measures of its own machine, and launcher-answers,
+  # whose Queue the node tells of the machine queue (Jobs.qml). Those two
+  # link nothing, so they need no key.
   runsTheNode = builtins.elem area [
+    "launcher-answers"
     "launcher-finds-sessions"
     "reopens-under-orchestrators"
     "launcher-draws-still"

@@ -1388,6 +1388,24 @@ onLinux {
       touch $out
     '';
 
+  # The machine queue is the harness's file as the node's record holds it,
+  # a write of only when it was written says nothing new, and the harness
+  # goes silent once its heartbeat is the silence old, as tests/jobs.qml
+  # holds Jobs.js to it in Qt's own engine.
+  the-queue-is-heard-from-the-node =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-queue-is-heard-from-the-node" { } ''
+      cp ${../../tests/jobs.qml} jobs.qml
+      cp ${./Jobs.js} Jobs.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml jobs.qml
+      touch $out
+    '';
+
   # The launcher finds emoji by what they're called and what they mean, best
   # first, as tests/emoji.qml lists them, over the list it's built with, and
   # in about three times the least a search could take.
