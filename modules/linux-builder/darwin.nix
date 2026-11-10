@@ -21,6 +21,13 @@
 # that builds there jumps through the Mac's SSH to that port, and signs in to
 # the VM with a key of its own, given in `authorizedKeys`.
 #
+# A full store is freed from another machine with a key given in
+# `collectableBy`: the VM lets it in only to run collect.sh, which collects
+# garbage and says how much is free, with no shell, pty or forwarding. Every
+# other key the VM takes is root's, on the Mac or elsewhere, so on 9 November
+# a store down to 6 GB free, too little for the builds sent there, waited on
+# Joel's password.
+#
 # A VM that wedges is cured by restarting it and the Nix daemon, which takes
 # sudo. The accounts in `restartableBy` may run exactly those two restarts
 # with no password, so someone at another machine can cure it over SSH.
@@ -32,6 +39,8 @@
 }:
 let
   cfg = config.jitsusama.linux-builder;
+  # Whether the guest is changed from the one nixpkgs caches.
+  changed = cfg.features != [ ] || cfg.authorizedKeys != [ ] || cfg.collectableBy != [ ];
 
   # Sizing it changes only the Mac's side of it, which the Mac builds in
   # seconds; the guest's system still comes from the cache. A key from
@@ -54,7 +63,7 @@ let
       # passed through, so chrony doesn't trim it. Only a guest already
       # changed gets it: one given nothing stays the cached one, which a
       # Mac with no Linux builder yet can run without building it.
-      (lib.mkIf (cfg.features != [ ] || cfg.authorizedKeys != [ ]) {
+      (lib.mkIf changed {
         services.chrony = {
           enable = true;
           servers = [ ];
@@ -72,7 +81,7 @@ let
       # So a changed guest starts at a sixth of its disk free and collects
       # back to five twelfths, 10 and 25 GiB of 60, as shares so a bigger
       # disk keeps as much room for its bigger builds.
-      (lib.mkIf (cfg.features != [ ] || cfg.authorizedKeys != [ ]) {
+      (lib.mkIf changed {
         virtualisation.darwin-builder = {
           min-free = cfg.disk * 1024 * 1024 / 6;
           max-free = cfg.disk * 1024 * 1024 * 5 / 12;
@@ -83,12 +92,32 @@ let
         # asking for one rather than refuse it.
         nix.settings.extra-system-features = cfg.features;
       })
-      (lib.mkIf (cfg.authorizedKeys != [ ]) {
-        users.users.builder.openssh.authorizedKeys.keys = cfg.authorizedKeys;
+      (lib.mkIf (cfg.authorizedKeys != [ ] || cfg.collectableBy != [ ]) {
         # nixpkgs' VM forces its SSH to read only the Mac's key, so the
         # file NixOS writes these to is forced beside it.
         services.openssh.authorizedKeysFiles = lib.mkForce [ "/etc/ssh/authorized_keys.d/%u" ];
       })
+      { users.users.builder.openssh.authorizedKeys.keys = cfg.authorizedKeys; }
+      (
+        { config, pkgs, ... }:
+        let
+          collect = pkgs.writeShellApplication {
+            name = "collect";
+            runtimeInputs = [
+              config.nix.package
+              pkgs.coreutils
+            ];
+            text = builtins.readFile ./collect.sh;
+          };
+        in
+        {
+          # restrict turns off forwarding, the pty and ~/.ssh/rc, and the
+          # command runs whatever the key's holder asked for.
+          users.users.builder.openssh.authorizedKeys.keys = map (
+            key: ''restrict,command="${lib.getExe collect}" ${key}''
+          ) cfg.collectableBy;
+        }
+      )
     ];
   };
   guest = builder.nixosConfig;
@@ -170,6 +199,17 @@ in
         Keys besides the Mac's own that may sign in to the VM as its builder,
         and so build there: another machine's, reaching the VM through the
         Mac. None by default, which keeps the guest's system the cached one.
+      '';
+    };
+    collectableBy = lib.mkOption {
+      type = lib.types.listOf lib.types.singleLineStr;
+      default = [ ];
+      example = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... agents@elsewhere" ];
+      description = ''
+        Keys that may sign in to the VM as its builder only to collect its
+        store's garbage, all that's dead or up to a number of GiB, and read
+        how much is free (collect.sh), reaching it through the Mac. None by
+        default, which keeps the guest's system the cached one.
       '';
     };
     builder = lib.mkOption {

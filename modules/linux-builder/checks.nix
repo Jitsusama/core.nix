@@ -4,6 +4,7 @@
   bareDarwin,
   holds,
   lib,
+  pkgs,
   self,
   ...
 }:
@@ -31,6 +32,13 @@ let
   another = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGRkdxraohorYagcirm3lEonh6at0F7DvFoLuEqBQajh elsewhere";
   plain = guestOf { };
   opened = guestOf { authorizedKeys = [ another ]; };
+  collecting = guestOf { collectableBy = [ another ]; };
+  # What the guest's SSH lets in as its builder, a key a line.
+  letIn =
+    guest:
+    lib.filter (line: line != "") (
+      lib.splitString "\n" guest.environment.etc."ssh/authorized_keys.d/builder".source.text
+    );
   marked = guestOf { features = [ "own-code" ]; };
   system = guest: builtins.unsafeDiscardStringContext guest.system.build.toplevel.drvPath;
 
@@ -64,6 +72,35 @@ in
         && system plain == system cached
         && system opened != system cached
       );
+
+  # A collecting key lets its holder in to the VM's builder only to run the
+  # collection, with no shell, pty or forwarding, and never as a builder, so
+  # a machine whose agents hold it can free the VM's store without sudo on
+  # the Mac. The guest is changed, so it keeps room as one given keys does.
+  linux-builder-lets-collecting-keys-only-collect =
+    holds "linux-builder-lets-collecting-keys-only-collect"
+      "The VM let a collecting key in other than restricted to collect.sh, let it in plainly too, or didn't read the file it's written to."
+      (
+        let
+          lines = letIn collecting;
+          forced = lib.filter (lib.hasPrefix "restrict,command=\"") lines;
+          files = collecting.services.openssh.authorizedKeysFiles;
+        in
+        lines == forced
+        && builtins.length forced == 1
+        && lib.hasSuffix "/bin/collect\" ${another}" (builtins.head forced)
+        && builtins.elem "/etc/ssh/authorized_keys.d/%u" files
+        && collecting.nix.settings.min-free != cached.nix.settings.min-free
+      );
+
+  # The collection does what each ask says and prints the store's free
+  # bytes; anything else is refused before it runs a thing.
+  linux-builder-collects-only-what-it-is-asked =
+    pkgs.runCommandLocal "linux-builder-collects-only-what-it-is-asked" { }
+      ''
+        $BASH ${./collect-test.sh} ${./collect.sh}
+        touch $out
+      '';
 
   # A guest already changed asks chrony for the time each minute and steps
   # any error past a second, since its clock stops while the Mac sleeps; one
