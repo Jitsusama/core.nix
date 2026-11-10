@@ -29,6 +29,7 @@ import Quickshell.Io
 import QtQuick
 import "launcher" as Launcher
 import "Expect.js" as Expect
+import "Frames.js" as Frames
 import "launcher/Inkscape.js" as Inkscape
 
 ShellRoot {
@@ -88,6 +89,16 @@ ShellRoot {
         property var sources: [inkscape, copies]
         property var partsOfRows: ({})
         property string underListed: ""
+
+        // What waits for the next frame, as the launcher's afterFrame
+        // keeps it (tests/lib/Frames.js), run as a frame is drawn.
+        readonly property var frames: Frames.kept()
+        function afterFrame(then) {
+            frames.due.push(then);
+        }
+        function drawn() {
+            Frames.drawn(frames);
+        }
     }
 
     Launcher.InkscapeProgram {
@@ -192,6 +203,9 @@ ShellRoot {
             Niri.revision += 1;
             theLauncher.open = true;
             theLauncher.held = [{ row: entry(), rows: [] }];
+            // A step's frame never waits on starting a process.
+            same("its drawings are looked at once the step is drawn", theLauncher.frames.due.length, 1);
+            theLauncher.drawn();
             stepped();
         } catch (error) {
             fail(error.message);

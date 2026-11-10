@@ -23,6 +23,7 @@ For other checks:
 | File                         | Holds                                                             |
 | ---------------------------- | ----------------------------------------------------------------- |
 | `Expect.js`                  | what a QML test says of its cases, as `expect`, `same` and `fail` |
+| `Frames.js`                  | a stand-in launcher's afterFrame, run as a test says a frame is   |
 | `qml-in-time.sh`             | a QML test that times itself, judged by its fastest of five runs  |
 | `qmllint-counted.{nix,sh}`   | qmllint, printing every message it counted                        |
 | `shell-folder-lint.{nix,sh}` | qmllint over a check's laid-out shell, against Quickshell's types |

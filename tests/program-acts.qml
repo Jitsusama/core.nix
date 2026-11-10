@@ -40,6 +40,7 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import qs.launcher as Launcher
+import "Frames.js" as Frames
 
 ShellRoot {
     id: root
@@ -119,6 +120,16 @@ ShellRoot {
         property bool open: true
         property var held: []
         property var sources: [copies]
+
+        // What waits for the next frame, as the launcher's afterFrame
+        // keeps it (tests/lib/Frames.js), run as a frame is drawn.
+        readonly property var frames: Frames.kept()
+        function afterFrame(then) {
+            frames.due.push(then);
+        }
+        function drawn() {
+            Frames.drawn(frames);
+        }
 
         function enter(row) {
         }
@@ -504,6 +515,10 @@ ShellRoot {
                 expect("Open the Latest Download waits in its place until a reading answers",
                     waiting[0].side === "\u2026", waiting[0].side);
                 theLauncher.held = [{ row: { key: "program:google-chrome" } }];
+                // A step's frame never waits on starting a process.
+                expect("its downloads wait for the step to be drawn",
+                    theLauncher.frames.due.length === 1, theLauncher.frames.due.length);
+                theLauncher.drawn();
             }
         }, {
             what: "Chrome's downloads read as it's stepped into",

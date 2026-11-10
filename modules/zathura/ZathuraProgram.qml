@@ -55,7 +55,9 @@ Provider {
         if (!lookedIn || lookedSince || (settings.opened ?? []).length === 0)
             return;
         lookedSince = true;
-        listing.running = true;
+        // Read once the step is drawn (Launcher.qml's afterFrame), so its
+        // frame never waits on starting a process.
+        launcher.afterFrame(() => listing.running = true);
     }
 
     // The next opening reads them again, as the pages may have turned since.
