@@ -3074,6 +3074,7 @@ onLinux {
       cp ${./launcher/Provider.qml} launcher/Provider.qml
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Backlight.js} launcher/Backlight.js
+      cp ${./launcher/Catalogue.js} launcher/Catalogue.js
       cp ${./launcher/Displays.qml} launcher/Displays.qml
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Order.js} launcher/Order.js
