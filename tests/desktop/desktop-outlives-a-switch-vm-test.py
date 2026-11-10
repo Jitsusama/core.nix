@@ -58,9 +58,29 @@ def kept(desktop: Desktop) -> tuple[str, str]:
     return fields["MainPID"], fields["NRestarts"]
 
 
-def seconds(fields: dict[str, str], name: str) -> float:
-    """Give a monotonic timestamp systemd said, in seconds."""
-    return int(fields[name]) / 1_000_000
+# The ids of what systemd says of a unit's jobs, from systemd's catalog: a stop begun, a stop
+# done and a start done. A unit's own timestamps don't serve: one stopped when the units
+# reload is dropped by the reload and made again with none.
+STOPPING = "de5b426a63be47a7b6ac3eaac82e2f6f"
+STOPPED = "9d1aaa27d60140bd96365438aad20286"
+STARTED = "39f53479d3a045ac8e11786248231fbf"
+
+
+def lasted(desktop: Desktop, unit: str, began: str, ended: str) -> float:
+    """Give the seconds from what systemd last said a user unit began to what ended it."""
+    said = desktop.as_account(
+        f"journalctl --user -u {unit} -o json MESSAGE_ID={began} + MESSAGE_ID={ended}"
+    )
+    events = [json.loads(line) for line in said.splitlines() if line.startswith("{")]
+    beginning = max(
+        int(event["__MONOTONIC_TIMESTAMP"]) for event in events if event["MESSAGE_ID"] == began
+    )
+    ending = min(
+        int(event["__MONOTONIC_TIMESTAMP"])
+        for event in events
+        if event["MESSAGE_ID"] == ended and int(event["__MONOTONIC_TIMESTAMP"]) > beginning
+    )
+    return (ending - beginning) / 1_000_000
 
 
 def sessions(desktop: Desktop) -> dict[str, tuple[int, int]]:
@@ -150,27 +170,11 @@ def test_a_switch_restarts_the_shell_once_a_slow_stop_is_done(desktop: Desktop) 
         assert "SHELL_SWITCHED=1" in desktop.as_account("systemctl --user cat quickshell"), (
             "the switch didn't change the shell's unit"
         )
-        slow = shown(
-            desktop,
-            "slow-to-stop",
-            "ActiveExitTimestampMonotonic",
-            "InactiveEnterTimestampMonotonic",
-        )
-        stopping = seconds(slow, "InactiveEnterTimestampMonotonic") - seconds(
-            slow, "ActiveExitTimestampMonotonic"
-        )
+        stopping = lasted(desktop, "slow-to-stop", STOPPING, STOPPED)
         assert stopping > SLOW_STOP - 5, f"the slow unit stopped in {stopping:.1f} s, not slowly"
-        shell = shown(
-            desktop,
-            "quickshell",
-            "MainPID",
-            "ActiveExitTimestampMonotonic",
-            "ActiveEnterTimestampMonotonic",
-        )
-        assert shell["MainPID"] not in {old, "0"}, f"the shell is still {old}, or none"
-        gone = seconds(shell, "ActiveEnterTimestampMonotonic") - seconds(
-            shell, "ActiveExitTimestampMonotonic"
-        )
+        new = shown(desktop, "quickshell", "MainPID")["MainPID"]
+        assert new not in {old, "0"}, f"the shell is still {old}, or none"
+        gone = lasted(desktop, "quickshell", STOPPING, STARTED)
         assert gone < SHELL_GONE_AT_MOST, (
             f"the shell was gone {gone:.1f} s of the switch, behind a {stopping:.1f} s stop"
         )
