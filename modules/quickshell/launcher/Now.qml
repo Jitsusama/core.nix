@@ -900,14 +900,20 @@ Provider {
     // again as anything in Now changes while it's held, and making every
     // look anew each time made 2,535 rows in one opening of Joel's
     // (2026-11-09). Plain, so keeping notifies nothing.
-    readonly property var keptLooks: ({ minute: -1, wanting: null, rows: {} })
+    readonly property var keptLooks: ({ minute: -1, wanting: "", rows: {} })
+    // Who wants Joel, as a look's row reads them (ForYou.js's leftBy): the
+    // sessions are said anew at each step and each focus move, so their
+    // list is a new one far more often than who wants him changes.
+    readonly property string wantingNames: (Sessions.wanting ?? []).map(session => [
+        session.address ?? "", session.presence?.session ?? ""
+    ].concat(session.presence?.addresses ?? []).join("\u0001")).join("\u0002")
 
     function keptLook(one, now) {
         const kept = keptLooks;
         const minute = Math.floor(now / 60000);
-        if (kept.minute !== minute || kept.wanting !== Sessions.wanting) {
+        if (kept.minute !== minute || kept.wanting !== wantingNames) {
             kept.minute = minute;
-            kept.wanting = Sessions.wanting;
+            kept.wanting = wantingNames;
             kept.rows = {};
         }
         const text = lookTexts[one.file];

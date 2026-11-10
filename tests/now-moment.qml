@@ -378,6 +378,18 @@ ShellRoot {
         expect("and asking makes no more than it did for one look fewer",
             now.tally.rows - madeBefore - madeAgain === madeAgain + 1,
             JSON.stringify([madeAgain, now.tally.rows - madeBefore - madeAgain]));
+        // The sessions are said anew at each step and each focus move, the
+        // same ones wanting Joel; only who wants him is what a look reads.
+        Sessions.wanting = [];
+        const stepped = looked();
+        expect("a session moving, the same wanting Joel, makes none of its looks again",
+            stepped.every((row, at) => row === changed[at]),
+            JSON.stringify(stepped.map((row, at) => row === changed[at])));
+        Sessions.wanting = [{ address: "LEFTA", presence: { session: "s-a", addresses: [] } }];
+        const wanted = looked();
+        expect("one more wanting Joel makes them again", wanted[0] !== changed[0],
+            "it was kept");
+        Sessions.wanting = [];
         now.lookTexts = {};
     }
 }
