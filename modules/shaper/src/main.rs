@@ -30,6 +30,7 @@ mod live;
 mod memory;
 mod oneway;
 mod probe;
+mod proof;
 mod qdisc;
 mod quiet;
 mod rate;
@@ -146,8 +147,10 @@ fn main() -> ExitCode {
         }
         Some("record") => recording(&options(rest).state),
         Some("replay") => replay::command(rest),
+        Some("proof") => proof::command(rest),
+        Some("proof-call") => proof::call(rest),
         _ => {
-            eprintln!("usage: shaper run | status | stop | record | replay");
+            eprintln!("usage: shaper run | status | stop | record | replay | proof");
             ExitCode::from(2)
         }
     }
