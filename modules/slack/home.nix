@@ -75,6 +75,28 @@ in
       (lib.getExe lookUp)
       credentials
     ];
+    # How someone stands in Slack, as SlackSource.qml says it, for those
+    # the daemon lists in order: a presence People doesn't know is said as
+    # it is, and their status's emoji follows it.
+    stands = {
+      field = "presence";
+      words = {
+        active = {
+          said = "active";
+          order = 0;
+        };
+        "in a huddle" = {
+          said = "in a huddle";
+          order = 1;
+        };
+        away = {
+          said = "away";
+          order = 2;
+        };
+      };
+      others = true;
+      mark = "emoji";
+    };
   };
 
   # Search Slack for ‹words›, the act ending every search while Slack is

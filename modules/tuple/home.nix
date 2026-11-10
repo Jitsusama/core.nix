@@ -155,6 +155,30 @@ in
       tuple
       "tuple-0"
     ];
+    # How a contact stands, as TuplePeople.qml says it, for those the
+    # daemon lists in order; Tuple's "unknown" for anyone not a favourite
+    # says nothing.
+    stands = {
+      field = "status";
+      words = {
+        online = {
+          said = "available";
+          order = 0;
+        };
+        busy = {
+          said = "in a call";
+          order = 1;
+        };
+        unavailable = {
+          said = "away";
+          order = 2;
+        };
+        offline = {
+          said = "offline";
+          order = 3;
+        };
+      };
+    };
   };
   jitsusama.quickshell = {
     margin.pieces.call = {

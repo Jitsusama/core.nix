@@ -12,11 +12,17 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde_json::{Value, json};
 
+pub mod listing;
+
 /// The interface's version this speaks.
 pub const VERSION: u64 = 1;
 
 /// The one kind of record this daemon keeps.
 pub const KIND: &str = "person";
+
+/// Those listed with nothing typed, as People shows them, each a person
+/// record of this kind and one record of their keys in order (listing.rs).
+pub const LISTING: &str = "listing";
 
 /// A person's key, by an address in any case.
 pub fn key(address: &str) -> String {
@@ -63,6 +69,12 @@ pub enum Ask {
         words: String,
         limit: usize,
     },
+    /// Those listed, merged, stood and in order, once, or watched as they
+    /// change.
+    Listing {
+        id: Value,
+        watch: bool,
+    },
     Unwatch {
         id: Value,
     },
@@ -102,6 +114,12 @@ pub fn ask(line: &str) -> Ask {
     };
     let kind = said.get("kind").and_then(Value::as_str).unwrap_or(KIND);
     let listed = said.get("listed").and_then(Value::as_bool) == Some(true);
+    if matches!(asked, "list" | "watch") && kind == LISTING {
+        return Ask::Listing {
+            id,
+            watch: asked == "watch",
+        };
+    }
     if matches!(asked, "list" | "watch" | "search") && kind != KIND {
         return Ask::UnknownKind {
             id,

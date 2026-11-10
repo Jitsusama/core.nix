@@ -97,12 +97,22 @@ struct Running {
 
 impl Running {
     fn with(test: &str, sources: &[(&str, &str)]) -> Running {
-        Running::through(test, sources, &[])
+        Running::started(test, sources, &[], &[])
     }
 
     /// Started by `launcher` and its arguments, each given the socket's
     /// path where it says `{socket}`, rather than on its own.
     fn through(test: &str, sources: &[(&str, &str)], launcher: &[&str]) -> Running {
+        Running::started(test, sources, &[], launcher)
+    }
+
+    /// Started with how some of its sources say someone stands, by name.
+    fn started(
+        test: &str,
+        sources: &[(&str, &str)],
+        stands: &[(&str, Value)],
+        launcher: &[&str],
+    ) -> Running {
         let folder = std::env::temp_dir().join(format!("people-{test}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).unwrap();
@@ -111,7 +121,11 @@ impl Running {
             .iter()
             .map(|(name, script)| {
                 let log = folder.join(format!("{name}.log"));
-                json!({"name": name, "command": [shell, "-c", script, name, log]})
+                let stands = stands
+                    .iter()
+                    .find(|(source, _)| source == name)
+                    .map(|(_, stands)| stands);
+                json!({"name": name, "command": [shell, "-c", script, name, log], "stands": stands})
             })
             .collect();
         let config = folder.join("sources.json");
@@ -447,6 +461,68 @@ fn a_roster_is_searched_and_watched_by_who_it_lists() {
     assert_eq!(client.ask(&json!({"id": 9, "ask": "health"}))["people"], 2);
     let said = client.ask(&json!({"id": 10, "ask": "list", "listed": true}));
     assert_eq!(keys(&said), ["person:eli@example.com"]);
+}
+
+#[test]
+fn those_listed_are_told_in_order_and_after_only_whoever_changed() {
+    let stands = json!({"field": "status", "words": {"online": {"said": "available", "order": 0}}});
+    let running = Running::started("listing", &[("tuple", ROSTER)], &[("tuple", stands)], &[]);
+    let mut client = running.client();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while client.ask(&json!({"id": 0, "ask": "health"}))["people"] != 3 {
+        assert!(Instant::now() < deadline, "the roster was never held");
+        // The roster's three lines land as the source starts, asked about
+        // again each 20 ms until the deadline.
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let said = client.ask(&json!({"id": 1, "ask": "watch", "kind": "listing"}));
+    let records = said["records"].as_array().expect("a listing is records");
+    assert_eq!(
+        records.len(),
+        2,
+        "Ada, the one favourite, and the order: {said}"
+    );
+    assert_eq!(records[0]["person"]["name"], "Ada Brightwater", "{said}");
+    assert_eq!(records[0]["person"]["stood"]["favourite"], true, "{said}");
+    assert_eq!(
+        records[0]["sources"]["tuple"]["id"], 1,
+        "with what each source said: {said}"
+    );
+    assert_eq!(
+        records[1]["order"],
+        json!(["person:ada@example.com"]),
+        "{said}"
+    );
+    // Eli made a favourite is told alone, with the order he joins.
+    client.ask(&json!({"id": 2, "ask": "get", "keys": ["person:eli@example.com"]}));
+    let said = next_change(&mut client);
+    assert_eq!(said["id"], 1, "{said}");
+    assert_eq!(
+        said["changed"],
+        json!([
+            {"key": "person:eli@example.com", "kind": "listing",
+             "person": said["changed"][0]["person"], "sources": said["changed"][0]["sources"]},
+            {"key": "people:order", "kind": "listing",
+             "order": ["person:ada@example.com", "person:eli@example.com"]}
+        ]),
+        "Ada, unchanged, isn't told again"
+    );
+    // Ada no longer a favourite is gone from the listing.
+    client.ask(&json!({"id": 3, "ask": "get", "keys": ["person:ada@example.com"]}));
+    let said = next_change(&mut client);
+    assert_eq!(
+        said["changed"],
+        json!([
+            {"key": "person:ada@example.com", "kind": "listing", "gone": true},
+            {"key": "people:order", "kind": "listing", "order": ["person:eli@example.com"]}
+        ])
+    );
+    let said = client.ask(&json!({"id": 4, "ask": "list", "kind": "listing"}));
+    assert_eq!(
+        said["records"].as_array().map(Vec::len),
+        Some(2),
+        "a list is the whole: {said}"
+    );
 }
 
 #[test]

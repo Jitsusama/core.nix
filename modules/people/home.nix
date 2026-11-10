@@ -33,7 +33,7 @@ let
   sourcesFile = pkgs.writeText "people-sources.json" (
     builtins.toJSON {
       sources = map (source: {
-        inherit (source) name;
+        inherit (source) name stands;
         command = source.daemon;
       }) daemonSources;
     }
@@ -73,6 +73,18 @@ in
               the daemon doesn't run.
             '';
           };
+          stands = lib.mkOption {
+            type = lib.types.nullOr (lib.types.attrsOf lib.types.anything);
+            default = null;
+            description = ''
+              How the daemon's source says someone stands, in People's
+              words, for those the daemon lists in order: the `field` of its
+              lines saying it, `words` giving each word People's `said` and
+              its `order` (available 0, busy 1, away 2, offline 3), whether
+              `others` not among them are said as they are, and the `mark`
+              field said after it. None for a source saying nothing of it.
+            '';
+          };
         };
       }
     );
@@ -108,6 +120,7 @@ in
         removeAttrs source [
           "source"
           "daemon"
+          "stands"
         ]
       ) sources;
       # The time where someone is, for a source that knows their time zone,
