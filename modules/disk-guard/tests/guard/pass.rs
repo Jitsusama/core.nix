@@ -124,9 +124,16 @@ struct FakeReclaimer<'a> {
     frees: BTreeMap<PathBuf, u64>,
     kept: Vec<PathBuf>,
     taken: Vec<PathBuf>,
+    /// How many it takes before a stop waits, if one comes.
+    stops_after: Option<usize>,
 }
 
 impl Reclaimer for FakeReclaimer<'_> {
+    fn stopping(&self) -> bool {
+        self.stops_after
+            .is_some_and(|after| self.taken.len() >= after)
+    }
+
     fn reclaim(&mut self, candidate: &Candidate) -> Outcome {
         {
             let mut disk = self.disk.borrow_mut();
@@ -206,6 +213,7 @@ fn run(
         frees,
         kept,
         taken: Vec::new(),
+        stops_after: None,
     };
     let mut learned = Learned::default();
     let report = pass(
@@ -499,4 +507,38 @@ fn upkeep_takes_everything_due_on_a_healthy_disk() {
     );
     assert_eq!(run.end, End::Exhausted);
     assert_eq!(run.taken, [Path::new("/tmp/tmpabcdefgh")]);
+}
+
+#[test]
+fn a_stop_ends_a_pass_before_its_next_candidate() {
+    let candidates: Vec<Candidate> = (0..5)
+        .map(|n| Candidate {
+            path: PathBuf::from(format!("/tmp/tmp{n}bcdefgh")),
+            class: Class::Temp,
+            idle: 2.0 * 86400.0,
+            size: GIB,
+            occupied: false,
+            spent: false,
+            checkout: None,
+        })
+        .collect();
+    let disk = std::cell::RefCell::new(FakeDisk::new(50 * GIB));
+    let mut reclaimer = FakeReclaimer {
+        disk: &disk,
+        frees: BTreeMap::new(),
+        kept: Vec::new(),
+        taken: Vec::new(),
+        stops_after: Some(2),
+    };
+    let report = pass(
+        &mut Shared(&disk),
+        &mut reclaimer,
+        &candidates,
+        &thresholds(),
+        Band::Healthy,
+        Goal::Upkeep,
+        &mut Learned::default(),
+    );
+    assert_eq!(report.end, End::Stopped);
+    assert_eq!(reclaimer.taken.len(), 2, "took {:?}", reclaimer.taken);
 }
