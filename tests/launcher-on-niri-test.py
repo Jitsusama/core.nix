@@ -1038,9 +1038,10 @@ def test_an_arrow_between_programs_keeps_the_drawers_fact_rows(shell: Shell) -> 
     laid = laid_out(shell)
     made, held = int(laid["factsMade"]), [int(laid["factsHeld"])]
     lacked = 0
-    for _ in range(4):
+    # Down to the last and back: the test's account has three programs, the Foot terminal's.
+    for key in "jjkk":
         title = shell.showing()["drawer"]["title"]
-        shell.send_chars("j")
+        shell.send_chars(key)
         shell.launcher_until(
             lambda shown, was=title: shown["drawer"]["shown"] and shown["drawer"]["title"] != was
         )
