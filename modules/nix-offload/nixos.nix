@@ -184,6 +184,12 @@ in
       # timeouts. Eight lets four big builds fill such a builder, and a
       # build here still has half of a 16-thread laptop.
       cores = lib.mkDefault 8;
+      # What no builder takes builds here, two at a time. At the default,
+      # one per thread, a build every builder declined could put sixteen
+      # of eight cores each on a laptop: on 10 November a session's
+      # `nix fmt` compiled the formatter's Rust here, beside the desktop.
+      # An update's builds say their own, as update-to-main gives them.
+      max-jobs = lib.mkDefault 2;
       extra-trusted-public-keys = lib.mkIf (keys != [ ]) keys;
     };
 

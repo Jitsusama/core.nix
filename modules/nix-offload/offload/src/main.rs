@@ -1349,19 +1349,31 @@ impl Sent<'_> {
         }
     }
 
-    /// The run on a lent builder, the two taken in turn, or none when
-    /// neither stood or ssh reached neither. While both stand, each is
-    /// asked to turn it away rather than make it wait, so it goes to the
-    /// other; when both do, it waits at the first it asked.
+    /// The run on a lent builder, the two taken in turn, then on a warm VM
+    /// builder of `vm`'s, or none when none stood or ssh reached none.
+    /// While more than one stands, each is asked to turn it away rather
+    /// than make it wait, so it goes to the next; when all do, it waits at
+    /// the first it asked. On 10 November an evaluation took 4.7 minutes
+    /// with three or fewer on a lent builder and 7.5 with seven or more,
+    /// while warm VM builders, whose gate keeps the same turns, stood idle.
     fn lent_somewhere(
         &self,
         arguments: &[String],
         lenders: [&Path; 2],
+        vm: &[PathBuf],
         vm_apart: bool,
     ) -> Option<Finished> {
-        let stores = changed::in_turn(lenders, std::process::id()).map(standing);
+        let stores: Vec<Option<String>> = changed::in_turn(lenders, std::process::id())
+            .map(standing)
+            .into_iter()
+            .chain(
+                vm.iter()
+                    .filter(|builder| there::warm(builder))
+                    .map(|builder| standing(builder)),
+            )
+            .collect();
         let moving = Self {
-            moves: stores.iter().all(Option::is_some),
+            moves: stores.iter().filter(|store| store.is_some()).count() > 1,
             ..*self
         };
         let mut busy = None;
@@ -1405,18 +1417,13 @@ impl Sent<'_> {
         if there::lends(more) {
             there::want(more);
         }
-        if let Some(finished) = self.lent_somewhere(arguments, [dir, more], vm_apart) {
-            return Some(finished);
-        }
         // A warm VM builder that stands takes the run while no lent
         // builder answers, rather than its waiting minutes for one: from
         // 01:00 to 08:05 on 8 November the lent builders ran out of
         // memory and went silent, and every run waited and ended 69, while
         // the VM builders took every VM test sent them by name.
-        for builder in vm.iter().filter(|builder| there::warm(builder)) {
-            if let Some(finished) = on_builder(standing(builder)) {
-                return Some(finished);
-            }
+        if let Some(finished) = self.lent_somewhere(arguments, [dir, more], vm, vm_apart) {
+            return Some(finished);
         }
         // While a lender runs, a run its builders didn't answer waits for
         // one to stand again, for up to `waiting.longest`, rather than going
