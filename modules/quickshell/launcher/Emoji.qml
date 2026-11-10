@@ -96,10 +96,9 @@ Provider {
                 enumerable: true,
                 get: () => Pasting.verb()
             });
-            Pasting.saysUnhelped(made);
             e.row = made;
         }
-        return e.row;
+        return Pasting.saysUnhelped(e.row);
     }
 
     function search(typed) {

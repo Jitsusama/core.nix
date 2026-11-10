@@ -50,14 +50,14 @@ Singleton {
         return pasting.helper !== null && !pasting.helper.linked;
     }
 
-    // Gives a row that pastes a note saying so while the history isn't
-    // answering, so a slower paste is never a silent one; a shell keeping
-    // no history says nothing, its fallback being how it always pastes.
+    // Notes on a row that pastes, as it's handed out, that the history
+    // isn't answering, so a slower paste is never a silent one; a shell
+    // keeping no history says nothing, its fallback being how it always
+    // pastes. Written as the row's own note rather than made a getter of
+    // it: one remade as a getter left picture rows' prepared undefined in
+    // the shell, so a search in the clipboard threw (2026-11-10).
     function saysUnhelped(row) {
-        Object.defineProperty(row, "note", {
-            enumerable: true,
-            get: () => unhelped() ? "the clipboard's history isn't answering" : ""
-        });
+        row.note = unhelped() ? "the clipboard's history isn't answering" : "";
         return row;
     }
 
