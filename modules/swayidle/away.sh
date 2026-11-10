@@ -16,7 +16,7 @@
 mark=$1
 lock=$2
 off=$3
-here=$XDG_RUNTIME_DIR/someone-at-the-machine
+here=${XDG_RUNTIME_DIR:?}/someone-at-the-machine
 
 exec swayidle \
   timeout "$mark" "rm -f '$here'" resume "touch '$here'" \

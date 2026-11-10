@@ -8,9 +8,10 @@
 # sleeping, and keeps no lock off. A logind that can't be asked keeps
 # nothing off either, so the screen still locks.
 
-holders=$(busctl --json=short call org.freedesktop.login1 /org/freedesktop/login1 \
-  org.freedesktop.login1.Manager ListInhibitors |
-  jq -r '.data[0][] | select(.[3] == "block" and (.[0] | split(":") | index("idle"))) | .[1]')
+inhibitors=$(busctl --json=short call org.freedesktop.login1 /org/freedesktop/login1 \
+  org.freedesktop.login1.Manager ListInhibitors) || exit 1
+holders=$(jq -r '.data[0][] | select(.[3] == "block" and (.[0] | split(":") | index("idle"))) | .[1]' \
+  <<< "$inhibitors") || exit 1
 
 while IFS= read -r who; do
   case $who in
@@ -18,6 +19,7 @@ while IFS= read -r who; do
       echo "the screen stays: $who holds it" >&2
       exit 0
       ;;
+    *) ;;
   esac
 done <<< "$holders"
 exit 1
