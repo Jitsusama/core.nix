@@ -854,5 +854,6 @@ on_heading=$(marked h)
 on_last=$(marked z)
 [[ $on_heading == *'"heading":"Part 1"'* ]] || fail "mark h on Part 1 was kept as $on_heading"
 [[ $on_last =~ \"through\":([0-9.e-]+) ]] || fail "mark z said no share: $on_last"
-awk "BEGIN { exit !(${BASH_REMATCH[1]} < 1) }" || fail "mark z on the last line: $on_last"
+awk "BEGIN { exit !(${BASH_REMATCH[1]} > 0.5 && ${BASH_REMATCH[1]} < 1) }" \
+  || fail "mark z on the last line: $on_last"
 touch passed
