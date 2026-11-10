@@ -501,19 +501,27 @@ def test_a_retitled_window_is_heard_of_alone_with_the_launcher_open(shell: Shell
     """
     retitling = Path(os.environ["XDG_RUNTIME_DIR"]) / "retitling"
     go = retitling.with_suffix(".go")
-    # foot takes a title from what runs in it, once the test says to begin.
+    # foot takes a title from what runs in it, once the test says to begin; a third of a second
+    # apart, so each retitle reaches niri, and the shell, as an event of its own rather than
+    # several folded into one frame's title.
     retitling.write_text(
         f"while [ ! -e {go} ]; do sleep 0.1; done\n"
         f"for i in $(seq {RETITLES}); do printf '\\033]2;Tern %s\\007' \"$i\"; sleep 0.3; done\n"
         "sleep 3600\n"
     )
-    others = [shell.opened(f"Plover {n}") for n in range(1, 11)]
-    tern = shell.opened("Tern 0", running=f"sh {retitling}")
+    opened: list[Json] = []
 
+    # A launcher that counts no records looked at says so, rather than stopping on a missing key:
+    # one that walks every window at each event keeps no such count.
     def looked() -> int:
-        return int(json.loads(shell.as_account(shell.ipc("made")))["looked"]["windows"])
+        made = json.loads(shell.as_account(shell.ipc("made")))
+        counted = made.get("looked", {}).get("windows")
+        assert counted is not None, "the launcher counts no records its windows looked at"
+        return int(counted)
 
     try:
+        opened.extend(shell.opened(f"Plover {n}") for n in range(1, 11))
+        opened.append(shell.opened("Tern 0", running=f"sh {retitling}"))
         shell.as_account(shell.ipc("toggle"))
         shell.launcher_ready()
         shell.send_chars("tern")
@@ -524,7 +532,7 @@ def test_a_retitled_window_is_heard_of_alone_with_the_launcher_open(shell: Shell
         heard = looked() - before
         shell.close_launcher()
     finally:
-        for window in [*others, tern]:
+        for window in opened:
             shell.close(window)
     assert heard <= 2 * RETITLES, f"{RETITLES} retitles of one window looked at {heard} records"
 

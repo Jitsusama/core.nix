@@ -10231,7 +10231,15 @@
       "noun": "windows",
       "glyph": "windows",
       "ask": "which window?",
-      "empty": "No other windows."
+      "empty": "No other windows.",
+      "said": {
+        "silent": "windows not answering"
+      },
+      "states": {
+        "silent": {
+          "empty": "The windows program isn't answering."
+        }
+      }
     },
     {
       "id": "windows:this",
