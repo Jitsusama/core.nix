@@ -13,7 +13,7 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
-use crate::apart::apart;
+use crate::apart::{apart, descriptions_apart};
 
 /// Whether nix-offload's record for a commit holds a changed-checks run that
 /// passed there and built what it named, against a base `on_main` says
@@ -182,8 +182,9 @@ fn names(text: &str, file: &str, path: &str) -> bool {
             .is_some_and(|near| !folder.is_empty() && text.contains(&format!("./{near}")))
 }
 
-/// Whether `file`, which the branch shares with main, is a JSON file both
-/// changed `apart`, so it stands as two files would. One naming a path
+/// Whether `file`, which the branch shares with main, is a JSON file, or
+/// check-descriptions.nix, both changed `apart`, so it stands as two files
+/// would. One naming a path
 /// either side renamed or deleted stays shared, as `shared` holds. `base`
 /// gives a file where the branch was checked from, and `checked` where it
 /// was checked at.
@@ -197,10 +198,17 @@ pub fn stands_apart(
     let json = std::path::Path::new(file)
         .extension()
         .is_some_and(|extension| extension.eq_ignore_ascii_case("json"));
+    let read: fn(&str, &str, &str, &str) -> bool = if file == "check-descriptions.nix" {
+        descriptions_apart
+    } else if json {
+        apart
+    } else {
+        return false;
+    };
     let both = [branch, main]
         .iter()
         .all(|side| side.changed.iter().any(|changed| changed == file));
-    if !json || !both {
+    if !both {
         return false;
     }
     let head = (branch.text)(file);
@@ -209,7 +217,7 @@ pub fn stands_apart(
         .iter()
         .chain(main.gone)
         .any(|path| head.contains(path.as_str()));
-    !names_gone && apart(&base(file), &checked(file), &(main.text)(file), &head)
+    !names_gone && read(&base(file), &checked(file), &(main.text)(file), &head)
 }
 
 /// A list each change adds a line to, which on a busy day main moves in
@@ -698,6 +706,47 @@ mod tests {
             text: &nothing,
         };
         assert_eq!(names_gone(&branch, &main), Vec::<String>::new());
+    }
+
+    #[test]
+    fn check_descriptions_changed_at_different_checks_stand_apart() {
+        // #2763's case: each side described a check of its own.
+        let entry = |name: &str| format!("  {name} = ''\n    proves\n  '';\n");
+        let file = "check-descriptions.nix";
+        let base = format!("{{\n{}}}\n", entry("b"));
+        let ours = format!("{{\n{}{}}}\n", entry("b"), entry("c"));
+        let theirs = format!("{{\n{}{}}}\n", entry("a"), entry("b"));
+        let head = format!("{{\n{}{}{}}}\n", entry("a"), entry("b"), entry("c"));
+        let files = owned(&[file]);
+        let (at_head, at_main) = (|_: &str| head.clone(), |_: &str| theirs.clone());
+        let branch = Side {
+            changed: &files,
+            gone: &[],
+            text: &at_head,
+        };
+        let main = Side {
+            changed: &files,
+            gone: &[],
+            text: &at_main,
+        };
+        let (at_base, checked) = (|_: &str| base.clone(), |_: &str| ours.clone());
+        assert!(
+            stands_apart(file, &branch, &main, &at_base, &checked),
+            "two checks described apart were counted as one file"
+        );
+        assert!(
+            !stands_apart("other.nix", &branch, &main, &at_base, &checked),
+            "another Nix file was read as check descriptions"
+        );
+        let main = Side {
+            changed: &files,
+            gone: &[],
+            text: &|_: &str| ours.replace("proves", "holds"),
+        };
+        assert!(
+            !stands_apart(file, &branch, &main, &at_base, &checked),
+            "both sides' changes to one check stood apart"
+        );
     }
 
     #[test]
