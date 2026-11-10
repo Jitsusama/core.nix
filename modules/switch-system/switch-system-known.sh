@@ -13,7 +13,9 @@ instance=${instance%.service}
 system=$(systemd-escape --unescape --path "$instance")
 
 for generation in /nix/var/nix/profiles/system-*-link; do
-  if [[ -e $generation && $(readlink --canonicalize "$generation") == "$system" ]]; then
+  [[ -e $generation ]] || continue
+  held=$(readlink --canonicalize "$generation")
+  if [[ $held == "$system" ]]; then
     exit 0
   fi
 done
