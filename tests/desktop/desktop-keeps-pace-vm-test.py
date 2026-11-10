@@ -662,3 +662,79 @@ def test_the_launcher_draws_each_key_soon_while_every_core_is_busy(desktop: Desk
             timing.load(on=True)
         desktop.close_launcher()
     timing.said_and_held()
+
+
+# Lab only: steps into each place a round, and rounds, alternately loaded and frozen.
+LAB_STEPS = 6
+LAB_KNOCKS = (0, 1, 2, 3, 4, 5, 0)
+
+
+def lab_stepped(desktop: Desktop, timing: Timing, place: str, knock: int) -> None:
+    """Lab only: step into a place and out LAB_STEPS times, printing each step's parts."""
+    desktop.down_to(place)
+    for _ in range(LAB_STEPS):
+        before = framed(desktop)["timed"]
+        desktop.machine.succeed(f"echo enter > {KEYBOARD}")
+        noted: Json = {}
+
+        def drawn(_: bool) -> bool:
+            noted.update(framed(desktop))
+            return int(noted["timed"]) > before
+
+        retry(drawn, timeout=REACHING)
+        heard, done = noted["heard"][-1], noted["done"][-1]
+        begun, frame = noted["begun"][-1], noted["frames"][-1]
+        rendered = noted["rendered"][-1]
+        laid = [
+            one
+            for one in json.loads(desktop.as_account("qs ipc call launcher layouts"))
+            if heard <= one["at"] <= frame
+        ]
+        print(
+            "labstep",
+            json.dumps(
+                {
+                    "place": place,
+                    "knock": knock,
+                    "loaded": timing.loading,
+                    "took": frame - noted["pressed"][-1],
+                    "handler": done - heard,
+                    "wait": begun - done,
+                    "swap": frame - rendered if rendered is not None else None,
+                    "layout": sum(one["took"] for one in laid),
+                    "layouts": laid,
+                }
+            ),
+        )
+        desktop.launcher_until(lambda shown: len(shown["held"]) == 1)
+        # Lab only: a dwell between steps, as Joel's are.
+        time.sleep(1)
+        desktop.step_out()
+        # Lab only: a dwell between steps, as Joel's are.
+        time.sleep(1)
+
+
+@pytest.mark.usefixtures("keyboard", "loaded")
+def test_lab_steps_into_desktop_and_machine(desktop: Desktop) -> None:
+    """Lab only: time each step into Desktop and Machine, its forceLayout apart."""
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.normal()
+    timing = Timing(desktop)
+    try:
+        timing.load(on=False)
+        for knock in LAB_KNOCKS:
+            desktop.as_account(f"qs ipc call launcher knock {knock}")
+            for place in ("Desktop", "Machine"):
+                lab_stepped(desktop, timing, place, knock)
+    finally:
+        if not timing.loading:
+            timing.load(on=True)
+        desktop.close_launcher()
+    said = desktop.as_account(
+        "journalctl --user --unit=quickshell --no-pager --output=cat | grep -a -F ' ms to its frame'"
+        " | grep -a 'Desktop\\|Machine'; true"
+    )
+    for line in said.splitlines():
+        print("labsaid", line)
+    pytest.fail("lab only")

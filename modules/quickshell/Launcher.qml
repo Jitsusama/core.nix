@@ -2959,6 +2959,10 @@ Scope {
     // from the rows let go, for the check that a step takes its rows from
     // those it let go.
     property int rowsBuilt: 0
+    // Lab only: each forceLayout's start, its time and the rows it drew and built.
+    property var layoutsTimed: []
+    // Lab only: which part of every row is knocked out.
+    property int labKnock: 0
 
     onMatchesChanged: {
         // The selection's start keeps to the row it began on, as the
@@ -6497,6 +6501,17 @@ Scope {
 
         // How many frames the card has drawn since this was first asked,
         // for the check that a launcher left still draws nothing.
+        // Lab only: the forceLayouts timed.
+        function layouts(): string {
+            return JSON.stringify(root.layoutsTimed.slice(-100));
+        }
+
+        // Lab only: knock out one part of every row.
+        function knock(part: int): string {
+            root.labKnock = part;
+            return String(root.labKnock);
+        }
+
         function frames(): string {
             root.framesCounted = true;
             return String(root.framesDrawn);
@@ -8662,7 +8677,14 @@ Scope {
                                 // Laid out now rather than at the next frame,
                                 // so the rows drawn stand where they will and
                                 // the selection is placed from them (rowY).
+                                const laidAt = KeyTimes.now();
+                                const drawnWas = root.rowsDrawn;
+                                const builtWas = root.rowsBuilt;
                                 list.forceLayout();
+                                root.layoutsTimed.push({ at: laidAt,
+                                    took: KeyTimes.now() - laidAt, rows: rows.length,
+                                    drawn: root.rowsDrawn - drawnWas,
+                                    built: root.rowsBuilt - builtWas, knock: root.labKnock });
                                 return false;
                             }
 
@@ -9023,7 +9045,8 @@ Scope {
                                     anchors.bottom: parent.bottom
                                     selected: !entry.aside && entry.index === root.current
                                     flashed: !entry.aside && root.flashing[entry.index] === true
-                                    tinted: root.tints(entry.index)
+                                    readonly property int knock: root.labKnock
+                                    tinted: knock === 5 ? false : root.tints(entry.index)
                                     // Seen until the closing card has faded, and
                                     // reading a long name on only while the keys
                                     // are on the rows: with them in the drawer,
@@ -9031,7 +9054,8 @@ Scope {
                                     shown: card.opacity > 0 && !QueryKeys.paged(prompt.mode)
                                     fills: false
                                     groundFrom: list.x
-                                    glyph: entry.own || entry.sort !== "act"
+                                    glyph: knock === 1 || knock === 4 ? ""
+                                        : entry.own || entry.sort !== "act"
                                         ? entry.modelData.glyph ?? "" : entry.thing?.glyph ?? ""
                                     // A colour's swatch wears the colour itself.
                                     hue: entry.modelData.swatch
@@ -9052,7 +9076,7 @@ Scope {
                                     // A quiet row's name is plain, so its
                                     // marks would read as letters, and its
                                     // letters take no wash.
-                                    readonly property var matched: quiet ? []
+                                    readonly property var matched: quiet || knock === 5 ? []
                                         : root.matchedIn(entry.modelData)
                                     // A row the ask covers wears the tint
                                     // alone, the find's wash giving way, as
@@ -9061,22 +9085,25 @@ Scope {
                                         && root.askedOver.includes(entry.index)
                                     // A flashed row's name is plain in the
                                     // flash's ink, as a selected one is.
-                                    name: selected || quiet || flashed || covered
+                                    name: knock === 2 || knock === 4 ? ""
+                                        : selected || quiet || flashed || covered || knock === 5
                                         ? entry.modelData.name
                                         : root.marked(entry.modelData, matched)
-                                    plainName: entry.modelData.name
+                                    plainName: knock === 2 || knock === 4 ? "" : entry.modelData.name
                                     finds: covered ? [] : Fuzzy.runs(matched)
-                                    chord: entry.modelData.chord
-                                    side: typeof entry.modelData.counts === "function"
+                                    readonly property bool bare: knock === 3 || knock === 4
+                                    chord: bare ? [] : entry.modelData.chord
+                                    side: bare ? "" : typeof entry.modelData.counts === "function"
                                         ? entry.modelData.counts(root.tenth) : entry.modelData.side
-                                    sideItems: entry.modelData.sideItems ?? []
-                                    count: entry.modelData.count ?? ""
-                                    countItems: entry.modelData.countItems ?? []
+                                    sideItems: bare ? [] : entry.modelData.sideItems ?? []
+                                    count: bare ? "" : entry.modelData.count ?? ""
+                                    countItems: bare ? [] : entry.modelData.countItems ?? []
                                     sideWhole: !!entry.modelData.sideWhole
                                     names: entry.modelData.names === true
                                     countWords: !!entry.modelData.countWords
-                                    kind: root.held.length === 0 ? root.kindOf(entry.modelData) : ""
-                                    landed: selected && root.landedOn(entry.modelData)
+                                    kind: bare || knock === 5 ? ""
+                                        : root.held.length === 0 ? root.kindOf(entry.modelData) : ""
+                                    landed: knock !== 5 && selected && root.landedOn(entry.modelData)
                                         ? `\u21b5 ${root.verbOf(entry.modelData)}` : ""
                                     // What the cursor row has to say of how
                                     // it stands, on the row, where the head
@@ -9086,7 +9113,8 @@ Scope {
                                     // holds, giving way first (VKCF3Z,
                                     // 2026-11-09 [6918348b]).
                                     note: selected ? foot.saidNote : ""
-                                    also: entry.modelData.byWord ? root.saidAs(entry.modelData) : ""
+                                    also: knock !== 5 && entry.modelData.byWord
+                                        ? root.saidAs(entry.modelData) : ""
                                     // Gone since it was shown, it stays dimmed
                                     // in its place until a key (Steady.js).
                                     // A miss is said as quietly as nothing found.
