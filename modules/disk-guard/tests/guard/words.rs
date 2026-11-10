@@ -143,6 +143,8 @@ fn a_machine_watching_nothing_says_so() {
 
 #[test]
 fn what_was_cleared_is_said_by_what_it_was() {
+    // Its size is its files' as read, which on a compressed disk can be
+    // three times what clearing them frees, so it's said as theirs.
     let home = Some(Path::new("/home/u"));
     assert_eq!(
         cleared(
@@ -151,19 +153,19 @@ fn what_was_cleared_is_said_by_what_it_was() {
             42 * GIB,
             home
         ),
-        "Cleared a Rust build, ~/src/app/target (42.0 GiB)."
+        "Cleared a Rust build, ~/src/app/target (42.0 GiB of files)."
     );
     assert_eq!(
         cleared("cache", Path::new("/home/u/.cache/go-build"), GIB, home),
-        "Cleared a cache, ~/.cache/go-build (1.0 GiB)."
+        "Cleared a cache, ~/.cache/go-build (1.0 GiB of files)."
     );
     assert_eq!(
         cleared("garbage", Path::new("/nix/store/abc-x"), GIB, home),
-        "Cleared unused Nix store paths, /nix/store/abc-x (1.0 GiB)."
+        "Cleared unused Nix store paths, /nix/store/abc-x (1.0 GiB of files)."
     );
     assert_eq!(
         cleared("something-new", Path::new("/x"), 2048, home),
-        "Cleared /x (2.0 KiB).",
+        "Cleared /x (2.0 KiB of files).",
         "a kind it doesn't know is said by its path alone"
     );
 }
