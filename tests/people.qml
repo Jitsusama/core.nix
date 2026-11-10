@@ -110,6 +110,20 @@ ShellRoot {
                     open[3].glyph === String.fromCodePoint(0xf0004), open[3].glyph);
                 expect("no one else is held", people.persons.length === 4,
                     names(people.persons));
+                // Who an address is, for a meeting's guests counted or a
+                // call's name, is known with no row made: counting a
+                // meeting's guests by their rows made each one's whole row
+                // every time its acts were read (2026-11-09).
+                const madeBefore = people.tally.rows;
+                const ada = people.whoIs(" ADA@example.com ");
+                expect("who an address is, whatever its case", ada?.name === "Ada Brook",
+                    ada?.name);
+                expect("an address nobody knows is no one",
+                    people.whoIs("nobody@example.com") === null, "");
+                expect("and knowing them makes no row", people.tally.rows === madeBefore,
+                    people.tally.rows - madeBefore);
+                expect("while their row is still theirs to step into",
+                    people.personOf("ada@example.com")?.name === "Ada Brook", "");
             }
         },
         seeking("eli@example.com", "a stranger found by their email", () => {
