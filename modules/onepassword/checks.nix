@@ -11,6 +11,11 @@
   ...
 }:
 onLinux {
+  # A switch keeps the running 1Password, which restarting would lock.
+  onepassword-outlasts-a-switch =
+    holds "onepassword-outlasts-a-switch" "A switch restarts 1Password, locking it under Joel."
+      (((account graphical).systemd.user.services.onepassword.Unit.X-SwitchMethod or null) == "keep-old");
+
   # The account's 1Password entry offers Quick Access and then Lock
   # 1Password, each through a switch the installed 1Password still takes,
   # so a release that drops one fails here rather than doing nothing.

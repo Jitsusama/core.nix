@@ -199,6 +199,11 @@ in
       Description = "1Password, started with the session without its window";
       After = [ "graphical-session.target" ];
       PartOf = [ "graphical-session.target" ];
+      # A switch leaves the running app be, since restarting it locks
+      # 1Password and Joel has to unlock it again, and a switch that only
+      # moved its store paths restarted it (2026-11-10). The new unit takes
+      # over the next time it starts, as he quits it or logs in.
+      X-SwitchMethod = "keep-old";
     };
     Service = {
       ExecStart = lib.escapeShellArgs [

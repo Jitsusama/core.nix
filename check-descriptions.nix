@@ -1346,6 +1346,9 @@
     the account's 1Password entry offers Quick Access and then Lock 1Password, through switches the
     installed 1Password takes
   '';
+  onepassword-outlasts-a-switch = ''
+    a switch leaves the running 1Password be rather than restarting it, which would lock it
+  '';
   onepassword-starts-with-the-session = ''
     the session starts the system's 1Password without its window, through a switch it still takes
   '';
