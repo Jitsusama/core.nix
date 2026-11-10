@@ -1083,7 +1083,7 @@ fn send_within(size: u64) -> std::time::Duration {
 
 /// How `send` ended, or none once it ran past `within` and was told to
 /// end, which Nix does by ending its ssh and keeping what it had added.
-fn finished_within(
+pub fn finished_within(
     send: &mut std::process::Child,
     within: std::time::Duration,
 ) -> Option<std::process::ExitStatus> {
@@ -3373,8 +3373,9 @@ fn copy_pinned(folder: &Path, host: &str, nix: &str) {
         return;
     }
     // ssh's control socket goes in TMPDIR, and a long one is past what a
-    // socket's path may be. This machine signs nothing it builds, so the
-    // machine nearby takes the copy on its account's trust.
+    // socket's path may be. What this machine built before it signed, or
+    // on a machine that doesn't sign, carries no signature the machine
+    // nearby trusts, so it takes the copy on its account's trust.
     let copied = Command::new(nix)
         .args([
             "copy",

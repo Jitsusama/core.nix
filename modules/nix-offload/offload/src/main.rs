@@ -151,6 +151,7 @@ mod decide;
 mod freeing;
 mod held;
 mod journal;
+mod lines;
 mod machines;
 mod passed;
 mod progress;
@@ -238,6 +239,7 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     [--outlasting PROGRAM] [--tell PROGRAM] [--freeing PATH] \
                     | nix-offload stand [--standing PATH] [--beside PATH] \
                     | nix-offload relay --listen ADDRESS --to ADDRESS \
+                    | nix-offload lines --config PATH \
                     | nix-offload report --rate DOLLARS \
                     | nix-offload progress HOST \
                     | nix-offload there [--never-ask] [-L] [--keep-going] [--apply FUNCTION] \
@@ -467,6 +469,9 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         };
     }
+    if arguments.first().map(String::as_str) == Some("lines") {
+        return lining(given("--config"));
+    }
     if arguments.first().map(String::as_str) == Some("stand") {
         let (standing, beside) = (given("--standing"), given("--beside"));
         if standing.is_none() && beside.is_none() {
@@ -480,6 +485,30 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     serving(&arguments, given)
+}
+
+/// `lines`: copies the lender's lines into root's, for as long as it runs,
+/// keeping gcloud's state where systemd's `StateDirectory` says.
+fn lining(config: Option<String>) -> ExitCode {
+    let Some(config) = config else {
+        eprintln!("nix-offload: lines needs --config\n{USED}");
+        return ExitCode::from(64);
+    };
+    let settings = match fs::read_to_string(&config)
+        .map_err(|error| error.to_string())
+        .and_then(|text| lines::settings(&text))
+    {
+        Ok(settings) => settings,
+        Err(error) => {
+            eprintln!("nix-offload: {config}: {error}");
+            return ExitCode::from(64);
+        }
+    };
+    let state = env::var_os("STATE_DIRECTORY").map_or_else(
+        || PathBuf::from("/var/lib/nix-offload-lines"),
+        PathBuf::from,
+    );
+    lines::serve(&settings, state.join("gcloud"))
 }
 
 /// Starts `there` again marked as work run elsewhere, and as sent first

@@ -16,6 +16,74 @@ onLinux {
   # builder's line and the journal, its tests run as it builds.
   nix-offload-decides-when = pkgs.callPackage ./offload/package.nix { };
 
+  # With `lines` set, root's Nix reads its builders only from the folder
+  # their own account writes, the service runs as that account with its
+  # settings, and the lender's account needn't be trusted; unset, root
+  # reads the lender's own and its account must be.
+  nix-offload-lines-reach-root-alone =
+    let
+      machine =
+        settings:
+        bareNixos [
+          self.nixosModules.nix-offload
+          {
+            users.users.someone = {
+              isNormalUser = true;
+              group = "users";
+            };
+            jitsusama.nix-offload = {
+              account = "someone";
+            }
+            // settings;
+          }
+        ];
+      lined = machine {
+        lines = {
+          project = "a-lab";
+          prefix = "a-builder-";
+          zones = [ "a-zone" ];
+          lent = [
+            {
+              uri = "ssh-ng://nix-offload?compress=true";
+              folder = "/run/nix-offload";
+            }
+          ];
+        };
+      };
+      bare = machine { };
+      failing = config: lib.filter (assertion: !assertion.assertion) config.assertions;
+      service = lined.config.systemd.services.nix-offload-lines.serviceConfig;
+      # Read, not built: the settings name gcloud's store path, which
+      # fromJSON won't take with its context.
+      read = builtins.fromJSON (
+        builtins.unsafeDiscardStringContext lined.config.environment.etc."nix-offload/lines.json".text
+      );
+    in
+    holds "nix-offload-lines-reach-root-alone"
+      (
+        "with lines set, root's Nix reads builders the lender's account writes, "
+        + "or the service doesn't run as its own account with its settings, "
+        + "or the folder isn't that account's alone, or the lender's account must still be trusted; "
+        + "or, unset, an untrusted lender's account is let through."
+      )
+      (
+        lined.config.nix.settings.builders == "@/run/nix-offload-lines/machines"
+        && service.User == "nix-offload-lines"
+        && lib.hasSuffix " lines --config /etc/nix-offload/lines.json" service.ExecStart
+        &&
+          read.lent == [
+            {
+              uri = "ssh-ng://nix-offload?compress=true";
+              instance = "/run/nix-offload/instance";
+              token = "/run/nix-offload/cloud-token";
+            }
+          ]
+        && lib.elem "d /run/nix-offload-lines 0755 nix-offload-lines nix-offload-lines -" lined.config.systemd.tmpfiles.rules
+        && failing lined.config == [ ]
+        && bare.config.nix.settings.builders == "@/run/nix-offload/machines"
+        && failing bare.config != [ ]
+      );
+
   # clippy finds nothing in nix-offload, its tests included.
   nix-offload-passes-clippy = passesClippy "nix-offload-passes-clippy" (
     pkgs.callPackage ./offload/package.nix { }
