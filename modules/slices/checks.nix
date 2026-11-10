@@ -105,27 +105,22 @@
         && (agents.MemoryMin or null) == kitty.MemoryMin
       );
 
-  # Work other sessions wait on ranks between them and jobs on the disk, at
-  # a target looser than theirs and Joel's programs', while on the
-  # processor it stays below what Joel uses and above idle jobs, and past
-  # its ceiling swaps its own memory. Without a target it waits behind
-  # every session's disk work, as jobs does; at theirs it never yields.
-  shared-work-yields-to-joel-before-jobs =
+  # Work other sessions wait on ranks with them on the disk, at their own
+  # target, while on the processor it stays below what Joel uses and above
+  # idle jobs, and past its ceiling swaps its own memory. Without a target
+  # it waits behind every session's disk work, as jobs does.
+  shared-work-ranks-with-the-sessions =
     let
       inherit (graphical.config) systemd environment;
       inherit (systemd.user) slices;
       shared = slices.shared.sliceConfig;
       target = slice: slice.sliceConfig.IODeviceLatencyTargetSec or null;
-      ms = slice: lib.toInt (lib.removeSuffix "ms" (lib.last (lib.splitString " " (target slice))));
-      looser = slice: target slice != null && ms slices.shared > ms slice;
     in
-    holds "shared-work-yields-to-joel-before-jobs"
-      "Work other sessions wait on has no disk target, one no looser than Joel's programs' and the sessions', outranks Joel's programs on the processor, has no ceiling, or can't be found."
+    holds "shared-work-ranks-with-the-sessions"
+      "Work other sessions wait on has no slice at their disk target, outranks Joel's programs on the processor, has no ceiling, or can't be found."
       (
         target slices.shared != null
-        && looser slices.app
-        && looser slices.session
-        && looser slices.agents
+        && target slices.shared == target slices.agents
         && shared.CPUWeight < (slices.app.sliceConfig.CPUWeight or 100)
         && shared ? MemoryHigh
         && environment.sessionVariables.SHARED_SLICE == "shared.slice"
