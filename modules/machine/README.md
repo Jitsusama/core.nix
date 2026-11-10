@@ -163,10 +163,13 @@ units, or named here as left out with the reason.
 | `warmth:built-in` | the warmth, follows the room, sees colour  | Warmth's side and its Follow the Room switch |
 |                 | the room's white, the night light, its white | Warmth's figures and Night Light switch   |
 |                 | the night's sunset and sunrise               | Warmth's note and figures                 |
+| `camera:<name>` | the camera's name, the programs holding it   | Camera's note and hint, and Cameras       |
 
-The last two are the backlight program's (modules/backlight), which
-writes them whole in its files; they're heard as it writes them while
-watched, through inotify, and read at no other time.
+`brightness` and `warmth` are the backlight program's (modules/backlight),
+which writes them whole in its files, and `camera` is each camera's file
+in /run/camera-holders, which modules/v4l2loopback and
+modules/usb-camera-holders write whole. All three are heard as they're
+written while watched, through inotify, and read at no other time.
 
 ## Left Out, and Why
 

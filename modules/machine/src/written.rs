@@ -41,6 +41,12 @@ impl Written {
         Some(written)
     }
 
+    /// Whether a folder it was given isn't there yet, and so is still
+    /// looked for at each wait.
+    pub fn looking(&self) -> bool {
+        !self.missing.is_empty()
+    }
+
     /// Watches each folder not watched yet that's there now, and says
     /// whether any was found.
     fn look_again(&mut self) -> bool {

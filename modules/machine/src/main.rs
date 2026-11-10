@@ -5,8 +5,9 @@
 //! the processor, the memory, each disk, this boot, the programs using
 //! the machine most, its sensors, thermal zones and cooling, each power
 //! supply, how it sleeps, its firmware, the screen's backlight and the
-//! room's light, and the brightness and warmth the backlight program
-//! steers the built-in screen to, each a record whose figures are
+//! room's light, the brightness and warmth the backlight program
+//! steers the built-in screen to, and who has each camera open, each a
+//! record whose figures are
 //! the kernel's own or its services'
 //! (lib.rs says how they're named). The kernel's files are read under
 //! ROOT, `/` unless a test says otherwise.
@@ -29,7 +30,8 @@
 //! watches, and a signal wakes nothing until it comes. The backlight
 //! program's files are heard as it writes them while their kinds are
 //! watched, so a switch turned in the launcher reads turned within a
-//! frame, not at the next second's read.
+//! frame, not at the next second's read, and so are the cameras' holders,
+//! so a program opening a camera is said as it does.
 //!
 //! It acts as well as answers, so the shell spawns and writes nothing of
 //! its own: `charge-limit` moves a battery's charge limit, and the supply
@@ -49,8 +51,8 @@ use std::time::{Duration, Instant};
 
 use machine::interface::{Ask, KINDS, VERSION, ask, error, kind_of};
 use machine::{
-    Root, boot, clock_ms, disk, firmware, heat, light, memory, now_ms, processor, rounded, sleep,
-    steered, supply, tree, using, written::Written,
+    Root, boot, camera, clock_ms, disk, firmware, heat, light, memory, now_ms, processor, rounded,
+    sleep, steered, supply, tree, using, written::Written,
 };
 use serde_json::{Value, json};
 
@@ -75,9 +77,13 @@ const LOGIND_EVERY: Duration = Duration::from_secs(2);
 const FRESH: Duration = Duration::from_millis(1500);
 /// How near its time a kind is read with others due now.
 const LEEWAY: Duration = Duration::from_millis(50);
-/// The kinds read as their files are written (`steered_loop`), never on
+/// The kinds read as their files are written (`heard_loop`), never on
 /// the second.
-const HEARD: [&str; 2] = ["brightness", "warmth"];
+const STEERED: [&str; 2] = ["brightness", "warmth"];
+const HEARD: [&str; 3] = ["brightness", "warmth", "camera"];
+/// How often a watch on files heard looks to see whether it's still
+/// wanted, once every folder is watched.
+const RESTING: Duration = Duration::from_secs(60);
 /// How many of the last reads' times health says.
 const TIMES: usize = 32;
 /// How many lines a connection may have waiting to be written before
@@ -206,6 +212,9 @@ impl Reader {
                 records.extend(steered::warmth(&self.root, files));
             }
         }
+        if wants("camera") {
+            records.extend(camera::cameras(&self.root));
+        }
         if wants("awake") {
             records.push(sleep::awake(&buses.logind));
         }
@@ -321,8 +330,19 @@ fn main() {
     }
     if let Some(files) = steered::Files::of_session() {
         let shared = Arc::clone(&shared);
-        let root = root.clone();
-        std::thread::spawn(move || steered_loop(&shared, &root, &files));
+        let folders = files
+            .folders()
+            .iter()
+            .map(|folder| root.path(folder))
+            .collect::<Vec<_>>();
+        std::thread::spawn(move || {
+            heard_loop(&shared, &STEERED, &folders, |name| files.names(name));
+        });
+    }
+    {
+        let shared = Arc::clone(&shared);
+        let folders = vec![root.path(camera::FOLDER)];
+        std::thread::spawn(move || heard_loop(&shared, &["camera"], &folders, camera::names));
     }
     {
         let shared = Arc::clone(&shared);
@@ -542,6 +562,18 @@ fn watch_loop(shared: &Shared) {
         }
         let mut kinds = watched(&daemon);
         kinds.retain(|kind| !HEARD.contains(&kind.as_str()));
+        // Only kinds heard as they're written are watched, as the bar's
+        // camera always is, so nothing is due on the second until a watch
+        // of another kind wakes this.
+        if kinds.is_empty() {
+            drop(
+                shared
+                    .woken
+                    .wait(daemon)
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+            );
+            continue;
+        }
         let mut due = HashSet::new();
         let mut next = EVERY;
         for kind in &kinds {
@@ -677,14 +709,15 @@ fn light_loop(shared: &Shared, root: &Root) {
     }
 }
 
-/// Hears the backlight program's files as it writes them while their
-/// kinds are watched, and tells what changed at once; they're read at no
+/// Hears the files of these kinds in these folders as they're written
+/// while the kinds are watched, and tells what changed at once: the
+/// backlight program's, and the cameras' holders'. They're read at no
 /// other time but a watch's first answer and a get. They're read once more
 /// as the watch on them begins, so one written since the first answer is
 /// said all the same. With the last watch the files are let be, so an
 /// idle machine is woken by none of their writes.
-fn steered_loop(shared: &Shared, root: &Root, files: &steered::Files) {
-    let kinds: HashSet<String> = HEARD.iter().map(|kind| (*kind).to_owned()).collect();
+fn heard_loop(shared: &Shared, kinds: &[&str], folders: &[PathBuf], ours: impl Fn(&str) -> bool) {
+    let kinds: HashSet<String> = kinds.iter().map(|kind| (*kind).to_owned()).collect();
     let watching = |daemon: &Daemon| watched(daemon).iter().any(|kind| kinds.contains(kind));
     loop {
         {
@@ -696,12 +729,7 @@ fn steered_loop(shared: &Shared, root: &Root, files: &steered::Files) {
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
             }
         }
-        let folders = files
-            .folders()
-            .iter()
-            .map(|folder| root.path(folder))
-            .collect::<Vec<_>>();
-        let Some(mut written) = Written::on(folders) else {
+        let Some(mut written) = Written::on(folders.iter().cloned()) else {
             // With no watch the kernel will give, they're read on the
             // second instead, as every other kind is.
             while watching(&lock(&shared.daemon)) {
@@ -712,11 +740,12 @@ fn steered_loop(shared: &Shared, root: &Root, files: &steered::Files) {
         };
         read(shared, &kinds, &[]);
         while watching(&lock(&shared.daemon)) {
-            let heard = written.wait(EVERY);
-            if heard
-                .iter()
-                .any(|name| name.is_empty() || files.names(name))
-            {
+            // A folder not there yet is looked for each second; with all
+            // of them watched, only to see whether the watch has ended,
+            // which can wait, since a file heard while nothing watches
+            // tells nobody.
+            let heard = written.wait(if written.looking() { EVERY } else { RESTING });
+            if heard.iter().any(|name| name.is_empty() || ours(name)) {
                 read(shared, &kinds, &[]);
             }
         }
