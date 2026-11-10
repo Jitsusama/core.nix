@@ -223,17 +223,11 @@ impl Daemon {
             // a switch's is judged again once it's told.
             let mut wanted: Vec<String> = commits.iter().map(|&c| c.to_owned()).collect();
             wanted.extend(self.follower.core.clone());
-            let core = self.core.clone();
-            let target = self.follower.core.clone();
-            let tell = self.tell.clone();
+            let (core, tell) = (self.follower.core.clone(), self.tell.clone());
             self.fetching = true;
-            thread::spawn(move || {
-                let wanted: Vec<&str> = wanted.iter().map(String::as_str).collect();
-                let result = core.fetch_for(&wanted).map_err(|e| e.to_string());
-                let _ = tell.send(Woken::Fetched {
-                    core: target,
-                    result,
-                });
+            self.core.clone().fetch_apart(wanted, move |result| {
+                let result = result.map_err(|e| e.to_string());
+                let _ = tell.send(Woken::Fetched { core, result });
             });
         }
     }

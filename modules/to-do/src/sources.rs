@@ -9,6 +9,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::thread;
 use std::time::{Duration, UNIX_EPOCH};
 
 use serde::Deserialize;
@@ -184,6 +185,19 @@ impl Core {
             READING,
         )
         .unwrap_or(false)
+    }
+
+    /// Fetches for `wanted` as `fetch_for` does, on a thread of its own,
+    /// giving how it went to `done`.
+    pub fn fetch_apart(
+        self,
+        wanted: Vec<String>,
+        done: impl FnOnce(io::Result<()>) + Send + 'static,
+    ) {
+        thread::spawn(move || {
+            let wanted: Vec<&str> = wanted.iter().map(String::as_str).collect();
+            done(self.fetch_for(&wanted));
+        });
     }
 
     /// Fetches main, cloning first where there's no clone yet, only when
