@@ -176,6 +176,20 @@ let
   apps = "10%";
   agents = "15%";
   agentsHeld = "512M";
+
+  # Past a ceiling, the sessions reclaim their own memory rather than the
+  # machine's. With 83 of them open on 10 November they held 27 GiB, 40
+  # more in swap, and their swapping in kept free memory at the minimum:
+  # kswapd gave up a third of the time, and every program that needed a
+  # page reclaimed one itself, the shell and Joel's apps among them. In
+  # three interleaved rounds of 100 s each, a ceiling of 40% against none
+  # took kswapd's give-ups from 31% of the time to 1.3%, allocation stalls
+  # from 528 a second to 187, app.slice's memory pressure from 0.39% to
+  # 0.11% and session.slice's from 0.18% to 0.04%. The sessions pay: they
+  # waited on memory 6.4% of the time rather than 3.6%. At 35% they waited
+  # 11.9%, and Joel's slices gained nothing more. MemoryHigh slows the
+  # sessions past it and never ends one.
+  agentsHigh = "40%";
   account = "15%";
 
   # The system's own services a call or the desktop waits on keep a soft
@@ -320,6 +334,7 @@ in
     systemd.user.slices.agents.sliceConfig = {
       MemoryLow = agents;
       MemoryMin = agentsHeld;
+      MemoryHigh = agentsHigh;
     }
     // latency;
 

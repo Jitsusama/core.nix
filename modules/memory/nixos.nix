@@ -58,18 +58,24 @@ in
     # the tools that walk them depend on.
     "vm.vfs_cache_pressure" = 50;
 
-    # Wake kswapd 0.5% of memory before it runs out, so it frees pages
+    # Wake kswapd 0.25% of memory before it runs out, so it frees pages
     # ahead of the builds' allocations rather than leaving them to reclaim
     # for themselves, which every program then waits behind. 0.1% woke it
     # too late: against it, 2% took allocation stalls from 50 to 154 a
-    # second to 0 to 16. But at 2% kswapd must free 2.5 GiB before it may
-    # rest, and under builds it fails sixteen times running and gives up
-    # until memory frees by itself. In eight interleaved four-minute rounds,
-    # the five under real pressure, 0.5% against 2% took those give-ups
-    # from half the time to 3%, stalls from 430 a second to 61 (the worst
-    # one in twenty from 3,410 to 264), and every program's full pressure
-    # from 4.6 to 3.2, while apps' own stayed at 0.06 to 0.07.
-    "vm.watermark_scale_factor" = 50;
+    # second to 0 to 16. But kswapd must free up to the high watermark, twice
+    # the spacing over the minimum, before it may rest, and under builds it
+    # fails sixteen times running and gives up. Since 7.2 only free memory
+    # over that high watermark brings it back, while programs reclaiming for
+    # themselves keep it near the minimum, so the wider the spacing, the
+    # longer it stays given up. In eight interleaved four-minute rounds, the
+    # five under real pressure, 0.5% against 2% took those give-ups from half
+    # the time to 3%, stalls from 430 a second to 61 (the worst one in twenty
+    # from 3,410 to 264), and every program's full pressure from 4.6 to 3.2,
+    # while apps' own stayed at 0.06 to 0.07. On 10 November, with 83 agents'
+    # sessions open and a load of 95, three interleaved rounds of 100 s each
+    # left kswapd given up 100% of the time at 1%, 79% at 0.5% and 40% at
+    # 0.25%, with allocation stalls at 2,767, 2,504 and 1,407 a second.
+    "vm.watermark_scale_factor" = 25;
 
     # Never raise those watermarks after a fragmentation event. The boost
     # is a share of the high watermark, 150% by default, so at the spacing
