@@ -3,8 +3,8 @@
 //!
 //! Usage: `nix-offload serve --helper PATH --prefix NAME --rate DOLLARS
 //! --first-start HH:MM --last-start HH:MM --deadline HH:MM [--longest HH:MM]
-//! [--standing PATH] [--beside PATH] [--dir DIR] [--only-there]`, or `nix-offload stand [--standing PATH]
-//! [--beside PATH]` to name standing builders alone and lend none, or
+//! [--idle HH:MM] [--standing PATH] [--beside PATH] [--dir DIR] [--only-there]`,
+//! or `nix-offload stand [--standing PATH] [--beside PATH]` to name standing builders alone and lend none, or
 //! `nix-offload report --rate DOLLARS` for today's line, or `nix-offload
 //! there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
 //! [--print-out-paths] [--here] [--here-when-idle] [--outlive] [--bulk] [--first]
@@ -43,8 +43,8 @@
 //! build sent whole to its store takes VM tests there instead. Standing builders that
 //! answer go only into /run/nix-offload/machines-with-standing, beside the
 //! lent one, for a build that names that file (`--builders @...`), never
-//! every build. Once nothing has reached it for fifteen minutes, or the
-//! deadline comes, it takes the line out first, so no build
+//! every build. Once nothing has reached it for fifteen minutes, or as
+//! long as `--idle` says, or the deadline comes, it takes the line out first, so no build
 //! is sent to a builder that's going, then gives the builder back. It
 //! starts none outside the day's hours, so none is made overnight or to
 //! live only minutes. With `--longest`, each builder lives that long from
@@ -237,7 +237,8 @@ const USAGE: i32 = 64;
 
 const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate DOLLARS \
                     --first-start HH:MM --last-start HH:MM --deadline HH:MM \
-                    [--longest HH:MM] [--standing PATH] [--beside PATH] [--dir DIR] [--only-there] \
+                    [--longest HH:MM] [--idle HH:MM] [--standing PATH] [--beside PATH] [--dir DIR] \
+                    [--only-there] \
                     [--outlasting PROGRAM] [--tell PROGRAM] [--freeing PATH] \
                     | nix-offload stand [--standing PATH] [--beside PATH] \
                     | nix-offload relay --listen ADDRESS --to ADDRESS \
@@ -1695,6 +1696,14 @@ fn serving(arguments: &[String], given: impl Fn(&str) -> Option<String>) -> Exit
                     return ExitCode::from(64);
                 }
             };
+            let idle = match given("--idle").map(|text| second_of(&text)) {
+                None => decide::IDLE,
+                Some(Some(idle)) if idle > 0 => u64::from(idle),
+                Some(_) => {
+                    eprintln!("nix-offload: --idle takes HH:MM, more than none\n{USED}");
+                    return ExitCode::from(64);
+                }
+            };
             if !(first <= last && last <= deadline) {
                 eprintln!("nix-offload: the day's hours must run first, last, deadline\n{USED}");
                 return ExitCode::from(64);
@@ -1720,6 +1729,7 @@ fn serving(arguments: &[String], given: impl Fn(&str) -> Option<String>) -> Exit
                     last,
                     deadline,
                     longest,
+                    idle,
                 },
                 queue: runtime.join("jobs/queue.json"),
                 standing: given("--standing").map(PathBuf::from),
@@ -2601,7 +2611,7 @@ fn give_back_unreturned(
         eprintln!("nix-offload: {name} isn't yet seen gone, so it's given back");
         if down(settings, name) {
             let now = now();
-            let (event, ran) = builder.given_back(now, decide::IDLE);
+            let (event, ran) = builder.given_back(now, settings.hours.idle);
             let _ = journal::note(&settings.journal, now, event, name, ran);
         } else {
             still += 1;
@@ -3005,6 +3015,7 @@ exit 1
                 last: 80_000,
                 deadline: 86_000,
                 longest: None,
+                idle: decide::IDLE,
             },
             queue: folder.join("queue.json"),
             standing: None,
