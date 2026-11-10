@@ -1,0 +1,84 @@
+A host runs many conversations in one process, each with credentials of
+its own, and holds none itself. pi reads a configured key, checks a
+provider is set up before a prompt, and lists available models through
+an auth context that defaults to the process's environment, and
+ModelRuntime offers no way to give it another. A hosted conversation
+therefore found no key, or would have found the host's.
+
+Let ModelRuntime.create take an auth context and hand it to the models
+it builds, and mark the build so a host can refuse one without it.
+Resolve a configured key only when the context holds it, as the check
+before a prompt already does, so a key the context lacks never comes
+from the process. Without a context, pi reads the process as before.
+
+Offered upstream as the model auth-context host seam. Apply only to the
+host's private pi build; ordinary interactive pi stays unchanged.
+
+--- a/packages/coding-agent/src/core/model-runtime.ts
++++ b/packages/coding-agent/src/core/model-runtime.ts
+@@ -7,6 +7,7 @@
+ 	type AssistantMessage,
+ 	type AssistantMessageEventStream,
+ 	type AuthCheck,
++	type AuthContext,
+ 	type AuthInteraction,
+ 	type AuthOperationOptions,
+ 	type AuthResult,
+@@ -123,6 +124,12 @@
+ 	signal?: AbortSignal;
+ 	/** Skip initial catalog and availability refresh. Static models remain available. */
+ 	refreshOnCreate?: boolean;
++	/**
++	 * Where auth reads environment variables and files. Defaults to the
++	 * process's. A host running many conversations in one process gives each
++	 * its own, so no conversation's key comes from the host's environment.
++	 */
++	authContext?: AuthContext;
+ }
+ 
+ export interface ModelRuntimeAuthOverrides extends AuthOperationOptions {
+@@ -172,6 +179,8 @@
+ 
+ /** Configured pi-ai Models collection used by coding-agent and SDK consumers. */
+ export class ModelRuntime implements Models {
++	/** Marks a build whose create() takes an auth context, so a host can refuse one without it. */
++	static readonly hostAuthContextVersion = 1;
+ 	private readonly models: MutableModels;
+ 	private readonly credentials: RuntimeCredentials;
+ 	private readonly defaultBuiltins: ReadonlyMap<string, Provider>;
+@@ -204,6 +213,7 @@
+ 		modelsStore: ModelsStore,
+ 		providers: readonly Provider[],
+ 		modelNetworkEnabled: boolean,
++		authContext?: AuthContext,
+ 	) {
+ 		this.credentials = credentials;
+ 		this.config = config;
+@@ -211,7 +221,7 @@
+ 		this.modelNetworkEnabled = modelNetworkEnabled;
+ 		this.defaultBuiltins = new Map(providers.map((provider) => [provider.id, provider]));
+ 		for (const [providerId, provider] of this.defaultBuiltins) this.builtins.set(providerId, provider);
+-		this.models = createModels({ credentials, modelsStore });
++		this.models = createModels({ credentials, modelsStore, ...(authContext ? { authContext } : {}) });
+ 		this.rebuildProviders();
+ 	}
+ 
+@@ -246,6 +256,7 @@
+ 			modelsStore,
+ 			providers,
+ 			process.env.PI_OFFLINE === undefined,
++			options.authContext,
+ 		);
+ 		runtime.configureRadiusProviders();
+ 		runtime.rebuildProviders();
+--- a/packages/coding-agent/src/core/provider-composer.ts
++++ b/packages/coding-agent/src/core/provider-composer.ts
+@@ -469,6 +469,8 @@
+ 						: undefined;
+ 			} else if (rawKey !== undefined) {
+ 				const env = await configContextEnv([rawKey], input.ctx);
++				// Resolve only a key the auth context holds, as check does, so one it lacks never comes from the process.
++				if (getConfigValueEnvVarNames(rawKey).some((name) => env?.[name] === undefined)) return undefined;
+ 				const key = resolveConfigValueOrThrow(rawKey, `API key for provider "${providerId}"`, env);
+ 				result = inherited
+ 					? await inherited.resolve({ ...input, credential: { type: "api_key", key } })
