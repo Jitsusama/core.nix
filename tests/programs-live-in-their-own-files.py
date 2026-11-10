@@ -280,7 +280,8 @@ def main() -> None:
     for failure in said:
         print(failure, file=sys.stderr)
     total = sum(len(held) for held in found.values())
-    print(f"{programs_in_strings(total)}, in {len(found)} files.")
+    files = f"{len(found)} file{'' if len(found) == 1 else 's'}"
+    print(f"{programs_in_strings(total)}, in {files}.")
     sys.exit(1 if said else 0)
 
 

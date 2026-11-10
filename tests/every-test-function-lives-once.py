@@ -152,7 +152,8 @@ def main() -> None:
     )
     for failure in said:
         print(failure, file=sys.stderr)
-    print(f"{copied(sum(len(held) for held in found.values()))}, in {len(found)} files.")
+    files = f"{len(found)} file{'' if len(found) == 1 else 's'}"
+    print(f"{copied(sum(len(held) for held in found.values()))}, in {files}.")
     sys.exit(1 if said else 0)
 
 
