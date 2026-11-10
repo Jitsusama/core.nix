@@ -105,6 +105,7 @@ onLinux {
         "Recents.qml"
         "Recents.js"
         "Recent.js"
+        "Captured.js"
         "Ago.js"
         "words.json"
       ];
